@@ -3,6 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import type {
   AgentContextRef,
   AiEffort,
+  AiRemoteControlMode,
   AiEvent,
   AiImageRef,
   AiPermissionPosture,
@@ -51,6 +52,7 @@ describe('Agent', () => {
     contextPaths: readonly AgentContextRef[];
     runTimeoutMs: number;
     effort: AiEffort | undefined;
+    remoteControl: AiRemoteControlMode | undefined;
   }[];
   let abortCalls: string[];
   let closeSessionCalls: string[];
@@ -125,6 +127,7 @@ describe('Agent', () => {
           contextPaths: options.contextPaths ?? [],
           runTimeoutMs: options.runTimeoutMs ?? 0,
           effort: options.effort,
+          remoteControl: options.remoteControl,
         });
         return 'run-1';
       },
@@ -199,6 +202,21 @@ describe('Agent', () => {
     agent.setEffort(null);
     agent.send('once more');
     expect(runCalls[2].effort).toBeUndefined();
+  });
+
+  it('send_carriesTheRemoteControlMode_andOmitsOffByDefault', () => {
+    agent.send('hello');
+    expect(runCalls[0].remoteControl).toBeUndefined();
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+
+    agent.setRemoteControl('control');
+    agent.send('again');
+    expect(runCalls[1].remoteControl).toBe('control');
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+
+    agent.setRemoteControl('off');
+    agent.send('once more');
+    expect(runCalls[2].remoteControl).toBeUndefined();
   });
 
   it('clear_closesTheLiveSessionAndMintsAFreshOne', () => {

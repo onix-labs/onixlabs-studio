@@ -215,6 +215,7 @@ function gateCtx(overrides: Partial<AgentRunContext>): AgentRunContext {
     workspaceRoot: '/ws',
     model: 'claude-opus-4-8',
     effort: null,
+    remoteControl: 'off',
     surface: 'editor',
     mode: 'agent',
     permissionPosture: 'prompt',
@@ -680,6 +681,21 @@ describe('ClaudeAgentProvider.buildRunOptions (per-turn indirection)', () => {
       },
     };
   }
+
+  it('buildRunOptions_remoteControl_control_enablesTheBridgeWithThePeerApprovalGate', async () => {
+    const { options } = await build(gateCtx({ remoteControl: 'control' }));
+    expect(options.settings).toEqual({ remoteControlAtStartup: true, isolatePeerMachines: true });
+  });
+
+  it('buildRunOptions_remoteControl_mirror_uploadsTheSessionViewOnly', async () => {
+    const { options } = await build(gateCtx({ remoteControl: 'mirror' }));
+    expect(options.settings).toEqual({ autoUploadSessions: true });
+  });
+
+  it('buildRunOptions_remoteControl_off_disablesRemoteControlAuthoritatively', async () => {
+    const { options } = await build(gateCtx({ remoteControl: 'off' }));
+    expect(options.settings).toEqual({ disableRemoteControl: true });
+  });
 
   it('canUseTool_routesThePermissionPromptToTheCurrentTurnsContext', async () => {
     const grantsA: string[] = [];

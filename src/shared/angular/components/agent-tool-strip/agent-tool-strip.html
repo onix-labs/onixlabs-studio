@@ -41,6 +41,16 @@
     [value]="model()"
     (valueChange)="onModel($event)"
   />
+  @if (supportsRemoteControl()) {
+    <app-dropdown
+      class="strip__field"
+      ariaLabel="Remote control"
+      [fullWidth]="true"
+      [options]="remoteControlOptions"
+      [value]="remoteControl()"
+      (valueChange)="onRemoteControl($event)"
+    />
+  }
 
   <app-button
     variant="none"

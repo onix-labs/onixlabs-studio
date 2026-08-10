@@ -58,6 +58,23 @@ export const AI_EFFORT_LEVELS: readonly AiEffort[] = [
 ];
 
 /**
+ * How an agent session is exposed to another machine via the provider's own Remote Control feature —
+ * an abstract, provider-agnostic capability each provider implements (or not) through its underlying
+ * harness rather than Studio wiring the bridge itself.
+ *
+ * - `off`: not exposed (the default).
+ * - `mirror`: mirrored to the provider's remote surface as **view-only** — a peer can watch but not act.
+ * - `control`: fully **remote-controllable** — a peer can drive the session, gated by an approval step
+ *   before a peer message reaches it.
+ */
+export type AiRemoteControlMode = 'off' | 'mirror' | 'control';
+
+/**
+ * The remote-control modes in display order.
+ */
+export const AI_REMOTE_CONTROL_MODES: readonly AiRemoteControlMode[] = ['off', 'mirror', 'control'];
+
+/**
  * Describes a model a provider can run a turn with.
  */
 export interface AiModelInfo {
@@ -136,4 +153,11 @@ export interface AiProviderInfo {
    * the levels it offers.
    */
   readonly supportedEfforts?: readonly AiEffort[];
+
+  /**
+   * Gets a value indicating whether the provider can expose a session to another machine via its own
+   * Remote Control feature ({@link AiRemoteControlMode}). Absent means no — the composer/tool-strip hides
+   * the remote-control control for the provider then.
+   */
+  readonly supportsRemoteControl?: boolean;
 }

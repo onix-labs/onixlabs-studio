@@ -14,6 +14,7 @@ import type {
   AiPermissionRemember,
   AiProviderId,
   AiProviderInfo,
+  AiRemoteControlMode,
   AiToolPolicy,
   ClaudeExecutableChoice,
 } from '@shared/api/ai-types';
@@ -103,6 +104,12 @@ export interface AiRunOptions {
    * by providers that offer it.
    */
   readonly effort?: AiEffort;
+
+  /**
+   * Gets how the session should be exposed via the provider's Remote Control feature (#331), or omitted
+   * for `off`. Applied only by providers that support it.
+   */
+  readonly remoteControl?: AiRemoteControlMode;
 
   /**
    * Gets the identifier of the editor tab that owns this run, so the agent's in-app editor tools act
@@ -241,6 +248,7 @@ export class AiRuntime {
       runTimeoutMs: options.runTimeoutMs ?? 0,
       agentSessionLifetimeMs: options.agentSessionLifetimeMs ?? 0,
       ...(options.effort === undefined ? {} : { effort: options.effort }),
+      ...(options.remoteControl === undefined ? {} : { remoteControl: options.remoteControl }),
       owningTabId: options.owningTabId ?? null,
       surface: options.surface ?? 'editor',
       mode: options.mode ?? 'agent',

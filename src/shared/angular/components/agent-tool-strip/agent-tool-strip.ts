@@ -95,6 +95,27 @@ export class AgentToolStrip {
   protected readonly model: Signal<string> = computed((): string => this.agent.model());
 
   /**
+   * Gets whether the effective provider supports Remote Control, so the field is offered only then.
+   */
+  protected readonly supportsRemoteControl: Signal<boolean> = computed(
+    (): boolean => this.agent.supportsRemoteControl(),
+  );
+
+  /**
+   * Gets the Remote Control options: off, view-only mirror, or full control.
+   */
+  protected readonly remoteControlOptions: readonly DropdownOption[] = [
+    { value: 'off', label: 'Remote: Off' },
+    { value: 'mirror', label: 'Remote: Mirror' },
+    { value: 'control', label: 'Remote: Control' },
+  ];
+
+  /**
+   * Gets this conversation's Remote Control mode, for the field's value.
+   */
+  protected readonly remoteControl: Signal<string> = computed((): string => this.agent.remoteControl());
+
+  /**
    * Gets an external history-open state overriding the conversation's own, or null to drive the shared
    * conversation directly. A mirror (a Mission Control tile) passes its own local state so toggling
    * history there does not open the origin's history view.
@@ -145,5 +166,15 @@ export class AgentToolStrip {
    */
   protected onModel(id: string): void {
     this.agent.setModel(id);
+  }
+
+  /**
+   * Sets this conversation's Remote Control mode.
+   * @param mode The mode emitted by the Remote Control field.
+   */
+  protected onRemoteControl(mode: string): void {
+    if (mode === 'off' || mode === 'mirror' || mode === 'control') {
+      this.agent.setRemoteControl(mode);
+    }
   }
 }

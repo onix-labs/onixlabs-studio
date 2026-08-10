@@ -21,6 +21,7 @@ import type {
   AiPermissionRemember,
   AiProviderId,
   AiProviderInfo,
+  AiRemoteControlMode,
   AiRunState,
 } from '@shared/api/ai-types';
 import { AiRuntime } from '../ai-runtime/ai-runtime';
@@ -506,6 +507,13 @@ export class Agent {
   private readonly effortState: WritableSignal<AiEffort | null> = signal<AiEffort | null>(null);
 
   /**
+   * Holds how this conversation's session is exposed via the provider's Remote Control feature (#331).
+   * Persists across new chats within this session; ignored by providers that do not support it.
+   */
+  private readonly remoteControlState: WritableSignal<AiRemoteControlMode> =
+    signal<AiRemoteControlMode>('off');
+
+  /**
    * Holds the slash commands the live provider has discovered for this conversation (#330), or empty
    * before any are reported / for a provider that reports none. Refreshed when the provider pushes a
    * change; the composer merges them into its `/` menu.
@@ -691,6 +699,19 @@ export class Agent {
    * Gets the reasoning-effort level the conversation's runs use (#330), or null for the provider default.
    */
   public readonly effort: Signal<AiEffort | null> = this.effortState.asReadonly();
+
+  /**
+   * Gets how this conversation's session is exposed via Remote Control (#331).
+   */
+  public readonly remoteControl: Signal<AiRemoteControlMode> = this.remoteControlState.asReadonly();
+
+  /**
+   * Gets whether the selected provider supports Remote Control, so the UI offers the control only when
+   * it would work.
+   */
+  public readonly supportsRemoteControl: Signal<boolean> = computed(
+    (): boolean => this.providerInfo()?.supportsRemoteControl ?? false,
+  );
 
   /**
    * Gets the slash commands the live provider has discovered for this conversation (#330), for the
@@ -1043,6 +1064,7 @@ export class Agent {
       surface,
       mode: this.modeState(),
       ...(this.effortState() === null ? {} : { effort: this.effortState()! }),
+      ...(this.remoteControlState() === 'off' ? {} : { remoteControl: this.remoteControlState() }),
       contextPaths: attached,
       resumeSessionId: this.sessionIdState(),
       ...(forkAt === null ? {} : { resumeSessionAt: forkAt, forkSession: true }),
@@ -1074,6 +1096,15 @@ export class Agent {
    */
   public setEffort(effort: AiEffort | null): void {
     this.effortState.set(effort);
+  }
+
+  /**
+   * Sets how this conversation's session is exposed via the provider's Remote Control feature (#331).
+   * Takes effect on the next turn (and, for a held-open live session, on its next reopen).
+   * @param mode The remote-control mode: `off`, `mirror` (view-only) or `control`.
+   */
+  public setRemoteControl(mode: AiRemoteControlMode): void {
+    this.remoteControlState.set(mode);
   }
 
   /**

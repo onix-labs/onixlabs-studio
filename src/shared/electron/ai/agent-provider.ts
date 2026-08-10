@@ -8,6 +8,7 @@ import type {
   AiInputChoice,
   AiModelInfo,
   AiPermissionPosture,
+  AiRemoteControlMode,
   AiToolPolicy,
   ClaudeExecutableChoice,
 } from '@shared/api/ai-types';
@@ -111,6 +112,13 @@ export interface AgentRunContext {
    * or null to use the provider default.
    */
   readonly effort: AiEffort | null;
+
+  /**
+   * Gets how the session should be exposed via the provider's Remote Control feature (#331). `off`
+   * unless the run requested otherwise and the provider supports it. Providers that do not support
+   * remote control ignore it.
+   */
+  readonly remoteControl: AiRemoteControlMode;
 
   /**
    * Gets how much the agent may do without asking the user first.
@@ -362,6 +370,13 @@ export interface AgentProvider {
    * selectable. Surfaced to the renderer so the `/effort` command gates and offers the right levels.
    */
   readonly supportedEfforts: readonly AiEffort[];
+
+  /**
+   * Gets a value indicating whether the provider can expose a session to another machine via its own
+   * Remote Control feature (#331). Surfaced to the renderer so the remote-control control is offered
+   * only where it works.
+   */
+  readonly supportsRemoteControl: boolean;
 
   /**
    * Gets how the provider maintains a conversation — whether it can hold a live session (#324).

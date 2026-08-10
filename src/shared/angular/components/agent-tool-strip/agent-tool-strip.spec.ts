@@ -1,7 +1,12 @@
 import { signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
-import type { AiModelInfo, AiProviderId, AiProviderInfo } from '@shared/api/ai-types';
+import type {
+  AiModelInfo,
+  AiProviderId,
+  AiProviderInfo,
+  AiRemoteControlMode,
+} from '@shared/api/ai-types';
 import { Agent } from '@shared/angular/services/agent/agent';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
 import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine';
@@ -50,8 +55,11 @@ describe('AgentToolStrip', () => {
       provider: signal<AiProviderId>('claude'),
       model: signal<string>('claude-opus-4-8'),
       models: signal<readonly AiModelInfo[]>([]),
+      supportsRemoteControl: signal<boolean>(false),
+      remoteControl: signal<AiRemoteControlMode>('off'),
       setProvider: (): void => undefined,
       setModel: (): void => undefined,
+      setRemoteControl: (): void => undefined,
     };
     const engineStub: Partial<AgentEngine> = {
       providers: signal<readonly AiProviderInfo[]>([]),

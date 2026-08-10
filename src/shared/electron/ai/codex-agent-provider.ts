@@ -121,6 +121,12 @@ export class CodexAgentProvider implements AgentProvider {
   ];
 
   /**
+   * Gets a value indicating whether Codex can expose a session via Remote Control. The Codex SDK has no
+   * equivalent feature, so it does not (#331).
+   */
+  public readonly supportsRemoteControl: boolean = false;
+
+  /**
    * Gets the session model: Codex is a live-harness (an external agentic runtime driven as a subprocess),
    * so its turns run in a held-open {@link AgentSession}. Each turn resumes the persisted thread rather
    * than holding one subprocess open, so a Codex session has no process to reap between turns.

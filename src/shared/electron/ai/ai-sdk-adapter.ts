@@ -224,6 +224,12 @@ export class AiSdkAdapter implements AgentProvider {
   public readonly supportedEfforts: readonly AiEffort[] = [];
 
   /**
+   * Gets a value indicating whether these providers can expose a session via Remote Control: no. The
+   * generic AI-SDK path is a stateless model endpoint with no such feature (#331).
+   */
+  public readonly supportsRemoteControl: boolean = false;
+
+  /**
    * Gets the session model: the generic AI-SDK path is stateless — Studio owns the loop and each turn is
    * a fresh call, so there is no live session to hold open (#324).
    */

@@ -2,7 +2,7 @@
 // and the Angular front-end can import it.
 
 import { AgentSurface } from './ai-tool-surface';
-import { AiEffort, AiProviderId, ClaudeExecutableChoice } from './ai-provider-types';
+import { AiEffort, AiProviderId, AiRemoteControlMode, ClaudeExecutableChoice } from './ai-provider-types';
 
 /**
  * Identifies how much the agent may do without asking the user first.
@@ -179,6 +179,13 @@ export interface AiRunRequest {
    * when the resolved provider declares it in `supportedEfforts`; ignored otherwise.
    */
   readonly effort?: AiEffort;
+
+  /**
+   * Gets how the session should be exposed via the provider's Remote Control feature (#331), or absent
+   * for `off`. Honoured only when the resolved provider declares `supportsRemoteControl`; ignored
+   * otherwise.
+   */
+  readonly remoteControl?: AiRemoteControlMode;
 
   /**
    * Gets the identifier of the editor tab that owns this run, so the agent's in-app editor tools act

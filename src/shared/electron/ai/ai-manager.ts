@@ -13,6 +13,7 @@ import type {
   AiEvent,
   AiImageRef,
   AiInputChoice,
+  AiRemoteControlMode,
   AiInputReply,
   AiModelInfo,
   AiPermissionPosture,
@@ -544,6 +545,7 @@ export class AiManager {
         defaultModelId: provider.defaultModelId,
         supportsImages: provider.supportsImages,
         supportedEfforts: provider.supportedEfforts,
+        supportsRemoteControl: provider.supportsRemoteControl,
       });
     }
     return infos;
@@ -643,6 +645,13 @@ export class AiManager {
       request.effort !== undefined && provider.supportedEfforts.includes(request.effort)
         ? request.effort
         : null;
+    // Honour the requested remote-control mode only when the provider supports the feature (#331); an
+    // unknown mode, or any request to a provider without support, falls back to `off`.
+    const remoteControl: AiRemoteControlMode =
+      provider.supportsRemoteControl &&
+      (request.remoteControl === 'mirror' || request.remoteControl === 'control')
+        ? request.remoteControl
+        : 'off';
     const agentShell: string | null = sanitizeAgentShell(request.agentShell);
     const claudeExecutable: ClaudeExecutableChoice = sanitizeClaudeExecutable(
       request.claudeExecutable,
@@ -681,6 +690,7 @@ export class AiManager {
       model,
       agentSessionId: request.agentSessionId ?? null,
       effort,
+      remoteControl,
       permissionPosture,
       toolPolicies,
       allowedWritePaths,
@@ -1432,7 +1442,8 @@ export class AiManager {
       (record['runTimeoutMs'] === undefined || typeof record['runTimeoutMs'] === 'number') &&
       (record['agentSessionLifetimeMs'] === undefined ||
         typeof record['agentSessionLifetimeMs'] === 'number') &&
-      (record['effort'] === undefined || typeof record['effort'] === 'string')
+      (record['effort'] === undefined || typeof record['effort'] === 'string') &&
+      (record['remoteControl'] === undefined || typeof record['remoteControl'] === 'string')
     );
   }
 

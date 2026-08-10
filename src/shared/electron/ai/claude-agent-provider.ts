@@ -9,6 +9,7 @@ import type {
   PermissionResult,
   PostToolUseHookInput,
   Query,
+  Settings,
   SDKMessage,
   SDKTaskNotificationMessage,
   SDKUserMessage,
@@ -284,6 +285,12 @@ export class ClaudeAgentProvider implements AgentProvider {
    * Gets the reasoning-effort levels the Claude Agent SDK offers (the SDK `EffortLevel`: no `minimal`).
    */
   public readonly supportedEfforts: readonly AiEffort[] = ['low', 'medium', 'high', 'xhigh', 'max'];
+
+  /**
+   * The Claude Code harness has a native Remote Control feature (claude.ai/code), which Studio drives
+   * through the harness's own settings rather than wiring the bridge itself (#331).
+   */
+  public readonly supportsRemoteControl: boolean = true;
 
   /**
    * Gets the session model: the Claude Agent SDK is a live-harness — it is driven as a subprocess and can
@@ -919,10 +926,24 @@ export class ClaudeAgentProvider implements AgentProvider {
         : { behavior: 'deny', message: 'The user declined to run this tool.' };
     };
 
+    // Remote Control (#331) is the harness's own claude.ai/code feature — the CLI sources its own login
+    // token, org and bridge. Studio just flips the relevant flags in the highest-priority "flag
+    // settings" layer (an overlay on the user's settings.json, not a replacement). The per-agent mode is
+    // authoritative: `off` sets `disableRemoteControl` so a stray `remoteControlAtStartup` in the user's
+    // own settings can never silently expose a Studio session. `control` turns on the peer-approval gate
+    // (`isolatePeerMachines`); `mirror` uploads the session view-only. Bound at open like effort/model.
+    const remoteControlSettings: Settings =
+      openContext.remoteControl === 'control'
+        ? { remoteControlAtStartup: true, isolatePeerMachines: true }
+        : openContext.remoteControl === 'mirror'
+          ? { autoUploadSessions: true }
+          : { disableRemoteControl: true };
+
     const options: Options = {
       // Spawn the CLI under this application's process-lifecycle management (own process group,
       // pid-journal registration, tree kills).
       ...managedSpawnerOption(),
+      settings: remoteControlSettings,
       // The opening model is bound here; a later turn that changes it is applied live via
       // `Query.setModel` (see {@link ClaudeAgentSession.turn}) rather than rebuilding the options.
       model: openContext.model,
@@ -1056,6 +1077,7 @@ export class ClaudeAgentProvider implements AgentProvider {
     logger.debug(
       'ClaudeAgentProvider.buildRunOptions',
       `Run options resolved: model=${openContext.model}, effort=${openContext.effort ?? 'default'}, ` +
+        `remoteControl=${openContext.remoteControl}, ` +
         `readOnly=${readOnly}, disallowed=${disallowedTools.length}, ` +
         `confinementRoots=${confinementRoots.length}, resume=${openContext.resumeSessionId !== null}`,
     );
