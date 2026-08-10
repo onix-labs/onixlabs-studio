@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { app, BrowserWindow, ipcMain, IpcMainEvent, IpcMainInvokeEvent } from 'electron';
+import { logger } from '@shared/electron/logger';
 import type {
   AgentContextRef,
   AgentMode,
@@ -699,19 +700,21 @@ export class AiManager {
     });
     // Route the turn into a held-open live session when one applies (#327); otherwise run it transiently
     // through the provider as today. `finish` is per-turn cleanup either way and never closes the session.
+    logger.info('AiManager', `Running agent turn ${request.requestId} (${provider.label})`);
     const turn: Promise<void> =
       this.dispatchLive(request, context, provider) ?? provider.run(context);
     void turn
       .then((): void =>
         this.finish(request.requestId, controller.signal.aborted ? 'aborted' : 'completed', ''),
       )
-      .catch((error: unknown): void =>
+      .catch((error: unknown): void => {
+        logger.error('AiManager', `Agent turn ${request.requestId} failed`, error);
         this.finish(
           request.requestId,
           'error',
           error instanceof Error ? error.message : String(error),
-        ),
-      );
+        );
+      });
   }
 
   /**
@@ -901,6 +904,7 @@ export class AiManager {
    */
   private trackLiveTurn(key: string, session: AgentSession, turn: Promise<void>): Promise<void> {
     return turn.catch((error: unknown): never => {
+      logger.warn('AiManager', 'Live session turn failed; evicting session', error);
       if (this.liveSessions.get(key)?.session === session) {
         this.liveSessions.delete(key);
       }

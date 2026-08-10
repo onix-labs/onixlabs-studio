@@ -9,6 +9,7 @@ import type { AiConnection, AiDiscoverModelsResult, AiModelInfo } from '@shared/
 import { clientFamily, DEFAULT_BASE_URLS, resolveOllamaBaseUrl } from './ai-sdk-adapter';
 import { describeRunError } from './ai-sdk-stream';
 import { resolveContextWindow } from './context-windows';
+import { logger } from '../logger';
 
 /**
  * A model returned by a discovery endpoint.
@@ -218,6 +219,7 @@ export async function runDiscovery(
   try {
     response = await fetchFn(target.url, { headers: target.headers });
   } catch (error: unknown) {
+    logger.warn('model-discovery', `Could not reach models endpoint ${target.url}`, error);
     return {
       ok: false,
       models: connection.models,

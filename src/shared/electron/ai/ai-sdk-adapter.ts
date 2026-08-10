@@ -21,6 +21,7 @@ import {
   toolsForSurface,
   type StreamPart,
 } from './ai-sdk-stream';
+import { logger } from '../logger';
 import { buildRunPrompt } from './studio-tools';
 
 /**
@@ -304,6 +305,7 @@ export class AiSdkAdapter implements AgentProvider {
       if (context.signal.aborted) {
         return;
       }
+      logger.error('ai-sdk', 'Agent run failed', error);
       throw new Error(this.describeFailure(context, error), { cause: error });
     }
   }

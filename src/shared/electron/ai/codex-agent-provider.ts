@@ -16,6 +16,7 @@ import type {
   AgentSessionModel,
   ProviderAvailability,
 } from './agent-provider';
+import { logger } from '../logger';
 import { resolveBundledCodexExecutable } from './codex-executable';
 import { buildRunPrompt } from './studio-tools';
 
@@ -338,6 +339,7 @@ export class CodexAgentSession implements AgentSession {
       // A cancelled turn (Stop/timeout) settles as a stopped turn — the manager reads the run's aborted
       // signal and lands it as such; any other error rejects so the manager lands it as an error.
       if (!controller.signal.aborted) {
+        logger.error('codex-agent', 'Agent turn failed', error);
         throw error instanceof Error ? error : new Error(String(error));
       }
     } finally {

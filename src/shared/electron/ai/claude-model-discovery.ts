@@ -8,6 +8,7 @@
 import type { AiConnection, AiDiscoverModelsResult, AiModelInfo } from '@shared/api/ai-types';
 import { describeRunError } from './ai-sdk-stream';
 import { resolveContextWindow } from './context-windows';
+import { logger } from '../logger';
 
 /**
  * A model as the Claude Agent SDK reports it from `supportedModels()`. Mirrors the SDK's `ModelInfo`
@@ -253,6 +254,7 @@ export async function runClaudeDiscovery(
   try {
     discovered = await listModels();
   } catch (error: unknown) {
+    logger.warn('claude-model-discovery', 'Could not ask Claude for its models', error);
     return {
       ok: false,
       models: connection.models,

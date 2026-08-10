@@ -1,6 +1,7 @@
 import { BrowserWindow, ipcMain, IpcMainEvent, IpcMainInvokeEvent } from 'electron';
 import { ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
 import { statSync } from 'node:fs';
+import { logger } from '../logger';
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
@@ -216,9 +217,11 @@ export class LspManager {
         ...detachedSpawnOptions(),
       });
     } catch (error: unknown) {
+      logger.error('LspManager', `Failed to spawn LSP server ${spec.command}`, error);
       return { success: false, error: error instanceof Error ? error.message : 'Spawn failed' };
     }
     pidJournal()?.register(child.pid, 'lsp', spec.command);
+    logger.info('LspManager', `Started LSP server ${spec.command} (pid ${child.pid})`);
     // Drain stderr so a chatty server cannot stall on a full pipe; its contents are diagnostic only.
     child.stderr.resume();
 
@@ -255,6 +258,7 @@ export class LspManager {
         }),
       )
       .catch((error: unknown): LspStartResult => {
+        logger.warn('LspManager', `LSP server ${spec.command} failed to initialize`, error);
         this.tearDown(parsed.sessionId);
         return {
           success: false,

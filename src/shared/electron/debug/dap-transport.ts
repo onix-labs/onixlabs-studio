@@ -1,5 +1,6 @@
 import { ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
 import { connect, Socket } from 'node:net';
+import { logger } from '../logger';
 import { pidJournal } from '../pid-journal';
 import { detachedSpawnOptions, killProcessTree } from '../process-tree';
 
@@ -127,6 +128,7 @@ export class StdioTransport implements DapTransport {
           ...detachedSpawnOptions(),
         });
       } catch (error: unknown) {
+        logger.error('dap-transport', 'Failed to spawn debug adapter', error);
         reject(error instanceof Error ? error : new Error('Failed to spawn adapter'));
         return;
       }
@@ -289,6 +291,7 @@ export class TcpServerTransport implements DapTransport {
           ...detachedSpawnOptions(),
         });
       } catch (error: unknown) {
+        logger.error('dap-transport', 'Failed to spawn debug server', error);
         reject(error instanceof Error ? error : new Error('Failed to spawn debug server'));
         return;
       }

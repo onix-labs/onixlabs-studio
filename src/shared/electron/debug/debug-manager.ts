@@ -1,5 +1,6 @@
 import { BrowserWindow, ipcMain, IpcMainInvokeEvent } from 'electron';
 import type { DebugProtocol } from '@vscode/debugprotocol';
+import { logger } from '../logger';
 import {
   DebugAdapterExit,
   DebugChannel,
@@ -169,8 +170,10 @@ export class DebugManager {
     try {
       await client.start();
       const capabilities: DebugProtocol.Capabilities = await client.initialize(parsed.adapterId);
+      logger.info('DebugManager', `Debug session started (${parsed.adapterId})`);
       return { success: true, capabilities };
     } catch (error: unknown) {
+      logger.error('DebugManager', `Debug session failed to start (${parsed.adapterId})`, error);
       this.tearDown(parsed.sessionId);
       return {
         success: false,

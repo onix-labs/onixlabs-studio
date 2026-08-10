@@ -1889,6 +1889,7 @@ export class ClaudeAgentSession implements AgentSession {
       if (this.closed) {
         this.settleTurn();
       } else {
+        logger.error('claude-agent', 'Agent turn stream failed', error);
         this.rejectTurn(error);
       }
     } finally {
