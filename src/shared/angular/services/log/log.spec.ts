@@ -71,8 +71,9 @@ describe('Log', () => {
     expect(sent.map((entry): string => entry.input.severity)).toEqual(['trace', 'debug', 'error']);
   });
 
-  it('emit_serialisesNonStringPartsAndKeepsErrorStacks', () => {
-    setup().info('Src', { a: 1 }, new Error('boom'));
+  it('emit_appendsSerialisedDetailsAndKeepsErrorStacks', () => {
+    setup().info('Src', 'context', { a: 1 }, new Error('boom'));
+    expect(sent[0].input.message).toContain('context');
     expect(sent[0].input.message).toContain('{"a":1}');
     expect(sent[0].input.message).toContain('boom');
   });

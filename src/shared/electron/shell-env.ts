@@ -9,6 +9,7 @@
 // (issue #318) can source a specific shell's profile the same way.
 
 import { spawnSync, type SpawnSyncReturns } from 'node:child_process';
+import { logger } from '@shared/electron/logger';
 
 /**
  * Delimiter framing the `env` dump in the capture script's stdout. A shell profile is free to print
@@ -249,7 +250,7 @@ export function hydrateLoginShellEnvironment(): void {
   const captured: Record<string, string> | null = captureShellEnvironment(shell);
   process.env[CAPTURED_MARKER] = '1';
   if (!captured) {
-    console.warn(`[startup] shell environment capture from ${shell} failed; using inherited env`);
+    logger.warn('shell-env', `Shell environment capture from ${shell} failed; using inherited env`);
     return;
   }
 
@@ -257,5 +258,5 @@ export function hydrateLoginShellEnvironment(): void {
   const before: number = Object.keys(process.env).length;
   Object.assign(process.env, applyCapturedEnvironment(process.env, captured, false));
   const added: number = Object.keys(process.env).length - before;
-  console.info(`[startup] hydrated shell environment from ${shell} (+${added} vars, PATH merged)`);
+  logger.info('shell-env', `Hydrated shell environment from ${shell} (+${added} vars, PATH merged)`);
 }

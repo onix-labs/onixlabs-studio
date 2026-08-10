@@ -539,6 +539,46 @@ the opener. Modal bounds are never persisted: a modal opens sized to what it cur
 - **The tab-scoped document-conflict prompt is not a modal** and stays in-document by ruling: it
   belongs to a tab's content area, not to the window.
 
+### 4.13 Logging (structured, per-session)
+
+Studio has an application-wide structured logging service (epic #395); its records populate the
+**System Monitor** tool's per-session log audit and a per-session JSONL file. **New code is expected
+to log** — this is not optional plumbing, it is how the running app is observed.
+
+- **How to log.**
+  - Main process: import the shared singleton — `import { logger } from '@shared/electron/logger'` —
+    and call `logger.info/debug/trace/warn/error(source, message, ...details)`. There is exactly one
+    instance; never `new Logger()`.
+  - Renderer: inject the service — `private readonly log = inject(Log)`
+    (`@shared/angular/services/log/log`) — and call `log.info/debug/trace/warn/error(...)` with the
+    same shape.
+- **Source (the "Where").** A stable component/service name, optionally `Name.method` —
+  `'GitManager'`, `'TerminalManager.spawn'`, `'containers.view'`. Keep it stable; the audit filters on
+  it.
+- **Severity discipline (log like a production app):**
+  - `trace` — fine-grained flow: notable operation entry/exit, per-item detail, IPC payloads.
+  - `debug` — diagnostics for investigation: resolved paths, chosen config, cache hits, state
+    transitions.
+  - `info` — notable normal events: lifecycle, workspace loaded, container started, agent session
+    created, file saved, build started/succeeded.
+  - `warning` — recoverable or unexpected-but-handled: retry, fallback, missing optional resource,
+    permission denied.
+  - `error` — failures and **every caught exception**.
+- **Exceptions are always logged as errors.** Every `catch` that handles a real failure logs
+  `logger.error(source, 'what failed', error)` (or `log.error`). The `Error`'s stack is preserved in
+  the record — pass the error object as the last argument, don't stringify it. This complements §7
+  Error handling: catch, narrow, **log the error**, then rethrow/handle.
+- **Global safety net (already wired).** Main-process `uncaughtException`/`unhandledRejection` are
+  logged as errors in `main.ts`; renderer uncaught errors/rejections reach the audit through Angular's
+  `provideBrowserGlobalErrorListeners()` → `ErrorHandler` → console (captured by the
+  `ConsoleForwarder`). Don't swallow errors silently anywhere.
+- **No raw `console.*` in new code.** Use the logger. The `ConsoleForwarder` captures renderer
+  `console.*` as a baseline (coarse `console` source), but **main-process `console.*` is not captured
+  at all** — main code must use `logger`. Logging never throws (the API swallows its own failures), so
+  it is always safe to call.
+- **Instrument meaningful events, not every line** — the test is "would an operator want this row in
+  the audit?".
+
 ---
 
 ## 5. AI agent — access & permission model
@@ -802,6 +842,9 @@ function; free functions sharing mutable state are usually a class.
   and document it. Scope resources with `try/catch/finally`. For expected non-exceptional failure a
   result type (`{ ok: true; value } | { ok: false; error }`) is acceptable — used deliberately.
 - Catch `unknown` and narrow (`catch (error: unknown) { if (error instanceof DomainError) … }`).
+- **Log every caught exception as an error** — `logger.error(source, 'what failed', error)` (main) or
+  `log.error(...)` (renderer), passing the error object so its stack survives. Never swallow an error
+  silently. See §4.13 Logging.
 
 ### Documentation (TSDoc)
 

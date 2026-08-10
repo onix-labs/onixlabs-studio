@@ -13,6 +13,7 @@ import {
   SEVERITIES,
   StructuredLogInput,
 } from '@shared/api/log-channels';
+import { appendDetails } from '@shared/api/log-format';
 import { LogArchive } from '@shared/electron/log-archive';
 import { LogInput, LogStore } from '@shared/electron/log-store';
 
@@ -122,7 +123,13 @@ export class Logger {
    */
   public log(input: LogInput): void {
     const record: LogRecord = this.store.add(input);
-    this.archive.persist(record);
+    // Each side effect is independently guarded: logging must never throw, even before the app is
+    // ready (when `app.getPath`/`app.isPackaged` are unusable) or outside the Electron runtime.
+    try {
+      this.archive.persist(record);
+    } catch {
+      // A persistence failure is deliberately swallowed.
+    }
     this.emitHuman(record);
     this.broadcast(record);
   }
@@ -142,45 +149,51 @@ export class Logger {
    * Records a trace-severity main-process log.
    * @param source The source of the record — the "Where".
    * @param message The message text.
+   * @param details Extra values appended to the message; an `Error` keeps its stack.
    */
-  public trace(source: string, message: string): void {
-    this.log({ origin: 'main', severity: 'trace', source, message });
+  public trace(source: string, message: string, ...details: unknown[]): void {
+    this.log({ origin: 'main', severity: 'trace', source, message: appendDetails(message, details) });
   }
 
   /**
    * Records a debug-severity main-process log.
    * @param source The source of the record — the "Where".
    * @param message The message text.
+   * @param details Extra values appended to the message; an `Error` keeps its stack.
    */
-  public debug(source: string, message: string): void {
-    this.log({ origin: 'main', severity: 'debug', source, message });
+  public debug(source: string, message: string, ...details: unknown[]): void {
+    this.log({ origin: 'main', severity: 'debug', source, message: appendDetails(message, details) });
   }
 
   /**
    * Records an info-severity main-process log.
    * @param source The source of the record — the "Where".
    * @param message The message text.
+   * @param details Extra values appended to the message; an `Error` keeps its stack.
    */
-  public info(source: string, message: string): void {
-    this.log({ origin: 'main', severity: 'info', source, message });
+  public info(source: string, message: string, ...details: unknown[]): void {
+    this.log({ origin: 'main', severity: 'info', source, message: appendDetails(message, details) });
   }
 
   /**
    * Records a warning-severity main-process log.
    * @param source The source of the record — the "Where".
    * @param message The message text.
+   * @param details Extra values appended to the message; an `Error` keeps its stack.
    */
-  public warn(source: string, message: string): void {
-    this.log({ origin: 'main', severity: 'warning', source, message });
+  public warn(source: string, message: string, ...details: unknown[]): void {
+    this.log({ origin: 'main', severity: 'warning', source, message: appendDetails(message, details) });
   }
 
   /**
-   * Records an error-severity main-process log.
+   * Records an error-severity main-process log. The conventional way to record a caught exception:
+   * `logger.error(source, 'what failed', err)`.
    * @param source The source of the record — the "Where".
    * @param message The message text.
+   * @param details Extra values appended to the message; an `Error` keeps its stack.
    */
-  public error(source: string, message: string): void {
-    this.log({ origin: 'main', severity: 'error', source, message });
+  public error(source: string, message: string, ...details: unknown[]): void {
+    this.log({ origin: 'main', severity: 'error', source, message: appendDetails(message, details) });
   }
 
   /**
@@ -227,14 +240,15 @@ export class Logger {
    * @param record The record to broadcast.
    */
   private broadcast(record: LogRecord): void {
-    for (const window of BrowserWindow.getAllWindows()) {
-      if (!window.isDestroyed()) {
-        try {
+    try {
+      for (const window of BrowserWindow.getAllWindows()) {
+        if (!window.isDestroyed()) {
           window.webContents.send(LogChannel.Record, record);
-        } catch {
-          // A window torn down mid-send is ignored.
         }
       }
+    } catch {
+      // An unavailable BrowserWindow (before ready / outside Electron) or a window torn down
+      // mid-send is deliberately swallowed.
     }
   }
 
@@ -258,16 +272,24 @@ export class Logger {
    * @param record The record to write.
    */
   private emitHuman(record: LogRecord): void {
-    const where: string = record.window ? `${record.origin}/${record.window}` : record.origin;
-    const line: string = `${record.timestamp} [${where}:${record.severity}] ${record.source}: ${record.message}\n`;
-    if (app.isPackaged) {
-      this.archive.appendHuman(line);
-    } else {
-      try {
+    try {
+      const where: string = record.window ? `${record.origin}/${record.window}` : record.origin;
+      const line: string = `${record.timestamp} [${where}:${record.severity}] ${record.source}: ${record.message}\n`;
+      if (app.isPackaged) {
+        this.archive.appendHuman(line);
+      } else {
         process.stdout.write(line);
-      } catch {
-        // A failed stdout write is deliberately swallowed.
       }
+    } catch {
+      // A failed write (or an unavailable app before ready) is deliberately swallowed.
     }
   }
 }
+
+/**
+ * The shared application logger. Main-process modules import this singleton to log — `main.ts` wires
+ * it (window labelling + IPC) at start-up, and it is the single instance whose session buffer the
+ * System Monitor's audit reads. There is exactly one so every subsystem's records land in the same
+ * session.
+ */
+export const logger: Logger = new Logger();

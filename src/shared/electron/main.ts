@@ -51,7 +51,7 @@ import { BinaryAssembler } from '@shared/electron/binary-assembler';
 import { DirectoryWatcher } from '@shared/electron/directory-watcher';
 import { FileManager } from '@shared/electron/file-manager';
 import { FileWatcher } from '@shared/electron/file-watcher';
-import { Logger } from '@shared/electron/logger';
+import { Logger, logger as appLogger } from '@shared/electron/logger';
 import { consoleLevelToSeverity } from '@shared/api/log-channels';
 import { DebugAdapterRegistry } from './debug/debug-adapter-registry';
 import { DebugLaunchResolver } from './debug/debug-launch-resolver';
@@ -366,7 +366,7 @@ class Program {
    * Writes application log lines — the renderer's forwarded console entries and main's own — to
    * stdout in development and to rotating files under `userData/logs` in packaged builds.
    */
-  private readonly logger: Logger = new Logger();
+  private readonly logger: Logger = appLogger;
 
   /**
    * Disassembles native machine code for the binary/hex editor. It decodes bytes the renderer sends
@@ -482,6 +482,15 @@ class Program {
    * Initializes the current Program instance.
    */
   private initialize(): void {
+    // Global safety net: never let a main-process crash or rejection go unrecorded. Registered first
+    // so it covers the whole of start-up; the logger's session buffer works before its IPC is wired.
+    process.on('uncaughtException', (error: Error): void =>
+      this.logger.error('process', 'Uncaught exception', error),
+    );
+    process.on('unhandledRejection', (reason: unknown): void =>
+      this.logger.error('process', 'Unhandled promise rejection', reason),
+    );
+
     // DIAGNOSTIC: two escape hatches for machine-specific GPU rendering artifacts (e.g. corrupted
     // right/bottom borders and jagged squircle/box-shadow edges on the welcome panel under fractional
     // display scaling on the Intel UHD 630). Both must be set before app.whenReady().
@@ -493,7 +502,7 @@ class Program {
     //     blunt instrument; use only to confirm the GPU is the cause.
     if (process.env['STUDIO_DISABLE_GPU_RASTER'] === '1') {
       app.commandLine.appendSwitch('disable-gpu-rasterization');
-      console.warn('[diagnostic] GPU rasterization disabled (STUDIO_DISABLE_GPU_RASTER=1)');
+      this.logger.warn('startup', 'GPU rasterization disabled (STUDIO_DISABLE_GPU_RASTER=1)');
     }
     // Hardware acceleration can only be toggled before the app is ready. The user preference is read
     // synchronously from the startup-preferences file (the renderer's settings store is unreachable
@@ -502,7 +511,7 @@ class Program {
     this.hardwareAccelerationEnabled = startupPreferences.hardwareAcceleration;
     if (!startupPreferences.hardwareAcceleration || process.env['STUDIO_DISABLE_GPU'] === '1') {
       app.disableHardwareAcceleration();
-      console.warn('[startup] GPU hardware acceleration disabled');
+      this.logger.warn('startup', 'GPU hardware acceleration disabled');
     }
 
     // A privileged scheme must be declared before the app is ready, so the media protocol's scheme is
@@ -886,12 +895,14 @@ class Program {
    * Handles the app whenReady event.
    */
   private async onReady(): Promise<void> {
+    this.logger.info('app', `Studio ready (v${app.getVersion()} on ${process.platform})`);
     this.installApplicationMenu();
     this.registerIpcHandlers();
     // Resolve the GPU rendering recommendation before the window exists, so the value is ready when
     // the renderer's preload reads it synchronously (before the first paint).
     await this.resolveGpuRenderingRecommendation();
     this.windows.createMainWindow();
+    this.logger.info('app', 'Main window created');
     // Windows/Linux deliver OS-opened files as launch arguments (macOS sends open-file events,
     // handled in initialize); queue them for the renderer to drain once it is listening.
     for (const filePath of openFilePathsFromArgv(process.argv, process.defaultApp === true)) {
@@ -920,9 +931,9 @@ class Program {
     const override: string | undefined = process.env['STUDIO_CORNERS'];
     if (override === 'round' || override === 'squircle') {
       recommendReducedEffects = override === 'round';
-      console.warn(`[startup] rendering recommendation forced to '${override}' (STUDIO_CORNERS)`);
+      this.logger.info('startup', `Rendering recommendation forced to '${override}' (STUDIO_CORNERS)`);
     } else if (recommendReducedEffects) {
-      console.warn(`[startup] weak GPU detected ('${description}'); recommending reduced effects`);
+      this.logger.info('startup', `Weak GPU detected ('${description}'); recommending reduced effects`);
     }
 
     this.gpuRendering = { recommendReducedEffects, description };
@@ -1063,6 +1074,7 @@ class Program {
    * Disposes every subsystem that owns OS resources. Called once at shutdown.
    */
   private disposeAll(): void {
+    this.logger.info('app', 'Shutting down; disposing subsystems');
     this.terminalManager.disposeAll();
     this.codeRunner.dispose();
     this.fileWatcher.disposeAll();

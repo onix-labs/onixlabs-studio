@@ -8,6 +8,7 @@ import {
   MAX_LOG_MESSAGE_LENGTH,
   Severity,
 } from '@shared/api/log-channels';
+import { appendDetails } from '@shared/api/log-format';
 
 /**
  * The renderer's structured logging client: a thin, typed wrapper over the generic {@link Bridge} for
@@ -30,46 +31,52 @@ export class Log {
   /**
    * Records a trace-severity log.
    * @param source The source of the record — the "Where".
-   * @param args The message parts; serialised and length-capped.
+   * @param message The message text.
+   * @param details Extra values appended to the message; an `Error` keeps its stack.
    */
-  public trace(source: string, ...args: unknown[]): void {
-    this.emit('trace', source, args);
+  public trace(source: string, message: string, ...details: unknown[]): void {
+    this.emit('trace', source, message, details);
   }
 
   /**
    * Records a debug-severity log.
    * @param source The source of the record — the "Where".
-   * @param args The message parts; serialised and length-capped.
+   * @param message The message text.
+   * @param details Extra values appended to the message; an `Error` keeps its stack.
    */
-  public debug(source: string, ...args: unknown[]): void {
-    this.emit('debug', source, args);
+  public debug(source: string, message: string, ...details: unknown[]): void {
+    this.emit('debug', source, message, details);
   }
 
   /**
    * Records an info-severity log.
    * @param source The source of the record — the "Where".
-   * @param args The message parts; serialised and length-capped.
+   * @param message The message text.
+   * @param details Extra values appended to the message; an `Error` keeps its stack.
    */
-  public info(source: string, ...args: unknown[]): void {
-    this.emit('info', source, args);
+  public info(source: string, message: string, ...details: unknown[]): void {
+    this.emit('info', source, message, details);
   }
 
   /**
    * Records a warning-severity log.
    * @param source The source of the record — the "Where".
-   * @param args The message parts; serialised and length-capped.
+   * @param message The message text.
+   * @param details Extra values appended to the message; an `Error` keeps its stack.
    */
-  public warn(source: string, ...args: unknown[]): void {
-    this.emit('warning', source, args);
+  public warn(source: string, message: string, ...details: unknown[]): void {
+    this.emit('warning', source, message, details);
   }
 
   /**
-   * Records an error-severity log.
+   * Records an error-severity log. The conventional way to record a caught exception:
+   * `log.error(source, 'what failed', err)`.
    * @param source The source of the record — the "Where".
-   * @param args The message parts; serialised and length-capped.
+   * @param message The message text.
+   * @param details Extra values appended to the message; an `Error` keeps its stack.
    */
-  public error(source: string, ...args: unknown[]): void {
-    this.emit('error', source, args);
+  public error(source: string, message: string, ...details: unknown[]): void {
+    this.emit('error', source, message, details);
   }
 
   /**
@@ -108,39 +115,21 @@ export class Log {
    * caller — logging must not be able to break the app.
    * @param severity The severity to record.
    * @param source The source of the record.
-   * @param args The message parts to serialise.
+   * @param message The message text.
+   * @param details The detail values appended to the message.
    */
-  private emit(severity: Severity, source: string, args: readonly unknown[]): void {
+  private emit(severity: Severity, source: string, message: string, details: readonly unknown[]): void {
     if (this.bridge === undefined) {
       return;
     }
     try {
-      this.bridge.send(LogChannel.Append, { severity, source, message: this.serialize(args) });
+      this.bridge.send(LogChannel.Append, {
+        severity,
+        source,
+        message: appendDetails(message, details).slice(0, MAX_LOG_MESSAGE_LENGTH),
+      });
     } catch {
       // A failed forward is deliberately swallowed.
     }
-  }
-
-  /**
-   * Serialises message parts to one length-capped line: strings pass through, errors keep their
-   * stack, and objects are JSON-encoded with a string fallback for circular structures.
-   * @param args The message parts.
-   * @returns Returns the space-joined, capped message text.
-   */
-  private serialize(args: readonly unknown[]): string {
-    const parts: string[] = args.map((arg: unknown): string => {
-      if (typeof arg === 'string') {
-        return arg;
-      }
-      if (arg instanceof Error) {
-        return arg.stack ?? `${arg.name}: ${arg.message}`;
-      }
-      try {
-        return JSON.stringify(arg) ?? String(arg);
-      } catch {
-        return String(arg);
-      }
-    });
-    return parts.join(' ').slice(0, MAX_LOG_MESSAGE_LENGTH);
   }
 }

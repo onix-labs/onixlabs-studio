@@ -16,6 +16,7 @@ import type {
   SpawnedProcess,
   SpawnOptions as SdkSpawnOptions,
 } from '@anthropic-ai/claude-agent-sdk';
+import { logger } from '../logger';
 import { pidJournal } from '../pid-journal';
 import { detachedSpawnOptions, killProcessTree, signalProcessTree } from '../process-tree';
 import {
@@ -1772,9 +1773,10 @@ export class ClaudeAgentSession implements AgentSession {
    */
   private publishCommands(commands: readonly SlashCommand[]): void {
     // Diagnostic (#330): surface what the SDK actually reports, so a missing command can be told apart
-    // from a discovery/routing problem. Visible in the terminal running the app.
-    console.log(
-      `[claude] discovered ${commands.length} slash command(s): ${commands
+    // from a discovery/routing problem. Recorded in the log audit.
+    logger.debug(
+      'claude-agent',
+      `Discovered ${commands.length} slash command(s): ${commands
         .map((command: SlashCommand): string => command.name)
         .join(', ')}`,
     );
