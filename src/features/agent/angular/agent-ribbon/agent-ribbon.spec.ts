@@ -7,6 +7,7 @@ import type {
   AiModelInfo,
   AiProviderId,
   AiProviderInfo,
+  AiRemoteControlMode,
 } from '@shared/api/ai-types';
 import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine';
 import { AgentSessions } from '@shared/angular/services/agent-sessions/agent-sessions';
@@ -52,6 +53,7 @@ describe('AgentRibbon', () => {
   let historyToggles: number;
   let providerChoices: AiProviderId[];
   let modelChoices: string[];
+  let remoteControlChoices: AiRemoteControlMode[];
   let running: WritableSignal<boolean>;
   let hasMessages: WritableSignal<boolean>;
   let historyOpen: WritableSignal<boolean>;
@@ -103,6 +105,7 @@ describe('AgentRibbon', () => {
     historyToggles = 0;
     providerChoices = [];
     modelChoices = [];
+    remoteControlChoices = [];
     running = signal<boolean>(false);
     hasMessages = signal<boolean>(true);
     historyOpen = signal<boolean>(false);
@@ -130,8 +133,11 @@ describe('AgentRibbon', () => {
       provider: signal<AiProviderId>('claude'),
       model: signal<string>('claude-opus-4-8'),
       models: signal<readonly AiModelInfo[]>(MODELS),
+      supportsRemoteControl: signal<boolean>(true),
+      remoteControl: signal<AiRemoteControlMode>('off'),
       setProvider: (id: AiProviderId): void => void providerChoices.push(id),
       setModel: (id: string): void => void modelChoices.push(id),
+      setRemoteControl: (mode: AiRemoteControlMode): void => void remoteControlChoices.push(mode),
       newChat: (): void => void (cleared += 1),
       stop: (): void => void (stopped += 1),
       toggleHistory: (): void => void (historyToggles += 1),
@@ -208,6 +214,14 @@ describe('AgentRibbon', () => {
     select.dispatchEvent(new Event('change'));
 
     expect(modelChoices).toEqual(['claude-haiku-4-5']);
+  });
+
+  it('remote_whenChanged_setsTheMatchingRemoteControlMode', () => {
+    const select: HTMLSelectElement = field('Remote');
+    select.value = 'Mirror';
+    select.dispatchEvent(new Event('change'));
+
+    expect(remoteControlChoices).toEqual(['mirror']);
   });
 
   it('history_whenClicked_togglesTheHistoryList', () => {

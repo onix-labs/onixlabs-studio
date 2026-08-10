@@ -48,6 +48,14 @@
         [value]="modelLabel()"
         (changed)="onModelLabel($event)"
       />
+      @if (supportsRemoteControl()) {
+        <app-ribbon-strip-field
+          label="Remote"
+          [options]="remoteControlLabels"
+          [value]="remoteControlLabel()"
+          (changed)="onRemoteControlLabel($event)"
+        />
+      }
     </app-ribbon-strip-column>
   </app-ribbon-strip-group>
 

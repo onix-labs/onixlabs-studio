@@ -9,7 +9,13 @@ import {
   untracked,
   WritableSignal,
 } from '@angular/core';
-import type { AgentContextRef, AgentMode, AiModelInfo, AiProviderId } from '@shared/api/ai-types';
+import type {
+  AgentContextRef,
+  AgentMode,
+  AiModelInfo,
+  AiProviderId,
+  AiRemoteControlMode,
+} from '@shared/api/ai-types';
 import {
   AgentConversationAgentType,
   AgentConversationSummary,
@@ -157,6 +163,18 @@ export class AgentConversation implements AgentSessionHandle {
    * {@link AgentSessionHandle}).
    */
   public readonly models: Signal<readonly AiModelInfo[]> = this.agent.models;
+
+  /**
+   * Gets whether this conversation's provider supports Remote Control (part of
+   * {@link AgentSessionHandle}).
+   */
+  public readonly supportsRemoteControl: Signal<boolean> = this.agent.supportsRemoteControl;
+
+  /**
+   * Gets how this conversation's session is exposed via Remote Control (part of
+   * {@link AgentSessionHandle}).
+   */
+  public readonly remoteControl: Signal<AiRemoteControlMode> = this.agent.remoteControl;
 
   /**
    * Gets how much autonomy the conversation's runs use (part of {@link AgentSessionHandle}).
@@ -374,7 +392,16 @@ export class AgentConversation implements AgentSessionHandle {
   }
 
   /**
-   * Selects the connection this conversation's runs go through (part of {@link AgentSessionHandle}).
+   * Sets how this conversation's session is exposed via Remote Control (part of
+   * {@link AgentSessionHandle}).
+   * @param mode The remote-control mode: `off`, `mirror` (view-only) or `control`.
+   */
+  public setRemoteControl(mode: AiRemoteControlMode): void {
+    this.agent.setRemoteControl(mode);
+  }
+
+  /**
+   * Selects the connection the conversation's runs go through (part of {@link AgentSessionHandle}).
    * @param id The connection id.
    */
   public setProvider(id: AiProviderId): void {

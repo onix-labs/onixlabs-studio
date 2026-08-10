@@ -1,7 +1,12 @@
 import { signal, Signal, WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 
-import type { AgentContextRef, AiModelInfo, AiProviderId } from '@shared/api/ai-types';
+import type {
+  AgentContextRef,
+  AiModelInfo,
+  AiProviderId,
+  AiRemoteControlMode,
+} from '@shared/api/ai-types';
 import { EditorCommands } from '@shared/angular/services/editor-commands/editor-commands';
 import {
   AgentConversationMetaPatch,
@@ -41,6 +46,8 @@ function agentStub(
     provider: signal<AiProviderId>('claude'),
     model: signal<string>('claude-opus-4-8'),
     models: signal<readonly AiModelInfo[]>([]),
+    supportsRemoteControl: signal<boolean>(false),
+    remoteControl: signal<AiRemoteControlMode>('off'),
     queued: signal<readonly AgentQueuedMessage[]>([]),
     branch,
     clear: (): void => {

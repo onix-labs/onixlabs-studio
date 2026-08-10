@@ -1,7 +1,12 @@
 import { signal, WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 
-import type { AgentContextRef, AgentMode, AiModelInfo } from '@shared/api/ai-types';
+import type {
+  AgentContextRef,
+  AgentMode,
+  AiModelInfo,
+  AiRemoteControlMode,
+} from '@shared/api/ai-types';
 import { AgentSessionHandle, AgentSessions } from './agent-sessions';
 
 /**
@@ -50,11 +55,16 @@ function createSession(): FakeSession {
     provider: signal<string>('claude').asReadonly(),
     model: signal<string>('claude-opus-4-8').asReadonly(),
     models: signal<readonly AiModelInfo[]>([]).asReadonly(),
+    supportsRemoteControl: signal<boolean>(true).asReadonly(),
+    remoteControl: signal<AiRemoteControlMode>('off').asReadonly(),
     setProvider: (id: string): void => {
       calls.push(`setProvider:${id}`);
     },
     setModel: (id: string): void => {
       calls.push(`setModel:${id}`);
+    },
+    setRemoteControl: (mode: AiRemoteControlMode): void => {
+      calls.push(`setRemoteControl:${mode}`);
     },
     newChat: (): void => {
       calls.push('newChat');

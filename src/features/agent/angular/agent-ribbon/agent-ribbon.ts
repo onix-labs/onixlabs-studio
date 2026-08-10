@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
-import type { AgentMode, AiModelInfo, AiProviderInfo } from '@shared/api/ai-types';
+import type { AgentMode, AiModelInfo, AiProviderInfo, AiRemoteControlMode } from '@shared/api/ai-types';
 import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine';
 import { AgentSessions } from '@shared/angular/services/agent-sessions/agent-sessions';
 import { EditorCommands } from '@shared/angular/services/editor-commands/editor-commands';
@@ -95,6 +95,24 @@ export class AgentRibbon {
   protected readonly modeLabel: Signal<string> = computed((): string =>
     this.sessions.mode() === 'chat' ? 'Chat' : 'Agent',
   );
+
+  /**
+   * Gets whether the active tab's provider supports Remote Control, so the field shows only when it works.
+   */
+  protected readonly supportsRemoteControl: Signal<boolean> = this.sessions.supportsRemoteControl;
+
+  /**
+   * Gets the labels offered by the Remote Control field.
+   */
+  protected readonly remoteControlLabels: readonly string[] = ['Off', 'Mirror', 'Control'];
+
+  /**
+   * Gets the label of the active tab's Remote Control mode, for the field's value.
+   */
+  protected readonly remoteControlLabel: Signal<string> = computed((): string => {
+    const mode: AiRemoteControlMode = this.sessions.remoteControl();
+    return mode === 'control' ? 'Control' : mode === 'mirror' ? 'Mirror' : 'Off';
+  });
 
   /**
    * Gets the provider labels offered by the Provider field.
@@ -211,6 +229,17 @@ export class AgentRibbon {
     const mode: AgentMode = label === 'Chat' ? 'chat' : 'agent';
     this.log.debug('agent.ribbon', 'Agent mode changed', { mode });
     this.sessions.setMode(mode);
+  }
+
+  /**
+   * Sets the active tab's Remote Control mode from the chosen label.
+   * @param label The label emitted by the Remote Control field.
+   */
+  protected onRemoteControlLabel(label: string): void {
+    const mode: AiRemoteControlMode =
+      label === 'Control' ? 'control' : label === 'Mirror' ? 'mirror' : 'off';
+    this.log.debug('agent.ribbon', 'Remote control changed', { mode });
+    this.sessions.setRemoteControl(mode);
   }
 
   /**

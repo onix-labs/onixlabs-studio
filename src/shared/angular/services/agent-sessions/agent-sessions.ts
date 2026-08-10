@@ -1,5 +1,11 @@
 import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
-import type { AgentContextRef, AgentMode, AiModelInfo, AiProviderId } from '@shared/api/ai-types';
+import type {
+  AgentContextRef,
+  AgentMode,
+  AiModelInfo,
+  AiProviderId,
+  AiRemoteControlMode,
+} from '@shared/api/ai-types';
 import { Log } from '@shared/angular/services/log/log';
 
 /**
@@ -29,6 +35,16 @@ export interface AgentSessionHandle {
    * Gets the models offered by the conversation's effective provider.
    */
   readonly models: Signal<readonly AiModelInfo[]>;
+
+  /**
+   * Gets whether the conversation's provider supports Remote Control.
+   */
+  readonly supportsRemoteControl: Signal<boolean>;
+
+  /**
+   * Gets how the conversation's session is exposed via Remote Control.
+   */
+  readonly remoteControl: Signal<AiRemoteControlMode>;
 
   /**
    * Gets how much autonomy the conversation's runs use: `agent` (full tools) or `chat` (read-only).
@@ -94,6 +110,12 @@ export interface AgentSessionHandle {
    * @param id The model id.
    */
   setModel(id: string): void;
+
+  /**
+   * Sets how the conversation's session is exposed via Remote Control.
+   * @param mode The remote-control mode.
+   */
+  setRemoteControl(mode: AiRemoteControlMode): void;
 
   /**
    * Prompts for a file and attaches it to the conversation's context.
@@ -174,6 +196,20 @@ export class AgentSessions {
    */
   public readonly models: Signal<readonly AiModelInfo[]> = computed(
     (): readonly AiModelInfo[] => this.activeSession()?.models() ?? [],
+  );
+
+  /**
+   * Gets whether the active agent tab's provider supports Remote Control. False when no tab is active.
+   */
+  public readonly supportsRemoteControl: Signal<boolean> = computed(
+    (): boolean => this.activeSession()?.supportsRemoteControl() ?? false,
+  );
+
+  /**
+   * Gets how the active agent tab's session is exposed via Remote Control. `off` when no tab is active.
+   */
+  public readonly remoteControl: Signal<AiRemoteControlMode> = computed(
+    (): AiRemoteControlMode => this.activeSession()?.remoteControl() ?? 'off',
   );
 
   /**
@@ -284,6 +320,14 @@ export class AgentSessions {
    */
   public setModel(id: string): void {
     this.activeSession()?.setModel(id);
+  }
+
+  /**
+   * Sets how the active agent tab's session is exposed via Remote Control.
+   * @param mode The remote-control mode.
+   */
+  public setRemoteControl(mode: AiRemoteControlMode): void {
+    this.activeSession()?.setRemoteControl(mode);
   }
 
   /**
