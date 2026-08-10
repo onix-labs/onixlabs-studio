@@ -212,7 +212,7 @@ describe('AgentRibbon', () => {
 
   it('remote_whenChanged_setsTheMatchingRemoteControlMode', () => {
     const select: HTMLSelectElement = field('Remote');
-    select.value = 'Mirror';
+    select.value = 'Remote mirror (view-only)';
     select.dispatchEvent(new Event('change'));
 
     expect(remoteControlChoices).toEqual(['mirror']);
@@ -226,9 +226,9 @@ describe('AgentRibbon', () => {
 
   it('mode_whenChanged_setsTheChosenMode', () => {
     const select: HTMLSelectElement = field('Mode');
-    expect(select.value).toBe('Agent');
+    expect(select.value).toBe('Full agent');
 
-    select.value = 'Chat';
+    select.value = 'Assistant only';
     select.dispatchEvent(new Event('change'));
 
     expect(modeChoices).toEqual(['chat']);

@@ -80,13 +80,14 @@ export class AgentRibbon {
   /**
    * Gets the labels offered by the Mode field.
    */
-  protected readonly modeLabels: readonly string[] = ['Agent', 'Chat'];
+  protected readonly modeLabels: readonly string[] = ['Full agent', 'Assistant only'];
 
   /**
-   * Gets the label of the active tab's mode, for the Mode field's value.
+   * Gets the label of the active tab's mode, for the Mode field's value. The field has no visible label,
+   * so the values themselves carry the meaning.
    */
   protected readonly modeLabel: Signal<string> = computed((): string =>
-    this.sessions.mode() === 'chat' ? 'Chat' : 'Agent',
+    this.sessions.mode() === 'chat' ? 'Assistant only' : 'Full agent',
   );
 
   /**
@@ -97,14 +98,23 @@ export class AgentRibbon {
   /**
    * Gets the labels offered by the Remote Control field.
    */
-  protected readonly remoteControlLabels: readonly string[] = ['Off', 'Mirror', 'Control'];
+  protected readonly remoteControlLabels: readonly string[] = [
+    'Remote off',
+    'Remote mirror (view-only)',
+    'Full remote control',
+  ];
 
   /**
-   * Gets the label of the active tab's Remote Control mode, for the field's value.
+   * Gets the label of the active tab's Remote Control mode, for the field's value. The field has no
+   * visible label, so the values themselves carry the meaning.
    */
   protected readonly remoteControlLabel: Signal<string> = computed((): string => {
     const mode: AiRemoteControlMode = this.sessions.remoteControl();
-    return mode === 'control' ? 'Control' : mode === 'mirror' ? 'Mirror' : 'Off';
+    return mode === 'control'
+      ? 'Full remote control'
+      : mode === 'mirror'
+        ? 'Remote mirror (view-only)'
+        : 'Remote off';
   });
 
   /**
@@ -219,7 +229,7 @@ export class AgentRibbon {
    * @param label The label emitted by the Mode field.
    */
   protected onModeLabel(label: string): void {
-    const mode: AgentMode = label === 'Chat' ? 'chat' : 'agent';
+    const mode: AgentMode = label === 'Assistant only' ? 'chat' : 'agent';
     this.log.debug('agent.ribbon', 'Agent mode changed', { mode });
     this.sessions.setMode(mode);
   }
@@ -230,7 +240,7 @@ export class AgentRibbon {
    */
   protected onRemoteControlLabel(label: string): void {
     const mode: AiRemoteControlMode =
-      label === 'Control' ? 'control' : label === 'Mirror' ? 'mirror' : 'off';
+      label === 'Full remote control' ? 'control' : label === 'Remote mirror (view-only)' ? 'mirror' : 'off';
     this.log.debug('agent.ribbon', 'Remote control changed', { mode });
     this.sessions.setRemoteControl(mode);
   }

@@ -105,9 +105,9 @@ export class AgentToolStrip {
    * Gets the Remote Control options: off, view-only mirror, or full control.
    */
   protected readonly remoteControlOptions: readonly DropdownOption[] = [
-    { value: 'off', label: 'Remote: Off' },
-    { value: 'mirror', label: 'Remote: Mirror' },
-    { value: 'control', label: 'Remote: Control' },
+    { value: 'off', label: 'Remote off' },
+    { value: 'mirror', label: 'Remote mirror (view-only)' },
+    { value: 'control', label: 'Full remote control' },
   ];
 
   /**
