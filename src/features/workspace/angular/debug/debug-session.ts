@@ -1,6 +1,7 @@
 import { effect, inject, OnDestroy, Service, signal, Signal, WritableSignal } from '@angular/core';
 import type { DebugProtocol } from '@vscode/debugprotocol';
 import { Bridge } from '@shared/api/bridge';
+import { Log } from '@shared/angular/services/log/log';
 import {
   DebugAdapterExit,
   DebugChannel,
@@ -176,6 +177,11 @@ export class DebugSession implements DebugHandler, OnDestroy {
    * Holds the workspace's breakpoints, synchronised to the adapter and updated with its verification.
    */
   private readonly breakpoints: Breakpoints = inject(Breakpoints);
+
+  /**
+   * Holds the logging client for surfacing debug-session failures to the audit.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Holds the generic transport, or undefined outside Electron.
@@ -490,6 +496,7 @@ export class DebugSession implements DebugHandler, OnDestroy {
     void this.request('launch', this.launchArguments(configuration, root, resolution.target)).catch(
       (error: unknown): void => {
         if (this.currentSession === sessionId) {
+          this.log.error('debug-session', 'Debug launch failed', error);
           this.debugChannel.appendLine(`Debug launch failed: ${messageOf(error)}`);
           this.stop();
         }

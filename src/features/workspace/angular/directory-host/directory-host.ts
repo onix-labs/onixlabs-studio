@@ -18,6 +18,7 @@ import { DirectoryListing, WorkspaceChannel } from '@shared/api/workspace-channe
 import { WorkspaceKind, WorktreeDescriptor, WorktreeOutcome } from '@shared/api/worktree';
 import { Workspaces } from '@shared/angular/services/workspaces/workspaces';
 import { Worktrees } from '@shared/angular/services/worktree/worktrees';
+import { Log } from '@shared/angular/services/log/log';
 import { DirectoryView } from '@features/workspace/angular/directory-view/directory-view';
 import { WorktreeSession } from '@features/workspace/angular/worktree/worktree-session';
 
@@ -83,6 +84,11 @@ export class DirectoryHost implements OnInit, OnDestroy {
    * Holds the global registry that hands off the tab's initial folder.
    */
   private readonly workspaces: Workspaces = inject(Workspaces);
+
+  /**
+   * Holds the logging client for surfacing worktree promotion/checkout failures to the audit.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Holds the generic transport for the workspace listing/close calls the host makes directly (it
@@ -313,7 +319,7 @@ export class DirectoryHost implements OnInit, OnDestroy {
     }
     const outcome: WorktreeOutcome<WorktreeDescriptor> = await this.worktrees.client.promote(root);
     if (!outcome.ok) {
-      console.error(`Promotion failed: ${outcome.error}`);
+      this.log.error('directory-host', `Promotion failed: ${outcome.error}`);
       return;
     }
     this.session.claimRoot(root);
@@ -338,7 +344,7 @@ export class DirectoryHost implements OnInit, OnDestroy {
     try {
       const opened: WorktreeOutcome<string> = await this.worktrees.client.openCheckout(root, id);
       if (!opened.ok) {
-        console.error(`Opening the checkout failed: ${opened.error}`);
+        this.log.error('directory-host', `Opening the checkout failed: ${opened.error}`);
         return;
       }
       this.session.claimRoot(opened.value);

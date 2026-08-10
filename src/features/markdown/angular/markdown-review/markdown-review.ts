@@ -1,5 +1,6 @@
 import { computed, effect, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { MarkdownPanels } from '@features/markdown/angular/markdown-panels/markdown-panels';
+import { Log } from '@shared/angular/services/log/log';
 import { analyzeMarkdown } from './review-rules';
 import { DictionaryLoader, loadEnglishWords, SpellChecker } from './review-spell';
 import { ReviewCounts, ReviewIssue, ReviewKind, ReviewSession } from './review-types';
@@ -42,6 +43,11 @@ export class Review {
    * Holds the tool-panel registry, used to detect when the Review panel is visible.
    */
   private readonly panels: MarkdownPanels = inject(MarkdownPanels);
+
+  /**
+   * Holds the logging client for surfacing dictionary persistence failures to the audit.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Holds the dictionary loader, overridable in tests with a small word set.
@@ -317,7 +323,7 @@ export class Review {
         return new Set<string>(JSON.parse(stored) as string[]);
       }
     } catch {
-      console.warn('Failed to load the review dictionary from local storage');
+      this.log.warn('markdown-review', 'Failed to load the review dictionary from local storage');
     }
     return new Set<string>();
   }
@@ -330,7 +336,7 @@ export class Review {
     try {
       localStorage.setItem(DICTIONARY_KEY, JSON.stringify([...words]));
     } catch {
-      console.warn('Failed to save the review dictionary to local storage');
+      this.log.warn('markdown-review', 'Failed to save the review dictionary to local storage');
     }
   }
 }
