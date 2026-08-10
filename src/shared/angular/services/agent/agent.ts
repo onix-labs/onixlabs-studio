@@ -1314,6 +1314,26 @@ export class Agent {
   }
 
   /**
+   * Withdraws a still-pending agent question answered elsewhere — a remote peer answered the same
+   * `ask_user` prompt from the phone (#331). Clears the local UI only (the run is already resolved in
+   * the main process): the matching item is marked dismissed. A no-op when already settled or unknown.
+   * @param inputId The id of the question to withdraw.
+   */
+  private dismissInput(inputId: string): void {
+    const item: AgentItem | undefined = this.items().find(
+      (candidate: AgentItem): boolean =>
+        candidate.inputId === inputId && candidate.inputState === 'pending',
+    );
+    if (item === undefined) {
+      return;
+    }
+    this.update(
+      item.id,
+      (existing: AgentItem): AgentItem => ({ ...existing, inputState: 'dismissed' }),
+    );
+  }
+
+  /**
    * Answers a pending edit decision (a staged edit preview), unblocking the run.
    * @param item The edit-decision item.
    * @param choice The user's decision.
@@ -1395,6 +1415,12 @@ export class Agent {
     // in flight — handled ahead of the per-turn filter for the same reason as the events above.
     if (event.kind === 'permission-dismissed') {
       this.dismissPermission(event.permissionId);
+      return;
+    }
+    // An agent question answered elsewhere (a remote peer on the phone, #331) withdraws the pending
+    // local question — matched by input id, not the active turn, for the same reason as above.
+    if (event.kind === 'input-dismissed') {
+      this.dismissInput(event.inputId);
       return;
     }
     if (event.requestId !== this.activeRequestId) {

@@ -101,9 +101,10 @@ export interface RemoteControlOptions {
  */
 export class RemoteControlBridge {
   /**
-   * The turn state last reported to claude.ai, so the "working" spinner is toggled only on change.
+   * The turn state last reported to claude.ai, so it is toggled only on change. `requires_action`
+   * marks the session as waiting on the peer (an in-app question is pending).
    */
-  private reportedState: 'idle' | 'running' = 'idle';
+  private reportedState: 'idle' | 'running' | 'requires_action' = 'idle';
 
   /**
    * Whether the bridge has been closed.
@@ -114,6 +115,13 @@ export class RemoteControlBridge {
    * A monotonic counter minting per-permission control-request ids.
    */
   private permissionSeq: number = 0;
+
+  /**
+   * The resolver of a question awaiting a peer's answer (an armed {@link requestInput}), or null when
+   * no question is pending. The peer answers by typing an inbound message, which {@link consumeInbound}
+   * routes here instead of steering the session.
+   */
+  private pendingInput: ((answer: string) => void) | null = null;
 
   /**
    * Initialises a new instance of the {@link RemoteControlBridge} class.
@@ -293,6 +301,56 @@ export class RemoteControlBridge {
   }
 
   /**
+   * Arms the bridge to answer an in-app question ({@link askUser}) from the peer: the session marks
+   * itself `requires_action` on claude.ai, and the peer's next inbound message is taken as the answer
+   * (routed here by {@link consumeInbound}) rather than steering the session. The question text is
+   * already visible to the peer (the `ask_user` tool call is in the forwarded transcript). Only
+   * meaningful in control mode; the caller gates on {@link canPrompt}.
+   *
+   * The peer channel gives no way to render suggested-answer buttons, so a choice question is answered
+   * by the peer typing the label as free text — same as a Studio user typing their own answer.
+   * @returns Returns the peer-answer promise and a `cancel` that disarms the capture (used when the
+   * local prompt is answered first, so a later inbound message steers again instead of being eaten).
+   */
+  public requestInput(): { readonly answer: Promise<string>; readonly cancel: () => void } {
+    // Only one question is pending at a time (a turn asks once and blocks); a prior capture is
+    // superseded — its promise simply never resolves and the local prompt decides that older race.
+    this.setState('requires_action');
+    const answer: Promise<string> = new Promise<string>((resolve: (answer: string) => void): void => {
+      this.pendingInput = resolve;
+    });
+    return {
+      answer,
+      cancel: (): void => {
+        if (this.pendingInput !== null) {
+          this.pendingInput = null;
+          // Back to a running turn: the question was answered locally, the turn continues.
+          this.setState('running');
+        }
+      },
+    };
+  }
+
+  /**
+   * Offers an inbound peer message to a pending question ({@link requestInput}): consumes it as the
+   * answer when one is armed (returning true so the caller does not also steer the session), otherwise
+   * returns false and the message steers as usual.
+   * @param text The peer's inbound message text.
+   * @returns Returns true when the message was consumed as a question's answer.
+   */
+  public consumeInbound(text: string): boolean {
+    const resolve: ((answer: string) => void) | null = this.pendingInput;
+    if (resolve === null || this.closed) {
+      return false;
+    }
+    this.pendingInput = null;
+    // The turn resumes now that the question is answered.
+    this.setState('running');
+    resolve(text);
+    return true;
+  }
+
+  /**
    * Closes the bridge, ending the claude.ai worker. Idempotent.
    */
   public close(): void {
@@ -311,7 +369,7 @@ export class RemoteControlBridge {
    * Reports a turn-state change to claude.ai, coalescing repeats.
    * @param state The new state.
    */
-  private setState(state: 'idle' | 'running'): void {
+  private setState(state: 'idle' | 'running' | 'requires_action'): void {
     if (state === this.reportedState) {
       return;
     }

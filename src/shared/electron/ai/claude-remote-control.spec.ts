@@ -166,6 +166,44 @@ describe('RemoteControlBridge.requestPermission', () => {
   });
 });
 
+describe('RemoteControlBridge.requestInput / consumeInbound', () => {
+  it('armsRequiresAction_andConsumesTheNextInboundAsTheAnswer', async () => {
+    const handle: FakeHandle = new FakeHandle();
+    const bridge: RemoteControlBridge = bridgeOver(handle, 'control');
+
+    const { answer } = bridge.requestInput();
+    expect(handle.states).toEqual(['requires_action']);
+    // No question is armed until requestInput; the next inbound is the answer.
+    expect(bridge.consumeInbound('blue')).toBe(true);
+    await expect(answer).resolves.toBe('blue');
+    // Answering returns the session to a running turn.
+    expect(handle.states).toEqual(['requires_action', 'running']);
+  });
+
+  it('consumeInbound_returnsFalseWhenNoQuestionIsArmed', () => {
+    const bridge: RemoteControlBridge = bridgeOver(new FakeHandle(), 'control');
+    expect(bridge.consumeInbound('just steering')).toBe(false);
+  });
+
+  it('cancel_disarmsTheCapture_soLaterInboundSteersAgain', () => {
+    const handle: FakeHandle = new FakeHandle();
+    const bridge: RemoteControlBridge = bridgeOver(handle, 'control');
+
+    const { cancel } = bridge.requestInput();
+    cancel();
+    expect(handle.states).toEqual(['requires_action', 'running']);
+    // Disarmed: a later inbound is no longer eaten as an answer.
+    expect(bridge.consumeInbound('later')).toBe(false);
+  });
+
+  it('consumeInbound_isANoOpAfterClose', () => {
+    const bridge: RemoteControlBridge = bridgeOver(new FakeHandle(), 'control');
+    bridge.requestInput();
+    bridge.close();
+    expect(bridge.consumeInbound('answer')).toBe(false);
+  });
+});
+
 describe('resolvePermissionResponse', () => {
   it('resolvesFalseForAnErrorSubtype', async () => {
     const pending: Map<string, (granted: boolean) => void> = new Map<string, (granted: boolean) => void>();

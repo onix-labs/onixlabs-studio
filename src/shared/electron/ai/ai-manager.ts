@@ -729,8 +729,12 @@ export class AiManager {
         ),
       recordAudit: (name: string, detail: string, source: AuditGrantSource): void =>
         this.recordAudit(name, detail, request.workspaceRoot, source),
-      requestInput: (question: string, choices: readonly AiInputChoice[]): Promise<string | null> =>
-        this.requestInput(request.requestId, controller.signal, question, choices),
+      requestInput: (
+        question: string,
+        choices: readonly AiInputChoice[],
+        cancel?: AbortSignal,
+      ): Promise<string | null> =>
+        this.requestInput(request.requestId, controller.signal, question, choices, cancel),
       requestEditDecision: (
         name: string,
         detail: string,
@@ -1271,6 +1275,9 @@ export class AiManager {
    * @param signal The run's abort signal.
    * @param question The question the agent is asking.
    * @param choices The suggested answers, or empty for a free-form question.
+   * @param cancel An optional signal that dismisses this question and resolves null when aborted —
+   *   raised when a remote peer answers the same question first, so Studio's still-visible prompt is
+   *   cleared via an `input-dismissed` event (distinct from a run abort, which tears the run down).
    * @returns Returns the user's answer, or null when they declined.
    */
   private requestInput(
@@ -1278,6 +1285,7 @@ export class AiManager {
     signal: AbortSignal,
     question: string,
     choices: readonly AiInputChoice[],
+    cancel?: AbortSignal,
   ): Promise<string | null> {
     const inputId: string = randomUUID();
     // The run is blocked on the user: its wall clock pauses until the question settles.
@@ -1293,6 +1301,23 @@ export class AiManager {
       if (signal.aborted) {
         settle(null);
         return;
+      }
+      // A remote peer answered first: dismiss the still-open local question and clear its UI.
+      if (cancel !== undefined) {
+        if (cancel.aborted) {
+          settle(null);
+          return;
+        }
+        cancel.addEventListener(
+          'abort',
+          (): void => {
+            if (this.inputs.has(inputId)) {
+              this.emit({ requestId, kind: 'input-dismissed', inputId });
+            }
+            settle(null);
+          },
+          { once: true },
+        );
       }
       signal.addEventListener('abort', (): void => settle(null), { once: true });
       this.emit({ requestId, kind: 'input-request', inputId, question, choices });

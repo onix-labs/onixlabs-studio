@@ -549,6 +549,27 @@ describe('Agent', () => {
     expect(lastItem()?.inputState).toBe('dismissed');
   });
 
+  it('inputDismissed_whenAnsweredElsewhere_withdrawsThePendingQuestionWithoutReplying', () => {
+    agent.send('hi');
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'input-request',
+      inputId: 'q1',
+      question: 'Name?',
+      choices: [],
+    });
+    expect(agent.awaitingDecision()).toBe(true);
+
+    // A remote peer (phone) answered the question by typing; the main process withdraws it locally.
+    fireEvent({ requestId: 'run-1', kind: 'input-dismissed', inputId: 'q1' });
+
+    expect(agent.awaitingDecision()).toBe(false);
+    expect(agent.pendingInput()).toBeUndefined();
+    expect(lastItem()?.inputState).toBe('dismissed');
+    // No local reply was sent — the run was already settled elsewhere.
+    expect(inputReplies).toEqual([]);
+  });
+
   it('respondInput_whenAlreadySettled_isIgnored', () => {
     agent.send('hi');
     fireEvent({

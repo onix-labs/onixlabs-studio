@@ -398,6 +398,17 @@ export async function askUser(
   logger.trace('StudioTools', `Tool invoked: ask_user (${choices.length} choice(s))`);
   const answer: string | null = await context.requestInput(question, choices);
   logger.debug('StudioTools', `ask_user: ${answer === null ? 'user declined' : 'user answered'}`);
+  return formatAskUserAnswer(answer);
+}
+
+/**
+ * Renders an `ask_user` answer for the model: the user's text, or a note to proceed conservatively
+ * when they declined. Shared so a remote-controlled run that resolves the question from the phone (a
+ * peer's inbound message) formats it identically to the local path.
+ * @param answer The user's answer, or null when they declined / the question was dismissed.
+ * @returns Returns the model-facing rendering of the answer.
+ */
+export function formatAskUserAnswer(answer: string | null): string {
   return answer === null
     ? 'The user declined to answer. Continue without this information, choosing conservatively.'
     : `The user answered: ${answer}`;

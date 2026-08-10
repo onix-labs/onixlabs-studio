@@ -96,6 +96,7 @@ import {
   buildRunPrompt,
   deleteBinaryBytes,
   editActiveDocument,
+  formatAskUserAnswer,
   insertBinaryBytes,
   insertIntoActiveDocument,
   patchBinaryBytes,
@@ -453,7 +454,14 @@ export class ClaudeAgentProvider implements AgentProvider {
               ),
           },
           async (args: { question: string; choices?: AiInputChoice[] }) =>
-            text(await askUser(getContext(), args.question, args.choices ?? [])),
+            text(
+              await this.decideInput(
+                getBridge(),
+                getContext(),
+                args.question,
+                args.choices ?? [],
+              ),
+            ),
         ),
         // The run-configuration tools ride on the surfaces whose agents are workspace-scoped: the IDE
         // views (editor) and the standalone agent tab (project). A terminal- or binary-docked agent is
@@ -1132,6 +1140,52 @@ export class ClaudeAgentProvider implements AgentProvider {
       `${winner.who} answered first: ${winner.granted ? 'allow' : 'deny'} for ${displayName}`,
     );
     return winner.granted;
+  }
+
+  /**
+   * Resolves an `ask_user` question, racing the local (Studio) prompt against the remote (phone) peer
+   * when a remote-control bridge is live and controllable. The peer answers by typing an inbound
+   * message (the only peer→host channel for free text), which the bridge routes to the armed capture;
+   * whichever side answers first wins and the other's prompt is dismissed. With no controllable bridge
+   * the local prompt alone decides, exactly as before.
+   * @param bridge The session's remote-control bridge, or null when remote control is off/mirror-only.
+   * @param context The current turn context (owns the local question prompt).
+   * @param question The question the agent is asking.
+   * @param choices The suggested answers, or empty for a free-form question.
+   * @returns Resolves the model-facing answer rendering (never rejects).
+   */
+  private async decideInput(
+    bridge: RemoteControlBridge | null,
+    context: AgentRunContext,
+    question: string,
+    choices: readonly AiInputChoice[],
+  ): Promise<string> {
+    // No controllable peer: the local prompt alone decides (mirror is view-only).
+    if (!bridge?.canPrompt) {
+      return askUser(context, question, choices);
+    }
+    logger.debug('ClaudeAgentProvider.decideInput', 'Racing local + remote answer for a question');
+    const studioCancel: AbortController = new AbortController();
+    const phone: { readonly answer: Promise<string>; readonly cancel: () => void } =
+      bridge.requestInput();
+    const studio: Promise<{ readonly answer: string | null; readonly who: 'studio' | 'phone' }> =
+      context
+        .requestInput(question, choices, studioCancel.signal)
+        .then((answer: string | null) => ({ answer, who: 'studio' as const }));
+    const remote: Promise<{ readonly answer: string | null; readonly who: 'studio' | 'phone' }> =
+      phone.answer.then((answer: string) => ({ answer, who: 'phone' as const }));
+    const winner: { readonly answer: string | null; readonly who: 'studio' | 'phone' } =
+      await Promise.race([studio, remote]);
+    if (winner.who === 'phone') {
+      studioCancel.abort();
+    } else {
+      phone.cancel();
+    }
+    logger.debug(
+      'ClaudeAgentProvider.decideInput',
+      `${winner.who} answered the question first`,
+    );
+    return formatAskUserAnswer(winner.answer);
   }
 
   /**
@@ -1907,6 +1961,13 @@ export class ClaudeAgentSession implements AgentSession {
       model: context.model,
       onInbound: (text: string): void => {
         if (this.inputClosed) {
+          return;
+        }
+        // A pending in-app question (ask_user) takes the peer's message as its answer rather than
+        // starting a new turn (#331): the question is blocking the current turn, so the natural meaning
+        // of the next thing the peer types is "here is my answer". Consumed here, it must not also be
+        // echoed or steered.
+        if (this.bridge?.consumeInbound(text) === true) {
           return;
         }
         // Echo the peer's message into Studio's transcript and let the renderer adopt the turn, so the

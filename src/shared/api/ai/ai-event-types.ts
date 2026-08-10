@@ -227,6 +227,25 @@ export interface AiInputRequestEvent extends AiEventBase {
 }
 
 /**
+ * Withdraws an agent question the renderer is still showing because it was answered elsewhere — a
+ * remote peer (phone) answered the same `ask_user` prompt first, by typing an inbound message during
+ * remote control (#331). The renderer marks the matching pending question dismissed; the run has
+ * already been resolved in the main process, so no reply is expected. The input counterpart of
+ * {@link AiPermissionDismissedEvent}.
+ */
+export interface AiInputDismissedEvent extends AiEventBase {
+  /**
+   * Gets the discriminator.
+   */
+  readonly kind: 'input-dismissed';
+
+  /**
+   * Gets the identifier of the question to withdraw (matches {@link AiInputRequestEvent.inputId}).
+   */
+  readonly inputId: string;
+}
+
+/**
  * Asks the user to decide on a staged edit preview: the prospective change is showing as a diff in
  * the document well (code targets) or summarised on the card (markdown, which has no diff editor),
  * and the run blocks until they apply or reject it. Answered with an `AiEditDecisionReply`.
@@ -445,6 +464,7 @@ export type AiEvent =
   | AiPermissionEvent
   | AiPermissionDismissedEvent
   | AiInputRequestEvent
+  | AiInputDismissedEvent
   | AiEditDecisionEvent
   | AiSessionEvent
   | AiStatusEvent

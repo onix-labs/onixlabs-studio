@@ -255,9 +255,15 @@ export interface AgentRunContext {
    * permission decision.
    * @param question The question the agent is asking.
    * @param choices The suggested answers, or empty for a free-form question.
+   * @param cancel An optional signal that dismisses the local prompt and resolves null when aborted —
+   *   used when a remote peer (phone) answers the same question first, so Studio's prompt clears.
    * @returns Returns the user's answer, or null when they declined.
    */
-  requestInput(question: string, choices: readonly AiInputChoice[]): Promise<string | null>;
+  requestInput(
+    question: string,
+    choices: readonly AiInputChoice[],
+    cancel?: AbortSignal,
+  ): Promise<string | null>;
 
   /**
    * Asks the user to decide on a staged edit preview (showing as a diff in the document well for
