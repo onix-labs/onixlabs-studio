@@ -1,5 +1,9 @@
 <div class="system-monitor">
-  <!-- Metric tiles (CPU/Memory/Network/Disk/GPU) mount here in P3/P4. This phase ships the audit. -->
+  <!-- CPU and Memory tiles (P3). Network/Disk/GPU tiles join this grid in P4. -->
+  <section class="system-monitor__tiles">
+    <app-metric-tile label="CPU" [value]="cpuValue()" [values]="cpuHistory()" />
+    <app-metric-tile label="Memory" [value]="memoryValue()" [values]="memoryHistory()" />
+  </section>
 
   <section class="system-monitor__audit">
     <header class="system-monitor__toolbar">

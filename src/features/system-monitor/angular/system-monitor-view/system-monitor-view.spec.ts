@@ -4,8 +4,48 @@ import { afterEach, describe, expect, it, Mock, vi } from 'vitest';
 import { DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { Log } from '@shared/angular/services/log/log';
 import { LogQuery, LogRecord, LogSession, Severity } from '@shared/api/log-channels';
+import { MetricsSample } from '@shared/api/system-monitor-channels';
 import { SystemMonitorCommands } from '../system-monitor-commands/system-monitor-commands';
+import { SystemMonitorMetrics } from '../metrics/system-monitor-metrics';
 import { SystemMonitorView } from './system-monitor-view';
+
+/**
+ * A fake metrics client that records start/stop and lets a test drive the sample push.
+ */
+class FakeMetrics {
+  public started: number = 0;
+  public stopped: number = 0;
+  public listener: ((sample: MetricsSample) => void) | null = null;
+
+  public start(): void {
+    this.started += 1;
+  }
+
+  public stop(): void {
+    this.stopped += 1;
+  }
+
+  public onSample(listener: (sample: MetricsSample) => void): () => void {
+    this.listener = listener;
+    return (): void => {
+      this.listener = null;
+    };
+  }
+}
+
+/**
+ * Builds a metrics sample with sensible defaults, overridable per test.
+ * @param over The fields to override.
+ * @returns Returns the sample.
+ */
+function sample(over: Partial<MetricsSample> = {}): MetricsSample {
+  return {
+    timestamp: '2026-08-10T10:00:00.000Z',
+    cpu: 42,
+    memory: { usedBytes: 8 * 1024 ** 3, totalBytes: 16 * 1024 ** 3, percent: 50 },
+    ...over,
+  };
+}
 
 /**
  * Builds a record with sensible defaults, overridable per test.
@@ -63,6 +103,10 @@ interface Testable {
   text: WritableSignal<string>;
   sessionOptions: Signal<readonly DropdownOption[]>;
   selectedSessionValue: Signal<string>;
+  cpuValue: Signal<string>;
+  memoryValue: Signal<string>;
+  cpuHistory: WritableSignal<readonly number[]>;
+  memoryHistory: WritableSignal<readonly number[]>;
   selectSession(sessionId: string): void;
   toggleSeverity(severity: Severity): void;
   isEnabled(severity: Severity): boolean;
@@ -72,18 +116,24 @@ describe('SystemMonitorView', () => {
   let fixture: ComponentFixture<SystemMonitorView>;
   let view: Testable;
   let fake: FakeLog;
+  let metrics: FakeMetrics;
 
   /**
-   * Creates the view with the fake log and the given seeded records, and settles the initial load.
+   * Creates the view with the fake log and metrics and the given seeded records, and settles the
+   * initial load.
    * @param records The records the fake returns from a query.
    * @returns Returns a promise that resolves once the view has loaded.
    */
   async function create(records: LogRecord[] = []): Promise<void> {
     fake = new FakeLog();
     fake.records = records;
+    metrics = new FakeMetrics();
     await TestBed.configureTestingModule({
       imports: [SystemMonitorView],
-      providers: [{ provide: Log, useValue: fake }],
+      providers: [
+        { provide: Log, useValue: fake },
+        { provide: SystemMonitorMetrics, useValue: metrics },
+      ],
     }).compileComponents();
     fixture = TestBed.createComponent(SystemMonitorView);
     fixture.componentRef.setInput('tabId', 'tab-1');
@@ -178,5 +228,28 @@ describe('SystemMonitorView', () => {
     TestBed.inject(SystemMonitorCommands).copy();
     await Promise.resolve();
     expect(writeText).toHaveBeenCalledWith('2026-08-10T10:00:00.000Z [error] S: boom');
+  });
+
+  it('whenActive_startsSamplingAndStopsWhenHidden', async () => {
+    await create();
+    expect(metrics.started).toBeGreaterThan(0);
+    const startedWhileActive: number = metrics.stopped;
+    fixture.componentRef.setInput('isActive', false);
+    fixture.detectChanges();
+    expect(metrics.stopped).toBeGreaterThan(startedWhileActive);
+  });
+
+  it('sample_updatesTheTileValuesAndHistories', async () => {
+    await create();
+    metrics.listener?.(sample({ cpu: 42, memory: { usedBytes: 8 * 1024 ** 3, totalBytes: 16 * 1024 ** 3, percent: 50 } }));
+    expect(view.cpuValue()).toBe('42%');
+    expect(view.memoryValue()).toBe('8.0 GB / 16.0 GB (50%)');
+    expect(view.cpuHistory()).toEqual([42]);
+    expect(view.memoryHistory()).toEqual([50]);
+  });
+
+  it('cpuValue_isAPlaceholderBeforeTheFirstSample', async () => {
+    await create();
+    expect(view.cpuValue()).toBe('—');
   });
 });

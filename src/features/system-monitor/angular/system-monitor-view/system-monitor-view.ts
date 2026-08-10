@@ -17,6 +17,9 @@ import { TextField } from '@shared/angular/components/forms/text-field/text-fiel
 import { Table, TableColumn, TableRow, TableRowDef } from '@shared/angular/components/table/table';
 import { Log } from '@shared/angular/services/log/log';
 import { LogRecord, LogSession, SEVERITIES, Severity } from '@shared/api/log-channels';
+import { MetricsSample, METRICS_HISTORY } from '@shared/api/system-monitor-channels';
+import { MetricTile } from '../metric-tile/metric-tile';
+import { SystemMonitorMetrics } from '../metrics/system-monitor-metrics';
 import {
   SystemMonitorCommandHandler,
   SystemMonitorCommands,
@@ -42,7 +45,7 @@ const AUDIT_COLUMNS: readonly TableColumn[] = [
  */
 @Component({
   selector: 'app-system-monitor-view',
-  imports: [Button, Dropdown, TextField, Table, TableRowDef],
+  imports: [Button, Dropdown, TextField, Table, TableRowDef, MetricTile],
   templateUrl: './system-monitor-view.html',
   styleUrl: './system-monitor-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -72,6 +75,46 @@ export class SystemMonitorView {
    * Holds the logging client the view reads and streams through.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds the metrics client the tiles sample through.
+   */
+  private readonly metrics: SystemMonitorMetrics = inject(SystemMonitorMetrics);
+
+  /**
+   * Holds the most recent metrics sample, or null before the first arrives.
+   */
+  private readonly latest: WritableSignal<MetricsSample | null> = signal<MetricsSample | null>(null);
+
+  /**
+   * Holds the recent CPU utilisation history (percent), oldest first, for the CPU sparkline.
+   */
+  protected readonly cpuHistory: WritableSignal<readonly number[]> = signal<readonly number[]>([]);
+
+  /**
+   * Holds the recent memory-use history (percent), oldest first, for the memory sparkline.
+   */
+  protected readonly memoryHistory: WritableSignal<readonly number[]> = signal<readonly number[]>([]);
+
+  /**
+   * Gets the CPU tile's current value, formatted as a percentage.
+   */
+  protected readonly cpuValue: Signal<string> = computed((): string => {
+    const sample: MetricsSample | null = this.latest();
+    return sample === null ? '—' : `${Math.round(sample.cpu)}%`;
+  });
+
+  /**
+   * Gets the memory tile's current value, formatted as used / total with the percentage.
+   */
+  protected readonly memoryValue: Signal<string> = computed((): string => {
+    const sample: MetricsSample | null = this.latest();
+    if (sample === null) {
+      return '—';
+    }
+    const { usedBytes, totalBytes, percent }: MetricsSample['memory'] = sample.memory;
+    return `${this.formatBytes(usedBytes)} / ${this.formatBytes(totalBytes)} (${Math.round(percent)}%)`;
+  });
 
   /**
    * Holds the records of the selected session, oldest first.
@@ -189,17 +232,58 @@ export class SystemMonitorView {
         this.records.update((records: readonly LogRecord[]): readonly LogRecord[] => [...records, record]);
       }
     });
+    const unsubscribeSamples: () => void = this.metrics.onSample((sample: MetricsSample): void =>
+      this.accept(sample),
+    );
+
     const destroy: DestroyRef = inject(DestroyRef);
     destroy.onDestroy(unsubscribe);
+    destroy.onDestroy(unsubscribeSamples);
     destroy.onDestroy((): void => this.commands.unregister(this.commandHandler));
+    destroy.onDestroy((): void => this.metrics.stop());
 
+    // Sampling and the ribbon handler follow the tab's visibility: nothing is sampled while the
+    // monitor is hidden (the performance-audit posture).
     effect((): void => {
       if (this.isActive()) {
         this.commands.register(this.commandHandler);
+        this.metrics.start();
       } else {
         this.commands.unregister(this.commandHandler);
+        this.metrics.stop();
       }
     });
+  }
+
+  /**
+   * Records one metrics sample: it becomes the current reading and is appended to the sparkline
+   * histories, which are bounded to {@link METRICS_HISTORY} points.
+   * @param sample The sample to accept.
+   */
+  private accept(sample: MetricsSample): void {
+    this.latest.set(sample);
+    this.cpuHistory.update((history: readonly number[]): readonly number[] =>
+      [...history, sample.cpu].slice(-METRICS_HISTORY),
+    );
+    this.memoryHistory.update((history: readonly number[]): readonly number[] =>
+      [...history, sample.memory.percent].slice(-METRICS_HISTORY),
+    );
+  }
+
+  /**
+   * Formats a byte count as a human-readable size.
+   * @param bytes The size in bytes.
+   * @returns Returns the formatted size (for example `6.1 GB`).
+   */
+  protected formatBytes(bytes: number): string {
+    const units: readonly string[] = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let size: number = bytes;
+    let unit: number = 0;
+    while (size >= 1024 && unit < units.length - 1) {
+      size /= 1024;
+      unit += 1;
+    }
+    return `${unit === 0 ? size : size.toFixed(1)} ${units[unit]}`;
   }
 
   /**

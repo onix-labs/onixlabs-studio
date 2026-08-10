@@ -12,6 +12,16 @@
   min-block-size: 0;
 }
 
+// The metric tiles: a responsive row that wraps, each tile a fixed-height card. Network/Disk/GPU
+// tiles join this same grid in P4.
+.system-monitor__tiles {
+  display: grid;
+  flex: none;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+}
+
 .system-monitor__audit {
   display: flex;
   flex-direction: column;

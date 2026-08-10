@@ -1,5 +1,6 @@
 import { MainContribution } from './main-contribution';
 import { dockerContribution } from './docker/docker.contribution';
+import { systemMonitorContribution } from './system-monitor/system-monitor.contribution';
 
 /**
  * The static, in-bundle manifest of main-process contributions the application activates at startup —
@@ -10,4 +11,7 @@ import { dockerContribution } from './docker/docker.contribution';
  * When runtime discovery of third-party extensions lands (#295), the registry is constructed from this
  * manifest *plus* the discovered contributions — the same type, an extra source.
  */
-export const mainContributions: readonly MainContribution[] = [dockerContribution];
+export const mainContributions: readonly MainContribution[] = [
+  dockerContribution,
+  systemMonitorContribution,
+];

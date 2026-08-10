@@ -1,0 +1,25 @@
+// The sparkline fills its host tile; the SVG stretches to it while the stroke stays crisp.
+:host {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+}
+
+.sparkline {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+}
+
+// The line and its fill take the accent colour; the fill is a faint wash beneath the line.
+.sparkline__line {
+  stroke: var(--accent-color);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.sparkline__area {
+  fill: color-mix(in srgb, var(--accent-color) 18%, transparent);
+  stroke: none;
+}

@@ -1,0 +1,44 @@
+// A metric tile: a bordered card with a label/value header over a sparkline that fills the rest.
+:host {
+  display: block;
+}
+
+.metric-tile {
+  display: flex;
+  flex-direction: column;
+  block-size: 100%;
+  padding: 0.6rem 0.75rem 0.5rem;
+  border: 1px solid var(--dock-border-color);
+  border-radius: calc(0.5rem * var(--border-radius-multiplier, 1));
+  background-color: var(--panel-surface-color);
+}
+
+.metric-tile__head {
+  display: flex;
+  flex: none;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.metric-tile__label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--form-muted-foreground-color);
+}
+
+.metric-tile__value {
+  font-size: 1.05rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--body-foreground-color);
+}
+
+// The graph takes the remaining tile height; a fixed floor keeps it legible in a short tile.
+.metric-tile__graph {
+  flex: 1 1 auto;
+  min-block-size: 2.5rem;
+  block-size: 3rem;
+  margin-block-start: 0.4rem;
+}

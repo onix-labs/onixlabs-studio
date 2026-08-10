@@ -1,0 +1,9 @@
+<div class="metric-tile">
+  <header class="metric-tile__head">
+    <span class="metric-tile__label">{{ label() }}</span>
+    <span class="metric-tile__value">{{ value() }}</span>
+  </header>
+  <div class="metric-tile__graph">
+    <app-sparkline [values]="values()" [max]="max()" />
+  </div>
+</div>
