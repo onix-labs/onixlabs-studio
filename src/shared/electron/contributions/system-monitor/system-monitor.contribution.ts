@@ -1,4 +1,6 @@
+import { execFile } from 'node:child_process';
 import * as os from 'node:os';
+import { promisify } from 'node:util';
 import * as si from 'systeminformation';
 import {
   DiskMetric,
@@ -8,13 +10,22 @@ import {
   SystemMonitorChannel,
 } from '@shared/api/system-monitor-channels';
 import { ContributionContext, MainContribution } from '../main-contribution';
-import { pickGpu, readDisk, sumNetwork } from './metrics-readers';
+import { parseIoregGpu, pickGpu, readDisk, sumNetwork } from './metrics-readers';
 import { MetricsSampler } from './metrics-sampler';
 
 /**
  * How often, in milliseconds, the machine metrics are sampled while a consumer is active.
  */
 const SAMPLE_INTERVAL_MS: number = 1_000;
+
+/**
+ * Runs a command and resolves with its stdout, promisified from {@link execFile}.
+ */
+const run: (
+  file: string,
+  args: readonly string[],
+  options: { timeout: number; maxBuffer: number },
+) => Promise<{ stdout: string }> = promisify(execFile);
 
 /**
  * The System Monitor's metrics backend contribution. It samples machine CPU, memory, network, disk and
@@ -173,12 +184,39 @@ export class SystemMonitorContribution implements MainContribution {
   }
 
   /**
-   * Reads best-effort GPU utilisation, or undefined when unavailable.
+   * Reads best-effort GPU utilisation. On macOS it reads `ioreg` (a no-sudo source that reports real
+   * utilisation, which systeminformation does not read there); elsewhere, and if that yields nothing,
+   * it falls back to systeminformation. Undefined when no source reports a reading.
    * @returns Returns the GPU metric, or undefined.
    */
   private async readGpu(): Promise<GpuMetric | undefined> {
+    if (process.platform === 'darwin') {
+      const mac: GpuMetric | undefined = await this.readGpuMac();
+      if (mac !== undefined) {
+        return mac;
+      }
+    }
     try {
       return pickGpu((await si.graphics()).controllers);
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * Reads macOS GPU utilisation from `ioreg`'s IOAccelerator statistics (no elevated privileges
+   * required). Returns undefined when the command fails or reports no utilisation.
+   * @returns Returns the GPU metric, or undefined.
+   */
+  private async readGpuMac(): Promise<GpuMetric | undefined> {
+    try {
+      const { stdout }: { stdout: string } = await run(
+        'ioreg',
+        ['-r', '-d', '1', '-w', '0', '-c', 'IOAccelerator'],
+        { timeout: 800, maxBuffer: 16 * 1024 * 1024 },
+      );
+      const gpu: GpuMetric = parseIoregGpu(stdout);
+      return gpu.available ? gpu : undefined;
     } catch {
       return undefined;
     }

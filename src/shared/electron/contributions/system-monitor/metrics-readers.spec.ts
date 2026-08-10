@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pickGpu, readDisk, sumNetwork } from './metrics-readers';
+import { parseIoregGpu, pickGpu, readDisk, sumNetwork } from './metrics-readers';
 
 describe('sumNetwork', () => {
   it('sumsRxAndTxAcrossInterfaces', () => {
@@ -51,5 +51,29 @@ describe('pickGpu', () => {
 
   it('reportsUnavailableWhenNoControllerHasAReading', () => {
     expect(pickGpu([{ utilizationGpu: null }, {}])).toEqual({ available: false, percent: 0 });
+  });
+});
+
+describe('parseIoregGpu', () => {
+  it('readsTheLiveDeviceUtilisationNotTheAccumulator', () => {
+    // The cumulative Accum dict comes first with a stale value; the live dict must win.
+    const output: string =
+      '"PerformanceStatisticsAccum" = {"Device Utilization %"=0,"GPU Activity(%)"=0}\n' +
+      '"PerformanceStatistics" = {"Device Utilization %"=37,"GPU Activity(%)"=41}';
+    expect(parseIoregGpu(output)).toEqual({ available: true, percent: 37 });
+  });
+
+  it('fallsBackToGpuActivityWhenDeviceUtilisationIsAbsent', () => {
+    const output: string = '"PerformanceStatistics" = {"GPU Activity(%)"=52}';
+    expect(parseIoregGpu(output)).toEqual({ available: true, percent: 52 });
+  });
+
+  it('clampsToThe0to100Range', () => {
+    const output: string = '"PerformanceStatistics" = {"Device Utilization %"=250}';
+    expect(parseIoregGpu(output).percent).toBe(100);
+  });
+
+  it('reportsUnavailableWhenNoUtilisationIsPresent', () => {
+    expect(parseIoregGpu('no stats here')).toEqual({ available: false, percent: 0 });
   });
 });

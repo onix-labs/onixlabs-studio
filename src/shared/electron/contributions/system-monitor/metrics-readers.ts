@@ -62,6 +62,27 @@ export function readDisk(stats: FsStat | null): DiskMetric | undefined {
 }
 
 /**
+ * Parses a GPU utilisation reading from `ioreg`'s IOAccelerator output on macOS — a no-sudo source
+ * `systeminformation` does not read, which is why it reports GPU as unavailable there. The live
+ * `"PerformanceStatistics"` dict (distinct from the cumulative `"PerformanceStatisticsAccum"`) carries
+ * `"Device Utilization %"` (and `"GPU Activity(%)"` as a fallback); this reads the live dict so the
+ * accumulator's value is never mistaken for the current load.
+ * @param output The raw `ioreg -r -d 1 -w 0 -c IOAccelerator` output.
+ * @returns Returns the GPU reading, marked unavailable when no utilisation is found.
+ */
+export function parseIoregGpu(output: string): GpuMetric {
+  const marker: string = '"PerformanceStatistics" =';
+  const at: number = output.indexOf(marker);
+  const region: string = at >= 0 ? output.slice(at) : output;
+  const match: RegExpExecArray | null =
+    /"Device Utilization %"\s*=\s*(\d+)/.exec(region) ?? /"GPU Activity\(%\)"\s*=\s*(\d+)/.exec(region);
+  if (match === null) {
+    return { available: false, percent: 0 };
+  }
+  return { available: true, percent: Math.min(100, Math.max(0, Number(match[1]))) };
+}
+
+/**
  * Picks a GPU utilisation reading from the graphics controllers, best-effort: the first controller
  * reporting a numeric utilisation wins; when none does, the reading is marked unavailable rather than
  * reporting a misleading zero.
