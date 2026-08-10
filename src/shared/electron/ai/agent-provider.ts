@@ -232,9 +232,11 @@ export interface AgentRunContext {
    * Asks the user to permit a gated action, resolving once they answer (or false if the run aborts).
    * @param name The display name of the action requesting permission.
    * @param detail A one-line summary of what the action will do.
+   * @param cancel An optional signal that dismisses the local prompt and resolves false when aborted —
+   *   used when a remote peer (phone) answers the same permission first, so Studio's prompt clears.
    * @returns Returns true when the user grants permission.
    */
-  requestPermission(name: string, detail: string): Promise<boolean>;
+  requestPermission(name: string, detail: string, cancel?: AbortSignal): Promise<boolean>;
 
   /**
    * Records an executed mutating/exec action to the audit log (#308/#311). Called at the execution

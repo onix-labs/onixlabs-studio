@@ -671,9 +671,10 @@ describe('ClaudeAgentProvider.buildRunOptions (per-turn indirection)', () => {
         buildRunOptions(
           getContext: () => AgentRunContext,
           controller: AbortController,
+          getBridge: () => null,
         ): Promise<Options>;
       }
-    ).buildRunOptions((): AgentRunContext => current, new AbortController());
+    ).buildRunOptions((): AgentRunContext => current, new AbortController(), (): null => null);
     return {
       options,
       setCurrent: (context: AgentRunContext): void => {

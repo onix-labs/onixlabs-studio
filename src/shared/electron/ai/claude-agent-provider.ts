@@ -350,6 +350,7 @@ export class ClaudeAgentProvider implements AgentProvider {
   private async buildRunOptions(
     getContext: () => AgentRunContext,
     controller: AbortController,
+    getBridge: () => RemoteControlBridge | null,
   ): Promise<Options> {
     const { tool, createSdkMcpServer } = await import('@anthropic-ai/claude-agent-sdk');
     const { z } = await import('zod');
@@ -918,8 +919,12 @@ export class ClaudeAgentProvider implements AgentProvider {
       if (autoAllowed) {
         return { behavior: 'allow', updatedInput: input };
       }
-      const granted: boolean = await context.requestPermission(
+      const granted: boolean = await this.decidePermission(
+        getBridge(),
+        context,
         prettyToolName(toolName),
+        toolName,
+        input,
         summarizeToolInput(input),
       );
       return granted
@@ -1072,6 +1077,64 @@ export class ClaudeAgentProvider implements AgentProvider {
   }
 
   /**
+   * Resolves a tool permission, racing the local (Studio) prompt against the remote (phone) peer when a
+   * remote-control bridge is live and controllable. Whichever side answers first wins, and the other
+   * side's prompt is dismissed: a phone answer aborts Studio's local prompt (see the optional cancel
+   * signal on {@link AgentRunContext.requestPermission}); a Studio answer cancels the forwarded control
+   * request on the bridge. With no controllable bridge the local prompt alone decides, exactly as before.
+   * @param bridge The session's remote-control bridge, or null when remote control is off/mirror-only.
+   * @param context The current turn context (owns the local permission prompt).
+   * @param displayName The human-facing tool name shown in Studio's prompt.
+   * @param toolName The raw SDK tool name forwarded to the peer.
+   * @param input The tool input forwarded to the peer.
+   * @param detail The human-facing detail shown in Studio's prompt.
+   * @returns Resolves true when the tool is approved, false when declined by either side.
+   */
+  private async decidePermission(
+    bridge: RemoteControlBridge | null,
+    context: AgentRunContext,
+    displayName: string,
+    toolName: string,
+    input: Record<string, unknown>,
+    detail: string,
+  ): Promise<boolean> {
+    // No controllable peer: the local prompt alone decides (mirror is view-only, so its bridge cannot
+    // prompt either).
+    if (!bridge?.canPrompt) {
+      return context.requestPermission(displayName, detail);
+    }
+    logger.debug(
+      'ClaudeAgentProvider.decidePermission',
+      `Racing local + remote permission for ${displayName}`,
+    );
+    // Ask both sides at once; the first answer wins and the loser's prompt is dismissed.
+    const studioCancel: AbortController = new AbortController();
+    const phone: { readonly id: string; readonly granted: Promise<boolean> } = bridge.requestPermission(
+      toolName,
+      input,
+    );
+    const studio: Promise<{ readonly granted: boolean; readonly who: 'studio' | 'phone' }> = context
+      .requestPermission(displayName, detail, studioCancel.signal)
+      .then((granted: boolean) => ({ granted, who: 'studio' as const }));
+    const remote: Promise<{ readonly granted: boolean; readonly who: 'studio' | 'phone' }> =
+      phone.granted.then((granted: boolean) => ({ granted, who: 'phone' as const }));
+    const winner: { readonly granted: boolean; readonly who: 'studio' | 'phone' } = await Promise.race([
+      studio,
+      remote,
+    ]);
+    if (winner.who === 'phone') {
+      studioCancel.abort();
+    } else {
+      bridge.cancelPermission(phone.id);
+    }
+    logger.debug(
+      'ClaudeAgentProvider.decidePermission',
+      `${winner.who} answered first: ${winner.granted ? 'allow' : 'deny'} for ${displayName}`,
+    );
+    return winner.granted;
+  }
+
+  /**
    * Runs a single turn through the Agent SDK, streaming reasoning, text, and tool activity. A transient
    * run: opens a live session, runs this one turn into it, then closes it — behaviour identical to the
    * old single-shot run. The persistent path (holding the session open across turns, #327) drives the
@@ -1105,7 +1168,8 @@ export class ClaudeAgentProvider implements AgentProvider {
         buildRunOptions: (
           getContext: () => AgentRunContext,
           controller: AbortController,
-        ): Promise<Options> => this.buildRunOptions(getContext, controller),
+          getBridge: () => RemoteControlBridge | null,
+        ): Promise<Options> => this.buildRunOptions(getContext, controller, getBridge),
         createQuery: async (
           prompt: AsyncGenerator<SDKUserMessage>,
           options: Options,
@@ -1557,7 +1621,11 @@ export interface SessionDeps {
    * context accessor rather than a snapshot so the built-in per-turn closures (tool handlers, the
    * permission gate, the audit hook) follow the session's current turn across a held-open query.
    */
-  buildRunOptions(getContext: () => AgentRunContext, controller: AbortController): Promise<Options>;
+  buildRunOptions(
+    getContext: () => AgentRunContext,
+    controller: AbortController,
+    getBridge: () => RemoteControlBridge | null,
+  ): Promise<Options>;
 
   /**
    * Opens the SDK query for the session's streaming input and built options. Isolated as a dep so the
@@ -1810,6 +1878,7 @@ export class ClaudeAgentSession implements AgentSession {
     const options: Options = await this.deps.buildRunOptions(
       (): AgentRunContext => this.currentContext,
       this.controller,
+      (): RemoteControlBridge | null => this.bridge,
     );
     this.sdkQuery = await this.deps.createQuery(this.promptStream(), options);
     this.pumpDone = this.pump();

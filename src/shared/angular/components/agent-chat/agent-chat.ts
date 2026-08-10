@@ -2053,6 +2053,9 @@ export class AgentChat implements OnInit {
    * @returns Returns the state label.
    */
   public permissionStateLabel(item: AgentItem): string {
+    if (item.permissionState === 'dismissed') {
+      return 'Answered on another device';
+    }
     if (item.permissionState !== 'allowed') {
       return 'Denied';
     }

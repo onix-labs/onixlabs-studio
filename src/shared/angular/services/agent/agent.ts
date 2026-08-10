@@ -64,7 +64,7 @@ export type AgentToolState = 'running' | 'ok' | 'error';
 /**
  * Identifies the state of a permission request item.
  */
-export type AgentPermissionState = 'pending' | 'allowed' | 'denied';
+export type AgentPermissionState = 'pending' | 'allowed' | 'denied' | 'dismissed';
 
 /**
  * Identifies the state of an input-request (agent question) item: awaiting the user's answer,
@@ -1293,6 +1293,27 @@ export class Agent {
   }
 
   /**
+   * Withdraws a still-pending permission prompt answered elsewhere — a remote peer approved or declined
+   * the same tool call from the phone (#331). The prompt is settled in the main process already, so this
+   * only clears the local UI: the matching item drops its buttons and reads as answered on another
+   * device. A no-op when the prompt is already settled or unknown.
+   * @param permissionId The id of the permission prompt to withdraw.
+   */
+  private dismissPermission(permissionId: string): void {
+    const item: AgentItem | undefined = this.items().find(
+      (candidate: AgentItem): boolean =>
+        candidate.permissionId === permissionId && candidate.permissionState === 'pending',
+    );
+    if (item === undefined) {
+      return;
+    }
+    this.update(
+      item.id,
+      (existing: AgentItem): AgentItem => ({ ...existing, permissionState: 'dismissed' }),
+    );
+  }
+
+  /**
    * Answers a pending edit decision (a staged edit preview), unblocking the run.
    * @param item The edit-decision item.
    * @param choice The user's decision.
@@ -1367,6 +1388,13 @@ export class Agent {
         this.activeRequestId = event.requestId;
         this.busy.set(true);
       }
+      return;
+    }
+    // A permission answered elsewhere (a remote peer on the phone, #331) withdraws the still-pending
+    // local prompt. It is matched by permission id, not the active turn, so it lands whichever turn is
+    // in flight — handled ahead of the per-turn filter for the same reason as the events above.
+    if (event.kind === 'permission-dismissed') {
+      this.dismissPermission(event.permissionId);
       return;
     }
     if (event.requestId !== this.activeRequestId) {

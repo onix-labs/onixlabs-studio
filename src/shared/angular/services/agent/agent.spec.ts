@@ -447,6 +447,46 @@ describe('Agent', () => {
     expect(lastItem()?.permissionRemember).toBeUndefined();
   });
 
+  it('permissionDismissed_whenAnsweredElsewhere_withdrawsThePendingPromptWithoutReplying', () => {
+    agent.send('hi');
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'permission',
+      permissionId: 'p1',
+      name: 'Bash',
+      detail: 'ls',
+      hasWorkspace: false,
+    });
+    expect(agent.awaitingDecision()).toBe(true);
+
+    // A remote peer (phone) answered the same prompt; the main process withdraws it.
+    fireEvent({ requestId: 'run-1', kind: 'permission-dismissed', permissionId: 'p1' });
+
+    expect(agent.awaitingDecision()).toBe(false);
+    expect(lastItem()?.permissionState).toBe('dismissed');
+    // No local reply was sent — the run was already settled elsewhere.
+    expect(permissionReplies).toEqual([]);
+  });
+
+  it('permissionDismissed_forAnUnknownOrSettledPrompt_isANoOp', () => {
+    agent.send('hi');
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'permission',
+      permissionId: 'p1',
+      name: 'Bash',
+      detail: 'ls',
+      hasWorkspace: false,
+    });
+    const item: AgentItem | undefined = lastItem();
+    if (item !== undefined) {
+      agent.respondPermission(item, true);
+    }
+    // Dismissing an already-answered prompt must not change its settled state.
+    fireEvent({ requestId: 'run-1', kind: 'permission-dismissed', permissionId: 'p1' });
+    expect(lastItem()?.permissionState).toBe('allowed');
+  });
+
   it('inputRequest_whenRaised_pushesAPendingQuestionAndAwaitsTheUser', () => {
     agent.send('hi');
     fireEvent({

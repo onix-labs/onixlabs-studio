@@ -718,13 +718,14 @@ export class AiManager {
         request: (capability: string, input: unknown, timeoutMs?: number): Promise<unknown> =>
           this.bridge.request(capability, input, timeoutMs),
       },
-      requestPermission: (name: string, detail: string): Promise<boolean> =>
+      requestPermission: (name: string, detail: string, cancel?: AbortSignal): Promise<boolean> =>
         this.requestPermission(
           request.requestId,
           controller.signal,
           request.workspaceRoot,
           name,
           detail,
+          cancel,
         ),
       recordAudit: (name: string, detail: string, source: AuditGrantSource): void =>
         this.recordAudit(name, detail, request.workspaceRoot, source),
@@ -1152,6 +1153,9 @@ export class AiManager {
    * @param workspaceRoot The run's workspace root, or null for none.
    * @param name The display name of the action.
    * @param detail A one-line summary of the action.
+   * @param cancel An optional signal that dismisses this prompt and resolves false when aborted — raised
+   *   when a remote peer answers the same permission first, so Studio's still-visible prompt is cleared
+   *   via a `permission-dismissed` event (distinct from a run abort, which tears the whole run down).
    * @returns Returns true when the user grants permission (or a remembered rule already does).
    */
   private requestPermission(
@@ -1160,6 +1164,7 @@ export class AiManager {
     workspaceRoot: string | null,
     name: string,
     detail: string,
+    cancel?: AbortSignal,
   ): Promise<boolean> {
     if (this.sessionAllowed.has(name) || this.rules.isAllowed(name, workspaceRoot)) {
       logger.debug('AiManager.requestPermission', `Auto-granted "${name}" from a remembered rule`);
@@ -1180,6 +1185,23 @@ export class AiManager {
       if (signal.aborted) {
         settle(false);
         return;
+      }
+      // A remote peer answered first: dismiss the still-open local prompt and clear its UI.
+      if (cancel !== undefined) {
+        if (cancel.aborted) {
+          settle(false);
+          return;
+        }
+        cancel.addEventListener(
+          'abort',
+          (): void => {
+            if (this.permissions.has(permissionId)) {
+              this.emit({ requestId, kind: 'permission-dismissed', permissionId });
+            }
+            settle(false);
+          },
+          { once: true },
+        );
       }
       signal.addEventListener('abort', (): void => settle(false), { once: true });
       this.emit({

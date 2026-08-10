@@ -164,6 +164,24 @@ export interface AiPermissionEvent extends AiEventBase {
 }
 
 /**
+ * Withdraws a permission prompt the renderer is still showing because it was answered elsewhere — a
+ * remote peer (phone) approved or declined the same tool call first (#331 remote control). The renderer
+ * drops the matching pending prompt from the transcript; the run has already been resolved in the main
+ * process, so no reply is expected. Distinct from a run abort, which tears the entire run down.
+ */
+export interface AiPermissionDismissedEvent extends AiEventBase {
+  /**
+   * Gets the discriminator.
+   */
+  readonly kind: 'permission-dismissed';
+
+  /**
+   * Gets the identifier of the permission prompt to withdraw (matches {@link AiPermissionEvent.permissionId}).
+   */
+  readonly permissionId: string;
+}
+
+/**
  * A suggested answer to an agent question: a short label the run is answered with, plus an optional
  * explanation of what picking it means.
  */
@@ -425,6 +443,7 @@ export type AiEvent =
   | AiToolStartEvent
   | AiToolEndEvent
   | AiPermissionEvent
+  | AiPermissionDismissedEvent
   | AiInputRequestEvent
   | AiEditDecisionEvent
   | AiSessionEvent

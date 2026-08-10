@@ -1,4 +1,4 @@
-import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk';
+import type { SDKControlResponse, SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import type {
   BridgeSessionHandle,
   CredentialsFailure,
@@ -47,6 +47,7 @@ interface BridgeModule {
     epoch?: number;
     outboundOnly?: boolean;
     onInboundMessage?: (msg: SDKMessage) => void;
+    onPermissionResponse?: (res: SDKControlResponse) => void;
     onClose?: (code?: number) => void;
   }): Promise<BridgeSessionHandle>;
 }
@@ -110,14 +111,32 @@ export class RemoteControlBridge {
   private closed: boolean = false;
 
   /**
+   * A monotonic counter minting per-permission control-request ids.
+   */
+  private permissionSeq: number = 0;
+
+  /**
    * Initialises a new instance of the {@link RemoteControlBridge} class.
    * @param handle The attached bridge session handle.
    * @param sessionId The claude.ai code-session id.
+   * @param mode Whether the session is mirrored (view-only) or fully controllable.
+   * @param pendingPermissions The in-flight permission prompts keyed by control-request id (shared with
+   * the attach callback so a claude.ai answer resolves the awaiting request).
    */
   private constructor(
     private readonly handle: BridgeSessionHandle,
     public readonly sessionId: string,
+    private readonly mode: RemoteControlAttachMode,
+    private readonly pendingPermissions: Map<string, (granted: boolean) => void>,
   ) {}
+
+  /**
+   * Gets whether the bridge can prompt a peer for a permission decision — only a live control-mode
+   * session can (a mirror is view-only).
+   */
+  public get canPrompt(): boolean {
+    return !this.closed && this.mode === 'control';
+  }
 
   /**
    * Opens a bridge for a session: creates the code session, mints worker credentials, and attaches.
@@ -159,6 +178,13 @@ export class RemoteControlBridge {
         logger.warn('ClaudeRemoteControl', `Could not mint worker credentials: ${reason}`);
         return null;
       }
+      // The permission prompts awaiting a claude.ai answer, shared with the attach callback below so a
+      // `control_response` from the phone resolves the awaiting request. Wired here (before the instance
+      // exists) so the callback can be passed to `attachBridgeSession`.
+      const pendingPermissions: Map<string, (granted: boolean) => void> = new Map<
+        string,
+        (granted: boolean) => void
+      >();
       const handle: BridgeSessionHandle = await bridge.attachBridgeSession({
         sessionId,
         ingressToken: creds.worker_jwt,
@@ -175,6 +201,10 @@ export class RemoteControlBridge {
                 }
               }
             : undefined,
+        onPermissionResponse:
+          options.mode === 'control'
+            ? (res: SDKControlResponse): void => resolvePermissionResponse(pendingPermissions, res)
+            : undefined,
         onClose: (code?: number): void =>
           logger.debug('ClaudeRemoteControl', `Bridge transport closed (code ${code ?? 'n/a'})`),
       });
@@ -184,7 +214,7 @@ export class RemoteControlBridge {
         'ClaudeRemoteControl',
         `Session ${sessionId} bridged to claude.ai/code (${options.mode})`,
       );
-      return new RemoteControlBridge(handle, sessionId);
+      return new RemoteControlBridge(handle, sessionId, options.mode, pendingPermissions);
     } catch (error: unknown) {
       logger.warn('ClaudeRemoteControl', 'Failed to open the remote-control bridge', error);
       return null;
@@ -212,6 +242,53 @@ export class RemoteControlBridge {
       }
     } catch (error: unknown) {
       logger.debug('ClaudeRemoteControl', 'Forwarding a message to the bridge failed', error);
+    }
+  }
+
+  /**
+   * Forwards a permission prompt to claude.ai so the peer can answer it, returning the control-request
+   * id (to cancel the prompt if answered locally first) and a promise that resolves with the peer's
+   * allow/deny decision. Only meaningful in control mode; the caller gates on {@link canPrompt}.
+   * @param toolName The SDK tool name requesting permission.
+   * @param input The tool's input.
+   * @returns Returns the request id and the peer-decision promise.
+   */
+  public requestPermission(
+    toolName: string,
+    input: Record<string, unknown>,
+  ): { readonly id: string; readonly granted: Promise<boolean> } {
+    const id: string = `studio-perm-${(this.permissionSeq += 1)}`;
+    const granted: Promise<boolean> = new Promise<boolean>((resolve: (granted: boolean) => void): void => {
+      this.pendingPermissions.set(id, resolve);
+      try {
+        this.handle.sendControlRequest({
+          type: 'control_request',
+          request_id: id,
+          request: { subtype: 'can_use_tool', tool_name: toolName, input },
+        });
+      } catch (error: unknown) {
+        // Forwarding failed: drop the pending entry and never resolve, so the local prompt decides the
+        // race instead.
+        this.pendingPermissions.delete(id);
+        logger.debug('ClaudeRemoteControl', 'Forwarding a permission prompt to the bridge failed', error);
+      }
+    });
+    return { id, granted };
+  }
+
+  /**
+   * Cancels a forwarded permission prompt (the local prompt was answered first), dismissing it on
+   * claude.ai. Best-effort.
+   * @param id The control-request id returned by {@link requestPermission}.
+   */
+  public cancelPermission(id: string): void {
+    if (!this.pendingPermissions.delete(id) || this.closed) {
+      return;
+    }
+    try {
+      this.handle.sendControlCancelRequest(id);
+    } catch (error: unknown) {
+      logger.debug('ClaudeRemoteControl', 'Cancelling a forwarded permission prompt failed', error);
     }
   }
 
@@ -267,4 +344,51 @@ export function inboundText(message: SDKMessage): string | null {
     return text.length > 0 ? text : null;
   }
   return null;
+}
+
+/**
+ * Resolves the pending permission prompt a claude.ai `control_response` answers. The raw response is
+ * logged (its exact allow/deny shape is undocumented `@alpha`) so it can be confirmed from a real run.
+ * @param pending The in-flight permission resolvers keyed by control-request id.
+ * @param res The control response from claude.ai.
+ */
+export function resolvePermissionResponse(
+  pending: Map<string, (granted: boolean) => void>,
+  res: SDKControlResponse,
+): void {
+  logger.debug('ClaudeRemoteControl', `Permission control_response: ${JSON.stringify(res).slice(0, 500)}`);
+  const inner: { request_id?: unknown; subtype?: unknown; response?: unknown } | undefined = (
+    res as { response?: { request_id?: unknown; subtype?: unknown; response?: unknown } }
+  ).response;
+  const requestId: unknown = inner?.request_id;
+  if (typeof requestId !== 'string') {
+    return;
+  }
+  const resolve: ((granted: boolean) => void) | undefined = pending.get(requestId);
+  if (resolve === undefined) {
+    return;
+  }
+  pending.delete(requestId);
+  resolve(inner?.subtype === 'error' ? false : parseGranted(inner?.response));
+}
+
+/**
+ * Reads an allow/deny decision from a claude.ai permission response payload, defensively — the exact
+ * shape is undocumented `@alpha`, so several plausible encodings are accepted; anything unrecognised is
+ * treated as a denial.
+ * @param payload The `response.response` record from the control response.
+ * @returns Returns true when the peer allowed the tool.
+ */
+export function parseGranted(payload: unknown): boolean {
+  if (payload === null || typeof payload !== 'object') {
+    return false;
+  }
+  const record: Record<string, unknown> = payload as Record<string, unknown>;
+  return (
+    record['behavior'] === 'allow' ||
+    record['allow'] === true ||
+    record['granted'] === true ||
+    record['decision'] === 'approve' ||
+    record['result'] === 'allow'
+  );
 }

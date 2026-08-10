@@ -1,6 +1,12 @@
-import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk';
+import type { SDKControlResponse, SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import { describe, expect, it } from 'vitest';
-import { inboundText, RemoteControlBridge } from './claude-remote-control';
+import {
+  inboundText,
+  parseGranted,
+  RemoteControlBridge,
+  resolvePermissionResponse,
+  type RemoteControlAttachMode,
+} from './claude-remote-control';
 
 /**
  * A fake bridge session handle recording the calls the bridge makes.
@@ -8,6 +14,8 @@ import { inboundText, RemoteControlBridge } from './claude-remote-control';
 class FakeHandle {
   public readonly writes: SDKMessage[] = [];
   public readonly states: string[] = [];
+  public readonly controlRequests: unknown[] = [];
+  public readonly cancels: string[] = [];
   public results: number = 0;
   public closes: number = 0;
 
@@ -20,6 +28,12 @@ class FakeHandle {
   public reportState(state: string): void {
     this.states.push(state);
   }
+  public sendControlRequest(req: unknown): void {
+    this.controlRequests.push(req);
+  }
+  public sendControlCancelRequest(id: string): void {
+    this.cancels.push(id);
+  }
   public close(): void {
     this.closes += 1;
   }
@@ -28,12 +42,27 @@ class FakeHandle {
 /**
  * Constructs a bridge over a fake handle, bypassing the network `open()` factory.
  * @param handle The fake handle.
+ * @param mode The attach mode (defaults to control so the permission channel is live).
+ * @param pending The shared pending-permission map (defaults to a fresh one).
  * @returns Returns the bridge.
  */
-function bridgeOver(handle: FakeHandle): RemoteControlBridge {
-  const ctor: new (handle: unknown, sessionId: string) => RemoteControlBridge =
-    RemoteControlBridge as unknown as new (handle: unknown, sessionId: string) => RemoteControlBridge;
-  return new ctor(handle, 'cse_test');
+function bridgeOver(
+  handle: FakeHandle,
+  mode: RemoteControlAttachMode = 'control',
+  pending: Map<string, (granted: boolean) => void> = new Map<string, (granted: boolean) => void>(),
+): RemoteControlBridge {
+  const ctor: new (
+    handle: unknown,
+    sessionId: string,
+    mode: RemoteControlAttachMode,
+    pending: Map<string, (granted: boolean) => void>,
+  ) => RemoteControlBridge = RemoteControlBridge as unknown as new (
+    handle: unknown,
+    sessionId: string,
+    mode: RemoteControlAttachMode,
+    pending: Map<string, (granted: boolean) => void>,
+  ) => RemoteControlBridge;
+  return new ctor(handle, 'cse_test', mode, pending);
 }
 
 describe('inboundText', () => {
@@ -89,5 +118,89 @@ describe('RemoteControlBridge.forward', () => {
     bridge.close();
 
     expect(handle.closes).toBe(1);
+  });
+});
+
+describe('RemoteControlBridge.canPrompt', () => {
+  it('isTrueOnlyForALiveControlSession', () => {
+    expect(bridgeOver(new FakeHandle(), 'control').canPrompt).toBe(true);
+    expect(bridgeOver(new FakeHandle(), 'mirror').canPrompt).toBe(false);
+    const closable: RemoteControlBridge = bridgeOver(new FakeHandle(), 'control');
+    closable.close();
+    expect(closable.canPrompt).toBe(false);
+  });
+});
+
+describe('RemoteControlBridge.requestPermission', () => {
+  it('forwardsACanUseToolControlRequest_andResolvesWhenThePeerAnswers', async () => {
+    const handle: FakeHandle = new FakeHandle();
+    const pending: Map<string, (granted: boolean) => void> = new Map<string, (granted: boolean) => void>();
+    const bridge: RemoteControlBridge = bridgeOver(handle, 'control', pending);
+
+    const { id, granted } = bridge.requestPermission('Bash', { command: 'ls' });
+
+    expect(handle.controlRequests).toEqual([
+      { type: 'control_request', request_id: id, request: { subtype: 'can_use_tool', tool_name: 'Bash', input: { command: 'ls' } } },
+    ]);
+    // The peer answers via the shared pending map (as the attach callback would).
+    resolvePermissionResponse(pending, {
+      type: 'control_response',
+      response: { subtype: 'success', request_id: id, response: { behavior: 'allow' } },
+    } as unknown as SDKControlResponse);
+    await expect(granted).resolves.toBe(true);
+  });
+
+  it('cancelPermission_sendsACancelAndDropsThePending', () => {
+    const handle: FakeHandle = new FakeHandle();
+    const pending: Map<string, (granted: boolean) => void> = new Map<string, (granted: boolean) => void>();
+    const bridge: RemoteControlBridge = bridgeOver(handle, 'control', pending);
+
+    const { id } = bridge.requestPermission('Bash', { command: 'ls' });
+    bridge.cancelPermission(id);
+
+    expect(handle.cancels).toEqual([id]);
+    expect(pending.has(id)).toBe(false);
+    // A second cancel is a no-op (already dropped).
+    bridge.cancelPermission(id);
+    expect(handle.cancels).toEqual([id]);
+  });
+});
+
+describe('resolvePermissionResponse', () => {
+  it('resolvesFalseForAnErrorSubtype', async () => {
+    const pending: Map<string, (granted: boolean) => void> = new Map<string, (granted: boolean) => void>();
+    const answer: Promise<boolean> = new Promise<boolean>((resolve) => pending.set('id-1', resolve));
+    resolvePermissionResponse(pending, {
+      type: 'control_response',
+      response: { subtype: 'error', request_id: 'id-1', error: 'boom' },
+    } as unknown as SDKControlResponse);
+    await expect(answer).resolves.toBe(false);
+  });
+
+  it('ignoresAnUnknownRequestId', () => {
+    const pending: Map<string, (granted: boolean) => void> = new Map<string, (granted: boolean) => void>();
+    // Must not throw when no resolver matches.
+    resolvePermissionResponse(pending, {
+      type: 'control_response',
+      response: { subtype: 'success', request_id: 'nope', response: { behavior: 'allow' } },
+    } as unknown as SDKControlResponse);
+    expect(pending.size).toBe(0);
+  });
+});
+
+describe('parseGranted', () => {
+  it('acceptsSeveralPlausibleAllowShapes', () => {
+    expect(parseGranted({ behavior: 'allow' })).toBe(true);
+    expect(parseGranted({ allow: true })).toBe(true);
+    expect(parseGranted({ granted: true })).toBe(true);
+    expect(parseGranted({ decision: 'approve' })).toBe(true);
+    expect(parseGranted({ result: 'allow' })).toBe(true);
+  });
+
+  it('treatsAnythingElseAsADenial', () => {
+    expect(parseGranted({ behavior: 'deny' })).toBe(false);
+    expect(parseGranted({})).toBe(false);
+    expect(parseGranted(null)).toBe(false);
+    expect(parseGranted('allow')).toBe(false);
   });
 });
