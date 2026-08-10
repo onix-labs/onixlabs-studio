@@ -2,6 +2,7 @@ import { BrowserWindow, ipcMain, IpcMainInvokeEvent } from 'electron';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { FileChannel } from '@shared/api/file-channels';
+import { logger } from './logger';
 
 /**
  * Specifies how long, in milliseconds, to coalesce rapid change events for a file before notifying.
@@ -100,8 +101,8 @@ export class FileWatcher {
         );
         directory = { watcher, files: new Map<string, number>() };
         this.directories.set(directoryPath, directory);
-      } catch {
-        // The directory may not exist or be unwatchable; treat as a no-op.
+      } catch (error: unknown) {
+        logger.debug('FileWatcher', `Cannot watch ${directoryPath}`, error);
         return;
       }
     }

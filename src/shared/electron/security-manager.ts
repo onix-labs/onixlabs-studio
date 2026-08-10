@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { logger } from './logger';
 import {
   app,
   HeadersReceivedResponse,
@@ -132,8 +133,8 @@ export class SecurityManager {
           return candidate;
         }
       }
-    } catch {
-      // Fall through to the default when the store is missing or corrupt.
+    } catch (error: unknown) {
+      logger.debug('SecurityManager', 'Image-policy store unreadable; defaulting to https', error);
     }
     return 'https';
   }
@@ -147,8 +148,8 @@ export class SecurityManager {
         encoding: 'utf8',
         mode: 0o600,
       });
-    } catch {
-      // Persistence is best-effort; a failure simply means the choice is not remembered.
+    } catch (error: unknown) {
+      logger.warn('SecurityManager', 'Failed to persist image policy', error);
     }
   }
 

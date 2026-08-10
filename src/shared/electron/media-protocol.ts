@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { extname, isAbsolute, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { protocol } from 'electron';
+import { logger } from './logger';
 
 /**
  * The custom URL scheme the renderer references local images through. A markdown image whose source is
@@ -70,7 +71,8 @@ export class MediaProtocol {
     try {
       const data: Buffer = await readFile(resolved.path);
       return new Response(new Uint8Array(data), { headers: { 'content-type': resolved.mime } });
-    } catch {
+    } catch (error: unknown) {
+      logger.debug('media', `Media resource unreadable: ${resolved.path}`, error);
       return new Response('Not found', { status: 404 });
     }
   }
@@ -88,6 +90,7 @@ export class MediaProtocol {
     try {
       url = new URL(requestUrl);
     } catch {
+      logger.debug('media', 'Invalid media request URL');
       return null;
     }
 
@@ -104,6 +107,7 @@ export class MediaProtocol {
       try {
         absolute = fileURLToPath(source);
       } catch {
+        logger.debug('media', 'Invalid file URL in media request');
         return null;
       }
     } else if (isAbsolute(source)) {

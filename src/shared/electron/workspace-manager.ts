@@ -6,6 +6,7 @@ import {
   WebContents,
 } from 'electron';
 import { showOpenDialog } from './dialog-parent';
+import { logger } from './logger';
 import * as fs from 'node:fs/promises';
 import type { Dirent, Stats } from 'node:fs';
 import * as path from 'node:path';
@@ -369,9 +370,11 @@ export class WorkspaceManager {
     const root: string = path.resolve(result.filePaths[0]);
     this.workspace.addRoot(root);
     this.trusted.remember(root);
+    logger.info('WorkspaceManager', `Opened workspace root ${root}`);
     try {
       return await this.readListing(root);
-    } catch {
+    } catch (error: unknown) {
+      logger.warn('WorkspaceManager', `Failed to read workspace root ${root}; removing`, error);
       this.workspace.removeRoot(root);
       return null;
     }
@@ -401,7 +404,8 @@ export class WorkspaceManager {
       }
       this.trusted.remember(selectedPath);
       return await this.readFileSelection(selectedPath);
-    } catch {
+    } catch (error: unknown) {
+      logger.debug('WorkspaceManager', `Failed to open ${selectedPath}`, error);
       return null;
     }
   }
@@ -421,7 +425,8 @@ export class WorkspaceManager {
       // Remember the file so it can be re-opened from the welcome screen once its workspace is closed.
       this.trusted.remember(resolved);
       return selection;
-    } catch {
+    } catch (error: unknown) {
+      logger.debug('WorkspaceManager', 'Failed to open file', error);
       return null;
     }
   }
@@ -465,7 +470,8 @@ export class WorkspaceManager {
         await handle.read(buffer, 0, buffer.length, start);
       }
       return { size, offset: start, bytes: new Uint8Array(buffer) };
-    } catch {
+    } catch (error: unknown) {
+      logger.debug('WorkspaceManager', `Failed to read bytes from ${resolved}`, error);
       return null;
     } finally {
       await handle?.close();
@@ -511,7 +517,8 @@ export class WorkspaceManager {
         }
       }
       return true;
-    } catch {
+    } catch (error: unknown) {
+      logger.error('WorkspaceManager', `Failed to write bytes to ${resolved}`, error);
       return false;
     } finally {
       await handle?.close();
@@ -591,7 +598,8 @@ export class WorkspaceManager {
       source = undefined;
       await fs.rename(tempPath, resolved);
       return true;
-    } catch {
+    } catch (error: unknown) {
+      logger.error('WorkspaceManager', 'Failed to write file', error);
       return false;
     } finally {
       await temp?.close();
@@ -611,7 +619,8 @@ export class WorkspaceManager {
     }
     try {
       return await this.readListing(path.resolve(directoryPath as string));
-    } catch {
+    } catch (error: unknown) {
+      logger.debug('WorkspaceManager', 'Failed to read directory listing', error);
       return null;
     }
   }
@@ -630,7 +639,8 @@ export class WorkspaceManager {
     this.workspace.addRoot(resolved);
     try {
       return await this.readListing(resolved);
-    } catch {
+    } catch (error: unknown) {
+      logger.warn('WorkspaceManager', `Failed to refresh root ${resolved}; removing`, error);
       this.workspace.removeRoot(resolved);
       return null;
     }
@@ -649,7 +659,8 @@ export class WorkspaceManager {
     }
     try {
       return await this.readFileSelection(path.resolve(filePath as string));
-    } catch {
+    } catch (error: unknown) {
+      logger.debug('WorkspaceManager', 'Failed to read file selection', error);
       return null;
     }
   }
@@ -679,8 +690,10 @@ export class WorkspaceManager {
       } else {
         await fs.writeFile(target, '', { flag: 'wx' });
       }
+      logger.info('WorkspaceManager', `Created ${type} ${target}`);
       return { success: true, path: target };
     } catch (error: unknown) {
+      logger.error('WorkspaceManager', `Failed to create ${type} ${target}`, error);
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
   }
@@ -705,8 +718,10 @@ export class WorkspaceManager {
     const destination: string = path.join(path.dirname(resolved), newName as string);
     try {
       await fs.rename(resolved, destination);
+      logger.info('WorkspaceManager', `Renamed ${resolved} to ${destination}`);
       return { success: true, path: destination };
     } catch (error: unknown) {
+      logger.error('WorkspaceManager', `Failed to rename ${resolved}`, error);
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
   }
@@ -726,8 +741,10 @@ export class WorkspaceManager {
     }
     try {
       await fs.rm(resolved, { recursive: true, force: false });
+      logger.info('WorkspaceManager', `Deleted ${resolved}`);
       return { success: true, path: resolved };
     } catch (error: unknown) {
+      logger.error('WorkspaceManager', `Failed to delete ${resolved}`, error);
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
   }

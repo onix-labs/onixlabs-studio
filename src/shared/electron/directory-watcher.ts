@@ -3,6 +3,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { DirectoryChangeEvent, FileChannel } from '@shared/api/file-channels';
 import { shouldForwardTreeEvent } from './directory-watch-filter';
+import { logger } from './logger';
 
 /**
  * Specifies how long, in milliseconds, changes under a root are coalesced before notifying. The timer
@@ -163,8 +164,8 @@ export class DirectoryWatcher {
         this.recordOverflow(root);
       });
       this.roots.set(root, { watcher, holders: new Map<number, number>([[sender.id, 1]]) });
-    } catch {
-      // The root may not exist or be unwatchable; treat as a no-op.
+    } catch (error: unknown) {
+      logger.debug('DirectoryWatcher', `Cannot watch ${root}`, error);
     }
   }
 

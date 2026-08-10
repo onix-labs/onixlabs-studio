@@ -1,6 +1,7 @@
 import { ipcMain, IpcMainInvokeEvent } from 'electron';
 import type { AssemblyState as AssemblyStateType } from '@defasm/core';
 import { AssembleResult, BinaryChannel } from '@shared/api/binary-channels';
+import { logger } from './logger';
 
 /**
  * Bounds the assembly text a single request will assemble, keeping a malformed or runaway snippet from
@@ -119,6 +120,8 @@ export class BinaryAssembler {
       }
       return { ok: true, bytes: Array.from(bytes) };
     } catch (error: unknown) {
+      // Assembly failure is usually invalid user input, not a system fault, so it is debug.
+      logger.debug('BinaryAssembler', 'Assembly failed', error);
       return { ok: false, error: error instanceof Error ? error.message : String(error) };
     }
   }

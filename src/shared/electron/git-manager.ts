@@ -9,6 +9,7 @@ import {
   WebContents,
 } from 'electron';
 import { showOpenDialog } from './dialog-parent';
+import { logger } from './logger';
 import { GitRunResult, RepositoryInfo, SourceControlChannel } from '../api/source-control-channels';
 
 /**
@@ -255,6 +256,7 @@ export class GitManager {
       return null;
     }
     this.roots.set(root, (this.roots.get(root) ?? 0) + 1);
+    logger.info('GitManager', `Opened repository ${root}`);
     return { root, name: path.basename(root) };
   }
 
@@ -430,6 +432,7 @@ export class GitManager {
       try {
         await rm(path.resolve(resolvedRoot, relative), { recursive: true, force: true });
       } catch (error: unknown) {
+        logger.error('GitManager', `Failed to delete ${relative} while discarding changes`, error);
         return { success: false, error: `Failed to delete ${relative}: ${String(error)}` };
       }
     }
@@ -685,6 +688,7 @@ export class GitManager {
         error,
       )
     ) {
+      logger.warn('GitManager', 'Network git operation failed authentication (non-interactive)');
       return {
         success: false,
         stderr: result.stderr,
@@ -779,6 +783,9 @@ export class GitManager {
         },
         (error: Error | null, stdout: string, stderr: string): void => {
           if (error !== null) {
+            // Git failing is often expected (a status in a non-repo, a rejected push), so this is
+            // debug, not error; the caller surfaces the outcome to the user.
+            logger.debug('GitManager', `git ${args[0] ?? ''} failed: ${error.message}`);
             resolve({ success: false, error: error.message, stderr });
             return;
           }

@@ -5,6 +5,7 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { RunChannel, TempFileResult } from '@shared/api/run-channels';
+import { logger } from './logger';
 
 /**
  * Holds the base name (without extension) given to every run file.
@@ -90,8 +91,10 @@ export class CodeRunner {
       await fs.mkdir(directory, { recursive: true });
       const filePath: string = path.join(directory, `${RUN_FILE_BASENAME}${safeExtension}`);
       await fs.writeFile(filePath, content, 'utf-8');
+      logger.debug('CodeRunner', `Wrote run file ${filePath}`);
       return { success: true, path: filePath };
     } catch (error: unknown) {
+      logger.error('CodeRunner', 'Failed to write run file', error);
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
   }

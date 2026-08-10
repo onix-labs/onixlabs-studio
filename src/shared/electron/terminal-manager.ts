@@ -6,6 +6,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as pty from 'node-pty';
 import { readFileSync } from 'node:fs';
+import { logger } from './logger';
 import { pidJournal } from './pid-journal';
 import { killProcessTree, signalProcessTree } from './process-tree';
 import {
@@ -277,9 +278,11 @@ export class TerminalManager {
       this.terminals.set(id, terminal);
       this.kinds.set(id, kind);
       pidJournal()?.register(terminal.pid, 'terminal', spec.file);
+      logger.info('TerminalManager', `Spawned ${kind} terminal (pid ${terminal.pid}, ${spec.file})`);
       return { success: true, pid: terminal.pid, shell: spec.file };
     } catch (error: unknown) {
       const message: string = error instanceof Error ? error.message : 'Unknown error';
+      logger.error('TerminalManager', 'Failed to spawn terminal', error);
       if (command !== undefined) {
         // A failed command spawn must be visible in the session's pane, not a silent no-op: record
         // the failure in the scrollback with an exit — streamed live too, for an attached pane —

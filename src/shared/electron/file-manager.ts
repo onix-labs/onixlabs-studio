@@ -8,6 +8,7 @@ import {
   WebContents,
 } from 'electron';
 import { showMessageBox, showOpenDialog, showSaveDialog } from './dialog-parent';
+import { logger } from './logger';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import {
@@ -131,7 +132,8 @@ export class FileManager {
     }
     try {
       return await this.readFileInfo(filePath);
-    } catch {
+    } catch (error: unknown) {
+      logger.debug('FileManager', `Failed to read ${filePath}`, error);
       return null;
     }
   }
@@ -157,8 +159,10 @@ export class FileManager {
     try {
       // Re-add the byte-order mark the file was read with, so a BOM is preserved across edits.
       await fs.writeFile(filePath, hasBom ? UTF8_BOM + content : content, 'utf-8');
+      logger.info('FileManager', `Saved ${filePath}`);
       return { success: true, path: filePath };
     } catch (error: unknown) {
+      logger.error('FileManager', `Failed to save ${filePath}`, error);
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
   }
@@ -178,7 +182,8 @@ export class FileManager {
     }
     try {
       return await this.readFileInfo(result.filePaths[0]);
-    } catch {
+    } catch (error: unknown) {
+      logger.debug('FileManager', `Failed to read chosen file ${result.filePaths[0]}`, error);
       return null;
     }
   }

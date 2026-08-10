@@ -1,5 +1,6 @@
 import { BrowserWindow, ipcMain, IpcMainInvokeEvent, SaveDialogReturnValue, shell } from 'electron';
 import { showSaveDialog } from './dialog-parent';
+import { logger } from './logger';
 import * as fs from 'node:fs/promises';
 import { ExportPdfRequest, ExportPdfResult, PrintChannel } from '@shared/api/print-channels';
 
@@ -62,8 +63,10 @@ export class PrintManager {
       await fs.writeFile(result.filePath, data);
       // Open the finished PDF in the default viewer; this is also the "preview" the print dialog lacks.
       void shell.openPath(result.filePath);
+      logger.info('PrintManager', `Exported PDF to ${result.filePath}`);
       return { success: true, path: result.filePath };
     } catch (error: unknown) {
+      logger.error('PrintManager', 'PDF export failed', error);
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
   }

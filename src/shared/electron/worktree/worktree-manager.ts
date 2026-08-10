@@ -7,6 +7,7 @@ import {
   WorktreeOutcome,
 } from '@shared/api/worktree';
 import { WorktreeChannel } from '@shared/api/worktree-channels';
+import { logger } from '../logger';
 import { TrustedPaths } from '../trusted-paths';
 import { WorkspaceContext } from '../workspace-context';
 import { WorktreeOperations } from './worktree-operations';
@@ -55,7 +56,7 @@ export class WorktreeManager {
     ipcMain.handle(
       WorktreeChannel.Promote,
       (_event: IpcMainInvokeEvent, root: unknown): Promise<WorktreeOutcome<WorktreeDescriptor>> =>
-        this.operations.promote(root),
+        this.logged(`Promote ${String(root)}`, this.operations.promote(root)),
     );
     ipcMain.handle(
       WorktreeChannel.AddCheckout,
@@ -64,12 +65,12 @@ export class WorktreeManager {
         root: unknown,
         options: unknown,
       ): Promise<WorktreeOutcome<WorktreeCheckoutInfo>> =>
-        this.operations.addCheckout(root, options),
+        this.logged(`Add checkout in ${String(root)}`, this.operations.addCheckout(root, options)),
     );
     ipcMain.handle(
       WorktreeChannel.RemoveCheckout,
       (_event: IpcMainInvokeEvent, root: unknown, id: unknown): Promise<WorktreeOutcome<null>> =>
-        this.operations.removeCheckout(root, id),
+        this.logged(`Remove checkout ${String(id)}`, this.operations.removeCheckout(root, id)),
     );
     ipcMain.handle(
       WorktreeChannel.OpenCheckout,
@@ -88,5 +89,23 @@ export class WorktreeManager {
       (_event: IpcMainInvokeEvent, root: unknown): Promise<readonly string[] | null> =>
         this.operations.branches(root),
     );
+  }
+
+  /**
+   * Logs a mutating worktree operation's outcome: an info on success, an error (with the reason) on
+   * failure. The disk mechanics stay Electron-free in {@link WorktreeOperations}; this wrapper owns
+   * the logging.
+   * @param action A human-readable description of the operation.
+   * @param outcome The operation's promised outcome.
+   * @returns Returns the same outcome, for the handler to reply with.
+   */
+  private async logged<T>(action: string, outcome: Promise<WorktreeOutcome<T>>): Promise<WorktreeOutcome<T>> {
+    const result: WorktreeOutcome<T> = await outcome;
+    if (result.ok) {
+      logger.info('WorktreeManager', `${action} succeeded`);
+    } else {
+      logger.error('WorktreeManager', `${action} failed: ${result.error}`);
+    }
+    return result;
   }
 }

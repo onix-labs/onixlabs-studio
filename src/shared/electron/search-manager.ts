@@ -10,6 +10,7 @@ import {
   SearchResultFile,
 } from '@shared/api/search-channels';
 import { WorkspaceContext } from './workspace-context';
+import { logger } from './logger';
 
 /**
  * Caps the number of matches ripgrep is asked to return per file, bounding the work for pathological
@@ -160,6 +161,7 @@ export class SearchManager {
     if (request.query.length === 0 || !this.workspace.isRoot(request.root)) {
       return Promise.resolve(empty);
     }
+    logger.debug('SearchManager', `Searching ${request.root} for "${request.query}"`);
     return this.spawnSearch(request);
   }
 

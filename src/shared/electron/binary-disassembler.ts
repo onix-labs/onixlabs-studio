@@ -8,6 +8,7 @@ import {
   Mode,
 } from 'disassembler';
 import { BinaryChannel, DecodedInstruction } from '@shared/api/binary-channels';
+import { logger } from './logger';
 
 /**
  * Specifies the largest buffer (in bytes) a single request will disassemble, bounding the work and the
@@ -117,7 +118,8 @@ export class BinaryDisassembler {
         (instruction: DecodedInstruction): boolean =>
           instruction.startOffset >= filterStart && instruction.startOffset < filterEnd,
       );
-    } catch {
+    } catch (error: unknown) {
+      logger.debug('BinaryDisassembler', 'Disassembly failed; returning no instructions', error);
       return [];
     }
   }
