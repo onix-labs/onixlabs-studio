@@ -91,6 +91,7 @@ export interface SettingsValues {
   readonly 'ai.connections': readonly AiConnection[];
   readonly 'ai.activeConnectionId': string;
   readonly 'ai.connectionModels': AiConnectionModels;
+  readonly 'ai.autoScroll': boolean;
   readonly 'ai.permissionPosture': AiPermissionPosture;
   readonly 'ai.toolPolicies': Readonly<Record<string, AiToolPolicy>>;
   readonly 'ai.allowedWritePaths': readonly string[];
@@ -671,6 +672,15 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           "The model last selected per connection. A missing entry uses the connection's default.",
         control: { kind: 'custom', component: 'ai-connections' },
         default: {},
+      },
+      {
+        key: 'ai.autoScroll',
+        title: 'Auto-scroll transcripts',
+        description:
+          'Keep agent conversations pinned to the newest message as the response streams. Scrolling ' +
+          'up pauses the follow; scrolling back to the bottom resumes it. Applies to every agent view.',
+        control: { kind: 'toggle' },
+        default: true,
       },
       {
         key: 'ai.permissionPosture',

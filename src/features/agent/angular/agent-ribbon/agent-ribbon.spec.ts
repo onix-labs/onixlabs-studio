@@ -57,8 +57,6 @@ describe('AgentRibbon', () => {
   let running: WritableSignal<boolean>;
   let hasMessages: WritableSignal<boolean>;
   let historyOpen: WritableSignal<boolean>;
-  let autoScroll: WritableSignal<boolean>;
-  let autoScrollChoices: boolean[];
   let mode: WritableSignal<AgentMode>;
   let modeChoices: AgentMode[];
   let compacted: number;
@@ -109,8 +107,6 @@ describe('AgentRibbon', () => {
     running = signal<boolean>(false);
     hasMessages = signal<boolean>(true);
     historyOpen = signal<boolean>(false);
-    autoScroll = signal<boolean>(true);
-    autoScrollChoices = [];
     mode = signal<AgentMode>('agent');
     modeChoices = [];
     compacted = 0;
@@ -127,7 +123,6 @@ describe('AgentRibbon', () => {
       isRunning: running,
       hasMessages,
       historyOpen,
-      autoScroll,
       mode,
       contextPaths: contextRefs,
       provider: signal<AiProviderId>('claude'),
@@ -141,7 +136,6 @@ describe('AgentRibbon', () => {
       newChat: (): void => void (cleared += 1),
       stop: (): void => void (stopped += 1),
       toggleHistory: (): void => void (historyToggles += 1),
-      setAutoScroll: (value: boolean): void => void autoScrollChoices.push(value),
       setMode: (value: AgentMode): void => void modeChoices.push(value),
       compact: (): void => void (compacted += 1),
       attachFile: (): void => void (attachedFiles += 1),
@@ -228,17 +222,6 @@ describe('AgentRibbon', () => {
     button('History').click();
 
     expect(historyToggles).toBe(1);
-  });
-
-  it('autoScroll_whenUnchecked_drivesThePreferenceOff', () => {
-    const check: HTMLInputElement | null =
-      host.querySelector<HTMLInputElement>('input[type="checkbox"]');
-    expect(check).not.toBeNull();
-    expect(check!.checked).toBe(true);
-
-    check!.click();
-
-    expect(autoScrollChoices).toEqual([false]);
   });
 
   it('mode_whenChanged_setsTheChosenMode', () => {

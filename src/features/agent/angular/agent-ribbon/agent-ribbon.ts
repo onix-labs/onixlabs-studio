@@ -7,7 +7,6 @@ import { Log } from '@shared/angular/services/log/log';
 import { Icon } from '@shared/angular/icons/icon';
 import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host';
 import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button';
-import { RibbonStripCheck } from '@shared/angular/components/ribbon-strip/ribbon-strip-check/ribbon-strip-check';
 import { RibbonStripColumn } from '@shared/angular/components/ribbon-strip/ribbon-strip-column/ribbon-strip-column';
 import { RibbonStripField } from '@shared/angular/components/ribbon-strip/ribbon-strip-field/ribbon-strip-field';
 import { RibbonStripGroup } from '@shared/angular/components/ribbon-strip/ribbon-strip-group/ribbon-strip-group';
@@ -29,7 +28,6 @@ import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/rib
     RibbonStripGroup,
     RibbonStripColumn,
     RibbonStripButton,
-    RibbonStripCheck,
     RibbonStripField,
   ],
   templateUrl: './agent-ribbon.html',
@@ -78,11 +76,6 @@ export class AgentRibbon {
    * Gets a value indicating whether the active tab's conversation-history list is shown.
    */
   protected readonly historyOpen: Signal<boolean> = this.sessions.historyOpen;
-
-  /**
-   * Gets a value indicating whether the active tab's transcript follows new content as it streams.
-   */
-  protected readonly autoScroll: Signal<boolean> = this.sessions.autoScroll;
 
   /**
    * Gets the labels offered by the Mode field.
@@ -240,15 +233,6 @@ export class AgentRibbon {
       label === 'Control' ? 'control' : label === 'Mirror' ? 'mirror' : 'off';
     this.log.debug('agent.ribbon', 'Remote control changed', { mode });
     this.sessions.setRemoteControl(mode);
-  }
-
-  /**
-   * Sets the active tab's follow-the-tail preference.
-   * @param value The new checked state emitted by the Auto-scroll check.
-   */
-  protected onAutoScroll(value: boolean): void {
-    this.log.debug('agent.ribbon', 'Auto-scroll preference changed', { autoScroll: value });
-    this.sessions.setAutoScroll(value);
   }
 
   /**

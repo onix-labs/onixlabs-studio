@@ -170,15 +170,6 @@ describe('AgentConversation', () => {
     expect(conversation.historyOpen()).toBe(false);
   });
 
-  it('setAutoScroll_whenToggledOff_updatesThePreference', () => {
-    const conversation: AgentConversation = build();
-    expect(conversation.autoScroll()).toBe(true);
-
-    conversation.setAutoScroll(false);
-
-    expect(conversation.autoScroll()).toBe(false);
-  });
-
   it('attachSelection_whenAnEditorHasASelection_attachesItsTextAsInlineContext', () => {
     const conversation: AgentConversation = build();
     const editors: EditorCommands = TestBed.inject(EditorCommands);

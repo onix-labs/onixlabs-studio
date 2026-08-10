@@ -2,6 +2,13 @@
 @if (view() === 'general') {
   <section class="ai-group">
     <app-setting-row
+      label="Auto-scroll transcripts"
+      description="Keep agent conversations pinned to the newest message as the response streams. Scrolling up pauses the follow; scrolling back to the bottom resumes it. Applies to every agent view."
+    >
+      <app-setting-control key="ai.autoScroll" />
+    </app-setting-row>
+
+    <app-setting-row
       label="Per-request token cap"
       description="Token budget per turn. 0 means no cap (the provider default)."
     >

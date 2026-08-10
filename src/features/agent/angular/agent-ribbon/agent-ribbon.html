@@ -48,14 +48,6 @@
         [value]="modelLabel()"
         (changed)="onModelLabel($event)"
       />
-      @if (supportsRemoteControl()) {
-        <app-ribbon-strip-field
-          label="Remote"
-          [options]="remoteControlLabels"
-          [value]="remoteControlLabel()"
-          (changed)="onRemoteControlLabel($event)"
-        />
-      }
     </app-ribbon-strip-column>
   </app-ribbon-strip-group>
 
@@ -70,7 +62,7 @@
     />
   </app-ribbon-strip-group>
 
-  <app-ribbon-strip-group title="Options">
+  <app-ribbon-strip-group title="Permissions">
     <app-ribbon-strip-column [spread]="true">
       <app-ribbon-strip-field
         label="Mode"
@@ -78,11 +70,14 @@
         [value]="modeLabel()"
         (changed)="onModeLabel($event)"
       />
-      <app-ribbon-strip-check
-        label="Auto-scroll"
-        [checked]="autoScroll()"
-        (toggled)="onAutoScroll($event)"
-      />
+      @if (supportsRemoteControl()) {
+        <app-ribbon-strip-field
+          label="Remote"
+          [options]="remoteControlLabels"
+          [value]="remoteControlLabel()"
+          (changed)="onRemoteControlLabel($event)"
+        />
+      }
     </app-ribbon-strip-column>
   </app-ribbon-strip-group>
 </app-ribbon-overflow>

@@ -612,6 +612,12 @@ export class Settings {
     this.value('ai.connectionModels');
 
   /**
+   * Gets whether agent transcripts follow new content to the bottom as it streams (applies to every
+   * agent view).
+   */
+  public readonly aiAutoScroll: Signal<boolean> = this.value('ai.autoScroll');
+
+  /**
    * Gets the active connection, or undefined when no connection matches the active id (for example
    * after the active connection was removed).
    */

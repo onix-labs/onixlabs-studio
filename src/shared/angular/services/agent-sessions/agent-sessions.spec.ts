@@ -51,7 +51,6 @@ function createSession(): FakeSession {
     contextPaths: contextPaths.asReadonly(),
     hasMessages: signal<boolean>(true).asReadonly(),
     historyOpen: signal<boolean>(true).asReadonly(),
-    autoScroll: signal<boolean>(false).asReadonly(),
     provider: signal<string>('claude').asReadonly(),
     model: signal<string>('claude-opus-4-8').asReadonly(),
     models: signal<readonly AiModelInfo[]>([]).asReadonly(),
@@ -74,9 +73,6 @@ function createSession(): FakeSession {
     },
     toggleHistory: (): void => {
       calls.push('toggleHistory');
-    },
-    setAutoScroll: (value: boolean): void => {
-      calls.push(`setAutoScroll:${String(value)}`);
     },
     setMode: (mode: AgentMode): void => {
       calls.push(`setMode:${mode}`);
@@ -114,7 +110,6 @@ describe('AgentSessions', () => {
   it('signals_whenNoSessionIsActive_reportTheDefaults', () => {
     expect(service.isRunning()).toBe(false);
     expect(service.historyOpen()).toBe(false);
-    expect(service.autoScroll()).toBe(true);
     expect(service.mode()).toBe('agent');
     expect(service.contextPaths()).toEqual([]);
   });
@@ -125,7 +120,6 @@ describe('AgentSessions', () => {
 
     expect(service.isRunning()).toBe(false);
     expect(service.historyOpen()).toBe(true);
-    expect(service.autoScroll()).toBe(false);
     expect(service.mode()).toBe('chat');
     expect(service.contextPaths()).toEqual([{ path: '/ws/readme.md', kind: 'file' }]);
 
@@ -140,7 +134,6 @@ describe('AgentSessions', () => {
     service.newChat();
     service.stop();
     service.toggleHistory();
-    service.setAutoScroll(true);
     service.setMode('agent');
     service.attachFile();
     service.attachFolder();
@@ -151,7 +144,6 @@ describe('AgentSessions', () => {
       'newChat',
       'stop',
       'toggleHistory',
-      'setAutoScroll:true',
       'setMode:agent',
       'attachFile',
       'attachFolder',

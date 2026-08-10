@@ -37,6 +37,7 @@ import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine'
 import { AgentPrompt, AgentPrompts } from '@shared/angular/services/agent-prompts/agent-prompts';
 import { formatCost, formatTokens } from '@shared/angular/services/agent/token-format';
 import { Search } from '@shared/angular/services/search/search';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { AgentRequests } from '@shared/angular/services/agent-requests/agent-requests';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
@@ -421,6 +422,12 @@ export class AgentChat implements OnInit {
   private readonly search: Search = inject(Search);
 
   /**
+   * Holds the settings service, the source of the global auto-scroll preference (applied to every agent
+   * view).
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
    * Holds the workspace, whose root scopes the `@`-mention file list.
    */
   private readonly workspaceService: Workspace = inject(Workspace);
@@ -441,14 +448,6 @@ export class AgentChat implements OnInit {
    * open editor document (`editor`, the default) or the owning terminal (`terminal`).
    */
   public readonly surface: InputSignal<AgentSurface> = input<AgentSurface>('editor');
-
-  /**
-   * Gets a value indicating whether the transcript follows new content to the bottom as it streams,
-   * the master preference the host drives from the agent ribbon's Auto-scroll check. When on, the
-   * transcript is pinned to the newest content while the reader sits at the bottom; scrolling up pauses
-   * the follow without changing the preference, and scrolling back to the bottom resumes it.
-   */
-  public readonly autoScroll: InputSignal<boolean> = input<boolean>(true);
 
   /**
    * Gets a value indicating whether this chat is a mirror of another host's conversation (a Mission
@@ -1143,7 +1142,7 @@ export class AgentChat implements OnInit {
     // already there. Reading rows() re-runs this as the transcript streams.
     afterRenderEffect((): void => {
       this.rows();
-      if (!this.autoScroll() || !this.atBottom()) {
+      if (!this.settings.aiAutoScroll() || !this.atBottom()) {
         return;
       }
       const element: HTMLElement | undefined = this.messagesRef()?.nativeElement;

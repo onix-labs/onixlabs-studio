@@ -61,8 +61,8 @@ describe('AiSettingsSection', () => {
   });
 
   it('render_whenGeneralView_rendersARowPerGlobalControl', () => {
-    // Token cap, run timeout, session lifetime, agent shell.
-    expect(host.querySelectorAll('app-setting-row').length).toBe(4);
+    // Auto-scroll, token cap, run timeout, session lifetime, agent shell.
+    expect(host.querySelectorAll('app-setting-row').length).toBe(5);
   });
 
   it('render_whenSecurityView_rendersThePermissionPostureRow', () => {

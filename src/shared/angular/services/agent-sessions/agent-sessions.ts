@@ -68,11 +68,6 @@ export interface AgentSessionHandle {
   readonly historyOpen: Signal<boolean>;
 
   /**
-   * Gets a value indicating whether the transcript follows new content to the bottom as it streams.
-   */
-  readonly autoScroll: Signal<boolean>;
-
-  /**
    * Starts a fresh conversation (clearing the transcript and leaving history).
    */
   newChat(): void;
@@ -86,12 +81,6 @@ export interface AgentSessionHandle {
    * Toggles the conversation-history list.
    */
   toggleHistory(): void;
-
-  /**
-   * Sets whether the transcript follows new content to the bottom as it streams.
-   * @param value The new auto-scroll preference.
-   */
-  setAutoScroll(value: boolean): void;
 
   /**
    * Sets how much autonomy the conversation's runs use.
@@ -220,14 +209,6 @@ export class AgentSessions {
   );
 
   /**
-   * Gets a value indicating whether the active agent tab's transcript follows new content to the
-   * bottom as it streams. Defaults to true when no agent tab is active.
-   */
-  public readonly autoScroll: Signal<boolean> = computed(
-    (): boolean => this.activeSession()?.autoScroll() ?? true,
-  );
-
-  /**
    * Gets how much autonomy the active agent tab's runs use. Defaults to `agent` when no tab is active.
    */
   public readonly mode: Signal<AgentMode> = computed(
@@ -288,14 +269,6 @@ export class AgentSessions {
    */
   public toggleHistory(): void {
     this.activeSession()?.toggleHistory();
-  }
-
-  /**
-   * Sets whether the active agent tab's transcript follows new content to the bottom as it streams.
-   * @param value The new auto-scroll preference.
-   */
-  public setAutoScroll(value: boolean): void {
-    this.activeSession()?.setAutoScroll(value);
   }
 
   /**
