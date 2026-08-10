@@ -23,3 +23,13 @@
   fill: color-mix(in srgb, var(--accent-color) 18%, transparent);
   stroke: none;
 }
+
+// The overlaid app series is drawn in a neutral tone so the accent SYS line stays dominant; the SYS/APP
+// header labels disambiguate the two.
+.sparkline__line--app {
+  stroke: color-mix(in srgb, var(--body-foreground-color) 55%, transparent);
+}
+
+.sparkline__area--app {
+  fill: color-mix(in srgb, var(--body-foreground-color) 10%, transparent);
+}

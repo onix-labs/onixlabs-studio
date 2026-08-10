@@ -18,7 +18,7 @@ import { Table, TableColumn, TableRow, TableRowDef } from '@shared/angular/compo
 import { Log } from '@shared/angular/services/log/log';
 import { LogRecord, LogSession, SEVERITIES, Severity } from '@shared/api/log-channels';
 import { MetricsSample, METRICS_HISTORY } from '@shared/api/system-monitor-channels';
-import { MetricTile } from '../metric-tile/metric-tile';
+import { MetricTile, TileChannel } from '../metric-tile/metric-tile';
 import { SystemMonitorMetrics } from '../metrics/system-monitor-metrics';
 import {
   SystemMonitorCommandHandler,
@@ -103,7 +103,17 @@ export class SystemMonitorView {
   protected readonly memoryHistory: WritableSignal<readonly number[]> = signal<readonly number[]>([]);
 
   /**
-   * Gets the CPU tile's current value, formatted as a percentage.
+   * Holds the recent app CPU-share history (percent), oldest first, overlaid on the CPU sparkline.
+   */
+  protected readonly appCpuHistory: WritableSignal<readonly number[]> = signal<readonly number[]>([]);
+
+  /**
+   * Holds the recent app memory-share history (percent), oldest first, overlaid on the memory sparkline.
+   */
+  protected readonly appMemoryHistory: WritableSignal<readonly number[]> = signal<readonly number[]>([]);
+
+  /**
+   * Gets the CPU tile's current machine-wide reading, formatted as a percentage.
    */
   protected readonly cpuValue: Signal<string> = computed((): string => {
     const sample: MetricsSample | null = this.latest();
@@ -111,26 +121,66 @@ export class SystemMonitorView {
   });
 
   /**
-   * Gets the memory tile's current value, formatted as used / total with the percentage.
+   * Gets the CPU tile's app-share reading, formatted as a percentage, or null when the app share was
+   * not read (so the tile shows the machine reading alone).
+   */
+  protected readonly cpuAppValue: Signal<string | null> = computed((): string | null => {
+    const usage: MetricsSample['app'] = this.latest()?.app;
+    return usage === undefined ? null : `${Math.round(usage.cpuPercent)}%`;
+  });
+
+  /**
+   * Gets the total physical memory, formatted for the memory tile's label suffix, or null before the
+   * first sample.
+   */
+  protected readonly memoryTotal: Signal<string | null> = computed((): string | null => {
+    const sample: MetricsSample | null = this.latest();
+    return sample === null ? null : this.formatBytes(sample.memory.totalBytes);
+  });
+
+  /**
+   * Gets the memory tile's current machine-wide reading: used bytes with the percentage (the total is
+   * shown against the tile label).
    */
   protected readonly memoryValue: Signal<string> = computed((): string => {
     const sample: MetricsSample | null = this.latest();
     if (sample === null) {
       return '—';
     }
-    const { usedBytes, totalBytes, percent }: MetricsSample['memory'] = sample.memory;
-    return `${this.formatBytes(usedBytes)} / ${this.formatBytes(totalBytes)} (${Math.round(percent)}%)`;
+    const { usedBytes, percent }: MetricsSample['memory'] = sample.memory;
+    return `${this.formatBytes(usedBytes)} (${Math.round(percent)}%)`;
   });
 
   /**
-   * Holds the recent total network-throughput history (bytes/sec), oldest first.
+   * Gets the memory tile's app-share reading, formatted as bytes with the percentage, or null when the
+   * app share was not read.
    */
-  protected readonly networkHistory: WritableSignal<readonly number[]> = signal<readonly number[]>([]);
+  protected readonly memoryAppValue: Signal<string | null> = computed((): string | null => {
+    const usage: MetricsSample['app'] = this.latest()?.app;
+    return usage === undefined
+      ? null
+      : `${this.formatBytes(usage.memoryBytes)} (${Math.round(usage.memoryPercent)}%)`;
+  });
 
   /**
-   * Holds the recent total disk-throughput history (bytes/sec), oldest first.
+   * Holds the recent inbound (received) network-throughput history (bytes/sec), oldest first.
    */
-  protected readonly diskHistory: WritableSignal<readonly number[]> = signal<readonly number[]>([]);
+  protected readonly networkRxHistory: WritableSignal<readonly number[]> = signal<readonly number[]>([]);
+
+  /**
+   * Holds the recent outbound (sent) network-throughput history (bytes/sec), oldest first.
+   */
+  protected readonly networkTxHistory: WritableSignal<readonly number[]> = signal<readonly number[]>([]);
+
+  /**
+   * Holds the recent disk read-throughput history (bytes/sec), oldest first.
+   */
+  protected readonly diskReadHistory: WritableSignal<readonly number[]> = signal<readonly number[]>([]);
+
+  /**
+   * Holds the recent disk write-throughput history (bytes/sec), oldest first.
+   */
+  protected readonly diskWriteHistory: WritableSignal<readonly number[]> = signal<readonly number[]>([]);
 
   /**
    * Holds the recent GPU-utilisation history (percent), oldest first.
@@ -138,24 +188,35 @@ export class SystemMonitorView {
   protected readonly gpuHistory: WritableSignal<readonly number[]> = signal<readonly number[]>([]);
 
   /**
-   * Gets the network tile's current value: inbound and outbound throughput, or a placeholder when
-   * unavailable.
+   * Gets the network tile's received-throughput reading, or a placeholder when unavailable.
    */
-  protected readonly networkValue: Signal<string> = computed((): string => {
+  protected readonly networkRxValue: Signal<string> = computed((): string => {
     const network: MetricsSample['network'] = this.latest()?.network;
-    return network === undefined
-      ? '—'
-      : `↓ ${this.formatRate(network.rxBytesPerSec)} · ↑ ${this.formatRate(network.txBytesPerSec)}`;
+    return network === undefined ? '—' : this.formatRate(network.rxBytesPerSec);
   });
 
   /**
-   * Gets the disk tile's current value: read and write throughput, or a placeholder when unavailable.
+   * Gets the network tile's sent-throughput reading, or a placeholder when unavailable.
    */
-  protected readonly diskValue: Signal<string> = computed((): string => {
+  protected readonly networkTxValue: Signal<string> = computed((): string => {
+    const network: MetricsSample['network'] = this.latest()?.network;
+    return network === undefined ? '—' : this.formatRate(network.txBytesPerSec);
+  });
+
+  /**
+   * Gets the disk tile's read-throughput reading, or a placeholder when unavailable.
+   */
+  protected readonly diskReadValue: Signal<string> = computed((): string => {
     const disk: MetricsSample['disk'] = this.latest()?.disk;
-    return disk === undefined
-      ? '—'
-      : `R ${this.formatRate(disk.readBytesPerSec)} · W ${this.formatRate(disk.writeBytesPerSec)}`;
+    return disk === undefined ? '—' : this.formatRate(disk.readBytesPerSec);
+  });
+
+  /**
+   * Gets the disk tile's write-throughput reading, or a placeholder when unavailable.
+   */
+  protected readonly diskWriteValue: Signal<string> = computed((): string => {
+    const disk: MetricsSample['disk'] = this.latest()?.disk;
+    return disk === undefined ? '—' : this.formatRate(disk.writeBytesPerSec);
   });
 
   /**
@@ -170,17 +231,77 @@ export class SystemMonitorView {
   });
 
   /**
-   * Gets the network sparkline's scale: its recent peak, so throughput auto-scales (there is no fixed
-   * maximum).
+   * Gets the CPU tile's channel: a single graph with the machine reading and the app overlay.
    */
-  protected readonly networkMax: Signal<number> = computed((): number =>
-    Math.max(1, ...this.networkHistory()),
+  protected readonly cpuChannels: Signal<readonly TileChannel[]> = computed((): readonly TileChannel[] => [
+    {
+      value: this.cpuValue(),
+      values: this.cpuHistory(),
+      appValue: this.cpuAppValue(),
+      appValues: this.appCpuHistory(),
+    },
+  ]);
+
+  /**
+   * Gets the GPU tile's channel: a single utilisation graph (no app attribution is possible).
+   */
+  protected readonly gpuChannels: Signal<readonly TileChannel[]> = computed((): readonly TileChannel[] => [
+    { value: this.gpuValue(), values: this.gpuHistory() },
+  ]);
+
+  /**
+   * Gets the Memory tile's channel: a single graph with the used reading and the app overlay.
+   */
+  protected readonly memoryChannels: Signal<readonly TileChannel[]> = computed(
+    (): readonly TileChannel[] => [
+      {
+        value: this.memoryValue(),
+        values: this.memoryHistory(),
+        appValue: this.memoryAppValue(),
+        appValues: this.appMemoryHistory(),
+      },
+    ],
   );
 
   /**
-   * Gets the disk sparkline's scale: its recent peak.
+   * Gets the Network tile's channels: independently-scaled Received and Sent graphs.
    */
-  protected readonly diskMax: Signal<number> = computed((): number => Math.max(1, ...this.diskHistory()));
+  protected readonly networkChannels: Signal<readonly TileChannel[]> = computed(
+    (): readonly TileChannel[] => [
+      {
+        caption: 'Received',
+        value: this.networkRxValue(),
+        values: this.networkRxHistory(),
+        max: Math.max(1, ...this.networkRxHistory()),
+      },
+      {
+        caption: 'Sent',
+        value: this.networkTxValue(),
+        values: this.networkTxHistory(),
+        max: Math.max(1, ...this.networkTxHistory()),
+      },
+    ],
+  );
+
+  /**
+   * Gets the Disk tile's channels: independently-scaled Read and Write graphs.
+   */
+  protected readonly diskChannels: Signal<readonly TileChannel[]> = computed(
+    (): readonly TileChannel[] => [
+      {
+        caption: 'Read',
+        value: this.diskReadValue(),
+        values: this.diskReadHistory(),
+        max: Math.max(1, ...this.diskReadHistory()),
+      },
+      {
+        caption: 'Write',
+        value: this.diskWriteValue(),
+        values: this.diskWriteHistory(),
+        max: Math.max(1, ...this.diskWriteHistory()),
+      },
+    ],
+  );
 
   /**
    * Holds the records of the selected session, oldest first.
@@ -294,9 +415,18 @@ export class SystemMonitorView {
     void this.loadRecords();
 
     const unsubscribe: () => void = this.log.onRecord((record: LogRecord): void => {
-      if (this.viewingLive() && record.sessionId === this.currentSessionId()) {
-        this.records.update((records: readonly LogRecord[]): readonly LogRecord[] => [...records, record]);
+      if (!this.viewingLive() || record.sessionId !== this.currentSessionId()) {
+        return;
       }
+      this.records.update((records: readonly LogRecord[]): readonly LogRecord[] => {
+        // Ids are strictly monotonic within a session and the buffer is held oldest-first, so the
+        // last record holds the highest id. A record's broadcast and the initial query reply travel
+        // on separate IPC channels and can arrive out of order, so a record already included in the
+        // loaded snapshot can be broadcast afterwards; appending it again would duplicate a row id
+        // and trip Angular's @for tracking (NG0955). Only append records newer than the last held.
+        const last: LogRecord | undefined = records[records.length - 1];
+        return last !== undefined && record.id <= last.id ? records : [...records, record];
+      });
     });
     const unsubscribeSamples: () => void = this.metrics.onSample((sample: MetricsSample): void =>
       this.accept(sample),
@@ -330,11 +460,17 @@ export class SystemMonitorView {
     this.latest.set(sample);
     this.push(this.cpuHistory, sample.cpu);
     this.push(this.memoryHistory, sample.memory.percent);
+    if (sample.app !== undefined) {
+      this.push(this.appCpuHistory, sample.app.cpuPercent);
+      this.push(this.appMemoryHistory, sample.app.memoryPercent);
+    }
     if (sample.network !== undefined) {
-      this.push(this.networkHistory, sample.network.rxBytesPerSec + sample.network.txBytesPerSec);
+      this.push(this.networkRxHistory, sample.network.rxBytesPerSec);
+      this.push(this.networkTxHistory, sample.network.txBytesPerSec);
     }
     if (sample.disk !== undefined) {
-      this.push(this.diskHistory, sample.disk.readBytesPerSec + sample.disk.writeBytesPerSec);
+      this.push(this.diskReadHistory, sample.disk.readBytesPerSec);
+      this.push(this.diskWriteHistory, sample.disk.writeBytesPerSec);
     }
     if (sample.gpu?.available === true) {
       this.push(this.gpuHistory, sample.gpu.percent);

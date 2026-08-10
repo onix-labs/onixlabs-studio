@@ -7,7 +7,18 @@
   @if (areaPath(); as area) {
     <path class="sparkline__area" [attr.d]="area" />
   }
+  @if (appAreaPath(); as appArea) {
+    <path class="sparkline__area sparkline__area--app" [attr.d]="appArea" />
+  }
   @if (linePath(); as line) {
     <path class="sparkline__line" [attr.d]="line" fill="none" vector-effect="non-scaling-stroke" />
+  }
+  @if (appLinePath(); as appLine) {
+    <path
+      class="sparkline__line sparkline__line--app"
+      [attr.d]="appLine"
+      fill="none"
+      vector-effect="non-scaling-stroke"
+    />
   }
 </svg>

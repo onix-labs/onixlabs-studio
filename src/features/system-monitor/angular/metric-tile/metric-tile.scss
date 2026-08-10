@@ -1,4 +1,5 @@
-// A metric tile: a bordered card with a label/value header over a sparkline that fills the rest.
+// A metric tile: a bordered card with a label/value header over one or more sparklines that fill the
+// rest.
 :host {
   display: block;
 }
@@ -16,7 +17,7 @@
 .metric-tile__head {
   display: flex;
   flex: none;
-  align-items: baseline;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 0.5rem;
 }
@@ -28,17 +29,78 @@
   color: var(--form-muted-foreground-color);
 }
 
+// The memory total (and any other detail) sits quietly beside the label.
+.metric-tile__suffix {
+  margin-inline-start: 0.3rem;
+  font-weight: 500;
+  color: color-mix(in srgb, var(--form-muted-foreground-color) 75%, transparent);
+}
+
+// The header readings stack on the right (SYS over APP), aligned to the label's top.
+.metric-tile__readings {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.05rem;
+}
+
+.metric-tile__reading {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
+}
+
+// A small caption labelling which series a reading belongs to (SYS/APP, or Received/Sent, Read/Write).
+// A touch larger than before so it reads clearly next to the smaller stat.
+.metric-tile__series {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--form-muted-foreground-color);
+}
+
+.metric-tile__series--sys {
+  color: var(--accent-color);
+}
+
+// The readings themselves: smaller than before and sized to match the caption.
 .metric-tile__value {
-  font-size: 1.05rem;
+  font-size: 0.82rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   color: var(--body-foreground-color);
 }
 
-// The graph takes the remaining tile height; a fixed floor keeps it legible in a short tile.
+.metric-tile__value--app {
+  font-weight: 500;
+  color: var(--form-muted-foreground-color);
+}
+
+// The channels fill the remaining tile height; several channels share it evenly.
+.metric-tile__channels {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-block-size: 0;
+  margin-block-start: 0.4rem;
+}
+
+.metric-tile__channel {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-block-size: 0;
+}
+
+// A captioned channel (Network/Disk) labels its own graph on one compact row.
+.metric-tile__channel .metric-tile__reading {
+  flex: none;
+  justify-content: space-between;
+}
+
+// The graph takes the remaining channel height; a floor keeps it legible in a short channel.
 .metric-tile__graph {
   flex: 1 1 auto;
-  min-block-size: 2.5rem;
-  block-size: 3rem;
-  margin-block-start: 0.4rem;
+  min-block-size: 1.6rem;
 }

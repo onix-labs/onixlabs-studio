@@ -1,8 +1,10 @@
 import { execFile } from 'node:child_process';
 import * as os from 'node:os';
 import { promisify } from 'node:util';
+import { app } from 'electron';
 import * as si from 'systeminformation';
 import {
+  AppUsageMetric,
   DiskMetric,
   GpuMetric,
   MetricsSample,
@@ -11,7 +13,7 @@ import {
 } from '@shared/api/system-monitor-channels';
 import { logger } from '../../logger';
 import { ContributionContext, MainContribution } from '../main-contribution';
-import { parseIoregGpu, pickGpu, readDisk, sumNetwork } from './metrics-readers';
+import { parseIoregGpu, pickGpu, readAppUsage, readDisk, sumNetwork } from './metrics-readers';
 import { MetricsSampler } from './metrics-sampler';
 
 /**
@@ -163,7 +165,20 @@ export class SystemMonitorContribution implements MainContribution {
     );
     const [network, disk, gpu]: [NetworkMetric | undefined, DiskMetric | undefined, GpuMetric | undefined] =
       await Promise.all([this.readNetwork(), this.readDisk(), this.readGpu()]);
-    return { ...base, network, disk, gpu };
+    return { ...base, network, disk, gpu, app: this.readApp() };
+  }
+
+  /**
+   * Reads this application's own CPU and memory share across its whole process tree, or undefined when
+   * it could not be read (for example before the Electron runtime is usable).
+   * @returns Returns the app-usage metric, or undefined.
+   */
+  private readApp(): AppUsageMetric | undefined {
+    try {
+      return readAppUsage(app.getAppMetrics(), os.cpus().length, os.totalmem());
+    } catch {
+      return undefined;
+    }
   }
 
   /**

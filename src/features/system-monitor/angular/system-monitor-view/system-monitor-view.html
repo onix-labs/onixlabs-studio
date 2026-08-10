@@ -1,12 +1,13 @@
 <div class="system-monitor">
-  <!-- CPU, Memory, Network, Disk and best-effort GPU tiles. Network and disk auto-scale to their
-       recent peak (they are rates, not percentages); GPU shows N/A where unsupported. -->
+  <!-- CPU, GPU, Memory, Network and Disk tiles. CPU and Memory carry a machine (SYS) reading and this
+       app's share (APP) overlaid on one graph; Network and Disk split into two independently-scaled
+       graphs (Received/Sent, Read/Write); GPU shows N/A where unsupported. -->
   <section class="system-monitor__tiles">
-    <app-metric-tile label="CPU" [value]="cpuValue()" [values]="cpuHistory()" />
-    <app-metric-tile label="Memory" [value]="memoryValue()" [values]="memoryHistory()" />
-    <app-metric-tile label="Network" [value]="networkValue()" [values]="networkHistory()" [max]="networkMax()" />
-    <app-metric-tile label="Disk" [value]="diskValue()" [values]="diskHistory()" [max]="diskMax()" />
-    <app-metric-tile label="GPU" [value]="gpuValue()" [values]="gpuHistory()" />
+    <app-metric-tile label="CPU" [channels]="cpuChannels()" />
+    <app-metric-tile label="GPU" [channels]="gpuChannels()" />
+    <app-metric-tile label="Memory" [suffix]="memoryTotal()" [channels]="memoryChannels()" />
+    <app-metric-tile label="Network" [channels]="networkChannels()" />
+    <app-metric-tile label="Disk" [channels]="diskChannels()" />
   </section>
 
   <section class="system-monitor__audit">

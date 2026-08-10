@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { parseIoregGpu, pickGpu, readDisk, sumNetwork } from './metrics-readers';
+import { AppUsageMetric } from '@shared/api/system-monitor-channels';
+import { parseIoregGpu, pickGpu, readAppUsage, readDisk, sumNetwork } from './metrics-readers';
 
 describe('sumNetwork', () => {
   it('sumsRxAndTxAcrossInterfaces', () => {
@@ -51,6 +52,43 @@ describe('pickGpu', () => {
 
   it('reportsUnavailableWhenNoControllerHasAReading', () => {
     expect(pickGpu([{ utilizationGpu: null }, {}])).toEqual({ available: false, percent: 0 });
+  });
+});
+
+describe('readAppUsage', () => {
+  it('sumsProcessCpuAndNormalisesByCoreCount', () => {
+    // Two processes at 200% + 40% of a single core, across 4 cores → (240 / 4) = 60% of the machine.
+    const usage: AppUsageMetric = readAppUsage(
+      [{ cpu: { percentCPUUsage: 200 }, memory: { workingSetSize: 0 } }, { cpu: { percentCPUUsage: 40 } }],
+      4,
+      0,
+    );
+    expect(usage.cpuPercent).toBe(60);
+  });
+
+  it('sumsWorkingSetsToBytesAndAPercentageOfTotalMemory', () => {
+    // workingSetSize is in kilobytes; 1,048,576 KB = 1 GiB, of a 4 GiB machine → 25%.
+    const usage: AppUsageMetric = readAppUsage(
+      [{ memory: { workingSetSize: 1_048_576 } }],
+      8,
+      4 * 1024 * 1024 * 1024,
+    );
+    expect(usage.memoryBytes).toBe(1024 * 1024 * 1024);
+    expect(usage.memoryPercent).toBe(25);
+  });
+
+  it('clampsCpuShareToThe0to100RangeAndGuardsZeroCores', () => {
+    const usage: AppUsageMetric = readAppUsage([{ cpu: { percentCPUUsage: 800 } }], 0, 0);
+    expect(usage.cpuPercent).toBe(100);
+  });
+
+  it('treatsMissingAndNegativeFieldsAsZero', () => {
+    const usage: AppUsageMetric = readAppUsage(
+      [{}, { cpu: { percentCPUUsage: -5 }, memory: { workingSetSize: null } }],
+      4,
+      1024,
+    );
+    expect(usage).toEqual({ cpuPercent: 0, memoryBytes: 0, memoryPercent: 0 });
   });
 });
 

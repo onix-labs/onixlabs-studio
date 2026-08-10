@@ -107,14 +107,23 @@ interface Testable {
   sessionOptions: Signal<readonly DropdownOption[]>;
   selectedSessionValue: Signal<string>;
   cpuValue: Signal<string>;
+  cpuAppValue: Signal<string | null>;
   memoryValue: Signal<string>;
-  networkValue: Signal<string>;
-  diskValue: Signal<string>;
+  memoryTotal: Signal<string | null>;
+  memoryAppValue: Signal<string | null>;
+  networkRxValue: Signal<string>;
+  networkTxValue: Signal<string>;
+  diskReadValue: Signal<string>;
+  diskWriteValue: Signal<string>;
   gpuValue: Signal<string>;
   cpuHistory: WritableSignal<readonly number[]>;
   memoryHistory: WritableSignal<readonly number[]>;
-  networkHistory: WritableSignal<readonly number[]>;
-  diskHistory: WritableSignal<readonly number[]>;
+  appCpuHistory: WritableSignal<readonly number[]>;
+  appMemoryHistory: WritableSignal<readonly number[]>;
+  networkRxHistory: WritableSignal<readonly number[]>;
+  networkTxHistory: WritableSignal<readonly number[]>;
+  diskReadHistory: WritableSignal<readonly number[]>;
+  diskWriteHistory: WritableSignal<readonly number[]>;
   gpuHistory: WritableSignal<readonly number[]>;
   selectSession(sessionId: string): void;
   toggleSeverity(severity: Severity): void;
@@ -185,6 +194,15 @@ describe('SystemMonitorView', () => {
     expect(view.records().map((r: LogRecord): number => r.id)).toEqual([1, 2]);
   });
 
+  it('onRecord_ignoresARecordAlreadyPresent', async () => {
+    // A record's broadcast and the initial query reply travel on separate IPC channels, so a record
+    // already in the loaded snapshot can be broadcast afterwards; re-appending it would duplicate a
+    // row id and trip Angular's @for tracking (NG0955).
+    await create([record({ id: 1 }), record({ id: 2 })]);
+    fake.listener?.(record({ id: 2, sessionId: 'current', message: 'duplicate broadcast' }));
+    expect(view.records().map((r: LogRecord): number => r.id)).toEqual([1, 2]);
+  });
+
   it('onRecord_ignoresRecordsFromAnotherSession', async () => {
     await create([record({ id: 1 })]);
     fake.listener?.(record({ id: 9, sessionId: 'past' }));
@@ -252,7 +270,8 @@ describe('SystemMonitorView', () => {
     await create();
     metrics.listener?.(sample({ cpu: 42, memory: { usedBytes: 8 * 1024 ** 3, totalBytes: 16 * 1024 ** 3, percent: 50 } }));
     expect(view.cpuValue()).toBe('42%');
-    expect(view.memoryValue()).toBe('8.0 GB / 16.0 GB (50%)');
+    expect(view.memoryValue()).toBe('8.0 GB (50%)');
+    expect(view.memoryTotal()).toBe('16.0 GB');
     expect(view.cpuHistory()).toEqual([42]);
     expect(view.memoryHistory()).toEqual([50]);
   });
@@ -262,14 +281,38 @@ describe('SystemMonitorView', () => {
     expect(view.cpuValue()).toBe('—');
   });
 
-  it('sample_formatsNetworkAndDiskThroughputAndGpuPercent', async () => {
+  it('sample_splitsCpuAndMemoryIntoSysAndAppWhenAppShareIsPresent', async () => {
+    await create();
+    metrics.listener?.(
+      sample({ app: { cpuPercent: 12, memoryBytes: 512 * 1024 ** 2, memoryPercent: 3 } }),
+    );
+    expect(view.cpuAppValue()).toBe('12%');
+    expect(view.memoryAppValue()).toBe('512.0 MB (3%)');
+    expect(view.appCpuHistory()).toEqual([12]);
+    expect(view.appMemoryHistory()).toEqual([3]);
+  });
+
+  it('sample_omitsTheAppReadingAndKeepsNoAppHistoryWhenNotAttributed', async () => {
+    await create();
+    metrics.listener?.(sample({ app: undefined }));
+    expect(view.cpuAppValue()).toBeNull();
+    expect(view.memoryAppValue()).toBeNull();
+    expect(view.appCpuHistory()).toEqual([]);
+    expect(view.appMemoryHistory()).toEqual([]);
+  });
+
+  it('sample_splitsNetworkAndDiskIntoIndependentSeriesAndFormatsGpuPercent', async () => {
     await create();
     metrics.listener?.(sample());
-    expect(view.networkValue()).toBe('↓ 1.0 KB/s · ↑ 512 B/s');
-    expect(view.diskValue()).toBe('R 2.0 KB/s · W 256 B/s');
+    expect(view.networkRxValue()).toBe('1.0 KB/s');
+    expect(view.networkTxValue()).toBe('512 B/s');
+    expect(view.diskReadValue()).toBe('2.0 KB/s');
+    expect(view.diskWriteValue()).toBe('256 B/s');
     expect(view.gpuValue()).toBe('30%');
-    expect(view.networkHistory()).toEqual([1536]);
-    expect(view.diskHistory()).toEqual([2304]);
+    expect(view.networkRxHistory()).toEqual([1024]);
+    expect(view.networkTxHistory()).toEqual([512]);
+    expect(view.diskReadHistory()).toEqual([2048]);
+    expect(view.diskWriteHistory()).toEqual([256]);
     expect(view.gpuHistory()).toEqual([30]);
   });
 
@@ -280,10 +323,12 @@ describe('SystemMonitorView', () => {
     expect(view.gpuHistory()).toEqual([]);
   });
 
-  it('network_showsAPlaceholderAndKeepsNoHistoryWhenUnavailable', async () => {
+  it('network_showsPlaceholdersAndKeepsNoHistoryWhenUnavailable', async () => {
     await create();
     metrics.listener?.(sample({ network: undefined }));
-    expect(view.networkValue()).toBe('—');
-    expect(view.networkHistory()).toEqual([]);
+    expect(view.networkRxValue()).toBe('—');
+    expect(view.networkTxValue()).toBe('—');
+    expect(view.networkRxHistory()).toEqual([]);
+    expect(view.networkTxHistory()).toEqual([]);
   });
 });

@@ -1,9 +1,43 @@
 <div class="metric-tile">
   <header class="metric-tile__head">
-    <span class="metric-tile__label">{{ label() }}</span>
-    <span class="metric-tile__value">{{ value() }}</span>
+    <span class="metric-tile__label">
+      {{ label() }}@if (suffix(); as detail) {<span class="metric-tile__suffix">({{ detail }})</span>}
+    </span>
+    @if (headerChannel(); as channel) {
+      @if (channel.appValue !== null && channel.appValue !== undefined) {
+        <div class="metric-tile__readings">
+          <span class="metric-tile__reading">
+            <span class="metric-tile__series metric-tile__series--sys">SYS</span>
+            <span class="metric-tile__value">{{ channel.value }}</span>
+          </span>
+          <span class="metric-tile__reading">
+            <span class="metric-tile__series metric-tile__series--app">APP</span>
+            <span class="metric-tile__value metric-tile__value--app">{{ channel.appValue }}</span>
+          </span>
+        </div>
+      } @else {
+        <span class="metric-tile__value">{{ channel.value }}</span>
+      }
+    }
   </header>
-  <div class="metric-tile__graph">
-    <app-sparkline [values]="values()" [max]="max()" />
+
+  <div class="metric-tile__channels">
+    @for (channel of channels(); track channel.caption ?? '') {
+      <div class="metric-tile__channel">
+        @if (channel.caption; as caption) {
+          <div class="metric-tile__reading">
+            <span class="metric-tile__series">{{ caption }}</span>
+            <span class="metric-tile__value">{{ channel.value }}</span>
+          </div>
+        }
+        <div class="metric-tile__graph">
+          <app-sparkline
+            [values]="channel.values"
+            [appValues]="channel.appValues ?? []"
+            [max]="channel.max ?? 100"
+          />
+        </div>
+      </div>
+    }
   </div>
 </div>

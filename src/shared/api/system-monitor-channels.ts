@@ -98,8 +98,33 @@ export interface GpuMetric {
 }
 
 /**
+ * Describes this application's own share of resource use at a moment, summed across its whole process
+ * tree (the Electron main, every renderer window, the GPU and any utility processes). Only CPU and
+ * memory can be attributed to the app portably; network, disk and GPU utilisation have no per-process
+ * source, so they are reported machine-wide only.
+ */
+export interface AppUsageMetric {
+  /**
+   * Gets the app's CPU use as a share of total machine capacity, 0–100 — normalised by the logical
+   * core count so it is directly comparable to the machine-wide {@link MetricsSample.cpu}.
+   */
+  readonly cpuPercent: number;
+
+  /**
+   * Gets the bytes of physical memory the app's processes hold (summed working sets).
+   */
+  readonly memoryBytes: number;
+
+  /**
+   * Gets the app's memory use as a percentage of total physical memory, 0–100.
+   */
+  readonly memoryPercent: number;
+}
+
+/**
  * Describes one sampled snapshot of machine metrics. CPU and memory are always present; network, disk
- * and GPU are present when the platform provides them (GPU is best-effort).
+ * and GPU are present when the platform provides them (GPU is best-effort); the app's own share is
+ * present when it could be read.
  */
 export interface MetricsSample {
   /**
@@ -131,4 +156,10 @@ export interface MetricsSample {
    * Gets the GPU utilisation reading, or undefined when unavailable.
    */
   readonly gpu?: GpuMetric;
+
+  /**
+   * Gets this application's own share of CPU and memory, or undefined when it could not be read (for
+   * example outside the Electron runtime).
+   */
+  readonly app?: AppUsageMetric;
 }
