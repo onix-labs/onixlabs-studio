@@ -1,4 +1,5 @@
 import * as http from 'node:http';
+import { logger } from '../../logger';
 
 /**
  * A buffered response from the Docker Engine: the HTTP status and the full body text.
@@ -76,6 +77,7 @@ export class HttpDockerTransport implements DockerTransport {
    * @returns Returns the buffered response.
    */
   public request(method: string, path: string): Promise<DockerResponse> {
+    logger.trace('DockerTransport', `${method} ${path}`);
     return new Promise<DockerResponse>(
       (resolve: (response: DockerResponse) => void, reject: (error: Error) => void): void => {
         const request: http.ClientRequest = http.request(
@@ -112,6 +114,7 @@ export class HttpDockerTransport implements DockerTransport {
     onLine: (line: string) => void,
     onError: (error: Error) => void,
   ): DockerStreamHandle {
+    logger.trace('DockerTransport', `Opening event stream ${method} ${path}`);
     let buffer: string = '';
     const request: http.ClientRequest = http.request(
       { socketPath: this.socketPath, method, path },
@@ -137,6 +140,7 @@ export class HttpDockerTransport implements DockerTransport {
     request.end();
     return {
       close: (): void => {
+        logger.trace('DockerTransport', 'Closing event stream');
         request.destroy();
       },
     };

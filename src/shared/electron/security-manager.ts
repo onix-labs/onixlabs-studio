@@ -44,6 +44,10 @@ export class SecurityManager {
    */
   public register(): void {
     this.policy = this.load();
+    logger.info(
+      'SecurityManager',
+      `Applying Content-Security-Policy (image policy '${this.policy}', dev ${this.isDev})`,
+    );
 
     session.defaultSession.webRequest.onHeadersReceived(
       (
@@ -59,10 +63,16 @@ export class SecurityManager {
       },
     );
 
-    ipcMain.handle(SecurityChannel.GetImagePolicy, (): ImageSourcePolicy => this.policy);
+    ipcMain.handle(SecurityChannel.GetImagePolicy, (): ImageSourcePolicy => {
+      logger.trace('SecurityManager', 'GetImagePolicy requested');
+      return this.policy;
+    });
     ipcMain.handle(
       SecurityChannel.SetImagePolicy,
-      (_event: IpcMainInvokeEvent, value: unknown): ImageSourcePolicy => this.setImagePolicy(value),
+      (_event: IpcMainInvokeEvent, value: unknown): ImageSourcePolicy => {
+        logger.trace('SecurityManager', 'SetImagePolicy requested');
+        return this.setImagePolicy(value);
+      },
     );
   }
 
@@ -112,8 +122,11 @@ export class SecurityManager {
    */
   private setImagePolicy(value: unknown): ImageSourcePolicy {
     if (this.isPolicy(value)) {
+      logger.info('SecurityManager', `Image-source policy changed to '${value}'`);
       this.policy = value;
       this.save();
+    } else {
+      logger.warn('SecurityManager', 'Ignored invalid image-source policy from renderer');
     }
     return this.policy;
   }

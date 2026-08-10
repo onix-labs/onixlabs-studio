@@ -101,7 +101,9 @@ export class DirectoryWatcher {
    * Registers the directory-watch IPC handlers.
    */
   public register(): void {
+    logger.info('DirectoryWatcher', 'Registering directory-watch IPC handlers');
     ipcMain.handle(FileChannel.WatchDirectory, (event: IpcMainInvokeEvent, root: unknown): void => {
+      logger.trace('DirectoryWatcher', `WatchDirectory requested for ${String(root)}`);
       if (typeof root === 'string') {
         this.watch(root, event.sender);
       }
@@ -109,6 +111,7 @@ export class DirectoryWatcher {
     ipcMain.handle(
       FileChannel.UnwatchDirectory,
       (event: IpcMainInvokeEvent, root: unknown): void => {
+        logger.trace('DirectoryWatcher', `UnwatchDirectory requested for ${String(root)}`);
         if (typeof root === 'string') {
           this.unwatch(root, event.sender.id);
         }
@@ -120,6 +123,7 @@ export class DirectoryWatcher {
    * Closes every root watcher and clears pending timers. Called on application shutdown.
    */
   public disposeAll(): void {
+    logger.info('DirectoryWatcher', `Disposing all directory watchers (${this.roots.size} roots)`);
     for (const root of this.roots.values()) {
       root.watcher.close();
     }
@@ -147,6 +151,7 @@ export class DirectoryWatcher {
     const existing: WatchedRoot | undefined = this.roots.get(root);
     if (existing !== undefined) {
       existing.holders.set(sender.id, (existing.holders.get(sender.id) ?? 0) + 1);
+      logger.debug('DirectoryWatcher', `Held existing watch on ${root} (renderer ${sender.id})`);
       return;
     }
     try {
@@ -159,13 +164,15 @@ export class DirectoryWatcher {
       // A vanished root (deleted, unmounted) errors rather than events; report it as an overflow so
       // subscribers re-read what they show and discover the root is gone, then drop the dead watcher.
       watcher.on('error', (): void => {
+        logger.warn('DirectoryWatcher', `Watcher errored for ${root}; dropping and reporting overflow`);
         watcher.close();
         this.roots.delete(root);
         this.recordOverflow(root);
       });
       this.roots.set(root, { watcher, holders: new Map<number, number>([[sender.id, 1]]) });
+      logger.info('DirectoryWatcher', `Started recursive watch on ${root} (renderer ${sender.id})`);
     } catch (error: unknown) {
-      logger.debug('DirectoryWatcher', `Cannot watch ${root}`, error);
+      logger.error('DirectoryWatcher', `Cannot watch ${root}`, error);
     }
   }
 
@@ -213,6 +220,7 @@ export class DirectoryWatcher {
    * @param existing The root's watch entry.
    */
   private close(root: string, existing: WatchedRoot): void {
+    logger.info('DirectoryWatcher', `Stopped watching ${root} (no remaining holders)`);
     existing.watcher.close();
     this.roots.delete(root);
     const changes: PendingChanges | undefined = this.pending.get(root);
@@ -297,6 +305,10 @@ export class DirectoryWatcher {
       directories: [...changes.directories],
       overflow: changes.overflow,
     };
+    logger.trace(
+      'DirectoryWatcher.flush',
+      `Notifying ${root}: ${changes.directories.size} dirs, overflow=${changes.overflow}`,
+    );
     window.webContents.send(FileChannel.DirectoryChanged, event);
   }
 }

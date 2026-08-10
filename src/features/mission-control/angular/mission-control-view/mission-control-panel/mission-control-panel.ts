@@ -24,6 +24,7 @@ import { Button } from '@shared/angular/components/forms/button/button';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { SettingsNavigation } from '@shared/angular/services/settings-navigation/settings-navigation';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
+import { Log } from '@shared/angular/services/log/log';
 import { MissionControl } from '@features/mission-control/angular/mission-control/mission-control';
 import { MissionControlTiles } from '../mission-control-tiles';
 
@@ -153,6 +154,11 @@ export class MissionControlPanel {
    * Holds the settings deep-link seam, so the gear opens the Mission Control settings category.
    */
   private readonly settingsNavigation: SettingsNavigation = inject(SettingsNavigation);
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Holds the currently selected tab of the panel.
@@ -307,6 +313,7 @@ export class MissionControlPanel {
    * @param tab The tab to select.
    */
   protected select(tab: PanelTab): void {
+    this.log.debug('mission-control.panel', 'Selected panel tab', { tab });
     this.activeTab.set(tab);
   }
 
@@ -325,6 +332,7 @@ export class MissionControlPanel {
    * @param row The list row that was activated.
    */
   protected onRowClick(row: ListRow): void {
+    this.log.debug('mission-control.panel', 'Rail row activated', { host: row.id });
     this.tiles.reveal(row.id);
   }
 
@@ -345,6 +353,10 @@ export class MissionControlPanel {
    */
   protected onToggleHidden(item: RailItem, event: Event): void {
     event.stopPropagation();
+    this.log.info('mission-control.panel', 'Toggled agent hide from rail', {
+      host: item.id,
+      hidden: !this.missionControl.isHostHidden(item.id),
+    });
     this.missionControl.toggleHostHidden(item.id);
   }
 
@@ -355,6 +367,10 @@ export class MissionControlPanel {
    * @param event The reorder describing the moved and target host ids.
    */
   protected onReorder(event: ListReorder): void {
+    this.log.info('mission-control.panel', 'Reordered agent rail', {
+      from: event.from,
+      to: event.to,
+    });
     this.agentHosts.reorder(event.from, event.to);
   }
 
@@ -363,6 +379,7 @@ export class MissionControlPanel {
    * @param value The chosen posture.
    */
   protected onPolicyChange(value: string): void {
+    this.log.info('mission-control.panel', 'Permission posture changed', { posture: value });
     this.settings.setAiPermissionPosture(value as AiPermissionPosture);
   }
 
@@ -370,6 +387,7 @@ export class MissionControlPanel {
    * Opens the Settings tab at the Mission Control category, where the full configuration lives.
    */
   protected onOpenSettings(): void {
+    this.log.info('mission-control.panel', 'Open Mission Control settings');
     this.settingsNavigation.open('mission-control');
   }
 }

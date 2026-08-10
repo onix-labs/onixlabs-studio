@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  inject,
   input,
   InputSignal,
   output,
@@ -10,6 +11,7 @@ import {
   Signal,
   WritableSignal,
 } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 import { FormModal } from './form-modal';
 
 /**
@@ -74,6 +76,11 @@ export interface CollapseInsert {
 })
 export class MarkdownCollapseModal {
   /**
+   * Holds the structured logging client for the insert modal's confirmation.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Gets a value indicating whether the modal is open.
    */
   public readonly open: InputSignal<boolean> = input.required<boolean>();
@@ -112,6 +119,7 @@ export class MarkdownCollapseModal {
     if (!this.valid()) {
       return;
     }
+    this.log.debug('markdown.insert', 'Collapse modal confirmed');
     this.submitted.emit({ summary: this.summary().trim(), body: this.body().trim() });
     this.reset();
     this.closed.emit();

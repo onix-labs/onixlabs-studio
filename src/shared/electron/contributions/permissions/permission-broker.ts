@@ -1,3 +1,4 @@
+import { logger } from '../../logger';
 import { GrantPolicy } from './grant-policy';
 import {
   ContributionOrigin,
@@ -79,13 +80,22 @@ export class PermissionBroker {
    * @returns Returns the granted resource handle.
    */
   public resolve<T>(request: PermissionRequest, permission: PermissionId): T {
+    logger.trace('PermissionBroker', `Resolving '${permission}' for '${request.contributionId}'`);
     if (!request.declared.has(permission)) {
+      logger.warn(
+        'PermissionBroker',
+        `Denied '${permission}' for '${request.contributionId}': undeclared`,
+      );
       this.audit({ contributionId: request.contributionId, permission, decision: 'deny', source: 'undeclared' });
       throw new PermissionDeniedError(request.contributionId, permission, 'undeclared');
     }
 
     const decision: GrantDecision = this.policy.decide(request.origin, permission);
     if (decision !== 'allow') {
+      logger.warn(
+        'PermissionBroker',
+        `Denied '${permission}' for '${request.contributionId}': policy decided '${decision}'`,
+      );
       this.audit({ contributionId: request.contributionId, permission, decision, source: 'policy' });
       throw new PermissionDeniedError(request.contributionId, permission, 'denied');
     }
@@ -93,10 +103,15 @@ export class PermissionBroker {
     const factory: PermissionFactory | undefined = this.factories.get(permission);
     if (factory === undefined) {
       // Granted by policy but nothing can mint it — treat as a denial rather than returning nothing.
+      logger.warn(
+        'PermissionBroker',
+        `Denied '${permission}' for '${request.contributionId}': no registered factory`,
+      );
       this.audit({ contributionId: request.contributionId, permission, decision: 'deny', source: 'policy' });
       throw new PermissionDeniedError(request.contributionId, permission, 'denied');
     }
 
+    logger.debug('PermissionBroker', `Granted '${permission}' to '${request.contributionId}'`);
     this.audit({ contributionId: request.contributionId, permission, decision: 'allow', source: 'policy' });
     return factory.create() as T;
   }

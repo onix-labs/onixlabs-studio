@@ -1,4 +1,5 @@
 import type { DebugProtocol } from '@vscode/debugprotocol';
+import { logger } from '../logger';
 
 /**
  * The Debug Adapter Protocol message framing and request/response correlation, kept free of any Node or
@@ -84,6 +85,7 @@ export class DapMessageDecoder {
     if (length === null) {
       // A header block without a usable Content-Length cannot be interpreted; drop it so a single
       // malformed frame cannot wedge the stream, and resume from the byte after it.
+      logger.warn('DapProtocol', 'Dropped a DAP frame with no usable Content-Length header');
       this.buffer = this.buffer.subarray(bodyStart);
       return null;
     }
@@ -94,9 +96,10 @@ export class DapMessageDecoder {
     this.buffer = this.buffer.subarray(bodyStart + length);
     try {
       return JSON.parse(body) as DebugProtocol.ProtocolMessage;
-    } catch {
+    } catch (error: unknown) {
       // A frame whose body is not valid JSON is dropped; its bytes are already consumed, so decoding
       // continues cleanly with the next frame.
+      logger.error('DapProtocol', 'Dropped a DAP frame with an unparseable JSON body', error);
       return null;
     }
   }
@@ -253,12 +256,17 @@ export class DapProtocol {
   private handleResponse(response: DebugProtocol.Response): void {
     const request: PendingRequest | undefined = this.pending.get(response.request_seq);
     if (request === undefined) {
+      logger.trace(
+        'DapProtocol',
+        `Ignored a response with no matching request (seq=${response.request_seq})`,
+      );
       return;
     }
     this.pending.delete(response.request_seq);
     if (response.success) {
       request.resolve(response.body);
     } else {
+      logger.warn('DapProtocol', `Adapter reported a failed response for ${request.command}`);
       request.reject(new Error(response.message ?? `${request.command} failed`));
     }
   }

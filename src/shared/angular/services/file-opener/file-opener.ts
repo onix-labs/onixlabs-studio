@@ -6,6 +6,7 @@ import {
 import { FileInfo, SaveDialogChoice } from '@shared/api/file-channels';
 import { DirectoryListing, OpenSelection } from '@shared/api/workspace-channels';
 import { Icon } from '@shared/angular/icons/icon';
+import { Log } from '@shared/angular/services/log/log';
 import { FileSystem } from '@shared/angular/services/file-system/file-system';
 import { DocumentPanel } from '../../components/panels/document-panel/document-panel';
 import { DockPanelRegistry } from '@shared/angular/services/dock-layout/dock-panel-registry';
@@ -92,6 +93,11 @@ export class FileOpener {
   private readonly recentItems: RecentItems = inject(RecentItems);
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Shows the combined open dialog (file or folder) and routes the selection.
    * @returns Returns true when something was opened, or false when cancelled or a binary was chosen.
    */
@@ -114,6 +120,7 @@ export class FileOpener {
     if (selection.kind === 'binary') {
       return this.openBinary(selection.path);
     }
+    this.log.debug('FileOpener', 'Opening file in well', path);
     return this.openInWell(selection.file);
   }
 
@@ -127,6 +134,7 @@ export class FileOpener {
    * @returns Returns true when the file was opened, or false when untrusted, unreadable, or binary.
    */
   public async reopenFile(path: string): Promise<boolean> {
+    this.log.debug('FileOpener', 'Re-opening file', path);
     return this.route(await this.workspace.reopenFile(path));
   }
 
@@ -197,6 +205,7 @@ export class FileOpener {
     }
     const tab: Tab = this.binaryOpener.open(path);
     this.recentItems.record(path, tab.title, 'binary');
+    this.log.info('FileOpener', `Opened binary file '${tab.title}'`, path);
     return true;
   }
 
@@ -210,11 +219,18 @@ export class FileOpener {
     const existing: Tab | undefined = this.tabs.findByResource('directory', listing.path);
     if (existing !== undefined) {
       this.tabs.activate(existing.id);
+      this.log.debug('FileOpener', `Reused workspace tab for '${listing.name}'`, existing.id);
       return;
     }
     const tab: Tab = this.tabs.open('directory', listing.path);
     this.tabs.rename(tab.id, listing.name);
     this.workspaces.setInitial(tab.id, listing);
+    this.log.info(
+      'FileOpener',
+      `Opened folder '${listing.name}' as workspace`,
+      tab.id,
+      listing.path,
+    );
   }
 
   /**
@@ -308,6 +324,7 @@ export class FileOpener {
     }
     const choice: SaveDialogChoice = await this.fileSystem.confirmSave(document.fileName());
     if (choice === 'cancel') {
+      this.log.debug('FileOpener', `Close cancelled for dirty '${document.fileName()}'`, id);
       return false;
     }
     if (choice === 'save') {

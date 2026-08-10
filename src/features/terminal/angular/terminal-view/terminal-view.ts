@@ -20,6 +20,7 @@ import { Panel } from '@shared/angular/components/panel-layout/panel';
 import { PanelArrangements } from '@shared/angular/components/panel-layout/panel-arrangements';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
+import { Log } from '@shared/angular/services/log/log';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { Shell } from '@shared/angular/services/shell/shell';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
@@ -83,6 +84,11 @@ export class TerminalView implements OnDestroy {
    * Holds the docked agent-panel state for terminal tabs.
    */
   private readonly terminalAgents: TerminalAgents = inject(TerminalAgents);
+
+  /**
+   * Holds the structured logger for terminal-view actions.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Holds the shared terminal pane this view drives, or undefined before the view initialises.
@@ -233,6 +239,7 @@ export class TerminalView implements OnDestroy {
     }
     this.terminalAgents.remove(this.tabId());
     this.terminalStatus.clear(this.tabId());
+    this.log.info('terminal.view', 'Terminal closed', this.tabId());
   }
 
   /**
@@ -241,6 +248,7 @@ export class TerminalView implements OnDestroy {
   protected onPaneReady(): void {
     this.paneReady.set(true);
     this.ready.emit();
+    this.log.info('terminal.view', 'Terminal PTY session ready', this.tabId());
   }
 
   /**
@@ -249,7 +257,9 @@ export class TerminalView implements OnDestroy {
    */
   protected onShellChange(shell: string): void {
     const base: string = shell.split(/[\\/]/).pop() ?? shell;
-    this.currentShell.set(base.replace(/\.[^.]+$/, ''));
+    const name: string = base.replace(/\.[^.]+$/, '');
+    this.currentShell.set(name);
+    this.log.debug('terminal.view', 'Terminal shell reported', { tabId: this.tabId(), shell: name });
   }
 
   /**
@@ -291,12 +301,18 @@ export class TerminalView implements OnDestroy {
         this.terminal()?.scrollToBottom();
       },
       clear: (): void => {
+        this.log.info('terminal.view', 'Terminal cleared', this.tabId());
         this.terminal()?.clear();
       },
       restart: (): void => {
+        this.log.info('terminal.view', 'Terminal session restarted', this.tabId());
         void this.terminal()?.restart();
       },
       newSession: (shell?: string): void => {
+        this.log.info('terminal.view', 'New terminal session spawned', {
+          tabId: this.tabId(),
+          shell: shell ?? '(default)',
+        });
         void this.terminal()?.newSession(shell);
       },
       cut: (): void => {
@@ -335,6 +351,7 @@ export class TerminalView implements OnDestroy {
    */
   protected showFind(): void {
     this.findVisible.set(true);
+    this.log.info('terminal.view', 'Terminal find panel opened', this.tabId());
   }
 
   /**
@@ -365,6 +382,7 @@ export class TerminalView implements OnDestroy {
     }
     const cwd: string | null = await pane.getCwd();
     if (cwd !== null) {
+      this.log.debug('terminal.view', 'Opening terminal directory in file manager', cwd);
       await this.shell.openPath(cwd);
     }
     pane.focus();

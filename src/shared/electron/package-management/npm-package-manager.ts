@@ -16,6 +16,7 @@ import { endpointFor, readNpmConfig } from './npm-sources';
 import { NpmrcConfig } from './npmrc';
 import { HttpFetch, PackageManager } from './package-manager';
 import { deriveStatus } from './versions';
+import { logger } from '../logger';
 
 /**
  * The manifest file an npm package is described by.
@@ -75,10 +76,12 @@ export class NpmPackageManager implements PackageManager {
    * @returns Returns the model, or null when the root has no readable package.json.
    */
   public async load(root: string, fetchFn: HttpFetch): Promise<PackageManagerModel | null> {
+    logger.trace('NpmPackageManager', `Loading the npm package model for '${root}'.`);
     const rootManifest: Record<string, unknown> | null = await this.readManifest(
       path.join(root, MANIFEST),
     );
     if (rootManifest === null) {
+      logger.warn('NpmPackageManager', `No readable root 'package.json' at '${root}'.`);
       return null;
     }
 
@@ -93,6 +96,10 @@ export class NpmPackageManager implements PackageManager {
     // so a scoped/private registry and its token route the lookups.
     const config: NpmrcConfig = await readNpmConfig(root, process.env);
     const names: ReadonlySet<string> = this.distinctNames(manifests);
+    logger.debug(
+      'NpmPackageManager',
+      `Resolving latest versions for ${names.size} distinct package(s) across ${manifests.length} manifest(s).`,
+    );
     const latest: ReadonlyMap<string, string | null> = await this.resolveLatest(
       names,
       config,
@@ -106,6 +113,7 @@ export class NpmPackageManager implements PackageManager {
         packages: this.readPackages(entry.manifest, installed, latest),
       }),
     );
+    logger.info('NpmPackageManager', `Loaded npm package model for '${root}' (${projects.length} project(s)).`);
     return { ecosystem: 'npm', root, projects };
   }
 

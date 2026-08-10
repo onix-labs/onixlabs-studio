@@ -2,6 +2,7 @@ import { inject, OnDestroy, Service } from '@angular/core';
 import { AUX_PANEL_URL } from '@shared/api/window-channels';
 import { watchChildWindowClosed } from '@shared/angular/services/child-window-close/child-window-close';
 import { ChildWindowStyling } from '@shared/angular/services/child-window-styling/child-window-styling';
+import { Log } from '@shared/angular/services/log/log';
 
 /**
  * One auxiliary window: a same-renderer child window whose DOM the opener scripts directly, hosting
@@ -93,6 +94,11 @@ export class AuxiliaryWindows implements OnDestroy {
   private readonly styling: ChildWindowStyling = inject(ChildWindowStyling);
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Holds the open children.
    */
   private readonly children: Set<Window> = new Set<Window>();
@@ -109,6 +115,7 @@ export class AuxiliaryWindows implements OnDestroy {
     const features: string = at === undefined ? '' : `left=${at.x},top=${at.y}`;
     const child: Window | null = window.open(AUX_PANEL_URL, '_blank', features);
     if (child === null) {
+      this.log.warn('AuxiliaryWindows', `Failed to open auxiliary window '${title}'`);
       return null;
     }
     const doc: Document = child.document;
@@ -129,11 +136,13 @@ export class AuxiliaryWindows implements OnDestroy {
     doc.body.appendChild(contentHost);
 
     this.children.add(child);
+    this.log.info('AuxiliaryWindows', `Opened auxiliary window '${title}'`);
 
     const closedListeners: (() => void)[] = [];
     watchChildWindowClosed(child, (): void => {
       this.children.delete(child);
       this.styling.release(child);
+      this.log.info('AuxiliaryWindows', `Closed auxiliary window '${title}'`);
       for (const listener of closedListeners) {
         listener();
       }

@@ -25,6 +25,7 @@ import {
 } from '@shared/angular/services/agent/agent';
 import { EditorCommands } from '@shared/angular/services/editor-commands/editor-commands';
 import { FileSystem } from '@shared/angular/services/file-system/file-system';
+import { Log } from '@shared/angular/services/log/log';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { AgentConversations } from '@shared/angular/services/agent-conversations/agent-conversations';
@@ -83,6 +84,11 @@ export class AgentConversation implements AgentSessionHandle {
    * Holds the tab registry, used to label an attached selection with its source tab's title.
    */
   private readonly tabs: Tabs = inject(Tabs);
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Tracks the counter that keeps attached-selection labels unique within this conversation.
@@ -331,6 +337,7 @@ export class AgentConversation implements AgentSessionHandle {
    * Starts a fresh conversation, clearing the transcript and leaving the history list.
    */
   public newChat(): void {
+    this.log.info('AgentConversation', 'New conversation started');
     this.agent.clear();
     this.historyOpenState.set(false);
   }
@@ -477,6 +484,7 @@ export class AgentConversation implements AgentSessionHandle {
     this.savedRef = this.agent.items();
     this.savedQueueRef = this.agent.queued();
     this.historyOpenState.set(false);
+    this.log.info('AgentConversation', 'Conversation opened', record.id);
   }
 
   /**
@@ -488,6 +496,7 @@ export class AgentConversation implements AgentSessionHandle {
     if (ids.length === 0) {
       return;
     }
+    this.log.info('AgentConversation', `Deleting ${ids.length} conversation(s)`);
     await this.store.delete(ids);
     const current: string | null = this.currentIdState();
     if (current !== null && ids.includes(current)) {
@@ -568,6 +577,7 @@ export class AgentConversation implements AgentSessionHandle {
     };
     await this.store.save(copy);
     await this.reloadSummaries();
+    this.log.info('AgentConversation', 'Conversation duplicated', id, copy.id);
   }
 
   /**

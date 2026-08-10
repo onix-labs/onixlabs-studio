@@ -1,6 +1,7 @@
 import { inject, Service } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
 import { Bridge } from '@shared/api/bridge';
+import { Log } from '@shared/angular/services/log/log';
 import {
   LspChannel,
   LspSemanticTokensLegend,
@@ -196,6 +197,11 @@ export class LspFeatures {
   private readonly editors: Editors = inject(Editors);
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Holds the generic transport, or undefined outside Electron.
    */
   private readonly bridge: Bridge | undefined = window.bridge;
@@ -353,6 +359,10 @@ export class LspFeatures {
         releaseDocumentSemanticTokens: (): void => undefined,
       });
     }
+    this.log.info(
+      'LspFeatures',
+      `Registered Monaco language features for ${FEATURE_LANGUAGES.length} language(s)`,
+    );
   }
 
   /**

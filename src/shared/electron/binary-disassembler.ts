@@ -58,6 +58,7 @@ export class BinaryDisassembler {
    * Registers the disassembly IPC handler.
    */
   public register(): void {
+    logger.trace('BinaryDisassembler', 'Registering disassemble IPC handler');
     ipcMain.handle(
       BinaryChannel.Disassemble,
       (
@@ -67,8 +68,10 @@ export class BinaryDisassembler {
         filterStart: unknown,
         filterEnd: unknown,
         architecture: unknown,
-      ): Promise<DecodedInstruction[]> =>
-        this.disassemble(bytes, baseOffset, filterStart, filterEnd, architecture),
+      ): Promise<DecodedInstruction[]> => {
+        logger.trace('BinaryDisassembler', 'Disassemble requested');
+        return this.disassemble(bytes, baseOffset, filterStart, filterEnd, architecture);
+      },
     );
   }
 
@@ -187,8 +190,12 @@ export class BinaryDisassembler {
     if (existing !== undefined) {
       return existing;
     }
-    this.capstone ??= initialize();
+    if (this.capstone === null) {
+      logger.debug('BinaryDisassembler', 'Initializing Capstone framework');
+      this.capstone = initialize();
+    }
     const framework: Capstone = await this.capstone;
+    logger.debug('BinaryDisassembler', `Creating Capstone instance for ${architecture}`);
     const instance: CapstoneInstance = framework.createInstance(spec.architecture, spec.mode);
     this.instances.set(architecture, instance);
     return instance;

@@ -17,6 +17,7 @@ import {
   DiagnosticsProvider,
 } from '@shared/angular/services/diagnostics/diagnostics';
 import { Documents } from '@shared/angular/services/documents/documents';
+import { Log } from '@shared/angular/services/log/log';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
 import { TerminalBridge } from '@shared/angular/services/terminal-bridge/terminal-bridge';
 import {
@@ -138,6 +139,11 @@ export class BuildRunner implements BuildHandler, OnDestroy {
    * completion or failure surfaces even while its terminal is buried behind other panels.
    */
   private readonly notifications: Notifications = inject(Notifications);
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Holds the session identifiers of runs the user stopped, consumed as each stop's exit lands. A
@@ -367,6 +373,7 @@ export class BuildRunner implements BuildHandler, OnDestroy {
       return;
     }
     const token: symbol = Symbol(task.id);
+    this.log.info('BuildRunner', `Run started '${task.label}'`, task.id, sessionId);
     this.currentRuns.set(sessionId, token);
     // The session id doubles as the run id: stable per configuration, which is what the Stop menu
     // stops. A relaunch replaces the stale entry rather than adding a second.
@@ -434,6 +441,7 @@ export class BuildRunner implements BuildHandler, OnDestroy {
    * @param exitCode The run's exit code.
    */
   private notifyRunOutcome(task: BuildTask, sessionId: string, exitCode: number): void {
+    this.log.info('BuildRunner', `Run finished '${task.label}'`, task.id, exitCode);
     if (exitCode === 0) {
       this.notifications.notify({
         severity: 'success',
@@ -464,6 +472,7 @@ export class BuildRunner implements BuildHandler, OnDestroy {
     const message: string =
       `Run configuration '${configuration.name}' does not produce a runnable command. ` +
       `Set a program (with its arguments), or point its target at a real project, script, or crate.`;
+    this.log.warn('BuildRunner', `Run configuration not runnable`, configuration.id);
     void this.sessions.launch({
       sessionId: this.runSessionId(configuration.id),
       name: `Run: ${configuration.name}`,
@@ -539,6 +548,7 @@ export class BuildRunner implements BuildHandler, OnDestroy {
       return;
     }
     const token: symbol = Symbol(task.id);
+    this.log.info('BuildRunner', `Build started '${task.label}'`, task.id);
     this.currentBuild = token;
     this.buildBusyState.set(true);
     // Only this task's problems are stale; another task's diagnostics stay published.
@@ -584,6 +594,7 @@ export class BuildRunner implements BuildHandler, OnDestroy {
    */
   private notifyBuildOutcome(task: BuildTask, exitCode: number): void {
     if (exitCode === 0) {
+      this.log.info('BuildRunner', `Build succeeded '${task.label}'`, task.id);
       this.notifications.notify({
         severity: 'success',
         title: 'Build succeeded',
@@ -592,6 +603,7 @@ export class BuildRunner implements BuildHandler, OnDestroy {
       });
       return;
     }
+    this.log.warn('BuildRunner', `Build failed '${task.label}'`, task.id, exitCode);
     this.notifications.notify({
       severity: 'error',
       title: 'Build failed',
@@ -1045,6 +1057,7 @@ export class BuildRunner implements BuildHandler, OnDestroy {
    */
   public cancel(runId: string): void {
     if (this.currentRuns.has(runId)) {
+      this.log.info('BuildRunner', 'Stopping run', runId);
       this.stoppedRuns.add(runId);
       this.sessions.terminate(runId);
     }
@@ -1132,6 +1145,7 @@ export class BuildRunner implements BuildHandler, OnDestroy {
       ...(await this.discoverNpm(root)),
     ];
     this.discovered.set(tasks);
+    this.log.debug('BuildRunner', 'Discovered build tasks', tasks.length, root.path);
   }
 
   /**
@@ -1358,7 +1372,8 @@ export class BuildRunner implements BuildHandler, OnDestroy {
       };
       const scripts: Record<string, unknown> = parsed.scripts ?? {};
       return Object.keys(scripts);
-    } catch {
+    } catch (error: unknown) {
+      this.log.warn('BuildRunner', 'Failed to parse package.json scripts', error);
       return [];
     }
   }

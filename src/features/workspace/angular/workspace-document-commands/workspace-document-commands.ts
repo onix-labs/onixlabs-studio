@@ -1,4 +1,5 @@
-import { computed, Service, Signal, signal, WritableSignal } from '@angular/core';
+import { computed, inject, Service, Signal, signal, WritableSignal } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 
 /**
  * Defines the document commands the directory (workspace) ribbon's File group can invoke on the
@@ -41,6 +42,11 @@ export interface WorkspaceDocumentCommandHandler {
 @Service()
 export class WorkspaceDocumentCommands {
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Holds the active workspace's command handler, or null when no directory tab is active.
    */
   private readonly handler: WritableSignal<WorkspaceDocumentCommandHandler | null> =
@@ -82,6 +88,7 @@ export class WorkspaceDocumentCommands {
    * Saves the active workspace's active well document.
    */
   public save(): void {
+    this.log.info('workspace.document', 'Save active document invoked');
     this.handler()?.save();
   }
 
@@ -89,6 +96,7 @@ export class WorkspaceDocumentCommands {
    * Saves every document with unsaved changes in the active workspace's well.
    */
   public saveAll(): void {
+    this.log.info('workspace.document', 'Save all documents invoked');
     this.handler()?.saveAll();
   }
 }

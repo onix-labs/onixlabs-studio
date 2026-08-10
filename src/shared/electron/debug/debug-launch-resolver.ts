@@ -1,6 +1,7 @@
 import { ipcMain, IpcMainInvokeEvent } from 'electron';
 import { DebugChannel, DebugResolveResult } from '@shared/api/debug-channels';
 import { RunConfiguration } from '@shared/api/studio';
+import { logger } from '../logger';
 import { ProjectSystem, ProjectSystemRegistry } from '../project-system/project-system';
 import { WorkspaceContext } from '../workspace-context';
 
@@ -57,6 +58,7 @@ export class DebugLaunchResolver {
       (_event: IpcMainInvokeEvent, request: unknown): Promise<DebugResolveResult> =>
         this.resolve(request),
     );
+    logger.info('DebugLaunchResolver', 'Registered debug resolve IPC handler');
   }
 
   /**
@@ -67,9 +69,15 @@ export class DebugLaunchResolver {
   private async resolve(request: unknown): Promise<DebugResolveResult> {
     const parsed: ResolveRequest | null = this.parse(request);
     if (parsed === null) {
+      logger.warn('DebugLaunchResolver', 'Rejected an invalid resolve request');
       return { target: null, error: 'Invalid resolve request.' };
     }
+    logger.trace(
+      'DebugLaunchResolver',
+      `Resolving debug target for ${parsed.configuration.providerKind} configuration`,
+    );
     if (!this.workspaceContext.isRoot(parsed.rootPath)) {
+      logger.warn('DebugLaunchResolver', `Resolve denied for non-open root ${parsed.rootPath}`);
       return { target: null, error: 'Workspace root is not open.' };
     }
     const system: ProjectSystem | undefined = this.projectSystems.get(
@@ -78,6 +86,10 @@ export class DebugLaunchResolver {
     if (system?.resolveDebugTarget === undefined) {
       // No provider resolver: launch the configuration's own program directly, when it names one.
       const program: string | undefined = parsed.configuration.program;
+      logger.debug(
+        'DebugLaunchResolver',
+        `No provider resolver for ${parsed.configuration.providerKind}; falling back to configured program`,
+      );
       return program !== undefined && program.length > 0
         ? { target: { program, cwd: parsed.configuration.cwd }, error: null }
         : {
@@ -85,6 +97,10 @@ export class DebugLaunchResolver {
             error: `No debug launch target for ${parsed.configuration.providerKind} configurations.`,
           };
     }
+    logger.debug(
+      'DebugLaunchResolver',
+      `Delegating resolution to the ${parsed.configuration.providerKind} project system`,
+    );
     return system.resolveDebugTarget(parsed.configuration, parsed.rootPath);
   }
 

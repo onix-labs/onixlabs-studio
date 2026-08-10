@@ -13,6 +13,7 @@ import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { SolutionModel, SolutionRow } from '@features/workspace/angular/project/solution-model';
 import { GitChangeStatus, statusLetter } from '@shared/angular/services/repository/repository-data';
 import { WorkspaceGit } from '@features/workspace/angular/workspace-git/workspace-git';
+import { Log } from '@shared/angular/services/log/log';
 import { Icon } from '@shared/angular/icons/icon';
 import { ExplorerToolbar } from '@shared/angular/components/explorer-toolbar/explorer-toolbar';
 import { HighlightedText } from '@shared/angular/components/highlighted-text/highlighted-text';
@@ -59,6 +60,11 @@ export class SolutionPanel {
    * Holds the workspace git status the rows are decorated from.
    */
   private readonly git: WorkspaceGit = inject(WorkspaceGit);
+
+  /**
+   * Holds the structured logger for solution explorer actions.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Maps a change status to its badge letter, exposed for the template.
@@ -116,6 +122,7 @@ export class SolutionPanel {
    * Expands every node in the tree.
    */
   protected expandAll(): void {
+    this.log.info('workspace.solution', 'Expand all requested');
     this.solution.expandAll();
   }
 
@@ -123,6 +130,7 @@ export class SolutionPanel {
    * Collapses every node in the tree, keeping the solution root expanded.
    */
   protected collapseAll(): void {
+    this.log.info('workspace.solution', 'Collapse all requested');
     this.solution.collapseAll();
   }
 
@@ -168,8 +176,10 @@ export class SolutionPanel {
       return;
     }
     if (row.expandable) {
+      this.log.debug('workspace.solution', `Toggle ${row.kind} row`, row.key);
       this.solution.toggle(row);
     } else if (row.path !== null) {
+      this.log.info('workspace.solution', 'Open file from solution', row.path);
       this.solution.select(row.key);
       void this.fileOpener.openPath(row.path);
     }

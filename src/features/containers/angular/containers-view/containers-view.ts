@@ -18,6 +18,7 @@ import { Panel } from '@shared/angular/components/panel-layout/panel';
 import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
 import { PanelEdge } from '@shared/angular/components/panel-layout/panel-types';
 import { Terminal } from '@shared/angular/components/terminal/terminal';
+import { Log } from '@shared/angular/services/log/log';
 import { Icon } from '@shared/angular/icons/icon';
 import { ContainerSummary, ImageSummary } from '@shared/api/docker-types';
 import { ContainerTerminals } from '../container-terminals/container-terminals';
@@ -66,6 +67,11 @@ export class ContainersView implements OnDestroy {
    * Holds the Docker client the view reads and acts through.
    */
   private readonly docker: Docker = inject(Docker);
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Holds the ribbon command registry the active view registers its handler with.
@@ -164,6 +170,7 @@ export class ContainersView implements OnDestroy {
     // shared status strip for the session.
     inject(ContainersStatus);
 
+    this.log.info('containers.view', 'Containers view created');
     void this.load();
 
     const unsubscribe: () => void = this.docker.onEvents((): void => {
@@ -184,6 +191,7 @@ export class ContainersView implements OnDestroy {
    * Deregisters the ribbon handler and stops any readiness poll when the tab closes.
    */
   public ngOnDestroy(): void {
+    this.log.info('containers.view', 'Containers view destroyed');
     this.destroyed = true;
     this.commands.unregister(this.commandHandler);
   }
@@ -196,9 +204,11 @@ export class ContainersView implements OnDestroy {
     if (this.launching()) {
       return;
     }
+    this.log.info('containers.view', 'Starting Docker and awaiting readiness');
     this.launching.set(true);
     try {
       if (!(await this.docker.launchDesktop())) {
+        this.log.warn('containers.view', 'Docker Desktop launch was not issued');
         return;
       }
       for (let attempt: number = 0; attempt < ContainersView.READINESS_ATTEMPTS; attempt += 1) {
@@ -208,9 +218,11 @@ export class ContainersView implements OnDestroy {
         }
         await this.load();
         if (this.available() === true) {
+          this.log.info('containers.view', 'Docker became ready', attempt + 1);
           return;
         }
       }
+      this.log.warn('containers.view', 'Docker did not become ready before timeout');
     } finally {
       this.launching.set(false);
     }
@@ -221,6 +233,7 @@ export class ContainersView implements OnDestroy {
    * @param id The container id.
    */
   protected select(id: string): void {
+    this.log.debug('containers.view', 'Selected container', id);
     this.selectedId.set(id);
   }
 
@@ -253,6 +266,7 @@ export class ContainersView implements OnDestroy {
    * @param container The container to tail.
    */
   protected viewLogs(container: ContainerSummary): void {
+    this.log.info('containers.view', 'View logs', this.displayName(container), container.id);
     this.terminals.open(`Logs: ${this.displayName(container)}`, `docker logs -f ${container.id}`);
   }
 
@@ -261,6 +275,7 @@ export class ContainersView implements OnDestroy {
    * @param container The container to open a shell in.
    */
   protected openShell(container: ContainerSummary): void {
+    this.log.info('containers.view', 'Open shell', this.displayName(container), container.id);
     this.terminals.open(
       `${this.displayName(container)} — shell`,
       `docker exec -it ${container.id} sh -c 'command -v bash >/dev/null && exec bash || exec sh'`,
@@ -389,9 +404,11 @@ export class ContainersView implements OnDestroy {
     if (this.busy()) {
       return;
     }
+    this.log.trace('containers.view', 'Running container action', id);
     this.busy.set(true);
     try {
-      await action(id);
+      const accepted: boolean = await action(id);
+      this.log.debug('containers.view', 'Container action settled', id, accepted);
       await this.load();
     } finally {
       this.busy.set(false);
@@ -415,6 +432,7 @@ export class ContainersView implements OnDestroy {
    * @returns Returns a promise that resolves once the snapshot has loaded.
    */
   private async load(): Promise<void> {
+    this.log.trace('containers.view', 'Loading daemon snapshot');
     const available: boolean = (await this.docker.status()).available;
     this.available.set(available);
     if (!available) {
@@ -426,6 +444,7 @@ export class ContainersView implements OnDestroy {
       this.docker.listContainers(),
       this.docker.listImages(),
     ]);
+    this.log.debug('containers.view', 'Loaded snapshot', containers.length, images.length);
     this.containers.set(containers);
     this.images.set(images);
     const id: string | null = this.selectedId();

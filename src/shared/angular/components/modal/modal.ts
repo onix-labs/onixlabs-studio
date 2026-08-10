@@ -26,6 +26,7 @@ import {
 import { Icon } from '@shared/angular/icons/icon';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { Log } from '@shared/angular/services/log/log';
 import {
   MODAL_WINDOW_CONFIG,
   ModalWindowHost,
@@ -120,6 +121,11 @@ export class Modal implements OnDestroy {
    * Holds the application, whose change detection the modal window's view attaches to.
    */
   private readonly applicationRef: ApplicationRef = inject(ApplicationRef);
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Gets a value indicating whether the modal is shown.
@@ -319,6 +325,7 @@ export class Modal implements OnDestroy {
     }
     const owner: Window | null = this.document.defaultView;
     if (content === undefined || owner === null) {
+      this.log.debug('Modal', `Presenting modal inline '${this.ariaLabel() ?? 'dialog'}'`);
       this.inline.set(true);
       return;
     }
@@ -339,10 +346,12 @@ export class Modal implements OnDestroy {
       owner,
     );
     if (window === null) {
+      this.log.warn('Modal', `No window opened; presenting inline '${this.ariaLabel() ?? 'dialog'}'`);
       this.inline.set(true);
       return;
     }
     this.inline.set(false);
+    this.log.info('Modal', `Opened modal window '${this.ariaLabel() ?? 'dialog'}'`);
     this.presented = this.mount(window, content.template, owner);
   }
 
@@ -538,10 +547,11 @@ export class Modal implements OnDestroy {
     let style: CSSStyleDeclaration;
     try {
       style = getComputedStyle(this.element.nativeElement);
-    } catch {
+    } catch (error: unknown) {
       // Resolving a computed style can fail outside a real browser engine (a test environment that
       // cannot parse one of the application's stylesheets). The colour is a courtesy; a modal must
       // never fail to open for want of it.
+      this.log.warn('Modal', 'Could not resolve opening background colour', error);
       return null;
     }
     for (const property of ['--modal-panel-background-color', '--body-background-color']) {

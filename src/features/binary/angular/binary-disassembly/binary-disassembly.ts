@@ -1,6 +1,7 @@
-import { Service } from '@angular/core';
+import { inject, Service } from '@angular/core';
 import { Bridge } from '@shared/api/bridge';
 import { BinaryChannel, DecodedInstruction } from '@shared/api/binary-channels';
+import { Log } from '@shared/angular/services/log/log';
 
 /**
  * Represents the renderer-side client for native disassembly. It is a thin typed wrapper over the
@@ -13,6 +14,11 @@ export class BinaryDisassembly {
    * Holds the generic transport, or undefined when running outside Electron.
    */
   private readonly bridge: Bridge | undefined = window.bridge;
+
+  /**
+   * Holds the structured logger for disassembly requests.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Disassembles a buffer of machine code, returning the instructions whose start falls in the
@@ -33,6 +39,10 @@ export class BinaryDisassembly {
     filterEnd: number,
     architecture: string,
   ): Promise<readonly DecodedInstruction[]> {
+    this.log.trace(
+      'binary.disassembly',
+      `Disassemble ${architecture} [0x${filterStart.toString(16)}, 0x${filterEnd.toString(16)})`,
+    );
     return (
       this.bridge?.invoke<readonly DecodedInstruction[]>(
         BinaryChannel.Disassemble,

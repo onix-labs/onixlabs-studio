@@ -9,6 +9,7 @@ import {
   SaveDialogReturnValue,
   WebContents,
 } from 'electron';
+import { logger } from './logger';
 
 /**
  * Resolves the window a native dialog should be parented to.
@@ -62,6 +63,7 @@ export function showOpenDialog(
   options: OpenDialogOptions,
 ): Promise<OpenDialogReturnValue> {
   const parent: BrowserWindow | null = resolveDialogParent(sender, fallback);
+  logger.trace('dialog-parent', `Showing open dialog (parented: ${parent !== null})`);
   return parent === null ? dialog.showOpenDialog(options) : dialog.showOpenDialog(parent, options);
 }
 
@@ -78,6 +80,7 @@ export function showSaveDialog(
   options: SaveDialogOptions,
 ): Promise<SaveDialogReturnValue> {
   const parent: BrowserWindow | null = resolveDialogParent(sender, fallback);
+  logger.trace('dialog-parent', `Showing save dialog (parented: ${parent !== null})`);
   return parent === null ? dialog.showSaveDialog(options) : dialog.showSaveDialog(parent, options);
 }
 
@@ -94,6 +97,7 @@ export function showMessageBox(
   options: MessageBoxOptions,
 ): Promise<MessageBoxReturnValue> {
   const parent: BrowserWindow | null = resolveDialogParent(sender, fallback);
+  logger.trace('dialog-parent', `Showing message box (parented: ${parent !== null})`);
   return parent === null ? dialog.showMessageBox(options) : dialog.showMessageBox(parent, options);
 }
 

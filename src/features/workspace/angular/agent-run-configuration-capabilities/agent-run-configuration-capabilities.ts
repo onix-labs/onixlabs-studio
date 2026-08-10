@@ -10,6 +10,7 @@ import {
   RunConfiguration,
 } from '@shared/api/studio';
 import { ActiveWorkspace } from '@shared/angular/services/workspace/active-workspace';
+import { Log } from '@shared/angular/services/log/log';
 import { AiRuntime } from '@shared/angular/services/ai-runtime/ai-runtime';
 import { StudioConfig } from '@shared/angular/services/studio/studio-config';
 
@@ -76,6 +77,11 @@ interface WriteResult {
  */
 @Service()
 export class AgentRunConfigurationCapabilities {
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
   /**
    * Holds the agent runtime the capabilities register with.
    */
@@ -166,6 +172,7 @@ export class AgentRunConfigurationCapabilities {
     }
 
     await this.studio.saveRunConfigurations(merged);
+    this.log.info('workspace.run', 'Agent saved run configurations', incoming.length);
     return {
       ok: true,
       ids: incoming.map((configuration: RunConfiguration): string => configuration.id),
@@ -209,6 +216,7 @@ export class AgentRunConfigurationCapabilities {
     }
 
     await this.studio.saveRunConfigurations(remaining);
+    this.log.info('workspace.run', 'Agent deleted run configurations', ids.length);
     return { ok: true, ids, configurations: remaining };
   }
 

@@ -1,6 +1,7 @@
 import { DOCUMENT, effect, inject, Service } from '@angular/core';
 import { Bridge } from '@shared/api/bridge';
 import { ExportPdfRequest, ExportPdfResult, PrintChannel } from '@shared/api/print-channels';
+import { Log } from '@shared/angular/services/log/log';
 import { Settings } from '@shared/angular/services/settings/settings';
 import type { PrintMargin } from '@shared/angular/services/settings/settings';
 
@@ -31,6 +32,11 @@ export class Printing {
    * Holds the settings service the print margin is read from.
    */
   private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Holds the generic transport used to reach the main-process print manager, or undefined when
@@ -66,6 +72,7 @@ export class Printing {
    * and the `@page` margin.
    */
   public print(): void {
+    this.log.info('Printing', 'Printing active document');
     this.document.defaultView?.print();
   }
 
@@ -79,12 +86,16 @@ export class Printing {
    */
   public async exportPdf(documentName: string): Promise<ExportPdfResult> {
     const request: ExportPdfRequest = { defaultFileName: this.toPdfFileName(documentName) };
-    return (
-      (await this.bridge?.invoke<ExportPdfResult>(PrintChannel.ExportPdf, request)) ?? {
-        success: false,
-        error: 'PDF export is only available in the desktop app',
-      }
-    );
+    this.log.info('Printing', 'Exporting document to PDF', request.defaultFileName);
+    const result: ExportPdfResult = (await this.bridge?.invoke<ExportPdfResult>(
+      PrintChannel.ExportPdf,
+      request,
+    )) ?? {
+      success: false,
+      error: 'PDF export is only available in the desktop app',
+    };
+    this.log.debug('Printing', 'PDF export completed', result.success);
+    return result;
   }
 
   /**

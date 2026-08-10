@@ -24,6 +24,7 @@ import {
 } from '@shared/api/worktree';
 import { WorktreeSession } from '@features/workspace/angular/worktree/worktree-session';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
+import { Log } from '@shared/angular/services/log/log';
 
 /**
  * The Worktrees panel: the container tab's overview and switcher. One row per checkout — labelled by
@@ -66,6 +67,11 @@ export class WorktreesPanel {
    * Holds the tab's worktree session: the container state this panel presents and mutates.
    */
   protected readonly session: WorktreeSession = inject(WorktreeSession);
+
+  /**
+   * Holds the structured logger for worktrees panel actions.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Gets the registered checkouts in registration order.
@@ -234,6 +240,7 @@ export class WorktreesPanel {
    */
   protected onRowClick(row: ListRow): void {
     if (row.id !== this.ORCHESTRATOR_ID) {
+      this.log.info('workspace.worktrees', 'Activate checkout', this.session.labelFor(row.id));
       this.session.activate(row.id);
     }
   }
@@ -243,6 +250,7 @@ export class WorktreesPanel {
    * branches minus the ones other checkouts hold, plus the new-branch entry.
    */
   protected onAdd(): void {
+    this.log.debug('workspace.worktrees', 'Open add-checkout prompt');
     this.lastError.set(null);
     this.addBranch.set('');
     this.addAlias.set('');
@@ -298,13 +306,16 @@ export class WorktreesPanel {
     const branch: string = pick === this.NEW_BRANCH ? this.addBranch().trim() : pick;
     const alias: string = this.addAlias().trim();
     this.addOpen.set(false);
+    this.log.info('workspace.worktrees', `Add checkout on branch ${branch || '(default)'}`, alias);
     const outcome: WorktreeOutcome<WorktreeCheckoutInfo> = await this.session.add({
       branch: branch.length > 0 ? branch : undefined,
       alias: alias.length > 0 ? alias : undefined,
     });
     if (outcome.ok) {
+      this.log.info('workspace.worktrees', 'Checkout added', outcome.value.id);
       this.session.activate(outcome.value.id);
     } else {
+      this.log.error('workspace.worktrees', 'Add checkout failed', outcome.error);
       this.lastError.set(outcome.error);
     }
   }
@@ -323,6 +334,7 @@ export class WorktreesPanel {
    */
   protected onRemove(id: string, event: Event): void {
     event.stopPropagation();
+    this.log.debug('workspace.worktrees', 'Open remove confirm', this.session.labelFor(id));
     this.lastError.set(null);
     this.removeTarget.set(id);
   }
@@ -337,8 +349,10 @@ export class WorktreesPanel {
     if (id === null) {
       return;
     }
+    this.log.info('workspace.worktrees', 'Remove checkout', this.session.labelFor(id));
     const outcome: WorktreeOutcome<null> = await this.session.remove(id);
     if (!outcome.ok) {
+      this.log.error('workspace.worktrees', 'Remove checkout failed', outcome.error);
       this.lastError.set(outcome.error);
     }
   }
@@ -354,6 +368,7 @@ export class WorktreesPanel {
    * Re-reads the container's descriptor and statuses.
    */
   protected onRefresh(): void {
+    this.log.info('workspace.worktrees', 'Refresh requested');
     void this.session.refresh();
   }
 }

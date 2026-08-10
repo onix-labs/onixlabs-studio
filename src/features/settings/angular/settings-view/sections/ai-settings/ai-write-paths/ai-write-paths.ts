@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, inject, Signal } from '@angular/cor
 import { Button } from '@shared/angular/components/forms/button/button';
 import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
 import { FileSystem } from '@shared/angular/services/file-system/file-system';
+import { Log } from '@shared/angular/services/log/log';
 import { Icon } from '@shared/angular/icons/icon';
 import { Settings } from '@shared/angular/services/settings/settings';
 
@@ -41,6 +42,11 @@ export class AiWritePaths {
   private readonly fileSystem: FileSystem = inject(FileSystem);
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Gets the allowed write directories.
    */
   protected readonly allowed: Signal<readonly string[]> = this.settings.aiAllowedWritePaths;
@@ -64,6 +70,7 @@ export class AiWritePaths {
     if (current.includes(path)) {
       return;
     }
+    this.log.info('settings.ai', 'Write path added', kind, path);
     this.commit(kind, [...current, path]);
   }
 
@@ -73,6 +80,7 @@ export class AiWritePaths {
    * @param index The entry index.
    */
   protected remove(kind: ListKind, index: number): void {
+    this.log.info('settings.ai', 'Write path removed', kind, this.current(kind)[index]);
     this.commit(
       kind,
       this.current(kind).filter((_: string, i: number): boolean => i !== index),

@@ -1,4 +1,5 @@
 import { inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 import { DockGeometry } from './dock-geometry';
 import { Rect } from './dock-legality';
 import { DockNode, isStackNode } from './dock-node';
@@ -40,6 +41,11 @@ export class DockAutoHide {
   private readonly geometry: DockGeometry = inject(DockGeometry);
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Holds the docked size of each collapsed stack, keyed by stack id, so its peek opens at the size
    * it had while docked.
    */
@@ -65,6 +71,7 @@ export class DockAutoHide {
     if (node === null || !isStackNode(node) || node.role === 'document') {
       return;
     }
+    this.log.info('DockAutoHide', `Auto-hid stack '${stackId}'`);
     const rect: Rect | null = this.geometry.rectOf(stackId);
     if (rect !== null) {
       this.sizes.set(stackId, { width: rect.width, height: rect.height });
@@ -78,6 +85,7 @@ export class DockAutoHide {
    * @param stackId The identifier of the stack to expand.
    */
   public unpin(stackId: string): void {
+    this.log.info('DockAutoHide', `Expanded auto-hidden stack '${stackId}'`);
     this.sizes.delete(stackId);
     this.flyout.set(null);
     this.dockState.setCollapsed(stackId, false);
@@ -122,6 +130,7 @@ export class DockAutoHide {
    * @param panelId The identifier of the panel to close.
    */
   public closePanel(stackId: string, panelId: string): void {
+    this.log.debug('DockAutoHide', `Closing panel '${panelId}' in collapsed stack '${stackId}'`);
     this.dockState.removeFromLayout(panelId);
     if (findNode(this.dockState.layout(), stackId) === null) {
       this.flyout.set(null);

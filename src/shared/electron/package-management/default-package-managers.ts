@@ -1,6 +1,7 @@
 import { NpmPackageManager } from './npm-package-manager';
 import { NuGetPackageManager } from './nuget-package-manager';
 import { PackageManagerRegistry } from './package-manager';
+import { logger } from '../logger';
 
 /**
  * Builds a package-manager registry seeded with the built-in managers. Registration order is match
@@ -13,6 +14,7 @@ export function createPackageManagers(): PackageManagerRegistry {
   const registry: PackageManagerRegistry = new PackageManagerRegistry();
   registry.register(new NuGetPackageManager());
   registry.register(new NpmPackageManager());
+  logger.info('default-package-managers', 'Seeded the package-manager registry with 2 built-in managers.');
   return registry;
 }
 

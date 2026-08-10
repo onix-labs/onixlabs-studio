@@ -1,4 +1,5 @@
-import { Service, signal, WritableSignal } from '@angular/core';
+import { inject, Service, signal, WritableSignal } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 
 /**
  * Holds the panel state for a single code tab's docked run terminal.
@@ -46,6 +47,11 @@ export class EditorTerminals {
   private readonly states: WritableSignal<ReadonlyMap<string, PanelState>> = signal<
     ReadonlyMap<string, PanelState>
   >(new Map<string, PanelState>());
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Returns whether a tab's terminal panel is currently shown.
@@ -100,6 +106,7 @@ export class EditorTerminals {
    */
   public queueCommand(id: string, command: string): void {
     this.update(id, { visible: true, mounted: true, pending: command });
+    this.log.info('EditorTerminals', `Queued terminal command`, id, command);
   }
 
   /**

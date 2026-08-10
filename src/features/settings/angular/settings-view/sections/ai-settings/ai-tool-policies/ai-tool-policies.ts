@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import type { AiToolPolicy, GateableTool } from '@shared/api/ai-types';
 import { GATEABLE_TOOLS } from '@shared/api/ai-types';
+import { Log } from '@shared/angular/services/log/log';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
 import { Settings } from '@shared/angular/services/settings/settings';
@@ -45,6 +46,11 @@ export class AiToolPolicies {
   private readonly settings: Settings = inject(Settings);
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Gets a tool's current policy, defaulting to "ask" when unset.
    * @param tool The tool's display name.
    * @returns Returns the tool's policy.
@@ -59,6 +65,7 @@ export class AiToolPolicies {
    * @param policy The picked policy value.
    */
   protected setPolicy(tool: string, policy: string): void {
+    this.log.info('settings.ai', 'Tool policy changed', tool, policy);
     this.settings.setAiToolPolicy(tool, policy as AiToolPolicy);
   }
 }

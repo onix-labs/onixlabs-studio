@@ -1,6 +1,7 @@
 import { inject, OnDestroy, Service } from '@angular/core';
 import { AppChannel } from '@shared/api/app-channels';
 import { Bridge } from '@shared/api/bridge';
+import { Log } from '@shared/angular/services/log/log';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 
 /**
@@ -18,6 +19,11 @@ export class OpenWith implements OnDestroy {
    * Holds the opener that routes a path to the right editor tab.
    */
   private readonly fileOpener: FileOpener = inject(FileOpener);
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Holds the generic transport, or undefined when running outside Electron.
@@ -66,6 +72,7 @@ export class OpenWith implements OnDestroy {
     if (typeof path !== 'string' || path.length === 0) {
       return;
     }
+    this.log.info('OpenWith', 'Opening OS-supplied path', path);
     void this.fileOpener.reopenFile(path);
   }
 }

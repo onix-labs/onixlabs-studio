@@ -12,6 +12,7 @@ import {
   StudioWorkspace,
 } from '@shared/api/studio';
 import { DirectoryWatch } from '@shared/angular/services/directory-watch/directory-watch';
+import { Log } from '@shared/angular/services/log/log';
 import { ActiveWorkspace } from '@shared/angular/services/workspace/active-workspace';
 
 /**
@@ -52,6 +53,11 @@ export class StudioConfig {
    * Holds the generic transport, or undefined outside Electron.
    */
   private readonly bridge: Bridge | undefined = window.bridge;
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Holds the current snapshot for the open root, defaulting to an empty snapshot.
@@ -124,6 +130,11 @@ export class StudioConfig {
    */
   public async saveWorkspace(workspace: StudioWorkspace): Promise<void> {
     this.current.set({ workspace, user: this.current().user });
+    this.log.info(
+      'StudioConfig',
+      'Saved workspace configuration',
+      workspace.runConfigurations.length,
+    );
     await this.persist(StudioChannel.SaveWorkspace, workspace);
   }
 
@@ -211,6 +222,7 @@ export class StudioConfig {
       return;
     }
     this.current.set(snapshot ?? emptySnapshot());
+    this.log.debug('StudioConfig', `Loaded .studio snapshot for '${root}'`, snapshot !== null);
   }
 
   /**

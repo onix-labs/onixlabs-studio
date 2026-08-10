@@ -1,4 +1,5 @@
 import { inject, OnDestroy, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 import { TerminalBridge } from '@shared/angular/services/terminal-bridge/terminal-bridge';
 
 /**
@@ -31,6 +32,11 @@ export class ContainerTerminals implements OnDestroy {
   private readonly bridge: TerminalBridge = inject(TerminalBridge);
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Holds the open sessions, in the order they were opened.
    */
   private readonly sessionList: WritableSignal<readonly ContainerTerminal[]> = signal<
@@ -60,6 +66,7 @@ export class ContainerTerminals implements OnDestroy {
    */
   public open(name: string, command: string): void {
     const id: string = `docker-${crypto.randomUUID()}`;
+    this.log.info('containers.terminals', 'Opening terminal', name, command);
     this.sessionList.update((sessions: readonly ContainerTerminal[]): readonly ContainerTerminal[] => [
       ...sessions,
       { id, name },
@@ -83,6 +90,7 @@ export class ContainerTerminals implements OnDestroy {
    * @param id The session id.
    */
   public close(id: string): void {
+    this.log.debug('containers.terminals', 'Closing terminal', id);
     void this.bridge.dispose(id);
     this.sessionList.update((sessions: readonly ContainerTerminal[]): readonly ContainerTerminal[] =>
       sessions.filter((session: ContainerTerminal): boolean => session.id !== id),

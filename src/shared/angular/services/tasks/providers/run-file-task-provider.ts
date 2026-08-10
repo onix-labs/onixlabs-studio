@@ -1,5 +1,6 @@
 import { inject, Service } from '@angular/core';
 import { Bridge } from '@shared/api/bridge';
+import { Log } from '@shared/angular/services/log/log';
 import { RunChannel, TempFileResult } from '@shared/api/run-channels';
 import { ActiveDocumentContext, Task, TaskContext, TaskProvider } from '../task';
 import { Tasks } from '../tasks';
@@ -84,6 +85,11 @@ export class RunFileTaskProvider implements TaskProvider {
   private readonly bridge: Bridge | undefined = window.bridge;
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Initializes the provider, registering it with the task orchestrator.
    */
   public constructor() {
@@ -153,8 +159,10 @@ export class RunFileTaskProvider implements TaskProvider {
       document.content,
     );
     if (!result.success || result.path === undefined) {
+      this.log.warn('RunFileTaskProvider', 'Failed to write temp run file', document.tabId);
       return null;
     }
+    this.log.debug('RunFileTaskProvider', 'Resolved run-file command', document.language);
     return runner.buildCommand(result.path);
   }
 }

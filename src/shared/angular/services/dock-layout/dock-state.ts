@@ -1,4 +1,5 @@
 import { computed, effect, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { SettingsStore } from '@shared/angular/services/settings-store/settings-store';
 import { DOCK_BLUEPRINT, DockBlueprint } from './dock-blueprint';
@@ -51,6 +52,11 @@ export class DockState {
    * next session.
    */
   private readonly store: SettingsStore = inject(SettingsStore);
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Holds the key this dock's layout persists under, or null when no blueprint was provided (the
@@ -139,6 +145,7 @@ export class DockState {
    * @param side The edge to dock against.
    */
   public dockEdge(panelId: string, side: DockSide): void {
+    this.log.info('DockState', `Docked panel '${panelId}' to ${side} edge`);
     this.commit(dockEdge(this.tree(), panelId, side));
   }
 
@@ -168,6 +175,7 @@ export class DockState {
    * @param panelId The identifier of the panel to remove.
    */
   public removeFromLayout(panelId: string): void {
+    this.log.debug('DockState', `Removing panel '${panelId}' from layout`);
     this.commit(removeFromLayout(this.tree(), panelId));
   }
 
@@ -182,8 +190,10 @@ export class DockState {
   public async requestClose(panelId: string): Promise<void> {
     const panel: DockPanel | undefined = this.panels.get(panelId);
     if (panel?.confirmClose !== undefined && !(await panel.confirmClose())) {
+      this.log.debug('DockState', `Close of panel '${panelId}' cancelled by guard`);
       return;
     }
+    this.log.info('DockState', `Closed panel '${panelId}'`);
     this.removeFromLayout(panelId);
   }
 
@@ -271,6 +281,7 @@ export class DockState {
    * Restores the seeded default layout, discarding the current arrangement.
    */
   public reset(): void {
+    this.log.info('DockState', `Reset layout to seeded default`, this.persistKey);
     this.commit(this.createLayout());
   }
 
@@ -284,6 +295,7 @@ export class DockState {
       return;
     }
     const previous: DockNode = past[past.length - 1];
+    this.log.debug('DockState', 'Undo layout change');
     this.past.set(past.slice(0, -1));
     this.future.set([this.tree(), ...this.future()]);
     this.tree.set(previous);
@@ -298,6 +310,7 @@ export class DockState {
       return;
     }
     const next: DockNode = future[0];
+    this.log.debug('DockState', 'Redo layout change');
     this.future.set(future.slice(1));
     this.past.set([...this.past(), this.tree()]);
     this.tree.set(next);
@@ -336,6 +349,12 @@ export class DockState {
       return this.createLayout();
     }
     const raw: unknown = this.store.get<unknown>(`dock.layout.${this.persistKey}`, null);
-    return restoreLayout(raw, this.knownPanelIds) ?? this.createLayout();
+    const restored: DockNode | null = restoreLayout(raw, this.knownPanelIds);
+    if (restored !== null) {
+      this.log.info('DockState', `Restored persisted layout '${this.persistKey}'`);
+      return restored;
+    }
+    this.log.info('DockState', `No usable persisted layout '${this.persistKey}'; seeding fresh`);
+    return this.createLayout();
   }
 }

@@ -43,20 +43,27 @@ export class WorktreeManager {
    * workspace root.
    */
   public register(): void {
+    logger.info('WorktreeManager', 'Registering worktree IPC handlers');
     ipcMain.handle(
       WorktreeChannel.Resolve,
-      (_event: IpcMainInvokeEvent, target: unknown): Promise<WorkspaceKind | null> =>
-        this.operations.resolveKind(target),
+      (_event: IpcMainInvokeEvent, target: unknown): Promise<WorkspaceKind | null> => {
+        logger.trace('WorktreeManager', `Resolve kind for ${String(target)}`);
+        return this.operations.resolveKind(target);
+      },
     );
     ipcMain.handle(
       WorktreeChannel.Describe,
-      (_event: IpcMainInvokeEvent, root: unknown): Promise<WorktreeDescriptor | null> =>
-        this.operations.describe(root),
+      (_event: IpcMainInvokeEvent, root: unknown): Promise<WorktreeDescriptor | null> => {
+        logger.trace('WorktreeManager', `Describe ${String(root)}`);
+        return this.operations.describe(root);
+      },
     );
     ipcMain.handle(
       WorktreeChannel.Promote,
-      (_event: IpcMainInvokeEvent, root: unknown): Promise<WorktreeOutcome<WorktreeDescriptor>> =>
-        this.logged(`Promote ${String(root)}`, this.operations.promote(root)),
+      (_event: IpcMainInvokeEvent, root: unknown): Promise<WorktreeOutcome<WorktreeDescriptor>> => {
+        logger.trace('WorktreeManager', `Promote ${String(root)}`);
+        return this.logged(`Promote ${String(root)}`, this.operations.promote(root));
+      },
     );
     ipcMain.handle(
       WorktreeChannel.AddCheckout,
@@ -64,30 +71,41 @@ export class WorktreeManager {
         _event: IpcMainInvokeEvent,
         root: unknown,
         options: unknown,
-      ): Promise<WorktreeOutcome<WorktreeCheckoutInfo>> =>
-        this.logged(`Add checkout in ${String(root)}`, this.operations.addCheckout(root, options)),
+      ): Promise<WorktreeOutcome<WorktreeCheckoutInfo>> => {
+        logger.trace('WorktreeManager', `Add checkout in ${String(root)}`);
+        return this.logged(`Add checkout in ${String(root)}`, this.operations.addCheckout(root, options));
+      },
     );
     ipcMain.handle(
       WorktreeChannel.RemoveCheckout,
-      (_event: IpcMainInvokeEvent, root: unknown, id: unknown): Promise<WorktreeOutcome<null>> =>
-        this.logged(`Remove checkout ${String(id)}`, this.operations.removeCheckout(root, id)),
+      (_event: IpcMainInvokeEvent, root: unknown, id: unknown): Promise<WorktreeOutcome<null>> => {
+        logger.trace('WorktreeManager', `Remove checkout ${String(id)} in ${String(root)}`);
+        return this.logged(`Remove checkout ${String(id)}`, this.operations.removeCheckout(root, id));
+      },
     );
     ipcMain.handle(
       WorktreeChannel.OpenCheckout,
-      (_event: IpcMainInvokeEvent, root: unknown, id: unknown): Promise<WorktreeOutcome<string>> =>
-        this.operations.openCheckout(root, id),
+      (_event: IpcMainInvokeEvent, root: unknown, id: unknown): Promise<WorktreeOutcome<string>> => {
+        logger.trace('WorktreeManager', `Open checkout ${String(id)} in ${String(root)}`);
+        return this.operations.openCheckout(root, id);
+      },
     );
     ipcMain.handle(
       WorktreeChannel.Status,
       (
         _event: IpcMainInvokeEvent,
         root: unknown,
-      ): Promise<readonly WorktreeCheckoutStatus[] | null> => this.operations.status(root),
+      ): Promise<readonly WorktreeCheckoutStatus[] | null> => {
+        logger.trace('WorktreeManager', `Status for ${String(root)}`);
+        return this.operations.status(root);
+      },
     );
     ipcMain.handle(
       WorktreeChannel.Branches,
-      (_event: IpcMainInvokeEvent, root: unknown): Promise<readonly string[] | null> =>
-        this.operations.branches(root),
+      (_event: IpcMainInvokeEvent, root: unknown): Promise<readonly string[] | null> => {
+        logger.trace('WorktreeManager', `Branches for ${String(root)}`);
+        return this.operations.branches(root);
+      },
     );
   }
 

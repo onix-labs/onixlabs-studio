@@ -1,5 +1,6 @@
-import { Service } from '@angular/core';
+import { inject, Service } from '@angular/core';
 import { Bridge } from '@shared/api/bridge';
+import { Log } from '@shared/angular/services/log/log';
 import {
   AgentConversationChannel,
   AgentConversationClient,
@@ -19,6 +20,11 @@ export class AgentConversations implements AgentConversationClient {
    * Holds the generic IPC bridge, or undefined when running outside Electron.
    */
   private readonly bridge: Bridge | undefined = window.bridge;
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Gets a value indicating whether conversation persistence is available (i.e. running in Electron).
@@ -73,6 +79,7 @@ export class AgentConversations implements AgentConversationClient {
   public async save(
     conversation: StoredAgentConversation,
   ): Promise<AgentConversationSummary | null> {
+    this.log.trace('AgentConversations', 'Saving conversation', conversation.id);
     return (
       (await this.bridge?.invoke<AgentConversationSummary | null>(
         AgentConversationChannel.Save,
@@ -110,6 +117,7 @@ export class AgentConversations implements AgentConversationClient {
    * @param ids The ids to delete.
    */
   public async delete(ids: readonly string[]): Promise<void> {
+    this.log.trace('AgentConversations', `Deleting ${ids.length} conversation(s)`);
     await this.bridge?.invoke<void>(AgentConversationChannel.Delete, ids);
   }
 }

@@ -1,5 +1,6 @@
-import { Service } from '@angular/core';
+import { inject, Service } from '@angular/core';
 import { Bridge } from '@shared/api/bridge';
+import { Log } from '@shared/angular/services/log/log';
 import {
   ConfirmDestructiveRequest,
   FileChannel,
@@ -37,6 +38,11 @@ export class FileSystem {
   public readonly isElectron: boolean = this.bridge !== undefined;
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Reads a file from disk.
    * @param path The absolute path of the file to read.
    * @returns Returns the file info, or null when unavailable or unreadable.
@@ -53,6 +59,7 @@ export class FileSystem {
    * @returns Returns the result describing success or failure.
    */
   public write(path: string, content: string, hasBom: boolean = false): Promise<FileWriteResult> {
+    this.log.trace('FileSystem', 'Writing file', path);
     return (
       this.bridge?.invoke<FileWriteResult>(FileChannel.Write, path, content, hasBom) ??
       Promise.resolve(UNAVAILABLE_WRITE)

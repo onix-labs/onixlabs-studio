@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 import { CodeAgents } from '@features/code/angular/code-agents/code-agents';
 import { EditorCommands } from '@shared/angular/services/editor-commands/editor-commands';
 import { CodeRunner } from '@features/code/angular/code-runner/code-runner';
@@ -66,6 +67,11 @@ export class CodeRibbon {
    * Gets the icon set, exposed for the template.
    */
   protected readonly Icon: typeof Icon = Icon;
+
+  /**
+   * Holds the structured logger for the code ribbon's user actions.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Holds the code command registry editor commands route through.
@@ -202,6 +208,7 @@ export class CodeRibbon {
    * Saves the active document.
    */
   protected onSave(): void {
+    this.log.info('code.ribbon', 'Save active document requested');
     void this.documents.saveActive();
   }
 
@@ -210,6 +217,7 @@ export class CodeRibbon {
    * @param id The chosen save variant's identifier.
    */
   protected onSaveVariant(id: string): void {
+    this.log.info('code.ribbon', 'Save variant chosen', id);
     if (id === VARIANT_SAVE_AS) {
       void this.documents.saveActiveAs();
     } else {
@@ -221,6 +229,7 @@ export class CodeRibbon {
    * Prints the active document via the browser print dialog.
    */
   protected onPrint(): void {
+    this.log.info('code.ribbon', 'Print requested');
     this.printing.print();
   }
 
@@ -240,6 +249,7 @@ export class CodeRibbon {
    * Exports the active document to PDF, prompting for a destination and opening the result.
    */
   protected onExportPdf(): void {
+    this.log.info('code.ribbon', 'Export to PDF requested', this.activeDocument()?.fileName() ?? '');
     void this.printing.exportPdf(this.activeDocument()?.fileName() ?? '');
   }
 
@@ -247,6 +257,7 @@ export class CodeRibbon {
    * Formats the active document.
    */
   protected onFormat(): void {
+    this.log.info('code.ribbon', 'Format document requested');
     this.commands.formatDocument();
   }
 
@@ -289,6 +300,7 @@ export class CodeRibbon {
    * Opens the find widget.
    */
   protected onFind(): void {
+    this.log.info('code.ribbon', 'Find requested');
     this.commands.find();
   }
 
@@ -300,6 +312,7 @@ export class CodeRibbon {
     const id: string | undefined = this.tabs.activeTabId();
     const language: string | undefined = this.idByName.get(name);
     if (id !== undefined && language !== undefined) {
+      this.log.info('code.ribbon', 'Language changed', language);
       this.documents.setLanguage(id, language);
     }
   }
@@ -311,6 +324,7 @@ export class CodeRibbon {
     const id: string | undefined = this.tabs.activeTabId();
     const document: CodeDocument | undefined = this.activeDocument();
     if (id !== undefined && document !== undefined) {
+      this.log.info('code.ribbon', 'Run active document from ribbon', document.language());
       void this.runner.run(id, document.language(), document.content());
     }
   }
@@ -321,6 +335,7 @@ export class CodeRibbon {
   protected onTerminal(): void {
     const id: string | undefined = this.tabs.activeTabId();
     if (id !== undefined) {
+      this.log.debug('code.ribbon', 'Toggle docked terminal', id);
       this.editorTerminals.toggle(id);
     }
   }
@@ -331,6 +346,7 @@ export class CodeRibbon {
   protected onAgent(): void {
     const id: string | undefined = this.tabs.activeTabId();
     if (id !== undefined) {
+      this.log.debug('code.ribbon', 'Toggle docked agent panel', id);
       this.codeAgents.toggle(id);
     }
   }

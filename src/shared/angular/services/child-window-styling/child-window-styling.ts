@@ -1,4 +1,5 @@
-import { OnDestroy, Service } from '@angular/core';
+import { inject, OnDestroy, Service } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 
 /**
  * Holds the document-root attributes mirrored into child windows, so their stylesheets resolve the
@@ -29,6 +30,11 @@ export class ChildWindowStyling implements OnDestroy {
   private readonly children: Set<Window> = new Set<Window>();
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Holds the observer mirroring theme attributes from this document's root into the children, or
    * null until the first child is adopted.
    */
@@ -52,6 +58,7 @@ export class ChildWindowStyling implements OnDestroy {
     this.applyRootAttributes(doc);
     this.children.add(child);
     this.ensureObservers();
+    this.log.trace('ChildWindowStyling', 'Adopted child window for styling', this.children.size);
   }
 
   /**

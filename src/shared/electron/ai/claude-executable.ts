@@ -17,6 +17,7 @@ import { accessSync, constants, existsSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
 import { app } from 'electron';
 import type { ClaudeExecutableChoice } from '@shared/api/ai-types';
+import { logger } from '../logger';
 
 /**
  * Resolves the absolute path to the unpacked Claude Code CLI binary in a packaged build.
@@ -36,7 +37,13 @@ export function resolveBundledClaudeExecutable(): string | undefined {
     binaryPackage,
     'claude',
   );
-  return existsSync(unpacked) ? unpacked : undefined;
+  const present: boolean = existsSync(unpacked);
+  if (present) {
+    logger.debug('claude-executable', `Resolved unpacked Claude CLI: ${unpacked}`);
+  } else {
+    logger.warn('claude-executable', `Unpacked Claude CLI not found at ${unpacked}`);
+  }
+  return present ? unpacked : undefined;
 }
 
 /**
@@ -78,11 +85,26 @@ export function resolveClaudeExecutable(
   choice: ClaudeExecutableChoice | undefined,
 ): string | undefined {
   if (choice === undefined || choice.mode === 'bundled') {
+    logger.trace('claude-executable', 'Resolving bundled Claude CLI');
     return resolveBundledClaudeExecutable();
   }
   if (choice.mode === 'system') {
-    return resolveExecutableOnPath('claude') ?? resolveBundledClaudeExecutable();
+    const onPath: string | undefined = resolveExecutableOnPath('claude');
+    if (onPath !== undefined) {
+      logger.debug('claude-executable', `Resolved system Claude CLI on PATH: ${onPath}`);
+      return onPath;
+    }
+    logger.warn('claude-executable', 'System Claude CLI not found on PATH; falling back to bundled');
+    return resolveBundledClaudeExecutable();
   }
   const custom: string = choice.path.trim();
-  return custom.length > 0 && existsSync(custom) ? custom : resolveBundledClaudeExecutable();
+  if (custom.length > 0 && existsSync(custom)) {
+    logger.debug('claude-executable', `Resolved custom Claude CLI: ${custom}`);
+    return custom;
+  }
+  logger.warn(
+    'claude-executable',
+    `Custom Claude CLI '${custom}' not found; falling back to bundled`,
+  );
+  return resolveBundledClaudeExecutable();
 }

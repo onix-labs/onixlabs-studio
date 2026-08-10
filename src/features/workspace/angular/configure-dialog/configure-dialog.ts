@@ -10,6 +10,7 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { StudioConfig } from '@shared/angular/services/studio/studio-config';
+import { Log } from '@shared/angular/services/log/log';
 import { ConfigureDialog } from '@shared/angular/services/configure-dialog/configure-dialog';
 import { WorkspaceCapabilities } from '@shared/angular/services/workspace/workspace-capabilities';
 import { RunConfiguration } from '@shared/api/studio';
@@ -106,6 +107,11 @@ export class ConfigureDialogPanel {
    * Gets the icon set, exposed for the template.
    */
   protected readonly Icon: typeof Icon = Icon;
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Holds the dialog's open-state service.
@@ -352,6 +358,7 @@ export class ConfigureDialogPanel {
    * Opens the Auto-configure modal, where the agent will be asked to author configurations.
    */
   protected onAutoConfigure(): void {
+    this.log.info('workspace.run', 'Auto-configure modal opened');
     this.autoConfigureOpen.set(true);
   }
 
@@ -401,6 +408,7 @@ export class ConfigureDialogPanel {
       providerKind: this.workspaceCapabilities.kind() ?? 'dotnet',
       mode: 'run',
     };
+    this.log.debug('workspace.run', 'New run configuration added to draft', configuration.providerKind);
     this.draft.update((list: readonly RunConfiguration[]): readonly RunConfiguration[] => [
       ...list,
       configuration,
@@ -436,6 +444,7 @@ export class ConfigureDialogPanel {
     if (id === null) {
       return;
     }
+    this.log.debug('workspace.run', 'Run configuration deleted from draft', id);
     this.draft.update((list: readonly RunConfiguration[]): readonly RunConfiguration[] =>
       list.filter((configuration: RunConfiguration): boolean => configuration.id !== id),
     );
@@ -559,6 +568,7 @@ export class ConfigureDialogPanel {
    * Persists the draft configurations and closes the dialog.
    */
   protected onSave(): void {
+    this.log.info('workspace.run', 'Run configurations saved', this.draft().length);
     void this.studio.saveRunConfigurations(this.draft());
     this.dialog.close();
   }

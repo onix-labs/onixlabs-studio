@@ -251,6 +251,10 @@ export class AiSdkAdapter implements AgentProvider {
    * @param context The run context.
    */
   public async run(context: AgentRunContext): Promise<void> {
+    logger.trace(
+      'AiSdkAdapter.run',
+      `Starting turn ${context.requestId} on ${this.connection.label} (${context.model})`,
+    );
     const { streamText, stepCountIs } = await import('ai');
     const model: LanguageModel = await this.createModel(context);
 
@@ -322,6 +326,10 @@ export class AiSdkAdapter implements AgentProvider {
     const modelId: string = context.model;
     const baseUrlOption: { baseURL: string } | Record<string, never> =
       endpoint.baseUrl !== undefined ? { baseURL: endpoint.baseUrl } : {};
+    logger.debug(
+      'AiSdkAdapter.createModel',
+      `Building ${clientFamily(this.connection.kind)} model ${modelId} at ${endpoint.baseUrl ?? 'SDK default endpoint'}`,
+    );
 
     switch (clientFamily(this.connection.kind)) {
       case 'anthropic': {
@@ -338,6 +346,10 @@ export class AiSdkAdapter implements AgentProvider {
       }
       default: {
         if (endpoint.baseUrl === undefined) {
+          logger.warn(
+            'AiSdkAdapter.createModel',
+            `Connection "${this.connection.label}" has no base URL; cannot build a client`,
+          );
           throw new Error(
             `The connection "${this.connection.label}" needs a base URL before it can run.`,
           );

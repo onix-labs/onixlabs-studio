@@ -11,6 +11,7 @@ import { ConversationContext } from '@shared/api/agent-conversation-channels';
 import { Icon } from '@shared/angular/icons/icon';
 import { AgentConversationPanel } from '@shared/angular/components/panels/agent-conversation-panel/agent-conversation-panel';
 import { ToolPanel } from '@shared/angular/components/panels/tool-panel/tool-panel';
+import { Log } from '@shared/angular/services/log/log';
 import { BinaryDocuments } from '../../binary-document/binary-document';
 import { BinaryPanels } from '../../binary-panels/binary-panels';
 
@@ -48,6 +49,11 @@ export class BinaryAgentPanel {
   private readonly binaryDocuments: BinaryDocuments = inject(BinaryDocuments);
 
   /**
+   * Holds the structured logger for agent-panel interactions.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Gets the identifier of the owning binary tab. Always supplied by the host; the empty default lets
    * the panel be constructed before its input binding is applied.
    */
@@ -73,6 +79,7 @@ export class BinaryAgentPanel {
    * Hides the agent panel, leaving its conversation mounted so it can be reopened.
    */
   protected onClose(): void {
+    this.log.info('binary.agent', 'Agent panel closed', this.tabId());
     this.binaryPanels.hide(this.tabId(), 'agent');
   }
 }

@@ -1,5 +1,6 @@
 import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { FileInfo } from '@shared/api/file-channels';
+import { Log } from '@shared/angular/services/log/log';
 import { FileConflicts } from '../file-conflicts/file-conflicts';
 import { FileSystem } from '../file-system/file-system';
 import { FileWatch } from '../file-watch/file-watch';
@@ -168,6 +169,11 @@ export class Documents implements UnsavedWorkSource {
   private readonly recentItems: RecentItems = inject(RecentItems);
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Holds the top-level tab that hosts this document model's documents (a workspace tab for well
    * documents), or null when each document is its own top-level tab (standalone editor tabs).
    */
@@ -253,6 +259,7 @@ export class Documents implements UnsavedWorkSource {
     this.fileConflicts.clear(id);
     this.entries.delete(id);
     this.markEntriesChanged();
+    this.log.info('Documents', 'Closed document', id);
   }
 
   /**
@@ -340,6 +347,7 @@ export class Documents implements UnsavedWorkSource {
    */
   public setLanguage(id: string, language: string): void {
     this.entries.get(id)?.language.set(language);
+    this.log.info('Documents', `Language changed to '${language}'`, id);
   }
 
   /**
@@ -351,6 +359,7 @@ export class Documents implements UnsavedWorkSource {
       return;
     }
     const id: string = this.tabs.open('code').id;
+    this.log.info('Documents', `Opened file '${fileInfo.name}'`, id, fileInfo.path);
     const entry: DocumentEntry = this.createEntry(id);
     this.entries.set(id, entry);
     this.markEntriesChanged();
@@ -376,9 +385,11 @@ export class Documents implements UnsavedWorkSource {
     const existing: Tab | undefined = this.tabs.findByResource(type, fileInfo.path);
     if (existing !== undefined) {
       this.tabs.activate(existing.id);
+      this.log.debug('Documents', `Reused open tab for '${fileInfo.name}'`, existing.id);
       return existing;
     }
     const tab: Tab = this.tabs.open(type, fileInfo.path);
+    this.log.info('Documents', `Opened file '${fileInfo.name}' as ${type}`, tab.id, fileInfo.path);
     const entry: DocumentEntry = this.createEntry(tab.id);
     this.entries.set(tab.id, entry);
     this.markEntriesChanged();
@@ -426,6 +437,7 @@ export class Documents implements UnsavedWorkSource {
     entry.encoding.set(fileInfo.encoding ?? DEFAULT_ENCODING);
     entry.hasBom.set(fileInfo.hasBom ?? false);
     this.watchEntry(id);
+    this.log.info('Documents', `Opened well document '${fileInfo.name}'`, id, fileInfo.path);
     return id;
   }
 
@@ -533,6 +545,9 @@ export class Documents implements UnsavedWorkSource {
       entry.original.set(content);
       this.syncTab(id);
       this.recordRecent(entry);
+      this.log.info('Documents', `Saved '${entry.fileName()}'`, id, filePath);
+    } else {
+      this.log.warn('Documents', `Save failed for '${entry.fileName()}'`, id, filePath);
     }
     return success;
   }
@@ -563,6 +578,9 @@ export class Documents implements UnsavedWorkSource {
       this.syncTab(id);
       this.watchEntry(id);
       this.recordRecent(entry);
+      this.log.info('Documents', `Saved as '${entry.fileName()}'`, id, targetPath);
+    } else {
+      this.log.warn('Documents', 'Save-as failed', id, targetPath);
     }
     return success;
   }
@@ -660,6 +678,7 @@ export class Documents implements UnsavedWorkSource {
       return;
     }
     // Unsaved edits diverge from a new on-disk version: prompt the user to keep or reload.
+    this.log.warn('Documents', `Conflict: '${entry.fileName()}' changed on disk while dirty`, id);
     this.fileConflicts.raise(
       { documentId: id, tabId: this.owningTabId ?? id, name: entry.fileName() },
       { keep: (): void => undefined, reload: (): void => this.reloadFromDisk(id, info.content) },
@@ -680,6 +699,7 @@ export class Documents implements UnsavedWorkSource {
     entry.content.set(content);
     entry.original.set(content);
     this.syncTab(id);
+    this.log.info('Documents', `Reloaded '${entry.fileName()}' from disk`, id);
   }
 
   /**

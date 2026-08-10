@@ -13,6 +13,7 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { gemoji } from 'gemoji';
+import { Log } from '@shared/angular/services/log/log';
 import { SettingsStore } from '@shared/angular/services/settings-store/settings-store';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
@@ -392,6 +393,11 @@ export class MarkdownEmojiModal {
   private readonly store: SettingsStore = inject(SettingsStore);
 
   /**
+   * Holds the structured logging client for emoji selection.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Holds this component's host element, used to find the scroll container and its sections.
    */
   private readonly host: ElementRef<HTMLElement> = inject(ElementRef) as ElementRef<HTMLElement>;
@@ -491,6 +497,7 @@ export class MarkdownEmojiModal {
    * @param emoji The chosen emoji's Unicode character.
    */
   protected pick(emoji: string): void {
+    this.log.debug('markdown.insert', 'Emoji picked', { emoji });
     const next: readonly string[] = [
       emoji,
       ...this.recent().filter((existing: string): boolean => existing !== emoji),

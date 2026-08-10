@@ -392,63 +392,88 @@ export class AiManager {
     const built: BuiltProviders = this.buildProviders(connections);
     this.providers = built.providers;
     this.connections = built.connections;
+    logger.info(
+      'AiManager.rebuildProviders',
+      `Rebuilt providers from ${connections.length} connection(s)`,
+    );
   }
 
   /**
    * Registers the agent IPC handlers (per-connection auth, provider listing, and run/abort).
    */
   public register(): void {
+    logger.info('AiManager', 'Registering agent IPC handlers');
     this.auth.register();
     this.bridge.register();
     ipcMain.on(AiChannel.PermissionReply, (_event: IpcMainEvent, reply: unknown): void => {
+      logger.trace('AiManager.register', 'PermissionReply received');
       if (this.isPermissionReply(reply)) {
         this.resolvePermission(reply);
       }
     });
     ipcMain.on(AiChannel.InputReply, (_event: IpcMainEvent, reply: unknown): void => {
+      logger.trace('AiManager.register', 'InputReply received');
       if (this.isInputReply(reply)) {
         this.resolveInput(reply);
       }
     });
     ipcMain.on(AiChannel.EditDecisionReply, (_event: IpcMainEvent, reply: unknown): void => {
+      logger.trace('AiManager.register', 'EditDecisionReply received');
       if (this.isEditDecisionReply(reply)) {
         this.resolveEditDecision(reply);
       }
     });
     ipcMain.handle(
       AiChannel.ListProviders,
-      (_event: IpcMainInvokeEvent, connections: unknown): readonly AiProviderInfo[] =>
-        this.listProviders(sanitizeConnections(connections)),
+      (_event: IpcMainInvokeEvent, connections: unknown): readonly AiProviderInfo[] => {
+        logger.trace('AiManager.register', 'ListProviders invoked');
+        return this.listProviders(sanitizeConnections(connections));
+      },
     );
     ipcMain.handle(
       AiChannel.DiscoverModels,
-      (_event: IpcMainInvokeEvent, request: unknown): Promise<AiDiscoverModelsResult> =>
-        this.isDiscoverModelsRequest(request)
+      (_event: IpcMainInvokeEvent, request: unknown): Promise<AiDiscoverModelsResult> => {
+        logger.trace('AiManager.register', 'DiscoverModels invoked');
+        return this.isDiscoverModelsRequest(request)
           ? this.discoverModels(request.connection, request.claudeExecutable)
           : Promise.resolve({
               ok: false,
               models: [],
               added: 0,
               detail: 'Invalid discovery request.',
-            }),
+            });
+      },
     );
     ipcMain.handle(AiChannel.Run, (_event: IpcMainInvokeEvent, request: unknown): void => {
+      logger.trace('AiManager.register', 'Run invoked');
       if (this.isRunRequest(request)) {
         this.run(request);
+      } else {
+        logger.warn('AiManager.register', 'Rejected malformed run request');
       }
     });
     ipcMain.handle(AiChannel.Abort, (_event: IpcMainInvokeEvent, requestId: unknown): void => {
+      logger.trace('AiManager.register', 'Abort invoked');
       if (typeof requestId === 'string') {
         this.abort(requestId);
       }
     });
     ipcMain.handle(AiChannel.Steer, (_event: IpcMainInvokeEvent, request: unknown): boolean => {
+      logger.trace('AiManager.register', 'Steer invoked');
       if (!this.isSteerRequest(request)) {
         return false;
       }
-      return this.steers.get(request.requestId)?.(request.text) ?? false;
+      const accepted: boolean = this.steers.get(request.requestId)?.(request.text) ?? false;
+      if (!accepted) {
+        logger.debug(
+          'AiManager.register',
+          `Steer for run ${request.requestId} refused (no active handler); renderer will queue it`,
+        );
+      }
+      return accepted;
     });
     ipcMain.handle(AiChannel.CloseSession, (_event: IpcMainInvokeEvent, id: unknown): void => {
+      logger.trace('AiManager.register', 'CloseSession invoked');
       if (typeof id === 'string') {
         this.closeSession(id);
       }
@@ -459,6 +484,10 @@ export class AiManager {
    * Aborts every in-flight run (called on shutdown).
    */
   public disposeAll(): void {
+    logger.info(
+      'AiManager.disposeAll',
+      `Shutting down: aborting ${this.runs.size} run(s) and closing ${this.liveSessions.size} live session(s)`,
+    );
     for (const controller of this.runs.values()) {
       controller.abort();
     }
@@ -532,6 +561,10 @@ export class AiManager {
     connection: AiConnection,
     executable: unknown,
   ): Promise<AiDiscoverModelsResult> {
+    logger.debug(
+      'AiManager.discoverModels',
+      `Discovering models for connection ${connection.id} (auth ${connection.auth})`,
+    );
     if (connection.auth === 'claude-login') {
       const choice: ClaudeExecutableChoice = sanitizeClaudeExecutable(executable);
       const provider: ClaudeAgentProvider = new ClaudeAgentProvider(
@@ -565,9 +598,11 @@ export class AiManager {
    * @param request The run request.
    */
   private run(request: AiRunRequest): void {
+    logger.trace('AiManager.run', `Run request ${request.requestId} for provider ${request.providerId}`);
     const provider: AgentProvider | undefined = this.providers.get(request.providerId);
     const connection: AiConnection | undefined = this.connections.get(request.providerId);
     if (provider === undefined || connection === undefined) {
+      logger.warn('AiManager.run', `Unknown provider requested: ${request.providerId}`);
       this.emit({
         requestId: request.requestId,
         kind: 'status',
@@ -620,6 +655,10 @@ export class AiManager {
     const images: readonly AiImageRef[] = provider.supportsImages
       ? this.sanitizeImages(request.images)
       : [];
+    logger.debug(
+      'AiManager.run',
+      `Run ${request.requestId}: model ${model}, mode ${mode}, posture ${permissionPosture}, surface ${request.surface ?? 'editor'}`,
+    );
     const controller: AbortController = new AbortController();
     this.runs.set(request.requestId, controller);
     // Arm the wall-clock budget when one is set; expiry aborts through the ordinary abort path and
@@ -629,6 +668,10 @@ export class AiManager {
         ? Math.min(Math.max(Math.floor(request.runTimeoutMs), 0), MAX_RUN_TIMEOUT_MS)
         : 0;
     if (runTimeoutMs > 0) {
+      logger.debug(
+        'AiManager.run',
+        `Arming wall-clock budget of ${runTimeoutMs}ms for run ${request.requestId}`,
+      );
       this.startClock(request.requestId, runTimeoutMs, controller);
     }
     const context: AgentRunContext = {
@@ -754,9 +797,14 @@ export class AiManager {
       // "Working" forever. Treat a dead session like an incompatible one: drop it and reopen, which
       // cold-starts back onto its persisted context via the turn's `resumeSessionId`.
       if (existing.session.alive && this.isCompatibleTurn(existing, request, context)) {
+        logger.debug('AiManager.dispatchLive', `Continuing live session ${key}`);
         existing.lifetimeMs = this.reapLifetimeMs(request);
         return this.runLiveTurn(key, existing, context);
       }
+      logger.debug(
+        'AiManager.dispatchLive',
+        `Dropping ${existing.session.alive ? 'incompatible' : 'dead'} live session ${key} to reopen`,
+      );
       this.dropSession(key, existing);
     }
     // No compatible live session, so open one. The opening context carries any `resumeSessionId` (a
@@ -764,6 +812,10 @@ export class AiManager {
     // so a reopened conversation cold-starts back onto its persisted session and keeps its model context
     // (#328). A fresh conversation has no resume id and starts clean. Either way the session is
     // registered and held open for subsequent turns.
+    logger.info(
+      'AiManager.dispatchLive',
+      `Opening live session ${key} (${provider.label}${context.resumeSessionId !== null ? ', resuming' : ''})`,
+    );
     const session: AgentSession = provider.openSession(context);
     const entry: LiveSessionEntry = {
       session,
@@ -837,6 +889,7 @@ export class AiManager {
       entry.reapTimer = null;
       // Reap only if still the registered session (a turn or close may have replaced it meanwhile).
       if (this.liveSessions.get(key) === entry) {
+        logger.info('AiManager.armReap', `Idle-reaping live session ${key}`);
         this.liveSessions.delete(key);
         void entry.session.close();
       }
@@ -876,6 +929,10 @@ export class AiManager {
       if (oldestKey === null || oldest === null) {
         return;
       }
+      logger.debug(
+        'AiManager.reapOverflow',
+        `Live session cap (${MAX_LIVE_SESSIONS}) exceeded; reaping least-recently-used session ${oldestKey}`,
+      );
       this.dropSession(oldestKey, oldest);
     }
   }
@@ -943,6 +1000,7 @@ export class AiManager {
   private closeSession(agentSessionId: string): void {
     const entry: LiveSessionEntry | undefined = this.liveSessions.get(agentSessionId);
     if (entry !== undefined) {
+      logger.info('AiManager.closeSession', `Closing live session ${agentSessionId}`);
       this.dropSession(agentSessionId, entry);
     }
   }
@@ -954,6 +1012,7 @@ export class AiManager {
    * @param detail A short description.
    */
   private finish(requestId: string, state: AiRunState, detail: string): void {
+    logger.trace('AiManager.finish', `Run ${requestId} finished with state ${state}`);
     this.runs.delete(requestId);
     this.steers.delete(requestId);
     const clock: RunClock | undefined = this.clocks.get(requestId);
@@ -1000,6 +1059,7 @@ export class AiManager {
   private armClock(requestId: string, clock: RunClock, controller: AbortController): void {
     clock.armedAt = Date.now();
     clock.timer = setTimeout((): void => {
+      logger.warn('AiManager.armClock', `Run ${requestId} exceeded its time budget; aborting`);
       this.timedOut.add(requestId);
       controller.abort();
     }, clock.remainingMs);
@@ -1060,6 +1120,7 @@ export class AiManager {
    * @param requestId The run's identifier.
    */
   private abort(requestId: string): void {
+    logger.trace('AiManager.abort', `Aborting run ${requestId}`);
     this.runs.get(requestId)?.abort();
   }
 
@@ -1091,8 +1152,10 @@ export class AiManager {
     detail: string,
   ): Promise<boolean> {
     if (this.sessionAllowed.has(name) || this.rules.isAllowed(name, workspaceRoot)) {
+      logger.debug('AiManager.requestPermission', `Auto-granted "${name}" from a remembered rule`);
       return Promise.resolve(true);
     }
+    logger.trace('AiManager.requestPermission', `Prompting user for "${name}"`);
     const permissionId: string = randomUUID();
     // The run is blocked on the user: its wall clock pauses until the prompt settles.
     this.pauseClock(requestId);
@@ -1134,6 +1197,7 @@ export class AiManager {
     workspaceRoot: string | null,
     source: AuditGrantSource,
   ): void {
+    logger.trace('AiManager.recordAudit', `Auditing executed action "${name}"`);
     this.auditLog ??= new AgentAuditLog(app.getPath('userData'));
     this.auditLog.record({
       at: new Date().toISOString(),
@@ -1155,6 +1219,10 @@ export class AiManager {
       return;
     }
     if (reply.granted && reply.remember !== undefined) {
+      logger.debug(
+        'AiManager.resolvePermission',
+        `Remembering grant for "${pending.name}" (scope ${reply.remember})`,
+      );
       if (reply.remember === 'session') {
         this.sessionAllowed.add(pending.name);
       } else {
@@ -1259,6 +1327,7 @@ export class AiManager {
    */
   private resolveEditDecision(reply: AiEditDecisionReply): void {
     if (reply.choice === 'yes-auto') {
+      logger.debug('AiManager.resolveEditDecision', 'Auto-accepting edits for the rest of the session');
       this.autoAcceptEdits = true;
     }
     this.editDecisions.get(reply.decisionId)?.(reply.choice === 'no' ? 'no' : 'yes');

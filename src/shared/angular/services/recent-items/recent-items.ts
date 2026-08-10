@@ -1,4 +1,5 @@
 import { inject, Service, Signal, signal, WritableSignal } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 import { SettingsStore } from '@shared/angular/services/settings-store/settings-store';
 
 /**
@@ -91,6 +92,11 @@ export class RecentItems {
   private readonly store: SettingsStore = inject(SettingsStore);
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Holds the backing state for {@link items}, seeded from persisted storage.
    */
   private readonly itemsState: WritableSignal<readonly RecentItem[]> = signal<
@@ -128,6 +134,7 @@ export class RecentItems {
       (item: RecentItem): boolean => item.path !== path,
     );
     this.commit(trim([entry, ...rest]));
+    this.log.info('RecentItems', `Recorded recent ${kind} '${name}'`, path);
   }
 
   /**
@@ -136,6 +143,7 @@ export class RecentItems {
    */
   public remove(path: string): void {
     this.commit(this.itemsState().filter((item: RecentItem): boolean => item.path !== path));
+    this.log.debug('RecentItems', 'Removed recent item', path);
   }
 
   /**
@@ -156,6 +164,7 @@ export class RecentItems {
    */
   public clear(): void {
     this.commit([]);
+    this.log.info('RecentItems', 'Cleared all recent items');
   }
 
   /**

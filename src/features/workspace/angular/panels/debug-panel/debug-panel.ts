@@ -16,6 +16,7 @@ import { TreeRow, TreeView } from '@shared/angular/components/tree-view/tree-vie
 import { Button } from '@shared/angular/components/forms/button/button';
 import { DebugState } from '@shared/angular/services/debug/debugger';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
+import { Log } from '@shared/angular/services/log/log';
 import { Documents } from '@shared/angular/services/documents/documents';
 import { Editors } from '@shared/angular/services/editors/editors';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
@@ -78,6 +79,11 @@ export class DebugPanel {
    * Holds the editor registry a reveal request is dispatched through.
    */
   private readonly editors: Editors = inject(Editors);
+
+  /**
+   * Holds the structured logger for debug panel actions.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Gets the icon set, exposed for the template.
@@ -242,6 +248,7 @@ export class DebugPanel {
    * Resumes the paused debuggee.
    */
   protected onContinue(): void {
+    this.log.info('workspace.debug-panel', 'Continue');
     this.session.continue();
   }
 
@@ -249,6 +256,7 @@ export class DebugPanel {
    * Pauses the running debuggee.
    */
   protected onPause(): void {
+    this.log.info('workspace.debug-panel', 'Pause');
     this.session.pause();
   }
 
@@ -256,6 +264,7 @@ export class DebugPanel {
    * Steps over the current line.
    */
   protected onStepOver(): void {
+    this.log.debug('workspace.debug-panel', 'Step over');
     this.session.stepOver();
   }
 
@@ -263,6 +272,7 @@ export class DebugPanel {
    * Steps into the call at the current line.
    */
   protected onStepInto(): void {
+    this.log.debug('workspace.debug-panel', 'Step into');
     this.session.stepIn();
   }
 
@@ -270,6 +280,7 @@ export class DebugPanel {
    * Steps out of the current function.
    */
   protected onStepOut(): void {
+    this.log.debug('workspace.debug-panel', 'Step out');
     this.session.stepOut();
   }
 
@@ -277,6 +288,7 @@ export class DebugPanel {
    * Stops the session.
    */
   protected onStop(): void {
+    this.log.info('workspace.debug-panel', 'Stop session');
     this.session.stop();
   }
 
@@ -304,6 +316,7 @@ export class DebugPanel {
    */
   protected onFrameClick(row: TreeRow): void {
     const frame: DebugFrame = this.frameOf(row);
+    this.log.debug('workspace.debug-panel', `Select frame ${frame.name}`, frame.path);
     void this.session.selectFrame(frame.id);
     void this.reveal(frame);
   }
@@ -341,6 +354,7 @@ export class DebugPanel {
       this.newWatch.set('');
       return;
     }
+    this.log.info('workspace.debug-panel', 'Add watch expression', expression);
     this.watchExpressions.set([...this.watchExpressions(), expression]);
     this.newWatch.set('');
     void this.evaluateOne(expression);
@@ -351,6 +365,7 @@ export class DebugPanel {
    * @param expression The expression to remove.
    */
   protected removeWatch(expression: string): void {
+    this.log.info('workspace.debug-panel', 'Remove watch expression', expression);
     this.watchExpressions.set(
       this.watchExpressions().filter((candidate: string): boolean => candidate !== expression),
     );

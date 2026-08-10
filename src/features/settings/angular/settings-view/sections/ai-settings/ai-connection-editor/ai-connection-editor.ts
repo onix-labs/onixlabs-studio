@@ -8,6 +8,7 @@ import type {
   AiProviderKind,
 } from '@shared/api/ai-types';
 import { AiConnections } from '@shared/angular/services/ai-connections/ai-connections';
+import { Log } from '@shared/angular/services/log/log';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { PasswordField } from '@shared/angular/components/forms/password-field/password-field';
@@ -76,6 +77,11 @@ export class AiConnectionEditor {
    * Holds the connection-management service.
    */
   private readonly connections: AiConnections = inject(AiConnections);
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Holds the API-key draft entered but not yet saved.
@@ -170,6 +176,7 @@ export class AiConnectionEditor {
    * @param kind The new kind.
    */
   protected onKind(kind: string): void {
+    this.log.info('settings.ai', 'Connection kind changed', this.connection().id, kind);
     this.connections.update(this.connection().id, { kind: kind as AiProviderKind });
   }
 
@@ -178,6 +185,7 @@ export class AiConnectionEditor {
    * @param auth The new auth kind.
    */
   protected onAuthKind(auth: string): void {
+    this.log.info('settings.ai', 'Connection auth kind changed', this.connection().id, auth);
     this.connections.setAuthKind(this.connection().id, auth as AiAuthKind);
   }
 
@@ -207,6 +215,7 @@ export class AiConnectionEditor {
       return;
     }
     this.keyBusy.set(true);
+    this.log.info('settings.ai', 'Storing connection API key', this.connection().id);
     try {
       await this.connections.setKey(this.connection(), key);
       this.apiKeyDraft.set('');
@@ -224,6 +233,7 @@ export class AiConnectionEditor {
       return;
     }
     this.keyBusy.set(true);
+    this.log.info('settings.ai', 'Clearing connection API key', this.connection().id);
     try {
       await this.connections.clearKey(this.connection());
     } finally {
@@ -241,9 +251,11 @@ export class AiConnectionEditor {
     }
     this.discovering.set(true);
     this.discoverDetail.set(null);
+    this.log.info('settings.ai', 'Discovering connection models', this.connection().id);
     try {
       const detail: string | null =
         (await this.connections.discover(this.connection()))?.detail ?? null;
+      this.log.debug('settings.ai', 'Model discovery completed', this.connection().id, detail);
       this.discoverDetail.set(detail);
     } finally {
       this.discovering.set(false);
@@ -262,6 +274,7 @@ export class AiConnectionEditor {
    * Adds the manually-entered model.
    */
   protected addModel(): void {
+    this.log.info('settings.ai', 'Model added', this.connection().id, this.newModelDraft());
     this.connections.addModel(this.connection(), this.newModelDraft());
     this.newModelDraft.set('');
   }
@@ -271,6 +284,7 @@ export class AiConnectionEditor {
    * @param modelId The model id.
    */
   protected removeModel(modelId: string): void {
+    this.log.info('settings.ai', 'Model removed', this.connection().id, modelId);
     this.connections.removeModel(this.connection(), modelId);
   }
 
@@ -279,6 +293,7 @@ export class AiConnectionEditor {
    * @param modelId The model id.
    */
   protected togglePin(modelId: string): void {
+    this.log.debug('settings.ai', 'Model pin toggled', this.connection().id, modelId);
     this.connections.togglePinned(this.connection(), modelId);
   }
 
@@ -287,6 +302,7 @@ export class AiConnectionEditor {
    * @param modelId The model id.
    */
   protected toggleHide(modelId: string): void {
+    this.log.debug('settings.ai', 'Model hide toggled', this.connection().id, modelId);
     this.connections.toggleHidden(this.connection(), modelId);
   }
 
@@ -295,6 +311,7 @@ export class AiConnectionEditor {
    * @param modelId The model id.
    */
   protected setDefault(modelId: string): void {
+    this.log.info('settings.ai', 'Default model set', this.connection().id, modelId);
     this.connections.setDefaultModel(this.connection(), modelId);
   }
 
@@ -302,6 +319,7 @@ export class AiConnectionEditor {
    * Removes the connection.
    */
   protected removeConnection(): void {
+    this.log.info('settings.ai', 'Connection removed', this.connection().id);
     this.connections.remove(this.connection().id);
   }
 }

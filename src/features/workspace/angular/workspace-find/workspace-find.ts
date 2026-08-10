@@ -1,4 +1,5 @@
-import { Service, signal, WritableSignal } from '@angular/core';
+import { inject, Service, signal, WritableSignal } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 
 /**
  * Routes the directory (workspace) ribbon's Find command to the active workspace.
@@ -10,6 +11,11 @@ import { Service, signal, WritableSignal } from '@angular/core';
  */
 @Service()
 export class WorkspaceFind {
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
   /**
    * Holds the active workspace's reveal callback, or null when no directory tab is active.
    */
@@ -37,6 +43,7 @@ export class WorkspaceFind {
    * Reveals the active workspace's Search panel.
    */
   public reveal(): void {
+    this.log.trace('find', 'Reveal workspace Search panel');
     this.handler()?.();
   }
 }

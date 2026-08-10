@@ -2,6 +2,7 @@ import { computed, inject, Service, signal, Signal, WritableSignal } from '@angu
 import { DirectoryChangeEvent } from '@shared/api/file-channels';
 import { RepositoryInfo } from '@shared/api/source-control-channels';
 import { DirectoryWatch } from '@shared/angular/services/directory-watch/directory-watch';
+import { Log } from '@shared/angular/services/log/log';
 import {
   NotificationAction,
   Notifications,
@@ -94,6 +95,11 @@ export class Repository {
    * to, so they surface as toasts wherever the operation was started from.
    */
   private readonly notifications: Notifications = inject(Notifications);
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Holds the disposer of the bound root's directory watch, or null when no repository is bound.
@@ -370,6 +376,7 @@ export class Repository {
    * @param info The opened repository's metadata.
    */
   public bind(info: RepositoryInfo): void {
+    this.log.info('Repository', `Opened repository '${info.name}'`, info.root);
     this.provider = this.providers.create(info.root);
     this.infoSignal.set(info);
     this.selectedNodeSignal.set(WORKING_NODE_ID);
@@ -420,6 +427,7 @@ export class Repository {
       this.externalRefreshTimer = null;
       const pending: 'status' | 'full' = this.pendingExternalKind ?? 'status';
       this.pendingExternalKind = null;
+      this.log.debug('Repository', `External change refresh (${pending})`, this.infoSignal()?.root);
       void this.runExternalRefresh(pending);
     }, EXTERNAL_REFRESH_DEBOUNCE_MS);
   }
@@ -478,6 +486,7 @@ export class Repository {
    * @returns Returns a promise that resolves once the repository has been released.
    */
   public async close(): Promise<void> {
+    this.log.info('Repository', 'Closed repository', this.infoSignal()?.root);
     this.watchDisposer?.();
     this.watchDisposer = null;
     if (this.externalRefreshTimer !== null) {
@@ -511,6 +520,7 @@ export class Repository {
       return;
     }
     this.loadingSignal.set(true);
+    this.log.trace('Repository', 'Refreshing repository data', this.infoSignal()?.root);
     try {
       const [status, commits, refs, stashes]: [
         ParsedStatus,
@@ -535,6 +545,11 @@ export class Repository {
       this.tagsSignal.set(refs.tags);
       this.stashesSignal.set(stashes);
       this.commitFilesSignal.set(new Map<string, readonly GitFileChange[]>());
+      this.log.info(
+        'Repository',
+        `Refreshed (${commits.length} commits, ${status.staged.length} staged, ${status.unstaged.length} unstaged)`,
+        this.infoSignal()?.root,
+      );
     } finally {
       if (this.provider === provider) {
         this.loadingSignal.set(false);
@@ -605,6 +620,7 @@ export class Repository {
       return Promise.resolve({ success: true });
     }
     const paths: readonly string[] = files.map((file: GitFileChange): string => file.path);
+    this.log.info('Repository', `Discarding ${paths.length} file(s)`, ...paths);
     return this.mutate(
       (provider: SourceControlProvider): Promise<MutationResult> => provider.discard(paths),
     );
@@ -623,6 +639,7 @@ export class Repository {
    * @returns Returns the outcome.
    */
   public stage(file: GitFileChange): Promise<MutationResult> {
+    this.log.trace('Repository', `Staging '${file.path}'`);
     return this.mutate(
       (provider: SourceControlProvider): Promise<MutationResult> => provider.stage([file.path]),
     );
@@ -644,6 +661,7 @@ export class Repository {
    * @returns Returns the outcome.
    */
   public unstage(file: GitFileChange): Promise<MutationResult> {
+    this.log.trace('Repository', `Unstaging '${file.path}'`);
     return this.mutate(
       (provider: SourceControlProvider): Promise<MutationResult> => provider.unstage([file.path]),
     );
@@ -742,6 +760,7 @@ export class Repository {
    * @returns Returns the outcome.
    */
   public stash(): Promise<MutationResult> {
+    this.log.info('Repository', 'Stashing working-tree changes', this.infoSignal()?.root);
     return this.mutate(
       (provider: SourceControlProvider): Promise<MutationResult> => provider.stash(),
     );
@@ -753,6 +772,7 @@ export class Repository {
    * @returns Returns the outcome.
    */
   public async checkout(branch: string): Promise<MutationResult> {
+    this.log.info('Repository', `Checking out branch '${branch}'`, this.infoSignal()?.root);
     const result: MutationResult = await this.mutate(
       (provider: SourceControlProvider): Promise<MutationResult> => provider.checkout(branch),
     );
@@ -822,6 +842,7 @@ export class Repository {
    * @returns Returns the outcome.
    */
   public createBranch(name: string, checkout: boolean = true): Promise<MutationResult> {
+    this.log.info('Repository', `Creating branch '${name}' (checkout: ${checkout})`);
     return this.mutate(
       (provider: SourceControlProvider): Promise<MutationResult> =>
         provider.createBranch(name, checkout),
@@ -834,6 +855,7 @@ export class Repository {
    * @returns Returns the outcome.
    */
   public async fetch(): Promise<MutationResult> {
+    this.log.info('Repository', 'Fetching all remotes', this.infoSignal()?.root);
     const result: MutationResult = await this.mutate(
       (provider: SourceControlProvider): Promise<MutationResult> => provider.fetch(),
     );
@@ -846,6 +868,7 @@ export class Repository {
    * @returns Returns the outcome.
    */
   public async pull(): Promise<MutationResult> {
+    this.log.info('Repository', `Pulling '${this.currentBranch()?.name ?? 'HEAD'}'`);
     const result: MutationResult = await this.mutate(
       (provider: SourceControlProvider): Promise<MutationResult> => provider.pull(),
     );
@@ -865,6 +888,13 @@ export class Repository {
       branch !== undefined && branch.upstream === undefined
         ? { remote: this.remotesSignal()[0]?.name ?? 'origin', branch: branch.name }
         : undefined;
+    if (setUpstream !== undefined) {
+      this.log.warn(
+        'Repository',
+        `Branch '${setUpstream.branch}' has no upstream; setting to '${setUpstream.remote}'`,
+      );
+    }
+    this.log.info('Repository', `Pushing '${branch?.name ?? 'HEAD'}'`, this.infoSignal()?.root);
     const result: MutationResult = await this.mutate(
       (provider: SourceControlProvider): Promise<MutationResult> => provider.push(setUpstream),
     );
@@ -888,6 +918,8 @@ export class Repository {
     this.lastErrorSignal.set(result.success ? null : (result.error ?? 'The operation failed.'));
     if (result.success) {
       await this.refresh();
+    } else {
+      this.log.error('Repository', 'Mutation failed', result.error ?? 'The operation failed.');
     }
     return result;
   }
@@ -948,6 +980,7 @@ export class Repository {
    */
   private notifyCommitted(): void {
     const branch: string = this.currentBranch()?.name ?? 'HEAD';
+    this.log.info('Repository', `Committed to '${branch}'`, this.infoSignal()?.root);
     const actions: readonly NotificationAction[] =
       this.remotesSignal().length > 0 ? [{ label: 'Push', run: (): void => void this.push() }] : [];
     this.notifications.notify({
@@ -986,6 +1019,7 @@ export class Repository {
     if (this.provider !== provider) {
       return;
     }
+    this.log.debug('Repository', `Loaded ${files.length} file(s) for commit ${commit.shortHash}`);
     this.commitFilesSignal.update(
       (
         current: ReadonlyMap<string, readonly GitFileChange[]>,

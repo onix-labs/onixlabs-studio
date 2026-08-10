@@ -2,6 +2,7 @@ import { inject, OnDestroy, Service } from '@angular/core';
 import { MODAL_UNPARENTED_FEATURE, MODAL_WINDOW_URL } from '@shared/api/window-channels';
 import { watchChildWindowClosed } from '@shared/angular/services/child-window-close/child-window-close';
 import { ChildWindowStyling } from '@shared/angular/services/child-window-styling/child-window-styling';
+import { Log } from '@shared/angular/services/log/log';
 
 /**
  * Describes the window a modal asks for: how it is sized and chromed, and whether it hangs off the
@@ -203,6 +204,11 @@ export class ModalWindows implements OnDestroy {
   private readonly styling: ChildWindowStyling = inject(ChildWindowStyling);
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Holds the open modal windows.
    */
   private readonly children: Set<Window> = new Set<Window>();
@@ -229,6 +235,7 @@ export class ModalWindows implements OnDestroy {
       this.features(request, owner),
     );
     if (child?.document == null) {
+      this.log.warn('ModalWindows', `Failed to open modal window '${request.title}'`);
       return null;
     }
 
@@ -258,11 +265,13 @@ export class ModalWindows implements OnDestroy {
     doc.body.appendChild(contentHost);
 
     this.children.add(child);
+    this.log.info('ModalWindows', `Opened modal window '${request.title}'`);
 
     const closedListeners: (() => void)[] = [];
     watchChildWindowClosed(child, (): void => {
       this.children.delete(child);
       this.styling.release(child);
+      this.log.info('ModalWindows', `Closed modal window '${request.title}'`);
       for (const listener of closedListeners) {
         listener();
       }

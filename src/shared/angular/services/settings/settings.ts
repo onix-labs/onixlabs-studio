@@ -14,6 +14,7 @@ import {
   TileScrollMode,
 } from './settings-registry';
 import { SettingDef } from './settings-schema';
+import { Log } from '@shared/angular/services/log/log';
 import { SettingsStore } from '@shared/angular/services/settings-store/settings-store';
 import { restoreOverrides } from './settings-migration';
 import {
@@ -423,6 +424,11 @@ export class Settings {
   private readonly store: SettingsStore = inject(SettingsStore);
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Holds the current sparse override map.
    */
   private readonly overrides: WritableSignal<SettingsOverrides> = signal<SettingsOverrides>(
@@ -713,6 +719,7 @@ export class Settings {
       const loaded: SettingsOverrides = this.load();
       this.externallyApplied = loaded;
       this.overrides.set(loaded);
+      this.log.debug('Settings', 'Applied settings changed by another window');
     });
   }
 
@@ -848,6 +855,7 @@ export class Settings {
       settings,
     );
     this.set('textEditor.profiles', result.next);
+    this.log.info('Settings', `Created editor profile '${name}'`, result.profile.id, languages);
     return result.profile;
   }
 
@@ -858,6 +866,7 @@ export class Settings {
    */
   public updateProfile(id: string, updates: Partial<Omit<EditorProfile, 'id'>>): void {
     this.set('textEditor.profiles', updateProfileIn(this.read('textEditor.profiles'), id, updates));
+    this.log.info('Settings', `Updated editor profile`, id);
   }
 
   /**
@@ -866,6 +875,7 @@ export class Settings {
    */
   public deleteProfile(id: string): void {
     this.set('textEditor.profiles', removeProfile(this.read('textEditor.profiles'), id));
+    this.log.info('Settings', `Deleted editor profile`, id);
   }
 
   /**
@@ -945,6 +955,11 @@ export class Settings {
               i === index ? connection : candidate,
           );
     this.set('ai.connections', next);
+    this.log.info(
+      'Settings',
+      `${index === -1 ? 'Added' : 'Updated'} AI connection '${connection.label}'`,
+      connection.id,
+    );
   }
 
   /**
@@ -958,6 +973,7 @@ export class Settings {
       (connection: AiConnection): boolean => connection.id !== connectionId,
     );
     this.set('ai.connections', remaining);
+    this.log.info('Settings', `Removed AI connection`, connectionId);
 
     if (this.read('ai.activeConnectionId') === connectionId) {
       this.set('ai.activeConnectionId', remaining[0]?.id ?? '');
@@ -981,6 +997,7 @@ export class Settings {
    */
   public setActiveConnection(connectionId: string): void {
     this.set('ai.activeConnectionId', connectionId);
+    this.log.info('Settings', `Active AI connection changed`, connectionId);
   }
 
   /**
@@ -1001,6 +1018,7 @@ export class Settings {
    */
   public setAiPermissionPosture(posture: AiPermissionPosture): void {
     this.set('ai.permissionPosture', posture);
+    this.log.info('Settings', `Agent permission posture set to '${posture}'`);
   }
 
   /**

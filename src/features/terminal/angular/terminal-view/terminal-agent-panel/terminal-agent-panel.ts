@@ -3,6 +3,7 @@ import { Agent } from '@shared/angular/services/agent/agent';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
 import { AGENT_CONVERSATION_KIND } from '@shared/angular/services/agent-conversations/agent-conversation-context';
 import { TerminalAgents } from '@features/terminal/angular/terminal-agents/terminal-agents';
+import { Log } from '@shared/angular/services/log/log';
 import { Icon } from '@shared/angular/icons/icon';
 import { AgentConversationPanel } from '@shared/angular/components/panels/agent-conversation-panel/agent-conversation-panel';
 import { ToolPanel } from '@shared/angular/components/panels/tool-panel/tool-panel';
@@ -35,6 +36,11 @@ export class TerminalAgentPanel {
   private readonly terminalAgents: TerminalAgents = inject(TerminalAgents);
 
   /**
+   * Holds the structured logger for agent-panel actions.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Gets the identifier of the owning terminal tab. Always supplied by the host; the empty default
    * lets the panel be constructed before its input binding is applied.
    */
@@ -49,6 +55,7 @@ export class TerminalAgentPanel {
    * Hides the agent panel, leaving its conversation mounted so it can be reopened.
    */
   protected onClose(): void {
+    this.log.info('terminal.agents', 'Terminal agent panel closed', this.tabId());
     this.terminalAgents.hide(this.tabId());
   }
 }

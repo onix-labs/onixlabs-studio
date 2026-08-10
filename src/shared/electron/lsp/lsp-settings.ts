@@ -2,6 +2,7 @@ import { app, ipcMain, IpcMainInvokeEvent } from 'electron';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { LspChannel, LspSettings } from '@shared/api/lsp-channels';
+import { logger } from '../logger';
 
 /**
  * Holds the default settings used before any have been stored.
@@ -32,11 +33,15 @@ export class LspSettingsManager {
    */
   public register(): void {
     this.settings = this.load();
-    ipcMain.handle(LspChannel.GetSettings, (): LspSettings => this.settings);
+    ipcMain.handle(LspChannel.GetSettings, (): LspSettings => {
+      logger.trace('LspSettingsManager', 'GetSettings requested');
+      return this.settings;
+    });
     ipcMain.handle(
       LspChannel.SetSettings,
       (_event: IpcMainInvokeEvent, value: unknown): LspSettings => this.set(value),
     );
+    logger.info('LspSettingsManager', 'Registered language-server settings IPC handlers');
   }
 
   /**
@@ -55,8 +60,11 @@ export class LspSettingsManager {
   private set(value: unknown): LspSettings {
     const parsed: LspSettings | null = this.parse(value);
     if (parsed !== null) {
+      logger.info('LspSettingsManager', 'Updated language-server settings');
       this.settings = parsed;
       this.save();
+    } else {
+      logger.warn('LspSettingsManager', 'Rejected malformed language-server settings');
     }
     return this.settings;
   }
@@ -74,8 +82,9 @@ export class LspSettingsManager {
           return parsed;
         }
       }
-    } catch {
+    } catch (error: unknown) {
       // Fall through to defaults when the store is missing or corrupt.
+      logger.error('LspSettingsManager', 'Failed to load language-server settings', error);
     }
     return DEFAULT_SETTINGS;
   }
@@ -89,8 +98,9 @@ export class LspSettingsManager {
         encoding: 'utf8',
         mode: 0o600,
       });
-    } catch {
+    } catch (error: unknown) {
       // Persistence is best-effort; a failure simply means the choice is not remembered.
+      logger.error('LspSettingsManager', 'Failed to persist language-server settings', error);
     }
   }
 

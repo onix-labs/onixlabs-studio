@@ -106,6 +106,7 @@ export function captureShellEnvironment(
   // `-l` (login) and `-i` (interactive) between them source the profile files the GUI launch missed;
   // `-c` runs the dump and exits. stdout is framed so profile banners printed around it are stripped.
   const script: string = `echo "${ENV_DELIMITER}"; env; echo "${ENV_DELIMITER}"`;
+  logger.trace('shell-env', `Capturing environment from ${shell}`);
   try {
     const result: SpawnSyncReturns<string> = spawnSync(shell, ['-l', '-i', '-c', script], {
       encoding: 'utf-8',
@@ -146,6 +147,7 @@ export function captureShellEnvironmentCached(
 ): Record<string, string> | null {
   const cached: Record<string, string> | null | undefined = captureCache.get(shell);
   if (cached !== undefined) {
+    logger.trace('shell-env', `Shell environment cache hit for ${shell}`);
     return cached;
   }
   const captured: Record<string, string> | null = captureShellEnvironment(shell, options);
@@ -243,10 +245,12 @@ export function hydrateLoginShellEnvironment(): void {
   // add startup latency; the force switch overrides this for IDE/GUI-style launches that set TERM.
   const forced: boolean = process.env['STUDIO_FORCE_SHELL_ENV'] === '1';
   if (!forced && typeof process.env['TERM'] === 'string' && process.env['TERM'].length > 0) {
+    logger.trace('shell-env', 'Skipping shell-env hydrate: TERM present (terminal launch)');
     return;
   }
 
   const shell: string = resolveDefaultShell();
+  logger.debug('shell-env', `Hydrating login shell environment from ${shell}`);
   const captured: Record<string, string> | null = captureShellEnvironment(shell);
   process.env[CAPTURED_MARKER] = '1';
   if (!captured) {

@@ -1,4 +1,5 @@
-import { computed, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 
 /**
  * Identifies the lifecycle state of a language server, as surfaced in the status strip.
@@ -121,6 +122,11 @@ export class LspStatus {
   >();
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Gets every running server, ordered by language name then root, for the drop-up menu.
    */
   public readonly servers: Signal<readonly LspServer[]> = computed((): readonly LspServer[] =>
@@ -177,6 +183,7 @@ export class LspStatus {
     const next: Map<string, ServerEntry> = new Map<string, ServerEntry>(this.entries());
     next.set(sessionId, { ...current, state, detail });
     this.entries.set(next);
+    this.log.debug('LspStatus', `Server '${current.serverId}' -> ${state}`, sessionId);
     // A move back into starting (a restart) re-arms the watchdog; settling to ready or unavailable
     // retires it.
     if (state === 'starting') {
@@ -233,6 +240,7 @@ export class LspStatus {
       setTimeout((): void => {
         this.watchdogs.delete(sessionId);
         if (this.entries().get(sessionId)?.state === 'starting') {
+          this.log.warn('LspStatus', 'Server readiness watchdog fired; marking unavailable', sessionId);
           this.setState(
             sessionId,
             'unavailable',

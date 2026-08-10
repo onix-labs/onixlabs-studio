@@ -2,6 +2,7 @@ import { inject, Service } from '@angular/core';
 import { READ_TERMINAL_OUTPUT, WRITE_TERMINAL_INPUT } from '@shared/api/ai-types';
 import { TerminalReplay } from '@shared/api/terminal-channels';
 import { AiRuntime } from '@shared/angular/services/ai-runtime/ai-runtime';
+import { Log } from '@shared/angular/services/log/log';
 import { TerminalBridge } from '@shared/angular/services/terminal-bridge/terminal-bridge';
 import { Terminals } from '@shared/angular/services/terminals/terminals';
 
@@ -82,10 +83,16 @@ export class AgentTerminalCapabilities {
   private readonly bridge: TerminalBridge = inject(TerminalBridge);
 
   /**
+   * Holds the structured logger for terminal agent-capability actions.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Initializes a new instance of the {@link AgentTerminalCapabilities} class, registering the
    * terminal capabilities.
    */
   public constructor() {
+    this.log.debug('terminal.agents', 'Registering terminal agent capabilities');
     this.runtime.registerCapability(
       READ_TERMINAL_OUTPUT,
       (input: unknown): Promise<ReadResult> => this.readOutput(input),
@@ -104,8 +111,10 @@ export class AgentTerminalCapabilities {
    */
   private async readOutput(input: unknown): Promise<ReadResult> {
     const tabId: string | null = this.extractString(input, 'tabId');
+    this.log.trace('terminal.agents', 'Agent reading terminal output', tabId ?? '(none)');
     const text: string | null = tabId === null ? null : await this.readSessionText(tabId);
     if (text === null) {
+      this.log.debug('terminal.agents', 'Agent read: no terminal available', tabId ?? '(none)');
       return { available: false, text: '' };
     }
     return { available: true, text: this.cap(text) };
@@ -147,10 +156,13 @@ export class AgentTerminalCapabilities {
       ? (input as Record<string, unknown>)['submit'] === false
       : false);
     if (tabId === null || text === null) {
+      this.log.warn('terminal.agents', 'Agent write rejected: missing tabId or text');
       return { ok: false };
     }
+    this.log.info('terminal.agents', 'Agent writing terminal input', { tabId, submit });
     const sent: boolean = await this.bridge.write(tabId, submit ? `${text}\r` : text);
     if (!sent) {
+      this.log.warn('terminal.agents', 'Agent write failed to send', tabId);
       return { ok: false };
     }
     await this.delay(SETTLE_DELAY_MS);

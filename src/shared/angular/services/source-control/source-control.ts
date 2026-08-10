@@ -1,4 +1,4 @@
-import { Service } from '@angular/core';
+import { inject, Service } from '@angular/core';
 import { Bridge } from '@shared/api/bridge';
 import {
   GitRunResult,
@@ -6,6 +6,7 @@ import {
   SourceControlChannel,
   SourceControlClient,
 } from '@shared/api/source-control-channels';
+import { Log } from '@shared/angular/services/log/log';
 
 /**
  * Builds a {@link SourceControlClient} that forwards each operation to its {@link SourceControlChannel}
@@ -76,4 +77,20 @@ export class SourceControl {
   public readonly client: SourceControlClient | undefined = window.bridge
     ? createClient(window.bridge)
     : undefined;
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
+   * Initialises a new instance of the {@link SourceControl} class, recording whether the source-control
+   * bridge is available in the current environment.
+   */
+  public constructor() {
+    this.log.debug(
+      'SourceControl',
+      `Source-control client ${this.client === undefined ? 'unavailable' : 'ready'}`,
+    );
+  }
 }

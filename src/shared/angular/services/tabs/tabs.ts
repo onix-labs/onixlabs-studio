@@ -1,4 +1,5 @@
-import { computed, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 import { Tab, TabType, TabTypeMetadata, TAB_TYPE_METADATA } from './tab';
 
 /**
@@ -52,6 +53,11 @@ export class Tabs {
   private sequence: number = 0;
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Gets the ordered list of open tabs.
    */
   public readonly tabs: Signal<readonly Tab[]> = this.tabList.asReadonly();
@@ -90,12 +96,14 @@ export class Tabs {
         (tab: Tab): boolean => tab.type === type,
       );
       if (existing !== undefined) {
+        this.log.debug('Tabs', `Activating existing singleton tab '${type}'`, existing.id);
         this.activeId.set(existing.id);
         return existing;
       }
     } else if (resourceKey !== undefined) {
       const existing: Tab | undefined = this.findByResource(type, resourceKey);
       if (existing !== undefined) {
+        this.log.debug('Tabs', `Activating existing tab for resource`, type, resourceKey);
         this.activeId.set(existing.id);
         return existing;
       }
@@ -113,6 +121,7 @@ export class Tabs {
     ).length;
     this.tabList.set([...current.slice(0, index), tab, ...current.slice(index)]);
     this.activeId.set(tab.id);
+    this.log.info('Tabs', `Opened tab '${type}'`, tab.id, resourceKey);
     return tab;
   }
 
@@ -156,6 +165,7 @@ export class Tabs {
   public activate(id: string): void {
     const exists: boolean = this.tabList().some((tab: Tab): boolean => tab.id === id);
     if (exists) {
+      this.log.info('Tabs', 'Activated tab', id);
       this.activeId.set(id);
     }
   }
@@ -174,9 +184,11 @@ export class Tabs {
 
     const remaining: readonly Tab[] = current.filter((tab: Tab): boolean => tab.id !== id);
     this.tabList.set(remaining);
+    this.log.info('Tabs', 'Closed tab', id);
 
     if (this.activeId() === id) {
       const neighbour: Tab | undefined = remaining[index] ?? remaining[index - 1];
+      this.log.debug('Tabs', 'Active tab closed; activating neighbour', neighbour?.id);
       this.activeId.set(neighbour?.id);
     }
   }

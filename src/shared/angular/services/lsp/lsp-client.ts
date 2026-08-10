@@ -1,6 +1,7 @@
 import { inject, OnDestroy, Service } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
 import { Bridge } from '@shared/api/bridge';
+import { Log } from '@shared/angular/services/log/log';
 import {
   LspChannel,
   LspExit,
@@ -328,6 +329,11 @@ export class LspClient implements OnDestroy {
    * Holds the user's language-server settings, used to skip a server the user has disabled.
    */
   private readonly lspSettings: LspSettings = inject(LspSettings);
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Holds the disposer that withdraws this client's document resolver, or null when not registered.
@@ -702,6 +708,11 @@ export class LspClient implements OnDestroy {
    * @param diagnostics The server's current diagnostics for the document (empty clears them).
    */
   private ingestDiagnostics(tracked: TrackedDocument, diagnostics: readonly LspDiagnostic[]): void {
+    this.log.info(
+      'LspClient',
+      `Received ${diagnostics.length} diagnostic(s) for ${tracked.uri}`,
+      tracked.serverId,
+    );
     this.diagnosticsByDocument.set(
       tracked.documentId,
       diagnostics.map(
@@ -854,6 +865,7 @@ export class LspClient implements OnDestroy {
     this.crashes.delete(sessionId);
     this.startFailures.delete(sessionId);
     this.status.setState(sessionId, 'starting');
+    this.log.info('LspClient', `Restarting server '${info.serverId}'`, sessionId);
     await this.bridge.invoke(LspChannel.Stop, sessionId);
     this.sessions.delete(sessionId);
     this.legends.delete(sessionId);
@@ -901,6 +913,7 @@ export class LspClient implements OnDestroy {
       return;
     }
     this.suspended = true;
+    this.log.debug('LspClient', `Suspending ${this.sessions.size} session(s)`);
     for (const sessionId of [...this.sessions.keys()]) {
       void this.bridge?.invoke(LspChannel.Stop, sessionId);
       this.status.remove(sessionId);
@@ -1192,11 +1205,13 @@ export class LspClient implements OnDestroy {
       rootPath,
       restart: (): void => void this.restart(sessionId),
     });
+    this.log.info('LspClient', `Starting server '${serverId}'`, rootPath);
     const pending: Promise<boolean> = this.bridge
       .invoke<LspStartResult>(LspChannel.Start, { sessionId, serverId, rootPath, standaloneFile })
       .then((result: LspStartResult): boolean => {
         if (!result.success) {
           this.status.setState(sessionId, 'unavailable', result.error);
+          this.log.error('LspClient', `Server '${serverId}' failed to start`, result.error);
           this.recordStartFailure(sessionId);
           // Forget the failed session so a sync after the cooldown can try again; the attempt cap in
           // startBlockReason stops this from retrying forever.
@@ -1205,9 +1220,15 @@ export class LspClient implements OnDestroy {
         if (result.success) {
           this.startFailures.delete(sessionId);
           this.legends.set(sessionId, semanticLegendOf(result.capabilities));
-          if (supportsPullDiagnostics(result.capabilities)) {
+          const pull: boolean = supportsPullDiagnostics(result.capabilities);
+          if (pull) {
             this.pullCapable.add(sessionId);
           }
+          this.log.info(
+            'LspClient',
+            `Server '${serverId}' started (capabilities negotiated)`,
+            `pullDiagnostics=${pull}`,
+          );
         }
         return result.success;
       })
@@ -1222,6 +1243,7 @@ export class LspClient implements OnDestroy {
           'unavailable',
           error instanceof Error ? error.message : 'The language server failed to start.',
         );
+        this.log.error('LspClient', `Server '${serverId}' start invoke rejected`, error);
         this.recordStartFailure(sessionId);
         this.sessions.delete(sessionId);
         return false;
@@ -1386,6 +1408,11 @@ export class LspClient implements OnDestroy {
     // so restarts back off exponentially and eventually stop instead of respawning forever.
     const crash: { count: number; lastAt: number } | undefined = this.crashes.get(exit.sessionId);
     this.crashes.set(exit.sessionId, { count: (crash?.count ?? 0) + 1, lastAt: Date.now() });
+    this.log.warn(
+      'LspClient',
+      `Server session exited unexpectedly (crash #${(crash?.count ?? 0) + 1})`,
+      exit.sessionId,
+    );
     this.legends.delete(exit.sessionId);
     // Keep the crashed server listed as unavailable — with its restart affordance — rather than
     // removing it from the status strip. Removing it made the whole status-strip control vanish (its

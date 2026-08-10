@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 import { Icon } from '@shared/angular/icons/icon';
 import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host';
 import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button';
@@ -61,6 +62,11 @@ export class BinaryRibbon {
   private readonly binaryPanels: BinaryPanels = inject(BinaryPanels);
 
   /**
+   * Holds the structured logger for ribbon actions.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Gets the byte-per-row options offered by the layout field.
    */
   protected readonly rowWidths: readonly string[] = ['8', '16', '32', '64'];
@@ -114,6 +120,7 @@ export class BinaryRibbon {
    * Saves the active document's edits.
    */
   protected async onSave(): Promise<void> {
+    this.log.info('binary.ribbon', 'Save requested');
     await this.activeDocument()?.save();
   }
 
@@ -121,6 +128,7 @@ export class BinaryRibbon {
    * Undoes the active document's most recent edit.
    */
   protected onUndo(): void {
+    this.log.info('binary.ribbon', 'Undo requested');
     this.activeDocument()?.undo();
   }
 
@@ -128,6 +136,7 @@ export class BinaryRibbon {
    * Redoes the active document's most recently undone edit.
    */
   protected onRedo(): void {
+    this.log.info('binary.ribbon', 'Redo requested');
     this.activeDocument()?.redo();
   }
 
@@ -137,7 +146,9 @@ export class BinaryRibbon {
   protected onToggleInsertMode(): void {
     const document: BinaryDocumentEntry | undefined = this.activeDocument();
     if (document !== undefined) {
-      document.insertMode.set(!document.insertMode());
+      const next: boolean = !document.insertMode();
+      this.log.debug('binary.ribbon', `Typing mode set to ${next ? 'insert' : 'overwrite'}`);
+      document.insertMode.set(next);
     }
   }
 
@@ -171,6 +182,7 @@ export class BinaryRibbon {
   protected onToggleDisassembly(): void {
     const id: string | undefined = this.tabs.activeTabId();
     if (id !== undefined) {
+      this.log.info('binary.ribbon', 'Toggle disassembly panel');
       this.binaryPanels.toggle(id, 'disassembly');
     }
   }
@@ -181,6 +193,7 @@ export class BinaryRibbon {
   protected onToggleInspector(): void {
     const id: string | undefined = this.tabs.activeTabId();
     if (id !== undefined) {
+      this.log.info('binary.ribbon', 'Toggle inspector panel');
       this.binaryPanels.toggle(id, 'inspector');
     }
   }
@@ -199,6 +212,7 @@ export class BinaryRibbon {
   protected onToggleAgent(): void {
     const id: string | undefined = this.tabs.activeTabId();
     if (id !== undefined) {
+      this.log.info('binary.ribbon', 'Toggle agent panel');
       this.binaryPanels.toggle(id, 'agent');
     }
   }
@@ -210,6 +224,7 @@ export class BinaryRibbon {
     const document: BinaryDocumentEntry | undefined = this.activeDocument();
     const offset: number | null | undefined = document?.codeOffset();
     if (document !== undefined && offset !== null && offset !== undefined) {
+      this.log.debug('binary.ribbon', `Go to code at 0x${offset.toString(16)}`);
       document.reveal(offset);
     }
   }
@@ -218,6 +233,7 @@ export class BinaryRibbon {
    * Scrolls to the start of the file.
    */
   protected onGoToStart(): void {
+    this.log.debug('binary.ribbon', 'Go to start of file');
     this.activeDocument()?.reveal(0);
   }
 
@@ -227,6 +243,7 @@ export class BinaryRibbon {
   protected onGoToEnd(): void {
     const document: BinaryDocumentEntry | undefined = this.activeDocument();
     if (document !== undefined) {
+      this.log.debug('binary.ribbon', 'Go to end of file');
       document.reveal(Math.max(0, document.size() - 1));
     }
   }
@@ -239,6 +256,7 @@ export class BinaryRibbon {
     const document: BinaryDocumentEntry | undefined = this.activeDocument();
     const parsed: number = Number(value);
     if (document !== undefined && Number.isInteger(parsed) && parsed > 0) {
+      this.log.debug('binary.ribbon', `Row width set to ${parsed} bytes`);
       document.bytesPerRow.set(parsed);
     }
   }
@@ -296,6 +314,7 @@ export class BinaryRibbon {
   private async copySelection(kind: 'hex' | 'ascii'): Promise<void> {
     const bytes: number[] = this.activeDocument()?.selectedBytes() ?? [];
     if (bytes.length > 0) {
+      this.log.info('binary.ribbon', `Copy ${bytes.length} byte(s) as ${kind}`);
       await navigator.clipboard.writeText(this.format(bytes, kind));
     }
   }
@@ -316,6 +335,10 @@ export class BinaryRibbon {
     ) {
       return;
     }
+    this.log.info(
+      'binary.ribbon',
+      `Cut ${selection.end - selection.start} byte(s) as ${kind} at 0x${selection.start.toString(16)}`,
+    );
     await this.copySelection(kind);
     document.deleteBytes(selection.start, selection.end - selection.start);
     document.selection.set(null);

@@ -1,6 +1,7 @@
-import { Service } from '@angular/core';
+import { inject, Service } from '@angular/core';
 import { Bridge } from '@shared/api/bridge';
 import { WindowChannel } from '@shared/api/window-channels';
+import { Log } from '@shared/angular/services/log/log';
 
 /**
  * Represents the renderer-side wrapper around the app-shell chrome: window controls and the host
@@ -16,6 +17,11 @@ export class Studio {
    * Holds the generic transport, or undefined when running outside Electron.
    */
   private readonly bridge: Bridge | undefined = window.bridge;
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Gets the operating system platform, or 'browser' when running outside Electron.
@@ -47,6 +53,7 @@ export class Studio {
    * Closes the application window.
    */
   public closeWindow(): void {
+    this.log.info('Studio', 'Close window requested');
     this.bridge?.send(WindowChannel.Close);
   }
 
@@ -56,6 +63,7 @@ export class Studio {
    * window behind it.
    */
   public showWindow(): void {
+    this.log.trace('Studio', 'Showing main window');
     this.bridge?.send(WindowChannel.Show);
   }
 
@@ -64,6 +72,7 @@ export class Studio {
    * window stands in for it.
    */
   public hideWindow(): void {
+    this.log.trace('Studio', 'Hiding main window');
     this.bridge?.send(WindowChannel.Hide);
   }
 

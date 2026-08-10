@@ -17,6 +17,7 @@ import {
 import type * as MonacoApi from 'monaco-editor';
 import { TextEditor } from '@shared/angular/components/text-editor/text-editor';
 import { ToolPanel } from '@shared/angular/components/panels/tool-panel/tool-panel';
+import { Log } from '@shared/angular/services/log/log';
 import { Icon } from '@shared/angular/icons/icon';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { ASM_LANGUAGE_ID } from '@shared/angular/services/monaco/monaco-asm-language';
@@ -76,6 +77,11 @@ export class BinaryDisasmPanel implements OnDestroy {
    * cross-highlight decorations.
    */
   private readonly monaco: Monaco = inject(Monaco);
+
+  /**
+   * Holds the structured logger for disassembly-panel interactions.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Gets the icon set, exposed for the template.
@@ -236,6 +242,7 @@ export class BinaryDisasmPanel implements OnDestroy {
    * Emits the close request so the host hides the panel.
    */
   protected onClose(): void {
+    this.log.info('binary.disassembly', 'Disassembly panel closed');
     this.closed.emit();
   }
 
@@ -317,6 +324,10 @@ export class BinaryDisasmPanel implements OnDestroy {
     if (line === undefined) {
       return;
     }
+    this.log.debug(
+      'binary.disassembly',
+      `Instruction line selected at 0x${line.startOffset.toString(16)}`,
+    );
     document.cursor.set(line.startOffset);
     document.selection.set({ start: line.startOffset, end: line.startOffset + line.byteLength });
   }

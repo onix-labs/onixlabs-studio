@@ -12,6 +12,7 @@ import {
   viewChild,
   WritableSignal,
 } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 import { Agent } from '@shared/angular/services/agent/agent';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
 import {
@@ -77,6 +78,11 @@ export class CodeView implements OnInit, OnDestroy {
    * Holds the theme service supplying the resolved light/dark mode (for the change-margin colours).
    */
   private readonly theme: Theme = inject(Theme);
+
+  /**
+   * Holds the structured logger for the code view's lifecycle and user actions.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Holds the documents service the ribbon's save commands target.
@@ -347,6 +353,7 @@ export class CodeView implements OnInit, OnDestroy {
    * Finalises the agent-host registration once the required tab-id input is readable.
    */
   public ngOnInit(): void {
+    this.log.info('code.view', 'Code view opened', this.tabId());
     this.agentHost.register(this.tabId());
   }
 
@@ -356,6 +363,7 @@ export class CodeView implements OnInit, OnDestroy {
    * document core releases the backing document and the pane disposes the Monaco editor themselves.
    */
   public ngOnDestroy(): void {
+    this.log.info('code.view', 'Code view destroyed', this.tabId());
     if (this.changeMargin !== null) {
       this.changeMargins.detach(this.changeMargin);
       this.changeMargin = null;
@@ -402,6 +410,7 @@ export class CodeView implements OnInit, OnDestroy {
       );
       this.bindFindAccelerator(editor);
     }
+    this.log.trace('code.view', 'Editor pane ready', this.tabId());
     this.paneReady.set(true);
   }
 
@@ -428,6 +437,7 @@ export class CodeView implements OnInit, OnDestroy {
    * Shows or hides the find panel.
    */
   protected toggleFind(): void {
+    this.log.debug('code.view', 'Toggle find panel', this.tabId());
     this.findVisible.update((visible: boolean): boolean => !visible);
   }
 
@@ -576,6 +586,7 @@ export class CodeView implements OnInit, OnDestroy {
   private run(): void {
     const document: CodeDocument | null = this.doc();
     if (document !== null) {
+      this.log.info('code.view', 'Run active document via accelerator', document.language());
       void this.codeRunner.run(this.tabId(), document.language(), document.content());
     }
   }

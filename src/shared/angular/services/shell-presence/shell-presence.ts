@@ -1,4 +1,5 @@
 import { effect, inject, Service } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 import { Studio } from '@shared/angular/services/studio/studio';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 
@@ -26,10 +27,16 @@ export class ShellPresence {
   private readonly tabs: Tabs = inject(Tabs);
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Initializes a new instance of the {@link ShellPresence} class, tracking the main window's
    * presence against the open tabs.
    */
   public constructor() {
+    this.log.trace('ShellPresence', 'Tracking main window presence against open tabs');
     effect((): void => {
       if (this.tabs.tabs().length > 0) {
         this.studio.showWindow();

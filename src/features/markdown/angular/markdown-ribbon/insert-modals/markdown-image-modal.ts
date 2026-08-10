@@ -13,6 +13,7 @@ import {
 } from '@angular/core';
 import { FormModal } from './form-modal';
 import { FileSystem } from '@shared/angular/services/file-system/file-system';
+import { Log } from '@shared/angular/services/log/log';
 
 /**
  * Describes an image to insert: the source URL or path and its alternative text.
@@ -85,6 +86,11 @@ export class MarkdownImageModal {
   private readonly fileSystem: FileSystem = inject(FileSystem);
 
   /**
+   * Holds the structured logging client for the insert modal's confirmation and file picking.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Gets a value indicating whether the modal is open.
    */
   public readonly open: InputSignal<boolean> = input.required<boolean>();
@@ -120,6 +126,7 @@ export class MarkdownImageModal {
   protected async browse(): Promise<void> {
     const path: string | null = await this.fileSystem.pickImage();
     if (path !== null && path.length > 0) {
+      this.log.debug('markdown.insert', 'Image picked from file system', { path });
       this.url.set(path);
     }
   }
@@ -131,6 +138,7 @@ export class MarkdownImageModal {
     if (!this.valid()) {
       return;
     }
+    this.log.debug('markdown.insert', 'Image modal confirmed');
     this.submitted.emit({ url: this.url().trim(), alt: this.alt().trim() });
     this.reset();
     this.closed.emit();

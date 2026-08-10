@@ -21,6 +21,7 @@ import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { Settings, TextEditorSettings } from '@shared/angular/services/settings/settings';
 import { Theme } from '@shared/angular/services/theme/theme';
 import { EditorZoom } from '@shared/angular/services/editor-zoom/editor-zoom';
+import { Log } from '@shared/angular/services/log/log';
 
 /**
  * Identifies the source label passed to Monaco when triggering editor actions on the caller's behalf.
@@ -81,6 +82,11 @@ export class TextEditor implements AfterViewInit, OnDestroy {
    * Holds the global editor zoom, applied as a scale factor on the configured font size.
    */
   private readonly editorZoom: EditorZoom = inject(EditorZoom);
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Holds a reference to the element Monaco mounts into.
@@ -294,6 +300,7 @@ export class TextEditor implements AfterViewInit, OnDestroy {
    * Disposes the editor when the pane is torn down.
    */
   public ngOnDestroy(): void {
+    this.log.info('TextEditor', 'Destroying editor pane', this.modelUri);
     this.bracketColorizationGuard?.dispose();
     this.bracketColorizationGuard = null;
     this.foldingPlaceholders?.dispose();
@@ -512,6 +519,7 @@ export class TextEditor implements AfterViewInit, OnDestroy {
   private createEditor(): void {
     const monaco: typeof MonacoApi | undefined = this.monaco.getMonaco();
     if (monaco === undefined) {
+      this.log.warn('TextEditor', 'Monaco unavailable; editor not created');
       return;
     }
 
@@ -528,6 +536,7 @@ export class TextEditor implements AfterViewInit, OnDestroy {
 
     const model: MonacoApi.editor.ITextModel | null = this.editor.getModel();
     this.modelUri = model !== null ? model.uri.toString() : null;
+    this.log.info('TextEditor', `Created editor for '${language}'`, this.modelUri);
 
     // Monaco's shared model service re-seeds every model's bracket-colouring option from the global
     // default (always on) whenever any editor's configuration changes, which would silently re-enable

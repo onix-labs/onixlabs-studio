@@ -1,4 +1,5 @@
 import * as path from 'node:path';
+import { logger } from './logger';
 
 /**
  * Tracks the set of open workspace roots and decides whether a given path is confined to one of
@@ -18,7 +19,9 @@ export class WorkspaceContext {
    * @param root The absolute root path.
    */
   public addRoot(root: string): void {
-    this.roots.add(path.resolve(root));
+    const resolved: string = path.resolve(root);
+    this.roots.add(resolved);
+    logger.debug('WorkspaceContext.addRoot', `Root added ${resolved} (${this.roots.size} open)`);
   }
 
   /**
@@ -26,7 +29,9 @@ export class WorkspaceContext {
    * @param root The absolute root path to remove.
    */
   public removeRoot(root: string): void {
-    this.roots.delete(path.resolve(root));
+    const resolved: string = path.resolve(root);
+    this.roots.delete(resolved);
+    logger.debug('WorkspaceContext.removeRoot', `Root removed ${resolved} (${this.roots.size} open)`);
   }
 
   /**

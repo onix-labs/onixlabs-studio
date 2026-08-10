@@ -1,4 +1,5 @@
 import { computed, inject, Service, Signal } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 import { AgentHost, AgentHosts } from '@shared/angular/services/agent-hosts/agent-hosts';
 import {
   AgentRequestEntry,
@@ -39,6 +40,11 @@ const AUTO_PROMPT: string = [
  */
 @Service()
 export class RunConfigurationAgent {
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
   /**
    * Holds the app-wide registry of live agent hosts, searched for the active tab's agent.
    */
@@ -163,8 +169,10 @@ export class RunConfigurationAgent {
   private dispatch(prompt: string): boolean {
     const host: AgentHost | null = this.host();
     if (host === null || this.activeWorkspace.rootPath() === null) {
+      this.log.warn('workspace.run', 'Run-configuration agent dispatch skipped: no host or no folder');
       return false;
     }
+    this.log.info('workspace.run', 'Run-configuration agent dispatched');
     host.agent.send(prompt, host.tabId ?? undefined, host.surface);
     return true;
   }

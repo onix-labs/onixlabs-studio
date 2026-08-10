@@ -10,6 +10,7 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { EditorCommands } from '@shared/angular/services/editor-commands/editor-commands';
+import { Log } from '@shared/angular/services/log/log';
 import { WorkspaceFind } from '@features/workspace/angular/workspace-find/workspace-find';
 import { WorkspaceDocumentCommands } from '@features/workspace/angular/workspace-document-commands/workspace-document-commands';
 import { WorkspaceSourceControlCommands } from '@features/workspace/angular/workspace-source-control-commands/workspace-source-control-commands';
@@ -108,6 +109,11 @@ export class DirectoryRibbon {
    * Gets the icon set, exposed for the template.
    */
   protected readonly Icon: typeof Icon = Icon;
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Holds the editor command seam the Edit group dispatches through.
@@ -460,6 +466,7 @@ export class DirectoryRibbon {
    * Reveals the workspace's multi-file Search panel.
    */
   protected onFind(): void {
+    this.log.info('workspace.ribbon', 'Find in Files invoked');
     this.workspaceFind.reveal();
   }
 
@@ -497,6 +504,7 @@ export class DirectoryRibbon {
       this.pendingRunConfiguration.set(configuration);
       return;
     }
+    this.log.info('workspace.run', 'Run configuration started', configuration.name);
     this.builds.runConfiguration(configuration, this.studio.runConfigurations(), {
       restart: false,
     });
@@ -510,6 +518,7 @@ export class DirectoryRibbon {
     const configuration: RunConfiguration | null = this.pendingRunConfiguration();
     this.pendingRunConfiguration.set(null);
     if (configuration !== null) {
+      this.log.info('workspace.run', 'Run configuration restarted', configuration.name);
       this.builds.runConfiguration(configuration, this.studio.runConfigurations(), {
         restart: true,
       });
@@ -580,6 +589,7 @@ export class DirectoryRibbon {
    * @param restart Whether a busy build may be stopped and replaced.
    */
   private dispatchBuildAction(action: 'build' | 'rebuild' | 'clean', restart: boolean): void {
+    this.log.info('workspace.run', 'Build action dispatched', action, { restart });
     if (this.capabilities()?.actions.includes(action) === true) {
       this.builds.runAction(action, { restart });
     } else if (action === 'build') {
@@ -604,6 +614,7 @@ export class DirectoryRibbon {
   protected onDebug(): void {
     const configuration: RunConfiguration | undefined = this.selectedConfiguration();
     if (configuration !== undefined) {
+      this.log.info('workspace.run', 'Debug launch requested', configuration.name);
       this.debugger.launch(configuration);
     }
   }
@@ -612,6 +623,7 @@ export class DirectoryRibbon {
    * Opens the Configure dialog to edit the workspace's run configurations.
    */
   protected onConfigure(): void {
+    this.log.info('workspace.run', 'Configure run configurations dialog opened');
     this.configureDialog.open();
   }
 
@@ -659,6 +671,7 @@ export class DirectoryRibbon {
    * Stops everything the active workspace is running.
    */
   protected onStop(): void {
+    this.log.info('workspace.run', 'Stop all runs requested', this.activeRuns().length);
     this.builds.cancelAll();
   }
 
@@ -674,6 +687,7 @@ export class DirectoryRibbon {
    * Opens the active workspace's repository in the full source-control view.
    */
   protected onOpenSourceControl(): void {
+    this.log.info('source-control', 'Open in Source Control invoked');
     this.sourceControl.openInSourceControl();
   }
 
@@ -681,6 +695,7 @@ export class DirectoryRibbon {
    * Reveals the active workspace's commit panel.
    */
   protected onCommit(): void {
+    this.log.info('source-control', 'Commit invoked');
     this.sourceControl.commit();
   }
 
@@ -688,6 +703,7 @@ export class DirectoryRibbon {
    * Pushes the active workspace's current branch.
    */
   protected onPush(): void {
+    this.log.info('source-control', 'Push invoked');
     this.sourceControl.push();
   }
 
@@ -695,6 +711,7 @@ export class DirectoryRibbon {
    * Pulls the active workspace's current branch.
    */
   protected onPull(): void {
+    this.log.info('source-control', 'Pull invoked');
     this.sourceControl.pull();
   }
 
@@ -708,6 +725,7 @@ export class DirectoryRibbon {
    * Fetches from the remote without integrating.
    */
   protected onRepoFetch(): void {
+    this.log.info('source-control', 'Fetch invoked');
     this.repositoryCommands.fetch();
   }
 
@@ -734,6 +752,7 @@ export class DirectoryRibbon {
    * Stashes the working tree.
    */
   protected onStash(): void {
+    this.log.info('source-control', 'Stash invoked');
     this.repositoryCommands.stash();
   }
 
@@ -761,6 +780,7 @@ export class DirectoryRibbon {
    */
   protected confirmPromote(): void {
     this.promoteConfirmOpen.set(false);
+    this.log.info('source-control', 'Promote to worktree confirmed');
     this.repositoryCommands.promoteToWorktree();
   }
 
@@ -902,6 +922,7 @@ export class DirectoryRibbon {
    * @param id The chosen preset identifier.
    */
   protected onSelectPreset(id: string): void {
+    this.log.debug('workspace.ribbon', 'Layout preset selected', id);
     this.layoutPresets.select(id);
   }
 
@@ -931,6 +952,9 @@ export class DirectoryRibbon {
       return;
     }
     this.saveAsOpen.set(false);
+    this.log.info('workspace.ribbon', 'Layout preset saved as', name, {
+      default: this.saveAsDefault(),
+    });
     this.layoutPresets.saveAs(name, this.saveAsDefault());
   }
 

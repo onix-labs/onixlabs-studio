@@ -26,6 +26,12 @@ import {
 } from '../system-monitor-commands/system-monitor-commands';
 
 /**
+ * The severities shown by default: the notable ones. Trace and debug are fine-grained diagnostics,
+ * off by default so the audit stays readable, and toggled on when investigating.
+ */
+const DEFAULT_SEVERITIES: readonly Severity[] = ['info', 'warning', 'error'];
+
+/**
  * The audit table's columns: a fixed-width severity badge and timestamp bracket a fixed-width source
  * and the flexing message.
  */
@@ -200,7 +206,7 @@ export class SystemMonitorView {
    * Holds the severities currently shown; all are shown initially.
    */
   protected readonly enabled: WritableSignal<ReadonlySet<Severity>> = signal<ReadonlySet<Severity>>(
-    new Set<Severity>(SEVERITIES),
+    new Set<Severity>(DEFAULT_SEVERITIES),
   );
 
   /**
@@ -383,7 +389,7 @@ export class SystemMonitorView {
    * Resets the severity and text filters to their defaults (ribbon action).
    */
   protected clearFilters(): void {
-    this.enabled.set(new Set<Severity>(SEVERITIES));
+    this.enabled.set(new Set<Severity>(DEFAULT_SEVERITIES));
     this.text.set('');
   }
 

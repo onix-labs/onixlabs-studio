@@ -5,6 +5,7 @@ import {
   computed,
   effect,
   ElementRef,
+  inject,
   input,
   InputSignal,
   output,
@@ -14,6 +15,7 @@ import {
   viewChild,
   WritableSignal,
 } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 
 /**
  * Specifies the fixed height, in pixels, of one byte-row. Fixed so the total scroll height is the row
@@ -146,6 +148,11 @@ interface BinaryEditorRow {
   },
 })
 export class BinaryEditor {
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
   /**
    * Gets the total number of bytes in the file.
    */
@@ -394,6 +401,7 @@ export class BinaryEditor {
       if (element === undefined || typeof ResizeObserver === 'undefined') {
         return;
       }
+      this.log.info('BinaryEditor', `Mounted grid over ${this.size()} bytes`);
       this.viewportHeight.set(element.clientHeight);
       const observer: ResizeObserver = new ResizeObserver((): void => {
         this.viewportHeight.set(element.clientHeight);

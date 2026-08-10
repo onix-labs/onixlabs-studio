@@ -8,6 +8,7 @@ import {
   SourceCredential,
   SourceOperation,
 } from './nuget-config';
+import { logger } from '../logger';
 
 /**
  * The public nuget.org v3 service index, the implicit default source when no config clears it.
@@ -57,7 +58,12 @@ export async function readNuGetSources(
   if (rootConfig !== null) {
     configs.push(rootConfig);
   }
-  return resolveSources(configs);
+  const sources: readonly NuGetSource[] = resolveSources(configs);
+  logger.debug(
+    'nuget-sources',
+    `Resolved ${sources.length} NuGet source(s) for '${root}' from ${configs.length} config(s).`,
+  );
+  return sources;
 }
 
 /**

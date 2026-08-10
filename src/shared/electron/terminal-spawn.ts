@@ -1,4 +1,5 @@
 import { TerminalKind } from '@shared/api/terminal-channels';
+import { logger } from './logger';
 
 /**
  * The interrupt character (Ctrl+C, ETX). The single input a read-only `task` session lets through to
@@ -39,11 +40,14 @@ export function buildSpawnSpec(
   args?: readonly string[],
 ): SpawnSpec {
   if (command === undefined) {
+    logger.trace('terminal-spawn.buildSpawnSpec', `Interactive shell spawn: ${shell}`);
     return { file: shell, args: [] };
   }
   if (args !== undefined) {
+    logger.trace('terminal-spawn.buildSpawnSpec', `Direct command spawn: ${command}`);
     return { file: command, args };
   }
+  logger.trace('terminal-spawn.buildSpawnSpec', `Shell-hosted command spawn via ${shell}`);
   return platform === 'win32'
     ? { file: shell, args: ['/d', '/s', '/c', command] }
     : { file: shell, args: ['-c', command] };

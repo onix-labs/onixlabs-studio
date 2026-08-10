@@ -94,6 +94,7 @@ export class TerminalManager {
    * Registers the terminal IPC handlers.
    */
   public register(): void {
+    logger.info('TerminalManager', 'Registering terminal IPC handlers');
     ipcMain.handle(
       TerminalChannel.Create,
       (_event: IpcMainInvokeEvent, options: unknown): TerminalCreateResult => this.create(options),
@@ -137,6 +138,7 @@ export class TerminalManager {
    * terminal at quit must not leave MSBuild workers churning after the application is gone.
    */
   public disposeAll(): void {
+    logger.info('TerminalManager', `Disposing all ${this.terminals.size} terminal session(s)`);
     for (const terminal of this.terminals.values()) {
       pidJournal()?.unregister(terminal.pid);
       killProcessTree(terminal.pid, TERMINATE_GRACE_MS);
@@ -163,6 +165,7 @@ export class TerminalManager {
    * @returns Returns the result describing success and the spawned executable, or an error.
    */
   private create(options: unknown): TerminalCreateResult {
+    logger.trace('TerminalManager.create', 'Create terminal requested');
     if (typeof options !== 'object' || options === null) {
       return { success: false, error: 'Invalid terminal options' };
     }
@@ -184,6 +187,7 @@ export class TerminalManager {
 
     const existing: pty.IPty | undefined = this.terminals.get(id);
     if (existing !== undefined) {
+      logger.debug('TerminalManager.create', `Reusing existing session ${id} (pid ${existing.pid})`);
       return { success: true, pid: existing.pid, shell: existing.process };
     }
 
@@ -222,6 +226,10 @@ export class TerminalManager {
     const cwd: string =
       typeof candidate.cwd === 'string' && candidate.cwd.length > 0 ? candidate.cwd : os.homedir();
     const spec: SpawnSpec = buildSpawnSpec(process.platform, shell, command, args);
+    logger.debug(
+      'TerminalManager.create',
+      `Spawning ${kind} session ${id}: file ${spec.file}, cwd ${cwd}, ${cols}x${rows}`,
+    );
 
     try {
       const terminal: pty.IPty = pty.spawn(spec.file, [...spec.args], {
@@ -273,6 +281,10 @@ export class TerminalManager {
         this.scrollback.markExited(id, event.exitCode, endedBy);
         this.sendToWindow(TerminalChannel.Exit, id, event.exitCode, endedBy);
         this.terminals.delete(id);
+        logger.info(
+          'TerminalManager',
+          `Terminal ${id} exited (code ${event.exitCode}${endedBy !== null ? `, signal ${endedBy}` : ''})`,
+        );
       });
 
       this.terminals.set(id, terminal);
@@ -344,6 +356,7 @@ export class TerminalManager {
       return false;
     }
     const pid: number = terminal.pid;
+    logger.info('TerminalManager', `Terminating terminal ${id} (pid ${pid})`);
     if (process.platform === 'win32') {
       execFile('taskkill', ['/pid', String(pid), '/T', '/F'], (): void => undefined);
       return true;
@@ -355,6 +368,10 @@ export class TerminalManager {
         setTimeout((): void => {
           this.killTimers.delete(id);
           if (this.terminals.get(id) === terminal) {
+            logger.warn(
+              'TerminalManager.terminate',
+              `Terminal ${id} (pid ${pid}) did not exit; escalating to SIGKILL`,
+            );
             signalProcessTree(pid, 'SIGKILL');
           }
         }, TERMINATE_GRACE_MS),
@@ -378,7 +395,8 @@ export class TerminalManager {
     try {
       terminal.resize(cols, rows);
       return true;
-    } catch {
+    } catch (error: unknown) {
+      logger.warn('TerminalManager.resize', `Resize of ${id} to ${cols}x${rows} failed`, error);
       return false;
     }
   }
@@ -406,6 +424,7 @@ export class TerminalManager {
     pidJournal()?.unregister(terminal.pid);
     killProcessTree(terminal.pid, TERMINATE_GRACE_MS);
     this.terminals.delete(id);
+    logger.info('TerminalManager', `Disposed terminal ${id} (pid ${terminal.pid})`);
     return true;
   }
 
@@ -424,7 +443,8 @@ export class TerminalManager {
     if (process.platform === 'linux') {
       try {
         return await fs.readlink(`/proc/${pid}/cwd`);
-      } catch {
+      } catch (error: unknown) {
+        logger.debug('TerminalManager.getCwd', `Could not read cwd for pid ${pid}`, error);
         return null;
       }
     }
@@ -499,7 +519,8 @@ export class TerminalManager {
         .split('\n')
         .map((line: string): string => line.trim())
         .filter((line: string): boolean => line.length > 0 && !line.startsWith('#'));
-    } catch {
+    } catch (error: unknown) {
+      logger.warn('TerminalManager.posixShellCandidates', 'Could not read /etc/shells', error);
       return [];
     }
   }
@@ -535,7 +556,12 @@ export class TerminalManager {
       }
     }
 
-    return process.platform === 'win32' ? 'cmd.exe' : '/bin/sh';
+    const fallback: string = process.platform === 'win32' ? 'cmd.exe' : '/bin/sh';
+    logger.warn(
+      'TerminalManager.resolveShell',
+      `No usable shell in environment; falling back to ${fallback}`,
+    );
+    return fallback;
   }
 
   /**

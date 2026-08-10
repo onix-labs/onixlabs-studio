@@ -12,6 +12,7 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { SettingsNavigation } from '@shared/angular/services/settings-navigation/settings-navigation';
+import { Log } from '@shared/angular/services/log/log';
 import { AiSettingsSection } from './sections/ai-settings/ai-settings';
 import { KeyboardSettingsSection } from './sections/keyboard-settings/keyboard-settings';
 import { TerminalSettingsSection } from './sections/terminal-settings/terminal-settings';
@@ -145,6 +146,11 @@ export class SettingsView {
    * switches the content pane on open.
    */
   private readonly navigation: SettingsNavigation = inject(SettingsNavigation);
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Holds the identifier of the section currently shown in the content pane.
@@ -316,6 +322,7 @@ export class SettingsView {
     if (data.kind === 'section') {
       this.toggleSection(data.target);
     } else {
+      this.log.debug('settings', 'Section selected', data.target);
       this.section.set(data.target);
     }
   }
@@ -325,6 +332,7 @@ export class SettingsView {
    * @param id The identifier of the section to show.
    */
   private showSection(id: SettingsSectionId): void {
+    this.log.debug('settings', 'Section shown via deep-link', id);
     this.section.set(id);
     const root: SettingsSectionId | null = this.rootFor(id);
     if (root !== null) {
@@ -378,6 +386,7 @@ export class SettingsView {
    * Relaunches the application so pending restart-gated changes can take effect.
    */
   protected relaunch(): void {
+    this.log.info('settings', 'Relaunch requested from restart banner');
     this.restart.relaunch();
   }
 }

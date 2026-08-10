@@ -1,4 +1,5 @@
-import { Service, Signal, signal, WritableSignal } from '@angular/core';
+import { inject, Service, Signal, signal, WritableSignal } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 
 /**
  * Holds the open state of the run-configuration Configure dialog, summoned from the directory ribbon's
@@ -14,6 +15,11 @@ export class ConfigureDialog {
   private readonly openState: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Gets whether the Configure dialog is open.
    */
   public readonly isOpen: Signal<boolean> = this.openState.asReadonly();
@@ -23,6 +29,7 @@ export class ConfigureDialog {
    */
   public open(): void {
     this.openState.set(true);
+    this.log.info('ConfigureDialog', 'Configure dialog opened');
   }
 
   /**
@@ -30,5 +37,6 @@ export class ConfigureDialog {
    */
   public close(): void {
     this.openState.set(false);
+    this.log.info('ConfigureDialog', 'Configure dialog closed');
   }
 }

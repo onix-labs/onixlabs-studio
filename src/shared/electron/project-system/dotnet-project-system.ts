@@ -14,6 +14,7 @@ import {
 import { DebugResolveResult } from '@shared/api/debug-channels';
 import { RunConfiguration } from '@shared/api/studio';
 import { ProjectSystem } from './project-system';
+import { logger } from '../logger';
 
 /**
  * The .NET project system's root-independent capabilities: Build/Clean/Rebuild, the conventional
@@ -182,10 +183,15 @@ export class DotnetProjectSystem implements ProjectSystem {
    * @returns Returns the model, or null when no solution or projects are found.
    */
   public async load(root: string): Promise<ProjectModel | null> {
+    logger.trace('DotnetProjectSystem', `Loading the .NET model for '${root}'.`);
     const solution: { name: string; path: string } | null = await this.solutionFile(root);
     if (solution !== null) {
       const tree: readonly ProjectNode[] = await this.parseSolution(solution.path);
       const projects: readonly ProjectEntry[] = this.flatten(tree);
+      logger.info(
+        'DotnetProjectSystem',
+        `Loaded solution '${solution.name}' with ${projects.length} project(s) from '${solution.path}'.`,
+      );
       return {
         kind: this.kind,
         root,
@@ -197,12 +203,17 @@ export class DotnetProjectSystem implements ProjectSystem {
     }
     const files: string[] = await this.findProjects(root, PROJECT_SCAN_DEPTH);
     if (files.length === 0) {
+      logger.debug('DotnetProjectSystem', `No solution or loose projects found under '${root}'.`);
       return null;
     }
     const tree: readonly ProjectNode[] = files.map(
       (file: string): ProjectNode => this.toNode(file),
     );
     const projects: readonly ProjectEntry[] = this.flatten(tree);
+    logger.info(
+      'DotnetProjectSystem',
+      `Loaded ${projects.length} loose .NET project(s) under '${root}' (no solution).`,
+    );
     return {
       kind: this.kind,
       root,
@@ -223,8 +234,10 @@ export class DotnetProjectSystem implements ProjectSystem {
   public loadProjectItems(projectPath: string): Promise<ProjectItems | null> {
     const existing: Promise<ProjectItems | null> | undefined = this.inFlightItems.get(projectPath);
     if (existing !== undefined) {
+      logger.trace('DotnetProjectSystem', `Joined an in-flight item evaluation for '${projectPath}'.`);
       return existing;
     }
+    logger.trace('DotnetProjectSystem', `Evaluating items for '${projectPath}'.`);
     const load: Promise<ProjectItems | null> = this.evaluateProjectItems(projectPath).finally(
       (): void => {
         this.inFlightItems.delete(projectPath);
@@ -277,16 +290,26 @@ export class DotnetProjectSystem implements ProjectSystem {
     root: string,
   ): Promise<DebugResolveResult> {
     const projectPath: string = path.resolve(configuration.id);
+    logger.trace('DotnetProjectSystem', `Resolving a debug target for '${projectPath}'.`);
     // Confine the build to the open workspace: the project path arrives from the renderer, so a hostile
     // one must not be able to drive `dotnet build` against an arbitrary file.
     if (projectPath !== root && !projectPath.startsWith(path.resolve(root) + path.sep)) {
+      logger.warn(
+        'DotnetProjectSystem',
+        `Refused a debug target outside the workspace: '${projectPath}' not under '${root}'.`,
+      );
       return { target: null, error: 'The project is outside the workspace.' };
     }
     const dotnet: string | null = await this.resolveDotnet();
     if (dotnet === null) {
+      logger.warn('DotnetProjectSystem', 'The `dotnet` command could not be found for a debug build.');
       return { target: null, error: 'The `dotnet` command could not be found on this machine.' };
     }
     const configurationName: string = this.buildConfigurationName(configuration.buildConfiguration);
+    logger.debug(
+      'DotnetProjectSystem',
+      `Building '${projectPath}' (${configurationName}) to resolve a debug target.`,
+    );
     try {
       await execFileAsync(dotnet, ['build', projectPath, '-c', configurationName, '--nologo'], {
         maxBuffer: ITEM_QUERY_BUFFER,
@@ -295,6 +318,7 @@ export class DotnetProjectSystem implements ProjectSystem {
         env: dotnetEnv(),
       });
     } catch (error: unknown) {
+      logger.error('DotnetProjectSystem', `Debug build failed for '${projectPath}'.`, error);
       return { target: null, error: `Build failed.\n${buildErrorText(error)}` };
     }
     const targetPath: string | null = await this.queryTargetPath(
@@ -303,11 +327,16 @@ export class DotnetProjectSystem implements ProjectSystem {
       configurationName,
     );
     if (targetPath === null) {
+      logger.warn(
+        'DotnetProjectSystem',
+        `Debug build of '${projectPath}' succeeded but the output assembly could not be found.`,
+      );
       return {
         target: null,
         error: 'The build succeeded but its output assembly could not be found.',
       };
     }
+    logger.info('DotnetProjectSystem', `Resolved debug target '${targetPath}' for '${projectPath}'.`);
     return { target: { program: targetPath, cwd: path.dirname(projectPath) }, error: null };
   }
 
@@ -350,7 +379,8 @@ export class DotnetProjectSystem implements ProjectSystem {
       );
       const targetPath: string = stdout.trim();
       return targetPath.length > 0 ? targetPath : null;
-    } catch {
+    } catch (error: unknown) {
+      logger.error('DotnetProjectSystem', `Failed to query the target path for '${projectPath}'.`, error);
       return null;
     }
   }
@@ -389,11 +419,13 @@ export class DotnetProjectSystem implements ProjectSystem {
           timeout: PROBE_TIMEOUT_MS,
           killSignal: 'SIGKILL',
         });
+        logger.debug('DotnetProjectSystem', `Resolved the \`dotnet\` executable at '${candidate}'.`);
         return candidate;
       } catch {
         // Try the next candidate.
       }
     }
+    logger.warn('DotnetProjectSystem', 'No usable `dotnet` executable was found on this machine.');
     return null;
   }
 
@@ -443,7 +475,8 @@ export class DotnetProjectSystem implements ProjectSystem {
         },
         items: this.collectItems(parsed.Items),
       };
-    } catch {
+    } catch (error: unknown) {
+      logger.error('DotnetProjectSystem', `Failed to evaluate project items for '${projectPath}'.`, error);
       return null;
     }
   }
@@ -477,7 +510,12 @@ export class DotnetProjectSystem implements ProjectSystem {
         stdout,
       ) as { Items?: Record<string, { Identity?: string; Link?: string }[]> };
       return this.collectItems(parsed.Items);
-    } catch {
+    } catch (error: unknown) {
+      logger.error(
+        'DotnetProjectSystem',
+        `Failed to evaluate framework-pinned items for '${projectPath}' (${framework}).`,
+        error,
+      );
       return null;
     }
   }
@@ -621,7 +659,8 @@ export class DotnetProjectSystem implements ProjectSystem {
     let content: string;
     try {
       content = await fs.readFile(solutionPath, 'utf8');
-    } catch {
+    } catch (error: unknown) {
+      logger.error('DotnetProjectSystem', `Failed to read the solution file '${solutionPath}'.`, error);
       return [];
     }
     const directory: string = path.dirname(solutionPath);

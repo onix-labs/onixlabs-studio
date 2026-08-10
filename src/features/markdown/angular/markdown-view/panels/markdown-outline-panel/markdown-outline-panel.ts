@@ -8,6 +8,7 @@ import {
   Signal,
 } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
+import { Log } from '@shared/angular/services/log/log';
 import {
   MarkdownCommands,
   OutlineHeading,
@@ -160,6 +161,11 @@ export class MarkdownOutlinePanel {
   private readonly commands: MarkdownCommands = inject(MarkdownCommands);
 
   /**
+   * Holds the structured logging client for outline navigation.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Holds the panel's host element, used to find and reveal the active row.
    */
   private readonly host: ElementRef<HTMLElement> = inject(ElementRef) as ElementRef<HTMLElement>;
@@ -243,6 +249,10 @@ export class MarkdownOutlinePanel {
    * @param heading The heading to scroll to.
    */
   protected goTo(heading: OutlineHeading): void {
+    this.log.info('markdown.view', 'Outline navigation', {
+      index: heading.index,
+      level: heading.level,
+    });
     this.commands.goToHeading(heading.index);
   }
 }

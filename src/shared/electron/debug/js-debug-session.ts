@@ -1,5 +1,6 @@
 import type { DebugProtocol } from '@vscode/debugprotocol';
 import { DebugAdapterId } from '@shared/api/debug-channels';
+import { logger } from '../logger';
 import { DapClient, DebugAdapterConnection } from './dap-client';
 import { DebugAdapterSpec } from './debug-adapter-registry';
 import { TcpClientTransport, TcpServerTransport } from './dap-transport';
@@ -127,6 +128,7 @@ export class JsDebugSession implements DebugAdapterConnection {
    * @returns Returns a promise that resolves once the parent session is connected.
    */
   public async start(): Promise<void> {
+    logger.trace('JsDebugSession', 'Starting js-debug server and parent session');
     this.parent.onEvent((event: DebugProtocol.Event): void => this.onParentEvent(event));
     this.parent.onReverseRequest((request: DebugProtocol.Request): void =>
       this.onReverse(this.parent, request),
@@ -201,6 +203,7 @@ export class JsDebugSession implements DebugAdapterConnection {
    * whole tree).
    */
   public dispose(): void {
+    logger.debug('JsDebugSession', `Disposing js-debug session (${this.targets.length} targets)`);
     for (const target of this.targets) {
       target.dispose();
     }
@@ -287,6 +290,7 @@ export class JsDebugSession implements DebugAdapterConnection {
     if (this.ended) {
       return;
     }
+    logger.debug('JsDebugSession', `Starting new js-debug target session (${request})`);
     const target: DapClient = new DapClient(
       new TcpClientTransport(this.serverTransport.host, this.serverTransport.port),
     );
@@ -302,7 +306,8 @@ export class JsDebugSession implements DebugAdapterConnection {
       // The target answers its launch only after we reply to its `initialized` with
       // setBreakpoints/configurationDone, so this is deliberately not awaited.
       void target.sendRequest(request, configuration).catch((): void => undefined);
-    } catch {
+    } catch (error: unknown) {
+      logger.error('JsDebugSession', 'Failed to start a js-debug target session', error);
       this.onTargetClosed(target);
     }
   }
@@ -397,6 +402,7 @@ export class JsDebugSession implements DebugAdapterConnection {
    * @param signal The terminating signal.
    */
   private onServerClosed(code: number | null, signal: string | null): void {
+    logger.info('JsDebugSession', `js-debug server closed (code=${code}, signal=${signal})`);
     this.reportTerminated();
     for (const listener of this.exitListeners) {
       listener(code, signal);

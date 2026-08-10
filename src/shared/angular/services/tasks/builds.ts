@@ -1,6 +1,7 @@
-import { computed, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { ProjectAction } from '@shared/api/project-system';
 import { RunConfiguration, RunPresentation } from '@shared/api/studio';
+import { Log } from '@shared/angular/services/log/log';
 
 /**
  * Categorises a build task so the ribbon can offer a Build / Run / Test action for the active
@@ -173,6 +174,11 @@ export class Builds {
   private readonly handler: WritableSignal<BuildHandler | null> = signal<BuildHandler | null>(null);
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Gets the build/test tasks discovered for the active workspace. These drive the Solution group's
    * Build action only — the Run dropdown is fed exclusively by authored `.studio` run configurations.
    */
@@ -235,6 +241,7 @@ export class Builds {
     siblings: readonly RunConfiguration[] = [],
     options?: BuildActionOptions,
   ): void {
+    this.log.info('Builds', `Run configuration '${configuration.name}'`, configuration.id);
     this.handler()?.runConfiguration(configuration, siblings, options);
   }
 
@@ -244,6 +251,7 @@ export class Builds {
    * @param options The action options.
    */
   public runAction(action: ProjectAction, options?: BuildActionOptions): void {
+    this.log.info('Builds', `Run action '${action}'`);
     this.handler()?.runAction(action, options);
   }
 
@@ -260,6 +268,7 @@ export class Builds {
    * @param runId The run to cancel.
    */
   public cancel(runId: string): void {
+    this.log.info('Builds', 'Cancel run', runId);
     this.handler()?.cancel(runId);
   }
 
@@ -267,6 +276,7 @@ export class Builds {
    * Cancels every in-flight run on the active workspace.
    */
   public cancelAll(): void {
+    this.log.info('Builds', 'Cancel all runs');
     this.handler()?.cancelAll();
   }
 

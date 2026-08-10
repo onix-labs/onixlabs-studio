@@ -6,6 +6,7 @@ import { DockPanelRegistry } from '@shared/angular/services/dock-layout/dock-pan
 import { DockState } from '@shared/angular/services/dock-layout/dock-state';
 import { StackNode } from '@shared/angular/services/dock-layout/dock-node';
 import { firstStackOfRole } from '@shared/angular/services/dock-layout/dock-tree';
+import { Log } from '@shared/angular/services/log/log';
 import { GitFileChange } from '@shared/angular/services/repository/repository-data';
 import { Repository } from '@shared/angular/services/repository/repository';
 import { FileDiff } from '@shared/angular/services/source-control/source-control-provider';
@@ -46,6 +47,11 @@ export class DiffOpener {
   private readonly repository: Repository = inject(Repository);
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Opens (or re-activates) the diff for a changed file in the document well, loading its before/after
    * contents lazily through the repository's provider.
    * @param file The file to compare.
@@ -56,6 +62,7 @@ export class DiffOpener {
       return;
     }
     const id: string = this.diffs.idForPath(file.path);
+    this.log.info('DiffOpener', `Opened diff for '${file.path}'`);
     // Store the file first (so a panel projected synchronously by tabInto resolves it), then fill in
     // its diff contents once the provider has loaded them.
     this.diffs.put(id, file);

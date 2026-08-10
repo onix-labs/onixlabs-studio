@@ -1,4 +1,5 @@
-import { computed, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 
 /**
  * Defines the repository commands the directory ribbon's Source Control group can invoke on the
@@ -49,6 +50,11 @@ export class SourceControlCommands {
     signal<SourceControlCommandHandler | null>(null);
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Gets a value indicating whether a source-control view is currently active.
    */
   public readonly hasActiveRepository: Signal<boolean> = computed(
@@ -60,6 +66,7 @@ export class SourceControlCommands {
    * @param handler The handler to register.
    */
   public register(handler: SourceControlCommandHandler): void {
+    this.log.debug('SourceControlCommands', 'Registered active repository handler');
     this.handler.set(handler);
   }
 
@@ -77,6 +84,7 @@ export class SourceControlCommands {
    * Invokes the fetch command on the active repository.
    */
   public fetch(): void {
+    this.log.info('SourceControlCommands', 'Ribbon fetch requested');
     this.handler()?.fetch();
   }
 
@@ -84,6 +92,7 @@ export class SourceControlCommands {
    * Invokes the stash command on the active repository.
    */
   public stash(): void {
+    this.log.info('SourceControlCommands', 'Ribbon stash requested');
     this.handler()?.stash();
   }
 
@@ -98,6 +107,7 @@ export class SourceControlCommands {
    * Invokes the promote-to-worktree command on the active repository.
    */
   public promoteToWorktree(): void {
+    this.log.info('SourceControlCommands', 'Ribbon promote-to-worktree requested');
     this.handler()?.promoteToWorktree();
   }
 }

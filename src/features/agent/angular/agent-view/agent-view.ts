@@ -18,6 +18,7 @@ import { AgentConversation } from '@shared/angular/services/agent-conversation/a
 import { AGENT_CONVERSATION_KIND } from '@shared/angular/services/agent-conversations/agent-conversation-context';
 import { AgentSessions } from '@shared/angular/services/agent-sessions/agent-sessions';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
+import { Log } from '@shared/angular/services/log/log';
 import { Icon } from '@shared/angular/icons/icon';
 
 /**
@@ -56,6 +57,11 @@ export class AgentView implements OnDestroy {
    * Holds the application keybinding router this view registers its accelerators with while active.
    */
   private readonly keybindings: Keybindings = inject(Keybindings);
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Holds a value indicating whether this view's accelerators are currently registered, so activation
@@ -113,6 +119,7 @@ export class AgentView implements OnDestroy {
   public ngOnDestroy(): void {
     const id: string | undefined = this.tabId();
     if (id !== undefined) {
+      this.log.debug('agent.view', 'Agent view destroyed; releasing accelerators', { tabId: id });
       this.keybindings.forget(id);
     }
   }
@@ -124,9 +131,22 @@ export class AgentView implements OnDestroy {
    * @param id The owning tab identifier.
    */
   private registerKeybindings(id: string): void {
+    this.log.debug('agent.view', 'Registering agent accelerators', { tabId: id });
     this.keybindings.register(id, [
-      { id: 'agent.stop', command: (): void => this.sessions.stop() },
-      { id: 'agent.newChat', command: (): void => this.sessions.newChat() },
+      {
+        id: 'agent.stop',
+        command: (): void => {
+          this.log.info('agent.view', 'Stop run requested via accelerator', { tabId: id });
+          this.sessions.stop();
+        },
+      },
+      {
+        id: 'agent.newChat',
+        command: (): void => {
+          this.log.info('agent.view', 'New chat requested via accelerator', { tabId: id });
+          this.sessions.newChat();
+        },
+      },
     ]);
   }
 }

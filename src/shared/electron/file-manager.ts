@@ -77,6 +77,7 @@ export class FileManager {
    * Registers the file-system IPC handlers.
    */
   public register(): void {
+    logger.info('FileManager', 'Registering file IPC handlers');
     ipcMain.handle(
       FileChannel.Read,
       (_event: IpcMainInvokeEvent, filePath: unknown): Promise<FileInfo | null> =>
@@ -127,13 +128,17 @@ export class FileManager {
    * @returns Returns the file info, or null when the path is invalid or the read fails.
    */
   private async read(filePath: unknown): Promise<FileInfo | null> {
+    logger.trace('FileManager.read', `Read requested for ${String(filePath)}`);
     if (typeof filePath !== 'string' || filePath.length === 0) {
+      logger.warn('FileManager.read', 'Rejected read for invalid path');
       return null;
     }
     try {
-      return await this.readFileInfo(filePath);
+      const info: FileInfo = await this.readFileInfo(filePath);
+      logger.trace('FileManager.read', `Read ${filePath} (${info.content.length} chars)`);
+      return info;
     } catch (error: unknown) {
-      logger.debug('FileManager', `Failed to read ${filePath}`, error);
+      logger.error('FileManager.read', `Failed to read ${filePath}`, error);
       return null;
     }
   }
@@ -150,10 +155,13 @@ export class FileManager {
     content: unknown,
     hasBom: boolean,
   ): Promise<FileWriteResult> {
+    logger.trace('FileManager.write', `Write requested for ${String(filePath)} (hasBom=${hasBom})`);
     if (typeof filePath !== 'string' || filePath.length === 0) {
+      logger.warn('FileManager.write', 'Rejected write for invalid path');
       return { success: false, error: 'Invalid file path' };
     }
     if (typeof content !== 'string') {
+      logger.warn('FileManager.write', `Rejected write for ${filePath}: invalid content`);
       return { success: false, error: 'Invalid file content' };
     }
     try {
@@ -173,17 +181,20 @@ export class FileManager {
    * @returns Returns the chosen file's info, or null when cancelled or unreadable.
    */
   private async openDialog(sender: WebContents): Promise<FileInfo | null> {
+    logger.trace('FileManager.openDialog', 'Open-file dialog requested');
     const result: OpenDialogReturnValue = await showOpenDialog(sender, this.windowGetter, {
       properties: ['openFile'],
       filters: [{ name: 'All Files', extensions: ['*'] }],
     });
     if (result.canceled || result.filePaths.length === 0) {
+      logger.trace('FileManager.openDialog', 'Open-file dialog cancelled');
       return null;
     }
     try {
+      logger.debug('FileManager.openDialog', `Chosen file ${result.filePaths[0]}`);
       return await this.readFileInfo(result.filePaths[0]);
     } catch (error: unknown) {
-      logger.debug('FileManager', `Failed to read chosen file ${result.filePaths[0]}`, error);
+      logger.error('FileManager.openDialog', `Failed to read chosen file ${result.filePaths[0]}`, error);
       return null;
     }
   }
@@ -194,6 +205,7 @@ export class FileManager {
    * @returns Returns the chosen image's absolute path, or null when cancelled.
    */
   private async pickImage(sender: WebContents): Promise<string | null> {
+    logger.trace('FileManager.pickImage', 'Pick-image dialog requested');
     const result: OpenDialogReturnValue = await showOpenDialog(sender, this.windowGetter, {
       properties: ['openFile'],
       filters: [
@@ -202,8 +214,10 @@ export class FileManager {
       ],
     });
     if (result.canceled || result.filePaths.length === 0) {
+      logger.trace('FileManager.pickImage', 'Pick-image dialog cancelled');
       return null;
     }
+    logger.debug('FileManager.pickImage', `Chosen image ${result.filePaths[0]}`);
     return result.filePaths[0];
   }
 
@@ -215,12 +229,15 @@ export class FileManager {
    * @returns Returns the chosen path, or null when cancelled.
    */
   private async pickPath(sender: WebContents, kind: 'file' | 'folder'): Promise<string | null> {
+    logger.trace('FileManager.pickPath', `Pick-${kind} dialog requested`);
     const result: OpenDialogReturnValue = await showOpenDialog(sender, this.windowGetter, {
       properties: [kind === 'folder' ? 'openDirectory' : 'openFile'],
     });
     if (result.canceled || result.filePaths.length === 0) {
+      logger.trace('FileManager.pickPath', `Pick-${kind} dialog cancelled`);
       return null;
     }
+    logger.debug('FileManager.pickPath', `Chosen ${kind} ${result.filePaths[0]}`);
     return result.filePaths[0];
   }
 
@@ -231,14 +248,17 @@ export class FileManager {
    * @returns Returns the chosen path, or null when cancelled.
    */
   private async saveDialog(sender: WebContents, defaultPath?: string): Promise<string | null> {
+    logger.trace('FileManager.saveDialog', `Save dialog requested (defaultPath=${String(defaultPath)})`);
     const result: SaveDialogReturnValue = await showSaveDialog(sender, this.windowGetter, {
       defaultPath,
       filters: [{ name: 'All Files', extensions: ['*'] }],
     });
     if (result.canceled || result.filePath === undefined || result.filePath.length === 0) {
+      logger.trace('FileManager.saveDialog', 'Save dialog cancelled');
       return null;
     }
     // Remember the chosen path so the saved file can be re-opened from the welcome screen later.
+    logger.debug('FileManager.saveDialog', `Chosen save path ${result.filePath}`);
     this.trusted.remember(result.filePath);
     return result.filePath;
   }
@@ -250,6 +270,7 @@ export class FileManager {
    * @returns Returns the user's choice.
    */
   private async confirmSave(sender: WebContents, fileName: string): Promise<SaveDialogChoice> {
+    logger.trace('FileManager.confirmSave', `Confirm-save prompt for "${fileName}"`);
     const result: MessageBoxReturnValue = await showMessageBox(sender, this.windowGetter, {
       type: 'question',
       buttons: ['Save', "Don't Save", 'Cancel'],
@@ -276,6 +297,7 @@ export class FileManager {
    * @returns Returns true when the user explicitly confirmed.
    */
   private async confirmDestructive(sender: WebContents, request: unknown): Promise<boolean> {
+    logger.trace('FileManager.confirmDestructive', 'Confirm-destructive prompt requested');
     const candidate: Partial<ConfirmDestructiveRequest> = request ?? {};
     if (
       typeof candidate.title !== 'string' ||
@@ -283,6 +305,7 @@ export class FileManager {
       typeof candidate.detail !== 'string' ||
       typeof candidate.confirmLabel !== 'string'
     ) {
+      logger.warn('FileManager.confirmDestructive', 'Rejected malformed confirm-destructive request');
       return false;
     }
     const result: MessageBoxReturnValue = await showMessageBox(sender, this.windowGetter, {
@@ -307,6 +330,7 @@ export class FileManager {
     // A UTF-8 BOM decodes to a leading U+FEFF; strip it from the content but record its presence so
     // it can be written back, and so the editor never shows the mark as an invisible character.
     const hasBom: boolean = raw.charCodeAt(0) === 0xfeff;
+    logger.debug('FileManager.readFileInfo', `Read ${filePath} (${raw.length} bytes, hasBom=${hasBom})`);
     return {
       path: filePath,
       name: path.basename(filePath),

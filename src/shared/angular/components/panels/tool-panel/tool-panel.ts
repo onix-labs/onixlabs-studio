@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  inject,
   input,
   InputSignal,
   output,
@@ -12,6 +13,7 @@ import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { PanelDragHandle } from '@shared/angular/components/panel-layout/panel-drag-handle';
+import { Log } from '@shared/angular/services/log/log';
 
 /**
  * The shared chrome for an editor tool panel: a titled header with a close button and a scrollable
@@ -122,6 +124,11 @@ export class ToolPanel {
   protected readonly Icon: typeof Icon = Icon;
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Gets the panel's title.
    */
   public readonly title: InputSignal<string> = input.required<string>();
@@ -176,6 +183,7 @@ export class ToolPanel {
    * Raises {@link closed} so the host dismisses the panel.
    */
   protected onClose(): void {
+    this.log.debug('ToolPanel', `Closing panel '${this.title()}'`);
     this.closed.emit();
   }
 }

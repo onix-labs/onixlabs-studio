@@ -1,5 +1,6 @@
-import { computed, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import type { Agent, AgentItem } from '@shared/angular/services/agent/agent';
+import { Log } from '@shared/angular/services/log/log';
 
 /**
  * A registered conversation the requests registry watches: its agent session, plus how to attribute
@@ -71,6 +72,11 @@ export class AgentRequests {
   >([]);
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Gets every pending agent request across the registered conversations, in registration order.
    */
   public readonly entries: Signal<readonly AgentRequestEntry[]> = computed(
@@ -133,10 +139,12 @@ export class AgentRequests {
       ...current,
       source,
     ]);
+    this.log.trace('AgentRequests', 'Request source registered', source.tabId());
     return (): void => {
       this.sources.update((current: readonly AgentRequestSource[]): readonly AgentRequestSource[] =>
         current.filter((existing: AgentRequestSource): boolean => existing !== source),
       );
+      this.log.trace('AgentRequests', 'Request source unregistered');
     };
   }
 

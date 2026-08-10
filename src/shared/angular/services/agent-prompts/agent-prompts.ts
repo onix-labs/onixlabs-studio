@@ -1,4 +1,5 @@
 import { inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 import { SettingsStore } from '@shared/angular/services/settings-store/settings-store';
 
 /**
@@ -40,6 +41,11 @@ export class AgentPrompts {
   private readonly store: SettingsStore = inject(SettingsStore);
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Holds the library, seeded from the store.
    */
   private readonly promptsState: WritableSignal<readonly AgentPrompt[]> = signal<
@@ -77,6 +83,7 @@ export class AgentPrompts {
       return [...prompts, { id: crypto.randomUUID(), name: slug, text: trimmed }];
     });
     this.persist();
+    this.log.info('AgentPrompts', `Prompt saved '/${slug}'`);
     return true;
   }
 
@@ -89,6 +96,7 @@ export class AgentPrompts {
       prompts.filter((prompt: AgentPrompt): boolean => prompt.id !== id),
     );
     this.persist();
+    this.log.info('AgentPrompts', 'Prompt deleted', id);
   }
 
   /**

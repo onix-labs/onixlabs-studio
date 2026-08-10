@@ -107,6 +107,7 @@ export class DebugManager {
         args: unknown,
       ): Promise<unknown> => this.request(id, command, args),
     );
+    logger.info('DebugManager', 'Registered debug IPC handlers');
   }
 
   /**
@@ -115,6 +116,7 @@ export class DebugManager {
    * cannot wait for an answer, but the transport's tree kill reaches the debuggee regardless.
    */
   public disposeAll(): void {
+    logger.info('DebugManager', `Disposing all debug sessions (${this.sessions.size})`);
     for (const [id, session] of [...this.sessions]) {
       void session.client
         .sendRequest('disconnect', { terminateDebuggee: true })
@@ -132,12 +134,19 @@ export class DebugManager {
   private async start(request: unknown): Promise<DebugStartResult> {
     const parsed: DebugStartRequest | null = this.parseStartRequest(request);
     if (parsed === null) {
+      logger.warn('DebugManager', 'Rejected an invalid debug start request');
       return { success: false, error: 'Invalid start request' };
     }
+    logger.trace(
+      'DebugManager',
+      `Start requested for session ${parsed.sessionId} (${parsed.adapterId})`,
+    );
     if (this.sessions.has(parsed.sessionId)) {
+      logger.debug('DebugManager', `Reusing existing debug session ${parsed.sessionId}`);
       return { success: true };
     }
     if (!this.workspaceContext.isRoot(parsed.rootPath)) {
+      logger.warn('DebugManager', `Debug start denied for non-open root ${parsed.rootPath}`);
       return { success: false, error: 'Workspace root is not open' };
     }
     const resolution: DebugAdapterResolution = await this.registry.resolve(
@@ -145,6 +154,10 @@ export class DebugManager {
       parsed.rootPath,
     );
     if (resolution.spec === null) {
+      logger.warn(
+        'DebugManager',
+        `Adapter ${parsed.adapterId} unavailable: ${resolution.error ?? 'unknown adapter'}`,
+      );
       return {
         success: false,
         error: resolution.error ?? `Unknown or unavailable adapter: ${parsed.adapterId}`,
@@ -191,8 +204,10 @@ export class DebugManager {
    */
   private connect(spec: DebugAdapterSpec, rootPath: string): DebugAdapterConnection {
     if (spec.transport === 'tcp-server') {
+      logger.debug('DebugManager', `Using compound js-debug session for ${spec.command}`);
       return new JsDebugSession(spec, rootPath);
     }
+    logger.debug('DebugManager', `Using stdio adapter connection for ${spec.command}`);
     return new DapClient(new StdioTransport(spec.command, spec.args, spec.env, rootPath));
   }
 
@@ -212,6 +227,7 @@ export class DebugManager {
     if (session === undefined) {
       return Promise.reject(new Error('No such session'));
     }
+    logger.trace('DebugManager', `Forwarding DAP request ${command} to session ${id}`);
     return session.client.sendRequest(command, args);
   }
 
@@ -226,10 +242,12 @@ export class DebugManager {
     if (session === undefined) {
       return;
     }
+    logger.trace('DebugManager', `Stopping debug session ${id}`);
     try {
       await session.client.sendRequest('disconnect', { terminateDebuggee: true });
-    } catch {
+    } catch (error: unknown) {
       // The adapter is being killed regardless; ignore a failed graceful disconnect.
+      logger.debug('DebugManager', `Graceful disconnect failed for session ${id}`, error);
     }
     this.tearDown(id);
   }
@@ -244,6 +262,10 @@ export class DebugManager {
     if (!this.sessions.has(id)) {
       return;
     }
+    logger.info(
+      'DebugManager',
+      `Debug session ${id} adapter exited (code=${code}, signal=${signal})`,
+    );
     const exit: DebugAdapterExit = { sessionId: id, code, signal };
     this.send(DebugChannel.AdapterExit, exit);
     this.tearDown(id);
@@ -258,12 +280,14 @@ export class DebugManager {
     if (session === undefined) {
       return;
     }
+    logger.debug('DebugManager', `Tearing down debug session ${id}`);
     this.sessions.delete(id);
     this.failPendingTerminalRequests(id);
     try {
       session.client.dispose();
-    } catch {
+    } catch (error: unknown) {
       // Best-effort cleanup; the process is killed regardless.
+      logger.error('DebugManager', `Failed to dispose debug session ${id}`, error);
     }
   }
 
@@ -297,9 +321,14 @@ export class DebugManager {
       ? args.args.filter((entry: unknown): entry is string => typeof entry === 'string')
       : [];
     if (argv.length === 0) {
+      logger.warn('DebugManager', `runInTerminal request with no command for session ${sessionId}`);
       respond(undefined, false);
       return;
     }
+    logger.trace(
+      'DebugManager',
+      `Relaying runInTerminal request to renderer for session ${sessionId}`,
+    );
     this.terminalResponders.set(`${sessionId}:${request.seq}`, respond);
     const message: DebugRunInTerminalRequest = {
       sessionId,

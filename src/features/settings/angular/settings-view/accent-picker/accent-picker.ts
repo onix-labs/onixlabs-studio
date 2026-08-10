@@ -2,12 +2,14 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  inject,
   input,
   InputSignal,
   output,
   OutputEmitterRef,
   Signal,
 } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { Slider } from '@shared/angular/components/forms/slider/slider';
 import {
@@ -61,6 +63,11 @@ export class AccentPicker {
    * Emits the newly chosen accent when the selection changes.
    */
   public readonly valueChange: OutputEmitterRef<Accent> = output<Accent>();
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Gets the lowest selectable saturation.
@@ -164,9 +171,11 @@ export class AccentPicker {
       if (this.value().kind === 'custom') {
         return;
       }
+      this.log.info('settings.accent', 'Custom accent selected');
       this.valueChange.emit({ kind: 'custom', hue: this.hue(), saturation: this.saturation() });
       return;
     }
+    this.log.info('settings.accent', 'Accent preset selected', value);
     this.valueChange.emit({ kind: 'preset', id: value });
   }
 
@@ -175,6 +184,7 @@ export class AccentPicker {
    * @param hue The hue in degrees.
    */
   protected onHue(hue: number): void {
+    this.log.debug('settings.accent', 'Custom accent hue changed', normaliseHue(hue));
     this.valueChange.emit({
       kind: 'custom',
       hue: normaliseHue(hue),
@@ -187,6 +197,11 @@ export class AccentPicker {
    * @param saturation The saturation as a percentage.
    */
   protected onSaturation(saturation: number): void {
+    this.log.debug(
+      'settings.accent',
+      'Custom accent saturation changed',
+      clampSaturation(saturation),
+    );
     this.valueChange.emit({
       kind: 'custom',
       hue: this.hue(),

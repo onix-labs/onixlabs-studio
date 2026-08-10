@@ -221,6 +221,7 @@ export class Review {
    * @param filter The filter to apply.
    */
   public setFilter(filter: ReviewFilter): void {
+    this.log.debug('markdown.review', 'Review filter changed', { filter });
     this.filterState.set(filter);
   }
 
@@ -228,6 +229,7 @@ export class Review {
    * Re-runs the analysis on the active document.
    */
   public async refresh(): Promise<void> {
+    this.log.info('markdown.review', 'Review analysis refresh requested');
     await this.ensureAnalyzed();
   }
 
@@ -237,6 +239,11 @@ export class Review {
    * @param suggestion The replacement text.
    */
   public applySuggestion(issue: ReviewIssue, suggestion: string): void {
+    this.log.info('markdown.review', 'Applied suggestion', {
+      kind: issue.kind,
+      word: issue.word,
+      suggestion,
+    });
     this.session?.applyEdit(issue.start, issue.end, suggestion);
     this.analyze();
   }
@@ -246,6 +253,7 @@ export class Review {
    * @param issue The issue.
    */
   public addToDictionary(issue: ReviewIssue): void {
+    this.log.info('markdown.review', 'Added word to dictionary', { word: issue.word });
     const next: Set<string> = new Set<string>(this.userDictionaryState());
     next.add(issue.word.toLowerCase());
     this.userDictionaryState.set(next);
@@ -258,6 +266,7 @@ export class Review {
    * @param issue The issue.
    */
   public ignore(issue: ReviewIssue): void {
+    this.log.info('markdown.review', 'Ignored issue', { kind: issue.kind, word: issue.word });
     const next: Set<string> = new Set<string>(this.ignoredState());
     next.add(ignoreSignature(issue));
     this.ignoredState.set(next);

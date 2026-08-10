@@ -3,6 +3,7 @@ import type { AgentMode, AiModelInfo, AiProviderInfo } from '@shared/api/ai-type
 import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine';
 import { AgentSessions } from '@shared/angular/services/agent-sessions/agent-sessions';
 import { EditorCommands } from '@shared/angular/services/editor-commands/editor-commands';
+import { Log } from '@shared/angular/services/log/log';
 import { Icon } from '@shared/angular/icons/icon';
 import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host';
 import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button';
@@ -50,6 +51,11 @@ export class AgentRibbon {
    * Holds the active agent tab's session the Session group drives.
    */
   private readonly sessions: AgentSessions = inject(AgentSessions);
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Gets whether there is an editor selection to attach, so the Selection button offers itself only
@@ -129,6 +135,7 @@ export class AgentRibbon {
    * Starts a fresh conversation by clearing the active tab's transcript.
    */
   protected newChat(): void {
+    this.log.info('agent.ribbon', 'New chat requested');
     this.sessions.newChat();
   }
 
@@ -136,6 +143,7 @@ export class AgentRibbon {
    * Stops the active tab's in-flight run.
    */
   protected stop(): void {
+    this.log.info('agent.ribbon', 'Stop run requested');
     this.sessions.stop();
   }
 
@@ -143,6 +151,7 @@ export class AgentRibbon {
    * Toggles the active tab's conversation-history list.
    */
   protected toggleHistory(): void {
+    this.log.debug('agent.ribbon', 'Toggle history requested', { open: !this.historyOpen() });
     this.sessions.toggleHistory();
   }
 
@@ -150,6 +159,7 @@ export class AgentRibbon {
    * Compacts the active tab's conversation into a summary.
    */
   protected compact(): void {
+    this.log.info('agent.ribbon', 'Compact conversation requested');
     this.sessions.compact();
   }
 
@@ -157,6 +167,7 @@ export class AgentRibbon {
    * Attaches a file to the active tab's conversation context.
    */
   protected attachFile(): void {
+    this.log.info('agent.ribbon', 'Attach file requested');
     this.sessions.attachFile();
   }
 
@@ -164,6 +175,7 @@ export class AgentRibbon {
    * Attaches a folder to the active tab's conversation context.
    */
   protected attachFolder(): void {
+    this.log.info('agent.ribbon', 'Attach folder requested');
     this.sessions.attachFolder();
   }
 
@@ -171,6 +183,7 @@ export class AgentRibbon {
    * Attaches the current editor selection to the active tab's conversation context.
    */
   protected attachSelection(): void {
+    this.log.info('agent.ribbon', 'Attach editor selection requested');
     this.sessions.attachSelection();
   }
 
@@ -178,6 +191,7 @@ export class AgentRibbon {
    * Removes everything attached to the active tab's conversation context.
    */
   protected clearContext(): void {
+    this.log.info('agent.ribbon', 'Clear context requested');
     this.sessions.clearContext();
   }
 
@@ -195,6 +209,7 @@ export class AgentRibbon {
    */
   protected onModeLabel(label: string): void {
     const mode: AgentMode = label === 'Chat' ? 'chat' : 'agent';
+    this.log.debug('agent.ribbon', 'Agent mode changed', { mode });
     this.sessions.setMode(mode);
   }
 
@@ -203,6 +218,7 @@ export class AgentRibbon {
    * @param value The new checked state emitted by the Auto-scroll check.
    */
   protected onAutoScroll(value: boolean): void {
+    this.log.debug('agent.ribbon', 'Auto-scroll preference changed', { autoScroll: value });
     this.sessions.setAutoScroll(value);
   }
 
@@ -215,6 +231,7 @@ export class AgentRibbon {
       .providers()
       .find((provider: AiProviderInfo): boolean => provider.label === label);
     if (match !== undefined) {
+      this.log.debug('agent.ribbon', 'Provider selected', { provider: match.id, label });
       this.sessions.setProvider(match.id);
     }
   }
@@ -228,6 +245,7 @@ export class AgentRibbon {
       .models()
       .find((model: AiModelInfo): boolean => model.label === label);
     if (match !== undefined) {
+      this.log.debug('agent.ribbon', 'Model selected', { model: match.id, label });
       this.sessions.setModel(match.id);
     }
   }

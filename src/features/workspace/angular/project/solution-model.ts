@@ -12,6 +12,7 @@ import {
 } from '@shared/api/project-system';
 import { DirectoryWatch } from '@shared/angular/services/directory-watch/directory-watch';
 import { DockTabContext } from '@shared/angular/services/dock-layout/dock-tab-context';
+import { Log } from '@shared/angular/services/log/log';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 
 /**
@@ -119,6 +120,11 @@ export class SolutionModel {
    * the model.
    */
   private readonly directoryWatch: DirectoryWatch = inject(DirectoryWatch);
+
+  /**
+   * Holds the structured logger for the solution model.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Holds the pending debounced reload timer, or null when none is scheduled.
@@ -365,6 +371,7 @@ export class SolutionModel {
       }
       return next;
     });
+    this.log.trace('workspace.solution', 'Reveal path in solution tree', path);
     this.selectedKeySignal.set(`file:${path}`);
     return true;
   }
@@ -499,6 +506,11 @@ export class SolutionModel {
     }
     this.reset(model);
     if (model !== null) {
+      this.log.info(
+        'workspace.solution',
+        `Loaded solution model with ${model.projects.length} project(s)`,
+        root,
+      );
       this.scheduleContents(
         model.projects.map((project: ProjectEntry): string => project.path),
         generation,
@@ -622,6 +634,7 @@ export class SolutionModel {
     if (kept.size !== cache.size) {
       this.itemsByProject.set(kept);
     }
+    this.log.trace('workspace.solution', `Reloaded solution, ${stale.length} project(s) re-evaluating`);
     this.scheduleContents(stale, generation);
   }
 

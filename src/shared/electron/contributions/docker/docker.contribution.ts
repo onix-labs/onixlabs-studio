@@ -31,13 +31,20 @@ export class DockerContribution implements MainContribution {
   private watchHandle: DockerStreamHandle | null = null;
 
   /**
+   * The contribution's namespaced logger, captured at activation for use during disposal.
+   */
+  private log: ContributionContext['log'] | null = null;
+
+  /**
    * Resolves the socket permission, wires the operation channels, and starts the event push.
    * @param context The contribution context.
    */
   public activate(context: ContributionContext): void {
     // Throws PermissionDeniedError when the broker refuses; the registry isolates that (the feature
     // simply does not activate) rather than letting it abort startup.
+    this.log = context.log;
     const socket: DockerSocket = context.permission<DockerSocket>('docker.socket');
+    context.log.info(`activating; docker socket resolved at ${socket.path}`);
     const engine: DockerEngine = new DockerEngine(socket);
 
     context.handle(DockerChannel.ListContainers, (): Promise<unknown> => engine.listContainers());
@@ -58,12 +65,14 @@ export class DockerContribution implements MainContribution {
     context.handle(DockerChannel.LaunchDesktop, (): Promise<boolean> => launchDockerDesktop());
 
     this.watchHandle = engine.watch((event): void => context.send(DockerChannel.Events, event));
+    context.log.info('docker contribution active; channels wired, event watch started');
   }
 
   /**
    * Closes the event stream. The IPC handlers are removed automatically by the registry's tracker.
    */
   public dispose(): void {
+    this.log?.info('disposing docker contribution; closing event stream');
     this.watchHandle?.close();
     this.watchHandle = null;
   }

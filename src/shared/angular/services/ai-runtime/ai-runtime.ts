@@ -18,6 +18,7 @@ import type {
   ClaudeExecutableChoice,
 } from '@shared/api/ai-types';
 import { Ai } from '@shared/angular/services/ai/ai';
+import { Log } from '@shared/angular/services/log/log';
 
 /**
  * A renderer-side in-app capability the agent can invoke through the bridge. Receives the request's
@@ -165,6 +166,11 @@ export class AiRuntime {
   private readonly api: AiClient | undefined = inject(Ai).client;
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Holds the event subscribers.
    */
   private readonly listeners: Set<(event: AiEvent) => void> = new Set<(event: AiEvent) => void>();
@@ -215,6 +221,7 @@ export class AiRuntime {
   public run(providerId: AiProviderId, prompt: string, options: AiRunOptions = {}): string {
     this.requestCounter += 1;
     const requestId: string = `run-${this.requestCounter}`;
+    this.log.trace('AiRuntime', `Run dispatched to '${providerId}'`, requestId);
     void this.api?.run({
       requestId,
       agentSessionId: options.agentSessionId,
@@ -251,6 +258,7 @@ export class AiRuntime {
    * @param requestId The identifier of the run to abort.
    */
   public abort(requestId: string): void {
+    this.log.trace('AiRuntime', 'Run aborted', requestId);
     void this.api?.abort(requestId);
   }
 
@@ -259,6 +267,7 @@ export class AiRuntime {
    * @param agentSessionId The agent conversation whose session to close.
    */
   public closeSession(agentSessionId: string): void {
+    this.log.trace('AiRuntime', 'Session close requested', agentSessionId);
     void this.api?.closeSession(agentSessionId);
   }
 
@@ -347,6 +356,7 @@ export class AiRuntime {
   private async handleBridgeRequest(request: AiBridgeRequest): Promise<void> {
     const handler: AiCapability | undefined = this.capabilities.get(request.capability);
     if (handler === undefined) {
+      this.log.warn('AiRuntime', `Unknown capability requested '${request.capability}'`);
       this.api?.respondBridge({
         requestId: request.requestId,
         ok: false,
@@ -358,6 +368,7 @@ export class AiRuntime {
       const result: unknown = await handler(request.input);
       this.api?.respondBridge({ requestId: request.requestId, ok: true, result });
     } catch (error: unknown) {
+      this.log.error('AiRuntime', `Capability '${request.capability}' failed`, error);
       this.api?.respondBridge({
         requestId: request.requestId,
         ok: false,

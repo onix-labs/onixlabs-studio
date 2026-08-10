@@ -17,10 +17,13 @@ export class PrintManager {
    * Registers the print IPC handlers.
    */
   public register(): void {
+    logger.trace('PrintManager', 'Registering print IPC handlers');
     ipcMain.handle(
       PrintChannel.ExportPdf,
-      (event: IpcMainInvokeEvent, request: unknown): Promise<ExportPdfResult> =>
-        this.exportPdf(event, request),
+      (event: IpcMainInvokeEvent, request: unknown): Promise<ExportPdfResult> => {
+        logger.trace('PrintManager', 'ExportPdf requested');
+        return this.exportPdf(event, request);
+      },
     );
   }
 
@@ -33,6 +36,7 @@ export class PrintManager {
   private async exportPdf(event: IpcMainInvokeEvent, request: unknown): Promise<ExportPdfResult> {
     const window: BrowserWindow | null = BrowserWindow.fromWebContents(event.sender);
     if (window === null) {
+      logger.warn('PrintManager', 'PDF export requested but no window to export from');
       return { success: false, error: 'No window to export from' };
     }
 
@@ -46,9 +50,11 @@ export class PrintManager {
       filters: [{ name: 'PDF', extensions: ['pdf'] }],
     });
     if (result.canceled || result.filePath === undefined || result.filePath.length === 0) {
+      logger.trace('PrintManager', 'PDF export cancelled at save dialog');
       return { success: false, canceled: true };
     }
 
+    logger.debug('PrintManager', `Rendering PDF to ${result.filePath}`);
     try {
       // marginType 'none' removes the print system's own margins, leaving the CSS @page margin (driven
       // by the user's "Print margins" setting) as the sole source — so an export matches a print.

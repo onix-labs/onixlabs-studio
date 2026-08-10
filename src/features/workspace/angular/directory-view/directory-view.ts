@@ -15,6 +15,7 @@ import {
   untracked,
 } from '@angular/core';
 import { ConversationContext } from '@shared/api/agent-conversation-channels';
+import { Log } from '@shared/angular/services/log/log';
 import { Agent } from '@shared/angular/services/agent/agent';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
 import {
@@ -329,6 +330,11 @@ export class DirectoryView implements OnInit, OnDestroy {
    * the active-checkout selection, and host root-ownership claims.
    */
   private readonly worktreeSession: WorktreeSession = inject(WorktreeSession);
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Holds this view's live agent, whose running state a checkout sub-view publishes to the
@@ -1193,6 +1199,7 @@ export class DirectoryView implements OnInit, OnDestroy {
     const initial: DirectoryListing | null =
       this.listing() ?? this.workspaces.takeInitial(this.tabId()) ?? null;
     if (initial !== null) {
+      this.log.info('workspace', 'Workspace folder opened', initial.path);
       this.workspace.openListing(initial);
     }
   }
@@ -1242,6 +1249,7 @@ export class DirectoryView implements OnInit, OnDestroy {
       return;
     }
     // Latch the spinner first, so a near-instant launch still shows one long enough to register.
+    this.log.info('workspace.run', 'Default run configuration started', configuration.name);
     this.runStartingHold.begin();
     this.buildRunner.runConfiguration(
       configuration,
@@ -1268,6 +1276,7 @@ export class DirectoryView implements OnInit, OnDestroy {
    * stage for source-control work" in place.
    */
   private openInSourceControl(): void {
+    this.log.debug('source-control', 'Switching to Git layout preset');
     this.layoutPresets.select('git');
   }
 
@@ -1280,6 +1289,7 @@ export class DirectoryView implements OnInit, OnDestroy {
     if (!(await this.ensureRepository())) {
       return;
     }
+    this.log.info('source-control', 'Commit panel revealed');
     // Ruling 6 of #351: the IDE sets the stage rather than injecting panels. Commit switches to
     // the Git preset TRANSIENTLY — the persisted pick is untouched — and returns automatically
     // once the changes it staged for reach zero (the commit landed). The panel-injection path
@@ -1326,6 +1336,7 @@ export class DirectoryView implements OnInit, OnDestroy {
     if (!(await this.ensureRepository())) {
       return;
     }
+    this.log.info('source-control', `${op === 'push' ? 'Push' : 'Pull'} started`);
     await (op === 'push' ? this.repository.push() : this.repository.pull());
     await this.workspaceGit.refresh();
   }
@@ -1354,6 +1365,7 @@ export class DirectoryView implements OnInit, OnDestroy {
       void this.sourceControlApi?.closeRepository(info.root);
       return true;
     }
+    this.log.debug('source-control', 'Repository bound for source-control actions', info.root);
     this.repository.bind(info);
     return true;
   }

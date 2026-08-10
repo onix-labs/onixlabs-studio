@@ -67,20 +67,27 @@ export function launchDockerDesktop(
   platform: NodeJS.Platform = process.platform,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<boolean> {
+  logger.trace('docker-desktop', `Launching Docker Desktop on ${platform}`);
   const command: DesktopLaunchCommand | null = dockerDesktopLaunchCommand(platform, env);
   if (command === null) {
+    logger.debug('docker-desktop', `No Docker Desktop launch command for ${platform}`);
     return Promise.resolve(false);
   }
   // A detached launch names an explicit executable path (Windows); bail early when it is absent so a
   // missing install resolves false rather than surfacing a spawn error.
   if (!command.waitForExit && !existsSync(command.file)) {
+    logger.warn('docker-desktop', `Docker Desktop executable not found at ${command.file}`);
     return Promise.resolve(false);
   }
+  logger.debug('docker-desktop', `Launching via ${command.file} ${command.args.join(' ')}`);
   return new Promise<boolean>((resolve: (launched: boolean) => void): void => {
     let settled: boolean = false;
     const settle: (launched: boolean) => void = (launched: boolean): void => {
       if (!settled) {
         settled = true;
+        if (launched) {
+          logger.info('docker-desktop', 'Docker Desktop launch issued');
+        }
         resolve(launched);
       }
     };

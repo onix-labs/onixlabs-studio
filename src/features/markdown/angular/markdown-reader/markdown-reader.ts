@@ -8,6 +8,7 @@ import {
   Signal,
   WritableSignal,
 } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 import { EMPTY_DOCUMENT, ReadDocument, ReadParagraph, ReadWord } from './read-tokenize';
 import { HighlightMode, ReadSession, VoiceOption } from './reader-types';
 
@@ -106,6 +107,11 @@ export class Reader {
    * Holds the Angular zone, used to re-enter change detection from speech callbacks.
    */
   private readonly zone: NgZone = inject(NgZone);
+
+  /**
+   * Holds the structured logging client for read-along playback actions.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Holds the platform speech controller once resolved, or null when unavailable. Resolved lazily by
@@ -347,6 +353,7 @@ export class Reader {
     if (synth === null || !this.canRead()) {
       return;
     }
+    this.log.info('markdown.reader', 'Read-along playback started');
     this.engagedState.set(true);
     if (synth.paused && synth.speaking) {
       synth.resume();
@@ -382,6 +389,7 @@ export class Reader {
    * Stops playback and rewinds to the start of the document.
    */
   public stop(): void {
+    this.log.info('markdown.reader', 'Read-along playback stopped');
     this.generation += ONE;
     this.playingState.set(false);
     this.engagedState.set(false);
@@ -442,6 +450,7 @@ export class Reader {
    * @param rate The new rate multiplier.
    */
   public setRate(rate: number): void {
+    this.log.debug('markdown.reader', 'Playback rate changed', { rate });
     this.rateState.set(rate);
     if (this.playingState()) {
       this.speakFrom(this.clampedIndex());
@@ -453,6 +462,7 @@ export class Reader {
    * @param mode The new highlight mode.
    */
   public setHighlightMode(mode: HighlightMode): void {
+    this.log.debug('markdown.reader', 'Highlight mode changed', { mode });
     this.highlightState.set(mode);
   }
 
@@ -461,6 +471,7 @@ export class Reader {
    * @param uri The voice URI.
    */
   public setVoiceUri(uri: string): void {
+    this.log.debug('markdown.reader', 'Voice changed', { uri });
     this.selectedVoiceState.set(uri);
     if (this.playingState()) {
       this.speakFrom(this.clampedIndex());

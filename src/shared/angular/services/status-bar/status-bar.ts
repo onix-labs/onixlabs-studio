@@ -1,5 +1,6 @@
-import { computed, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
+import { Log } from '@shared/angular/services/log/log';
 
 /**
  * Defines a single segment of contextual information shown in the status strip.
@@ -62,6 +63,11 @@ interface OwnerEntry extends StatusContribution {
 @Service()
 export class StatusBar {
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Holds every owner's contribution, keyed by owner identifier.
    */
   private readonly owners: WritableSignal<ReadonlyMap<string, OwnerEntry>> = signal<
@@ -115,6 +121,7 @@ export class StatusBar {
         return next;
       },
     );
+    this.log.trace('StatusBar', `Cleared status contribution`, ownerId);
   }
 
   /**

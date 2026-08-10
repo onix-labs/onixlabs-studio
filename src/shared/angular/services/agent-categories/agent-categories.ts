@@ -2,6 +2,7 @@ import { inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { Bridge } from '@shared/api/bridge';
 import { AgentCategory, AgentCategoryChannel } from '@shared/api/agent-category-channels';
 import { AgentConversations } from '@shared/angular/services/agent-conversations/agent-conversations';
+import { Log } from '@shared/angular/services/log/log';
 
 /**
  * Owns the user's conversation categories in the renderer — the organisation layer over conversation
@@ -22,6 +23,11 @@ export class AgentCategories {
    * Holds the conversation client, used to clear a deleted category from its conversations.
    */
   private readonly conversations: AgentConversations = inject(AgentConversations);
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Holds the stored categories, in the user's chosen order.
@@ -82,6 +88,7 @@ export class AgentCategories {
     };
     const saved: AgentCategory | null = await this.save(category);
     await this.reload();
+    this.log.info('AgentCategories', `Category created '${trimmed}'`, category.id);
     return saved;
   }
 
@@ -112,6 +119,7 @@ export class AgentCategories {
    * @param id The category id.
    */
   public async delete(id: string): Promise<void> {
+    this.log.info('AgentCategories', 'Category deleted', id);
     await this.conversations.clearCategory(id);
     await this.bridge?.invoke<void>(AgentCategoryChannel.Delete, [id]);
     await this.reload();

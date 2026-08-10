@@ -15,6 +15,7 @@ import type * as MonacoApi from 'monaco-editor';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { Settings, TextEditorSettings } from '@shared/angular/services/settings/settings';
 import { Theme } from '@shared/angular/services/theme/theme';
+import { Log } from '@shared/angular/services/log/log';
 
 /**
  * Represents the shared diff-editor pane: a single Monaco {@link MonacoApi.editor.IStandaloneDiffEditor}
@@ -48,6 +49,11 @@ export class DiffEditor implements AfterViewInit, OnDestroy {
    * variant.
    */
   private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Gets the content of the diff's original (before) side.
@@ -142,6 +148,7 @@ export class DiffEditor implements AfterViewInit, OnDestroy {
    * Disposes the editor and both models when the pane is torn down.
    */
   public ngOnDestroy(): void {
+    this.log.info('DiffEditor', 'Destroying diff pane');
     this.editor?.dispose();
     this.editor = null;
     this.originalModel?.dispose();
@@ -167,6 +174,7 @@ export class DiffEditor implements AfterViewInit, OnDestroy {
     await this.monaco.ensureLoaded();
     const monaco: typeof MonacoApi | undefined = this.monaco.getMonaco();
     if (monaco === undefined) {
+      this.log.warn('DiffEditor', 'Monaco unavailable; diff editor not created');
       return;
     }
 
@@ -176,6 +184,7 @@ export class DiffEditor implements AfterViewInit, OnDestroy {
     });
 
     this.ready = true;
+    this.log.info('DiffEditor', `Created diff editor for '${this.language()}'`);
     this.setModels(this.original(), this.modified(), this.language());
   }
 

@@ -9,6 +9,7 @@ import {
   NetworkMetric,
   SystemMonitorChannel,
 } from '@shared/api/system-monitor-channels';
+import { logger } from '../../logger';
 import { ContributionContext, MainContribution } from '../main-contribution';
 import { parseIoregGpu, pickGpu, readDisk, sumNetwork } from './metrics-readers';
 import { MetricsSampler } from './metrics-sampler';
@@ -74,12 +75,14 @@ export class SystemMonitorContribution implements MainContribution {
     this.context = context;
     context.on(SystemMonitorChannel.Start, (): void => this.addConsumer());
     context.on(SystemMonitorChannel.Stop, (): void => this.removeConsumer());
+    logger.info('SystemMonitorContribution', 'Activated; awaiting sampling consumers');
   }
 
   /**
    * Stops sampling and drops the context. The IPC listeners are removed automatically by the registry.
    */
   public dispose(): void {
+    logger.info('SystemMonitorContribution', 'Disposing; stopping sampling');
     this.stopSampling();
     this.context = null;
     this.consumers = 0;
@@ -90,6 +93,7 @@ export class SystemMonitorContribution implements MainContribution {
    */
   private addConsumer(): void {
     this.consumers += 1;
+    logger.trace('SystemMonitorContribution', `Consumer added (now ${this.consumers})`);
     if (this.timer === null) {
       this.startSampling();
     }
@@ -100,6 +104,7 @@ export class SystemMonitorContribution implements MainContribution {
    */
   private removeConsumer(): void {
     this.consumers = Math.max(0, this.consumers - 1);
+    logger.trace('SystemMonitorContribution', `Consumer removed (now ${this.consumers})`);
     if (this.consumers === 0) {
       this.stopSampling();
     }
@@ -109,6 +114,7 @@ export class SystemMonitorContribution implements MainContribution {
    * Starts the sampling loop, priming the CPU baseline so the first pushed sample carries a real delta.
    */
   private startSampling(): void {
+    logger.debug('SystemMonitorContribution', `Starting sampling loop (${SAMPLE_INTERVAL_MS}ms)`);
     this.sampler = new MetricsSampler();
     // Prime the CPU and network/disk baselines so the first pushed sample carries real deltas.
     void this.readSample();
@@ -120,6 +126,7 @@ export class SystemMonitorContribution implements MainContribution {
    */
   private stopSampling(): void {
     if (this.timer !== null) {
+      logger.debug('SystemMonitorContribution', 'Stopping sampling loop');
       clearInterval(this.timer);
       this.timer = null;
     }

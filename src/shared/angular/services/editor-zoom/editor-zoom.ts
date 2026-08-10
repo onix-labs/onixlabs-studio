@@ -1,4 +1,5 @@
-import { Service, signal, Signal, WritableSignal } from '@angular/core';
+import { inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 
 /**
  * Specifies the selectable editor zoom levels, as percentages, in ascending order.
@@ -35,12 +36,19 @@ export class EditorZoom {
   public readonly levels: readonly number[] = EDITOR_ZOOM_LEVELS;
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Sets the zoom level, clamped to the selectable range.
    * @param percent The zoom level, as a percentage.
    */
   public set(percent: number): void {
     const min: number = EDITOR_ZOOM_LEVELS[0];
     const max: number = EDITOR_ZOOM_LEVELS[EDITOR_ZOOM_LEVELS.length - 1];
-    this.level.set(Math.min(Math.max(percent, min), max));
+    const clamped: number = Math.min(Math.max(percent, min), max);
+    this.level.set(clamped);
+    this.log.debug('EditorZoom', `Zoom set to ${clamped}%`);
   }
 }

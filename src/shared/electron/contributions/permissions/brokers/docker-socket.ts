@@ -1,4 +1,5 @@
 import * as net from 'node:net';
+import { logger } from '../../../logger';
 import { PermissionFactory } from '../permission-broker';
 import { PermissionId } from '../permission';
 
@@ -53,6 +54,7 @@ export class DockerSocketFactory implements PermissionFactory<DockerSocket> {
    */
   public create(): DockerSocket {
     const path: string = this.resolvePath();
+    logger.debug('DockerSocket', `Minted docker socket handle for ${path}`);
     return {
       path,
       connect: (): Promise<net.Socket> =>

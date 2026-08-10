@@ -1,6 +1,7 @@
 import { inject, Service } from '@angular/core';
 import { Bridge } from '@shared/api/bridge';
 import { FileChannel, FileInfo } from '@shared/api/file-channels';
+import { Log } from '@shared/angular/services/log/log';
 import { FileSystem } from '../file-system/file-system';
 
 /**
@@ -43,6 +44,11 @@ export class FileWatch {
    * Holds the subscribers for each watched path.
    */
   private readonly watchers: Map<string, PathWatchers> = new Map<string, PathWatchers>();
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Initializes a new instance of the {@link FileWatch} class, subscribing to change notifications.
@@ -99,6 +105,7 @@ export class FileWatch {
       };
       this.watchers.set(path, entry);
       void this.bridge?.invoke(FileChannel.Watch, path);
+      this.log.debug('FileWatch', 'Started watching file', path);
     }
     return entry;
   }
@@ -114,6 +121,7 @@ export class FileWatch {
     }
     this.watchers.delete(path);
     void this.bridge?.invoke(FileChannel.Unwatch, path);
+    this.log.debug('FileWatch', 'Stopped watching file', path);
   }
 
   /**
@@ -126,6 +134,7 @@ export class FileWatch {
     if (entry === undefined) {
       return;
     }
+    this.log.trace('FileWatch', 'File changed on disk', path);
     for (const callback of entry.pathCallbacks) {
       callback();
     }

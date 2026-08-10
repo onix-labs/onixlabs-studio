@@ -9,6 +9,7 @@ import {
   parseNpmrc,
   resolveNpmEndpoint,
 } from './npmrc';
+import { logger } from '../logger';
 
 /**
  * The public npm registry, used when no `.npmrc` names a default (or scoped) registry.
@@ -34,7 +35,13 @@ export async function readNpmConfig(
 ): Promise<NpmrcConfig> {
   const home: NpmrcConfig = await readOne(path.join(os.homedir(), NPMRC), env);
   const project: NpmrcConfig = await readOne(path.join(root, NPMRC), env);
-  return mergeNpmrc(home, project);
+  const merged: NpmrcConfig = mergeNpmrc(home, project);
+  logger.debug(
+    'npm-sources',
+    `Resolved .npmrc for '${root}': default registry ${merged.registry ?? DEFAULT_REGISTRY}, ` +
+      `${Object.keys(merged.scopedRegistries).length} scoped registry/ies.`,
+  );
+  return merged;
 }
 
 /**

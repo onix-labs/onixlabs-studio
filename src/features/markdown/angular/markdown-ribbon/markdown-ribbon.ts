@@ -12,6 +12,7 @@ import {
   MarkdownCommands,
 } from '@shared/angular/services/markdown-commands/markdown-commands';
 import { Documents } from '@shared/angular/services/documents/documents';
+import { Log } from '@shared/angular/services/log/log';
 import { Printing } from '@shared/angular/services/printing/printing';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import {
@@ -164,6 +165,11 @@ export class MarkdownRibbon {
   private readonly panels: MarkdownPanels = inject(MarkdownPanels);
 
   /**
+   * Holds the structured logging client for the ribbon's user-initiated commands.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Gets the tool panels currently open, so each Tools button reflects its own pressed state (more
    * than one can be open at a time).
    */
@@ -299,6 +305,7 @@ export class MarkdownRibbon {
    * @param id The chosen cut variant's identifier.
    */
   protected onCutVariant(id: string): void {
+    this.log.info('markdown.ribbon', 'Cut command', { variant: id });
     if (id === VARIANT_PLAINTEXT) {
       this.commands.cutAsPlaintext();
     } else {
@@ -318,6 +325,7 @@ export class MarkdownRibbon {
    * @param id The chosen copy variant's identifier.
    */
   protected onCopyVariant(id: string): void {
+    this.log.info('markdown.ribbon', 'Copy command', { variant: id });
     if (id === VARIANT_PLAINTEXT) {
       this.commands.copyAsPlaintext();
     } else {
@@ -338,6 +346,7 @@ export class MarkdownRibbon {
    * @param id The chosen paste variant's identifier.
    */
   protected onPasteVariant(id: string): void {
+    this.log.info('markdown.ribbon', 'Paste command', { variant: id });
     switch (id) {
       case VARIANT_PLAINTEXT:
         this.commands.pasteAsPlaintext();
@@ -356,6 +365,7 @@ export class MarkdownRibbon {
    * is written in place; a new document falls through to a Save As dialog.
    */
   protected onSave(): void {
+    this.log.info('markdown.ribbon', 'Save requested');
     void this.documents.saveActive();
   }
 
@@ -364,6 +374,7 @@ export class MarkdownRibbon {
    * @param id The chosen save variant's identifier.
    */
   protected onSaveVariant(id: string): void {
+    this.log.info('markdown.ribbon', 'Save command', { variant: id });
     if (id === VARIANT_SAVE_AS) {
       void this.documents.saveActiveAs();
     } else {
@@ -387,6 +398,9 @@ export class MarkdownRibbon {
    * Exports the active document to PDF, prompting for a destination and opening the result.
    */
   protected onExportPdf(): void {
+    this.log.info('markdown.ribbon', 'Export to PDF requested', {
+      name: this.activeDocumentName(),
+    });
     void this.printing.exportPdf(this.activeDocumentName());
   }
 
@@ -394,6 +408,7 @@ export class MarkdownRibbon {
    * Prints the active document via the browser print dialog.
    */
   protected onPrint(): void {
+    this.log.info('markdown.ribbon', 'Print requested');
     this.printing.print();
   }
 
@@ -410,6 +425,7 @@ export class MarkdownRibbon {
    * Toggles a task (checkbox) list on the current block(s).
    */
   protected onTaskList(): void {
+    this.log.info('markdown.ribbon', 'Task list toggled');
     this.commands.toggleTaskList();
   }
 
@@ -506,6 +522,7 @@ export class MarkdownRibbon {
    * Inserts a table at the cursor.
    */
   protected onTable(): void {
+    this.log.info('markdown.ribbon', 'Insert table');
     this.commands.insertTable();
   }
 
@@ -513,6 +530,7 @@ export class MarkdownRibbon {
    * Inserts a horizontal rule at the cursor.
    */
   protected onDivider(): void {
+    this.log.info('markdown.ribbon', 'Insert divider');
     this.commands.insertHorizontalRule();
   }
 
@@ -528,6 +546,7 @@ export class MarkdownRibbon {
    * @param image The image source and alt text.
    */
   protected onImageSubmit(image: ImageInsert): void {
+    this.log.info('markdown.ribbon', 'Insert image confirmed', { url: image.url });
     this.commands.insertMarkdown(`![${image.alt}](${image.url})`);
   }
 
@@ -543,6 +562,7 @@ export class MarkdownRibbon {
    * @param link The link text and URL.
    */
   protected onLinkSubmit(link: LinkInsert): void {
+    this.log.info('markdown.ribbon', 'Insert link confirmed', { url: link.url });
     const text: string = link.text.length > 0 ? link.text : link.url;
     this.commands.insertInlineMarkdown(`[${text}](${link.url})`);
   }
@@ -559,6 +579,7 @@ export class MarkdownRibbon {
    * @param math The expression and whether it is a block formula.
    */
   protected onMathSubmit(math: MathInsert): void {
+    this.log.info('markdown.ribbon', 'Insert math confirmed', { block: math.block });
     if (math.block) {
       this.commands.insertMarkdown(`$$\n${math.expression}\n$$`);
     } else {
@@ -570,6 +591,7 @@ export class MarkdownRibbon {
    * Inserts a starter Mermaid diagram block at the cursor, edited live in the editor.
    */
   protected onDiagram(): void {
+    this.log.info('markdown.ribbon', 'Insert diagram');
     this.commands.insertMarkdown('```mermaid\nflowchart TD\n  A[Start] --> B[End]\n```');
   }
 
@@ -588,6 +610,7 @@ export class MarkdownRibbon {
   protected onFootnoteSubmit(footnote: FootnoteInsert): void {
     const sanitized: string = footnote.label.replace(/\s+/g, '-');
     const reference: string = sanitized.length > 0 ? sanitized : `fn-${++this.footnoteCounter}`;
+    this.log.info('markdown.ribbon', 'Insert footnote confirmed', { reference });
     this.commands.insertInlineMarkdown(`[^${reference}]`);
     this.commands.appendMarkdown(`[^${reference}]: ${footnote.content}`);
   }
@@ -604,6 +627,7 @@ export class MarkdownRibbon {
    * @param collapse The block summary and optional body.
    */
   protected onCollapseSubmit(collapse: CollapseInsert): void {
+    this.log.info('markdown.ribbon', 'Insert collapsible block confirmed');
     const body: string = collapse.body.length > 0 ? collapse.body : '';
     this.commands.insertMarkdown(
       `<details>\n<summary>${collapse.summary}</summary>\n\n${body}\n\n</details>`,
@@ -622,6 +646,7 @@ export class MarkdownRibbon {
    * @param emoji The chosen emoji's Unicode character.
    */
   protected onEmojiSubmit(emoji: string): void {
+    this.log.info('markdown.ribbon', 'Insert emoji confirmed', { emoji });
     this.commands.insertText(emoji);
   }
 
@@ -632,6 +657,7 @@ export class MarkdownRibbon {
   protected onBlockChange(label: string): void {
     const blockType: MarkdownBlockType | undefined = LABEL_BLOCK_TYPES.get(label);
     if (blockType !== undefined) {
+      this.log.debug('markdown.ribbon', 'Block style changed', { blockType });
       this.commands.setBlockType(blockType);
     }
   }

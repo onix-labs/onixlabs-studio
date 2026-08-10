@@ -1,5 +1,6 @@
 import { effect, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { RepositoryInfo, SourceControlClient } from '@shared/api/source-control-channels';
+import { Log } from '@shared/angular/services/log/log';
 import { DirectoryWatch } from '@shared/angular/services/directory-watch/directory-watch';
 import { SourceControl } from '@shared/angular/services/source-control/source-control';
 import { GitChangeStatus } from '@shared/angular/services/repository/repository-data';
@@ -36,6 +37,11 @@ function normalize(value: string): string {
  */
 @Service()
 export class WorkspaceGit {
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
   /**
    * Holds the git bridge, or undefined when running outside Electron.
    */
@@ -224,6 +230,7 @@ export class WorkspaceGit {
       this.boundRoot = info.root;
       this.provider = this.providers.create(info.root);
       this.boundSignal.set(true);
+      this.log.debug('source-control', 'Bound workspace git repository', info.root);
       // Watch the repository so an on-disk branch switch or working-tree change (e.g. an agent
       // creating and working from a new branch) refreshes the status and branch live, without needing
       // the tab to be re-activated — which is what Mission Control's per-column branch reads.

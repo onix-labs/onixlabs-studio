@@ -167,12 +167,14 @@ export class LspManager {
       (_event: IpcMainEvent, id: unknown, method: unknown, params: unknown): void =>
         this.notify(id, method, params),
     );
+    logger.info('LspManager', 'Registered language-server IPC handlers');
   }
 
   /**
    * Disposes every running session. Called on application shutdown.
    */
   public disposeAll(): void {
+    logger.info('LspManager', `Disposing all LSP sessions (${this.sessions.size})`);
     for (const id of [...this.sessions.keys()]) {
       this.tearDown(id);
     }
@@ -187,24 +189,42 @@ export class LspManager {
   private async start(request: unknown): Promise<LspStartResult> {
     const parsed: LspStartRequest | null = this.parseStartRequest(request);
     if (parsed === null) {
+      logger.warn('LspManager', 'Rejected an invalid LSP start request');
       return { success: false, error: 'Invalid start request' };
     }
+    logger.trace(
+      'LspManager',
+      `Start requested for session ${parsed.sessionId} (${parsed.serverId})`,
+    );
     const existing: LspSession | undefined = this.sessions.get(parsed.sessionId);
     if (existing !== undefined) {
       existing.refCount += 1;
+      logger.debug(
+        'LspManager',
+        `Reusing LSP session ${parsed.sessionId} (refCount now ${existing.refCount})`,
+      );
       return existing.ready;
     }
     if (!this.isAllowedRoot(parsed)) {
+      logger.warn('LspManager', `LSP start denied for non-open root ${parsed.rootPath}`);
       return { success: false, error: 'Workspace root is not open' };
     }
     const resolution: LspResolution = await this.registry.resolve(parsed.serverId, parsed.rootPath);
     const spec: LspServerSpec | null = resolution.spec;
     if (spec === null) {
+      logger.warn(
+        'LspManager',
+        `Server ${parsed.serverId} unavailable: ${resolution.error ?? 'unknown server'}`,
+      );
       return {
         success: false,
         error: resolution.error ?? `Unknown or unavailable server: ${parsed.serverId}`,
       };
     }
+    logger.debug(
+      'LspManager',
+      `Resolved ${parsed.serverId} to spawn ${spec.command} ${spec.args.join(' ')}`,
+    );
 
     let child: ChildProcessWithoutNullStreams;
     try {
@@ -288,10 +308,12 @@ export class LspManager {
       initializationOptions: spec.initializationOptions,
       capabilities: this.clientCapabilities(),
     };
+    logger.trace('LspManager', `Sending initialize handshake for root ${rootPath}`);
     const result: InitializeResult = await this.withTimeout<InitializeResult>(
       connection.sendRequest('initialize', params),
       INITIALIZE_TIMEOUT_MS,
     );
+    logger.debug('LspManager', `Initialize complete: ${result.serverInfo?.name ?? 'server'}`);
     void connection.sendNotification('initialized', {});
     // A server that does not load a workspace from `rootUri` alone (such as the Roslyn C# server) is
     // told which solution or project to open here, once the handshake has completed.
@@ -317,6 +339,7 @@ export class LspManager {
     if (session === undefined) {
       return Promise.reject(new Error('No such session'));
     }
+    logger.trace('LspManager', `Forwarding LSP request ${method} to session ${id}`);
     return session.connection.sendRequest(method, params);
   }
 
@@ -352,13 +375,19 @@ export class LspManager {
     }
     session.refCount -= 1;
     if (session.refCount > 0) {
+      logger.debug(
+        'LspManager',
+        `Stop for session ${id} (refCount now ${session.refCount}); kept alive`,
+      );
       return;
     }
+    logger.debug('LspManager', `Last client stopped session ${id}; shutting server down`);
     try {
       await this.withTimeout(session.connection.sendRequest('shutdown'), SHUTDOWN_TIMEOUT_MS);
       void session.connection.sendNotification('exit');
-    } catch {
+    } catch (error: unknown) {
       // The server is being killed regardless; ignore a failed graceful shutdown.
+      logger.debug('LspManager', `Graceful shutdown failed for session ${id}`, error);
     }
     this.tearDown(id);
   }
@@ -373,6 +402,10 @@ export class LspManager {
     if (!this.sessions.has(id)) {
       return;
     }
+    logger.info(
+      'LspManager',
+      `LSP server for session ${id} exited (code=${code}, signal=${signal})`,
+    );
     const exit: LspExit = { sessionId: id, code, signal: signal ?? null };
     this.send(LspChannel.ServerExit, exit);
     this.tearDown(id);
@@ -387,11 +420,13 @@ export class LspManager {
     if (session === undefined) {
       return;
     }
+    logger.info('LspManager', `Stopping LSP server for session ${id} (pid ${session.child.pid})`);
     this.sessions.delete(id);
     try {
       session.connection.dispose();
-    } catch {
+    } catch (error: unknown) {
       // Ignore disposal failures; the process is killed regardless.
+      logger.error('LspManager', `Failed to dispose LSP connection for session ${id}`, error);
     }
     pidJournal()?.unregister(session.child.pid);
     if (session.child.pid !== undefined) {

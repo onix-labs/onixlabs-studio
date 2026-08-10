@@ -1,4 +1,5 @@
-import { computed, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 
 /**
  * Describes the status a document contributes to the well status strip. Every field beyond the
@@ -68,6 +69,11 @@ export class DocumentStatus {
   );
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Publishes the given owner's document status as the active status.
    * @param ownerId The identifier of the publishing document.
    * @param info The document status.
@@ -84,6 +90,7 @@ export class DocumentStatus {
   public clear(ownerId: string): void {
     if (this.current()?.ownerId === ownerId) {
       this.current.set(null);
+      this.log.trace('DocumentStatus', 'Cleared status', ownerId);
     }
   }
 }

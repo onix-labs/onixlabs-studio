@@ -26,6 +26,7 @@ import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
 import { TreeRow, TreeView } from '@shared/angular/components/tree-view/tree-view';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
+import { Log } from '@shared/angular/services/log/log';
 
 /**
  * Identifies the outcome of a build/check on a pull request or a CI/CD action: in progress, passed, or
@@ -217,6 +218,11 @@ export class SourceControlSidebar {
   protected readonly repository: Repository = inject(Repository);
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Holds the keys of the currently expanded sections. Only the local branches start open; the rest
    * are collapsed until the user opens them.
    */
@@ -349,6 +355,7 @@ export class SourceControlSidebar {
    * Re-reads the repository state.
    */
   protected refresh(): void {
+    this.log.info('SourceControlSidebar', 'Refreshing repository');
     void this.repository.refresh();
   }
 
@@ -356,6 +363,7 @@ export class SourceControlSidebar {
    * Fetches every remote, so the remote-tracking branches this rail lists are current.
    */
   protected fetch(): void {
+    this.log.info('SourceControlSidebar', 'Fetching remotes');
     void this.repository.fetch();
   }
 
@@ -363,6 +371,7 @@ export class SourceControlSidebar {
    * Stashes the working-tree changes.
    */
   protected stash(): void {
+    this.log.info('SourceControlSidebar', 'Stashing working-tree changes');
     void this.repository.stash();
   }
 
@@ -429,6 +438,7 @@ export class SourceControlSidebar {
    * @param branch The branch to check out.
    */
   protected checkout(branch: GitBranch): void {
+    this.log.info('SourceControlSidebar', `Checking out branch '${branch.name}'`);
     void this.repository.checkout(branch.name);
   }
 
@@ -486,6 +496,7 @@ export class SourceControlSidebar {
     const stash: GitStash | null = this.pendingDrop();
     this.pendingDrop.set(null);
     if (stash !== null) {
+      this.log.info('SourceControlSidebar', `Dropping stash ${stash.index}`);
       void this.repository.dropStash(stash.index);
     }
   }
@@ -552,6 +563,7 @@ export class SourceControlSidebar {
     }
     const name: string = this.branchName().trim();
     this.branchDialogOpen.set(false);
+    this.log.info('SourceControlSidebar', `Creating branch '${name}'`, `checkout=${this.branchCheckout()}`);
     void this.repository.createBranch(name, this.branchCheckout());
   }
 

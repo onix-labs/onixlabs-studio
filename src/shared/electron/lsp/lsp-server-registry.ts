@@ -4,6 +4,7 @@ import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { LspServerId } from '@shared/api/lsp-channels';
 import { ProjectModel } from '@shared/api/project-system';
+import { logger } from '../logger';
 import { projectSystems } from '../project-system/default-project-systems';
 import { JdtlsInstall, LspProvisioner } from './lsp-provisioner';
 import { LspSettingsManager } from './lsp-settings';
@@ -119,6 +120,7 @@ function resolved(spec: LspServerSpec): LspResolution {
  * @returns Returns the resolution.
  */
 function unavailable(error: string): LspResolution {
+  logger.warn('LspServerRegistry', `Server unavailable: ${error}`);
   return { spec: null, error };
 }
 
@@ -170,7 +172,9 @@ export class LspServerRegistry {
    * @returns Returns the resolution.
    */
   public async resolve(serverId: LspServerId, rootPath: string): Promise<LspResolution> {
+    logger.trace('LspServerRegistry', `Resolving server ${serverId}`);
     if (this.settings.get().disabledServers.includes(serverId)) {
+      logger.debug('LspServerRegistry', `Server ${serverId} is disabled by settings`);
       return NO_SERVER;
     }
     if (serverId === 'typescript') {
@@ -357,6 +361,10 @@ export class LspServerRegistry {
     const logDir: string = await this.provisioner.dataDirectory('roslyn', rootPath);
     const model: ProjectModel | null = (await projectSystems.get('dotnet')?.load(rootPath)) ?? null;
     const postInitialize: readonly LspPostInitialize[] | undefined = this.csharpOpenPlan(model);
+    logger.debug(
+      'LspServerRegistry',
+      `Roslyn open plan: ${postInitialize?.[0]?.method ?? 'none (single-file)'}`,
+    );
     const env: Record<string, string> = { DOTNET_CLI_TELEMETRY_OPTOUT: '1', DOTNET_NOLOGO: '1' };
     if (path.isAbsolute(dotnet)) {
       // Help the server's apphost find the .NET runtime when it is not on the spawned PATH.
@@ -484,7 +492,12 @@ export class LspServerRegistry {
         return null;
       }
       return path.join(path.dirname(manifestPath), relative);
-    } catch {
+    } catch (error: unknown) {
+      logger.error(
+        'LspServerRegistry',
+        `Failed to resolve npm server bin for ${packageName}`,
+        error,
+      );
       return null;
     }
   }

@@ -16,6 +16,7 @@ import {
   viewChild,
   WritableSignal,
 } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 import { DockAutoHide } from '../../../services/dock-layout/dock-auto-hide';
 import { DockDrag } from '../../../services/dock-layout/dock-drag';
 import { DockFloating } from '../../../services/dock-layout/dock-floating';
@@ -118,6 +119,11 @@ export class DockTabGroup {
    * Holds the focus tracker that decides which panel is accented.
    */
   private readonly dockFocus: DockFocus = inject(DockFocus);
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Holds this group's element, hit-tested during a compass drag.
@@ -337,8 +343,10 @@ export class DockTabGroup {
   protected onDrop(event: CdkDragDrop<StackNode>): void {
     const panelId: string = event.item.data as string;
     if (event.previousContainer === event.container) {
+      this.log.debug('DockTabGroup', `Reordered tab '${panelId}' within stack '${this.stack().id}'`);
       this.dockState.reorderTab(this.stack().id, event.previousIndex, event.currentIndex);
     } else {
+      this.log.info('DockTabGroup', `Moved tab '${panelId}' into stack '${this.stack().id}'`);
       this.dockState.movePanel(panelId, this.stack().id, event.currentIndex);
     }
   }

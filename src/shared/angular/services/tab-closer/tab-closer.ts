@@ -2,6 +2,7 @@ import { inject, Service } from '@angular/core';
 import type { SaveDialogChoice } from '@shared/api/file-channels';
 import { AgentHost, AgentHosts } from '@shared/angular/services/agent-hosts/agent-hosts';
 import { FileSystem } from '@shared/angular/services/file-system/file-system';
+import { Log } from '@shared/angular/services/log/log';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { UnsavedWorkRegistry } from '@shared/angular/services/unsaved-work/unsaved-work-registry';
 
@@ -40,6 +41,11 @@ export class TabCloser {
   private readonly agentHosts: AgentHosts = inject(AgentHosts);
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Closes a tab, confirming a running agent and resolving unsaved changes first.
    * @param id The tab identifier.
    * @returns Returns a promise that resolves once the close has been resolved either way.
@@ -60,6 +66,7 @@ export class TabCloser {
         confirmLabel: 'Close Workspace',
       });
       if (!confirmed) {
+        this.log.debug('TabCloser', 'Tab close cancelled at agent prompt', id);
         return;
       }
       for (const host of running) {
@@ -85,6 +92,7 @@ export class TabCloser {
     for (const source of this.registry.sources()) {
       source.release(id);
     }
+    this.log.info('TabCloser', 'Tab close confirmed', id);
     this.tabs.close(id);
   }
 }

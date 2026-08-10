@@ -15,6 +15,7 @@ import {
   WritableSignal,
 } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
+import { Log } from '@shared/angular/services/log/log';
 import {
   TextEditor,
   TextEditorCursor,
@@ -82,6 +83,11 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
    * state.
    */
   private readonly documents: Documents = inject(Documents);
+
+  /**
+   * Holds the structured logger for the code document editor's lifecycle and breakpoint actions.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Holds the breakpoint store the gutter draws from and clicks are recorded to. Breakpoints are keyed
@@ -262,6 +268,7 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
    */
   public ngOnInit(): void {
     this.registeredDocumentId = this.documentId();
+    this.log.debug('code.document', 'Resolving backing document', this.documentId());
     this.backingDocument.set(this.documents.ensure(this.documentId(), NEW_DOCUMENT_NAME));
   }
 
@@ -343,6 +350,7 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
     if (path === null) {
       return;
     }
+    this.log.info('code.document', 'Toggle breakpoint', path, line);
     this.breakpoints.toggle(path, line);
     if (this.editingLine() === line) {
       this.closeBreakpointEdit();
@@ -359,6 +367,7 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
     if (path === null) {
       return;
     }
+    this.log.debug('code.document', 'Open breakpoint editor', path, line);
     let existing: Breakpoint | undefined = this.breakpoints
       .forPath(path)
       .find((breakpoint: Breakpoint): boolean => breakpoint.line === line);
@@ -382,6 +391,7 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
     const path: string | null = this.backingDocument()?.filePath() ?? null;
     const line: number | null = this.editingLine();
     if (path !== null && line !== null) {
+      this.log.info('code.document', 'Save breakpoint edit', path, line);
       this.breakpoints.update(path, line, {
         condition: this.editCondition(),
         logMessage: this.editLogMessage(),
@@ -398,6 +408,7 @@ export class CodeDocumentEditor implements OnInit, OnDestroy {
     const path: string | null = this.backingDocument()?.filePath() ?? null;
     const line: number | null = this.editingLine();
     if (path !== null && line !== null) {
+      this.log.info('code.document', 'Remove breakpoint', path, line);
       this.breakpoints.remove(path, line);
     }
     this.closeBreakpointEdit();

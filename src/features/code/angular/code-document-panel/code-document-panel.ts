@@ -18,6 +18,7 @@ import {
   TextEditorEol,
 } from '@shared/angular/components/text-editor/text-editor';
 import { CodeDocument, Documents } from '@shared/angular/services/documents/documents';
+import { Log } from '@shared/angular/services/log/log';
 import { DocumentStatus } from '@shared/angular/services/document-status/document-status';
 import {
   EditorCommandHandler,
@@ -52,6 +53,11 @@ export class CodeDocumentPanel {
    * Holds the documents service backing the hosted document's language and encoding.
    */
   private readonly documents: Documents = inject(Documents);
+
+  /**
+   * Holds the structured logger for the well document panel's lifecycle and command actions.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Holds the well status strip this panel publishes to while it is the active document.
@@ -310,8 +316,14 @@ export class CodeDocumentPanel {
         await pane.runAction('editor.action.organizeImports');
         await pane.runAction('editor.action.formatDocument');
       },
-      save: (): void => void this.documents.save(this.documentId()),
-      saveAs: (): void => void this.documents.saveAs(this.documentId()),
+      save: (): void => {
+        this.log.info('code.document', 'Save well document', this.documentId());
+        void this.documents.save(this.documentId());
+      },
+      saveAs: (): void => {
+        this.log.info('code.document', 'Save-as well document', this.documentId());
+        void this.documents.saveAs(this.documentId());
+      },
       getText: (): string => pane.getValue(),
       getSelectionText: (): string => pane.getSelectionText(),
       replaceText: (text: string): void => pane.replaceAll(text),

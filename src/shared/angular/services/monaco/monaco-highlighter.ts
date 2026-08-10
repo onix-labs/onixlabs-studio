@@ -1,6 +1,7 @@
 import { inject, Service } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
 import { Settings } from '@shared/angular/services/settings/settings';
+import { Log } from '@shared/angular/services/log/log';
 import { Monaco } from './monaco';
 import { languageForExtension } from './monaco-languages';
 
@@ -51,6 +52,11 @@ export class MonacoHighlighter {
    * active theme.
    */
   private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Holds the lower-cased info-string/alias to Monaco language identifier map, built once from the
@@ -132,6 +138,7 @@ export class MonacoHighlighter {
     // rebuilt when Monaco becomes available.
     if (monaco !== undefined) {
       this.aliasToId = map;
+      this.log.debug('MonacoHighlighter', `Built alias map with ${map.size} entries`);
     }
     return map;
   }

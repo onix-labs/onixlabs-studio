@@ -1,3 +1,5 @@
+import { logger } from '@shared/electron/logger';
+
 /**
  * Strips the `mcp__<server>__` prefix from a fully-qualified MCP tool name, leaving a clean display
  * name.
@@ -62,6 +64,7 @@ function clampPayload(text: string): string {
     return text;
   }
   const omitted: number = text.length - MAX_PAYLOAD_CHARS;
+  logger.debug('ToolFormat', `Clamped tool payload, omitting ${omitted.toLocaleString()} characters`);
   return `${text.slice(0, MAX_PAYLOAD_CHARS)}\n… [truncated: ${omitted.toLocaleString()} more characters]`;
 }
 
@@ -83,7 +86,8 @@ export function formatToolInput(input: unknown): string | undefined {
   }
   try {
     return clampPayload(JSON.stringify(input, null, 2));
-  } catch {
+  } catch (error: unknown) {
+    logger.error('ToolFormat', 'Failed to render tool input', error);
     return undefined;
   }
 }
@@ -117,7 +121,8 @@ export function formatToolOutput(output: unknown): string | undefined {
     // JSON.stringify yields undefined for unserialisable values (functions, symbols).
     const rendered: string | undefined = JSON.stringify(output, null, 2);
     return rendered === undefined || rendered === '{}' ? undefined : clampPayload(rendered);
-  } catch {
+  } catch (error: unknown) {
+    logger.error('ToolFormat', 'Failed to render tool output', error);
     return undefined;
   }
 }

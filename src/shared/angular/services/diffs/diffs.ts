@@ -1,4 +1,5 @@
-import { Service, signal, Signal, WritableSignal } from '@angular/core';
+import { inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 import { GitFileChange } from '@shared/angular/services/repository/repository-data';
 
 /**
@@ -21,6 +22,11 @@ export class Diffs {
    * diff so the ribbon's toggle flips them together.
    */
   private readonly inline: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Gets whether diffs render inline rather than side by side.
@@ -71,6 +77,7 @@ export class Diffs {
    */
   public toggleInline(): void {
     this.inline.update((value: boolean): boolean => !value);
+    this.log.debug('Diffs', `Diff layout set to ${this.inline() ? 'inline' : 'side-by-side'}`);
   }
 
   /**

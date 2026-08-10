@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { BrowserWindow, ipcMain, IpcMainEvent } from 'electron';
 import type { AiBridgeReply } from '@shared/api/ai-types';
 import { AiChannel } from '@shared/api/ai-channels';
+import { logger } from '../logger';
 
 /**
  * Holds how long (ms) to wait for the renderer to answer a capability request before failing.
@@ -58,6 +59,7 @@ export class RendererBridge {
    * Registers the IPC listener that settles requests when the renderer replies.
    */
   public register(): void {
+    logger.trace('RendererBridge.register', 'Registered bridge-reply IPC listener');
     ipcMain.on(AiChannel.BridgeReply, (_event: IpcMainEvent, reply: unknown): void => {
       if (this.isReply(reply)) {
         this.settle(reply);
@@ -94,13 +96,22 @@ export class RendererBridge {
   ): Promise<unknown> {
     const window: BrowserWindow | null = this.windowGetter();
     if (window === null) {
+      logger.warn(
+        'RendererBridge.request',
+        `No window available for capability "${capability}"`,
+      );
       return Promise.reject(new Error('No window is available to handle the capability request.'));
     }
     const requestId: string = randomUUID();
+    logger.trace('RendererBridge.request', `Dispatching capability "${capability}" (${requestId})`);
     return new Promise<unknown>(
       (resolve: (result: unknown) => void, reject: (error: Error) => void): void => {
         const timer: NodeJS.Timeout = setTimeout((): void => {
           this.pending.delete(requestId);
+          logger.error(
+            'RendererBridge.request',
+            `Capability "${capability}" timed out after ${timeoutMs}ms`,
+          );
           reject(new Error(`The capability "${capability}" timed out.`));
         }, timeoutMs);
         this.pending.set(requestId, { resolve, reject, timer });
@@ -121,8 +132,14 @@ export class RendererBridge {
     clearTimeout(pending.timer);
     this.pending.delete(reply.requestId);
     if (reply.ok) {
+      logger.trace('RendererBridge.settle', `Capability reply resolved (${reply.requestId})`);
       pending.resolve(reply.result);
     } else {
+      logger.error(
+        'RendererBridge.settle',
+        `Capability reply failed (${reply.requestId})`,
+        new Error(reply.error ?? 'The capability failed.'),
+      );
       pending.reject(new Error(reply.error ?? 'The capability failed.'));
     }
   }

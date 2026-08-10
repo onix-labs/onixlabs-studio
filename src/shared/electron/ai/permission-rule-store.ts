@@ -1,6 +1,7 @@
 import { app } from 'electron';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { logger } from '@shared/electron/logger';
 
 /**
  * The file (under userData) the remembered permission rules live in.
@@ -49,9 +50,16 @@ export class PermissionRuleStore {
   public isAllowed(tool: string, workspaceRoot: string | null): boolean {
     this.ensureLoaded();
     if (this.always.has(tool)) {
+      logger.debug('PermissionRuleStore', `Rule allows '${tool}' (always)`);
       return true;
     }
-    return workspaceRoot !== null && (this.workspaces.get(workspaceRoot)?.has(tool) ?? false);
+    const workspaceAllows: boolean =
+      workspaceRoot !== null && (this.workspaces.get(workspaceRoot)?.has(tool) ?? false);
+    logger.trace(
+      'PermissionRuleStore',
+      `Rule lookup for '${tool}' (workspace=${workspaceRoot ?? 'none'}): ${workspaceAllows ? 'allowed' : 'no rule'}`,
+    );
+    return workspaceAllows;
   }
 
   /**
@@ -67,12 +75,20 @@ export class PermissionRuleStore {
       this.always.add(tool);
     } else {
       if (workspaceRoot === null) {
+        logger.warn(
+          'PermissionRuleStore',
+          `Ignoring workspace grant for '${tool}': no workspace root to key it on`,
+        );
         return;
       }
       const tools: Set<string> = this.workspaces.get(workspaceRoot) ?? new Set<string>();
       tools.add(tool);
       this.workspaces.set(workspaceRoot, tools);
     }
+    logger.info(
+      'PermissionRuleStore',
+      `Remembered permission grant for '${tool}' (scope=${scope}${scope === 'workspace' ? `, root=${workspaceRoot}` : ''})`,
+    );
     this.persist();
   }
 
@@ -87,6 +103,7 @@ export class PermissionRuleStore {
     try {
       const parsed: unknown = JSON.parse(readFileSync(this.file(), 'utf8'));
       if (!this.isStoredRules(parsed)) {
+        logger.warn('PermissionRuleStore', 'Ignoring malformed permission rule store');
         return;
       }
       this.always = new Set<string>(parsed.always);
@@ -98,8 +115,13 @@ export class PermissionRuleStore {
           ],
         ),
       );
+      logger.debug(
+        'PermissionRuleStore',
+        `Loaded permission rules: ${this.always.size} always, ${this.workspaces.size} workspace(s)`,
+      );
     } catch {
       // A missing or unreadable store simply means no remembered rules.
+      logger.trace('PermissionRuleStore', 'No permission rule store to load');
     }
   }
 
@@ -118,8 +140,10 @@ export class PermissionRuleStore {
     try {
       mkdirSync(dirname(this.file()), { recursive: true });
       writeFileSync(this.file(), JSON.stringify(value), { encoding: 'utf8', mode: 0o600 });
-    } catch {
+      logger.debug('PermissionRuleStore', `Saved permission rules to ${this.file()}`);
+    } catch (error: unknown) {
       // Persistence is best-effort; the grant still applies for this session.
+      logger.error('PermissionRuleStore', 'Failed to persist permission rules', error);
     }
   }
 

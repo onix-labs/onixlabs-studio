@@ -1,4 +1,5 @@
-import { Service, signal, WritableSignal } from '@angular/core';
+import { inject, Service, signal, WritableSignal } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 
 /**
  * Holds the panel state for a single code tab's docked agent.
@@ -34,6 +35,11 @@ const DEFAULT_STATE: PanelState = {
  */
 @Service()
 export class CodeAgents {
+  /**
+   * Holds the structured logger for docked agent-panel state changes.
+   */
+  private readonly log: Log = inject(Log);
+
   /**
    * Holds the panel state for every code tab, keyed by tab identifier.
    */
@@ -76,6 +82,7 @@ export class CodeAgents {
    * @param id The owning tab identifier.
    */
   public show(id: string): void {
+    this.log.debug('code.agents', 'Show agent panel', id);
     this.update(id, { visible: true, mounted: true });
   }
 
@@ -84,6 +91,7 @@ export class CodeAgents {
    * @param id The owning tab identifier.
    */
   public hide(id: string): void {
+    this.log.debug('code.agents', 'Hide agent panel', id);
     this.update(id, { visible: false });
   }
 

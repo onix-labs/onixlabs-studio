@@ -10,6 +10,7 @@ import {
 import { RunPresentation } from '@shared/api/studio';
 import { TerminalCreateResult, TerminalKind } from '@shared/api/terminal-channels';
 import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
+import { Log } from '@shared/angular/services/log/log';
 import { PopoutPanels } from '@shared/angular/services/dock-layout/popout-panels';
 import { TerminalBridge } from '@shared/angular/services/terminal-bridge/terminal-bridge';
 
@@ -180,6 +181,11 @@ export class TerminalSessions implements OnDestroy {
   private readonly popouts: PopoutPanels = inject(PopoutPanels);
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Holds the sessions in tab order.
    */
   private readonly items: WritableSignal<readonly TerminalSession[]> = signal<
@@ -232,6 +238,7 @@ export class TerminalSessions implements OnDestroy {
         // A signal-terminated process often reports exit code 0; record the shell convention
         // (128 + signal) instead, so a stopped run never reads as a success to awaiting callers.
         const effective: number = signal !== null ? 128 + signal : exitCode;
+        this.log.info('TerminalSessions', 'Session process exited', id, effective);
         this.items.update((sessions: readonly TerminalSession[]): readonly TerminalSession[] =>
           sessions.map(
             (session: TerminalSession): TerminalSession =>
@@ -279,6 +286,7 @@ export class TerminalSessions implements OnDestroy {
     }
     const hadRoot: boolean = this.root !== null;
     this.root = root;
+    this.log.debug('TerminalSessions', 'Root folder changed', root);
     if (hadRoot) {
       this.reset();
     }
@@ -326,6 +334,7 @@ export class TerminalSessions implements OnDestroy {
       session,
     ]);
     this.active.set(session.id);
+    this.log.info('TerminalSessions', 'Created shell session', session.id, session.name);
     return session;
   }
 
@@ -349,6 +358,7 @@ export class TerminalSessions implements OnDestroy {
     const id: string = options.sessionId ?? `term-${crypto.randomUUID()}`;
     const cwd: string | undefined = options.cwd ?? this.root ?? undefined;
 
+    this.log.info('TerminalSessions', `Launching ${options.kind} session`, id, options.name, cwd);
     if (existing !== undefined) {
       // Relaunch-in-place: silence any pending completion, then dispose the previous PTY (and its
       // scrollback) so the reused identifier spawns fresh. Disposal never emits an exit event, so
@@ -402,6 +412,7 @@ export class TerminalSessions implements OnDestroy {
     });
     const processId: number | null = result.success ? (result.pid ?? null) : null;
     if (!result.success) {
+      this.log.warn('TerminalSessions', 'Session launch failed', id, result.error);
       // The main process streamed the failure into the session's scrollback and emitted an exit for
       // it where possible; outside Electron (or on malformed options) resolve the completion here.
       this.items.update((sessions: readonly TerminalSession[]): readonly TerminalSession[] =>
@@ -460,6 +471,7 @@ export class TerminalSessions implements OnDestroy {
    * @param id The session identifier.
    */
   public terminate(id: string): void {
+    this.log.info('TerminalSessions', 'Terminating session process', id);
     void this.bridge.terminate(id);
   }
 
@@ -489,6 +501,7 @@ export class TerminalSessions implements OnDestroy {
     if (index === -1) {
       return;
     }
+    this.log.info('TerminalSessions', 'Closing session', id);
     this.resolveWaiter(id, DISPOSED_EXIT_CODE);
     void this.bridge.dispose(id);
     const remaining: readonly TerminalSession[] = sessions.filter(
@@ -551,6 +564,7 @@ export class TerminalSessions implements OnDestroy {
    * @param shell The spawned shell executable.
    */
   public setShell(id: string, shell: string): void {
+    this.log.debug('TerminalSessions', 'Session shell resolved', id, shell);
     this.items.update((sessions: readonly TerminalSession[]): readonly TerminalSession[] =>
       sessions.map(
         (session: TerminalSession): TerminalSession =>

@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import { ShellInfo } from '@shared/api/terminal-channels';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
+import { Log } from '@shared/angular/services/log/log';
 import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { TerminalShells } from '@shared/angular/services/terminal-shells/terminal-shells';
@@ -37,6 +38,11 @@ export class TerminalSettingsSection {
   private readonly terminalShells: TerminalShells = inject(TerminalShells);
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Gets the dropdown options: a leading "System default" entry followed by each installed shell.
    */
   protected readonly shellOptions: Signal<readonly DropdownOption[]> = computed(
@@ -58,6 +64,11 @@ export class TerminalSettingsSection {
    * @param value The chosen shell path, or the empty string for the system default.
    */
   protected onChange(value: string): void {
+    this.log.info(
+      'settings.terminal',
+      'Default shell changed',
+      value === SYSTEM_DEFAULT ? 'system default' : value,
+    );
     this.settings.set('terminal.defaultShell', value);
   }
 }

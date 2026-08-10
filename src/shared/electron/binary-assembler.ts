@@ -60,6 +60,7 @@ export class BinaryAssembler {
    * Registers the assembly IPC handler.
    */
   public register(): void {
+    logger.trace('BinaryAssembler', 'Registering assemble IPC handler');
     ipcMain.handle(
       BinaryChannel.Assemble,
       (
@@ -67,7 +68,10 @@ export class BinaryAssembler {
         assembly: unknown,
         architecture: unknown,
         address: unknown,
-      ): Promise<AssembleResult> => this.assemble(assembly, architecture, address),
+      ): Promise<AssembleResult> => {
+        logger.trace('BinaryAssembler', 'Assemble requested');
+        return this.assemble(assembly, architecture, address);
+      },
     );
   }
 
@@ -104,6 +108,7 @@ export class BinaryAssembler {
         error: `Studio can only assemble x86 and x64; the ${architecture} architecture is not supported.`,
       };
     }
+    logger.debug('BinaryAssembler', `Assembling for ${architecture} (bitness ${bitness})`);
     try {
       const { AssemblyState } = await this.load();
       const state: AssemblyStateType = new AssemblyState({
@@ -112,12 +117,14 @@ export class BinaryAssembler {
       });
       state.compile(assembly);
       if (state.errors.length > 0) {
+        logger.debug('BinaryAssembler', 'Assembly produced diagnostics');
         return { ok: false, error: state.errors.map((error) => error.message).join('; ') };
       }
       const bytes: Uint8Array = state.head.dump();
       if (bytes.length === 0) {
         return { ok: false, error: 'The assembly produced no machine bytes.' };
       }
+      logger.trace('BinaryAssembler', `Assembled ${bytes.length} bytes`);
       return { ok: true, bytes: Array.from(bytes) };
     } catch (error: unknown) {
       // Assembly failure is usually invalid user input, not a system fault, so it is debug.
@@ -131,7 +138,10 @@ export class BinaryAssembler {
    * @returns Returns the module.
    */
   private load(): Promise<DefasmModule> {
-    this.module ??= import('@defasm/core') as Promise<DefasmModule>;
+    if (this.module === null) {
+      logger.debug('BinaryAssembler', 'Loading DefAssembler module');
+      this.module = import('@defasm/core');
+    }
     return this.module;
   }
 }

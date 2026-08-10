@@ -1,5 +1,6 @@
-import { Service } from '@angular/core';
+import { inject, Service } from '@angular/core';
 import { DirectoryListing } from '@shared/api/workspace-channels';
+import { Log } from '@shared/angular/services/log/log';
 
 /**
  * Bridges opening a directory to the workspace instance that hosts it. Each directory tab is its own
@@ -15,12 +16,18 @@ export class Workspaces {
   private readonly pending: Map<string, DirectoryListing> = new Map<string, DirectoryListing>();
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Stashes the initial root listing a directory tab should open with.
    * @param tabId The directory tab's id.
    * @param listing The root directory listing to seed the workspace with.
    */
   public setInitial(tabId: string, listing: DirectoryListing): void {
     this.pending.set(tabId, listing);
+    this.log.debug('Workspaces', `Stashed initial listing for tab '${tabId}'`, listing.path);
   }
 
   /**

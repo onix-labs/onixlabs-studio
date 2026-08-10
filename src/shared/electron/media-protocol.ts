@@ -47,6 +47,7 @@ export class MediaProtocol {
         privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true },
       },
     ]);
+    logger.debug('media', `Registered ${MEDIA_SCHEME} scheme as privileged`);
   }
 
   /**
@@ -55,6 +56,7 @@ export class MediaProtocol {
    */
   public register(): void {
     protocol.handle(MEDIA_SCHEME, (request: Request): Promise<Response> => this.serve(request));
+    logger.info('media', `Media protocol handler installed for ${MEDIA_SCHEME}`);
   }
 
   /**
@@ -66,8 +68,10 @@ export class MediaProtocol {
   private async serve(request: Request): Promise<Response> {
     const resolved: { path: string; mime: string } | null = this.resolve(request.url);
     if (resolved === null) {
+      logger.trace('media', 'Media request did not resolve to a serveable image');
       return new Response('Not found', { status: 404 });
     }
+    logger.trace('media', `Serving media ${resolved.path} (${resolved.mime})`);
     try {
       const data: Buffer = await readFile(resolved.path);
       return new Response(new Uint8Array(data), { headers: { 'content-type': resolved.mime } });

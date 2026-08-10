@@ -52,6 +52,7 @@ import {
 import { MarkdownStatus } from '@features/markdown/angular/markdown-status/markdown-status';
 import { Documents } from '@shared/angular/services/documents/documents';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
+import { Log } from '@shared/angular/services/log/log';
 import { Settings } from '@shared/angular/services/settings/settings';
 import {
   MarkdownPanels,
@@ -179,6 +180,11 @@ export class MarkdownView implements OnInit, OnDestroy {
   private readonly zone: NgZone = inject(NgZone);
 
   /**
+   * Holds the structured logging client for the markdown view's lifecycle and command wiring.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Holds the document-bound markdown editor this view drives, or undefined before the view
    * initialises.
    */
@@ -258,6 +264,7 @@ export class MarkdownView implements OnInit, OnDestroy {
    */
   public ngOnInit(): void {
     this.agentHost.register(this.tabId());
+    this.log.info('markdown.view', 'Markdown view initialised', { tabId: this.tabId() });
   }
 
   /**
@@ -367,6 +374,7 @@ export class MarkdownView implements OnInit, OnDestroy {
    * destroys the Crepe editor themselves.
    */
   public ngOnDestroy(): void {
+    this.log.debug('markdown.view', 'Markdown view destroyed', { tabId: this.tabId() });
     this.outline.detach();
     this.scrollContainer = null;
     if (this.commandHandler !== null) {
@@ -442,6 +450,7 @@ export class MarkdownView implements OnInit, OnDestroy {
 
     this.commands.register(this.tabId(), this.commandHandler);
     this.registerKeybindings();
+    this.log.trace('markdown.view', 'Ribbon command handler registered', { tabId: this.tabId() });
   }
 
   /**
@@ -473,6 +482,7 @@ export class MarkdownView implements OnInit, OnDestroy {
     if (pane === undefined) {
       return;
     }
+    this.log.debug('markdown.view', 'Applying block type', { blockType });
     switch (blockType) {
       case 'paragraph':
         pane.run(callCommand(turnIntoTextCommand.key));

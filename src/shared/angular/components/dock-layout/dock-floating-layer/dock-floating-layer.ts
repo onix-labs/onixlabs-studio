@@ -1,5 +1,6 @@
 import { DOCUMENT } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 import {
   DockFloating,
   FloatWindow,
@@ -83,6 +84,11 @@ export class DockFloatingLayer {
   private readonly registry: DockPanelRegistry = inject(DockPanelRegistry);
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Gets the eight resize handles (four edges and four corners), in render order.
    */
   protected readonly resizeHandles: readonly ResizeHandle[] = [
@@ -140,6 +146,7 @@ export class DockFloatingLayer {
    * @param event The originating mouse event.
    */
   protected startMove(window: FloatWindow, event: MouseEvent): void {
+    this.log.trace('DockFloatingLayer', `Moving floating panel '${window.panelId}'`);
     event.preventDefault();
     this.bringToFront(window.panelId);
     const offsetX: number = event.clientX - window.left;
@@ -158,6 +165,7 @@ export class DockFloatingLayer {
    * @param event The originating mouse event.
    */
   protected startResize(window: FloatWindow, handle: ResizeHandle, event: MouseEvent): void {
+    this.log.trace('DockFloatingLayer', `Resizing floating panel '${window.panelId}'`, handle.id);
     event.preventDefault();
     event.stopPropagation();
     this.bringToFront(window.panelId);

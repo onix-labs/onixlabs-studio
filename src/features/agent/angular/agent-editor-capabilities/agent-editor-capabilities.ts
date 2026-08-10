@@ -14,6 +14,7 @@ import {
 import { EditorCommands } from '@shared/angular/services/editor-commands/editor-commands';
 import { MarkdownCommands } from '@shared/angular/services/markdown-commands/markdown-commands';
 import { AiRuntime } from '@shared/angular/services/ai-runtime/ai-runtime';
+import { Log } from '@shared/angular/services/log/log';
 import { Documents, CodeDocument } from '@shared/angular/services/documents/documents';
 import { EditorTerminals } from '@shared/angular/services/editor-terminals/editor-terminals';
 import { Terminals } from '@shared/angular/services/terminals/terminals';
@@ -216,6 +217,11 @@ export class AgentEditorCapabilities {
   private readonly runtime: AiRuntime = inject(AiRuntime);
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Holds the code-editor command seam the capabilities act through.
    */
   private readonly editorCommands: EditorCommands = inject(EditorCommands);
@@ -310,6 +316,7 @@ export class AgentEditorCapabilities {
       RUN_ACTIVE_DOCUMENT,
       (input: unknown): Promise<RunResult> => this.runActiveDocument(input),
     );
+    this.log.info('agent.editor-capabilities', 'Registered agent editor capabilities');
   }
 
   /**
@@ -338,6 +345,10 @@ export class AgentEditorCapabilities {
       return { ok: false, detail: 'No code document is open in the editor.' };
     }
     this.documents.setLanguage(tabId, resolved);
+    this.log.info('agent.editor-capabilities', 'Set active document language', {
+      tabId,
+      language: resolved,
+    });
     return { ok: true, detail: `The editor language is now ${resolved}.` };
   }
 
@@ -369,6 +380,7 @@ export class AgentEditorCapabilities {
    * @returns Returns the {@link RunResult}.
    */
   private async runActiveDocument(input: unknown): Promise<RunResult> {
+    this.log.trace('agent.editor-capabilities', 'Run active document invoked');
     const tabId: string | null = this.extractTabId(input) ?? this.documents.activeDocumentId();
     const codeDocument: CodeDocument | undefined =
       tabId === null ? undefined : this.documents.get(tabId);
@@ -404,10 +416,16 @@ export class AgentEditorCapabilities {
     const sentinelCommand: string = `${command}; printf '\\n${markerPrefix}%s__\\n' "$?"`;
     // Queue the command into the tab's docked run terminal (mounting and showing it if needed); the
     // panel writes it once the terminal is ready.
+    this.log.info('agent.editor-capabilities', 'Running active document', { tabId, language, command });
     this.editorTerminals.queueCommand(tabId, sentinelCommand);
     const terminalId: string = `${RUN_TERMINAL_PREFIX}${tabId}`;
     const completion: { exitCode: number | null; output: string; timedOut: boolean } =
       await this.awaitRunCompletion(terminalId, markerPrefix, this.resolveRunTimeoutMs(input));
+    this.log.info('agent.editor-capabilities', 'Run completed', {
+      tabId,
+      exitCode: completion.exitCode,
+      timedOut: completion.timedOut,
+    });
     return {
       ran: true,
       command,
@@ -508,6 +526,11 @@ export class AgentEditorCapabilities {
       apply: (): boolean => target.apply(outcome),
       diffShown,
     });
+    this.log.info('agent.editor-capabilities', 'Staged edit preview', {
+      previewId,
+      kind: target.kind,
+      diffShown,
+    });
     return {
       available: true,
       previewId,
@@ -525,9 +548,12 @@ export class AgentEditorCapabilities {
   private commitPreview(input: unknown): EditResult {
     const pending: PendingPreview | null = this.takePreview(input);
     if (pending === null) {
+      this.log.warn('agent.editor-capabilities', 'Commit preview: staged edit no longer available');
       return { ok: false, detail: 'The staged edit is no longer available.' };
     }
-    return pending.apply()
+    const applied: boolean = pending.apply();
+    this.log.info('agent.editor-capabilities', 'Committed staged edit preview', { applied });
+    return applied
       ? { ok: true, detail: 'The edit was applied.' }
       : { ok: false, detail: 'The editor is no longer available.' };
   }
@@ -537,6 +563,7 @@ export class AgentEditorCapabilities {
    * @param input The capability input carrying the `previewId`.
    */
   private cancelPreview(input: unknown): void {
+    this.log.info('agent.editor-capabilities', 'Cancelled staged edit preview');
     this.takePreview(input);
   }
 
@@ -665,9 +692,18 @@ export class AgentEditorCapabilities {
     }
     const outcome: EditOutcome = resolve(target.source);
     if (!outcome.ok) {
+      this.log.warn('agent.editor-capabilities', 'Edit did not resolve', {
+        kind: target.kind,
+        detail: outcome.detail,
+      });
       return { ok: false, detail: outcome.detail };
     }
-    return target.apply(outcome)
+    const applied: boolean = target.apply(outcome);
+    this.log.info('agent.editor-capabilities', 'Applied edit to active document', {
+      kind: target.kind,
+      applied,
+    });
+    return applied
       ? { ok: true, detail: outcome.detail }
       : { ok: false, detail: 'The editor is no longer available.' };
   }
@@ -765,6 +801,7 @@ export class AgentEditorCapabilities {
    * @returns Returns the {@link ReadResult}.
    */
   private readActive(input: unknown): ReadResult {
+    this.log.trace('agent.editor-capabilities', 'Read active document invoked');
     const tabId: string | null = this.extractTabId(input);
     if (tabId !== null) {
       const markdown: string | null = this.markdownCommands.readDocument(tabId);
@@ -790,6 +827,7 @@ export class AgentEditorCapabilities {
    * @returns Returns the {@link ReplaceResult}.
    */
   private replaceActive(input: unknown): ReplaceResult {
+    this.log.info('agent.editor-capabilities', 'Replace active document invoked');
     const text: string | null = this.extractText(input);
     if (text === null) {
       return { ok: false };

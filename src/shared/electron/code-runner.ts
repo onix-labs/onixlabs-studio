@@ -44,6 +44,7 @@ export class CodeRunner {
    * Registers the code-runner IPC handlers.
    */
   public register(): void {
+    logger.trace('CodeRunner', 'Registering run IPC handlers');
     ipcMain.handle(
       RunChannel.WriteTempFile,
       (
@@ -51,7 +52,10 @@ export class CodeRunner {
         key: unknown,
         extension: unknown,
         content: unknown,
-      ): Promise<TempFileResult> => this.writeTempFile(key, extension, content),
+      ): Promise<TempFileResult> => {
+        logger.trace('CodeRunner', 'WriteTempFile requested');
+        return this.writeTempFile(key, extension, content);
+      },
     );
   }
 
@@ -59,6 +63,7 @@ export class CodeRunner {
    * Removes the session directory. Called on application shutdown.
    */
   public dispose(): void {
+    logger.trace('CodeRunner', `Removing run session directory ${this.sessionDirectory}`);
     try {
       rmSync(this.sessionDirectory, { recursive: true, force: true });
     } catch {
@@ -79,6 +84,7 @@ export class CodeRunner {
     content: unknown,
   ): Promise<TempFileResult> {
     if (typeof key !== 'string' || typeof extension !== 'string' || typeof content !== 'string') {
+      logger.warn('CodeRunner', 'Rejected run request with invalid arguments');
       return { success: false, error: 'Invalid run arguments' };
     }
     try {

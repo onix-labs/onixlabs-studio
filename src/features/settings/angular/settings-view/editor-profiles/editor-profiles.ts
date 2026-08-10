@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, inject, Signal } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 import { Accordion } from '@shared/angular/components/forms/accordion/accordion';
 import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
 import { Dropdown } from '@shared/angular/components/forms/dropdown/dropdown';
@@ -43,6 +44,11 @@ export class EditorProfiles {
   private readonly settings: Settings = inject(Settings);
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Gets the editor profiles.
    */
   protected readonly profiles: Signal<readonly EditorProfile[]> = this.settings.profiles;
@@ -84,6 +90,7 @@ export class EditorProfiles {
    * Creates a new, empty editor profile.
    */
   protected addProfile(): void {
+    this.log.info('settings.profiles', 'Editor profile created');
     this.settings.createProfile('New profile', []);
   }
 
@@ -92,6 +99,7 @@ export class EditorProfiles {
    * @param id The identifier of the profile to delete.
    */
   protected deleteProfile(id: string): void {
+    this.log.info('settings.profiles', 'Editor profile deleted', id);
     this.settings.deleteProfile(id);
   }
 
@@ -101,6 +109,7 @@ export class EditorProfiles {
    * @param languages The selected language identifiers.
    */
   protected onLanguagesChange(id: string, languages: readonly string[]): void {
+    this.log.info('settings.profiles', 'Editor profile languages changed', id, languages.length);
     this.settings.updateProfile(id, { languages });
   }
 
@@ -141,6 +150,7 @@ export class EditorProfiles {
     } else {
       delete next[field];
     }
+    this.log.info('settings.profiles', 'Editor profile override toggled', profile.id, key, enabled);
     this.settings.updateProfile(profile.id, { settings: next });
   }
 
@@ -155,6 +165,7 @@ export class EditorProfiles {
       ...this.profileSettings(profile),
       [this.fieldOf(key)]: value,
     };
+    this.log.info('settings.profiles', 'Editor profile override value changed', profile.id, key, value);
     this.settings.updateProfile(profile.id, { settings: next });
   }
 

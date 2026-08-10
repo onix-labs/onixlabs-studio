@@ -17,6 +17,7 @@ import {
 } from '@shared/angular/services/diagnostics/diagnostics';
 import { Editors } from '@shared/angular/services/editors/editors';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
+import { Log } from '@shared/angular/services/log/log';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
@@ -126,6 +127,11 @@ export class ProblemsPanel {
   private readonly editors: Editors = inject(Editors);
 
   /**
+   * Holds the structured logger for problems panel actions.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Holds the selected severity filter.
    */
   protected readonly severity: WritableSignal<SeverityFilter> = signal<SeverityFilter>('all');
@@ -194,6 +200,7 @@ export class ProblemsPanel {
    * @param value The chosen filter value.
    */
   protected selectSeverity(value: SeverityFilter): void {
+    this.log.debug('workspace.problems', 'Filter by severity', value);
     this.severity.set(value);
   }
 
@@ -202,6 +209,7 @@ export class ProblemsPanel {
    * @param value The chosen source, or {@link ALL_SOURCES}.
    */
   protected selectSource(value: string): void {
+    this.log.debug('workspace.problems', 'Filter by source', value);
     this.source.set(value);
   }
 
@@ -221,6 +229,11 @@ export class ProblemsPanel {
    * @param diagnostic The diagnostic to reveal.
    */
   public reveal(diagnostic: Diagnostic): void {
+    this.log.info(
+      'workspace.problems',
+      `Navigate to problem at ${diagnostic.file}:${diagnostic.line}`,
+      diagnostic.message,
+    );
     if (diagnostic.path !== null) {
       void this.fileOpener.openPath(diagnostic.path);
     }

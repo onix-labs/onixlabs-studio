@@ -1,5 +1,6 @@
 import { computed, inject, Service, Signal, signal, WritableSignal } from '@angular/core';
 import { DockNode } from '@shared/angular/services/dock-layout/dock-node';
+import { Log } from '@shared/angular/services/log/log';
 import { SettingsStore } from '@shared/angular/services/settings-store/settings-store';
 
 /**
@@ -126,6 +127,11 @@ export class LayoutPresets {
    * Holds the key-value store definitions and picks persist through.
    */
   private readonly store: SettingsStore = inject(SettingsStore);
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Holds the registered built-in presets, in registration order.
@@ -319,6 +325,7 @@ export class LayoutPresets {
     }
     this.chosenDefault.set(id);
     this.store.set(DEFAULT_KEY, id);
+    this.log.info('LayoutPresets', `Default preset set`, id);
   }
 
   /**
@@ -362,6 +369,7 @@ export class LayoutPresets {
     this.transient.set(null);
     this.pick(session.root(), id);
     session.apply();
+    this.log.info('LayoutPresets', `Applied preset`, id, session.root());
   }
 
   /**
@@ -380,6 +388,7 @@ export class LayoutPresets {
     const returnTo: string | null = this.transient()?.returnTo ?? this.activeId();
     this.transient.set({ id, returnTo });
     session.apply();
+    this.log.debug('LayoutPresets', `Switched to transient preset`, id, returnTo);
     return true;
   }
 
@@ -393,6 +402,7 @@ export class LayoutPresets {
     }
     this.transient.set(null);
     this.session()?.apply();
+    this.log.debug('LayoutPresets', 'Returned from transient preset');
   }
 
   /**
@@ -430,6 +440,7 @@ export class LayoutPresets {
     if (makeDefault) {
       this.setDefault(preset.id);
     }
+    this.log.info('LayoutPresets', `Saved preset '${trimmed}'`, preset.id, makeDefault);
   }
 
   /**
@@ -450,6 +461,7 @@ export class LayoutPresets {
       ),
     );
     this.persistPresets();
+    this.log.info('LayoutPresets', `Updated preset`, active);
   }
 
   /**
@@ -469,6 +481,7 @@ export class LayoutPresets {
       ),
     );
     this.persistPresets();
+    this.log.info('LayoutPresets', `Renamed preset to '${trimmed}'`, id);
   }
 
   /**
@@ -495,6 +508,7 @@ export class LayoutPresets {
     if (wasActive) {
       this.session()?.apply();
     }
+    this.log.info('LayoutPresets', `Removed preset`, id);
   }
 
   /**

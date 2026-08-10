@@ -2,6 +2,7 @@ import { inject, Service, Signal, signal, WritableSignal } from '@angular/core';
 import { createTwoFilesPatch } from 'diff';
 import { AiEvent, AiProviderInfo } from '@shared/api/ai-types';
 import { AiRuntime } from '@shared/angular/services/ai-runtime/ai-runtime';
+import { Log } from '@shared/angular/services/log/log';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { FileDiff } from '../source-control/source-control-provider';
 import { GitFileChange } from './repository-data';
@@ -53,6 +54,11 @@ export class CommitMessageGenerator {
   private readonly repository: Repository = inject(Repository);
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Holds a value indicating whether a generation is currently running.
    */
   private readonly generatingSignal: WritableSignal<boolean> = signal<boolean>(false);
@@ -79,6 +85,7 @@ export class CommitMessageGenerator {
       return null;
     }
     this.generatingSignal.set(true);
+    this.log.info('CommitMessageGenerator', `Generating commit message for ${files.length} file(s)`);
     try {
       const providers: readonly AiProviderInfo[] = await this.runtime.listProviders(
         this.settings.aiConnections(),
@@ -87,10 +94,17 @@ export class CommitMessageGenerator {
         (candidate: AiProviderInfo): boolean => candidate.available,
       );
       if (provider === undefined) {
+        this.log.warn('CommitMessageGenerator', 'No available AI provider; generation skipped');
         return null;
       }
+      this.log.debug('CommitMessageGenerator', `Using provider '${provider.id}'`);
       const prompt: string = await this.buildPrompt(files);
-      return await this.runOnce(provider.id, prompt);
+      const message: string | null = await this.runOnce(provider.id, prompt);
+      this.log.info(
+        'CommitMessageGenerator',
+        message === null ? 'Generation produced no message' : 'Generated commit message',
+      );
+      return message;
     } finally {
       this.generatingSignal.set(false);
     }
@@ -160,6 +174,7 @@ export class CommitMessageGenerator {
       };
       const requestId: string = this.runtime.run(providerId, prompt, { mode: 'chat' });
       const timer: ReturnType<typeof setTimeout> = setTimeout((): void => {
+        this.log.warn('CommitMessageGenerator', 'Generation timed out; aborting run');
         this.runtime.abort(requestId);
         finish(null);
       }, GENERATE_TIMEOUT_MS);
@@ -178,6 +193,7 @@ export class CommitMessageGenerator {
           return;
         }
         if (event.kind === 'status' && event.state !== 'started') {
+          this.log.debug('CommitMessageGenerator', `Generation ended '${event.state}'`);
           finish(event.state === 'completed' ? this.clean(text) : null);
         }
       });

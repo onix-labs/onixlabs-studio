@@ -8,6 +8,7 @@ import {
   Signal,
   WritableSignal,
 } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 import { SettingsStore } from '../settings-store/settings-store';
 import {
   clampSaturation,
@@ -219,6 +220,11 @@ export class Theme {
   private readonly document: Document = inject(DOCUMENT);
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Holds the chosen theme mode.
    */
   private readonly modeSignal: WritableSignal<ThemeMode> = signal<ThemeMode>(
@@ -290,11 +296,13 @@ export class Theme {
     // windows that did not write, so re-applying the stored value here cannot echo back.
     this.settings.onExternalChange(MODE_KEY, (): void => {
       this.modeSignal.set(this.settings.get<ThemeMode>(MODE_KEY, DEFAULT_MODE));
+      this.log.debug('Theme', 'Theme mode followed an external change', this.modeSignal());
     });
     this.settings.onExternalChange(ACCENT_KEY, (): void => {
       this.accentSignal.set(
         normaliseAccent(this.settings.get<unknown>(ACCENT_KEY, DEFAULT_ACCENT)),
       );
+      this.log.debug('Theme', 'Accent followed an external change', this.accentSignal().kind);
     });
 
     effect((): void => {
@@ -312,6 +320,7 @@ export class Theme {
   public setMode(mode: ThemeMode): void {
     this.modeSignal.set(mode);
     this.settings.set<ThemeMode>(MODE_KEY, mode);
+    this.log.info('Theme', `Theme mode changed to '${mode}'`, this.resolvedMode());
   }
 
   /**
@@ -322,6 +331,7 @@ export class Theme {
     const normalised: Accent = normaliseAccent(accent);
     this.accentSignal.set(normalised);
     this.settings.set<Accent>(ACCENT_KEY, normalised);
+    this.log.info('Theme', `Accent changed to ${normalised.kind}`, resolveAccent(normalised).hex);
   }
 
   /**

@@ -14,6 +14,7 @@ import { DebugResolveResult } from '@shared/api/debug-channels';
 import { RunConfiguration } from '@shared/api/studio';
 import { ProjectSystem } from './project-system';
 import { parseWorkspacePatterns, splitWorkspacePattern } from './node-workspaces';
+import { logger } from '../logger';
 
 /**
  * The Node project system's root-independent capabilities: an interpreted ecosystem with no
@@ -136,15 +137,22 @@ export class NodeProjectSystem implements ProjectSystem {
    * @returns Returns the model, or null when the root has no manifest.
    */
   public async load(root: string): Promise<ProjectModel | null> {
+    logger.trace('NodeProjectSystem', `Loading the Node model for '${root}'.`);
     const manifestPath: string = path.join(root, MANIFEST);
     const manifest: Record<string, unknown> | null = await this.readManifest(manifestPath);
     if (manifest === null) {
+      logger.debug('NodeProjectSystem', `No readable 'package.json' at '${root}'.`);
       return null;
     }
     const rootName: string = this.packageName(manifest, root);
     const capabilities: ProjectCapabilities = this.capabilitiesFor(manifest);
+    logger.debug(
+      'NodeProjectSystem',
+      `Root '${rootName}' declares actions [${capabilities.actions.join(', ')}].`,
+    );
     const workspaceDirs: readonly string[] = await this.expandWorkspaces(root, manifest);
     if (workspaceDirs.length === 0) {
+      logger.info('NodeProjectSystem', `Loaded Node package '${rootName}' (no workspaces).`);
       const tree: readonly ProjectNode[] = [
         { type: 'project', name: rootName, path: manifestPath },
       ];
@@ -170,6 +178,10 @@ export class NodeProjectSystem implements ProjectSystem {
       }
     }
     projects.sort((a: ProjectNode, b: ProjectNode): number => a.name.localeCompare(b.name));
+    logger.info(
+      'NodeProjectSystem',
+      `Loaded Node workspaces monorepo '${rootName}' with ${projects.length} package(s).`,
+    );
     const tree: readonly ProjectNode[] = [
       { type: 'project', name: rootName, path: manifestPath },
       ...projects,
@@ -222,8 +234,13 @@ export class NodeProjectSystem implements ProjectSystem {
     // Confine the launch to the open workspace: the program originates from renderer-supplied
     // configuration, so a hostile one must not point the debugger outside the root.
     if (program !== root && !program.startsWith(path.resolve(root) + path.sep)) {
+      logger.warn(
+        'NodeProjectSystem',
+        `Refused a debug program outside the workspace: '${program}' not under '${root}'.`,
+      );
       return { target: null, error: 'The program is outside the workspace.' };
     }
+    logger.debug('NodeProjectSystem', `Resolved debug program '${program}'.`);
     return {
       target: {
         program,

@@ -11,6 +11,7 @@ import {
 } from '@shared/api/ai-types';
 import { AssembleResult, DecodedInstruction } from '@shared/api/binary-channels';
 import { AiRuntime } from '@shared/angular/services/ai-runtime/ai-runtime';
+import { Log } from '@shared/angular/services/log/log';
 import {
   BinaryDocumentEntry,
   BinaryDocuments,
@@ -80,6 +81,11 @@ export class BinaryAgentCapabilities {
    * Holds the binary document registry the capabilities resolve the owning document from.
    */
   private readonly binaryDocuments: BinaryDocuments = inject(BinaryDocuments);
+
+  /**
+   * Holds the structured logger for agent binary capabilities.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Initializes a new instance of the {@link BinaryAgentCapabilities} class, registering the binary
@@ -233,11 +239,21 @@ export class BinaryAgentCapabilities {
     }
     const ok: boolean = await document.patch(offset, values);
     if (!ok) {
+      this.log.warn(
+        'binary.agent',
+        `Agent patch rejected: ${values.length} byte(s) at ${this.hexOffset(offset)} out of bounds`,
+        document.path,
+      );
       return {
         ok: false,
         text: `Cannot patch ${values.length} byte(s) at ${this.hexOffset(offset)}: the range is outside the file (size ${document.size()} bytes). Patching cannot change the file length.`,
       };
     }
+    this.log.info(
+      'binary.agent',
+      `Agent overwrote ${values.length} byte(s) at ${this.hexOffset(offset)}`,
+      document.path,
+    );
     return {
       ok: true,
       text: `Overwrote ${values.length} byte(s) at ${this.hexOffset(offset)}. The change is unsaved and undoable; the user can save it to write it to disk.`,
@@ -265,11 +281,21 @@ export class BinaryAgentCapabilities {
     }
     const ok: boolean = await document.insertBytes(offset, values);
     if (!ok) {
+      this.log.warn(
+        'binary.agent',
+        `Agent insert rejected: offset ${this.hexOffset(offset)} out of bounds`,
+        document.path,
+      );
       return {
         ok: false,
         text: `Cannot insert at ${this.hexOffset(offset)}: the offset is outside the file (size ${document.size()} bytes; inserting at the size appends).`,
       };
     }
+    this.log.info(
+      'binary.agent',
+      `Agent inserted ${values.length} byte(s) at ${this.hexOffset(offset)}`,
+      document.path,
+    );
     return {
       ok: true,
       text: `Inserted ${values.length} byte(s) at ${this.hexOffset(offset)}. The file is now ${document.size()} bytes and every offset at or after ${this.hexOffset(offset)} has shifted by +${values.length} — earlier reads are stale. The change is unsaved and undoable.`,
@@ -297,11 +323,21 @@ export class BinaryAgentCapabilities {
     }
     const ok: boolean = await document.removeBytes(offset, length);
     if (!ok) {
+      this.log.warn(
+        'binary.agent',
+        `Agent delete rejected: ${length} byte(s) at ${this.hexOffset(offset)} out of bounds`,
+        document.path,
+      );
       return {
         ok: false,
         text: `Cannot delete ${length} byte(s) at ${this.hexOffset(offset)}: the range is outside the file (size ${document.size()} bytes).`,
       };
     }
+    this.log.info(
+      'binary.agent',
+      `Agent deleted ${length} byte(s) at ${this.hexOffset(offset)}`,
+      document.path,
+    );
     return {
       ok: true,
       text: `Deleted ${length} byte(s) at ${this.hexOffset(offset)}. The file is now ${document.size()} bytes and every offset at or after ${this.hexOffset(offset)} has shifted by -${length} — earlier reads are stale. The change is unsaved and undoable.`,
@@ -347,6 +383,11 @@ export class BinaryAgentCapabilities {
     }
     const assembled: AssembleResult = await document.assemble(assembly, architecture, offset);
     if (!assembled.ok) {
+      this.log.warn(
+        'binary.agent',
+        `Agent assembly failed at ${this.hexOffset(offset)}: ${assembled.error}`,
+        document.path,
+      );
       return { ok: false, text: `Could not assemble the instructions: ${assembled.error}` };
     }
     const written: number[] | string = await this.fit(
@@ -366,6 +407,11 @@ export class BinaryAgentCapabilities {
         text: `Cannot write ${written.length} byte(s) at ${this.hexOffset(offset)}: the range is outside the file (size ${document.size()} bytes). Assembly cannot change the file length.`,
       };
     }
+    this.log.info(
+      'binary.agent',
+      `Agent assembled and wrote ${written.length} byte(s) at ${this.hexOffset(offset)}`,
+      document.path,
+    );
     return { ok: true, text: await this.describeWrite(document, offset, assembled.bytes, written) };
   }
 

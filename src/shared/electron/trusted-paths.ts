@@ -1,5 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { logger } from './logger';
 
 /**
  * The most paths remembered; older entries are evicted so the store stays bounded.
@@ -47,6 +48,7 @@ export class TrustedPaths {
     this.max = max;
     this.entries = load(file);
     this.index = new Set<string>(this.entries);
+    logger.debug('TrustedPaths', `Loaded ${this.entries.length} trusted path(s)`);
   }
 
   /**
@@ -59,6 +61,7 @@ export class TrustedPaths {
       return;
     }
     const resolved: string = path.resolve(target);
+    logger.debug('TrustedPaths', `Remembering trusted path ${resolved}`);
     this.entries = this.entries.filter((entry: string): boolean => entry !== resolved);
     this.entries.push(resolved);
     if (this.entries.length > this.max) {

@@ -1,4 +1,5 @@
 import { inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 
 /**
@@ -14,6 +15,11 @@ export class SettingsNavigation {
    * Holds the tab registry, used to open (or activate) the singleton Settings tab.
    */
   private readonly tabs: Tabs = inject(Tabs);
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Holds the section the settings view should switch to on its next read, or null when none is
@@ -35,6 +41,7 @@ export class SettingsNavigation {
   public open(section: string): void {
     this.requested.set(section);
     this.tabs.open('settings');
+    this.log.info('SettingsNavigation', `Opened Settings at section '${section}'`);
   }
 
   /**

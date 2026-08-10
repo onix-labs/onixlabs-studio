@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  inject,
   input,
   InputSignal,
   output,
@@ -10,6 +11,7 @@ import {
   Signal,
   WritableSignal,
 } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 import { FormModal } from './form-modal';
 
 /**
@@ -75,6 +77,11 @@ export interface LinkInsert {
 })
 export class MarkdownLinkModal {
   /**
+   * Holds the structured logging client for the insert modal's confirmation.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Gets a value indicating whether the modal is open.
    */
   public readonly open: InputSignal<boolean> = input.required<boolean>();
@@ -111,6 +118,7 @@ export class MarkdownLinkModal {
     if (!this.valid()) {
       return;
     }
+    this.log.debug('markdown.insert', 'Link modal confirmed');
     this.submitted.emit({ text: this.text().trim(), url: this.url().trim() });
     this.reset();
     this.closed.emit();

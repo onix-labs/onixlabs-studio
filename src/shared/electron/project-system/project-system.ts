@@ -1,6 +1,7 @@
 import { ProjectCapabilities, ProjectItems, ProjectModel } from '@shared/api/project-system';
 import { DebugResolveResult } from '@shared/api/debug-channels';
 import { RunConfiguration } from '@shared/api/studio';
+import { logger } from '../logger';
 
 /**
  * Understands one ecosystem's notion of a project/solution structure (for example .NET solutions, npm
@@ -83,6 +84,7 @@ export class ProjectSystemRegistry {
    * @param system The project system to register.
    */
   public register(system: ProjectSystem): void {
+    logger.debug('ProjectSystemRegistry', `Registered project system '${system.kind}'.`);
     this.systems.set(system.kind, system);
   }
 
@@ -101,11 +103,14 @@ export class ProjectSystemRegistry {
    * @returns Returns the matching project system, or null when none applies.
    */
   public async match(root: string): Promise<ProjectSystem | null> {
+    logger.trace('ProjectSystemRegistry', `Matching a project system for '${root}'.`);
     for (const system of this.systems.values()) {
       if (await system.detect(root)) {
+        logger.debug('ProjectSystemRegistry', `Matched project system '${system.kind}' for '${root}'.`);
         return system;
       }
     }
+    logger.debug('ProjectSystemRegistry', `No project system matched '${root}'.`);
     return null;
   }
 
@@ -118,9 +123,14 @@ export class ProjectSystemRegistry {
   public matchProject(projectPath: string): ProjectSystem | null {
     for (const system of this.systems.values()) {
       if (system.ownsProject?.(projectPath) === true) {
+        logger.trace(
+          'ProjectSystemRegistry',
+          `Project '${projectPath}' owned by project system '${system.kind}'.`,
+        );
         return system;
       }
     }
+    logger.debug('ProjectSystemRegistry', `No project system owns '${projectPath}'.`);
     return null;
   }
 }

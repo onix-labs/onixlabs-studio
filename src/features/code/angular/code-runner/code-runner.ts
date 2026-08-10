@@ -1,4 +1,5 @@
 import { inject, Service } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 import { RunFileTaskProvider } from '@shared/angular/services/tasks/providers/run-file-task-provider';
 import { Task } from '@shared/angular/services/tasks/task';
 import { Tasks } from '@shared/angular/services/tasks/tasks';
@@ -21,6 +22,11 @@ export class CodeRunner {
   private readonly provider: RunFileTaskProvider = inject(RunFileTaskProvider);
 
   /**
+   * Holds the structured logger for the code runner.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Returns whether the given language can be run.
    * @param language The Monaco language identifier.
    * @returns Returns true when a runner exists for the language.
@@ -37,9 +43,13 @@ export class CodeRunner {
    * @param content The source content to run.
    */
   public async run(tabId: string, language: string, content: string): Promise<void> {
+    this.log.info('code.runner', 'Run requested', tabId, language);
     const task: Task | null = this.provider.buildTask({ tabId, language, content });
-    if (task !== null) {
-      await this.tasks.run(task);
+    if (task === null) {
+      this.log.warn('code.runner', 'No runner for language; run skipped', language);
+      return;
     }
+    this.log.debug('code.runner', 'Dispatching run task', task.id);
+    await this.tasks.run(task);
   }
 }

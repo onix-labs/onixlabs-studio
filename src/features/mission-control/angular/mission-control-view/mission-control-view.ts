@@ -15,6 +15,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { Settings } from '@shared/angular/services/settings/settings';
+import { Log } from '@shared/angular/services/log/log';
 import { Agent } from '@shared/angular/services/agent/agent';
 import {
   AGENT_HOST,
@@ -68,6 +69,11 @@ export class MissionControlView {
    * Holds the view's injector, the parent of each tile's per-host injector.
    */
   private readonly injector: Injector = inject(Injector);
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Gets the scrolling row element (present only while there are agents to show).
@@ -190,6 +196,10 @@ export class MissionControlView {
         ],
       });
       this.injectors.set(host, injector);
+      this.log.debug('mission-control', 'Built tile injector for host', {
+        host: host.id,
+        tab: host.tabId,
+      });
     }
     return injector;
   }

@@ -51,6 +51,7 @@ import {
 } from './studio-tools';
 import { formatToolInput, formatToolOutput, summarizeToolInput } from './tool-format';
 import { coarseGrantSource } from './tool-policy';
+import { logger } from '../logger';
 
 /**
  * The maximum number of steps (model turns plus tool round-trips) a single run may take before the
@@ -133,6 +134,11 @@ export async function consumeAgentStream(
       return;
     }
     if (part.type === 'error') {
+      logger.error(
+        'ai-sdk-stream',
+        `Stream reported an error for run ${context.requestId}`,
+        part.error,
+      );
       throw new Error(describeRunError(part.error));
     }
     mapStreamPart(part, context);
@@ -202,11 +208,13 @@ function gated<TArgs>(
     const detail: string = summarizeToolInput(args);
     const policy: AiToolPolicy = context.toolPolicies[name] ?? 'ask';
     if (policy === 'deny') {
+      logger.debug('ai-sdk-stream.gated', `Tool "${name}" refused by Deny policy`);
       return `The ${name} tool is set to Deny in your agent settings.`;
     }
     if (policy !== 'allow' && context.permissionPosture !== 'auto-all') {
       const granted: boolean = await context.requestPermission(name, detail);
       if (!granted) {
+        logger.debug('ai-sdk-stream.gated', `User declined tool "${name}"`);
         return 'The user declined to run this tool.';
       }
     }

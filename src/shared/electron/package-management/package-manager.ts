@@ -5,6 +5,7 @@ import {
   PackageSearchResult,
   PackageSourceInfo,
 } from '@shared/api/package-management';
+import { logger } from '../logger';
 
 /**
  * A minimal HTTP response shape, so a package manager's registry queries do not depend on the DOM or
@@ -113,6 +114,7 @@ export class PackageManagerRegistry {
    * @param manager The package manager to register.
    */
   public register(manager: PackageManager): void {
+    logger.debug('PackageManagerRegistry', `Registered package manager '${manager.ecosystem}'.`);
     this.managers.set(manager.ecosystem, manager);
   }
 
@@ -122,11 +124,17 @@ export class PackageManagerRegistry {
    * @returns Returns the matching manager, or null when none applies.
    */
   public async match(root: string): Promise<PackageManager | null> {
+    logger.trace('PackageManagerRegistry', `Matching a package manager for '${root}'.`);
     for (const manager of this.managers.values()) {
       if (await manager.detect(root)) {
+        logger.debug(
+          'PackageManagerRegistry',
+          `Matched package manager '${manager.ecosystem}' for '${root}'.`,
+        );
         return manager;
       }
     }
+    logger.debug('PackageManagerRegistry', `No package manager matched '${root}'.`);
     return null;
   }
 }

@@ -18,6 +18,7 @@ import {
 import { FitAddon } from '@xterm/addon-fit';
 import { ISearchOptions, SearchAddon } from '@xterm/addon-search';
 import { IBufferLine, ITheme, Terminal as Xterm } from '@xterm/xterm';
+import { Log } from '@shared/angular/services/log/log';
 import { TerminalBridge } from '@shared/angular/services/terminal-bridge/terminal-bridge';
 import { Terminals } from '@shared/angular/services/terminals/terminals';
 import { Theme } from '@shared/angular/services/theme/theme';
@@ -87,6 +88,11 @@ export class Terminal implements AfterViewInit, OnDestroy {
    * its on-screen output by id without holding a reference to the pane.
    */
   private readonly terminals: Terminals = inject(Terminals);
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Gets the terminal/tab identifier. Must be unique per terminal.
@@ -261,6 +267,7 @@ export class Terminal implements AfterViewInit, OnDestroy {
    * process, even when the process itself has already exited.
    */
   public ngOnDestroy(): void {
+    this.log.info('Terminal', `Destroying pane '${this.terminalId()}'`, `persistent=${this.persistent()}`);
     this.cleanupOnData?.();
     this.cleanupOnExit?.();
     this.resizeObserver?.disconnect();
@@ -511,6 +518,7 @@ export class Terminal implements AfterViewInit, OnDestroy {
       return;
     }
     const id: string = this.terminalId();
+    this.log.info('Terminal', `Restarting session '${id}'`);
 
     this.cleanupOnData?.();
     this.cleanupOnData = null;
@@ -637,6 +645,7 @@ export class Terminal implements AfterViewInit, OnDestroy {
       });
       if (!result.success) {
         this.pendingChunks = null;
+        this.log.error('Terminal', `Failed to start session '${id}'`, result.error ?? 'unknown error');
         xterm.writeln(
           `\x1b[31mFailed to start terminal: ${result.error ?? 'unknown error'}\x1b[0m`,
         );
@@ -686,6 +695,7 @@ export class Terminal implements AfterViewInit, OnDestroy {
 
     setTimeout((): void => xterm.focus(), FOCUS_DELAY_MS);
     this.terminalReady.set(true);
+    this.log.info('Terminal', `Session '${id}' ready`, `kind=${this.kind()}`);
     this.ready.emit();
   }
 

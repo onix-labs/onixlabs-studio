@@ -1,4 +1,5 @@
 import { DebugAdapterId } from '@shared/api/debug-channels';
+import { logger } from '../logger';
 import { DebugAdapterDownload, DebugAdapterProvision, DebugProvisioner } from './debug-provisioner';
 
 /**
@@ -262,20 +263,31 @@ export class DebugAdapterRegistry {
   ): Promise<DebugAdapterResolution> {
     const entry: DebugAdapterCatalogueEntry | undefined = this.entries.get(adapterId);
     if (entry === undefined) {
+      logger.trace('DebugAdapterRegistry', `Unknown adapter id: ${adapterId}`);
       return { spec: null, error: null };
     }
+    logger.trace('DebugAdapterRegistry', `Resolving adapter ${adapterId}`);
     // Prefer an already-present executable (override, project-local, or PATH); otherwise download the
     // pinned binary if the adapter ships one.
     const located: string | null = await this.provisioner.locate(entry.binary, rootPath);
+    logger.debug(
+      'DebugAdapterRegistry',
+      `Located ${entry.binary}: ${located ?? 'not found, will provision if available'}`,
+    );
     const binaryPath: string | null =
       located ??
       (entry.provision !== undefined ? await this.provisioner.ensure(entry.provision) : null);
     if (binaryPath === null) {
+      logger.warn(
+        'DebugAdapterRegistry',
+        `${entry.displayName} adapter (${entry.binary}) could not be found or installed`,
+      );
       return {
         spec: null,
         error: `The ${entry.displayName} debug adapter (${entry.binary}) could not be found or installed.`,
       };
     }
+    logger.debug('DebugAdapterRegistry', `Resolved ${adapterId} to ${binaryPath}`);
     return { spec: entry.buildSpec(binaryPath), error: null };
   }
 }

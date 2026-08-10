@@ -12,6 +12,7 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { EditorTerminals } from '@shared/angular/services/editor-terminals/editor-terminals';
+import { Log } from '@shared/angular/services/log/log';
 import { Icon } from '@shared/angular/icons/icon';
 import { PanelArrangements } from '@shared/angular/components/panel-layout/panel-arrangements';
 import { PanelEdge } from '@shared/angular/components/panel-layout/panel-types';
@@ -45,6 +46,11 @@ export class CodeTerminalPanel {
    * Holds the docked-terminal panel state.
    */
   private readonly editorTerminals: EditorTerminals = inject(EditorTerminals);
+
+  /**
+   * Holds the structured logger for the docked run terminal's user actions.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Holds the persisted panel arrangements the layout toggle moves the terminal through.
@@ -109,7 +115,9 @@ export class CodeTerminalPanel {
    */
   protected onLayout(): void {
     const edge: PanelEdge | undefined = this.arrangements.arrangement('code')()['terminal']?.edge;
-    this.arrangements.move('code', 'terminal', edge === 'bottom' ? 'right' : 'bottom');
+    const next: PanelEdge = edge === 'bottom' ? 'right' : 'bottom';
+    this.log.debug('code.view', 'Move run terminal', next);
+    this.arrangements.move('code', 'terminal', next);
   }
 
   /**
@@ -137,6 +145,7 @@ export class CodeTerminalPanel {
    * Hides the terminal panel, leaving its session mounted so it can be reopened.
    */
   protected onClose(): void {
+    this.log.debug('code.view', 'Close run terminal', this.tabId());
     this.editorTerminals.hide(this.tabId());
   }
 

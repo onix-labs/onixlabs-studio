@@ -6,6 +6,7 @@ import * as path from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { promisify } from 'node:util';
+import { logger } from '../logger';
 
 /**
  * Runs a child process and resolves with its output, used to shell out to the platform's archive
@@ -193,6 +194,10 @@ export class DebugProvisioner {
     const platformKey: string = `${process.platform}-${process.arch}`;
     const download: DebugAdapterDownload | undefined = provision.downloads[platformKey];
     if (this.installRoot === null || download === undefined) {
+      logger.warn(
+        'DebugProvisioner',
+        `Cannot provision ${provision.id}: ${this.installRoot === null ? 'provisioning disabled' : `unsupported platform ${platformKey}`}`,
+      );
       return Promise.resolve(null);
     }
     const key: string = `${provision.id} ${provision.version} ${platformKey}`;
@@ -224,28 +229,41 @@ export class DebugProvisioner {
     const executable: string = path.join(installDir, download.executablePath);
     try {
       if (existsSync(executable)) {
+        logger.debug('DebugProvisioner', `Reusing cached ${provision.id} at ${executable}`);
         return executable;
       }
+      logger.info(
+        'DebugProvisioner',
+        `Downloading ${provision.id} ${provision.version} (${platformKey})`,
+      );
       await fs.mkdir(installDir, { recursive: true });
       const archive: string = path.join(installDir, `archive.${download.archive}`);
       await this.download(download.url, archive);
       const digest: string = await this.sha256(archive);
       if (digest !== download.sha256) {
+        logger.error(
+          'DebugProvisioner',
+          `Checksum mismatch for ${provision.id}: expected ${download.sha256}, got ${digest}`,
+        );
         await fs.rm(archive, { force: true });
         return null;
       }
+      logger.debug('DebugProvisioner', `Extracting ${provision.id} archive into ${installDir}`);
       await this.extract(archive, installDir, download.archive);
       await fs.rm(archive, { force: true });
       if (!existsSync(executable)) {
+        logger.warn('DebugProvisioner', `Extracted ${provision.id} but executable is missing`);
         return null;
       }
       if (process.platform !== 'win32') {
         // The archive does not carry the executable bit through every extractor.
         await fs.chmod(executable, 0o755);
       }
+      logger.info('DebugProvisioner', `Installed ${provision.id} at ${executable}`);
       return executable;
-    } catch {
+    } catch (error: unknown) {
       // Leave a partial install behind for the next attempt to overwrite; report unavailable.
+      logger.error('DebugProvisioner', `Failed to provision ${provision.id}`, error);
       return null;
     }
   }

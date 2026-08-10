@@ -1,4 +1,5 @@
-import { Service } from '@angular/core';
+import { inject, Service } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 import { Bridge } from '@shared/api/bridge';
 import { DockerChannel } from '@shared/api/docker-channels';
 import { ContainerSummary, DockerEvent, DockerStatus, ImageSummary } from '@shared/api/docker-types';
@@ -15,6 +16,11 @@ export class Docker {
    * Holds the IPC transport, or undefined when running outside Electron.
    */
   private readonly bridge: Bridge | undefined = window.bridge;
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Lists all containers, running and stopped.
@@ -38,6 +44,7 @@ export class Docker {
    * @returns Returns true when the daemon accepted the request.
    */
   public start(id: string): Promise<boolean> {
+    this.log.trace('containers.docker', 'IPC start container', id);
     return this.bridge?.invoke<boolean>(DockerChannel.Start, id) ?? Promise.resolve(false);
   }
 
@@ -47,6 +54,7 @@ export class Docker {
    * @returns Returns true when the daemon accepted the request.
    */
   public stop(id: string): Promise<boolean> {
+    this.log.trace('containers.docker', 'IPC stop container', id);
     return this.bridge?.invoke<boolean>(DockerChannel.Stop, id) ?? Promise.resolve(false);
   }
 
@@ -56,6 +64,7 @@ export class Docker {
    * @returns Returns true when the daemon accepted the request.
    */
   public remove(id: string): Promise<boolean> {
+    this.log.trace('containers.docker', 'IPC remove container', id);
     return this.bridge?.invoke<boolean>(DockerChannel.Remove, id) ?? Promise.resolve(false);
   }
 
@@ -72,6 +81,7 @@ export class Docker {
    * @returns Returns true when the launch was issued (a no-op returning false outside Electron).
    */
   public launchDesktop(): Promise<boolean> {
+    this.log.info('containers.docker', 'Launching Docker Desktop');
     return this.bridge?.invoke<boolean>(DockerChannel.LaunchDesktop) ?? Promise.resolve(false);
   }
 

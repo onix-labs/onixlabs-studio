@@ -13,6 +13,7 @@ import { Dropdown } from '@shared/angular/components/forms/dropdown/dropdown';
 import { NumberField } from '@shared/angular/components/forms/number-field/number-field';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { Toggle } from '@shared/angular/components/forms/toggle/toggle';
+import { Log } from '@shared/angular/services/log/log';
 import { SettingBinding, SettingBindings } from '@features/settings/angular/setting-bindings';
 import { SettingOptions } from '@features/settings/angular/setting-options';
 import { SETTINGS_BY_KEY } from '@shared/angular/services/settings/settings-registry';
@@ -46,6 +47,11 @@ export class SettingControl {
    * Holds the resolver for settings whose options are computed at runtime (the font pickers).
    */
   private readonly settingOptions: SettingOptions = inject(SettingOptions);
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Gets the key of the setting rendered by this control.
@@ -155,6 +161,7 @@ export class SettingControl {
    * @param value The value picked or entered in the control.
    */
   protected onChange(value: unknown): void {
+    this.log.info('settings', 'Setting changed', this.key(), value);
     const control: ControlDef | undefined = this.control();
     if (control?.kind === 'select' && control.valueType === 'number' && typeof value === 'string') {
       this.binding().set(Number(value));

@@ -1,4 +1,5 @@
 import { inject, Service, Signal, signal, WritableSignal } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 import { Studio } from '@shared/angular/services/studio/studio';
 
 /**
@@ -11,6 +12,11 @@ export class WindowLock {
    * Holds the Studio bridge wrapper used to toggle the window's movability.
    */
   private readonly studio: Studio = inject(Studio);
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Holds the backing state for {@link locked}.
@@ -29,6 +35,7 @@ export class WindowLock {
   public setLocked(locked: boolean): void {
     this.lockedState.set(locked);
     this.studio.setWindowMovable(!locked);
+    this.log.info('WindowLock', `Window ${locked ? 'locked' : 'unlocked'}`);
   }
 
   /**

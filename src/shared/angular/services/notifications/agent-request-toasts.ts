@@ -3,6 +3,7 @@ import {
   AgentRequestEntry,
   AgentRequests,
 } from '@shared/angular/services/agent-requests/agent-requests';
+import { Log } from '@shared/angular/services/log/log';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
@@ -38,6 +39,11 @@ export class AgentRequestToasts {
    * Holds the tab registry, consulted for the active tab and driven by a toast's Show action.
    */
   private readonly tabs: Tabs = inject(Tabs);
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Holds the entry keys currently surfaced as toasts, so a settled or re-covered ask retracts its
@@ -92,6 +98,7 @@ export class AgentRequestToasts {
    */
   private raise(entry: AgentRequestEntry): void {
     const tabId: string | null = entry.tabId;
+    this.log.debug('AgentRequestToasts', `Raised agent-ask toast for '${entry.label}'`, entry.key);
     this.notifications.notify({
       severity: 'info',
       title: `Agent asks — ${entry.label}`,

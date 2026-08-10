@@ -26,6 +26,7 @@ import {
 } from '@shared/angular/components/forms/button-group/button-group';
 import { Icon } from '@shared/angular/icons/icon';
 import { ToolPanel } from '@shared/angular/components/panels/tool-panel/tool-panel';
+import { Log } from '@shared/angular/services/log/log';
 import { FindAdapter, FindQuery, FindResultItem } from './find-adapter';
 
 /**
@@ -135,6 +136,11 @@ export class FindPanel implements OnDestroy {
    * Holds this panel's host element, used to scroll the active result row into view.
    */
   private readonly host: ElementRef<HTMLElement> = inject(ElementRef) as ElementRef<HTMLElement>;
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Gets whether the bound surface supports replace, so the panel can offer the replace view.
@@ -269,6 +275,7 @@ export class FindPanel implements OnDestroy {
     });
 
     afterNextRender((): void => {
+      this.log.info('FindPanel', 'Find panel opened');
       this.findField()?.nativeElement.querySelector('input')?.focus();
     });
 
@@ -325,6 +332,7 @@ export class FindPanel implements OnDestroy {
    * Replaces every match with the replacement text.
    */
   protected replaceEvery(): void {
+    this.log.info('FindPanel', `Replace all across ${this.matchCount()} matches`);
     this.adapter()?.replaceAll(this.replaceText());
   }
 
@@ -349,6 +357,7 @@ export class FindPanel implements OnDestroy {
    * Clears the query highlights and asks the host to close the panel.
    */
   protected dismiss(): void {
+    this.log.info('FindPanel', 'Find panel closed');
     this.adapter()?.clear();
     this.closed.emit();
   }

@@ -2,6 +2,7 @@ import { computed, inject, Service, signal, Signal, WritableSignal } from '@angu
 import { Documents } from '@shared/angular/services/documents/documents';
 import { Editors } from '@shared/angular/services/editors/editors';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
+import { Log } from '@shared/angular/services/log/log';
 import { MonacoDiagnosticsProvider } from './monaco-diagnostics-provider';
 
 /**
@@ -118,6 +119,11 @@ export class Diagnostics {
   private readonly documents: Documents = inject(Documents);
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Holds each provider's current diagnostics, keyed by provider id.
    */
   private readonly bySource: Map<string, readonly Diagnostic[]> = new Map<
@@ -169,6 +175,7 @@ export class Diagnostics {
    * @returns Returns a function that unregisters the provider and drops its diagnostics.
    */
   public register(provider: DiagnosticsProvider): () => void {
+    this.log.debug('Diagnostics', `Registered provider '${provider.id}'`);
     const disconnect: () => void = provider.connect((diagnostics: readonly Diagnostic[]): void => {
       this.bySource.set(provider.id, diagnostics);
       this.recompute();

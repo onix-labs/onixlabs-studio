@@ -127,12 +127,17 @@ export class WorkspaceManager {
   public register(): void {
     ipcMain.handle(
       WorkspaceChannel.Open,
-      (event: IpcMainInvokeEvent): Promise<OpenSelection | null> => this.open(event.sender),
+      (event: IpcMainInvokeEvent): Promise<OpenSelection | null> => {
+        logger.trace('WorkspaceManager.register', `IPC ${WorkspaceChannel.Open}`);
+        return this.open(event.sender);
+      },
     );
     ipcMain.handle(
       WorkspaceChannel.OpenFile,
-      (_event: IpcMainInvokeEvent, filePath: unknown): Promise<OpenSelection | null> =>
-        this.openFile(filePath),
+      (_event: IpcMainInvokeEvent, filePath: unknown): Promise<OpenSelection | null> => {
+        logger.trace('WorkspaceManager.register', `IPC ${WorkspaceChannel.OpenFile}`);
+        return this.openFile(filePath);
+      },
     );
     ipcMain.handle(
       WorkspaceChannel.ReadBytes,
@@ -141,12 +146,17 @@ export class WorkspaceManager {
         filePath: unknown,
         offset: unknown,
         length: unknown,
-      ): Promise<BinaryChunk | null> => this.readBytes(filePath, offset, length),
+      ): Promise<BinaryChunk | null> => {
+        logger.trace('WorkspaceManager.register', `IPC ${WorkspaceChannel.ReadBytes}`);
+        return this.readBytes(filePath, offset, length);
+      },
     );
     ipcMain.handle(
       WorkspaceChannel.WriteBytes,
-      (_event: IpcMainInvokeEvent, filePath: unknown, patches: unknown): Promise<boolean> =>
-        this.writeBytes(filePath, patches),
+      (_event: IpcMainInvokeEvent, filePath: unknown, patches: unknown): Promise<boolean> => {
+        logger.trace('WorkspaceManager.register', `IPC ${WorkspaceChannel.WriteBytes}`);
+        return this.writeBytes(filePath, patches);
+      },
     );
     ipcMain.handle(
       WorkspaceChannel.WritePieces,
@@ -155,16 +165,22 @@ export class WorkspaceManager {
         filePath: unknown,
         spans: unknown,
         added: unknown,
-      ): Promise<boolean> => this.writePieces(filePath, spans, added),
+      ): Promise<boolean> => {
+        logger.trace('WorkspaceManager.register', `IPC ${WorkspaceChannel.WritePieces}`);
+        return this.writePieces(filePath, spans, added);
+      },
     );
     ipcMain.handle(
       WorkspaceChannel.OpenFolder,
-      (event: IpcMainInvokeEvent): Promise<DirectoryListing | null> =>
-        this.openFolder(event.sender),
+      (event: IpcMainInvokeEvent): Promise<DirectoryListing | null> => {
+        logger.trace('WorkspaceManager.register', `IPC ${WorkspaceChannel.OpenFolder}`);
+        return this.openFolder(event.sender);
+      },
     );
     ipcMain.handle(
       WorkspaceChannel.CloseFolder,
       (_event: IpcMainInvokeEvent, root: unknown): void => {
+        logger.trace('WorkspaceManager.register', `IPC ${WorkspaceChannel.CloseFolder}`);
         if (typeof root === 'string' && root.length > 0) {
           this.workspace.removeRoot(root);
         }
@@ -172,18 +188,24 @@ export class WorkspaceManager {
     );
     ipcMain.handle(
       WorkspaceChannel.ReadDirectory,
-      (_event: IpcMainInvokeEvent, directoryPath: unknown): Promise<DirectoryListing | null> =>
-        this.readDirectory(directoryPath),
+      (_event: IpcMainInvokeEvent, directoryPath: unknown): Promise<DirectoryListing | null> => {
+        logger.trace('WorkspaceManager.register', `IPC ${WorkspaceChannel.ReadDirectory}`);
+        return this.readDirectory(directoryPath);
+      },
     );
     ipcMain.handle(
       WorkspaceChannel.ReopenFolder,
-      (_event: IpcMainInvokeEvent, folderPath: unknown): Promise<DirectoryListing | null> =>
-        this.reopenFolder(folderPath),
+      (_event: IpcMainInvokeEvent, folderPath: unknown): Promise<DirectoryListing | null> => {
+        logger.trace('WorkspaceManager.register', `IPC ${WorkspaceChannel.ReopenFolder}`);
+        return this.reopenFolder(folderPath);
+      },
     );
     ipcMain.handle(
       WorkspaceChannel.ReopenFile,
-      (_event: IpcMainInvokeEvent, filePath: unknown): Promise<OpenSelection | null> =>
-        this.reopenFile(filePath),
+      (_event: IpcMainInvokeEvent, filePath: unknown): Promise<OpenSelection | null> => {
+        logger.trace('WorkspaceManager.register', `IPC ${WorkspaceChannel.ReopenFile}`);
+        return this.reopenFile(filePath);
+      },
     );
     ipcMain.handle(
       WorkspaceChannel.CreateFile,
@@ -191,7 +213,10 @@ export class WorkspaceManager {
         _event: IpcMainInvokeEvent,
         directoryPath: unknown,
         name: unknown,
-      ): Promise<FileOperationResult> => this.create(directoryPath, name, 'file'),
+      ): Promise<FileOperationResult> => {
+        logger.trace('WorkspaceManager.register', `IPC ${WorkspaceChannel.CreateFile}`);
+        return this.create(directoryPath, name, 'file');
+      },
     );
     ipcMain.handle(
       WorkspaceChannel.CreateFolder,
@@ -199,7 +224,10 @@ export class WorkspaceManager {
         _event: IpcMainInvokeEvent,
         directoryPath: unknown,
         name: unknown,
-      ): Promise<FileOperationResult> => this.create(directoryPath, name, 'directory'),
+      ): Promise<FileOperationResult> => {
+        logger.trace('WorkspaceManager.register', `IPC ${WorkspaceChannel.CreateFolder}`);
+        return this.create(directoryPath, name, 'directory');
+      },
     );
     ipcMain.handle(
       WorkspaceChannel.Rename,
@@ -207,32 +235,45 @@ export class WorkspaceManager {
         _event: IpcMainInvokeEvent,
         targetPath: unknown,
         newName: unknown,
-      ): Promise<FileOperationResult> => this.rename(targetPath, newName),
+      ): Promise<FileOperationResult> => {
+        logger.trace('WorkspaceManager.register', `IPC ${WorkspaceChannel.Rename}`);
+        return this.rename(targetPath, newName);
+      },
     );
     ipcMain.handle(
       WorkspaceChannel.Delete,
-      (_event: IpcMainInvokeEvent, targetPath: unknown): Promise<FileOperationResult> =>
-        this.delete(targetPath),
+      (_event: IpcMainInvokeEvent, targetPath: unknown): Promise<FileOperationResult> => {
+        logger.trace('WorkspaceManager.register', `IPC ${WorkspaceChannel.Delete}`);
+        return this.delete(targetPath);
+      },
     );
     ipcMain.handle(
       ProjectChannel.ModelLoad,
-      (_event: IpcMainInvokeEvent, root: unknown): Promise<ProjectModel | null> =>
-        this.loadProjectModel(root),
+      (_event: IpcMainInvokeEvent, root: unknown): Promise<ProjectModel | null> => {
+        logger.trace('WorkspaceManager.register', `IPC ${ProjectChannel.ModelLoad}`);
+        return this.loadProjectModel(root);
+      },
     );
     ipcMain.handle(
       ProjectChannel.ItemsLoad,
-      (_event: IpcMainInvokeEvent, projectPath: unknown): Promise<ProjectItems | null> =>
-        this.loadProjectItems(projectPath),
+      (_event: IpcMainInvokeEvent, projectPath: unknown): Promise<ProjectItems | null> => {
+        logger.trace('WorkspaceManager.register', `IPC ${ProjectChannel.ItemsLoad}`);
+        return this.loadProjectItems(projectPath);
+      },
     );
     ipcMain.handle(
       PackageChannel.ModelLoad,
-      (_event: IpcMainInvokeEvent, root: unknown): Promise<PackageManagerModel | null> =>
-        this.loadPackageModel(root),
+      (_event: IpcMainInvokeEvent, root: unknown): Promise<PackageManagerModel | null> => {
+        logger.trace('WorkspaceManager.register', `IPC ${PackageChannel.ModelLoad}`);
+        return this.loadPackageModel(root);
+      },
     );
     ipcMain.handle(
       PackageChannel.Sources,
-      (_event: IpcMainInvokeEvent, root: unknown): Promise<readonly PackageSourceInfo[]> =>
-        this.loadPackageSources(root),
+      (_event: IpcMainInvokeEvent, root: unknown): Promise<readonly PackageSourceInfo[]> => {
+        logger.trace('WorkspaceManager.register', `IPC ${PackageChannel.Sources}`);
+        return this.loadPackageSources(root);
+      },
     );
     ipcMain.handle(
       PackageChannel.Search,
@@ -242,8 +283,12 @@ export class WorkspaceManager {
         sourceName: unknown,
         query: unknown,
         options: unknown,
-      ): Promise<PackageSearchResult> => this.searchPackages(root, sourceName, query, options),
+      ): Promise<PackageSearchResult> => {
+        logger.trace('WorkspaceManager.register', `IPC ${PackageChannel.Search}`);
+        return this.searchPackages(root, sourceName, query, options);
+      },
     );
+    logger.info('WorkspaceManager', 'Registered workspace IPC handlers');
   }
 
   /**
@@ -255,12 +300,15 @@ export class WorkspaceManager {
    */
   private async loadPackageModel(root: unknown): Promise<PackageManagerModel | null> {
     if (typeof root !== 'string' || !this.workspace.isRoot(root)) {
+      logger.warn('WorkspaceManager.loadPackageModel', 'Rejected non-open root');
       return null;
     }
     const manager: PackageManager | null = await packageManagers.match(root);
     if (manager === null) {
+      logger.debug('WorkspaceManager.loadPackageModel', `No package manager for ${root}`);
       return null;
     }
+    logger.debug('WorkspaceManager.loadPackageModel', `Loading package model for ${root}`);
     return manager.load(root, this.httpFetch);
   }
 
@@ -303,8 +351,10 @@ export class WorkspaceManager {
     }
     const manager: PackageManager | null = await packageManagers.match(root);
     if (manager?.search === undefined) {
+      logger.debug('WorkspaceManager.searchPackages', `No searchable package manager for ${root}`);
       return empty;
     }
+    logger.debug('WorkspaceManager.searchPackages', `Searching ${sourceName} for "${query}"`);
     return manager.search(root, sourceName, query, this.searchOptions(options), this.httpFetch);
   }
 
@@ -332,12 +382,15 @@ export class WorkspaceManager {
    */
   private async loadProjectModel(root: unknown): Promise<ProjectModel | null> {
     if (typeof root !== 'string' || !this.workspace.isRoot(root)) {
+      logger.warn('WorkspaceManager.loadProjectModel', 'Rejected non-open root');
       return null;
     }
     const system: ProjectSystem | null = await projectSystems.match(root);
     if (system === null) {
+      logger.debug('WorkspaceManager.loadProjectModel', `No project system for ${root}`);
       return null;
     }
+    logger.debug('WorkspaceManager.loadProjectModel', `Loading project model for ${root}`);
     return system.load(root);
   }
 
@@ -349,6 +402,7 @@ export class WorkspaceManager {
    */
   private async loadProjectItems(projectPath: unknown): Promise<ProjectItems | null> {
     if (typeof projectPath !== 'string' || !this.workspace.isWithin(projectPath)) {
+      logger.warn('WorkspaceManager.loadProjectItems', 'Rejected project outside the workspace');
       return null;
     }
     const system: ProjectSystem | null = projectSystems.matchProject(projectPath);
@@ -400,9 +454,11 @@ export class WorkspaceManager {
       if (stats.isDirectory()) {
         this.workspace.addRoot(selectedPath);
         this.trusted.remember(selectedPath);
+        logger.info('WorkspaceManager.open', `Opened directory ${selectedPath}`);
         return { kind: 'directory', directory: await this.readListing(selectedPath) };
       }
       this.trusted.remember(selectedPath);
+      logger.debug('WorkspaceManager.open', `Opening file ${selectedPath}`);
       return await this.readFileSelection(selectedPath);
     } catch (error: unknown) {
       logger.debug('WorkspaceManager', `Failed to open ${selectedPath}`, error);
@@ -417,6 +473,7 @@ export class WorkspaceManager {
    */
   private async openFile(filePath: unknown): Promise<OpenSelection | null> {
     if (!this.workspace.isWithin(filePath)) {
+      logger.warn('WorkspaceManager.openFile', 'Rejected file outside the workspace');
       return null;
     }
     try {
@@ -456,6 +513,7 @@ export class WorkspaceManager {
       return null;
     }
     if (!this.trusted.has(filePath) && !this.workspace.isWithin(filePath)) {
+      logger.warn('WorkspaceManager.readBytes', 'Rejected untrusted file path');
       return null;
     }
     const resolved: string = path.resolve(filePath);
@@ -491,6 +549,7 @@ export class WorkspaceManager {
       return false;
     }
     if (!this.trusted.has(filePath) && !this.workspace.isWithin(filePath)) {
+      logger.warn('WorkspaceManager.writeBytes', 'Rejected untrusted file path');
       return false;
     }
     if (!Array.isArray(patches)) {
@@ -516,6 +575,7 @@ export class WorkspaceManager {
           await handle.write(Buffer.from(run.bytes), 0, run.bytes.length, run.offset);
         }
       }
+      logger.info('WorkspaceManager.writeBytes', `Wrote ${runs.length} byte patch(es) to ${resolved}`);
       return true;
     } catch (error: unknown) {
       logger.error('WorkspaceManager', `Failed to write bytes to ${resolved}`, error);
@@ -540,6 +600,7 @@ export class WorkspaceManager {
       return false;
     }
     if (!this.trusted.has(filePath) && !this.workspace.isWithin(filePath)) {
+      logger.warn('WorkspaceManager.writePieces', 'Rejected untrusted file path');
       return false;
     }
     if (!Array.isArray(spans) || !(added instanceof Uint8Array)) {
@@ -597,6 +658,7 @@ export class WorkspaceManager {
       await source.close();
       source = undefined;
       await fs.rename(tempPath, resolved);
+      logger.info('WorkspaceManager.writePieces', `Rewrote ${resolved} (${runs.length} spans)`);
       return true;
     } catch (error: unknown) {
       logger.error('WorkspaceManager', 'Failed to write file', error);
@@ -615,6 +677,7 @@ export class WorkspaceManager {
    */
   private async readDirectory(directoryPath: unknown): Promise<DirectoryListing | null> {
     if (!this.workspace.isWithin(directoryPath)) {
+      logger.warn('WorkspaceManager.readDirectory', 'Rejected directory outside the workspace');
       return null;
     }
     try {
@@ -633,10 +696,12 @@ export class WorkspaceManager {
    */
   private async reopenFolder(folderPath: unknown): Promise<DirectoryListing | null> {
     if (!this.trusted.has(folderPath)) {
+      logger.warn('WorkspaceManager.reopenFolder', 'Rejected untrusted folder path');
       return null;
     }
     const resolved: string = path.resolve(folderPath as string);
     this.workspace.addRoot(resolved);
+    logger.info('WorkspaceManager.reopenFolder', `Re-opened workspace root ${resolved}`);
     try {
       return await this.readListing(resolved);
     } catch (error: unknown) {
@@ -655,6 +720,7 @@ export class WorkspaceManager {
    */
   private async reopenFile(filePath: unknown): Promise<OpenSelection | null> {
     if (!this.trusted.has(filePath) && !this.workspace.isWithin(filePath)) {
+      logger.warn('WorkspaceManager.reopenFile', 'Rejected untrusted file path');
       return null;
     }
     try {
@@ -678,9 +744,11 @@ export class WorkspaceManager {
     type: 'file' | 'directory',
   ): Promise<FileOperationResult> {
     if (!this.workspace.isWithin(directoryPath)) {
+      logger.warn('WorkspaceManager.create', 'Rejected target outside the workspace');
       return { success: false, error: 'Target is outside the workspace' };
     }
     if (!this.isValidName(name)) {
+      logger.warn('WorkspaceManager.create', 'Rejected invalid entry name');
       return { success: false, error: 'Invalid name' };
     }
     const target: string = path.join(path.resolve(directoryPath as string), name as string);
@@ -706,13 +774,16 @@ export class WorkspaceManager {
    */
   private async rename(targetPath: unknown, newName: unknown): Promise<FileOperationResult> {
     if (!this.workspace.isWithin(targetPath)) {
+      logger.warn('WorkspaceManager.rename', 'Rejected target outside the workspace');
       return { success: false, error: 'Target is outside the workspace' };
     }
     if (!this.isValidName(newName)) {
+      logger.warn('WorkspaceManager.rename', 'Rejected invalid new name');
       return { success: false, error: 'Invalid name' };
     }
     const resolved: string = path.resolve(targetPath as string);
     if (this.workspace.isRoot(resolved)) {
+      logger.warn('WorkspaceManager.rename', 'Rejected rename of the workspace root');
       return { success: false, error: 'Cannot rename the workspace root' };
     }
     const destination: string = path.join(path.dirname(resolved), newName as string);
@@ -733,10 +804,12 @@ export class WorkspaceManager {
    */
   private async delete(targetPath: unknown): Promise<FileOperationResult> {
     if (!this.workspace.isWithin(targetPath)) {
+      logger.warn('WorkspaceManager.delete', 'Rejected target outside the workspace');
       return { success: false, error: 'Target is outside the workspace' };
     }
     const resolved: string = path.resolve(targetPath as string);
     if (this.workspace.isRoot(resolved)) {
+      logger.warn('WorkspaceManager.delete', 'Rejected delete of the workspace root');
       return { success: false, error: 'Cannot delete the workspace root' };
     }
     try {
@@ -761,9 +834,14 @@ export class WorkspaceManager {
     // in Monaco would stall the whole application.
     const stats: Stats = await fs.stat(filePath);
     if (stats.size > MAX_TEXT_FILE_BYTES || (await this.isBinaryFile(filePath))) {
+      logger.debug(
+        'WorkspaceManager.readFileSelection',
+        `${filePath} classified binary (${stats.size} bytes)`,
+      );
       return { kind: 'binary', path: filePath };
     }
     const content: string = await fs.readFile(filePath, 'utf-8');
+    logger.trace('WorkspaceManager.readFileSelection', `Read text file ${filePath} (${stats.size} bytes)`);
     return { kind: 'file', file: this.readFileInfo(filePath, content) };
   }
 

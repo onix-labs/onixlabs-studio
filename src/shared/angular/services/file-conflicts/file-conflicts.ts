@@ -8,6 +8,7 @@ import {
   untracked,
   WritableSignal,
 } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 
 /**
@@ -73,6 +74,11 @@ export class FileConflicts {
   private readonly handlers: Map<string, ConflictHandlers> = new Map<string, ConflictHandlers>();
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Gets the conflict to prompt for on the active tab, or null when the active tab has none.
    */
   public readonly activeConflict: Signal<FileConflict | null> = computed(
@@ -113,6 +119,7 @@ export class FileConflicts {
    */
   public raise(conflict: FileConflict, handlers: ConflictHandlers): void {
     this.handlers.set(conflict.documentId, handlers);
+    this.log.info('FileConflicts', `Conflict raised for '${conflict.name}'`, conflict.documentId);
     this.conflictList.update((list: readonly FileConflict[]): readonly FileConflict[] => [
       ...list.filter(
         (existing: FileConflict): boolean => existing.documentId !== conflict.documentId,
@@ -128,6 +135,7 @@ export class FileConflicts {
   public keep(documentId: string): void {
     this.handlers.get(documentId)?.keep();
     this.dismiss(documentId);
+    this.log.info('FileConflicts', 'Conflict resolved: kept editor version', documentId);
   }
 
   /**
@@ -137,6 +145,7 @@ export class FileConflicts {
   public reload(documentId: string): void {
     this.handlers.get(documentId)?.reload();
     this.dismiss(documentId);
+    this.log.info('FileConflicts', 'Conflict resolved: reloaded from disk', documentId);
   }
 
   /**

@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { promisify } from 'node:util';
+import { logger } from './logger';
 import { signalProcessTree } from './process-tree';
 
 /**
@@ -237,6 +238,7 @@ export class PidJournal {
     if (pid === undefined || pid <= 0) {
       return;
     }
+    logger.debug('PidJournal', `Registering ${kind} child pid ${pid} (${path.basename(command)})`);
     this.entries.set(pid, {
       pid,
       kind,
@@ -257,6 +259,7 @@ export class PidJournal {
     if (pid === undefined || !this.entries.delete(pid)) {
       return;
     }
+    logger.trace('PidJournal', `Unregistered child pid ${pid}`);
     this.persist();
   }
 
@@ -268,6 +271,7 @@ export class PidJournal {
    */
   public async reapStale(): Promise<number> {
     const stale: JournalEntry[] = parseJournal(this.loadSafely());
+    logger.trace('PidJournal', `Reaping stale journal: ${stale.length} recorded entries`);
     let reaped: number = 0;
     for (const entry of stale) {
       // A child whose owning instance is still alive is not an orphan: another Studio is running
@@ -276,6 +280,10 @@ export class PidJournal {
       // language server, terminal, or Claude Code agent. Reaping it would SIGKILL a running
       // instance's work, so spare it and keep it journalled for its own owner to reap later.
       if (await this.ownerAlive(entry)) {
+        logger.warn(
+          'PidJournal',
+          `Sparing ${entry.kind} pid ${entry.pid}: owning instance ${entry.ownerPid} is still alive`,
+        );
         if (!this.entries.has(entry.pid)) {
           this.entries.set(entry.pid, entry);
         }
@@ -283,10 +291,12 @@ export class PidJournal {
       }
       const probe: ProcessProbe | null = await this.probe(entry.pid).catch((): null => null);
       if (probe !== null && matchesEntry(entry, probe)) {
+        logger.info('PidJournal', `Reaping orphaned ${entry.kind} pid ${entry.pid} (${entry.comm})`);
         this.killer(entry.pid);
         reaped += 1;
       }
     }
+    logger.debug('PidJournal', `Reap complete: ${reaped} process(es) reaped`);
     this.persist();
     return reaped;
   }
@@ -425,6 +435,7 @@ let installed: PidJournal | null = null;
  * @param journal The journal to install.
  */
 export function installPidJournal(journal: PidJournal): void {
+  logger.debug('PidJournal', 'Pid journal installed');
   installed = journal;
 }
 

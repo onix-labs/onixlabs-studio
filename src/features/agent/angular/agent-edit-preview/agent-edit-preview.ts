@@ -2,6 +2,7 @@ import { inject, Service } from '@angular/core';
 import { DiffDocumentPanel } from '@shared/angular/components/panels/diff-document-panel/diff-document-panel';
 import { Icon } from '@shared/angular/icons/icon';
 import { Diffs } from '@shared/angular/services/diffs/diffs';
+import { Log } from '@shared/angular/services/log/log';
 import { DockFocus } from '@shared/angular/services/dock-layout/dock-focus';
 import { DockPanelRegistry } from '@shared/angular/services/dock-layout/dock-panel-registry';
 import { DockState } from '@shared/angular/services/dock-layout/dock-state';
@@ -45,6 +46,11 @@ export class AgentEditPreview {
   private readonly registry: DockPanelRegistry = inject(DockPanelRegistry);
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Opens (or replaces) the staged-edit diff in the document well.
    * @param title The document's display name, shown as the diff tab title.
    * @param language The Monaco language id used to highlight the diff.
@@ -52,8 +58,10 @@ export class AgentEditPreview {
    * @param modified The prospective text after the staged edit.
    */
   public open(title: string, language: string, original: string, modified: string): void {
+    this.log.debug('agent.edit-preview', 'Opening staged-edit preview', { title, language });
     const well: StackNode | null = firstStackOfRole(this.dockState.layout(), 'document');
     if (well === null) {
+      this.log.warn('agent.edit-preview', 'No document well to show the staged-edit preview');
       return;
     }
     this.diffs.put(PREVIEW_PANEL_ID, {
@@ -84,6 +92,7 @@ export class AgentEditPreview {
    * Closes the staged-edit diff, if showing.
    */
   public close(): void {
+    this.log.trace('agent.edit-preview', 'Closing staged-edit preview');
     this.dockState.removeFromLayout(PREVIEW_PANEL_ID);
   }
 }

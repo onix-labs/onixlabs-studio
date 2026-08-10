@@ -1,5 +1,6 @@
-import { Service, signal, Signal, WritableSignal } from '@angular/core';
+import { inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { Bridge } from '@shared/api/bridge';
+import { Log } from '@shared/angular/services/log/log';
 import { ImageSourcePolicy, SecurityChannel } from '@shared/api/security-channels';
 
 /**
@@ -16,6 +17,11 @@ export class Security {
    * Holds the generic transport, or undefined when running outside Electron.
    */
   private readonly bridge: Bridge | undefined = window.bridge;
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Holds the latest known image-source policy.
@@ -61,6 +67,7 @@ export class Security {
       (await this.bridge?.invoke<ImageSourcePolicy>(SecurityChannel.SetImagePolicy, policy)) ??
       this.policy();
     this.policy.set(stored);
+    this.log.info('Security', `Image-source policy set to '${stored}'`);
     return stored;
   }
 }

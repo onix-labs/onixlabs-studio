@@ -1,5 +1,6 @@
-import { computed, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import type { AgentContextRef, AgentMode, AiModelInfo, AiProviderId } from '@shared/api/ai-types';
+import { Log } from '@shared/angular/services/log/log';
 
 /**
  * The slice of an agent conversation the agent ribbon drives: whether a run is in flight, whether the
@@ -143,6 +144,11 @@ export class AgentSessions {
     signal<AgentSessionHandle | null>(null);
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Gets a value indicating whether the active agent tab's run is in flight.
    */
   public readonly isRunning: Signal<boolean> = computed(
@@ -213,6 +219,7 @@ export class AgentSessions {
    */
   public setActive(session: AgentSessionHandle): void {
     this.activeSession.set(session);
+    this.log.trace('AgentSessions', 'Active session registered');
   }
 
   /**
@@ -229,6 +236,7 @@ export class AgentSessions {
    * Starts a fresh conversation in the active agent tab.
    */
   public newChat(): void {
+    this.log.info('AgentSessions', 'New chat requested for active session');
     this.activeSession()?.newChat();
   }
 

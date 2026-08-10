@@ -10,6 +10,7 @@ import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button, ButtonTone } from '@shared/angular/components/forms/button/button';
 import { Icon } from '@shared/angular/icons/icon';
 import { severityIcon } from '@shared/angular/icons/severity-icon';
+import { Log } from '@shared/angular/services/log/log';
 import {
   Notification,
   NotificationAction,
@@ -67,6 +68,11 @@ export class ToastHost implements OnDestroy {
    * Holds the settings store the toast duration is read from.
    */
   private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Holds the auto-dismiss countdowns of the live transient toasts, keyed by toast identifier.
@@ -158,6 +164,7 @@ export class ToastHost implements OnDestroy {
    * @param action The chosen action.
    */
   protected onAction(toast: Notification, action: NotificationAction): void {
+    this.log.info('ToastHost', `Toast action '${action.label}' invoked`, toast.id);
     action.run();
     this.notifications.dismiss(toast.id);
   }

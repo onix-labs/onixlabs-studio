@@ -1,4 +1,5 @@
 import type { AiPermissionPosture, AiToolPolicy } from '@shared/api/ai-types';
+import { logger } from '@shared/electron/logger';
 import type { AuditGrantSource } from './agent-audit-log';
 
 /**
@@ -23,11 +24,14 @@ export function coarseGrantSource(
   isEditTool: boolean,
 ): AuditGrantSource {
   if (policy === 'allow') {
+    logger.debug('ToolPolicy', 'Grant source resolved to policy (explicit allow)');
     return 'policy';
   }
   if (posture === 'auto-all' || (posture === 'auto-edits' && isEditTool)) {
+    logger.debug('ToolPolicy', `Grant source resolved to posture (${posture})`);
     return 'posture';
   }
+  logger.trace('ToolPolicy', 'Grant source resolved to gated-or-auto');
   return 'gated-or-auto';
 }
 
@@ -40,6 +44,7 @@ export function coarseGrantSource(
  */
 export function sanitizeToolPolicies(value: unknown): Readonly<Record<string, AiToolPolicy>> {
   if (typeof value !== 'object' || value === null) {
+    logger.trace('ToolPolicy', 'No per-tool policy map in request');
     return {};
   }
   const result: Record<string, AiToolPolicy> = {};
@@ -53,5 +58,6 @@ export function sanitizeToolPolicies(value: unknown): Readonly<Record<string, Ai
       result[tool] = policy as AiToolPolicy;
     }
   }
+  logger.debug('ToolPolicy', `Sanitized ${Object.keys(result).length} per-tool policy override(s)`);
   return result;
 }

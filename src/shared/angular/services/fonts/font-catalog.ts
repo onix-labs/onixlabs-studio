@@ -1,4 +1,5 @@
 import { computed, DOCUMENT, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 import type { ChoiceOption } from '@shared/angular/services/settings/settings-schema';
 
 /**
@@ -71,6 +72,11 @@ export class FontCatalog {
   private readonly document: Document = inject(DOCUMENT);
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Holds the set of candidate families detected as installed. Seeded empty and filled once detection
    * completes; the derived option signals recompute when it changes.
    */
@@ -141,6 +147,7 @@ export class FontCatalog {
       .createElement('canvas')
       .getContext('2d');
     if (!context) {
+      this.log.warn('FontCatalog', 'Font detection skipped; no 2D canvas context');
       return;
     }
     const probe: string = 'mmmmmmmmmmlliWWWWWWWWWW0123456789';
@@ -162,5 +169,6 @@ export class FontCatalog {
       }
     }
     this.installed.set(installed);
+    this.log.debug('FontCatalog', `Detected ${installed.size} installed font families`);
   }
 }

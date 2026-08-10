@@ -1,4 +1,5 @@
-import { computed, Service, Signal, signal, WritableSignal } from '@angular/core';
+import { computed, inject, Service, Signal, signal, WritableSignal } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 
 /**
  * Defines the lightweight source-control commands the directory (workspace) ribbon can invoke on the
@@ -43,6 +44,11 @@ export interface WorkspaceSourceControlCommandHandler {
 @Service()
 export class WorkspaceSourceControlCommands {
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Holds the active workspace's command handler, or null when no directory tab is active.
    */
   private readonly handler: WritableSignal<WorkspaceSourceControlCommandHandler | null> =
@@ -77,6 +83,7 @@ export class WorkspaceSourceControlCommands {
    * Opens the active workspace's repository in the full source-control view.
    */
   public openInSourceControl(): void {
+    this.log.trace('source-control', 'Routing open-in-source-control to workspace');
     this.handler()?.openInSourceControl();
   }
 
@@ -84,6 +91,7 @@ export class WorkspaceSourceControlCommands {
    * Reveals the active workspace's commit panel.
    */
   public commit(): void {
+    this.log.trace('source-control', 'Routing commit to workspace');
     this.handler()?.commit();
   }
 
@@ -91,6 +99,7 @@ export class WorkspaceSourceControlCommands {
    * Pushes the active workspace's current branch.
    */
   public push(): void {
+    this.log.trace('source-control', 'Routing push to workspace');
     this.handler()?.push();
   }
 
@@ -98,6 +107,7 @@ export class WorkspaceSourceControlCommands {
    * Pulls the active workspace's current branch.
    */
   public pull(): void {
+    this.log.trace('source-control', 'Routing pull to workspace');
     this.handler()?.pull();
   }
 }

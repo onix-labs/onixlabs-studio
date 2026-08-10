@@ -22,6 +22,7 @@ import { fetchLatestVersion, fetchSearch, FlatContainerCache } from './nuget-reg
 import { NuGetSource, readNuGetSources } from './nuget-sources';
 import { HttpFetch, PackageManager } from './package-manager';
 import { compareReleaseVersions, deriveStatus } from './versions';
+import { logger } from '../logger';
 
 /**
  * The project-file extensions the NuGet package manager reads.
@@ -120,9 +121,11 @@ export class NuGetPackageManager implements PackageManager {
    * @returns Returns the model, or null when no projects are found.
    */
   public async load(root: string, fetchFn: HttpFetch): Promise<PackageManagerModel | null> {
+    logger.trace('NuGetPackageManager', `Loading the NuGet package model for '${root}'.`);
     this.centralCache.clear();
     const files: readonly string[] = await this.findProjects(root, LOAD_SCAN_DEPTH);
     if (files.length === 0) {
+      logger.debug('NuGetPackageManager', `No .NET project files found under '${root}'.`);
       return null;
     }
 
@@ -142,6 +145,11 @@ export class NuGetPackageManager implements PackageManager {
     // Read the configured sources (user + repo-root nuget.config) once, so private feeds and their
     // credentials route the latest-version lookups.
     const sources: readonly NuGetSource[] = await readNuGetSources(root, process.env);
+    logger.debug(
+      'NuGetPackageManager',
+      `Resolving latest versions for ${names.size} package(s) across ${files.length} project(s) ` +
+        `from ${sources.length} source(s).`,
+    );
     const latest: ReadonlyMap<string, string | null> = await this.resolveLatest(
       names,
       sources,
@@ -159,6 +167,10 @@ export class NuGetPackageManager implements PackageManager {
         packages: this.buildPackages(declared.get(file) ?? [], installed, latest),
       });
     }
+    logger.info(
+      'NuGetPackageManager',
+      `Loaded NuGet package model for '${root}' (${projects.length} project(s)).`,
+    );
     return { ecosystem: 'nuget', root, projects };
   }
 
@@ -170,6 +182,7 @@ export class NuGetPackageManager implements PackageManager {
    */
   public async listSources(root: string): Promise<readonly PackageSourceInfo[]> {
     const sources: readonly NuGetSource[] = await readNuGetSources(root, process.env);
+    logger.trace('NuGetPackageManager', `Listed ${sources.length} NuGet source(s) for '${root}'.`);
     return sources.map((source: NuGetSource): PackageSourceInfo => ({ name: source.name }));
   }
 
@@ -189,11 +202,16 @@ export class NuGetPackageManager implements PackageManager {
     options: PackageSearchOptions,
     fetchFn: HttpFetch,
   ): Promise<PackageSearchResult> {
+    logger.trace(
+      'NuGetPackageManager',
+      `Searching source '${sourceName}' for '${query}' (skip ${options.skip}, take ${options.take}).`,
+    );
     const sources: readonly NuGetSource[] = await readNuGetSources(root, process.env);
     const source: NuGetSource | undefined = sources.find(
       (candidate: NuGetSource): boolean => candidate.name === sourceName,
     );
     if (source === undefined) {
+      logger.warn('NuGetPackageManager', `Search requested for unknown source '${sourceName}'.`);
       return { items: [], total: 0, hasMore: false };
     }
     return fetchSearch(source, query, options, fetchFn, this.searchServiceCache);

@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, inject, input, InputSignal } from '
 import type { AgentSurface } from '@shared/api/ai-types';
 import { ConversationContext } from '@shared/api/agent-conversation-channels';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
+import { Log } from '@shared/angular/services/log/log';
 import { AgentChat } from '@shared/angular/components/agent-chat/agent-chat';
 import { AgentToolStrip } from '@shared/angular/components/agent-tool-strip/agent-tool-strip';
 import { AgentConversationList } from '@shared/angular/components/agent-conversation-list/agent-conversation-list';
@@ -31,6 +32,11 @@ export class AgentConversationPanel {
    * Holds the host-provided conversation this panel's strip/chat/history drive.
    */
   protected readonly conversation: AgentConversation = inject(AgentConversation);
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Gets the identifier of the tab hosting this conversation, forwarded to the chat.
@@ -63,6 +69,7 @@ export class AgentConversationPanel {
    * file as it is saved).
    */
   public constructor() {
+    this.log.info('AgentConversationPanel', 'Mounted agent conversation panel');
     this.conversation.bindContext(this.context);
   }
 }

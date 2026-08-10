@@ -1,5 +1,6 @@
 import { DOCUMENT } from '@angular/common';
 import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 import { DockFloating } from './dock-floating';
 import { DockGeometry, DockGroupHit } from './dock-geometry';
 import {
@@ -162,6 +163,11 @@ export class DockDrag {
   private readonly floating: DockFloating = inject(DockFloating);
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Holds the panel being dragged, or null when idle.
    */
   private readonly draggedPanel: WritableSignal<DockPanel | null> = signal<DockPanel | null>(null);
@@ -294,6 +300,7 @@ export class DockDrag {
     if (panel === undefined) {
       return;
     }
+    this.log.trace('DockDrag', `Drag armed for panel '${panelId}'`);
     event.preventDefault();
 
     const source: StackNode | null = findStackOfPanel(this.dockState.layout(), panelId);
@@ -328,6 +335,7 @@ export class DockDrag {
       return;
     }
     this.offset = armed.offset;
+    this.log.trace('DockDrag', `Drag started for panel '${armed.panel.id}'`);
     this.workspaceRect.set(armed.workspace);
     this.draggedPanel.set(armed.panel);
     this.ghostRect.set({
@@ -440,11 +448,14 @@ export class DockDrag {
     if (panel === null) {
       return;
     }
+    this.log.trace('DockDrag', `Drag released for panel '${panel.id}'`, target?.kind ?? 'no-target');
     if (target !== null) {
       this.applyDock(panel, target);
     } else if (this.externalDrop?.(panel, event) === true) {
+      this.log.debug('DockDrag', `Panel '${panel.id}' consumed by external drop handler`);
       return;
     } else if (ghost !== null) {
+      this.log.info('DockDrag', `Floated panel '${panel.id}' on void drop`);
       this.floating.float(panel.id, ghost);
     }
   }
@@ -455,6 +466,7 @@ export class DockDrag {
    * @param target The resolved drop target.
    */
   private applyDock(panel: DockPanel, target: DockTarget): void {
+    this.log.debug('DockDrag', `Applying drop of panel '${panel.id}'`, target.kind);
     const source: StackNode | null = findStackOfPanel(this.dockState.layout(), panel.id);
     switch (target.kind) {
       case 'edge':

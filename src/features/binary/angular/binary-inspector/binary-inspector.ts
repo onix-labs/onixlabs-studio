@@ -3,6 +3,7 @@ import {
   Component,
   computed,
   effect,
+  inject,
   input,
   InputSignal,
   output,
@@ -16,6 +17,7 @@ import {
   ButtonGroup,
   ButtonGroupOption,
 } from '@shared/angular/components/forms/button-group/button-group';
+import { Log } from '@shared/angular/services/log/log';
 import { Icon } from '@shared/angular/icons/icon';
 import { BinaryDocumentEntry } from '../binary-document/binary-document';
 import { inspectBytes, InspectorRow } from './binary-inspector-values';
@@ -38,6 +40,11 @@ const INSPECT_WIDTH: number = 8;
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class BinaryInspector {
+  /**
+   * Holds the structured logger for inspector interactions.
+   */
+  private readonly log: Log = inject(Log);
+
   /**
    * Gets the byte-order options.
    */
@@ -121,6 +128,7 @@ export class BinaryInspector {
    * Emits the close request so the host hides the panel.
    */
   protected onClose(): void {
+    this.log.info('binary.inspector', 'Inspector panel closed');
     this.closed.emit();
   }
 
@@ -129,6 +137,7 @@ export class BinaryInspector {
    * @param littleEndian Whether to decode little-endian.
    */
   protected setEndian(littleEndian: boolean): void {
+    this.log.debug('binary.inspector', `Endianness set to ${littleEndian ? 'LE' : 'BE'}`);
     this.littleEndian.set(littleEndian);
   }
 
@@ -137,6 +146,7 @@ export class BinaryInspector {
    * @param signed Whether integers are signed.
    */
   protected setSigned(signed: boolean): void {
+    this.log.debug('binary.inspector', `Signedness set to ${signed ? 'signed' : 'unsigned'}`);
     this.signed.set(signed);
   }
 }

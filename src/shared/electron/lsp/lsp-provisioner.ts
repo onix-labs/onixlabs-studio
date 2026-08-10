@@ -8,6 +8,7 @@ import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { promisify } from 'node:util';
 import { createGunzip } from 'node:zlib';
+import { logger } from '../logger';
 
 /**
  * Runs a child process and resolves with its standard output and error, used for the lightweight
@@ -462,6 +463,7 @@ export class LspProvisioner {
   private async provisionRoslyn(): Promise<string | null> {
     const rid: string | null = this.roslynRid();
     if (rid === null) {
+      logger.warn('LspProvisioner', 'Cannot provision Roslyn: unsupported platform');
       return null;
     }
     const installDir: string = path.join(this.serversRoot(), 'roslyn', ROSLYN_VERSION, rid);
@@ -472,8 +474,10 @@ export class LspProvisioner {
     const binary: string = path.join(installDir, 'content', 'LanguageServer', rid, executable);
     try {
       if (existsSync(binary)) {
+        logger.debug('LspProvisioner', `Reusing cached Roslyn server at ${binary}`);
         return binary;
       }
+      logger.info('LspProvisioner', `Downloading Roslyn server ${ROSLYN_VERSION} (${rid})`);
       await fs.mkdir(installDir, { recursive: true });
       const id: string = `microsoft.codeanalysis.languageserver.${rid}`;
       const url: string = `${ROSLYN_FEED}/${id}/${ROSLYN_VERSION}/${id}.${ROSLYN_VERSION}.nupkg`;
@@ -482,14 +486,17 @@ export class LspProvisioner {
       await this.extractZip(archive, installDir);
       await fs.rm(archive, { force: true });
       if (!existsSync(binary)) {
+        logger.warn('LspProvisioner', 'Extracted Roslyn package but the server binary is missing');
         return null;
       }
       // The extracted apphost is the native launcher but the zip does not carry its executable bit.
       if (process.platform !== 'win32') {
         await fs.chmod(binary, 0o755);
       }
+      logger.info('LspProvisioner', `Installed Roslyn server at ${binary}`);
       return binary;
-    } catch {
+    } catch (error: unknown) {
+      logger.error('LspProvisioner', 'Failed to provision the Roslyn C# server', error);
       return null;
     }
   }
@@ -538,20 +545,32 @@ export class LspProvisioner {
     try {
       const existing: JdtlsInstall | null = await this.readInstall(installDir);
       if (existing !== null) {
+        logger.debug('LspProvisioner', `Reusing cached JDT.LS at ${installDir}`);
         return existing;
       }
+      logger.info('LspProvisioner', `Downloading JDT.LS ${JDTLS_VERSION}`);
       await fs.mkdir(installDir, { recursive: true });
       const archive: string = path.join(installDir, 'jdtls.tar.gz');
       await this.download(JDTLS_URL, archive);
       const digest: string = await this.sha256(archive);
       if (digest !== JDTLS_SHA256) {
+        logger.error(
+          'LspProvisioner',
+          `Checksum mismatch for JDT.LS: expected ${JDTLS_SHA256}, got ${digest}`,
+        );
         await fs.rm(archive, { force: true });
         return null;
       }
       await execFileAsync('tar', ['-xzf', archive, '-C', installDir]);
       await fs.rm(archive, { force: true });
+      logger.info('LspProvisioner', `Installed JDT.LS into ${installDir}`);
       return await this.readInstall(installDir);
-    } catch {
+    } catch (error: unknown) {
+      logger.error(
+        'LspProvisioner',
+        'Failed to provision the Java language server (JDT.LS)',
+        error,
+      );
       return null;
     }
   }
@@ -573,27 +592,36 @@ export class LspProvisioner {
     );
     try {
       if (existsSync(launcher)) {
+        logger.debug('LspProvisioner', `Reusing cached Kotlin server at ${launcher}`);
         return launcher;
       }
+      logger.info('LspProvisioner', `Downloading Kotlin server ${KOTLIN_LS_VERSION}`);
       await fs.mkdir(installDir, { recursive: true });
       const archive: string = path.join(installDir, 'server.zip');
       await this.download(KOTLIN_LS_URL, archive);
       const digest: string = await this.sha256(archive);
       if (digest !== KOTLIN_LS_SHA256) {
+        logger.error(
+          'LspProvisioner',
+          `Checksum mismatch for Kotlin server: expected ${KOTLIN_LS_SHA256}, got ${digest}`,
+        );
         await fs.rm(archive, { force: true });
         return null;
       }
       await this.extractZip(archive, installDir);
       await fs.rm(archive, { force: true });
       if (!existsSync(launcher)) {
+        logger.warn('LspProvisioner', 'Extracted Kotlin server but the launcher is missing');
         return null;
       }
       // The extracted launcher script does not carry its executable bit through the zip.
       if (process.platform !== 'win32') {
         await fs.chmod(launcher, 0o755);
       }
+      logger.info('LspProvisioner', `Installed Kotlin server at ${launcher}`);
       return launcher;
-    } catch {
+    } catch (error: unknown) {
+      logger.error('LspProvisioner', 'Failed to provision the Kotlin language server', error);
       return null;
     }
   }
@@ -607,6 +635,7 @@ export class LspProvisioner {
   private async provisionRustAnalyzer(): Promise<string | null> {
     const target: { triple: string; zipped: boolean } | null = this.rustAnalyzerTarget();
     if (target === null) {
+      logger.warn('LspProvisioner', 'Cannot provision rust-analyzer: unsupported platform');
       return null;
     }
     const installDir: string = path.join(
@@ -621,8 +650,13 @@ export class LspProvisioner {
     );
     try {
       if (existsSync(binary)) {
+        logger.debug('LspProvisioner', `Reusing cached rust-analyzer at ${binary}`);
         return binary;
       }
+      logger.info(
+        'LspProvisioner',
+        `Downloading rust-analyzer ${RUST_ANALYZER_VERSION} (${target.triple})`,
+      );
       await fs.mkdir(installDir, { recursive: true });
       const asset: string = `rust-analyzer-${target.triple}.${target.zipped ? 'zip' : 'gz'}`;
       const download: string = path.join(installDir, asset);
@@ -634,13 +668,16 @@ export class LspProvisioner {
       }
       await fs.rm(download, { force: true });
       if (!existsSync(binary)) {
+        logger.warn('LspProvisioner', 'Unpacked rust-analyzer but the binary is missing');
         return null;
       }
       if (process.platform !== 'win32') {
         await fs.chmod(binary, 0o755);
       }
+      logger.info('LspProvisioner', `Installed rust-analyzer at ${binary}`);
       return binary;
-    } catch {
+    } catch (error: unknown) {
+      logger.error('LspProvisioner', 'Failed to provision the rust-analyzer server', error);
       return null;
     }
   }
@@ -728,8 +765,10 @@ export class LspProvisioner {
     );
     try {
       if (existsSync(binary)) {
+        logger.debug('LspProvisioner', `Reusing cached gopls at ${binary}`);
         return binary;
       }
+      logger.info('LspProvisioner', `Building gopls ${GOPLS_VERSION} with ${go}`);
       await fs.mkdir(installDir, { recursive: true });
       const goPath: string = path.join(this.serversRoot(), 'go');
       await execFileAsync(go, ['install', `golang.org/x/tools/gopls@${GOPLS_VERSION}`], {
@@ -741,8 +780,10 @@ export class LspProvisioner {
         },
         maxBuffer: GO_BUILD_BUFFER,
       });
+      logger.info('LspProvisioner', `Built gopls at ${binary}`);
       return existsSync(binary) ? binary : null;
-    } catch {
+    } catch (error: unknown) {
+      logger.error('LspProvisioner', 'Failed to build the Go language server (gopls)', error);
       return null;
     }
   }

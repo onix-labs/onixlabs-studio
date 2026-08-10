@@ -1,6 +1,7 @@
 import { app } from 'electron';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { logger } from './logger';
 
 /**
  * Defines the preferences that must be known before the app is ready, and so cannot live in the
@@ -47,8 +48,14 @@ export class StartupPreferencesStore {
     try {
       const raw: string = fs.readFileSync(StartupPreferencesStore.filePath(), 'utf-8');
       const parsed: Partial<StartupPreferences> = JSON.parse(raw) as Partial<StartupPreferences>;
-      return { ...DEFAULT_STARTUP_PREFERENCES, ...parsed };
-    } catch {
+      const preferences: StartupPreferences = { ...DEFAULT_STARTUP_PREFERENCES, ...parsed };
+      logger.debug(
+        'StartupPreferences',
+        `Read startup preferences (hardwareAcceleration: ${preferences.hardwareAcceleration})`,
+      );
+      return preferences;
+    } catch (error: unknown) {
+      logger.debug('StartupPreferences', 'No readable startup preferences; using defaults', error);
       return DEFAULT_STARTUP_PREFERENCES;
     }
   }
@@ -61,8 +68,10 @@ export class StartupPreferencesStore {
   public static write(preferences: StartupPreferences): void {
     try {
       fs.writeFileSync(StartupPreferencesStore.filePath(), JSON.stringify(preferences, null, 2));
-    } catch {
+      logger.debug('StartupPreferences', 'Persisted startup preferences');
+    } catch (error: unknown) {
       // The preferences directory is unavailable or read-only; the choice simply will not persist.
+      logger.warn('StartupPreferences', 'Failed to persist startup preferences', error);
     }
   }
 

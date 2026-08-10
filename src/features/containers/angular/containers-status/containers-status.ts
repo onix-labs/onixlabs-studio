@@ -1,4 +1,5 @@
 import { effect, inject, Service, signal, WritableSignal } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 import { StatusBar } from '@shared/angular/services/status-bar/status-bar';
 import { Icon } from '@shared/angular/icons/icon';
 import { ContainerSummary } from '@shared/api/docker-types';
@@ -28,6 +29,11 @@ export class ContainersStatus {
    * Holds the Docker client the count is derived from.
    */
   private readonly docker: Docker = inject(Docker);
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Holds the running-container count, or null when the daemon is unreachable (segment cleared).
@@ -61,6 +67,7 @@ export class ContainersStatus {
       );
     });
 
+    this.log.info('containers.status', 'Running-container status contribution started');
     void this.refresh();
     this.docker.onEvents((): void => {
       void this.refresh();
@@ -73,6 +80,7 @@ export class ContainersStatus {
    * @returns Returns a promise that resolves once the count has been refreshed.
    */
   private async refresh(): Promise<void> {
+    this.log.trace('containers.status', 'Refreshing running-container count');
     const available: boolean = (await this.docker.status()).available;
     if (!available) {
       this.runningCount.set(null);

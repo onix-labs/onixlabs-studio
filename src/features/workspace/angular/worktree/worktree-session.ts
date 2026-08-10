@@ -7,6 +7,7 @@ import {
   WorktreeOutcome,
   worktreeError,
 } from '@shared/api/worktree';
+import { Log } from '@shared/angular/services/log/log';
 import { Worktrees } from '@shared/angular/services/worktree/worktrees';
 
 /**
@@ -23,6 +24,11 @@ import { Worktrees } from '@shared/angular/services/worktree/worktrees';
  */
 @Service()
 export class WorktreeSession {
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
   /**
    * Holds the worktree bridge client.
    */
@@ -165,6 +171,9 @@ export class WorktreeSession {
    * @param descriptor The container's descriptor.
    */
   public initialize(root: string, descriptor: WorktreeDescriptor): void {
+    this.log.info('workspace.worktree', 'Worktree container initialized', root, {
+      checkouts: descriptor.checkouts.length,
+    });
     this.rootSignal.set(root);
     this.claimedRoots.add(root);
     this.descriptorSignal.set(descriptor);
@@ -180,6 +189,7 @@ export class WorktreeSession {
    * @param id The checkout id to activate.
    */
   public activate(id: string): void {
+    this.log.info('workspace.worktree', 'Checkout switched', this.labelFor(id));
     this.activeIdSignal.set(id);
   }
 
@@ -315,11 +325,14 @@ export class WorktreeSession {
       );
     }
     this.busySignal.set('add');
+    this.log.info('workspace.worktree', 'Creating checkout', options.branch ?? '(new branch)');
     try {
       const outcome: WorktreeOutcome<WorktreeCheckoutInfo> =
         await this.worktrees.client.addCheckout(root, options);
       if (outcome.ok) {
         await this.refresh();
+      } else {
+        this.log.warn('workspace.worktree', 'Checkout creation failed', outcome.error);
       }
       return outcome;
     } finally {
@@ -338,10 +351,13 @@ export class WorktreeSession {
       return worktreeError('The tab is not a worktree container.');
     }
     this.busySignal.set('remove');
+    this.log.info('workspace.worktree', 'Removing checkout', this.labelFor(id));
     try {
       const outcome: WorktreeOutcome<null> = await this.worktrees.client.removeCheckout(root, id);
       if (outcome.ok) {
         await this.refresh();
+      } else {
+        this.log.warn('workspace.worktree', 'Checkout removal failed', outcome.error);
       }
       return outcome;
     } finally {

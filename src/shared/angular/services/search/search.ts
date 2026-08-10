@@ -1,5 +1,6 @@
-import { Service } from '@angular/core';
+import { inject, Service } from '@angular/core';
 import { Bridge } from '@shared/api/bridge';
+import { Log } from '@shared/angular/services/log/log';
 import {
   SearchChannel,
   SearchClient,
@@ -20,6 +21,11 @@ export class Search implements SearchClient {
   private readonly bridge: Bridge | undefined = window.bridge;
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Runs a workspace search.
    * @param request The search request.
    * @returns Returns the grouped matches, or an empty response when the bridge is absent.
@@ -28,7 +34,17 @@ export class Search implements SearchClient {
     if (this.bridge === undefined) {
       return { files: [], total: 0, capped: false };
     }
-    return this.bridge.invoke<SearchResponse>(SearchChannel.Run, request);
+    this.log.info('Search', `Running workspace search for '${request.query}'`);
+    const response: SearchResponse = await this.bridge.invoke<SearchResponse>(
+      SearchChannel.Run,
+      request,
+    );
+    this.log.debug(
+      'Search',
+      `Search returned ${response.total} match(es) across ${response.files.length} file(s)`,
+      response.capped ? 'capped' : 'complete',
+    );
+    return response;
   }
 
   /**

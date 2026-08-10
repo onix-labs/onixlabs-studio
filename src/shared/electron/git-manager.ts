@@ -102,6 +102,7 @@ export class GitManager {
    * Registers the source-control IPC handlers.
    */
   public register(): void {
+    logger.info('GitManager', 'Registering source-control IPC handlers');
     ipcMain.handle(
       SourceControlChannel.OpenRepository,
       (event: IpcMainInvokeEvent): Promise<RepositoryInfo | null> =>
@@ -226,11 +227,13 @@ export class GitManager {
    * @returns Returns the repository, or null when cancelled or the folder is not a git repository.
    */
   private async openRepository(sender: WebContents): Promise<RepositoryInfo | null> {
+    logger.trace('GitManager.openRepository', 'Open-repository dialog requested');
     const result: OpenDialogReturnValue = await showOpenDialog(sender, this.windowGetter, {
       properties: ['openDirectory'],
       title: 'Open Repository',
     });
     if (result.canceled || result.filePaths.length === 0) {
+      logger.trace('GitManager.openRepository', 'Open-repository dialog cancelled');
       return null;
     }
     return this.resolveRepository(result.filePaths[0]);
@@ -247,16 +250,19 @@ export class GitManager {
       return null;
     }
     const start: string = path.resolve(directory);
+    logger.debug('GitManager.resolveRepository', `Resolving repository root from ${start}`);
     const result: GitRunResult = await this.run(start, ['rev-parse', '--show-toplevel']);
     if (!result.success || result.stdout === undefined) {
+      logger.trace('GitManager.resolveRepository', `Not a git repository: ${start}`);
       return null;
     }
     const root: string = path.resolve(result.stdout.trim());
     if (root.length === 0) {
       return null;
     }
-    this.roots.set(root, (this.roots.get(root) ?? 0) + 1);
-    logger.info('GitManager', `Opened repository ${root}`);
+    const count: number = (this.roots.get(root) ?? 0) + 1;
+    this.roots.set(root, count);
+    logger.info('GitManager', `Opened repository ${root} (open count ${count})`);
     return { root, name: path.basename(root) };
   }
 
@@ -272,12 +278,15 @@ export class GitManager {
     const resolved: string = path.resolve(root);
     const count: number | undefined = this.roots.get(resolved);
     if (count === undefined) {
+      logger.trace('GitManager.closeRepository', `Close ignored, root not open: ${resolved}`);
       return;
     }
     if (count <= 1) {
       this.roots.delete(resolved);
+      logger.info('GitManager', `Closed repository ${resolved}`);
     } else {
       this.roots.set(resolved, count - 1);
+      logger.trace('GitManager.closeRepository', `Released ${resolved} (open count ${count - 1})`);
     }
   }
 
@@ -410,6 +419,7 @@ export class GitManager {
     if (confined === null || confined.length === 0) {
       return { success: false, error: 'Invalid path' };
     }
+    logger.trace('GitManager.discard', `Discarding ${confined.length} path(s) in ${resolvedRoot}`);
     const tracked: Set<string> = await this.listedPaths(resolvedRoot, ['ls-files'], confined);
     const untracked: Set<string> = await this.listedPaths(
       resolvedRoot,
@@ -427,6 +437,10 @@ export class GitManager {
         [...untracked].some(
           (listed: string): boolean => listed === candidate || listed.startsWith(`${candidate}/`),
         ),
+    );
+    logger.debug(
+      'GitManager.discard',
+      `Discard plan: restore ${toRestore.length}, delete ${toDelete.length}`,
     );
     for (const relative of toDelete) {
       try {
@@ -478,6 +492,10 @@ export class GitManager {
       return Promise.resolve({ success: false, error: 'Invalid path' });
     }
     const args: string[] = confined.length === 0 ? ['add', '-A'] : ['add', '--', ...confined];
+    logger.trace(
+      'GitManager.stage',
+      confined.length === 0 ? 'Staging all changes' : `Staging ${confined.length} path(s)`,
+    );
     return this.run(path.resolve(root), args);
   }
 
@@ -498,6 +516,10 @@ export class GitManager {
     }
     const args: string[] =
       confined.length === 0 ? ['reset', '--quiet'] : ['reset', '--quiet', '--', ...confined];
+    logger.trace(
+      'GitManager.unstage',
+      confined.length === 0 ? 'Unstaging all changes' : `Unstaging ${confined.length} path(s)`,
+    );
     return this.run(path.resolve(root), args);
   }
 
@@ -515,6 +537,7 @@ export class GitManager {
     if (typeof message !== 'string' || message.trim().length === 0) {
       return Promise.resolve({ success: false, error: 'A commit message is required' });
     }
+    logger.trace('GitManager.commit', `Committing staged changes in ${path.resolve(root)}`);
     return this.run(path.resolve(root), ['commit', '-m', message]);
   }
 
@@ -557,6 +580,7 @@ export class GitManager {
     if (!isSafeOperand(branch)) {
       return Promise.resolve({ success: false, error: 'Invalid branch name' });
     }
+    logger.trace('GitManager.checkout', `Checking out branch ${branch}`);
     return this.runInRoot(root, ['checkout', branch]);
   }
 
@@ -573,6 +597,10 @@ export class GitManager {
       return Promise.resolve({ success: false, error: 'Invalid branch name' });
     }
     // `checkout -b` creates and switches; `branch` creates and leaves the current branch checked out.
+    logger.trace(
+      'GitManager.createBranch',
+      `Creating branch ${name}${checkout === false ? '' : ' and checking it out'}`,
+    );
     return checkout === false
       ? this.runInRoot(root, ['branch', name])
       : this.runInRoot(root, ['checkout', '-b', name]);
@@ -584,6 +612,7 @@ export class GitManager {
    * @returns Returns the raw command result.
    */
   private fetch(root: unknown): Promise<GitRunResult> {
+    logger.trace('GitManager.fetch', 'Fetching all remotes with prune');
     return this.runNetwork(root, ['fetch', '--all', '--prune']);
   }
 
@@ -594,6 +623,7 @@ export class GitManager {
    * @returns Returns the raw command result.
    */
   private pull(root: unknown): Promise<GitRunResult> {
+    logger.trace('GitManager.pull', 'Pulling current branch from upstream');
     return this.runNetwork(root, ['pull']);
   }
 
@@ -607,11 +637,13 @@ export class GitManager {
    */
   private push(root: unknown, remote: unknown, branch: unknown): Promise<GitRunResult> {
     if (remote === undefined && branch === undefined) {
+      logger.trace('GitManager.push', 'Pushing to configured upstream');
       return this.runNetwork(root, ['push']);
     }
     if (!isSafeOperand(remote) || !isSafeOperand(branch)) {
       return Promise.resolve({ success: false, error: 'Invalid push upstream' });
     }
+    logger.trace('GitManager.push', `Pushing and setting upstream ${remote}/${branch}`);
     return this.runNetwork(root, ['push', '--set-upstream', remote, branch]);
   }
 
@@ -742,6 +774,7 @@ export class GitManager {
     if (dedupKey !== null) {
       const existing: Promise<GitRunResult> | undefined = this.inFlightReads.get(dedupKey);
       if (existing !== undefined) {
+        logger.debug('GitManager.run', `Deduped concurrent read: git ${args.join(' ')}`);
         return existing;
       }
     }
@@ -767,6 +800,7 @@ export class GitManager {
     args: readonly string[],
     options?: { env?: NodeJS.ProcessEnv; timeoutMs?: number },
   ): Promise<GitRunResult> {
+    logger.trace('GitManager.spawnGit', `git ${args.join(' ')} (cwd ${cwd})`);
     return new Promise<GitRunResult>((resolve: (value: GitRunResult) => void): void => {
       execFile(
         'git',

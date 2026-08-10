@@ -1,4 +1,5 @@
-import { Service, signal, Type, WritableSignal } from '@angular/core';
+import { inject, Service, signal, Type, WritableSignal } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 import { DEFAULT_FEATURE_CHROME, FeatureChrome, FeatureDescriptor } from './feature-descriptor';
 
 /**
@@ -20,6 +21,11 @@ export class FeatureRegistry {
   );
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Registers a feature's contribution to the shell. Re-registering a type replaces the previous
    * descriptor.
    * @param descriptor The feature descriptor to register.
@@ -32,6 +38,7 @@ export class FeatureRegistry {
         return next;
       },
     );
+    this.log.info('FeatureRegistry', `Feature registered '${descriptor.type}'`);
   }
 
   /**

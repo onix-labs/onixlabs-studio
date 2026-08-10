@@ -8,6 +8,7 @@ import {
   Signal,
 } from '@angular/core';
 import { ConversationContext } from '@shared/api/agent-conversation-channels';
+import { Log } from '@shared/angular/services/log/log';
 import { CodeAgents } from '@features/code/angular/code-agents/code-agents';
 import { Documents } from '@shared/angular/services/documents/documents';
 import { Icon } from '@shared/angular/icons/icon';
@@ -42,6 +43,11 @@ export class CodeAgentPanel {
   private readonly codeAgents: CodeAgents = inject(CodeAgents);
 
   /**
+   * Holds the structured logger for the docked agent panel's user actions.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Holds the document registry, used to resolve this tab's file path for the conversation context.
    */
   private readonly documents: Documents = inject(Documents);
@@ -72,6 +78,7 @@ export class CodeAgentPanel {
    * Hides the agent panel, leaving its conversation mounted so it can be reopened.
    */
   protected onClose(): void {
+    this.log.debug('code.agents', 'Close agent panel', this.tabId());
     this.codeAgents.hide(this.tabId());
   }
 }

@@ -23,6 +23,7 @@ import {
   BinaryRange,
   BinaryVisibleRange,
 } from '@shared/angular/components/binary-editor/binary-editor';
+import { Log } from '@shared/angular/services/log/log';
 import { Panel } from '@shared/angular/components/panel-layout/panel';
 import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
 import {
@@ -98,6 +99,11 @@ export class BinaryView implements OnInit, OnDestroy {
    * Holds the side-panel state (which of the Disassembly/Inspector panels are shown).
    */
   private readonly binaryPanels: BinaryPanels = inject(BinaryPanels);
+
+  /**
+   * Holds the structured logger for the binary view.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Holds the byte window currently decoded into the disassembly listing, or null before the first
@@ -192,6 +198,7 @@ export class BinaryView implements OnInit, OnDestroy {
    * Finalises the agent-host registration once the required tab-id input is readable.
    */
   public ngOnInit(): void {
+    this.log.info('binary.view', 'Binary view opened', this.tabId());
     this.agentHost.register(this.tabId());
   }
 
@@ -199,6 +206,7 @@ export class BinaryView implements OnInit, OnDestroy {
    * Clears this view's status contribution and panel state when the tab closes.
    */
   public ngOnDestroy(): void {
+    this.log.info('binary.view', 'Binary view closed', this.tabId());
     this.binaryStatus.clear(this.tabId());
     this.binaryPanels.remove(this.tabId());
     this.binaryDocuments.release(this.tabId());
@@ -324,12 +332,19 @@ export class BinaryView implements OnInit, OnDestroy {
     }
     switch (op.kind) {
       case 'overwrite':
+        this.log.info('binary.view', `Overwrite byte at 0x${op.offset.toString(16)}`, this.tabId());
         document.overwrite(op.offset, op.value);
         break;
       case 'insert':
+        this.log.info('binary.view', `Insert byte at 0x${op.offset.toString(16)}`, this.tabId());
         document.insertByte(op.offset, op.value);
         break;
       case 'delete':
+        this.log.info(
+          'binary.view',
+          `Delete ${op.count} byte(s) at 0x${op.offset.toString(16)}`,
+          this.tabId(),
+        );
         document.deleteBytes(op.offset, op.count);
         break;
     }

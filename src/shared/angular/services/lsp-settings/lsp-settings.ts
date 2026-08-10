@@ -1,6 +1,7 @@
-import { Service, signal, Signal, WritableSignal } from '@angular/core';
+import { inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { Bridge } from '@shared/api/bridge';
 import { LspChannel, LspSettings as LspSettingsData } from '@shared/api/lsp-channels';
+import { Log } from '@shared/angular/services/log/log';
 
 /**
  * Holds the settings used before any have been loaded from the main process.
@@ -26,6 +27,11 @@ export class LspSettings {
    * Holds the generic transport, or undefined when running outside Electron.
    */
   private readonly bridge: Bridge | undefined = window.bridge;
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Holds the latest known settings.
@@ -58,6 +64,10 @@ export class LspSettings {
     const settings: LspSettingsData =
       (await this.bridge?.invoke<LspSettingsData>(LspChannel.GetSettings)) ?? this.current();
     this.current.set(settings);
+    this.log.debug(
+      'LspSettings',
+      `Loaded settings; ${settings.disabledServers.length} disabled server(s)`,
+    );
     return settings;
   }
 
@@ -83,6 +93,7 @@ export class LspSettings {
     } else {
       disabled.add(serverId);
     }
+    this.log.info('LspSettings', `Server '${serverId}' ${enabled ? 'enabled' : 'disabled'}`);
     await this.store({ ...this.current(), disabledServers: [...disabled] });
   }
 

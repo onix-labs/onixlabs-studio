@@ -12,6 +12,7 @@ import {
 import type { AiAuthStatus, AiConnection, AiProviderKind } from '@shared/api/ai-types';
 import { ShellInfo } from '@shared/api/terminal-channels';
 import { AiConnections } from '@shared/angular/services/ai-connections/ai-connections';
+import { Log } from '@shared/angular/services/log/log';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
 import { Settings } from '@shared/angular/services/settings/settings';
@@ -98,6 +99,11 @@ export class AiSettingsSection {
    * Holds the installed-shells provider populating the agent-shell dropdown.
    */
   private readonly terminalShells: TerminalShells = inject(TerminalShells);
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Gets the agent-shell dropdown options: a leading "Default login shell" entry (the empty value,
@@ -197,6 +203,7 @@ export class AiSettingsSection {
    */
   protected addConnection(): void {
     const connection: AiConnection = this.connectionsService.add(this.addKind());
+    this.log.info('settings.ai', 'Connection added', connection.id, connection.kind);
     this.expandedIds.update(
       (current: ReadonlySet<string>): ReadonlySet<string> =>
         new Set<string>(current).add(connection.id),
@@ -207,6 +214,7 @@ export class AiSettingsSection {
    * Restores the default connections (resets the seeds and keeps the user's own).
    */
   protected restoreDefaults(): void {
+    this.log.info('settings.ai', 'Default connections restored');
     this.connectionsService.restoreDefaults();
   }
 
@@ -215,6 +223,7 @@ export class AiSettingsSection {
    * @param id The connection id.
    */
   protected moveUp(id: string): void {
+    this.log.debug('settings.ai', 'Connection moved up', id);
     this.connectionsService.move(id, -1);
   }
 
@@ -223,6 +232,7 @@ export class AiSettingsSection {
    * @param id The connection id.
    */
   protected moveDown(id: string): void {
+    this.log.debug('settings.ai', 'Connection moved down', id);
     this.connectionsService.move(id, 1);
   }
 
@@ -231,6 +241,7 @@ export class AiSettingsSection {
    * @param value The chosen shell path, or the empty string for the default login shell.
    */
   protected onAgentShellChange(value: string): void {
+    this.log.info('settings.ai', 'Agent shell changed', value === '' ? 'default login shell' : value);
     this.settings.set('ai.agentShell', value);
   }
 }

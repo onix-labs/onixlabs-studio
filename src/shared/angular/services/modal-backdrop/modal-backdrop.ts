@@ -1,4 +1,5 @@
-import { computed, Service, Signal, signal, WritableSignal } from '@angular/core';
+import { computed, inject, Service, Signal, signal, WritableSignal } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 
 /**
  * Owns whether a window is dimmed behind a modal.
@@ -26,6 +27,11 @@ export class ModalBackdrop {
   >([]);
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Gets a value indicating whether the window is currently behind a modal.
    */
   public readonly raised: Signal<boolean> = computed((): boolean => this.modals().length > 0);
@@ -41,6 +47,7 @@ export class ModalBackdrop {
       ...open,
       dismiss,
     ]);
+    this.log.trace('ModalBackdrop', 'Backdrop raised', this.modals().length);
     let lowered: boolean = false;
     return (): void => {
       if (lowered) {
@@ -50,6 +57,7 @@ export class ModalBackdrop {
       this.modals.update((open: readonly (() => void)[]): readonly (() => void)[] =>
         open.filter((entry: () => void): boolean => entry !== dismiss),
       );
+      this.log.trace('ModalBackdrop', 'Backdrop lowered', this.modals().length);
     };
   }
 

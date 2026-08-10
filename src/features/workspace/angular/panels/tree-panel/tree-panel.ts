@@ -16,6 +16,7 @@ import {
   WorkspaceTreeRow,
 } from '@shared/angular/services/workspace/workspace';
 import { WorkspaceGit } from '@features/workspace/angular/workspace-git/workspace-git';
+import { Log } from '@shared/angular/services/log/log';
 import { Icon } from '@shared/angular/icons/icon';
 import { ExplorerToolbar } from '@shared/angular/components/explorer-toolbar/explorer-toolbar';
 import { HighlightedText } from '@shared/angular/components/highlighted-text/highlighted-text';
@@ -69,6 +70,11 @@ export class TreePanel {
   private readonly fileOpener: FileOpener = inject(FileOpener);
 
   /**
+   * Holds the structured logger for workspace tree actions.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Gets the workspace's visible rows mapped to tree rows for the shared {@link TreeView}.
    */
   protected readonly rows: Signal<readonly TreeRow[]> = computed((): readonly TreeRow[] =>
@@ -109,6 +115,7 @@ export class TreePanel {
    * Expands the tree according to the workspace's Expand All setting.
    */
   protected expandAll(): void {
+    this.log.info('workspace.tree', 'Expand all requested');
     void this.workspace.expandAll();
   }
 
@@ -116,6 +123,7 @@ export class TreePanel {
    * Collapses every directory in the tree.
    */
   protected collapseAll(): void {
+    this.log.info('workspace.tree', 'Collapse all requested');
     this.workspace.collapseAll();
   }
 
@@ -146,8 +154,10 @@ export class TreePanel {
     const node: WorkspaceTreeNode = this.nodeOf(row);
     this.workspace.select(node.path);
     if (node.type === 'directory') {
+      this.log.debug('workspace.tree', 'Toggle directory', node.path);
       void this.workspace.toggleDirectory(node.path);
     } else {
+      this.log.info('workspace.tree', 'Open file from tree', node.path);
       void this.fileOpener.openPath(node.path);
     }
   }

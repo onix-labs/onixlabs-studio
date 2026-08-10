@@ -1,6 +1,7 @@
 import { computed, effect, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import type { AiConnection, AiModelInfo, AiProviderId, AiProviderInfo } from '@shared/api/ai-types';
 import { AiRuntime } from '../ai-runtime/ai-runtime';
+import { Log } from '@shared/angular/services/log/log';
 import { Settings } from '@shared/angular/services/settings/settings';
 
 /**
@@ -22,6 +23,11 @@ export class AgentEngine {
    * connection collection.
    */
   private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Holds the registered providers and their availability.
@@ -92,6 +98,7 @@ export class AgentEngine {
     const providers: readonly AiProviderInfo[] =
       (await this.runtime.listProviders(connections)) ?? [];
     this.providerList.set(providers);
+    this.log.debug('AgentEngine', `Loaded ${providers.length} providers`);
     const current: AiProviderId = this.provider();
     const currentAvailable: boolean = providers.some(
       (provider: AiProviderInfo): boolean => provider.id === current && provider.available,
@@ -101,6 +108,10 @@ export class AgentEngine {
         (provider: AiProviderInfo): boolean => provider.available,
       );
       if (fallback !== undefined) {
+        this.log.warn(
+          'AgentEngine',
+          `Active connection '${current}' unavailable; falling back to '${fallback.id}'`,
+        );
         this.settings.setActiveConnection(fallback.id);
       }
     }
@@ -111,6 +122,7 @@ export class AgentEngine {
    * @param id The connection id.
    */
   public setProvider(id: AiProviderId): void {
+    this.log.info('AgentEngine', `Connection selected '${id}'`);
     this.settings.setActiveConnection(id);
   }
 
@@ -121,6 +133,7 @@ export class AgentEngine {
    * @param id The model id.
    */
   public setModel(id: string): void {
+    this.log.info('AgentEngine', `Model chosen '${id}'`, this.provider());
     this.settings.setConnectionModel(this.provider(), id);
   }
 }

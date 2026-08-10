@@ -10,6 +10,7 @@ import {
   RibbonStripMenuButton,
 } from '@shared/angular/components/ribbon-strip/ribbon-strip-menu-button/ribbon-strip-menu-button';
 import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/ribbon-strip-overflow/ribbon-strip-overflow';
+import { Log } from '@shared/angular/services/log/log';
 import { ShellInfo } from '@shared/api/terminal-channels';
 import { TerminalAgents } from '@features/terminal/angular/terminal-agents/terminal-agents';
 import { TerminalCommands } from '@features/terminal/angular/terminal-commands/terminal-commands';
@@ -69,6 +70,11 @@ export class TerminalRibbon {
   private readonly terminalShells: TerminalShells = inject(TerminalShells);
 
   /**
+   * Holds the structured logger for ribbon actions.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Gets a value indicating whether the active terminal has scroll lock engaged.
    */
   protected readonly scrollLocked: Signal<boolean> = this.commands.scrollLocked;
@@ -105,6 +111,7 @@ export class TerminalRibbon {
    * @param shellPath The chosen shell's executable path (the item's identifier).
    */
   protected onNewShell(shellPath: string): void {
+    this.log.debug('terminal.ribbon', 'Shell selected from New menu', shellPath);
     this.commands.newSession(shellPath);
   }
 
@@ -187,6 +194,7 @@ export class TerminalRibbon {
   protected onAgent(): void {
     const id: string | undefined = this.tabs.activeTabId();
     if (id !== undefined) {
+      this.log.info('terminal.ribbon', 'Toggled terminal agent panel', id);
       this.terminalAgents.toggle(id);
     }
   }

@@ -25,6 +25,7 @@ import type {
 } from '@shared/api/ai-types';
 import { AiRuntime } from '../ai-runtime/ai-runtime';
 import { AgentEngine } from '../agent-engine/agent-engine';
+import { Log } from '@shared/angular/services/log/log';
 import {
   NotificationAction,
   Notifications,
@@ -428,6 +429,7 @@ export class Agent {
   public setProvider(id: AiProviderId): void {
     this.providerOverride.set(id === this.engine.provider() ? null : id);
     this.modelOverride.set(null);
+    this.logger.info('Agent', `Conversation connection selected '${id}'`);
   }
 
   /**
@@ -436,6 +438,7 @@ export class Agent {
    */
   public setModel(id: string): void {
     this.modelOverride.set(id);
+    this.logger.info('Agent', `Conversation model chosen '${id}'`);
   }
 
   /**
@@ -473,6 +476,11 @@ export class Agent {
    * Holds the destroy notifier used to unsubscribe this conversation from runtime events.
    */
   private readonly destroyRef: DestroyRef = inject(DestroyRef);
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly logger: Log = inject(Log);
 
   /**
    * Holds the ordered transcript.
@@ -777,6 +785,7 @@ export class Agent {
       // Tie the live session's teardown to the host's lifetime (#327): closing the tab ends its agent's
       // held-open session.
       this.runtime.closeSession(this.agentSessionId);
+      this.logger.info('Agent', 'Agent session closed', this.agentSessionId);
     });
   }
 
@@ -1042,6 +1051,12 @@ export class Agent {
     // The attachments belong to the message that carried them: the turn takes them, and the composer
     // starts clean rather than silently resending them on every later turn.
     this.contextPathsState.set([]);
+    this.logger.info(
+      'Agent',
+      `Prompt dispatched to '${this.provider()}'`,
+      this.activeRequestId,
+      this.model(),
+    );
   }
 
   /**
@@ -1100,6 +1115,7 @@ export class Agent {
    */
   public stop(): void {
     if (this.activeRequestId !== null) {
+      this.logger.info('Agent', 'Run interrupted', this.activeRequestId);
       this.runtime.abort(this.activeRequestId);
     }
   }
@@ -1118,6 +1134,7 @@ export class Agent {
     this.compacting = true;
     this.compactionText = '';
     this.busy.set(true);
+    this.logger.info('Agent', 'Compaction run started', history.length);
     this.activeRequestId = this.runtime.run(this.provider(), this.compactionPrompt(history), {
       workspaceRoot: this.runWorkspaceRoot(),
       model: this.model(),
@@ -1144,6 +1161,7 @@ export class Agent {
    * Clears the transcript.
    */
   public clear(): void {
+    this.logger.info('Agent', 'Conversation cleared');
     this.resetAgentSession();
     this.discardStream();
     this.log.set([]);
@@ -1171,6 +1189,7 @@ export class Agent {
     sessionId: string | null = null,
     queue: readonly string[] = [],
   ): void {
+    this.logger.info('Agent', 'Conversation restored', items.length, sessionId);
     this.resetAgentSession();
     this.activeRequestId = null;
     this.busy.set(false);
@@ -1431,6 +1450,7 @@ export class Agent {
     // composer leaves answer mode and the transcript reads coherently.
     this.dismissPendingInputs();
     if (state === 'error') {
+      this.logger.error('Agent', `Run failed: ${this.failureCause(detail)}`);
       this.pushError(detail);
     } else if (state === 'aborted') {
       this.push({ kind: 'assistant', text: '_Stopped._' });

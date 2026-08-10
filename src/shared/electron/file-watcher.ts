@@ -58,12 +58,15 @@ export class FileWatcher {
    * Registers the file-watch IPC handlers.
    */
   public register(): void {
+    logger.info('FileWatcher', 'Registering file-watch IPC handlers');
     ipcMain.handle(FileChannel.Watch, (_event: IpcMainInvokeEvent, target: unknown): void => {
+      logger.trace('FileWatcher', `Watch requested for ${String(target)}`);
       if (typeof target === 'string') {
         this.watch(target);
       }
     });
     ipcMain.handle(FileChannel.Unwatch, (_event: IpcMainInvokeEvent, target: unknown): void => {
+      logger.trace('FileWatcher', `Unwatch requested for ${String(target)}`);
       if (typeof target === 'string') {
         this.unwatch(target);
       }
@@ -74,6 +77,7 @@ export class FileWatcher {
    * Closes every directory watcher and clears pending timers. Called on application shutdown.
    */
   public disposeAll(): void {
+    logger.info('FileWatcher', `Disposing all file watchers (${this.directories.size} directories)`);
     for (const directory of this.directories.values()) {
       directory.watcher.close();
     }
@@ -101,12 +105,14 @@ export class FileWatcher {
         );
         directory = { watcher, files: new Map<string, number>() };
         this.directories.set(directoryPath, directory);
+        logger.info('FileWatcher', `Started watching directory ${directoryPath}`);
       } catch (error: unknown) {
-        logger.debug('FileWatcher', `Cannot watch ${directoryPath}`, error);
+        logger.error('FileWatcher', `Cannot watch ${directoryPath}`, error);
         return;
       }
     }
     directory.files.set(name, (directory.files.get(name) ?? 0) + 1);
+    logger.debug('FileWatcher', `Watching file ${name} in ${directoryPath}`);
   }
 
   /**
@@ -129,6 +135,7 @@ export class FileWatcher {
     if (directory.files.size === 0) {
       directory.watcher.close();
       this.directories.delete(directoryPath);
+      logger.info('FileWatcher', `Stopped watching directory ${directoryPath} (no files left)`);
     }
   }
 

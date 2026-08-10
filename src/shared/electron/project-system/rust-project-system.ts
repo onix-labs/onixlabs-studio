@@ -10,6 +10,7 @@ import {
   ProjectNode,
 } from '@shared/api/project-system';
 import { ProjectSystem } from './project-system';
+import { logger } from '../logger';
 
 /**
  * The Rust project system's root-independent capabilities: the Build/Clean/Rebuild actions Cargo
@@ -149,9 +150,11 @@ export class RustProjectSystem implements ProjectSystem {
    * @returns Returns the model, or null when the root has no Cargo manifest.
    */
   public async load(root: string): Promise<ProjectModel | null> {
+    logger.trace('RustProjectSystem', `Loading the Rust model for '${root}'.`);
     const manifestPath: string = path.join(root, MANIFEST);
     const toml: string | null = await this.readFile(manifestPath);
     if (toml === null) {
+      logger.debug('RustProjectSystem', `No readable 'Cargo.toml' at '${root}'.`);
       return null;
     }
     const rootName: string = parseCargoPackageName(toml) ?? path.basename(root);
@@ -212,6 +215,10 @@ export class RustProjectSystem implements ProjectSystem {
     solution: { name: string; path: string } | null,
   ): ProjectModel {
     const projects: readonly ProjectEntry[] = this.flatten(tree);
+    logger.info(
+      'RustProjectSystem',
+      `Loaded Rust ${solution === null ? 'crate' : 'workspace'} at '${root}' with ${projects.length} crate(s).`,
+    );
     return {
       kind: this.kind,
       root,

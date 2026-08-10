@@ -210,8 +210,10 @@ export async function runDiscovery(
   env: Record<string, string | undefined>,
   fetchFn: HttpFetch,
 ): Promise<AiDiscoverModelsResult> {
+  logger.trace('model-discovery', `Discovering models for connection '${connection.id}'`);
   const target: DiscoveryTarget = discoveryTarget(connection, apiKey, env);
   if ('unsupported' in target) {
+    logger.debug('model-discovery', `Discovery unsupported: ${target.unsupported}`);
     return { ok: false, models: connection.models, added: 0, detail: target.unsupported };
   }
 
@@ -229,6 +231,7 @@ export async function runDiscovery(
   }
 
   if (!response.ok) {
+    logger.warn('model-discovery', `Models endpoint ${target.url} returned HTTP ${response.status}`);
     return {
       ok: false,
       models: connection.models,
@@ -240,7 +243,8 @@ export async function runDiscovery(
   let body: unknown;
   try {
     body = await response.json();
-  } catch {
+  } catch (error: unknown) {
+    logger.warn('model-discovery', `Models endpoint ${target.url} returned invalid JSON`, error);
     return {
       ok: false,
       models: connection.models,
@@ -251,6 +255,7 @@ export async function runDiscovery(
 
   const discovered: DiscoveredModel[] = parseModelsResponse(body);
   if (discovered.length === 0) {
+    logger.warn('model-discovery', `Models endpoint ${target.url} returned no models`);
     return {
       ok: false,
       models: connection.models,
@@ -261,6 +266,10 @@ export async function runDiscovery(
 
   const merged: AiModelInfo[] = mergeModels(connection.models, discovered);
   const added: number = merged.length - connection.models.length;
+  logger.info(
+    'model-discovery',
+    `Discovery succeeded for '${connection.id}': ${discovered.length} model(s), ${added} new`,
+  );
   return {
     ok: true,
     models: merged,

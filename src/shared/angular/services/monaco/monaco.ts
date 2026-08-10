@@ -6,6 +6,7 @@ import {
   TextEditorSettings,
 } from '@shared/angular/services/settings/settings';
 import { ResolvedThemeMode, Theme } from '@shared/angular/services/theme/theme';
+import { Log } from '@shared/angular/services/log/log';
 import {
   extensionForLanguage,
   LanguageInfo,
@@ -104,6 +105,11 @@ export class Monaco {
    * Holds the theme service supplying the resolved light/dark mode.
    */
   private readonly theme: Theme = inject(Theme);
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Holds a value indicating whether Monaco has finished loading.
@@ -306,6 +312,7 @@ export class Monaco {
     registerBraceFolding(window.monaco);
     this.registerHeuristicSemanticTokens();
     this.loadedSignal.set(true);
+    this.log.info('Monaco', 'Monaco editor initialized');
   }
 
   /**
@@ -356,7 +363,11 @@ export class Monaco {
           resolve();
         });
       };
-      script.onerror = (): void => reject(new Error('Failed to load the Monaco editor loader.'));
+      script.onerror = (): void => {
+        const error: Error = new Error('Failed to load the Monaco editor loader.');
+        this.log.error('Monaco', 'Failed to load the Monaco editor loader', error);
+        reject(error);
+      };
       document.head.appendChild(script);
     });
   }

@@ -10,6 +10,7 @@ import type {
 import { DEFAULT_CONNECTION_ID, SEED_CONNECTIONS } from '@shared/api/ai-types';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { Ai } from '@shared/angular/services/ai/ai';
+import { Log } from '@shared/angular/services/log/log';
 
 /**
  * The default human-readable label for a new connection of each kind.
@@ -59,6 +60,11 @@ export class AiConnections {
    * Holds the AI IPC client, or undefined outside Electron.
    */
   private readonly ai: Ai = inject(Ai);
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Holds the per-connection auth status cache, keyed by connection id.
@@ -129,6 +135,7 @@ export class AiConnections {
       defaultModelId: '',
     };
     this.settings.upsertConnection(connection);
+    this.log.info('AiConnections', `Connection added '${connection.id}'`, kind);
     return connection;
   }
 
@@ -149,6 +156,7 @@ export class AiConnections {
    * @param id The connection id.
    */
   public remove(id: string): void {
+    this.log.info('AiConnections', `Connection removed '${id}'`);
     this.settings.removeConnection(id);
   }
 
@@ -167,6 +175,7 @@ export class AiConnections {
     );
     const restored: readonly AiConnection[] = [...SEED_CONNECTIONS, ...custom];
     this.settings.setAiConnections(restored);
+    this.log.info('AiConnections', 'Default connections restored');
 
     const active: string = this.settings.aiActiveConnectionId();
     if (!restored.some((connection: AiConnection): boolean => connection.id === active)) {
@@ -222,6 +231,7 @@ export class AiConnections {
     if (status !== undefined) {
       this.putStatus(connection.id, status);
     }
+    this.log.info('AiConnections', `API key stored for '${connection.id}'`);
   }
 
   /**
@@ -237,6 +247,7 @@ export class AiConnections {
     if (status !== undefined) {
       this.putStatus(connection.id, status);
     }
+    this.log.info('AiConnections', `API key cleared for '${connection.id}'`);
   }
 
   /**
@@ -258,6 +269,12 @@ export class AiConnections {
     }
     if (result.ok) {
       this.update(connection.id, { models: result.models });
+      this.log.info(
+        'AiConnections',
+        `Discovered ${result.models.length} models for '${connection.id}'`,
+      );
+    } else {
+      this.log.warn('AiConnections', `Model discovery failed for '${connection.id}'`, result.detail);
     }
     return result;
   }

@@ -12,6 +12,7 @@ import {
   WorkspaceChannel,
 } from '@shared/api/workspace-channels';
 import { DirectoryWatch } from '@shared/angular/services/directory-watch/directory-watch';
+import { Log } from '@shared/angular/services/log/log';
 import { Settings } from '@shared/angular/services/settings/settings';
 
 /**
@@ -152,6 +153,11 @@ export class Workspace {
   private readonly directoryWatch: DirectoryWatch = inject(DirectoryWatch);
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Holds the disposer of the open root's directory watch, or null when no folder is open.
    */
   private watchDisposer: (() => void) | null = null;
@@ -258,6 +264,7 @@ export class Workspace {
     if (listing === null) {
       return;
     }
+    this.log.info('Workspace', `Opened folder '${listing.name}'`, listing.path);
     this.setListing(listing);
   }
 
@@ -380,6 +387,7 @@ export class Workspace {
    * @param listing The root directory listing to display.
    */
   public openListing(listing: DirectoryListing): void {
+    this.log.info('Workspace', `Opened listing '${listing.name}'`, listing.path);
     this.setListing(listing);
   }
 
@@ -390,6 +398,7 @@ export class Workspace {
   public async closeFolder(): Promise<void> {
     const root: string | undefined = this.rootListing()?.path;
     if (root !== undefined) {
+      this.log.info('Workspace', 'Closed folder', root);
       await (this.bridge?.invoke<void>(WorkspaceChannel.CloseFolder, root) ?? Promise.resolve());
     }
     this.releaseFolder();
@@ -571,6 +580,7 @@ export class Workspace {
     );
     this.selection.set(null);
     this.searchQuery.set('');
+    this.log.debug('Workspace', `Seeded tree at '${listing.path}'`, listing.entries.length);
   }
 
   /**

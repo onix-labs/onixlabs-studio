@@ -2,6 +2,7 @@ import { app, ipcMain, IpcMainInvokeEvent } from 'electron';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { AgentCategory, AgentCategoryChannel } from '@shared/api/agent-category-channels';
+import { logger } from '../logger';
 
 /**
  * The directory (under userData) the categories file lives in — shared with the conversations it
@@ -26,6 +27,7 @@ export class AgentCategoryStore {
    * Registers the category IPC handlers.
    */
   public register(): void {
+    logger.info('AgentCategoryStore', 'Registering category IPC handlers');
     ipcMain.handle(AgentCategoryChannel.List, (): readonly AgentCategory[] => this.list());
     ipcMain.handle(
       AgentCategoryChannel.Save,
@@ -58,6 +60,7 @@ export class AgentCategoryStore {
     if (!this.isCategory(value)) {
       return null;
     }
+    logger.info('AgentCategoryStore.save', `Saving category ${value.id}`);
     const others: readonly AgentCategory[] = this.read().filter(
       (existing: AgentCategory): boolean => existing.id !== value.id,
     );
@@ -78,6 +81,7 @@ export class AgentCategoryStore {
     if (remove.size === 0) {
       return;
     }
+    logger.info('AgentCategoryStore.delete', `Deleting ${remove.size} category/categories`);
     this.write(this.read().filter((category: AgentCategory): boolean => !remove.has(category.id)));
   }
 
@@ -91,7 +95,8 @@ export class AgentCategoryStore {
       return Array.isArray(parsed)
         ? parsed.filter((entry: unknown): entry is AgentCategory => this.isCategory(entry))
         : [];
-    } catch {
+    } catch (error: unknown) {
+      logger.debug('AgentCategoryStore.read', 'No readable categories file', error);
       return [];
     }
   }
@@ -109,7 +114,8 @@ export class AgentCategoryStore {
         mode: 0o600,
       });
       return true;
-    } catch {
+    } catch (error: unknown) {
+      logger.error('AgentCategoryStore.write', 'Failed to persist categories', error);
       return false;
     }
   }

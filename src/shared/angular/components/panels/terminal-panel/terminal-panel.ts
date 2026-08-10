@@ -21,6 +21,7 @@ import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-too
 import { Terminal } from '@shared/angular/components/terminal/terminal';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
+import { Log } from '@shared/angular/services/log/log';
 import {
   TerminalSession,
   TerminalSessions,
@@ -72,6 +73,11 @@ export class TerminalPanel {
    * Holds this panel's terminal sessions.
    */
   private readonly terminals: TerminalSessions = inject(TerminalSessions);
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Gets the absolute path the terminals' shells start in, or null when no folder is open.
@@ -132,6 +138,7 @@ export class TerminalPanel {
    * Adds a new terminal and makes it active.
    */
   protected create(): void {
+    this.log.info('TerminalPanel', 'New terminal requested');
     this.terminals.create();
   }
 
@@ -150,6 +157,7 @@ export class TerminalPanel {
    */
   protected close(id: string, event: Event): void {
     event.stopPropagation();
+    this.log.info('TerminalPanel', `Closing terminal '${id}'`);
     this.terminals.close(id);
   }
 

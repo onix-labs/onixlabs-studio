@@ -1,4 +1,5 @@
 import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 
 /**
@@ -14,6 +15,11 @@ export class ActiveWorkspace {
    * Holds the tab registry used to resolve which tab is active.
    */
   private readonly tabs: Tabs = inject(Tabs);
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Holds each top-level tab's workspace root, keyed by tab id; a null value means the tab has no
@@ -43,6 +49,7 @@ export class ActiveWorkspace {
     const next: Map<string, string | null> = new Map<string, string | null>(this.roots());
     next.set(tabId, rootPath);
     this.roots.set(next);
+    this.log.debug('ActiveWorkspace', `Tab '${tabId}' root set`, rootPath);
   }
 
   /**
@@ -56,5 +63,6 @@ export class ActiveWorkspace {
     const next: Map<string, string | null> = new Map<string, string | null>(this.roots());
     next.delete(tabId);
     this.roots.set(next);
+    this.log.debug('ActiveWorkspace', `Tab '${tabId}' root cleared`);
   }
 }

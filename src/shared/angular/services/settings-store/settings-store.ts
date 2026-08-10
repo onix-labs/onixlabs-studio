@@ -1,4 +1,5 @@
-import { Service } from '@angular/core';
+import { inject, Service } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 
 /**
  * Represents a small key/value persistence abstraction for user settings.
@@ -10,6 +11,11 @@ import { Service } from '@angular/core';
  */
 @Service()
 export class SettingsStore {
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
   /**
    * Reads and deserialises the value stored under the given key.
    * @param key The key to read.
@@ -24,7 +30,8 @@ export class SettingsStore {
 
     try {
       return JSON.parse(raw) as T;
-    } catch {
+    } catch (error: unknown) {
+      this.log.warn('SettingsStore', `Discarded malformed value for '${key}'`, error);
       return fallback;
     }
   }
@@ -83,8 +90,9 @@ export class SettingsStore {
   private write(key: string, value: string): void {
     try {
       globalThis.localStorage?.setItem(key, value);
-    } catch {
+    } catch (error: unknown) {
       // Storage is unavailable or full; settings persistence is best-effort, so swallow the error.
+      this.log.error('SettingsStore', `Failed to persist '${key}'`, error);
     }
   }
 }

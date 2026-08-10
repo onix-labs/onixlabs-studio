@@ -1,5 +1,6 @@
 import { inject, Service } from '@angular/core';
 import { EditorTerminals } from '@shared/angular/services/editor-terminals/editor-terminals';
+import { Log } from '@shared/angular/services/log/log';
 import { Task, TaskContext, TaskProvider } from './task';
 
 /**
@@ -19,6 +20,11 @@ export class Tasks {
   private readonly editorTerminals: EditorTerminals = inject(EditorTerminals);
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Holds the registered providers, keyed by identifier.
    */
   private readonly providers: Map<string, TaskProvider> = new Map<string, TaskProvider>();
@@ -29,6 +35,7 @@ export class Tasks {
    */
   public register(provider: TaskProvider): void {
     this.providers.set(provider.id, provider);
+    this.log.debug('Tasks', 'Registered task provider', provider.id);
   }
 
   /**
@@ -64,6 +71,7 @@ export class Tasks {
     if (task.target !== 'terminal' || task.terminalTabId === undefined) {
       return;
     }
+    this.log.info('Tasks', `Running task '${task.label}'`, task.id, task.source);
     const command: string | null = await task.resolve();
     if (command !== null) {
       this.editorTerminals.queueCommand(task.terminalTabId, command);

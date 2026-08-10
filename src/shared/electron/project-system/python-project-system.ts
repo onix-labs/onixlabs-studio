@@ -10,6 +10,7 @@ import {
   ProjectNode,
 } from '@shared/api/project-system';
 import { ProjectSystem } from './project-system';
+import { logger } from '../logger';
 
 /**
  * The Python project system's root-independent capabilities: an interpreted ecosystem with no compile
@@ -183,11 +184,14 @@ export class PythonProjectSystem implements ProjectSystem {
    * @returns Returns the model, or null when the root holds no Python manifest.
    */
   public async load(root: string): Promise<ProjectModel | null> {
+    logger.trace('PythonProjectSystem', `Loading the Python model for '${root}'.`);
     const manifestPath: string | null = await this.manifest(root);
     if (manifestPath === null) {
+      logger.debug('PythonProjectSystem', `No Python manifest found at '${root}'.`);
       return null;
     }
     const name: string = (await this.projectName(root)) ?? path.basename(root);
+    logger.info('PythonProjectSystem', `Loaded Python project '${name}' from '${manifestPath}'.`);
     const tree: readonly ProjectNode[] = [{ type: 'project', name, path: manifestPath }];
     return {
       kind: this.kind,

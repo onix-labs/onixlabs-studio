@@ -1,4 +1,5 @@
 import { inject, Service } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 import { SourceControl } from '@shared/angular/services/source-control/source-control';
 import { GitProvider } from './git-provider';
 import { SourceControlProvider } from './source-control-provider';
@@ -17,11 +18,17 @@ export class SourceControlProviders {
   private readonly sourceControl: SourceControl = inject(SourceControl);
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Creates a provider for a repository root.
    * @param root The repository's absolute root path.
    * @returns Returns the provider bound to the root.
    */
   public create(root: string): SourceControlProvider {
+    this.log.debug('SourceControlProviders', 'Creating git provider', root);
     return new GitProvider(root, this.sourceControl.client);
   }
 }

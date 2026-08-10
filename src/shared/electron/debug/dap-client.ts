@@ -1,5 +1,6 @@
 import type { DebugProtocol } from '@vscode/debugprotocol';
 import { DebugAdapterId } from '@shared/api/debug-channels';
+import { logger } from '../logger';
 import { DapMessageDecoder, DapProtocol, encodeMessage } from './dap-protocol';
 import { DapTransport } from './dap-transport';
 
@@ -127,6 +128,7 @@ export class DapClient implements DebugAdapterConnection {
    * @returns Returns a promise that resolves once the transport is ready.
    */
   public async start(): Promise<void> {
+    logger.trace('DapClient', 'Starting adapter transport');
     this.transport.onData((chunk: Uint8Array): void => this.receive(chunk));
     this.transport.onClose((code: number | null, signal: string | null): void =>
       this.handleClose(code, signal),
@@ -162,10 +164,12 @@ export class DapClient implements DebugAdapterConnection {
       // `startDebugging` reverse request; the compound session handles that, so it is advertised here.
       supportsStartDebuggingRequest: true,
     };
+    logger.trace('DapClient', `Sending initialize handshake (${adapterId})`);
     const capabilities: DebugProtocol.Capabilities = await this.withTimeout(
       this.protocol.sendRequest<DebugProtocol.Capabilities>('initialize', args),
       INITIALIZE_TIMEOUT_MS,
     );
+    logger.trace('DapClient', `Initialize handshake complete (${adapterId})`);
     return capabilities ?? {};
   }
 
@@ -176,6 +180,7 @@ export class DapClient implements DebugAdapterConnection {
    * @returns Returns the response body, typed by the caller.
    */
   public sendRequest<T = unknown>(command: string, args?: unknown): Promise<T> {
+    logger.trace('DapClient', `Dispatching DAP request: ${command}`);
     return this.protocol.sendRequest<T>(command, args);
   }
 
@@ -246,6 +251,7 @@ export class DapClient implements DebugAdapterConnection {
    * repeatedly.
    */
   public dispose(): void {
+    logger.trace('DapClient', 'Disposing adapter connection');
     this.protocol.dispose('The debug adapter connection was closed.');
     this.transport.dispose();
   }
@@ -266,6 +272,7 @@ export class DapClient implements DebugAdapterConnection {
    * @param signal The terminating signal, or null.
    */
   private handleClose(code: number | null, signal: string | null): void {
+    logger.debug('DapClient', `Adapter connection closed (code=${code}, signal=${signal})`);
     this.protocol.dispose('The debug adapter connection closed.');
     for (const listener of this.exitListeners) {
       listener(code, signal);
@@ -290,6 +297,7 @@ export class DapClient implements DebugAdapterConnection {
         },
         (reason: unknown): void => {
           clearTimeout(timer);
+          logger.error('DapClient', 'Adapter initialization failed', reason);
           reject(reason instanceof Error ? reason : new Error('Adapter initialization failed'));
         },
       );

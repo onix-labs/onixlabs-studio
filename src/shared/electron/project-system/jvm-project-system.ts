@@ -10,6 +10,7 @@ import {
   ProjectNode,
 } from '@shared/api/project-system';
 import { ProjectSystem } from './project-system';
+import { logger } from '../logger';
 
 /**
  * The JVM project system's root-independent capabilities: the Build/Clean/Test actions both Gradle and
@@ -183,10 +184,13 @@ export class JvmProjectSystem implements ProjectSystem {
    * @returns Returns the model, or null when the root is neither a Gradle nor a Maven project.
    */
   public async load(root: string): Promise<ProjectModel | null> {
+    logger.trace('JvmProjectSystem', `Loading the JVM model for '${root}'.`);
     const tool: BuildTool | null = await this.detectTool(root);
     if (tool === null) {
+      logger.debug('JvmProjectSystem', `Root '${root}' is neither a Gradle nor a Maven project.`);
       return null;
     }
+    logger.debug('JvmProjectSystem', `Detected build tool '${tool}' at '${root}'.`);
     return tool === 'gradle' ? this.loadGradle(root) : this.loadMaven(root);
   }
 
@@ -259,6 +263,10 @@ export class JvmProjectSystem implements ProjectSystem {
     modules: readonly ProjectNode[],
   ): ProjectModel {
     const rootProject: ProjectNode = { type: 'project', name: rootName, path: rootManifest };
+    logger.info(
+      'JvmProjectSystem',
+      `Loaded JVM project '${rootName}' with ${modules.length} submodule(s) from '${rootManifest}'.`,
+    );
     if (modules.length === 0) {
       const tree: readonly ProjectNode[] = [rootProject];
       return {

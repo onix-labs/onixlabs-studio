@@ -1,4 +1,4 @@
-import { Service } from '@angular/core';
+import { inject, Service } from '@angular/core';
 import { Bridge } from '@shared/api/bridge';
 import {
   WorkspaceKind,
@@ -9,6 +9,7 @@ import {
   WorktreeOutcome,
 } from '@shared/api/worktree';
 import { WorktreeChannel, WorktreeClient } from '@shared/api/worktree-channels';
+import { Log } from '@shared/angular/services/log/log';
 
 /**
  * Builds a {@link WorktreeClient} that forwards each operation to its {@link WorktreeChannel} over
@@ -58,4 +59,16 @@ export class Worktrees {
   public readonly client: WorktreeClient | undefined = window.bridge
     ? createClient(window.bridge)
     : undefined;
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
+   * Initializes a new instance of the {@link Worktrees} class.
+   */
+  public constructor() {
+    this.log.trace('Worktrees', `Worktree client ${this.client ? 'available' : 'unavailable'}`);
+  }
 }

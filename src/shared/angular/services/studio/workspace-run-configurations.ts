@@ -10,6 +10,7 @@ import {
   StudioSnapshot,
 } from '@shared/api/studio';
 import { DirectoryWatch } from '@shared/angular/services/directory-watch/directory-watch';
+import { Log } from '@shared/angular/services/log/log';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 
 /**
@@ -45,6 +46,11 @@ export class WorkspaceRunConfigurations {
    * Holds the generic transport, or undefined outside Electron.
    */
   private readonly bridge: Bridge | undefined = window.bridge;
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Holds the current snapshot for this workspace's root, defaulting to an empty snapshot.
@@ -110,6 +116,11 @@ export class WorkspaceRunConfigurations {
       return;
     }
     this.current.set(snapshot ?? emptySnapshot());
+    this.log.debug(
+      'WorkspaceRunConfigurations',
+      `Loaded run configurations for '${root}'`,
+      snapshot?.workspace.runConfigurations.length ?? 0,
+    );
   }
 
   /**

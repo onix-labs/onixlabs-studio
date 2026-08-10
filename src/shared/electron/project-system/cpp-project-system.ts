@@ -10,6 +10,7 @@ import {
   ProjectNode,
 } from '@shared/api/project-system';
 import { ProjectSystem } from './project-system';
+import { logger } from '../logger';
 
 /**
  * The C/C++ project system's root-independent capabilities: the Build/Clean/Rebuild actions CMake and
@@ -132,13 +133,16 @@ export class CppProjectSystem implements ProjectSystem {
    * @returns Returns the model, or null when the root holds no CMake or Make manifest.
    */
   public async load(root: string): Promise<ProjectModel | null> {
+    logger.trace('CppProjectSystem', `Loading the C/C++ model for '${root}'.`);
     const manifestPath: string | null = await this.manifest(root);
     if (manifestPath === null) {
+      logger.debug('CppProjectSystem', `No CMake or Make manifest found at '${root}'.`);
       return null;
     }
     const cmake: string | null =
       path.basename(manifestPath) === CMAKE_MANIFEST ? await this.readFile(manifestPath) : null;
     const name: string = parseCmakeProjectName(cmake) ?? path.basename(root);
+    logger.info('CppProjectSystem', `Loaded C/C++ project '${name}' from '${manifestPath}'.`);
     const tree: readonly ProjectNode[] = [{ type: 'project', name, path: manifestPath }];
     return {
       kind: this.kind,

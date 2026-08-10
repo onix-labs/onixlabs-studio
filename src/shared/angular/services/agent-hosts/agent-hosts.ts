@@ -1,6 +1,15 @@
-import { computed, InjectionToken, Service, signal, Signal, WritableSignal } from '@angular/core';
+import {
+  computed,
+  inject,
+  InjectionToken,
+  Service,
+  signal,
+  Signal,
+  WritableSignal,
+} from '@angular/core';
 import type { AgentSurface } from '@shared/api/ai-types';
 import type { RunConfiguration } from '@shared/api/studio';
+import { Log } from '@shared/angular/services/log/log';
 import type { Agent } from '@shared/angular/services/agent/agent';
 import type { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
 
@@ -127,6 +136,11 @@ export class AgentHosts {
   );
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Tracks the counter that assigns each registration a unique identity.
    */
   private sequence: number = 0;
@@ -167,10 +181,12 @@ export class AgentHosts {
       ...current,
       full,
     ]);
+    this.log.info('AgentHosts', 'Host registered', full.id, full.tabId);
     return (): void => {
       this.hostList.update((current: readonly AgentHost[]): readonly AgentHost[] =>
         current.filter((existing: AgentHost): boolean => existing !== full),
       );
+      this.log.info('AgentHosts', 'Host unregistered', full.id);
     };
   }
 
@@ -203,6 +219,7 @@ export class AgentHosts {
    * Stops every running host.
    */
   public stopAll(): void {
+    this.log.info('AgentHosts', 'Stopping all running hosts', this.runningCount());
     for (const host of this.hostList()) {
       if (host.agent.isRunning()) {
         host.agent.stop();

@@ -7,6 +7,7 @@ import {
   PackageSourceInfo,
 } from '@shared/api/package-management';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
+import { Log } from '@shared/angular/services/log/log';
 
 /**
  * How many results are fetched per page.
@@ -31,6 +32,11 @@ export class PackageExplorer {
    * Holds this tab's workspace, whose root the sources and searches are scoped to.
    */
   private readonly workspace: Workspace = inject(Workspace);
+
+  /**
+   * Holds the structured logger for package exploration.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Holds the generic transport, or undefined when running outside Electron.
@@ -176,6 +182,7 @@ export class PackageExplorer {
    * @param name The source name.
    */
   public selectSource(name: string): void {
+    this.log.debug('workspace.packages', 'Select explore source', name);
     this.selectedSourceSignal.set(name);
     this.runQuery();
   }
@@ -200,6 +207,7 @@ export class PackageExplorer {
    * @param value Whether to include prereleases.
    */
   public setPrerelease(value: boolean): void {
+    this.log.debug('workspace.packages', 'Set prerelease filter', value);
     this.prereleaseSignal.set(value);
     this.runQuery();
   }
@@ -211,6 +219,7 @@ export class PackageExplorer {
     if (!this.hasMoreSignal() || this.loadingSignal()) {
       return;
     }
+    this.log.trace('workspace.packages', 'Load more explore results', this.resultsSignal().length);
     void this.fetchPage(this.resultsSignal().length, this.generation);
   }
 
@@ -218,6 +227,7 @@ export class PackageExplorer {
    * Runs the current query from the first page, replacing any existing results.
    */
   private runQuery(): void {
+    this.log.trace('workspace.packages', 'Run explore query', this.querySignal().trim());
     this.generation += 1;
     this.resultsSignal.set([]);
     this.totalSignal.set(0);

@@ -1,4 +1,5 @@
 import { inject, Service } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 import {
   UNSAVED_WORK,
   UnsavedWorkSource,
@@ -29,14 +30,25 @@ export class UnsavedWorkRegistry {
   private readonly dynamicSources: Set<UnsavedWorkSource> = new Set<UnsavedWorkSource>();
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Registers a view-scoped source for its lifetime, so the close flows include its unsaved work.
    * @param source The source to include.
    * @returns Returns a function that unregisters it.
    */
   public register(source: UnsavedWorkSource): () => void {
     this.dynamicSources.add(source);
+    this.log.trace('UnsavedWorkRegistry', 'Registered unsaved-work source', this.dynamicSources.size);
     return (): void => {
       this.dynamicSources.delete(source);
+      this.log.trace(
+        'UnsavedWorkRegistry',
+        'Unregistered unsaved-work source',
+        this.dynamicSources.size,
+      );
     };
   }
 

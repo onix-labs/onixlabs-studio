@@ -1,3 +1,5 @@
+import { logger } from './logger';
+
 /**
  * Describes a window rectangle in screen coordinates. Mirrors Electron's `Rectangle` without
  * depending on the electron module, so the restore logic stays pure and unit-testable.
@@ -72,6 +74,7 @@ export function parseStoredWindowState(value: unknown): StoredWindowState | null
   const record: Record<string, unknown> = value as Record<string, unknown>;
   const bounds: unknown = record['bounds'];
   if (typeof bounds !== 'object' || bounds === null) {
+    logger.warn('WindowState.parse', 'persisted state has no bounds object; ignoring');
     return null;
   }
   const rect: Record<string, unknown> = bounds as Record<string, unknown>;
@@ -87,6 +90,7 @@ export function parseStoredWindowState(value: unknown): StoredWindowState | null
     width <= 0 ||
     height <= 0
   ) {
+    logger.warn('WindowState.parse', 'persisted bounds are not finite/positive; ignoring');
     return null;
   }
   return { bounds: { x, y, width, height }, maximized: record['maximized'] === true };
@@ -110,6 +114,7 @@ export function restoreWindowRect(
   minHeight: number,
 ): WindowRect | null {
   if (workAreas.length === 0) {
+    logger.warn('WindowState.restore', 'no displays available; cannot restore bounds');
     return null;
   }
   const bounds: WindowRect = stored.bounds;
@@ -121,14 +126,18 @@ export function restoreWindowRect(
     Math.max(target.height, minHeight),
   );
   if (workAreas.some((area: WindowRect): boolean => titleStripVisible(bounds, area))) {
-    return { x: Math.round(bounds.x), y: Math.round(bounds.y), width, height };
+    const rect: WindowRect = { x: Math.round(bounds.x), y: Math.round(bounds.y), width, height };
+    logger.debug('WindowState.restore', 'persisted bounds still grabbable; kept in place', rect);
+    return rect;
   }
-  return {
+  const recentred: WindowRect = {
     x: Math.round(target.x + (target.width - width) / 2),
     y: Math.round(target.y + (target.height - height) / 2),
     width,
     height,
   };
+  logger.warn('WindowState.restore', 'persisted bounds off-screen; re-centred on display', recentred);
+  return recentred;
 }
 
 /**

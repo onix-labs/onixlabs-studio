@@ -13,6 +13,7 @@ import { AssembleResult, DecodedInstruction } from '@shared/api/binary-channels'
 import { BinaryChunk, BinaryPatch } from '@shared/api/workspace-channels';
 import { FileConflicts } from '@shared/angular/services/file-conflicts/file-conflicts';
 import { FileWatch } from '@shared/angular/services/file-watch/file-watch';
+import { Log } from '@shared/angular/services/log/log';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import {
@@ -1027,6 +1028,11 @@ export class BinaryDocuments implements UnsavedWorkSource {
   private readonly injector: Injector = inject(Injector);
 
   /**
+   * Holds the structured logger for binary-document lifecycle and outcomes.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Holds the open documents, keyed by owning tab identifier.
    */
   private readonly entries: Map<string, BinaryDocumentEntry> = new Map<
@@ -1053,6 +1059,7 @@ export class BinaryDocuments implements UnsavedWorkSource {
   public open(path: string): Tab {
     const tab: Tab = this.tabs.open('binary', path);
     if (!this.entries.has(tab.id)) {
+      this.log.info('binary.document', 'Opening binary file', path);
       const fileName: string = this.basename(path);
       const entry: BinaryDocumentEntry = new BinaryDocumentEntry(
         tab.id,
@@ -1096,6 +1103,7 @@ export class BinaryDocuments implements UnsavedWorkSource {
    * @param tabId The owning tab identifier.
    */
   public release(tabId: string): void {
+    this.log.debug('binary.document', 'Releasing binary document', tabId);
     this.dirtyEffects.get(tabId)?.destroy();
     this.dirtyEffects.delete(tabId);
     this.watchDisposers.get(tabId)?.();
@@ -1117,9 +1125,15 @@ export class BinaryDocuments implements UnsavedWorkSource {
       return;
     }
     if (!entry.dirty()) {
+      this.log.info('binary.document', 'External change; reloading clean document', entry.path);
       void entry.reloadFromDisk();
       return;
     }
+    this.log.warn(
+      'binary.document',
+      'External change on dirty document; raising keep-or-reload conflict',
+      entry.path,
+    );
     this.fileConflicts.raise(
       { documentId: tabId, tabId, name: entry.fileName },
       {
@@ -1168,7 +1182,13 @@ export class BinaryDocuments implements UnsavedWorkSource {
     if (entry === undefined) {
       return true;
     }
-    return entry.save();
+    const saved: boolean = await entry.save();
+    if (saved) {
+      this.log.info('binary.document', 'Saved binary document', entry.path);
+    } else {
+      this.log.error('binary.document', 'Failed to save binary document', entry.path);
+    }
+    return saved;
   }
 
   /**

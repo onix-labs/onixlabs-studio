@@ -1,4 +1,5 @@
-import { computed, Service, Signal, signal, WritableSignal } from '@angular/core';
+import { computed, inject, Service, Signal, signal, WritableSignal } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 
 /**
  * The maximum number of toasts held at once. An arrival beyond the cap evicts the oldest transient
@@ -143,6 +144,11 @@ export interface Notification {
 @Service()
 export class Notifications {
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Holds the identifier the next notification is assigned.
    */
   private nextId: number = 1;
@@ -217,6 +223,11 @@ export class Notifications {
         [notification, ...current].slice(0, MAX_HISTORY),
       );
     }
+    this.log.info(
+      'Notifications',
+      `Raised ${notification.severity} notification: ${notification.title}`,
+      route,
+    );
   }
 
   /**

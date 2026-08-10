@@ -8,6 +8,7 @@ import {
   PackageUpdateStatus,
 } from '@shared/api/package-management';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
+import { Log } from '@shared/angular/services/log/log';
 
 /**
  * A flattened Package Management row: either a project header or one of its packages, with its display
@@ -66,6 +67,11 @@ export class PackageModel {
    * Holds this tab's workspace, whose root the model is built for.
    */
   private readonly workspace: Workspace = inject(Workspace);
+
+  /**
+   * Holds the structured logger for the package model.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Holds the generic transport, or undefined when running outside Electron.
@@ -169,6 +175,7 @@ export class PackageModel {
    * @param value Whether to show outdated packages only.
    */
   public setOutdatedOnly(value: boolean): void {
+    this.log.debug('workspace.packages', 'Set outdated-only filter', value);
     this.outdatedOnlySignal.set(value);
   }
 
@@ -177,6 +184,7 @@ export class PackageModel {
    * there is no open root.
    */
   public refreshNow(): void {
+    this.log.info('workspace.packages', 'Reload package model requested');
     void this.refresh(this.workspace.root()?.path ?? null);
   }
 

@@ -11,6 +11,7 @@ import {
 } from '@angular/core';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { FileSystem } from '@shared/angular/services/file-system/file-system';
+import { Log } from '@shared/angular/services/log/log';
 import {
   RecentItem,
   RecentItems,
@@ -124,6 +125,11 @@ export class WelcomeScreen {
    * it is all there is.
    */
   private readonly studio: Studio = inject(Studio);
+
+  /**
+   * Holds the structured logger for welcome-screen actions.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Gets a value indicating whether any recent items exist at all, regardless of the current filter
@@ -328,10 +334,12 @@ export class WelcomeScreen {
    * @param item The recent item to open.
    */
   protected async openRecent(item: RecentItem): Promise<void> {
+    this.log.info('welcome', `Open recent ${item.kind}`, item.path);
     if (await this.reopen(item)) {
       this.dismissed.set(true);
       this.welcomeModal.close();
     } else {
+      this.log.warn('welcome', 'Recent item could not be opened; prompting to locate', item.path);
       this.missingItem.set(item);
     }
   }
@@ -349,6 +357,7 @@ export class WelcomeScreen {
   protected removeMissing(): void {
     const item: RecentItem | null = this.missingItem();
     if (item !== null) {
+      this.log.info('welcome', 'Removed missing recent item', item.path);
       this.recentItems.remove(item.path);
     }
     this.missingItem.set(null);
@@ -372,6 +381,7 @@ export class WelcomeScreen {
     if (located === null) {
       return;
     }
+    this.log.info('welcome', 'Relocating missing recent item', item.path, located);
     const opened: boolean =
       item.kind === 'directory'
         ? await this.fileOpener.reopenDirectory(located)
@@ -392,6 +402,7 @@ export class WelcomeScreen {
    * @param item The recent item to pin or unpin.
    */
   protected togglePin(item: RecentItem): void {
+    this.log.debug('welcome', `Toggle pin (${item.pinned ? 'unpin' : 'pin'})`, item.path);
     this.recentItems.togglePin(item.path);
   }
 
@@ -402,8 +413,10 @@ export class WelcomeScreen {
    */
   protected onRowAction(item: RecentItem, action: string): void {
     if (action === ROW_ACTION_REMOVE) {
+      this.log.info('welcome', 'Remove recent item', item.path);
       this.recentItems.remove(item.path);
     } else if (action === ROW_ACTION_REVEAL) {
+      this.log.info('welcome', 'Reveal recent item in file manager', item.path);
       void this.shell.revealPath(item.path);
     }
   }
@@ -434,6 +447,7 @@ export class WelcomeScreen {
    * Clears every recent item and dismisses the confirmation.
    */
   protected clearRecent(): void {
+    this.log.info('welcome', 'Cleared all recent items');
     this.recentItems.clear();
     this.confirmingClear.set(false);
   }
@@ -444,6 +458,7 @@ export class WelcomeScreen {
    * screen is dismissed only when something was opened, so cancelling returns to it.
    */
   protected async openFiles(): Promise<void> {
+    this.log.info('welcome', 'Open file/folder requested');
     if (await this.fileOpener.openInteractive()) {
       this.dismissed.set(true);
       this.welcomeModal.close();
@@ -455,6 +470,7 @@ export class WelcomeScreen {
    * until that feature lands, so this currently takes no action.
    */
   protected newProject(): void {
+    this.log.info('welcome', 'New project requested (not yet implemented)');
     // No project-creation flow exists yet; this action is a design placeholder.
   }
 
@@ -464,6 +480,7 @@ export class WelcomeScreen {
    * @param group The group to toggle.
    */
   protected toggleGroup(group: WelcomeGroup): void {
+    this.log.debug('welcome', `Toggle group "${group}"`);
     this.openGroup.update((current: WelcomeGroup | null): WelcomeGroup | null =>
       current === group ? null : group,
     );
@@ -474,6 +491,7 @@ export class WelcomeScreen {
    * the feature lands; for now the action takes no effect.
    */
   protected comingSoon(): void {
+    this.log.info('welcome', 'Coming-soon tool clicked');
     // No feature behind this tool yet; it is sketched on the welcome screen to shape the dialog.
   }
 
@@ -482,6 +500,7 @@ export class WelcomeScreen {
    * @param type The type of tab to create.
    */
   protected create(type: TabType): void {
+    this.log.info('welcome', `Create new ${type} tab`);
     this.dismissed.set(true);
     this.welcomeModal.close();
     this.tabsService.open(type);
@@ -495,8 +514,10 @@ export class WelcomeScreen {
    */
   protected close(): void {
     if (this.dismissable()) {
+      this.log.debug('welcome', 'Welcome screen dismissed to tabs');
       this.welcomeModal.close();
     } else {
+      this.log.info('welcome', 'Welcome window closed; closing application');
       this.studio.closeWindow();
     }
   }

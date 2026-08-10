@@ -1,4 +1,5 @@
 import { inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 import { Rect } from './dock-legality';
 import { DockPanel } from './dock-panel';
 import { DockPanelRegistry } from './dock-panel-registry';
@@ -68,6 +69,11 @@ export class DockFloating {
   private readonly registry: DockPanelRegistry = inject(DockPanelRegistry);
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Holds the floating windows.
    */
   private readonly windows: WritableSignal<readonly FloatWindow[]> = signal<readonly FloatWindow[]>(
@@ -98,6 +104,7 @@ export class DockFloating {
     if (!this.registry.has(panelId)) {
       return;
     }
+    this.log.info('DockFloating', `Floated panel '${panelId}'`);
     this.dockState.removeFromLayout(panelId);
     this.zCounter += 1;
     this.windows.set([
@@ -174,6 +181,7 @@ export class DockFloating {
    * @param panelId The identifier of the floating panel.
    */
   public close(panelId: string): void {
+    this.log.info('DockFloating', `Closed floating panel '${panelId}'`);
     this.windows.set(
       this.windows().filter((window: FloatWindow): boolean => window.panelId !== panelId),
     );
@@ -206,6 +214,7 @@ export class DockFloating {
     if (!exists) {
       return;
     }
+    this.log.info('DockFloating', `Docking floating panel '${panelId}' back into layout`);
     this.close(panelId);
     const panel: DockPanel | undefined = this.registry.get(panelId);
     if (panel === undefined) {

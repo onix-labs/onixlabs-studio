@@ -1,4 +1,5 @@
-import { Service, signal, Signal, WritableSignal } from '@angular/core';
+import { inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 
 /**
  * The identifier of the default output channel, which the legacy channel-less API writes to and the
@@ -140,6 +141,11 @@ export class Output {
   private readonly active: WritableSignal<string> = signal<string>(DEFAULT_CHANNEL);
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Gets the channels available for selection, in creation order.
    */
   public readonly channels: Signal<readonly OutputChannelInfo[]> = this.channelList.asReadonly();
@@ -176,6 +182,7 @@ export class Output {
   public setActive(id: string): void {
     this.ensure(id, id);
     this.active.set(id);
+    this.log.info('Output', 'Revealed output channel', id);
   }
 
   /**
@@ -330,6 +337,7 @@ export class Output {
       };
       this.channelStates.set(id, state);
       this.channelList.set([...this.channelStates.values()].map((each: ChannelState) => each.info));
+      this.log.trace('Output', 'Created output channel', id, label);
     }
     return state;
   }

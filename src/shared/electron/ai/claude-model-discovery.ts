@@ -250,6 +250,10 @@ export async function runClaudeDiscovery(
   connection: AiConnection,
   listModels: () => Promise<readonly ClaudeSdkModel[]>,
 ): Promise<AiDiscoverModelsResult> {
+  logger.trace(
+    'claude-model-discovery',
+    `Discovering models for Claude connection '${connection.id}'`,
+  );
   let discovered: readonly ClaudeSdkModel[];
   try {
     discovered = await listModels();
@@ -264,6 +268,7 @@ export async function runClaudeDiscovery(
   }
 
   if (discovered.length === 0) {
+    logger.warn('claude-model-discovery', 'Claude reported no models');
     return {
       ok: false,
       models: connection.models,
@@ -277,6 +282,10 @@ export async function runClaudeDiscovery(
     discovered.map(mapClaudeModel),
   );
   const added: number = merged.length - connection.models.length;
+  logger.info(
+    'claude-model-discovery',
+    `Discovery succeeded: ${discovered.length} model(s) reported, ${added} new`,
+  );
   return {
     ok: true,
     models: merged,

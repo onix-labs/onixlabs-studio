@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, inject, Signal } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 import { Icon } from '@shared/angular/icons/icon';
 import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host';
 import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button';
@@ -30,6 +31,11 @@ export class ContainersRibbon {
   private readonly commands: ContainersCommands = inject(ContainersCommands);
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Gets whether a container is selected in the active view.
    */
   protected readonly hasSelection: Signal<boolean> = this.commands.hasSelection;
@@ -43,6 +49,7 @@ export class ContainersRibbon {
    * Starts the selected container.
    */
   protected onStart(): void {
+    this.log.info('containers.ribbon', 'Start clicked');
     this.commands.start();
   }
 
@@ -50,6 +57,7 @@ export class ContainersRibbon {
    * Stops the selected container.
    */
   protected onStop(): void {
+    this.log.info('containers.ribbon', 'Stop clicked');
     this.commands.stop();
   }
 
@@ -57,6 +65,7 @@ export class ContainersRibbon {
    * Removes the selected container.
    */
   protected onRemove(): void {
+    this.log.info('containers.ribbon', 'Remove clicked');
     this.commands.remove();
   }
 
@@ -64,6 +73,7 @@ export class ContainersRibbon {
    * Streams the selected container's logs in a terminal.
    */
   protected onLogs(): void {
+    this.log.info('containers.ribbon', 'View logs clicked');
     this.commands.viewLogs();
   }
 
@@ -71,6 +81,7 @@ export class ContainersRibbon {
    * Opens a shell in the selected running container.
    */
   protected onShell(): void {
+    this.log.info('containers.ribbon', 'Shell clicked');
     this.commands.shell();
   }
 
@@ -78,6 +89,7 @@ export class ContainersRibbon {
    * Refreshes the container and image lists.
    */
   protected onRefresh(): void {
+    this.log.info('containers.ribbon', 'Refresh clicked');
     this.commands.refresh();
   }
 }

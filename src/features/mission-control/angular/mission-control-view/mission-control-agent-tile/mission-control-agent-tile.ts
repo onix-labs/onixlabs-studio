@@ -28,6 +28,7 @@ import { NgTemplateOutlet } from '@angular/common';
 import { Icon } from '@shared/angular/icons/icon';
 import { RunConfiguration } from '@shared/api/studio';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
+import { Log } from '@shared/angular/services/log/log';
 import { MissionControl } from '@features/mission-control/angular/mission-control/mission-control';
 import { MissionControlTiles } from '../mission-control-tiles';
 
@@ -105,6 +106,11 @@ export class MissionControlAgentTile {
    * Holds the view-scoped tile registry, so the agent rail can scroll this column into view.
    */
   private readonly tiles: MissionControlTiles = inject(MissionControlTiles);
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Gets a value indicating whether the Mission Control tab is the active tab, forwarded to the chat so
@@ -313,7 +319,9 @@ export class MissionControlAgentTile {
    * Toggles this tile's local history view.
    */
   protected toggleHistory(): void {
-    this.historyOpen.update((open: boolean): boolean => !open);
+    const next: boolean = !this.historyOpen();
+    this.log.debug('mission-control.tile', 'Toggled history view', { host: this.host.id, open: next });
+    this.historyOpen.set(next);
   }
 
   /**
@@ -322,6 +330,10 @@ export class MissionControlAgentTile {
    * no Run capability (not workspace-backed), which is also when the button is hidden.
    */
   protected onRun(): void {
+    this.log.info('mission-control.tile', 'Run default configuration', {
+      host: this.host.id,
+      config: this.defaultRun()?.name,
+    });
     this.host.run?.run();
   }
 
@@ -329,6 +341,7 @@ export class MissionControlAgentTile {
    * Stops the host workspace's running default configuration from Mission Control.
    */
   protected onStop(): void {
+    this.log.info('mission-control.tile', 'Stop default configuration', { host: this.host.id });
     this.host.run?.stop();
   }
 
@@ -338,6 +351,10 @@ export class MissionControlAgentTile {
    * again from the rail, which stays visible.
    */
   protected toggleHidden(): void {
+    this.log.info('mission-control.tile', 'Toggled manual hide', {
+      host: this.host.id,
+      hidden: !this.manuallyHidden(),
+    });
     this.missionControl.toggleHostHidden(this.host.id);
   }
 
@@ -345,6 +362,7 @@ export class MissionControlAgentTile {
    * Opens the focus modal, presenting this tile's agent panel large and centred.
    */
   protected openFocus(): void {
+    this.log.debug('mission-control.tile', 'Opened focus modal', { host: this.host.id });
     this.focusOpen.set(true);
   }
 
@@ -352,6 +370,7 @@ export class MissionControlAgentTile {
    * Closes the focus modal, returning the agent panel to its column.
    */
   protected closeFocus(): void {
+    this.log.debug('mission-control.tile', 'Closed focus modal', { host: this.host.id });
     this.focusOpen.set(false);
   }
 
@@ -360,6 +379,10 @@ export class MissionControlAgentTile {
    */
   protected onOpenTab(): void {
     if (this.host.tabId !== null) {
+      this.log.info('mission-control.tile', 'Jump to origin tab', {
+        host: this.host.id,
+        tab: this.host.tabId,
+      });
       this.tabs.activate(this.host.tabId);
     }
   }
@@ -377,6 +400,10 @@ export class MissionControlAgentTile {
     const startWidth: number = this.elementRef.nativeElement.getBoundingClientRect().width;
     const grip: HTMLElement = event.target as HTMLElement;
     grip.setPointerCapture(event.pointerId);
+    this.log.trace('mission-control.tile', 'Resize drag started', {
+      host: this.host.id,
+      startWidth,
+    });
 
     const move: (moveEvent: PointerEvent) => void = (moveEvent: PointerEvent): void => {
       this.missionControl.setWidth(this.key(), startWidth + (moveEvent.clientX - startX));

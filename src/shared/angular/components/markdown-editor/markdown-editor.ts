@@ -39,6 +39,7 @@ import { createMonacoCodeBlockPlugin } from '@shared/angular/milkdown/monaco-cod
 import { pasteCleanPlugin } from '@shared/angular/milkdown/paste-clean-plugin';
 import { searchPlugin } from '@shared/angular/milkdown/search-plugin';
 import { subscriptSuperscriptPlugin } from '@shared/angular/milkdown/subscript-superscript-plugin';
+import { Log } from '@shared/angular/services/log/log';
 import { Milkdown } from '@shared/angular/services/milkdown/milkdown';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { MonacoHighlighter } from '@shared/angular/services/monaco/monaco-highlighter';
@@ -116,6 +117,11 @@ export class MarkdownEditor implements AfterViewInit, OnChanges, OnDestroy {
    * Holds the Angular zone, used to create the editor outside change detection.
    */
   private readonly zone: NgZone = inject(NgZone);
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Holds a reference to the editor container element Crepe mounts into.
@@ -357,6 +363,7 @@ export class MarkdownEditor implements AfterViewInit, OnChanges, OnDestroy {
    * Destroys the editor when the pane is torn down.
    */
   public ngOnDestroy(): void {
+    this.log.info('MarkdownEditor', 'Destroying editor pane');
     void this.destroyEditor();
     this.scrollContainer = null;
   }
@@ -571,6 +578,7 @@ export class MarkdownEditor implements AfterViewInit, OnChanges, OnDestroy {
 
       this.zone.run((): void => {
         this.isEditorReady.set(true);
+        this.log.info('MarkdownEditor', 'Created Crepe editor');
         this.ready.emit();
       });
     });
@@ -644,6 +652,7 @@ export class MarkdownEditor implements AfterViewInit, OnChanges, OnDestroy {
     // window (which would save a second time). The editor owns Cmd/Ctrl+S; the host saves via
     // saveRequested.
     event.stopPropagation();
+    this.log.debug('MarkdownEditor', 'Save shortcut pressed');
     this.zone.run((): void => this.saveRequested.emit());
   }
 

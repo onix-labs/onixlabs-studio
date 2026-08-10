@@ -1,6 +1,7 @@
-import { Service } from '@angular/core';
+import { inject, Service } from '@angular/core';
 import { Bridge } from '@shared/api/bridge';
 import { ShellChannel } from '@shared/api/shell-channels';
+import { Log } from '@shared/angular/services/log/log';
 
 /**
  * Renderer-side shell client: the typed wrapper around the operating-system shell IPC channels, driven
@@ -18,11 +19,17 @@ export class Shell {
   private readonly bridge: Bridge | undefined = window.bridge;
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Opens a file-system path in the operating system's default handler (e.g. the file manager).
    * @param path The absolute path to open.
    * @returns Returns a promise that resolves once the request has been handed to the main process.
    */
   public async openPath(path: string): Promise<void> {
+    this.log.info('Shell', 'Opening path in OS handler', path);
     await this.bridge?.invoke<string>(ShellChannel.OpenPath, path);
   }
 
@@ -33,6 +40,7 @@ export class Shell {
    * @returns Returns a promise that resolves once the request has been handed to the main process.
    */
   public async openExternal(url: string): Promise<void> {
+    this.log.info('Shell', 'Opening external URL', url);
     await this.bridge?.invoke<void>(ShellChannel.OpenExternal, url);
   }
 
@@ -43,6 +51,7 @@ export class Shell {
    * @returns Returns a promise that resolves once the request has been handed to the main process.
    */
   public async revealPath(path: string): Promise<void> {
+    this.log.info('Shell', 'Revealing path in file manager', path);
     await this.bridge?.invoke<void>(ShellChannel.RevealPath, path);
   }
 }

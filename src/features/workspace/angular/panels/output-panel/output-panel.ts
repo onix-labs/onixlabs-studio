@@ -21,6 +21,7 @@ import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-too
 import { Button } from '@shared/angular/components/forms/button/button';
 import { Icon } from '@shared/angular/icons/icon';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
+import { Log } from '@shared/angular/services/log/log';
 import { Output, OutputChannelInfo } from '@shared/angular/services/output/output';
 import { Theme } from '@shared/angular/services/theme/theme';
 
@@ -55,6 +56,11 @@ export class OutputPanel implements AfterViewInit, OnDestroy {
    * Holds the workspace output surface rendered by this panel.
    */
   private readonly output: Output = inject(Output);
+
+  /**
+   * Holds the structured logger for output panel actions.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Gets the active channel rendered by the terminal.
@@ -199,6 +205,7 @@ export class OutputPanel implements AfterViewInit, OnDestroy {
    * @param channelId The chosen channel identifier.
    */
   protected selectChannel(channelId: string): void {
+    this.log.debug('workspace.output', 'Select output channel', channelId);
     this.output.setActive(channelId);
   }
 
@@ -206,6 +213,7 @@ export class OutputPanel implements AfterViewInit, OnDestroy {
    * Clears the active channel's buffer.
    */
   protected clear(): void {
+    this.log.info('workspace.output', 'Clear output channel', this.activeChannelId());
     this.output.clearChannel(this.activeChannelId());
   }
 

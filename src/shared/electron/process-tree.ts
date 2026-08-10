@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { logger } from './logger';
 
 /**
  * Process-tree lifecycle helpers: the one place that knows how to end a child process AND its
@@ -44,13 +45,16 @@ export function signalProcessTree(
   ): boolean => process.kill(target, name),
 ): void {
   if (process.platform === 'win32') {
+    logger.debug('ProcessTree', `taskkill /T /F pid ${pid}`);
     execFile('taskkill', ['/pid', String(pid), '/T', '/F'], (): void => undefined);
     return;
   }
   try {
+    logger.trace('ProcessTree', `Signalling process group ${pid} with ${signal}`);
     kill(-pid, signal);
   } catch {
     try {
+      logger.debug('ProcessTree', `Group signal failed; signalling single process ${pid}`);
       kill(pid, signal);
     } catch {
       // The process is already gone; nothing to signal.
@@ -78,8 +82,10 @@ export function killProcessTree(
     signalProcessTree(pid, 'SIGKILL', kill);
     return;
   }
+  logger.debug('ProcessTree', `Ending process tree ${pid}: SIGTERM, SIGKILL after ${graceMs}ms`);
   signalProcessTree(pid, 'SIGTERM', kill);
   const escalation: NodeJS.Timeout = setTimeout((): void => {
+    logger.debug('ProcessTree', `Grace elapsed; escalating process tree ${pid} to SIGKILL`);
     signalProcessTree(pid, 'SIGKILL', kill);
   }, graceMs);
   escalation.unref();

@@ -3,6 +3,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { parseStoredWindowState, StoredWindowState } from './window-state';
 import { WindowKind } from './window-registry';
+import { logger } from './logger';
 
 /**
  * Holds the file name the window states are persisted under, within the app's user-data directory.
@@ -25,7 +26,14 @@ export class WindowStateStore {
    * @returns Returns the persisted state, or null when none is usable.
    */
   public static read(kind: WindowKind): StoredWindowState | null {
-    return parseStoredWindowState(WindowStateStore.readAll()[kind]);
+    logger.trace('WindowStateStore.read', `reading state for '${kind}'`);
+    const state: StoredWindowState | null = parseStoredWindowState(WindowStateStore.readAll()[kind]);
+    if (state === null) {
+      logger.debug('WindowStateStore.read', `no usable persisted state for '${kind}'`);
+    } else {
+      logger.debug('WindowStateStore.read', `restored state for '${kind}'`, state);
+    }
+    return state;
   }
 
   /**
@@ -35,12 +43,15 @@ export class WindowStateStore {
    * @param state The state to persist.
    */
   public static write(kind: WindowKind, state: StoredWindowState): void {
+    logger.trace('WindowStateStore.write', `persisting state for '${kind}'`, state);
     try {
       const all: Record<string, unknown> = WindowStateStore.readAll();
       all[kind] = state;
       fs.writeFileSync(WindowStateStore.filePath(), JSON.stringify(all, null, 2));
-    } catch {
+      logger.debug('WindowStateStore.write', `persisted state for '${kind}'`);
+    } catch (error) {
       // The user-data directory is unavailable or read-only; the bounds simply will not persist.
+      logger.error('WindowStateStore.write', `failed to persist state for '${kind}'`, error);
     }
   }
 
@@ -55,8 +66,15 @@ export class WindowStateStore {
       if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
         return parsed as Record<string, unknown>;
       }
+      logger.warn('WindowStateStore.readAll', 'state file is not an object; ignoring');
       return {};
-    } catch {
+    } catch (error) {
+      const nodeError: NodeJS.ErrnoException = error as NodeJS.ErrnoException;
+      if (nodeError.code === 'ENOENT') {
+        logger.debug('WindowStateStore.readAll', 'no state file yet; starting empty');
+      } else {
+        logger.error('WindowStateStore.readAll', 'failed to read state file', error);
+      }
       return {};
     }
   }

@@ -8,6 +8,7 @@ import {
   inject,
   Signal,
 } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 import { Settings, WorkspaceTexture } from '@shared/angular/services/settings/settings';
 import { DockFocus } from '../../../services/dock-layout/dock-focus';
 import { DockGeometry } from '../../../services/dock-layout/dock-geometry';
@@ -71,6 +72,11 @@ export class DockContainer {
   private readonly settings: Settings = inject(Settings);
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Gets the root of the layout tree to render.
    */
   protected readonly layout: Signal<DockTreeNode> = this.dockState.layout;
@@ -111,6 +117,7 @@ export class DockContainer {
    * Resets the layout to the seeded default, discarding the current arrangement.
    */
   public reset(): void {
+    this.log.info('DockContainer', 'Reset dock layout');
     this.dockState.reset();
     this.focusDocumentWell();
   }
@@ -120,6 +127,7 @@ export class DockContainer {
    * document well so the accent never points at a stack the undo may have removed.
    */
   public undo(): void {
+    this.log.trace('DockContainer', 'Undo dock layout change');
     this.dockState.undo();
     this.focusDocumentWell();
   }
@@ -129,6 +137,7 @@ export class DockContainer {
    * points at a stack the redo may have removed.
    */
   public redo(): void {
+    this.log.trace('DockContainer', 'Redo dock layout change');
     this.dockState.redo();
     this.focusDocumentWell();
   }

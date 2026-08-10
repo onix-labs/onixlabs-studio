@@ -1,5 +1,6 @@
-import { computed, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { ProjectCapabilities, ProjectModel } from '@shared/api/project-system';
+import { Log } from '@shared/angular/services/log/log';
 
 /**
  * Routes the active workspace's project model to the root ribbon and the Configure dialog, exposing the
@@ -17,6 +18,11 @@ export class WorkspaceCapabilities {
    */
   private readonly source: WritableSignal<Signal<ProjectModel | null> | null> =
     signal<Signal<ProjectModel | null> | null>(null);
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Gets the active workspace's declared capabilities, or null when none are available.
@@ -38,6 +44,7 @@ export class WorkspaceCapabilities {
    */
   public register(model: Signal<ProjectModel | null>): void {
     this.source.set(model);
+    this.log.debug('WorkspaceCapabilities', 'Registered active project model', model()?.kind);
   }
 
   /**
@@ -47,6 +54,7 @@ export class WorkspaceCapabilities {
   public unregister(model: Signal<ProjectModel | null>): void {
     if (this.source() === model) {
       this.source.set(null);
+      this.log.debug('WorkspaceCapabilities', 'Unregistered active project model');
     }
   }
 }

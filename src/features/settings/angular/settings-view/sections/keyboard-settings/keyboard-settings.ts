@@ -8,6 +8,7 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { Keybindings, ResolvedBinding } from '@shared/angular/services/keybindings/keybindings';
+import { Log } from '@shared/angular/services/log/log';
 import { Button } from '@shared/angular/components/forms/button/button';
 
 /**
@@ -47,6 +48,11 @@ export class KeyboardSettingsSection {
    * Holds the keybinding router that owns the catalogue, the overrides, and their validation.
    */
   private readonly keybindings: Keybindings = inject(Keybindings);
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Holds the id of the command whose chord is being captured, or null when none is.
@@ -115,6 +121,7 @@ export class KeyboardSettingsSection {
    * @param id The catalogued command identifier.
    */
   protected beginCapture(id: string): void {
+    this.log.trace('settings.keyboard', 'Chord capture armed', id);
     this.rejection.set(null);
     this.editing.set(id);
   }
@@ -141,6 +148,7 @@ export class KeyboardSettingsSection {
       return;
     }
     if (event.key === 'Backspace' || event.key === 'Delete') {
+      this.log.info('settings.keyboard', 'Keybinding override cleared via capture', id);
       this.keybindings.clearOverride(id);
       this.editing.set(null);
       return;
@@ -150,6 +158,7 @@ export class KeyboardSettingsSection {
       return;
     }
     const error: string | null = this.keybindings.setOverride(id, chord);
+    this.log.info('settings.keyboard', 'Keybinding override applied', id, chord, error ?? 'accepted');
     if (error !== null) {
       this.rejection.set({ id, message: error });
     }
@@ -161,6 +170,7 @@ export class KeyboardSettingsSection {
    * @param id The catalogued command identifier.
    */
   protected reset(id: string): void {
+    this.log.info('settings.keyboard', 'Keybinding reset to default', id);
     this.rejection.set(null);
     this.keybindings.clearOverride(id);
   }

@@ -15,6 +15,7 @@ import {
 import type { Selection } from '@milkdown/kit/prose/state';
 import { MarkdownEditor } from '@shared/angular/components/markdown-editor/markdown-editor';
 import { Documents } from '@shared/angular/services/documents/documents';
+import { Log } from '@shared/angular/services/log/log';
 
 /**
  * Display name given to a new, unsaved markdown document.
@@ -48,6 +49,11 @@ export class MarkdownDocument implements OnInit, OnDestroy {
    * state.
    */
   private readonly documents: Documents = inject(Documents);
+
+  /**
+   * Holds the structured logging client for the document core's lifecycle and save actions.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Holds the shared markdown-editor pane this component drives, or undefined before the view
@@ -125,6 +131,9 @@ export class MarkdownDocument implements OnInit, OnDestroy {
     this.registeredDocumentId = this.documentId();
     this.documents.ensure(this.documentId(), NEW_MARKDOWN_DOCUMENT_NAME);
     this.documents.setLanguage(this.documentId(), MARKDOWN_LANGUAGE);
+    this.log.debug('markdown.document', 'Backing document registered', {
+      documentId: this.documentId(),
+    });
   }
 
   /**
@@ -204,6 +213,9 @@ export class MarkdownDocument implements OnInit, OnDestroy {
    * Saves the backing document when the pane requests it (the editor's Cmd/Ctrl+S shortcut).
    */
   protected onSaveRequested(): void {
+    this.log.info('markdown.document', 'Document save requested', {
+      documentId: this.documentId(),
+    });
     void this.documents.save(this.documentId());
   }
 }

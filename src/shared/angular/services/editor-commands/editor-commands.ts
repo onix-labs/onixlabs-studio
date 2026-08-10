@@ -1,4 +1,5 @@
-import { computed, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 
 /**
  * Defines the editor commands the code ribbon can invoke on the active code editor.
@@ -127,6 +128,11 @@ export class EditorCommands {
   );
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Gets a value indicating whether a code editor is currently active.
    */
   public readonly hasActiveEditor: Signal<boolean> = computed(
@@ -152,6 +158,7 @@ export class EditorCommands {
     this.handlers.set(id, handler);
     this.activeId.set(id);
     this.lastActiveId.set(id);
+    this.log.trace('EditorCommands', 'Registered active editor', id);
   }
 
   /**
@@ -193,6 +200,7 @@ export class EditorCommands {
    */
   public forget(id: string): void {
     this.handlers.delete(id);
+    this.log.trace('EditorCommands', 'Forgot editor', id);
     if (this.activeId() === id) {
       this.activeId.set(null);
     }
@@ -379,6 +387,7 @@ export class EditorCommands {
    * @returns Returns a promise that completes when the clean-up has run.
    */
   public async codeCleanup(): Promise<void> {
+    this.log.trace('EditorCommands', 'Code cleanup requested');
     await this.activeHandler()?.codeCleanup?.();
   }
 

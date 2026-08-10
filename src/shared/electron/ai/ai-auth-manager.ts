@@ -9,6 +9,7 @@ import type {
   AiSetConnectionKeyRequest,
 } from '@shared/api/ai-types';
 import { AiChannel } from '@shared/api/ai-channels';
+import { logger } from '../logger';
 import type { AgentAuth } from './agent-provider';
 import { CredentialStore, type CredentialStorePorts } from './credential-store';
 
@@ -94,6 +95,10 @@ export class AiAuthManager {
    * @returns Returns the connection's updated status.
    */
   public setConnectionKey(connectionId: string, authKind: AiAuthKind, key: string): AiAuthStatus {
+    logger.info(
+      'AiAuthManager.setConnectionKey',
+      `${key.length === 0 ? 'Clearing' : 'Storing'} API key for connection ${connectionId}`,
+    );
     this.store.setKey(connectionId, key);
     return this.store.statusFor(connectionId, authKind);
   }
@@ -105,6 +110,7 @@ export class AiAuthManager {
    * @returns Returns the connection's updated status.
    */
   public clearConnectionKey(connectionId: string, authKind: AiAuthKind): AiAuthStatus {
+    logger.info('AiAuthManager.clearConnectionKey', `Clearing API key for connection ${connectionId}`);
     this.store.clearKey(connectionId);
     return this.store.statusFor(connectionId, authKind);
   }
@@ -114,6 +120,7 @@ export class AiAuthManager {
    * requests.
    */
   public register(): void {
+    logger.info('AiAuthManager', 'Registering credential IPC handlers');
     ipcMain.handle(
       AiChannel.ConnectionAuthStatus,
       (_event: IpcMainInvokeEvent, request: unknown): AiAuthStatus =>
@@ -171,7 +178,8 @@ export class AiAuthManager {
     try {
       const decrypted: string = safeStorage.decryptString(readFileSync(this.keyFile));
       return decrypted.length > 0 ? decrypted : null;
-    } catch {
+    } catch (error: unknown) {
+      logger.error('AiAuthManager.loadBlob', 'Failed to read/decrypt stored credentials', error);
       return null;
     }
   }
@@ -188,6 +196,7 @@ export class AiAuthManager {
       return;
     }
     if (!safeStorage.isEncryptionAvailable()) {
+      logger.warn('AiAuthManager.saveBlob', 'OS secure storage unavailable; cannot store the API key');
       throw new Error('Operating-system secure storage is unavailable; cannot store the API key.');
     }
     mkdirSync(dirname(this.keyFile), { recursive: true });

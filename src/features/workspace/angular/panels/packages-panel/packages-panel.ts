@@ -16,6 +16,7 @@ import {
 } from '@shared/api/package-management';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
+import { Log } from '@shared/angular/services/log/log';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
@@ -160,6 +161,11 @@ export class PackagesPanel {
   private readonly fileOpener: FileOpener = inject(FileOpener);
 
   /**
+   * Holds the structured logger for package panel actions.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Holds the active panel mode.
    */
   protected readonly mode: WritableSignal<PackageMode> = signal<PackageMode>('installed');
@@ -223,6 +229,7 @@ export class PackagesPanel {
    * @param mode The mode to switch to.
    */
   protected setMode(mode: PackageMode): void {
+    this.log.debug('workspace.packages', 'Switch package mode', mode);
     this.mode.set(mode);
     if (mode === 'explore') {
       void this.explorer.ensureSources();
@@ -240,6 +247,7 @@ export class PackagesPanel {
    * Reloads the installed model, re-resolving installed and latest versions.
    */
   protected refresh(): void {
+    this.log.info('workspace.packages', 'Refresh installed packages requested');
     this.packages.refreshNow();
   }
 
@@ -249,7 +257,9 @@ export class PackagesPanel {
    */
   protected onRowClick(row: TableRow): void {
     if (row.group === true) {
-      void this.fileOpener.openPath((row.data as PackageGroupData).manifestPath);
+      const manifestPath: string = (row.data as PackageGroupData).manifestPath;
+      this.log.info('workspace.packages', 'Open project manifest', manifestPath);
+      void this.fileOpener.openPath(manifestPath);
     }
   }
 

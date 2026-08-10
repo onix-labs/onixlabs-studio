@@ -5,6 +5,7 @@ import {
   provideAppInitializer,
 } from '@angular/core';
 import { FeatureDescriptor, provideFeature } from '@shared/angular/services/feature-registry';
+import { Log } from '@shared/angular/services/log/log';
 import { provideKeybindingCatalogue } from '@shared/angular/services/keybindings/keybinding-catalogue';
 import { TERMINAL_KEYBINDINGS } from './terminal-keybindings';
 import { AgentTerminalCapabilities } from './agent-terminal-capabilities/agent-terminal-capabilities';
@@ -35,6 +36,7 @@ export function provideTerminalFeature(): EnvironmentProviders {
     provideKeybindingCatalogue(TERMINAL_KEYBINDINGS),
     provideAppInitializer((): void => {
       inject(AgentTerminalCapabilities);
+      inject(Log).info('terminal.feature', 'Terminal feature registered');
     }),
   ]);
 }

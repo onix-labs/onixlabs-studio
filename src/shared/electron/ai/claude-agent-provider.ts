@@ -299,6 +299,10 @@ export class ClaudeAgentProvider implements AgentProvider {
   public constructor(models: readonly AiModelInfo[], defaultModelId: string) {
     this.models = models;
     this.defaultModelId = defaultModelId;
+    logger.info(
+      'ClaudeAgentProvider',
+      `Provider created with ${models.length} model(s), default '${defaultModelId}'`,
+    );
   }
 
   /**
@@ -351,6 +355,10 @@ export class ClaudeAgentProvider implements AgentProvider {
     // tools are registered, and the run works through the SDK's built-in tools alone (gated by the
     // permission posture as usual).
     const project: boolean = surface === 'project';
+    logger.trace(
+      'ClaudeAgentProvider.buildRunOptions',
+      `Building run options: surface=${surface}, mode=${openContext.mode}, model=${openContext.model}, workspace=${hasWorkspace}`,
+    );
     // Chat mode runs read-only: the mutating in-app tool is withheld and every editing/executing tool
     // is denied, so the agent may inspect the project and the surface but never changes anything.
     const readOnly: boolean = openContext.mode === 'chat';
@@ -1045,6 +1053,12 @@ export class ClaudeAgentProvider implements AgentProvider {
       ...(this.runEnv(openContext) ?? {}),
     };
 
+    logger.debug(
+      'ClaudeAgentProvider.buildRunOptions',
+      `Run options resolved: model=${openContext.model}, effort=${openContext.effort ?? 'default'}, ` +
+        `readOnly=${readOnly}, disallowed=${disallowedTools.length}, ` +
+        `confinementRoots=${confinementRoots.length}, resume=${openContext.resumeSessionId !== null}`,
+    );
     return options;
   }
 
@@ -1056,6 +1070,7 @@ export class ClaudeAgentProvider implements AgentProvider {
    * @param context The run context.
    */
   public async run(context: AgentRunContext): Promise<void> {
+    logger.trace('ClaudeAgentProvider.run', `Transient run for request ${context.requestId}`);
     const session: ClaudeAgentSession = this.openSession(context);
     try {
       await session.turn(context);
@@ -1072,6 +1087,10 @@ export class ClaudeAgentProvider implements AgentProvider {
    * @returns Returns the live session.
    */
   public openSession(context: AgentRunContext): ClaudeAgentSession {
+    logger.info(
+      'ClaudeAgentProvider.openSession',
+      `Opening Claude session for surface '${context.surface}' (agent ${context.agentSessionId})`,
+    );
     return new ClaudeAgentSession(
       {
         buildRunOptions: (
@@ -1144,6 +1163,12 @@ export class ClaudeAgentProvider implements AgentProvider {
     choice: ClaudeExecutableChoice | undefined,
   ): { pathToClaudeCodeExecutable: string } | Record<string, never> {
     const executable: string | undefined = resolveClaudeExecutable(choice);
+    logger.debug(
+      'ClaudeAgentProvider.executableOption',
+      executable === undefined
+        ? `No explicit Claude executable (mode '${choice?.mode ?? 'bundled'}'); SDK will resolve its own`
+        : `Resolved Claude executable: ${executable}`,
+    );
     return executable === undefined ? {} : { pathToClaudeCodeExecutable: executable };
   }
 
@@ -1160,6 +1185,7 @@ export class ClaudeAgentProvider implements AgentProvider {
     executable: ClaudeExecutableChoice | undefined,
     createQuery: ClaudeQueryFactory = defaultClaudeQueryFactory,
   ): Promise<readonly ClaudeSdkModel[]> {
+    logger.trace('ClaudeAgentProvider.listSupportedModels', 'Discovering Claude models via the SDK');
     const options: Options = { ...this.executableOption(executable), ...managedSpawnerOption() };
     let release: () => void = (): void => undefined;
     // The SDK's streaming-input mode keeps the session open until the prompt generator completes; it
@@ -1175,6 +1201,10 @@ export class ClaudeAgentProvider implements AgentProvider {
     const sdkQuery: Query = await createQuery(keepOpen(), options);
     try {
       const models: readonly ModelInfo[] = await sdkQuery.supportedModels();
+      logger.debug(
+        'ClaudeAgentProvider.listSupportedModels',
+        `SDK reported ${models.length} supported model(s)`,
+      );
       return models.map(
         (model: ModelInfo): ClaudeSdkModel => ({
           value: model.value,
@@ -1225,6 +1255,12 @@ export class ClaudeAgentProvider implements AgentProvider {
       const captured: Record<string, string> | null = captureShellEnvironmentCached(shell);
       if (captured !== null) {
         Object.assign(env, applyCapturedEnvironment(env, captured, true));
+        logger.debug('ClaudeAgentProvider.runEnv', `Overlaid agent shell environment from ${shell}`);
+      } else {
+        logger.warn(
+          'ClaudeAgentProvider.runEnv',
+          `Could not capture agent shell environment from ${shell}; using inherited env`,
+        );
       }
       env['SHELL'] = shell;
     }
@@ -1659,11 +1695,19 @@ export class ClaudeAgentSession implements AgentSession {
    */
   public async turn(context: AgentRunContext): Promise<void> {
     this.currentContext = context;
+    logger.trace(
+      'ClaudeAgentSession.turn',
+      `Turn dispatch for request ${context.requestId} (model ${context.model})`,
+    );
     if (this.sdkQuery === null) {
       await this.openInternal();
       this.appliedModel = context.model;
     } else if (context.model !== this.appliedModel) {
       // A later turn changed the model: apply it live, since the query's model was bound at open.
+      logger.debug(
+        'ClaudeAgentSession.turn',
+        `Applying live model change '${this.appliedModel}' -> '${context.model}'`,
+      );
       this.appliedModel = context.model;
       void this.sdkQuery.setModel(context.model);
     }
@@ -1707,6 +1751,7 @@ export class ClaudeAgentSession implements AgentSession {
     if (query === null) {
       return;
     }
+    logger.trace('ClaudeAgentSession.interrupt', 'Interrupting the in-flight Claude turn');
     void query
       .interrupt()
       .then((): void => this.settleTurn())
@@ -1721,6 +1766,10 @@ export class ClaudeAgentSession implements AgentSession {
     if (this.closed) {
       return;
     }
+    logger.info(
+      'ClaudeAgentSession.close',
+      `Closing Claude session${this.reportedSessionId === null ? '' : ` ${this.reportedSessionId}`}`,
+    );
     this.closed = true;
     this.inputClosed = true;
     this.currentContext.setSteerHandler(null);
@@ -1736,6 +1785,7 @@ export class ClaudeAgentSession implements AgentSession {
    * @param context The opening turn's context.
    */
   private async openInternal(): Promise<void> {
+    logger.trace('ClaudeAgentSession.openInternal', 'Opening the SDK query and starting the pump');
     this.controller = new AbortController();
     // Pass a live accessor, not a snapshot: the per-turn tool/gate/audit closures resolve the session's
     // current turn context each invocation (`turn()` swaps it), while the frozen structural options read
@@ -1762,8 +1812,9 @@ export class ClaudeAgentSession implements AgentSession {
     }
     try {
       this.publishCommands(await query.supportedCommands());
-    } catch {
+    } catch (error: unknown) {
       // Command discovery is best-effort; never let it disturb the session.
+      logger.debug('ClaudeAgentSession.emitCommands', 'Slash command discovery failed', error);
     }
   }
 
@@ -1847,6 +1898,7 @@ export class ClaudeAgentSession implements AgentSession {
       for await (const message of this.sdkQuery) {
         const sessionId: string | null = this.deps.sessionIdOf(message);
         if (sessionId !== null && sessionId !== this.reportedSessionId) {
+          logger.info('ClaudeAgentSession.pump', `Session id reported: ${sessionId}`);
           this.reportedSessionId = sessionId;
           this.currentContext.emit({
             requestId: this.currentContext.requestId,

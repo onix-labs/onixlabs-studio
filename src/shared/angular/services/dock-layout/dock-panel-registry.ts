@@ -1,4 +1,5 @@
 import { inject, Service } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 import { DOCK_BLUEPRINT, DockBlueprint } from './dock-blueprint';
 import { DockPanel } from './dock-panel';
 
@@ -12,6 +13,11 @@ export class DockPanelRegistry {
    * Holds the registered panels, keyed by identifier.
    */
   private readonly panels: Map<string, DockPanel> = new Map<string, DockPanel>();
+
+  /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Initialises the registry from the host-supplied blueprint's panels. Every dock-hosting tab
@@ -30,6 +36,7 @@ export class DockPanelRegistry {
    * @param panel The panel to register.
    */
   public register(panel: DockPanel): void {
+    this.log.debug('DockPanelRegistry', `Registered panel '${panel.id}'`, panel.role);
     this.panels.set(panel.id, panel);
   }
 

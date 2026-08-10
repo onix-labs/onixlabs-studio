@@ -1,4 +1,5 @@
-import { Service, Signal, signal, WritableSignal } from '@angular/core';
+import { inject, Service, Signal, signal, WritableSignal } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 
 /**
  * Represents the open state of the welcome screen when it is summoned as a modal over the existing
@@ -13,6 +14,11 @@ export class WelcomeModal {
   private readonly openState: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Gets a value indicating whether the welcome modal has been explicitly opened over the content.
    */
   public readonly isOpen: Signal<boolean> = this.openState.asReadonly();
@@ -22,6 +28,7 @@ export class WelcomeModal {
    */
   public open(): void {
     this.openState.set(true);
+    this.log.info('WelcomeModal', 'Welcome modal opened');
   }
 
   /**
@@ -29,6 +36,7 @@ export class WelcomeModal {
    */
   public close(): void {
     this.openState.set(false);
+    this.log.info('WelcomeModal', 'Welcome modal closed');
   }
 
   /**

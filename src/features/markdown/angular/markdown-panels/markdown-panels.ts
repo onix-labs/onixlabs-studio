@@ -1,4 +1,5 @@
-import { computed, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 
 /**
  * Identifies an openable markdown editor tool panel. Several can be open beside one editor at once,
@@ -25,6 +26,11 @@ const NO_PANELS: ReadonlySet<OpenableMarkdownPanel> = new Set<OpenableMarkdownPa
  */
 @Service()
 export class MarkdownPanels {
+  /**
+   * Holds the structured logging client for tool-panel open/close transitions.
+   */
+  private readonly log: Log = inject(Log);
+
   /**
    * Holds the set of open panels for every markdown document, keyed by document id.
    */
@@ -75,11 +81,13 @@ export class MarkdownPanels {
       return;
     }
     const next: Set<OpenableMarkdownPanel> = new Set<OpenableMarkdownPanel>(this.openFor(id));
+    const opening: boolean = !next.has(panel);
     if (next.has(panel)) {
       next.delete(panel);
     } else {
       next.add(panel);
     }
+    this.log.debug('markdown.panels', 'Tool panel toggled', { panel, open: opening });
     this.set(id, next);
   }
 

@@ -1,4 +1,5 @@
 import { isAbsolute, relative, resolve, sep } from 'node:path';
+import { logger } from '@shared/electron/logger';
 
 /**
  * The built-in file-writing tools whose target path must stay within the run's allowed roots (#307).
@@ -33,6 +34,7 @@ export function writeTargetPath(input: unknown): string | null {
   for (const key of PATH_KEYS) {
     const value: unknown = record[key];
     if (typeof value === 'string' && value.length > 0) {
+      logger.trace('WriteConfinement', `Resolved write target path '${value}' (key=${key})`);
       return value;
     }
   }
@@ -54,11 +56,19 @@ export function writeTargetPath(input: unknown): string | null {
  */
 export function isWriteWithinRoots(target: string, roots: readonly string[]): boolean {
   if (roots.length === 0) {
+    logger.trace('WriteConfinement', `No confinement roots; allowing write to '${target}'`);
     return true;
   }
   const base: string = roots[0];
   const resolvedTarget: string = isAbsolute(target) ? resolve(target) : resolve(base, target);
-  return roots.some((root: string): boolean => isWithin(resolvedTarget, resolve(root)));
+  const within: boolean = roots.some((root: string): boolean =>
+    isWithin(resolvedTarget, resolve(root)),
+  );
+  logger.debug(
+    'WriteConfinement',
+    `Confinement check for '${resolvedTarget}': ${within ? 'in-root' : 'out-of-root'}`,
+  );
+  return within;
 }
 
 /**
@@ -80,7 +90,7 @@ export function isWriteDenied(target: string, denyList: readonly string[], base:
   const segments: readonly string[] = resolvedTarget
     .split(sep)
     .filter((s: string): boolean => s.length > 0);
-  return denyList.some((entry: string): boolean => {
+  const denied: boolean = denyList.some((entry: string): boolean => {
     if (entry.length === 0) {
       return false;
     }
@@ -90,6 +100,10 @@ export function isWriteDenied(target: string, denyList: readonly string[], base:
     }
     return segments.includes(entry);
   });
+  if (denied) {
+    logger.debug('WriteConfinement', `Deny list blocks write to '${resolvedTarget}'`);
+  }
+  return denied;
 }
 
 /**

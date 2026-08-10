@@ -135,6 +135,10 @@ export class CodexAgentProvider implements AgentProvider {
   public constructor(models: readonly AiModelInfo[], defaultModelId: string) {
     this.models = models;
     this.defaultModelId = defaultModelId;
+    logger.info(
+      'CodexAgentProvider',
+      `Provider created with ${models.length} model(s), default '${defaultModelId}'`,
+    );
   }
 
   /**
@@ -159,6 +163,7 @@ export class CodexAgentProvider implements AgentProvider {
    * @param context The run context.
    */
   public async run(context: AgentRunContext): Promise<void> {
+    logger.trace('CodexAgentProvider.run', `Transient run for request ${context.requestId}`);
     const session: CodexAgentSession = this.openSession(context);
     try {
       await session.turn(context);
@@ -174,6 +179,10 @@ export class CodexAgentProvider implements AgentProvider {
    * @returns Returns the live session.
    */
   public openSession(context: AgentRunContext): CodexAgentSession {
+    logger.info(
+      'CodexAgentProvider.openSession',
+      `Opening Codex session for surface '${context.surface}' (agent ${context.agentSessionId})`,
+    );
     return new CodexAgentSession(
       {
         createClient: async (options: CodexOptions): Promise<CodexClient> => {
@@ -200,6 +209,12 @@ export class CodexAgentProvider implements AgentProvider {
     if (executable !== undefined) {
       options.codexPathOverride = executable;
     }
+    logger.debug(
+      'CodexAgentProvider.buildClientOptions',
+      executable === undefined
+        ? 'No bundled Codex executable; SDK will resolve its own'
+        : `Resolved bundled Codex executable: ${executable}`,
+    );
     const auth: AgentAuth = context.auth;
     if (!auth.hasCodexLogin && auth.apiKey !== null) {
       options.apiKey = auth.apiKey;
@@ -232,6 +247,11 @@ export class CodexAgentProvider implements AgentProvider {
     if (context.allowedWritePaths.length > 0) {
       options.additionalDirectories = [...context.allowedWritePaths];
     }
+    logger.debug(
+      'CodexAgentProvider.buildThreadOptions',
+      `Thread options: model=${context.model}, sandbox=${options.sandboxMode}, ` +
+        `effort=${context.effort ?? 'default'}, extraRoots=${context.allowedWritePaths.length}`,
+    );
     return options;
   }
 }
@@ -316,6 +336,10 @@ export class CodexAgentSession implements AgentSession {
    */
   public async turn(context: AgentRunContext): Promise<void> {
     this.currentContext = context;
+    logger.trace(
+      'CodexAgentSession.turn',
+      `Turn dispatch for request ${context.requestId} (model ${context.model})`,
+    );
     if (this.thread === null) {
       await this.openThread(context);
     }
@@ -352,6 +376,7 @@ export class CodexAgentSession implements AgentSession {
    * Interrupts the in-flight turn (cancels its `codex exec`), leaving the thread open for the next turn.
    */
   public interrupt(): void {
+    logger.trace('CodexAgentSession.interrupt', 'Interrupting the in-flight Codex turn');
     this.activeController?.abort();
   }
 
@@ -360,6 +385,12 @@ export class CodexAgentSession implements AgentSession {
    * turn — so this cancels any in-flight turn and marks the session closed. Idempotent.
    */
   public close(): Promise<void> {
+    if (!this.closed) {
+      logger.info(
+        'CodexAgentSession.close',
+        `Closing Codex session${this.reportedThreadId === null ? '' : ` ${this.reportedThreadId}`}`,
+      );
+    }
     this.closed = true;
     this.activeController?.abort();
     return Promise.resolve();
@@ -375,6 +406,12 @@ export class CodexAgentSession implements AgentSession {
     const client: CodexClient = await this.deps.createClient(this.deps.buildClientOptions(context));
     this.client = client;
     const options: ThreadOptions = this.deps.buildThreadOptions(context);
+    logger.debug(
+      'CodexAgentSession.openThread',
+      context.resumeSessionId !== null
+        ? `Resuming Codex thread ${context.resumeSessionId}`
+        : 'Starting a fresh Codex thread',
+    );
     this.thread =
       context.resumeSessionId !== null
         ? client.resumeThread(context.resumeSessionId, options)
@@ -431,6 +468,7 @@ export class CodexAgentSession implements AgentSession {
     if (threadId.length === 0 || threadId === this.reportedThreadId) {
       return;
     }
+    logger.info('CodexAgentSession.reportThread', `Thread id reported: ${threadId}`);
     this.reportedThreadId = threadId;
     context.emit({ requestId: context.requestId, kind: 'session', sessionId: threadId });
   }

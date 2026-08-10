@@ -1,4 +1,5 @@
 import { computed, inject, Service, Signal } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 import { Display } from '@shared/angular/services/display/display';
 import { SettingBindings } from '@features/settings/angular/setting-bindings';
 import { SETTINGS_BY_KEY } from '@shared/angular/services/settings/settings-registry';
@@ -27,6 +28,11 @@ export class SettingsRestart {
   private readonly display: Display = inject(Display);
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Holds the pending-restart signals of every restart-gated setting in the registry.
    */
   private readonly pending: readonly Signal<boolean>[] = [...SETTINGS_BY_KEY.values()]
@@ -51,6 +57,7 @@ export class SettingsRestart {
    * Relaunches the application so pending restart-gated changes can take effect.
    */
   public relaunch(): void {
+    this.log.info('settings.restart', 'Relaunch requested to apply restart-gated settings');
     this.display.relaunch();
   }
 }

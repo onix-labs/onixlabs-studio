@@ -12,6 +12,7 @@ import {
 import { MODAL_UNPARENTED_FEATURE } from '@shared/api/window-channels';
 import { RegisteredWindow, WindowKind, WindowRegistry } from './window-registry';
 import { WindowStateStore } from './window-state-store';
+import { logger } from './logger';
 
 /**
  * Describes the application-supplied pieces the window manager needs to build windows: where the
@@ -193,11 +194,14 @@ export class WindowManager {
    * no main window exists.
    */
   public focusMain(): void {
+    logger.trace('WindowManager.focusMain', 'focusing main window');
     const window: BrowserWindow | null = this.main();
     if (window === null) {
+      logger.debug('WindowManager.focusMain', 'no main window to focus');
       return;
     }
     if (window.isMinimized()) {
+      logger.debug('WindowManager.focusMain', 'restoring minimized main window');
       window.restore();
     }
     window.focus();
@@ -209,8 +213,10 @@ export class WindowManager {
    * window — stands.
    */
   public claimMainPresence(): void {
+    logger.trace('WindowManager.claimMainPresence', 'renderer claimed main-window presence');
     this.mainPresenceClaimed = true;
     if (this.mainShowFallback !== null) {
+      logger.debug('WindowManager.claimMainPresence', 'retiring show safety-net timer');
       clearTimeout(this.mainShowFallback);
       this.mainShowFallback = null;
     }
@@ -224,12 +230,15 @@ export class WindowManager {
    */
   public showWindow(window: BrowserWindow): void {
     if (window.isDestroyed() || window.isVisible()) {
+      logger.trace('WindowManager.showWindow', 'window already destroyed or visible; nothing to do');
       return;
     }
     if (window === this.main() && this.mainStartsMaximized) {
+      logger.debug('WindowManager.showWindow', 'restoring persisted maximized state for main window');
       this.mainStartsMaximized = false;
       window.maximize();
     }
+    logger.info('WindowManager.showWindow', 'showing window');
     window.show();
     window.focus();
   }
@@ -240,6 +249,7 @@ export class WindowManager {
    * @returns Returns the created window.
    */
   public createMainWindow(): BrowserWindow {
+    logger.trace('WindowManager.createMainWindow', 'creating main window');
     const stored: StoredWindowState | null = WindowStateStore.read('main');
     const restored: WindowRect | null =
       stored === null
@@ -277,6 +287,11 @@ export class WindowManager {
     // IDE window before the shell has decided whether to show it at all. The choice is remembered
     // and applied at the moment the window is shown.
     this.mainStartsMaximized = stored?.maximized === true;
+    logger.debug('WindowManager.createMainWindow', 'built main window', {
+      restored: restored !== null,
+      maximized: this.mainStartsMaximized,
+      bounds: window.getBounds(),
+    });
 
     const entry: RegisteredWindow<BrowserWindow> = this.registry.add('main', window);
     // The main window is shown by the renderer, not by readiness: with no tabs open the shell puts
@@ -286,11 +301,14 @@ export class WindowManager {
     // first word from the renderer, show or hide, retires it.
     window.once('ready-to-show', (): void => {
       if (this.mainPresenceClaimed) {
+        logger.trace('WindowManager.createMainWindow', 'ready-to-show; presence claimed, no safety net');
         return;
       }
+      logger.debug('WindowManager.createMainWindow', 'ready-to-show; arming show safety-net timer');
       this.mainShowFallback = setTimeout((): void => {
         this.mainShowFallback = null;
         if (!window.isDestroyed() && !window.isVisible()) {
+          logger.warn('WindowManager.createMainWindow', 'renderer never spoke for main window; showing via safety net');
           this.showWindow(window);
         }
       }, WindowManager.MAIN_SHOW_FALLBACK_MS);
@@ -303,17 +321,27 @@ export class WindowManager {
     // Bounds are saved on close as well as on the debounced move/resize, so the final arrangement
     // always wins — including on the quit path, where close follows the confirmed quit.
     window.on('close', (event: ElectronEvent): void => {
+      logger.trace('WindowManager.createMainWindow', 'main window close event');
       this.saveBounds('main', window);
       this.options.onMainClose(event);
     });
-    window.on('closed', (): void => this.registry.remove(entry.id));
+    window.on('closed', (): void => {
+      logger.info('WindowManager.createMainWindow', 'main window closed');
+      this.registry.remove(entry.id);
+    });
     this.trackBounds('main', window);
 
     this.options.applySecurity(window.webContents);
 
-    if (this.options.startUrl !== undefined) void window.loadURL(this.options.startUrl);
-    else void window.loadFile(this.options.indexHtml);
+    if (this.options.startUrl !== undefined) {
+      logger.debug('WindowManager.createMainWindow', `loading start URL: ${this.options.startUrl}`);
+      void window.loadURL(this.options.startUrl);
+    } else {
+      logger.debug('WindowManager.createMainWindow', `loading index file: ${this.options.indexHtml}`);
+      void window.loadFile(this.options.indexHtml);
+    }
 
+    logger.info('WindowManager.createMainWindow', 'main window created');
     return window;
   }
 
@@ -328,6 +356,7 @@ export class WindowManager {
    * @returns Returns the constructor options for the auxiliary window.
    */
   public auxiliaryWindowOptions(features: string): Electron.BrowserWindowConstructorOptions {
+    logger.trace('WindowManager.auxiliaryWindowOptions', 'building pop-out options', features);
     const restored: WindowRect | null = this.restoredRect('popout');
     const width: number = restored?.width ?? WindowManager.POPOUT_DEFAULT_WIDTH;
     const height: number = restored?.height ?? WindowManager.POPOUT_DEFAULT_HEIGHT;
@@ -342,6 +371,11 @@ export class WindowManager {
             WindowManager.POPOUT_MIN_HEIGHT,
           );
     const rect: WindowRect | null = placed ?? restored;
+    logger.debug('WindowManager.auxiliaryWindowOptions', 'resolved pop-out placement', {
+      requested: requested !== null,
+      placed: placed !== null,
+      rect,
+    });
     return {
       backgroundColor: '#000000',
       acceptFirstMouse: true,
@@ -363,12 +397,17 @@ export class WindowManager {
    * @param window The created auxiliary window.
    */
   public adoptAuxiliaryWindow(window: BrowserWindow): void {
+    logger.trace('WindowManager.adoptAuxiliaryWindow', 'adopting auxiliary pop-out window');
     const entry: RegisteredWindow<BrowserWindow> = this.registry.add('popout', window);
     this.options.applySecurity(window.webContents);
     window.webContents.on('did-finish-load', (): void => window.webContents.setZoomLevel(0));
     window.on('close', (): void => this.saveBounds('popout', window));
-    window.on('closed', (): void => this.registry.remove(entry.id));
+    window.on('closed', (): void => {
+      logger.info('WindowManager.adoptAuxiliaryWindow', 'pop-out window closed');
+      this.registry.remove(entry.id);
+    });
     this.trackBounds('popout', window);
+    logger.info('WindowManager.adoptAuxiliaryWindow', 'pop-out window adopted');
   }
 
   /**
@@ -391,6 +430,7 @@ export class WindowManager {
     features: string,
     opener: BrowserWindow | null,
   ): Electron.BrowserWindowConstructorOptions {
+    logger.trace('WindowManager.modalWindowOptions', 'building modal options', features);
     const resizable: boolean = parseFeatureFlag(features, 'resizable', false);
     this.pendingModalParent = parseFeatureFlag(features, MODAL_UNPARENTED_FEATURE, false)
       ? null
@@ -425,6 +465,13 @@ export class WindowManager {
       minimum.width,
       minimum.height,
     );
+    logger.debug('WindowManager.modalWindowOptions', 'resolved modal geometry', {
+      parented: this.pendingModalParent !== null,
+      resizable,
+      size,
+      positioned: position !== null,
+      rect,
+    });
     return {
       // The modal paints this until its content renders; the opener passes the colour its panel
       // will land on, so a modal window never flashes black on the way in.
@@ -472,15 +519,23 @@ export class WindowManager {
    * @param window The created modal window.
    */
   public adoptModalWindow(window: BrowserWindow): void {
+    logger.trace('WindowManager.adoptModalWindow', 'adopting modal window');
     const parent: BrowserWindow | null = this.pendingModalParent;
     this.pendingModalParent = null;
     const entry: RegisteredWindow<BrowserWindow> = this.registry.add('modal', window);
     this.options.applySecurity(window.webContents);
     window.webContents.on('did-finish-load', (): void => window.webContents.setZoomLevel(0));
-    window.on('closed', (): void => this.registry.remove(entry.id));
+    window.on('closed', (): void => {
+      logger.info('WindowManager.adoptModalWindow', 'modal window closed');
+      this.registry.remove(entry.id);
+    });
     if (parent !== null && !parent.isDestroyed() && parent.isVisible()) {
+      logger.debug('WindowManager.adoptModalWindow', 'parenting modal to its opener');
       window.setParentWindow(parent);
+    } else {
+      logger.debug('WindowManager.adoptModalWindow', 'modal opens free-standing (no visible parent)');
     }
+    logger.info('WindowManager.adoptModalWindow', 'modal window adopted');
   }
 
   /**
@@ -506,6 +561,7 @@ export class WindowManager {
    * outlive it.
    */
   public closeAllSecondaryWindows(): void {
+    logger.info('WindowManager.closeAllSecondaryWindows', 'closing all pop-out and modal windows');
     for (const entry of this.registry.all()) {
       if (entry.kind !== 'main' && !entry.window.isDestroyed()) {
         entry.window.close();
@@ -545,8 +601,10 @@ export class WindowManager {
    */
   private saveBounds(kind: WindowKind, window: BrowserWindow): void {
     if (window.isDestroyed()) {
+      logger.trace('WindowManager.saveBounds', `'${kind}' window destroyed; not persisting bounds`);
       return;
     }
+    logger.trace('WindowManager.saveBounds', `persisting bounds for '${kind}'`);
     WindowStateStore.write(kind, {
       bounds: window.getNormalBounds(),
       maximized: window.isMaximized(),

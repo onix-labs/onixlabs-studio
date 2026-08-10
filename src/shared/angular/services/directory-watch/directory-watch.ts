@@ -1,6 +1,7 @@
-import { Service } from '@angular/core';
+import { inject, Service } from '@angular/core';
 import { Bridge } from '@shared/api/bridge';
 import { DirectoryChangeEvent, FileChannel } from '@shared/api/file-channels';
+import { Log } from '@shared/angular/services/log/log';
 
 /**
  * A general, root directory-watch service: the single place tree-shaped consumers (the explorers, the
@@ -26,6 +27,11 @@ export class DirectoryWatch {
   >();
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Initializes a new instance of the {@link DirectoryWatch} class, subscribing to change
    * notifications.
    */
@@ -47,6 +53,7 @@ export class DirectoryWatch {
       callbacks = new Set<(event: DirectoryChangeEvent) => void>();
       this.watchers.set(root, callbacks);
       void this.bridge?.invoke(FileChannel.WatchDirectory, root);
+      this.log.debug('DirectoryWatch', 'Started watching directory', root);
     }
     callbacks.add(onChange);
     return (): void => this.unwatch(root, onChange);
@@ -67,6 +74,7 @@ export class DirectoryWatch {
     if (callbacks.size === 0) {
       this.watchers.delete(root);
       void this.bridge?.invoke(FileChannel.UnwatchDirectory, root);
+      this.log.debug('DirectoryWatch', 'Stopped watching directory', root);
     }
   }
 
@@ -81,6 +89,7 @@ export class DirectoryWatch {
     if (callbacks === undefined) {
       return;
     }
+    this.log.trace('DirectoryWatch', 'Directory changed', event.root);
     for (const callback of callbacks) {
       callback(event);
     }

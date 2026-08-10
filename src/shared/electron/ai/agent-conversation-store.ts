@@ -7,6 +7,7 @@ import {
   AgentConversationSummary,
   StoredAgentConversation,
 } from '@shared/api/agent-conversation-channels';
+import { logger } from '../logger';
 
 /**
  * Strips any character that could escape the store directory or be filesystem-unsafe from a
@@ -37,6 +38,7 @@ export class AgentConversationStore {
    * Registers the conversation IPC handlers.
    */
   public register(): void {
+    logger.info('AgentConversationStore', 'Registering conversation IPC handlers');
     ipcMain.handle(
       AgentConversationChannel.List,
       (_event: IpcMainInvokeEvent, contextId: unknown): readonly AgentConversationSummary[] =>
@@ -117,7 +119,8 @@ export class AgentConversationStore {
       }
       const parsed: unknown = JSON.parse(readFileSync(file, 'utf8'));
       return this.isConversation(parsed) ? parsed : null;
-    } catch {
+    } catch (error: unknown) {
+      logger.error('AgentConversationStore.load', `Failed to load conversation ${safeId}`, error);
       return null;
     }
   }
@@ -146,8 +149,10 @@ export class AgentConversationStore {
         (existing: AgentConversationSummary): boolean => existing.id !== value.id,
       );
       this.writeIndex([summary, ...others]);
+      logger.trace('AgentConversationStore.save', `Saved conversation ${safeId}`);
       return summary;
-    } catch {
+    } catch (error: unknown) {
+      logger.error('AgentConversationStore.save', `Failed to save conversation ${safeId}`, error);
       return null;
     }
   }
@@ -229,12 +234,13 @@ export class AgentConversationStore {
     if (safeIds.length === 0) {
       return;
     }
+    logger.info('AgentConversationStore.delete', `Deleting ${safeIds.length} conversation(s)`);
     const remove: Set<string> = new Set<string>(safeIds);
     for (const id of safeIds) {
       try {
         rmSync(join(this.dir(), `${id}.json`), { force: true });
-      } catch {
-        // Best-effort delete; ignore failures.
+      } catch (error: unknown) {
+        logger.warn('AgentConversationStore.delete', `Best-effort delete failed for ${id}`, error);
       }
     }
     this.writeIndex(
@@ -256,7 +262,8 @@ export class AgentConversationStore {
             this.isSummary(entry),
           )
         : [];
-    } catch {
+    } catch (error: unknown) {
+      logger.debug('AgentConversationStore.readIndex', 'No readable conversation index', error);
       return [];
     }
   }
@@ -272,8 +279,8 @@ export class AgentConversationStore {
         encoding: 'utf8',
         mode: 0o600,
       });
-    } catch {
-      // Persistence is best-effort.
+    } catch (error: unknown) {
+      logger.error('AgentConversationStore.writeIndex', 'Failed to persist conversation index', error);
     }
   }
 

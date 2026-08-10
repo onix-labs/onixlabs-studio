@@ -15,6 +15,7 @@ import { RibbonStripGroup } from '@shared/angular/components/ribbon-strip/ribbon
 import { RibbonStripRow } from '@shared/angular/components/ribbon-strip/ribbon-strip-row/ribbon-strip-row';
 import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/ribbon-strip-overflow/ribbon-strip-overflow';
 import { Settings } from '@shared/angular/services/settings/settings';
+import { Log } from '@shared/angular/services/log/log';
 import { MissionControl } from '@features/mission-control/angular/mission-control/mission-control';
 
 /**
@@ -74,6 +75,11 @@ export class MissionControlRibbon {
   private readonly settings: Settings = inject(Settings);
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Gets the number of live hosts whose agent is running, disabling Stop All when none are.
    */
   protected readonly runningCount: Signal<number> = this.agentHosts.runningCount;
@@ -122,6 +128,7 @@ export class MissionControlRibbon {
    * Stops every running agent across all live hosts.
    */
   protected onStopAll(): void {
+    this.log.info('mission-control.ribbon', 'Stop All requested', { running: this.runningCount() });
     this.agentHosts.stopAll();
   }
 
@@ -143,6 +150,7 @@ export class MissionControlRibbon {
    * Resets every tile to the default width.
    */
   protected onResetLayout(): void {
+    this.log.info('mission-control.ribbon', 'Reset tile layout');
     this.missionControl.resetWidths();
   }
 
@@ -150,14 +158,18 @@ export class MissionControlRibbon {
    * Toggles whether empty agent columns are hidden.
    */
   protected onToggleHideEmpty(): void {
-    this.missionControl.setHideEmpty(!this.missionControl.hideEmpty());
+    const next: boolean = !this.missionControl.hideEmpty();
+    this.log.info('mission-control.ribbon', 'Toggled Hide Empty', { hidden: next });
+    this.missionControl.setHideEmpty(next);
   }
 
   /**
    * Toggles whether idle agent columns are hidden.
    */
   protected onToggleHideIdle(): void {
-    this.missionControl.setHideIdle(!this.missionControl.hideIdle());
+    const next: boolean = !this.missionControl.hideIdle();
+    this.log.info('mission-control.ribbon', 'Toggled Hide Idle', { hidden: next });
+    this.missionControl.setHideIdle(next);
   }
 
   /**
@@ -171,6 +183,7 @@ export class MissionControlRibbon {
           candidate.label === label,
       );
     if (mode !== undefined) {
+      this.log.info('mission-control.ribbon', 'Permission posture changed', { posture: mode.value });
       this.settings.setAiPermissionPosture(mode.value);
     }
   }
@@ -180,10 +193,16 @@ export class MissionControlRibbon {
    * @param granted Whether to grant.
    */
   private answerAll(granted: boolean): void {
+    let answered: number = 0;
     for (const entry of this.requests.entries()) {
       if (entry.item.kind === 'permission') {
         entry.agent.respondPermission(entry.item, granted);
+        answered++;
       }
     }
+    this.log.info('mission-control.ribbon', 'Answered all permission requests', {
+      granted,
+      answered,
+    });
   }
 }

@@ -6,6 +6,7 @@ import { NodeProjectSystem } from './node-project-system';
 import { ProjectSystemRegistry } from './project-system';
 import { PythonProjectSystem } from './python-project-system';
 import { RustProjectSystem } from './rust-project-system';
+import { logger } from '../logger';
 
 /**
  * Builds a project-system registry seeded with the built-in providers. Registration order is match
@@ -24,6 +25,7 @@ export function createProjectSystems(): ProjectSystemRegistry {
   registry.register(new RustProjectSystem());
   registry.register(new GoProjectSystem());
   registry.register(new NodeProjectSystem());
+  logger.info('default-project-systems', 'Seeded the project-system registry with 7 built-in providers.');
   return registry;
 }
 

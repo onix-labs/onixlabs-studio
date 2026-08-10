@@ -239,6 +239,7 @@ export class Keybindings {
     this.scopes.set(scope, known);
     this.activeScope.set(scope);
     this.scopesVersion.update((version: number): number => version + 1);
+    this.log.info('Keybindings', `Registered scope '${scope}'`, known.length);
   }
 
   /**
@@ -274,6 +275,7 @@ export class Keybindings {
       this.activeScope.set(null);
     }
     this.scopesVersion.update((version: number): number => version + 1);
+    this.log.debug('Keybindings', `Forgot scope '${scope}'`);
   }
 
   /**
@@ -298,6 +300,7 @@ export class Keybindings {
       }
       for (const registration of this.scopes.get(candidate) ?? []) {
         if (this.effectiveChord(registration.id) === chord) {
+          this.log.info('Keybindings', `Dispatched '${registration.id}'`, chord, candidate);
           registration.command();
           return true;
         }
@@ -321,6 +324,7 @@ export class Keybindings {
     const next: Record<string, string> = { ...this.overrides() };
     next[id] = this.normalizeChord(chord);
     this.settings.set('keyboard.overrides', next);
+    this.log.info('Keybindings', `Override set for '${id}'`, next[id]);
     return null;
   }
 
@@ -332,6 +336,7 @@ export class Keybindings {
     const next: Record<string, string> = { ...this.overrides() };
     delete next[id];
     this.settings.set('keyboard.overrides', next);
+    this.log.info('Keybindings', `Override cleared for '${id}'`);
   }
 
   /**

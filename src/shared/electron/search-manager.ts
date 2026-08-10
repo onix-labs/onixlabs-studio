@@ -86,13 +86,19 @@ export class SearchManager {
   public register(): void {
     ipcMain.handle(
       SearchChannel.Run,
-      (_event: IpcMainInvokeEvent, request: unknown): Promise<SearchResponse> => this.run(request),
+      (_event: IpcMainInvokeEvent, request: unknown): Promise<SearchResponse> => {
+        logger.trace('SearchManager.register', `IPC ${SearchChannel.Run}`);
+        return this.run(request);
+      },
     );
     ipcMain.handle(
       SearchChannel.ListFiles,
-      (_event: IpcMainInvokeEvent, root: unknown): Promise<readonly string[]> =>
-        this.listFiles(root),
+      (_event: IpcMainInvokeEvent, root: unknown): Promise<readonly string[]> => {
+        logger.trace('SearchManager.register', `IPC ${SearchChannel.ListFiles}`);
+        return this.listFiles(root);
+      },
     );
+    logger.info('SearchManager', 'Registered search IPC handlers');
   }
 
   /**
@@ -103,8 +109,10 @@ export class SearchManager {
    */
   private listFiles(root: unknown): Promise<readonly string[]> {
     if (typeof root !== 'string' || root.length === 0 || !this.workspace.isRoot(root)) {
+      logger.warn('SearchManager.listFiles', 'Rejected file listing for invalid or unknown root');
       return Promise.resolve([]);
     }
+    logger.debug('SearchManager.listFiles', `Listing files under ${root}`);
     return new Promise<readonly string[]>((resolve: (value: readonly string[]) => void): void => {
       const child: ChildProcessWithoutNullStreams = spawn(rgPath, ['--files'], { cwd: root });
       const paths: string[] = [];
@@ -114,6 +122,7 @@ export class SearchManager {
       const finish: () => void = (): void => {
         if (!settled) {
           settled = true;
+          logger.trace('SearchManager.listFiles', `Listed ${paths.length} files under ${root}`);
           resolve(paths);
         }
       };
@@ -127,6 +136,7 @@ export class SearchManager {
           if (line.length > 0) {
             paths.push(line.startsWith('./') ? line.slice(2) : line);
             if (paths.length >= MAX_LISTED_FILES) {
+              logger.warn('SearchManager.listFiles', `Capped file listing at ${MAX_LISTED_FILES}`);
               child.kill();
               finish();
               return;
@@ -137,10 +147,14 @@ export class SearchManager {
       });
 
       const deadline: NodeJS.Timeout = setTimeout((): void => {
+        logger.warn('SearchManager.listFiles', `ripgrep timed out after ${RG_TIMEOUT_MS}ms`);
         child.kill('SIGKILL');
         finish();
       }, RG_TIMEOUT_MS);
-      child.on('error', (): void => finish());
+      child.on('error', (error: Error): void => {
+        logger.error('SearchManager.listFiles', 'ripgrep failed', error);
+        finish();
+      });
       child.on('close', (): void => {
         clearTimeout(deadline);
         finish();
@@ -156,9 +170,11 @@ export class SearchManager {
   private run(request: unknown): Promise<SearchResponse> {
     const empty: SearchResponse = { files: [], total: 0, capped: false };
     if (!this.isValidRequest(request)) {
+      logger.warn('SearchManager.run', 'Rejected malformed search request');
       return Promise.resolve(empty);
     }
     if (request.query.length === 0 || !this.workspace.isRoot(request.root)) {
+      logger.warn('SearchManager.run', 'Rejected empty query or unknown root');
       return Promise.resolve(empty);
     }
     logger.debug('SearchManager', `Searching ${request.root} for "${request.query}"`);
@@ -213,6 +229,10 @@ export class SearchManager {
             matches: files.get(relativePath) ?? [],
           }),
         );
+        logger.trace(
+          'SearchManager.spawnSearch',
+          `Search complete: ${total} matches in ${results.length} files${capped ? ' (capped)' : ''}`,
+        );
         resolve({ files: results, total, capped });
       };
 
@@ -224,6 +244,7 @@ export class SearchManager {
           buffer = buffer.slice(newline + 1);
           if (this.consumeLine(line, files, order) && ++total >= MAX_TOTAL_MATCHES) {
             capped = true;
+            logger.warn('SearchManager.spawnSearch', `Capped search at ${MAX_TOTAL_MATCHES} matches`);
             child.kill();
             finish();
             return;
@@ -233,10 +254,14 @@ export class SearchManager {
       });
 
       const deadline: NodeJS.Timeout = setTimeout((): void => {
+        logger.warn('SearchManager.spawnSearch', `ripgrep timed out after ${RG_TIMEOUT_MS}ms`);
         child.kill('SIGKILL');
         finish();
       }, RG_TIMEOUT_MS);
-      child.on('error', (): void => finish());
+      child.on('error', (error: Error): void => {
+        logger.error('SearchManager.spawnSearch', 'ripgrep failed', error);
+        finish();
+      });
       child.on('close', (): void => {
         clearTimeout(deadline);
         finish();

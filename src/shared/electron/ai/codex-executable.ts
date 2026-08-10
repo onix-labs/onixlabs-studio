@@ -15,6 +15,7 @@
 import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { app } from 'electron';
+import { logger } from '../logger';
 
 /**
  * Resolves the absolute path to the unpacked Codex CLI binary in a packaged build.
@@ -35,6 +36,7 @@ export function resolveBundledCodexExecutable(): string | undefined {
     'vendor',
   );
   if (!existsSync(vendorRoot)) {
+    logger.warn('codex-executable', `Unpacked Codex vendor root not found at ${vendorRoot}`);
     return undefined;
   }
   // The binary lives under a single target-triple directory (e.g. `x86_64-apple-darwin`); rather than
@@ -43,8 +45,10 @@ export function resolveBundledCodexExecutable(): string | undefined {
   for (const target of readdirSync(vendorRoot)) {
     const candidate: string = join(vendorRoot, target, 'bin', executable);
     if (existsSync(candidate)) {
+      logger.debug('codex-executable', `Resolved unpacked Codex CLI: ${candidate}`);
       return candidate;
     }
   }
+  logger.warn('codex-executable', `No Codex CLI binary found under ${vendorRoot}`);
   return undefined;
 }

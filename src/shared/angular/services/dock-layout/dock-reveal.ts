@@ -1,4 +1,5 @@
 import { inject, Service } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 import { DockAutoHide } from './dock-auto-hide';
 import { DockFloating, FloatWindow } from './dock-floating';
 import { DockFocus } from './dock-focus';
@@ -47,13 +48,20 @@ export class DockReveal {
   private readonly popouts: PopoutPanels = inject(PopoutPanels);
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Reveals a panel: focuses its pop-out window when it lives in one; otherwise activates it in its
    * stack (focusing the stack), peeks its collapsed stack, or brings its floating window to the
    * front. A panel absent from the dock is ignored.
    * @param panelId The identifier of the panel to reveal.
    */
   public reveal(panelId: string): void {
+    this.log.info('DockReveal', `Revealing panel '${panelId}'`);
     if (this.popouts.isPopped(panelId)) {
+      this.log.debug('DockReveal', `Panel '${panelId}' is popped out; focusing its window`);
       this.popouts.focusPopped(panelId);
       return;
     }
@@ -62,6 +70,7 @@ export class DockReveal {
       .floats()
       .some((float: FloatWindow): boolean => float.panelId === panelId);
     if (floated) {
+      this.log.debug('DockReveal', `Panel '${panelId}' is floating; bringing to front`);
       this.floating.bringToFront(panelId);
       return;
     }
@@ -69,6 +78,7 @@ export class DockReveal {
     const layout: DockNode = this.dockState.layout();
     const stack: StackNode | null = findStackOfPanel(layout, panelId);
     if (stack === null) {
+      this.log.debug('DockReveal', `Panel '${panelId}' is not in the dock; nothing to reveal`);
       return;
     }
 

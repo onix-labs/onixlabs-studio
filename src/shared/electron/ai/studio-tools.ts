@@ -26,6 +26,7 @@ import {
   type AgentContextRef,
   type AiInputChoice,
 } from '@shared/api/ai-types';
+import { logger } from '@shared/electron/logger';
 import type { AgentRunContext } from './agent-provider';
 
 /**
@@ -317,12 +318,15 @@ export const BINARY_PROMPT_APPENDIX: string = [
  * @returns Returns the configurations, or a note that no workspace is open.
  */
 export async function listRunConfigurations(context: AgentRunContext): Promise<string> {
+  logger.trace('StudioTools', 'Tool invoked: list_run_configurations');
   const result: unknown = await context.bridge.request(LIST_RUN_CONFIGURATIONS, {});
   const read: { available?: boolean; root?: string; configurations?: unknown[] } = result ?? {};
   if (read.available !== true) {
+    logger.debug('StudioTools', 'list_run_configurations: no workspace open');
     return 'No workspace folder is open, so there are no run configurations.';
   }
   const configurations: unknown[] = read.configurations ?? [];
+  logger.debug('StudioTools', `list_run_configurations: ${configurations.length} configuration(s)`);
   if (configurations.length === 0) {
     return `The workspace at ${read.root ?? 'the open root'} has no run configurations yet.`;
   }
@@ -345,12 +349,15 @@ export async function saveRunConfigurations(
   context: AgentRunContext,
   configurations: readonly unknown[],
 ): Promise<string> {
+  logger.trace('StudioTools', `Tool invoked: save_run_configurations (${configurations.length} config(s))`);
   const result: unknown = await context.bridge.request(SAVE_RUN_CONFIGURATIONS, { configurations });
   const write: { ok?: boolean; error?: string; ids?: string[] } = result ?? {};
   if (write.ok !== true) {
+    logger.warn('StudioTools', `save_run_configurations refused: ${write.error ?? 'unknown reason'}`);
     return write.error ?? 'The run configurations could not be saved.';
   }
   const ids: string[] = write.ids ?? [];
+  logger.info('StudioTools', `Saved ${ids.length} run configuration(s): ${ids.join(', ')}`);
   return `Saved ${ids.length} run configuration(s): ${ids.join(', ')}. They are now in the workspace's Run dropdown.`;
 }
 
@@ -364,11 +371,15 @@ export async function deleteRunConfigurations(
   context: AgentRunContext,
   ids: readonly string[],
 ): Promise<string> {
+  logger.trace('StudioTools', `Tool invoked: delete_run_configurations (${ids.length} id(s))`);
   const result: unknown = await context.bridge.request(DELETE_RUN_CONFIGURATIONS, { ids });
   const write: { ok?: boolean; error?: string; ids?: string[] } = result ?? {};
-  return write.ok === true
-    ? `Deleted ${write.ids?.length ?? 0} run configuration(s): ${(write.ids ?? []).join(', ')}.`
-    : (write.error ?? 'The run configurations could not be deleted.');
+  if (write.ok === true) {
+    logger.info('StudioTools', `Deleted ${write.ids?.length ?? 0} run configuration(s): ${(write.ids ?? []).join(', ')}`);
+    return `Deleted ${write.ids?.length ?? 0} run configuration(s): ${(write.ids ?? []).join(', ')}.`;
+  }
+  logger.warn('StudioTools', `delete_run_configurations refused: ${write.error ?? 'unknown reason'}`);
+  return write.error ?? 'The run configurations could not be deleted.';
 }
 
 /**
@@ -384,7 +395,9 @@ export async function askUser(
   question: string,
   choices: readonly AiInputChoice[],
 ): Promise<string> {
+  logger.trace('StudioTools', `Tool invoked: ask_user (${choices.length} choice(s))`);
   const answer: string | null = await context.requestInput(question, choices);
+  logger.debug('StudioTools', `ask_user: ${answer === null ? 'user declined' : 'user answered'}`);
   return answer === null
     ? 'The user declined to answer. Continue without this information, choosing conservatively.'
     : `The user answered: ${answer}`;
@@ -396,11 +409,16 @@ export async function askUser(
  * @returns Returns the recent terminal output, or a note that the terminal is unavailable.
  */
 export async function readTerminalOutput(context: AgentRunContext): Promise<string> {
+  logger.trace('StudioTools', `Tool invoked: read_terminal_output (tab=${context.owningTabId})`);
   const result: unknown = await context.bridge.request(READ_TERMINAL_OUTPUT, {
     tabId: context.owningTabId,
   });
   const read: { available?: boolean; text?: string } = result ?? {};
-  return read.available === true ? (read.text ?? '') : 'The terminal is not available.';
+  if (read.available !== true) {
+    logger.debug('StudioTools', 'read_terminal_output: terminal unavailable');
+    return 'The terminal is not available.';
+  }
+  return read.text ?? '';
 }
 
 /**
@@ -416,15 +434,19 @@ export async function writeTerminalInput(
   text: string,
   submit: boolean = true,
 ): Promise<string> {
+  logger.trace('StudioTools', `Tool invoked: write_terminal_input (tab=${context.owningTabId}, submit=${submit})`);
   const result: unknown = await context.bridge.request(WRITE_TERMINAL_INPUT, {
     tabId: context.owningTabId,
     text,
     submit,
   });
   const write: { ok?: boolean; output?: string } = result ?? {};
-  return write.ok === true
-    ? (write.output ?? 'Sent to the terminal.')
-    : 'The terminal is not available.';
+  if (write.ok !== true) {
+    logger.debug('StudioTools', 'write_terminal_input: terminal unavailable');
+    return 'The terminal is not available.';
+  }
+  logger.info('StudioTools', `Sent input to terminal (tab=${context.owningTabId})`);
+  return write.output ?? 'Sent to the terminal.';
 }
 
 /**
@@ -443,9 +465,16 @@ async function previewedEdit(
   previewInput: Record<string, unknown>,
   direct: () => Promise<string>,
 ): Promise<string> {
+  const rawOperation: unknown = previewInput['operation'];
+  const operation: string = typeof rawOperation === 'string' ? rawOperation : 'edit';
   if (context.permissionPosture !== 'prompt' || context.mode !== 'agent') {
+    logger.trace(
+      'StudioTools',
+      `Edit '${operation}' applied directly (posture=${context.permissionPosture}, mode=${context.mode})`,
+    );
     return direct();
   }
+  logger.trace('StudioTools', `Edit '${operation}' staged for preview`);
   const result: unknown = await context.bridge.request(PREVIEW_ACTIVE_DOCUMENT_EDIT, {
     ...previewInput,
     tabId: context.owningTabId,
@@ -460,6 +489,7 @@ async function previewedEdit(
   } = result ?? {};
   if (preview.available !== true || typeof preview.previewId !== 'string') {
     // Anchor failures and missing documents report straight back so the model can recover.
+    logger.debug('StudioTools', 'Edit preview unavailable (anchor failure or no document)');
     return preview.detail ?? 'No active document is open in the editor.';
   }
   const decision: 'yes' | 'no' = await context.requestEditDecision(
@@ -467,16 +497,19 @@ async function previewedEdit(
     preview.summary ?? '',
     preview.diffShown === true,
   );
+  logger.debug('StudioTools', `User edit decision on '${preview.name ?? 'active document'}': ${decision}`);
   if (decision === 'yes') {
     const committed: unknown = await context.bridge.request(COMMIT_EDIT_PREVIEW, {
       previewId: preview.previewId,
     });
     const commit: { ok?: boolean; detail?: string } = committed ?? {};
+    logger.info('StudioTools', `Committed previewed edit to '${preview.name ?? 'active document'}'`);
     return (
       commit.detail ??
       (commit.ok === true ? 'The edit was applied.' : 'The editor is no longer available.')
     );
   }
+  logger.info('StudioTools', `User rejected previewed edit to '${preview.name ?? 'active document'}'`);
   await context.bridge.request(CANCEL_EDIT_PREVIEW, { previewId: preview.previewId });
   return (
     'The user rejected this edit. Do not retry it as-is — ask what they would like instead, or ' +
@@ -491,11 +524,16 @@ async function previewedEdit(
  * @returns Returns the document text, or a note that no document is open.
  */
 export async function readActiveDocument(context: AgentRunContext): Promise<string> {
+  logger.trace('StudioTools', `Tool invoked: read_active_document (tab=${context.owningTabId})`);
   const result: unknown = await context.bridge.request(READ_ACTIVE_DOCUMENT, {
     tabId: context.owningTabId,
   });
   const read: { available?: boolean; text?: string } = result ?? {};
-  return read.available === true ? (read.text ?? '') : 'No active document is open in the editor.';
+  if (read.available !== true) {
+    logger.debug('StudioTools', 'read_active_document: no document open');
+    return 'No active document is open in the editor.';
+  }
+  return read.text ?? '';
 }
 
 /**
@@ -508,15 +546,18 @@ export async function replaceActiveDocument(
   context: AgentRunContext,
   text: string,
 ): Promise<string> {
+  logger.trace('StudioTools', `Tool invoked: replace_active_document (tab=${context.owningTabId})`);
   return previewedEdit(context, { operation: 'replace', text }, async (): Promise<string> => {
     const result: unknown = await context.bridge.request(REPLACE_ACTIVE_DOCUMENT, {
       text,
       tabId: context.owningTabId,
     });
     const replace: { ok?: boolean } = result ?? {};
-    return replace.ok === true
-      ? 'The active document was updated.'
-      : 'There is no active document to update.';
+    if (replace.ok === true) {
+      logger.info('StudioTools', `Replaced active document (tab=${context.owningTabId})`);
+      return 'The active document was updated.';
+    }
+    return 'There is no active document to update.';
   });
 }
 
@@ -530,11 +571,17 @@ export async function setActiveDocumentLanguage(
   context: AgentRunContext,
   language: string,
 ): Promise<string> {
+  logger.trace('StudioTools', `Tool invoked: set_active_document_language (language=${language})`);
   const result: unknown = await context.bridge.request(SET_ACTIVE_DOCUMENT_LANGUAGE, {
     tabId: context.owningTabId,
     language,
   });
   const set: { ok?: boolean; detail?: string } = result ?? {};
+  if (set.ok === true) {
+    logger.info('StudioTools', `Set active document language to '${language}'`);
+  } else {
+    logger.debug('StudioTools', `set_active_document_language did not set '${language}'`);
+  }
   return (
     set.detail ?? (set.ok === true ? 'The editor language was set.' : 'The language was not set.')
   );
@@ -599,6 +646,7 @@ export async function runActiveDocument(
     RUN_MAX_TIMEOUT_SECONDS,
     Math.max(1, Math.floor(timeoutSeconds) || RUN_DEFAULT_TIMEOUT_SECONDS),
   );
+  logger.trace('StudioTools', `Tool invoked: run_active_document (tab=${context.owningTabId}, timeout=${seconds}s)`);
   // Give the bridge a little longer than the renderer's own poll so the reply is never cut off first.
   const result: unknown = await context.bridge.request(
     RUN_ACTIVE_DOCUMENT,
@@ -607,8 +655,13 @@ export async function runActiveDocument(
   );
   const run: RunToolResult = result ?? {};
   if (run.ran !== true) {
+    logger.debug('StudioTools', 'run_active_document: nothing runnable in this view');
     return run.detail ?? 'There is no code document open to run in this view.';
   }
+  logger.info(
+    'StudioTools',
+    `Ran active document: ${run.command ?? '(unknown command)'} (success=${run.success === true}, exitCode=${run.exitCode ?? 'unknown'}, timedOut=${run.timedOut === true})`,
+  );
   const output: string = (run.output ?? '').trim();
   const status: string =
     run.success === true
@@ -643,6 +696,7 @@ export async function editActiveDocument(
   newString: string,
   replaceAll: boolean = false,
 ): Promise<string> {
+  logger.trace('StudioTools', `Tool invoked: edit_active_document (tab=${context.owningTabId}, replaceAll=${replaceAll})`);
   return previewedEdit(
     context,
     { operation: 'edit', oldString, newString, replaceAll },
@@ -654,6 +708,9 @@ export async function editActiveDocument(
         replaceAll,
       });
       const edit: { ok?: boolean; detail?: string } = result ?? {};
+      if (edit.ok === true) {
+        logger.info('StudioTools', `Applied edit to active document (tab=${context.owningTabId})`);
+      }
       return (
         edit.detail ??
         (edit.ok === true ? 'The edit was applied.' : 'There is no active document to edit.')
@@ -677,6 +734,7 @@ export async function insertIntoActiveDocument(
   placement: InsertPlacement,
   anchor?: string,
 ): Promise<string> {
+  logger.trace('StudioTools', `Tool invoked: insert_into_active_document (tab=${context.owningTabId}, placement=${placement})`);
   return previewedEdit(
     context,
     { operation: 'insert', text, placement, ...(anchor === undefined ? {} : { anchor }) },
@@ -688,6 +746,9 @@ export async function insertIntoActiveDocument(
         anchor,
       });
       const insert: { ok?: boolean; detail?: string } = result ?? {};
+      if (insert.ok === true) {
+        logger.info('StudioTools', `Inserted text into active document (tab=${context.owningTabId})`);
+      }
       return (
         insert.detail ??
         (insert.ok === true
@@ -712,12 +773,17 @@ async function readBinary(
   capability: string,
   range?: { offset: number; length: number },
 ): Promise<string> {
+  logger.trace('StudioTools', `Binary read invoked: ${capability}${range ? ` (offset=${range.offset}, length=${range.length})` : ''}`);
   const result: unknown = await context.bridge.request(capability, {
     tabId: context.owningTabId,
     ...range,
   });
   const read: { available?: boolean; text?: string } = result ?? {};
-  return read.available === true ? (read.text ?? '') : 'No binary document is open in this view.';
+  if (read.available !== true) {
+    logger.debug('StudioTools', `${capability}: no binary document open`);
+    return 'No binary document is open in this view.';
+  }
+  return read.text ?? '';
 }
 
 /**
@@ -783,12 +849,18 @@ export async function patchBinaryBytes(
   offset: number,
   bytes: string,
 ): Promise<string> {
+  logger.trace('StudioTools', `Tool invoked: patch_binary_bytes (offset=${offset})`);
   const result: unknown = await context.bridge.request(PATCH_BINARY_BYTES, {
     tabId: context.owningTabId,
     offset,
     bytes,
   });
   const patch: { ok?: boolean; text?: string } = result ?? {};
+  if (patch.ok === true) {
+    logger.info('StudioTools', `Patched binary bytes at offset ${offset}`);
+  } else {
+    logger.debug('StudioTools', `patch_binary_bytes rejected at offset ${offset}`);
+  }
   return (
     patch.text ?? (patch.ok === true ? 'The bytes were patched.' : 'The bytes were not patched.')
   );
@@ -807,12 +879,18 @@ export async function insertBinaryBytes(
   offset: number,
   bytes: string,
 ): Promise<string> {
+  logger.trace('StudioTools', `Tool invoked: insert_binary_bytes (offset=${offset})`);
   const result: unknown = await context.bridge.request(INSERT_BINARY_BYTES, {
     tabId: context.owningTabId,
     offset,
     bytes,
   });
   const insert: { ok?: boolean; text?: string } = result ?? {};
+  if (insert.ok === true) {
+    logger.info('StudioTools', `Inserted binary bytes at offset ${offset}`);
+  } else {
+    logger.debug('StudioTools', `insert_binary_bytes rejected at offset ${offset}`);
+  }
   return (
     insert.text ??
     (insert.ok === true ? 'The bytes were inserted.' : 'The bytes were not inserted.')
@@ -832,12 +910,18 @@ export async function deleteBinaryBytes(
   offset: number,
   length: number,
 ): Promise<string> {
+  logger.trace('StudioTools', `Tool invoked: delete_binary_bytes (offset=${offset}, length=${length})`);
   const result: unknown = await context.bridge.request(DELETE_BINARY_BYTES, {
     tabId: context.owningTabId,
     offset,
     length,
   });
   const del: { ok?: boolean; text?: string } = result ?? {};
+  if (del.ok === true) {
+    logger.info('StudioTools', `Deleted ${length} binary byte(s) at offset ${offset}`);
+  } else {
+    logger.debug('StudioTools', `delete_binary_bytes rejected at offset ${offset}`);
+  }
   return del.text ?? (del.ok === true ? 'The bytes were deleted.' : 'The bytes were not deleted.');
 }
 
@@ -859,6 +943,7 @@ export async function writeBinaryAssembly(
   assembly: string,
   length?: number,
 ): Promise<string> {
+  logger.trace('StudioTools', `Tool invoked: write_binary_assembly (offset=${offset})`);
   const result: unknown = await context.bridge.request(WRITE_BINARY_ASSEMBLY, {
     tabId: context.owningTabId,
     offset,
@@ -866,6 +951,11 @@ export async function writeBinaryAssembly(
     ...(length === undefined ? {} : { length }),
   });
   const write: { ok?: boolean; text?: string } = result ?? {};
+  if (write.ok === true) {
+    logger.info('StudioTools', `Wrote assembly at offset ${offset}`);
+  } else {
+    logger.debug('StudioTools', `write_binary_assembly rejected at offset ${offset}`);
+  }
   return (
     write.text ??
     (write.ok === true ? 'The assembly was written.' : 'The assembly was not written.')

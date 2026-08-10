@@ -16,6 +16,7 @@ import {
   StudioWorkspace,
 } from '@shared/api/studio';
 import { WorkspaceContext } from '../workspace-context';
+import { logger } from '../logger';
 
 /**
  * Reads and writes a workspace's `.studio` persistence on behalf of the renderer, confined to open
@@ -44,20 +45,27 @@ export class StudioStore {
    * Registers the studio IPC handlers. Every handler rejects a root that is not an open workspace.
    */
   public register(): void {
+    logger.info('StudioStore', 'Registering studio IPC handlers');
     ipcMain.handle(
       StudioChannel.Load,
-      (_event: IpcMainInvokeEvent, root: unknown): Promise<StudioSnapshot | null> =>
-        this.load(root),
+      (_event: IpcMainInvokeEvent, root: unknown): Promise<StudioSnapshot | null> => {
+        logger.trace('StudioStore', `Load requested for ${String(root)}`);
+        return this.load(root);
+      },
     );
     ipcMain.handle(
       StudioChannel.SaveWorkspace,
-      (_event: IpcMainInvokeEvent, root: unknown, workspace: unknown): Promise<boolean> =>
-        this.saveWorkspace(root, workspace),
+      (_event: IpcMainInvokeEvent, root: unknown, workspace: unknown): Promise<boolean> => {
+        logger.trace('StudioStore', `SaveWorkspace requested for ${String(root)}`);
+        return this.saveWorkspace(root, workspace);
+      },
     );
     ipcMain.handle(
       StudioChannel.SaveUser,
-      (_event: IpcMainInvokeEvent, root: unknown, user: unknown): Promise<boolean> =>
-        this.saveUser(root, user),
+      (_event: IpcMainInvokeEvent, root: unknown, user: unknown): Promise<boolean> => {
+        logger.trace('StudioStore', `SaveUser requested for ${String(root)}`);
+        return this.saveUser(root, user);
+      },
     );
   }
 
@@ -69,13 +77,16 @@ export class StudioStore {
    */
   private async load(root: unknown): Promise<StudioSnapshot | null> {
     if (typeof root !== 'string' || !this.workspace.isRoot(root)) {
+      logger.warn('StudioStore.load', `Rejected load for non-open root ${String(root)}`);
       return null;
     }
     const directory: string = path.join(root, STUDIO_DIR);
+    logger.debug('StudioStore.load', `Loading snapshot from ${directory}`);
     const workspace: StudioWorkspace = parseWorkspace(
       await this.readJson(path.join(directory, STUDIO_WORKSPACE_FILE)),
     );
     const user: StudioUser = parseUser(await this.readJson(path.join(directory, STUDIO_USER_FILE)));
+    logger.info('StudioStore.load', `Loaded studio snapshot for ${root}`);
     return { workspace, user };
   }
 
@@ -88,10 +99,12 @@ export class StudioStore {
    */
   private async saveWorkspace(root: unknown, payload: unknown): Promise<boolean> {
     if (typeof root !== 'string' || !this.workspace.isRoot(root)) {
+      logger.warn('StudioStore.saveWorkspace', `Rejected save for non-open root ${String(root)}`);
       return false;
     }
     const workspace: StudioWorkspace = parseWorkspace(payload);
     await this.write(root, STUDIO_WORKSPACE_FILE, serializeWorkspace(workspace));
+    logger.info('StudioStore.saveWorkspace', `Saved workspace.json for ${root}`);
     return true;
   }
 
@@ -104,10 +117,12 @@ export class StudioStore {
    */
   private async saveUser(root: unknown, payload: unknown): Promise<boolean> {
     if (typeof root !== 'string' || !this.workspace.isRoot(root)) {
+      logger.warn('StudioStore.saveUser', `Rejected save for non-open root ${String(root)}`);
       return false;
     }
     const user: StudioUser = parseUser(payload);
     await this.write(root, STUDIO_USER_FILE, serializeUser(user));
+    logger.info('StudioStore.saveUser', `Saved workspace.user.json for ${root}`);
     return true;
   }
 
@@ -125,6 +140,7 @@ export class StudioStore {
     await this.seedGitignore(root);
     const target: string = path.join(directory, file);
     const temporary: string = `${target}.${process.pid}.tmp`;
+    logger.trace('StudioStore.write', `Atomically writing ${target} via ${temporary}`);
     await fs.writeFile(temporary, contents, 'utf8');
     await fs.rename(temporary, target);
   }
@@ -141,6 +157,7 @@ export class StudioStore {
     try {
       existing = await fs.readFile(gitignore, 'utf8');
     } catch {
+      logger.debug('StudioStore.seedGitignore', `Creating ${gitignore} with studio ignore pattern`);
       await fs.writeFile(gitignore, `${STUDIO_USER_IGNORE}\n`, 'utf8');
       return;
     }

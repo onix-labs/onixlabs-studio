@@ -3,6 +3,7 @@ import { AppChannel } from '@shared/api/app-channels';
 import type { Bridge } from '@shared/api/bridge';
 import type { SaveDialogChoice } from '@shared/api/file-channels';
 import { FileSystem } from '@shared/angular/services/file-system/file-system';
+import { Log } from '@shared/angular/services/log/log';
 import { UnsavedWorkRegistry } from '@shared/angular/services/unsaved-work/unsaved-work-registry';
 
 /**
@@ -31,6 +32,11 @@ export class Lifecycle {
   private readonly fileSystem: FileSystem = inject(FileSystem);
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Initializes a new instance of the {@link Lifecycle} class, subscribing to close requests.
    */
   public constructor() {
@@ -44,7 +50,9 @@ export class Lifecycle {
    * @returns Returns a promise that resolves once the decision has been sent.
    */
   private async onRequestClose(): Promise<void> {
+    this.log.info('Lifecycle', 'Window close requested');
     const proceed: boolean = await this.confirmUnsavedChanges();
+    this.log.info('Lifecycle', `Window close ${proceed ? 'confirmed' : 'cancelled'}`);
     this.bridge?.send(AppChannel.ConfirmClose, proceed);
   }
 
@@ -57,6 +65,7 @@ export class Lifecycle {
     // Prompts are awaited one at a time: each is a modal dialog, and the save follows its own prompt.
     for (const source of this.unsavedWork.sources()) {
       for (const unsaved of source.dirtyDocuments()) {
+        this.log.info('Lifecycle', `Prompting for unsaved document '${unsaved.name}'`);
         const choice: SaveDialogChoice = await this.fileSystem.confirmSave(unsaved.name);
         if (choice === 'cancel') {
           return false;

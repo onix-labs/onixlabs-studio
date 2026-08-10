@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  inject,
   input,
   InputSignal,
   output,
@@ -10,6 +11,7 @@ import {
   Signal,
   WritableSignal,
 } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 import { FormModal } from './form-modal';
 
 /**
@@ -72,6 +74,11 @@ export interface MathInsert {
 })
 export class MarkdownMathModal {
   /**
+   * Holds the structured logging client for the insert modal's confirmation.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Gets a value indicating whether the modal is open.
    */
   public readonly open: InputSignal<boolean> = input.required<boolean>();
@@ -110,6 +117,7 @@ export class MarkdownMathModal {
     if (!this.valid()) {
       return;
     }
+    this.log.debug('markdown.insert', 'Math modal confirmed', { block: this.block() });
     this.submitted.emit({ expression: this.expression().trim(), block: this.block() });
     this.reset();
     this.closed.emit();

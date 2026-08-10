@@ -1,4 +1,5 @@
-import { computed, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { Log } from '@shared/angular/services/log/log';
 
 /**
  * Identifies the block type at the markdown editor's current selection. Drives the ribbon's block
@@ -217,6 +218,11 @@ export class MarkdownCommands {
   >();
 
   /**
+   * Holds the structured logger.
+   */
+  private readonly log: Log = inject(Log);
+
+  /**
    * Holds the id of the active editor's document, or null when no markdown editor is active.
    */
   private activeId: string | null = null;
@@ -298,6 +304,7 @@ export class MarkdownCommands {
    * @param handler The handler to register.
    */
   public register(id: string, handler: MarkdownCommandHandler): void {
+    this.log.debug('MarkdownCommands', `Registered markdown editor`, id);
     this.handlers.set(id, handler);
     this.activeId = id;
     this.handler.set(handler);
@@ -325,6 +332,7 @@ export class MarkdownCommands {
    * @param id The owning document identifier.
    */
   public forget(id: string): void {
+    this.log.debug('MarkdownCommands', `Forgot markdown editor`, id);
     this.handlers.delete(id);
     if (this.activeId === id) {
       this.clearActive();

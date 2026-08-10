@@ -133,12 +133,17 @@ export class StdioTransport implements DapTransport {
         return;
       }
       pidJournal()?.register(child.pid, 'debug', this.command);
+      logger.info(
+        'dap-transport',
+        `Spawned stdio debug adapter ${this.command} (pid ${child.pid})`,
+      );
       // Drain stderr so a chatty adapter cannot stall on a full pipe; its contents are diagnostic only.
       child.stderr.resume();
       child.stdout.on('data', (chunk: Buffer): void => this.dataListener?.(chunk));
       child.on('error', (error: Error): void => reject(error));
       child.on('exit', (code: number | null, signal: NodeJS.Signals | null): void => {
         pidJournal()?.unregister(child.pid);
+        logger.info('dap-transport', `Stdio debug adapter exited (code=${code}, signal=${signal})`);
         this.closeListener?.(code, signal ?? null);
       });
       this.child = child;
@@ -175,6 +180,7 @@ export class StdioTransport implements DapTransport {
    */
   public dispose(): void {
     if (this.child !== null) {
+      logger.debug('dap-transport', `Killing stdio adapter process tree (pid ${this.child.pid})`);
       pidJournal()?.unregister(this.child.pid);
       if (this.child.pid !== undefined) {
         killProcessTree(this.child.pid);
@@ -296,6 +302,7 @@ export class TcpServerTransport implements DapTransport {
         return;
       }
       pidJournal()?.register(child.pid, 'debug', this.command);
+      logger.info('dap-transport', `Spawned TCP debug server ${this.command} (pid ${child.pid})`);
       child.on('exit', (): void => pidJournal()?.unregister(child.pid));
       this.child = child;
       const timer: NodeJS.Timeout = setTimeout((): void => {
@@ -319,15 +326,21 @@ export class TcpServerTransport implements DapTransport {
         clearTimeout(timer);
         this.listenHost = match[1] !== undefined && match[1].length > 0 ? match[1] : '127.0.0.1';
         this.listenPort = Number(match[2]);
+        logger.debug(
+          'dap-transport',
+          `Debug server listening at ${this.listenHost}:${this.listenPort}`,
+        );
         this.connectSocket(resolve, reject);
       });
       child.on('error', (error: Error): void => {
         clearTimeout(timer);
+        logger.error('dap-transport', 'Debug server process error', error);
         reject(error);
       });
-      child.on('exit', (code: number | null, signal: NodeJS.Signals | null): void =>
-        this.closeListener?.(code, signal ?? null),
-      );
+      child.on('exit', (code: number | null, signal: NodeJS.Signals | null): void => {
+        logger.info('dap-transport', `Debug server exited (code=${code}, signal=${signal})`);
+        this.closeListener?.(code, signal ?? null);
+      });
     });
   }
 
@@ -364,6 +377,7 @@ export class TcpServerTransport implements DapTransport {
       this.socket = null;
     }
     if (this.child !== null) {
+      logger.debug('dap-transport', `Killing debug server process tree (pid ${this.child.pid})`);
       pidJournal()?.unregister(this.child.pid);
       if (this.child.pid !== undefined) {
         killProcessTree(this.child.pid);
@@ -378,9 +392,16 @@ export class TcpServerTransport implements DapTransport {
    * @param reject The start rejecter, called on connection failure.
    */
   private connectSocket(resolve: () => void, reject: (reason: Error) => void): void {
+    logger.trace(
+      'dap-transport',
+      `Connecting to debug server ${this.listenHost}:${this.listenPort}`,
+    );
     const socket: Socket = connect(this.listenPort, this.listenHost, (): void => resolve());
     socket.on('data', (chunk: Buffer): void => this.dataListener?.(chunk));
-    socket.on('error', (error: Error): void => reject(error));
+    socket.on('error', (error: Error): void => {
+      logger.error('dap-transport', 'Debug server socket error', error);
+      reject(error);
+    });
     this.socket = socket;
   }
 }
@@ -433,9 +454,16 @@ export class TcpClientTransport implements DapTransport {
    */
   public start(): Promise<void> {
     return new Promise<void>((resolve: () => void, reject: (reason: Error) => void): void => {
+      logger.trace(
+        'dap-transport',
+        `Connecting target session socket to ${this.host}:${this.port}`,
+      );
       const socket: Socket = connect(this.port, this.host, (): void => resolve());
       socket.on('data', (chunk: Buffer): void => this.dataListener?.(chunk));
-      socket.on('error', (error: Error): void => reject(error));
+      socket.on('error', (error: Error): void => {
+        logger.error('dap-transport', 'Target session socket error', error);
+        reject(error);
+      });
       socket.on('close', (): void => this.closeListener?.(null, null));
       this.socket = socket;
     });

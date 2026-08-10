@@ -10,6 +10,7 @@ import {
   ProjectNode,
 } from '@shared/api/project-system';
 import { ProjectSystem } from './project-system';
+import { logger } from '../logger';
 
 /**
  * The Go project system's root-independent capabilities: the Build/Clean/Rebuild actions the `go`
@@ -106,13 +107,16 @@ export class GoProjectSystem implements ProjectSystem {
    * @returns Returns the model, or null when the root has no `go.mod`.
    */
   public async load(root: string): Promise<ProjectModel | null> {
+    logger.trace('GoProjectSystem', `Loading the Go model for '${root}'.`);
     const manifestPath: string = path.join(root, MANIFEST);
     const goMod: string | null = await this.readFile(manifestPath);
     if (goMod === null) {
+      logger.debug('GoProjectSystem', `No readable 'go.mod' at '${root}'.`);
       return null;
     }
     const modulePath: string | null = parseGoModulePath(goMod);
     const name: string = modulePath === null ? path.basename(root) : path.basename(modulePath);
+    logger.info('GoProjectSystem', `Loaded Go module '${name}' from '${manifestPath}'.`);
     const tree: readonly ProjectNode[] = [{ type: 'project', name, path: manifestPath }];
     return {
       kind: this.kind,
