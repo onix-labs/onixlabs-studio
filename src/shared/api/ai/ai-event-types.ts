@@ -391,6 +391,31 @@ export interface AiBackgroundTaskEvent extends AiEventBase {
 }
 
 /**
+ * Reports a message a peer typed from claude.ai/code while remote-controlling the session (#331). It is
+ * session-level (correlated by {@link agentSessionId}, not the per-turn request id) because it can
+ * arrive when no Studio-initiated turn is active: the renderer echoes it into the transcript as the
+ * user's message and adopts the turn under {@link AiEventBase.requestId}, so the response — and any
+ * permission or input prompts the turn raises — render in Studio too.
+ */
+export interface AiRemoteMessageEvent extends AiEventBase {
+  /**
+   * Gets the discriminator.
+   */
+  readonly kind: 'remote-message';
+
+  /**
+   * Gets the conversation (agent session) the message belongs to, so the renderer correlates it to the
+   * right agent regardless of which turn (if any) is in flight. Null for a run with no agent session id.
+   */
+  readonly agentSessionId: string | null;
+
+  /**
+   * Gets the peer's message text.
+   */
+  readonly text: string;
+}
+
+/**
  * A streamed event from a running agent turn. Both providers parse their model output into this
  * provider-agnostic protocol.
  */
@@ -406,4 +431,5 @@ export type AiEvent =
   | AiStatusEvent
   | AiUsageEvent
   | AiCommandsEvent
-  | AiBackgroundTaskEvent;
+  | AiBackgroundTaskEvent
+  | AiRemoteMessageEvent;

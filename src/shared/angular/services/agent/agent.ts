@@ -1356,6 +1356,19 @@ export class Agent {
       }
       return;
     }
+    // A message a peer typed while remote-controlling the session (#331) is session-level: it can arrive
+    // when no Studio-initiated turn is active (activeRequestId null), so the per-turn filter below would
+    // drop it and everything the turn then streams. Echo it as the user's message and adopt the turn so
+    // the response and any prompts render here too.
+    if (event.kind === 'remote-message') {
+      if (event.agentSessionId === this.agentSessionId) {
+        this.flushStream();
+        this.push({ kind: 'user', text: event.text });
+        this.activeRequestId = event.requestId;
+        this.busy.set(true);
+      }
+      return;
+    }
     if (event.requestId !== this.activeRequestId) {
       return;
     }

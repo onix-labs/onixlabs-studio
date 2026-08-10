@@ -1840,6 +1840,15 @@ export class ClaudeAgentSession implements AgentSession {
         if (this.inputClosed) {
           return;
         }
+        // Echo the peer's message into Studio's transcript and let the renderer adopt the turn, so the
+        // response — and any permission/input prompts it raises — render in Studio too, not only on the
+        // phone (#331). Emitted on the current context so it carries the turn's request id.
+        this.currentContext.emit({
+          requestId: this.currentContext.requestId,
+          kind: 'remote-message',
+          agentSessionId: this.currentContext.agentSessionId,
+          text,
+        });
         this.pendingMessages.push(userMessageOf(text));
         this.wake?.();
       },

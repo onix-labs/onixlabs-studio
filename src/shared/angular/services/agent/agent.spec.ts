@@ -189,6 +189,37 @@ describe('Agent', () => {
     expect(agent.discoveredCommands().map((command): string => command.name)).toEqual(['review']);
   });
 
+  it('remoteMessage_forThisConversation_echoesTheUserMessageAndAdoptsTheTurn', () => {
+    agent.send('local');
+    const sessionId: string | undefined = runCalls[0].agentSessionId;
+    // The local turn finishes, so the conversation is idle (activeRequestId cleared).
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+
+    // A peer types on the phone while idle: the message is echoed and the turn adopted.
+    fireEvent({
+      requestId: 'phone-turn',
+      kind: 'remote-message',
+      agentSessionId: sessionId ?? null,
+      text: 'from the phone',
+    });
+    expect(agent.items().some((i: AgentItem): boolean => i.kind === 'user' && i.text === 'from the phone')).toBe(true);
+
+    // A following event under the adopted request id renders (proving adoption past the per-turn filter).
+    fireEvent({ requestId: 'phone-turn', kind: 'tool-start', toolId: 't1', name: 'Read', detail: 'readme' });
+    expect(agent.items().some((i: AgentItem): boolean => i.kind === 'tool' && i.toolId === 't1')).toBe(true);
+  });
+
+  it('remoteMessage_forAnotherConversation_isIgnored', () => {
+    agent.send('local');
+    fireEvent({
+      requestId: 'x',
+      kind: 'remote-message',
+      agentSessionId: 'someone-else',
+      text: 'not mine',
+    });
+    expect(agent.items().some((i: AgentItem): boolean => i.text === 'not mine')).toBe(false);
+  });
+
   it('send_carriesTheSelectedEffort_andOmitsItByDefault', () => {
     agent.send('hello');
     expect(runCalls[0].effort).toBeUndefined();
