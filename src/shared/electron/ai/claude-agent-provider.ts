@@ -1,5 +1,6 @@
 import { ChildProcess, spawn } from 'node:child_process';
 import { homedir } from 'node:os';
+import { basename } from 'node:path';
 import type {
   CanUseTool,
   HookJSONOutput,
@@ -9,7 +10,6 @@ import type {
   PermissionResult,
   PostToolUseHookInput,
   Query,
-  Settings,
   SDKMessage,
   SDKTaskNotificationMessage,
   SDKUserMessage,
@@ -62,6 +62,7 @@ import type {
 } from './agent-provider';
 import { resolveClaudeExecutable } from './claude-executable';
 import type { ClaudeSdkModel } from './claude-model-discovery';
+import { RemoteControlBridge } from './claude-remote-control';
 import {
   applyCapturedEnvironment,
   captureShellEnvironmentCached,
@@ -926,24 +927,10 @@ export class ClaudeAgentProvider implements AgentProvider {
         : { behavior: 'deny', message: 'The user declined to run this tool.' };
     };
 
-    // Remote Control (#331) is the harness's own claude.ai/code feature — the CLI sources its own login
-    // token, org and bridge. Studio just flips the relevant flags in the highest-priority "flag
-    // settings" layer (an overlay on the user's settings.json, not a replacement). The per-agent mode is
-    // authoritative: `off` sets `disableRemoteControl` so a stray `remoteControlAtStartup` in the user's
-    // own settings can never silently expose a Studio session. `control` turns on the peer-approval gate
-    // (`isolatePeerMachines`); `mirror` uploads the session view-only. Bound at open like effort/model.
-    const remoteControlSettings: Settings =
-      openContext.remoteControl === 'control'
-        ? { remoteControlAtStartup: true, isolatePeerMachines: true }
-        : openContext.remoteControl === 'mirror'
-          ? { autoUploadSessions: true }
-          : { disableRemoteControl: true };
-
     const options: Options = {
       // Spawn the CLI under this application's process-lifecycle management (own process group,
       // pid-journal registration, tree kills).
       ...managedSpawnerOption(),
-      settings: remoteControlSettings,
       // The opening model is bound here; a later turn that changes it is applied live via
       // `Query.setModel` (see {@link ClaudeAgentSession.turn}) rather than rebuilding the options.
       model: openContext.model,
@@ -1680,6 +1667,12 @@ export class ClaudeAgentSession implements AgentSession {
   private closed: boolean = false;
 
   /**
+   * The claude.ai/code bridge for this session when remote control is on (#331), or null when off or
+   * unavailable. Opened at first-turn open from the opening context's mode; closed with the session.
+   */
+  private bridge: RemoteControlBridge | null = null;
+
+  /**
    * Initialises a new instance of the {@link ClaudeAgentSession} class.
    * @param deps The provider capabilities the session borrows.
    * @param initialContext The context of the turn the session opens for.
@@ -1795,6 +1788,8 @@ export class ClaudeAgentSession implements AgentSession {
     this.closed = true;
     this.inputClosed = true;
     this.currentContext.setSteerHandler(null);
+    this.bridge?.close();
+    this.bridge = null;
     this.controller?.abort();
     this.wake?.();
     // The pump's failure (if any) is surfaced through the in-flight turn; teardown ignores it.
@@ -1821,6 +1816,41 @@ export class ClaudeAgentSession implements AgentSession {
     // Discover the session's slash commands once it is open (#330); refreshed later by the
     // `commands_changed` push handled in the pump. Best-effort — a failure never disturbs the run.
     void this.emitCommands();
+    // Bridge the session to claude.ai/code when remote control is on (#331). Bound at open like the
+    // structural options, so a mid-session mode change takes effect on reopen. Best-effort.
+    if (this.currentContext.remoteControl !== 'off') {
+      this.openBridge(this.currentContext);
+    }
+  }
+
+  /**
+   * Opens the claude.ai/code bridge for the session (#331), asynchronously. In control mode a peer's
+   * message is injected into the session exactly like a steered follow-up. Best-effort: any failure
+   * leaves the local run untouched and the session simply stays unbridged.
+   * @param context The opening turn's context (its remote-control mode is used).
+   */
+  private openBridge(context: AgentRunContext): void {
+    const cwd: string = context.workspaceRoot ?? homedir();
+    void RemoteControlBridge.open({
+      mode: context.remoteControl === 'control' ? 'control' : 'mirror',
+      title: `ONIXLabs Studio — ${basename(cwd)}`,
+      cwd,
+      model: context.model,
+      onInbound: (text: string): void => {
+        if (this.inputClosed) {
+          return;
+        }
+        this.pendingMessages.push(userMessageOf(text));
+        this.wake?.();
+      },
+    }).then((bridge: RemoteControlBridge | null): void => {
+      // The session may have closed while the bridge was opening; drop it if so.
+      if (this.closed) {
+        bridge?.close();
+        return;
+      }
+      this.bridge = bridge;
+    });
   }
 
   /**
@@ -1948,6 +1978,8 @@ export class ClaudeAgentSession implements AgentSession {
           this.publishBackgroundTask(message as SDKTaskNotificationMessage);
         }
         this.deps.handleMessage(message, this.currentContext, this.usageState);
+        // Mirror the message to claude.ai/code when the session is bridged (#331). Best-effort.
+        this.bridge?.forward(message);
         // A turn's `result` settles that turn but leaves the stream open for the next turn; an
         // interrupted turn arrives here too (the SDK emits a `result` for it). The stream itself ends
         // only when the input closes (via {@link close}), never on a per-turn abort — so a Stop
