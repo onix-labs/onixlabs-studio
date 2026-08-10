@@ -1,6 +1,14 @@
 import * as os from 'node:os';
-import { MetricsSample, SystemMonitorChannel } from '@shared/api/system-monitor-channels';
+import * as si from 'systeminformation';
+import {
+  DiskMetric,
+  GpuMetric,
+  MetricsSample,
+  NetworkMetric,
+  SystemMonitorChannel,
+} from '@shared/api/system-monitor-channels';
 import { ContributionContext, MainContribution } from '../main-contribution';
+import { pickGpu, readDisk, sumNetwork } from './metrics-readers';
 import { MetricsSampler } from './metrics-sampler';
 
 /**
@@ -9,8 +17,9 @@ import { MetricsSampler } from './metrics-sampler';
 const SAMPLE_INTERVAL_MS: number = 1_000;
 
 /**
- * The System Monitor's metrics backend contribution. It samples machine CPU and memory on an interval
- * and pushes each {@link MetricsSample} to the renderer, but only while a view has asked it to: the
+ * The System Monitor's metrics backend contribution. It samples machine CPU, memory, network, disk and
+ * (best-effort) GPU on an interval and pushes each {@link MetricsSample} to the renderer, but only
+ * while a view has asked it to: the
  * renderer starts sampling when its tab shows and stops when it hides, so nothing is sampled when the
  * monitor is not on screen (the performance-audit posture). Requests are ref-counted, so several open
  * monitors share one sampling loop. It declares no permissions — reading OS metrics needs none.
@@ -40,6 +49,11 @@ export class SystemMonitorContribution implements MainContribution {
    * The contribution context, held so ticks can push to the renderer. Null until activated.
    */
   private context: ContributionContext | null = null;
+
+  /**
+   * Whether a sample is currently being gathered, so a slow read cannot let ticks overlap.
+   */
+  private sampling: boolean = false;
 
   /**
    * Wires the start/stop requests. Sampling itself does not begin until a consumer starts it.
@@ -85,7 +99,8 @@ export class SystemMonitorContribution implements MainContribution {
    */
   private startSampling(): void {
     this.sampler = new MetricsSampler();
-    this.readSample();
+    // Prime the CPU and network/disk baselines so the first pushed sample carries real deltas.
+    void this.readSample();
     this.timer = setInterval((): void => this.tick(), SAMPLE_INTERVAL_MS);
   }
 
@@ -100,18 +115,73 @@ export class SystemMonitorContribution implements MainContribution {
   }
 
   /**
-   * Samples and pushes one snapshot to the renderer.
+   * Samples and pushes one snapshot to the renderer. Skips the tick when the previous sample is still
+   * being gathered, so a slow read never lets ticks pile up.
    */
   private tick(): void {
-    this.context?.send(SystemMonitorChannel.Sample, this.readSample());
+    if (this.sampling) {
+      return;
+    }
+    this.sampling = true;
+    void this.readSample()
+      .then((sample: MetricsSample): void => this.context?.send(SystemMonitorChannel.Sample, sample))
+      .finally((): void => {
+        this.sampling = false;
+      });
   }
 
   /**
-   * Reads one sample from the OS.
+   * Reads one sample: CPU and memory from the OS (synchronous), and network, disk and best-effort GPU
+   * from systeminformation (asynchronous). Each optional reading degrades to undefined on failure so a
+   * single unavailable metric never sinks the sample.
    * @returns Returns the sample.
    */
-  private readSample(): MetricsSample {
-    return this.sampler.sample(os.cpus(), os.totalmem(), os.freemem(), new Date().toISOString());
+  private async readSample(): Promise<MetricsSample> {
+    const base: MetricsSample = this.sampler.sample(
+      os.cpus(),
+      os.totalmem(),
+      os.freemem(),
+      new Date().toISOString(),
+    );
+    const [network, disk, gpu]: [NetworkMetric | undefined, DiskMetric | undefined, GpuMetric | undefined] =
+      await Promise.all([this.readNetwork(), this.readDisk(), this.readGpu()]);
+    return { ...base, network, disk, gpu };
+  }
+
+  /**
+   * Reads summed network throughput, or undefined when unavailable.
+   * @returns Returns the network metric, or undefined.
+   */
+  private async readNetwork(): Promise<NetworkMetric | undefined> {
+    try {
+      return sumNetwork(await si.networkStats('*'));
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * Reads disk I/O throughput, or undefined when unavailable.
+   * @returns Returns the disk metric, or undefined.
+   */
+  private async readDisk(): Promise<DiskMetric | undefined> {
+    try {
+      return readDisk(await si.fsStats());
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * Reads best-effort GPU utilisation, or undefined when unavailable.
+   * @returns Returns the GPU metric, or undefined.
+   */
+  private async readGpu(): Promise<GpuMetric | undefined> {
+    try {
+      return pickGpu((await si.graphics()).controllers);
+    } catch {
+      return undefined;
+    }
   }
 }
 

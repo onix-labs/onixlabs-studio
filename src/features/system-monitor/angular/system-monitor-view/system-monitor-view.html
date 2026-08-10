@@ -1,8 +1,12 @@
 <div class="system-monitor">
-  <!-- CPU and Memory tiles (P3). Network/Disk/GPU tiles join this grid in P4. -->
+  <!-- CPU, Memory, Network, Disk and best-effort GPU tiles. Network and disk auto-scale to their
+       recent peak (they are rates, not percentages); GPU shows N/A where unsupported. -->
   <section class="system-monitor__tiles">
     <app-metric-tile label="CPU" [value]="cpuValue()" [values]="cpuHistory()" />
     <app-metric-tile label="Memory" [value]="memoryValue()" [values]="memoryHistory()" />
+    <app-metric-tile label="Network" [value]="networkValue()" [values]="networkHistory()" [max]="networkMax()" />
+    <app-metric-tile label="Disk" [value]="diskValue()" [values]="diskHistory()" [max]="diskMax()" />
+    <app-metric-tile label="GPU" [value]="gpuValue()" [values]="gpuHistory()" />
   </section>
 
   <section class="system-monitor__audit">

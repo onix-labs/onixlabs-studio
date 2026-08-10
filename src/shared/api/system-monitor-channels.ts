@@ -49,8 +49,57 @@ export interface MemoryMetric {
 }
 
 /**
- * Describes one sampled snapshot of machine metrics. This phase (epic #395 P3) carries CPU and
- * memory; network, disk and GPU are added as further fields in P4.
+ * Describes network throughput at a moment, summed across interfaces. Network is a rate, not a
+ * percentage — the tile shows bytes/second, not a fabricated "%".
+ */
+export interface NetworkMetric {
+  /**
+   * Gets the inbound throughput in bytes per second.
+   */
+  readonly rxBytesPerSec: number;
+
+  /**
+   * Gets the outbound throughput in bytes per second.
+   */
+  readonly txBytesPerSec: number;
+}
+
+/**
+ * Describes disk I/O throughput at a moment. Disk is a rate, not a percentage — the tile shows
+ * bytes/second read and written.
+ */
+export interface DiskMetric {
+  /**
+   * Gets the read throughput in bytes per second.
+   */
+  readonly readBytesPerSec: number;
+
+  /**
+   * Gets the write throughput in bytes per second.
+   */
+  readonly writeBytesPerSec: number;
+}
+
+/**
+ * Describes GPU utilisation at a moment. GPU load is best-effort and platform-dependent (commonly
+ * unavailable on macOS), so {@link available} states whether a real reading was obtained rather than
+ * reporting a misleading zero.
+ */
+export interface GpuMetric {
+  /**
+   * Gets a value indicating whether a real GPU utilisation reading was obtained.
+   */
+  readonly available: boolean;
+
+  /**
+   * Gets the GPU utilisation, 0–100; meaningful only when {@link available} is true.
+   */
+  readonly percent: number;
+}
+
+/**
+ * Describes one sampled snapshot of machine metrics. CPU and memory are always present; network, disk
+ * and GPU are present when the platform provides them (GPU is best-effort).
  */
 export interface MetricsSample {
   /**
@@ -67,4 +116,19 @@ export interface MetricsSample {
    * Gets the machine memory use.
    */
   readonly memory: MemoryMetric;
+
+  /**
+   * Gets the network throughput, or undefined when unavailable.
+   */
+  readonly network?: NetworkMetric;
+
+  /**
+   * Gets the disk I/O throughput, or undefined when unavailable.
+   */
+  readonly disk?: DiskMetric;
+
+  /**
+   * Gets the GPU utilisation reading, or undefined when unavailable.
+   */
+  readonly gpu?: GpuMetric;
 }

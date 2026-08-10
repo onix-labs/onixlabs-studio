@@ -43,6 +43,9 @@ function sample(over: Partial<MetricsSample> = {}): MetricsSample {
     timestamp: '2026-08-10T10:00:00.000Z',
     cpu: 42,
     memory: { usedBytes: 8 * 1024 ** 3, totalBytes: 16 * 1024 ** 3, percent: 50 },
+    network: { rxBytesPerSec: 1024, txBytesPerSec: 512 },
+    disk: { readBytesPerSec: 2048, writeBytesPerSec: 256 },
+    gpu: { available: true, percent: 30 },
     ...over,
   };
 }
@@ -105,8 +108,14 @@ interface Testable {
   selectedSessionValue: Signal<string>;
   cpuValue: Signal<string>;
   memoryValue: Signal<string>;
+  networkValue: Signal<string>;
+  diskValue: Signal<string>;
+  gpuValue: Signal<string>;
   cpuHistory: WritableSignal<readonly number[]>;
   memoryHistory: WritableSignal<readonly number[]>;
+  networkHistory: WritableSignal<readonly number[]>;
+  diskHistory: WritableSignal<readonly number[]>;
+  gpuHistory: WritableSignal<readonly number[]>;
   selectSession(sessionId: string): void;
   toggleSeverity(severity: Severity): void;
   isEnabled(severity: Severity): boolean;
@@ -251,5 +260,30 @@ describe('SystemMonitorView', () => {
   it('cpuValue_isAPlaceholderBeforeTheFirstSample', async () => {
     await create();
     expect(view.cpuValue()).toBe('—');
+  });
+
+  it('sample_formatsNetworkAndDiskThroughputAndGpuPercent', async () => {
+    await create();
+    metrics.listener?.(sample());
+    expect(view.networkValue()).toBe('↓ 1.0 KB/s · ↑ 512 B/s');
+    expect(view.diskValue()).toBe('R 2.0 KB/s · W 256 B/s');
+    expect(view.gpuValue()).toBe('30%');
+    expect(view.networkHistory()).toEqual([1536]);
+    expect(view.diskHistory()).toEqual([2304]);
+    expect(view.gpuHistory()).toEqual([30]);
+  });
+
+  it('gpu_showsNotAvailableAndKeepsNoHistoryWhenUnsupported', async () => {
+    await create();
+    metrics.listener?.(sample({ gpu: { available: false, percent: 0 } }));
+    expect(view.gpuValue()).toBe('N/A');
+    expect(view.gpuHistory()).toEqual([]);
+  });
+
+  it('network_showsAPlaceholderAndKeepsNoHistoryWhenUnavailable', async () => {
+    await create();
+    metrics.listener?.(sample({ network: undefined }));
+    expect(view.networkValue()).toBe('—');
+    expect(view.networkHistory()).toEqual([]);
   });
 });

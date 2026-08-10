@@ -117,6 +117,66 @@ export class SystemMonitorView {
   });
 
   /**
+   * Holds the recent total network-throughput history (bytes/sec), oldest first.
+   */
+  protected readonly networkHistory: WritableSignal<readonly number[]> = signal<readonly number[]>([]);
+
+  /**
+   * Holds the recent total disk-throughput history (bytes/sec), oldest first.
+   */
+  protected readonly diskHistory: WritableSignal<readonly number[]> = signal<readonly number[]>([]);
+
+  /**
+   * Holds the recent GPU-utilisation history (percent), oldest first.
+   */
+  protected readonly gpuHistory: WritableSignal<readonly number[]> = signal<readonly number[]>([]);
+
+  /**
+   * Gets the network tile's current value: inbound and outbound throughput, or a placeholder when
+   * unavailable.
+   */
+  protected readonly networkValue: Signal<string> = computed((): string => {
+    const network: MetricsSample['network'] = this.latest()?.network;
+    return network === undefined
+      ? '—'
+      : `↓ ${this.formatRate(network.rxBytesPerSec)} · ↑ ${this.formatRate(network.txBytesPerSec)}`;
+  });
+
+  /**
+   * Gets the disk tile's current value: read and write throughput, or a placeholder when unavailable.
+   */
+  protected readonly diskValue: Signal<string> = computed((): string => {
+    const disk: MetricsSample['disk'] = this.latest()?.disk;
+    return disk === undefined
+      ? '—'
+      : `R ${this.formatRate(disk.readBytesPerSec)} · W ${this.formatRate(disk.writeBytesPerSec)}`;
+  });
+
+  /**
+   * Gets the GPU tile's current value: its utilisation, or `N/A` where the platform does not report it.
+   */
+  protected readonly gpuValue: Signal<string> = computed((): string => {
+    const gpu: MetricsSample['gpu'] = this.latest()?.gpu;
+    if (this.latest() === null) {
+      return '—';
+    }
+    return gpu?.available === true ? `${Math.round(gpu.percent)}%` : 'N/A';
+  });
+
+  /**
+   * Gets the network sparkline's scale: its recent peak, so throughput auto-scales (there is no fixed
+   * maximum).
+   */
+  protected readonly networkMax: Signal<number> = computed((): number =>
+    Math.max(1, ...this.networkHistory()),
+  );
+
+  /**
+   * Gets the disk sparkline's scale: its recent peak.
+   */
+  protected readonly diskMax: Signal<number> = computed((): number => Math.max(1, ...this.diskHistory()));
+
+  /**
    * Holds the records of the selected session, oldest first.
    */
   protected readonly records: WritableSignal<readonly LogRecord[]> = signal<readonly LogRecord[]>([]);
@@ -262,11 +322,27 @@ export class SystemMonitorView {
    */
   private accept(sample: MetricsSample): void {
     this.latest.set(sample);
-    this.cpuHistory.update((history: readonly number[]): readonly number[] =>
-      [...history, sample.cpu].slice(-METRICS_HISTORY),
-    );
-    this.memoryHistory.update((history: readonly number[]): readonly number[] =>
-      [...history, sample.memory.percent].slice(-METRICS_HISTORY),
+    this.push(this.cpuHistory, sample.cpu);
+    this.push(this.memoryHistory, sample.memory.percent);
+    if (sample.network !== undefined) {
+      this.push(this.networkHistory, sample.network.rxBytesPerSec + sample.network.txBytesPerSec);
+    }
+    if (sample.disk !== undefined) {
+      this.push(this.diskHistory, sample.disk.readBytesPerSec + sample.disk.writeBytesPerSec);
+    }
+    if (sample.gpu?.available === true) {
+      this.push(this.gpuHistory, sample.gpu.percent);
+    }
+  }
+
+  /**
+   * Appends one value to a bounded history signal.
+   * @param history The history signal to append to.
+   * @param value The value to append.
+   */
+  private push(history: WritableSignal<readonly number[]>, value: number): void {
+    history.update((values: readonly number[]): readonly number[] =>
+      [...values, value].slice(-METRICS_HISTORY),
     );
   }
 
@@ -284,6 +360,15 @@ export class SystemMonitorView {
       unit += 1;
     }
     return `${unit === 0 ? size : size.toFixed(1)} ${units[unit]}`;
+  }
+
+  /**
+   * Formats a per-second byte rate as a human-readable throughput.
+   * @param bytesPerSec The rate in bytes per second.
+   * @returns Returns the formatted throughput (for example `1.2 MB/s`).
+   */
+  protected formatRate(bytesPerSec: number): string {
+    return `${this.formatBytes(bytesPerSec)}/s`;
   }
 
   /**
