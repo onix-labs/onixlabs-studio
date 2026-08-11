@@ -494,6 +494,65 @@ describe('ClaudeAgentSession (live multi-turn)', () => {
     await harness.session.close();
   });
 
+  it('result_forAPeerDrivenTurn_emitsATerminalStatus_soTheRendererSpinnerClears', async () => {
+    const events: AiEvent[] = [];
+    const c1: AbortController = new AbortController();
+    const harness: SessionHarness = makeSession(
+      turnCtx('run-1', 'claude-opus-4-8', c1.signal, events),
+    );
+    // Open the session with a normal Studio turn, then let it settle so no turn() is awaiting.
+    const turn1: Promise<void> = harness.session.turn(
+      turnCtx('run-1', 'claude-opus-4-8', c1.signal, events),
+    );
+    await flush();
+    harness.query()?.emit({ type: 'result', session_id: 'sess-a' });
+    await turn1;
+
+    // A bridged session takes a peer-driven turn: its result arrives with no turn() behind it. Without
+    // the fix nothing would emit completion and the adopted renderer turn would spin forever.
+    (harness.session as unknown as { bridge: unknown }).bridge = { forward: (): void => undefined };
+    events.length = 0;
+    harness.query()?.emit({ type: 'result', session_id: 'sess-a' });
+    await flush();
+
+    const status: Record<string, unknown> | undefined = (
+      events as unknown as Record<string, unknown>[]
+    ).find(
+      (event: Record<string, unknown>): boolean =>
+        event['kind'] === 'status' && event['state'] === 'completed',
+    );
+    expect(status).toBeDefined();
+    // Emitted under the current turn's request id — the same id the `remote-message` adoption used.
+    expect(status?.['requestId']).toBe('run-1');
+
+    await harness.session.close();
+  });
+
+  it('turn_doesNotEmitAPeerCompletion_forANormalStudioTurn', async () => {
+    const events: AiEvent[] = [];
+    const c1: AbortController = new AbortController();
+    const harness: SessionHarness = makeSession(
+      turnCtx('run-1', 'claude-opus-4-8', c1.signal, events),
+    );
+    const turn1: Promise<void> = harness.session.turn(
+      turnCtx('run-1', 'claude-opus-4-8', c1.signal, events),
+    );
+    await flush();
+    harness.query()?.emit({ type: 'result', session_id: 'sess-a' });
+    await turn1;
+
+    // A Studio turn's completion comes from its AiManager run, never a synthetic status from the pump.
+    const synthetic: Record<string, unknown> | undefined = (
+      events as unknown as Record<string, unknown>[]
+    ).find(
+      (event: Record<string, unknown>): boolean =>
+        event['kind'] === 'status' && event['state'] === 'completed',
+    );
+    expect(synthetic).toBeUndefined();
+
+    await harness.session.close();
+  });
+
   it('turn_appliesAModelChangeLive_butNotWhenTheModelIsUnchanged', async () => {
     const events: AiEvent[] = [];
     const signal: AbortSignal = new AbortController().signal;

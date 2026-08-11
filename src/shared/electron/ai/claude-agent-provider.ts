@@ -2208,7 +2208,22 @@ export class ClaudeAgentSession implements AgentSession {
         // only when the input closes (via {@link close}), never on a per-turn abort — so a Stop
         // interrupts the turn without ending the session.
         if (message.type === 'result' && this.pendingMessages.length === 0) {
+          // A Studio-initiated turn is awaited by an AiManager run (turnSettle set), which emits the
+          // terminal status that clears the renderer's spinner. A turn driven entirely by a remote peer
+          // (phone) was injected straight into the stream (see the bridge's onInbound) with no run behind
+          // it, so nothing would emit its completion — the renderer adopted it via `remote-message`
+          // (busy=true) and would spin forever. Emit the terminal status here for that case, under the
+          // same request id the adoption used.
+          const peerDrivenTurn: boolean = this.turnSettle === null && this.bridge !== null;
           this.settleTurn();
+          if (peerDrivenTurn) {
+            this.currentContext.emit({
+              requestId: this.currentContext.requestId,
+              kind: 'status',
+              state: 'completed',
+              detail: '',
+            });
+          }
         }
       }
     } catch (error: unknown) {
