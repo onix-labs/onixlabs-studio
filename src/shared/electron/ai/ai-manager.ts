@@ -46,6 +46,10 @@ import { isConnection, sanitizeClaudeExecutable, sanitizeConnections } from './c
 import { AgentAuditLog, type AuditGrantSource } from './agent-audit-log';
 import { ClaudeAgentProvider } from './claude-agent-provider';
 import { type ClaudeSdkModel, runClaudeDiscovery } from './claude-model-discovery';
+import {
+  readRemoteNotificationsEnabled,
+  writeRemoteNotificationsEnabled,
+} from './claude-settings';
 import { CodexAgentProvider } from './codex-agent-provider';
 import { sanitizeToolPolicies } from './tool-policy';
 import { sanitizeWritePaths } from './write-confinement';
@@ -479,6 +483,12 @@ export class AiManager {
         this.closeSession(id);
       }
     });
+    ipcMain.handle(AiChannel.GetRemoteNotifications, (): boolean => readRemoteNotificationsEnabled());
+    ipcMain.handle(
+      AiChannel.SetRemoteNotifications,
+      (_event: IpcMainInvokeEvent, enabled: unknown): void =>
+        writeRemoteNotificationsEnabled(enabled === true),
+    );
   }
 
   /**

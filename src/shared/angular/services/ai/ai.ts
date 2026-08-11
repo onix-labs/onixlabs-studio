@@ -44,6 +44,10 @@ function createClient(bridge: Bridge): AiClient {
     steer: (request: AiSteerRequest): Promise<boolean> => bridge.invoke(AiChannel.Steer, request),
     closeSession: (agentSessionId: string): Promise<void> =>
       bridge.invoke(AiChannel.CloseSession, agentSessionId),
+    getRemoteNotifications: (): Promise<boolean> =>
+      bridge.invoke(AiChannel.GetRemoteNotifications),
+    setRemoteNotifications: (enabled: boolean): Promise<void> =>
+      bridge.invoke(AiChannel.SetRemoteNotifications, enabled),
     onEvent: (listener: (event: AiEvent) => void): (() => void) =>
       bridge.on(AiChannel.Event, (...args: unknown[]): void => listener(args[0] as AiEvent)),
     onBridgeRequest: (handler: (request: AiBridgeRequest) => void): (() => void) =>

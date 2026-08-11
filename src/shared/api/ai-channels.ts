@@ -76,6 +76,17 @@ export enum AiChannel {
   CloseSession = 'ai:close-session',
 
   /**
+   * Reads whether Claude Code's mobile push for a remote-controlled agent needing input (a permission
+   * prompt or a question) is enabled — the `inputNeededNotifEnabled` user setting (invoke).
+   */
+  GetRemoteNotifications = 'ai:get-remote-notifications',
+
+  /**
+   * Enables or disables Claude Code's mobile push for a remote-controlled agent needing input (invoke).
+   */
+  SetRemoteNotifications = 'ai:set-remote-notifications',
+
+  /**
    * Streams events from running agent turns (main→renderer, on).
    */
   Event = 'ai:event',
@@ -179,6 +190,19 @@ export interface AiClient {
    * @param agentSessionId The agent conversation whose session to close.
    */
   closeSession(agentSessionId: string): Promise<void>;
+
+  /**
+   * Reads whether mobile push notifications are enabled for a remote-controlled agent that needs input
+   * (a permission prompt or a question). Backed by Claude Code's `inputNeededNotifEnabled` user setting.
+   * @returns Returns true when the push is enabled.
+   */
+  getRemoteNotifications(): Promise<boolean>;
+
+  /**
+   * Enables or disables mobile push notifications for a remote-controlled agent that needs input.
+   * @param enabled Whether to enable the push.
+   */
+  setRemoteNotifications(enabled: boolean): Promise<void>;
 
   /**
    * Subscribes to streamed events from running agent turns.

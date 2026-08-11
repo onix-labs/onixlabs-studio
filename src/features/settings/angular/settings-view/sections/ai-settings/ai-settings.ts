@@ -19,6 +19,7 @@ import { Settings } from '@shared/angular/services/settings/settings';
 import { TerminalShells } from '@shared/angular/services/terminal-shells/terminal-shells';
 import { SettingControl } from '../../setting-control/setting-control';
 import { AiConnectionEditor } from './ai-connection-editor/ai-connection-editor';
+import { AiRemoteNotifications } from './ai-remote-notifications/ai-remote-notifications';
 import { AiToolPolicies } from './ai-tool-policies/ai-tool-policies';
 import { AiWritePaths } from './ai-write-paths/ai-write-paths';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
@@ -60,6 +61,7 @@ export type AiSettingsView = 'general' | 'security' | 'agents';
     SettingRow,
     SettingControl,
     AiConnectionEditor,
+    AiRemoteNotifications,
     AiToolPolicies,
     AiWritePaths,
     AppIcon,

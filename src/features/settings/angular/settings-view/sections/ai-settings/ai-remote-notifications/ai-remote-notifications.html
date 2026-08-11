@@ -1,0 +1,10 @@
+<app-setting-row
+  label="Remote control notifications"
+  description="Push to your phone when a remote-controlled agent needs you — a permission prompt or a question. Uses Claude Code's mobile push, so the Claude app must be installed and signed into the same account. Applies to all your Claude Code sessions, not just Studio."
+>
+  <app-toggle
+    [checked]="enabled()"
+    ariaLabel="Remote control notifications"
+    (checkedChange)="onChange($event)"
+  />
+</app-setting-row>
