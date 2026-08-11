@@ -1120,6 +1120,7 @@ export class ClaudeAgentProvider implements AgentProvider {
     const phone: { readonly id: string; readonly granted: Promise<boolean> } = bridge.requestPermission(
       toolName,
       input,
+      { displayName, description: detail },
     );
     const studio: Promise<{ readonly granted: boolean; readonly who: 'studio' | 'phone' }> = context
       .requestPermission(displayName, detail, studioCancel.signal)
@@ -1135,6 +1136,8 @@ export class ClaudeAgentProvider implements AgentProvider {
     } else {
       bridge.cancelPermission(phone.id);
     }
+    // The prompt has settled: return the session to a running turn on claude.ai.
+    bridge.clearAction();
     logger.debug(
       'ClaudeAgentProvider.decidePermission',
       `${winner.who} answered first: ${winner.granted ? 'allow' : 'deny'} for ${displayName}`,
@@ -1167,7 +1170,7 @@ export class ClaudeAgentProvider implements AgentProvider {
     logger.debug('ClaudeAgentProvider.decideInput', 'Racing local + remote answer for a question');
     const studioCancel: AbortController = new AbortController();
     const phone: { readonly answer: Promise<string>; readonly cancel: () => void } =
-      bridge.requestInput();
+      bridge.requestInput(question);
     const studio: Promise<{ readonly answer: string | null; readonly who: 'studio' | 'phone' }> =
       context
         .requestInput(question, choices, studioCancel.signal)

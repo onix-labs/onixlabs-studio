@@ -14,6 +14,7 @@ import {
 class FakeHandle {
   public readonly writes: SDKMessage[] = [];
   public readonly states: string[] = [];
+  public readonly actionDetails: (Record<string, unknown> | undefined)[] = [];
   public readonly controlRequests: unknown[] = [];
   public readonly cancels: string[] = [];
   public results: number = 0;
@@ -25,8 +26,11 @@ class FakeHandle {
   public sendResult(): void {
     this.results += 1;
   }
-  public reportState(state: string): void {
+  public reportState(state: string, details?: Record<string, unknown>): void {
     this.states.push(state);
+    if (state === 'requires_action') {
+      this.actionDetails.push(details);
+    }
   }
   public sendControlRequest(req: unknown): void {
     this.controlRequests.push(req);
@@ -137,11 +141,23 @@ describe('RemoteControlBridge.requestPermission', () => {
     const pending: Map<string, (granted: boolean) => void> = new Map<string, (granted: boolean) => void>();
     const bridge: RemoteControlBridge = bridgeOver(handle, 'control', pending);
 
-    const { id, granted } = bridge.requestPermission('Bash', { command: 'ls' });
+    const { id, granted } = bridge.requestPermission(
+      'Bash',
+      { command: 'ls' },
+      { displayName: 'Run command', description: 'ls' },
+    );
 
     expect(handle.controlRequests).toEqual([
       { type: 'control_request', request_id: id, request: { subtype: 'can_use_tool', tool_name: 'Bash', input: { command: 'ls' } } },
     ]);
+    // The session is marked requires_action so claude.ai shows it needs attention (and pushes).
+    expect(handle.states).toContain('requires_action');
+    expect(handle.actionDetails.at(-1)).toMatchObject({
+      tool_name: 'Bash',
+      display_tool_name: 'Run command',
+      action_description: 'ls',
+      request_id: id,
+    });
     // The peer answers via the shared pending map (as the attach callback would).
     resolvePermissionResponse(pending, {
       type: 'control_response',
@@ -171,8 +187,12 @@ describe('RemoteControlBridge.requestInput / consumeInbound', () => {
     const handle: FakeHandle = new FakeHandle();
     const bridge: RemoteControlBridge = bridgeOver(handle, 'control');
 
-    const { answer } = bridge.requestInput();
+    const { answer } = bridge.requestInput('Good morning or good afternoon?');
     expect(handle.states).toEqual(['requires_action']);
+    // The question text is surfaced as the waiting-state detail (visible + pushed on claude.ai).
+    expect(handle.actionDetails.at(-1)).toMatchObject({
+      action_description: 'Good morning or good afternoon?',
+    });
     // No question is armed until requestInput; the next inbound is the answer.
     expect(bridge.consumeInbound('blue')).toBe(true);
     await expect(answer).resolves.toBe('blue');
@@ -201,6 +221,25 @@ describe('RemoteControlBridge.requestInput / consumeInbound', () => {
     bridge.requestInput();
     bridge.close();
     expect(bridge.consumeInbound('answer')).toBe(false);
+  });
+});
+
+describe('RemoteControlBridge.clearAction', () => {
+  it('returnsAWaitingSessionToRunning_andIsANoOpOtherwise', () => {
+    const handle: FakeHandle = new FakeHandle();
+    const bridge: RemoteControlBridge = bridgeOver(handle, 'control');
+
+    // Not waiting: clearAction does nothing.
+    bridge.clearAction();
+    expect(handle.states).toEqual([]);
+
+    bridge.requestPermission('Bash', { command: 'ls' });
+    expect(handle.states).toEqual(['requires_action']);
+    bridge.clearAction();
+    expect(handle.states).toEqual(['requires_action', 'running']);
+    // Idempotent once cleared.
+    bridge.clearAction();
+    expect(handle.states).toEqual(['requires_action', 'running']);
   });
 });
 

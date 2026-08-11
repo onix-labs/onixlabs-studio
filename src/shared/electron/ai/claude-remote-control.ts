@@ -3,9 +3,54 @@ import type {
   BridgeSessionHandle,
   CredentialsFailure,
   RemoteCredentials,
+  SessionState,
 } from '@anthropic-ai/claude-agent-sdk/bridge';
 import { logger } from '../logger';
 import { readClaudeAccessToken } from './claude-credentials';
+
+/**
+ * Details attached to a `requires_action` worker state, surfaced by claude.ai as the session's "waiting
+ * on you" state and its push notification. The bridge runtime accepts this as a second argument to
+ * `reportState` (the public type omits it); the shape mirrors the runtime's `requires_action_details`.
+ * All fields optional — claude.ai renders whatever is present.
+ */
+interface RequiresActionDetails {
+  /**
+   * Gets the raw tool name the action is for (e.g. `Bash`), or undefined for a non-tool prompt.
+   */
+  readonly tool_name?: string;
+
+  /**
+   * Gets the human-facing tool name (e.g. `Run command`), or undefined.
+   */
+  readonly display_tool_name?: string;
+
+  /**
+   * Gets a one-line description of what is being asked (the permission target, or the question text).
+   */
+  readonly action_description?: string;
+
+  /**
+   * Gets the raw command a shell action would run, or undefined.
+   */
+  readonly raw_command?: string;
+
+  /**
+   * Gets the correlating control-request id, or undefined.
+   */
+  readonly request_id?: string;
+
+  /**
+   * Gets the correlating tool-use id, or undefined.
+   */
+  readonly tool_use_id?: string;
+}
+
+/**
+ * The bridge runtime's `reportState`, which (unlike the published type) accepts an optional
+ * {@link RequiresActionDetails} second argument used with the `requires_action` state.
+ */
+type ReportStateWithDetails = (state: SessionState, details?: RequiresActionDetails) => void;
 
 /**
  * The claude.ai backend the bridge talks to. Overridable for testing/self-hosting; defaults to the
@@ -264,6 +309,7 @@ export class RemoteControlBridge {
   public requestPermission(
     toolName: string,
     input: Record<string, unknown>,
+    action?: { readonly displayName?: string; readonly description?: string; readonly toolUseId?: string },
   ): { readonly id: string; readonly granted: Promise<boolean> } {
     const id: string = `studio-perm-${(this.permissionSeq += 1)}`;
     const granted: Promise<boolean> = new Promise<boolean>((resolve: (granted: boolean) => void): void => {
@@ -273,6 +319,15 @@ export class RemoteControlBridge {
           type: 'control_request',
           request_id: id,
           request: { subtype: 'can_use_tool', tool_name: toolName, input },
+        });
+        // Mark the session "waiting on you" so claude.ai shows it needs attention and pushes a
+        // notification (the runtime does not derive this from the control request itself).
+        this.reportAction({
+          tool_name: toolName,
+          display_tool_name: action?.displayName,
+          action_description: action?.description,
+          request_id: id,
+          tool_use_id: action?.toolUseId,
         });
       } catch (error: unknown) {
         // Forwarding failed: drop the pending entry and never resolve, so the local prompt decides the
@@ -309,13 +364,15 @@ export class RemoteControlBridge {
    *
    * The peer channel gives no way to render suggested-answer buttons, so a choice question is answered
    * by the peer typing the label as free text — same as a Studio user typing their own answer.
+   * @param question The question text, surfaced on claude.ai as the session's "waiting on you" state
+   * (and its push notification) so the peer sees what to answer.
    * @returns Returns the peer-answer promise and a `cancel` that disarms the capture (used when the
    * local prompt is answered first, so a later inbound message steers again instead of being eaten).
    */
-  public requestInput(): { readonly answer: Promise<string>; readonly cancel: () => void } {
+  public requestInput(question?: string): { readonly answer: Promise<string>; readonly cancel: () => void } {
     // Only one question is pending at a time (a turn asks once and blocks); a prior capture is
     // superseded — its promise simply never resolves and the local prompt decides that older race.
-    this.setState('requires_action');
+    this.reportAction({ action_description: question });
     const answer: Promise<string> = new Promise<string>((resolve: (answer: string) => void): void => {
       this.pendingInput = resolve;
     });
@@ -366,6 +423,16 @@ export class RemoteControlBridge {
   }
 
   /**
+   * Clears a `requires_action` state once the prompt it marked has settled, returning the session to a
+   * running turn on claude.ai. A no-op if the session is not currently waiting.
+   */
+  public clearAction(): void {
+    if (this.reportedState === 'requires_action') {
+      this.setState('running');
+    }
+  }
+
+  /**
    * Reports a turn-state change to claude.ai, coalescing repeats.
    * @param state The new state.
    */
@@ -375,6 +442,27 @@ export class RemoteControlBridge {
     }
     this.reportedState = state;
     this.handle.reportState(state);
+  }
+
+  /**
+   * Marks the session `requires_action` on claude.ai with details of what it is waiting for, so the
+   * remote UI shows the pending prompt and the backend can push a notification. Best-effort — a failure
+   * never disturbs the local run. Sent even when already `requires_action` (the details may differ).
+   * @param details What the session is waiting on (the tool, or the question text).
+   */
+  private reportAction(details: RequiresActionDetails): void {
+    if (this.closed) {
+      return;
+    }
+    this.reportedState = 'requires_action';
+    try {
+      // The runtime `reportState` forwards the second argument even though the published type omits it;
+      // binding into the wider type calls it with details without an (unnecessary) assertion.
+      const report: ReportStateWithDetails = this.handle.reportState.bind(this.handle);
+      report('requires_action', details);
+    } catch (error: unknown) {
+      logger.debug('ClaudeRemoteControl', 'Reporting requires_action to the bridge failed', error);
+    }
   }
 }
 
