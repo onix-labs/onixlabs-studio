@@ -191,6 +191,19 @@ export const ASK_USER_PROMPT_APPENDIX: string = [
 ].join('\n');
 
 /**
+ * Appended to a provider that asks clarifying questions through the model's own built-in question tool
+ * (Claude's `AskUserQuestion`) rather than a named in-app tool, so it is not steered to a specific tool.
+ * Kept tool-agnostic on purpose — the model already knows how to ask; this only tells it to ask instead
+ * of guessing.
+ */
+export const CLARIFYING_QUESTION_APPENDIX: string = [
+  `When you need the user's decision — a choice between approaches, a missing name or value, or`,
+  'confirmation before something destructive — ask a clarifying question and wait for the answer',
+  'rather than guessing or proceeding on an assumption. Keep questions short and concrete, and offer',
+  'choices when the sensible answers are enumerable.',
+].join('\n');
+
+/**
  * Appended to the system prompt so the model knows the in-app editor tools exist and when to use them.
  */
 export const STUDIO_PROMPT_APPENDIX: string = [

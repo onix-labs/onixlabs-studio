@@ -157,16 +157,9 @@ export class RemoteControlBridge {
   private closed: boolean = false;
 
   /**
-   * A monotonic counter minting per-permission control-request ids.
+   * A monotonic counter minting per-prompt control-request ids (permissions and questions alike).
    */
   private permissionSeq: number = 0;
-
-  /**
-   * The resolver of a question awaiting a peer's answer (an armed {@link requestInput}), or null when
-   * no question is pending. The peer answers by typing an inbound message, which {@link consumeInbound}
-   * routes here instead of steering the session.
-   */
-  private pendingInput: ((answer: string) => void) | null = null;
 
   /**
    * Initialises a new instance of the {@link RemoteControlBridge} class.
@@ -175,12 +168,15 @@ export class RemoteControlBridge {
    * @param mode Whether the session is mirrored (view-only) or fully controllable.
    * @param pendingPermissions The in-flight permission prompts keyed by control-request id (shared with
    * the attach callback so a claude.ai answer resolves the awaiting request).
+   * @param pendingQuestions The in-flight `AskUserQuestion` prompts keyed by control-request id (shared
+   * with the attach callback so a claude.ai answer resolves the awaiting request).
    */
   private constructor(
     private readonly handle: BridgeSessionHandle,
     public readonly sessionId: string,
     private readonly mode: RemoteControlAttachMode,
     private readonly pendingPermissions: Map<string, (granted: boolean) => void>,
+    private readonly pendingQuestions: Map<string, (answer: Record<string, unknown> | null) => void>,
   ) {}
 
   /**
@@ -231,12 +227,16 @@ export class RemoteControlBridge {
         logger.warn('ClaudeRemoteControl', `Could not mint worker credentials: ${reason}`);
         return null;
       }
-      // The permission prompts awaiting a claude.ai answer, shared with the attach callback below so a
-      // `control_response` from the phone resolves the awaiting request. Wired here (before the instance
-      // exists) so the callback can be passed to `attachBridgeSession`.
+      // The permission and question prompts awaiting a claude.ai answer, shared with the attach callback
+      // below so a `control_response` from the phone resolves the awaiting request. Wired here (before
+      // the instance exists) so the callback can be passed to `attachBridgeSession`.
       const pendingPermissions: Map<string, (granted: boolean) => void> = new Map<
         string,
         (granted: boolean) => void
+      >();
+      const pendingQuestions: Map<string, (answer: Record<string, unknown> | null) => void> = new Map<
+        string,
+        (answer: Record<string, unknown> | null) => void
       >();
       const handle: BridgeSessionHandle = await bridge.attachBridgeSession({
         sessionId,
@@ -256,7 +256,8 @@ export class RemoteControlBridge {
             : undefined,
         onPermissionResponse:
           options.mode === 'control'
-            ? (res: SDKControlResponse): void => resolvePermissionResponse(pendingPermissions, res)
+            ? (res: SDKControlResponse): void =>
+                resolveControlResponse(pendingPermissions, pendingQuestions, res)
             : undefined,
         onClose: (code?: number): void =>
           logger.debug('ClaudeRemoteControl', `Bridge transport closed (code ${code ?? 'n/a'})`),
@@ -267,7 +268,13 @@ export class RemoteControlBridge {
         'ClaudeRemoteControl',
         `Session ${sessionId} bridged to claude.ai/code (${options.mode})`,
       );
-      return new RemoteControlBridge(handle, sessionId, options.mode, pendingPermissions);
+      return new RemoteControlBridge(
+        handle,
+        sessionId,
+        options.mode,
+        pendingPermissions,
+        pendingQuestions,
+      );
     } catch (error: unknown) {
       logger.warn('ClaudeRemoteControl', 'Failed to open the remote-control bridge', error);
       return null;
@@ -356,55 +363,60 @@ export class RemoteControlBridge {
   }
 
   /**
-   * Arms the bridge to answer an in-app question ({@link askUser}) from the peer: the session marks
-   * itself `requires_action` on claude.ai, and the peer's next inbound message is taken as the answer
-   * (routed here by {@link consumeInbound}) rather than steering the session. The question text is
-   * already visible to the peer (the `ask_user` tool call is in the forwarded transcript). Only
+   * Forwards an `AskUserQuestion` prompt to claude.ai so the peer can answer it natively (the mobile
+   * app and web render the built-in question card with its multiple-choice options), returning the
+   * control-request id (to cancel if answered locally first) and a promise that resolves with the
+   * peer's answer — the `updatedInput` payload the phone sends back (`{questions, answers}`), or null
+   * when the peer declines. Rides the same `can_use_tool` control channel as a permission, keyed on the
+   * built-in tool name so claude.ai renders the question rather than an allow/deny prompt. Only
    * meaningful in control mode; the caller gates on {@link canPrompt}.
-   *
-   * The peer channel gives no way to render suggested-answer buttons, so a choice question is answered
-   * by the peer typing the label as free text — same as a Studio user typing their own answer.
-   * @param question The question text, surfaced on claude.ai as the session's "waiting on you" state
-   * (and its push notification) so the peer sees what to answer.
-   * @returns Returns the peer-answer promise and a `cancel` that disarms the capture (used when the
-   * local prompt is answered first, so a later inbound message steers again instead of being eaten).
+   * @param input The `AskUserQuestion` tool input (its `questions` array).
+   * @param firstQuestion The first question's text, surfaced as the `requires_action` detail (and push).
+   * @returns Returns the request id and the peer-answer promise.
    */
-  public requestInput(question?: string): { readonly answer: Promise<string>; readonly cancel: () => void } {
-    // Only one question is pending at a time (a turn asks once and blocks); a prior capture is
-    // superseded — its promise simply never resolves and the local prompt decides that older race.
-    this.reportAction({ action_description: question });
-    const answer: Promise<string> = new Promise<string>((resolve: (answer: string) => void): void => {
-      this.pendingInput = resolve;
+  public requestQuestions(
+    input: Record<string, unknown>,
+    firstQuestion?: string,
+  ): { readonly id: string; readonly answer: Promise<Record<string, unknown> | null> } {
+    const id: string = `studio-ask-${(this.permissionSeq += 1)}`;
+    const answer: Promise<Record<string, unknown> | null> = new Promise<
+      Record<string, unknown> | null
+    >((resolve: (answer: Record<string, unknown> | null) => void): void => {
+      this.pendingQuestions.set(id, resolve);
+      try {
+        this.handle.sendControlRequest({
+          type: 'control_request',
+          request_id: id,
+          request: { subtype: 'can_use_tool', tool_name: 'AskUserQuestion', input },
+        });
+        this.reportAction({
+          tool_name: 'AskUserQuestion',
+          display_tool_name: 'Question',
+          action_description: firstQuestion,
+          request_id: id,
+        });
+      } catch (error: unknown) {
+        // Forwarding failed: drop the pending entry and never resolve, so the local prompt decides.
+        this.pendingQuestions.delete(id);
+        logger.debug('ClaudeRemoteControl', 'Forwarding a question to the bridge failed', error);
+      }
     });
-    return {
-      answer,
-      cancel: (): void => {
-        if (this.pendingInput !== null) {
-          this.pendingInput = null;
-          // Back to a running turn: the question was answered locally, the turn continues.
-          this.setState('running');
-        }
-      },
-    };
+    return { id, answer };
   }
 
   /**
-   * Offers an inbound peer message to a pending question ({@link requestInput}): consumes it as the
-   * answer when one is armed (returning true so the caller does not also steer the session), otherwise
-   * returns false and the message steers as usual.
-   * @param text The peer's inbound message text.
-   * @returns Returns true when the message was consumed as a question's answer.
+   * Cancels a forwarded question (answered locally first), dismissing it on claude.ai. Best-effort.
+   * @param id The control-request id returned by {@link requestQuestions}.
    */
-  public consumeInbound(text: string): boolean {
-    const resolve: ((answer: string) => void) | null = this.pendingInput;
-    if (resolve === null || this.closed) {
-      return false;
+  public cancelQuestion(id: string): void {
+    if (!this.pendingQuestions.delete(id) || this.closed) {
+      return;
     }
-    this.pendingInput = null;
-    // The turn resumes now that the question is answered.
-    this.setState('running');
-    resolve(text);
-    return true;
+    try {
+      this.handle.sendControlCancelRequest(id);
+    } catch (error: unknown) {
+      logger.debug('ClaudeRemoteControl', 'Cancelling a forwarded question failed', error);
+    }
   }
 
   /**
@@ -493,16 +505,20 @@ export function inboundText(message: SDKMessage): string | null {
 }
 
 /**
- * Resolves the pending permission prompt a claude.ai `control_response` answers. The raw response is
- * logged (its exact allow/deny shape is undocumented `@alpha`) so it can be confirmed from a real run.
- * @param pending The in-flight permission resolvers keyed by control-request id.
+ * Resolves the pending prompt a claude.ai `control_response` answers — a permission (allow/deny) or an
+ * `AskUserQuestion` (the answers payload) — dispatched by which map holds the response's request id. The
+ * raw response is logged (its exact shape is undocumented `@alpha`) so it can be confirmed from a real
+ * run. A response for an unknown id is ignored.
+ * @param pendingPermissions The in-flight permission resolvers keyed by control-request id.
+ * @param pendingQuestions The in-flight question resolvers keyed by control-request id.
  * @param res The control response from claude.ai.
  */
-export function resolvePermissionResponse(
-  pending: Map<string, (granted: boolean) => void>,
+export function resolveControlResponse(
+  pendingPermissions: Map<string, (granted: boolean) => void>,
+  pendingQuestions: Map<string, (answer: Record<string, unknown> | null) => void>,
   res: SDKControlResponse,
 ): void {
-  logger.debug('ClaudeRemoteControl', `Permission control_response: ${JSON.stringify(res).slice(0, 500)}`);
+  logger.debug('ClaudeRemoteControl', `control_response: ${JSON.stringify(res).slice(0, 800)}`);
   const inner: { request_id?: unknown; subtype?: unknown; response?: unknown } | undefined = (
     res as { response?: { request_id?: unknown; subtype?: unknown; response?: unknown } }
   ).response;
@@ -510,12 +526,19 @@ export function resolvePermissionResponse(
   if (typeof requestId !== 'string') {
     return;
   }
-  const resolve: ((granted: boolean) => void) | undefined = pending.get(requestId);
-  if (resolve === undefined) {
+  const isError: boolean = inner?.subtype === 'error';
+  const permission: ((granted: boolean) => void) | undefined = pendingPermissions.get(requestId);
+  if (permission !== undefined) {
+    pendingPermissions.delete(requestId);
+    permission(isError ? false : parseGranted(inner?.response));
     return;
   }
-  pending.delete(requestId);
-  resolve(inner?.subtype === 'error' ? false : parseGranted(inner?.response));
+  const question: ((answer: Record<string, unknown> | null) => void) | undefined =
+    pendingQuestions.get(requestId);
+  if (question !== undefined) {
+    pendingQuestions.delete(requestId);
+    question(isError ? null : parseQuestionAnswer(inner?.response));
+  }
 }
 
 /**
@@ -537,4 +560,32 @@ export function parseGranted(payload: unknown): boolean {
     record['decision'] === 'approve' ||
     record['result'] === 'allow'
   );
+}
+
+/**
+ * Reads an `AskUserQuestion` answer from a claude.ai control response, defensively — the exact shape is
+ * undocumented `@alpha`. The peer answers like a `canUseTool` result, so the answer object rides in
+ * `updatedInput` (`{questions, answers}`); a bare `{answers}` or `{response}` payload is also accepted.
+ * Returns null when the peer declined (a deny behavior) or nothing usable is present.
+ * @param payload The `response.response` record from the control response.
+ * @returns Returns the `{questions?, answers?, response?}` payload to hand the tool, or null on decline.
+ */
+export function parseQuestionAnswer(payload: unknown): Record<string, unknown> | null {
+  if (payload === null || typeof payload !== 'object') {
+    return null;
+  }
+  const record: Record<string, unknown> = payload as Record<string, unknown>;
+  // An explicit deny is a decline.
+  if (record['behavior'] === 'deny' || record['allow'] === false) {
+    return null;
+  }
+  // The canUseTool contract nests the answer under `updatedInput`; accept it, or a bare answer payload.
+  const updated: unknown = record['updatedInput'] ?? record['updated_input'];
+  if (updated !== null && typeof updated === 'object') {
+    return updated as Record<string, unknown>;
+  }
+  if (record['answers'] !== undefined || record['response'] !== undefined) {
+    return record;
+  }
+  return null;
 }

@@ -21,7 +21,6 @@ import { logger } from '../logger';
 import { pidJournal } from '../pid-journal';
 import { detachedSpawnOptions, killProcessTree, signalProcessTree } from '../process-tree';
 import {
-  ASK_USER,
   DELETE_RUN_CONFIGURATIONS,
   LIST_RUN_CONFIGURATIONS,
   SAVE_RUN_CONFIGURATIONS,
@@ -68,9 +67,7 @@ import {
   captureShellEnvironmentCached,
 } from '@shared/electron/shell-env';
 import {
-  ASK_USER_DESCRIPTION,
-  ASK_USER_FQN,
-  ASK_USER_PROMPT_APPENDIX,
+  CLARIFYING_QUESTION_APPENDIX,
   BINARY_PROMPT_APPENDIX,
   EDIT_TOOL_FQN,
   INSERT_TOOL_FQN,
@@ -92,11 +89,9 @@ import {
   STUDIO_PROMPT_APPENDIX,
   TERMINAL_PROMPT_APPENDIX,
   WRITE_TERMINAL_FQN,
-  askUser,
   buildRunPrompt,
   deleteBinaryBytes,
   editActiveDocument,
-  formatAskUserAnswer,
   insertBinaryBytes,
   insertIntoActiveDocument,
   patchBinaryBytes,
@@ -131,6 +126,74 @@ import {
  * These are always allowed regardless of the permission posture.
  */
 const READ_ONLY_TOOLS: readonly string[] = ['Read', 'Glob', 'Grep'];
+
+/**
+ * The SDK's built-in clarifying-question tool. It reaches `canUseTool` (even under an allow rule) and is
+ * answered by returning `{behavior:'allow', updatedInput:{questions, answers}}`; Studio renders it
+ * locally and forwards it to claude.ai under remote control (#331).
+ */
+const ASK_USER_QUESTION_TOOL: string = 'AskUserQuestion';
+
+/**
+ * One suggested answer to an {@link AskUserQuestionQuestion}: a short label and an optional explanation.
+ */
+interface AskUserQuestionOption {
+  readonly label: string;
+  readonly description?: string;
+}
+
+/**
+ * One question from an `AskUserQuestion` tool call, reduced to what Studio's input-request UI renders.
+ */
+interface AskUserQuestionQuestion {
+  readonly question: string;
+  readonly options: readonly AskUserQuestionOption[];
+}
+
+/**
+ * Parses the `questions` array from an `AskUserQuestion` tool input into the questions Studio renders,
+ * defensively — malformed entries (missing text, non-object options) are skipped.
+ * @param input The `AskUserQuestion` tool input.
+ * @returns Returns the parsed questions (empty when none are usable).
+ */
+function parseAskUserQuestions(input: Record<string, unknown>): readonly AskUserQuestionQuestion[] {
+  const raw: unknown = input['questions'];
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  const questions: AskUserQuestionQuestion[] = [];
+  for (const item of raw) {
+    if (item === null || typeof item !== 'object') {
+      continue;
+    }
+    const record: Record<string, unknown> = item as Record<string, unknown>;
+    const question: unknown = record['question'];
+    if (typeof question !== 'string' || question.length === 0) {
+      continue;
+    }
+    const options: AskUserQuestionOption[] = [];
+    const optionsRaw: unknown = record['options'];
+    if (Array.isArray(optionsRaw)) {
+      for (const opt of optionsRaw) {
+        if (opt === null || typeof opt !== 'object') {
+          continue;
+        }
+        const o: Record<string, unknown> = opt as Record<string, unknown>;
+        const label: unknown = o['label'];
+        if (typeof label !== 'string' || label.length === 0) {
+          continue;
+        }
+        const description: unknown = o['description'];
+        options.push({
+          label,
+          ...(typeof description === 'string' ? { description } : {}),
+        });
+      }
+    }
+    questions.push({ question, options });
+  }
+  return questions;
+}
 
 /**
  * Holds the built-in file-editing tools auto-allowed under the `auto-edits` permission posture.
@@ -394,15 +457,14 @@ export class ClaudeAgentProvider implements AgentProvider {
     // Keyed on display name, which equals the SDK name for these built-in tools. The `canUseTool` deny
     // below stays as a backstop for anything that does reach the gate.
     //
-    // `AskUserQuestion` is always removed: it is the CLI's built-in multiple-choice ask tool, but it is
-    // interactive-terminal-only and Studio has no seam to render it or return its answer. It is not a
-    // `request_user_dialog` (only `refusal_fallback_prompt` uses `onUserDialog`); it resolves through an
-    // Ink picker whose `tool_result` a headless host cannot supply. Left enabled, the model prefers it
-    // over our own `ask_user`, hits the generic permission gate ("Allow AskUserQuestion?"), and — once
-    // allowed — dead-ends into "No answer", silently proceeding on a guess. Removing it forces every
-    // "ask the user" through `mcp__studio__ask_user`, which renders choices and blocks for a real answer.
+    // `AskUserQuestion` is the model's built-in tool for clarifying questions, and it is the ONE ask
+    // path Studio uses (the custom `ask_user` MCP tool is gone). Contrary to an earlier belief it is not
+    // interactive-terminal-only: per the Agent SDK's user-input contract it reaches `canUseTool` (even
+    // when an allow rule matches), and is answered by returning `{behavior:'allow', updatedInput:
+    // {questions, answers}}`. That is exactly the seam Studio renders locally AND forwards to claude.ai
+    // (#331) — the mobile/web clients render the question card natively, the same channel permissions
+    // ride. So it is left enabled and handled in `canUseTool` (see the `AskUserQuestion` branch below).
     const disallowedTools: readonly string[] = [
-      'AskUserQuestion',
       ...Object.entries(openContext.toolPolicies)
         .filter(([, value]: [string, string]): boolean => value === 'deny')
         .map(([tool]: [string, string]): string => tool),
@@ -426,43 +488,10 @@ export class ClaudeAgentProvider implements AgentProvider {
       name: 'studio',
       version: '0.0.0',
       tools: [
-        tool(
-          ASK_USER,
-          ASK_USER_DESCRIPTION,
-          {
-            question: z.string().min(1).describe('The question to ask the user.'),
-            choices: z
-              .array(
-                z.object({
-                  label: z
-                    .string()
-                    .min(1)
-                    .describe(
-                      'The short answer label; sent back verbatim as the answer when picked.',
-                    ),
-                  description: z
-                    .string()
-                    .optional()
-                    .describe(
-                      'An explanation of this choice: what picking it means, its trade-offs, and "(recommended)" when it is your recommendation.',
-                    ),
-                }),
-              )
-              .optional()
-              .describe(
-                'Suggested answers the user can pick from (they may always answer with their own text instead). Put a recommended choice first. Omit for a free-form question.',
-              ),
-          },
-          async (args: { question: string; choices?: AiInputChoice[] }) =>
-            text(
-              await this.decideInput(
-                getBridge(),
-                getContext(),
-                args.question,
-                args.choices ?? [],
-              ),
-            ),
-        ),
+        // Asking the user a clarifying question is not a custom tool: it is the model's built-in
+        // `AskUserQuestion`, handled in `canUseTool` below (rendered locally and, under remote control,
+        // forwarded to claude.ai). See the `disallowedTools` note above.
+        //
         // The run-configuration tools ride on the surfaces whose agents are workspace-scoped: the IDE
         // views (editor) and the standalone agent tab (project). A terminal- or binary-docked agent is
         // deliberately confined to its own surface and gets none of this. Withheld in read-only chat
@@ -847,11 +876,13 @@ export class ClaudeAgentProvider implements AgentProvider {
       // confinementRoots — is frozen at open above and read from the closure).
       const context: AgentRunContext = getContext();
       const posture: AiPermissionPosture = context.permissionPosture;
-      // The ask-user tool is allowed on every surface and in every mode (asking is read-only, and the
-      // user's answer is itself the gate). It is normally short-circuited by allowedTools; this keeps
-      // the confinement and read-only branches below from denying it if it ever lands here.
-      if (toolName === ASK_USER_FQN) {
-        return { behavior: 'allow', updatedInput: input };
+      // A clarifying question (the built-in `AskUserQuestion`) is allowed on every surface and in every
+      // mode — asking is read-only and the user's answer is itself the gate. It reaches `canUseTool`
+      // even in chat/terminal/confined runs, so it is handled first: rendered locally in Studio, and
+      // under remote control forwarded to claude.ai so the peer can answer it too (#331). The answer is
+      // returned in `updatedInput` per the AskUserQuestion contract.
+      if (toolName === ASK_USER_QUESTION_TOOL) {
+        return this.answerQuestions(getBridge(), context, input);
       }
       // A terminal-surface run is confined to its terminal: deny every tool that is not one of the two
       // terminal tools, blocking all built-ins (file system, shell, editor). The write tool then falls
@@ -1030,7 +1061,8 @@ export class ClaudeAgentProvider implements AgentProvider {
       // and read-only project exploration; canUseTool gates everything else. A project run auto-allows
       // read-only exploration only.
       allowedTools: [
-        ASK_USER_FQN,
+        // `AskUserQuestion` is intentionally NOT auto-allowed: it must reach `canUseTool` so Studio can
+        // render it and (under remote control) forward it to the peer, then return the answer.
         // Listing run configurations is a read: auto-allowed wherever the tools are registered, so the
         // agent can see what exists without a prompt. Saving and deleting are writes and go through
         // canUseTool like any other mutation.
@@ -1146,49 +1178,104 @@ export class ClaudeAgentProvider implements AgentProvider {
   }
 
   /**
-   * Resolves an `ask_user` question, racing the local (Studio) prompt against the remote (phone) peer
-   * when a remote-control bridge is live and controllable. The peer answers by typing an inbound
-   * message (the only peer→host channel for free text), which the bridge routes to the armed capture;
-   * whichever side answers first wins and the other's prompt is dismissed. With no controllable bridge
-   * the local prompt alone decides, exactly as before.
+   * Answers the built-in `AskUserQuestion` tool (the model's clarifying-question tool): renders each of
+   * its questions in Studio and, under remote control, forwards the whole prompt to claude.ai so the
+   * peer can answer it natively (the mobile/web question card). Whichever side answers first wins; the
+   * other prompt is dismissed. The result is returned as an `AskUserQuestion` allow with the answers in
+   * `updatedInput` — `{questions, answers}` — or a deny when the user declines.
    * @param bridge The session's remote-control bridge, or null when remote control is off/mirror-only.
-   * @param context The current turn context (owns the local question prompt).
-   * @param question The question the agent is asking.
-   * @param choices The suggested answers, or empty for a free-form question.
-   * @returns Resolves the model-facing answer rendering (never rejects).
+   * @param context The current turn context (owns the local question prompts).
+   * @param input The `AskUserQuestion` tool input (its `questions` array).
+   * @returns Resolves the permission result carrying the answers (never rejects).
    */
-  private async decideInput(
+  private async answerQuestions(
     bridge: RemoteControlBridge | null,
     context: AgentRunContext,
-    question: string,
-    choices: readonly AiInputChoice[],
-  ): Promise<string> {
-    // No controllable peer: the local prompt alone decides (mirror is view-only).
-    if (!bridge?.canPrompt) {
-      return askUser(context, question, choices);
+    input: Record<string, unknown>,
+  ): Promise<PermissionResult> {
+    const questions: readonly AskUserQuestionQuestion[] = parseAskUserQuestions(input);
+    if (questions.length === 0) {
+      // Malformed input: nothing to ask. Allow with the input unchanged so the tool resolves rather
+      // than blocking the turn.
+      return { behavior: 'allow', updatedInput: input };
     }
-    logger.debug('ClaudeAgentProvider.decideInput', 'Racing local + remote answer for a question');
+    // No controllable peer: render locally alone.
+    if (!bridge?.canPrompt) {
+      const answers: Record<string, string> | null = await this.askQuestionsLocally(context, questions);
+      return this.questionResult(input, answers);
+    }
+    logger.debug('ClaudeAgentProvider.answerQuestions', `Racing local + remote answer for ${questions.length} question(s)`);
     const studioCancel: AbortController = new AbortController();
-    const phone: { readonly answer: Promise<string>; readonly cancel: () => void } =
-      bridge.requestInput(question);
-    const studio: Promise<{ readonly answer: string | null; readonly who: 'studio' | 'phone' }> =
-      context
-        .requestInput(question, choices, studioCancel.signal)
-        .then((answer: string | null) => ({ answer, who: 'studio' as const }));
-    const remote: Promise<{ readonly answer: string | null; readonly who: 'studio' | 'phone' }> =
-      phone.answer.then((answer: string) => ({ answer, who: 'phone' as const }));
-    const winner: { readonly answer: string | null; readonly who: 'studio' | 'phone' } =
+    const phone: { readonly id: string; readonly answer: Promise<Record<string, unknown> | null> } =
+      bridge.requestQuestions(input, questions[0]?.question);
+    const studio: Promise<{ readonly payload: Record<string, unknown> | null; readonly who: 'studio' | 'phone' }> =
+      this.askQuestionsLocally(context, questions, studioCancel.signal).then(
+        (answers: Record<string, string> | null) => ({
+          payload: answers === null ? null : { questions: input['questions'], answers },
+          who: 'studio' as const,
+        }),
+      );
+    const remote: Promise<{ readonly payload: Record<string, unknown> | null; readonly who: 'studio' | 'phone' }> =
+      phone.answer.then((payload: Record<string, unknown> | null) => ({ payload, who: 'phone' as const }));
+    const winner: { readonly payload: Record<string, unknown> | null; readonly who: 'studio' | 'phone' } =
       await Promise.race([studio, remote]);
     if (winner.who === 'phone') {
       studioCancel.abort();
     } else {
-      phone.cancel();
+      bridge.cancelQuestion(phone.id);
     }
-    logger.debug(
-      'ClaudeAgentProvider.decideInput',
-      `${winner.who} answered the question first`,
-    );
-    return formatAskUserAnswer(winner.answer);
+    bridge.clearAction();
+    logger.debug('ClaudeAgentProvider.answerQuestions', `${winner.who} answered the question(s) first`);
+    if (winner.payload === null) {
+      return { behavior: 'deny', message: 'The user declined to answer.' };
+    }
+    return { behavior: 'allow', updatedInput: winner.payload };
+  }
+
+  /**
+   * Renders each `AskUserQuestion` question in Studio in turn (via the input-request round-trip),
+   * collecting the user's selected label(s) or free text. Resolves null when the user declines any
+   * question or the prompt is dismissed (e.g. the remote peer answered first, aborting the signal).
+   * @param context The current turn context.
+   * @param questions The questions to ask.
+   * @param cancel An optional signal that dismisses the local prompt when the peer answers first.
+   * @returns Resolves the `{question: answer}` map, or null on decline.
+   */
+  private async askQuestionsLocally(
+    context: AgentRunContext,
+    questions: readonly AskUserQuestionQuestion[],
+    cancel?: AbortSignal,
+  ): Promise<Record<string, string> | null> {
+    const answers: Record<string, string> = {};
+    for (const q of questions) {
+      const choices: readonly AiInputChoice[] = q.options.map((option: AskUserQuestionOption) => ({
+        label: option.label,
+        ...(option.description === undefined ? {} : { description: option.description }),
+      }));
+      const answer: string | null = await context.requestInput(q.question, choices, cancel);
+      if (answer === null) {
+        return null;
+      }
+      answers[q.question] = answer;
+    }
+    return answers;
+  }
+
+  /**
+   * Builds the `AskUserQuestion` permission result from a local answers map: an allow carrying
+   * `{questions, answers}` in `updatedInput`, or a deny when the user declined.
+   * @param input The original tool input (its `questions` array is echoed back, as the tool requires).
+   * @param answers The collected answers, or null on decline.
+   * @returns Returns the permission result.
+   */
+  private questionResult(
+    input: Record<string, unknown>,
+    answers: Record<string, string> | null,
+  ): PermissionResult {
+    if (answers === null) {
+      return { behavior: 'deny', message: 'The user declined to answer.' };
+    }
+    return { behavior: 'allow', updatedInput: { questions: input['questions'], answers } };
   }
 
   /**
@@ -1271,8 +1358,9 @@ export class ClaudeAgentProvider implements AgentProvider {
           : surface === 'project'
             ? PROJECT_PROMPT_APPENDIX
             : STUDIO_PROMPT_APPENDIX;
-    // Every surface learns it can ask the user questions instead of guessing.
-    const withAsk: string = `${base}\n\n${ASK_USER_PROMPT_APPENDIX}`;
+    // Every surface learns it can ask the user clarifying questions (via the built-in AskUserQuestion)
+    // instead of guessing.
+    const withAsk: string = `${base}\n\n${CLARIFYING_QUESTION_APPENDIX}`;
     if (readOnly) {
       return `${withAsk}\n\n${READ_ONLY_APPENDIX}`;
     }
@@ -1964,13 +2052,6 @@ export class ClaudeAgentSession implements AgentSession {
       model: context.model,
       onInbound: (text: string): void => {
         if (this.inputClosed) {
-          return;
-        }
-        // A pending in-app question (ask_user) takes the peer's message as its answer rather than
-        // starting a new turn (#331): the question is blocking the current turn, so the natural meaning
-        // of the next thing the peer types is "here is my answer". Consumed here, it must not also be
-        // echoed or steered.
-        if (this.bridge?.consumeInbound(text) === true) {
           return;
         }
         // Echo the peer's message into Studio's transcript and let the renderer adopt the turn, so the

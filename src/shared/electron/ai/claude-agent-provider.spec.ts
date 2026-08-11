@@ -729,6 +729,61 @@ describe('ClaudeAgentProvider.buildRunOptions (per-turn indirection)', () => {
     expect(grantsA).toEqual(['Bash']);
   });
 
+  it('canUseTool_answersAskUserQuestionLocally_withTheSelectedLabelsInUpdatedInput', async () => {
+    const asked: string[] = [];
+    const { options } = await build(
+      gateCtx({
+        requestInput: (question: string): Promise<string | null> => {
+          asked.push(question);
+          return Promise.resolve('Summary');
+        },
+      }),
+    );
+    const gate: NonNullable<Options['canUseTool']> = options.canUseTool!;
+
+    const input: Record<string, unknown> = {
+      questions: [
+        {
+          question: 'How should I format the output?',
+          header: 'Format',
+          options: [
+            { label: 'Summary', description: 'Brief' },
+            { label: 'Detailed', description: 'Full' },
+          ],
+          multiSelect: false,
+        },
+      ],
+    };
+    const result: PermissionResult = await gate('AskUserQuestion', input, {
+      signal: new AbortController().signal,
+      toolUseID: 'tool-1',
+    });
+
+    expect(asked).toEqual(['How should I format the output?']);
+    expect(result.behavior).toBe('allow');
+    // The answer rides in updatedInput as {questions, answers}, per the AskUserQuestion contract.
+    expect((result as { updatedInput: Record<string, unknown> }).updatedInput).toEqual({
+      questions: input['questions'],
+      answers: { 'How should I format the output?': 'Summary' },
+    });
+  });
+
+  it('canUseTool_deniesAskUserQuestion_whenTheUserDeclines', async () => {
+    const { options } = await build(
+      gateCtx({
+        requestInput: (): Promise<string | null> => Promise.resolve(null),
+      }),
+    );
+    const gate: NonNullable<Options['canUseTool']> = options.canUseTool!;
+
+    const result: PermissionResult = await gate(
+      'AskUserQuestion',
+      { questions: [{ question: 'Which?', options: [{ label: 'A' }] }] },
+      { signal: new AbortController().signal, toolUseID: 'tool-1' },
+    );
+    expect(result.behavior).toBe('deny');
+  });
+
   it('canUseTool_appliesTheCurrentTurnsPosture', async () => {
     const { options, setCurrent } = await build(gateCtx({ permissionPosture: 'prompt' }));
     const gate: NonNullable<Options['canUseTool']> = options.canUseTool!;

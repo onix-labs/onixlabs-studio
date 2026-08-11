@@ -3,8 +3,9 @@ import { describe, expect, it } from 'vitest';
 import {
   inboundText,
   parseGranted,
+  parseQuestionAnswer,
   RemoteControlBridge,
-  resolvePermissionResponse,
+  resolveControlResponse,
   type RemoteControlAttachMode,
 } from './claude-remote-control';
 
@@ -46,27 +47,29 @@ class FakeHandle {
 /**
  * Constructs a bridge over a fake handle, bypassing the network `open()` factory.
  * @param handle The fake handle.
- * @param mode The attach mode (defaults to control so the permission channel is live).
+ * @param mode The attach mode (defaults to control so the prompt channels are live).
  * @param pending The shared pending-permission map (defaults to a fresh one).
+ * @param pendingQuestions The shared pending-question map (defaults to a fresh one).
  * @returns Returns the bridge.
  */
 function bridgeOver(
   handle: FakeHandle,
   mode: RemoteControlAttachMode = 'control',
   pending: Map<string, (granted: boolean) => void> = new Map<string, (granted: boolean) => void>(),
+  pendingQuestions: Map<string, (answer: Record<string, unknown> | null) => void> = new Map<
+    string,
+    (answer: Record<string, unknown> | null) => void
+  >(),
 ): RemoteControlBridge {
-  const ctor: new (
+  type Ctor = new (
     handle: unknown,
     sessionId: string,
     mode: RemoteControlAttachMode,
     pending: Map<string, (granted: boolean) => void>,
-  ) => RemoteControlBridge = RemoteControlBridge as unknown as new (
-    handle: unknown,
-    sessionId: string,
-    mode: RemoteControlAttachMode,
-    pending: Map<string, (granted: boolean) => void>,
+    pendingQuestions: Map<string, (answer: Record<string, unknown> | null) => void>,
   ) => RemoteControlBridge;
-  return new ctor(handle, 'cse_test', mode, pending);
+  const ctor: Ctor = RemoteControlBridge as unknown as Ctor;
+  return new ctor(handle, 'cse_test', mode, pending, pendingQuestions);
 }
 
 describe('inboundText', () => {
@@ -159,7 +162,7 @@ describe('RemoteControlBridge.requestPermission', () => {
       request_id: id,
     });
     // The peer answers via the shared pending map (as the attach callback would).
-    resolvePermissionResponse(pending, {
+    resolveControlResponse(pending, new Map(), {
       type: 'control_response',
       response: { subtype: 'success', request_id: id, response: { behavior: 'allow' } },
     } as unknown as SDKControlResponse);
@@ -182,45 +185,61 @@ describe('RemoteControlBridge.requestPermission', () => {
   });
 });
 
-describe('RemoteControlBridge.requestInput / consumeInbound', () => {
-  it('armsRequiresAction_andConsumesTheNextInboundAsTheAnswer', async () => {
+describe('RemoteControlBridge.requestQuestions', () => {
+  it('forwardsAnAskUserQuestionControlRequest_reportsRequiresAction_andResolvesTheAnswer', async () => {
     const handle: FakeHandle = new FakeHandle();
-    const bridge: RemoteControlBridge = bridgeOver(handle, 'control');
+    const pendingQuestions: Map<string, (answer: Record<string, unknown> | null) => void> = new Map<
+      string,
+      (answer: Record<string, unknown> | null) => void
+    >();
+    const bridge: RemoteControlBridge = bridgeOver(handle, 'control', new Map(), pendingQuestions);
 
-    const { answer } = bridge.requestInput('Good morning or good afternoon?');
-    expect(handle.states).toEqual(['requires_action']);
-    // The question text is surfaced as the waiting-state detail (visible + pushed on claude.ai).
+    const input: Record<string, unknown> = {
+      questions: [{ question: 'Good morning or good afternoon?', options: [{ label: 'Morning' }] }],
+    };
+    const { id, answer } = bridge.requestQuestions(input, 'Good morning or good afternoon?');
+
+    expect(handle.controlRequests).toEqual([
+      {
+        type: 'control_request',
+        request_id: id,
+        request: { subtype: 'can_use_tool', tool_name: 'AskUserQuestion', input },
+      },
+    ]);
+    // The question is surfaced as the waiting-state detail (visible + pushed on claude.ai).
+    expect(handle.states).toContain('requires_action');
     expect(handle.actionDetails.at(-1)).toMatchObject({
+      tool_name: 'AskUserQuestion',
       action_description: 'Good morning or good afternoon?',
+      request_id: id,
     });
-    // No question is armed until requestInput; the next inbound is the answer.
-    expect(bridge.consumeInbound('blue')).toBe(true);
-    await expect(answer).resolves.toBe('blue');
-    // Answering returns the session to a running turn.
-    expect(handle.states).toEqual(['requires_action', 'running']);
+    // The peer answers via the shared pending-question map (as the attach callback would).
+    resolveControlResponse(new Map(), pendingQuestions, {
+      type: 'control_response',
+      response: {
+        subtype: 'success',
+        request_id: id,
+        response: { updatedInput: { answers: { 'Good morning or good afternoon?': 'Morning' } } },
+      },
+    } as unknown as SDKControlResponse);
+    await expect(answer).resolves.toEqual({
+      answers: { 'Good morning or good afternoon?': 'Morning' },
+    });
   });
 
-  it('consumeInbound_returnsFalseWhenNoQuestionIsArmed', () => {
-    const bridge: RemoteControlBridge = bridgeOver(new FakeHandle(), 'control');
-    expect(bridge.consumeInbound('just steering')).toBe(false);
-  });
-
-  it('cancel_disarmsTheCapture_soLaterInboundSteersAgain', () => {
+  it('cancelQuestion_sendsACancelAndDropsThePending', () => {
     const handle: FakeHandle = new FakeHandle();
-    const bridge: RemoteControlBridge = bridgeOver(handle, 'control');
+    const pendingQuestions: Map<string, (answer: Record<string, unknown> | null) => void> = new Map<
+      string,
+      (answer: Record<string, unknown> | null) => void
+    >();
+    const bridge: RemoteControlBridge = bridgeOver(handle, 'control', new Map(), pendingQuestions);
 
-    const { cancel } = bridge.requestInput();
-    cancel();
-    expect(handle.states).toEqual(['requires_action', 'running']);
-    // Disarmed: a later inbound is no longer eaten as an answer.
-    expect(bridge.consumeInbound('later')).toBe(false);
-  });
+    const { id } = bridge.requestQuestions({ questions: [] });
+    bridge.cancelQuestion(id);
 
-  it('consumeInbound_isANoOpAfterClose', () => {
-    const bridge: RemoteControlBridge = bridgeOver(new FakeHandle(), 'control');
-    bridge.requestInput();
-    bridge.close();
-    expect(bridge.consumeInbound('answer')).toBe(false);
+    expect(handle.cancels).toEqual([id]);
+    expect(pendingQuestions.has(id)).toBe(false);
   });
 });
 
@@ -243,25 +262,63 @@ describe('RemoteControlBridge.clearAction', () => {
   });
 });
 
-describe('resolvePermissionResponse', () => {
-  it('resolvesFalseForAnErrorSubtype', async () => {
+describe('resolveControlResponse', () => {
+  it('resolvesFalseForAnErrorSubtypePermission', async () => {
     const pending: Map<string, (granted: boolean) => void> = new Map<string, (granted: boolean) => void>();
     const answer: Promise<boolean> = new Promise<boolean>((resolve) => pending.set('id-1', resolve));
-    resolvePermissionResponse(pending, {
+    resolveControlResponse(pending, new Map(), {
       type: 'control_response',
       response: { subtype: 'error', request_id: 'id-1', error: 'boom' },
     } as unknown as SDKControlResponse);
     await expect(answer).resolves.toBe(false);
   });
 
+  it('resolvesNullForAnErrorSubtypeQuestion', async () => {
+    const pendingQuestions: Map<string, (answer: Record<string, unknown> | null) => void> = new Map<
+      string,
+      (answer: Record<string, unknown> | null) => void
+    >();
+    const answer: Promise<Record<string, unknown> | null> = new Promise<
+      Record<string, unknown> | null
+    >((resolve) => pendingQuestions.set('q-1', resolve));
+    resolveControlResponse(new Map(), pendingQuestions, {
+      type: 'control_response',
+      response: { subtype: 'error', request_id: 'q-1', error: 'boom' },
+    } as unknown as SDKControlResponse);
+    await expect(answer).resolves.toBeNull();
+  });
+
   it('ignoresAnUnknownRequestId', () => {
     const pending: Map<string, (granted: boolean) => void> = new Map<string, (granted: boolean) => void>();
-    // Must not throw when no resolver matches.
-    resolvePermissionResponse(pending, {
+    // Must not throw when no resolver matches in either map.
+    resolveControlResponse(pending, new Map(), {
       type: 'control_response',
       response: { subtype: 'success', request_id: 'nope', response: { behavior: 'allow' } },
     } as unknown as SDKControlResponse);
     expect(pending.size).toBe(0);
+  });
+});
+
+describe('parseQuestionAnswer', () => {
+  it('unwrapsTheUpdatedInputAnswerPayload', () => {
+    expect(
+      parseQuestionAnswer({ behavior: 'allow', updatedInput: { answers: { Q: 'A' } } }),
+    ).toEqual({ answers: { Q: 'A' } });
+    expect(parseQuestionAnswer({ updated_input: { answers: { Q: 'A' } } })).toEqual({
+      answers: { Q: 'A' },
+    });
+  });
+
+  it('acceptsABareAnswersOrResponsePayload', () => {
+    expect(parseQuestionAnswer({ answers: { Q: 'A' } })).toEqual({ answers: { Q: 'A' } });
+    expect(parseQuestionAnswer({ response: 'freeform' })).toEqual({ response: 'freeform' });
+  });
+
+  it('returnsNullOnDeclineOrNothingUsable', () => {
+    expect(parseQuestionAnswer({ behavior: 'deny' })).toBeNull();
+    expect(parseQuestionAnswer({ allow: false })).toBeNull();
+    expect(parseQuestionAnswer({})).toBeNull();
+    expect(parseQuestionAnswer(null)).toBeNull();
   });
 });
 
