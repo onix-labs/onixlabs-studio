@@ -233,7 +233,7 @@ export interface AgentRunContext {
    * @param name The display name of the action requesting permission.
    * @param detail A one-line summary of what the action will do.
    * @param cancel An optional signal that dismisses the local prompt and resolves false when aborted —
-   *   used when a remote peer (phone) answers the same permission first, so Studio's prompt clears.
+   *   used when a remote peer answers the same permission first, so Studio's prompt clears.
    * @returns Returns true when the user grants permission.
    */
   requestPermission(name: string, detail: string, cancel?: AbortSignal): Promise<boolean>;
@@ -256,7 +256,7 @@ export interface AgentRunContext {
    * @param question The question the agent is asking.
    * @param choices The suggested answers, or empty for a free-form question.
    * @param cancel An optional signal that dismisses the local prompt and resolves null when aborted —
-   *   used when a remote peer (phone) answers the same question first, so Studio's prompt clears.
+   *   used when a remote peer answers the same question first, so Studio's prompt clears.
    * @returns Returns the user's answer, or null when they declined.
    */
   requestInput(

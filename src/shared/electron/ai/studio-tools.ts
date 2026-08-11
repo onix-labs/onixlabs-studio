@@ -416,7 +416,7 @@ export async function askUser(
 
 /**
  * Renders an `ask_user` answer for the model: the user's text, or a note to proceed conservatively
- * when they declined. Shared so a remote-controlled run that resolves the question from the phone (a
+ * when they declined. Shared so a remote-controlled run that resolves the question from a remote device (a
  * peer's inbound message) formats it identically to the local path.
  * @param answer The user's answer, or null when they declined / the question was dismissed.
  * @returns Returns the model-facing rendering of the answer.

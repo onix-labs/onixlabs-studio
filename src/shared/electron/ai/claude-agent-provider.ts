@@ -1117,11 +1117,12 @@ export class ClaudeAgentProvider implements AgentProvider {
   }
 
   /**
-   * Resolves a tool permission, racing the local (Studio) prompt against the remote (phone) peer when a
-   * remote-control bridge is live and controllable. Whichever side answers first wins, and the other
-   * side's prompt is dismissed: a phone answer aborts Studio's local prompt (see the optional cancel
-   * signal on {@link AgentRunContext.requestPermission}); a Studio answer cancels the forwarded control
-   * request on the bridge. With no controllable bridge the local prompt alone decides, exactly as before.
+   * Resolves a tool permission, racing the local (Studio) prompt against the remote peer (whichever
+   * device is driving the session over remote control — phone, tablet, another computer, or the web)
+   * when a remote-control bridge is live and controllable. Whichever side answers first wins, and the
+   * other side's prompt is dismissed: a remote answer aborts Studio's local prompt (see the optional
+   * cancel signal on {@link AgentRunContext.requestPermission}); a Studio answer cancels the forwarded
+   * control request on the bridge. With no controllable bridge the local prompt alone decides.
    * @param bridge The session's remote-control bridge, or null when remote control is off/mirror-only.
    * @param context The current turn context (owns the local permission prompt).
    * @param displayName The human-facing tool name shown in Studio's prompt.
@@ -1149,24 +1150,24 @@ export class ClaudeAgentProvider implements AgentProvider {
     );
     // Ask both sides at once; the first answer wins and the loser's prompt is dismissed.
     const studioCancel: AbortController = new AbortController();
-    const phone: { readonly id: string; readonly granted: Promise<boolean> } = bridge.requestPermission(
+    const peer: { readonly id: string; readonly granted: Promise<boolean> } = bridge.requestPermission(
       toolName,
       input,
       { displayName, description: detail },
     );
-    const studio: Promise<{ readonly granted: boolean; readonly who: 'studio' | 'phone' }> = context
+    const studio: Promise<{ readonly granted: boolean; readonly who: 'studio' | 'remote' }> = context
       .requestPermission(displayName, detail, studioCancel.signal)
       .then((granted: boolean) => ({ granted, who: 'studio' as const }));
-    const remote: Promise<{ readonly granted: boolean; readonly who: 'studio' | 'phone' }> =
-      phone.granted.then((granted: boolean) => ({ granted, who: 'phone' as const }));
-    const winner: { readonly granted: boolean; readonly who: 'studio' | 'phone' } = await Promise.race([
+    const remote: Promise<{ readonly granted: boolean; readonly who: 'studio' | 'remote' }> =
+      peer.granted.then((granted: boolean) => ({ granted, who: 'remote' as const }));
+    const winner: { readonly granted: boolean; readonly who: 'studio' | 'remote' } = await Promise.race([
       studio,
       remote,
     ]);
-    if (winner.who === 'phone') {
+    if (winner.who === 'remote') {
       studioCancel.abort();
     } else {
-      bridge.cancelPermission(phone.id);
+      bridge.cancelPermission(peer.id);
     }
     // The prompt has settled: return the session to a running turn on claude.ai.
     bridge.clearAction();
@@ -1180,9 +1181,10 @@ export class ClaudeAgentProvider implements AgentProvider {
   /**
    * Answers the built-in `AskUserQuestion` tool (the model's clarifying-question tool): renders each of
    * its questions in Studio and, under remote control, forwards the whole prompt to claude.ai so the
-   * peer can answer it natively (the mobile/web question card). Whichever side answers first wins; the
-   * other prompt is dismissed. The result is returned as an `AskUserQuestion` allow with the answers in
-   * `updatedInput` — `{questions, answers}` — or a deny when the user declines.
+   * remote peer can answer it natively on whatever device is driving the session (the mobile/web
+   * question card). Whichever side answers first wins; the other prompt is dismissed. The result is
+   * returned as an `AskUserQuestion` allow with the answers in `updatedInput` — `{questions, answers}` —
+   * or a deny when the user declines.
    * @param bridge The session's remote-control bridge, or null when remote control is off/mirror-only.
    * @param context The current turn context (owns the local question prompts).
    * @param input The `AskUserQuestion` tool input (its `questions` array).
@@ -1206,23 +1208,23 @@ export class ClaudeAgentProvider implements AgentProvider {
     }
     logger.debug('ClaudeAgentProvider.answerQuestions', `Racing local + remote answer for ${questions.length} question(s)`);
     const studioCancel: AbortController = new AbortController();
-    const phone: { readonly id: string; readonly answer: Promise<Record<string, unknown> | null> } =
+    const peer: { readonly id: string; readonly answer: Promise<Record<string, unknown> | null> } =
       bridge.requestQuestions(input, questions[0]?.question);
-    const studio: Promise<{ readonly payload: Record<string, unknown> | null; readonly who: 'studio' | 'phone' }> =
+    const studio: Promise<{ readonly payload: Record<string, unknown> | null; readonly who: 'studio' | 'remote' }> =
       this.askQuestionsLocally(context, questions, studioCancel.signal).then(
         (answers: Record<string, string> | null) => ({
           payload: answers === null ? null : { questions: input['questions'], answers },
           who: 'studio' as const,
         }),
       );
-    const remote: Promise<{ readonly payload: Record<string, unknown> | null; readonly who: 'studio' | 'phone' }> =
-      phone.answer.then((payload: Record<string, unknown> | null) => ({ payload, who: 'phone' as const }));
-    const winner: { readonly payload: Record<string, unknown> | null; readonly who: 'studio' | 'phone' } =
+    const remote: Promise<{ readonly payload: Record<string, unknown> | null; readonly who: 'studio' | 'remote' }> =
+      peer.answer.then((payload: Record<string, unknown> | null) => ({ payload, who: 'remote' as const }));
+    const winner: { readonly payload: Record<string, unknown> | null; readonly who: 'studio' | 'remote' } =
       await Promise.race([studio, remote]);
-    if (winner.who === 'phone') {
+    if (winner.who === 'remote') {
       studioCancel.abort();
     } else {
-      bridge.cancelQuestion(phone.id);
+      bridge.cancelQuestion(peer.id);
     }
     bridge.clearAction();
     logger.debug('ClaudeAgentProvider.answerQuestions', `${winner.who} answered the question(s) first`);
@@ -2056,7 +2058,7 @@ export class ClaudeAgentSession implements AgentSession {
         }
         // Echo the peer's message into Studio's transcript and let the renderer adopt the turn, so the
         // response — and any permission/input prompts it raises — render in Studio too, not only on the
-        // phone (#331). Emitted on the current context so it carries the turn's request id.
+        // remote device (#331). Emitted on the current context so it carries the turn's request id.
         this.currentContext.emit({
           requestId: this.currentContext.requestId,
           kind: 'remote-message',
@@ -2210,10 +2212,10 @@ export class ClaudeAgentSession implements AgentSession {
         if (message.type === 'result' && this.pendingMessages.length === 0) {
           // A Studio-initiated turn is awaited by an AiManager run (turnSettle set), which emits the
           // terminal status that clears the renderer's spinner. A turn driven entirely by a remote peer
-          // (phone) was injected straight into the stream (see the bridge's onInbound) with no run behind
-          // it, so nothing would emit its completion — the renderer adopted it via `remote-message`
-          // (busy=true) and would spin forever. Emit the terminal status here for that case, under the
-          // same request id the adoption used.
+          // (any device driving the session) was injected straight into the stream (see the bridge's
+          // onInbound) with no run behind it, so nothing would emit its completion — the turn the
+          // renderer adopted via `remote-message` (busy=true) would spin forever. Emit the terminal
+          // status here for that case, under the same request id the adoption used.
           const peerDrivenTurn: boolean = this.turnSettle === null && this.bridge !== null;
           this.settleTurn();
           if (peerDrivenTurn) {

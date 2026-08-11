@@ -195,17 +195,17 @@ describe('Agent', () => {
     // The local turn finishes, so the conversation is idle (activeRequestId cleared).
     fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
 
-    // A peer types on the phone while idle: the message is echoed and the turn adopted.
+    // A peer types on another device while idle: the message is echoed and the turn adopted.
     fireEvent({
-      requestId: 'phone-turn',
+      requestId: 'remote-turn',
       kind: 'remote-message',
       agentSessionId: sessionId ?? null,
-      text: 'from the phone',
+      text: 'from another device',
     });
-    expect(agent.items().some((i: AgentItem): boolean => i.kind === 'user' && i.text === 'from the phone')).toBe(true);
+    expect(agent.items().some((i: AgentItem): boolean => i.kind === 'user' && i.text === 'from another device')).toBe(true);
 
     // A following event under the adopted request id renders (proving adoption past the per-turn filter).
-    fireEvent({ requestId: 'phone-turn', kind: 'tool-start', toolId: 't1', name: 'Read', detail: 'readme' });
+    fireEvent({ requestId: 'remote-turn', kind: 'tool-start', toolId: 't1', name: 'Read', detail: 'readme' });
     expect(agent.items().some((i: AgentItem): boolean => i.kind === 'tool' && i.toolId === 't1')).toBe(true);
   });
 
@@ -459,7 +459,7 @@ describe('Agent', () => {
     });
     expect(agent.awaitingDecision()).toBe(true);
 
-    // A remote peer (phone) answered the same prompt; the main process withdraws it.
+    // A remote peer answered the same prompt from another device; the main process withdraws it.
     fireEvent({ requestId: 'run-1', kind: 'permission-dismissed', permissionId: 'p1' });
 
     expect(agent.awaitingDecision()).toBe(false);
@@ -560,7 +560,7 @@ describe('Agent', () => {
     });
     expect(agent.awaitingDecision()).toBe(true);
 
-    // A remote peer (phone) answered the question by typing; the main process withdraws it locally.
+    // A remote peer answered the question from another device; the main process withdraws it locally.
     fireEvent({ requestId: 'run-1', kind: 'input-dismissed', inputId: 'q1' });
 
     expect(agent.awaitingDecision()).toBe(false);

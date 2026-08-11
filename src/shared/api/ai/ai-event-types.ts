@@ -165,7 +165,7 @@ export interface AiPermissionEvent extends AiEventBase {
 
 /**
  * Withdraws a permission prompt the renderer is still showing because it was answered elsewhere — a
- * remote peer (phone) approved or declined the same tool call first (#331 remote control). The renderer
+ * remote peer approved or declined the same tool call first (#331 remote control). The renderer
  * drops the matching pending prompt from the transcript; the run has already been resolved in the main
  * process, so no reply is expected. Distinct from a run abort, which tears the entire run down.
  */
@@ -228,7 +228,7 @@ export interface AiInputRequestEvent extends AiEventBase {
 
 /**
  * Withdraws an agent question the renderer is still showing because it was answered elsewhere — a
- * remote peer (phone) answered the same `ask_user` prompt first, by typing an inbound message during
+ * remote peer answered the same `ask_user` prompt first, by answering on another device during
  * remote control (#331). The renderer marks the matching pending question dismissed; the run has
  * already been resolved in the main process, so no reply is expected. The input counterpart of
  * {@link AiPermissionDismissedEvent}.

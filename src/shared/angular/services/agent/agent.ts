@@ -1294,7 +1294,7 @@ export class Agent {
 
   /**
    * Withdraws a still-pending permission prompt answered elsewhere — a remote peer approved or declined
-   * the same tool call from the phone (#331). The prompt is settled in the main process already, so this
+   * the same tool call from another device (#331). The prompt is settled in the main process already, so this
    * only clears the local UI: the matching item drops its buttons and reads as answered on another
    * device. A no-op when the prompt is already settled or unknown.
    * @param permissionId The id of the permission prompt to withdraw.
@@ -1315,7 +1315,7 @@ export class Agent {
 
   /**
    * Withdraws a still-pending agent question answered elsewhere — a remote peer answered the same
-   * `ask_user` prompt from the phone (#331). Clears the local UI only (the run is already resolved in
+   * `ask_user` prompt from another device (#331). Clears the local UI only (the run is already resolved in
    * the main process): the matching item is marked dismissed. A no-op when already settled or unknown.
    * @param inputId The id of the question to withdraw.
    */
@@ -1410,14 +1410,14 @@ export class Agent {
       }
       return;
     }
-    // A permission answered elsewhere (a remote peer on the phone, #331) withdraws the still-pending
+    // A permission answered elsewhere (a remote peer on another device, #331) withdraws the still-pending
     // local prompt. It is matched by permission id, not the active turn, so it lands whichever turn is
     // in flight — handled ahead of the per-turn filter for the same reason as the events above.
     if (event.kind === 'permission-dismissed') {
       this.dismissPermission(event.permissionId);
       return;
     }
-    // An agent question answered elsewhere (a remote peer on the phone, #331) withdraws the pending
+    // An agent question answered elsewhere (a remote peer on another device, #331) withdraws the pending
     // local question — matched by input id, not the active turn, for the same reason as above.
     if (event.kind === 'input-dismissed') {
       this.dismissInput(event.inputId);

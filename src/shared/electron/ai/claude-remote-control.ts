@@ -228,7 +228,7 @@ export class RemoteControlBridge {
         return null;
       }
       // The permission and question prompts awaiting a claude.ai answer, shared with the attach callback
-      // below so a `control_response` from the phone resolves the awaiting request. Wired here (before
+      // below so a `control_response` from the remote device resolves the awaiting request. Wired here (before
       // the instance exists) so the callback can be passed to `attachBridgeSession`.
       const pendingPermissions: Map<string, (granted: boolean) => void> = new Map<
         string,
@@ -366,7 +366,7 @@ export class RemoteControlBridge {
    * Forwards an `AskUserQuestion` prompt to claude.ai so the peer can answer it natively (the mobile
    * app and web render the built-in question card with its multiple-choice options), returning the
    * control-request id (to cancel if answered locally first) and a promise that resolves with the
-   * peer's answer — the `updatedInput` payload the phone sends back (`{questions, answers}`), or null
+   * peer's answer — the `updatedInput` payload the remote device sends back (`{questions, answers}`), or null
    * when the peer declines. Rides the same `can_use_tool` control channel as a permission, keyed on the
    * built-in tool name so claude.ai renders the question rather than an allow/deny prompt. Only
    * meaningful in control mode; the caller gates on {@link canPrompt}.
