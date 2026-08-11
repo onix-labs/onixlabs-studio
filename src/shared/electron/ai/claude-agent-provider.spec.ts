@@ -510,7 +510,10 @@ describe('ClaudeAgentSession (live multi-turn)', () => {
 
     // A bridged session takes a peer-driven turn: its result arrives with no turn() behind it. Without
     // the fix nothing would emit completion and the adopted renderer turn would spin forever.
-    (harness.session as unknown as { bridge: unknown }).bridge = { forward: (): void => undefined };
+    (harness.session as unknown as { bridge: unknown }).bridge = {
+      forward: (): void => undefined,
+      close: (): void => undefined,
+    };
     events.length = 0;
     harness.query()?.emit({ type: 'result', session_id: 'sess-a' });
     await flush();
