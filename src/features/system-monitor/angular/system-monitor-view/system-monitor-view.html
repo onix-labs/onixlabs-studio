@@ -42,6 +42,22 @@
         (escape)="clearText()"
       />
 
+      @if (selectedCount() > 0) {
+        <span class="system-monitor__selection">{{ selectedCount() }} selected</span>
+        <app-button
+          variant="outline"
+          size="small"
+          label="Copy"
+          (click)="copy()"
+        />
+        <app-button
+          variant="none"
+          size="small"
+          label="Clear"
+          (click)="clearSelection()"
+        />
+      }
+
       <span class="system-monitor__count">{{ filtered().length }} / {{ records().length }}</span>
     </header>
 
@@ -49,7 +65,9 @@
       class="system-monitor__table"
       [columns]="columns"
       [rows]="rows()"
+      [selectedIds]="selected()"
       emptyText="No log records match the current filters."
+      (rowClick)="toggleRow($event)"
     >
       <ng-template appTableRow let-row>
         <td>

@@ -180,6 +180,15 @@ export class Table {
   public readonly collapsible: InputSignal<boolean> = input<boolean>(false);
 
   /**
+   * Gets the ids of the currently-selected rows, highlighted in the table. Selection is driven by the
+   * consumer (typically from {@link rowClick}); defaults to none. Purely visual — the table does not
+   * manage the set.
+   */
+  public readonly selectedIds: InputSignal<ReadonlySet<string>> = input<ReadonlySet<string>>(
+    new Set<string>(),
+  );
+
+  /**
    * Emits the row that was clicked.
    */
   public readonly rowClick: OutputEmitterRef<TableRow> = output<TableRow>();

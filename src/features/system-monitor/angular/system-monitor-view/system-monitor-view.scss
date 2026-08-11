@@ -66,6 +66,14 @@
   color: var(--form-muted-foreground-color);
 }
 
+// The "n selected" indicator shown when rows are selected, ahead of the contextual Copy/Clear actions.
+.system-monitor__selection {
+  flex: none;
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent-color);
+}
+
 // The audit table (the shared app-table) fills the remaining height and scrolls its own body.
 .system-monitor__table {
   flex: 1 1 auto;

@@ -336,6 +336,19 @@ export class SystemMonitorView {
   protected readonly text: WritableSignal<string> = signal<string>('');
 
   /**
+   * Holds the ids (as strings) of the rows the user has selected by clicking them, so Copy can act on a
+   * chosen subset rather than the whole audit. Empty means nothing is selected (Copy falls back to all).
+   */
+  protected readonly selected: WritableSignal<ReadonlySet<string>> = signal<ReadonlySet<string>>(
+    new Set<string>(),
+  );
+
+  /**
+   * Gets the number of currently-selected rows, for the toolbar count and to gate "copy selected".
+   */
+  protected readonly selectedCount: Signal<number> = computed((): number => this.selected().size);
+
+  /**
    * Gets whether the viewed session is the live one, so new records stream into it.
    */
   private readonly viewingLive: Signal<boolean> = computed((): boolean => {
@@ -530,12 +543,18 @@ export class SystemMonitorView {
   }
 
   /**
-   * Copies the currently-shown records to the clipboard as one human-readable line each (ribbon
-   * action). A no-op where the clipboard is unavailable.
+   * Copies log records to the clipboard as one human-readable line each (ribbon action). Copies the
+   * selected rows when any are selected, otherwise every currently-shown record. A no-op where the
+   * clipboard is unavailable.
    * @returns Returns a promise that resolves once the copy settles.
    */
   protected async copy(): Promise<void> {
-    const text: string = this.filtered()
+    const selected: ReadonlySet<string> = this.selected();
+    const records: readonly LogRecord[] =
+      selected.size > 0
+        ? this.filtered().filter((record: LogRecord): boolean => selected.has(String(record.id)))
+        : this.filtered();
+    const text: string = records
       .map(
         (record: LogRecord): string =>
           `${record.timestamp} [${record.severity}] ${record.source}: ${record.message}`,
@@ -546,6 +565,28 @@ export class SystemMonitorView {
     } catch {
       // A denied or unavailable clipboard is deliberately swallowed.
     }
+  }
+
+  /**
+   * Toggles whether a clicked row is selected, so Copy can act on a chosen subset. Clicking a selected
+   * row deselects it.
+   * @param row The clicked table row.
+   */
+  protected toggleRow(row: TableRow): void {
+    this.selected.update((selected: ReadonlySet<string>): ReadonlySet<string> => {
+      const next: Set<string> = new Set<string>(selected);
+      if (!next.delete(row.id)) {
+        next.add(row.id);
+      }
+      return next;
+    });
+  }
+
+  /**
+   * Clears the row selection (the toolbar action and Escape in the table).
+   */
+  protected clearSelection(): void {
+    this.selected.set(new Set<string>());
   }
 
   /**

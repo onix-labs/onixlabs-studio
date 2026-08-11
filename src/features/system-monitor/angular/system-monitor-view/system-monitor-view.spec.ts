@@ -2,6 +2,7 @@ import { Signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it, Mock, vi } from 'vitest';
 import { DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
+import { TableRow } from '@shared/angular/components/table/table';
 import { Log } from '@shared/angular/services/log/log';
 import { LogQuery, LogRecord, LogSession, Severity } from '@shared/api/log-channels';
 import { MetricsSample } from '@shared/api/system-monitor-channels';
@@ -128,6 +129,12 @@ interface Testable {
   selectSession(sessionId: string): void;
   toggleSeverity(severity: Severity): void;
   isEnabled(severity: Severity): boolean;
+  selected: WritableSignal<ReadonlySet<string>>;
+  selectedCount: Signal<number>;
+  rows: Signal<readonly TableRow[]>;
+  toggleRow(row: TableRow): void;
+  clearSelection(): void;
+  copy(): Promise<void>;
 }
 
 describe('SystemMonitorView', () => {
@@ -255,6 +262,35 @@ describe('SystemMonitorView', () => {
     TestBed.inject(SystemMonitorCommands).copy();
     await Promise.resolve();
     expect(writeText).toHaveBeenCalledWith('2026-08-10T10:00:00.000Z [error] S: boom');
+  });
+
+  it('copy_withRowsSelected_writesOnlyTheSelectedRecords', async () => {
+    const writeText: Mock = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    await create([
+      record({ id: 1, severity: 'error', source: 'A', message: 'first', timestamp: '2026-08-10T10:00:00.000Z' }),
+      record({ id: 2, severity: 'info', source: 'B', message: 'second', timestamp: '2026-08-10T10:00:01.000Z' }),
+    ]);
+
+    // Select only the second row, then copy.
+    view.toggleRow(view.rows()[1]);
+    expect(view.selectedCount()).toBe(1);
+    await view.copy();
+    expect(writeText).toHaveBeenCalledWith('2026-08-10T10:00:01.000Z [info] B: second');
+  });
+
+  it('toggleRow_deselectsOnASecondClick_andClearSelectionEmptiesIt', async () => {
+    await create([
+      record({ id: 1, severity: 'error', source: 'A', message: 'first', timestamp: '2026-08-10T10:00:00.000Z' }),
+    ]);
+    const row: TableRow = view.rows()[0];
+    view.toggleRow(row);
+    expect(view.selectedCount()).toBe(1);
+    view.toggleRow(row);
+    expect(view.selectedCount()).toBe(0);
+    view.toggleRow(row);
+    view.clearSelection();
+    expect(view.selectedCount()).toBe(0);
   });
 
   it('whenActive_startsSamplingAndStopsWhenHidden', async () => {

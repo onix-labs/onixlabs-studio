@@ -95,6 +95,13 @@
     background: var(--dock-title-background-color--focused);
   }
 
+  // A selected row, driven by the consumer's `selectedIds`. Tinted with the accent so a selection
+  // reads clearly against the hover chrome.
+  &--selected,
+  &--selected:hover {
+    background: color-mix(in srgb, var(--accent-color) 22%, transparent);
+  }
+
   // The consumer's cells inherit consistent padding and vertical rhythm.
   ::ng-deep td {
     padding: 0.2rem 0.625rem;

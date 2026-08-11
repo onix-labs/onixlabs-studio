@@ -73,7 +73,11 @@
             </td>
           </tr>
         } @else {
-          <tr class="table-row" (click)="rowClick.emit(row)">
+          <tr
+            class="table-row"
+            [class.table-row--selected]="selectedIds().has(row.id)"
+            (click)="rowClick.emit(row)"
+          >
             <ng-container
               [ngTemplateOutlet]="rowTemplate()?.template ?? null"
               [ngTemplateOutletContext]="{ $implicit: row }"
