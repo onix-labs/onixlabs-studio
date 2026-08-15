@@ -20,6 +20,8 @@ import type {
   AiRunRequest,
   AiSetConnectionKeyRequest,
   AiSteerRequest,
+  ClaudeAuthStatus,
+  ClaudeLoginStatus,
 } from '@shared/api/ai-types';
 
 /**
@@ -85,6 +87,33 @@ export enum AiChannel {
    * Enables or disables Claude Code's mobile push for a remote-controlled agent needing input (invoke).
    */
   SetRemoteNotifications = 'ai:set-remote-notifications',
+
+  /**
+   * Reads the authoritative Claude sign-in status (via `claude auth status`), to tell an expired/absent
+   * login apart from any other run failure (invoke).
+   */
+  CheckClaudeAuth = 'ai:check-claude-auth',
+
+  /**
+   * Starts the in-app Claude login: drives the `claude` CLI's own OAuth flow (which opens the browser);
+   * progress streams back over {@link AiChannel.ClaudeLoginStatus} (invoke).
+   */
+  StartClaudeLogin = 'ai:start-claude-login',
+
+  /**
+   * Cancels an in-flight in-app Claude login (invoke).
+   */
+  CancelClaudeLogin = 'ai:cancel-claude-login',
+
+  /**
+   * Signs the user out of Claude (`claude auth logout`), for testing the sign-in flow (invoke).
+   */
+  LogoutClaude = 'ai:logout-claude',
+
+  /**
+   * Streams progress of the in-app Claude login flow (main→renderer, on).
+   */
+  ClaudeLoginStatus = 'ai:claude-login-status',
 
   /**
    * Streams events from running agent turns (main→renderer, on).
@@ -203,6 +232,38 @@ export interface AiClient {
    * @param enabled Whether to enable the push.
    */
   setRemoteNotifications(enabled: boolean): Promise<void>;
+
+  /**
+   * Reads the authoritative Claude sign-in status (via `claude auth status`), so a failed run can tell
+   * an expired/absent login apart from any other failure.
+   * @returns Returns the sign-in status ({@link ClaudeAuthStatus.loggedIn} false outside Electron or when
+   * the CLI is unavailable).
+   */
+  checkClaudeAuth(): Promise<ClaudeAuthStatus>;
+
+  /**
+   * Starts the in-app Claude login, driving the `claude` CLI's own OAuth flow (which opens the browser).
+   * Progress streams through {@link onClaudeLoginStatus}; the call resolves once the flow has been
+   * launched (not when it completes).
+   */
+  startClaudeLogin(): Promise<void>;
+
+  /**
+   * Cancels an in-flight in-app Claude login. No-op when none is running.
+   */
+  cancelClaudeLogin(): Promise<void>;
+
+  /**
+   * Signs the user out of Claude (`claude auth logout`), for testing the sign-in flow.
+   */
+  logoutClaude(): Promise<void>;
+
+  /**
+   * Subscribes to progress of the in-app Claude login flow.
+   * @param listener Receives each {@link ClaudeLoginStatus}.
+   * @returns Returns a function that removes the listener.
+   */
+  onClaudeLoginStatus(listener: (status: ClaudeLoginStatus) => void): () => void;
 
   /**
    * Subscribes to streamed events from running agent turns.

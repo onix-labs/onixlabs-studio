@@ -50,6 +50,7 @@ import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
+import { AgentLoginModal } from '@shared/angular/components/agent-login-modal/agent-login-modal';
 import { MarkdownEditor } from '@shared/angular/components/markdown-editor/markdown-editor';
 import { Radio } from '@shared/angular/components/forms/radio/radio';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
@@ -120,6 +121,10 @@ const APP_NATIVE_COMMANDS: ReadonlySet<string> = new Set<string>([
   'clear',
   'mode',
   'effort',
+  // Served natively (not dispatched as a turn): they drive the app's own in-app sign-in flow, not the
+  // CLI's interactive UI, so a provider-discovered `/login`/`/logout` must not be offered alongside.
+  'login',
+  'logout',
 ]);
 
 /**
@@ -355,6 +360,7 @@ interface ContextChip {
     NgTemplateOutlet,
     Radio,
     Dropdown,
+    AgentLoginModal,
   ],
   templateUrl: './agent-chat.html',
   styleUrl: './agent-chat.scss',
@@ -371,6 +377,12 @@ export class AgentChat implements OnInit {
    * the same transcript.
    */
   private readonly agent: Agent = inject(Agent);
+
+  /**
+   * Gets whether the "not signed in to Claude" prompt is pending for this conversation, so the template
+   * shows the login modal.
+   */
+  protected readonly needsLogin: Signal<boolean> = this.agent.needsLogin;
 
   /**
    * Holds the tab registry, used to light this conversation's tab while it awaits a decision.
@@ -768,6 +780,7 @@ export class AgentChat implements OnInit {
         { kind: 'command', label: '/clear', hint: 'Start a new conversation', value: 'clear' },
         { kind: 'command', label: '/mode', hint: 'Toggle Agent / Chat mode', value: 'mode' },
         ...this.effortSuggestions(),
+        ...this.claudeAuthCommands(),
       ];
       const commands: ComposerSuggestion[] = builtins.filter(
         (entry: ComposerSuggestion): boolean => entry.value.startsWith(query) || query.length === 0,
@@ -1664,6 +1677,22 @@ export class AgentChat implements OnInit {
   }
 
   /**
+   * Builds the `/login` and `/logout` command entries, offered only for the Claude local-login
+   * connection (they drive Studio's in-app sign-in, which is meaningless for an API-key or other
+   * provider). Empty for every other connection, so the commands are hidden there.
+   * @returns Returns the sign-in command suggestions.
+   */
+  private claudeAuthCommands(): readonly ComposerSuggestion[] {
+    if (this.agentEngine.connection(this.agent.provider())?.auth !== 'claude-login') {
+      return [];
+    }
+    return [
+      { kind: 'command', label: '/login', hint: 'Sign in to Claude', value: 'login' },
+      { kind: 'command', label: '/logout', hint: 'Sign out of Claude', value: 'logout' },
+    ];
+  }
+
+  /**
    * Runs a built-in slash command against the conversation.
    * @param command The command name.
    */
@@ -1674,6 +1703,10 @@ export class AgentChat implements OnInit {
       this.agent.clear();
     } else if (command === 'mode') {
       this.agent.setMode(this.agent.mode() === 'chat' ? 'agent' : 'chat');
+    } else if (command === 'login') {
+      this.agent.promptLogin();
+    } else if (command === 'logout') {
+      void this.agent.logout();
     } else if (command.startsWith('effort:')) {
       const level: string = command.slice('effort:'.length);
       this.agent.setEffort(level === 'default' ? null : (level as AiEffort));
@@ -1934,6 +1967,22 @@ export class AgentChat implements OnInit {
     this.agent.retry(item, this.tabId(), this.surface());
     // A fresh turn re-pins to the bottom even if the reader had scrolled up to read back.
     this.atBottom.set(true);
+  }
+
+  /**
+   * Dismisses the "not signed in to Claude" prompt when the user closes the login modal without signing
+   * in.
+   */
+  protected dismissLogin(): void {
+    this.agent.dismissLoginPrompt();
+  }
+
+  /**
+   * Completes a successful in-app sign-in: the conversation reopens its session (so the next turn
+   * re-authenticates) and re-runs the turn that failed for want of a login.
+   */
+  protected onLoginSucceeded(): void {
+    this.agent.onLoginSucceeded();
   }
 
   /**

@@ -36,6 +36,7 @@ import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { AGENT_WORKSPACE_ROOT } from './agent-workspace-root';
+import { isNotLoggedInReply, looksLikeAuthFailure } from './auth-failure';
 
 /**
  * How long, in milliseconds, streamed text deltas are buffered before they are folded into the
@@ -494,6 +495,19 @@ export class Agent {
   private readonly busy: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
+   * Holds whether the "not signed in to Claude" prompt is pending. Raised when a run through the Claude
+   * local-login connection fails and an authoritative check ({@link AiRuntime.checkClaudeAuth}) finds the
+   * login expired or absent; the host shows the login modal, and dismissing it or a successful sign-in
+   * clears it.
+   */
+  private readonly needsLoginState: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Gets whether the "not signed in to Claude" prompt is pending.
+   */
+  public readonly needsLogin: Signal<boolean> = this.needsLoginState.asReadonly();
+
+  /**
    * Holds how much autonomy the conversation's runs use: `agent` (full tools) or `chat` (read-only).
    * The user's choice persists across new chats within this session.
    */
@@ -564,6 +578,13 @@ export class Agent {
    * message that captured none (a restored queue).
    */
   private lastSurface: AgentSurface | undefined = undefined;
+
+  /**
+   * Holds whether a successful sign-in should re-run the last turn: true when the prompt was raised by a
+   * turn that failed for want of a login (so the user gets their answer without re-typing), false when
+   * the user opened it themselves via `/login` (nothing to re-run).
+   */
+  private retryAfterLogin: boolean = false;
 
   /**
    * Holds the messages waiting to dispatch once the running turn completes.
@@ -1550,16 +1571,128 @@ export class Agent {
     if (state === 'error') {
       this.logger.error('Agent', `Run failed: ${this.failureCause(detail)}`);
       this.pushError(detail);
+      this.maybePromptLogin(detail);
     } else if (state === 'aborted') {
       this.push({ kind: 'assistant', text: '_Stopped._' });
-    } else if (state === 'completed' && !this.producedReply()) {
-      this.push({ kind: 'assistant', text: '_The model returned no output._' });
+    } else if (state === 'completed') {
+      // A not-signed-in turn can come back as a completed reply ("Not logged in. Please run /login")
+      // rather than a hard error, so the reply is checked here too — otherwise the prompt would only
+      // ever appear for failures that reach the error state. The strict match (the reply *is* that
+      // message, not one that merely mentions login) guards the removal below.
+      if (isNotLoggedInReply(this.lastReplyText())) {
+        this.logger.warn('Agent', 'Turn returned a sign-in message; prompting Claude login');
+        // Drop the sign-in reply so it neither lingers in the transcript nor merges with — and cannot
+        // re-trigger this check on — the fresh reply the post-login re-run streams in.
+        this.removeLastReply();
+        this.retryAfterLogin = true;
+        this.needsLoginState.set(true);
+      } else if (!this.producedReply()) {
+        this.push({ kind: 'assistant', text: '_The model returned no output._' });
+      }
     }
     this.notifyRunEnded(state, detail);
     // A completed run dispatches the next queued message; a failed or stopped run holds the queue so
     // messages never fire into a broken or deliberately-stopped conversation.
     if (state === 'completed') {
       this.dispatchQueue();
+    }
+  }
+
+  /**
+   * Raises the "not signed in to Claude" prompt when a failed run looks like an expired or absent Claude
+   * login. The common case is recognised straight from the error text ({@link looksLikeAuthFailure}) so
+   * the modal appears immediately with no dependence on a main-process round-trip; for a run through the
+   * Claude local-login connection whose wording is unfamiliar, an authoritative `claude auth status`
+   * check backs it up. An ordinary failure (a network blip, a tool error) matches neither, so it never
+   * surfaces a sign-in modal.
+   * @param detail The failure detail carried by the error status event.
+   */
+  private maybePromptLogin(detail: string): void {
+    if (looksLikeAuthFailure(detail)) {
+      this.logger.warn('Agent', 'Run failed with a sign-in error; prompting Claude login');
+      this.retryAfterLogin = true;
+      this.needsLoginState.set(true);
+      return;
+    }
+    if (this.engine.connection(this.provider())?.auth !== 'claude-login') {
+      return;
+    }
+    void this.runtime
+      .checkClaudeAuth()
+      .then((loggedIn: boolean): void => {
+        if (!loggedIn) {
+          this.logger.warn('Agent', 'Claude login expired or absent; prompting sign-in');
+          this.retryAfterLogin = true;
+          this.needsLoginState.set(true);
+        }
+      })
+      .catch((): void => {
+        // A failed status check (for example the login IPC being unavailable) must not swallow the
+        // prompt: the run already failed, so err towards offering sign-in.
+        this.retryAfterLogin = true;
+        this.needsLoginState.set(true);
+      });
+  }
+
+  /**
+   * Dismisses the "not signed in to Claude" prompt. Called when the user closes the login modal without
+   * signing in.
+   */
+  public dismissLoginPrompt(): void {
+    this.needsLoginState.set(false);
+  }
+
+  /**
+   * Opens the sign-in modal on the user's own request (the `/login` command), rather than in reaction to
+   * a failed turn — so a successful sign-in does not re-run anything.
+   */
+  public promptLogin(): void {
+    this.logger.info('Agent', 'Sign-in requested via /login');
+    this.retryAfterLogin = false;
+    this.needsLoginState.set(true);
+  }
+
+  /**
+   * Signs the user out of Claude (the `/logout` command) and closes the live session, so the next turn
+   * runs signed out (and surfaces the sign-in prompt). Chiefly a way to exercise the sign-in flow from
+   * within the app.
+   */
+  public async logout(): Promise<void> {
+    this.logger.info('Agent', 'Signing out of Claude');
+    await this.runtime.logoutClaude();
+    this.resetAgentSession();
+    this.notifications.notify({
+      severity: 'info',
+      title: 'Signed out of Claude',
+      actions: [],
+      key: 'agent:logout',
+      route: 'default',
+    });
+  }
+
+  /**
+   * Completes a successful in-app sign-in. The turn that failed did so through a live Claude session that
+   * was spawned while signed out — an already-running process never picks up the new credentials — so
+   * that session is closed (its provider session id is kept, so the conversation's context resumes) and
+   * the last prompt is re-run: the fresh session the re-run opens reads the new login. This is why the
+   * re-run happens here rather than via the error card's Retry, which a completed "not logged in" turn
+   * never leaves.
+   */
+  public onLoginSucceeded(): void {
+    this.logger.info('Agent', 'Sign-in succeeded; reopening the session');
+    this.needsLoginState.set(false);
+    this.resetAgentSession();
+    const retry: boolean = this.retryAfterLogin;
+    this.retryAfterLogin = false;
+    if (retry && this.lastPrompt !== null && !this.busy()) {
+      this.logger.info('Agent', 'Re-running the turn that needed sign-in');
+      this.startRun(
+        this.lastPrompt,
+        this.lastOwningTabId,
+        this.lastSurface,
+        this.lastImages,
+        this.lastContext,
+      );
     }
   }
 
@@ -1792,6 +1925,46 @@ export class Agent {
     const items: readonly AgentItem[] = this.log();
     const last: AgentItem | undefined = items[items.length - 1];
     return last !== undefined && last.kind !== 'user';
+  }
+
+  /**
+   * Gets the text of the most recent assistant reply in the transcript, or the empty string when the
+   * last turn produced none. Used to spot a sign-in message returned as a normal (completed) reply.
+   * @returns Returns the last assistant reply's text.
+   */
+  private lastReplyText(): string {
+    const items: readonly AgentItem[] = this.log();
+    for (let index: number = items.length - 1; index >= 0; index -= 1) {
+      const item: AgentItem = items[index];
+      if (item.kind === 'assistant') {
+        return item.text;
+      }
+      if (item.kind === 'user') {
+        break;
+      }
+    }
+    return '';
+  }
+
+  /**
+   * Removes the most recent top-level assistant reply from the transcript (stopping at the user's
+   * prompt). Used to drop a not-signed-in reply before the post-login re-run, so it neither lingers nor
+   * merges into the re-run's fresh reply.
+   */
+  private removeLastReply(): void {
+    const items: readonly AgentItem[] = this.log();
+    for (let index: number = items.length - 1; index >= 0; index -= 1) {
+      if (items[index].kind === 'user') {
+        return;
+      }
+      if (items[index].kind === 'assistant') {
+        const target: AgentItem = items[index];
+        this.log.update((list: readonly AgentItem[]): readonly AgentItem[] =>
+          list.filter((item: AgentItem): boolean => item !== target),
+        );
+        return;
+      }
+    }
   }
 
   /**

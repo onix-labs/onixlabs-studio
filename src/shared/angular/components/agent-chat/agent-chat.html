@@ -727,4 +727,12 @@
       </div>
     </ng-template>
   </app-modal>
+
+  <!-- Shown when a run through the Claude local login fails because that login has expired or is absent:
+       offers to sign back in via the browser, in-app, without dropping to a terminal. -->
+  <app-agent-login-modal
+    [open]="needsLogin()"
+    (dismiss)="dismissLogin()"
+    (succeeded)="onLoginSucceeded()"
+  />
 </div>

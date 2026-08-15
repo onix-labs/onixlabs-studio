@@ -17,6 +17,8 @@ import type {
   AiRunRequest,
   AiSetConnectionKeyRequest,
   AiSteerRequest,
+  ClaudeAuthStatus,
+  ClaudeLoginStatus,
 } from '@shared/api/ai-types';
 
 /**
@@ -48,6 +50,14 @@ function createClient(bridge: Bridge): AiClient {
       bridge.invoke(AiChannel.GetRemoteNotifications),
     setRemoteNotifications: (enabled: boolean): Promise<void> =>
       bridge.invoke(AiChannel.SetRemoteNotifications, enabled),
+    checkClaudeAuth: (): Promise<ClaudeAuthStatus> => bridge.invoke(AiChannel.CheckClaudeAuth),
+    startClaudeLogin: (): Promise<void> => bridge.invoke(AiChannel.StartClaudeLogin),
+    cancelClaudeLogin: (): Promise<void> => bridge.invoke(AiChannel.CancelClaudeLogin),
+    logoutClaude: (): Promise<void> => bridge.invoke(AiChannel.LogoutClaude),
+    onClaudeLoginStatus: (listener: (status: ClaudeLoginStatus) => void): (() => void) =>
+      bridge.on(AiChannel.ClaudeLoginStatus, (...args: unknown[]): void =>
+        listener(args[0] as ClaudeLoginStatus),
+      ),
     onEvent: (listener: (event: AiEvent) => void): (() => void) =>
       bridge.on(AiChannel.Event, (...args: unknown[]): void => listener(args[0] as AiEvent)),
     onBridgeRequest: (handler: (request: AiBridgeRequest) => void): (() => void) =>

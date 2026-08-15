@@ -24,6 +24,8 @@ import type {
   AiRunState,
   AiSteerRequest,
   ClaudeExecutableChoice,
+  ClaudeAuthStatus,
+  ClaudeLoginStatus,
 } from '@shared/api/ai-types';
 import { SEED_CONNECTIONS } from '@shared/api/ai-types';
 
@@ -51,6 +53,7 @@ import {
   writeRemoteNotificationsEnabled,
 } from './claude-settings';
 import { CodexAgentProvider } from './codex-agent-provider';
+import { ClaudeLoginDriver, readClaudeAuthStatus, runClaudeLogout } from './claude-login';
 import { sanitizeToolPolicies } from './tool-policy';
 import { sanitizeWritePaths } from './write-confinement';
 import { sanitizeAgentShell } from '@shared/electron/shell-env';
@@ -266,6 +269,16 @@ export class AiManager {
    * Holds the bridge to the renderer's in-app capabilities.
    */
   private readonly bridge: RendererBridge;
+
+  /**
+   * Holds the in-app Claude login driver, which runs the CLI's own OAuth flow and streams its progress
+   * to the renderer's "not signed in" modal.
+   */
+  private readonly login: ClaudeLoginDriver = new ClaudeLoginDriver(
+    (status: ClaudeLoginStatus): void => {
+      this.windowGetter()?.webContents.send(AiChannel.ClaudeLoginStatus, status);
+    },
+  );
 
   /**
    * Holds the pending permission prompts, keyed by permission id.
@@ -489,6 +502,22 @@ export class AiManager {
       (_event: IpcMainInvokeEvent, enabled: unknown): void =>
         writeRemoteNotificationsEnabled(enabled === true),
     );
+    ipcMain.handle(AiChannel.CheckClaudeAuth, (): Promise<ClaudeAuthStatus> => {
+      logger.trace('AiManager.register', 'CheckClaudeAuth invoked');
+      return readClaudeAuthStatus();
+    });
+    ipcMain.handle(AiChannel.StartClaudeLogin, (): void => {
+      logger.trace('AiManager.register', 'StartClaudeLogin invoked');
+      this.login.start();
+    });
+    ipcMain.handle(AiChannel.CancelClaudeLogin, (): void => {
+      logger.trace('AiManager.register', 'CancelClaudeLogin invoked');
+      this.login.cancel();
+    });
+    ipcMain.handle(AiChannel.LogoutClaude, (): Promise<void> => {
+      logger.trace('AiManager.register', 'LogoutClaude invoked');
+      return runClaudeLogout().then((): void => undefined);
+    });
   }
 
   /**
@@ -511,6 +540,7 @@ export class AiManager {
     for (const requestId of [...this.clocks.keys()]) {
       this.dropClock(requestId);
     }
+    this.login.dispose();
   }
 
   /**

@@ -118,6 +118,19 @@ export class AgentEngine {
   }
 
   /**
+   * Gets the connection with the given id from the user's configured connections, or undefined when none
+   * matches. Lets a caller read a connection's auth kind (for example, to tell whether a run goes through
+   * the Claude local login).
+   * @param id The connection id.
+   * @returns Returns the connection, or undefined.
+   */
+  public connection(id: AiProviderId): AiConnection | undefined {
+    return this.settings
+      .aiConnections()
+      .find((connection: AiConnection): boolean => connection.id === id);
+  }
+
+  /**
    * Selects the connection runs go through.
    * @param id The connection id.
    */

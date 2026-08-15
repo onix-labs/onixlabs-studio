@@ -17,6 +17,7 @@ import type {
   AiRemoteControlMode,
   AiToolPolicy,
   ClaudeExecutableChoice,
+  ClaudeLoginStatus,
 } from '@shared/api/ai-types';
 import { Ai } from '@shared/angular/services/ai/ai';
 import { Log } from '@shared/angular/services/log/log';
@@ -288,6 +289,49 @@ export class AiRuntime {
    */
   public steer(requestId: string, text: string): Promise<boolean> {
     return this.api?.steer({ requestId, text }) ?? Promise.resolve(false);
+  }
+
+  /**
+   * Reads the authoritative Claude sign-in status, so a failed run can tell an expired/absent login
+   * apart from any other failure.
+   * @returns Returns whether the user has a valid Claude login (false outside Electron).
+   */
+  public async checkClaudeAuth(): Promise<boolean> {
+    return (await this.api?.checkClaudeAuth())?.loggedIn ?? false;
+  }
+
+  /**
+   * Starts the in-app Claude login (the CLI's own OAuth flow); progress arrives via
+   * {@link onClaudeLoginStatus}. No-op outside Electron.
+   */
+  public startClaudeLogin(): void {
+    this.log.info('AiRuntime', 'Claude login requested');
+    void this.api?.startClaudeLogin();
+  }
+
+  /**
+   * Cancels an in-flight in-app Claude login. No-op when none is running or outside Electron.
+   */
+  public cancelClaudeLogin(): void {
+    void this.api?.cancelClaudeLogin();
+  }
+
+  /**
+   * Signs the user out of Claude (`claude auth logout`), for testing the sign-in flow. No-op outside
+   * Electron.
+   */
+  public async logoutClaude(): Promise<void> {
+    this.log.info('AiRuntime', 'Claude logout requested');
+    await this.api?.logoutClaude();
+  }
+
+  /**
+   * Subscribes to progress of the in-app Claude login flow.
+   * @param listener Receives each {@link ClaudeLoginStatus}.
+   * @returns Returns a function that removes the listener (a no-op outside Electron).
+   */
+  public onClaudeLoginStatus(listener: (status: ClaudeLoginStatus) => void): () => void {
+    return this.api?.onClaudeLoginStatus(listener) ?? ((): void => undefined);
   }
 
   /**
