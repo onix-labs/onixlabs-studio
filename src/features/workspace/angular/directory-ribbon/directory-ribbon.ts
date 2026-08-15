@@ -32,7 +32,7 @@ import {
   LayoutPresets,
 } from '@shared/angular/services/layout-presets/layout-presets';
 import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
-import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
+import { DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host';
@@ -46,7 +46,6 @@ import {
 import { RibbonStripColumn } from '@shared/angular/components/ribbon-strip/ribbon-strip-column/ribbon-strip-column';
 import { RibbonStripGroup } from '@shared/angular/components/ribbon-strip/ribbon-strip-group/ribbon-strip-group';
 import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/ribbon-strip-overflow/ribbon-strip-overflow';
-import { RibbonStripRow } from '@shared/angular/components/ribbon-strip/ribbon-strip-row/ribbon-strip-row';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { Radio } from '@shared/angular/components/forms/radio/radio';
@@ -93,9 +92,7 @@ const COMMIT_STASH: string = 'stash';
     RibbonStripButtonSmall,
     RibbonStripActionsButton,
     RibbonStripMenuButton,
-    RibbonStripRow,
     Checkbox,
-    Dropdown,
     Modal,
     ModalContent,
   ],
