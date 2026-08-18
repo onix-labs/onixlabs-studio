@@ -60,45 +60,37 @@
   </section>
 }
 
-<!-- Agents & providers: the provider back-ends and settings specific to individual agents. -->
-@if (view() === 'agents') {
-  <section class="ai-group">
-    <div class="ai-connections">
-      <div class="ai-connections__head">
-        <div class="ai-connections__heading">
-          <h4 class="ai-connections__title">Connections</h4>
-          <p class="ai-connections__subtitle">
-            Providers the agent can run through. Each keeps its own credential and model list.
-          </p>
-        </div>
-        <div class="ai-connections__actions">
-          <app-button [icon]="Icon.RESTART" label="Restore defaults" (click)="restoreDefaults()" />
+<!-- Provider: one company's page — a list of configurations the user adds per authentication method. -->
+@if (view() === 'provider') {
+  @if (page(); as page) {
+    <section class="ai-group">
+      <div class="ai-connections">
+        <div class="ai-connections__head">
+          <div class="ai-connections__heading">
+            <h4 class="ai-connections__title">Configurations</h4>
+            <p class="ai-connections__subtitle">{{ page.description }}</p>
+          </div>
           <div class="ai-connections__add">
-            <app-dropdown
-              [options]="addKindOptions"
-              [value]="selectedAddKind()"
-              (valueChange)="onAddKindChange($event)"
-            />
-            <app-button [icon]="Icon.PLUS" label="Add" (click)="addConnection()" />
+            @for (method of page.methods; track method.auth) {
+              <app-button
+                variant="solid"
+                [icon]="Icon.PLUS"
+                [label]="method.buttonLabel"
+                (click)="addConfiguration(method)"
+              />
+            }
           </div>
         </div>
-      </div>
 
-      @if (!isAvailable) {
-        <p class="ai-connections__hint">
-          Credentials and model discovery are only available inside Studio.
-        </p>
-      }
+        @if (!isAvailable) {
+          <p class="ai-connections__hint">
+            Credentials and model discovery are only available inside Studio.
+          </p>
+        }
 
-      <ul class="ai-connections__list">
-        @for (
-          connection of connections();
-          track connection.id;
-          let index = $index;
-          let count = $count
-        ) {
-          <li class="ai-connections__item">
-            <div class="ai-connections__row">
+        <ul class="ai-connections__list">
+          @for (connection of pageConnections(); track connection.id) {
+            <li class="ai-connections__item">
               <button
                 type="button"
                 class="ai-connections__toggle"
@@ -106,59 +98,26 @@
                 (click)="toggle(connection.id)"
               >
                 <app-icon
-                  class="ai-connections__chevron"
-                  [class.ai-connections__chevron--open]="isExpanded(connection.id)"
-                  [icon]="Icon.CARET_RIGHT"
+                  class="ai-connections__status"
+                  [class.ai-connections__status--ok]="status(connection.id).available"
+                  [icon]="status(connection.id).available ? Icon.SUCCESS_FILL : Icon.WARNING_FILL"
                 />
                 <span class="ai-connections__label">{{ connection.label }}</span>
                 <app-icon
-                  class="ai-connections__status"
-                  [class.ai-connections__status--ok]="status(connection.id).available"
-                  [icon]="status(connection.id).available ? Icon.SUCCESS : Icon.WARNING"
+                  class="ai-connections__chevron"
+                  [class.ai-connections__chevron--open]="isExpanded(connection.id)"
+                  [icon]="Icon.CARET_DOWN"
                 />
               </button>
-              <div class="ai-connections__reorder">
-                <app-button
-                  variant="none"
-                  size="small"
-                  [icon]="Icon.CARET_UP"
-                  ariaLabel="Move up"
-                  [disabled]="index === 0"
-                  (click)="moveUp(connection.id)"
-                />
-                <app-button
-                  variant="none"
-                  size="small"
-                  [icon]="Icon.CARET_DOWN"
-                  ariaLabel="Move down"
-                  [disabled]="index === count - 1"
-                  (click)="moveDown(connection.id)"
-                />
-              </div>
-            </div>
-            @if (isExpanded(connection.id)) {
-              <div class="ai-connections__body">
-                <app-ai-connection-editor [connection]="connection" />
-              </div>
-            }
-          </li>
-        }
-      </ul>
-    </div>
-
-    <!-- Claude (local login) agent-specific settings. -->
-    <app-setting-row
-      label="Claude CLI"
-      description="Which Claude Code CLI the Claude (local login) agent uses, for running turns and discovering models. Bundled ships with Studio and is tested against it. System uses the claude on your PATH — it may be newer and self-updates, but is not version-matched to Studio (advanced). Custom uses a specific path."
-    >
-      <app-setting-control key="ai.claudeExecutable" />
-    </app-setting-row>
-
-    <app-setting-row
-      label="Claude CLI path"
-      description="Absolute path to the claude executable, used when Claude CLI is set to Custom."
-    >
-      <app-setting-control key="ai.claudeExecutablePath" />
-    </app-setting-row>
-  </section>
+              @if (isExpanded(connection.id)) {
+                <div class="ai-connections__body">
+                  <app-ai-connection-editor [connection]="connection" />
+                </div>
+              }
+            </li>
+          }
+        </ul>
+      </div>
+    </section>
+  }
 }

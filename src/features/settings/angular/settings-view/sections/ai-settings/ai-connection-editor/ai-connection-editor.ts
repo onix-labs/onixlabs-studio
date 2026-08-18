@@ -1,53 +1,29 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
 import type { InputSignal, Signal, WritableSignal } from '@angular/core';
-import type {
-  AiAuthKind,
-  AiAuthStatus,
-  AiConnection,
-  AiModelInfo,
-  AiProviderKind,
-} from '@shared/api/ai-types';
+import type { AiAuthStatus, AiConnection, AiProviderKind } from '@shared/api/ai-types';
 import { AiConnections } from '@shared/angular/services/ai-connections/ai-connections';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { Log } from '@shared/angular/services/log/log';
-import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { PasswordField } from '@shared/angular/components/forms/password-field/password-field';
-import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { Radio } from '@shared/angular/components/forms/radio/radio';
+import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { Icon } from '@shared/angular/icons/icon';
+import { SettingControl } from '../../../setting-control/setting-control';
 
 /**
- * The provider-kind options offered when configuring a connection.
- */
-const KIND_OPTIONS: readonly DropdownOption[] = [
-  { value: 'anthropic', label: 'Anthropic' },
-  { value: 'openai', label: 'OpenAI' },
-  { value: 'xai', label: 'xAI (Grok)' },
-  { value: 'google', label: 'Google (Gemini)' },
-  { value: 'deepseek', label: 'DeepSeek' },
-  { value: 'ollama', label: 'Ollama (local)' },
-  { value: 'openai-compatible', label: 'OpenAI-compatible' },
-  { value: 'custom', label: 'Custom' },
-];
-
-/**
- * The auth-kind options offered for a connection. `claude-login` routes the connection through the
- * Claude Agent SDK using the user's local `~/.claude` login.
- */
-const AUTH_OPTIONS: readonly DropdownOption[] = [
-  { value: 'api-key', label: 'API key' },
-  { value: 'none', label: 'None' },
-  { value: 'claude-login', label: 'Local Claude login' },
-];
-
-/**
- * Edits a single AI provider connection: its label, kind, base URL, credential, and model list (with
- * discovery, manual entry, pinning, hiding, removal, and default selection). All changes are applied
- * through {@link AiConnections}, which persists the connection and keeps the key in the main process.
+ * Edits a single AI provider configuration (a connection) inside its company page's accordion. Its
+ * identity — the company (kind) and authentication method — is fixed when the configuration is created,
+ * so the editor exposes only what a configuration owns: its display name, its credential (an API key, or
+ * a hint for a subscription/local method), a base URL for endpoint-addressed kinds, the Claude CLI a
+ * Claude subscription discovers and runs through, and its model list (discovery, manual entry, default
+ * selection, and removal). All changes are applied through {@link AiConnections}, which persists the
+ * connection and keeps any key in the main process.
  */
 @Component({
   selector: 'app-ai-connection-editor',
-  imports: [Button, Dropdown, TextField, PasswordField, AppIcon],
+  imports: [Button, TextField, PasswordField, Radio, SettingRow, SettingControl],
   templateUrl: './ai-connection-editor.html',
   styleUrls: ['./ai-connection-editor.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -64,19 +40,14 @@ export class AiConnectionEditor {
   protected readonly Icon: typeof Icon = Icon;
 
   /**
-   * Gets the provider-kind options.
-   */
-  protected readonly kindOptions: readonly DropdownOption[] = KIND_OPTIONS;
-
-  /**
-   * Gets the auth-kind options.
-   */
-  protected readonly authOptions: readonly DropdownOption[] = AUTH_OPTIONS;
-
-  /**
    * Holds the connection-management service.
    */
   private readonly connections: AiConnections = inject(AiConnections);
+
+  /**
+   * Holds the settings service, backing the Claude CLI rows shown for a Claude subscription.
+   */
+  private readonly settings: Settings = inject(Settings);
 
   /**
    * Holds the structured logger.
@@ -121,21 +92,38 @@ export class AiConnectionEditor {
   );
 
   /**
-   * Gets a value indicating whether the connection authenticates with an API key.
+   * Gets a value indicating whether the configuration authenticates with an API key.
    */
   protected readonly usesKey: Signal<boolean> = computed(
     (): boolean => this.connection().auth === 'api-key',
   );
 
   /**
-   * Gets a value indicating whether the connection uses the local Claude login.
+   * Gets a value indicating whether the configuration runs through the Claude subscription (local login).
    */
-  protected readonly usesLocalLogin: Signal<boolean> = computed(
+  protected readonly usesClaudeLogin: Signal<boolean> = computed(
     (): boolean => this.connection().auth === 'claude-login',
   );
 
   /**
-   * Gets a value indicating whether a base URL field applies to the connection's kind.
+   * Gets a short hint describing the configuration's credential, shown above the fields.
+   */
+  protected readonly credentialHint: Signal<string> = computed((): string => {
+    switch (this.connection().auth) {
+      case 'claude-login':
+        return 'Uses your local Claude login (~/.claude) through the Claude Agent SDK.';
+      case 'codex-login':
+        return 'Uses your local Codex login (~/.codex) through the OpenAI Codex CLI.';
+      case 'api-key':
+        return 'Uses an API key, stored encrypted on this machine.';
+      default:
+        return 'No credentials required.';
+    }
+  });
+
+  /**
+   * Gets a value indicating whether a base URL field applies to the configuration's kind (an endpoint-
+   * addressed kind: a custom OpenAI-compatible endpoint, or Ollama).
    */
   protected readonly showBaseUrl: Signal<boolean> = computed((): boolean => {
     const kind: AiProviderKind = this.connection().kind;
@@ -143,13 +131,10 @@ export class AiConnectionEditor {
   });
 
   /**
-   * Gets the default-model options (every model the connection offers).
+   * Gets a value indicating whether the Claude CLI path row applies (only when the CLI choice is Custom).
    */
-  protected readonly modelOptions: Signal<readonly DropdownOption[]> = computed(
-    (): readonly DropdownOption[] =>
-      this.connection().models.map(
-        (model: AiModelInfo): DropdownOption => ({ value: model.id, label: model.label }),
-      ),
+  protected readonly showClaudePath: Signal<boolean> = computed(
+    (): boolean => this.settings.aiClaudeExecutable() === 'custom',
   );
 
   /**
@@ -164,33 +149,15 @@ export class AiConnectionEditor {
   }
 
   /**
-   * Renames the connection.
-   * @param label The new label.
+   * Renames the configuration.
+   * @param label The new display name.
    */
   protected onLabel(label: string): void {
     this.connections.update(this.connection().id, { label });
   }
 
   /**
-   * Changes the connection's kind.
-   * @param kind The new kind.
-   */
-  protected onKind(kind: string): void {
-    this.log.info('settings.ai', 'Connection kind changed', this.connection().id, kind);
-    this.connections.update(this.connection().id, { kind: kind as AiProviderKind });
-  }
-
-  /**
-   * Changes the connection's auth kind.
-   * @param auth The new auth kind.
-   */
-  protected onAuthKind(auth: string): void {
-    this.log.info('settings.ai', 'Connection auth kind changed', this.connection().id, auth);
-    this.connections.setAuthKind(this.connection().id, auth as AiAuthKind);
-  }
-
-  /**
-   * Sets the connection's base URL.
+   * Sets the configuration's base URL.
    * @param baseUrl The new base URL.
    */
   protected onBaseUrl(baseUrl: string): void {
@@ -225,7 +192,7 @@ export class AiConnectionEditor {
   }
 
   /**
-   * Clears the connection's stored API key.
+   * Clears the configuration's stored API key.
    * @returns Returns a promise that resolves once the key is cleared.
    */
   protected async clearKey(): Promise<void> {
@@ -242,7 +209,7 @@ export class AiConnectionEditor {
   }
 
   /**
-   * Discovers the connection's models from its endpoint.
+   * Discovers the configuration's models from its endpoint, replacing its list with the result.
    * @returns Returns a promise that resolves once discovery completes.
    */
   protected async refresh(): Promise<void> {
@@ -289,37 +256,23 @@ export class AiConnectionEditor {
   }
 
   /**
-   * Toggles a model's pinned flag.
+   * Sets the configuration's default model when its radio is selected.
    * @param modelId The model id.
+   * @param checked Whether the model's radio became selected.
    */
-  protected togglePin(modelId: string): void {
-    this.log.debug('settings.ai', 'Model pin toggled', this.connection().id, modelId);
-    this.connections.togglePinned(this.connection(), modelId);
-  }
-
-  /**
-   * Toggles a model's hidden flag.
-   * @param modelId The model id.
-   */
-  protected toggleHide(modelId: string): void {
-    this.log.debug('settings.ai', 'Model hide toggled', this.connection().id, modelId);
-    this.connections.toggleHidden(this.connection(), modelId);
-  }
-
-  /**
-   * Sets the connection's default model.
-   * @param modelId The model id.
-   */
-  protected setDefault(modelId: string): void {
+  protected onDefaultChange(modelId: string, checked: boolean): void {
+    if (!checked) {
+      return;
+    }
     this.log.info('settings.ai', 'Default model set', this.connection().id, modelId);
     this.connections.setDefaultModel(this.connection(), modelId);
   }
 
   /**
-   * Removes the connection.
+   * Removes the configuration.
    */
   protected removeConnection(): void {
-    this.log.info('settings.ai', 'Connection removed', this.connection().id);
+    this.log.info('settings.ai', 'Configuration removed', this.connection().id);
     this.connections.remove(this.connection().id);
   }
 }

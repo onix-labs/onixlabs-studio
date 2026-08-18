@@ -6,6 +6,7 @@ import type {
   AiDiscoverModelsResult,
   AiModelInfo,
   AiProviderKind,
+  AuthMethod,
 } from '@shared/api/ai-types';
 import { DEFAULT_CONNECTION_ID, SEED_CONNECTIONS } from '@shared/api/ai-types';
 import { Settings } from '@shared/angular/services/settings/settings';
@@ -120,23 +121,39 @@ export class AiConnections {
   }
 
   /**
-   * Adds a new connection of the given kind and returns it. The id is unique within the list; the auth
-   * kind defaults to none for local Ollama and an API key otherwise.
+   * Adds a new connection of the given kind and returns it. When an authentication {@link AuthMethod} is
+   * supplied (the per-company settings pages always do), the connection takes that method's auth kind,
+   * default display name, and optional preset base URL; otherwise it falls back to the kind's default
+   * label and auth (none for local Ollama, an API key otherwise). The id is unique within the list.
    * @param kind The provider kind.
+   * @param method The authentication method the configuration is added through, when known.
    * @returns Returns the created connection.
    */
-  public add(kind: AiProviderKind): AiConnection {
+  public add(kind: AiProviderKind, method?: AuthMethod): AiConnection {
     const connection: AiConnection = {
       id: this.uniqueId(kind),
       kind,
-      label: KIND_LABELS[kind],
-      auth: kind === 'ollama' ? 'none' : 'api-key',
+      label: method?.defaultDisplayName ?? KIND_LABELS[kind],
+      auth: method?.auth ?? (kind === 'ollama' ? 'none' : 'api-key'),
+      ...(method?.baseUrl !== undefined ? { baseUrl: method.baseUrl } : {}),
       models: [],
       defaultModelId: '',
     };
     this.settings.upsertConnection(connection);
-    this.log.info('AiConnections', `Connection added '${connection.id}'`, kind);
+    this.log.info('AiConnections', `Connection added '${connection.id}'`, kind, connection.auth);
     return connection;
+  }
+
+  /**
+   * Gets the configured connections whose kind is one of the given kinds, in list order. Backs a
+   * per-company settings page, which shows every configuration for its company's kind(s).
+   * @param kinds The kinds to include.
+   * @returns Returns the matching connections.
+   */
+  public connectionsForKinds(kinds: readonly AiProviderKind[]): readonly AiConnection[] {
+    return this.connections().filter((connection: AiConnection): boolean =>
+      kinds.includes(connection.kind),
+    );
   }
 
   /**
@@ -251,14 +268,18 @@ export class AiConnections {
   }
 
   /**
-   * Discovers a connection's models from its endpoint and merges them into its persisted list.
+   * Discovers a connection's models from its endpoint and, on success, replaces its persisted list with
+   * the discovered set (a refresh re-discovers what the endpoint currently offers rather than
+   * accumulating). The connection's default model is kept when the discovered set still includes it, and
+   * otherwise falls to the first discovered model. Discovery runs against a cleared model list so the
+   * main-process merge yields the discovered models alone.
    * @param connection The connection.
    * @returns Returns the discovery result (its detail is suitable for display), or null when the
    * bridge is unavailable.
    */
   public async discover(connection: AiConnection): Promise<AiDiscoverModelsResult | null> {
     const result: AiDiscoverModelsResult | undefined = await this.ai.client?.discoverModels({
-      connection,
+      connection: { ...connection, models: [] },
       claudeExecutable: {
         mode: this.settings.aiClaudeExecutable(),
         path: this.settings.aiClaudeExecutablePath(),
@@ -268,13 +289,20 @@ export class AiConnections {
       return null;
     }
     if (result.ok) {
-      this.update(connection.id, { models: result.models });
-      this.log.info(
-        'AiConnections',
-        `Discovered ${result.models.length} models for '${connection.id}'`,
-      );
+      const models: readonly AiModelInfo[] = result.models;
+      const defaultModelId: string = models.some(
+        (model: AiModelInfo): boolean => model.id === connection.defaultModelId,
+      )
+        ? connection.defaultModelId
+        : (models[0]?.id ?? '');
+      this.update(connection.id, { models, defaultModelId });
+      this.log.info('AiConnections', `Discovered ${models.length} models for '${connection.id}'`);
     } else {
-      this.log.warn('AiConnections', `Model discovery failed for '${connection.id}'`, result.detail);
+      this.log.warn(
+        'AiConnections',
+        `Model discovery failed for '${connection.id}'`,
+        result.detail,
+      );
     }
     return result;
   }

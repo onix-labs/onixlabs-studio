@@ -1,57 +1,36 @@
 <div class="conn-editor">
-  <div class="conn-editor__field">
-    <span class="conn-editor__label">Name</span>
+  <p class="conn-editor__hint">{{ credentialHint() }}</p>
+
+  <app-setting-row
+    label="Display name"
+    description="What this configuration is called in the agent provider picker (for example Anthropic (Claude))."
+  >
     <app-text-field
       [value]="connection().label"
-      placeholder="Connection name"
+      placeholder="Display name"
       (valueChange)="onLabel($event)"
     />
-  </div>
-
-  <div class="conn-editor__field">
-    <span class="conn-editor__label">Provider</span>
-    <app-dropdown
-      [options]="kindOptions"
-      [value]="connection().kind"
-      (valueChange)="onKind($event)"
-    />
-  </div>
-
-  <div class="conn-editor__field">
-    <span class="conn-editor__label">Authentication</span>
-    <app-dropdown
-      [options]="authOptions"
-      [value]="connection().auth"
-      (valueChange)="onAuthKind($event)"
-    />
-  </div>
+  </app-setting-row>
 
   @if (showBaseUrl()) {
-    <div class="conn-editor__field">
-      <span class="conn-editor__label">Base URL</span>
+    <app-setting-row
+      label="Base URL"
+      description="The OpenAI-compatible endpoint this configuration talks to."
+    >
       <app-text-field
+        class="conn-editor__wide"
         [value]="connection().baseUrl ?? ''"
         placeholder="https://…/v1"
         (valueChange)="onBaseUrl($event)"
       />
-    </div>
+    </app-setting-row>
   }
 
-  <!-- Credential -->
-  @if (usesLocalLogin()) {
-    <p class="conn-editor__hint">Uses your local Claude login (~/.claude).</p>
-  } @else if (usesKey()) {
-    <div class="conn-editor__auth">
-      <div class="conn-editor__status">
-        <app-icon
-          class="conn-editor__status-icon"
-          [class.conn-editor__status-icon--ok]="status().available"
-          [icon]="status().available ? Icon.SUCCESS : Icon.WARNING"
-        />
-        <span class="conn-editor__status-detail">{{ status().detail }}</span>
-      </div>
-      <div class="conn-editor__key">
+  @if (usesKey()) {
+    <app-setting-row label="API key" [description]="status().detail">
+      <span class="conn-editor__controls">
         <app-password-field
+          class="conn-editor__wide"
           [value]="apiKeyDraft()"
           [disabled]="!isAvailable || keyBusy()"
           placeholder="API key"
@@ -68,65 +47,81 @@
           [disabled]="!isAvailable || keyBusy() || !status().hasStoredKey"
           (click)="clearKey()"
         />
-      </div>
-    </div>
-  } @else {
-    <p class="conn-editor__hint">No credentials required.</p>
+      </span>
+    </app-setting-row>
   }
 
-  <!-- Models -->
-  <div class="conn-editor__models">
-    <div class="conn-editor__models-head">
-      <span class="conn-editor__label">Models</span>
-      <app-button
-        [icon]="Icon.REFRESH"
-        [label]="discovering() ? 'Refreshing…' : 'Refresh'"
-        [disabled]="!isAvailable || discovering()"
-        (click)="refresh()"
-      />
-    </div>
+  <!-- Claude CLI: it drives both model discovery and runs, so it sits above the model list. -->
+  @if (usesClaudeLogin()) {
+    <app-setting-row
+      label="Claude CLI"
+      description="Which Claude Code CLI this configuration uses, for running turns and discovering models. Bundled ships with Studio and is tested against it. System uses the claude on your PATH — it may be newer and self-updates, but is not version-matched to Studio (advanced). Custom uses a specific path."
+    >
+      <app-setting-control key="ai.claudeExecutable" />
+    </app-setting-row>
 
-    @if (discoverDetail(); as detail) {
-      <p class="conn-editor__hint">{{ detail }}</p>
+    @if (showClaudePath()) {
+      <app-setting-row
+        label="Claude CLI path"
+        description="Absolute path to the claude executable, used when Claude CLI is set to Custom."
+      >
+        <app-setting-control key="ai.claudeExecutablePath" />
+      </app-setting-row>
     }
+  }
 
-    @if (connection().models.length === 0) {
-      <p class="conn-editor__hint">No models yet. Refresh to discover them, or add one below.</p>
-    } @else {
-      <ul class="conn-editor__model-list">
-        @for (model of connection().models; track model.id) {
-          <li class="conn-editor__model" [class.conn-editor__model--hidden]="model.hidden">
-            <span class="conn-editor__model-id">{{ model.label }}</span>
-            <span class="conn-editor__model-ctx">{{ formatContext(model.contextWindow) }}</span>
-            <app-button
-              variant="none"
-              size="small"
-              [icon]="model.pinned ? Icon.PIN_FILLED : Icon.PIN"
-              [ariaLabel]="model.pinned ? 'Unpin model' : 'Pin model'"
-              (click)="togglePin(model.id)"
-            />
-            <app-button
-              variant="none"
-              size="small"
-              [label]="model.hidden ? 'Show' : 'Hide'"
-              (click)="toggleHide(model.id)"
-            />
-            <app-button
-              variant="none"
-              size="small"
-              [icon]="Icon.TRASH"
-              ariaLabel="Remove model"
-              (click)="removeModel(model.id)"
-            />
-          </li>
-        }
-      </ul>
-    }
+  <app-setting-row
+    label="Models"
+    description="The models this configuration can run. Refresh re-discovers them from the provider, replacing the list."
+  >
+    <app-button
+      [icon]="Icon.REFRESH"
+      [label]="discovering() ? 'Refreshing…' : 'Refresh'"
+      [disabled]="!isAvailable || discovering()"
+      (click)="refresh()"
+    />
+  </app-setting-row>
 
-    <div class="conn-editor__add-model">
+  @if (discoverDetail(); as detail) {
+    <p class="conn-editor__hint">{{ detail }}</p>
+  }
+
+  @if (connection().models.length > 0) {
+    <ul class="conn-editor__model-list">
+      @for (model of connection().models; track model.id) {
+        <li class="conn-editor__model">
+          <app-radio
+            [name]="'default-' + connection().id"
+            [checked]="model.id === connection().defaultModelId"
+            ariaLabel="Set as default model"
+            (checkedChange)="onDefaultChange(model.id, $event)"
+          />
+          <span class="conn-editor__model-text">
+            <span class="conn-editor__model-label">{{ model.label }}</span>
+            <span class="conn-editor__model-id">{{ model.id }}</span>
+          </span>
+          <span class="conn-editor__model-ctx">{{ formatContext(model.contextWindow) }}</span>
+          <app-button
+            variant="none"
+            size="small"
+            [icon]="Icon.TRASH"
+            ariaLabel="Remove model"
+            (click)="removeModel(model.id)"
+          />
+        </li>
+      }
+    </ul>
+  }
+
+  <app-setting-row
+    label="Add a model"
+    description="Add a model by its id when discovery does not list it."
+  >
+    <span class="conn-editor__controls">
       <app-text-field
+        class="conn-editor__wide"
         [value]="newModelDraft()"
-        placeholder="Add a model id (e.g. gpt-4o)"
+        placeholder="e.g. gpt-4o"
         (valueChange)="onNewModelInput($event)"
       />
       <app-button
@@ -135,21 +130,10 @@
         [disabled]="newModelDraft().trim().length === 0"
         (click)="addModel()"
       />
-    </div>
-
-    @if (connection().models.length > 0) {
-      <div class="conn-editor__field conn-editor__field--inline">
-        <span class="conn-editor__label">Default model</span>
-        <app-dropdown
-          [options]="modelOptions()"
-          [value]="connection().defaultModelId"
-          (valueChange)="setDefault($event)"
-        />
-      </div>
-    }
-  </div>
+    </span>
+  </app-setting-row>
 
   <div class="conn-editor__footer">
-    <app-button label="Remove connection" (click)="removeConnection()" />
+    <app-button [icon]="Icon.TRASH" label="Delete configuration" (click)="removeConnection()" />
   </div>
 </div>

@@ -37,78 +37,76 @@ type SettingsSectionId =
   | 'keyboard'
   | 'ai'
   | 'ai-security'
-  | 'ai-agents'
   | 'mission-control'
+  | 'ai-provider-anthropic'
+  | 'ai-provider-openai'
+  | 'ai-provider-google'
+  | 'ai-provider-deepseek'
+  | 'ai-provider-xai'
+  | 'ai-provider-ollama'
+  | 'ai-provider-custom'
   | 'language-servers'
   | 'security'
   | 'workspaces';
 
 /**
- * Describes a leaf beneath a settings navigation root: a label and the section content it shows.
+ * Describes a node in the settings navigation tree. A node is either a selectable leaf — it names the
+ * section content it shows through {@link sectionId} — or an expandable branch — it groups
+ * {@link children} and toggles their visibility without content of its own. Roots carry an {@link icon};
+ * deeper nodes do not. Nesting is arbitrary, so a branch (Providers) can sit beneath another branch
+ * (Artificial Intelligence).
  */
-interface SettingsNavItem {
+interface SettingsNavNode {
   /**
-   * Gets the label shown for the leaf.
+   * Gets the node's identifier, unique across the tree; it keys the node's row and its expansion.
+   */
+  readonly id: string;
+
+  /**
+   * Gets the label shown for the node.
    */
   readonly label: string;
 
   /**
-   * Gets the section whose content the leaf shows.
+   * Gets the icon shown for the node, when it has one (roots only).
    */
-  readonly sectionId: SettingsSectionId;
+  readonly icon?: Icon;
+
+  /**
+   * Gets the section content the node shows when selected, for a leaf; absent for a branch.
+   */
+  readonly sectionId?: SettingsSectionId;
+
+  /**
+   * Gets the node's children, for a branch; absent for a leaf.
+   */
+  readonly children?: readonly SettingsNavNode[];
 }
 
 /**
- * Describes a root category in the settings navigation. A root expands to reveal its leaves; when it
- * declares no {@link items}, it is given a single "General" leaf mapping to its own {@link id}.
- */
-interface SettingsNavSection {
-  /**
-   * Gets the identifier of the root, used to track its expansion.
-   */
-  readonly id: SettingsSectionId;
-
-  /**
-   * Gets the label shown for the root.
-   */
-  readonly label: string;
-
-  /**
-   * Gets the icon shown for the root.
-   */
-  readonly icon: Icon;
-
-  /**
-   * Gets the leaves beneath the root, or undefined for the default single "General" leaf.
-   */
-  readonly items?: readonly SettingsNavItem[];
-}
-
-/**
- * Carries the payload rendered into a settings navigation tree row. A "section" row is an expandable
- * root (a top-level category); an "item" row is a leaf beneath it that selects the content it names.
- * {@link target} is the root to toggle for a section row, or the section content to show for an item.
+ * Carries the payload rendered into a settings navigation tree row: its label, its icon (roots only),
+ * whether it is an expandable branch, and — for a leaf — the section content it selects.
  */
 interface SettingsTreeData {
-  /**
-   * Gets the kind of row: an expandable section root, or a selectable leaf item.
-   */
-  readonly kind: 'section' | 'item';
-
   /**
    * Gets the label shown for the row.
    */
   readonly label: string;
 
   /**
-   * Gets the row's target: the root id a section row toggles, or the section an item row shows.
-   */
-  readonly target: SettingsSectionId;
-
-  /**
-   * Gets the icon shown for the row, when it has one (section roots only).
+   * Gets the icon shown for the row, when it has one (roots only).
    */
   readonly icon?: Icon;
+
+  /**
+   * Gets a value indicating whether the row is an expandable branch (toggles) rather than a leaf.
+   */
+  readonly expandable: boolean;
+
+  /**
+   * Gets the section content a leaf row selects; absent for a branch row.
+   */
+  readonly sectionId?: SettingsSectionId;
 }
 
 /**
@@ -159,13 +157,13 @@ export class SettingsView {
     signal<SettingsSectionId>('appearance');
 
   /**
-   * Holds the ids of the section roots currently expanded in the navigation tree. The root containing
-   * the initially-shown section (Appearance, under Application) starts expanded so the selected leaf
-   * is visible.
+   * Holds the ids of the navigation nodes currently expanded in the tree. The root containing the
+   * initially-shown section (Appearance, under Application) starts expanded so the selected leaf is
+   * visible.
    */
-  private readonly expandedSections: WritableSignal<ReadonlySet<SettingsSectionId>> = signal<
-    ReadonlySet<SettingsSectionId>
-  >(new Set<SettingsSectionId>(['application']));
+  private readonly expandedNodes: WritableSignal<ReadonlySet<string>> = signal<ReadonlySet<string>>(
+    new Set<string>(['application']),
+  );
 
   /**
    * Gets whether any setting has a change awaiting an application restart.
@@ -184,37 +182,78 @@ export class SettingsView {
   public readonly isActive: InputSignal<boolean> = input<boolean>(false);
 
   /**
-   * Gets the sections offered by the settings navigation, in display order.
+   * Gets the settings navigation tree, in display order. Single-section categories carry one "General"
+   * leaf; Application and Artificial Intelligence group several, and the latter nests a Providers branch
+   * with a leaf per company.
    */
-  protected readonly sections: readonly SettingsNavSection[] = [
+  protected readonly sections: readonly SettingsNavNode[] = [
     {
       id: 'application',
       label: 'Application',
       icon: Icon.APPLICATION,
-      items: [
-        { label: 'General', sectionId: 'application' },
-        { label: 'Appearance', sectionId: 'appearance' },
-        { label: 'Keyboard', sectionId: 'keyboard' },
-        { label: 'Notifications', sectionId: 'notifications' },
-        { label: 'Security', sectionId: 'security' },
+      children: [
+        { id: 'application-general', label: 'General', sectionId: 'application' },
+        { id: 'application-appearance', label: 'Appearance', sectionId: 'appearance' },
+        { id: 'application-keyboard', label: 'Keyboard', sectionId: 'keyboard' },
+        { id: 'application-notifications', label: 'Notifications', sectionId: 'notifications' },
+        { id: 'application-security', label: 'Security', sectionId: 'security' },
       ],
     },
     {
       id: 'ai',
       label: 'Artificial Intelligence',
       icon: Icon.AGENT,
-      items: [
-        { label: 'General', sectionId: 'ai' },
-        { label: 'Security & Permissions', sectionId: 'ai-security' },
-        { label: 'Agents & Providers', sectionId: 'ai-agents' },
-        { label: 'Mission Control', sectionId: 'mission-control' },
+      children: [
+        { id: 'ai-general', label: 'General', sectionId: 'ai' },
+        { id: 'ai-security-leaf', label: 'Security & Permissions', sectionId: 'ai-security' },
+        { id: 'ai-mission-control', label: 'Mission Control', sectionId: 'mission-control' },
+        {
+          id: 'ai-providers',
+          label: 'Providers',
+          children: [
+            { id: 'ai-provider-anthropic', label: 'Anthropic', sectionId: 'ai-provider-anthropic' },
+            { id: 'ai-provider-openai', label: 'OpenAI', sectionId: 'ai-provider-openai' },
+            { id: 'ai-provider-google', label: 'Google', sectionId: 'ai-provider-google' },
+            { id: 'ai-provider-deepseek', label: 'DeepSeek', sectionId: 'ai-provider-deepseek' },
+            { id: 'ai-provider-xai', label: 'xAI', sectionId: 'ai-provider-xai' },
+            { id: 'ai-provider-ollama', label: 'Ollama', sectionId: 'ai-provider-ollama' },
+            { id: 'ai-provider-custom', label: 'Custom', sectionId: 'ai-provider-custom' },
+          ],
+        },
       ],
     },
-    { id: 'workspaces', label: 'Workspaces', icon: Icon.DIRECTORY },
-    { id: 'text-editor', label: 'Text Editor', icon: Icon.SETTINGS_TEXT_EDITOR },
-    { id: 'markdown', label: 'Markdown', icon: Icon.SETTINGS_MARKDOWN },
-    { id: 'terminal', label: 'Terminal', icon: Icon.TERMINAL },
-    { id: 'language-servers', label: 'Language Servers', icon: Icon.CODE_INLINE },
+    {
+      id: 'workspaces',
+      label: 'Workspaces',
+      icon: Icon.DIRECTORY,
+      children: [{ id: 'workspaces-general', label: 'General', sectionId: 'workspaces' }],
+    },
+    {
+      id: 'text-editor',
+      label: 'Text Editor',
+      icon: Icon.SETTINGS_TEXT_EDITOR,
+      children: [{ id: 'text-editor-general', label: 'General', sectionId: 'text-editor' }],
+    },
+    {
+      id: 'markdown',
+      label: 'Markdown',
+      icon: Icon.SETTINGS_MARKDOWN,
+      children: [{ id: 'markdown-general', label: 'General', sectionId: 'markdown' }],
+    },
+    {
+      id: 'terminal',
+      label: 'Terminal',
+      icon: Icon.TERMINAL,
+      children: [{ id: 'terminal-general', label: 'General', sectionId: 'terminal' }],
+    },
+    {
+      id: 'language-servers',
+      label: 'Language Servers',
+      icon: Icon.CODE_INLINE,
+      children: [
+        { id: 'language-servers-general', label: 'General', sectionId: 'language-servers' },
+      ],
+    },
   ];
 
   /**
@@ -226,7 +265,7 @@ export class SettingsView {
     if (target === null) {
       return;
     }
-    if (this.rootFor(target as SettingsSectionId) !== null) {
+    if (this.pathToSection(target as SettingsSectionId) !== null) {
       untracked((): void => this.showSection(target as SettingsSectionId));
     }
     untracked((): void => this.navigation.consume());
@@ -238,59 +277,23 @@ export class SettingsView {
   protected readonly selectedSection: Signal<SettingsSectionId> = this.section.asReadonly();
 
   /**
-   * Gets the breadcrumb trail shown above the content pane: the root label followed by the selected
-   * leaf's label (e.g. ["Application", "General"]), rendered as static, non-clickable crumbs.
+   * Gets the breadcrumb trail shown above the content pane: the labels along the path to the selected
+   * leaf (for example ["Application", "General"] or ["Artificial Intelligence", "Providers",
+   * "Anthropic"]), rendered as static, non-clickable crumbs.
    */
   protected readonly selectedTrail: Signal<readonly string[]> = computed((): readonly string[] => {
-    const current: SettingsSectionId = this.section();
-    for (const section of this.sections) {
-      for (const item of this.itemsOf(section)) {
-        if (item.sectionId === current) {
-          return [section.label, item.label];
-        }
-      }
-    }
-    return [];
+    const path: readonly SettingsNavNode[] | null = this.pathToSection(this.section());
+    return path === null ? [] : path.map((node: SettingsNavNode): string => node.label);
   });
 
   /**
-   * Gets the flattened navigation rows: each section as an expandable root, and — when the root is
-   * expanded — its leaves beneath it. A leaf's id combines its root and section so it is distinct from
-   * both its root and any leaf with the same content elsewhere.
+   * Gets the flattened navigation rows: every node in order, indented by depth, with a branch's children
+   * following it only while it is expanded.
    */
   protected readonly rows: Signal<readonly TreeRow[]> = computed((): readonly TreeRow[] => {
-    const expanded: ReadonlySet<SettingsSectionId> = this.expandedSections();
+    const expanded: ReadonlySet<string> = this.expandedNodes();
     const rows: TreeRow[] = [];
-    for (const section of this.sections) {
-      const isExpanded: boolean = expanded.has(section.id);
-      rows.push({
-        id: section.id,
-        depth: 0,
-        expandable: true,
-        expanded: isExpanded,
-        data: {
-          kind: 'section',
-          label: section.label,
-          target: section.id,
-          icon: section.icon,
-        } satisfies SettingsTreeData,
-      });
-      if (isExpanded) {
-        for (const item of this.itemsOf(section)) {
-          rows.push({
-            id: `${section.id}/${item.sectionId}`,
-            depth: 1,
-            expandable: false,
-            expanded: false,
-            data: {
-              kind: 'item',
-              label: item.label,
-              target: item.sectionId,
-            } satisfies SettingsTreeData,
-          });
-        }
-      }
-    }
+    this.appendRows(this.sections, 0, expanded, rows);
     return rows;
   });
 
@@ -298,9 +301,8 @@ export class SettingsView {
    * Gets the id of the selected navigation row: the leaf whose content is on show, or null when none.
    */
   protected readonly selectedRowId: Signal<string | null> = computed((): string | null => {
-    const current: SettingsSectionId = this.section();
-    const root: SettingsSectionId | null = this.rootFor(current);
-    return root === null ? null : `${root}/${current}`;
+    const path: readonly SettingsNavNode[] | null = this.pathToSection(this.section());
+    return path === null ? null : path[path.length - 1].id;
   });
 
   /**
@@ -313,73 +315,121 @@ export class SettingsView {
   }
 
   /**
-   * Handles a click on a navigation row: a section root toggles its expansion, while a leaf shows its
-   * section's content.
+   * Handles a click on a navigation row: a branch toggles its expansion, while a leaf shows its section's
+   * content.
    * @param row The clicked row.
    */
   protected onRowClick(row: TreeRow): void {
     const data: SettingsTreeData = this.dataOf(row);
-    if (data.kind === 'section') {
-      this.toggleSection(data.target);
-    } else {
-      this.log.debug('settings', 'Section selected', data.target);
-      this.section.set(data.target);
+    if (data.expandable) {
+      this.toggleNode(row.id);
+    } else if (data.sectionId !== undefined) {
+      this.log.debug('settings', 'Section selected', data.sectionId);
+      this.section.set(data.sectionId);
     }
   }
 
   /**
-   * Shows a section's content, expanding the root that contains it so the selected leaf is visible.
+   * Appends a node list to the flattened rows, recursing into each expanded branch.
+   * @param nodes The nodes to append.
+   * @param depth The depth of the nodes beneath the root.
+   * @param expanded The ids of the currently-expanded nodes.
+   * @param out The row list being built.
+   */
+  private appendRows(
+    nodes: readonly SettingsNavNode[],
+    depth: number,
+    expanded: ReadonlySet<string>,
+    out: TreeRow[],
+  ): void {
+    for (const node of nodes) {
+      const isBranch: boolean = (node.children?.length ?? 0) > 0;
+      const isExpanded: boolean = expanded.has(node.id);
+      out.push({
+        id: node.id,
+        depth,
+        expandable: isBranch,
+        expanded: isExpanded,
+        data: {
+          label: node.label,
+          icon: node.icon,
+          expandable: isBranch,
+          sectionId: node.sectionId,
+        } satisfies SettingsTreeData,
+      });
+      if (isBranch && isExpanded && node.children !== undefined) {
+        this.appendRows(node.children, depth + 1, expanded, out);
+      }
+    }
+  }
+
+  /**
+   * Shows a section's content, expanding every ancestor along the path to it so the selected leaf is
+   * visible.
    * @param id The identifier of the section to show.
    */
   private showSection(id: SettingsSectionId): void {
     this.log.debug('settings', 'Section shown via deep-link', id);
     this.section.set(id);
-    const root: SettingsSectionId | null = this.rootFor(id);
-    if (root !== null) {
-      this.expandedSections.update(
-        (current: ReadonlySet<SettingsSectionId>): ReadonlySet<SettingsSectionId> =>
-          new Set<SettingsSectionId>(current).add(root),
-      );
+    const path: readonly SettingsNavNode[] | null = this.pathToSection(id);
+    if (path === null) {
+      return;
     }
+    const ancestors: readonly string[] = path
+      .slice(0, -1)
+      .map((node: SettingsNavNode): string => node.id);
+    this.expandedNodes.update((current: ReadonlySet<string>): ReadonlySet<string> => {
+      const next: Set<string> = new Set<string>(current);
+      for (const ancestor of ancestors) {
+        next.add(ancestor);
+      }
+      return next;
+    });
   }
 
   /**
-   * Gets a root's leaves, substituting the default single "General" leaf when it declares none.
-   * @param section The root section.
-   * @returns Returns the root's leaves.
-   */
-  private itemsOf(section: SettingsNavSection): readonly SettingsNavItem[] {
-    return section.items ?? [{ label: 'General', sectionId: section.id }];
-  }
-
-  /**
-   * Finds the id of the root whose leaves include the given section content.
+   * Finds the path of nodes from a root down to the leaf showing the given section content.
    * @param id The section content to locate.
-   * @returns Returns the containing root's id, or null when no leaf shows that content.
+   * @param nodes The nodes to search (the whole tree by default).
+   * @param trail The nodes accumulated on the way down (empty at the root).
+   * @returns Returns the path root→leaf, or null when no leaf shows that content.
    */
-  private rootFor(id: SettingsSectionId): SettingsSectionId | null {
-    for (const section of this.sections) {
-      if (this.itemsOf(section).some((item: SettingsNavItem): boolean => item.sectionId === id)) {
-        return section.id;
+  private pathToSection(
+    id: SettingsSectionId,
+    nodes: readonly SettingsNavNode[] = this.sections,
+    trail: readonly SettingsNavNode[] = [],
+  ): readonly SettingsNavNode[] | null {
+    for (const node of nodes) {
+      const next: readonly SettingsNavNode[] = [...trail, node];
+      if (node.sectionId === id) {
+        return next;
+      }
+      if (node.children !== undefined) {
+        const found: readonly SettingsNavNode[] | null = this.pathToSection(
+          id,
+          node.children,
+          next,
+        );
+        if (found !== null) {
+          return found;
+        }
       }
     }
     return null;
   }
 
   /**
-   * Toggles a section root's expansion in the navigation tree.
-   * @param id The identifier of the section to toggle.
+   * Toggles a branch node's expansion in the navigation tree.
+   * @param id The identifier of the node to toggle.
    */
-  private toggleSection(id: SettingsSectionId): void {
-    this.expandedSections.update(
-      (current: ReadonlySet<SettingsSectionId>): ReadonlySet<SettingsSectionId> => {
-        const next: Set<SettingsSectionId> = new Set<SettingsSectionId>(current);
-        if (!next.delete(id)) {
-          next.add(id);
-        }
-        return next;
-      },
-    );
+  private toggleNode(id: string): void {
+    this.expandedNodes.update((current: ReadonlySet<string>): ReadonlySet<string> => {
+      const next: Set<string> = new Set<string>(current);
+      if (!next.delete(id)) {
+        next.add(id);
+      }
+      return next;
+    });
   }
 
   /**

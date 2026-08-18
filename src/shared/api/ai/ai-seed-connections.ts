@@ -81,7 +81,7 @@ export const SEED_CONNECTIONS: readonly AiConnection[] = [
   {
     id: CODEX_CONNECTION_ID,
     kind: 'openai',
-    label: 'OpenAI Codex',
+    label: 'Codex',
     auth: 'codex-login',
     models: CODEX_SEED_MODELS,
     defaultModelId: 'gpt-5-codex',
@@ -89,7 +89,7 @@ export const SEED_CONNECTIONS: readonly AiConnection[] = [
   {
     id: ANTHROPIC_KEY_CONNECTION_ID,
     kind: 'anthropic',
-    label: 'Anthropic (API key)',
+    label: 'API Key',
     auth: 'api-key',
     models: ANTHROPIC_SEED_MODELS,
     defaultModelId: 'claude-opus-4-8',
@@ -97,7 +97,7 @@ export const SEED_CONNECTIONS: readonly AiConnection[] = [
   {
     id: OLLAMA_CONNECTION_ID,
     kind: 'ollama',
-    label: 'Ollama (local)',
+    label: 'Local',
     auth: 'none',
     models: OLLAMA_SEED_MODELS,
     defaultModelId: 'qwen3:8b',

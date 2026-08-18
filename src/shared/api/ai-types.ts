@@ -51,11 +51,14 @@ export {
   DEFAULT_CLAUDE_EXECUTABLE,
 } from './ai/ai-provider-types';
 export type { AiProviderKind, AiAuthKind, AiConnection } from './ai/ai-connection-types';
-export type {
-  ClaudeAuthStatus,
-  ClaudeLoginPhase,
-  ClaudeLoginStatus,
-} from './ai/ai-login-types';
+export type { AuthMethod, ProviderPage } from './ai/ai-provider-catalog';
+export {
+  COMPANY_LABELS,
+  PROVIDER_PAGES,
+  providerPageForKind,
+  providerDisplayLabel,
+} from './ai/ai-provider-catalog';
+export type { ClaudeAuthStatus, ClaudeLoginPhase, ClaudeLoginStatus } from './ai/ai-login-types';
 export type { AiDiscoverModelsRequest, AiDiscoverModelsResult } from './ai/ai-discovery-types';
 export {
   SEED_CONNECTIONS,

@@ -1,5 +1,6 @@
 import { computed, effect, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import type { AiConnection, AiModelInfo, AiProviderId, AiProviderInfo } from '@shared/api/ai-types';
+import { providerDisplayLabel } from '@shared/api/ai-types';
 import { AiRuntime } from '../ai-runtime/ai-runtime';
 import { Log } from '@shared/angular/services/log/log';
 import { Settings } from '@shared/angular/services/settings/settings';
@@ -95,8 +96,18 @@ export class AgentEngine {
   public async loadProviders(
     connections: readonly AiConnection[] = this.settings.aiConnections(),
   ): Promise<void> {
-    const providers: readonly AiProviderInfo[] =
-      (await this.runtime.listProviders(connections)) ?? [];
+    const raw: readonly AiProviderInfo[] = (await this.runtime.listProviders(connections)) ?? [];
+    // Present each provider as `Company (Display Name)` (for example "Anthropic (Claude)"), composed
+    // from its connection's kind and label — the live-harness providers otherwise report a fixed label
+    // of their own ("Claude (Agent SDK)", "OpenAI Codex").
+    const providers: readonly AiProviderInfo[] = raw.map((info: AiProviderInfo): AiProviderInfo => {
+      const connection: AiConnection | undefined = connections.find(
+        (candidate: AiConnection): boolean => candidate.id === info.id,
+      );
+      return connection === undefined
+        ? info
+        : { ...info, label: providerDisplayLabel(connection.kind, connection.label) };
+    });
     this.providerList.set(providers);
     this.log.debug('AgentEngine', `Loaded ${providers.length} providers`);
     const current: AiProviderId = this.provider();

@@ -777,6 +777,12 @@ export class Icon {
   public static readonly WARNING: Icon = new Icon('ph ph-warning');
 
   /**
+   * Gets the filled warning-severity icon, used where a status warrants a solid, semantically-coloured
+   * badge (for example an unconfigured provider configuration).
+   */
+  public static readonly WARNING_FILL: Icon = new Icon('ph-fill ph-warning');
+
+  /**
    * Gets the information-severity icon.
    */
   public static readonly INFO: Icon = new Icon('ph ph-info');
@@ -790,6 +796,12 @@ export class Icon {
    * Gets the success icon shown when there are no problems.
    */
   public static readonly SUCCESS: Icon = new Icon('ph ph-check-circle');
+
+  /**
+   * Gets the filled success icon, used where a status warrants a solid, semantically-coloured badge (for
+   * example a working provider configuration).
+   */
+  public static readonly SUCCESS_FILL: Icon = new Icon('ph-fill ph-check-circle');
 
   /**
    * Gets the duotone Note icon used by markdown alerts.

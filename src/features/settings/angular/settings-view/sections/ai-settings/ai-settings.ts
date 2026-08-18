@@ -9,7 +9,8 @@ import {
   Signal,
   WritableSignal,
 } from '@angular/core';
-import type { AiAuthStatus, AiConnection, AiProviderKind } from '@shared/api/ai-types';
+import type { AiAuthStatus, AiConnection, AuthMethod, ProviderPage } from '@shared/api/ai-types';
+import { PROVIDER_PAGES } from '@shared/api/ai-types';
 import { ShellInfo } from '@shared/api/terminal-channels';
 import { AiConnections } from '@shared/angular/services/ai-connections/ai-connections';
 import { Log } from '@shared/angular/services/log/log';
@@ -27,31 +28,18 @@ import { Button } from '@shared/angular/components/forms/button/button';
 import { Icon } from '@shared/angular/icons/icon';
 
 /**
- * The provider-kind options offered when adding a connection.
- */
-const ADD_KIND_OPTIONS: readonly DropdownOption[] = [
-  { value: 'openai', label: 'OpenAI' },
-  { value: 'anthropic', label: 'Anthropic' },
-  { value: 'xai', label: 'xAI (Grok)' },
-  { value: 'google', label: 'Google (Gemini)' },
-  { value: 'deepseek', label: 'DeepSeek' },
-  { value: 'ollama', label: 'Ollama (local)' },
-  { value: 'openai-compatible', label: 'OpenAI-compatible' },
-  { value: 'custom', label: 'Custom' },
-];
-
-/**
  * Selects which slice of the AI settings a section instance renders, so the navigation can present
- * General, Security & Permissions, and Agents & Providers as distinct sub-sections.
+ * General, Security & Permissions, and a per-company provider page as distinct sub-sections.
  */
-export type AiSettingsView = 'general' | 'security' | 'agents';
+export type AiSettingsView = 'general' | 'security' | 'provider';
 
 /**
- * Represents the AI section of the settings view: a manager for the user's provider connections (add,
- * edit, reorder, and remove; each with its credential and model list) plus the default permission
- * posture and per-request token cap. Connection state is owned by {@link AiConnections}, which persists
- * the collection and keeps each key in the main process. The {@link view} input selects which slice —
- * General, Security & Permissions, or Agents & Providers — a given instance renders.
+ * Represents the AI section of the settings view. The {@link view} input selects the slice a given
+ * instance renders: General and Security & Permissions carry global agent settings, while `provider`
+ * renders one company's page (selected by {@link providerId}) — a "Configurations" list where the user
+ * adds one configuration per authentication method the company offers, each with its own credential and
+ * model list. Configuration state is owned by {@link AiConnections}, which persists the collection and
+ * keeps each key in the main process.
  */
 @Component({
   selector: 'app-ai-settings',
@@ -77,15 +65,14 @@ export class AiSettingsSection {
   protected readonly Icon: typeof Icon = Icon;
 
   /**
-   * Gets which slice of the AI settings to render (General, Security & Permissions, or Agents &
-   * Providers). Defaults to General.
+   * Gets which slice of the AI settings to render. Defaults to General.
    */
   public readonly view: InputSignal<AiSettingsView> = input<AiSettingsView>('general');
 
   /**
-   * Gets the kind options for the add-connection picker.
+   * Gets the id of the company page to render when {@link view} is `provider` (for example `anthropic`).
    */
-  protected readonly addKindOptions: readonly DropdownOption[] = ADD_KIND_OPTIONS;
+  public readonly providerId: InputSignal<string> = input<string>('');
 
   /**
    * Holds the connection-management service.
@@ -126,22 +113,30 @@ export class AiSettingsSection {
   protected readonly agentShell: Signal<string> = this.settings.aiAgentShell;
 
   /**
-   * Holds the ids of the currently-expanded connections.
+   * Holds the ids of the currently-expanded configurations.
    */
   private readonly expandedIds: WritableSignal<ReadonlySet<string>> = signal<ReadonlySet<string>>(
     new Set<string>(),
   );
 
   /**
-   * Holds the kind selected in the add-connection picker.
+   * Gets the company page to render, resolved from {@link providerId}, or undefined when it names no
+   * known page.
    */
-  private readonly addKind: WritableSignal<AiProviderKind> = signal<AiProviderKind>('openai');
+  protected readonly page: Signal<ProviderPage | undefined> = computed(
+    (): ProviderPage | undefined =>
+      PROVIDER_PAGES.find((page: ProviderPage): boolean => page.id === this.providerId()),
+  );
 
   /**
-   * Gets the configured connections.
+   * Gets the configurations shown on the current company page (every connection of its kind(s)).
    */
-  protected readonly connections: Signal<readonly AiConnection[]> =
-    this.connectionsService.connections;
+  protected readonly pageConnections: Signal<readonly AiConnection[]> = computed(
+    (): readonly AiConnection[] => {
+      const page: ProviderPage | undefined = this.page();
+      return page === undefined ? [] : this.connectionsService.connectionsForKinds(page.kinds);
+    },
+  );
 
   /**
    * Gets a value indicating whether the agent bridge is available.
@@ -149,28 +144,23 @@ export class AiSettingsSection {
   protected readonly isAvailable: boolean = this.connectionsService.isAvailable;
 
   /**
-   * Gets the kind selected in the add-connection picker.
-   */
-  protected readonly selectedAddKind: Signal<AiProviderKind> = this.addKind.asReadonly();
-
-  /**
-   * Initialises the section, refreshing every connection's auth status.
+   * Initialises the section, refreshing every configuration's auth status.
    */
   public constructor() {
     void this.connectionsService.refreshAllAuth();
   }
 
   /**
-   * Reports whether a connection is expanded.
+   * Reports whether a configuration is expanded.
    * @param id The connection id.
-   * @returns Returns true when the connection is expanded.
+   * @returns Returns true when the configuration is expanded.
    */
   protected isExpanded(id: string): boolean {
     return this.expandedIds().has(id);
   }
 
   /**
-   * Toggles a connection's expanded state.
+   * Toggles a configuration's expanded state.
    * @param id The connection id.
    */
   protected toggle(id: string): void {
@@ -184,7 +174,7 @@ export class AiSettingsSection {
   }
 
   /**
-   * Gets a connection's auth status.
+   * Gets a configuration's auth status.
    * @param id The connection id.
    * @returns Returns the status.
    */
@@ -193,19 +183,17 @@ export class AiSettingsSection {
   }
 
   /**
-   * Records the kind selected in the add-connection picker.
-   * @param kind The selected kind.
+   * Adds a configuration to the current company page through the given authentication method and expands
+   * it.
+   * @param method The authentication method the configuration is added through.
    */
-  protected onAddKindChange(kind: string): void {
-    this.addKind.set(kind as AiProviderKind);
-  }
-
-  /**
-   * Adds a connection of the selected kind and expands it.
-   */
-  protected addConnection(): void {
-    const connection: AiConnection = this.connectionsService.add(this.addKind());
-    this.log.info('settings.ai', 'Connection added', connection.id, connection.kind);
+  protected addConfiguration(method: AuthMethod): void {
+    const page: ProviderPage | undefined = this.page();
+    if (page === undefined) {
+      return;
+    }
+    const connection: AiConnection = this.connectionsService.add(page.createKind, method);
+    this.log.info('settings.ai', 'Configuration added', connection.id, connection.auth);
     this.expandedIds.update(
       (current: ReadonlySet<string>): ReadonlySet<string> =>
         new Set<string>(current).add(connection.id),
@@ -213,37 +201,15 @@ export class AiSettingsSection {
   }
 
   /**
-   * Restores the default connections (resets the seeds and keeps the user's own).
-   */
-  protected restoreDefaults(): void {
-    this.log.info('settings.ai', 'Default connections restored');
-    this.connectionsService.restoreDefaults();
-  }
-
-  /**
-   * Moves a connection up one place.
-   * @param id The connection id.
-   */
-  protected moveUp(id: string): void {
-    this.log.debug('settings.ai', 'Connection moved up', id);
-    this.connectionsService.move(id, -1);
-  }
-
-  /**
-   * Moves a connection down one place.
-   * @param id The connection id.
-   */
-  protected moveDown(id: string): void {
-    this.log.debug('settings.ai', 'Connection moved down', id);
-    this.connectionsService.move(id, 1);
-  }
-
-  /**
    * Persists the chosen agent shell.
    * @param value The chosen shell path, or the empty string for the default login shell.
    */
   protected onAgentShellChange(value: string): void {
-    this.log.info('settings.ai', 'Agent shell changed', value === '' ? 'default login shell' : value);
+    this.log.info(
+      'settings.ai',
+      'Agent shell changed',
+      value === '' ? 'default login shell' : value,
+    );
     this.settings.set('ai.agentShell', value);
   }
 }

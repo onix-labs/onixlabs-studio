@@ -6,7 +6,7 @@
         @if (node.icon) {
           <app-icon class="tree-icon" [icon]="node.icon" />
         }
-        <span class="tree-name" [class.bold]="node.kind === 'section'">{{ node.label }}</span>
+        <span class="tree-name">{{ node.label }}</span>
       </ng-template>
     </app-tree-view>
   </nav>
@@ -58,11 +58,29 @@
         @case ('ai-security') {
           <app-ai-settings view="security" />
         }
-        @case ('ai-agents') {
-          <app-ai-settings view="agents" />
-        }
         @case ('mission-control') {
           <app-settings-section sectionId="mission-control" />
+        }
+        @case ('ai-provider-anthropic') {
+          <app-ai-settings view="provider" providerId="anthropic" />
+        }
+        @case ('ai-provider-openai') {
+          <app-ai-settings view="provider" providerId="openai" />
+        }
+        @case ('ai-provider-google') {
+          <app-ai-settings view="provider" providerId="google" />
+        }
+        @case ('ai-provider-deepseek') {
+          <app-ai-settings view="provider" providerId="deepseek" />
+        }
+        @case ('ai-provider-xai') {
+          <app-ai-settings view="provider" providerId="xai" />
+        }
+        @case ('ai-provider-ollama') {
+          <app-ai-settings view="provider" providerId="ollama" />
+        }
+        @case ('ai-provider-custom') {
+          <app-ai-settings view="provider" providerId="custom" />
         }
         @case ('language-servers') {
           <app-settings-section sectionId="language-servers" />

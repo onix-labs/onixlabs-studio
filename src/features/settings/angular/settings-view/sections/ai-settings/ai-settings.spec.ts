@@ -37,10 +37,23 @@ describe('AiSettingsSection', () => {
   /**
    * Selects which slice of the settings the section renders, then applies the change.
    * @param view The view to show.
+   * @param providerId The company page to show when the view is `provider`.
    */
-  function show(view: 'general' | 'security' | 'agents'): void {
+  function show(view: 'general' | 'security' | 'provider', providerId: string = ''): void {
     fixture.componentRef.setInput('view', view);
+    fixture.componentRef.setInput('providerId', providerId);
     fixture.detectChanges();
+  }
+
+  /**
+   * Finds the add-configuration button with the given label on a provider page.
+   * @param label The button label (a method's button label, e.g. "Subscription").
+   * @returns Returns the button, or undefined.
+   */
+  function addButton(label: string): HTMLButtonElement | undefined {
+    return Array.from(host.querySelectorAll<HTMLButtonElement>('.ai-connections__add button')).find(
+      (button: HTMLButtonElement): boolean => button.textContent?.trim() === label,
+    );
   }
 
   beforeEach(async () => {
@@ -70,11 +83,17 @@ describe('AiSettingsSection', () => {
     expect(rowSelect('Permission posture')).toBeTruthy();
   });
 
-  it('render_whenAgentsView_rendersAnItemPerSeedConnection', () => {
-    show('agents');
-    const settings: Settings = TestBed.inject(Settings);
-    expect(items().length).toBe(settings.aiConnections().length);
-    expect(items().length).toBeGreaterThan(0);
+  it('render_whenProviderView_rendersAnItemPerConfigurationOfThatCompany', () => {
+    // The seeds carry two anthropic configurations: the Claude subscription and the API-key connection.
+    show('provider', 'anthropic');
+    expect(items().length).toBe(2);
+    expect(addButton('Subscription')).toBeTruthy();
+    expect(addButton('API Key')).toBeTruthy();
+  });
+
+  it('render_whenProviderViewHasNoConfigurations_rendersNone', () => {
+    show('provider', 'google');
+    expect(items().length).toBe(0);
   });
 
   it('posture_whenChanged_persistsToSettings', () => {
@@ -88,25 +107,23 @@ describe('AiSettingsSection', () => {
     expect(settings.aiPermissionPosture()).toBe('auto-all');
   });
 
-  it('add_whenClicked_appendsAConnectionAndExpandsIt', () => {
-    show('agents');
+  it('add_whenMethodClicked_appendsAConfigurationOfThatKindAndExpandsIt', () => {
+    show('provider', 'google');
     const settings: Settings = TestBed.inject(Settings);
     const before: number = settings.aiConnections().length;
 
-    const add: HTMLButtonElement | undefined = Array.from(
-      host.querySelectorAll<HTMLButtonElement>('button'),
-    ).find((button: HTMLButtonElement): boolean => button.textContent?.trim() === 'Add');
-    add?.click();
+    addButton('API Key')?.click();
     fixture.detectChanges();
 
     const after: readonly AiConnection[] = settings.aiConnections();
     expect(after.length).toBe(before + 1);
-    // The newly-added connection is expanded, so exactly one editor is rendered.
+    expect(after[after.length - 1].kind).toBe('google');
+    // The newly-added configuration is expanded, so exactly one editor is rendered.
     expect(host.querySelectorAll('app-ai-connection-editor').length).toBe(1);
   });
 
-  it('toggle_whenClicked_expandsTheConnectionEditor', () => {
-    show('agents');
+  it('toggle_whenClicked_expandsTheConfigurationEditor', () => {
+    show('provider', 'anthropic');
     expect(host.querySelectorAll('app-ai-connection-editor').length).toBe(0);
 
     const toggle: HTMLButtonElement | null =

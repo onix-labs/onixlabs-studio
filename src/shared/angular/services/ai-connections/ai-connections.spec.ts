@@ -37,6 +37,33 @@ describe('AiConnections', () => {
     expect(openai.id).not.toBe(openaiTwo.id);
   });
 
+  it('add_whenGivenAMethod_takesItsAuthLabelAndBaseUrl', () => {
+    const cloud: AiConnection = service.add('ollama', {
+      auth: 'api-key',
+      buttonLabel: 'Cloud',
+      defaultDisplayName: 'Cloud',
+      baseUrl: 'https://ollama.com',
+      hint: 'Ollama Cloud.',
+    });
+
+    expect(cloud.auth).toBe('api-key');
+    expect(cloud.label).toBe('Cloud');
+    expect(cloud.baseUrl).toBe('https://ollama.com');
+  });
+
+  it('connectionsForKinds_whenCalled_filtersByKind', () => {
+    // The seeds carry two anthropic connections (Claude subscription + API key) and one ollama.
+    const anthropic: readonly AiConnection[] = service.connectionsForKinds(['anthropic']);
+    expect(anthropic.length).toBe(2);
+    expect(anthropic.every((c: AiConnection): boolean => c.kind === 'anthropic')).toBe(true);
+
+    const custom: readonly AiConnection[] = service.connectionsForKinds([
+      'openai-compatible',
+      'custom',
+    ]);
+    expect(custom.length).toBe(0);
+  });
+
   it('update_whenCalled_patchesTheConnection', () => {
     const created: AiConnection = service.add('openai');
 
