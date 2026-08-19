@@ -22,6 +22,7 @@ import {
   type StreamPart,
 } from './ai-sdk-stream';
 import { logger } from '../logger';
+import { resolveOllamaBaseUrl } from './ollama-endpoint';
 import { buildRunPrompt } from './studio-tools';
 
 /**
@@ -109,20 +110,10 @@ function currentEnv(): Record<string, string | undefined> {
 }
 
 /**
- * Resolves a local Ollama server's OpenAI-compatible base URL from the environment. Ollama's standard
- * env var is `OLLAMA_HOST` (host[:port]); `OLLAMA_BASE_URL` lets the user point at a full URL directly.
- * @param env The environment to read (injected so the resolution is testable).
- * @returns Returns the resolved base URL.
+ * Re-exported from {@link import('./ollama-endpoint')}, where it now lives alongside the native-API
+ * origin resolver, so the callers that already import it from this module keep working.
  */
-export function resolveOllamaBaseUrl(env: Record<string, string | undefined>): string {
-  const explicit: string | undefined = env['OLLAMA_BASE_URL'];
-  if (explicit !== undefined && explicit.length > 0) {
-    return explicit.replace(/\/+$/, '');
-  }
-  const host: string = env['OLLAMA_HOST'] ?? '127.0.0.1:11434';
-  const origin: string = /^https?:\/\//.test(host) ? host : `http://${host}`;
-  return `${origin.replace(/\/+$/, '')}/v1`;
-}
+export { resolveOllamaBaseUrl };
 
 /**
  * The endpoint a connection's client talks to: the resolved base URL (or undefined to use the hosted

@@ -1,5 +1,6 @@
 import { MainContribution } from './main-contribution';
 import { dockerContribution } from './docker/docker.contribution';
+import { modelRuntimeContribution } from './model-runtime/model-runtime.contribution';
 import { systemMonitorContribution } from './system-monitor/system-monitor.contribution';
 
 /**
@@ -13,5 +14,6 @@ import { systemMonitorContribution } from './system-monitor/system-monitor.contr
  */
 export const mainContributions: readonly MainContribution[] = [
   dockerContribution,
+  modelRuntimeContribution,
   systemMonitorContribution,
 ];

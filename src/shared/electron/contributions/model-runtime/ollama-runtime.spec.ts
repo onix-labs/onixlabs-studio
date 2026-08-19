@@ -1,0 +1,243 @@
+import { describe, expect, it } from 'vitest';
+import { LocalModel, ModelDetails, RunningModel } from '@shared/api/model-runtime-types';
+import { OllamaRuntime, readContextLength } from './ollama-runtime';
+import { OllamaResponse, OllamaTransport } from './ollama-transport';
+
+/**
+ * A fake transport recording requests, so the runtime's mapping and server-absent handling can be
+ * driven without a running Ollama.
+ */
+class FakeTransport implements OllamaTransport {
+  public readonly requests: { method: string; path: string; body?: unknown }[] = [];
+  public responder: (method: string, path: string) => Promise<OllamaResponse> =
+    (): Promise<OllamaResponse> => Promise.reject(new Error('ECONNREFUSED'));
+
+  public request(method: string, path: string, body?: unknown): Promise<OllamaResponse> {
+    this.requests.push({ method, path, body });
+    return this.responder(method, path);
+  }
+}
+
+/**
+ * Builds a runtime over a fresh fake transport.
+ */
+function runtimeWith(): { runtime: OllamaRuntime; transport: FakeTransport } {
+  const transport: FakeTransport = new FakeTransport();
+  return { runtime: new OllamaRuntime('http://127.0.0.1:11434', transport), transport };
+}
+
+/**
+ * A responder answering a single path with a 200 JSON body and rejecting everything else.
+ */
+function respondJson(
+  path: string,
+  body: unknown,
+): (method: string, path: string) => Promise<OllamaResponse> {
+  return (_method: string, requested: string): Promise<OllamaResponse> =>
+    requested === path
+      ? Promise.resolve({ statusCode: 200, body: JSON.stringify(body) })
+      : Promise.reject(new Error('unexpected path'));
+}
+
+describe('OllamaRuntime.status', () => {
+  it('reports the version when the server answers', async () => {
+    const { runtime, transport } = runtimeWith();
+    transport.responder = respondJson('/api/version', { version: '0.5.7' });
+
+    expect(await runtime.status()).toEqual({ available: true, version: '0.5.7' });
+  });
+
+  it('reports unavailable rather than throwing when the server is absent', async () => {
+    const { runtime } = runtimeWith();
+
+    expect(await runtime.status()).toEqual({ available: false });
+  });
+});
+
+describe('OllamaRuntime.list', () => {
+  it('maps the tags response onto normalised local models', async () => {
+    const { runtime, transport } = runtimeWith();
+    transport.responder = respondJson('/api/tags', {
+      models: [
+        {
+          name: 'llama3.2:3b',
+          size: 2_019_393_189,
+          digest: 'abc123',
+          modified_at: '2026-08-01T10:00:00Z',
+          details: { family: 'llama', parameter_size: '3.2B', quantization_level: 'Q4_K_M' },
+        },
+      ],
+    });
+
+    const models: LocalModel[] = await runtime.list();
+
+    expect(models).toEqual([
+      {
+        name: 'llama3.2:3b',
+        size: 2_019_393_189,
+        digest: 'abc123',
+        modifiedAt: '2026-08-01T10:00:00Z',
+        family: 'llama',
+        parameterSize: '3.2B',
+        quantization: 'Q4_K_M',
+      },
+    ]);
+  });
+
+  it('defaults every unreported field rather than emitting undefined', async () => {
+    const { runtime, transport } = runtimeWith();
+    transport.responder = respondJson('/api/tags', { models: [{ model: 'bare:latest' }] });
+
+    expect(await runtime.list()).toEqual([
+      {
+        name: 'bare:latest',
+        size: 0,
+        digest: '',
+        modifiedAt: '',
+        family: '',
+        parameterSize: '',
+        quantization: '',
+      },
+    ]);
+  });
+
+  it('returns an empty list when the server is absent', async () => {
+    const { runtime } = runtimeWith();
+
+    expect(await runtime.list()).toEqual([]);
+  });
+
+  it('returns an empty list when the server answers with a non-2xx status', async () => {
+    const { runtime, transport } = runtimeWith();
+    transport.responder = (): Promise<OllamaResponse> =>
+      Promise.resolve({ statusCode: 500, body: 'boom' });
+
+    expect(await runtime.list()).toEqual([]);
+  });
+
+  it('returns an empty list when the body is not valid JSON', async () => {
+    const { runtime, transport } = runtimeWith();
+    transport.responder = (): Promise<OllamaResponse> =>
+      Promise.resolve({ statusCode: 200, body: '<html>not json</html>' });
+
+    expect(await runtime.list()).toEqual([]);
+  });
+});
+
+describe('OllamaRuntime.running', () => {
+  it('maps the ps response, carrying the VRAM split through', async () => {
+    const { runtime, transport } = runtimeWith();
+    transport.responder = respondJson('/api/ps', {
+      models: [
+        {
+          name: 'llama3.2:3b',
+          size: 4_000_000,
+          size_vram: 4_000_000,
+          expires_at: '2026-08-19T12:05:00Z',
+        },
+        { name: 'cpu-bound:latest', size: 4_000_000, size_vram: 0 },
+      ],
+    });
+
+    const running: RunningModel[] = await runtime.running();
+
+    expect(running).toEqual([
+      {
+        name: 'llama3.2:3b',
+        size: 4_000_000,
+        sizeVram: 4_000_000,
+        expiresAt: '2026-08-19T12:05:00Z',
+      },
+      { name: 'cpu-bound:latest', size: 4_000_000, sizeVram: 0, expiresAt: '' },
+    ]);
+  });
+
+  it('returns an empty list when the server is absent', async () => {
+    const { runtime } = runtimeWith();
+
+    expect(await runtime.running()).toEqual([]);
+  });
+});
+
+describe('OllamaRuntime.show', () => {
+  it('maps the show response and extracts the context length', async () => {
+    const { runtime, transport } = runtimeWith();
+    transport.responder = respondJson('/api/show', {
+      details: {
+        format: 'gguf',
+        family: 'llama',
+        parameter_size: '3.2B',
+        quantization_level: 'Q4_K_M',
+      },
+      capabilities: ['completion', 'tools'],
+      model_info: { 'general.architecture': 'llama', 'llama.context_length': 131_072 },
+    });
+
+    const details: ModelDetails | null = await runtime.show('llama3.2:3b');
+
+    expect(details).toEqual({
+      name: 'llama3.2:3b',
+      family: 'llama',
+      parameterSize: '3.2B',
+      quantization: 'Q4_K_M',
+      format: 'gguf',
+      contextLength: 131_072,
+      capabilities: ['completion', 'tools'],
+    });
+  });
+
+  it('names the model in the body under both the new and legacy fields', async () => {
+    const { runtime, transport } = runtimeWith();
+    transport.responder = respondJson('/api/show', {});
+
+    await runtime.show('llama3.2:3b');
+
+    expect(transport.requests[0]?.body).toEqual({ model: 'llama3.2:3b', name: 'llama3.2:3b' });
+  });
+
+  it('resolves null when the model is unknown', async () => {
+    const { runtime, transport } = runtimeWith();
+    transport.responder = (): Promise<OllamaResponse> =>
+      Promise.resolve({ statusCode: 404, body: '{"error":"model not found"}' });
+
+    expect(await runtime.show('ghost:latest')).toBeNull();
+  });
+});
+
+describe('OllamaRuntime.remove', () => {
+  it('reports success on a 2xx', async () => {
+    const { runtime, transport } = runtimeWith();
+    transport.responder = (): Promise<OllamaResponse> =>
+      Promise.resolve({ statusCode: 200, body: '' });
+
+    expect(await runtime.remove('llama3.2:3b')).toBe(true);
+    expect(transport.requests[0]).toMatchObject({ method: 'DELETE', path: '/api/delete' });
+  });
+
+  it('reports failure on a non-2xx', async () => {
+    const { runtime, transport } = runtimeWith();
+    transport.responder = (): Promise<OllamaResponse> =>
+      Promise.resolve({ statusCode: 404, body: '' });
+
+    expect(await runtime.remove('ghost:latest')).toBe(false);
+  });
+
+  it('reports failure rather than throwing when the server is absent', async () => {
+    const { runtime } = runtimeWith();
+
+    expect(await runtime.remove('llama3.2:3b')).toBe(false);
+  });
+});
+
+describe('readContextLength', () => {
+  it('finds the key whatever the architecture prefix is', () => {
+    expect(readContextLength({ 'qwen2.context_length': 32_768 })).toBe(32_768);
+    expect(readContextLength({ 'gemma3.context_length': 8_192 })).toBe(8_192);
+  });
+
+  it('returns undefined when there is no context length, or it is not a number', () => {
+    expect(readContextLength(undefined)).toBeUndefined();
+    expect(readContextLength({ 'general.architecture': 'llama' })).toBeUndefined();
+    expect(readContextLength({ 'llama.context_length': 'lots' })).toBeUndefined();
+  });
+});
