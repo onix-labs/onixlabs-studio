@@ -1,6 +1,8 @@
 import { NgTemplateOutlet } from '@angular/common';
-import { ChangeDetectionStrategy, Component, input, InputSignal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, input, InputSignal } from '@angular/core';
+import { DockAutoHide } from '../../../services/dock-layout/dock-auto-hide';
 import {
+  axisOf,
   DockNode as DockTreeNode,
   DockSide,
   isStackNode,
@@ -32,6 +34,12 @@ const COLLAPSED_FLEX: string = '0 0 1.875rem';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class DockNode {
+  /**
+   * Holds the auto-hide store, consulted so the pane whose peek is open is lifted above its sibling
+   * strips instead of being overpainted by whichever of them renders later.
+   */
+  private readonly autoHide: DockAutoHide = inject(DockAutoHide);
+
   /**
    * Gets the flex shorthand sizing a collapsed pane to a fixed thin strip.
    */
@@ -70,18 +78,56 @@ export class DockNode {
   }
 
   /**
-   * Resolves the slot edge a collapsed child hugs within its split, which orients its strip and the
-   * direction its peek opens. Row splits hug the left edge for the first child and the right for the
+   * Resolves the slot edge a child hugs within its split, which orients a collapsed strip and the
+   * direction its peek opens. A collapsed stack that remembers the edge it was collapsed against
+   * keeps it, so rearranging the tree around a gutter never re-homes it — but only while that edge
+   * still runs along this split's axis, because a remembered `right` means nothing in a column. The
+   * fallback is positional: row splits hug the left edge for the first child and the right for the
    * rest; column splits hug the top for the first child and the bottom for the rest.
+   * @param child The child whose edge is being resolved.
    * @param dir The orientation of the parent split.
    * @param index The index of the child within the split.
-   * @returns Returns the edge the collapsed strip hugs.
+   * @returns Returns the edge the child hugs.
    */
-  protected collapsedSide(dir: SplitDirection, index: number): DockSide {
-    if (dir === 'row') {
-      return index === 0 ? 'left' : 'right';
+  protected sideOf(child: DockTreeNode, dir: SplitDirection, index: number): DockSide {
+    if (isStackNode(child) && child.side !== undefined && axisOf(child.side) === dir) {
+      return child.side;
     }
-    return index === 0 ? 'top' : 'bottom';
+    return dir === 'row' ? (index === 0 ? 'left' : 'right') : index === 0 ? 'top' : 'bottom';
+  }
+
+  /**
+   * Determines whether a pane should be pushed to the end of its split by an auto margin. Panes
+   * normally reach their edge because a growing sibling fills everything before them — but a split
+   * whose every child is a collapsed strip has no grower, so without this the strips bunch up at the
+   * start and a "bottom" gutter sits at the top of a column of dead space (its peek then opens
+   * upward into nothing). The first pane whose edge is the split's end edge, and every pane after it,
+   * are pushed down (or across) to where they claim to be.
+   * @param split The split being rendered.
+   * @param index The index of the child within the split.
+   * @returns Returns true when the pane starts the end-hugging run of an all-collapsed split.
+   */
+  protected isEndAnchored(split: SplitNode, index: number): boolean {
+    if (
+      index === 0 ||
+      split.children.some((child: DockTreeNode): boolean => !this.isCollapsed(child))
+    ) {
+      return false;
+    }
+    const endSide: DockSide = split.dir === 'row' ? 'right' : 'bottom';
+    const first: number = split.children.findIndex(
+      (child: DockTreeNode, at: number): boolean => this.sideOf(child, split.dir, at) === endSide,
+    );
+    return first === index;
+  }
+
+  /**
+   * Determines whether a node is the stack whose peek is currently flown out.
+   * @param node The node to test.
+   * @returns Returns true when the node is the peeking stack; otherwise, false.
+   */
+  protected isPeeking(node: DockTreeNode): boolean {
+    return isStackNode(node) && this.autoHide.flyoutStackId() === node.id;
   }
 
   /**

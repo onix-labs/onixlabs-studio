@@ -1,5 +1,10 @@
-import { DockNode, isSplitNode, reserveNodeIds } from './dock-node';
+import { DockNode, DockSide, isSplitNode, reserveNodeIds } from './dock-node';
 import { findPrimaryStack, firstStackOfRole } from './dock-tree';
+
+/**
+ * The dock sides a persisted {@link StackNode.side} may carry, used to reject hand-edited storage.
+ */
+const DOCK_SIDES: readonly DockSide[] = ['left', 'right', 'top', 'bottom'];
 
 /**
  * Rebuilds a dock layout tree from a value read out of persistence: validates its structure, prunes it
@@ -53,6 +58,7 @@ function isPersistedNode(value: unknown): value is DockNode {
       node['panels'].every((panel: unknown): boolean => typeof panel === 'string') &&
       (node['active'] === null || typeof node['active'] === 'string') &&
       (node['collapsed'] === undefined || typeof node['collapsed'] === 'boolean') &&
+      (node['side'] === undefined || DOCK_SIDES.includes(node['side'] as DockSide)) &&
       (node['primary'] === undefined || typeof node['primary'] === 'boolean')
     );
   }

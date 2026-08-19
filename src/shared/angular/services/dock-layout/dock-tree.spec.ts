@@ -25,6 +25,7 @@ import {
   reorderTab,
   replaceNode,
   setActive,
+  setCollapsed,
   setSizes,
   splitStack,
   splitWellBeside,
@@ -257,6 +258,31 @@ describe('dock-tree', () => {
       expect(findStackOfPanel(result, 'agent')).not.toBeNull();
       expect(firstStackOfRole(result, 'document')).toBeNull();
     });
+
+    it('pruneStack_whenTheOnlyWellEmptiesButThePrimaryToolIsCollapsed_keepsTheWell', () => {
+      // Same shape as above, except the agent has been auto-hidden to a gutter. A strip cannot fill
+      // the space the well would give up, so pruning here would leave the centre holding nothing but
+      // two thin strips — the well is kept instead, and the gutter stays put beside it.
+      const agent: StackNode = { ...mkStack('tool', ['agent'], true), collapsed: true };
+      const well: StackNode = mkStack('document', []);
+      const tree: DockNode = mkSplit('row', [well, agent]);
+
+      expect(pruneStack(tree, well)).toBe(tree);
+    });
+
+    it('pruneStack_whenACollapsedPrimaryHoldsTheCentreButAnotherWellIsOpen_stillPrunes', () => {
+      // The collapsed primary is discounted only as a last resort home; a real well elsewhere is
+      // still a home, so the empty well prunes as it always did.
+      const agent: StackNode = { ...mkStack('tool', ['agent'], true), collapsed: true };
+      const empty: StackNode = mkStack('document', []);
+      const open: StackNode = mkStack('document', ['doc']);
+      const tree: DockNode = mkSplit('row', [empty, open, agent]);
+
+      const result: DockNode = pruneStack(tree, empty);
+
+      expect(findNode(result, empty.id)).toBeNull();
+      expect(findStackOfPanel(result, 'doc')).not.toBeNull();
+    });
   });
 
   describe('findPrimaryStack', () => {
@@ -349,6 +375,33 @@ describe('dock-tree', () => {
       expect(findStackOfPanel(refilled, 'doc')).toBeNull();
       expect(firstStackOfRole(refilled, 'document')).toBeNull();
     });
+
+    it('splitWellBeside_whenTheToolIsCollapsedFirst_keepsTheWellAndTheGuttersEdge', () => {
+      // The reported bug, end to end: the agent fills the centre, a document splits it 50/50, the
+      // agent is auto-hidden to the right-hand gutter, then the document is closed. The well used to
+      // prune, promoting the gutter into the column below and flipping it to a strip along the top.
+      // Now the empty well stays, the split survives, and the gutter keeps its remembered edge.
+      const centre: StackNode = mkStack('tool', ['agent'], true);
+      const tree: DockNode = mkSplit('row', [mkStack('tool', ['files']), centre]);
+
+      const split: DockNode = splitWellBeside(tree, centre.id, 'doc');
+      const hidden: DockNode = setCollapsed(split, centre.id, true, 'right');
+      const closed: DockNode = removeFromLayout(hidden, 'doc');
+
+      const agent: StackNode = asStack(findStackOfPanel(closed, 'agent'));
+      const well: StackNode = asStack(firstStackOfRole(closed, 'document'));
+      expect(agent.collapsed).toBe(true);
+      expect(agent.side).toBe('right');
+      expect(well.panels).toEqual([]);
+      // The well and the gutter are still siblings in the same row, so the centre keeps its space.
+      const inner: DockNode = (closed as SplitNode).children[1];
+      expect(isSplitNode(inner)).toBe(true);
+      expect((inner as SplitNode).dir).toBe('row');
+      expect((inner as SplitNode).children.map((child: DockNode): string => child.id)).toEqual([
+        well.id,
+        agent.id,
+      ]);
+    });
   });
 
   describe('tabInto', () => {
@@ -385,6 +438,50 @@ describe('dock-tree', () => {
       const tree: DockNode = mkSplit('row', [stack, mkStack('document', ['doc'])]);
 
       expect(setActive(tree, stack.id, 'missing')).toBe(tree);
+    });
+  });
+
+  describe('setCollapsed', () => {
+    it('setCollapsed_whenCollapsingAgainstAnEdge_remembersIt', () => {
+      const stack: StackNode = mkStack('tool', ['agent']);
+      const tree: DockNode = mkSplit('row', [mkStack('document', ['doc']), stack]);
+
+      const collapsed: StackNode = asStack(
+        findNode(setCollapsed(tree, stack.id, true, 'right'), stack.id),
+      );
+
+      expect(collapsed.collapsed).toBe(true);
+      expect(collapsed.side).toBe('right');
+    });
+
+    it('setCollapsed_whenCollapsingWithNoEdgeGiven_recordsNone', () => {
+      const stack: StackNode = mkStack('tool', ['agent']);
+      const tree: DockNode = mkSplit('row', [mkStack('document', ['doc']), stack]);
+
+      const collapsed: StackNode = asStack(findNode(setCollapsed(tree, stack.id, true), stack.id));
+
+      expect(collapsed.collapsed).toBe(true);
+      expect(collapsed.side).toBeUndefined();
+    });
+
+    it('setCollapsed_whenExpanding_forgetsTheRememberedEdge', () => {
+      const stack: StackNode = mkStack('tool', ['agent']);
+      const tree: DockNode = mkSplit('row', [mkStack('document', ['doc']), stack]);
+      const hidden: DockNode = setCollapsed(tree, stack.id, true, 'right');
+
+      const expanded: StackNode = asStack(
+        findNode(setCollapsed(hidden, stack.id, false), stack.id),
+      );
+
+      expect(expanded.collapsed).toBe(false);
+      expect(expanded.side).toBeUndefined();
+    });
+
+    it('setCollapsed_whenDocumentWell_isIgnored', () => {
+      const well: StackNode = mkStack('document', ['doc']);
+      const tree: DockNode = mkSplit('row', [mkStack('tool', ['t']), well]);
+
+      expect(setCollapsed(tree, well.id, true, 'left')).toBe(tree);
     });
   });
 

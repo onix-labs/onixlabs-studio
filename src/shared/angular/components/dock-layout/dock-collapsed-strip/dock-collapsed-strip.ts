@@ -41,6 +41,12 @@ const DEFAULT_FLYOUT_HEIGHT: number = 230;
 const MINIMUM_FLYOUT_SIZE: number = 180;
 
 /**
+ * The gap, in pixels, kept between the flyout and the far edge of the surface that clips it, matching
+ * the gap the stylesheet leaves between the flyout and its strip.
+ */
+const FLYOUT_EDGE_GAP: number = 6;
+
+/**
  * Renders a collapsed tool stack as a thin strip in the slot the stack occupies, listing one tab
  * per panel. Clicking a tab flies the stack out as a peek that opens inward over the layout, where
  * its panels can be activated, closed, or the stack docked (expanded) again. The strip is oriented
@@ -101,6 +107,12 @@ export class DockCollapsedStrip {
    * Holds the user-resized flyout extent in pixels, or null to use the captured docked size.
    */
   private readonly resized: WritableSignal<number | null> = signal<number | null>(null);
+
+  /**
+   * Holds the room the flyout has to open into, in pixels along its resizable axis, measured when the
+   * peek opens; null when it could not be measured (no layout, as under a bare unit test).
+   */
+  private readonly room: WritableSignal<number | null> = signal<number | null>(null);
 
   /**
    * Gets the collapsed stack this strip renders.
@@ -170,10 +182,10 @@ export class DockCollapsedStrip {
   );
 
   /**
-   * Gets the flyout's resizable extent in pixels: the live resized value when present, otherwise the
-   * captured docked size for the resizable axis, falling back to a default.
+   * Gets the flyout's preferred resizable extent in pixels: the live resized value when present,
+   * otherwise the captured docked size for the resizable axis, falling back to a default.
    */
-  protected readonly flyoutSize: Signal<number> = computed((): number => {
+  private readonly preferredSize: Signal<number> = computed((): number => {
     const resized: number | null = this.resized();
     if (resized !== null) {
       return resized;
@@ -186,11 +198,74 @@ export class DockCollapsedStrip {
   });
 
   /**
-   * Flies the stack out (or toggles the peek closed) on the chosen panel.
+   * Gets the flyout's resizable extent in pixels, capped at the room it actually has to open into.
+   * A strip restored at its docked size can easily be wider or taller than the space left beside it
+   * — and since the flyout is clipped by the surface it opens over, an uncapped one is not merely
+   * cramped but invisible. A shrunken panel the user can read beats a hidden one.
+   */
+  protected readonly flyoutSize: Signal<number> = computed((): number => {
+    const room: number | null = this.room();
+    return room === null ? this.preferredSize() : Math.min(this.preferredSize(), room);
+  });
+
+  /**
+   * Flies the stack out (or toggles the peek closed) on the chosen panel, measuring the room it has
+   * first so it opens no larger than the space it can be seen in.
    * @param panelId The identifier of the panel to peek.
    */
   protected peek(panelId: string): void {
+    this.room.set(this.measureRoom());
     this.autoHide.showFlyout(this.stack().id, panelId);
+  }
+
+  /**
+   * Measures how far the flyout may extend from the strip before it runs into the edge of the surface
+   * that clips it — the nearest scroll-or-clip ancestor, which is the dock pane the peek overlays.
+   * @returns Returns the available extent in pixels, or null when there is nothing to measure.
+   */
+  private measureRoom(): number | null {
+    const host: HTMLElement = this.hostElement.nativeElement;
+    const clip: HTMLElement | null = this.clippingAncestor(host);
+    if (clip === null || typeof host.getBoundingClientRect !== 'function') {
+      return null;
+    }
+    const strip: DOMRect = host.getBoundingClientRect();
+    const bounds: DOMRect = clip.getBoundingClientRect();
+    // The flyout opens away from the edge the strip hugs, so the room is whatever lies on the other
+    // side of the strip, less the gap the stylesheet leaves at each end.
+    const room: number =
+      this.side() === 'left'
+        ? bounds.right - strip.right
+        : this.side() === 'right'
+          ? strip.left - bounds.left
+          : this.side() === 'top'
+            ? bounds.bottom - strip.bottom
+            : strip.top - bounds.top;
+    return Math.max(0, room - FLYOUT_EDGE_GAP * 2);
+  }
+
+  /**
+   * Walks up from the strip to the nearest ancestor that clips its overflow, which is the surface the
+   * peek is confined to.
+   * @param from The element to walk up from.
+   * @returns Returns the clipping ancestor, or null when none clips (or styles cannot be read).
+   */
+  private clippingAncestor(from: HTMLElement): HTMLElement | null {
+    const view: Window | null = this.document.defaultView;
+    if (view === null || typeof view.getComputedStyle !== 'function') {
+      return null;
+    }
+    for (
+      let element: HTMLElement | null = from.parentElement;
+      element !== null;
+      element = element.parentElement
+    ) {
+      const style: CSSStyleDeclaration = view.getComputedStyle(element);
+      if (style.overflowX !== 'visible' || style.overflowY !== 'visible') {
+        return element;
+      }
+    }
+    return null;
   }
 
   /**

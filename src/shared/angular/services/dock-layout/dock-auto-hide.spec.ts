@@ -56,6 +56,25 @@ describe('DockAutoHide', () => {
     expect(findNode(state.layout(), id)).not.toBeNull();
   });
 
+  it('pin_whenGivenTheEdgeItHugs_recordsItOnTheStack', () => {
+    const id: string = stackId('agent');
+
+    autoHide.pin(id, 'right');
+
+    const stack: StackNode | null = findStackOfPanel(state.layout(), 'agent');
+    expect(stack?.side).toBe('right');
+  });
+
+  it('unpin_whenCalled_forgetsTheRecordedEdge', () => {
+    const id: string = stackId('agent');
+    autoHide.pin(id, 'right');
+
+    autoHide.unpin(id);
+
+    const stack: StackNode | null = findStackOfPanel(state.layout(), 'agent');
+    expect(stack?.side).toBeUndefined();
+  });
+
   it('pin_whenDocumentWell_isIgnored', () => {
     const doc: string = seedDocument();
 

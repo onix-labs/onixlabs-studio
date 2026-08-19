@@ -243,9 +243,11 @@ export class DockState {
    * Collapses or expands a tool stack in place, keeping its slot and weight so it restores exactly.
    * @param stackId The identifier of the stack to collapse or expand.
    * @param collapsed Whether the stack should be collapsed.
+   * @param side The edge the stack is hugging as it collapses, remembered so its strip keeps that
+   * edge when the tree is rearranged around it; omitted when the edge is unknown.
    */
-  public setCollapsed(stackId: string, collapsed: boolean): void {
-    this.commit(setCollapsed(this.tree(), stackId, collapsed));
+  public setCollapsed(stackId: string, collapsed: boolean, side?: DockSide): void {
+    this.commit(setCollapsed(this.tree(), stackId, collapsed, side));
   }
 
   /**

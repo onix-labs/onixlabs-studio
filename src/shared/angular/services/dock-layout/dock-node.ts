@@ -87,6 +87,16 @@ export interface StackNode {
   readonly collapsed?: boolean;
 
   /**
+   * Gets the edge the stack hugged when it collapsed, remembered so its strip keeps that edge as the
+   * tree is rearranged around it. Without it a strip's edge is purely positional — read off its
+   * parent split's orientation and its index — so removing a sibling (which promotes a single-child
+   * split) silently re-homes a right-hand gutter to the top. The remembered edge is honoured only
+   * while it still runs along its parent split's axis, since a cross-axis move makes it meaningless;
+   * the slot's position then decides again. Absent on expanded stacks.
+   */
+  readonly side?: DockSide;
+
+  /**
    * Gets whether this stack is the layout's primary (centre) slot. Exactly one stack carries the
    * flag: the centre document well. The primary slot is special in two ways — it is never pruned
    * away (when emptied it reverts to an empty document well rather than vanishing, so the centre
@@ -189,6 +199,16 @@ export function mkSplit(
     children: [...children],
     sizes: sizes !== undefined ? [...sizes] : children.map((): number => 1),
   };
+}
+
+/**
+ * Resolves the split orientation a dock side runs along: the horizontal sides belong to a `row`
+ * split, the vertical sides to a `col` split.
+ * @param side The side to resolve.
+ * @returns Returns `row` for the `left` and `right` sides; otherwise, `col`.
+ */
+export function axisOf(side: DockSide): SplitDirection {
+  return side === 'left' || side === 'right' ? 'row' : 'col';
 }
 
 /**

@@ -2,7 +2,7 @@ import { inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { Log } from '@shared/angular/services/log/log';
 import { DockGeometry } from './dock-geometry';
 import { Rect } from './dock-legality';
-import { DockNode, isStackNode } from './dock-node';
+import { DockNode, DockSide, isStackNode } from './dock-node';
 import { DockState } from './dock-state';
 import { findNode } from './dock-tree';
 
@@ -62,22 +62,27 @@ export class DockAutoHide {
   public readonly flyoutStackId: Signal<string | null> = this.flyout.asReadonly();
 
   /**
-   * Collapses a tool stack to a strip in its slot. The call is ignored for document wells and
+   * Collapses a tool stack to a strip in its slot, remembering the edge it was hugging so the strip
+   * keeps that edge as the tree is rearranged around it. The call is ignored for document wells and
    * unknown stacks.
    * @param stackId The identifier of the stack to collapse.
+   * @param side The edge the stack is hugging, or undefined when the caller cannot say.
    */
-  public pin(stackId: string): void {
+  public pin(stackId: string, side?: DockSide): void {
     const node: DockNode | null = findNode(this.dockState.layout(), stackId);
     if (node === null || !isStackNode(node) || node.role === 'document') {
       return;
     }
-    this.log.info('DockAutoHide', `Auto-hid stack '${stackId}'`);
+    this.log.info(
+      'DockAutoHide',
+      `Auto-hid stack '${stackId}' against the ${side ?? 'unknown'} edge`,
+    );
     const rect: Rect | null = this.geometry.rectOf(stackId);
     if (rect !== null) {
       this.sizes.set(stackId, { width: rect.width, height: rect.height });
     }
     this.flyout.set(null);
-    this.dockState.setCollapsed(stackId, true);
+    this.dockState.setCollapsed(stackId, true, side);
   }
 
   /**

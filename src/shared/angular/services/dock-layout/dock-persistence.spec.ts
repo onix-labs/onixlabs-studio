@@ -110,6 +110,47 @@ describe('dock-persistence', () => {
     expect(centre.primary).toBe(true);
   });
 
+  it('restoreLayout_roundTripsACollapsedStacksRememberedEdge', () => {
+    const raw: unknown = {
+      kind: 'split',
+      id: 'dock-1',
+      dir: 'row',
+      children: [
+        { kind: 'stack', id: 'dock-2', role: 'document', panels: [], active: null, primary: true },
+        {
+          kind: 'stack',
+          id: 'dock-3',
+          role: 'tool',
+          panels: ['agent'],
+          active: 'agent',
+          collapsed: true,
+          side: 'right',
+        },
+      ],
+      sizes: [4, 1],
+    };
+
+    const result: SplitNode = restoreLayout(raw, new Set(['agent'])) as SplitNode;
+
+    const gutter: StackNode = result.children[1] as StackNode;
+    expect(gutter.collapsed).toBe(true);
+    expect(gutter.side).toBe('right');
+  });
+
+  it('restoreLayout_rejectsAnInvalidRememberedEdge', () => {
+    const raw: unknown = {
+      kind: 'stack',
+      id: 'dock-1',
+      role: 'tool',
+      panels: ['agent'],
+      active: 'agent',
+      collapsed: true,
+      side: 'sideways',
+    };
+
+    expect(restoreLayout(raw, new Set(['agent']))).toBeNull();
+  });
+
   it('restoreLayout_reservesNodeIdentifiersPastTheRestoredTree', () => {
     // The node-id sequence is process-global and other spec files sharing this worker advance it,
     // so anchor the reserved id to the live counter rather than a fixed number — an absolute

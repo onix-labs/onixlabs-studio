@@ -406,10 +406,11 @@ export class DockTabGroup {
   }
 
   /**
-   * Auto-hides the stack, shelving it to its nearest edge.
+   * Auto-hides the stack, shelving it to the edge of its slot it is already hugging. That edge is
+   * handed over so the collapsed strip keeps it even if the tree is rearranged around it later.
    */
   protected requestPin(): void {
-    this.autoHide.pin(this.stack().id);
+    this.autoHide.pin(this.stack().id, this.side());
   }
 
   /**

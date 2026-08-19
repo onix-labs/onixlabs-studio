@@ -14,11 +14,13 @@
           class="dock-node__pane"
           [class.dock-node__pane--leaf]="isStack(child)"
           [class.dock-node__pane--collapsed]="isCollapsed(child)"
+          [class.dock-node__pane--peeking]="isPeeking(child)"
+          [class.dock-node__pane--end]="isEndAnchored(node, i)"
           [style.flex]="isCollapsed(child) ? collapsedFlex : paneFlex(node.sizes[i])"
         >
           <ng-container
             [ngTemplateOutlet]="render"
-            [ngTemplateOutletContext]="{ $implicit: child, side: collapsedSide(node.dir, i) }"
+            [ngTemplateOutletContext]="{ $implicit: child, side: sideOf(child, node.dir, i) }"
           />
         </div>
         @if (!last) {

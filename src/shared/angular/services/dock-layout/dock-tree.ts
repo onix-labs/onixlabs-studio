@@ -1,4 +1,5 @@
 import {
+  axisOf,
   DockNode,
   DockSide,
   isSplitNode,
@@ -21,15 +22,6 @@ function average(values: readonly number[]): number {
     return 1;
   }
   return values.reduce((total: number, value: number): number => total + value, 0) / values.length;
-}
-
-/**
- * Resolves the split orientation a dock side implies.
- * @param side The side a panel is docking against.
- * @returns Returns `row` for the horizontal sides and `col` for the vertical sides.
- */
-function directionOf(side: DockSide): SplitDirection {
-  return side === 'left' || side === 'right' ? 'row' : 'col';
 }
 
 /**
@@ -238,12 +230,15 @@ function firstDocumentWellExcept(tree: DockNode, exceptId: string): StackNode | 
 /**
  * Removes a stack from the tree once it is empty, keeping exactly one documents-home so documents
  * always have somewhere to open. An empty stack prunes — collapsing its split so a sibling fills the
- * freed space — as long as a home survives elsewhere: another document well, or the primary (centre)
- * slot. When the pruned stack was itself the centre anchor, the anchor is first handed to a surviving
- * document well, so the layout keeps exactly one primary slot. Only when this stack is the last home
- * is it kept: a tool-occupied primary centre reverts to an empty document well (so the centre keeps a
- * hoverable blank target and a place to seat a document), and a lone empty well is left as-is. A
- * non-empty stack is untouched.
+ * freed space — as long as a home survives elsewhere: another document well, or an EXPANDED primary
+ * (centre) slot. A collapsed primary is no home: it is a thin gutter strip that cannot fill the space
+ * the well gives up, so pruning in its favour would leave the centre holding nothing at all and
+ * re-home the strip onto whatever axis the promoted split happens to run along. When the pruned stack
+ * was itself the centre anchor, the anchor is first handed to a surviving document well, so the
+ * layout keeps exactly one primary slot. Only when this stack is the last home is it kept: a
+ * tool-occupied primary centre reverts to an empty document well (so the centre keeps a hoverable
+ * blank target and a place to seat a document), and a lone empty well is left as-is. A non-empty
+ * stack is untouched.
  * @param tree The root of the tree to transform.
  * @param stack The stack to consider pruning.
  * @returns Returns the transformed tree.
@@ -253,11 +248,13 @@ export function pruneStack(tree: DockNode, stack: StackNode): DockNode {
     return tree;
   }
   // Does a documents-home survive removing this empty stack? Either another document well, or another
-  // primary (centre) slot that can host a document.
+  // primary (centre) slot that can host a document. A collapsed primary is discounted: it is a gutter
+  // strip, so it can neither host a document nor take over the space this stack would give up.
   const otherDocumentWell: boolean =
     countStacks(tree, 'document') - (stack.role === 'document' ? 1 : 0) > 0;
   const primary: StackNode | null = findPrimaryStack(tree);
-  const otherPrimary: boolean = primary !== null && primary.id !== stack.id;
+  const otherPrimary: boolean =
+    primary !== null && primary.id !== stack.id && primary.collapsed !== true;
 
   if (!otherDocumentWell && !otherPrimary) {
     // The last documents-home: keep it. A tool-occupied primary centre reverts to an empty well.
@@ -363,14 +360,22 @@ export function setActive(tree: DockNode, stackId: string, panelId: string): Doc
 
 /**
  * Collapses or expands a stack in place. A collapsed tool stack keeps its slot and weight in the
- * tree, so expanding it restores its exact position and size. The call is ignored when the stack
- * does not exist, is not a stack, or is a document well (wells never collapse).
+ * tree, so expanding it restores its exact position and size. Collapsing also records the edge the
+ * stack was hugging at the time, so its strip keeps that edge as the tree is rearranged around it
+ * (see {@link StackNode.side}); expanding forgets it again. The call is ignored when the stack does
+ * not exist, is not a stack, or is a document well (wells never collapse).
  * @param tree The root of the tree to transform.
  * @param stackId The identifier of the stack to collapse or expand.
  * @param collapsed Whether the stack should be collapsed.
+ * @param side The edge the stack is hugging as it collapses, or undefined when it is unknown.
  * @returns Returns the transformed tree.
  */
-export function setCollapsed(tree: DockNode, stackId: string, collapsed: boolean): DockNode {
+export function setCollapsed(
+  tree: DockNode,
+  stackId: string,
+  collapsed: boolean,
+  side?: DockSide,
+): DockNode {
   const target: DockNode | null = findNode(tree, stackId);
   if (target === null || !isStackNode(target) || target.role === 'document') {
     return tree;
@@ -378,7 +383,10 @@ export function setCollapsed(tree: DockNode, stackId: string, collapsed: boolean
   if ((target.collapsed ?? false) === collapsed) {
     return tree;
   }
-  return replaceNode(tree, stackId, { ...target, collapsed });
+  // Drop any previously remembered edge before re-adding it, so expanding leaves no stale side behind.
+  const next: StackNode = { ...target, collapsed };
+  delete (next as { side?: DockSide }).side;
+  return replaceNode(tree, stackId, collapsed && side !== undefined ? { ...next, side } : next);
 }
 
 /**
@@ -414,7 +422,7 @@ export function splitStack(
   if (findNode(tree, stackId) === null) {
     return tree;
   }
-  const dir: SplitDirection = directionOf(side);
+  const dir: SplitDirection = axisOf(side);
   const before: boolean = isBefore(side);
   const sibling: StackNode = mkStack(role, [panelId]);
 
@@ -481,7 +489,7 @@ function insertBeside(
  * @returns Returns the transformed tree.
  */
 export function dockNodeEdge(tree: DockNode, node: DockNode, side: DockSide): DockNode {
-  const dir: SplitDirection = directionOf(side);
+  const dir: SplitDirection = axisOf(side);
   const before: boolean = isBefore(side);
   if (isSplitNode(tree) && tree.dir === dir) {
     const slab: number = average(tree.sizes);

@@ -53,3 +53,22 @@
   min-block-size: 0;
   overflow: visible;
 }
+
+// …and the one whose peek is open outranks its fellow strips. Every collapsed pane is a stacking
+// context at the same z-index, so without this the flyout is overpainted by whichever sibling strip
+// happens to render after it — a top gutter's peek would open beneath the gutter below it, hiding
+// the title bar the user needs to dock, float or close the panel.
+.dock-node__pane--peeking {
+  z-index: 20;
+}
+
+// A pane that hugs the end of a split with no growing sibling (every child collapsed) is pushed
+// there by an auto margin, so a "bottom" gutter really sits at the bottom and its peek opens into
+// the space it claims rather than into the strip above it.
+.dock-node__split--row > .dock-node__pane--end {
+  margin-inline-start: auto;
+}
+
+.dock-node__split--col > .dock-node__pane--end {
+  margin-block-start: auto;
+}
