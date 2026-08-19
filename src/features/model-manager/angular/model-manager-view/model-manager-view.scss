@@ -190,6 +190,56 @@
   white-space: nowrap;
 }
 
+.model-manager__search {
+  margin-inline-start: auto;
+  inline-size: 18rem;
+}
+
+.model-manager__warning {
+  font-size: 0.75rem;
+  color: var(--warning-color, var(--form-muted-foreground-color));
+}
+
+// A second line under the model name, for the curated list's one-line descriptions.
+.model-manager__description {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--form-muted-foreground-color);
+}
+
+.model-manager__badge {
+  display: inline-block;
+  padding: 0.05rem 0.4rem;
+  font-size: 0.7rem;
+  border-radius: calc(0.25rem * var(--border-radius-multiplier, 1));
+  background-color: var(--form-border-color);
+  color: var(--form-muted-foreground-color);
+
+  &--curated {
+    background-color: var(--accent-surface-background-color);
+    color: var(--body-foreground-color);
+  }
+}
+
+.model-manager__installed {
+  font-size: 0.78rem;
+  color: var(--form-muted-foreground-color);
+}
+
+.model-manager__pull {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.model-manager__pull-label {
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--form-muted-foreground-color);
+  text-transform: capitalize;
+}
+
 .model-manager__empty {
   display: flex;
   flex: 1 1 auto;

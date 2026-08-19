@@ -100,4 +100,9 @@ export enum ModelRuntimeChannel {
    * Cancels an in-flight pull by model reference (invoke); resolves true when there was one to cancel.
    */
   CancelPull = 'model-runtime:cancel-pull',
+
+  /**
+   * Searches the catalogue of models available to install (invoke).
+   */
+  SearchCatalog = 'model-runtime:search-catalog',
 }

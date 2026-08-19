@@ -12,13 +12,16 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Table, TableColumn, TableRow, TableRowDef } from '@shared/angular/components/table/table';
 import { Icon } from '@shared/angular/icons/icon';
 import { Log } from '@shared/angular/services/log/log';
+import { CatalogModel, CatalogResult } from '@shared/api/model-catalog-types';
 import {
   LocalModel,
   ModelDiskUsage,
+  ModelPullProgress,
   ModelRuntimeStatus,
   RunningModel,
   RuntimeInstallation,
@@ -53,6 +56,23 @@ const RUNNING_COLUMNS: readonly TableColumn[] = [
 ];
 
 /**
+ * The available-models table's columns.
+ */
+const AVAILABLE_COLUMNS: readonly TableColumn[] = [
+  { id: 'name', header: 'Model' },
+  { id: 'source', header: 'Source', width: '8rem' },
+  { id: 'parameters', header: 'Parameters', width: '8rem' },
+  { id: 'size', header: 'Size', width: '8rem', align: 'end' },
+  { id: 'actions', header: '', width: '12rem', align: 'end' },
+];
+
+/**
+ * How long, in milliseconds, to wait after the last keystroke before searching the catalogue. Long
+ * enough that typing a model name is one query rather than a dozen.
+ */
+const SEARCH_DEBOUNCE_MS: number = 300;
+
+/**
  * The AI Model Manager tab: the local model lifecycle in one place.
  *
  * It owns the *runtime and the weights* — whether the runtime is installed, whether its server is up,
@@ -65,7 +85,7 @@ const RUNNING_COLUMNS: readonly TableColumn[] = [
  */
 @Component({
   selector: 'app-model-manager-view',
-  imports: [Button, AppIcon, Table, TableRowDef],
+  imports: [Button, TextField, AppIcon, Table, TableRowDef],
   templateUrl: './model-manager-view.html',
   styleUrl: './model-manager-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -85,6 +105,11 @@ export class ModelManagerView {
    * Gets the running-models table's columns.
    */
   protected readonly runningColumns: readonly TableColumn[] = RUNNING_COLUMNS;
+
+  /**
+   * Gets the available-models table's columns.
+   */
+  protected readonly availableColumns: readonly TableColumn[] = AVAILABLE_COLUMNS;
 
   /**
    * Gets the identifier of the tab hosting this view.
@@ -157,10 +182,65 @@ export class ModelManagerView {
   protected readonly busy: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
+   * Holds the catalogue's current results.
+   */
+  protected readonly available: WritableSignal<readonly CatalogModel[]> = signal<
+    readonly CatalogModel[]
+  >([]);
+
+  /**
+   * Holds the ids of catalogue sources that failed the last search, so the view can say the list is
+   * partial rather than silently showing fewer results.
+   */
+  protected readonly catalogFailures: WritableSignal<readonly string[]> = signal<readonly string[]>(
+    [],
+  );
+
+  /**
+   * Holds the catalogue search text.
+   */
+  protected readonly searchText: WritableSignal<string> = signal<string>('');
+
+  /**
+   * Holds whether a catalogue search is in flight.
+   */
+  protected readonly searching: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds the in-flight pulls' progress, keyed by model reference. Several models can be pulled at
+   * once, so this is a map rather than a single value.
+   */
+  protected readonly pulls: WritableSignal<ReadonlyMap<string, ModelPullProgress>> = signal<
+    ReadonlyMap<string, ModelPullProgress>
+  >(new Map<string, ModelPullProgress>());
+
+  /**
+   * The pending debounce timer for the catalogue search.
+   */
+  private searchTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /**
    * Gets whether the runtime's server is reachable.
    */
   protected readonly isRunning: Signal<boolean> = computed(
     (): boolean => this.status()?.available === true,
+  );
+
+  /**
+   * Gets the references of the models already installed, so the catalogue can mark them rather than
+   * offering to install something that is already there.
+   */
+  protected readonly installedRefs: Signal<ReadonlySet<string>> = computed(
+    (): ReadonlySet<string> =>
+      new Set<string>(this.installed().map((model: LocalModel): string => model.name)),
+  );
+
+  /**
+   * Gets the available models adapted to the table's row shape.
+   */
+  protected readonly availableRows: Signal<readonly TableRow[]> = computed(
+    (): readonly TableRow[] =>
+      this.available().map((model: CatalogModel): TableRow => ({ id: model.ref, data: model })),
   );
 
   /**
@@ -253,10 +333,21 @@ export class ModelManagerView {
     const unsubscribeProgress: () => void = this.runtimes.onInstallProgress(
       (progress: RuntimeInstallProgress): void => this.installProgress.set(progress),
     );
+    const unsubscribePulls: () => void = this.runtimes.onPullProgress(
+      (progress: ModelPullProgress): void => this.acceptPull(progress),
+    );
+
+    void this.searchCatalog();
 
     const destroy: DestroyRef = inject(DestroyRef);
     destroy.onDestroy(unwatch);
     destroy.onDestroy(unsubscribeProgress);
+    destroy.onDestroy(unsubscribePulls);
+    destroy.onDestroy((): void => {
+      if (this.searchTimer !== null) {
+        clearTimeout(this.searchTimer);
+      }
+    });
     destroy.onDestroy((): void => this.commands.unregister(this.commandHandler));
 
     effect((): void => {
@@ -318,10 +409,11 @@ export class ModelManagerView {
   }
 
   /**
-   * Downloads and installs a Studio-managed copy of the runtime.
+   * Downloads and installs a Studio-managed copy of the *runtime* — distinct from {@link install},
+   * which downloads a model.
    * @returns Returns a promise that resolves once the install settles.
    */
-  protected async install(): Promise<void> {
+  protected async installRuntime(): Promise<void> {
     if (this.busy()) {
       return;
     }
@@ -364,6 +456,110 @@ export class ModelManagerView {
   }
 
   /**
+   * Records the search text and schedules a catalogue search, debounced so typing a model name costs
+   * one query rather than one per keystroke.
+   * @param text The new search text.
+   */
+  protected onSearchChange(text: string): void {
+    this.searchText.set(text);
+    if (this.searchTimer !== null) {
+      clearTimeout(this.searchTimer);
+    }
+    this.searchTimer = setTimeout((): void => {
+      this.searchTimer = null;
+      void this.searchCatalog();
+    }, SEARCH_DEBOUNCE_MS);
+  }
+
+  /**
+   * Searches the catalogue for the current text.
+   * @returns Returns a promise that resolves once the search settles.
+   */
+  protected async searchCatalog(): Promise<void> {
+    this.searching.set(true);
+    try {
+      const result: CatalogResult = await this.runtimes.searchCatalog(this.searchText());
+      this.available.set(result.models);
+      this.catalogFailures.set(result.failedSources);
+    } finally {
+      this.searching.set(false);
+    }
+  }
+
+  /**
+   * Downloads a model from the catalogue. Progress arrives on the push subscription, so this only has
+   * to refresh the installed list once the pull settles.
+   * @param model The catalogue model to install.
+   * @returns Returns a promise that resolves once the pull settles.
+   */
+  protected async install(model: CatalogModel): Promise<void> {
+    this.log.info('model-manager.view', `Pulling '${model.ref}'`);
+    try {
+      await this.runtimes.pull(model.ref);
+    } finally {
+      await this.refresh();
+    }
+  }
+
+  /**
+   * Cancels an in-flight pull.
+   * @param model The catalogue model whose pull to cancel.
+   * @returns Returns a promise that resolves once the cancel is issued.
+   */
+  protected async cancelInstall(model: CatalogModel): Promise<void> {
+    await this.runtimes.cancelPull(model.ref);
+  }
+
+  /**
+   * Gets the in-flight pull for a model, or null when it is not being pulled.
+   * @param ref The model reference.
+   * @returns Returns the progress, or null.
+   */
+  protected pullOf(ref: string): ModelPullProgress | null {
+    return this.pulls().get(ref) ?? null;
+  }
+
+  /**
+   * Whether a catalogue model is already installed.
+   * @param ref The model reference.
+   * @returns Returns true when it is installed.
+   */
+  protected isInstalled(ref: string): boolean {
+    return this.installedRefs().has(ref);
+  }
+
+  /**
+   * Gets a pull's percentage, or null when the total is unknown.
+   * @param progress The pull progress.
+   * @returns Returns the percentage, or null.
+   */
+  protected pullPercent(progress: ModelPullProgress): number | null {
+    if (progress.total <= 0) {
+      return null;
+    }
+    return Math.min(100, Math.round((progress.received / progress.total) * 100));
+  }
+
+  /**
+   * Records one pull update. A settled pull is dropped from the map so its row returns to an ordinary
+   * Install button, except a failure, which is kept so the user can see why.
+   * @param progress The update.
+   */
+  private acceptPull(progress: ModelPullProgress): void {
+    this.pulls.update(
+      (current: ReadonlyMap<string, ModelPullProgress>): ReadonlyMap<string, ModelPullProgress> => {
+        const next: Map<string, ModelPullProgress> = new Map<string, ModelPullProgress>(current);
+        if (progress.stage === 'done' || progress.stage === 'cancelled') {
+          next.delete(progress.model);
+        } else {
+          next.set(progress.model, progress);
+        }
+        return next;
+      },
+    );
+  }
+
+  /**
    * Reads a table row's installed-model payload.
    * @param row The table row.
    * @returns Returns the row's model.
@@ -379,6 +575,15 @@ export class ModelManagerView {
    */
   protected loaded(row: TableRow): RunningModel {
     return row.data as RunningModel;
+  }
+
+  /**
+   * Reads a table row's catalogue-model payload.
+   * @param row The table row.
+   * @returns Returns the row's model.
+   */
+  protected cat(row: TableRow): CatalogModel {
+    return row.data as CatalogModel;
   }
 
   /**

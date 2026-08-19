@@ -26,7 +26,7 @@
           [icon]="Icon.DOWNLOAD"
           label="Install Ollama"
           [disabled]="busy()"
-          (click)="install()"
+          (click)="installRuntime()"
         />
       } @else if (isRunning()) {
         <app-button
@@ -151,6 +151,84 @@
               [disabled]="busy()"
               (click)="remove(local(row))"
             />
+          </td>
+        </ng-template>
+      </app-table>
+    </section>
+
+    <!-- The available half of the installed-vs-available split: Studio's curated list of well-known
+         Ollama models, plus a live Hugging Face search for the long tail. -->
+    <section class="model-manager__section">
+      <header class="model-manager__header">
+        <h2 class="model-manager__title">Available</h2>
+        <app-text-field
+          class="model-manager__search"
+          placeholder="Search models…"
+          ariaLabel="Search available models"
+          [value]="searchText()"
+          (valueChange)="onSearchChange($event)"
+        />
+        @if (catalogFailures().length > 0) {
+          <span class="model-manager__warning" title="Some catalogue sources could not be reached">
+            Partial results — {{ catalogFailures().join(', ') }} unavailable
+          </span>
+        }
+      </header>
+
+      <app-table
+        class="model-manager__table"
+        [columns]="availableColumns"
+        [rows]="availableRows()"
+        [emptyText]="searching() ? 'Searching…' : 'No models match that search.'"
+      >
+        <ng-template appTableRow let-row>
+          <td class="model-manager__name">
+            {{ cat(row).name }}
+            @if (cat(row).description) {
+              <span class="model-manager__description">{{ cat(row).description }}</span>
+            }
+          </td>
+          <td>
+            <span class="model-manager__badge model-manager__badge--{{ cat(row).source }}">
+              {{ cat(row).source === 'curated' ? 'Ollama' : 'Hugging Face' }}
+            </span>
+          </td>
+          <td>{{ cat(row).parameterSize || '—' }}</td>
+          <td class="model-manager__numeric">
+            {{ cat(row).sizeBytes > 0 ? formatBytes(cat(row).sizeBytes) : '—' }}
+          </td>
+          <td class="model-manager__row-actions">
+            @if (pullOf(cat(row).ref); as progress) {
+              <span class="model-manager__pull">
+                <span class="model-manager__pull-label">
+                  @if (pullPercent(progress); as percent) {
+                    {{ percent }}%
+                  } @else {
+                    {{ progress.stage }}
+                  }
+                </span>
+                <app-button
+                  variant="none"
+                  size="small"
+                  tone="warning"
+                  [icon]="Icon.CLOSE"
+                  ariaLabel="Cancel download"
+                  tooltip="Cancel download"
+                  (click)="cancelInstall(cat(row))"
+                />
+              </span>
+            } @else if (isInstalled(cat(row).ref)) {
+              <span class="model-manager__installed">Installed</span>
+            } @else {
+              <app-button
+                variant="outline"
+                size="small"
+                [icon]="Icon.DOWNLOAD"
+                label="Install"
+                [disabled]="busy()"
+                (click)="install(cat(row))"
+              />
+            }
           </td>
         </ng-template>
       </app-table>
