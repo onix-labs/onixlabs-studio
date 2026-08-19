@@ -12,6 +12,7 @@ import {
   RuntimeInstallation,
   RuntimeInstallProgress,
 } from '@shared/api/model-runtime-types';
+import { logger } from '../../logger';
 import { ModelRuntime } from './model-runtime';
 import { OllamaProvisioner } from './ollama-provisioner';
 import { OllamaServer } from './ollama-server';
@@ -209,7 +210,10 @@ export class OllamaRuntime implements ModelRuntime {
         bytes += stat.size;
       }
       return { bytes, path: store };
-    } catch {
+    } catch (error: unknown) {
+      // Usually just an absent store (nothing pulled yet), so this is not an error — but an unexpected
+      // read failure would otherwise vanish, and the view would silently show no usage.
+      logger.debug('OllamaRuntime', `Could not read the model store at ${store}`, error);
       return { bytes: 0, path: '' };
     }
   }
@@ -330,9 +334,11 @@ export class OllamaRuntime implements ModelRuntime {
     } catch (error: unknown) {
       // An abort is the user's decision, not a failure, and is reported as such.
       if (signal?.aborted === true) {
+        logger.info('OllamaRuntime', `Pull of '${name}' cancelled`);
         onProgress({ model: name, stage: 'cancelled', status: 'cancelled', received: 0, total: 0 });
         return false;
       }
+      logger.error('OllamaRuntime', `Pull of '${name}' failed`, error);
       const message: string = error instanceof Error ? error.message : String(error);
       onProgress({
         model: name,
@@ -346,12 +352,18 @@ export class OllamaRuntime implements ModelRuntime {
     }
 
     if (seen.failure !== null) {
+      logger.error('OllamaRuntime', `Pull of '${name}' failed: ${seen.failure}`);
       return false;
     }
 
     // The stream can end without an explicit success line (an older server, a truncated response), so
     // completion is asserted here rather than assumed from the last line seen.
     const succeeded: boolean = seen.last?.stage === 'done';
+    if (succeeded) {
+      logger.info('OllamaRuntime', `Pulled '${name}'`);
+    } else {
+      logger.warn('OllamaRuntime', `Pull of '${name}' ended without reporting success`);
+    }
     if (!succeeded) {
       onProgress({
         model: name,
@@ -377,8 +389,15 @@ export class OllamaRuntime implements ModelRuntime {
         '/api/delete',
         modelBody(name),
       );
-      return response.statusCode >= 200 && response.statusCode < 300;
-    } catch {
+      const removed: boolean = response.statusCode >= 200 && response.statusCode < 300;
+      if (removed) {
+        logger.info('OllamaRuntime', `Removed '${name}'`);
+      } else {
+        logger.warn('OllamaRuntime', `Server refused to remove '${name}' (${response.statusCode})`);
+      }
+      return removed;
+    } catch (error: unknown) {
+      logger.error('OllamaRuntime', `Failed to remove '${name}'`, error);
       return false;
     }
   }
@@ -396,10 +415,15 @@ export class OllamaRuntime implements ModelRuntime {
     try {
       const response: OllamaResponse = await this.transport.request(method, path, body);
       if (response.statusCode < 200 || response.statusCode >= 300) {
+        logger.debug('OllamaRuntime', `${method} ${path} answered ${response.statusCode}`);
         return null;
       }
       return JSON.parse(response.body) as T;
-    } catch {
+    } catch (error: unknown) {
+      // A server that is simply not running is the ordinary case this whole feature exists to fix, so
+      // it is traced rather than logged as an error — the status poll would otherwise fill the audit
+      // with one error every three seconds while Ollama is stopped.
+      logger.trace('OllamaRuntime', `${method} ${path} did not answer`, error);
       return null;
     }
   }

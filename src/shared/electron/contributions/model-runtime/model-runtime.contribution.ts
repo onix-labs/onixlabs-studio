@@ -119,6 +119,10 @@ export class ModelRuntimeContribution implements MainContribution {
     const catalog: ModelCatalog = this.catalogFactory();
     this.catalog = catalog;
 
+    context.handle(ModelRuntimeChannel.Describe, (): { id: string; displayName: string } => ({
+      id: runtime.id,
+      displayName: runtime.displayName,
+    }));
     context.handle(ModelRuntimeChannel.List, (): Promise<unknown> => runtime.list());
     context.handle(ModelRuntimeChannel.Running, (): Promise<unknown> => runtime.running());
     context.handle(ModelRuntimeChannel.Status, (): Promise<unknown> => runtime.status());

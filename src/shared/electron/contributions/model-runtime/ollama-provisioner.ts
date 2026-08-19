@@ -406,7 +406,10 @@ export class OllamaProvisioner {
         timeout: VERSION_PROBE_TIMEOUT_MS,
       });
       return parseVersion(stdout);
-    } catch {
+    } catch (error: unknown) {
+      // A binary that will not report its version is still usable, so this is not fatal — but it is
+      // worth a line, because the manager will then show the runtime with no version against it.
+      logger.debug('OllamaProvisioner', `Could not read the version of ${executable}`, error);
       return '';
     }
   }

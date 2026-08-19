@@ -88,6 +88,8 @@ describe('ModelManagerView', () => {
       invoke: <T>(channel: string, ...args: unknown[]): Promise<T> => {
         calls.push({ channel, args });
         switch (channel as ModelRuntimeChannel) {
+          case ModelRuntimeChannel.Describe:
+            return Promise.resolve({ id: 'ollama', displayName: 'Ollama' } as T);
           case ModelRuntimeChannel.Status:
             return Promise.resolve(status as T);
           case ModelRuntimeChannel.Installation:
@@ -181,6 +183,28 @@ describe('ModelManagerView', () => {
     expect(text).toContain('4.4 GB');
     // A model with nothing in VRAM is running on the CPU, which the view names rather than implying.
     expect(text).toContain('CPU');
+  });
+
+  it('names the runtime from the backend rather than assuming Ollama', async () => {
+    stubBridge(
+      { available: false },
+      { kind: 'system', executable: '/opt/llama/server', version: '1.0.0' },
+    );
+    // Swap in a different runtime identity: the view must follow it, since the slot is not Ollama-only.
+    const original: Bridge = (window as unknown as { bridge: Bridge }).bridge;
+    (window as unknown as { bridge: Bridge }).bridge = {
+      ...original,
+      invoke: <T>(channel: string, ...args: unknown[]): Promise<T> =>
+        (channel as ModelRuntimeChannel) === ModelRuntimeChannel.Describe
+          ? Promise.resolve({ id: 'llamacpp', displayName: 'llama.cpp' } as T)
+          : original.invoke<T>(channel, ...args),
+    };
+
+    const fixture: ComponentFixture<ModelManagerView> = await createView();
+
+    const text: string = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(text).toContain("llama.cpp isn't running");
+    expect(text).not.toContain('Ollama');
   });
 
   it('marks the runtime as Studio-managed when Studio installed it', async () => {

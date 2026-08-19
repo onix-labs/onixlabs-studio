@@ -179,6 +179,7 @@ describe('ModelRuntimeContribution activation', () => {
     expect([...fake.handlers.keys()].sort()).toEqual(
       [
         ModelRuntimeChannel.CancelPull,
+        ModelRuntimeChannel.Describe,
         ModelRuntimeChannel.DiskUsage,
         ModelRuntimeChannel.Install,
         ModelRuntimeChannel.Installation,
