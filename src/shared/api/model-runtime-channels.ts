@@ -51,4 +51,36 @@ export enum ModelRuntimeChannel {
    * a server started or stopped outside Studio without polling in the renderer.
    */
   StatusChanged = 'model-runtime:status-changed',
+
+  /**
+   * Reports where the runtime's binary is and how it got there (invoke).
+   */
+  Installation = 'model-runtime:installation',
+
+  /**
+   * Downloads and installs the managed runtime binary (invoke); resolves the resulting installation.
+   * Only meaningful when no system install was detected.
+   */
+  Install = 'model-runtime:install',
+
+  /**
+   * Pushes managed-install progress to the renderer (main→renderer).
+   */
+  InstallProgress = 'model-runtime:install-progress',
+
+  /**
+   * Starts the runtime's server (invoke); resolves true once it answers.
+   */
+  Start = 'model-runtime:start',
+
+  /**
+   * Stops the runtime's server (invoke); resolves true when it was stopped. Only a server Studio
+   * started can be stopped — one the user is running themselves is left alone.
+   */
+  Stop = 'model-runtime:stop',
+
+  /**
+   * Reports how much disk the runtime's model store is using (invoke).
+   */
+  DiskUsage = 'model-runtime:disk-usage',
 }

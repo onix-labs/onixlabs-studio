@@ -1,6 +1,12 @@
+import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { LocalModel, ModelDetails, RunningModel } from '@shared/api/model-runtime-types';
-import { OllamaRuntime, readContextLength } from './ollama-runtime';
+import {
+  hostFromOrigin,
+  ollamaModelStore,
+  OllamaRuntime,
+  readContextLength,
+} from './ollama-runtime';
 import { OllamaResponse, OllamaTransport } from './ollama-transport';
 
 /**
@@ -44,7 +50,11 @@ describe('OllamaRuntime.status', () => {
     const { runtime, transport } = runtimeWith();
     transport.responder = respondJson('/api/version', { version: '0.5.7' });
 
-    expect(await runtime.status()).toEqual({ available: true, version: '0.5.7' });
+    expect(await runtime.status()).toEqual({
+      available: true,
+      version: '0.5.7',
+      startedByStudio: false,
+    });
   });
 
   it('reports unavailable rather than throwing when the server is absent', async () => {
@@ -226,6 +236,62 @@ describe('OllamaRuntime.remove', () => {
     const { runtime } = runtimeWith();
 
     expect(await runtime.remove('llama3.2:3b')).toBe(false);
+  });
+});
+
+describe('OllamaRuntime lifecycle without a provisioner', () => {
+  it('reports no installation, so a runtime built for API tests never claims a binary', async () => {
+    const { runtime } = runtimeWith();
+
+    expect(await runtime.installation()).toEqual({ kind: 'absent', executable: '', version: '' });
+  });
+
+  it('refuses to start when there is no binary to start', async () => {
+    const { runtime } = runtimeWith();
+
+    expect(await runtime.start()).toBe(false);
+  });
+
+  it('refuses to stop a server it does not own', async () => {
+    const { runtime } = runtimeWith();
+
+    expect(await runtime.stop()).toBe(false);
+  });
+
+  it('reports the server as not started by Studio when it did not start it', async () => {
+    const { runtime, transport } = runtimeWith();
+    transport.responder = respondJson('/api/version', { version: '0.5.7' });
+
+    expect(await runtime.status()).toEqual({
+      available: true,
+      version: '0.5.7',
+      startedByStudio: false,
+    });
+  });
+});
+
+describe('hostFromOrigin', () => {
+  it('reduces an origin to the host:port form OLLAMA_HOST takes', () => {
+    expect(hostFromOrigin('http://127.0.0.1:11434')).toBe('127.0.0.1:11434');
+    expect(hostFromOrigin('https://box:1234')).toBe('box:1234');
+  });
+
+  it('drops the port when the origin carries none', () => {
+    expect(hostFromOrigin('http://box')).toBe('box');
+  });
+
+  it('passes a value it cannot parse straight through', () => {
+    expect(hostFromOrigin('not a url')).toBe('not a url');
+  });
+});
+
+describe('ollamaModelStore', () => {
+  it('prefers an explicit OLLAMA_MODELS', () => {
+    expect(ollamaModelStore({ OLLAMA_MODELS: '/data/models' }, '/home/m')).toBe('/data/models');
+  });
+
+  it('falls back to the store under the home directory', () => {
+    expect(ollamaModelStore({}, '/home/m')).toBe(path.join('/home/m', '.ollama', 'models'));
   });
 });
 

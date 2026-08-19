@@ -3,8 +3,11 @@ import { ModelRuntimeChannel } from '@shared/api/model-runtime-channels';
 import {
   LocalModel,
   ModelDetails,
+  ModelDiskUsage,
   ModelRuntimeStatus,
   RunningModel,
+  RuntimeInstallation,
+  RuntimeInstallProgress,
 } from '@shared/api/model-runtime-types';
 import {
   ContributionContext,
@@ -25,6 +28,10 @@ class FakeRuntime implements ModelRuntime {
   public statusCalls: number = 0;
   public removed: string[] = [];
   public shown: string[] = [];
+  public started: number = 0;
+  public stopped: number = 0;
+  public disposed: number = 0;
+  public install_: RuntimeInstallation = { kind: 'absent', executable: '', version: '' };
 
   public status(): Promise<ModelRuntimeStatus> {
     this.statusCalls += 1;
@@ -47,6 +54,36 @@ class FakeRuntime implements ModelRuntime {
   public remove(name: string): Promise<boolean> {
     this.removed.push(name);
     return Promise.resolve(true);
+  }
+
+  public installation(): Promise<RuntimeInstallation> {
+    return Promise.resolve(this.install_);
+  }
+
+  public install(
+    onProgress: (progress: RuntimeInstallProgress) => void,
+  ): Promise<RuntimeInstallation> {
+    onProgress({ stage: 'done', received: 1, total: 1 });
+    this.install_ = { kind: 'managed', executable: '/managed/ollama', version: '0.1.0' };
+    return Promise.resolve(this.install_);
+  }
+
+  public start(): Promise<boolean> {
+    this.started += 1;
+    return Promise.resolve(true);
+  }
+
+  public stop(): Promise<boolean> {
+    this.stopped += 1;
+    return Promise.resolve(true);
+  }
+
+  public diskUsage(): Promise<ModelDiskUsage> {
+    return Promise.resolve({ bytes: 42, path: '/models' });
+  }
+
+  public dispose(): void {
+    this.disposed += 1;
   }
 }
 
@@ -115,11 +152,16 @@ describe('ModelRuntimeContribution activation', () => {
 
     expect([...fake.handlers.keys()].sort()).toEqual(
       [
+        ModelRuntimeChannel.DiskUsage,
+        ModelRuntimeChannel.Install,
+        ModelRuntimeChannel.Installation,
         ModelRuntimeChannel.List,
         ModelRuntimeChannel.Remove,
         ModelRuntimeChannel.Running,
         ModelRuntimeChannel.Show,
+        ModelRuntimeChannel.Start,
         ModelRuntimeChannel.Status,
+        ModelRuntimeChannel.Stop,
       ].sort(),
     );
   });
@@ -152,6 +194,51 @@ describe('ModelRuntimeContribution activation', () => {
     await fake.handlers.get(ModelRuntimeChannel.Show)?.({} as never, 'llama3.2:3b');
 
     expect(runtime.shown).toEqual(['llama3.2:3b']);
+  });
+});
+
+describe('ModelRuntimeContribution lifecycle channels', () => {
+  it('forwards start and stop to the runtime', async () => {
+    const { runtime, fake } = activate();
+
+    await fake.handlers.get(ModelRuntimeChannel.Start)?.({} as never);
+    await fake.handlers.get(ModelRuntimeChannel.Stop)?.({} as never);
+
+    expect(runtime.started).toBe(1);
+    expect(runtime.stopped).toBe(1);
+  });
+
+  it('pushes install progress to the renderer as the install reports it', async () => {
+    const { fake } = activate();
+
+    await fake.handlers.get(ModelRuntimeChannel.Install)?.({} as never);
+
+    expect(fake.pushes).toContainEqual({
+      channel: ModelRuntimeChannel.InstallProgress,
+      payload: [{ stage: 'done', received: 1, total: 1 }],
+    });
+  });
+
+  it('reports the installation and the disk usage', async () => {
+    const { fake } = activate();
+
+    expect(await fake.handlers.get(ModelRuntimeChannel.Installation)?.({} as never)).toEqual({
+      kind: 'absent',
+      executable: '',
+      version: '',
+    });
+    expect(await fake.handlers.get(ModelRuntimeChannel.DiskUsage)?.({} as never)).toEqual({
+      bytes: 42,
+      path: '/models',
+    });
+  });
+
+  it('disposes the runtime, so a Studio-started server is cleaned up with the app', () => {
+    const { runtime, contribution } = activate();
+
+    contribution.dispose();
+
+    expect(runtime.disposed).toBe(1);
   });
 });
 
