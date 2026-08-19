@@ -83,4 +83,21 @@ export enum ModelRuntimeChannel {
    * Reports how much disk the runtime's model store is using (invoke).
    */
   DiskUsage = 'model-runtime:disk-usage',
+
+  /**
+   * Pulls a model by reference (invoke); resolves true when the model finished downloading. The
+   * invoke stays outstanding for the whole pull, which can be many minutes — progress arrives
+   * separately on {@link PullProgress}.
+   */
+  Pull = 'model-runtime:pull',
+
+  /**
+   * Pushes a pull's progress to the renderer (main→renderer).
+   */
+  PullProgress = 'model-runtime:pull-progress',
+
+  /**
+   * Cancels an in-flight pull by model reference (invoke); resolves true when there was one to cancel.
+   */
+  CancelPull = 'model-runtime:cancel-pull',
 }

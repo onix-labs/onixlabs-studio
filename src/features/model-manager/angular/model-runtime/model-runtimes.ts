@@ -6,6 +6,7 @@ import {
   LocalModel,
   ModelDetails,
   ModelDiskUsage,
+  ModelPullProgress,
   ModelRuntimeStatus,
   RunningModel,
   RuntimeInstallation,
@@ -66,6 +67,43 @@ export class ModelRuntimes {
   public remove(name: string): Promise<boolean> {
     this.log.info('model-manager.runtime', 'IPC remove model', name);
     return this.bridge?.invoke<boolean>(ModelRuntimeChannel.Remove, name) ?? Promise.resolve(false);
+  }
+
+  /**
+   * Downloads a model's weights. Subscribe with {@link onPullProgress} first: the returned promise
+   * stays outstanding for the whole pull, which can be many minutes.
+   * @param name The model reference to pull.
+   * @returns Returns true when the model finished downloading.
+   */
+  public pull(name: string): Promise<boolean> {
+    this.log.info('model-manager.runtime', 'IPC pull model', name);
+    return this.bridge?.invoke<boolean>(ModelRuntimeChannel.Pull, name) ?? Promise.resolve(false);
+  }
+
+  /**
+   * Cancels an in-flight pull.
+   * @param name The model reference whose pull to cancel.
+   * @returns Returns true when there was a pull to cancel.
+   */
+  public cancelPull(name: string): Promise<boolean> {
+    this.log.info('model-manager.runtime', 'IPC cancel pull', name);
+    return (
+      this.bridge?.invoke<boolean>(ModelRuntimeChannel.CancelPull, name) ?? Promise.resolve(false)
+    );
+  }
+
+  /**
+   * Subscribes to pull progress. Updates carry the model they concern, so one subscription serves any
+   * number of concurrent pulls.
+   * @param listener Receives each progress update.
+   * @returns Returns an unsubscribe function (a no-op outside Electron).
+   */
+  public onPullProgress(listener: (progress: ModelPullProgress) => void): () => void {
+    return (
+      this.bridge?.on(ModelRuntimeChannel.PullProgress, (...args: unknown[]): void =>
+        listener(args[0] as ModelPullProgress),
+      ) ?? ((): void => undefined)
+    );
   }
 
   /**

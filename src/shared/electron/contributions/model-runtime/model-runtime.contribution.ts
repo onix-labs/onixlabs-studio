@@ -2,7 +2,11 @@ import * as path from 'node:path';
 import { app } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
 import { ModelRuntimeChannel } from '@shared/api/model-runtime-channels';
-import { ModelRuntimeStatus, RuntimeInstallProgress } from '@shared/api/model-runtime-types';
+import {
+  ModelPullProgress,
+  ModelRuntimeStatus,
+  RuntimeInstallProgress,
+} from '@shared/api/model-runtime-types';
 import { resolveOllamaOrigin } from '../../ai/ollama-endpoint';
 import { ContributionContext, MainContribution } from '../main-contribution';
 import { ModelRuntime } from './model-runtime';
@@ -64,6 +68,13 @@ export class ModelRuntimeContribution implements MainContribution {
   private context: ContributionContext | null = null;
 
   /**
+   * The abort controllers of in-flight pulls, keyed by model reference, so a cancel can find the pull
+   * it belongs to (mirroring how {@link import('../../ai/ai-manager').AiManager} keys runs by request
+   * id). A model can only be pulled once at a time, so its reference is a sufficient key.
+   */
+  private readonly pulls: Map<string, AbortController> = new Map<string, AbortController>();
+
+  /**
    * Builds the runtime at activation. Deferred rather than constructed eagerly because the production
    * runtime resolves its install directory from `app.getPath('userData')`, which is only available once
    * the app is ready — and this module is imported by the contributions manifest long before that.
@@ -116,6 +127,16 @@ export class ModelRuntimeContribution implements MainContribution {
     context.handle(ModelRuntimeChannel.Stop, (): Promise<boolean> => runtime.stop());
     context.handle(ModelRuntimeChannel.DiskUsage, (): Promise<unknown> => runtime.diskUsage());
 
+    context.handle(
+      ModelRuntimeChannel.Pull,
+      (_event: IpcMainInvokeEvent, name: unknown): Promise<boolean> =>
+        this.pull(runtime, context, String(name)),
+    );
+    context.handle(
+      ModelRuntimeChannel.CancelPull,
+      (_event: IpcMainInvokeEvent, name: unknown): boolean => this.cancelPull(String(name)),
+    );
+
     context.on(ModelRuntimeChannel.StartWatch, (): void => this.addConsumer());
     context.on(ModelRuntimeChannel.StopWatch, (): void => this.removeConsumer());
 
@@ -130,12 +151,66 @@ export class ModelRuntimeContribution implements MainContribution {
   public dispose(): void {
     this.context?.log.info('disposing model runtime contribution; stopping status poll');
     this.stopPolling();
+    // In-flight pulls hold an open connection to the server; abort them before it goes away.
+    for (const controller of this.pulls.values()) {
+      controller.abort();
+    }
+    this.pulls.clear();
     // A server Studio started is Studio's to clean up; one the user started is left running.
     this.runtime?.dispose?.();
     this.runtime = null;
     this.context = null;
     this.consumers = 0;
     this.lastStatus = null;
+  }
+
+  /**
+   * Runs one pull, holding its abort controller for the duration so a cancel can reach it.
+   * @param runtime The runtime to pull through.
+   * @param context The context to push progress on.
+   * @param name The model reference to pull.
+   * @returns Returns true when the model finished downloading.
+   */
+  private async pull(
+    runtime: ModelRuntime,
+    context: ContributionContext,
+    name: string,
+  ): Promise<boolean> {
+    // A second pull of a model already being pulled would race the first for the same weights; the
+    // caller is told the request was not accepted rather than being silently joined to the existing one.
+    if (this.pulls.has(name)) {
+      context.log.warn(`refusing a duplicate pull of '${name}'; one is already in flight`);
+      return false;
+    }
+
+    const controller: AbortController = new AbortController();
+    this.pulls.set(name, controller);
+    context.log.info(`pulling model '${name}'`);
+    try {
+      return await runtime.pull(
+        name,
+        (progress: ModelPullProgress): void =>
+          context.send(ModelRuntimeChannel.PullProgress, progress),
+        controller.signal,
+      );
+    } finally {
+      this.pulls.delete(name);
+    }
+  }
+
+  /**
+   * Cancels an in-flight pull.
+   * @param name The model reference whose pull to cancel.
+   * @returns Returns true when there was a pull to cancel.
+   */
+  private cancelPull(name: string): boolean {
+    const controller: AbortController | undefined = this.pulls.get(name);
+    if (controller === undefined) {
+      return false;
+    }
+    this.context?.log.info(`cancelling the pull of '${name}'`);
+    controller.abort();
+    return true;
   }
 
   /**
