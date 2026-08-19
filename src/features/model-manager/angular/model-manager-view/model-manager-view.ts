@@ -291,6 +291,22 @@ export class ModelManagerView {
   });
 
   /**
+   * Gets the note explaining what happens to a Studio-started server when Studio closes, or null when
+   * there is nothing to say (no server, or one Studio did not start).
+   *
+   * The behaviour differs by which binary is running — the user's own install keeps going, Studio's
+   * managed copy does not — so it is stated rather than left to be discovered.
+   */
+  protected readonly shutdownNote: Signal<string | null> = computed((): string | null => {
+    if (!this.isRunning() || !this.isStoppable()) {
+      return null;
+    }
+    return this.installation()?.kind === 'managed'
+      ? 'Stops when Studio closes'
+      : 'Keeps running when Studio closes';
+  });
+
+  /**
    * Gets the install progress as a percentage, or null when the total is unknown (so the bar shows an
    * indeterminate state rather than a wrong number).
    */

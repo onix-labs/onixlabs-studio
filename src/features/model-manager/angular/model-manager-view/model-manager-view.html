@@ -15,7 +15,12 @@
             isRunning() ? 'running' : 'stopped'
           }}</span>
         </h2>
-        <p class="model-manager__runtime-detail">{{ installLabel() }}</p>
+        <p class="model-manager__runtime-detail">
+          {{ installLabel() }}
+          @if (shutdownNote(); as note) {
+            <span class="model-manager__shutdown-note">· {{ note }}</span>
+          }
+        </p>
       </div>
     </div>
 
@@ -38,7 +43,7 @@
           [tooltip]="
             isStoppable()
               ? 'Stop the server Studio started'
-              : 'This server was started outside Studio, so Studio will not stop it'
+              : 'Studio did not start this server in this session, so it will not stop it'
           "
           (click)="stop()"
         />

@@ -69,6 +69,10 @@
   color: var(--form-muted-foreground-color);
 }
 
+.model-manager__shutdown-note {
+  opacity: 0.85;
+}
+
 .model-manager__runtime-actions {
   display: flex;
   flex: none;

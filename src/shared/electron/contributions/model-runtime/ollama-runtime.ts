@@ -180,7 +180,8 @@ export class OllamaRuntime implements ModelRuntime {
     if (installation.kind === 'absent') {
       return false;
     }
-    return this.server.start(installation.executable);
+    // The kind travels with the start: it decides whether the server outlives Studio.
+    return this.server.start(installation.executable, installation.kind);
   }
 
   /**

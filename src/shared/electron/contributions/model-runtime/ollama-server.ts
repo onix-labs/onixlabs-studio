@@ -1,4 +1,5 @@
 import { ChildProcess, spawn } from 'node:child_process';
+import { RuntimeInstallKind } from '@shared/api/model-runtime-types';
 import { logger } from '../../logger';
 import { pidJournal } from '../../pid-journal';
 
@@ -23,6 +24,22 @@ const STOP_GRACE_MS: number = 5_000;
 export type HealthProbe = () => Promise<boolean>;
 
 /**
+ * Whether a server started from a given install should be stopped when Studio closes.
+ *
+ * Studio's own managed copy is stopped: nothing else on the machine uses it, so leaving it holding a
+ * port, RAM and VRAM after Studio has gone is pure waste. A server run from the user's own install is
+ * left up — Studio merely started it on their behalf, and it behaves as it would had they run
+ * `ollama serve` themselves.
+ *
+ * This is only about *closing Studio*. An explicit stop is the user's instruction and always applies.
+ * @param kind The install the running server was started from.
+ * @returns Returns true when shutdown should stop the server.
+ */
+export function stopsOnShutdown(kind: RuntimeInstallKind): boolean {
+  return kind === 'managed';
+}
+
+/**
  * Starts and stops an Ollama server process on Studio's behalf.
  *
  * Studio only ever stops a server it started. A server the user is running themselves — the macOS
@@ -30,14 +47,27 @@ export type HealthProbe = () => Promise<boolean>;
  * business killing, so {@link OllamaServer.stop} refuses when it holds no child. The manager surfaces
  * that through `startedByStudio` on the status rather than offering a control that would not work.
  *
- * A spawned server is registered with the {@link pidJournal}, so a Studio that crashes before it can
- * stop the child does not leave an orphaned server behind.
+ * **Shutdown differs by which binary was started.** A server run from the user's *own* install stays
+ * up when Studio closes: Studio only started it on their behalf, and it behaves exactly as it would
+ * had they run `ollama serve` themselves. A server run from Studio's *managed* copy is stopped,
+ * because nothing else on the machine uses that copy and leaving it would hold a port and VRAM for
+ * nothing. {@link OllamaServer.stop} — the user explicitly asking — always stops either.
+ *
+ * A spawned server is registered with the {@link pidJournal} while Studio owns it, so a crash does not
+ * leave an orphan. One that is deliberately left running is unregistered first, or the journal's reap
+ * would kill it on the next launch.
  */
 export class OllamaServer {
   /**
    * The server process Studio spawned, or null when it did not spawn one.
    */
   private child: ChildProcess | null = null;
+
+  /**
+   * Which kind of install the running server was started from, which decides whether it outlives
+   * Studio. Meaningless while {@link child} is null.
+   */
+  private startedKind: RuntimeInstallKind = 'system';
 
   /**
    * The health probe used to decide when a spawned server is ready.
@@ -71,9 +101,11 @@ export class OllamaServer {
    * Starts the server and waits for it to answer. A server that is already reachable — whoever started
    * it — is left alone and reported as started.
    * @param executable The runtime executable to launch.
+   * @param kind Whether the executable is the user's own install or Studio's managed copy, which
+   * decides whether the server outlives Studio (see {@link dispose}).
    * @returns Returns true once the server answers.
    */
-  public async start(executable: string): Promise<boolean> {
+  public async start(executable: string, kind: RuntimeInstallKind = 'system'): Promise<boolean> {
     if (await this.probe()) {
       logger.debug('OllamaServer', 'Server already reachable; nothing to start');
       return true;
@@ -89,7 +121,14 @@ export class OllamaServer {
         env: { ...process.env, OLLAMA_HOST: this.host },
         stdio: 'ignore',
         windowsHide: true,
+        // Detached so a server that is meant to outlive Studio is not in Studio's process group and
+        // cannot be taken down with it. A managed server is killed explicitly on disposal instead.
+        detached: kind === 'system',
       });
+      if (kind === 'system') {
+        // Nothing waits on it, so let the event loop close without it.
+        child.unref();
+      }
     } catch (error: unknown) {
       logger.error('OllamaServer', 'Failed to spawn the Ollama server', error);
       return false;
@@ -107,7 +146,16 @@ export class OllamaServer {
     });
 
     this.child = child;
-    pidJournal()?.register(child.pid, 'model-runtime', executable);
+    this.startedKind = kind;
+
+    // Only a server Studio intends to stop is registered. The journal exists to reap orphans a dead
+    // run left behind, and it kills them on the next launch — so registering a server that is *meant*
+    // to outlive Studio would have the reaper shoot it moments after Studio came back. Leaving it
+    // unregistered is also the robust choice: unregistering on shutdown would depend on a graceful
+    // quit, and a crash or a force-kill would then take the user's own server down with it.
+    if (stopsOnShutdown(kind)) {
+      pidJournal()?.register(child.pid, 'model-runtime', executable);
+    }
 
     const healthy: boolean = await this.waitUntilHealthy();
     if (!healthy) {
@@ -150,11 +198,25 @@ export class OllamaServer {
    * Stops a Studio-owned server without waiting, for application teardown.
    */
   public dispose(): void {
-    if (this.child !== null) {
-      this.child.kill('SIGTERM');
-      pidJournal()?.unregister(this.child.pid);
-      this.child = null;
+    const child: ChildProcess | null = this.child;
+    if (child === null) {
+      return;
     }
+    this.child = null;
+
+    if (stopsOnShutdown(this.startedKind)) {
+      // Studio's own private copy: nothing else on the machine uses it, so leaving it holding a port,
+      // RAM and VRAM after Studio has gone would be pure waste.
+      logger.info('OllamaServer', 'Stopping the Studio-managed server on shutdown');
+      child.kill('SIGTERM');
+      pidJournal()?.unregister(child.pid);
+      return;
+    }
+
+    // The user's own install: Studio merely started it on their behalf, so it stays up exactly as it
+    // would had they run `ollama serve` themselves. It was never registered with the pid journal, so
+    // there is nothing to release and nothing that will reap it on the next launch.
+    logger.info('OllamaServer', 'Leaving the system-installed server running after shutdown');
   }
 
   /**
