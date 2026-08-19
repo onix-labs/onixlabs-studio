@@ -186,6 +186,7 @@ describe('ModelRuntimeContribution activation', () => {
         ModelRuntimeChannel.Pull,
         ModelRuntimeChannel.Remove,
         ModelRuntimeChannel.Running,
+        ModelRuntimeChannel.SearchCatalog,
         ModelRuntimeChannel.Show,
         ModelRuntimeChannel.Start,
         ModelRuntimeChannel.Status,

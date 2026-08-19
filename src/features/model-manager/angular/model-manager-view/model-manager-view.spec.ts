@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Bridge } from '@shared/api/bridge';
 import { ModelRuntimeChannel } from '@shared/api/model-runtime-channels';
+import { CatalogResult } from '@shared/api/model-catalog-types';
 import {
   LocalModel,
   ModelRuntimeStatus,
@@ -41,8 +42,40 @@ const LOADED: RunningModel = {
   expiresAt: '2026-08-19T12:05:00Z',
 };
 
+/**
+ * A curated catalogue entry and a Hugging Face one, so both badges and both size behaviours are shown.
+ */
+const CATALOG: CatalogResult = {
+  models: [
+    {
+      ref: 'llama3.2:3b',
+      name: 'Llama 3.2 3B',
+      source: 'curated',
+      category: 'general',
+      description: 'A compact general-purpose model.',
+      parameterSize: '3.2B',
+      sizeBytes: 2_019_392_628,
+      downloads: 0,
+      url: 'https://ollama.com/library/llama3.2',
+    },
+    {
+      ref: 'hf.co/bartowski/Some-Model-GGUF',
+      name: 'bartowski/Some-Model-GGUF',
+      source: 'huggingface',
+      category: 'other',
+      description: '',
+      parameterSize: '7B',
+      sizeBytes: 0,
+      downloads: 999,
+      url: 'https://huggingface.co/bartowski/Some-Model-GGUF',
+    },
+  ],
+  failedSources: [],
+};
+
 describe('ModelManagerView', () => {
   let calls: RecordedCall[];
+  let catalogResult: CatalogResult = CATALOG;
 
   /**
    * Installs a recording stub bridge answering the runtime channels with fixed replies.
@@ -65,6 +98,8 @@ describe('ModelManagerView', () => {
             return Promise.resolve([LOADED] as T);
           case ModelRuntimeChannel.DiskUsage:
             return Promise.resolve({ bytes: 4_700_000_000, path: '/models' } as T);
+          case ModelRuntimeChannel.SearchCatalog:
+            return Promise.resolve(catalogResult as T);
           default:
             return Promise.resolve(true as T);
         }
@@ -102,6 +137,7 @@ describe('ModelManagerView', () => {
 
   afterEach((): void => {
     delete (window as unknown as { bridge?: Bridge }).bridge;
+    catalogResult = CATALOG;
   });
 
   it('offers to install the runtime when no binary is present', async () => {
@@ -187,6 +223,109 @@ describe('ModelManagerView', () => {
     });
 
     expect(countOf(ModelRuntimeChannel.Start)).toBe(1);
+  });
+
+  it('lists the catalogue with its source badges once the server is running', async () => {
+    stubBridge(
+      { available: true, version: '0.32.14' },
+      { kind: 'system', executable: '/usr/local/bin/ollama', version: '0.32.14' },
+    );
+
+    const fixture: ComponentFixture<ModelManagerView> = await createView();
+
+    const text: string = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(text).toContain('Available');
+    expect(text).toContain('Llama 3.2 3B');
+    expect(text).toContain('A compact general-purpose model.');
+    expect(text).toContain('Ollama');
+    expect(text).toContain('Hugging Face');
+  });
+
+  it('shows a dash for a catalogue entry with no known size', async () => {
+    stubBridge(
+      { available: true, version: '0.32.14' },
+      { kind: 'system', executable: '/usr/local/bin/ollama', version: '0.32.14' },
+    );
+
+    const fixture: ComponentFixture<ModelManagerView> = await createView();
+
+    // The Hugging Face entry's size depends on the quantisation Ollama picks, so it is unknown here.
+    const rows: HTMLElement[] = [
+      ...(fixture.nativeElement as HTMLElement).querySelectorAll('tbody tr'),
+    ] as HTMLElement[];
+    const hub: HTMLElement | undefined = rows.find((row: HTMLElement): boolean =>
+      (row.textContent ?? '').includes('Some-Model-GGUF'),
+    );
+    expect(hub?.textContent).toContain('—');
+  });
+
+  it('marks an already-installed catalogue model rather than offering to install it', async () => {
+    catalogResult = {
+      models: [
+        {
+          ref: 'qwen2.5-coder:7b',
+          name: 'Qwen 2.5 Coder 7B',
+          source: 'curated',
+          category: 'coding',
+          description: '',
+          parameterSize: '7.6B',
+          sizeBytes: 1,
+          downloads: 0,
+          url: '',
+        },
+      ],
+      failedSources: [],
+    };
+    stubBridge(
+      { available: true, version: '0.32.14' },
+      { kind: 'system', executable: '/usr/local/bin/ollama', version: '0.32.14' },
+    );
+
+    const fixture: ComponentFixture<ModelManagerView> = await createView();
+
+    // INSTALLED is qwen2.5-coder:7b, so the catalogue row for it must not offer an Install button.
+    const rows: HTMLElement[] = [
+      ...(fixture.nativeElement as HTMLElement).querySelectorAll('tbody tr'),
+    ] as HTMLElement[];
+    const row: HTMLElement | undefined = rows.find((r: HTMLElement): boolean =>
+      (r.textContent ?? '').includes('Qwen 2.5 Coder 7B'),
+    );
+    expect(row?.textContent).toContain('Installed');
+  });
+
+  it('warns when a catalogue source failed, rather than silently showing fewer results', async () => {
+    catalogResult = { models: CATALOG.models, failedSources: ['huggingface'] };
+    stubBridge(
+      { available: true, version: '0.32.14' },
+      { kind: 'system', executable: '/usr/local/bin/ollama', version: '0.32.14' },
+    );
+
+    const fixture: ComponentFixture<ModelManagerView> = await createView();
+
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('Partial results');
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('huggingface');
+  });
+
+  it('pulls a catalogue model through the runtime client', async () => {
+    stubBridge(
+      { available: true, version: '0.32.14' },
+      { kind: 'system', executable: '/usr/local/bin/ollama', version: '0.32.14' },
+    );
+    const fixture: ComponentFixture<ModelManagerView> = await createView();
+
+    const install: HTMLButtonElement | undefined = [
+      ...(fixture.nativeElement as HTMLElement).querySelectorAll('button'),
+    ].find((button: HTMLButtonElement): boolean => (button.textContent ?? '').includes('Install'));
+    install?.click();
+    await new Promise<void>((resolve: () => void): void => {
+      setTimeout(resolve, 0);
+    });
+
+    const call: RecordedCall | undefined = calls.find(
+      (recorded: RecordedCall): boolean =>
+        (recorded.channel as ModelRuntimeChannel) === ModelRuntimeChannel.Pull,
+    );
+    expect(call?.args).toEqual(['llama3.2:3b']);
   });
 
   it('removes a model through the runtime client', async () => {
