@@ -387,6 +387,13 @@
 
 .agent__input {
   inline-size: 100%;
+
+  // Grow with the content in CSS rather than in JavaScript. The old approach wrote `height: auto` and
+  // then read `scrollHeight` on every keystroke, which forces the browser to lay out the *whole
+  // document* synchronously before it can answer — a cost that scales with everything mounted, and so
+  // became crippling in Mission Control, where several full transcripts are mounted at once.
+  // `min`/`max-block-size` below bound the growth exactly as the JavaScript did.
+  field-sizing: content;
   min-block-size: 1.5rem;
   max-block-size: 12rem;
   padding: 0;

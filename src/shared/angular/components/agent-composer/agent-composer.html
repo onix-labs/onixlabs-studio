@@ -178,7 +178,7 @@
     [placeholder]="pendingInput() ? 'Answer the agent…' : 'Ask the agent to do something…'"
     [attr.aria-label]="pendingInput() ? 'Answer the agent' : 'Message the agent'"
     [value]="draft()"
-    (input)="onInput(input.value); autoGrow(input); updateSuggest(input)"
+    (input)="onComposerInput(input)"
     (keydown)="onKeydown($event)"
     (paste)="onPaste($event)"
   ></textarea>
