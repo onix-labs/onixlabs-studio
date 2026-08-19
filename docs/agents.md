@@ -579,6 +579,38 @@ to log** — this is not optional plumbing, it is how the running app is observe
 - **Instrument meaningful events, not every line** — the test is "would an operator want this row in
   the audit?".
 
+### 4.14 Local model runtimes (the AI Model Manager)
+
+The **AI Model Manager** tab (epic #407) owns the _local model lifecycle_: installing the runtime,
+starting and stopping its server, and pulling, inspecting and removing model weights. Ollama is the
+first — and currently only — implementation.
+
+- **The seam is `ModelRuntime`** (`shared/electron/contributions/model-runtime/model-runtime.ts`): a
+  provider slot covering status, the installed/running/inspect/remove reads, `pull`, and the server
+  lifecycle (`installation`, `install`, `start`, `stop`, `diskUsage`). A second runtime is a new
+  implementation plus a line in the contribution's factory; nothing upstream changes. The view reads
+  its heading from the runtime's `displayName`, so it never names Ollama.
+- **Everything is absent-safe by contract.** A query against a runtime whose server is not running
+  resolves to an empty result, a `null`, or an unavailable status — never a throw. "Not running" is an
+  ordinary state the manager renders, not an error; it is the state the user opened the tab to fix.
+- **Detection prefers a system install** (`OLLAMA_EXECUTABLE` → PATH → platform locations) over
+  Studio's managed copy, so a user who already runs the runtime never downloads a second one. The
+  managed path mirrors `LspProvisioner`: pinned version, hard-coded SHA-256, version-scoped directory.
+- **Studio only stops a server it started.** One the user is running is reachable but not ours to
+  kill; `ModelRuntimeStatus.startedByStudio` is how the view knows to disable the control rather than
+  offer one that silently does nothing. A spawned server is registered with the pid journal.
+- **Status is polled, not watched** — Ollama has no event stream — but only while a view is
+  subscribed (ref-counted, as System Monitor does with sampling) and pushed only on genuine change.
+- **The catalogue** (`ModelCatalog`) is a source slot in the shape of the package-management
+  registries: a bundled, offline curated list plus live Hugging Face search. Source failures are
+  isolated and named, so losing the network degrades the list rather than emptying it.
+- **The boundary with connections (#254) is deliberate and load-bearing.** This feature owns the
+  runtime and the weights; connections own endpoint config, auth, and which model ids reach the agent
+  picker. `ModelConnections` is the only crossing: it writes a pulled model's id (and its real context
+  window from `/api/show`) into local Ollama connections, and removes it again on delete. It acts only
+  on explicit installs and removes, never as a background sweep, so it cannot undo a user's own
+  picker edits.
+
 ---
 
 ## 5. AI agent — access & permission model

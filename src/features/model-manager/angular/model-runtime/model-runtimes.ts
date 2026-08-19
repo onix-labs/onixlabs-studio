@@ -8,6 +8,7 @@ import {
   ModelDetails,
   ModelDiskUsage,
   ModelPullProgress,
+  ModelRuntimeInfo,
   ModelRuntimeStatus,
   RunningModel,
   RuntimeInstallation,
@@ -31,6 +32,17 @@ export class ModelRuntimes {
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Identifies the runtime being served, so the view can name it rather than assuming one.
+   * @returns Returns the runtime's identity, or a neutral placeholder when unavailable.
+   */
+  public describe(): Promise<ModelRuntimeInfo> {
+    return (
+      this.bridge?.invoke<ModelRuntimeInfo>(ModelRuntimeChannel.Describe) ??
+      Promise.resolve({ id: '', displayName: 'Model runtime' })
+    );
+  }
 
   /**
    * Lists the models installed locally.

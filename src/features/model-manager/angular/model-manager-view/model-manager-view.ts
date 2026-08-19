@@ -22,6 +22,7 @@ import {
   LocalModel,
   ModelDiskUsage,
   ModelPullProgress,
+  ModelRuntimeInfo,
   ModelRuntimeStatus,
   RunningModel,
   RuntimeInstallation,
@@ -142,6 +143,12 @@ export class ModelManagerView {
    * model reaches the agent picker without a detour through Settings.
    */
   private readonly links: ModelConnections = inject(ModelConnections);
+
+  /**
+   * Holds the runtime's identity, so the view names whatever runtime is behind the slot rather than
+   * assuming Ollama. Falls back to a neutral label until the backend answers.
+   */
+  protected readonly runtimeName: WritableSignal<string> = signal<string>('Model runtime');
 
   /**
    * Holds the runtime's server status, or null before the first reading.
@@ -326,6 +333,13 @@ export class ModelManagerView {
    * Loads the initial state and follows the runtime's status while the tab is open.
    */
   public constructor() {
+    // Keep the neutral placeholder if the backend cannot name itself, rather than rendering a blank
+    // or an "undefined" into the heading.
+    void this.runtimes.describe().then((info: ModelRuntimeInfo): void => {
+      if (info.displayName !== undefined && info.displayName.length > 0) {
+        this.runtimeName.set(info.displayName);
+      }
+    });
     void this.refresh();
 
     // The backend ref-counts watchers and only polls while one is registered, so an unwatched runtime

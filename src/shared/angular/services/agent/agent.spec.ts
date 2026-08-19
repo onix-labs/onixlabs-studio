@@ -105,7 +105,11 @@ describe('Agent', () => {
       | 'respondPermission'
       | 'respondInput'
       | 'respondEditDecision'
+      | 'checkClaudeAuth'
     > = {
+      // A failed run consults the authoritative sign-in status before offering to sign in. These tests
+      // exercise error handling, not the login prompt, so the user is reported as signed in.
+      checkClaudeAuth: (): Promise<boolean> => Promise.resolve(true),
       closeSession: (agentSessionId: string): void => void closeSessionCalls.push(agentSessionId),
       onEvent: (listener: (event: AiEvent) => void): (() => void) => {
         fireEvent = listener;

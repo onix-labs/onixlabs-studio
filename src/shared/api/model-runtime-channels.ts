@@ -105,4 +105,9 @@ export enum ModelRuntimeChannel {
    * Searches the catalogue of models available to install (invoke).
    */
   SearchCatalog = 'model-runtime:search-catalog',
+
+  /**
+   * Identifies the runtime being served, so the view can name it rather than assuming one (invoke).
+   */
+  Describe = 'model-runtime:describe',
 }

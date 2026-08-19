@@ -117,6 +117,24 @@ export interface ModelDetails {
 }
 
 /**
+ * Identifies the runtime the manager is serving.
+ *
+ * The view reads its heading from this rather than naming Ollama, which is what keeps the slot honest:
+ * swapping the runtime changes what the user sees without touching the view.
+ */
+export interface ModelRuntimeInfo {
+  /**
+   * The stable runtime identifier (for example `ollama`).
+   */
+  readonly id: string;
+
+  /**
+   * The human-readable runtime name (for example `Ollama`).
+   */
+  readonly displayName: string;
+}
+
+/**
  * Whether a model runtime's server is reachable, and its version when it is.
  */
 export interface ModelRuntimeStatus {

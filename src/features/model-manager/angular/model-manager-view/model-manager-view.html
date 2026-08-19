@@ -10,7 +10,7 @@
       ></span>
       <div class="model-manager__runtime-text">
         <h2 class="model-manager__runtime-title">
-          Ollama
+          {{ runtimeName() }}
           <span class="model-manager__runtime-status">{{
             isRunning() ? 'running' : 'stopped'
           }}</span>
@@ -24,7 +24,7 @@
         <app-button
           variant="solid"
           [icon]="Icon.DOWNLOAD"
-          label="Install Ollama"
+          [label]="'Install ' + runtimeName()"
           [disabled]="busy()"
           (click)="installRuntime()"
         />
@@ -103,13 +103,13 @@
     <div class="model-manager__empty">
       <app-icon class="model-manager__empty-icon" [icon]="Icon.AI_MODELS" />
       @if (needsInstall()) {
-        <p class="model-manager__empty-text">Ollama isn't installed</p>
+        <p class="model-manager__empty-text">{{ runtimeName() }} isn't installed</p>
         <p class="model-manager__empty-hint">
-          Install it to download and run models locally, or install Ollama yourself and Studio will
-          use that copy.
+          Install it to download and run models locally, or install it yourself and Studio will use
+          that copy.
         </p>
       } @else {
-        <p class="model-manager__empty-text">Ollama isn't running</p>
+        <p class="model-manager__empty-text">{{ runtimeName() }} isn't running</p>
         <p class="model-manager__empty-hint">
           Start the server to see the models installed on this machine.
         </p>
