@@ -1,12 +1,14 @@
 import { inject, Service } from '@angular/core';
 import { Log } from '@shared/angular/services/log/log';
 import { Bridge } from '@shared/api/bridge';
+import { CatalogQuery, CatalogResult } from '@shared/api/model-catalog-types';
 import { ModelRuntimeChannel } from '@shared/api/model-runtime-channels';
 import {
   LocalModel,
   ModelDetails,
   ModelDiskUsage,
   ModelPullProgress,
+  ModelRuntimeInfo,
   ModelRuntimeStatus,
   RunningModel,
   RuntimeInstallation,
@@ -30,6 +32,17 @@ export class ModelRuntimes {
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Identifies the runtime being served, so the view can name it rather than assuming one.
+   * @returns Returns the runtime's identity, or a neutral placeholder when unavailable.
+   */
+  public describe(): Promise<ModelRuntimeInfo> {
+    return (
+      this.bridge?.invoke<ModelRuntimeInfo>(ModelRuntimeChannel.Describe) ??
+      Promise.resolve({ id: '', displayName: 'Model runtime' })
+    );
+  }
 
   /**
    * Lists the models installed locally.
@@ -67,6 +80,21 @@ export class ModelRuntimes {
   public remove(name: string): Promise<boolean> {
     this.log.info('model-manager.runtime', 'IPC remove model', name);
     return this.bridge?.invoke<boolean>(ModelRuntimeChannel.Remove, name) ?? Promise.resolve(false);
+  }
+
+  /**
+   * Searches the catalogue of models available to install. An empty search returns the curated list,
+   * so the view opens on something browsable.
+   * @param text The free-text search.
+   * @param limit The most results to return per source.
+   * @returns Returns the matching models, and any sources that failed.
+   */
+  public searchCatalog(text: string, limit?: number): Promise<CatalogResult> {
+    const query: CatalogQuery = { text, limit };
+    return (
+      this.bridge?.invoke<CatalogResult>(ModelRuntimeChannel.SearchCatalog, query) ??
+      Promise.resolve({ models: [], failedSources: [] })
+    );
   }
 
   /**

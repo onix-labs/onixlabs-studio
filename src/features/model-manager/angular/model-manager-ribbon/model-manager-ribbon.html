@@ -1,0 +1,25 @@
+<app-ribbon-overflow>
+  <app-ribbon-strip-group title="Runtime">
+    @if (running()) {
+      <app-ribbon-strip-button
+        [icon]="Icon.STOP"
+        label="Stop"
+        [disabled]="busy() || !stoppable()"
+        (action)="onStop()"
+      />
+    } @else {
+      <app-ribbon-strip-button
+        [icon]="Icon.PLAY"
+        label="Start"
+        [disabled]="busy()"
+        (action)="onStart()"
+      />
+    }
+    <app-ribbon-strip-button
+      [icon]="Icon.REFRESH"
+      label="Refresh"
+      [disabled]="busy()"
+      (action)="onRefresh()"
+    />
+  </app-ribbon-strip-group>
+</app-ribbon-overflow>

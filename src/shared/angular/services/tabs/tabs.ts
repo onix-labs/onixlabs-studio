@@ -11,6 +11,8 @@ const SINGLETON_TAB_TYPES: ReadonlySet<TabType> = new Set<TabType>([
   'settings',
   'mission-control',
   'containers',
+  // Machine-wide tools: a second copy would show the same thing and duplicate its polling.
+  'model-manager',
 ]);
 
 /**

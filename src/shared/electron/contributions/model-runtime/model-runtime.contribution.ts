@@ -7,8 +7,12 @@ import {
   ModelRuntimeStatus,
   RuntimeInstallProgress,
 } from '@shared/api/model-runtime-types';
+import { CatalogQuery } from '@shared/api/model-catalog-types';
 import { resolveOllamaOrigin } from '../../ai/ollama-endpoint';
 import { ContributionContext, MainContribution } from '../main-contribution';
+import { CuratedCatalogSource } from './curated-catalog-source';
+import { HubFetch, HubResponse, HuggingFaceCatalogSource } from './huggingface-catalog-source';
+import { ModelCatalog } from './model-catalog';
 import { ModelRuntime } from './model-runtime';
 import { OllamaProvisioner } from './ollama-provisioner';
 import { OllamaRuntime } from './ollama-runtime';
@@ -75,6 +79,16 @@ export class ModelRuntimeContribution implements MainContribution {
   private readonly pulls: Map<string, AbortController> = new Map<string, AbortController>();
 
   /**
+   * The catalogue of models available to install. Built at activation alongside the runtime.
+   */
+  private catalog: ModelCatalog | null = null;
+
+  /**
+   * Builds the catalogue at activation.
+   */
+  private readonly catalogFactory: () => ModelCatalog;
+
+  /**
    * Builds the runtime at activation. Deferred rather than constructed eagerly because the production
    * runtime resolves its install directory from `app.getPath('userData')`, which is only available once
    * the app is ready — and this module is imported by the contributions manifest long before that.
@@ -85,9 +99,12 @@ export class ModelRuntimeContribution implements MainContribution {
    * Initializes a new instance of the {@link ModelRuntimeContribution} class.
    * @param runtime The runtime to serve; when omitted, the production Ollama runtime is built at
    * activation.
+   * @param catalog The catalogue to serve; when omitted, the production catalogue is built at
+   * activation.
    */
-  public constructor(runtime?: ModelRuntime) {
+  public constructor(runtime?: ModelRuntime, catalog?: ModelCatalog) {
     this.factory = runtime === undefined ? defaultRuntime : (): ModelRuntime => runtime;
+    this.catalogFactory = catalog === undefined ? defaultCatalog : (): ModelCatalog => catalog;
   }
 
   /**
@@ -99,7 +116,13 @@ export class ModelRuntimeContribution implements MainContribution {
     this.context = context;
     const runtime: ModelRuntime = this.factory();
     this.runtime = runtime;
+    const catalog: ModelCatalog = this.catalogFactory();
+    this.catalog = catalog;
 
+    context.handle(ModelRuntimeChannel.Describe, (): { id: string; displayName: string } => ({
+      id: runtime.id,
+      displayName: runtime.displayName,
+    }));
     context.handle(ModelRuntimeChannel.List, (): Promise<unknown> => runtime.list());
     context.handle(ModelRuntimeChannel.Running, (): Promise<unknown> => runtime.running());
     context.handle(ModelRuntimeChannel.Status, (): Promise<unknown> => runtime.status());
@@ -136,6 +159,11 @@ export class ModelRuntimeContribution implements MainContribution {
       ModelRuntimeChannel.CancelPull,
       (_event: IpcMainInvokeEvent, name: unknown): boolean => this.cancelPull(String(name)),
     );
+    context.handle(
+      ModelRuntimeChannel.SearchCatalog,
+      (_event: IpcMainInvokeEvent, query: unknown): Promise<unknown> =>
+        catalog.search(query as CatalogQuery),
+    );
 
     context.on(ModelRuntimeChannel.StartWatch, (): void => this.addConsumer());
     context.on(ModelRuntimeChannel.StopWatch, (): void => this.removeConsumer());
@@ -159,6 +187,7 @@ export class ModelRuntimeContribution implements MainContribution {
     // A server Studio started is Studio's to clean up; one the user started is left running.
     this.runtime?.dispose?.();
     this.runtime = null;
+    this.catalog = null;
     this.context = null;
     this.consumers = 0;
     this.lastStatus = null;
@@ -302,6 +331,17 @@ function defaultRuntime(): ModelRuntime {
     undefined,
     new OllamaProvisioner(path.join(app.getPath('userData'), 'model-runtimes', 'ollama')),
   );
+}
+
+/**
+ * Builds the production catalogue: the offline curated list first, then the Hugging Face Hub. Order
+ * matters — the curated entry for a model wins over a raw Hub repo for the same reference.
+ * @returns Returns the catalogue.
+ */
+function defaultCatalog(): ModelCatalog {
+  const http: HubFetch = (url: string, init?: { signal?: AbortSignal }): Promise<HubResponse> =>
+    fetch(url, init);
+  return new ModelCatalog([new CuratedCatalogSource(), new HuggingFaceCatalogSource(http)]);
 }
 
 /**

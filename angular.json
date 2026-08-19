@@ -117,8 +117,8 @@
             "coverageReporters": ["text-summary", "html", "lcovonly"],
             "coverageThresholds": {
               "statements": 68,
-              "branches": 62.5,
-              "functions": 61,
+              "branches": 63,
+              "functions": 62,
               "lines": 69
             }
           }

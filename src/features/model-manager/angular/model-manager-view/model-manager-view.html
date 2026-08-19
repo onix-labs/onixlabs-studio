@@ -1,0 +1,262 @@
+<div class="model-manager">
+  <!-- The runtime's state: where its binary came from, whether the server is up, and the controls that
+       change that. Everything below this is empty until the server is running, so it leads. -->
+  <section class="model-manager__runtime">
+    <div class="model-manager__runtime-state">
+      <span
+        class="model-manager__indicator"
+        [class.model-manager__indicator--running]="isRunning()"
+        [title]="isRunning() ? 'Running' : 'Stopped'"
+      ></span>
+      <div class="model-manager__runtime-text">
+        <h2 class="model-manager__runtime-title">
+          {{ runtimeName() }}
+          <span class="model-manager__runtime-status">{{
+            isRunning() ? 'running' : 'stopped'
+          }}</span>
+        </h2>
+        <p class="model-manager__runtime-detail">
+          {{ installLabel() }}
+          @if (shutdownNote(); as note) {
+            <span class="model-manager__shutdown-note">· {{ note }}</span>
+          }
+        </p>
+      </div>
+    </div>
+
+    <div class="model-manager__runtime-actions">
+      @if (needsInstall()) {
+        <app-button
+          variant="solid"
+          [icon]="Icon.DOWNLOAD"
+          [label]="'Install ' + runtimeName()"
+          [disabled]="busy()"
+          (click)="installRuntime()"
+        />
+      } @else if (isRunning()) {
+        <app-button
+          variant="outline"
+          tone="warning"
+          [icon]="Icon.STOP"
+          label="Stop"
+          [disabled]="busy() || !isStoppable()"
+          [tooltip]="
+            isStoppable()
+              ? 'Stop the server Studio started'
+              : 'Studio did not start this server in this session, so it will not stop it'
+          "
+          (click)="stop()"
+        />
+      } @else {
+        <app-button
+          variant="solid"
+          tone="success"
+          [icon]="Icon.PLAY"
+          label="Start"
+          [disabled]="busy()"
+          (click)="start()"
+        />
+      }
+      <app-button
+        variant="none"
+        size="small"
+        [icon]="Icon.REFRESH"
+        ariaLabel="Refresh"
+        tooltip="Refresh"
+        [disabled]="busy()"
+        (click)="refresh()"
+      />
+    </div>
+  </section>
+
+  <!-- The managed download is large enough (over a gigabyte on Linux and Windows) that silence would
+       read as a hang, so it reports throughout. -->
+  @if (installProgress(); as progress) {
+    <section class="model-manager__progress">
+      <div class="model-manager__progress-head">
+        <span class="model-manager__progress-stage">{{ progress.stage }}</span>
+        @if (installPercent(); as percent) {
+          <span class="model-manager__progress-value">{{ percent }}%</span>
+        } @else if (progress.received > 0) {
+          <span class="model-manager__progress-value">{{ formatBytes(progress.received) }}</span>
+        }
+        @if (progress.stage === 'done' || progress.stage === 'failed') {
+          <app-button
+            variant="none"
+            size="small"
+            [icon]="Icon.CLOSE"
+            ariaLabel="Dismiss"
+            (click)="dismissProgress()"
+          />
+        }
+      </div>
+      <div class="model-manager__progress-track">
+        <div
+          class="model-manager__progress-bar"
+          [class.model-manager__progress-bar--indeterminate]="installPercent() === null"
+          [class.model-manager__progress-bar--failed]="progress.stage === 'failed'"
+          [style.width.%]="installPercent() ?? 100"
+        ></div>
+      </div>
+      @if (progress.error) {
+        <p class="model-manager__progress-error">{{ progress.error }}</p>
+      }
+    </section>
+  }
+
+  @if (!isRunning()) {
+    <div class="model-manager__empty">
+      <app-icon class="model-manager__empty-icon" [icon]="Icon.AI_MODELS" />
+      @if (needsInstall()) {
+        <p class="model-manager__empty-text">{{ runtimeName() }} isn't installed</p>
+        <p class="model-manager__empty-hint">
+          Install it to download and run models locally, or install it yourself and Studio will use
+          that copy.
+        </p>
+      } @else {
+        <p class="model-manager__empty-text">{{ runtimeName() }} isn't running</p>
+        <p class="model-manager__empty-hint">
+          Start the server to see the models installed on this machine.
+        </p>
+      }
+    </div>
+  } @else {
+    <section class="model-manager__section">
+      <header class="model-manager__header">
+        <h2 class="model-manager__title">Installed</h2>
+        @if (disk(); as usage) {
+          @if (usage.path !== '') {
+            <span class="model-manager__disk" [title]="usage.path">
+              {{ formatBytes(usage.bytes) }} on disk
+            </span>
+          }
+        }
+      </header>
+
+      <app-table
+        class="model-manager__table"
+        [columns]="installedColumns"
+        [rows]="installedRows()"
+        emptyText="No models installed yet."
+      >
+        <ng-template appTableRow let-row>
+          <td class="model-manager__name">{{ local(row).name }}</td>
+          <td>{{ local(row).parameterSize || '—' }}</td>
+          <td>{{ local(row).quantization || '—' }}</td>
+          <td class="model-manager__numeric">{{ formatBytes(local(row).size) }}</td>
+          <td>{{ formatDate(local(row).modifiedAt) }}</td>
+          <td class="model-manager__row-actions">
+            <app-button
+              variant="none"
+              size="small"
+              tone="danger"
+              [icon]="Icon.TRASH"
+              ariaLabel="Remove"
+              [tooltip]="'Remove ' + local(row).name"
+              [disabled]="busy()"
+              (click)="remove(local(row))"
+            />
+          </td>
+        </ng-template>
+      </app-table>
+    </section>
+
+    <!-- The available half of the installed-vs-available split: Studio's curated list of well-known
+         Ollama models, plus a live Hugging Face search for the long tail. -->
+    <section class="model-manager__section">
+      <header class="model-manager__header">
+        <h2 class="model-manager__title">Available</h2>
+        <app-text-field
+          class="model-manager__search"
+          placeholder="Search models…"
+          ariaLabel="Search available models"
+          [value]="searchText()"
+          (valueChange)="onSearchChange($event)"
+        />
+        @if (catalogFailures().length > 0) {
+          <span class="model-manager__warning" title="Some catalogue sources could not be reached">
+            Partial results — {{ catalogFailures().join(', ') }} unavailable
+          </span>
+        }
+      </header>
+
+      <app-table
+        class="model-manager__table"
+        [columns]="availableColumns"
+        [rows]="availableRows()"
+        [emptyText]="searching() ? 'Searching…' : 'No models match that search.'"
+      >
+        <ng-template appTableRow let-row>
+          <td class="model-manager__name">
+            {{ cat(row).name }}
+            @if (cat(row).description) {
+              <span class="model-manager__description">{{ cat(row).description }}</span>
+            }
+          </td>
+          <td>
+            <span class="model-manager__badge model-manager__badge--{{ cat(row).source }}">
+              {{ cat(row).source === 'curated' ? 'Ollama' : 'Hugging Face' }}
+            </span>
+          </td>
+          <td>{{ cat(row).parameterSize || '—' }}</td>
+          <td class="model-manager__numeric">
+            {{ cat(row).sizeBytes > 0 ? formatBytes(cat(row).sizeBytes) : '—' }}
+          </td>
+          <td class="model-manager__row-actions">
+            @if (pullOf(cat(row).ref); as progress) {
+              <span class="model-manager__pull">
+                <span class="model-manager__pull-label">
+                  @if (pullPercent(progress); as percent) {
+                    {{ percent }}%
+                  } @else {
+                    {{ progress.stage }}
+                  }
+                </span>
+                <app-button
+                  variant="none"
+                  size="small"
+                  tone="warning"
+                  [icon]="Icon.CLOSE"
+                  ariaLabel="Cancel download"
+                  tooltip="Cancel download"
+                  (click)="cancelInstall(cat(row))"
+                />
+              </span>
+            } @else if (isInstalled(cat(row).ref)) {
+              <span class="model-manager__installed">Installed</span>
+            } @else {
+              <app-button
+                variant="outline"
+                size="small"
+                [icon]="Icon.DOWNLOAD"
+                label="Install"
+                [disabled]="busy()"
+                (click)="install(cat(row))"
+              />
+            }
+          </td>
+        </ng-template>
+      </app-table>
+    </section>
+
+    <section class="model-manager__section">
+      <header class="model-manager__header">
+        <h2 class="model-manager__title">Loaded</h2>
+      </header>
+
+      <app-table
+        class="model-manager__table"
+        [columns]="runningColumns"
+        [rows]="runningRows()"
+        emptyText="No models are loaded into memory."
+      >
+        <ng-template appTableRow let-row>
+          <td class="model-manager__name">{{ loaded(row).name }}</td>
+          <td>{{ processor(loaded(row)) }}</td>
+          <td class="model-manager__numeric">{{ formatBytes(loaded(row).size) }}</td>
+          <td>{{ formatDate(loaded(row).expiresAt) }}</td>
+        </ng-template>
+      </app-table>
+    </section>
+  }
+</div>

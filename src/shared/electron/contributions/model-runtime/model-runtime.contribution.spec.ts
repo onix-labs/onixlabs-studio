@@ -179,6 +179,7 @@ describe('ModelRuntimeContribution activation', () => {
     expect([...fake.handlers.keys()].sort()).toEqual(
       [
         ModelRuntimeChannel.CancelPull,
+        ModelRuntimeChannel.Describe,
         ModelRuntimeChannel.DiskUsage,
         ModelRuntimeChannel.Install,
         ModelRuntimeChannel.Installation,
@@ -186,6 +187,7 @@ describe('ModelRuntimeContribution activation', () => {
         ModelRuntimeChannel.Pull,
         ModelRuntimeChannel.Remove,
         ModelRuntimeChannel.Running,
+        ModelRuntimeChannel.SearchCatalog,
         ModelRuntimeChannel.Show,
         ModelRuntimeChannel.Start,
         ModelRuntimeChannel.Status,
