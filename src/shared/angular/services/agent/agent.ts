@@ -27,6 +27,7 @@ import type {
 import { AiRuntime } from '../ai-runtime/ai-runtime';
 import { AgentEngine } from '../agent-engine/agent-engine';
 import { Log } from '@shared/angular/services/log/log';
+import { AgentPerf } from '@shared/angular/services/agent-perf/agent-perf';
 import {
   NotificationAction,
   Notifications,
@@ -483,6 +484,12 @@ export class Agent {
    * Holds the structured logger.
    */
   private readonly logger: Log = inject(Log);
+
+  /**
+   * Holds the transcript-performance probe (GitHub #408 instrumentation), notified each time the stream
+   * buffer folds into the transcript.
+   */
+  private readonly perf: AgentPerf = inject(AgentPerf);
 
   /**
    * Holds the ordered transcript.
@@ -2014,6 +2021,7 @@ export class Agent {
       return;
     }
     this.pendingStream = null;
+    this.perf.streamFlushed();
     const items: readonly AgentItem[] = this.log();
     const last: AgentItem | undefined = items[items.length - 1];
     if (last?.kind === pending.kind && last.parentToolId === pending.parentToolId) {

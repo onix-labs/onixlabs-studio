@@ -22,6 +22,7 @@ import type { AgentSurface, AiEditDecision, AiImageRef } from '@shared/api/ai-ty
 import { Agent, AgentItem, AgentItemKind } from '@shared/angular/services/agent/agent';
 import { formatTokens } from '@shared/angular/services/agent/token-format';
 import { Settings } from '@shared/angular/services/settings/settings';
+import { AgentPerf } from '@shared/angular/services/agent-perf/agent-perf';
 import { AgentRequests } from '@shared/angular/services/agent-requests/agent-requests';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
 import { AgentHosts } from '@shared/angular/services/agent-hosts/agent-hosts';
@@ -260,6 +261,12 @@ export class AgentChat implements OnInit {
    * view).
    */
   private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds the transcript-performance probe (GitHub #408 instrumentation): times each rows rebuild and
+   * counts how many transcript views are mounted at once (the Mission Control multiplier).
+   */
+  private readonly perf: AgentPerf = inject(AgentPerf);
 
   /**
    * Gets the identifier of the tab hosting this conversation, or undefined when not hosted by a tab
@@ -572,7 +579,12 @@ export class AgentChat implements OnInit {
         });
       };
 
-      return buildRail(sequence);
+      // Time the rebuild for the #408 transcript probe: this computed re-runs on every stream flush
+      // and maps over the whole (unwindowed) transcript, so its cost is the O(total) signal we track.
+      const start: number = performance.now();
+      const built: readonly TranscriptRow[] = buildRail(sequence);
+      this.perf.rowsBuilt(performance.now() - start, items.length, built.length);
+      return built;
     },
   );
 
@@ -602,6 +614,11 @@ export class AgentChat implements OnInit {
    * while the conversation awaits a permission decision in the background.
    */
   public constructor() {
+    // Count this transcript view against the live total (the Mission Control mount multiplier) for the
+    // #408 probe, releasing it on teardown.
+    this.perf.transcriptMounted();
+    this.destroyRef.onDestroy((): void => this.perf.transcriptUnmounted());
+
     effect((): void => {
       const id: string | undefined = this.tabId();
       const waiting: boolean = this.awaitingDecision();
