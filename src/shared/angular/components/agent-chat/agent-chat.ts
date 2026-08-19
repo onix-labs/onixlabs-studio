@@ -72,6 +72,71 @@ const TOP_THRESHOLD_PX: number = 96;
 const PAYLOAD_PREVIEW_CHARS: number = 1_500;
 
 /**
+ * A raw tool payload (input or output) prepared for rendering: the text to show (clipped to the preview
+ * when long and not yet revealed, otherwise in full), whether it is currently clipped (which shows the
+ * "Show all" affordance), and that affordance's label. Precomputed into the row so an expanded tool row
+ * never slices the payload on the change-detection path — even while collapsed (see {@link TranscriptRow}).
+ */
+interface PayloadView {
+  /**
+   * Gets the text to render (the preview clip while clipped, otherwise the full payload).
+   */
+  readonly text: string;
+
+  /**
+   * Gets a value indicating whether the payload renders clipped (long and not yet revealed).
+   */
+  readonly clipped: boolean;
+
+  /**
+   * Gets the "Show all" label saying how much is hidden, or an empty string when not clipped.
+   */
+  readonly moreLabel: string;
+}
+
+/**
+ * The precomputed input/output payload views for a tool row (either absent when the tool has none).
+ */
+interface RowPayloads {
+  /**
+   * Gets the tool's input payload view, when it has non-empty input.
+   */
+  readonly input?: PayloadView;
+
+  /**
+   * Gets the tool's output (or error) payload view, when it has non-empty output.
+   */
+  readonly output?: PayloadView;
+}
+
+/**
+ * Builds a raw-payload view for a tool row: clips the text to the preview when it is long and not yet
+ * revealed, and precomputes the "Show all" label. Pure, so it runs once per row rebuild rather than on
+ * every change-detection pass.
+ * @param itemId The tool item's id (keys the revealed set).
+ * @param section Which payload of the item this is.
+ * @param text The full payload text.
+ * @param revealed The set of `itemId:section` keys the reader has revealed in full.
+ * @returns Returns the payload view.
+ */
+function buildPayloadView(
+  itemId: string,
+  section: 'input' | 'output',
+  text: string,
+  revealed: ReadonlySet<string>,
+): PayloadView {
+  const clipped: boolean =
+    text.length > PAYLOAD_PREVIEW_CHARS && !revealed.has(`${itemId}:${section}`);
+  return {
+    text: clipped ? text.slice(0, PAYLOAD_PREVIEW_CHARS) : text,
+    clipped,
+    moreLabel: clipped
+      ? `Show all (${(text.length - PAYLOAD_PREVIEW_CHARS).toLocaleString()} more characters)`
+      : '',
+  };
+}
+
+/**
  * Identifies the kind of a rendered transcript row: the transcript item kinds plus the synthetic
  * `working` row that carries the run's live "Working…" indicator.
  */
@@ -161,6 +226,11 @@ interface TranscriptRow {
    * an ordinary tool row.
    */
   readonly lane?: LaneInfo;
+
+  /**
+   * Gets the precomputed raw input/output payload views for a tool row, or undefined for other kinds.
+   */
+  readonly payloads?: RowPayloads;
 }
 
 /**
@@ -440,10 +510,11 @@ export class AgentChat implements OnInit {
    * own activity (assistant text, reasoning, tool calls, and the working indicator) forms one
    * connected rail; the user's messages and permission prompts sit off it and break the line.
    */
-  protected readonly rows: Signal<readonly TranscriptRow[]> = computed(
-    (): readonly TranscriptRow[] => {
+  protected readonly transcript: Signal<{ rows: readonly TranscriptRow[]; total: number }> =
+    computed((): { rows: readonly TranscriptRow[]; total: number } => {
       const items: readonly AgentItem[] = this.items();
       const showWorking: boolean = this.isRunning() && !this.awaitingDecision();
+      const revealed: ReadonlySet<string> = this.revealedPayloads();
       // Sub-agent items nest under their spawning Task tool row (its lane) rather than the main rail.
       const children: Map<string, AgentItem[]> = new Map<string, AgentItem[]>();
       for (const item of items) {
@@ -459,6 +530,12 @@ export class AgentChat implements OnInit {
       const sequence: readonly RailEntry[] = showWorking
         ? [...base, { item: null, kind: 'working' }]
         : base;
+      // Window at the entries level (step 2): build only the most-recent top-level rows, keeping the
+      // working indicator (always the tail). Slicing before the O(rows) build bounds the rebuild — which
+      // re-runs on every stream flush — to the window rather than the whole conversation.
+      const size: number = this.windowSize();
+      const windowed: readonly RailEntry[] =
+        sequence.length <= size ? sequence : sequence.slice(sequence.length - size);
       // A thinking row is live while the run is still producing it (it is the newest item); it
       // streams into its disclosure and its collapsed summary reads as progress.
       const lastItemId: string | undefined = items[items.length - 1]?.id;
@@ -575,39 +652,65 @@ export class AgentChat implements OnInit {
             meta: thinking(row) ? wordCountFor(row.item) : undefined,
             tech: row.kind === 'tool' ? technicalToolName(row.item?.toolName) : undefined,
             lane,
+            // Precompute the raw payload clips (step 3) so an expanded tool row never slices strings on
+            // the change-detection path. Only non-empty payloads produce a view, matching the template's
+            // previous truthiness gate.
+            payloads:
+              row.kind === 'tool' && row.item !== null
+                ? {
+                    ...(row.item.toolInput
+                      ? {
+                          input: buildPayloadView(
+                            row.item.id,
+                            'input',
+                            row.item.toolInput,
+                            revealed,
+                          ),
+                        }
+                      : {}),
+                    ...(row.item.toolOutput
+                      ? {
+                          output: buildPayloadView(
+                            row.item.id,
+                            'output',
+                            row.item.toolOutput,
+                            revealed,
+                          ),
+                        }
+                      : {}),
+                  }
+                : undefined,
           };
         });
       };
 
-      // Time the rebuild for the #408 transcript probe: this computed re-runs on every stream flush
-      // and maps over the whole (unwindowed) transcript, so its cost is the O(total) signal we track.
+      // Time the rebuild for the #408 transcript probe. Only the windowed rows are built (step 2), so
+      // the cost is bounded by the window rather than the whole conversation; `items.length` records the
+      // total the window was taken from.
       const start: number = performance.now();
-      const built: readonly TranscriptRow[] = buildRail(sequence);
+      const built: readonly TranscriptRow[] = buildRail(windowed);
       this.perf.rowsBuilt(performance.now() - start, items.length, built.length);
-      return built;
-    },
-  );
+      return { rows: built, total: sequence.length };
+    });
 
   /**
-   * Gets the rows actually rendered: the most-recent {@link windowSize} top-level rows. Slicing the
-   * top-level list keeps each row (and its nested sub-agent lane) intact, and stays anchored to the
-   * tail as the transcript grows, so streaming and follow-the-tail are unaffected.
+   * Gets the rows actually rendered: the most-recent {@link windowSize} top-level rows, already built
+   * by {@link transcript} (the window is applied before the build). Each row keeps its nested sub-agent
+   * lane intact and stays anchored to the tail as the transcript grows, so streaming and
+   * follow-the-tail are unaffected.
    */
   protected readonly windowedRows: Signal<readonly TranscriptRow[]> = computed(
-    (): readonly TranscriptRow[] => {
-      const rows: readonly TranscriptRow[] = this.rows();
-      const size: number = this.windowSize();
-      return rows.length <= size ? rows : rows.slice(rows.length - size);
-    },
+    (): readonly TranscriptRow[] => this.transcript().rows,
   );
 
   /**
    * Gets how many older top-level rows are held back from the DOM — the count offered by the
    * "load earlier" affordance, and zero when the whole transcript is rendered.
    */
-  protected readonly earlierCount: Signal<number> = computed(
-    (): number => this.rows().length - this.windowedRows().length,
-  );
+  protected readonly earlierCount: Signal<number> = computed((): number => {
+    const built: { rows: readonly TranscriptRow[]; total: number } = this.transcript();
+    return built.total - built.rows.length;
+  });
 
   /**
    * Initializes a new instance of the {@link AgentChat} class, lighting the hosting tab's attention dot
@@ -640,9 +743,9 @@ export class AgentChat implements OnInit {
 
     // Follow the tail: after each render that grows the transcript (streamed text, a new row, or the
     // working indicator), pin the list to the bottom while the preference is on and the reader is
-    // already there. Reading rows() re-runs this as the transcript streams.
+    // already there. Reading the rendered rows re-runs this as the transcript streams.
     afterRenderEffect((): void => {
-      this.rows();
+      this.windowedRows();
       if (!this.settings.aiAutoScroll() || !this.atBottom()) {
         return;
       }
@@ -793,41 +896,6 @@ export class AgentChat implements OnInit {
    */
   public skipInput(item: AgentItem): void {
     this.agent.respondInput(item, null);
-  }
-
-  /**
-   * Renders a raw tool payload for an expanded tool row: the full text once revealed (or when it is
-   * short), otherwise its preview clip.
-   * @param itemId The tool item's id.
-   * @param section Which payload of the item this is.
-   * @param text The full payload text.
-   * @returns Returns the text to render.
-   */
-  public payloadText(itemId: string, section: 'input' | 'output', text: string): string {
-    return this.payloadClipped(itemId, section, text) ? text.slice(0, PAYLOAD_PREVIEW_CHARS) : text;
-  }
-
-  /**
-   * Gets a value indicating whether a raw tool payload is currently clipped to its preview (long and
-   * not yet revealed), which shows the "Show all" affordance.
-   * @param itemId The tool item's id.
-   * @param section Which payload of the item this is.
-   * @param text The full payload text.
-   * @returns Returns true when the payload renders clipped.
-   */
-  public payloadClipped(itemId: string, section: 'input' | 'output', text: string): boolean {
-    return (
-      text.length > PAYLOAD_PREVIEW_CHARS && !this.revealedPayloads().has(`${itemId}:${section}`)
-    );
-  }
-
-  /**
-   * Renders the "Show all" label for a clipped payload, saying how much is hidden.
-   * @param text The full payload text.
-   * @returns Returns the label.
-   */
-  public payloadMoreLabel(text: string): string {
-    return `Show all (${(text.length - PAYLOAD_PREVIEW_CHARS).toLocaleString()} more characters)`;
   }
 
   /**
