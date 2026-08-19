@@ -129,4 +129,83 @@ export interface ModelRuntimeStatus {
    * The server version, present only when {@link available} is true.
    */
   readonly version?: string;
+
+  /**
+   * Whether the reachable server is the one Studio started. False for a server the user is running
+   * themselves, which Studio can talk to but must not stop — the manager disables its stop control
+   * rather than killing a process it does not own.
+   */
+  readonly startedByStudio?: boolean;
+}
+
+/**
+ * How a runtime's binary is installed on this machine.
+ *
+ * `system` is a binary the user installed themselves, found on the PATH or in a platform-standard
+ * location; `managed` is one Studio downloaded into its own user-data directory; `absent` means
+ * neither. Detection prefers `system`, so a user who already runs Ollama never pays for a second
+ * multi-gigabyte copy.
+ */
+export type RuntimeInstallKind = 'absent' | 'system' | 'managed';
+
+/**
+ * Where a runtime's binary is, and how it got there.
+ */
+export interface RuntimeInstallation {
+  /**
+   * Which kind of installation was found.
+   */
+  readonly kind: RuntimeInstallKind;
+
+  /**
+   * The absolute path of the runtime executable, or an empty string when {@link kind} is `absent`.
+   */
+  readonly executable: string;
+
+  /**
+   * The version the binary reports, or an empty string when it could not be determined.
+   */
+  readonly version: string;
+}
+
+/**
+ * Progress through a managed runtime install, pushed to the renderer while the download runs. The
+ * runtime binaries are large enough (over a gigabyte on Linux and Windows) that a progressless install
+ * reads as a hang.
+ */
+export interface RuntimeInstallProgress {
+  /**
+   * Which stage the install has reached.
+   */
+  readonly stage: 'downloading' | 'verifying' | 'extracting' | 'done' | 'failed';
+
+  /**
+   * Bytes downloaded so far.
+   */
+  readonly received: number;
+
+  /**
+   * The total bytes expected, or 0 when the server did not report a content length.
+   */
+  readonly total: number;
+
+  /**
+   * The failure reason, present only when {@link stage} is `failed`.
+   */
+  readonly error?: string;
+}
+
+/**
+ * How much disk the runtime's model store is using.
+ */
+export interface ModelDiskUsage {
+  /**
+   * The total size of the installed model weights, in bytes.
+   */
+  readonly bytes: number;
+
+  /**
+   * The directory the weights live in, or an empty string when it could not be located.
+   */
+  readonly path: string;
 }

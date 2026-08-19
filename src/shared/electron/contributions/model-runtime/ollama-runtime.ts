@@ -1,10 +1,19 @@
+import { Dirent, Stats } from 'node:fs';
+import * as fs from 'node:fs/promises';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import {
   LocalModel,
   ModelDetails,
+  ModelDiskUsage,
   ModelRuntimeStatus,
   RunningModel,
+  RuntimeInstallation,
+  RuntimeInstallProgress,
 } from '@shared/api/model-runtime-types';
 import { ModelRuntime } from './model-runtime';
+import { OllamaProvisioner } from './ollama-provisioner';
+import { OllamaServer } from './ollama-server';
 import { HttpOllamaTransport, OllamaResponse, OllamaTransport } from './ollama-transport';
 
 /**
@@ -80,16 +89,40 @@ export class OllamaRuntime implements ModelRuntime {
   private readonly transport: OllamaTransport;
 
   /**
+   * Finds or installs the runtime binary, or null when this runtime was built without one (the unit
+   * tests, which exercise the API surface against a fake transport).
+   */
+  private readonly provisioner: OllamaProvisioner | null;
+
+  /**
+   * Starts and stops the server, or null when this runtime was built without a provisioner.
+   */
+  private readonly server: OllamaServer | null;
+
+  /**
    * Initializes a new instance of the {@link OllamaRuntime} class.
    * @param origin The server origin; defaults to Ollama's standard local address.
    * @param transport The transport to use; defaults to JSON over HTTP to the origin.
+   * @param provisioner Finds and installs the binary; omitted in tests that only exercise the API.
    */
-  public constructor(origin: string = DEFAULT_ORIGIN, transport?: OllamaTransport) {
+  public constructor(
+    origin: string = DEFAULT_ORIGIN,
+    transport?: OllamaTransport,
+    provisioner?: OllamaProvisioner,
+  ) {
     this.transport = transport ?? new HttpOllamaTransport(origin);
+    this.provisioner = provisioner ?? null;
+    this.server =
+      provisioner === undefined
+        ? null
+        : new OllamaServer(hostFromOrigin(origin), async (): Promise<boolean> => {
+            return (await this.status()).available;
+          });
   }
 
   /**
-   * Reports whether the Ollama server is reachable, and its version when it is.
+   * Reports whether the Ollama server is reachable, its version when it is, and whether it is the
+   * server Studio started.
    * @returns Returns the runtime status.
    */
   public async status(): Promise<ModelRuntimeStatus> {
@@ -97,7 +130,94 @@ export class OllamaRuntime implements ModelRuntime {
       'GET',
       '/api/version',
     );
-    return raw === null ? { available: false } : { available: true, version: raw.version };
+    if (raw === null) {
+      return { available: false };
+    }
+    return {
+      available: true,
+      version: raw.version,
+      startedByStudio: this.server?.isOwned() ?? false,
+    };
+  }
+
+  /**
+   * Finds the Ollama binary: one the user installed, one Studio manages, or neither.
+   * @returns Returns the installation that was found.
+   */
+  public installation(): Promise<RuntimeInstallation> {
+    return (
+      this.provisioner?.detect() ??
+      Promise.resolve({ kind: 'absent' as const, executable: '', version: '' })
+    );
+  }
+
+  /**
+   * Downloads and installs a Studio-managed copy of Ollama.
+   * @param onProgress Receives install progress.
+   * @returns Returns the resulting installation.
+   */
+  public install(
+    onProgress: (progress: RuntimeInstallProgress) => void,
+  ): Promise<RuntimeInstallation> {
+    return (
+      this.provisioner?.install(onProgress) ??
+      Promise.resolve({ kind: 'absent' as const, executable: '', version: '' })
+    );
+  }
+
+  /**
+   * Starts the Ollama server, installing nothing: when no binary is present the caller is expected to
+   * offer {@link install} first, so a click on "start" never silently downloads a gigabyte.
+   * @returns Returns true once the server answers.
+   */
+  public async start(): Promise<boolean> {
+    if (this.server === null) {
+      return false;
+    }
+    const installation: RuntimeInstallation = await this.installation();
+    if (installation.kind === 'absent') {
+      return false;
+    }
+    return this.server.start(installation.executable);
+  }
+
+  /**
+   * Stops the Ollama server, when it is the one Studio started.
+   * @returns Returns true when a Studio-owned server was stopped.
+   */
+  public stop(): Promise<boolean> {
+    return this.server?.stop() ?? Promise.resolve(false);
+  }
+
+  /**
+   * Reports how much disk Ollama's model store is using, by summing the blob files its weights are
+   * stored as.
+   * @returns Returns the disk usage.
+   */
+  public async diskUsage(): Promise<ModelDiskUsage> {
+    const store: string = ollamaModelStore(process.env, os.homedir());
+    try {
+      const blobs: string = path.join(store, 'blobs');
+      const entries: Dirent[] = await fs.readdir(blobs, { withFileTypes: true });
+      let bytes: number = 0;
+      for (const entry of entries) {
+        if (!entry.isFile()) {
+          continue;
+        }
+        const stat: Stats = await fs.stat(path.join(blobs, entry.name));
+        bytes += stat.size;
+      }
+      return { bytes, path: store };
+    } catch {
+      return { bytes: 0, path: '' };
+    }
+  }
+
+  /**
+   * Stops a Studio-owned server, for application teardown.
+   */
+  public dispose(): void {
+    this.server?.dispose();
   }
 
   /**
@@ -212,6 +332,35 @@ export class OllamaRuntime implements ModelRuntime {
  */
 function modelBody(name: string): Record<string, string> {
   return { model: name, name };
+}
+
+/**
+ * Reduces a server origin to the `host[:port]` form `OLLAMA_HOST` takes, so a spawned server listens
+ * exactly where the client will look for it. Exported for unit testing.
+ * @param origin The server origin (for example `http://127.0.0.1:11434`).
+ * @returns Returns the host and port.
+ */
+export function hostFromOrigin(origin: string): string {
+  try {
+    const url: URL = new URL(origin);
+    return url.port.length > 0 ? `${url.hostname}:${url.port}` : url.hostname;
+  } catch {
+    return origin;
+  }
+}
+
+/**
+ * Resolves where Ollama keeps its model weights: `OLLAMA_MODELS` when set, otherwise `~/.ollama/models`.
+ * Exported for unit testing.
+ * @param env The environment to read.
+ * @param home The user's home directory.
+ * @returns Returns the model store directory.
+ */
+export function ollamaModelStore(env: Record<string, string | undefined>, home: string): string {
+  const explicit: string | undefined = env['OLLAMA_MODELS'];
+  return explicit !== undefined && explicit.length > 0
+    ? explicit
+    : path.join(home, '.ollama', 'models');
 }
 
 /**

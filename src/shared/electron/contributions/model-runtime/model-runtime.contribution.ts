@@ -1,9 +1,12 @@
+import * as path from 'node:path';
+import { app } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
 import { ModelRuntimeChannel } from '@shared/api/model-runtime-channels';
-import { ModelRuntimeStatus } from '@shared/api/model-runtime-types';
+import { ModelRuntimeStatus, RuntimeInstallProgress } from '@shared/api/model-runtime-types';
 import { resolveOllamaOrigin } from '../../ai/ollama-endpoint';
 import { ContributionContext, MainContribution } from '../main-contribution';
 import { ModelRuntime } from './model-runtime';
+import { OllamaProvisioner } from './ollama-provisioner';
 import { OllamaRuntime } from './ollama-runtime';
 
 /**
@@ -29,10 +32,10 @@ export class ModelRuntimeContribution implements MainContribution {
   public readonly id: string = 'model-runtime';
 
   /**
-   * The runtime this contribution serves. Ollama today; the manager's runtime-agnostic slot means a
-   * second implementation is a swap here, not a rewrite upstream.
+   * The runtime this contribution serves, once activated. Ollama today; the manager's runtime-agnostic
+   * slot means a second implementation is a swap in {@link factory}, not a rewrite upstream.
    */
-  private readonly runtime: ModelRuntime;
+  private runtime: ModelRuntime | null = null;
 
   /**
    * The active status-poll interval, or null when idle.
@@ -61,11 +64,19 @@ export class ModelRuntimeContribution implements MainContribution {
   private context: ContributionContext | null = null;
 
   /**
+   * Builds the runtime at activation. Deferred rather than constructed eagerly because the production
+   * runtime resolves its install directory from `app.getPath('userData')`, which is only available once
+   * the app is ready — and this module is imported by the contributions manifest long before that.
+   */
+  private readonly factory: () => ModelRuntime;
+
+  /**
    * Initializes a new instance of the {@link ModelRuntimeContribution} class.
-   * @param runtime The runtime to serve; defaults to Ollama at the environment's configured origin.
+   * @param runtime The runtime to serve; when omitted, the production Ollama runtime is built at
+   * activation.
    */
   public constructor(runtime?: ModelRuntime) {
-    this.runtime = runtime ?? new OllamaRuntime(resolveOllamaOrigin(process.env));
+    this.factory = runtime === undefined ? defaultRuntime : (): ModelRuntime => runtime;
   }
 
   /**
@@ -75,26 +86,41 @@ export class ModelRuntimeContribution implements MainContribution {
    */
   public activate(context: ContributionContext): void {
     this.context = context;
+    const runtime: ModelRuntime = this.factory();
+    this.runtime = runtime;
 
-    context.handle(ModelRuntimeChannel.List, (): Promise<unknown> => this.runtime.list());
-    context.handle(ModelRuntimeChannel.Running, (): Promise<unknown> => this.runtime.running());
-    context.handle(ModelRuntimeChannel.Status, (): Promise<unknown> => this.runtime.status());
+    context.handle(ModelRuntimeChannel.List, (): Promise<unknown> => runtime.list());
+    context.handle(ModelRuntimeChannel.Running, (): Promise<unknown> => runtime.running());
+    context.handle(ModelRuntimeChannel.Status, (): Promise<unknown> => runtime.status());
     context.handle(
       ModelRuntimeChannel.Show,
-      (_event: IpcMainInvokeEvent, name: unknown): Promise<unknown> =>
-        this.runtime.show(String(name)),
+      (_event: IpcMainInvokeEvent, name: unknown): Promise<unknown> => runtime.show(String(name)),
     );
     context.handle(
       ModelRuntimeChannel.Remove,
-      (_event: IpcMainInvokeEvent, name: unknown): Promise<boolean> =>
-        this.runtime.remove(String(name)),
+      (_event: IpcMainInvokeEvent, name: unknown): Promise<boolean> => runtime.remove(String(name)),
     );
+
+    context.handle(
+      ModelRuntimeChannel.Installation,
+      (): Promise<unknown> => runtime.installation(),
+    );
+    context.handle(
+      ModelRuntimeChannel.Install,
+      (): Promise<unknown> =>
+        runtime.install((progress: RuntimeInstallProgress): void =>
+          context.send(ModelRuntimeChannel.InstallProgress, progress),
+        ),
+    );
+    context.handle(ModelRuntimeChannel.Start, (): Promise<boolean> => runtime.start());
+    context.handle(ModelRuntimeChannel.Stop, (): Promise<boolean> => runtime.stop());
+    context.handle(ModelRuntimeChannel.DiskUsage, (): Promise<unknown> => runtime.diskUsage());
 
     context.on(ModelRuntimeChannel.StartWatch, (): void => this.addConsumer());
     context.on(ModelRuntimeChannel.StopWatch, (): void => this.removeConsumer());
 
     context.log.info(
-      `model runtime contribution active; serving '${this.runtime.id}', awaiting status watchers`,
+      `model runtime contribution active; serving '${runtime.id}', awaiting status watchers`,
     );
   }
 
@@ -104,6 +130,9 @@ export class ModelRuntimeContribution implements MainContribution {
   public dispose(): void {
     this.context?.log.info('disposing model runtime contribution; stopping status poll');
     this.stopPolling();
+    // A server Studio started is Studio's to clean up; one the user started is left running.
+    this.runtime?.dispose?.();
+    this.runtime = null;
     this.context = null;
     this.consumers = 0;
     this.lastStatus = null;
@@ -154,16 +183,17 @@ export class ModelRuntimeContribution implements MainContribution {
    * when the previous read is still outstanding.
    */
   private async poll(): Promise<void> {
-    if (this.polling) {
+    const runtime: ModelRuntime | null = this.runtime;
+    if (this.polling || runtime === null) {
       return;
     }
     this.polling = true;
     try {
-      const status: ModelRuntimeStatus = await this.runtime.status();
+      const status: ModelRuntimeStatus = await runtime.status();
       if (!sameStatus(this.lastStatus, status)) {
         this.lastStatus = status;
         this.context?.log.info(
-          `runtime '${this.runtime.id}' status changed: ${status.available ? `available (${status.version ?? 'unknown version'})` : 'unavailable'}`,
+          `runtime '${runtime.id}' status changed: ${status.available ? `available (${status.version ?? 'unknown version'})` : 'unavailable'}`,
         );
         this.context?.send(ModelRuntimeChannel.StatusChanged, status);
       }
@@ -183,6 +213,19 @@ export class ModelRuntimeContribution implements MainContribution {
 export function sameStatus(previous: ModelRuntimeStatus | null, next: ModelRuntimeStatus): boolean {
   return (
     previous !== null && previous.available === next.available && previous.version === next.version
+  );
+}
+
+/**
+ * Builds the production runtime: Ollama at the environment's configured origin, with managed installs
+ * kept under the user-data directory alongside the provisioned language servers.
+ * @returns Returns the runtime.
+ */
+function defaultRuntime(): ModelRuntime {
+  return new OllamaRuntime(
+    resolveOllamaOrigin(process.env),
+    undefined,
+    new OllamaProvisioner(path.join(app.getPath('userData'), 'model-runtimes', 'ollama')),
   );
 }
 

@@ -5,8 +5,11 @@ import { ModelRuntimeChannel } from '@shared/api/model-runtime-channels';
 import {
   LocalModel,
   ModelDetails,
+  ModelDiskUsage,
   ModelRuntimeStatus,
   RunningModel,
+  RuntimeInstallation,
+  RuntimeInstallProgress,
 } from '@shared/api/model-runtime-types';
 
 /**
@@ -73,6 +76,72 @@ export class ModelRuntimes {
     return (
       this.bridge?.invoke<ModelRuntimeStatus>(ModelRuntimeChannel.Status) ??
       Promise.resolve({ available: false })
+    );
+  }
+
+  /**
+   * Reports where the runtime's binary is and how it got there.
+   * @returns Returns the installation, or an absent one when unavailable.
+   */
+  public installation(): Promise<RuntimeInstallation> {
+    return (
+      this.bridge?.invoke<RuntimeInstallation>(ModelRuntimeChannel.Installation) ??
+      Promise.resolve({ kind: 'absent' as const, executable: '', version: '' })
+    );
+  }
+
+  /**
+   * Downloads and installs a Studio-managed copy of the runtime. Subscribe with
+   * {@link onInstallProgress} first: the archives are large, so this takes minutes.
+   * @returns Returns the resulting installation.
+   */
+  public install(): Promise<RuntimeInstallation> {
+    this.log.info('model-manager.runtime', 'IPC install managed runtime');
+    return (
+      this.bridge?.invoke<RuntimeInstallation>(ModelRuntimeChannel.Install) ??
+      Promise.resolve({ kind: 'absent' as const, executable: '', version: '' })
+    );
+  }
+
+  /**
+   * Subscribes to managed-install progress.
+   * @param listener Receives each progress update.
+   * @returns Returns an unsubscribe function (a no-op outside Electron).
+   */
+  public onInstallProgress(listener: (progress: RuntimeInstallProgress) => void): () => void {
+    return (
+      this.bridge?.on(ModelRuntimeChannel.InstallProgress, (...args: unknown[]): void =>
+        listener(args[0] as RuntimeInstallProgress),
+      ) ?? ((): void => undefined)
+    );
+  }
+
+  /**
+   * Starts the runtime's server.
+   * @returns Returns true once the server answers.
+   */
+  public start(): Promise<boolean> {
+    this.log.info('model-manager.runtime', 'IPC start runtime server');
+    return this.bridge?.invoke<boolean>(ModelRuntimeChannel.Start) ?? Promise.resolve(false);
+  }
+
+  /**
+   * Stops the runtime's server. Only a server Studio started can be stopped.
+   * @returns Returns true when a Studio-owned server was stopped.
+   */
+  public stop(): Promise<boolean> {
+    this.log.info('model-manager.runtime', 'IPC stop runtime server');
+    return this.bridge?.invoke<boolean>(ModelRuntimeChannel.Stop) ?? Promise.resolve(false);
+  }
+
+  /**
+   * Reports how much disk the runtime's model store is using.
+   * @returns Returns the disk usage.
+   */
+  public diskUsage(): Promise<ModelDiskUsage> {
+    return (
+      this.bridge?.invoke<ModelDiskUsage>(ModelRuntimeChannel.DiskUsage) ??
+      Promise.resolve({ bytes: 0, path: '' })
     );
   }
 
