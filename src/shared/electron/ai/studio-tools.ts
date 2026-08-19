@@ -3,8 +3,13 @@ import {
   CANCEL_EDIT_PREVIEW,
   COMMIT_EDIT_PREVIEW,
   PREVIEW_ACTIVE_DOCUMENT_EDIT,
+  CREATE_API_REQUEST,
   DELETE_BINARY_BYTES,
   DELETE_RUN_CONFIGURATIONS,
+  LIST_API_REQUESTS,
+  SEND_API_REQUEST,
+  SET_API_VARIABLE,
+  UPDATE_API_REQUEST,
   EDIT_ACTIVE_DOCUMENT,
   INSERT_ACTIVE_DOCUMENT,
   INSERT_BINARY_BYTES,
@@ -115,6 +120,12 @@ export const ASK_USER_FQN: string = `mcp__studio__${ASK_USER}`;
  * other read-only in-app tools.
  */
 export const LIST_RUN_CONFIGURATIONS_FQN: string = `mcp__studio__${LIST_RUN_CONFIGURATIONS}`;
+
+/**
+ * The fully-qualified name the API-listing tool is exposed under to the Claude Agent SDK. Reading the
+ * collections is auto-allowed; creating, updating and sending are not.
+ */
+export const LIST_API_REQUESTS_FQN: string = `mcp__studio__${LIST_API_REQUESTS}`;
 
 /**
  * The fully-qualified tool names of the mutating run-configuration tools, which go through the
@@ -362,11 +373,17 @@ export async function saveRunConfigurations(
   context: AgentRunContext,
   configurations: readonly unknown[],
 ): Promise<string> {
-  logger.trace('StudioTools', `Tool invoked: save_run_configurations (${configurations.length} config(s))`);
+  logger.trace(
+    'StudioTools',
+    `Tool invoked: save_run_configurations (${configurations.length} config(s))`,
+  );
   const result: unknown = await context.bridge.request(SAVE_RUN_CONFIGURATIONS, { configurations });
   const write: { ok?: boolean; error?: string; ids?: string[] } = result ?? {};
   if (write.ok !== true) {
-    logger.warn('StudioTools', `save_run_configurations refused: ${write.error ?? 'unknown reason'}`);
+    logger.warn(
+      'StudioTools',
+      `save_run_configurations refused: ${write.error ?? 'unknown reason'}`,
+    );
     return write.error ?? 'The run configurations could not be saved.';
   }
   const ids: string[] = write.ids ?? [];
@@ -388,10 +405,16 @@ export async function deleteRunConfigurations(
   const result: unknown = await context.bridge.request(DELETE_RUN_CONFIGURATIONS, { ids });
   const write: { ok?: boolean; error?: string; ids?: string[] } = result ?? {};
   if (write.ok === true) {
-    logger.info('StudioTools', `Deleted ${write.ids?.length ?? 0} run configuration(s): ${(write.ids ?? []).join(', ')}`);
+    logger.info(
+      'StudioTools',
+      `Deleted ${write.ids?.length ?? 0} run configuration(s): ${(write.ids ?? []).join(', ')}`,
+    );
     return `Deleted ${write.ids?.length ?? 0} run configuration(s): ${(write.ids ?? []).join(', ')}.`;
   }
-  logger.warn('StudioTools', `delete_run_configurations refused: ${write.error ?? 'unknown reason'}`);
+  logger.warn(
+    'StudioTools',
+    `delete_run_configurations refused: ${write.error ?? 'unknown reason'}`,
+  );
   return write.error ?? 'The run configurations could not be deleted.';
 }
 
@@ -458,7 +481,10 @@ export async function writeTerminalInput(
   text: string,
   submit: boolean = true,
 ): Promise<string> {
-  logger.trace('StudioTools', `Tool invoked: write_terminal_input (tab=${context.owningTabId}, submit=${submit})`);
+  logger.trace(
+    'StudioTools',
+    `Tool invoked: write_terminal_input (tab=${context.owningTabId}, submit=${submit})`,
+  );
   const result: unknown = await context.bridge.request(WRITE_TERMINAL_INPUT, {
     tabId: context.owningTabId,
     text,
@@ -521,19 +547,28 @@ async function previewedEdit(
     preview.summary ?? '',
     preview.diffShown === true,
   );
-  logger.debug('StudioTools', `User edit decision on '${preview.name ?? 'active document'}': ${decision}`);
+  logger.debug(
+    'StudioTools',
+    `User edit decision on '${preview.name ?? 'active document'}': ${decision}`,
+  );
   if (decision === 'yes') {
     const committed: unknown = await context.bridge.request(COMMIT_EDIT_PREVIEW, {
       previewId: preview.previewId,
     });
     const commit: { ok?: boolean; detail?: string } = committed ?? {};
-    logger.info('StudioTools', `Committed previewed edit to '${preview.name ?? 'active document'}'`);
+    logger.info(
+      'StudioTools',
+      `Committed previewed edit to '${preview.name ?? 'active document'}'`,
+    );
     return (
       commit.detail ??
       (commit.ok === true ? 'The edit was applied.' : 'The editor is no longer available.')
     );
   }
-  logger.info('StudioTools', `User rejected previewed edit to '${preview.name ?? 'active document'}'`);
+  logger.info(
+    'StudioTools',
+    `User rejected previewed edit to '${preview.name ?? 'active document'}'`,
+  );
   await context.bridge.request(CANCEL_EDIT_PREVIEW, { previewId: preview.previewId });
   return (
     'The user rejected this edit. Do not retry it as-is — ask what they would like instead, or ' +
@@ -670,7 +705,10 @@ export async function runActiveDocument(
     RUN_MAX_TIMEOUT_SECONDS,
     Math.max(1, Math.floor(timeoutSeconds) || RUN_DEFAULT_TIMEOUT_SECONDS),
   );
-  logger.trace('StudioTools', `Tool invoked: run_active_document (tab=${context.owningTabId}, timeout=${seconds}s)`);
+  logger.trace(
+    'StudioTools',
+    `Tool invoked: run_active_document (tab=${context.owningTabId}, timeout=${seconds}s)`,
+  );
   // Give the bridge a little longer than the renderer's own poll so the reply is never cut off first.
   const result: unknown = await context.bridge.request(
     RUN_ACTIVE_DOCUMENT,
@@ -720,7 +758,10 @@ export async function editActiveDocument(
   newString: string,
   replaceAll: boolean = false,
 ): Promise<string> {
-  logger.trace('StudioTools', `Tool invoked: edit_active_document (tab=${context.owningTabId}, replaceAll=${replaceAll})`);
+  logger.trace(
+    'StudioTools',
+    `Tool invoked: edit_active_document (tab=${context.owningTabId}, replaceAll=${replaceAll})`,
+  );
   return previewedEdit(
     context,
     { operation: 'edit', oldString, newString, replaceAll },
@@ -758,7 +799,10 @@ export async function insertIntoActiveDocument(
   placement: InsertPlacement,
   anchor?: string,
 ): Promise<string> {
-  logger.trace('StudioTools', `Tool invoked: insert_into_active_document (tab=${context.owningTabId}, placement=${placement})`);
+  logger.trace(
+    'StudioTools',
+    `Tool invoked: insert_into_active_document (tab=${context.owningTabId}, placement=${placement})`,
+  );
   return previewedEdit(
     context,
     { operation: 'insert', text, placement, ...(anchor === undefined ? {} : { anchor }) },
@@ -771,7 +815,10 @@ export async function insertIntoActiveDocument(
       });
       const insert: { ok?: boolean; detail?: string } = result ?? {};
       if (insert.ok === true) {
-        logger.info('StudioTools', `Inserted text into active document (tab=${context.owningTabId})`);
+        logger.info(
+          'StudioTools',
+          `Inserted text into active document (tab=${context.owningTabId})`,
+        );
       }
       return (
         insert.detail ??
@@ -797,7 +844,10 @@ async function readBinary(
   capability: string,
   range?: { offset: number; length: number },
 ): Promise<string> {
-  logger.trace('StudioTools', `Binary read invoked: ${capability}${range ? ` (offset=${range.offset}, length=${range.length})` : ''}`);
+  logger.trace(
+    'StudioTools',
+    `Binary read invoked: ${capability}${range ? ` (offset=${range.offset}, length=${range.length})` : ''}`,
+  );
   const result: unknown = await context.bridge.request(capability, {
     tabId: context.owningTabId,
     ...range,
@@ -934,7 +984,10 @@ export async function deleteBinaryBytes(
   offset: number,
   length: number,
 ): Promise<string> {
-  logger.trace('StudioTools', `Tool invoked: delete_binary_bytes (offset=${offset}, length=${length})`);
+  logger.trace(
+    'StudioTools',
+    `Tool invoked: delete_binary_bytes (offset=${offset}, length=${length})`,
+  );
   const result: unknown = await context.bridge.request(DELETE_BINARY_BYTES, {
     tabId: context.owningTabId,
     offset,
@@ -984,4 +1037,147 @@ export async function writeBinaryAssembly(
     write.text ??
     (write.ok === true ? 'The assembly was written.' : 'The assembly was not written.')
   );
+}
+
+/**
+ * Appended to the system prompt for an API-surface run, so the model knows it is docked to the API
+ * Explorer and that setting a request up is something it does rather than describes.
+ */
+export const API_PROMPT_APPENDIX: string = [
+  'You are running inside ONIXLabs Studio, docked to an API Explorer tab, and you can act on its',
+  'collections directly:',
+  `- "${LIST_API_REQUESTS}" lists the collections, saved requests and environments already there.`,
+  `- "${CREATE_API_REQUEST}" saves a new request and opens it in the API well for the user to see.`,
+  `- "${UPDATE_API_REQUEST}" changes a saved request; anything you do not name is left alone.`,
+  `- "${SEND_API_REQUEST}" sends a saved request and returns its status, headers and body.`,
+  `- "${SET_API_VARIABLE}" sets a variable in the active environment.`,
+  'When the user asks about an API, set it up rather than only explaining it: list what is there,',
+  'then create the requests you are describing so they can press Send. Write what an endpoint does,',
+  "what it expects and what it returns into the request's description, so the explanation lives with",
+  'the request instead of only in this conversation.',
+  'Reference environment values as {{name}} rather than hard-coding a host or a token into a URL —',
+  'that is what makes a collection work against more than one environment. Put the base URL in a',
+  'variable when you find yourself repeating it.',
+  'Sending is a real call to a real service. Send when the user asks you to, or when you need the',
+  'response to answer them; do not send repeatedly to explore, and never send a request that changes',
+  'state (POST, PUT, PATCH, DELETE) without the user asking for it.',
+].join('\n');
+
+/**
+ * Lists the API Explorer's collections, saved requests and environments through the renderer bridge.
+ * @param context The agent run context (carries the bridge).
+ * @returns Returns the tree as JSON, or a note that no API Explorer tab is open.
+ */
+export async function listApiRequests(context: AgentRunContext): Promise<string> {
+  logger.trace('StudioTools', 'Tool invoked: list_api_requests');
+  const result: unknown = await context.bridge.request(LIST_API_REQUESTS, {});
+  const read: { available?: boolean; collections?: unknown[]; environments?: unknown[] } =
+    result ?? {};
+  if (read.available !== true) {
+    return 'No API Explorer tab is open, so there are no collections to read.';
+  }
+  const collections: unknown[] = read.collections ?? [];
+  logger.debug('StudioTools', `list_api_requests: ${collections.length} collection(s)`);
+  return [
+    `Collections:\n${JSON.stringify(collections, null, 2)}`,
+    `Environments:\n${JSON.stringify(read.environments ?? [], null, 2)}`,
+  ].join('\n\n');
+}
+
+/**
+ * Creates a saved request through the renderer bridge and renders the outcome.
+ * @param context The agent run context (carries the bridge).
+ * @param request The request to create.
+ * @returns Returns a confirmation, or the reason the request was refused.
+ */
+export async function createApiRequest(
+  context: AgentRunContext,
+  request: Record<string, unknown>,
+): Promise<string> {
+  logger.trace('StudioTools', `Tool invoked: create_api_request (${String(request['method'])})`);
+  const result: unknown = await context.bridge.request(CREATE_API_REQUEST, { request });
+  const write: { ok?: boolean; error?: string; id?: string; name?: string } = result ?? {};
+  if (write.ok !== true) {
+    logger.warn('StudioTools', `create_api_request refused: ${write.error ?? 'unknown reason'}`);
+    return write.error ?? 'The request could not be created.';
+  }
+  logger.info('StudioTools', `Created API request ${write.id ?? ''}`);
+  return `Created "${write.name ?? 'request'}" (id ${write.id ?? ''}) and opened it in the API well.`;
+}
+
+/**
+ * Applies changes to a saved request through the renderer bridge and renders the outcome.
+ * @param context The agent run context (carries the bridge).
+ * @param id The identifier of the request to change.
+ * @param changes The fields to change.
+ * @returns Returns a confirmation, or the reason the change was refused.
+ */
+export async function updateApiRequest(
+  context: AgentRunContext,
+  id: string,
+  changes: Record<string, unknown>,
+): Promise<string> {
+  logger.trace('StudioTools', `Tool invoked: update_api_request (${id})`);
+  const result: unknown = await context.bridge.request(UPDATE_API_REQUEST, { id, changes });
+  const write: { ok?: boolean; error?: string } = result ?? {};
+  if (write.ok !== true) {
+    return write.error ?? 'The request could not be updated.';
+  }
+  logger.info('StudioTools', `Updated API request ${id}`);
+  return `Updated request ${id}.`;
+}
+
+/**
+ * Sends a saved request through the renderer bridge and renders its outcome for the model. The body
+ * is truncated: a large response would otherwise consume the context window the model needs to reason
+ * about it.
+ * @param context The agent run context (carries the bridge).
+ * @param id The identifier of the request to send.
+ * @returns Returns the rendered outcome.
+ */
+export async function sendApiRequest(context: AgentRunContext, id: string): Promise<string> {
+  logger.trace('StudioTools', `Tool invoked: send_api_request (${id})`);
+  const result: unknown = await context.bridge.request(SEND_API_REQUEST, { id });
+  const sent: {
+    ok?: boolean;
+    error?: string;
+    status?: number;
+    statusText?: string;
+    durationMs?: number;
+    headers?: Record<string, string>;
+    body?: string;
+    truncated?: boolean;
+  } = result ?? {};
+  if (sent.ok !== true) {
+    logger.debug('StudioTools', `send_api_request failed: ${sent.error ?? 'unknown reason'}`);
+    return sent.error ?? 'The request could not be sent.';
+  }
+  logger.info('StudioTools', `Sent API request ${id}: ${sent.status ?? 0}`);
+  return [
+    `${sent.status ?? 0} ${sent.statusText ?? ''} in ${Math.round(sent.durationMs ?? 0)} ms`,
+    `Headers:\n${JSON.stringify(sent.headers ?? {}, null, 2)}`,
+    `Body${sent.truncated === true ? ' (truncated)' : ''}:\n${sent.body ?? ''}`,
+  ].join('\n\n');
+}
+
+/**
+ * Sets a variable in the API Explorer's active environment through the renderer bridge.
+ * @param context The agent run context (carries the bridge).
+ * @param name The variable name.
+ * @param value The variable value.
+ * @returns Returns a confirmation, or the reason the variable was not set.
+ */
+export async function setApiVariable(
+  context: AgentRunContext,
+  name: string,
+  value: string,
+): Promise<string> {
+  logger.trace('StudioTools', `Tool invoked: set_api_variable (${name})`);
+  const result: unknown = await context.bridge.request(SET_API_VARIABLE, { name, value });
+  const write: { ok?: boolean; error?: string; environment?: string } = result ?? {};
+  if (write.ok !== true) {
+    return write.error ?? 'The variable could not be set.';
+  }
+  logger.info('StudioTools', `Set API variable ${name}`);
+  return `Set {{${name}}} in the "${write.environment ?? 'active'}" environment.`;
 }

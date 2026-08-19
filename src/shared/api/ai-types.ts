@@ -28,6 +28,11 @@ export {
   LIST_RUN_CONFIGURATIONS,
   SAVE_RUN_CONFIGURATIONS,
   DELETE_RUN_CONFIGURATIONS,
+  LIST_API_REQUESTS,
+  CREATE_API_REQUEST,
+  UPDATE_API_REQUEST,
+  SEND_API_REQUEST,
+  SET_API_VARIABLE,
 } from './ai/ai-tool-surface';
 export type { AgentSurface, InsertPlacement } from './ai/ai-tool-surface';
 export type {

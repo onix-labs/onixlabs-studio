@@ -36,6 +36,7 @@ import { StackNode } from '@shared/angular/services/dock-layout/dock-node';
 import { firstStackOfRole } from '@shared/angular/services/dock-layout/dock-tree';
 import { Log } from '@shared/angular/services/log/log';
 import { ApiEnvironment, ApiFolder, ApiRequest } from '@shared/api/api-client-types';
+import { ApiAgentCapabilities } from '../api-agent-capabilities/api-agent-capabilities';
 import { API_EXPLORER_DOCK_BLUEPRINT } from '../api-explorer-dock-blueprint';
 import {
   ApiExplorerCommandHandler,
@@ -72,6 +73,8 @@ import { ApiWorkspace } from '../api-workspace/api-workspace';
     ApiWorkspace,
     ApiRequestOpener,
     ApiExplorerStatus,
+    // The agent's in-app tools, registered against this tab's workspace for as long as it is open.
+    ApiAgentCapabilities,
     // The dock framework, instantiated per dock-hosting view.
     DockTabContext,
     DockState,
@@ -175,6 +178,12 @@ export class ApiExplorerView implements OnInit, OnDestroy, ApiExplorerCommandHan
   private readonly status: ApiExplorerStatus = inject(ApiExplorerStatus);
 
   /**
+   * Holds the agent's in-app capabilities. Injected purely to instantiate them: they register
+   * themselves with the runtime on construction and release on destroy.
+   */
+  private readonly capabilities: ApiAgentCapabilities = inject(ApiAgentCapabilities);
+
+  /**
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
@@ -186,6 +195,7 @@ export class ApiExplorerView implements OnInit, OnDestroy, ApiExplorerCommandHan
    */
   public ngOnInit(): void {
     void this.status;
+    void this.capabilities;
     this.commands.register(this);
     // Panels that need a globally-unique session id (the terminal) read the owning tab from here.
     this.tabContext.setTabId(this.tabId());

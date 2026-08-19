@@ -9,6 +9,11 @@ import {
   READ_ACTIVE_DOCUMENT,
   READ_BINARY_BYTES,
   READ_BINARY_DISASSEMBLY,
+  CREATE_API_REQUEST,
+  LIST_API_REQUESTS,
+  SEND_API_REQUEST,
+  SET_API_VARIABLE,
+  UPDATE_API_REQUEST,
   READ_BINARY_OVERVIEW,
   READ_BINARY_SELECTION,
   READ_TERMINAL_OUTPUT,
@@ -26,7 +31,13 @@ import type { AgentRunContext } from './agent-provider';
 import {
   ASK_USER_DESCRIPTION,
   ASK_USER_PROMPT_APPENDIX,
+  API_PROMPT_APPENDIX,
   BINARY_PROMPT_APPENDIX,
+  createApiRequest,
+  listApiRequests,
+  sendApiRequest,
+  setApiVariable,
+  updateApiRequest,
   PROJECT_PROMPT_APPENDIX,
   STUDIO_PROMPT_APPENDIX,
   TERMINAL_PROMPT_APPENDIX,
@@ -388,6 +399,98 @@ export async function createTerminalTools(context: AgentRunContext): Promise<Too
 }
 
 /**
+ * Builds the API Explorer tools for an API-surface run: reading the collections, creating and
+ * changing saved requests, sending one, and setting an environment variable. The handlers are the
+ * same provider-agnostic ones the Claude path uses — only the tool-definition dialect differs — so
+ * an agent on an OpenAI or Gemini connection has the same capabilities as one on Claude.
+ * @param context The run context the tools act through.
+ * @returns Returns the API tool set.
+ */
+export async function createApiTools(context: AgentRunContext): Promise<ToolSet> {
+  const { tool } = await import('ai');
+  const { z } = await import('zod');
+  const readTools: ToolSet = {
+    [LIST_API_REQUESTS]: tool({
+      description: "List the API Explorer's collections, saved requests and environments.",
+      inputSchema: z.object({}),
+      execute: (): Promise<string> => listApiRequests(context),
+    }),
+  };
+  // Chat mode is read-only: the agent may look at the collections but not add to them or send.
+  if (context.mode === 'chat') {
+    return readTools;
+  }
+  return {
+    ...readTools,
+    [CREATE_API_REQUEST]: tool({
+      description:
+        'Save a new request in the API Explorer and open it in the API well. Reference environment values as {{name}} rather than hard-coding hosts or tokens.',
+      inputSchema: z.object({
+        name: z.string().min(1).describe('The display name of the request.'),
+        method: z
+          .enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'])
+          .describe('The HTTP method.'),
+        url: z.string().min(1).describe('The request URL; may contain {{variables}}.'),
+        description: z
+          .string()
+          .optional()
+          .describe('What the endpoint does, what it expects and what it returns.'),
+        collection: z
+          .string()
+          .optional()
+          .describe('The collection to add it to; created when it does not exist.'),
+        headers: z.record(z.string(), z.string()).optional().describe('Request headers.'),
+        params: z.record(z.string(), z.string()).optional().describe('Query parameters.'),
+        body: z.string().optional().describe('The request body.'),
+        body_kind: z
+          .enum(['none', 'json', 'text', 'xml'])
+          .optional()
+          .describe('How the body is carried.'),
+      }),
+      execute: (args: Record<string, unknown>): Promise<string> => createApiRequest(context, args),
+    }),
+    [UPDATE_API_REQUEST]: tool({
+      description: 'Change a saved request. Anything not named is left as it was.',
+      inputSchema: z.object({
+        id: z.string().min(1).describe('The id of the request to change.'),
+        name: z.string().optional().describe('A new display name.'),
+        method: z
+          .enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'])
+          .optional()
+          .describe('A new HTTP method.'),
+        url: z.string().optional().describe('A new URL.'),
+        description: z.string().optional().describe('A new description.'),
+        headers: z.record(z.string(), z.string()).optional().describe('Replacement headers.'),
+        params: z.record(z.string(), z.string()).optional().describe('Replacement parameters.'),
+        body: z.string().optional().describe('A new body.'),
+        body_kind: z
+          .enum(['none', 'json', 'text', 'xml'])
+          .optional()
+          .describe('How the body is carried.'),
+      }),
+      execute: (args: { id: string } & Record<string, unknown>): Promise<string> =>
+        updateApiRequest(context, args.id, args),
+    }),
+    [SEND_API_REQUEST]: tool({
+      description:
+        'Send a saved request and return its status, headers and body. This makes a real call to a real service.',
+      inputSchema: z.object({ id: z.string().min(1).describe('The id of the request to send.') }),
+      execute: (args: { id: string }): Promise<string> => sendApiRequest(context, args.id),
+    }),
+    [SET_API_VARIABLE]: tool({
+      description:
+        "Set a variable in the API Explorer's active environment, so requests can reference it as {{name}}.",
+      inputSchema: z.object({
+        name: z.string().min(1).describe('The variable name.'),
+        value: z.string().describe('The variable value.'),
+      }),
+      execute: (args: { name: string; value: string }): Promise<string> =>
+        setApiVariable(context, args.name, args.value),
+    }),
+  };
+}
+
+/**
  * Builds the binary-surface tools every AI-SDK-backed provider exposes for a binary-scoped run,
  * bridged to the renderer through the run context. The agent inspects the open binary file (overview,
  * hex/ASCII windows, the selection, and disassembly) and can patch bytes; the renderer formats the
@@ -538,6 +641,8 @@ export function promptForSurface(context: AgentRunContext): string {
         return TERMINAL_PROMPT_APPENDIX;
       case 'binary':
         return BINARY_PROMPT_APPENDIX;
+      case 'api':
+        return API_PROMPT_APPENDIX;
       case 'project':
         return PROJECT_PROMPT_APPENDIX;
       case 'editor':
@@ -565,6 +670,8 @@ export async function toolsForSurface(context: AgentRunContext): Promise<ToolSet
         return createBinaryTools(context);
       // The standalone agent has no owning document and the AI-SDK providers have no built-in tools,
       // so a project run carries only the ask-user tool (a documented limitation of those providers).
+      case 'api':
+        return createApiTools(context);
       case 'project':
         return Promise.resolve({});
       case 'editor':

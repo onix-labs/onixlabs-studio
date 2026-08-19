@@ -22,7 +22,12 @@ import { pidJournal } from '../pid-journal';
 import { detachedSpawnOptions, killProcessTree, signalProcessTree } from '../process-tree';
 import {
   DELETE_RUN_CONFIGURATIONS,
+  CREATE_API_REQUEST,
+  LIST_API_REQUESTS,
   LIST_RUN_CONFIGURATIONS,
+  SEND_API_REQUEST,
+  SET_API_VARIABLE,
+  UPDATE_API_REQUEST,
   SAVE_RUN_CONFIGURATIONS,
   DELETE_BINARY_BYTES,
   EDIT_ACTIVE_DOCUMENT,
@@ -68,11 +73,18 @@ import {
 } from '@shared/electron/shell-env';
 import {
   CLARIFYING_QUESTION_APPENDIX,
+  API_PROMPT_APPENDIX,
   BINARY_PROMPT_APPENDIX,
+  createApiRequest,
+  listApiRequests,
+  sendApiRequest,
+  setApiVariable,
+  updateApiRequest,
   EDIT_TOOL_FQN,
   INSERT_TOOL_FQN,
   PROJECT_PROMPT_APPENDIX,
   RUN_CONFIGURATION_PROMPT_APPENDIX,
+  LIST_API_REQUESTS_FQN,
   LIST_RUN_CONFIGURATIONS_FQN,
   listRunConfigurations,
   saveRunConfigurations,
@@ -424,6 +436,8 @@ export class ClaudeAgentProvider implements AgentProvider {
     const surface: AgentSurface = openContext.surface;
     const terminal: boolean = surface === 'terminal';
     const binary: boolean = surface === 'binary';
+    // An API Explorer run acts on that tab's collections through the API tools, and on nothing else.
+    const api: boolean = surface === 'api';
     // The standalone agent tab has no owning document: beyond the ask-user tool, no in-app studio
     // tools are registered, and the run works through the SDK's built-in tools alone (gated by the
     // permission posture as usual).
@@ -496,7 +510,7 @@ export class ClaudeAgentProvider implements AgentProvider {
         // views (editor) and the standalone agent tab (project). A terminal- or binary-docked agent is
         // deliberately confined to its own surface and gets none of this. Withheld in read-only chat
         // mode, which never writes.
-        ...(readOnly || terminal || binary
+        ...(readOnly || terminal || binary || api
           ? []
           : [
               tool(
@@ -748,117 +762,226 @@ export class ClaudeAgentProvider implements AgentProvider {
                         ),
                       ]),
                 ]
-              : [
-                  tool(
-                    READ_ACTIVE_DOCUMENT,
-                    "Read the active editor document's full text.",
-                    {},
-                    async () => text(await readActiveDocument(getContext())),
-                  ),
-                  ...(readOnly
-                    ? []
-                    : [
-                        tool(
-                          EDIT_ACTIVE_DOCUMENT,
-                          'Replace one exact occurrence of a string in the active editor document (or every occurrence with replace_all). The old string must match uniquely — include surrounding context to disambiguate. Replace with an empty string to delete.',
-                          {
-                            old_string: z
-                              .string()
-                              .min(1)
-                              .describe(
-                                'The exact text to replace; must match the document verbatim.',
+              : api
+                ? [
+                    tool(
+                      LIST_API_REQUESTS,
+                      "List the API Explorer's collections, saved requests and environments.",
+                      {},
+                      async () => text(await listApiRequests(getContext())),
+                    ),
+                    ...(readOnly
+                      ? []
+                      : [
+                          tool(
+                            CREATE_API_REQUEST,
+                            'Save a new request in the API Explorer and open it in the API well. Reference environment values as {{name}} rather than hard-coding hosts or tokens.',
+                            {
+                              name: z.string().min(1).describe('The display name of the request.'),
+                              method: z
+                                .enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'])
+                                .describe('The HTTP method.'),
+                              url: z
+                                .string()
+                                .min(1)
+                                .describe('The request URL; may contain {{variables}}.'),
+                              description: z
+                                .string()
+                                .optional()
+                                .describe(
+                                  'What the endpoint does, what it expects and what it returns. Shown with the request.',
+                                ),
+                              collection: z
+                                .string()
+                                .optional()
+                                .describe(
+                                  'The name of the collection to add it to; created when it does not exist. Defaults to the first collection.',
+                                ),
+                              headers: z
+                                .record(z.string(), z.string())
+                                .optional()
+                                .describe('Request headers, as name/value pairs.'),
+                              params: z
+                                .record(z.string(), z.string())
+                                .optional()
+                                .describe('Query parameters, as name/value pairs.'),
+                              body: z
+                                .string()
+                                .optional()
+                                .describe('The request body, for a method that carries one.'),
+                              body_kind: z
+                                .enum(['none', 'json', 'text', 'xml'])
+                                .optional()
+                                .describe(
+                                  'How the body is carried. Defaults to json when a body is given.',
+                                ),
+                            },
+                            async (args: Record<string, unknown>) =>
+                              text(await createApiRequest(getContext(), args)),
+                          ),
+                          tool(
+                            UPDATE_API_REQUEST,
+                            'Change a saved request. Anything not named is left as it was.',
+                            {
+                              id: z.string().min(1).describe('The id of the request to change.'),
+                              name: z.string().optional().describe('A new display name.'),
+                              method: z
+                                .enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'])
+                                .optional()
+                                .describe('A new HTTP method.'),
+                              url: z.string().optional().describe('A new URL.'),
+                              description: z.string().optional().describe('A new description.'),
+                              headers: z
+                                .record(z.string(), z.string())
+                                .optional()
+                                .describe('Headers, replacing the existing ones.'),
+                              params: z
+                                .record(z.string(), z.string())
+                                .optional()
+                                .describe('Query parameters, replacing the existing ones.'),
+                              body: z.string().optional().describe('A new body.'),
+                              body_kind: z
+                                .enum(['none', 'json', 'text', 'xml'])
+                                .optional()
+                                .describe('How the body is carried.'),
+                            },
+                            async (args: { id: string } & Record<string, unknown>) =>
+                              text(await updateApiRequest(getContext(), args.id, args)),
+                          ),
+                          tool(
+                            SEND_API_REQUEST,
+                            'Send a saved request and return its status, headers and body. This makes a real call to a real service.',
+                            {
+                              id: z.string().min(1).describe('The id of the request to send.'),
+                            },
+                            async (args: { id: string }) =>
+                              text(await sendApiRequest(getContext(), args.id)),
+                          ),
+                          tool(
+                            SET_API_VARIABLE,
+                            "Set a variable in the API Explorer's active environment, so requests can reference it as {{name}}.",
+                            {
+                              name: z.string().min(1).describe('The variable name.'),
+                              value: z.string().describe('The variable value.'),
+                            },
+                            async (args: { name: string; value: string }) =>
+                              text(await setApiVariable(getContext(), args.name, args.value)),
+                          ),
+                        ]),
+                  ]
+                : [
+                    tool(
+                      READ_ACTIVE_DOCUMENT,
+                      "Read the active editor document's full text.",
+                      {},
+                      async () => text(await readActiveDocument(getContext())),
+                    ),
+                    ...(readOnly
+                      ? []
+                      : [
+                          tool(
+                            EDIT_ACTIVE_DOCUMENT,
+                            'Replace one exact occurrence of a string in the active editor document (or every occurrence with replace_all). The old string must match uniquely — include surrounding context to disambiguate. Replace with an empty string to delete.',
+                            {
+                              old_string: z
+                                .string()
+                                .min(1)
+                                .describe(
+                                  'The exact text to replace; must match the document verbatim.',
+                                ),
+                              new_string: z
+                                .string()
+                                .describe('The replacement text (empty deletes the matched text).'),
+                              replace_all: z
+                                .boolean()
+                                .optional()
+                                .describe(
+                                  'Whether to replace every occurrence instead of requiring a unique match. Defaults to false.',
+                                ),
+                            },
+                            async (args: {
+                              old_string: string;
+                              new_string: string;
+                              replace_all?: boolean;
+                            }) =>
+                              text(
+                                await editActiveDocument(
+                                  getContext(),
+                                  args.old_string,
+                                  args.new_string,
+                                  args.replace_all ?? false,
+                                ),
                               ),
-                            new_string: z
-                              .string()
-                              .describe('The replacement text (empty deletes the matched text).'),
-                            replace_all: z
-                              .boolean()
-                              .optional()
-                              .describe(
-                                'Whether to replace every occurrence instead of requiring a unique match. Defaults to false.',
+                          ),
+                          tool(
+                            INSERT_ACTIVE_DOCUMENT,
+                            "Insert text into the active editor document: before or after an anchor string (which must match uniquely), or at the document's start or end.",
+                            {
+                              text: z.string().min(1).describe('The text to insert.'),
+                              placement: z
+                                .enum(['before', 'after', 'start', 'end'])
+                                .describe(
+                                  'Where to insert: relative to the anchor, or at a document edge.',
+                                ),
+                              anchor: z
+                                .string()
+                                .optional()
+                                .describe(
+                                  'The exact anchor text for before/after placements; must match the document verbatim and uniquely.',
+                                ),
+                            },
+                            async (args: { text: string; placement: string; anchor?: string }) =>
+                              text(
+                                await insertIntoActiveDocument(
+                                  getContext(),
+                                  args.text,
+                                  args.placement as InsertPlacement,
+                                  args.anchor,
+                                ),
                               ),
-                          },
-                          async (args: {
-                            old_string: string;
-                            new_string: string;
-                            replace_all?: boolean;
-                          }) =>
-                            text(
-                              await editActiveDocument(
-                                getContext(),
-                                args.old_string,
-                                args.new_string,
-                                args.replace_all ?? false,
+                          ),
+                          tool(
+                            REPLACE_ACTIVE_DOCUMENT,
+                            "Replace the active editor document's entire text. Prefer edit_active_document / insert_into_active_document for targeted changes.",
+                            { text: z.string().describe('The new full text of the document.') },
+                            async (args: { text: string }) =>
+                              text(await replaceActiveDocument(getContext(), args.text)),
+                          ),
+                          tool(
+                            SET_ACTIVE_DOCUMENT_LANGUAGE,
+                            "Set the active editor document's language (syntax highlighting), e.g. when you write code in a language the editor is not yet set to. The editor re-highlights and the language picker updates. Use a Monaco language id such as csharp, typescript, python, rust, or go.",
+                            {
+                              language: z
+                                .string()
+                                .min(1)
+                                .describe(
+                                  'The target language: a Monaco language id (e.g. csharp) or its display name (e.g. C#).',
+                                ),
+                            },
+                            async (args: { language: string }) =>
+                              text(await setActiveDocumentLanguage(getContext(), args.language)),
+                          ),
+                          tool(
+                            RUN_ACTIVE_DOCUMENT,
+                            "Run this tab's file in the code view's terminal and return its output and exit status, so you can check whether it ran successfully. Runs the live editor content (put your changes in the editor first with the edit tools). Supports javascript, typescript, python, csharp, java, kotlin, rust, go, and shell; other languages report that they cannot be run. The user sees it run in their terminal.",
+                            {
+                              timeout_seconds: z
+                                .number()
+                                .int()
+                                .min(1)
+                                .max(300)
+                                .optional()
+                                .describe(
+                                  'How long to wait for the program to finish before returning with whatever output it has (default 60, max 300). Raise it for a run you expect to take a while.',
+                                ),
+                            },
+                            async (args: { timeout_seconds?: number }) =>
+                              text(
+                                await runActiveDocument(getContext(), args.timeout_seconds ?? 60),
                               ),
-                            ),
-                        ),
-                        tool(
-                          INSERT_ACTIVE_DOCUMENT,
-                          "Insert text into the active editor document: before or after an anchor string (which must match uniquely), or at the document's start or end.",
-                          {
-                            text: z.string().min(1).describe('The text to insert.'),
-                            placement: z
-                              .enum(['before', 'after', 'start', 'end'])
-                              .describe(
-                                'Where to insert: relative to the anchor, or at a document edge.',
-                              ),
-                            anchor: z
-                              .string()
-                              .optional()
-                              .describe(
-                                'The exact anchor text for before/after placements; must match the document verbatim and uniquely.',
-                              ),
-                          },
-                          async (args: { text: string; placement: string; anchor?: string }) =>
-                            text(
-                              await insertIntoActiveDocument(
-                                getContext(),
-                                args.text,
-                                args.placement as InsertPlacement,
-                                args.anchor,
-                              ),
-                            ),
-                        ),
-                        tool(
-                          REPLACE_ACTIVE_DOCUMENT,
-                          "Replace the active editor document's entire text. Prefer edit_active_document / insert_into_active_document for targeted changes.",
-                          { text: z.string().describe('The new full text of the document.') },
-                          async (args: { text: string }) =>
-                            text(await replaceActiveDocument(getContext(), args.text)),
-                        ),
-                        tool(
-                          SET_ACTIVE_DOCUMENT_LANGUAGE,
-                          "Set the active editor document's language (syntax highlighting), e.g. when you write code in a language the editor is not yet set to. The editor re-highlights and the language picker updates. Use a Monaco language id such as csharp, typescript, python, rust, or go.",
-                          {
-                            language: z
-                              .string()
-                              .min(1)
-                              .describe(
-                                'The target language: a Monaco language id (e.g. csharp) or its display name (e.g. C#).',
-                              ),
-                          },
-                          async (args: { language: string }) =>
-                            text(await setActiveDocumentLanguage(getContext(), args.language)),
-                        ),
-                        tool(
-                          RUN_ACTIVE_DOCUMENT,
-                          "Run this tab's file in the code view's terminal and return its output and exit status, so you can check whether it ran successfully. Runs the live editor content (put your changes in the editor first with the edit tools). Supports javascript, typescript, python, csharp, java, kotlin, rust, go, and shell; other languages report that they cannot be run. The user sees it run in their terminal.",
-                          {
-                            timeout_seconds: z
-                              .number()
-                              .int()
-                              .min(1)
-                              .max(300)
-                              .optional()
-                              .describe(
-                                'How long to wait for the program to finish before returning with whatever output it has (default 60, max 300). Raise it for a run you expect to take a while.',
-                              ),
-                          },
-                          async (args: { timeout_seconds?: number }) =>
-                            text(await runActiveDocument(getContext(), args.timeout_seconds ?? 60)),
-                        ),
-                      ]),
-                ]),
+                          ),
+                        ]),
+                  ]),
       ],
     });
 
@@ -1066,7 +1189,11 @@ export class ClaudeAgentProvider implements AgentProvider {
         // Listing run configurations is a read: auto-allowed wherever the tools are registered, so the
         // agent can see what exists without a prompt. Saving and deleting are writes and go through
         // canUseTool like any other mutation.
-        ...(readOnly || terminal || binary ? [] : [LIST_RUN_CONFIGURATIONS_FQN]),
+        ...(readOnly || terminal || binary || api ? [] : [LIST_RUN_CONFIGURATIONS_FQN]),
+        // Listing the API collections is a read, so it is auto-allowed. Creating, updating and
+        // sending are not: a send is a real call to a real service, so it goes through canUseTool
+        // exactly as running a file does.
+        ...(api ? [LIST_API_REQUESTS_FQN] : []),
         ...(terminal
           ? [READ_TERMINAL_FQN]
           : binary
@@ -1150,20 +1277,16 @@ export class ClaudeAgentProvider implements AgentProvider {
     );
     // Ask both sides at once; the first answer wins and the loser's prompt is dismissed.
     const studioCancel: AbortController = new AbortController();
-    const peer: { readonly id: string; readonly granted: Promise<boolean> } = bridge.requestPermission(
-      toolName,
-      input,
-      { displayName, description: detail },
-    );
-    const studio: Promise<{ readonly granted: boolean; readonly who: 'studio' | 'remote' }> = context
-      .requestPermission(displayName, detail, studioCancel.signal)
-      .then((granted: boolean) => ({ granted, who: 'studio' as const }));
+    const peer: { readonly id: string; readonly granted: Promise<boolean> } =
+      bridge.requestPermission(toolName, input, { displayName, description: detail });
+    const studio: Promise<{ readonly granted: boolean; readonly who: 'studio' | 'remote' }> =
+      context
+        .requestPermission(displayName, detail, studioCancel.signal)
+        .then((granted: boolean) => ({ granted, who: 'studio' as const }));
     const remote: Promise<{ readonly granted: boolean; readonly who: 'studio' | 'remote' }> =
       peer.granted.then((granted: boolean) => ({ granted, who: 'remote' as const }));
-    const winner: { readonly granted: boolean; readonly who: 'studio' | 'remote' } = await Promise.race([
-      studio,
-      remote,
-    ]);
+    const winner: { readonly granted: boolean; readonly who: 'studio' | 'remote' } =
+      await Promise.race([studio, remote]);
     if (winner.who === 'remote') {
       studioCancel.abort();
     } else {
@@ -1203,31 +1326,49 @@ export class ClaudeAgentProvider implements AgentProvider {
     }
     // No controllable peer: render locally alone.
     if (!bridge?.canPrompt) {
-      const answers: Record<string, string> | null = await this.askQuestionsLocally(context, questions);
+      const answers: Record<string, string> | null = await this.askQuestionsLocally(
+        context,
+        questions,
+      );
       return this.questionResult(input, answers);
     }
-    logger.debug('ClaudeAgentProvider.answerQuestions', `Racing local + remote answer for ${questions.length} question(s)`);
+    logger.debug(
+      'ClaudeAgentProvider.answerQuestions',
+      `Racing local + remote answer for ${questions.length} question(s)`,
+    );
     const studioCancel: AbortController = new AbortController();
     const peer: { readonly id: string; readonly answer: Promise<Record<string, unknown> | null> } =
       bridge.requestQuestions(input, questions[0]?.question);
-    const studio: Promise<{ readonly payload: Record<string, unknown> | null; readonly who: 'studio' | 'remote' }> =
-      this.askQuestionsLocally(context, questions, studioCancel.signal).then(
-        (answers: Record<string, string> | null) => ({
-          payload: answers === null ? null : { questions: input['questions'], answers },
-          who: 'studio' as const,
-        }),
-      );
-    const remote: Promise<{ readonly payload: Record<string, unknown> | null; readonly who: 'studio' | 'remote' }> =
-      peer.answer.then((payload: Record<string, unknown> | null) => ({ payload, who: 'remote' as const }));
-    const winner: { readonly payload: Record<string, unknown> | null; readonly who: 'studio' | 'remote' } =
-      await Promise.race([studio, remote]);
+    const studio: Promise<{
+      readonly payload: Record<string, unknown> | null;
+      readonly who: 'studio' | 'remote';
+    }> = this.askQuestionsLocally(context, questions, studioCancel.signal).then(
+      (answers: Record<string, string> | null) => ({
+        payload: answers === null ? null : { questions: input['questions'], answers },
+        who: 'studio' as const,
+      }),
+    );
+    const remote: Promise<{
+      readonly payload: Record<string, unknown> | null;
+      readonly who: 'studio' | 'remote';
+    }> = peer.answer.then((payload: Record<string, unknown> | null) => ({
+      payload,
+      who: 'remote' as const,
+    }));
+    const winner: {
+      readonly payload: Record<string, unknown> | null;
+      readonly who: 'studio' | 'remote';
+    } = await Promise.race([studio, remote]);
     if (winner.who === 'remote') {
       studioCancel.abort();
     } else {
       bridge.cancelQuestion(peer.id);
     }
     bridge.clearAction();
-    logger.debug('ClaudeAgentProvider.answerQuestions', `${winner.who} answered the question(s) first`);
+    logger.debug(
+      'ClaudeAgentProvider.answerQuestions',
+      `${winner.who} answered the question(s) first`,
+    );
     if (winner.payload === null) {
       return { behavior: 'deny', message: 'The user declined to answer.' };
     }
@@ -1357,9 +1498,11 @@ export class ClaudeAgentProvider implements AgentProvider {
         ? TERMINAL_PROMPT_APPENDIX
         : surface === 'binary'
           ? BINARY_PROMPT_APPENDIX
-          : surface === 'project'
-            ? PROJECT_PROMPT_APPENDIX
-            : STUDIO_PROMPT_APPENDIX;
+          : surface === 'api'
+            ? API_PROMPT_APPENDIX
+            : surface === 'project'
+              ? PROJECT_PROMPT_APPENDIX
+              : STUDIO_PROMPT_APPENDIX;
     // Every surface learns it can ask the user clarifying questions (via the built-in AskUserQuestion)
     // instead of guessing.
     const withAsk: string = `${base}\n\n${CLARIFYING_QUESTION_APPENDIX}`;
@@ -1368,7 +1511,7 @@ export class ClaudeAgentProvider implements AgentProvider {
     }
     // The run-configuration tools are registered on the workspace-scoped surfaces only, so only those
     // are told how to author them (see the tool registration in `buildRunOptions`).
-    return surface === 'terminal' || surface === 'binary'
+    return surface === 'terminal' || surface === 'binary' || surface === 'api'
       ? withAsk
       : `${withAsk}\n\n${RUN_CONFIGURATION_PROMPT_APPENDIX}`;
   }
@@ -1405,7 +1548,10 @@ export class ClaudeAgentProvider implements AgentProvider {
     executable: ClaudeExecutableChoice | undefined,
     createQuery: ClaudeQueryFactory = defaultClaudeQueryFactory,
   ): Promise<readonly ClaudeSdkModel[]> {
-    logger.trace('ClaudeAgentProvider.listSupportedModels', 'Discovering Claude models via the SDK');
+    logger.trace(
+      'ClaudeAgentProvider.listSupportedModels',
+      'Discovering Claude models via the SDK',
+    );
     const options: Options = { ...this.executableOption(executable), ...managedSpawnerOption() };
     let release: () => void = (): void => undefined;
     // The SDK's streaming-input mode keeps the session open until the prompt generator completes; it
@@ -1475,7 +1621,10 @@ export class ClaudeAgentProvider implements AgentProvider {
       const captured: Record<string, string> | null = captureShellEnvironmentCached(shell);
       if (captured !== null) {
         Object.assign(env, applyCapturedEnvironment(env, captured, true));
-        logger.debug('ClaudeAgentProvider.runEnv', `Overlaid agent shell environment from ${shell}`);
+        logger.debug(
+          'ClaudeAgentProvider.runEnv',
+          `Overlaid agent shell environment from ${shell}`,
+        );
       } else {
         logger.warn(
           'ClaudeAgentProvider.runEnv',

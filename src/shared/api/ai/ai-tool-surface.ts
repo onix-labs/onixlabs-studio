@@ -145,9 +145,41 @@ export const SAVE_RUN_CONFIGURATIONS: string = 'save_run_configurations';
 export const DELETE_RUN_CONFIGURATIONS: string = 'delete_run_configurations';
 
 /**
- * Identifies what an agent run acts on: the open editor document (`editor`), the owning terminal
- * (`terminal`), the owning binary document (`binary`), or the project as a whole (`project` — the
- * standalone agent tab, which has no owning document and works through the provider's built-in tools
- * alone). It selects the tool set the providers expose for the run.
+ * The in-app capability that lists the API Explorer's collections, saved requests and environments,
+ * so the agent can see what already exists before adding to it.
  */
-export type AgentSurface = 'editor' | 'terminal' | 'binary' | 'project';
+export const LIST_API_REQUESTS: string = 'list_api_requests';
+
+/**
+ * The in-app capability that creates a saved request in the API Explorer and opens it in the API well.
+ * The agent's way of setting an endpoint up for the user rather than describing it in prose.
+ */
+export const CREATE_API_REQUEST: string = 'create_api_request';
+
+/**
+ * The in-app capability that applies changes to a saved request — a header, a body, a URL — leaving
+ * everything it does not name untouched.
+ */
+export const UPDATE_API_REQUEST: string = 'update_api_request';
+
+/**
+ * The in-app capability that sends a saved request and returns its outcome. An execution, so it is
+ * gated by the permission posture exactly as running a file is: an agent probing an API is making a
+ * real call to a real service.
+ */
+export const SEND_API_REQUEST: string = 'send_api_request';
+
+/**
+ * The in-app capability that sets a variable in the API Explorer's active environment, so an agent
+ * that discovers a base URL or a token can put it where every request resolves it from.
+ */
+export const SET_API_VARIABLE: string = 'set_api_variable';
+
+/**
+ * Identifies what an agent run acts on: the open editor document (`editor`), the owning terminal
+ * (`terminal`), the owning binary document (`binary`), the API Explorer's collections (`api`), or the
+ * project as a whole (`project` — the standalone agent tab, which has no owning document and works
+ * through the provider's built-in tools alone). It selects the tool set the providers expose for the
+ * run.
+ */
+export type AgentSurface = 'editor' | 'terminal' | 'binary' | 'api' | 'project';
