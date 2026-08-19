@@ -1,0 +1,28 @@
+<app-ribbon-overflow>
+  <app-ribbon-strip-group title="Request">
+    <app-ribbon-strip-button
+      [icon]="sending() ? Icon.STOP : Icon.SEND"
+      [label]="sending() ? 'Cancel' : 'Send'"
+      [disabled]="!canSend()"
+      (action)="onSend()"
+    />
+    <app-ribbon-strip-button
+      [icon]="Icon.API_REQUEST"
+      label="New Request"
+      (action)="onNewRequest()"
+    />
+    <app-ribbon-strip-button
+      [icon]="Icon.API_COLLECTION"
+      label="New Collection"
+      (action)="onNewCollection()"
+    />
+  </app-ribbon-strip-group>
+
+  <app-ribbon-strip-group title="Environment">
+    <app-ribbon-strip-button
+      [icon]="Icon.API_ENVIRONMENT"
+      [label]="environmentLabel()"
+      (action)="onCycleEnvironment()"
+    />
+  </app-ribbon-strip-group>
+</app-ribbon-overflow>

@@ -1,0 +1,188 @@
+// One request open in the API well. The panel scrolls as a whole rather than splitting request and
+// response into independently-scrolling halves: at spike scale, one scroll is easier to reason about
+// than a splitter, and a real splitter here should be the shared `app-panel-layout` rather than a
+// hand-rolled one.
+
+:host {
+  display: block;
+  block-size: 100%;
+  overflow-y: auto;
+}
+
+.request {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.75rem;
+}
+
+.request__name {
+  max-inline-size: 24rem;
+}
+
+.request__bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.request__method {
+  flex: 0 0 7rem;
+}
+
+.request__url {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+}
+
+// The URL after variable substitution, shown only when it differs from what was typed.
+.request__resolved {
+  margin: 0;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.6875rem;
+  color: var(--form-muted-foreground-color);
+  overflow-wrap: anywhere;
+}
+
+.request__sections {
+  display: flex;
+  gap: 0.25rem;
+  border-block-end: 0.0625rem solid var(--body-border-color);
+}
+
+.request__section {
+  padding: 0.35rem 0.6rem;
+  font: inherit;
+  font-size: 0.75rem;
+  color: var(--form-muted-foreground-color);
+  background: transparent;
+  border: 0;
+  border-block-end: 0.125rem solid transparent;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--body-foreground-color);
+  }
+
+  &--active {
+    color: var(--accent-color);
+    border-block-end-color: var(--accent-color);
+  }
+}
+
+.request__form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-inline-size: 40rem;
+}
+
+.request__fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+// A name/value row: tick, key, value. The key column is narrower than the value, which is the ratio
+// these are actually read in.
+.request__field {
+  display: grid;
+  grid-template-columns: auto 1fr 1.6fr;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.request__hint {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--form-muted-foreground-color);
+}
+
+.request__response {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding-block-start: 0.5rem;
+  border-block-start: 0.0625rem solid var(--body-border-color);
+}
+
+.request__summary {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.6875rem;
+}
+
+// The status code carries the outcome at a glance: 2xx/3xx/4xx-5xx read as fine, moved, broken.
+.request__status {
+  font-weight: 700;
+
+  &[data-tone='ok'] {
+    color: var(--success-color);
+  }
+
+  &[data-tone='redirect'] {
+    color: var(--warning-color);
+  }
+
+  &[data-tone='error'] {
+    color: var(--error-color);
+  }
+}
+
+.request__metric {
+  color: var(--form-muted-foreground-color);
+}
+
+.request__toggle {
+  margin-inline-start: auto;
+  padding: 0.15rem 0.5rem;
+  font: inherit;
+  font-size: 0.6875rem;
+  color: var(--accent-color);
+  background: transparent;
+  border: 0.0625rem solid var(--accent-surface-border-color);
+  border-radius: calc(0.35rem * var(--border-radius-multiplier));
+  cursor: pointer;
+}
+
+.request__failure {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--error-color);
+}
+
+.request__headers {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.15rem 0.75rem;
+  margin: 0;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.6875rem;
+
+  dt {
+    color: var(--form-muted-foreground-color);
+  }
+
+  dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+}
+
+.request__payload {
+  margin: 0;
+  padding: 0.5rem;
+  max-block-size: 24rem;
+  overflow: auto;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.6875rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--agent-view-surface-color, rgba(0, 0, 0, 0.2));
+  border-radius: calc(0.5rem * var(--border-radius-multiplier));
+}

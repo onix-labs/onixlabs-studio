@@ -1,0 +1,40 @@
+// The active environment's variable editor.
+
+:host {
+  display: block;
+  block-size: 100%;
+  overflow-y: auto;
+}
+
+.environment {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.6rem;
+}
+
+.environment__variables {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.environment__variable {
+  display: grid;
+  grid-template-columns: auto 1fr 1.4fr;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.environment__hint {
+  margin: 0;
+  padding: 0.6rem;
+  font-size: 0.75rem;
+  color: var(--form-muted-foreground-color);
+
+  code {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 0.6875rem;
+    color: var(--accent-color);
+  }
+}

@@ -1,0 +1,8 @@
+// The API Explorer tab is a dock surface and nothing else: the container fills the tab body, exactly
+// as it does for a workspace.
+
+:host {
+  display: block;
+  block-size: 100%;
+  min-block-size: 0;
+}

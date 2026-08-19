@@ -1,0 +1,57 @@
+<div class="api-explorer__actions">
+  <app-button
+    size="small"
+    [icon]="Icon.API_COLLECTION"
+    label="Collection"
+    tooltip="Add a collection"
+    (click)="addCollection()"
+  />
+  <app-button
+    size="small"
+    [icon]="Icon.API_REQUEST"
+    label="Request"
+    tooltip="Add a request to the selected collection"
+    (click)="addRequest()"
+  />
+  <app-button
+    size="small"
+    [icon]="Icon.API_ENVIRONMENT"
+    label="Environment"
+    tooltip="Add an environment"
+    (click)="addEnvironment()"
+  />
+</div>
+
+<app-tree-view
+  [rows]="rows()"
+  [selectedId]="selectedId()"
+  [virtual]="true"
+  (rowClick)="onRowClick($event)"
+>
+  <ng-template let-row>
+    @let data = row.data;
+
+    @switch (data.kind) {
+      @case ('request') {
+        <span class="api-explorer__method" [attr.data-method]="data.method">{{ data.method }}</span>
+      }
+      @case ('environment') {
+        <app-icon class="tree-icon" [icon]="Icon.API_ENVIRONMENT" />
+      }
+      @case ('collection') {
+        <app-icon class="tree-icon tree-icon--folder" [icon]="Icon.API_COLLECTION" />
+      }
+      @default {
+        <app-icon class="tree-icon" [icon]="Icon.API_EXPLORER" />
+      }
+    }
+
+    <span class="tree-name" [class.bold]="data.kind === 'collection' || data.kind === 'group'">
+      {{ data.label }}
+    </span>
+
+    @if (data.active) {
+      <span class="api-explorer__active" title="The active environment">active</span>
+    }
+  </ng-template>
+</app-tree-view>

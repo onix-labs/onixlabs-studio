@@ -1,0 +1,22 @@
+@if (workspace.history().length === 0) {
+  <p class="history__empty">Nothing sent yet this session.</p>
+} @else {
+  <div class="history__actions">
+    <app-button size="small" [icon]="Icon.TRASH" label="Clear" (click)="workspace.clearHistory()" />
+  </div>
+
+  <ul class="history__list">
+    @for (entry of workspace.history(); track entry.id) {
+      <li class="history__row">
+        <button type="button" class="history__button" (click)="reopen(entry)">
+          <span class="history__result" [attr.data-tone]="tone(entry)">{{ result(entry) }}</span>
+          <span class="history__method">{{ entry.method }}</span>
+          <span class="history__name">{{ entry.name }}</span>
+          <span class="history__meta">{{ duration(entry) }} ms</span>
+          <span class="history__meta">{{ entry.at | date: 'HH:mm:ss' }}</span>
+        </button>
+        <p class="history__url" [title]="entry.url">{{ entry.url }}</p>
+      </li>
+    }
+  </ul>
+}

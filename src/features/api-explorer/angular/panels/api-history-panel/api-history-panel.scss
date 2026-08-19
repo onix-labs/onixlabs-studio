@@ -1,0 +1,107 @@
+// The send history: one row per send, newest first.
+
+:host {
+  display: flex;
+  flex-direction: column;
+  block-size: 100%;
+  min-block-size: 0;
+  overflow-y: auto;
+}
+
+.history__empty {
+  margin: 0;
+  padding: 0.75rem;
+  font-size: 0.75rem;
+  color: var(--form-muted-foreground-color);
+}
+
+.history__actions {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0.35rem 0.5rem;
+}
+
+.history__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.history__row {
+  padding-block-end: 0.25rem;
+}
+
+.history__button {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  inline-size: 100%;
+  padding: 0.2rem 0.5rem;
+  font: inherit;
+  font-size: 0.75rem;
+  text-align: start;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--accent-surface-background-color);
+  }
+}
+
+.history__result {
+  flex: 0 0 3rem;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-weight: 700;
+  font-size: 0.6875rem;
+
+  &[data-tone='ok'] {
+    color: var(--success-color);
+  }
+
+  &[data-tone='redirect'] {
+    color: var(--warning-color);
+  }
+
+  &[data-tone='error'] {
+    color: var(--error-color);
+  }
+
+  &[data-tone='muted'] {
+    color: var(--form-muted-foreground-color);
+  }
+}
+
+.history__method {
+  flex: 0 0 2.75rem;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.5625rem;
+  font-weight: 700;
+  color: var(--form-muted-foreground-color);
+}
+
+.history__name {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history__meta {
+  flex: 0 0 auto;
+  font-size: 0.625rem;
+  color: var(--form-muted-foreground-color);
+}
+
+.history__url {
+  margin: 0;
+  padding-inline: 0.5rem 0.5rem;
+  padding-inline-start: 4rem;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.625rem;
+  color: var(--form-muted-foreground-color);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
