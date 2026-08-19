@@ -4,6 +4,7 @@ import {
   LocalModel,
   ModelDetails,
   ModelDiskUsage,
+  ModelPullProgress,
   ModelRuntimeStatus,
   RunningModel,
   RuntimeInstallation,
@@ -31,6 +32,7 @@ class FakeRuntime implements ModelRuntime {
   public started: number = 0;
   public stopped: number = 0;
   public disposed: number = 0;
+  public pulled: string[] = [];
   public install_: RuntimeInstallation = { kind: 'absent', executable: '', version: '' };
 
   public status(): Promise<ModelRuntimeStatus> {
@@ -80,6 +82,30 @@ class FakeRuntime implements ModelRuntime {
 
   public diskUsage(): Promise<ModelDiskUsage> {
     return Promise.resolve({ bytes: 42, path: '/models' });
+  }
+
+  /**
+   * Resolves the in-flight pull, so a test can hold one open while it cancels.
+   */
+  public finishPull: ((ok: boolean) => void) | null = null;
+
+  /**
+   * The signals handed to each pull, so a test can assert one was aborted.
+   */
+  public pullSignals: (AbortSignal | undefined)[] = [];
+
+  public pull(
+    name: string,
+    onProgress: (progress: ModelPullProgress) => void,
+    signal?: AbortSignal,
+  ): Promise<boolean> {
+    this.pulled.push(name);
+    this.pullSignals.push(signal);
+    onProgress({ model: name, stage: 'queued', status: 'queued', received: 0, total: 0 });
+    return new Promise<boolean>((resolve: (ok: boolean) => void): void => {
+      this.finishPull = resolve;
+      signal?.addEventListener('abort', (): void => resolve(false), { once: true });
+    });
   }
 
   public dispose(): void {
@@ -152,10 +178,12 @@ describe('ModelRuntimeContribution activation', () => {
 
     expect([...fake.handlers.keys()].sort()).toEqual(
       [
+        ModelRuntimeChannel.CancelPull,
         ModelRuntimeChannel.DiskUsage,
         ModelRuntimeChannel.Install,
         ModelRuntimeChannel.Installation,
         ModelRuntimeChannel.List,
+        ModelRuntimeChannel.Pull,
         ModelRuntimeChannel.Remove,
         ModelRuntimeChannel.Running,
         ModelRuntimeChannel.Show,
@@ -239,6 +267,85 @@ describe('ModelRuntimeContribution lifecycle channels', () => {
     contribution.dispose();
 
     expect(runtime.disposed).toBe(1);
+  });
+});
+
+describe('ModelRuntimeContribution pull', () => {
+  it('pushes pull progress to the renderer', async () => {
+    const { fake } = activate();
+
+    void fake.handlers.get(ModelRuntimeChannel.Pull)?.({} as never, 'llama3.2:3b');
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(fake.pushes).toContainEqual({
+      channel: ModelRuntimeChannel.PullProgress,
+      payload: [{ model: 'llama3.2:3b', stage: 'queued', status: 'queued', received: 0, total: 0 }],
+    });
+  });
+
+  it('cancels an in-flight pull through its abort signal', async () => {
+    const { runtime, fake } = activate();
+    const pull: Promise<unknown> = fake.handlers.get(ModelRuntimeChannel.Pull)?.(
+      {} as never,
+      'llama3.2:3b',
+    ) as Promise<unknown>;
+    await vi.advanceTimersByTimeAsync(0);
+
+    const cancelled: unknown = fake.handlers.get(ModelRuntimeChannel.CancelPull)?.(
+      {} as never,
+      'llama3.2:3b',
+    );
+
+    expect(cancelled).toBe(true);
+    expect(runtime.pullSignals[0]?.aborted).toBe(true);
+    expect(await pull).toBe(false);
+  });
+
+  it('reports nothing to cancel for a model that is not being pulled', () => {
+    const { fake } = activate();
+
+    expect(fake.handlers.get(ModelRuntimeChannel.CancelPull)?.({} as never, 'ghost')).toBe(false);
+  });
+
+  it('refuses a duplicate pull of a model already in flight', async () => {
+    const { runtime, fake } = activate();
+    void fake.handlers.get(ModelRuntimeChannel.Pull)?.({} as never, 'llama3.2:3b');
+    await vi.advanceTimersByTimeAsync(0);
+
+    const second: unknown = await fake.handlers.get(ModelRuntimeChannel.Pull)?.(
+      {} as never,
+      'llama3.2:3b',
+    );
+
+    expect(second).toBe(false);
+    // The second request must not have reached the runtime, or the two would race for the weights.
+    expect(runtime.pulled).toEqual(['llama3.2:3b']);
+  });
+
+  it('releases the model once its pull settles, so it can be pulled again', async () => {
+    const { runtime, fake } = activate();
+    const first: Promise<unknown> = fake.handlers.get(ModelRuntimeChannel.Pull)?.(
+      {} as never,
+      'llama3.2:3b',
+    ) as Promise<unknown>;
+    await vi.advanceTimersByTimeAsync(0);
+    runtime.finishPull?.(true);
+    await first;
+
+    void fake.handlers.get(ModelRuntimeChannel.Pull)?.({} as never, 'llama3.2:3b');
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(runtime.pulled).toEqual(['llama3.2:3b', 'llama3.2:3b']);
+  });
+
+  it('aborts in-flight pulls on disposal, so none outlives the contribution', async () => {
+    const { runtime, fake, contribution } = activate();
+    void fake.handlers.get(ModelRuntimeChannel.Pull)?.({} as never, 'llama3.2:3b');
+    await vi.advanceTimersByTimeAsync(0);
+
+    contribution.dispose();
+
+    expect(runtime.pullSignals[0]?.aborted).toBe(true);
   });
 });
 

@@ -196,6 +196,48 @@ export interface RuntimeInstallProgress {
 }
 
 /**
+ * How far a model pull has got. Pushed to the renderer as the runtime reports it, because a pull moves
+ * gigabytes and a progressless one is indistinguishable from a hang.
+ */
+export interface ModelPullProgress {
+  /**
+   * The model reference being pulled. Present on every update so the view can attribute it: several
+   * pulls may be in flight at once.
+   */
+  readonly model: string;
+
+  /**
+   * Which stage the pull has reached.
+   *
+   * `queued` is emitted once when the pull is accepted, before the runtime has said anything, so a
+   * click produces immediate feedback. `cancelled` is distinguished from `failed` because the user
+   * asking to stop is not an error to report as one.
+   */
+  readonly stage: 'queued' | 'downloading' | 'verifying' | 'done' | 'failed' | 'cancelled';
+
+  /**
+   * The runtime's own status line (for example `pulling manifest`), shown verbatim so the user sees
+   * what it is actually doing rather than a lossy paraphrase.
+   */
+  readonly status: string;
+
+  /**
+   * Bytes fetched so far for the layer in progress, or 0 when the runtime reports none.
+   */
+  readonly received: number;
+
+  /**
+   * The total bytes expected for the layer in progress, or 0 when unknown.
+   */
+  readonly total: number;
+
+  /**
+   * The failure reason, present only when {@link stage} is `failed`.
+   */
+  readonly error?: string;
+}
+
+/**
  * How much disk the runtime's model store is using.
  */
 export interface ModelDiskUsage {

@@ -1,10 +1,16 @@
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { LocalModel, ModelDetails, RunningModel } from '@shared/api/model-runtime-types';
+import {
+  LocalModel,
+  ModelDetails,
+  ModelPullProgress,
+  RunningModel,
+} from '@shared/api/model-runtime-types';
 import {
   hostFromOrigin,
   ollamaModelStore,
   OllamaRuntime,
+  parsePullLine,
   readContextLength,
 } from './ollama-runtime';
 import { OllamaResponse, OllamaTransport } from './ollama-transport';
@@ -18,9 +24,47 @@ class FakeTransport implements OllamaTransport {
   public responder: (method: string, path: string) => Promise<OllamaResponse> =
     (): Promise<OllamaResponse> => Promise.reject(new Error('ECONNREFUSED'));
 
+  /**
+   * The lines a streaming request emits before ending.
+   */
+  public streamLines: readonly string[] = [];
+
+  /**
+   * When set, the streaming request rejects with this error instead of ending normally.
+   */
+  public streamError: Error | null = null;
+
+  /**
+   * Aborts partway: emits this many lines, then honours the signal by rejecting.
+   */
+  public abortAfter: number | null = null;
+
   public request(method: string, path: string, body?: unknown): Promise<OllamaResponse> {
     this.requests.push({ method, path, body });
     return this.responder(method, path);
+  }
+
+  public stream(
+    method: string,
+    path: string,
+    body: unknown,
+    onLine: (line: string) => void,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    this.requests.push({ method, path, body });
+    let emitted: number = 0;
+    for (const line of this.streamLines) {
+      if (this.abortAfter !== null && emitted >= this.abortAfter) {
+        // Stand in for the real transport's reaction to an abort: tear down and reject.
+        return Promise.reject(new Error('aborted'));
+      }
+      if (signal?.aborted === true) {
+        return Promise.reject(new Error('aborted'));
+      }
+      onLine(line);
+      emitted += 1;
+    }
+    return this.streamError === null ? Promise.resolve() : Promise.reject(this.streamError);
   }
 }
 
@@ -266,6 +310,182 @@ describe('OllamaRuntime lifecycle without a provisioner', () => {
       available: true,
       version: '0.5.7',
       startedByStudio: false,
+    });
+  });
+});
+
+describe('OllamaRuntime.pull', () => {
+  /**
+   * A realistic `/api/pull` stream: manifest, two download updates, the finishing steps, then success.
+   */
+  const HAPPY: readonly string[] = [
+    '{"status":"pulling manifest"}',
+    '{"status":"pulling aabbcc","digest":"sha256:aabbcc","total":1000,"completed":250}',
+    '{"status":"pulling aabbcc","digest":"sha256:aabbcc","total":1000,"completed":1000}',
+    '{"status":"verifying sha256 digest"}',
+    '{"status":"writing manifest"}',
+    '{"status":"success"}',
+  ];
+
+  it('reports queued immediately, so a click is acknowledged before the server speaks', async () => {
+    const { runtime, transport } = runtimeWith();
+    transport.streamLines = HAPPY;
+    const seen: ModelPullProgress[] = [];
+
+    await runtime.pull('llama3.2:3b', (p: ModelPullProgress): void => void seen.push(p));
+
+    expect(seen[0]).toEqual({
+      model: 'llama3.2:3b',
+      stage: 'queued',
+      status: 'queued',
+      received: 0,
+      total: 0,
+    });
+  });
+
+  it('succeeds and walks the stages through to done', async () => {
+    const { runtime, transport } = runtimeWith();
+    transport.streamLines = HAPPY;
+    const seen: ModelPullProgress[] = [];
+
+    const ok: boolean = await runtime.pull(
+      'llama3.2:3b',
+      (p: ModelPullProgress): void => void seen.push(p),
+    );
+
+    expect(ok).toBe(true);
+    expect(seen.map((p: ModelPullProgress): string => p.stage)).toEqual([
+      'queued',
+      'downloading',
+      'downloading',
+      'downloading',
+      'verifying',
+      'verifying',
+      'done',
+    ]);
+  });
+
+  it('carries the byte counts through so a progress bar can be drawn', async () => {
+    const { runtime, transport } = runtimeWith();
+    transport.streamLines = HAPPY;
+    const seen: ModelPullProgress[] = [];
+
+    await runtime.pull('llama3.2:3b', (p: ModelPullProgress): void => void seen.push(p));
+
+    const downloading: ModelPullProgress[] = seen.filter(
+      (p: ModelPullProgress): boolean => p.received > 0,
+    );
+    expect(downloading[0]).toMatchObject({ received: 250, total: 1000 });
+    expect(downloading.at(-1)).toMatchObject({ received: 1000, total: 1000 });
+  });
+
+  it('requests the pull as a stream, naming the model under both fields', async () => {
+    const { runtime, transport } = runtimeWith();
+    transport.streamLines = HAPPY;
+
+    await runtime.pull('llama3.2:3b', (): void => undefined);
+
+    expect(transport.requests[0]).toMatchObject({ method: 'POST', path: '/api/pull' });
+    expect(transport.requests[0]?.body).toEqual({
+      model: 'llama3.2:3b',
+      name: 'llama3.2:3b',
+      stream: true,
+    });
+  });
+
+  it('fails on an in-band error, which is how Ollama reports a bad model reference', async () => {
+    const { runtime, transport } = runtimeWith();
+    // The request itself succeeds; the failure only appears inside the stream.
+    transport.streamLines = ['{"error":"model \\"ghost\\" not found"}'];
+    const seen: ModelPullProgress[] = [];
+
+    const ok: boolean = await runtime.pull(
+      'ghost:latest',
+      (p: ModelPullProgress): void => void seen.push(p),
+    );
+
+    expect(ok).toBe(false);
+    expect(seen.at(-1)?.stage).toBe('failed');
+    expect(seen.at(-1)?.error).toContain('not found');
+  });
+
+  it('fails when the stream ends without reporting success', async () => {
+    const { runtime, transport } = runtimeWith();
+    transport.streamLines = ['{"status":"pulling manifest"}'];
+    const seen: ModelPullProgress[] = [];
+
+    const ok: boolean = await runtime.pull(
+      'llama3.2:3b',
+      (p: ModelPullProgress): void => void seen.push(p),
+    );
+
+    expect(ok).toBe(false);
+    expect(seen.at(-1)?.stage).toBe('failed');
+    expect(seen.at(-1)?.error).toContain('without reporting success');
+  });
+
+  it('fails, rather than throwing, when the connection drops', async () => {
+    const { runtime, transport } = runtimeWith();
+    transport.streamError = new Error('ECONNRESET');
+    const seen: ModelPullProgress[] = [];
+
+    const ok: boolean = await runtime.pull(
+      'llama3.2:3b',
+      (p: ModelPullProgress): void => void seen.push(p),
+    );
+
+    expect(ok).toBe(false);
+    expect(seen.at(-1)).toMatchObject({ stage: 'failed', error: 'ECONNRESET' });
+  });
+
+  it('reports a cancel as cancelled rather than failed', async () => {
+    const { runtime, transport } = runtimeWith();
+    transport.streamLines = HAPPY;
+    transport.abortAfter = 2;
+    const controller: AbortController = new AbortController();
+    controller.abort();
+    const seen: ModelPullProgress[] = [];
+
+    const ok: boolean = await runtime.pull(
+      'llama3.2:3b',
+      (p: ModelPullProgress): void => void seen.push(p),
+      controller.signal,
+    );
+
+    expect(ok).toBe(false);
+    // The user asking to stop is a decision, not an error, and must not surface as one.
+    expect(seen.at(-1)?.stage).toBe('cancelled');
+    expect(seen.some((p: ModelPullProgress): boolean => p.stage === 'failed')).toBe(false);
+  });
+});
+
+describe('parsePullLine', () => {
+  it('classifies the finishing steps as verifying', () => {
+    for (const status of [
+      'verifying sha256 digest',
+      'writing manifest',
+      'removing any unused layers',
+    ]) {
+      expect(parsePullLine('m', JSON.stringify({ status }))?.stage).toBe('verifying');
+    }
+  });
+
+  it('treats an unrecognised status as downloading rather than dropping it', () => {
+    expect(parsePullLine('m', '{"status":"something new"}')?.stage).toBe('downloading');
+  });
+
+  it('stamps the model onto every update, so concurrent pulls stay attributable', () => {
+    expect(parsePullLine('llama3.2:3b', '{"status":"success"}')?.model).toBe('llama3.2:3b');
+  });
+
+  it('returns null for a line that is not valid JSON', () => {
+    expect(parsePullLine('m', 'not json')).toBeNull();
+  });
+
+  it('defaults missing byte counts to zero', () => {
+    expect(parsePullLine('m', '{"status":"pulling manifest"}')).toMatchObject({
+      received: 0,
+      total: 0,
     });
   });
 });

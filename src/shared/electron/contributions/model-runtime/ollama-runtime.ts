@@ -6,6 +6,7 @@ import {
   LocalModel,
   ModelDetails,
   ModelDiskUsage,
+  ModelPullProgress,
   ModelRuntimeStatus,
   RunningModel,
   RuntimeInstallation,
@@ -284,6 +285,87 @@ export class OllamaRuntime implements ModelRuntime {
   }
 
   /**
+   * Downloads a model's weights, reporting progress as the server streams it.
+   *
+   * Ollama answers `/api/pull` with newline-delimited JSON, one object per update, and reports an
+   * error in-band (a `{"error":...}` object) rather than by failing the request — so a pull that never
+   * throws can still have failed, and the stream is the only place that says so.
+   * @param name The model reference to pull.
+   * @param onProgress Receives progress updates throughout.
+   * @param signal Cancels the pull when signalled.
+   * @returns Returns true when the model finished downloading.
+   */
+  public async pull(
+    name: string,
+    onProgress: (progress: ModelPullProgress) => void,
+    signal?: AbortSignal,
+  ): Promise<boolean> {
+    onProgress({ model: name, stage: 'queued', status: 'queued', received: 0, total: 0 });
+
+    // Held on an object rather than in plain locals: the stream callback assigns them, and TypeScript
+    // does not track assignments made inside a closure when narrowing a local.
+    const seen: { last: ModelPullProgress | null; failure: string | null } = {
+      last: null,
+      failure: null,
+    };
+
+    try {
+      await this.transport.stream(
+        'POST',
+        '/api/pull',
+        { ...modelBody(name), stream: true },
+        (line: string): void => {
+          const progress: ModelPullProgress | null = parsePullLine(name, line);
+          if (progress === null) {
+            return;
+          }
+          if (progress.stage === 'failed') {
+            seen.failure = progress.error ?? 'the runtime reported an error';
+          }
+          seen.last = progress;
+          onProgress(progress);
+        },
+        signal,
+      );
+    } catch (error: unknown) {
+      // An abort is the user's decision, not a failure, and is reported as such.
+      if (signal?.aborted === true) {
+        onProgress({ model: name, stage: 'cancelled', status: 'cancelled', received: 0, total: 0 });
+        return false;
+      }
+      const message: string = error instanceof Error ? error.message : String(error);
+      onProgress({
+        model: name,
+        stage: 'failed',
+        status: 'failed',
+        received: 0,
+        total: 0,
+        error: message,
+      });
+      return false;
+    }
+
+    if (seen.failure !== null) {
+      return false;
+    }
+
+    // The stream can end without an explicit success line (an older server, a truncated response), so
+    // completion is asserted here rather than assumed from the last line seen.
+    const succeeded: boolean = seen.last?.stage === 'done';
+    if (!succeeded) {
+      onProgress({
+        model: name,
+        stage: 'failed',
+        status: 'failed',
+        received: 0,
+        total: 0,
+        error: 'the pull ended without reporting success',
+      });
+    }
+    return succeeded;
+  }
+
+  /**
    * Removes an installed model, deleting its weights.
    * @param name The fully-qualified model reference.
    * @returns Returns true when the server accepted the request.
@@ -332,6 +414,59 @@ export class OllamaRuntime implements ModelRuntime {
  */
 function modelBody(name: string): Record<string, string> {
   return { model: name, name };
+}
+
+/**
+ * The raw shape of one `/api/pull` progress line.
+ */
+interface RawPullLine {
+  readonly status?: string;
+  readonly error?: string;
+  readonly completed?: number;
+  readonly total?: number;
+}
+
+/**
+ * Maps one raw `/api/pull` line onto a normalised progress update, or null when the line is not valid
+ * JSON. Exported for unit testing.
+ *
+ * Ollama's status strings are free text, so they are classified by prefix: anything that is not an
+ * error, a success, or one of the post-download finishing steps is treated as downloading. That keeps
+ * an unrecognised status showing sensible progress instead of being dropped.
+ * @param model The model being pulled, stamped onto every update.
+ * @param line One newline-delimited body line.
+ * @returns Returns the normalised progress, or null when the line is unparseable.
+ */
+export function parsePullLine(model: string, line: string): ModelPullProgress | null {
+  let raw: RawPullLine;
+  try {
+    raw = JSON.parse(line) as RawPullLine;
+  } catch {
+    return null;
+  }
+
+  if (typeof raw.error === 'string' && raw.error.length > 0) {
+    return {
+      model,
+      stage: 'failed',
+      status: raw.error,
+      received: 0,
+      total: 0,
+      error: raw.error,
+    };
+  }
+
+  const status: string = raw.status ?? '';
+  const received: number = raw.completed ?? 0;
+  const total: number = raw.total ?? 0;
+
+  if (status === 'success') {
+    return { model, stage: 'done', status, received, total };
+  }
+  if (/^(verifying|writing|removing)/.test(status)) {
+    return { model, stage: 'verifying', status, received, total };
+  }
+  return { model, stage: 'downloading', status, received, total };
 }
 
 /**

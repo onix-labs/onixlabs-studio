@@ -2,6 +2,7 @@ import {
   LocalModel,
   ModelDetails,
   ModelDiskUsage,
+  ModelPullProgress,
   ModelRuntimeStatus,
   RunningModel,
   RuntimeInstallation,
@@ -64,6 +65,22 @@ export interface ModelRuntime {
    * @returns Returns true when the runtime accepted the request.
    */
   remove(name: string): Promise<boolean>;
+
+  /**
+   * Downloads a model's weights, reporting progress as it goes.
+   *
+   * Cancellation is by abort signal rather than a `cancelPull` method, so the caller that started the
+   * pull owns the means to stop it and a cancelled pull cannot be confused with a failed one.
+   * @param name The model reference to pull.
+   * @param onProgress Receives progress updates throughout.
+   * @param signal Cancels the pull when signalled.
+   * @returns Returns true when the model finished downloading; false when it was cancelled or failed.
+   */
+  pull(
+    name: string,
+    onProgress: (progress: ModelPullProgress) => void,
+    signal?: AbortSignal,
+  ): Promise<boolean>;
 
   /**
    * Finds the runtime's binary: one the user installed, one Studio manages, or neither.
