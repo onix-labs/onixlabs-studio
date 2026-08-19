@@ -88,6 +88,35 @@ export class AgentPerf {
   private liveTranscripts: number = 0;
 
   /**
+   * Holds the number of composer keystrokes handled in the current summary window.
+   */
+  private keystrokes: number = 0;
+
+  /**
+   * Holds the total synchronous time, in milliseconds, spent in the composer's input handler in the
+   * current window — everything the browser does before it can return to the user.
+   */
+  private keystrokeMsTotal: number = 0;
+
+  /**
+   * Holds the slowest single keystroke, in milliseconds, in the current window.
+   */
+  private keystrokeMsMax: number = 0;
+
+  /**
+   * Holds the total time, in milliseconds, spent inside the text area's auto-grow in the current
+   * window. Broken out from the keystroke total because auto-grow reads `scrollHeight` immediately
+   * after writing a style, which forces the browser to lay out the *whole document* synchronously —
+   * the cost therefore scales with everything mounted, which is what Mission Control multiplies.
+   */
+  private growMsTotal: number = 0;
+
+  /**
+   * Holds the slowest single auto-grow, in milliseconds, in the current window.
+   */
+  private growMsMax: number = 0;
+
+  /**
    * Initialises the probe, starting the long-task observer and the per-second summary timer inside
    * Studio only. Outside it, nothing is scheduled and the counters are never read.
    */
@@ -121,6 +150,24 @@ export class AgentPerf {
   }
 
   /**
+   * Records one composer keystroke: the whole synchronous cost of handling it, and how much of that
+   * was the text area's auto-grow.
+   *
+   * These are separated because they fail differently. A large `growMs` means the forced document
+   * layout is the bottleneck and scales with how much is mounted; a large gap between the two means
+   * the cost is in the handler's own work instead.
+   * @param totalMs The whole synchronous handler cost, in milliseconds.
+   * @param growMs How much of it was auto-grow, in milliseconds.
+   */
+  public keystroke(totalMs: number, growMs: number): void {
+    this.keystrokes += 1;
+    this.keystrokeMsTotal += totalMs;
+    this.keystrokeMsMax = Math.max(this.keystrokeMsMax, totalMs);
+    this.growMsTotal += growMs;
+    this.growMsMax = Math.max(this.growMsMax, growMs);
+  }
+
+  /**
    * Records that a transcript view has mounted.
    */
   public transcriptMounted(): void {
@@ -139,10 +186,18 @@ export class AgentPerf {
    * resets them for the next window.
    */
   private summarise(): void {
-    if (this.rebuilds === 0 && this.flushes === 0 && this.longTasks === 0) {
+    if (
+      this.rebuilds === 0 &&
+      this.flushes === 0 &&
+      this.longTasks === 0 &&
+      this.keystrokes === 0
+    ) {
       return;
     }
     const avgRebuildMs: number = this.rebuilds > 0 ? this.rebuildMsTotal / this.rebuilds : 0;
+    const avgKeystrokeMs: number =
+      this.keystrokes > 0 ? this.keystrokeMsTotal / this.keystrokes : 0;
+    const avgGrowMs: number = this.keystrokes > 0 ? this.growMsTotal / this.keystrokes : 0;
     this.log.debug(
       'perf.agent-transcript',
       'transcript perf (last 1s)',
@@ -152,6 +207,11 @@ export class AgentPerf {
       `items=${this.lastItems}`,
       `rows=${this.lastRows}`,
       `streamFlushes/s=${this.flushes}`,
+      `keystrokes/s=${this.keystrokes}`,
+      `avgKeystrokeMs=${avgKeystrokeMs.toFixed(2)}`,
+      `maxKeystrokeMs=${this.keystrokeMsMax.toFixed(2)}`,
+      `avgGrowMs=${avgGrowMs.toFixed(2)}`,
+      `maxGrowMs=${this.growMsMax.toFixed(2)}`,
       `longTasks=${this.longTasks}`,
       `maxLongTaskMs=${this.longTaskMsMax.toFixed(0)}`,
       `liveTranscripts=${this.liveTranscripts}`,
@@ -162,6 +222,11 @@ export class AgentPerf {
     this.flushes = 0;
     this.longTasks = 0;
     this.longTaskMsMax = 0;
+    this.keystrokes = 0;
+    this.keystrokeMsTotal = 0;
+    this.keystrokeMsMax = 0;
+    this.growMsTotal = 0;
+    this.growMsMax = 0;
   }
 
   /**

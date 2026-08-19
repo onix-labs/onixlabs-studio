@@ -38,6 +38,7 @@ import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { AgentLoginModal } from '@shared/angular/components/agent-login-modal/agent-login-modal';
 import { MarkdownEditor } from '@shared/angular/components/markdown-editor/markdown-editor';
+import { AgentPerf } from '@shared/angular/services/agent-perf/agent-perf';
 
 /**
  * The most images a single turn can carry.
@@ -193,6 +194,11 @@ export class AgentComposer {
    * the same transcript.
    */
   private readonly agent: Agent = inject(Agent);
+
+  /**
+   * Holds the transcript-performance probe, so the cost of a keystroke is measured rather than guessed.
+   */
+  private readonly perf: AgentPerf = inject(AgentPerf);
 
   /**
    * Gets whether the "not signed in to Claude" prompt is pending for this conversation, so the template
@@ -627,6 +633,26 @@ export class AgentComposer {
   }
 
   /**
+   * Handles one keystroke in the text area: records the draft, resizes the area, and re-anchors the
+   * suggestion popup — measuring the whole thing so typing lag is attributable rather than guessed at.
+   *
+   * The three steps used to be three separate template calls. They are one handler now so the cost of
+   * a keystroke can be timed end to end, and so the auto-grow can be measured on its own: it is the
+   * step that forces a synchronous document layout, and therefore the one whose cost grows with how
+   * much is mounted.
+   * @param area The composer text area.
+   */
+  public onComposerInput(area: HTMLTextAreaElement): void {
+    const started: number = performance.now();
+    this.onInput(area.value);
+    this.updateSuggest(area);
+    // The grow cost is reported as zero because the text area now sizes itself in CSS
+    // (`field-sizing: content`) and nothing on this path reads layout. It stays in the measurement so
+    // that reintroducing a layout read here shows up in the audit rather than passing unnoticed.
+    this.perf.keystroke(performance.now() - started, 0);
+  }
+
+  /**
    * Records composer input. Typing ends any prompt-history navigation, so the next ArrowUp starts
    * again from the most recent prompt.
    * @param value The new composer text.
@@ -729,16 +755,6 @@ export class AgentComposer {
     if (text.trim().length > 0) {
       this.draftText.set(text);
     }
-  }
-
-  /**
-   * Grows the composer's text area to fit its content, so a multi-line prompt is fully visible up to
-   * the area's maximum height, past which it scrolls.
-   * @param element The text area element.
-   */
-  public autoGrow(element: HTMLTextAreaElement): void {
-    element.style.height = 'auto';
-    element.style.height = `${element.scrollHeight}px`;
   }
 
   /**
@@ -1008,7 +1024,6 @@ export class AgentComposer {
       area.value = next;
       const caret: number = start + text.length;
       area.setSelectionRange(caret, caret);
-      this.autoGrow(area);
       area.focus();
     }
   }
@@ -1187,7 +1202,6 @@ export class AgentComposer {
     const area: HTMLTextAreaElement | undefined = this.inputRef()?.nativeElement;
     if (area !== undefined) {
       area.value = text;
-      this.autoGrow(area);
       area.focus();
     }
   }
@@ -1205,7 +1219,6 @@ export class AgentComposer {
     const area: HTMLTextAreaElement | undefined = this.inputRef()?.nativeElement;
     if (area !== undefined) {
       area.value = item.text;
-      this.autoGrow(area);
       area.focus();
     }
   }
@@ -1222,7 +1235,6 @@ export class AgentComposer {
     const area: HTMLTextAreaElement | undefined = this.inputRef()?.nativeElement;
     if (area !== undefined) {
       area.value = this.stashedBeforeEdit;
-      this.autoGrow(area);
     }
     this.stashedBeforeEdit = '';
   }
@@ -1348,7 +1360,6 @@ export class AgentComposer {
     area.value = text;
     this.draftText.set(text);
     area.setSelectionRange(text.length, text.length);
-    this.autoGrow(area);
   }
 
   /**
