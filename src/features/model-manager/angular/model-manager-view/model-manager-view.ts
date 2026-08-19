@@ -27,6 +27,7 @@ import {
   RuntimeInstallation,
   RuntimeInstallProgress,
 } from '@shared/api/model-runtime-types';
+import { ModelConnections } from '../model-connections/model-connections';
 import {
   ModelManagerCommandHandler,
   ModelManagerCommands,
@@ -135,6 +136,12 @@ export class ModelManagerView {
    * Holds the command registry the ribbon drives this view through while active.
    */
   private readonly commands: ModelManagerCommands = inject(ModelManagerCommands);
+
+  /**
+   * Holds the link that keeps the local Ollama connections in step with what is installed, so a pulled
+   * model reaches the agent picker without a detour through Settings.
+   */
+  private readonly links: ModelConnections = inject(ModelConnections);
 
   /**
    * Holds the runtime's server status, or null before the first reading.
@@ -442,6 +449,10 @@ export class ModelManagerView {
     try {
       const removed: boolean = await this.runtimes.remove(model.name);
       this.log.info('model-manager.view', `Remove '${model.name}' ${removed ? 'ok' : 'failed'}`);
+      if (removed) {
+        // The weights are gone; stop the picker offering a model that can no longer run.
+        this.links.unlinkRemoved(model.name);
+      }
       await this.refresh();
     } finally {
       this.busy.set(false);
@@ -495,7 +506,12 @@ export class ModelManagerView {
   protected async install(model: CatalogModel): Promise<void> {
     this.log.info('model-manager.view', `Pulling '${model.ref}'`);
     try {
-      await this.runtimes.pull(model.ref);
+      const pulled: boolean = await this.runtimes.pull(model.ref);
+      if (pulled) {
+        // The model is on disk; make it reachable from the agent picker too. A cancelled or failed
+        // pull deliberately links nothing.
+        await this.links.linkInstalled(model.ref);
+      }
     } finally {
       await this.refresh();
     }
