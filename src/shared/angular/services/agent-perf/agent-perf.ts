@@ -104,15 +104,17 @@ export class AgentPerf {
   private keystrokeMsMax: number = 0;
 
   /**
-   * Holds the total time, in milliseconds, spent inside the text area's auto-grow in the current
-   * window. Broken out from the keystroke total because auto-grow reads `scrollHeight` immediately
-   * after writing a style, which forces the browser to lay out the *whole document* synchronously —
-   * the cost therefore scales with everything mounted, which is what Mission Control multiplies.
+   * Holds the total time, in milliseconds, spent resizing the text area in the current window. The
+   * text area is a fixed four rows in CSS, so this reads zero and is kept as a tripwire: it was once
+   * grown in JavaScript, which read `scrollHeight` immediately after writing a style and so forced
+   * the browser to lay out the *whole document* synchronously — a cost that scales with everything
+   * mounted, which is what Mission Control multiplies. Anything but zero here means that read is
+   * back.
    */
   private growMsTotal: number = 0;
 
   /**
-   * Holds the slowest single auto-grow, in milliseconds, in the current window.
+   * Holds the slowest single resize, in milliseconds, in the current window.
    */
   private growMsMax: number = 0;
 
@@ -151,13 +153,13 @@ export class AgentPerf {
 
   /**
    * Records one composer keystroke: the whole synchronous cost of handling it, and how much of that
-   * was the text area's auto-grow.
+   * was spent resizing the text area.
    *
-   * These are separated because they fail differently. A large `growMs` means the forced document
-   * layout is the bottleneck and scales with how much is mounted; a large gap between the two means
-   * the cost is in the handler's own work instead.
+   * These are separated because they fail differently. A large `growMs` means a forced document
+   * layout is back on the keystroke path, and its cost scales with how much is mounted; a large gap
+   * between the two means the cost is in the handler's own work instead.
    * @param totalMs The whole synchronous handler cost, in milliseconds.
-   * @param growMs How much of it was auto-grow, in milliseconds.
+   * @param growMs How much of it was spent resizing, in milliseconds.
    */
   public keystroke(totalMs: number, growMs: number): void {
     this.keystrokes += 1;

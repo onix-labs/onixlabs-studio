@@ -167,7 +167,7 @@ interface ContextChip {
 }
 
 /**
- * The command surface beneath an agent transcript: an auto-growing text area with the word count and
+ * The command surface beneath an agent transcript: a four-row text area with the word count and
  * context meter, attached-context and image chips, the queued-message list, the `/` command and `@`
  * mention popups, and the send/stop controls. It drives the same {@link Agent} session the host
  * provides, so it is a sibling of {@link AgentChat}'s message list rather than a child of it — typing
@@ -280,7 +280,8 @@ export class AgentComposer {
   protected readonly markdownValue: WritableSignal<string> = signal<string>('');
 
   /**
-   * References the composer's text area, so its auto-grown height can be reset after a send.
+   * References the composer's text area, so its text and caret can be set directly when a prompt is
+   * recalled, inserted or restored.
    */
   private readonly inputRef: Signal<ElementRef<HTMLTextAreaElement> | undefined> =
     viewChild<ElementRef<HTMLTextAreaElement>>('input');
@@ -633,22 +634,22 @@ export class AgentComposer {
   }
 
   /**
-   * Handles one keystroke in the text area: records the draft, resizes the area, and re-anchors the
-   * suggestion popup — measuring the whole thing so typing lag is attributable rather than guessed at.
+   * Handles one keystroke in the text area: records the draft and re-anchors the suggestion popup —
+   * measuring the whole thing so typing lag is attributable rather than guessed at.
    *
-   * The three steps used to be three separate template calls. They are one handler now so the cost of
-   * a keystroke can be timed end to end, and so the auto-grow can be measured on its own: it is the
-   * step that forces a synchronous document layout, and therefore the one whose cost grows with how
-   * much is mounted.
+   * The steps used to be separate template calls, one of which resized the text area. They are one
+   * handler now so the cost of a keystroke can be timed end to end, and so that any resizing work can
+   * be measured on its own: that was the step which forced a synchronous document layout, and
+   * therefore the one whose cost grew with how much was mounted.
    * @param area The composer text area.
    */
   public onComposerInput(area: HTMLTextAreaElement): void {
     const started: number = performance.now();
     this.onInput(area.value);
     this.updateSuggest(area);
-    // The grow cost is reported as zero because the text area now sizes itself in CSS
-    // (`field-sizing: content`) and nothing on this path reads layout. It stays in the measurement so
-    // that reintroducing a layout read here shows up in the audit rather than passing unnoticed.
+    // The grow cost is reported as zero because the text area is a fixed four rows in CSS and scrolls
+    // its own content, so nothing on this path reads layout. It stays in the measurement so that
+    // reintroducing a layout read here shows up in the audit rather than passing unnoticed.
     this.perf.keystroke(performance.now() - started, 0);
   }
 
@@ -690,11 +691,6 @@ export class AgentComposer {
     this.historyIndex = null;
     // A fresh turn re-pins to the bottom even if the reader had scrolled up to read back.
     this.sent.emit();
-    // Collapse the auto-grown text area back to a single row now that it is empty.
-    const element: HTMLTextAreaElement | undefined = this.inputRef()?.nativeElement;
-    if (element !== undefined) {
-      element.style.height = 'auto';
-    }
   }
 
   /**

@@ -1,11 +1,11 @@
-// The command surface beneath the transcript: an auto-growing text area with word count and context
+// The command surface beneath the transcript: a fixed four-row text area with word count and context
 // meter, chips, popups, and the send/stop controls. The host box is elided so the form participates
 // directly in the chat shell's flex column exactly as it did when it lived in the chat template.
 :host {
   display: contents;
 }
 
-// An elevated, multi-line command surface: a labelled auto-growing text area over a footer that pairs a
+// An elevated, multi-line command surface: a labelled four-row text area over a footer that pairs a
 // key/word-count hint with the send (or stop) control. It lifts off the panel with a border and shadow,
 // and outlines in the accent colour while anything inside it is focused.
 .agent__composer {
@@ -388,14 +388,20 @@
 .agent__input {
   inline-size: 100%;
 
-  // Grow with the content in CSS rather than in JavaScript. The old approach wrote `height: auto` and
-  // then read `scrollHeight` on every keystroke, which forces the browser to lay out the *whole
-  // document* synchronously before it can answer — a cost that scales with everything mounted, and so
-  // became crippling in Mission Control, where several full transcripts are mounted at once.
-  // `min`/`max-block-size` below bound the growth exactly as the JavaScript did.
-  field-sizing: content;
-  min-block-size: 1.5rem;
-  max-block-size: 12rem;
+  // A fixed four rows, scrolling internally once the prompt outgrows them, rather than a box that
+  // grows with its content. Several composers sit side by side in Mission Control, and a box whose
+  // height follows whatever has been typed into it looks wrong next to its neighbours.
+  //
+  // The height must never be measured in JavaScript. The original implementation wrote `height: auto`
+  // and then read `scrollHeight` on every keystroke, which forces the browser to lay out the *whole
+  // document* synchronously before it can answer — a cost that scales with everything mounted, which
+  // is what made typing in Mission Control crawl. A fixed height avoids that read entirely, and goes
+  // further than the `field-sizing: content` that replaced it: the box never changes size, so the
+  // surrounding layout is never disturbed at all and scrolling is confined to this element.
+  //
+  // `4lh` is four line boxes of the `line-height` set below, so the row count and the height cannot
+  // drift apart. It agrees with the `rows="4"` on the element, which stands as the fallback.
+  block-size: 4lh;
   padding: 0;
   font: inherit;
   line-height: 1.55;
