@@ -1,0 +1,44 @@
+@if (workspace.activeEnvironment(); as environment) {
+  <div class="environment">
+    <app-text-field
+      [value]="environment.name"
+      placeholder="Environment name"
+      ariaLabel="Environment name"
+      (valueChange)="rename($event)"
+    />
+
+    <div class="environment__variables">
+      @for (row of rows(); track row.id) {
+        <div class="environment__variable">
+          <app-checkbox
+            [checked]="row.enabled"
+            [disabled]="row.name === '' && row.value === ''"
+            (checkedChange)="updateVariable(row.id, { enabled: $event })"
+          />
+          <app-text-field
+            [value]="row.name"
+            placeholder="Variable"
+            ariaLabel="Variable name"
+            (valueChange)="updateVariable(row.id, { name: $event })"
+          />
+          <app-text-field
+            [value]="row.value"
+            placeholder="Value"
+            ariaLabel="Variable value"
+            (valueChange)="updateVariable(row.id, { value: $event })"
+          />
+        </div>
+      }
+    </div>
+
+    <p class="environment__hint">
+      Reference these in any request as <code>{{ variableSyntax }}</code
+      >. An unknown variable is left as written rather than blanked, so a missing value is visible
+      in the URL bar before you send.
+    </p>
+  </div>
+} @else {
+  <p class="environment__hint">
+    No environment is active. Select one in the API Explorer, or add one there.
+  </p>
+}

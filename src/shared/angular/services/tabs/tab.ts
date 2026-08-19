@@ -11,6 +11,7 @@ export type TabType =
   | 'terminal'
   | 'agent'
   | 'containers'
+  | 'api-explorer'
   | 'model-manager'
   | 'system-monitor'
   | 'mission-control'
@@ -98,6 +99,7 @@ export const TAB_TYPE_METADATA: Readonly<Record<TabType, TabTypeMetadata>> = {
   terminal: { label: 'Terminal', icon: Icon.TERMINAL },
   agent: { label: 'Agent', icon: Icon.AGENT },
   containers: { label: 'Containers', icon: Icon.CONTAINERS },
+  'api-explorer': { label: 'API Explorer', icon: Icon.API_EXPLORER },
   'model-manager': { label: 'AI Models', icon: Icon.AI_MODELS },
   'system-monitor': { label: 'System Monitor', icon: Icon.SYSTEM_MONITOR },
   'mission-control': { label: 'Mission Control', icon: Icon.ROCKET_LAUNCH },

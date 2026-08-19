@@ -959,6 +959,33 @@ export class Icon {
    */
   public static readonly WELCOME_DATABASE: Icon = new Icon('ph-light ph-database');
 
+  // --- API Explorer ---
+
+  /**
+   * Gets the icon of the API Explorer tab and of its explorer panel.
+   */
+  public static readonly API_EXPLORER: Icon = new Icon('ph-duotone ph-plugs-connected');
+
+  /**
+   * Gets the icon of a single saved API request, shown on its tab in the API well.
+   */
+  public static readonly API_REQUEST: Icon = new Icon('ph-duotone ph-brackets-angle');
+
+  /**
+   * Gets the icon of an API collection in the explorer tree.
+   */
+  public static readonly API_COLLECTION: Icon = new Icon('ph-duotone ph-folder-simple');
+
+  /**
+   * Gets the icon of an API environment — the variable set requests resolve against.
+   */
+  public static readonly API_ENVIRONMENT: Icon = new Icon('ph-duotone ph-stack');
+
+  /**
+   * Gets the icon of the API send history.
+   */
+  public static readonly API_HISTORY: Icon = new Icon('ph-duotone ph-clock-counter-clockwise');
+
   /**
    * Gets the light-weight Orchestration icon shown on the welcome screen.
    */

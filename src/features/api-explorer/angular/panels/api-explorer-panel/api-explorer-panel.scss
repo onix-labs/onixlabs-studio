@@ -1,0 +1,58 @@
+// The API Explorer tree: a row of add actions above the shared tree view. The tree itself carries no
+// styling of its own here — rows, indentation, hover and selection are the shared `app-tree-view`'s,
+// exactly as they are for the File and Solution Explorers.
+
+:host {
+  display: flex;
+  flex-direction: column;
+  block-size: 100%;
+  min-block-size: 0;
+}
+
+.api-explorer__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  padding: 0.4rem 0.5rem;
+  border-block-end: 0.0625rem solid var(--panel-border-color, var(--body-border-color));
+}
+
+// The method badge on a request row. Colour carries the method at a glance, which is the one piece of
+// information a person scanning a collection actually reads.
+.api-explorer__method {
+  flex: 0 0 auto;
+  inline-size: 2.75rem;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.5625rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-align: start;
+  color: var(--form-muted-foreground-color);
+
+  &[data-method='GET'] {
+    color: var(--success-color);
+  }
+
+  &[data-method='POST'] {
+    color: var(--warning-color);
+  }
+
+  &[data-method='PUT'],
+  &[data-method='PATCH'] {
+    color: var(--info-color);
+  }
+
+  &[data-method='DELETE'] {
+    color: var(--error-color);
+  }
+}
+
+// The marker on whichever environment is currently resolving variables.
+.api-explorer__active {
+  margin-inline-start: auto;
+  padding-inline: 0.35rem;
+  font-size: 0.5625rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent-color);
+}

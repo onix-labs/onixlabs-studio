@@ -1,0 +1,270 @@
+@if (request(); as request) {
+  <div class="request">
+    <!-- The name doubles as the tab title: renaming here re-titles the tab in the well. -->
+    <div class="request__name">
+      <app-text-field
+        [value]="request.name"
+        placeholder="Request name"
+        ariaLabel="Request name"
+        (valueChange)="rename($event)"
+      />
+    </div>
+
+    <!-- The send bar: method, URL, and the one button that matters. -->
+    <div class="request__bar">
+      <app-dropdown
+        class="request__method"
+        [options]="methodOptions"
+        [value]="request.method"
+        ariaLabel="HTTP method"
+        (valueChange)="update({ method: $any($event) })"
+      />
+      <app-text-field
+        class="request__url"
+        [value]="request.url"
+        placeholder="https://api.example.com/resource"
+        ariaLabel="Request URL"
+        (valueChange)="update({ url: $event })"
+        (enter)="send()"
+      />
+      <app-button
+        variant="solid"
+        [icon]="sending() ? Icon.STOP : Icon.SEND"
+        [label]="sending() ? 'Cancel' : 'Send'"
+        (click)="send()"
+      />
+    </div>
+
+    @if (resolvedUrl(); as resolved) {
+      <p class="request__resolved" title="The URL after variable substitution">→ {{ resolved }}</p>
+    }
+
+    <!-- The request's sections, mirroring the tabs a person expects on a request. -->
+    <div class="request__sections" role="tablist">
+      @for (item of sections; track item.id) {
+        <button
+          type="button"
+          role="tab"
+          class="request__section"
+          [class.request__section--active]="section() === item.id"
+          [attr.aria-selected]="section() === item.id"
+          (click)="section.set(item.id)"
+        >
+          {{ item.label }}
+        </button>
+      }
+    </div>
+
+    <div class="request__body">
+      @switch (section()) {
+        @case ('params') {
+          <ng-container
+            *ngTemplateOutlet="fields; context: { rows: paramRows(), list: 'params' }"
+          ></ng-container>
+        }
+
+        @case ('headers') {
+          <ng-container
+            *ngTemplateOutlet="fields; context: { rows: headerRows(), list: 'headers' }"
+          ></ng-container>
+        }
+
+        @case ('auth') {
+          <div class="request__form">
+            <app-dropdown
+              [options]="authOptions"
+              [value]="request.auth.kind"
+              ariaLabel="Authentication scheme"
+              (valueChange)="setAuthKind($event)"
+            />
+
+            @switch (request.auth.kind) {
+              @case ('bearer') {
+                <app-text-field
+                  [value]="$any(request.auth).token"
+                  placeholder="Token"
+                  ariaLabel="Bearer token"
+                  (valueChange)="updateAuth({ token: $event })"
+                />
+              }
+              @case ('basic') {
+                <app-text-field
+                  [value]="$any(request.auth).username"
+                  placeholder="Username"
+                  ariaLabel="Username"
+                  (valueChange)="updateAuth({ username: $event })"
+                />
+                <app-password-field
+                  [value]="$any(request.auth).password"
+                  placeholder="Password"
+                  (valueChange)="updateAuth({ password: $event })"
+                />
+              }
+              @case ('api-key') {
+                <app-text-field
+                  [value]="$any(request.auth).key"
+                  placeholder="Key"
+                  ariaLabel="API key name"
+                  (valueChange)="updateAuth({ key: $event })"
+                />
+                <app-text-field
+                  [value]="$any(request.auth).value"
+                  placeholder="Value"
+                  ariaLabel="API key value"
+                  (valueChange)="updateAuth({ value: $event })"
+                />
+                <app-dropdown
+                  [options]="apiKeyInOptions"
+                  [value]="$any(request.auth).in"
+                  ariaLabel="Where the key is sent"
+                  (valueChange)="updateAuth({ in: $event })"
+                />
+              }
+            }
+          </div>
+        }
+
+        @case ('body') {
+          <div class="request__form">
+            <app-dropdown
+              [options]="bodyKindOptions"
+              [value]="request.body.kind"
+              ariaLabel="Body kind"
+              (valueChange)="setBodyKind($event)"
+            />
+
+            @switch (request.body.kind) {
+              @case ('none') {
+                <p class="request__hint">This request is sent without a body.</p>
+              }
+              @case ('form') {
+                <ng-container
+                  *ngTemplateOutlet="fields; context: { rows: bodyRows(), list: 'body' }"
+                ></ng-container>
+              }
+              @case ('urlencoded') {
+                <ng-container
+                  *ngTemplateOutlet="fields; context: { rows: bodyRows(), list: 'body' }"
+                ></ng-container>
+              }
+              @default {
+                <app-textarea
+                  [value]="request.body.text"
+                  [rows]="12"
+                  placeholder="Request body"
+                  ariaLabel="Request body"
+                  (valueChange)="
+                    update({
+                      body: { kind: request.body.kind, text: $event, fields: request.body.fields },
+                    })
+                  "
+                />
+              }
+            }
+          </div>
+        }
+
+        @case ('tests') {
+          <p class="request__hint">
+            Assertions against the response are not in this spike. The seam is the outcome the
+            engine already returns — status, headers, body and timings — so a test script would run
+            over that rather than over the socket.
+          </p>
+        }
+
+        @case ('settings') {
+          <div class="request__form">
+            <app-textarea
+              [value]="request.description"
+              [rows]="6"
+              placeholder="What this endpoint does, what it expects, what it returns…"
+              ariaLabel="Request description"
+              (valueChange)="update({ description: $event })"
+            />
+            <p class="request__hint">
+              The agent writes here when it adds an endpoint, so the explanation stays with the
+              request. Timeout and redirect handling are fixed in this spike.
+            </p>
+          </div>
+        }
+      }
+    </div>
+
+    <!-- The response. Absent until the request has been sent at least once. -->
+    <div class="request__response">
+      @if (sending()) {
+        <p class="request__hint">
+          <app-icon [icon]="Icon.SPINNER" />
+          Sending…
+        </p>
+      } @else if (outcome(); as outcome) {
+        @if (outcome.kind === 'failure') {
+          <p class="request__failure">
+            <app-icon [icon]="outcome.cancelled ? Icon.STOP : Icon.WARNING" />
+            {{ outcome.cancelled ? 'Cancelled' : outcome.message }}
+          </p>
+        } @else if (response(); as response) {
+          <div class="request__summary">
+            <span class="request__status" [attr.data-tone]="statusTone(response.status)">
+              {{ response.status }} {{ response.statusText }}
+            </span>
+            <span class="request__metric">{{ response.timings.totalMs | number: '1.0-0' }} ms</span>
+            <span class="request__metric">{{ formatSize(response.sizeBytes) }}</span>
+            @if (response.redirected) {
+              <span class="request__metric" [title]="response.finalUrl">redirected</span>
+            }
+            <button
+              type="button"
+              class="request__toggle"
+              (click)="showResponseHeaders.set(!showResponseHeaders())"
+            >
+              {{ showResponseHeaders() ? 'Body' : 'Headers' }}
+            </button>
+          </div>
+
+          @if (showResponseHeaders()) {
+            <dl class="request__headers">
+              @for (entry of headerEntries(response); track entry[0]) {
+                <dt>{{ entry[0] }}</dt>
+                <dd>{{ entry[1] }}</dd>
+              }
+            </dl>
+          } @else {
+            <pre class="request__payload">{{ prettyBody(response) }}</pre>
+          }
+        }
+      } @else {
+        <p class="request__hint">Send the request to see its response.</p>
+      }
+    </div>
+  </div>
+
+  <!-- One editor for every name/value list: query parameters, headers, and form bodies. -->
+  <ng-template #fields let-rows="rows" let-list="list">
+    <div class="request__fields">
+      @for (row of rows; track row.id) {
+        <div class="request__field">
+          <app-checkbox
+            [checked]="row.enabled"
+            [disabled]="row.name === '' && row.value === ''"
+            (checkedChange)="updateField(list, row.id, { enabled: $event })"
+          />
+          <app-text-field
+            [value]="row.name"
+            placeholder="Key"
+            ariaLabel="Name"
+            (valueChange)="updateField(list, row.id, { name: $event })"
+          />
+          <app-text-field
+            [value]="row.value"
+            placeholder="Value"
+            ariaLabel="Value"
+            (valueChange)="updateField(list, row.id, { value: $event })"
+          />
+        </div>
+      }
+    </div>
+  </ng-template>
+} @else {
+  <p class="request__hint">This request has been deleted.</p>
+}
