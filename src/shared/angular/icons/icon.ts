@@ -153,6 +153,11 @@ export class Icon {
   public static readonly SYSTEM_MONITOR: Icon = new Icon('ph-duotone ph-gauge');
 
   /**
+   * Gets the AI Model Manager content icon.
+   */
+  public static readonly AI_MODELS: Icon = new Icon('ph-duotone ph-cpu');
+
+  /**
    * Gets the agent content icon.
    */
   public static readonly AGENT: Icon = new Icon('ph-duotone ph-brain');
@@ -997,6 +1002,11 @@ export class Icon {
    * Gets the delete (trash) icon.
    */
   public static readonly TRASH: Icon = new Icon('ph ph-trash');
+
+  /**
+   * Gets the download icon, used for actions that fetch something over the network.
+   */
+  public static readonly DOWNLOAD: Icon = new Icon('ph ph-download-simple');
 
   /**
    * Gets the select-all (double check) icon.

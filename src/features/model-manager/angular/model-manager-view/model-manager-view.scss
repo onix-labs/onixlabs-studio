@@ -1,0 +1,221 @@
+// The AI Model Manager view fills its tab: a runtime header (state and controls), then the installed
+// and loaded model tables. Everything below the header is empty until the server is up, so the header
+// carries the state that explains why.
+:host {
+  display: block;
+  block-size: 100%;
+}
+
+.model-manager {
+  display: flex;
+  flex-direction: column;
+  block-size: 100%;
+  overflow: auto;
+}
+
+// The runtime header: indicator and description on the left, controls on the right.
+.model-manager__runtime {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.85rem 1.25rem;
+  border-block-end: 1px solid var(--form-border-color);
+}
+
+.model-manager__runtime-state {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-inline-size: 0;
+}
+
+.model-manager__indicator {
+  flex: 0 0 auto;
+  inline-size: 0.55rem;
+  block-size: 0.55rem;
+  border-radius: 50%;
+  background-color: var(--form-muted-foreground-color);
+
+  &--running {
+    background-color: var(--success-color);
+  }
+}
+
+.model-manager__runtime-text {
+  min-inline-size: 0;
+}
+
+.model-manager__runtime-title {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--body-foreground-color);
+}
+
+.model-manager__runtime-status {
+  font-size: 0.78rem;
+  font-weight: 400;
+  color: var(--form-muted-foreground-color);
+}
+
+.model-manager__runtime-detail {
+  margin: 0.1rem 0 0;
+  font-size: 0.8rem;
+  color: var(--form-muted-foreground-color);
+}
+
+.model-manager__runtime-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+// The managed install's progress strip, shown only while an install is running or has just settled.
+.model-manager__progress {
+  flex: none;
+  padding: 0.6rem 1.25rem 0.75rem;
+  border-block-end: 1px solid var(--form-border-color);
+}
+
+.model-manager__progress-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-block-end: 0.4rem;
+  font-size: 0.8rem;
+  color: var(--form-muted-foreground-color);
+}
+
+.model-manager__progress-stage {
+  text-transform: capitalize;
+}
+
+.model-manager__progress-value {
+  margin-inline-start: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.model-manager__progress-track {
+  block-size: 0.3rem;
+  overflow: hidden;
+  background-color: var(--form-border-color);
+  border-radius: calc(0.15rem * var(--border-radius-multiplier, 1));
+}
+
+.model-manager__progress-bar {
+  block-size: 100%;
+  background-color: var(--accent-color);
+  transition: inline-size 0.2s ease;
+
+  // Without a content length there is no honest percentage, so the bar sweeps rather than lying.
+  &--indeterminate {
+    animation: model-manager-sweep 1.2s ease-in-out infinite;
+  }
+
+  &--failed {
+    background-color: var(--danger-color);
+    animation: none;
+  }
+}
+
+@keyframes model-manager-sweep {
+  0% {
+    opacity: 0.35;
+  }
+
+  50% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0.35;
+  }
+}
+
+.model-manager__progress-error {
+  margin: 0.4rem 0 0;
+  font-size: 0.78rem;
+  color: var(--danger-color);
+}
+
+.model-manager__section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1rem 1.25rem 0;
+
+  &:last-child {
+    padding-block-end: 1.25rem;
+  }
+}
+
+.model-manager__header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+
+.model-manager__title {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--body-foreground-color);
+}
+
+.model-manager__disk {
+  margin-inline-start: auto;
+  font-size: 0.78rem;
+  color: var(--form-muted-foreground-color);
+  font-variant-numeric: tabular-nums;
+}
+
+.model-manager__name {
+  font-weight: 500;
+  color: var(--body-foreground-color);
+}
+
+.model-manager__numeric {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+.model-manager__row-actions {
+  text-align: end;
+  white-space: nowrap;
+}
+
+.model-manager__empty {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 2rem;
+  text-align: center;
+}
+
+.model-manager__empty-icon {
+  font-size: 2.5rem;
+  color: var(--form-muted-foreground-color);
+}
+
+.model-manager__empty-text {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--body-foreground-color);
+}
+
+.model-manager__empty-hint {
+  margin: 0;
+  max-inline-size: 32rem;
+  font-size: 0.85rem;
+  color: var(--form-muted-foreground-color);
+}

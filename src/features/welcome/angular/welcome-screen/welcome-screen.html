@@ -37,7 +37,10 @@
 
     <div class="welcome__body">
       <div class="welcome__left">
-        <section class="welcome__group" [class.welcome__group--open]="openGroup() === 'get-started'">
+        <section
+          class="welcome__group"
+          [class.welcome__group--open]="openGroup() === 'get-started'"
+        >
           <button
             type="button"
             class="welcome__group-header"
@@ -54,37 +57,37 @@
           @if (openGroup() === 'get-started') {
             <div class="welcome__actions">
               <button type="button" class="welcome__action" (click)="openFiles()">
-              <app-icon class="welcome__action-icon" [icon]="Icon.WELCOME_DIRECTORY" />
-              <span class="welcome__action-label">Open Directory or File</span>
-            </button>
-            <button type="button" class="welcome__action" (click)="newProject()">
-              <app-icon class="welcome__action-icon" [icon]="Icon.WELCOME_PROJECT" />
-              <span class="welcome__action-label">New Project</span>
-            </button>
-            <button type="button" class="welcome__action" (click)="create('code')">
-              <app-icon class="welcome__action-icon" [icon]="Icon.WELCOME_CODE" />
-              <span class="welcome__action-label">New Code File</span>
-            </button>
-            <button type="button" class="welcome__action" (click)="create('markdown')">
-              <app-icon class="welcome__action-icon" [icon]="Icon.WELCOME_MARKDOWN" />
-              <span class="welcome__action-label">New Markdown File</span>
-            </button>
-            <button type="button" class="welcome__action" (click)="create('terminal')">
-              <app-icon class="welcome__action-icon" [icon]="Icon.WELCOME_TERMINAL" />
-              <span class="welcome__action-label">New Terminal</span>
-            </button>
-            <button type="button" class="welcome__action" (click)="create('agent')">
-              <app-icon class="welcome__action-icon" [icon]="Icon.WELCOME_AGENT" />
-              <span class="welcome__action-label">New Agent</span>
-            </button>
-            <button type="button" class="welcome__action" (click)="comingSoon()">
-              <app-icon class="welcome__action-icon" [icon]="Icon.WELCOME_API_EXPLORER" />
-              <span class="welcome__action-label">New API Explorer</span>
-            </button>
-            <button type="button" class="welcome__action" (click)="comingSoon()">
-              <app-icon class="welcome__action-icon" [icon]="Icon.WELCOME_DATABASE" />
-              <span class="welcome__action-label">New Database Explorer</span>
-            </button>
+                <app-icon class="welcome__action-icon" [icon]="Icon.WELCOME_DIRECTORY" />
+                <span class="welcome__action-label">Open Directory or File</span>
+              </button>
+              <button type="button" class="welcome__action" (click)="newProject()">
+                <app-icon class="welcome__action-icon" [icon]="Icon.WELCOME_PROJECT" />
+                <span class="welcome__action-label">New Project</span>
+              </button>
+              <button type="button" class="welcome__action" (click)="create('code')">
+                <app-icon class="welcome__action-icon" [icon]="Icon.WELCOME_CODE" />
+                <span class="welcome__action-label">New Code File</span>
+              </button>
+              <button type="button" class="welcome__action" (click)="create('markdown')">
+                <app-icon class="welcome__action-icon" [icon]="Icon.WELCOME_MARKDOWN" />
+                <span class="welcome__action-label">New Markdown File</span>
+              </button>
+              <button type="button" class="welcome__action" (click)="create('terminal')">
+                <app-icon class="welcome__action-icon" [icon]="Icon.WELCOME_TERMINAL" />
+                <span class="welcome__action-label">New Terminal</span>
+              </button>
+              <button type="button" class="welcome__action" (click)="create('agent')">
+                <app-icon class="welcome__action-icon" [icon]="Icon.WELCOME_AGENT" />
+                <span class="welcome__action-label">New Agent</span>
+              </button>
+              <button type="button" class="welcome__action" (click)="comingSoon()">
+                <app-icon class="welcome__action-icon" [icon]="Icon.WELCOME_API_EXPLORER" />
+                <span class="welcome__action-label">New API Explorer</span>
+              </button>
+              <button type="button" class="welcome__action" (click)="comingSoon()">
+                <app-icon class="welcome__action-icon" [icon]="Icon.WELCOME_DATABASE" />
+                <span class="welcome__action-label">New Database Explorer</span>
+              </button>
             </div>
           }
         </section>
@@ -113,7 +116,7 @@
                 <app-icon class="welcome__action-icon" [icon]="Icon.WELCOME_ORCHESTRATION" />
                 <span class="welcome__action-label">Orchestration</span>
               </button>
-              <button type="button" class="welcome__action" (click)="comingSoon()">
+              <button type="button" class="welcome__action" (click)="create('model-manager')">
                 <app-icon class="welcome__action-icon" [icon]="Icon.WELCOME_AI_MODELS" />
                 <span class="welcome__action-label">AI Model Manager</span>
               </button>
@@ -126,7 +129,11 @@
                 <span class="welcome__action-label">Plugin Manager</span>
               </button>
               <button type="button" class="welcome__action" (click)="create('settings')">
-                <app-icon class="welcome__action-icon" [icon]="Icon.WELCOME_SETTINGS" [rotation]="30" />
+                <app-icon
+                  class="welcome__action-icon"
+                  [icon]="Icon.WELCOME_SETTINGS"
+                  [rotation]="30"
+                />
                 <span class="welcome__action-label">Settings</span>
               </button>
             </div>
@@ -145,95 +152,97 @@
                  atoms, which is the drift those atoms exist to prevent. Nothing else may follow this
                  example. -->
             <div class="welcome__searchbox">
-            <input
-              type="text"
-              class="welcome__searchbox-input"
-              placeholder="Search"
-              aria-label="Search recent items"
-              [value]="query()"
-              (input)="onSearchInput($event)"
-              (keydown.escape)="query.set('')"
-            />
-            <app-icon class="welcome__searchbox-icon" [icon]="Icon.SEARCH" />
-          </div>
-          @if (hasRecent()) {
-            <button type="button" class="welcome__clear" (click)="requestClearRecent()">
-              <app-icon [icon]="Icon.TRASH" />
-              <span>Clear</span>
-            </button>
-          }
-        </div>
-
-        <!-- Bespoke by design, as above: these pills carry the welcome palette's accent fill and
-             its own rounding, not the shared segmented track. -->
-        <div class="welcome__filters" role="tablist" aria-label="Filter recent items">
-          @for (filter of filters; track filter.id) {
-            <button
-              type="button"
-              class="welcome__filter"
-              [class.welcome__filter--active]="activeFilter() === filter.id"
-              role="tab"
-              [attr.aria-selected]="activeFilter() === filter.id"
-              (click)="activeFilter.set(filter.id)"
-            >
-              <app-icon [icon]="filter.icon" />
-              <span>{{ filter.label }}</span>
-            </button>
-          }
-        </div>
-
-        @if (visibleItems().length > 0) {
-          <ul class="welcome__recent-list">
-            @for (item of visibleItems(); track item.path) {
-              <li class="welcome__recent-row" [class.welcome__recent-row--pinned]="item.pinned">
-                <button type="button" class="welcome__recent-open" (click)="openRecent(item)">
-                  <span class="welcome__recent-icon"><app-icon [icon]="iconFor(item.kind)" /></span>
-                  <span class="welcome__recent-text">
-                    <span class="welcome__recent-name">{{ display(item.name) }}</span>
-                    <span class="welcome__recent-detail">{{ display(item.path) }}</span>
-                  </span>
-                </button>
-                <span class="welcome__recent-time">{{ relativeTime(item.openedAt) }}</span>
-                <app-button
-                  [pressed]="item.pinned"
-                  [ariaLabel]="item.pinned ? 'Unpin item' : 'Pin item'"
-                  [icon]="item.pinned ? Icon.PIN_FILLED : Icon.PIN"
-                  variant="none"
-                  size="small"
-                  (click)="togglePin(item)"
-                />
-                <button
-                  type="button"
-                  class="welcome__recent-menu"
-                  aria-label="More actions"
-                  [cdkMenuTriggerFor]="rowMenu.panel() ?? null"
-                  [cdkMenuPosition]="rowMenu.position()"
-                >
-                  <app-icon [icon]="Icon.DOTS_THREE_VERTICAL" />
-                </button>
-                <app-menu
-                  #rowMenu
-                  placement="down-end"
-                  [items]="rowMenuItems"
-                  (selected)="onRowAction(item, $event)"
-                />
-              </li>
-            }
-          </ul>
-        } @else {
-          <div class="welcome__recent-empty">
-            <app-icon [icon]="Icon.RECENT_EMPTY" [size]="4" />
+              <input
+                type="text"
+                class="welcome__searchbox-input"
+                placeholder="Search"
+                aria-label="Search recent items"
+                [value]="query()"
+                (input)="onSearchInput($event)"
+                (keydown.escape)="query.set('')"
+              />
+              <app-icon class="welcome__searchbox-icon" [icon]="Icon.SEARCH" />
+            </div>
             @if (hasRecent()) {
-              <p class="welcome__recent-empty-title">No matching items</p>
-              <p class="welcome__recent-empty-hint">Try a different filter or search.</p>
-            } @else {
-              <p class="welcome__recent-empty-title">No recent items yet</p>
-              <p class="welcome__recent-empty-hint">
-                Files and folders you open will show up here.
-              </p>
+              <button type="button" class="welcome__clear" (click)="requestClearRecent()">
+                <app-icon [icon]="Icon.TRASH" />
+                <span>Clear</span>
+              </button>
             }
           </div>
-        }
+
+          <!-- Bespoke by design, as above: these pills carry the welcome palette's accent fill and
+             its own rounding, not the shared segmented track. -->
+          <div class="welcome__filters" role="tablist" aria-label="Filter recent items">
+            @for (filter of filters; track filter.id) {
+              <button
+                type="button"
+                class="welcome__filter"
+                [class.welcome__filter--active]="activeFilter() === filter.id"
+                role="tab"
+                [attr.aria-selected]="activeFilter() === filter.id"
+                (click)="activeFilter.set(filter.id)"
+              >
+                <app-icon [icon]="filter.icon" />
+                <span>{{ filter.label }}</span>
+              </button>
+            }
+          </div>
+
+          @if (visibleItems().length > 0) {
+            <ul class="welcome__recent-list">
+              @for (item of visibleItems(); track item.path) {
+                <li class="welcome__recent-row" [class.welcome__recent-row--pinned]="item.pinned">
+                  <button type="button" class="welcome__recent-open" (click)="openRecent(item)">
+                    <span class="welcome__recent-icon"
+                      ><app-icon [icon]="iconFor(item.kind)"
+                    /></span>
+                    <span class="welcome__recent-text">
+                      <span class="welcome__recent-name">{{ display(item.name) }}</span>
+                      <span class="welcome__recent-detail">{{ display(item.path) }}</span>
+                    </span>
+                  </button>
+                  <span class="welcome__recent-time">{{ relativeTime(item.openedAt) }}</span>
+                  <app-button
+                    [pressed]="item.pinned"
+                    [ariaLabel]="item.pinned ? 'Unpin item' : 'Pin item'"
+                    [icon]="item.pinned ? Icon.PIN_FILLED : Icon.PIN"
+                    variant="none"
+                    size="small"
+                    (click)="togglePin(item)"
+                  />
+                  <button
+                    type="button"
+                    class="welcome__recent-menu"
+                    aria-label="More actions"
+                    [cdkMenuTriggerFor]="rowMenu.panel() ?? null"
+                    [cdkMenuPosition]="rowMenu.position()"
+                  >
+                    <app-icon [icon]="Icon.DOTS_THREE_VERTICAL" />
+                  </button>
+                  <app-menu
+                    #rowMenu
+                    placement="down-end"
+                    [items]="rowMenuItems"
+                    (selected)="onRowAction(item, $event)"
+                  />
+                </li>
+              }
+            </ul>
+          } @else {
+            <div class="welcome__recent-empty">
+              <app-icon [icon]="Icon.RECENT_EMPTY" [size]="4" />
+              @if (hasRecent()) {
+                <p class="welcome__recent-empty-title">No matching items</p>
+                <p class="welcome__recent-empty-hint">Try a different filter or search.</p>
+              } @else {
+                <p class="welcome__recent-empty-title">No recent items yet</p>
+                <p class="welcome__recent-empty-hint">
+                  Files and folders you open will show up here.
+                </p>
+              }
+            </div>
+          }
         </div>
       </section>
     </div>
