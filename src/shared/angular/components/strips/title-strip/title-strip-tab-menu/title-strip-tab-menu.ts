@@ -38,18 +38,42 @@ interface TabGroup {
 }
 
 /**
- * Specifies the categories the open tabs are grouped under in the menu, in display order. Each entry
- * pairs a {@link TabType} with the plural heading shown above its tabs; categories with no open tabs
- * are omitted from the menu.
+ * Specifies the heading every {@link TabType} is grouped under in the menu, in display order —
+ * documents first, then the tool surfaces, with Settings last.
+ *
+ * It is a total map of the tab types on purpose. The menu is how a tab is reached once the strip
+ * overflows and starts to scroll, so a type missing from here is a tab the user cannot get back to;
+ * a hand-picked subset silently swallowed every tab type added after it was written (binary files,
+ * the API Explorer, Containers, AI Models, System Monitor and Mission Control were all invisible
+ * here). Declaring it as a `Record` makes adding a `TabType` without a heading a compile error, and
+ * the declaration order is the display order.
  */
-const TAB_CATEGORIES: readonly { readonly type: TabType; readonly label: string }[] = [
-  { type: 'directory', label: 'Workspaces' },
-  { type: 'code', label: 'Code Files' },
-  { type: 'markdown', label: 'Markdown Files' },
-  { type: 'terminal', label: 'Terminals' },
-  { type: 'agent', label: 'Agents' },
-  { type: 'settings', label: 'Settings' },
-];
+const TAB_CATEGORY_LABELS: Readonly<Record<TabType, string>> = {
+  directory: 'Workspaces',
+  code: 'Code Files',
+  markdown: 'Markdown Files',
+  binary: 'Binary Files',
+  'api-explorer': 'API Explorers',
+  terminal: 'Terminals',
+  agent: 'Agents',
+  containers: 'Containers',
+  'model-manager': 'AI Models',
+  'system-monitor': 'System Monitor',
+  'mission-control': 'Mission Control',
+  settings: 'Settings',
+};
+
+/**
+ * Specifies the categories the open tabs are grouped under in the menu, in display order. Categories
+ * with no open tabs are omitted from the menu.
+ */
+const TAB_CATEGORIES: readonly { readonly type: TabType; readonly label: string }[] =
+  Object.entries(TAB_CATEGORY_LABELS).map(
+    ([type, label]: [string, string]): { readonly type: TabType; readonly label: string } => ({
+      type: type as TabType,
+      label,
+    }),
+  );
 
 /**
  * The title strip's tab menu: a trigger in the title-strip button group that opens a drop-down
