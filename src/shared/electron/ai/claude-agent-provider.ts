@@ -18,6 +18,7 @@ import type {
   SpawnedProcess,
   SpawnOptions as SdkSpawnOptions,
 } from '@anthropic-ai/claude-agent-sdk';
+import { expandNetworkLocations } from '@shared/api/network-locations';
 import { logger } from '../logger';
 import { pidJournal } from '../pid-journal';
 import { detachedSpawnOptions, killProcessTree, signalProcessTree } from '../process-tree';
@@ -2491,12 +2492,15 @@ function buildSandbox(context: AgentRunContext): SandboxSettings {
     };
   }
   if (context.allowedNetworkLocations.length > 0 || context.deniedNetworkLocations.length > 0) {
+    // Expanded on the way out: the sandbox matches label-for-label, so `*.example.com` reaches it as
+    // both itself and the apex it is taken to include here. Without that, the same list would allow a
+    // request through the API tools and block it in the shell.
     sandbox.network = {
       ...(context.allowedNetworkLocations.length > 0
-        ? { allowedDomains: [...context.allowedNetworkLocations] }
+        ? { allowedDomains: [...expandNetworkLocations(context.allowedNetworkLocations)] }
         : {}),
       ...(context.deniedNetworkLocations.length > 0
-        ? { deniedDomains: [...context.deniedNetworkLocations] }
+        ? { deniedDomains: [...expandNetworkLocations(context.deniedNetworkLocations)] }
         : {}),
     };
   }

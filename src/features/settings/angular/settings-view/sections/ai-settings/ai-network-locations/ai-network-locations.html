@@ -16,6 +16,10 @@
       </span>
     </app-setting-row>
 
+    @if (error()) {
+      <p class="network-locations__error" role="alert">{{ error() }}</p>
+    }
+
     @if (allowed().length) {
       <ul class="network-locations__list">
         @for (host of allowed(); track $index) {

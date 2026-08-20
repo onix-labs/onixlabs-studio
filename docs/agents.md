@@ -697,7 +697,13 @@ evaluated before the posture, so it holds even under an auto-allowing posture.
 **Network confinement.** The agent's egress is bounded by the same widen/narrow pair, in a different
 medium: **allowed network locations** (host patterns — `api.example.com`, `*.corp.example`; empty
 means anywhere, so the setting is opt-in) and **denied network locations**, which win over the
-allowed list. Cloud-metadata addresses (`169.254.169.254`, `metadata.google.internal`) are refused
+allowed list. Patterns match **the sandbox's way, label for label**: `*.example.com` covers
+`api.example.com` but not `deep.api.example.com`, the wildcard lives in the leftmost label only, and
+`*` and `*.com` are refused as too broad (where they are typed, not silently on the way out). One
+convenience is layered on top — a wildcard is taken to include its apex — and it is _expanded_ into
+the list handed to the sandbox rather than matched loosely here, so both enforcement points answer
+the same question the same way. Note `github.com` and `api.github.com` are different hosts to both:
+allowing a site does not allow its API. Cloud-metadata addresses (`169.254.169.254`, `metadata.google.internal`) are refused
 whatever is configured — unauthenticated role credentials one request away — while loopback is
 deliberately _not_, because testing a local service is what the API Explorer is for. Two enforcement
 points, and the difference matters:

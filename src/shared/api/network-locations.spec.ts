@@ -1,5 +1,7 @@
 import {
+  expandNetworkLocations,
   isNetworkLocationAllowed,
+  isValidNetworkLocation,
   matchesNetworkLocation,
   normaliseNetworkLocation,
   sanitizeNetworkLocations,
@@ -46,21 +48,62 @@ describe('network-locations', () => {
       ).toEqual(['api.example.com', '*.corp.test']);
     });
 
+    it('sanitize_dropsPatternsTheSandboxWouldRefuse', () => {
+      expect(sanitizeNetworkLocations(['*', '*.com', 'api.example.com'])).toEqual([
+        'api.example.com',
+      ]);
+    });
+
     it('sanitize_whenNotAList_returnsEmpty', () => {
       expect(sanitizeNetworkLocations('api.example.com')).toEqual([]);
       expect(sanitizeNetworkLocations(undefined)).toEqual([]);
     });
   });
 
+  describe('isValidNetworkLocation', () => {
+    it('valid_acceptsAHostOrALeftmostWildcard', () => {
+      expect(isValidNetworkLocation('api.example.com')).toBe(true);
+      expect(isValidNetworkLocation('*.example.com')).toBe(true);
+      expect(isValidNetworkLocation('api-*.example.com')).toBe(true);
+    });
+
+    it('valid_rejectsThePatternsTheSandboxRefuses', () => {
+      // Saving one of these would store a rule the sandbox then throws out — a boundary that silently
+      // is not one.
+      expect(isValidNetworkLocation('*')).toBe(false);
+      expect(isValidNetworkLocation('*.com')).toBe(false);
+      expect(isValidNetworkLocation('*.*.example.com')).toBe(false);
+      expect(isValidNetworkLocation('api.*.example.com')).toBe(false);
+      expect(isValidNetworkLocation('api..example.com')).toBe(false);
+    });
+  });
+
+  describe('expandNetworkLocations', () => {
+    it('expand_addsTheApexAWildcardIsTakenToInclude', () => {
+      expect(expandNetworkLocations(['*.example.com'])).toEqual(['*.example.com', 'example.com']);
+    });
+
+    it('expand_leavesAPlainHostAlone_andDeduplicates', () => {
+      expect(expandNetworkLocations(['example.com', '*.example.com'])).toEqual([
+        'example.com',
+        '*.example.com',
+      ]);
+    });
+  });
+
   describe('matchesNetworkLocation', () => {
-    it('match_wildcardCoversSubdomainsAndTheBareDomain', () => {
+    it('match_wildcardCoversOneLabel_asTheSandboxDoes', () => {
       expect(matchesNetworkLocation('api.example.com', '*.example.com')).toBe(true);
-      expect(matchesNetworkLocation('example.com', '*.example.com')).toBe(true);
-      expect(matchesNetworkLocation('deep.api.example.com', '*.example.com')).toBe(true);
+      expect(matchesNetworkLocation('api-eu.example.com', 'api-*.example.com')).toBe(true);
+    });
+
+    it('match_wildcardDoesNotSpanLabels', () => {
+      // The sandbox matches label-for-label; a suffix test here would allow what the shell blocks.
+      expect(matchesNetworkLocation('deep.api.example.com', '*.example.com')).toBe(false);
+      expect(matchesNetworkLocation('example.com', '*.example.com')).toBe(false);
     });
 
     it('match_wildcardDoesNotCoverALookalikeDomain', () => {
-      // The suffix test must not match `notexample.com`, which is the classic wildcard mistake.
       expect(matchesNetworkLocation('notexample.com', '*.example.com')).toBe(false);
       expect(matchesNetworkLocation('example.com.evil.test', '*.example.com')).toBe(false);
     });
@@ -81,6 +124,28 @@ describe('network-locations', () => {
       const allowed: readonly string[] = ['*.corp.test'];
       expect(isNetworkLocationAllowed('https://api.corp.test/orders', allowed, [])).toBe(true);
       expect(isNetworkLocationAllowed('https://pastebin.test/upload', allowed, [])).toBe(false);
+    });
+
+    it('allowed_aWildcardIncludesTheApex_matchingWhatTheSandboxIsHanded', () => {
+      // The one convenience over the sandbox's own rule, and it is expanded on the way out so both
+      // enforcement points agree.
+      expect(isNetworkLocationAllowed('https://corp.test/', ['*.corp.test'], [])).toBe(true);
+    });
+
+    it('allowed_aWildcardDoesNotReachADeeperSubdomain', () => {
+      // The sandbox cannot express this, so neither does the check: one list, one meaning.
+      expect(isNetworkLocationAllowed('https://a.b.corp.test/', ['*.corp.test'], [])).toBe(false);
+    });
+
+    it('allowed_github_needsTheHostTheToolActuallyTalksTo', () => {
+      // The case that started this: `github.com` does not cover `api.github.com` in either matcher.
+      expect(isNetworkLocationAllowed('https://api.github.com/repos', ['github.com'], [])).toBe(
+        false,
+      );
+      expect(isNetworkLocationAllowed('https://api.github.com/repos', ['*.github.com'], [])).toBe(
+        true,
+      );
+      expect(isNetworkLocationAllowed('https://github.com/x', ['*.github.com'], [])).toBe(true);
     });
 
     it('allowed_deniedWinsOverAllowed', () => {

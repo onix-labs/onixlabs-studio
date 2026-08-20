@@ -12,7 +12,7 @@ import { TextField } from '@shared/angular/components/forms/text-field/text-fiel
 import { Log } from '@shared/angular/services/log/log';
 import { Icon } from '@shared/angular/icons/icon';
 import { Settings } from '@shared/angular/services/settings/settings';
-import { normaliseNetworkLocation } from '@shared/api/network-locations';
+import { isValidNetworkLocation, normaliseNetworkLocation } from '@shared/api/network-locations';
 
 /**
  * Which network list a row belongs to: the allow list (the only hosts the agent may reach) or the
@@ -74,6 +74,13 @@ export class AiNetworkLocations {
   protected readonly denyDraft: WritableSignal<string> = signal<string>('');
 
   /**
+   * Holds why the last entry was refused, or an empty string when none was. Shown beneath the field:
+   * a pattern the sandbox would throw out must be refused where it is typed, not silently dropped
+   * later, or the user is left believing they have a boundary they do not have.
+   */
+  protected readonly error: WritableSignal<string> = signal<string>('');
+
+  /**
    * Adds what has been typed to a list, normalised to a host and ignoring a duplicate or a blank.
    * @param kind Which list to add to.
    */
@@ -83,6 +90,14 @@ export class AiNetworkLocations {
     if (host === '') {
       return;
     }
+    if (!isValidNetworkLocation(host)) {
+      this.error.set(
+        `"${host}" is too broad or malformed. Use a host (api.example.com) or a wildcard on its ` +
+          `first label (*.example.com); "*" and "*.com" are refused.`,
+      );
+      return;
+    }
+    this.error.set('');
     draft.set('');
     const current: readonly string[] = this.current(kind);
     if (current.includes(host)) {

@@ -771,8 +771,11 @@ describe('ClaudeAgentProvider.buildRunOptions (per-turn indirection)', () => {
       }),
     );
 
+    // The wildcard reaches the sandbox with its apex alongside it: the sandbox matches label-for-
+    // label, so without that the same list would allow a request through the API tools and block it
+    // in the shell.
     expect(options.sandbox?.network).toEqual({
-      allowedDomains: ['api.example.com', '*.corp.test'],
+      allowedDomains: ['api.example.com', '*.corp.test', 'corp.test'],
       deniedDomains: ['admin.corp.test'],
     });
   });

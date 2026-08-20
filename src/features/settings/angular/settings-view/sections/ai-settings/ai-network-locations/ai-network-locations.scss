@@ -16,6 +16,12 @@
     gap: 8px;
   }
 
+  &__error {
+    margin: 0 0 8px;
+    font-size: 12px;
+    color: var(--error-color);
+  }
+
   &__list {
     display: flex;
     flex-direction: column;
