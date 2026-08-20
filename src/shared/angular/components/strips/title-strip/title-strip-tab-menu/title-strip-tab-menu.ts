@@ -39,14 +39,16 @@ interface TabGroup {
 
 /**
  * Specifies the heading every {@link TabType} is grouped under in the menu, in display order —
- * documents first, then the tool surfaces, with Settings last.
+ * documents first, then the surfaces a user opens many of, and the singleton tool views last.
  *
  * It is a total map of the tab types on purpose. The menu is how a tab is reached once the strip
  * overflows and starts to scroll, so a type missing from here is a tab the user cannot get back to;
- * a hand-picked subset silently swallowed every tab type added after it was written (binary files,
- * the API Explorer, Containers, AI Models, System Monitor and Mission Control were all invisible
- * here). Declaring it as a `Record` makes adding a `TabType` without a heading a compile error, and
- * the declaration order is the display order.
+ * a hand-picked subset silently swallowed every tab type added after it was written. Declaring it as
+ * a `Record` makes adding a `TabType` without a heading a compile error.
+ *
+ * Headings may repeat, and one does: the singleton tool views share **Tools**, matching how the
+ * welcome screen offers them. A heading per singleton is a heading over a single row, which is how
+ * this menu ended up with more headings than tabs.
  */
 const TAB_CATEGORY_LABELS: Readonly<Record<TabType, string>> = {
   directory: 'Workspaces',
@@ -56,24 +58,19 @@ const TAB_CATEGORY_LABELS: Readonly<Record<TabType, string>> = {
   'api-explorer': 'API Explorers',
   terminal: 'Terminals',
   agent: 'Agents',
-  containers: 'Containers',
-  'model-manager': 'AI Models',
-  'system-monitor': 'System Monitor',
-  'mission-control': 'Mission Control',
-  settings: 'Settings',
+  containers: 'Tools',
+  'model-manager': 'Tools',
+  'system-monitor': 'Tools',
+  'mission-control': 'Tools',
+  settings: 'Tools',
 };
 
 /**
- * Specifies the categories the open tabs are grouped under in the menu, in display order. Categories
- * with no open tabs are omitted from the menu.
+ * Lists the headings in display order, without repeats — the order the groups are built in.
  */
-const TAB_CATEGORIES: readonly { readonly type: TabType; readonly label: string }[] =
-  Object.entries(TAB_CATEGORY_LABELS).map(
-    ([type, label]: [string, string]): { readonly type: TabType; readonly label: string } => ({
-      type: type as TabType,
-      label,
-    }),
-  );
+const TAB_CATEGORY_ORDER: readonly string[] = [
+  ...new Set<string>(Object.values(TAB_CATEGORY_LABELS)),
+];
 
 /**
  * The title strip's tab menu: a trigger in the title-strip button group that opens a drop-down
@@ -136,10 +133,12 @@ export class TitleStripTabMenu {
    */
   protected readonly groups: Signal<readonly TabGroup[]> = computed((): readonly TabGroup[] => {
     const open: readonly Tab[] = this.tabsService.tabs();
-    return TAB_CATEGORIES.map(
-      (category: { readonly type: TabType; readonly label: string }): TabGroup => ({
-        label: category.label,
-        tabs: open.filter((tab: Tab): boolean => tab.type === category.type),
+    return TAB_CATEGORY_ORDER.map(
+      (label: string): TabGroup => ({
+        label,
+        // Filtered from the open tabs rather than gathered per type, so tabs sharing a heading keep
+        // the order they have in the strip.
+        tabs: open.filter((tab: Tab): boolean => TAB_CATEGORY_LABELS[tab.type] === label),
       }),
     ).filter((group: TabGroup): boolean => group.tabs.length > 0);
   });
