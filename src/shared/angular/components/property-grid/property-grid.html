@@ -1,11 +1,15 @@
-<div class="property-grid" role="group" [attr.aria-label]="ariaLabel()">
-  <div class="property-grid__row property-grid__row--header" [class.is-checkable]="checkable()">
+<div class="property-grid" role="table" [attr.aria-label]="ariaLabel()">
+  <div class="property-grid__row property-grid__row--header" role="row">
     @if (checkable()) {
-      <span class="property-grid__tick" aria-hidden="true"></span>
+      <span class="property-grid__cell property-grid__cell--tick" aria-hidden="true"></span>
     }
-    <span class="property-grid__heading">{{ nameHeader() }}</span>
-    <span class="property-grid__heading">{{ valueHeader() }}</span>
-    <span class="property-grid__gutter" aria-hidden="true"></span>
+    <span class="property-grid__cell property-grid__cell--heading" role="columnheader">
+      {{ nameHeader() }}
+    </span>
+    <span class="property-grid__cell property-grid__cell--heading" role="columnheader">
+      {{ valueHeader() }}
+    </span>
+    <span class="property-grid__cell property-grid__cell--gutter" aria-hidden="true"></span>
   </div>
 
   <!-- The stored rows and the blank one are rendered by a single loop, tracked by id. That is what
@@ -14,40 +18,46 @@
   @for (row of displayRows(); track row.id) {
     @let draft = isDraft(row);
 
-    <div class="property-grid__row" [class.is-checkable]="checkable()">
+    <div class="property-grid__row" [class.property-grid__row--draft]="draft" role="row">
       @if (checkable()) {
-        <app-checkbox
-          class="property-grid__tick"
-          [checked]="row.enabled !== false"
-          [disabled]="draft"
-          (checkedChange)="edit(row.id, { enabled: $event })"
-        />
+        <span class="property-grid__cell property-grid__cell--tick" role="cell">
+          <app-checkbox
+            [checked]="row.enabled !== false"
+            [disabled]="draft"
+            (checkedChange)="edit(row.id, { enabled: $event })"
+          />
+        </span>
       }
-      <app-text-field
-        [value]="row.name"
-        [placeholder]="namePlaceholder()"
-        [ariaLabel]="draft ? 'New ' + nameHeader() : nameHeader()"
-        (valueChange)="write(row, { name: $event })"
-      />
-      <app-text-field
-        [value]="row.value"
-        [placeholder]="valuePlaceholder()"
-        [ariaLabel]="draft ? 'New ' + valueHeader() : valueHeader()"
-        (valueChange)="write(row, { value: $event })"
-      />
-      @if (draft) {
-        <span class="property-grid__gutter" aria-hidden="true"></span>
-      } @else {
-        <app-button
-          class="property-grid__gutter"
+      <span class="property-grid__cell" role="cell">
+        <app-text-field
           variant="none"
-          size="small"
-          [icon]="Icon.CLOSE"
-          [ariaLabel]="'Remove ' + (row.name || nameHeader())"
-          tooltip="Remove"
-          (click)="remove.emit(row.id)"
+          [value]="row.name"
+          [placeholder]="draft ? namePlaceholder() : ''"
+          [ariaLabel]="draft ? 'New ' + nameHeader() : nameHeader()"
+          (valueChange)="write(row, { name: $event })"
         />
-      }
+      </span>
+      <span class="property-grid__cell" role="cell">
+        <app-text-field
+          variant="none"
+          [value]="row.value"
+          [placeholder]="draft ? valuePlaceholder() : ''"
+          [ariaLabel]="draft ? 'New ' + valueHeader() : valueHeader()"
+          (valueChange)="write(row, { value: $event })"
+        />
+      </span>
+      <span class="property-grid__cell property-grid__cell--gutter" role="cell">
+        @if (!draft) {
+          <app-button
+            variant="none"
+            size="small"
+            [icon]="Icon.CLOSE"
+            [ariaLabel]="'Remove ' + (row.name || nameHeader())"
+            tooltip="Remove"
+            (click)="remove.emit(row.id)"
+          />
+        }
+      </span>
     </div>
   }
 </div>

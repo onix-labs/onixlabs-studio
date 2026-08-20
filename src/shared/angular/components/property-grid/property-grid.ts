@@ -96,6 +96,11 @@ function newRowId(): string {
   templateUrl: './property-grid.html',
   styleUrl: './property-grid.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: {
+    // The tick column exists or it does not, for every row at once — so it belongs to the grid rather
+    // than being re-decided on each row.
+    '[class.is-checkable]': 'checkable()',
+  },
 })
 export class PropertyGrid {
   /**

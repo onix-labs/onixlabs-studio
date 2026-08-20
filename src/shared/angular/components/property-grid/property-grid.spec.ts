@@ -59,6 +59,19 @@ describe('PropertyGrid', () => {
     expect(inputs()[4].value).toBe('');
   });
 
+  it('render_drawsAGridOfCellsWithEditorsThatFillThem', () => {
+    render([{ id: 'a', name: 'page', value: '1' }]);
+
+    const element: HTMLElement = fixture.nativeElement as HTMLElement;
+    // A header row and two data rows (the stored one and the blank one), each a row of cells.
+    expect(element.querySelectorAll('[role="row"]')).toHaveLength(3);
+    expect(element.querySelectorAll('[role="columnheader"]')).toHaveLength(2);
+    // The editors draw no box of their own: the cell is the box, which is what makes this read as a
+    // grid rather than as a column of form fields.
+    const field: HTMLElement = element.querySelector<HTMLElement>('app-text-field')!;
+    expect(field.classList.contains('text-field--seamless')).toBe(true);
+  });
+
   it('render_whenNotCheckable_omitsTheTickColumn', () => {
     render([{ id: 'a', name: 'page', value: '1' }], false);
 
