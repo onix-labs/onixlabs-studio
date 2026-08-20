@@ -1,6 +1,5 @@
-import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host';
-import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button';
 import { RibbonStripGroup } from '@shared/angular/components/ribbon-strip/ribbon-strip-group/ribbon-strip-group';
 import { RibbonStripButtonSmall } from '@shared/angular/components/ribbon-strip/ribbon-strip-button-small/ribbon-strip-button-small';
 import { RibbonStripColumn } from '@shared/angular/components/ribbon-strip/ribbon-strip-column/ribbon-strip-column';
@@ -18,21 +17,21 @@ import { ApiExplorerCommands } from '../api-explorer-commands/api-explorer-comma
 const VARIANT_SAVE_AS: string = 'save-as';
 
 /**
- * The contextual ribbon shown while an API Explorer tab is active: save the collection, add to the
- * tree, and switch the environment every send resolves against. Its actions drive the active view
- * through the {@link ApiExplorerCommands} registry.
+ * The contextual ribbon shown while an API Explorer tab is active: save the collection, and add to
+ * the tree. Its actions drive the active view through the {@link ApiExplorerCommands} registry.
  *
  * The File group is deliberately the code editor's, down to the Save-As item hanging off the Save
- * button: an API document is a file like any other, and this is where a user reaches for it. Sending
- * is deliberately absent: it acts on the request open in the well, not on the tab, so it lives in
- * that request's own tool strip where the URL it will send is in view.
+ * button: an API document is a file like any other, and this is where a user reaches for it. What is
+ * absent is as deliberate: sending acts on the request open in the well rather than on the tab, so it
+ * lives in that request's own tool strip beside the URL it will send, and the environment is chosen
+ * in the explorer tree — where the rest of the tree it belongs to is — and reported in the status
+ * strip.
  */
 @Component({
   selector: 'app-api-explorer-ribbon',
   imports: [
     RibbonStripOverflow,
     RibbonStripGroup,
-    RibbonStripButton,
     RibbonStripButtonSmall,
     RibbonStripColumn,
     RibbonStripMenuButton,
@@ -51,14 +50,6 @@ export class ApiExplorerRibbon {
    * Holds the command registry the buttons drive the active view through.
    */
   private readonly commands: ApiExplorerCommands = inject(ApiExplorerCommands);
-
-  /**
-   * Gets the label of the environment button: the active environment's name, or an invitation to pick
-   * one when none is active.
-   */
-  protected readonly environmentLabel: Signal<string> = computed(
-    (): string => this.commands.environmentName() ?? 'No environment',
-  );
 
   /**
    * Gets the extra actions offered by the Save menu button's dropdown.
@@ -105,12 +96,5 @@ export class ApiExplorerRibbon {
    */
   protected onNewEnvironment(): void {
     this.commands.newEnvironment();
-  }
-
-  /**
-   * Switches to the next environment.
-   */
-  protected onCycleEnvironment(): void {
-    this.commands.cycleEnvironment();
   }
 }
