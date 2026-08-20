@@ -540,8 +540,8 @@ export class DockDrag {
 
     // The compass centres on the hovered group; a guide the cursor is directly over wins, so the
     // arrows are explicit targets, and the position-based zones serve as a fallback elsewhere. The
-    // hovered stack's emptiness gates the centre well's guides (occupy an empty centre, or split
-    // beside a well that holds documents).
+    // hovered stack's emptiness gates the well's centre guide alone: a tool occupies a blank centre,
+    // but can never tab into a well that holds documents. Its splits are open either way.
     const centerX: number = hit.rect.left + hit.rect.width / 2;
     const centerY: number = hit.rect.top + hit.rect.height / 2;
     const hovered: DockNode | null = findNode(this.dockState.layout(), hit.stackId);
