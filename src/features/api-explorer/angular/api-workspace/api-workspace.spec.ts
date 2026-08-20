@@ -10,6 +10,7 @@ import {
   ResolvedHttpRequest,
 } from '@shared/api/api-client-types';
 import { FileSystem } from '@shared/angular/services/file-system/file-system';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { FileWriteResult } from '@shared/api/file-channels';
 import { ApiHttp } from '../api-http/api-http';
 import { ApiWorkspace, newField } from './api-workspace';
@@ -420,6 +421,60 @@ describe('ApiWorkspace', () => {
       expect(await workspace.save()).toBe(false);
 
       expect(workspace.dirty()).toBe(true);
+    });
+  });
+
+  describe('agent network confinement', () => {
+    it('send_fromTheUser_isNotCheckedAgainstTheAllowedLocations', async () => {
+      // The view exists to point at any endpoint the user likes; the setting names what the AGENT
+      // may reach.
+      TestBed.inject(Settings).setAiAllowedNetworkLocations(['api.allowed.test']);
+      const saved: ApiRequest = request({ url: 'https://elsewhere.test/x' });
+
+      await workspace.send(saved.id);
+
+      expect(http.sent).toHaveLength(1);
+    });
+
+    it('send_fromTheAgent_toAnUnlistedHost_isRefusedWithoutReachingTheEngine', async () => {
+      TestBed.inject(Settings).setAiAllowedNetworkLocations(['api.allowed.test']);
+      const saved: ApiRequest = request({ url: 'https://elsewhere.test/x' });
+
+      const outcome: HttpOutcome | null = await workspace.send(saved.id, 'agent');
+
+      expect(http.sent).toHaveLength(0);
+      expect(outcome?.kind).toBe('failure');
+      // The message names the setting to change: the boundary is configuration, not persuasion.
+      expect(outcome?.kind === 'failure' && outcome.message).toContain('Allowed network locations');
+    });
+
+    it('send_fromTheAgent_toAListedHost_proceeds', async () => {
+      TestBed.inject(Settings).setAiAllowedNetworkLocations(['*.allowed.test']);
+      const saved: ApiRequest = request({ url: 'https://api.allowed.test/orders' });
+
+      await workspace.send(saved.id, 'agent');
+
+      expect(http.sent).toHaveLength(1);
+    });
+
+    it('send_fromTheAgent_whenNothingIsConfigured_proceeds', async () => {
+      const saved: ApiRequest = request({ url: 'https://anywhere.test/x' });
+
+      await workspace.send(saved.id, 'agent');
+
+      expect(http.sent).toHaveLength(1);
+    });
+
+    it('send_fromTheAgent_toADeniedHost_isRefusedEvenWhenAllowed', async () => {
+      const settings: Settings = TestBed.inject(Settings);
+      settings.setAiAllowedNetworkLocations(['*.corp.test']);
+      settings.setAiDeniedNetworkLocations(['admin.corp.test']);
+      const saved: ApiRequest = request({ url: 'https://admin.corp.test/' });
+
+      const outcome: HttpOutcome | null = await workspace.send(saved.id, 'agent');
+
+      expect(http.sent).toHaveLength(0);
+      expect(outcome?.kind).toBe('failure');
     });
   });
 

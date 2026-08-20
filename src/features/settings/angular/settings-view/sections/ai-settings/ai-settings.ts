@@ -22,6 +22,7 @@ import { SettingControl } from '../../setting-control/setting-control';
 import { AiConnectionEditor } from './ai-connection-editor/ai-connection-editor';
 import { AiRemoteNotifications } from './ai-remote-notifications/ai-remote-notifications';
 import { AiToolPolicies } from './ai-tool-policies/ai-tool-policies';
+import { AiNetworkLocations } from './ai-network-locations/ai-network-locations';
 import { AiWritePaths } from './ai-write-paths/ai-write-paths';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
@@ -51,6 +52,7 @@ export type AiSettingsView = 'general' | 'security' | 'provider';
     AiConnectionEditor,
     AiRemoteNotifications,
     AiToolPolicies,
+    AiNetworkLocations,
     AiWritePaths,
     AppIcon,
   ],

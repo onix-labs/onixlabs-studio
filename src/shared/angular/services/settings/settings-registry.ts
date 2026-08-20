@@ -96,6 +96,8 @@ export interface SettingsValues {
   readonly 'ai.toolPolicies': Readonly<Record<string, AiToolPolicy>>;
   readonly 'ai.allowedWritePaths': readonly string[];
   readonly 'ai.deniedWritePaths': readonly string[];
+  readonly 'ai.allowedNetworkLocations': readonly string[];
+  readonly 'ai.deniedNetworkLocations': readonly string[];
   readonly 'ai.tokenCap': number;
   readonly 'ai.runTimeoutMinutes': number;
   readonly 'ai.agentSessionLifetime': number;
@@ -720,6 +722,25 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           'Paths the agent may never write to, even inside the workspace: an absolute path, or a ' +
           'name matched anywhere in the path (e.g. .git, .env).',
         control: { kind: 'custom', component: 'ai-write-paths' },
+        default: [],
+      },
+      {
+        key: 'ai.allowedNetworkLocations',
+        title: 'Allowed network locations',
+        description:
+          'Hosts the agent may reach (e.g. api.example.com, *.corp.example). Empty allows any ' +
+          'host, as before. Applies to the agent\u2019s shell and web access through the OS sandbox, ' +
+          'and to requests it sends with the API tools; cloud metadata addresses are always blocked. ' +
+          'Codex has no per-host control, so a non-empty list turns its network access off entirely.',
+        control: { kind: 'custom', component: 'ai-network-locations' },
+        default: [],
+      },
+      {
+        key: 'ai.deniedNetworkLocations',
+        title: 'Denied network locations',
+        description:
+          'Hosts the agent may never reach, even when the allowed list would permit them.',
+        control: { kind: 'custom', component: 'ai-network-locations' },
         default: [],
       },
       {

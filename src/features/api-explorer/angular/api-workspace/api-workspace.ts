@@ -18,6 +18,12 @@ import {
   ResolvedHttpRequest,
 } from '@shared/api/api-client-types';
 import { FileSystem } from '@shared/angular/services/file-system/file-system';
+import { Settings } from '@shared/angular/services/settings/settings';
+import {
+  isNetworkLocationAllowed,
+  networkLocationRefusal,
+  sanitizeNetworkLocations,
+} from '@shared/api/network-locations';
 import { FileWriteResult } from '@shared/api/file-channels';
 import { ApiHttp } from '../api-http/api-http';
 
@@ -35,6 +41,12 @@ const HISTORY_LIMIT: number = 100;
  * The default per-request timeout, in milliseconds.
  */
 const DEFAULT_TIMEOUT_MS: number = 30_000;
+
+/**
+ * Who asked for a send: the user working in the view, or the agent through its tools. Only the
+ * agent's sends are checked against the allowed network locations.
+ */
+export type SendOrigin = 'user' | 'agent';
 
 /**
  * The name an unsaved workspace goes by, in the tab and in the save dialog.
@@ -118,6 +130,11 @@ export class ApiWorkspace {
    * Holds the file system the document is saved through.
    */
   private readonly fileSystem: FileSystem = inject(FileSystem);
+
+  /**
+   * Holds the settings the agent's allowed network locations are read from.
+   */
+  private readonly settings: Settings = inject(Settings);
 
   /**
    * Holds the structured logger.
@@ -600,15 +617,42 @@ export class ApiWorkspace {
 
   /**
    * Sends a saved request and records the outcome against the request and in the history.
+   *
+   * A send the *agent* asked for is checked against the allowed network locations first. The user's
+   * own sends are not: the whole point of this view is pointing it at any endpoint you like, and the
+   * setting names what the **agent** may reach. This is a guard on the agent's tool, not a sandbox —
+   * the shell is confined by the OS sandbox instead — so it stops the tool being used to reach a host
+   * the user has ruled out, which is the accident and prompt-injection case, not a determined
+   * process working around it.
    * @param id The identifier of the request to send.
+   * @param origin Who asked for the send; defaults to the user.
    * @returns Returns a promise resolving the outcome, or null when no such request is saved.
    */
-  public async send(id: string): Promise<HttpOutcome | null> {
+  public async send(id: string, origin: SendOrigin = 'user'): Promise<HttpOutcome | null> {
     const request: ApiRequest | undefined = this.request(id);
     if (request === undefined) {
       return null;
     }
     const resolved: ResolvedHttpRequest = this.resolve(request);
+    if (origin === 'agent' && !this.mayAgentReach(resolved.url)) {
+      const refusal: string = networkLocationRefusal(resolved.url);
+      this.log.warn('api-explorer.workspace', 'Agent send blocked by network locations', {
+        id,
+        url: resolved.url,
+      });
+      const blocked: HttpOutcome = {
+        kind: 'failure',
+        id: request.id,
+        message: refusal,
+        cancelled: false,
+        durationMs: 0,
+      };
+      this.outcomesSignal.update(
+        (outcomes: ReadonlyMap<string, HttpOutcome>): ReadonlyMap<string, HttpOutcome> =>
+          new Map<string, HttpOutcome>([...outcomes, [id, blocked]]),
+      );
+      return blocked;
+    }
     const at: number = Date.now();
     this.inFlightSignal.update(
       (ids: ReadonlySet<string>): ReadonlySet<string> => new Set<string>([...ids, id]),
@@ -636,6 +680,19 @@ export class ApiWorkspace {
         return next;
       });
     }
+  }
+
+  /**
+   * Determines whether the agent may reach a URL, by the configured network locations.
+   * @param url The resolved URL the send is addressed to.
+   * @returns Returns true when the send may proceed.
+   */
+  private mayAgentReach(url: string): boolean {
+    return isNetworkLocationAllowed(
+      url,
+      sanitizeNetworkLocations(this.settings.aiAllowedNetworkLocations()),
+      sanitizeNetworkLocations(this.settings.aiDeniedNetworkLocations()),
+    );
   }
 
   /**

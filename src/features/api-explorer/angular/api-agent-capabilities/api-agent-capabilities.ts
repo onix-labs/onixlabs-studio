@@ -277,9 +277,7 @@ export class ApiAgentCapabilities {
       ...(args['name'] === undefined ? {} : { name: this.text(args['name']) }),
       ...(args['url'] === undefined ? {} : { url: this.text(args['url']) }),
       ...(args['method'] === undefined ? {} : { method: args['method'] as HttpMethod }),
-      ...(args['description'] === undefined
-        ? {}
-        : { description: this.text(args['description']) }),
+      ...(args['description'] === undefined ? {} : { description: this.text(args['description']) }),
       ...(args['headers'] === undefined ? {} : { headers: this.toFields(args['headers']) }),
       ...(args['params'] === undefined ? {} : { params: this.toFields(args['params']) }),
       ...(args['body'] === undefined && args['body_kind'] === undefined
@@ -308,7 +306,7 @@ export class ApiAgentCapabilities {
     // The send goes through the workspace, so the agent's call lands in the response pane, the
     // history and the status strip exactly as the user's own would.
     this.opener.open(id);
-    const outcome: HttpOutcome | null = await this.workspace.send(id);
+    const outcome: HttpOutcome | null = await this.workspace.send(id, 'agent');
     if (outcome === null) {
       return { ok: false, error: 'The request could not be sent.' };
     }

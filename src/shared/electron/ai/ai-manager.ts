@@ -34,6 +34,7 @@ import { SEED_CONNECTIONS } from '@shared/api/ai-types';
  */
 const PERMISSION_POSTURES: readonly AiPermissionPosture[] = ['prompt', 'auto-edits', 'auto-all'];
 import { AiChannel } from '@shared/api/ai-channels';
+import { sanitizeNetworkLocations } from '@shared/api/network-locations';
 import type {
   AgentAuth,
   AgentProvider,
@@ -48,10 +49,7 @@ import { isConnection, sanitizeClaudeExecutable, sanitizeConnections } from './c
 import { AgentAuditLog, type AuditGrantSource } from './agent-audit-log';
 import { ClaudeAgentProvider } from './claude-agent-provider';
 import { type ClaudeSdkModel, runClaudeDiscovery } from './claude-model-discovery';
-import {
-  readRemoteNotificationsEnabled,
-  writeRemoteNotificationsEnabled,
-} from './claude-settings';
+import { readRemoteNotificationsEnabled, writeRemoteNotificationsEnabled } from './claude-settings';
 import { CodexAgentProvider } from './codex-agent-provider';
 import { ClaudeLoginDriver, readClaudeAuthStatus, runClaudeLogout } from './claude-login';
 import { sanitizeToolPolicies } from './tool-policy';
@@ -496,7 +494,9 @@ export class AiManager {
         this.closeSession(id);
       }
     });
-    ipcMain.handle(AiChannel.GetRemoteNotifications, (): boolean => readRemoteNotificationsEnabled());
+    ipcMain.handle(AiChannel.GetRemoteNotifications, (): boolean =>
+      readRemoteNotificationsEnabled(),
+    );
     ipcMain.handle(
       AiChannel.SetRemoteNotifications,
       (_event: IpcMainInvokeEvent, enabled: unknown): void =>
@@ -640,7 +640,10 @@ export class AiManager {
    * @param request The run request.
    */
   private run(request: AiRunRequest): void {
-    logger.trace('AiManager.run', `Run request ${request.requestId} for provider ${request.providerId}`);
+    logger.trace(
+      'AiManager.run',
+      `Run request ${request.requestId} for provider ${request.providerId}`,
+    );
     const provider: AgentProvider | undefined = this.providers.get(request.providerId);
     const connection: AiConnection | undefined = this.connections.get(request.providerId);
     if (provider === undefined || connection === undefined) {
@@ -674,6 +677,12 @@ export class AiManager {
       true,
     );
     const deniedWritePaths: readonly string[] = sanitizeWritePaths(request.deniedWritePaths, false);
+    const allowedNetworkLocations: readonly string[] = sanitizeNetworkLocations(
+      request.allowedNetworkLocations,
+    );
+    const deniedNetworkLocations: readonly string[] = sanitizeNetworkLocations(
+      request.deniedNetworkLocations,
+    );
     const tokenCap: number =
       typeof request.tokenCap === 'number' && request.tokenCap > 0
         ? Math.floor(request.tokenCap)
@@ -735,6 +744,8 @@ export class AiManager {
       toolPolicies,
       allowedWritePaths,
       deniedWritePaths,
+      allowedNetworkLocations,
+      deniedNetworkLocations,
       tokenCap,
       agentShell,
       claudeExecutable,
@@ -1424,7 +1435,10 @@ export class AiManager {
    */
   private resolveEditDecision(reply: AiEditDecisionReply): void {
     if (reply.choice === 'yes-auto') {
-      logger.debug('AiManager.resolveEditDecision', 'Auto-accepting edits for the rest of the session');
+      logger.debug(
+        'AiManager.resolveEditDecision',
+        'Auto-accepting edits for the rest of the session',
+      );
       this.autoAcceptEdits = true;
     }
     this.editDecisions.get(reply.decisionId)?.(reply.choice === 'no' ? 'no' : 'yes');

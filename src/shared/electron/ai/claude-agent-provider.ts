@@ -1,6 +1,6 @@
 import { ChildProcess, spawn } from 'node:child_process';
 import { homedir } from 'node:os';
-import { basename } from 'node:path';
+import { basename, isAbsolute } from 'node:path';
 import type {
   CanUseTool,
   HookJSONOutput,
@@ -12,6 +12,7 @@ import type {
   Query,
   SDKMessage,
   SDKTaskNotificationMessage,
+  SandboxSettings,
   SDKUserMessage,
   SlashCommand,
   SpawnedProcess,
@@ -1165,7 +1166,7 @@ export class ClaudeAgentProvider implements AgentProvider {
       // checked from their input the way a file write can). We do NOT auto-allow sandboxed Bash — it
       // still flows through the permission gate. `failIfUnavailable: false` degrades gracefully where
       // the platform sandbox is missing, running unsandboxed rather than failing the run.
-      sandbox: { enabled: true, autoAllowBashIfSandboxed: false, failIfUnavailable: false },
+      sandbox: buildSandbox(openContext),
       systemPrompt: {
         type: 'preset',
         preset: 'claude_code',
@@ -2449,4 +2450,65 @@ export class ClaudeAgentSession implements AgentSession {
       parent_tool_use_id: null,
     };
   }
+}
+
+/**
+ * Builds the SDK sandbox settings for a run.
+ *
+ * This is where the confinement the `canUseTool` gate cannot reach is expressed. That gate sees a
+ * tool's *arguments*, so it can range-check a file write but not a shell command; the OS sandbox sees
+ * the syscalls, so it covers `Bash` and the SDK's own web access. Three things are handed to it:
+ *
+ * - the **denied write paths**, which the gate already enforces for the file-write tools, so the same
+ *   list now also stops a shell command writing there (`.git`, `.env`, `~/.ssh`);
+ * - the **allowed write paths**, so a granted shell write to a widened root is not blocked by the
+ *   sandbox after the gate allowed it;
+ * - the **network locations**, which have no gate equivalent at all — an allow list narrows egress to
+ *   the hosts the user named, and a deny list wins over it, exactly as the write paths behave.
+ *
+ * Every list is omitted when empty, so a user who has configured nothing gets precisely the sandbox
+ * Studio has always applied.
+ * @param context The opening run context.
+ * @returns Returns the sandbox settings for the run.
+ */
+function buildSandbox(context: AgentRunContext): SandboxSettings {
+  const sandbox: SandboxSettings = {
+    enabled: true,
+    autoAllowBashIfSandboxed: false,
+    failIfUnavailable: false,
+  };
+  if (context.allowedWritePaths.length > 0 || context.deniedWritePaths.length > 0) {
+    sandbox.filesystem = {
+      ...(context.allowedWritePaths.length > 0
+        ? { allowWrite: [...context.allowedWritePaths] }
+        : {}),
+      // Only absolute entries reach the sandbox: a bare segment such as `.git` is a pattern the gate
+      // understands and the sandbox does not, so it stays gate-only rather than being mistranslated
+      // into a path that would silently match nothing.
+      ...(absolutePathsOf(context.deniedWritePaths).length > 0
+        ? { denyWrite: absolutePathsOf(context.deniedWritePaths) }
+        : {}),
+    };
+  }
+  if (context.allowedNetworkLocations.length > 0 || context.deniedNetworkLocations.length > 0) {
+    sandbox.network = {
+      ...(context.allowedNetworkLocations.length > 0
+        ? { allowedDomains: [...context.allowedNetworkLocations] }
+        : {}),
+      ...(context.deniedNetworkLocations.length > 0
+        ? { deniedDomains: [...context.deniedNetworkLocations] }
+        : {}),
+    };
+  }
+  return sandbox;
+}
+
+/**
+ * Keeps only the absolute paths of a deny list, dropping the bare segments the file-write gate
+ * matches anywhere in a path.
+ * @param entries The configured deny entries.
+ * @returns Returns the absolute entries.
+ */
+function absolutePathsOf(entries: readonly string[]): string[] {
+  return entries.filter((entry: string): boolean => isAbsolute(entry));
 }
