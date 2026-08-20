@@ -55,6 +55,10 @@
   display: flex;
   align-items: flex-end;
   flex: 0 0 auto;
+  // The rail's own surface is the whole group's drag handle (the tabs and the well's trailing
+  // controls, which sit on top of it, restore the default cursor with their own rules).
+  cursor: move;
+  -webkit-app-region: no-drag;
 }
 
 // Structural tab rules shared by both variants; colour, border and radius come from the document

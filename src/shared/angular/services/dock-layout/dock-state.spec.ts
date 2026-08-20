@@ -212,6 +212,54 @@ describe('DockState', () => {
     expect(stack.active).toBe('beta');
   });
 
+  it('tabStackInto_whenCalled_movesEveryTabAndIsOneUndoStep', () => {
+    const before: DockNode = state.layout();
+    const source: StackNode = stackOf(before, 'output');
+    const target: StackNode = stackOf(before, 'files');
+
+    state.tabStackInto(source.id, target.id);
+
+    const merged: StackNode = stackOf(state.layout(), 'output');
+    expect(merged.id).toBe(target.id);
+    expect(merged.panels).toEqual(['files', 'output', 'errors', 'terminal']);
+
+    state.undo();
+    expect(state.layout()).toBe(before);
+  });
+
+  it('splitStackBeside_whenCalled_docksTheWholeGroupBesideTheTarget', () => {
+    const source: StackNode = stackOf(state.layout(), 'output');
+
+    state.splitStackBeside(source.id, stackOf(state.layout(), 'files').id, 'bottom');
+
+    const moved: StackNode = stackOf(state.layout(), 'output');
+    expect(moved.panels).toEqual(['output', 'errors', 'terminal']);
+    expect(stackOf(state.layout(), 'files').panels).toEqual(['files']);
+  });
+
+  it('occupyWellWithStack_whenCalled_seatsTheWholeGroupInTheEmptyCentre', () => {
+    const source: StackNode = stackOf(state.layout(), 'output');
+
+    state.occupyWellWithStack(source.id, wellId());
+
+    const centre: StackNode = stackOf(state.layout(), 'output');
+    expect(centre.role).toBe('tool');
+    expect(centre.panels).toEqual(['output', 'errors', 'terminal']);
+    expect(centre.primary).toBe(true);
+  });
+
+  it('dockStackEdge_whenCalled_docksTheWholeGroupAgainstTheEdge', () => {
+    const source: StackNode = stackOf(state.layout(), 'output');
+
+    state.dockStackEdge(source.id, 'top');
+
+    const root: DockNode = state.layout();
+    expect(isSplitNode(root) && root.dir).toBe('col');
+    if (isSplitNode(root)) {
+      expect(stackOf(root.children[0], 'output').panels).toEqual(['output', 'errors', 'terminal']);
+    }
+  });
+
   it('reset_whenCalled_restoresTheSeededLayout', () => {
     state.tabInto(wellId(), 'doc-a');
 

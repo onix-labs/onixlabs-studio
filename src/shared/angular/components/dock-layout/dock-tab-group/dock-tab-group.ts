@@ -44,9 +44,14 @@ const FALLBACK_FLOAT_RECT: Rect = { left: 120, top: 120, width: 360, height: 240
 /**
  * Represents a tabbed group of panels (a stack) in the dock layout. Tool stacks render a title bar
  * above the tab strip; document stacks render the tab strip on top with no title bar. The tab strip
- * is a connected CDK drop list, so tabs reorder within and move between same-role groups; dragging
- * a tool group's title bar starts a compass dock through {@link DockDrag} (tab-into, split, edge or
- * float); the title buttons float the active panel or auto-hide the stack.
+ * is a connected CDK drop list, so tabs reorder within and move between same-role groups; the title
+ * buttons float the active panel or auto-hide the stack.
+ *
+ * Two compass drags start here, and the difference between them is what moves. Dragging a tool
+ * group's title bar — or a document well's grip, which stands in for the title bar it does not have
+ * — docks the **active panel** alone (tab-into, split, edge or float). Dragging the **tab rail**
+ * itself docks the **whole group**, every tab travelling together, for tool stacks and document
+ * wells alike. Both run through {@link DockDrag}.
  */
 @Component({
   selector: 'app-dock-tab-group',
@@ -343,7 +348,10 @@ export class DockTabGroup {
   protected onDrop(event: CdkDragDrop<StackNode>): void {
     const panelId: string = event.item.data as string;
     if (event.previousContainer === event.container) {
-      this.log.debug('DockTabGroup', `Reordered tab '${panelId}' within stack '${this.stack().id}'`);
+      this.log.debug(
+        'DockTabGroup',
+        `Reordered tab '${panelId}' within stack '${this.stack().id}'`,
+      );
       this.dockState.reorderTab(this.stack().id, event.previousIndex, event.currentIndex);
     } else {
       this.log.info('DockTabGroup', `Moved tab '${panelId}' into stack '${this.stack().id}'`);
@@ -422,5 +430,19 @@ export class DockTabGroup {
     if (active !== null) {
       this.dockDrag.begin(active, event);
     }
+  }
+
+  /**
+   * Starts a compass dock for the whole group from the tab rail, so the stack docks with every tab
+   * it holds — the counterpart to the title bar, which moves the active panel alone. Only presses on
+   * the rail itself qualify: a press that lands on a tab is that tab's own CDK drag (reorder within
+   * the strip, or move between strips), and a press on the well's trailing controls belongs to them.
+   * @param event The originating mouse event.
+   */
+  protected startGroupDrag(event: MouseEvent): void {
+    if (event.target !== event.currentTarget) {
+      return;
+    }
+    this.dockDrag.beginGroup(this.stack().id, event);
   }
 }

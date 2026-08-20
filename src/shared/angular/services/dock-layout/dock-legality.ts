@@ -149,10 +149,12 @@ export function nearestEdge(rect: Rect, workspace: Rect): DockSide {
 /**
  * Computes which compass guides are legal when dragging a panel of one role over a stack of
  * another. Documents live only in document wells — they tab into or split a well and never
- * edge-dock or enter a tool stack. Tools dock anywhere, with one asymmetry at the centre well: over
- * an **empty** well only the centre lights up (the tool takes over the blank centre — an `occupy`,
- * not a tab), while over a well that **holds documents** only the four splits light up (the tool
- * cannot join a documents-only tab strip, so it docks beside instead).
+ * edge-dock or enter a tool stack. Tools dock anywhere, with one asymmetry at the centre well: the
+ * centre guide is legal only over an **empty** well, where it means the tool takes over the blank
+ * centre (an `occupy`, not a tab); over a well that **holds documents** the centre is dead, because
+ * a tool cannot join a documents-only tab strip. The four splits are legal over a well either way —
+ * docking a tool group along the edge of a blank centre is how a layout is arranged before any
+ * document is open, and the well survives the split as the documents-home.
  * @param panelRole The role of the panel being dragged.
  * @param targetRole The role of the stack being hovered.
  * @param targetEmpty Whether the hovered stack currently holds no panels; only consulted for a tool
@@ -169,9 +171,7 @@ export function guideLegality(
     return { center: ok, left: ok, right: ok, top: ok, bottom: ok };
   }
   if (targetRole === 'document') {
-    return targetEmpty
-      ? { center: true, left: false, right: false, top: false, bottom: false }
-      : { center: false, left: true, right: true, top: true, bottom: true };
+    return { center: targetEmpty, left: true, right: true, top: true, bottom: true };
   }
   return { center: true, left: true, right: true, top: true, bottom: true };
 }

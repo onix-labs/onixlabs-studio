@@ -48,15 +48,15 @@ describe('dock-legality', () => {
       expect(guideLegality('tool', 'tool').center).toBe(true);
     });
 
-    it('guideLegality_whenToolOverEmptyDocument_allowsOnlyTheCentre', () => {
-      // The blank centre: the tool takes the whole well (an occupy), so only the centre lights up —
-      // splitting a well with nothing in it makes no sense.
+    it('guideLegality_whenToolOverEmptyDocument_allowsEveryGuide', () => {
+      // The blank centre: the centre guide hands the whole well over (an occupy), and the splits
+      // dock beside it — how an editor area is arranged before any document is open.
       expect(guideLegality('tool', 'document', true)).toEqual({
         center: true,
-        left: false,
-        right: false,
-        top: false,
-        bottom: false,
+        left: true,
+        right: true,
+        top: true,
+        bottom: true,
       });
     });
   });
@@ -168,9 +168,21 @@ describe('dock-legality', () => {
       expect(resolution?.preview).toEqual(group);
     });
 
-    it('resolveGroupTarget_whenToolOverEmptyDocumentEdge_returnsNull', () => {
-      // Over the blank centre only the centre is legal; the edge splits are suppressed.
-      expect(resolveGroupTarget(110, 200, 'stack-1', 'document', group, 'tool', true)).toBeNull();
+    it('resolveGroupTarget_whenToolOverEmptyDocumentEdge_splitsBesideTheWell', () => {
+      // The blank centre takes splits as well as the occupy, so a tool group can be docked along
+      // the editor area's edge with no document open; the well stays put beside it.
+      const resolution: DockResolution | null = resolveGroupTarget(
+        110,
+        200,
+        'stack-1',
+        'document',
+        group,
+        'tool',
+        true,
+      );
+
+      expect(resolution?.target).toEqual({ kind: 'split', stackId: 'stack-1', side: 'left' });
+      expect(resolution?.preview.width).toBe(group.width / 2);
     });
 
     it('resolveGroupTarget_whenOutsideTheGroup_returnsNull', () => {

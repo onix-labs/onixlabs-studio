@@ -1,7 +1,6 @@
 import { ChangeDetectionStrategy, Component, inject, Signal } from '@angular/core';
 import { CompassState, DockDrag, GuideKey } from '../../../services/dock-layout/dock-drag';
 import { DockSide } from '../../../services/dock-layout/dock-node';
-import { DockPanel } from '../../../services/dock-layout/dock-panel';
 import { edgeGuideRect, Rect } from '../../../services/dock-layout/dock-legality';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
@@ -30,9 +29,10 @@ export class DockOverlay {
   protected readonly active: Signal<boolean> = this.drag.active;
 
   /**
-   * Gets the panel being dragged.
+   * Gets the ghost's label: the dragged panel's title, or the dragged group's active panel title
+   * plus the number of tabs riding along with it.
    */
-  protected readonly panel: Signal<DockPanel | null> = this.drag.panel;
+  protected readonly title: Signal<string | null> = this.drag.title;
 
   /**
    * Gets the ghost rectangle following the cursor.
