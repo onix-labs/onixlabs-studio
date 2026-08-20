@@ -621,6 +621,32 @@ first — and currently only — implementation.
   on explicit installs and removes, never as a background sweep, so it cannot undo a user's own
   picker edits.
 
+### 4.15 API documents (the API Explorer's file)
+
+The API Explorer tab is a **document**, and its document is a file: `*.api.json`, holding the
+environments, collections and requests of one API workspace (`ApiDocument`, in the shared API
+contract). Two things identify it, and both matter:
+
+- **The name suffix routes it.** `FileOpener` sends a `*.api.json` to an API Explorer tab, the way it
+  sends a `.md` to the markdown editor. Only the name is consulted, so routing costs nothing — a plain
+  `.json` file is never touched.
+- **The moniker inside verifies it.** `ApiFiles.parse` requires `"kind": "onixlabs.studio.api"` and a
+  version this build can read. A `*.api.json` that is someone else's schema, malformed, or from a
+  newer Studio is **declined**, and the opener falls through to the text editor — which is where a
+  user needs to be to fix it. A file is never half-loaded.
+
+`ApiFiles` is the shell-side seam, the direct analog of `Workspaces` for directory tabs: it opens (or
+re-activates) the tab and stashes the parsed document under its id for the view to consume once on
+init. It names no feature — it opens a tab type the shell already knows.
+
+**The workspace has two modes, and the difference is where edits go.** Untitled, it auto-saves to the
+session store on every edit, so a scratch workspace survives a restart and never prompts — there is no
+file for it to be out of step with. Bound to a file, the file is the only thing that matters: edits
+mark the document dirty, the tab wears the dot, Save writes it, and the view registers with
+`UnsavedWorkRegistry` so closing the tab or the window asks first. Save As appends the suffix when the
+user does not type it (replacing a bare `.json`), so a saved document is always one that can be opened
+again.
+
 ---
 
 ## 5. AI agent — access & permission model

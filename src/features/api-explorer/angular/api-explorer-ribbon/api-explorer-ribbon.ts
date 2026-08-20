@@ -3,17 +3,29 @@ import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/
 import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button';
 import { RibbonStripGroup } from '@shared/angular/components/ribbon-strip/ribbon-strip-group/ribbon-strip-group';
 import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/ribbon-strip-overflow/ribbon-strip-overflow';
+import {
+  RibbonStripMenuButton,
+  RibbonMenuItem,
+} from '@shared/angular/components/ribbon-strip/ribbon-strip-menu-button/ribbon-strip-menu-button';
 import { Icon } from '@shared/angular/icons/icon';
 import { ApiExplorerCommands } from '../api-explorer-commands/api-explorer-commands';
 
 /**
- * The contextual ribbon shown while an API Explorer tab is active: send the open request, add to the
- * tree, and switch the environment every send resolves against. Its actions drive the active view
- * through the {@link ApiExplorerCommands} registry.
+ * Identifies the Save-As item in the Save menu button's dropdown.
+ */
+const VARIANT_SAVE_AS: string = 'save-as';
+
+/**
+ * The contextual ribbon shown while an API Explorer tab is active: save the collection, send the open
+ * request, add to the tree, and switch the environment every send resolves against. Its actions drive
+ * the active view through the {@link ApiExplorerCommands} registry.
+ *
+ * The File group is deliberately the code editor's, down to the Save-As item hanging off the Save
+ * button: an API document is a file like any other, and this is where a user reaches for it.
  */
 @Component({
   selector: 'app-api-explorer-ribbon',
-  imports: [RibbonStripOverflow, RibbonStripGroup, RibbonStripButton],
+  imports: [RibbonStripOverflow, RibbonStripGroup, RibbonStripButton, RibbonStripMenuButton],
   templateUrl: './api-explorer-ribbon.html',
   hostDirectives: [RibbonHost],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -46,6 +58,32 @@ export class ApiExplorerRibbon {
   protected readonly environmentLabel: Signal<string> = computed(
     (): string => this.commands.environmentName() ?? 'No environment',
   );
+
+  /**
+   * Gets the extra actions offered by the Save menu button's dropdown.
+   */
+  protected readonly saveItems: readonly RibbonMenuItem[] = [
+    { id: VARIANT_SAVE_AS, label: 'Save As', icon: Icon.SAVE_AS },
+  ];
+
+  /**
+   * Saves the collection to its file, asking for one when it is still untitled.
+   */
+  protected onSave(): void {
+    this.commands.saveDocument();
+  }
+
+  /**
+   * Runs the action chosen from the Save menu button's dropdown.
+   * @param id The chosen save variant's identifier.
+   */
+  protected onSaveVariant(id: string): void {
+    if (id === VARIANT_SAVE_AS) {
+      this.commands.saveDocumentAs();
+      return;
+    }
+    this.commands.saveDocument();
+  }
 
   /**
    * Sends the open request, or cancels it when it is already in flight.

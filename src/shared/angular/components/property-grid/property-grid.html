@@ -1,0 +1,53 @@
+<div class="property-grid" role="group" [attr.aria-label]="ariaLabel()">
+  <div class="property-grid__row property-grid__row--header" [class.is-checkable]="checkable()">
+    @if (checkable()) {
+      <span class="property-grid__tick" aria-hidden="true"></span>
+    }
+    <span class="property-grid__heading">{{ nameHeader() }}</span>
+    <span class="property-grid__heading">{{ valueHeader() }}</span>
+    <span class="property-grid__gutter" aria-hidden="true"></span>
+  </div>
+
+  <!-- The stored rows and the blank one are rendered by a single loop, tracked by id. That is what
+       keeps the caret still as the blank row becomes real: the consumer stores the new row under the
+       id the blank row already had, so this very element carries on being the row being typed into. -->
+  @for (row of displayRows(); track row.id) {
+    @let draft = isDraft(row);
+
+    <div class="property-grid__row" [class.is-checkable]="checkable()">
+      @if (checkable()) {
+        <app-checkbox
+          class="property-grid__tick"
+          [checked]="row.enabled !== false"
+          [disabled]="draft"
+          (checkedChange)="edit(row.id, { enabled: $event })"
+        />
+      }
+      <app-text-field
+        [value]="row.name"
+        [placeholder]="namePlaceholder()"
+        [ariaLabel]="draft ? 'New ' + nameHeader() : nameHeader()"
+        (valueChange)="write(row, { name: $event })"
+      />
+      <app-text-field
+        [value]="row.value"
+        [placeholder]="valuePlaceholder()"
+        [ariaLabel]="draft ? 'New ' + valueHeader() : valueHeader()"
+        (valueChange)="write(row, { value: $event })"
+      />
+      @if (draft) {
+        <span class="property-grid__gutter" aria-hidden="true"></span>
+      } @else {
+        <app-button
+          class="property-grid__gutter"
+          variant="none"
+          size="small"
+          [icon]="Icon.CLOSE"
+          [ariaLabel]="'Remove ' + (row.name || nameHeader())"
+          tooltip="Remove"
+          (click)="remove.emit(row.id)"
+        />
+      }
+    </div>
+  }
+</div>

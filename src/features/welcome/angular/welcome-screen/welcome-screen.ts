@@ -148,6 +148,7 @@ export class WelcomeScreen {
     { id: 'markdown', label: 'Markdown', icon: Icon.MARKDOWN, kind: 'markdown' },
     { id: 'code', label: 'Code', icon: Icon.CODE, kind: 'code' },
     { id: 'binary', label: 'Binary', icon: Icon.BINARY, kind: 'binary' },
+    { id: 'api', label: 'APIs', icon: Icon.API_EXPLORER, kind: 'api' },
   ];
 
   /**
@@ -162,8 +163,9 @@ export class WelcomeScreen {
    * Holds which left-column group is expanded, or null when both are collapsed. The groups behave as
    * a single-open accordion; Get Started is open at first.
    */
-  protected readonly openGroup: WritableSignal<WelcomeGroup | null> =
-    signal<WelcomeGroup | null>('get-started');
+  protected readonly openGroup: WritableSignal<WelcomeGroup | null> = signal<WelcomeGroup | null>(
+    'get-started',
+  );
 
   /**
    * Holds the currently selected filter pill.
@@ -288,6 +290,8 @@ export class WelcomeScreen {
         return Icon.CODE;
       case 'binary':
         return Icon.BINARY;
+      case 'api':
+        return Icon.API_EXPLORER;
     }
   }
 
@@ -536,6 +540,9 @@ export class WelcomeScreen {
       case 'markdown':
       case 'code':
       case 'binary':
+      case 'api':
+        // Every file kind re-opens through the same door: the opener routes it by name, so an API
+        // document lands in an API Explorer tab exactly as it did when it was first opened.
         return this.fileOpener.reopenFile(item.path);
     }
   }

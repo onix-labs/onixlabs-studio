@@ -11,12 +11,17 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { Button } from '@shared/angular/components/forms/button/button';
-import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { PasswordField } from '@shared/angular/components/forms/password-field/password-field';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { Textarea } from '@shared/angular/components/forms/textarea/textarea';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
+import {
+  PropertyGrid,
+  PropertyGridEdit,
+  PropertyGridRow,
+} from '@shared/angular/components/property-grid/property-grid';
 import { Icon } from '@shared/angular/icons/icon';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import {
@@ -31,7 +36,7 @@ import {
   HttpResponse,
 } from '@shared/api/api-client-types';
 import { ApiRequestOpener } from '../../api-request-opener/api-request-opener';
-import { ApiWorkspace, newField } from '../../api-workspace/api-workspace';
+import { ApiWorkspace } from '../../api-workspace/api-workspace';
 
 /**
  * The editor sections of a request, in the order the tab strip offers them.
@@ -49,6 +54,11 @@ const SECTIONS: readonly { readonly id: RequestSection; readonly label: string }
   { id: 'tests', label: 'Tests' },
   { id: 'settings', label: 'Settings' },
 ];
+
+/**
+ * Names the request's three name/value lists, so one set of grid handlers serves all of them.
+ */
+type FieldList = 'params' | 'headers' | 'body';
 
 /**
  * The body kinds offered by the body-kind picker.
@@ -77,12 +87,13 @@ const BODY_KINDS: readonly { readonly id: HttpBodyKind; readonly label: string }
   selector: 'app-api-request-panel',
   imports: [
     Button,
-    Checkbox,
     DecimalPipe,
     Dropdown,
     AppIcon,
     NgTemplateOutlet,
+    PanelToolbar,
     PasswordField,
+    PropertyGrid,
     Textarea,
     TextField,
   ],
@@ -214,27 +225,6 @@ export class ApiRequestPanel {
   });
 
   /**
-   * Gets the rows shown by the params editor, with a trailing blank row to type into.
-   */
-  protected readonly paramRows: Signal<readonly HttpField[]> = computed((): readonly HttpField[] =>
-    this.withBlank(this.request()?.params ?? []),
-  );
-
-  /**
-   * Gets the rows shown by the headers editor, with a trailing blank row to type into.
-   */
-  protected readonly headerRows: Signal<readonly HttpField[]> = computed((): readonly HttpField[] =>
-    this.withBlank(this.request()?.headers ?? []),
-  );
-
-  /**
-   * Gets the rows shown by the form-body editor, with a trailing blank row to type into.
-   */
-  protected readonly bodyRows: Signal<readonly HttpField[]> = computed((): readonly HttpField[] =>
-    this.withBlank(this.request()?.body.fields ?? []),
-  );
-
-  /**
    * Sends the request, or cancels it when it is already in flight.
    */
   protected send(): void {
@@ -264,35 +254,77 @@ export class ApiRequestPanel {
   }
 
   /**
-   * Applies a change to one row of a field list, dropping a row the user has blanked out entirely.
+   * Applies an edit from a property grid to one row of a field list, dropping a row the user has
+   * blanked out entirely.
+   * @param list Which list the row belongs to.
+   * @param edit The edit reported by the grid.
+   */
+  protected updateField(list: FieldList, edit: PropertyGridEdit): void {
+    this.writeFields(list, (fields: readonly HttpField[]): readonly HttpField[] =>
+      fields
+        .map(
+          (field: HttpField): HttpField =>
+            field.id === edit.id
+              ? {
+                  ...field,
+                  ...(edit.name !== undefined ? { name: edit.name } : {}),
+                  ...(edit.value !== undefined ? { value: edit.value } : {}),
+                  ...(edit.enabled !== undefined ? { enabled: edit.enabled } : {}),
+                }
+              : field,
+        )
+        .filter((field: HttpField): boolean => field.name !== '' || field.value !== ''),
+    );
+  }
+
+  /**
+   * Stores a row the user has started typing into the grid's blank row, under the identity the grid
+   * handed over — which is what keeps the caret in the cell being typed into.
+   * @param list Which list the row belongs to.
+   * @param row The new row.
+   */
+  protected addField(list: FieldList, row: PropertyGridRow): void {
+    this.writeFields(list, (fields: readonly HttpField[]): readonly HttpField[] => [
+      ...fields,
+      { id: row.id, name: row.name, value: row.value, enabled: row.enabled !== false },
+    ]);
+  }
+
+  /**
+   * Removes a row from a field list.
    * @param list Which list the row belongs to.
    * @param id The row identifier.
-   * @param changes The row fields to change.
    */
-  protected updateField(
-    list: 'params' | 'headers' | 'body',
-    id: string,
-    changes: Partial<HttpField>,
+  protected removeField(list: FieldList, id: string): void {
+    this.writeFields(list, (fields: readonly HttpField[]): readonly HttpField[] =>
+      fields.filter((field: HttpField): boolean => field.id !== id),
+    );
+  }
+
+  /**
+   * Applies a transformation to one of the request's field lists and writes it back.
+   * @param list Which list to transform.
+   * @param transform The transformation to apply.
+   */
+  private writeFields(
+    list: FieldList,
+    transform: (fields: readonly HttpField[]) => readonly HttpField[],
   ): void {
     const request: ApiRequest | undefined = this.request();
     if (request === undefined) {
       return;
     }
-    const current: readonly HttpField[] =
-      list === 'params'
-        ? request.params
-        : list === 'headers'
-          ? request.headers
-          : request.body.fields;
-    const rows: readonly HttpField[] = this.withBlank(current);
-    const next: HttpField[] = rows
-      .map((field: HttpField): HttpField => (field.id === id ? { ...field, ...changes } : field))
-      .filter((field: HttpField): boolean => field.name !== '' || field.value !== '');
-    if (list === 'body') {
-      this.update({ body: { ...request.body, fields: next } });
-      return;
+    switch (list) {
+      case 'params':
+        this.update({ params: transform(request.params) });
+        return;
+      case 'headers':
+        this.update({ headers: transform(request.headers) });
+        return;
+      case 'body':
+        this.update({ body: { ...request.body, fields: transform(request.body.fields) } });
+        return;
     }
-    this.update(list === 'params' ? { params: next } : { headers: next });
   }
 
   /**
@@ -387,15 +419,5 @@ export class ApiRequestPanel {
       return 'ok';
     }
     return status < 400 ? 'redirect' : 'error';
-  }
-
-  /**
-   * Appends a blank trailing row to a field list, so there is always somewhere to type. The blank row
-   * is dropped again by {@link updateField} when it is left empty, and never sent.
-   * @param fields The stored rows.
-   * @returns Returns the rows to render.
-   */
-  private withBlank(fields: readonly HttpField[]): readonly HttpField[] {
-    return [...fields, newField()];
   }
 }

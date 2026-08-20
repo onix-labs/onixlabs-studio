@@ -14,16 +14,7 @@
 }
 
 .environment__variables {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-}
-
-.environment__variable {
-  display: grid;
-  grid-template-columns: auto 1fr 1.4fr;
-  align-items: center;
-  gap: 0.4rem;
+  display: block;
 }
 
 .environment__hint {

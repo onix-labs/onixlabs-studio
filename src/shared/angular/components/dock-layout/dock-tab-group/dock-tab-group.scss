@@ -354,6 +354,21 @@
   border-start-start-radius: 0;
 }
 
+// A document that renders its own tool strip leaves the dock with no strip to cap the editor box, so
+// the body takes over the top of the frame — the border, the radius, and the same squared start
+// corner the strip gives up when the active tab sits against it.
+:host(.dock-tab-group--documents.dock-tab-group--panel-strip) .dock-tab-group__body {
+  border-block-start: 0.0625rem solid var(--dock-seam-color);
+  border-start-start-radius: var(--dock-panel-radius);
+  border-start-end-radius: var(--dock-panel-radius);
+  corner-shape: var(--app-corner-shape, squircle);
+}
+
+:host(.dock-tab-group--documents.dock-tab-group--panel-strip):has(.dock-tab--active:first-child)
+  .dock-tab-group__body {
+  border-start-start-radius: 0;
+}
+
 :host(.dock-tab-group--documents) .dock-tab {
   border-block-end: none;
   border-radius: var(--dock-panel-radius) var(--dock-panel-radius) 0 0;

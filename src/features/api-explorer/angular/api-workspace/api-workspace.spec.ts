@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { TestBed } from '@angular/core/testing';
 import {
+  ApiDocument,
   ApiEnvironment,
   ApiFolder,
   ApiRequest,
@@ -8,6 +9,8 @@ import {
   HttpOutcome,
   ResolvedHttpRequest,
 } from '@shared/api/api-client-types';
+import { FileSystem } from '@shared/angular/services/file-system/file-system';
+import { FileWriteResult } from '@shared/api/file-channels';
 import { ApiHttp } from '../api-http/api-http';
 import { ApiWorkspace, newField } from './api-workspace';
 
@@ -64,12 +67,33 @@ class FakeHttp {
 describe('ApiWorkspace', () => {
   let workspace: ApiWorkspace;
   let http: FakeHttp;
+  let written: { path: string; content: string }[];
+  let chosenPath: string | null;
+  let writeSucceeds: boolean;
 
   beforeEach(() => {
     globalThis.localStorage?.clear();
     http = new FakeHttp();
+    written = [];
+    chosenPath = null;
+    writeSucceeds = true;
+    const fileSystem: Partial<FileSystem> = {
+      write: (path: string, content: string): Promise<FileWriteResult> => {
+        if (writeSucceeds) {
+          written.push({ path, content });
+        }
+        return Promise.resolve(
+          writeSucceeds ? { success: true } : { success: false, message: 'denied' },
+        );
+      },
+      saveDialog: (): Promise<string | null> => Promise.resolve(chosenPath),
+    };
     TestBed.configureTestingModule({
-      providers: [ApiWorkspace, { provide: ApiHttp, useValue: http }],
+      providers: [
+        ApiWorkspace,
+        { provide: ApiHttp, useValue: http },
+        { provide: FileSystem, useValue: fileSystem },
+      ],
     });
     workspace = TestBed.inject(ApiWorkspace);
   });
@@ -286,4 +310,131 @@ describe('ApiWorkspace', () => {
     expect(restored.activeEnvironmentId()).toBe(environment.id);
     expect(restored.substitute('{{base_url}}/x')).toBe('https://s.test/x');
   });
+
+  describe('as a document', () => {
+    it('untitled_isNeverDirtyAndKeepsAutoSavingToTheStore', () => {
+      request({ name: 'Scratch' });
+
+      // Nothing to be out of step with: an untitled workspace is already in the store, so prompting
+      // to save it would be nagging about work that cannot be lost.
+      expect(workspace.filePath()).toBeNull();
+      expect(workspace.dirty()).toBe(false);
+      expect(workspace.documentName()).toBe('Untitled');
+    });
+
+    it('load_replacesEverythingAndBindsTheWorkspaceToTheFile', () => {
+      workspace.load(
+        {
+          kind: 'onixlabs.studio.api',
+          version: 1,
+          folders: [{ id: 'c1', parentId: null, name: 'Orders' }],
+          requests: [
+            {
+              id: 'r1',
+              parentId: 'c1',
+              name: 'List orders',
+              method: 'GET',
+              url: '{{base_url}}/orders',
+              params: [],
+              headers: [],
+              body: { kind: 'none', text: '', fields: [] },
+              auth: { kind: 'none' },
+              description: '',
+            },
+          ],
+          environments: [
+            { id: 'e1', name: 'Local', variables: [newField('base_url', 'http://localhost')] },
+          ],
+          activeEnvironmentId: 'e1',
+        },
+        '/tmp/orders.api.json',
+      );
+
+      expect(workspace.folders()).toHaveLength(1);
+      expect(workspace.request('r1')?.name).toBe('List orders');
+      expect(workspace.filePath()).toBe('/tmp/orders.api.json');
+      expect(workspace.documentName()).toBe('orders.api.json');
+      expect(workspace.dirty()).toBe(false);
+    });
+
+    it('edit_whenBoundToAFile_marksTheDocumentDirtyRatherThanWritingIt', () => {
+      workspace.load(emptyDocument(), '/tmp/orders.api.json');
+
+      workspace.addCollection('Added');
+
+      expect(workspace.dirty()).toBe(true);
+      expect(written).toHaveLength(0);
+    });
+
+    it('save_whenBoundToAFile_writesTheDocumentAndClearsTheDirtyFlag', async () => {
+      workspace.load(emptyDocument(), '/tmp/orders.api.json');
+      workspace.addCollection('Added');
+
+      expect(await workspace.save()).toBe(true);
+
+      expect(written).toHaveLength(1);
+      expect(written[0].path).toBe('/tmp/orders.api.json');
+      expect(workspace.dirty()).toBe(false);
+      const document: Record<string, unknown> = JSON.parse(written[0].content) as Record<
+        string,
+        unknown
+      >;
+      expect(document['kind']).toBe('onixlabs.studio.api');
+      expect(document['version']).toBe(1);
+      expect(document['folders']).toHaveLength(1);
+    });
+
+    it('save_whenUntitled_asksForAFileAndBindsToIt', async () => {
+      chosenPath = '/tmp/new-collection';
+
+      expect(await workspace.save()).toBe(true);
+
+      // The suffix is what routes the file back to this view when it is opened again, so it is added
+      // when the user does not type it.
+      expect(workspace.filePath()).toBe('/tmp/new-collection.api.json');
+      expect(workspace.documentName()).toBe('new-collection.api.json');
+    });
+
+    it('saveAs_whenThePathEndsInJson_replacesTheExtensionRatherThanDoublingIt', async () => {
+      chosenPath = '/tmp/orders.json';
+
+      expect(await workspace.saveAs()).toBe(true);
+
+      expect(workspace.filePath()).toBe('/tmp/orders.api.json');
+    });
+
+    it('saveAs_whenTheDialogIsCancelled_changesNothing', async () => {
+      chosenPath = null;
+
+      expect(await workspace.saveAs()).toBe(false);
+
+      expect(workspace.filePath()).toBeNull();
+      expect(written).toHaveLength(0);
+    });
+
+    it('save_whenTheWriteFails_keepsTheDocumentDirty', async () => {
+      writeSucceeds = false;
+      workspace.load(emptyDocument(), '/tmp/orders.api.json');
+      workspace.addCollection('Added');
+
+      expect(await workspace.save()).toBe(false);
+
+      expect(workspace.dirty()).toBe(true);
+    });
+  });
+
+  /**
+   * Builds an empty document to load.
+   * @returns Returns a document holding nothing.
+   */
+  function emptyDocument(): ApiDocument {
+    return {
+      kind: 'onixlabs.studio.api',
+      version: 1,
+      folders: [],
+      requests: [],
+      environments: [],
+      activeEnvironmentId: null,
+    };
+  }
 });

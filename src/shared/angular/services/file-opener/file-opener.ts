@@ -3,6 +3,8 @@ import {
   BINARY_FILE_OPENER,
   BinaryFileOpener,
 } from '@shared/angular/services/file-opener/binary-file-opener';
+import { isApiDocumentName } from '@shared/api/api-client-types';
+import { ApiFiles } from '@shared/angular/services/api-files/api-files';
 import { FileInfo, SaveDialogChoice } from '@shared/api/file-channels';
 import { DirectoryListing, OpenSelection } from '@shared/api/workspace-channels';
 import { Icon } from '@shared/angular/icons/icon';
@@ -31,10 +33,11 @@ import { Workspaces } from '../workspaces/workspaces';
 const MARKDOWN_EXTENSIONS: ReadonlySet<string> = new Set<string>(['.md', '.markdown']);
 
 /**
- * Routes an opened filesystem selection to the right surface: a directory becomes the workspace,
- * a markdown file opens in a markdown tab, any other text file opens in a code tab, and a file no
- * text editor can open (binary) opens in a binary/hex tab. A cancelled dialog is a no-op. Shared by
- * the welcome screen and the directory tree so both behave identically.
+ * Routes an opened filesystem selection to the right surface: a directory becomes the workspace, an
+ * API document (`*.api.json`) opens in an API Explorer tab, a markdown file opens in a markdown tab,
+ * any other text file opens in a code tab, and a file no text editor can open (binary) opens in a
+ * binary/hex tab. A cancelled dialog is a no-op. Shared by the welcome screen and the directory tree
+ * so both behave identically.
  */
 @Service()
 export class FileOpener {
@@ -88,6 +91,11 @@ export class FileOpener {
   private readonly workspaces: Workspaces = inject(Workspaces);
 
   /**
+   * Holds the registry that hands a newly-opened API document to its API Explorer tab.
+   */
+  private readonly apiFiles: ApiFiles = inject(ApiFiles);
+
+  /**
    * Holds the recent-items registry, updated whenever a file or folder is opened.
    */
   private readonly recentItems: RecentItems = inject(RecentItems);
@@ -119,6 +127,11 @@ export class FileOpener {
     }
     if (selection.kind === 'binary') {
       return this.openBinary(selection.path);
+    }
+    // An API document is a whole surface rather than a document in this workspace's well, so it opens
+    // as its own tab — as a binary file does — instead of being edited as text beside the code.
+    if (this.openApiDocument(selection.file)) {
+      return true;
     }
     this.log.debug('FileOpener', 'Opening file in well', path);
     return this.openInWell(selection.file);
@@ -183,6 +196,9 @@ export class FileOpener {
         this.openDirectory(selection.directory);
         return true;
       case 'file': {
+        if (this.openApiDocument(selection.file)) {
+          return true;
+        }
         const type: TabType = this.isMarkdown(selection.file.extension) ? 'markdown' : 'code';
         this.documents.openFileInfo(selection.file, type);
         this.recordRecentFile(selection.file);
@@ -191,6 +207,18 @@ export class FileOpener {
       case 'binary':
         return this.openBinary(selection.path);
     }
+  }
+
+  /**
+   * Opens a file that claims to be an API document in an API Explorer tab. Only the name is consulted
+   * here; the document itself is verified by {@link ApiFiles}, which declines a `*.api.json` that is
+   * not one — so a malformed or foreign file falls through to the text editor rather than being
+   * loaded as a workspace.
+   * @param fileInfo The file to open.
+   * @returns Returns true when the file was opened as an API document; otherwise, false.
+   */
+  private openApiDocument(fileInfo: FileInfo): boolean {
+    return isApiDocumentName(fileInfo.name) && this.apiFiles.open(fileInfo);
   }
 
   /**

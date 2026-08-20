@@ -11,12 +11,22 @@ import {
 } from '@angular/core';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { TextField } from '@shared/angular/components/forms/text-field/text-field';
+import { Modal } from '@shared/angular/components/modal/modal';
+import { ModalContent } from '@shared/angular/components/modal/modal-content';
+import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
 import { TreeRow, TreeView } from '@shared/angular/components/tree-view/tree-view';
 import { Icon } from '@shared/angular/icons/icon';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { ApiEnvironment, ApiFolder, ApiRequest } from '@shared/api/api-client-types';
 import { ApiRequestOpener } from '../../api-request-opener/api-request-opener';
-import { ApiWorkspace } from '../../api-workspace/api-workspace';
+import { ApiWorkspace, newField } from '../../api-workspace/api-workspace';
+
+/**
+ * The variable an environment's root address is stored as. Requests are written against it, so a new
+ * environment with an address is usable by every request that already exists.
+ */
+const BASE_URL_VARIABLE: string = 'base_url';
 
 /**
  * The identifier of the synthetic row that groups the environments. Synthetic because environments
@@ -67,7 +77,7 @@ interface ApiRow {
  */
 @Component({
   selector: 'app-api-explorer-panel',
-  imports: [AppIcon, Button, TreeView],
+  imports: [AppIcon, Button, Modal, ModalContent, PanelToolbar, TextField, TreeView],
   templateUrl: './api-explorer-panel.html',
   styleUrl: './api-explorer-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -105,6 +115,45 @@ export class ApiExplorerPanel {
    * Holds the id of the selected row.
    */
   protected readonly selectedId: WritableSignal<string | null> = signal<string | null>(null);
+
+  /**
+   * Holds whether the new-collection dialog is open, and the name being typed into it.
+   */
+  protected readonly collectionOpen: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds the name typed into the new-collection dialog.
+   */
+  protected readonly collectionName: WritableSignal<string> = signal<string>('');
+
+  /**
+   * Holds whether the new-environment dialog is open.
+   */
+  protected readonly environmentOpen: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds the name typed into the new-environment dialog.
+   */
+  protected readonly environmentName: WritableSignal<string> = signal<string>('');
+
+  /**
+   * Holds the root address typed into the new-environment dialog, stored as the environment's
+   * `base_url` variable.
+   */
+  protected readonly environmentRootUrl: WritableSignal<string> = signal<string>('');
+
+  /**
+   * Gets the variable syntax shown in the new-environment dialog, written out rather than interpolated
+   * so the braces survive the template.
+   */
+  protected readonly variableSyntax: string = '{{base_url}}';
+
+  /**
+   * Gets whether there is a collection for a new request to go into.
+   */
+  protected readonly canAddRequest: Signal<boolean> = computed((): boolean =>
+    this.workspace.folders().some((folder: ApiFolder): boolean => folder.parentId === null),
+  );
 
   /**
    * Gets the flattened rows of the tree: the environments group first, then each collection with its
@@ -192,11 +241,69 @@ export class ApiExplorerPanel {
   }
 
   /**
-   * Adds a collection and expands it, ready for its first request.
+   * Opens the dialog that names a new collection.
    */
-  protected addCollection(): void {
-    const collection: ApiFolder = this.workspace.addCollection('New collection');
+  protected promptCollection(): void {
+    this.collectionName.set('');
+    this.collectionOpen.set(true);
+  }
+
+  /**
+   * Closes the new-collection dialog without adding anything.
+   */
+  protected cancelCollection(): void {
+    this.collectionOpen.set(false);
+  }
+
+  /**
+   * Adds the named collection and expands it, ready for its first request.
+   */
+  protected confirmCollection(): void {
+    const name: string = this.collectionName().trim();
+    if (name === '') {
+      return;
+    }
+    const collection: ApiFolder = this.workspace.addCollection(name);
+    this.collectionOpen.set(false);
+    this.selectedId.set(collection.id);
     this.toggle(collection.id);
+  }
+
+  /**
+   * Opens the dialog that names a new environment and gives it a root address.
+   */
+  protected promptEnvironment(): void {
+    this.environmentName.set('');
+    this.environmentRootUrl.set('');
+    this.environmentOpen.set(true);
+  }
+
+  /**
+   * Closes the new-environment dialog without adding anything.
+   */
+  protected cancelEnvironment(): void {
+    this.environmentOpen.set(false);
+  }
+
+  /**
+   * Adds the named environment, seeding it with the root address as its `base_url` variable — the
+   * variable every seeded request is written against, so a new environment is immediately usable.
+   */
+  protected confirmEnvironment(): void {
+    const name: string = this.environmentName().trim();
+    if (name === '') {
+      return;
+    }
+    const rootUrl: string = this.environmentRootUrl().trim();
+    this.workspace.addEnvironment(
+      name,
+      rootUrl === '' ? [] : [newField(BASE_URL_VARIABLE, rootUrl)],
+    );
+    this.environmentOpen.set(false);
+    this.expanded.update(
+      (ids: ReadonlySet<string>): ReadonlySet<string> =>
+        new Set<string>([...ids, ENVIRONMENTS_ROW]),
+    );
   }
 
   /**
@@ -220,17 +327,6 @@ export class ApiExplorerPanel {
     );
     this.selectedId.set(request.id);
     this.opener.open(request.id);
-  }
-
-  /**
-   * Adds an environment, activating it when it is the first.
-   */
-  protected addEnvironment(): void {
-    this.workspace.addEnvironment('New environment');
-    this.expanded.update(
-      (ids: ReadonlySet<string>): ReadonlySet<string> =>
-        new Set<string>([...ids, ENVIRONMENTS_ROW]),
-    );
   }
 
   /**

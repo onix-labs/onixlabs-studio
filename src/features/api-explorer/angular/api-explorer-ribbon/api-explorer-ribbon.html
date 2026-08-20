@@ -1,4 +1,14 @@
 <app-ribbon-overflow>
+  <app-ribbon-strip-group title="File">
+    <app-ribbon-strip-menu-button
+      [icon]="Icon.SAVE"
+      label="Save"
+      [items]="saveItems"
+      (action)="onSave()"
+      (selected)="onSaveVariant($event)"
+    />
+  </app-ribbon-strip-group>
+
   <app-ribbon-strip-group title="Request">
     <app-ribbon-strip-button
       [icon]="sending() ? Icon.STOP : Icon.SEND"

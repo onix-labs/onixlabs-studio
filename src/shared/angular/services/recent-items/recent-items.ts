@@ -6,7 +6,7 @@ import { SettingsStore } from '@shared/angular/services/settings-store/settings-
  * Names the kinds of thing that can appear in the recent-items list. Each maps to how the item is
  * re-opened and which icon and filter it belongs to.
  */
-export type RecentKind = 'directory' | 'markdown' | 'code' | 'binary';
+export type RecentKind = 'directory' | 'markdown' | 'code' | 'binary' | 'api';
 
 /**
  * Maps every {@link RecentKind} to a marker, so the compiler proves the runtime validation set below
@@ -18,6 +18,7 @@ const ALL_RECENT_KINDS: Readonly<Record<RecentKind, true>> = {
   markdown: true,
   code: true,
   binary: true,
+  api: true,
 };
 
 /**

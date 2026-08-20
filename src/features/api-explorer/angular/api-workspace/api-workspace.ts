@@ -2,6 +2,10 @@ import { computed, inject, Service, Signal, signal, WritableSignal } from '@angu
 import { Log } from '@shared/angular/services/log/log';
 import { SettingsStore } from '@shared/angular/services/settings-store/settings-store';
 import {
+  API_DOCUMENT_KIND,
+  API_DOCUMENT_SUFFIX,
+  API_DOCUMENT_VERSION,
+  ApiDocument,
   ApiEnvironment,
   ApiFolder,
   ApiHistoryEntry,
@@ -13,6 +17,8 @@ import {
   HttpOutcome,
   ResolvedHttpRequest,
 } from '@shared/api/api-client-types';
+import { FileSystem } from '@shared/angular/services/file-system/file-system';
+import { FileWriteResult } from '@shared/api/file-channels';
 import { ApiHttp } from '../api-http/api-http';
 
 /**
@@ -31,35 +37,9 @@ const HISTORY_LIMIT: number = 100;
 const DEFAULT_TIMEOUT_MS: number = 30_000;
 
 /**
- * The persisted shape of the whole API workspace. Versioned from the outset so a later change to the
- * request model can migrate rather than silently discarding what a user has saved.
+ * The name an unsaved workspace goes by, in the tab and in the save dialog.
  */
-interface PersistedWorkspace {
-  /**
-   * Gets the schema version of the persisted document.
-   */
-  readonly version: 1;
-
-  /**
-   * Gets the collections and folders.
-   */
-  readonly folders: readonly ApiFolder[];
-
-  /**
-   * Gets the saved requests.
-   */
-  readonly requests: readonly ApiRequest[];
-
-  /**
-   * Gets the environments.
-   */
-  readonly environments: readonly ApiEnvironment[];
-
-  /**
-   * Gets the identifier of the active environment, or null when none is active.
-   */
-  readonly activeEnvironmentId: string | null;
-}
+const UNTITLED_NAME: string = 'Untitled';
 
 /**
  * Mints an identifier for a folder, request, environment, field or history entry.
@@ -67,6 +47,31 @@ interface PersistedWorkspace {
  */
 function newId(): string {
   return crypto.randomUUID();
+}
+
+/**
+ * Reads the file name out of a path, on either platform's separator.
+ * @param path The path to read, or null.
+ * @returns Returns the file name, or null when there is no path.
+ */
+function fileNameOf(path: string | null): string | null {
+  return path === null ? null : (/[^\\/]*$/.exec(path)?.[0] ?? path);
+}
+
+/**
+ * Ensures a chosen save path carries the API document suffix, so a file saved as `orders` is still
+ * recognised as an API document when it is opened again. A path already ending in `.json` has that
+ * extension replaced rather than doubled, so typing `orders.json` yields `orders.api.json`.
+ * @param path The path chosen in the save dialog.
+ * @returns Returns the path to write to.
+ */
+function withApiSuffix(path: string): string {
+  const lower: string = path.toLowerCase();
+  if (lower.endsWith(API_DOCUMENT_SUFFIX)) {
+    return path;
+  }
+  const base: string = lower.endsWith('.json') ? path.slice(0, -'.json'.length) : path;
+  return `${base}${API_DOCUMENT_SUFFIX}`;
 }
 
 /**
@@ -89,6 +94,12 @@ export function newField(name: string = '', value: string = ''): HttpField {
  * does, and what would let a second transport (gRPC, GraphQL) reuse the tree without reusing the HTTP
  * semantics.
  *
+ * It is also the tab's *document*, and behaves like one in two modes. **Untitled**, it auto-saves to
+ * the session store on every edit, so a scratch workspace is never lost and never nags — there is no
+ * file for it to be out of step with. **Bound to a file** (opened from a `*.api.json`, or saved to
+ * one), the file becomes the only thing that matters: edits mark the document dirty and are written
+ * when the user saves, exactly as a code document behaves.
+ *
  * Provided by the API Explorer view, so it lives exactly as long as the tab.
  */
 @Service()
@@ -102,6 +113,11 @@ export class ApiWorkspace {
    * Holds the request engine client.
    */
   private readonly http: ApiHttp = inject(ApiHttp);
+
+  /**
+   * Holds the file system the document is saved through.
+   */
+  private readonly fileSystem: FileSystem = inject(FileSystem);
 
   /**
    * Holds the structured logger.
@@ -159,6 +175,34 @@ export class ApiWorkspace {
   >(new Set<string>());
 
   /**
+   * Holds the absolute path this workspace is saved to, or null while it is untitled.
+   */
+  private readonly filePathSignal: WritableSignal<string | null> = signal<string | null>(null);
+
+  /**
+   * Holds whether the bound file has edits that have not been written to it.
+   */
+  private readonly dirtySignal: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Gets the absolute path this workspace is saved to, or null while it is untitled.
+   */
+  public readonly filePath: Signal<string | null> = this.filePathSignal.asReadonly();
+
+  /**
+   * Gets whether the workspace has edits not yet written to its file. An untitled workspace is never
+   * dirty: it has no file to be out of step with, and every edit is already in the session store.
+   */
+  public readonly dirty: Signal<boolean> = this.dirtySignal.asReadonly();
+
+  /**
+   * Gets the workspace's display name: its file name once saved, otherwise `Untitled`.
+   */
+  public readonly documentName: Signal<string> = computed(
+    (): string => fileNameOf(this.filePathSignal()) ?? UNTITLED_NAME,
+  );
+
+  /**
    * Gets the collections and folders.
    */
   public readonly folders: Signal<readonly ApiFolder[]> = this.foldersSignal.asReadonly();
@@ -209,10 +253,7 @@ export class ApiWorkspace {
    * view is opened so there is something to send rather than an empty tree.
    */
   public constructor() {
-    const persisted: PersistedWorkspace | null = this.store.get<PersistedWorkspace | null>(
-      STORE_KEY,
-      null,
-    );
+    const persisted: ApiDocument | null = this.store.get<ApiDocument | null>(STORE_KEY, null);
     if (persisted === null) {
       this.seed();
       return;
@@ -225,6 +266,89 @@ export class ApiWorkspace {
       collections: persisted.folders.length,
       requests: persisted.requests.length,
     });
+  }
+
+  /**
+   * Loads a document read from disk, replacing everything this workspace holds and binding it to the
+   * file it came from. From here on the file — not the session store — is where edits are saved, and
+   * they are saved when the user says so.
+   * @param document The document to load.
+   * @param path The absolute path it was read from.
+   */
+  public load(document: ApiDocument, path: string): void {
+    this.foldersSignal.set(document.folders);
+    this.requestsSignal.set(document.requests);
+    this.environmentsSignal.set(document.environments);
+    this.activeEnvironmentIdSignal.set(document.activeEnvironmentId);
+    this.historySignal.set([]);
+    this.filePathSignal.set(path);
+    this.dirtySignal.set(false);
+    this.log.info('api-explorer.workspace', 'Loaded API document', {
+      path,
+      collections: document.folders.length,
+      requests: document.requests.length,
+    });
+  }
+
+  /**
+   * Saves the workspace to its file, asking for one first when it is still untitled.
+   * @returns Returns a promise resolving true when the document was written, or false when the save
+   * was cancelled or failed.
+   */
+  public async save(): Promise<boolean> {
+    const path: string | null = this.filePathSignal();
+    if (path === null) {
+      return this.saveAs();
+    }
+    return this.write(path);
+  }
+
+  /**
+   * Saves the workspace to a newly chosen file, binding it to that file from then on.
+   * @returns Returns a promise resolving true when the document was written, or false when the dialog
+   * was cancelled or the write failed.
+   */
+  public async saveAs(): Promise<boolean> {
+    const suggested: string = this.filePathSignal() ?? `${UNTITLED_NAME}${API_DOCUMENT_SUFFIX}`;
+    const chosen: string | null = await this.fileSystem.saveDialog(suggested);
+    if (chosen === null) {
+      return false;
+    }
+    return this.write(withApiSuffix(chosen));
+  }
+
+  /**
+   * Serialises the workspace as the document written to disk. History is excluded: it is a session's
+   * working record, not part of what a user saves.
+   * @returns Returns the document.
+   */
+  public toDocument(): ApiDocument {
+    return {
+      kind: API_DOCUMENT_KIND,
+      version: API_DOCUMENT_VERSION,
+      folders: this.foldersSignal(),
+      requests: this.requestsSignal(),
+      environments: this.environmentsSignal(),
+      activeEnvironmentId: this.activeEnvironmentIdSignal(),
+    };
+  }
+
+  /**
+   * Writes the document to a path and binds the workspace to it.
+   * @param path The absolute path to write to.
+   * @returns Returns a promise resolving true when the write succeeded.
+   */
+  private async write(path: string): Promise<boolean> {
+    const content: string = `${JSON.stringify(this.toDocument(), null, 2)}\n`;
+    const result: FileWriteResult = await this.fileSystem.write(path, content);
+    if (!result.success) {
+      this.log.warn('api-explorer.workspace', 'Save failed', { path });
+      return false;
+    }
+    this.filePathSignal.set(path);
+    this.dirtySignal.set(false);
+    this.log.info('api-explorer.workspace', 'Saved API document', { path });
+    return true;
   }
 
   /**
@@ -664,18 +788,17 @@ export class ApiWorkspace {
   }
 
   /**
-   * Writes the workspace to the store. History is deliberately excluded: it is a session's working
-   * record, not part of the user's saved collections.
+   * Records an edit. A workspace bound to a file becomes dirty and waits to be saved — the file is the
+   * user's, and writing to it behind their back is not this view's decision. An untitled workspace has
+   * no file to be out of step with, so it keeps auto-saving to the session store exactly as it did
+   * before documents existed: a scratch workspace survives a restart without ever being saved.
    */
   private persist(): void {
-    const document: PersistedWorkspace = {
-      version: 1,
-      folders: this.foldersSignal(),
-      requests: this.requestsSignal(),
-      environments: this.environmentsSignal(),
-      activeEnvironmentId: this.activeEnvironmentIdSignal(),
-    };
-    this.store.set<PersistedWorkspace>(STORE_KEY, document);
+    if (this.filePathSignal() !== null) {
+      this.dirtySignal.set(true);
+      return;
+    }
+    this.store.set<ApiDocument>(STORE_KEY, this.toDocument());
   }
 
   /**

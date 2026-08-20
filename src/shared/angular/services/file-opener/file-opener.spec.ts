@@ -1,5 +1,6 @@
 import { inject } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { API_DOCUMENT_KIND } from '@shared/api/api-client-types';
 import { Bridge } from '@shared/api/bridge';
 import { DirectoryListing, OpenSelection, WorkspaceChannel } from '@shared/api/workspace-channels';
 import { StackNode } from '@shared/angular/services/dock-layout/dock-node';
@@ -23,6 +24,18 @@ const ROOT_LISTING: DirectoryListing = {
   name: 'ws',
   entries: [{ name: 'README.md', path: '/ws/README.md', type: 'file' }],
 };
+
+/**
+ * A minimal API document, as it is written on disk.
+ */
+const API_DOCUMENT_TEXT: string = JSON.stringify({
+  kind: API_DOCUMENT_KIND,
+  version: 1,
+  folders: [],
+  requests: [],
+  environments: [],
+  activeEnvironmentId: null,
+});
 
 /**
  * Holds the next selection the fake bridge's open/openFile calls resolve with; tests mutate it.
@@ -156,6 +169,52 @@ describe('FileOpener', () => {
     };
     expect(await opener.openInteractive()).toBe(true);
     expect(tabs.activeTab()?.type).toBe('code');
+  });
+
+  it('openInteractive_whenApiDocumentChosen_opensAnApiExplorerTab', async () => {
+    nextSelection = {
+      kind: 'file',
+      file: {
+        path: '/ws/orders.api.json',
+        name: 'orders.api.json',
+        extension: '.json',
+        content: API_DOCUMENT_TEXT,
+      },
+    };
+    expect(await opener.openInteractive()).toBe(true);
+    expect(tabs.activeTab()?.type).toBe('api-explorer');
+    expect(tabs.activeTab()?.title).toBe('orders.api.json');
+  });
+
+  it('openInteractive_whenApiDocumentIsNotOne_fallsThroughToTheCodeEditor', async () => {
+    // A file named like ours but holding someone else's JSON belongs in the text editor, where it can
+    // be looked at and fixed, rather than being loaded as a workspace.
+    nextSelection = {
+      kind: 'file',
+      file: {
+        path: '/ws/other.api.json',
+        name: 'other.api.json',
+        extension: '.json',
+        content: '{ "openapi": "3.0.0" }',
+      },
+    };
+    expect(await opener.openInteractive()).toBe(true);
+    expect(tabs.activeTab()?.type).toBe('code');
+  });
+
+  it('openPath_whenApiDocumentOpened_opensATabRatherThanAWellDocument', async () => {
+    nextSelection = {
+      kind: 'file',
+      file: {
+        path: '/ws/orders.api.json',
+        name: 'orders.api.json',
+        extension: '.json',
+        content: API_DOCUMENT_TEXT,
+      },
+    };
+    expect(await opener.openPath('/ws/orders.api.json')).toBe(true);
+    expect(wellPanels()).toHaveLength(0);
+    expect(tabs.activeTab()?.type).toBe('api-explorer');
   });
 
   it('openInteractive_whenBinaryChosen_opensABinaryTab', async () => {

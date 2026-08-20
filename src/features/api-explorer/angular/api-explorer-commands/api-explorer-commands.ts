@@ -24,9 +24,24 @@ export interface ApiExplorerCommandHandler {
   readonly environmentName: Signal<string | null>;
 
   /**
+   * Gets whether the document has edits that have not been written to its file.
+   */
+  readonly documentDirty: Signal<boolean>;
+
+  /**
    * Sends the request open in the well, or cancels it when it is already in flight.
    */
   send(): void;
+
+  /**
+   * Saves the workspace to its file, asking for one when it is still untitled.
+   */
+  saveDocument(): void;
+
+  /**
+   * Saves the workspace to a newly chosen file.
+   */
+  saveDocumentAs(): void;
 
   /**
    * Adds a request to the first collection and opens it.
@@ -78,6 +93,13 @@ export class ApiExplorerCommands {
   );
 
   /**
+   * Gets whether the active view's document has unsaved edits.
+   */
+  public readonly documentDirty: Signal<boolean> = computed(
+    (): boolean => this.handler()?.documentDirty() ?? false,
+  );
+
+  /**
    * Registers the active view's handler.
    * @param handler The handler to register.
    */
@@ -101,6 +123,20 @@ export class ApiExplorerCommands {
    */
   public send(): void {
     this.handler()?.send();
+  }
+
+  /**
+   * Saves the workspace to its file.
+   */
+  public saveDocument(): void {
+    this.handler()?.saveDocument();
+  }
+
+  /**
+   * Saves the workspace to a newly chosen file.
+   */
+  public saveDocumentAs(): void {
+    this.handler()?.saveDocumentAs();
   }
 
   /**

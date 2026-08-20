@@ -1,6 +1,7 @@
-// The API Explorer tree: a row of add actions above the shared tree view. The tree itself carries no
-// styling of its own here — rows, indentation, hover and selection are the shared `app-tree-view`'s,
-// exactly as they are for the File and Solution Explorers.
+// The API Explorer tree: the panel's own tool strip above the shared tree view. Neither carries much
+// styling here — the strip is the shared `app-panel-toolbar` every tool panel wears, and the tree's
+// rows, indentation, hover and selection are the shared `app-tree-view`'s, exactly as they are for the
+// File and Solution Explorers.
 
 :host {
   display: flex;
@@ -9,12 +10,33 @@
   min-block-size: 0;
 }
 
-.api-explorer__actions {
+// The dialogs that name a new collection or environment. Layout only: how a field or button is drawn
+// belongs to its atom.
+.api-explorer__dialog-title {
+  margin: 0 0 0.6rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--body-foreground-color);
+}
+
+.api-explorer__dialog-message {
+  margin: 0 0 1.1rem;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--form-muted-foreground-color);
+}
+
+.api-explorer__dialog-field {
+  display: block;
+  inline-size: 100%;
+  margin-block-end: 0.75rem;
+}
+
+.api-explorer__dialog-actions {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-  padding: 0.4rem 0.5rem;
-  border-block-end: 0.0625rem solid var(--panel-border-color, var(--body-border-color));
+  justify-content: flex-end;
+  gap: 0.6rem;
+  margin-block-start: 0.4rem;
 }
 
 // The method badge on a request row. Colour carries the method at a glance, which is the one piece of
