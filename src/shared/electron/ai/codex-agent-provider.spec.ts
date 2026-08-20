@@ -126,6 +126,8 @@ function codexCtx(
     model: 'gpt-5-codex',
     workspaceRoot: '/ws',
     allowedWritePaths: [],
+    allowedNetworkLocations: [],
+    deniedNetworkLocations: [],
     resumeSessionId,
     signal,
     emit: (event: AiEvent): void => void events.push(event),
@@ -166,6 +168,8 @@ describe('CodexAgentProvider', () => {
       model: 'gpt-5-codex',
       workspaceRoot: '/ws',
       allowedWritePaths: [],
+      allowedNetworkLocations: [],
+      deniedNetworkLocations: [],
     };
 
     const high: ThreadOptions = build({
@@ -184,6 +188,32 @@ describe('CodexAgentProvider', () => {
     } as AgentRunContext);
     expect(maxChat.modelReasoningEffort).toBeUndefined();
     expect(maxChat.sandboxMode).toBe('read-only');
+  });
+
+  it('buildThreadOptions_whenAllowedNetworkLocationsAreSet_failsClosedOnNetworkAccess', () => {
+    const build: (context: AgentRunContext) => ThreadOptions = (
+      provider as unknown as { buildThreadOptions(context: AgentRunContext): ThreadOptions }
+    ).buildThreadOptions.bind(provider);
+    const base: Partial<AgentRunContext> = {
+      model: 'gpt-5-codex',
+      workspaceRoot: '/ws',
+      mode: 'agent',
+      effort: null,
+      allowedWritePaths: [],
+      allowedNetworkLocations: [],
+      deniedNetworkLocations: [],
+    };
+
+    // Codex offers one switch, not a host list: asked for "only these hosts", the only honest answer
+    // it can give is "none".
+    const confined: ThreadOptions = build({
+      ...base,
+      allowedNetworkLocations: ['api.example.com'],
+    } as AgentRunContext);
+    expect(confined.networkAccessEnabled).toBe(false);
+
+    // With nothing configured it is left alone, so today's behaviour is unchanged.
+    expect(build(base as AgentRunContext).networkAccessEnabled).toBeUndefined();
   });
 
   it('describeAvailability_prefersLocalCodexLoginThenApiKeyThenNeither', () => {

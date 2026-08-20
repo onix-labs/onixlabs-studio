@@ -653,6 +653,20 @@ export class Settings {
   public readonly aiDeniedWritePaths: Signal<readonly string[]> = this.value('ai.deniedWritePaths');
 
   /**
+   * Gets the hosts the agent may reach; empty allows any.
+   */
+  public readonly aiAllowedNetworkLocations: Signal<readonly string[]> = this.value(
+    'ai.allowedNetworkLocations',
+  );
+
+  /**
+   * Gets the hosts the agent may never reach.
+   */
+  public readonly aiDeniedNetworkLocations: Signal<readonly string[]> = this.value(
+    'ai.deniedNetworkLocations',
+  );
+
+  /**
    * Gets the per-request token cap (0 for no cap).
    */
   public readonly aiTokenCap: Signal<number> = this.value('ai.tokenCap');
@@ -1057,6 +1071,22 @@ export class Settings {
    */
   public setAiDeniedWritePaths(paths: readonly string[]): void {
     this.set('ai.deniedWritePaths', [...paths]);
+  }
+
+  /**
+   * Replaces the hosts the agent may reach. Empty allows any host.
+   * @param locations The allowed hosts.
+   */
+  public setAiAllowedNetworkLocations(locations: readonly string[]): void {
+    this.set('ai.allowedNetworkLocations', [...locations]);
+  }
+
+  /**
+   * Replaces the hosts the agent may never reach.
+   * @param locations The denied hosts.
+   */
+  public setAiDeniedNetworkLocations(locations: readonly string[]): void {
+    this.set('ai.deniedNetworkLocations', [...locations]);
   }
 
   /**

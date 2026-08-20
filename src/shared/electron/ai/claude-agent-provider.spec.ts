@@ -222,6 +222,8 @@ function gateCtx(overrides: Partial<AgentRunContext>): AgentRunContext {
     toolPolicies: {},
     allowedWritePaths: [],
     deniedWritePaths: [],
+    allowedNetworkLocations: [],
+    deniedNetworkLocations: [],
     contextPaths: [],
     tokenCap: 0,
     agentShell: null,
@@ -736,7 +738,11 @@ describe('ClaudeAgentProvider.buildRunOptions (per-turn indirection)', () => {
           getBridge: () => null,
         ): Promise<Options>;
       }
-    ).buildRunOptions((): AgentRunContext => current, new AbortController(), (): null => null);
+    ).buildRunOptions(
+      (): AgentRunContext => current,
+      new AbortController(),
+      (): null => null,
+    );
     return {
       options,
       setCurrent: (context: AgentRunContext): void => {
@@ -744,6 +750,55 @@ describe('ClaudeAgentProvider.buildRunOptions (per-turn indirection)', () => {
       },
     };
   }
+
+  it('sandbox_whenNothingIsConfigured_isExactlyWhatStudioHasAlwaysApplied', async () => {
+    const { options } = await build(gateCtx({}));
+
+    // No lists means no filesystem or network keys at all — the setting is opt-in, and an empty
+    // allowedDomains would otherwise read to the sandbox as "allow nothing".
+    expect(options.sandbox).toEqual({
+      enabled: true,
+      autoAllowBashIfSandboxed: false,
+      failIfUnavailable: false,
+    });
+  });
+
+  it('sandbox_carriesTheNetworkLocationsSoTheyReachBashAndWebAccess', async () => {
+    const { options } = await build(
+      gateCtx({
+        allowedNetworkLocations: ['api.example.com', '*.corp.test'],
+        deniedNetworkLocations: ['admin.corp.test'],
+      }),
+    );
+
+    // The wildcard reaches the sandbox with its apex alongside it: the sandbox matches label-for-
+    // label, so without that the same list would allow a request through the API tools and block it
+    // in the shell.
+    expect(options.sandbox?.network).toEqual({
+      allowedDomains: ['api.example.com', '*.corp.test', 'corp.test'],
+      deniedDomains: ['admin.corp.test'],
+    });
+  });
+
+  it('sandbox_carriesTheDeniedWritePathsSoTheyReachTheShellToo', async () => {
+    const { options } = await build(
+      gateCtx({ allowedWritePaths: ['/extra'], deniedWritePaths: ['/ws/secrets'] }),
+    );
+
+    // The canUseTool gate already covers the file-write tools; the sandbox is what covers Bash.
+    expect(options.sandbox?.filesystem).toEqual({
+      allowWrite: ['/extra'],
+      denyWrite: ['/ws/secrets'],
+    });
+  });
+
+  it('sandbox_leavesBareSegmentDenialsToTheGate', async () => {
+    const { options } = await build(gateCtx({ deniedWritePaths: ['.git', '/ws/secrets'] }));
+
+    // `.git` is a pattern matched anywhere in a path — meaningful to the gate, meaningless as a
+    // sandbox path, so it must not be handed over as if it were one.
+    expect(options.sandbox?.filesystem?.denyWrite).toEqual(['/ws/secrets']);
+  });
 
   it('canUseTool_routesThePermissionPromptToTheCurrentTurnsContext', async () => {
     const grantsA: string[] = [];

@@ -146,6 +146,16 @@ export interface AgentRunContext {
   readonly deniedWritePaths: readonly string[];
 
   /**
+   * Gets the hosts the agent may reach. Empty allows any host.
+   */
+  readonly allowedNetworkLocations: readonly string[];
+
+  /**
+   * Gets the hosts the agent may never reach, even when the allowed list would permit them.
+   */
+  readonly deniedNetworkLocations: readonly string[];
+
+  /**
    * Gets the per-request token budget the turn is capped to, or 0 for no cap.
    */
   readonly tokenCap: number;

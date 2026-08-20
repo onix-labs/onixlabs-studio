@@ -1080,6 +1080,8 @@ export class Agent {
       toolPolicies: this.settings.aiToolPolicies(),
       allowedWritePaths: this.settings.aiAllowedWritePaths(),
       deniedWritePaths: this.settings.aiDeniedWritePaths(),
+      allowedNetworkLocations: this.settings.aiAllowedNetworkLocations(),
+      deniedNetworkLocations: this.settings.aiDeniedNetworkLocations(),
       tokenCap: this.settings.aiTokenCap(),
       agentShell: this.settings.aiAgentShell(),
       claudeExecutable: {

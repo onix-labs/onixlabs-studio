@@ -1,0 +1,75 @@
+<div class="network-locations">
+  <div class="network-locations__group">
+    <app-setting-row
+      label="Allowed network locations"
+      description="Hosts the agent may reach — api.example.com, or *.corp.example for a domain and its sub-domains. Leave empty to allow any host. Covers the agent's shell and web access through the OS sandbox, and requests it sends with the API tools. Cloud metadata addresses are always blocked. Codex has no per-host control, so a non-empty list turns its network access off entirely."
+    >
+      <span class="network-locations__entry">
+        <app-text-field
+          placeholder="api.example.com"
+          ariaLabel="Host to allow"
+          [value]="allowDraft()"
+          (valueChange)="allowDraft.set($event)"
+          (enter)="add('allow')"
+        />
+        <app-button variant="solid" [icon]="Icon.PLUS" label="Add" (click)="add('allow')" />
+      </span>
+    </app-setting-row>
+
+    @if (error()) {
+      <p class="network-locations__error" role="alert">{{ error() }}</p>
+    }
+
+    @if (allowed().length) {
+      <ul class="network-locations__list">
+        @for (host of allowed(); track $index) {
+          <li class="network-locations__item">
+            <span class="network-locations__host">{{ host }}</span>
+            <app-button
+              variant="none"
+              size="small"
+              [icon]="Icon.CLOSE"
+              [ariaLabel]="'Remove allowed host ' + host"
+              (click)="remove('allow', $index)"
+            />
+          </li>
+        }
+      </ul>
+    }
+  </div>
+
+  <div class="network-locations__group">
+    <app-setting-row
+      label="Denied network locations"
+      description="Hosts the agent may never reach, even when the allowed list would permit them."
+    >
+      <span class="network-locations__entry">
+        <app-text-field
+          placeholder="admin.example.com"
+          ariaLabel="Host to deny"
+          [value]="denyDraft()"
+          (valueChange)="denyDraft.set($event)"
+          (enter)="add('deny')"
+        />
+        <app-button variant="solid" [icon]="Icon.PLUS" label="Add" (click)="add('deny')" />
+      </span>
+    </app-setting-row>
+
+    @if (denied().length) {
+      <ul class="network-locations__list">
+        @for (host of denied(); track $index) {
+          <li class="network-locations__item">
+            <span class="network-locations__host">{{ host }}</span>
+            <app-button
+              variant="none"
+              size="small"
+              [icon]="Icon.CLOSE"
+              [ariaLabel]="'Remove denied host ' + host"
+              (click)="remove('deny', $index)"
+            />
+          </li>
+        }
+      </ul>
+    }
+  </div>
+</div>

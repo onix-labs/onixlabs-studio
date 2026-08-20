@@ -72,6 +72,16 @@ export interface AiRunOptions {
   readonly deniedWritePaths?: readonly string[];
 
   /**
+   * Gets the hosts the agent may reach; empty allows any.
+   */
+  readonly allowedNetworkLocations?: readonly string[];
+
+  /**
+   * Gets the hosts the agent may never reach.
+   */
+  readonly deniedNetworkLocations?: readonly string[];
+
+  /**
    * Gets the per-request token budget, or 0 for the provider default (no cap).
    */
   readonly tokenCap?: number;
@@ -241,6 +251,8 @@ export class AiRuntime {
       toolPolicies: options.toolPolicies ?? {},
       allowedWritePaths: options.allowedWritePaths ?? [],
       deniedWritePaths: options.deniedWritePaths ?? [],
+      allowedNetworkLocations: options.allowedNetworkLocations ?? [],
+      deniedNetworkLocations: options.deniedNetworkLocations ?? [],
       tokenCap: options.tokenCap ?? 0,
       agentShell: options.agentShell ?? '',
       ...(options.claudeExecutable === undefined

@@ -2,7 +2,12 @@
 // and the Angular front-end can import it.
 
 import { AgentSurface } from './ai-tool-surface';
-import { AiEffort, AiProviderId, AiRemoteControlMode, ClaudeExecutableChoice } from './ai-provider-types';
+import {
+  AiEffort,
+  AiProviderId,
+  AiRemoteControlMode,
+  ClaudeExecutableChoice,
+} from './ai-provider-types';
 
 /**
  * Identifies how much the agent may do without asking the user first.
@@ -140,6 +145,18 @@ export interface AiRunRequest {
    * containing that segment, e.g. `.git`, `.env`). Absent or empty when the user has configured none.
    */
   readonly deniedWritePaths?: readonly string[];
+
+  /**
+   * Gets the hosts the agent may reach, as host patterns (`api.example.com`, `*.corp.example`).
+   * Empty or absent allows any host, which is how Studio behaved before the setting existed.
+   */
+  readonly allowedNetworkLocations?: readonly string[];
+
+  /**
+   * Gets the hosts the agent may never reach, even when {@link allowedNetworkLocations} would permit
+   * them. Absent or empty when the user has configured none.
+   */
+  readonly deniedNetworkLocations?: readonly string[];
 
   /**
    * Gets the per-request token budget the turn is capped to, or 0 for the provider default (no cap).

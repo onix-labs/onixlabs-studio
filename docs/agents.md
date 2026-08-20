@@ -694,6 +694,35 @@ degrading gracefully where unavailable) — the deny list therefore guards the f
 `Bash`. A no-workspace (home) run is root-unconfined but still honours the deny list. Confinement is
 evaluated before the posture, so it holds even under an auto-allowing posture.
 
+**Network confinement.** The agent's egress is bounded by the same widen/narrow pair, in a different
+medium: **allowed network locations** (host patterns — `api.example.com`, `*.corp.example`; empty
+means anywhere, so the setting is opt-in) and **denied network locations**, which win over the
+allowed list. Patterns match **the sandbox's way, label for label**: `*.example.com` covers
+`api.example.com` but not `deep.api.example.com`, the wildcard lives in the leftmost label only, and
+`*` and `*.com` are refused as too broad (where they are typed, not silently on the way out). One
+convenience is layered on top — a wildcard is taken to include its apex — and it is _expanded_ into
+the list handed to the sandbox rather than matched loosely here, so both enforcement points answer
+the same question the same way. Note `github.com` and `api.github.com` are different hosts to both:
+allowing a site does not allow its API. Cloud-metadata addresses (`169.254.169.254`, `metadata.google.internal`) are refused
+whatever is configured — unauthenticated role credentials one request away — while loopback is
+deliberately _not_, because testing a local service is what the API Explorer is for. Two enforcement
+points, and the difference matters:
+
+- **The OS sandbox** carries the lists as `sandbox.network.allowedDomains`/`deniedDomains`, which is
+  what reaches `Bash` and the SDK's own web access — the paths `canUseTool` cannot see, because a gate
+  reads a tool's arguments and a sandbox sees syscalls. The same call now also carries the write
+  paths as `sandbox.filesystem.allowWrite`/`denyWrite`, so the deny list finally covers shell writes
+  as well as the file-write tools. Only _absolute_ deny entries go over: a bare segment like `.git` is
+  a gate pattern and would be meaningless as a sandbox path.
+- **The API tools** are checked in the renderer before a send leaves (`ApiWorkspace.send(id,
+'agent')`). A user's own send is never checked — the view exists to point at any endpoint you like;
+  the setting names what the _agent_ may reach.
+
+**Codex has one network switch, not a host list**, so a non-empty allow list fails closed there: the
+user asked for _these_ hosts and the provider can only offer all or none. Sandbox availability is
+still graceful (`failIfUnavailable: false`), which means a machine missing the platform sandbox runs
+unconfined — the network list then applies only to the API tools.
+
 **Tool permissions (machine).** Built-in tools are gated in main through the Agent SDK's `canUseTool`
 hook. Three layers decide, in order: **write confinement** (above) refuses out-of-root writes
 outright; the user's **per-tool policy** is consulted next; the **permission posture** decides the

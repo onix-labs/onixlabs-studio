@@ -253,6 +253,18 @@ export class CodexAgentProvider implements AgentProvider {
     if (context.allowedWritePaths.length > 0) {
       options.additionalDirectories = [...context.allowedWritePaths];
     }
+    // Codex's sandbox has one network switch, not a host list. A configured allow list therefore
+    // cannot be expressed here, and the honest mapping is to fail closed: the user has said the agent
+    // may reach *these* hosts, and this provider can only offer "all" or "none". A deny list alone is
+    // left as-is — it narrows nothing this provider can act on, and turning the network off entirely
+    // over one denied host would be a surprise out of proportion to what was asked.
+    if (context.allowedNetworkLocations.length > 0) {
+      options.networkAccessEnabled = false;
+      logger.info(
+        'CodexAgentProvider.buildThreadOptions',
+        'Network access disabled: Codex has no per-host control and allowed network locations are set',
+      );
+    }
     logger.debug(
       'CodexAgentProvider.buildThreadOptions',
       `Thread options: model=${context.model}, sandbox=${options.sandboxMode}, ` +
