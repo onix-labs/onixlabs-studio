@@ -13,10 +13,19 @@ import { Button } from '@shared/angular/components/forms/button/button';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 
 /**
- * The shared explorer tool strip rendered at the top of the Solution Explorer and File Explorer panel
- * bodies (those panels opt out of the dock's default strip). It pairs a search box on the left with
- * expand-all, collapse-all, and a more-actions menu on the right. The toolbar is purely presentational:
- * it emits the search text and the expand/collapse intents, leaving the panel to drive its own model.
+ * The items offered by the more-actions menu when a caller supplies none, so the button is present —
+ * the strip reads the same in every explorer — but says plainly that there is nothing behind it yet.
+ */
+const NO_MORE_ACTIONS: readonly MenuItem[] = [
+  { id: 'none', label: 'No actions yet', disabled: true },
+];
+
+/**
+ * The shared explorer tool strip rendered at the top of the Solution Explorer, File Explorer and API
+ * Explorer panel bodies (those panels opt out of the dock's default strip). It pairs a search box on
+ * the left with expand-all, collapse-all, and a more-actions menu on the right. The toolbar is purely
+ * presentational: it emits the search text, the expand/collapse intents, and the chosen menu item,
+ * leaving the panel to drive its own model.
  */
 @Component({
   selector: 'app-explorer-toolbar',
@@ -57,11 +66,17 @@ export class ExplorerToolbar {
   public readonly collapseAll: OutputEmitterRef<void> = output<void>();
 
   /**
-   * Gets the more-actions menu items. No actions are wired yet, so it shows an inert placeholder.
+   * Gets the items offered by the more-actions menu — the panel's own commands, since only the panel
+   * knows what can be added to what it shows. Defaults to an inert placeholder for a panel that has
+   * not wired any.
    */
-  protected readonly moreItems: readonly MenuItem[] = [
-    { id: 'none', label: 'No actions yet', disabled: true },
-  ];
+  public readonly moreItems: InputSignal<readonly MenuItem[]> =
+    input<readonly MenuItem[]>(NO_MORE_ACTIONS);
+
+  /**
+   * Emits the id of the chosen more-actions item.
+   */
+  public readonly moreSelected: OutputEmitterRef<string> = output<string>();
 
   /**
    * Emits the latest search query from the search box.

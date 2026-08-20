@@ -1,7 +1,6 @@
-// The API Explorer tree: the panel's own tool strip above the shared tree view. Neither carries much
-// styling here — the strip is the shared `app-panel-toolbar` every tool panel wears, and the tree's
-// rows, indentation, hover and selection are the shared `app-tree-view`'s, exactly as they are for the
-// File and Solution Explorers.
+// The API Explorer tree: the shared explorer tool strip above the shared tree view. Neither carries
+// any styling here — the strip is the same `app-explorer-toolbar` the Solution and File Explorers
+// wear, and the tree's rows, indentation, hover and selection are the shared `app-tree-view`'s.
 
 :host {
   display: flex;

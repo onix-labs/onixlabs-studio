@@ -1,27 +1,12 @@
-<app-panel-toolbar role="group" aria-label="Add to this collection">
-  <app-button
-    variant="none"
-    [icon]="Icon.API_COLLECTION"
-    label="Collection"
-    tooltip="New collection"
-    (click)="promptCollection()"
-  />
-  <app-button
-    variant="none"
-    [icon]="Icon.API_REQUEST"
-    label="Request"
-    tooltip="New request in the selected collection"
-    [disabled]="!canAddRequest()"
-    (click)="addRequest()"
-  />
-  <app-button
-    variant="none"
-    [icon]="Icon.API_ENVIRONMENT"
-    label="Environment"
-    tooltip="New environment"
-    (click)="promptEnvironment()"
-  />
-</app-panel-toolbar>
+<app-explorer-toolbar
+  [query]="query()"
+  searchPlaceholder="Search APIs"
+  [moreItems]="moreItems()"
+  (queryChange)="query.set($event)"
+  (expandAll)="expandAll()"
+  (collapseAll)="collapseAll()"
+  (moreSelected)="onMoreAction($event)"
+/>
 
 <app-tree-view
   [rows]="rows()"

@@ -33,4 +33,9 @@
   </div>
 </div>
 
-<app-menu #moreMenu [items]="moreItems" placement="down-end" />
+<app-menu
+  #moreMenu
+  [items]="moreItems()"
+  placement="down-end"
+  (selected)="moreSelected.emit($event)"
+/>
