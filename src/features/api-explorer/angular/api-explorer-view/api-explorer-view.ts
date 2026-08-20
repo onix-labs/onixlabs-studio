@@ -20,6 +20,10 @@ import {
   ConversationContextResolver,
   GLOBAL_CONVERSATION_CONTEXT,
 } from '@shared/angular/services/agent-conversations/agent-conversation-context';
+import { Button } from '@shared/angular/components/forms/button/button';
+import { TextField } from '@shared/angular/components/forms/text-field/text-field';
+import { Modal } from '@shared/angular/components/modal/modal';
+import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { DockContainer } from '@shared/angular/components/dock-layout/dock-container/dock-container';
 import { DOCK_BLUEPRINT } from '@shared/angular/services/dock-layout/dock-blueprint';
 import { DockAutoHide } from '@shared/angular/services/dock-layout/dock-auto-hide';
@@ -49,6 +53,7 @@ import {
   ApiExplorerCommands,
 } from '../api-explorer-commands/api-explorer-commands';
 import { ApiExplorerStatus } from '../api-explorer-status/api-explorer-status';
+import { ApiPrompts } from '../api-prompts/api-prompts';
 import { ApiHttp } from '../api-http/api-http';
 import { ApiRequestOpener } from '../api-request-opener/api-request-opener';
 import { ApiWorkspace } from '../api-workspace/api-workspace';
@@ -69,7 +74,7 @@ import { ApiWorkspace } from '../api-workspace/api-workspace';
  */
 @Component({
   selector: 'app-api-explorer-view',
-  imports: [DockContainer],
+  imports: [DockContainer, Modal, ModalContent, Button, TextField],
   templateUrl: './api-explorer-view.html',
   styleUrl: './api-explorer-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -77,6 +82,7 @@ import { ApiWorkspace } from '../api-workspace/api-workspace';
     // The API document model and its transport: one per tab, shared by every panel in it.
     ApiHttp,
     ApiWorkspace,
+    ApiPrompts,
     ApiRequestOpener,
     ApiExplorerStatus,
     // The agent's in-app tools, registered against this tab's workspace for as long as it is open.
@@ -181,6 +187,18 @@ export class ApiExplorerView implements OnInit, OnDestroy, ApiExplorerCommandHan
    * Holds the opener that puts a request into the well.
    */
   private readonly opener: ApiRequestOpener = inject(ApiRequestOpener);
+
+  /**
+   * Holds the naming dialogs this view renders, raised from here and from the explorer panel's
+   * more-actions menu.
+   */
+  protected readonly prompts: ApiPrompts = inject(ApiPrompts);
+
+  /**
+   * Gets the variable syntax shown in the new-environment dialog, written out rather than
+   * interpolated so the braces survive the template.
+   */
+  protected readonly variableSyntax: string = '{{base_url}}';
 
   /**
    * Holds the status-strip contribution. Injected purely to instantiate it: it publishes from its own
@@ -354,10 +372,17 @@ export class ApiExplorerView implements OnInit, OnDestroy, ApiExplorerCommandHan
   }
 
   /**
-   * Adds a collection.
+   * Opens the dialog that names a new collection.
    */
   public newCollection(): void {
-    this.workspace.addCollection('New collection');
+    this.prompts.promptCollection();
+  }
+
+  /**
+   * Opens the dialog that names a new environment.
+   */
+  public newEnvironment(): void {
+    this.prompts.promptEnvironment();
   }
 
   /**

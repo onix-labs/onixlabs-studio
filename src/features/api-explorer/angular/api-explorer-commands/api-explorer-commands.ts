@@ -49,9 +49,14 @@ export interface ApiExplorerCommandHandler {
   newRequest(): void;
 
   /**
-   * Adds a collection.
+   * Names and adds a collection.
    */
   newCollection(): void;
+
+  /**
+   * Names and adds an environment.
+   */
+  newEnvironment(): void;
 
   /**
    * Cycles to the next environment, so the user can switch target without leaving the ribbon.
@@ -147,10 +152,17 @@ export class ApiExplorerCommands {
   }
 
   /**
-   * Adds a collection.
+   * Names and adds a collection.
    */
   public newCollection(): void {
     this.handler()?.newCollection();
+  }
+
+  /**
+   * Names and adds an environment.
+   */
+  public newEnvironment(): void {
+    this.handler()?.newEnvironment();
   }
 
   /**

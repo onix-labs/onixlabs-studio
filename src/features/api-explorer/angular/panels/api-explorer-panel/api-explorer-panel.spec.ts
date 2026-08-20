@@ -5,6 +5,7 @@ import { TreeRow } from '@shared/angular/components/tree-view/tree-view';
 import { Icon } from '@shared/angular/icons/icon';
 import { ApiFolder, HttpOutcome, ResolvedHttpRequest } from '@shared/api/api-client-types';
 import { ApiHttp } from '../../api-http/api-http';
+import { ApiPrompts } from '../../api-prompts/api-prompts';
 import { ApiWorkspace } from '../../api-workspace/api-workspace';
 import { ApiExplorerPanel } from './api-explorer-panel';
 
@@ -87,7 +88,7 @@ describe('ApiExplorerPanel', () => {
     globalThis.localStorage?.clear();
     await TestBed.configureTestingModule({
       imports: [ApiExplorerPanel],
-      providers: [ApiWorkspace, { provide: ApiHttp, useClass: FakeHttp }],
+      providers: [ApiWorkspace, ApiPrompts, { provide: ApiHttp, useClass: FakeHttp }],
     }).compileComponents();
 
     fixture = TestBed.createComponent(ApiExplorerPanel);
@@ -135,14 +136,39 @@ describe('ApiExplorerPanel', () => {
     expect(request?.disabled).toBe(true);
   });
 
-  it('onMoreAction_newCollection_opensTheNamingDialogRatherThanAddingOneOutright', () => {
+  it('onMoreAction_newCollection_raisesTheSharedDialogRatherThanAddingOneOutright', () => {
+    const prompts: ApiPrompts = TestBed.inject(ApiPrompts);
     const before: number = workspace.folders().length;
 
     panel().onMoreAction('new-collection');
     fixture.detectChanges();
 
+    // The dialog is the view's, so the menu and the ribbon's New group raise the same one.
+    expect(prompts.collectionOpen()).toBe(true);
     expect(workspace.folders()).toHaveLength(before);
-    expect((fixture.nativeElement as HTMLElement).textContent).toContain('New collection');
+  });
+
+  it('onMoreAction_newEnvironment_raisesTheSharedDialog', () => {
+    const prompts: ApiPrompts = TestBed.inject(ApiPrompts);
+
+    panel().onMoreAction('new-environment');
+    fixture.detectChanges();
+
+    expect(prompts.environmentOpen()).toBe(true);
+  });
+
+  it('collectionAddedElsewhere_isUnfoldedAndSelected', () => {
+    const prompts: ApiPrompts = TestBed.inject(ApiPrompts);
+
+    // Added through the ribbon's dialog rather than this panel: it must still arrive open, or it
+    // reads as though nothing happened.
+    prompts.promptCollection();
+    prompts.collectionName.set('Orders');
+    const created: ApiFolder | null = prompts.confirmCollection();
+    workspace.addRequest(created!.id, { name: 'List orders' });
+    fixture.detectChanges();
+
+    expect(labels()).toContain('List orders');
   });
 
   it('collapseAll_thenExpandAll_foldsAndUnfoldsEveryBranch', () => {

@@ -2,6 +2,8 @@ import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@a
 import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host';
 import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button';
 import { RibbonStripGroup } from '@shared/angular/components/ribbon-strip/ribbon-strip-group/ribbon-strip-group';
+import { RibbonStripButtonSmall } from '@shared/angular/components/ribbon-strip/ribbon-strip-button-small/ribbon-strip-button-small';
+import { RibbonStripColumn } from '@shared/angular/components/ribbon-strip/ribbon-strip-column/ribbon-strip-column';
 import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/ribbon-strip-overflow/ribbon-strip-overflow';
 import {
   RibbonStripMenuButton,
@@ -16,16 +18,25 @@ import { ApiExplorerCommands } from '../api-explorer-commands/api-explorer-comma
 const VARIANT_SAVE_AS: string = 'save-as';
 
 /**
- * The contextual ribbon shown while an API Explorer tab is active: save the collection, send the open
- * request, add to the tree, and switch the environment every send resolves against. Its actions drive
- * the active view through the {@link ApiExplorerCommands} registry.
+ * The contextual ribbon shown while an API Explorer tab is active: save the collection, add to the
+ * tree, and switch the environment every send resolves against. Its actions drive the active view
+ * through the {@link ApiExplorerCommands} registry.
  *
  * The File group is deliberately the code editor's, down to the Save-As item hanging off the Save
- * button: an API document is a file like any other, and this is where a user reaches for it.
+ * button: an API document is a file like any other, and this is where a user reaches for it. Sending
+ * is deliberately absent: it acts on the request open in the well, not on the tab, so it lives in
+ * that request's own tool strip where the URL it will send is in view.
  */
 @Component({
   selector: 'app-api-explorer-ribbon',
-  imports: [RibbonStripOverflow, RibbonStripGroup, RibbonStripButton, RibbonStripMenuButton],
+  imports: [
+    RibbonStripOverflow,
+    RibbonStripGroup,
+    RibbonStripButton,
+    RibbonStripButtonSmall,
+    RibbonStripColumn,
+    RibbonStripMenuButton,
+  ],
   templateUrl: './api-explorer-ribbon.html',
   hostDirectives: [RibbonHost],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -40,16 +51,6 @@ export class ApiExplorerRibbon {
    * Holds the command registry the buttons drive the active view through.
    */
   private readonly commands: ApiExplorerCommands = inject(ApiExplorerCommands);
-
-  /**
-   * Gets whether a request is open and can be sent.
-   */
-  protected readonly canSend: Signal<boolean> = this.commands.canSend;
-
-  /**
-   * Gets whether the open request is in flight, choosing between Send and Cancel.
-   */
-  protected readonly sending: Signal<boolean> = this.commands.sending;
 
   /**
    * Gets the label of the environment button: the active environment's name, or an invitation to pick
@@ -86,13 +87,6 @@ export class ApiExplorerRibbon {
   }
 
   /**
-   * Sends the open request, or cancels it when it is already in flight.
-   */
-  protected onSend(): void {
-    this.commands.send();
-  }
-
-  /**
    * Adds a request.
    */
   protected onNewRequest(): void {
@@ -100,10 +94,17 @@ export class ApiExplorerRibbon {
   }
 
   /**
-   * Adds a collection.
+   * Names and adds a collection.
    */
   protected onNewCollection(): void {
     this.commands.newCollection();
+  }
+
+  /**
+   * Names and adds an environment.
+   */
+  protected onNewEnvironment(): void {
+    this.commands.newEnvironment();
   }
 
   /**

@@ -1,1 +1,82 @@
 <app-dock-container />
+
+<!-- The naming dialogs live at the view's level, not in the explorer panel: both the panel's
+     more-actions menu and the ribbon's New group raise them, and the panel can be closed while the
+     ribbon cannot. A collection is named as it is created — the tree is the user's filing system, and
+     "New collection" renamed later is how it ends up full of them. -->
+<app-modal
+  [open]="prompts.collectionOpen()"
+  [width]="24"
+  ariaLabel="New collection"
+  (dismiss)="prompts.cancelCollection()"
+>
+  <ng-template appModalContent>
+    <h2 class="api-explorer__dialog-title">New collection</h2>
+    <p class="api-explorer__dialog-message">
+      A collection groups the requests of one API. It is what a saved API document holds.
+    </p>
+    <app-text-field
+      class="api-explorer__dialog-field"
+      placeholder="Collection name"
+      ariaLabel="Collection name"
+      [value]="prompts.collectionName()"
+      (valueChange)="prompts.collectionName.set($event)"
+      (enter)="prompts.confirmCollection()"
+      (escape)="prompts.cancelCollection()"
+    />
+    <div class="api-explorer__dialog-actions">
+      <app-button label="Cancel" (click)="prompts.cancelCollection()" />
+      <app-button
+        variant="solid"
+        label="Add"
+        [disabled]="prompts.collectionName().trim() === ''"
+        (click)="prompts.confirmCollection()"
+      />
+    </div>
+  </ng-template>
+</app-modal>
+
+<!-- An environment is a name and the address its requests are written against; the address is stored
+     as the `base_url` variable, which is what `{{ '{{base_url}}' }}/orders` in a request resolves to. -->
+<app-modal
+  [open]="prompts.environmentOpen()"
+  [width]="26"
+  ariaLabel="New environment"
+  (dismiss)="prompts.cancelEnvironment()"
+>
+  <ng-template appModalContent>
+    <h2 class="api-explorer__dialog-title">New environment</h2>
+    <p class="api-explorer__dialog-message">
+      Requests reference an environment's variables as <code>{{ variableSyntax }}</code
+      >. The root address is stored as <code>base_url</code>, so the same request can be sent at
+      local, staging and production.
+    </p>
+    <app-text-field
+      class="api-explorer__dialog-field"
+      placeholder="Environment name"
+      ariaLabel="Environment name"
+      [value]="prompts.environmentName()"
+      (valueChange)="prompts.environmentName.set($event)"
+      (enter)="prompts.confirmEnvironment()"
+      (escape)="prompts.cancelEnvironment()"
+    />
+    <app-text-field
+      class="api-explorer__dialog-field"
+      placeholder="https://api.example.com"
+      ariaLabel="Root address"
+      [value]="prompts.environmentRootUrl()"
+      (valueChange)="prompts.environmentRootUrl.set($event)"
+      (enter)="prompts.confirmEnvironment()"
+      (escape)="prompts.cancelEnvironment()"
+    />
+    <div class="api-explorer__dialog-actions">
+      <app-button label="Cancel" (click)="prompts.cancelEnvironment()" />
+      <app-button
+        variant="solid"
+        label="Add"
+        [disabled]="prompts.environmentName().trim() === ''"
+        (click)="prompts.confirmEnvironment()"
+      />
+    </div>
+  </ng-template>
+</app-modal>
