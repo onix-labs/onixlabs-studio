@@ -1,0 +1,99 @@
+// The shared name/value editor, drawn as a grid rather than as a column of form fields: one framed
+// table, cells that butt against each other with rules between them, and an editor that fills its
+// cell instead of sitting inside it as a box. A boxed field in a boxed cell reads as a form; this
+// reads as the small spreadsheet it is.
+
+:host {
+  display: block;
+  min-inline-size: 0;
+}
+
+.property-grid {
+  // The frame. Cell rules are drawn by the cells themselves; clipping to the rounded frame is what
+  // stops the first and last of them poking out of its corners.
+  --property-grid-line: var(--body-border-color);
+
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 0;
+  border: 0.0625rem solid var(--property-grid-line);
+  border-radius: calc(0.4rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  overflow: hidden;
+}
+
+// Every row shares one column template, so the headings sit over their cells at any width. The value
+// column is the wider of the two: values are longer than the keys that name them.
+.property-grid__row {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr 1.5rem;
+  align-items: stretch;
+  min-block-size: 1.5rem;
+  min-inline-size: 0;
+  border-block-end: 0.0625rem solid var(--property-grid-line);
+
+  &:last-child {
+    border-block-end: none;
+  }
+
+  &:hover:not(.property-grid__row--header) {
+    background: var(--accent-surface-background-color);
+  }
+}
+
+:host(.is-checkable) .property-grid__row {
+  grid-template-columns: 1.5rem 1fr 1.4fr 1.5rem;
+}
+
+// The header names the columns and reads as chrome rather than as data.
+.property-grid__row--header {
+  background: var(--form-control-background-color);
+}
+
+// A cell is the box; whatever it holds fills it. The rule between cells belongs to the cell, so a
+// row is one continuous line rather than a set of gaps.
+.property-grid__cell {
+  display: flex;
+  align-items: center;
+  min-inline-size: 0;
+  border-inline-end: 0.0625rem solid var(--property-grid-line);
+
+  &:last-child {
+    border-inline-end: none;
+  }
+}
+
+.property-grid__cell--heading {
+  padding-inline: 0.45rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--form-muted-foreground-color);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.property-grid__cell--tick {
+  justify-content: center;
+}
+
+// The remove button is quiet until its row is hovered or the button itself is focused, so a long grid
+// is a column of values rather than a column of buttons.
+.property-grid__cell--gutter {
+  justify-content: center;
+  opacity: 0;
+  transition: var(--hover-transition);
+}
+
+.property-grid__row:hover .property-grid__cell--gutter,
+.property-grid__cell--gutter:focus-within {
+  opacity: 1;
+}
+
+// The blank row is the invitation to add a property, so it is the one row that shows its
+// placeholders; a stored row with an empty value shows an empty cell, not a hint.
+.property-grid__row--draft {
+  color: var(--form-muted-foreground-color);
+}

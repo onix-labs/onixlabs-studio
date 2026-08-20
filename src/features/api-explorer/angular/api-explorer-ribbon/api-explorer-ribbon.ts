@@ -1,19 +1,41 @@
-import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host';
-import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button';
 import { RibbonStripGroup } from '@shared/angular/components/ribbon-strip/ribbon-strip-group/ribbon-strip-group';
+import { RibbonStripButtonSmall } from '@shared/angular/components/ribbon-strip/ribbon-strip-button-small/ribbon-strip-button-small';
+import { RibbonStripColumn } from '@shared/angular/components/ribbon-strip/ribbon-strip-column/ribbon-strip-column';
 import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/ribbon-strip-overflow/ribbon-strip-overflow';
+import {
+  RibbonStripMenuButton,
+  RibbonMenuItem,
+} from '@shared/angular/components/ribbon-strip/ribbon-strip-menu-button/ribbon-strip-menu-button';
 import { Icon } from '@shared/angular/icons/icon';
 import { ApiExplorerCommands } from '../api-explorer-commands/api-explorer-commands';
 
 /**
- * The contextual ribbon shown while an API Explorer tab is active: send the open request, add to the
- * tree, and switch the environment every send resolves against. Its actions drive the active view
- * through the {@link ApiExplorerCommands} registry.
+ * Identifies the Save-As item in the Save menu button's dropdown.
+ */
+const VARIANT_SAVE_AS: string = 'save-as';
+
+/**
+ * The contextual ribbon shown while an API Explorer tab is active: save the collection, and add to
+ * the tree. Its actions drive the active view through the {@link ApiExplorerCommands} registry.
+ *
+ * The File group is deliberately the code editor's, down to the Save-As item hanging off the Save
+ * button: an API document is a file like any other, and this is where a user reaches for it. What is
+ * absent is as deliberate: sending acts on the request open in the well rather than on the tab, so it
+ * lives in that request's own tool strip beside the URL it will send, and the environment is chosen
+ * in the explorer tree — where the rest of the tree it belongs to is — and reported in the status
+ * strip.
  */
 @Component({
   selector: 'app-api-explorer-ribbon',
-  imports: [RibbonStripOverflow, RibbonStripGroup, RibbonStripButton],
+  imports: [
+    RibbonStripOverflow,
+    RibbonStripGroup,
+    RibbonStripButtonSmall,
+    RibbonStripColumn,
+    RibbonStripMenuButton,
+  ],
   templateUrl: './api-explorer-ribbon.html',
   hostDirectives: [RibbonHost],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -30,28 +52,29 @@ export class ApiExplorerRibbon {
   private readonly commands: ApiExplorerCommands = inject(ApiExplorerCommands);
 
   /**
-   * Gets whether a request is open and can be sent.
+   * Gets the extra actions offered by the Save menu button's dropdown.
    */
-  protected readonly canSend: Signal<boolean> = this.commands.canSend;
+  protected readonly saveItems: readonly RibbonMenuItem[] = [
+    { id: VARIANT_SAVE_AS, label: 'Save As', icon: Icon.SAVE_AS },
+  ];
 
   /**
-   * Gets whether the open request is in flight, choosing between Send and Cancel.
+   * Saves the collection to its file, asking for one when it is still untitled.
    */
-  protected readonly sending: Signal<boolean> = this.commands.sending;
+  protected onSave(): void {
+    this.commands.saveDocument();
+  }
 
   /**
-   * Gets the label of the environment button: the active environment's name, or an invitation to pick
-   * one when none is active.
+   * Runs the action chosen from the Save menu button's dropdown.
+   * @param id The chosen save variant's identifier.
    */
-  protected readonly environmentLabel: Signal<string> = computed(
-    (): string => this.commands.environmentName() ?? 'No environment',
-  );
-
-  /**
-   * Sends the open request, or cancels it when it is already in flight.
-   */
-  protected onSend(): void {
-    this.commands.send();
+  protected onSaveVariant(id: string): void {
+    if (id === VARIANT_SAVE_AS) {
+      this.commands.saveDocumentAs();
+      return;
+    }
+    this.commands.saveDocument();
   }
 
   /**
@@ -62,16 +85,16 @@ export class ApiExplorerRibbon {
   }
 
   /**
-   * Adds a collection.
+   * Names and adds a collection.
    */
   protected onNewCollection(): void {
     this.commands.newCollection();
   }
 
   /**
-   * Switches to the next environment.
+   * Names and adds an environment.
    */
-  protected onCycleEnvironment(): void {
-    this.commands.cycleEnvironment();
+  protected onNewEnvironment(): void {
+    this.commands.newEnvironment();
   }
 }

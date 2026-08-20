@@ -12,7 +12,9 @@
 
 // A compact icon button in a panel tool-strip. Hover and toggled states use the shared accent-surface
 // treatment — a subtle accent fill with a matching border — so panel controls read exactly like the
-// title-strip and ribbon buttons. The border is transparent when idle so the box never jumps.
+// title-strip and ribbon buttons. The border is transparent when idle so the box never jumps. The text
+// size is the strip's (`app-panel-toolbar`), not this class's, so a raw button and an `app-button` in
+// the same strip are the same size.
 .panel-toolbar__button {
   display: inline-flex;
   align-items: center;
@@ -22,7 +24,6 @@
   padding: 0 0.35rem;
   gap: 0.3rem;
   font: inherit;
-  font-size: 0.875rem;
   color: var(--dock-tab-foreground-color);
   background: transparent;
   border: 0.0625rem solid transparent;

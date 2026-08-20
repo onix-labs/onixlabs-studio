@@ -51,12 +51,15 @@
   }
 
   <!-- Every panel carries a tool strip beneath its title (or tab strip, in document wells). The
-       well gets an editor-flavoured stub set; tool panels fall back to the strip's defaults, unless the
-       active panel renders its own strip in its body (then the dock omits it here). -->
-  @if (isDocuments()) {
-    <app-dock-tool-strip class="dock-tab-group__tool-strip" [tools]="documentTools" />
-  } @else if (!activePanel()?.ownsToolStrip) {
-    <app-dock-tool-strip class="dock-tab-group__tool-strip" />
+       well gets an editor-flavoured stub set; tool panels fall back to the strip's defaults. Either
+       way, a panel that renders its own strip in its body takes the strip over entirely and the dock
+       omits it here — a request in the API well puts its name and its Send button there. -->
+  @if (!activePanel()?.ownsToolStrip) {
+    @if (isDocuments()) {
+      <app-dock-tool-strip class="dock-tab-group__tool-strip" [tools]="documentTools" />
+    } @else {
+      <app-dock-tool-strip class="dock-tab-group__tool-strip" />
+    }
   }
 
   <!-- Pressing the rail itself (never a tab, which carries its own drag) docks the whole group. -->

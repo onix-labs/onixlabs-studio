@@ -7,29 +7,17 @@
       (valueChange)="rename($event)"
     />
 
-    <div class="environment__variables">
-      @for (row of rows(); track row.id) {
-        <div class="environment__variable">
-          <app-checkbox
-            [checked]="row.enabled"
-            [disabled]="row.name === '' && row.value === ''"
-            (checkedChange)="updateVariable(row.id, { enabled: $event })"
-          />
-          <app-text-field
-            [value]="row.name"
-            placeholder="Variable"
-            ariaLabel="Variable name"
-            (valueChange)="updateVariable(row.id, { name: $event })"
-          />
-          <app-text-field
-            [value]="row.value"
-            placeholder="Value"
-            ariaLabel="Variable value"
-            (valueChange)="updateVariable(row.id, { value: $event })"
-          />
-        </div>
-      }
-    </div>
+    <app-property-grid
+      class="environment__variables"
+      [rows]="environment.variables"
+      nameHeader="Variable"
+      valueHeader="Value"
+      namePlaceholder="Variable"
+      ariaLabel="Environment variables"
+      (rowChange)="updateVariable($event)"
+      (add)="addVariable($event)"
+      (remove)="removeVariable($event)"
+    />
 
     <p class="environment__hint">
       Reference these in any request as <code>{{ variableSyntax }}</code

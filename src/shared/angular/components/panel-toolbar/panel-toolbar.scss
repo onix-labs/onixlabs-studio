@@ -5,6 +5,12 @@
 //
 // The height is the padding either side of a full-height control (--control-height), so the two stay
 // in step: a control that grew inside a fixed strip would be clipped by it.
+//
+// The strip also owns the TEXT SIZE of what it hosts, which is why it is stated here rather than left
+// to each control. It is dense chrome — a mini tool strip — and a button that inherited the ambient
+// body size would tower over the dropdown or field beside it (the control atoms pin 0.8rem of their
+// own). Buttons take their font from the strip, so one declaration keeps every strip's controls in
+// step; a control that genuinely needs a different size still overrides it.
 :host {
   box-sizing: border-box;
   flex: 0 0 auto;
@@ -13,5 +19,6 @@
   gap: 0.375rem;
   block-size: calc(var(--control-height) + 1rem);
   padding: 0.5rem;
+  font-size: 0.8rem;
   user-select: none;
 }

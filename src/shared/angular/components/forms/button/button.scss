@@ -1,7 +1,10 @@
 // The host is the layout box a caller positions; the button inside fills it, so a call site can
-// stretch a button (a grid track, flex: 1) without reaching into its styling.
+// stretch a button (a grid track, flex: 1) without reaching into its styling. Its contents are
+// centred rather than stretched, so a button dropped into a taller row keeps its glyph and label on
+// one line through the middle instead of being pulled to the row's height.
 :host {
   display: inline-flex;
+  align-items: center;
 }
 
 // Every measurement of a button lives here. The reference is the clear-recent-items pair, whose
@@ -42,6 +45,14 @@
     opacity: 0.5;
     cursor: default;
   }
+}
+
+// The label's box is trimmed to the text it draws, so it is the same height as the glyph beside it
+// (which the icon atom already draws at `line-height: 1`). Without this the label carries the font's
+// default leading — more above the text than below — and the two boxes centre at slightly different
+// heights, which is what reads as an icon sitting a hair high next to its label.
+.button__label {
+  line-height: 1;
 }
 
 // A glyph with no label is a square: the height comes from the shared control height, and the width

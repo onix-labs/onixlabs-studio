@@ -4,7 +4,10 @@ import { TEST_DOCK_BLUEPRINT } from '../../../services/dock-layout/dock-test-blu
 import { DockDrag } from '../../../services/dock-layout/dock-drag';
 import { DockFloating } from '../../../services/dock-layout/dock-floating';
 import { mkStack, StackNode } from '../../../services/dock-layout/dock-node';
+import { DockPanelRegistry } from '../../../services/dock-layout/dock-panel-registry';
 import { DockState } from '../../../services/dock-layout/dock-state';
+import { Icon } from '@shared/angular/icons/icon';
+import { DockPanelPlaceholder } from '../dock-panel-placeholder/dock-panel-placeholder';
 import { findStackOfPanel } from '../../../services/dock-layout/dock-tree';
 import { DockTabGroup } from './dock-tab-group';
 
@@ -133,6 +136,40 @@ describe('DockTabGroup', () => {
     expect(drag.active()).toBe(false);
 
     document.dispatchEvent(new MouseEvent('mouseup'));
+  });
+
+  it('render_whenTheActiveDocumentOwnsItsToolStrip_theWellRendersNone', () => {
+    // A request in the API well puts its own name and Send in the strip, so the dock must not draw
+    // the editor-flavoured one above it.
+    TestBed.inject(DockPanelRegistry).register({
+      id: 'doc-with-strip',
+      title: 'Request',
+      icon: Icon.CODE,
+      role: 'document',
+      component: DockPanelPlaceholder,
+      ownsToolStrip: true,
+    });
+    render(mkStack('document', ['doc-with-strip']));
+
+    const element: HTMLElement = fixture.nativeElement as HTMLElement;
+    expect(element.querySelector('app-dock-tool-strip')).toBeNull();
+    // The frame's top edge moves onto the body, which would otherwise be drawn by that strip.
+    expect(element.classList.contains('dock-tab-group--panel-strip')).toBe(true);
+  });
+
+  it('render_whenTheActiveDocumentHasNoStripOfItsOwn_theWellRendersOne', () => {
+    TestBed.inject(DockPanelRegistry).register({
+      id: 'plain-doc',
+      title: 'File',
+      icon: Icon.CODE,
+      role: 'document',
+      component: DockPanelPlaceholder,
+    });
+    render(mkStack('document', ['plain-doc']));
+
+    const element: HTMLElement = fixture.nativeElement as HTMLElement;
+    expect(element.querySelector('app-dock-tool-strip')).not.toBeNull();
+    expect(element.classList.contains('dock-tab-group--panel-strip')).toBe(false);
   });
 
   it('render_whenStackHasAnActivePanel_marksTheActiveTab', () => {

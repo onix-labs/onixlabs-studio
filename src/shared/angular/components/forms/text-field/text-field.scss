@@ -37,6 +37,31 @@
   }
 }
 
+// The seamless variant: no box of its own, filling the cell that frames it. The border stays in the
+// box model (transparent) so taking the accent on focus cannot shift the text by a pixel, and the
+// height follows the cell rather than the shared control height — a grid row is denser than a strip.
+:host(.text-field--seamless) {
+  display: flex;
+  inline-size: 100%;
+  block-size: 100%;
+}
+
+:host(.text-field--seamless) .text-field {
+  block-size: 100%;
+  background: transparent;
+  border-color: transparent;
+  border-radius: 0;
+  corner-shape: normal;
+
+  &:hover {
+    border-color: transparent;
+  }
+
+  &:focus-visible {
+    border-color: var(--accent-color);
+  }
+}
+
 // A search field's glyph sits inside the box at the leading edge, with the text inset past it.
 .text-field__glyph {
   position: absolute;

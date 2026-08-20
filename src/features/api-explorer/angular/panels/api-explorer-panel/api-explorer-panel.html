@@ -1,26 +1,12 @@
-<div class="api-explorer__actions">
-  <app-button
-    size="small"
-    [icon]="Icon.API_COLLECTION"
-    label="Collection"
-    tooltip="Add a collection"
-    (click)="addCollection()"
-  />
-  <app-button
-    size="small"
-    [icon]="Icon.API_REQUEST"
-    label="Request"
-    tooltip="Add a request to the selected collection"
-    (click)="addRequest()"
-  />
-  <app-button
-    size="small"
-    [icon]="Icon.API_ENVIRONMENT"
-    label="Environment"
-    tooltip="Add an environment"
-    (click)="addEnvironment()"
-  />
-</div>
+<app-explorer-toolbar
+  [query]="query()"
+  searchPlaceholder="Search APIs"
+  [moreItems]="moreItems()"
+  (queryChange)="query.set($event)"
+  (expandAll)="expandAll()"
+  (collapseAll)="collapseAll()"
+  (moreSelected)="onMoreAction($event)"
+/>
 
 <app-tree-view
   [rows]="rows()"

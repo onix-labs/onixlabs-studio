@@ -24,9 +24,24 @@ export interface ApiExplorerCommandHandler {
   readonly environmentName: Signal<string | null>;
 
   /**
+   * Gets whether the document has edits that have not been written to its file.
+   */
+  readonly documentDirty: Signal<boolean>;
+
+  /**
    * Sends the request open in the well, or cancels it when it is already in flight.
    */
   send(): void;
+
+  /**
+   * Saves the workspace to its file, asking for one when it is still untitled.
+   */
+  saveDocument(): void;
+
+  /**
+   * Saves the workspace to a newly chosen file.
+   */
+  saveDocumentAs(): void;
 
   /**
    * Adds a request to the first collection and opens it.
@@ -34,9 +49,14 @@ export interface ApiExplorerCommandHandler {
   newRequest(): void;
 
   /**
-   * Adds a collection.
+   * Names and adds a collection.
    */
   newCollection(): void;
+
+  /**
+   * Names and adds an environment.
+   */
+  newEnvironment(): void;
 
   /**
    * Cycles to the next environment, so the user can switch target without leaving the ribbon.
@@ -78,6 +98,13 @@ export class ApiExplorerCommands {
   );
 
   /**
+   * Gets whether the active view's document has unsaved edits.
+   */
+  public readonly documentDirty: Signal<boolean> = computed(
+    (): boolean => this.handler()?.documentDirty() ?? false,
+  );
+
+  /**
    * Registers the active view's handler.
    * @param handler The handler to register.
    */
@@ -104,6 +131,20 @@ export class ApiExplorerCommands {
   }
 
   /**
+   * Saves the workspace to its file.
+   */
+  public saveDocument(): void {
+    this.handler()?.saveDocument();
+  }
+
+  /**
+   * Saves the workspace to a newly chosen file.
+   */
+  public saveDocumentAs(): void {
+    this.handler()?.saveDocumentAs();
+  }
+
+  /**
    * Adds a request.
    */
   public newRequest(): void {
@@ -111,10 +152,17 @@ export class ApiExplorerCommands {
   }
 
   /**
-   * Adds a collection.
+   * Names and adds a collection.
    */
   public newCollection(): void {
     this.handler()?.newCollection();
+  }
+
+  /**
+   * Names and adds an environment.
+   */
+  public newEnvironment(): void {
+    this.handler()?.newEnvironment();
   }
 
   /**

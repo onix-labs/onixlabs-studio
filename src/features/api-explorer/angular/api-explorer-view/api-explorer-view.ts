@@ -2,12 +2,14 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  effect,
   inject,
   input,
   InputSignal,
   OnDestroy,
   OnInit,
   Signal,
+  untracked,
 } from '@angular/core';
 import { ConversationContext } from '@shared/api/agent-conversation-channels';
 import { Agent } from '@shared/angular/services/agent/agent';
@@ -18,6 +20,10 @@ import {
   ConversationContextResolver,
   GLOBAL_CONVERSATION_CONTEXT,
 } from '@shared/angular/services/agent-conversations/agent-conversation-context';
+import { Button } from '@shared/angular/components/forms/button/button';
+import { TextField } from '@shared/angular/components/forms/text-field/text-field';
+import { Modal } from '@shared/angular/components/modal/modal';
+import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { DockContainer } from '@shared/angular/components/dock-layout/dock-container/dock-container';
 import { DOCK_BLUEPRINT } from '@shared/angular/services/dock-layout/dock-blueprint';
 import { DockAutoHide } from '@shared/angular/services/dock-layout/dock-auto-hide';
@@ -35,6 +41,10 @@ import { TerminalSessions } from '@shared/angular/services/terminal-sessions/ter
 import { StackNode } from '@shared/angular/services/dock-layout/dock-node';
 import { firstStackOfRole } from '@shared/angular/services/dock-layout/dock-tree';
 import { Log } from '@shared/angular/services/log/log';
+import { ApiFiles, OpenApiDocument } from '@shared/angular/services/api-files/api-files';
+import { Tabs } from '@shared/angular/services/tabs/tabs';
+import { UnsavedDocument } from '@shared/angular/services/unsaved-work/unsaved-work';
+import { UnsavedWorkRegistry } from '@shared/angular/services/unsaved-work/unsaved-work-registry';
 import { ApiEnvironment, ApiFolder, ApiRequest } from '@shared/api/api-client-types';
 import { ApiAgentCapabilities } from '../api-agent-capabilities/api-agent-capabilities';
 import { API_EXPLORER_DOCK_BLUEPRINT } from '../api-explorer-dock-blueprint';
@@ -43,6 +53,7 @@ import {
   ApiExplorerCommands,
 } from '../api-explorer-commands/api-explorer-commands';
 import { ApiExplorerStatus } from '../api-explorer-status/api-explorer-status';
+import { ApiPrompts } from '../api-prompts/api-prompts';
 import { ApiHttp } from '../api-http/api-http';
 import { ApiRequestOpener } from '../api-request-opener/api-request-opener';
 import { ApiWorkspace } from '../api-workspace/api-workspace';
@@ -63,7 +74,7 @@ import { ApiWorkspace } from '../api-workspace/api-workspace';
  */
 @Component({
   selector: 'app-api-explorer-view',
-  imports: [DockContainer],
+  imports: [DockContainer, Modal, ModalContent, Button, TextField],
   templateUrl: './api-explorer-view.html',
   styleUrl: './api-explorer-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -71,6 +82,7 @@ import { ApiWorkspace } from '../api-workspace/api-workspace';
     // The API document model and its transport: one per tab, shared by every panel in it.
     ApiHttp,
     ApiWorkspace,
+    ApiPrompts,
     ApiRequestOpener,
     ApiExplorerStatus,
     // The agent's in-app tools, registered against this tab's workspace for as long as it is open.
@@ -162,6 +174,11 @@ export class ApiExplorerView implements OnInit, OnDestroy, ApiExplorerCommandHan
   );
 
   /**
+   * Gets whether the document has edits not yet written to its file.
+   */
+  public readonly documentDirty: Signal<boolean> = computed((): boolean => this.workspace.dirty());
+
+  /**
    * Holds the API workspace, so the view can open a request on first show.
    */
   private readonly workspace: ApiWorkspace = inject(ApiWorkspace);
@@ -170,6 +187,18 @@ export class ApiExplorerView implements OnInit, OnDestroy, ApiExplorerCommandHan
    * Holds the opener that puts a request into the well.
    */
   private readonly opener: ApiRequestOpener = inject(ApiRequestOpener);
+
+  /**
+   * Holds the naming dialogs this view renders, raised from here and from the explorer panel's
+   * more-actions menu.
+   */
+  protected readonly prompts: ApiPrompts = inject(ApiPrompts);
+
+  /**
+   * Gets the variable syntax shown in the new-environment dialog, written out rather than
+   * interpolated so the braces survive the template.
+   */
+  protected readonly variableSyntax: string = '{{base_url}}';
 
   /**
    * Holds the status-strip contribution. Injected purely to instantiate it: it publishes from its own
@@ -184,9 +213,47 @@ export class ApiExplorerView implements OnInit, OnDestroy, ApiExplorerCommandHan
   private readonly capabilities: ApiAgentCapabilities = inject(ApiAgentCapabilities);
 
   /**
+   * Holds the registry an API document opened from disk is handed over by.
+   */
+  private readonly apiFiles: ApiFiles = inject(ApiFiles);
+
+  /**
+   * Holds the top-level tab registry, kept in step with the document's name and dirty state.
+   */
+  private readonly tabs: Tabs = inject(Tabs);
+
+  /**
+   * Holds the registry of unsaved work the close flows walk.
+   */
+  private readonly unsavedWork: UnsavedWorkRegistry = inject(UnsavedWorkRegistry);
+
+  /**
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds the function that removes this view from the unsaved-work registry.
+   */
+  private releaseUnsavedWork: (() => void) | null = null;
+
+  /**
+   * Keeps the owning tab titled after the document and marked when it has unsaved edits, exactly as a
+   * code tab is.
+   */
+  public constructor() {
+    effect((): void => {
+      const name: string = this.workspace.documentName();
+      const dirty: boolean = this.workspace.dirty();
+      const tabId: string = this.tabId();
+      untracked((): void => {
+        if (this.workspace.filePath() !== null) {
+          this.tabs.rename(tabId, name);
+        }
+        this.tabs.setDirty(tabId, dirty);
+      });
+    });
+  }
 
   /**
    * Opens the first saved request into the well, so the tab lands on something sendable rather than an
@@ -199,20 +266,69 @@ export class ApiExplorerView implements OnInit, OnDestroy, ApiExplorerCommandHan
     this.commands.register(this);
     // Panels that need a globally-unique session id (the terminal) read the owning tab from here.
     this.tabContext.setTabId(this.tabId());
+
+    // A tab opened from a file loads it; one opened from the launcher carries on with the untitled
+    // scratch workspace the store holds.
+    const opened: OpenApiDocument | undefined = this.apiFiles.takeInitial(this.tabId());
+    if (opened !== undefined) {
+      this.workspace.load(opened.document, opened.path);
+    }
+
+    this.releaseUnsavedWork = this.unsavedWork.register(this);
     const first: ApiRequest | undefined = this.workspace.requests()[0];
     if (first !== undefined) {
       this.opener.open(first.id);
     }
     this.log.info('api-explorer.view', 'API Explorer opened', {
       requests: this.workspace.requests().length,
+      file: this.workspace.filePath(),
     });
   }
 
   /**
-   * Releases the ribbon's command registration, so the ribbon of a closed tab drives nothing.
+   * Releases the ribbon's command registration and the unsaved-work source, so the ribbon and the
+   * close flows of a closed tab drive nothing.
    */
   public ngOnDestroy(): void {
     this.commands.clear(this);
+    this.releaseUnsavedWork?.();
+  }
+
+  /**
+   * Lists this workspace as unsaved work when it is bound to a file with unwritten edits, so closing
+   * the window prompts for it. An untitled workspace is never listed: it is already in the store.
+   * @returns Returns the dirty document, or nothing.
+   */
+  public dirtyDocuments(): readonly UnsavedDocument[] {
+    return this.workspace.dirty()
+      ? [{ id: this.tabId(), name: this.workspace.documentName() }]
+      : [];
+  }
+
+  /**
+   * Lists this workspace as unsaved work when the closing tab is the one hosting it.
+   * @param tabId The closing tab's identifier.
+   * @returns Returns the dirty document, or nothing.
+   */
+  public dirtyDocumentsFor(tabId: string): readonly UnsavedDocument[] {
+    return tabId === this.tabId() ? this.dirtyDocuments() : [];
+  }
+
+  /**
+   * Saves this workspace on behalf of the close flows.
+   * @param id The document identifier, which is this tab's id.
+   * @returns Returns a promise resolving true when the document was saved.
+   */
+  public save(id: string): Promise<boolean> {
+    return id === this.tabId() ? this.workspace.save() : Promise.resolve(true);
+  }
+
+  /**
+   * Releases the document backing a tab. The workspace dies with the view, so there is nothing to
+   * release; the method exists because the close flows call it on every source.
+   */
+  public release(): void {
+    // Intentionally empty: this source's document is the view's own, released when the view is.
   }
 
   /**
@@ -231,6 +347,20 @@ export class ApiExplorerView implements OnInit, OnDestroy, ApiExplorerCommandHan
   }
 
   /**
+   * Saves the workspace to its file, asking for one when it is still untitled.
+   */
+  public saveDocument(): void {
+    void this.workspace.save();
+  }
+
+  /**
+   * Saves the workspace to a newly chosen file, binding the tab to it.
+   */
+  public saveDocumentAs(): void {
+    void this.workspace.saveAs();
+  }
+
+  /**
    * Adds a request to the first collection and opens it in the well.
    */
   public newRequest(): void {
@@ -242,10 +372,17 @@ export class ApiExplorerView implements OnInit, OnDestroy, ApiExplorerCommandHan
   }
 
   /**
-   * Adds a collection.
+   * Opens the dialog that names a new collection.
    */
   public newCollection(): void {
-    this.workspace.addCollection('New collection');
+    this.prompts.promptCollection();
+  }
+
+  /**
+   * Opens the dialog that names a new environment.
+   */
+  public newEnvironment(): void {
+    this.prompts.promptEnvironment();
   }
 
   /**

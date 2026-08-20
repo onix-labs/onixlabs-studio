@@ -47,6 +47,15 @@ describe('TextField', () => {
     expect(abandoned).toBe(1);
   });
 
+  it('variant_none_dropsTheFieldsOwnBoxSoItFillsWhatFramesIt', () => {
+    fixture.componentRef.setInput('variant', 'none');
+    fixture.detectChanges();
+
+    // A grid cell already draws the box; a second one inside it reads as a form rather than a grid.
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    expect(host.classList.contains('text-field--seamless')).toBe(true);
+  });
+
   it('search_wearsItsGlyph_andNamesItself', () => {
     fixture.componentRef.setInput('kind', 'search');
     fixture.componentRef.setInput('ariaLabel', 'Filter the tree');

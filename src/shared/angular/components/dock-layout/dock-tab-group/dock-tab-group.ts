@@ -75,6 +75,7 @@ const FALLBACK_FLOAT_RECT: Rect = { left: 120, top: 120, width: 360, height: 240
     '[class.dock-tab-group--empty]': 'isEmpty()',
     '[class.dock-tab-group--focused]': 'isFocused()',
     '[class.dock-tab-group--tabs-fill]': 'tabsFill()',
+    '[class.dock-tab-group--panel-strip]': 'panelOwnsToolStrip()',
     '(mousedown)': 'focusPanel()',
   },
 })
@@ -217,6 +218,15 @@ export class DockTabGroup {
    */
   protected readonly isEmpty: Signal<boolean> = computed(
     (): boolean => this.stack().panels.length === 0,
+  );
+
+  /**
+   * Gets a value indicating whether the active panel renders its own tool strip, in which case the
+   * dock renders none. In a document well this also moves the top of the editor frame onto the body,
+   * which would otherwise be drawn by the strip the dock is no longer rendering.
+   */
+  protected readonly panelOwnsToolStrip: Signal<boolean> = computed(
+    (): boolean => this.activePanel()?.ownsToolStrip === true,
   );
 
   /**

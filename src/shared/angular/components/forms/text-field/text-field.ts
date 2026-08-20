@@ -21,6 +21,14 @@ import { AppIcon } from '@shared/angular/components/icon/app-icon';
 export type TextFieldKind = 'text' | 'search';
 
 /**
+ * Names how much chrome a text field draws. `outline` is the ordinary boxed field; `none` draws no
+ * box at all and fills whatever it is placed in, for a field that is already inside a container that
+ * frames it — a grid cell, most obviously, where a box inside a box reads as a form rather than a
+ * grid. It still takes the accent on focus, so the cell being edited is unmistakable.
+ */
+export type TextFieldVariant = 'outline' | 'none';
+
+/**
  * Represents a single-line text input field.
  *
  * It owns every measurement and state of a text box — padding, radius, border, hover, the accent it
@@ -36,6 +44,7 @@ export type TextFieldKind = 'text' | 'search';
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     '[class.text-field--search]': "kind() === 'search'",
+    '[class.text-field--seamless]': "variant() === 'none'",
   },
 })
 export class TextField {
@@ -58,6 +67,12 @@ export class TextField {
    * Gets how the field presents itself: a plain box, or a search box with its leading glyph.
    */
   public readonly kind: InputSignal<TextFieldKind> = input<TextFieldKind>('text');
+
+  /**
+   * Gets how much chrome the field draws: its own box, or none at all so it fills the cell or row
+   * that already frames it.
+   */
+  public readonly variant: InputSignal<TextFieldVariant> = input<TextFieldVariant>('outline');
 
   /**
    * Gets a value indicating whether the field is disabled.

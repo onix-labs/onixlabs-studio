@@ -1,28 +1,33 @@
 <app-ribbon-overflow>
-  <app-ribbon-strip-group title="Request">
-    <app-ribbon-strip-button
-      [icon]="sending() ? Icon.STOP : Icon.SEND"
-      [label]="sending() ? 'Cancel' : 'Send'"
-      [disabled]="!canSend()"
-      (action)="onSend()"
-    />
-    <app-ribbon-strip-button
-      [icon]="Icon.API_REQUEST"
-      label="New Request"
-      (action)="onNewRequest()"
-    />
-    <app-ribbon-strip-button
-      [icon]="Icon.API_COLLECTION"
-      label="New Collection"
-      (action)="onNewCollection()"
+  <app-ribbon-strip-group title="File">
+    <app-ribbon-strip-menu-button
+      [icon]="Icon.SAVE"
+      label="Save"
+      [items]="saveItems"
+      (action)="onSave()"
+      (selected)="onSaveVariant($event)"
     />
   </app-ribbon-strip-group>
 
-  <app-ribbon-strip-group title="Environment">
-    <app-ribbon-strip-button
-      [icon]="Icon.API_ENVIRONMENT"
-      [label]="environmentLabel()"
-      (action)="onCycleEnvironment()"
-    />
+  <!-- The three things a collection is built out of. Send is not here: it belongs to the request open
+       in the well, and lives in that request's own tool strip. -->
+  <app-ribbon-strip-group title="New">
+    <app-ribbon-strip-column>
+      <app-ribbon-strip-button-small
+        [icon]="Icon.API_COLLECTION"
+        label="Collection"
+        (action)="onNewCollection()"
+      />
+      <app-ribbon-strip-button-small
+        [icon]="Icon.API_ENVIRONMENT"
+        label="Environment"
+        (action)="onNewEnvironment()"
+      />
+      <app-ribbon-strip-button-small
+        [icon]="Icon.API_REQUEST"
+        label="Request"
+        (action)="onNewRequest()"
+      />
+    </app-ribbon-strip-column>
   </app-ribbon-strip-group>
 </app-ribbon-overflow>

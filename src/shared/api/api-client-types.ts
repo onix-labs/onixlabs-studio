@@ -199,6 +199,76 @@ export interface ApiEnvironment {
 }
 
 /**
+ * The moniker every API document carries, so a file can be recognised as one before it is loaded.
+ * A `*.api.json` whose moniker is absent or different is not this application's document and is left
+ * to the text editor, rather than being read as one and silently mangled.
+ */
+export const API_DOCUMENT_KIND: string = 'onixlabs.studio.api';
+
+/**
+ * The file-name suffix an API document is saved under. It is a double extension on purpose: the
+ * document is ordinary JSON — legible, diffable, and editable in the code editor — while the `.api`
+ * part is what routes it to the API Explorer rather than to a text tab. A plain `.json` file is
+ * untouched by this.
+ */
+export const API_DOCUMENT_SUFFIX: string = '.api.json';
+
+/**
+ * The saved form of an API Explorer document: the environments, the collections and the requests of
+ * one API workspace, as they are written to disk.
+ *
+ * It is versioned from the outset so a later change to the request model can migrate rather than
+ * discard what a user has saved, and it is deliberately the same shape the view holds in memory —
+ * `folders` with a null `parentId` are the collections, the rest are folders within them.
+ */
+export interface ApiDocument {
+  /**
+   * Gets the moniker identifying this as an API Explorer document; always {@link API_DOCUMENT_KIND}.
+   */
+  readonly kind: string;
+
+  /**
+   * Gets the schema version of the document.
+   */
+  readonly version: number;
+
+  /**
+   * Gets the collections and the folders within them.
+   */
+  readonly folders: readonly ApiFolder[];
+
+  /**
+   * Gets the saved requests.
+   */
+  readonly requests: readonly ApiRequest[];
+
+  /**
+   * Gets the environments.
+   */
+  readonly environments: readonly ApiEnvironment[];
+
+  /**
+   * Gets the identifier of the active environment, or null when none is active.
+   */
+  readonly activeEnvironmentId: string | null;
+}
+
+/**
+ * The schema version this application writes.
+ */
+export const API_DOCUMENT_VERSION: number = 1;
+
+/**
+ * Determines whether a file name is an API document by its suffix. Name-based, so routing an opened
+ * file costs nothing: only a file that claims to be one is read and checked for its moniker.
+ * @param fileName The file name to test.
+ * @returns Returns true when the name ends with the API document suffix.
+ */
+export function isApiDocumentName(fileName: string): boolean {
+  return fileName.toLowerCase().endsWith(API_DOCUMENT_SUFFIX);
+}
+
+/**
  * A request resolved for sending: every `{{variable}}` substituted, every disabled row dropped, the
  * auth scheme folded into headers or query, and the body reduced to what goes on the wire. This — not
  * {@link ApiRequest} — is what crosses to the main process, so the engine performs exactly what it is

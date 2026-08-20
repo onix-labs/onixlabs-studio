@@ -38,17 +38,38 @@ interface TabGroup {
 }
 
 /**
- * Specifies the categories the open tabs are grouped under in the menu, in display order. Each entry
- * pairs a {@link TabType} with the plural heading shown above its tabs; categories with no open tabs
- * are omitted from the menu.
+ * Specifies the heading every {@link TabType} is grouped under in the menu, in display order —
+ * documents first, then the surfaces a user opens many of, and the singleton tool views last.
+ *
+ * It is a total map of the tab types on purpose. The menu is how a tab is reached once the strip
+ * overflows and starts to scroll, so a type missing from here is a tab the user cannot get back to;
+ * a hand-picked subset silently swallowed every tab type added after it was written. Declaring it as
+ * a `Record` makes adding a `TabType` without a heading a compile error.
+ *
+ * Headings may repeat, and one does: the singleton tool views share **Tools**, matching how the
+ * welcome screen offers them. A heading per singleton is a heading over a single row, which is how
+ * this menu ended up with more headings than tabs.
  */
-const TAB_CATEGORIES: readonly { readonly type: TabType; readonly label: string }[] = [
-  { type: 'directory', label: 'Workspaces' },
-  { type: 'code', label: 'Code Files' },
-  { type: 'markdown', label: 'Markdown Files' },
-  { type: 'terminal', label: 'Terminals' },
-  { type: 'agent', label: 'Agents' },
-  { type: 'settings', label: 'Settings' },
+const TAB_CATEGORY_LABELS: Readonly<Record<TabType, string>> = {
+  directory: 'Workspaces',
+  code: 'Code Files',
+  markdown: 'Markdown Files',
+  binary: 'Binary Files',
+  'api-explorer': 'API Explorers',
+  terminal: 'Terminals',
+  agent: 'Agents',
+  containers: 'Tools',
+  'model-manager': 'Tools',
+  'system-monitor': 'Tools',
+  'mission-control': 'Tools',
+  settings: 'Tools',
+};
+
+/**
+ * Lists the headings in display order, without repeats — the order the groups are built in.
+ */
+const TAB_CATEGORY_ORDER: readonly string[] = [
+  ...new Set<string>(Object.values(TAB_CATEGORY_LABELS)),
 ];
 
 /**
@@ -112,10 +133,12 @@ export class TitleStripTabMenu {
    */
   protected readonly groups: Signal<readonly TabGroup[]> = computed((): readonly TabGroup[] => {
     const open: readonly Tab[] = this.tabsService.tabs();
-    return TAB_CATEGORIES.map(
-      (category: { readonly type: TabType; readonly label: string }): TabGroup => ({
-        label: category.label,
-        tabs: open.filter((tab: Tab): boolean => tab.type === category.type),
+    return TAB_CATEGORY_ORDER.map(
+      (label: string): TabGroup => ({
+        label,
+        // Filtered from the open tabs rather than gathered per type, so tabs sharing a heading keep
+        // the order they have in the strip.
+        tabs: open.filter((tab: Tab): boolean => TAB_CATEGORY_LABELS[tab.type] === label),
       }),
     ).filter((group: TabGroup): boolean => group.tabs.length > 0);
   });

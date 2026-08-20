@@ -1,5 +1,10 @@
+// The glyph is centred within whatever box the host is given, not stretched to fill it: an icon
+// beside a label, or in a strip taller than the glyph, then sits on the middle line rather than being
+// pulled to the top of a stretched box.
 :host {
   display: inline-flex;
+  align-items: center;
+  justify-content: center;
   line-height: 1;
 }
 

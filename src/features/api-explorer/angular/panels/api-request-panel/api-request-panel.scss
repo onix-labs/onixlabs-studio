@@ -1,23 +1,30 @@
-// One request open in the API well. The panel scrolls as a whole rather than splitting request and
-// response into independently-scrolling halves: at spike scale, one scroll is easier to reason about
-// than a splitter, and a real splitter here should be the shared `app-panel-layout` rather than a
-// hand-rolled one.
+// One request open in the API well: the panel's own tool strip (its name and Send), then the request
+// and its response in one scroll rather than two independently-scrolling halves — at this scale one
+// scroll is easier to reason about than a splitter, and a real splitter here should be the shared
+// `app-panel-layout` rather than a hand-rolled one.
 
+// The tool strip is chrome and stays put; everything below it scrolls.
 :host {
-  display: block;
+  display: flex;
+  flex-direction: column;
   block-size: 100%;
-  overflow-y: auto;
+  min-block-size: 0;
 }
 
 .request {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   gap: 0.6rem;
+  min-block-size: 0;
   padding: 0.75rem;
+  overflow-y: auto;
 }
 
+// The request's name lives in the tool strip, sized so a long name has room without crowding Send.
 .request__name {
-  max-inline-size: 24rem;
+  flex: 0 1 22rem;
+  min-inline-size: 8rem;
 }
 
 .request__bar {
@@ -75,21 +82,6 @@
   flex-direction: column;
   gap: 0.5rem;
   max-inline-size: 40rem;
-}
-
-.request__fields {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-}
-
-// A name/value row: tick, key, value. The key column is narrower than the value, which is the ratio
-// these are actually read in.
-.request__field {
-  display: grid;
-  grid-template-columns: auto 1fr 1.6fr;
-  align-items: center;
-  gap: 0.4rem;
 }
 
 .request__hint {

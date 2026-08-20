@@ -1,16 +1,27 @@
 @if (request(); as request) {
-  <div class="request">
-    <!-- The name doubles as the tab title: renaming here re-titles the tab in the well. -->
-    <div class="request__name">
-      <app-text-field
-        [value]="request.name"
-        placeholder="Request name"
-        ariaLabel="Request name"
-        (valueChange)="rename($event)"
-      />
-    </div>
+  <!-- This request's tool strip, in the well's chrome where an editor's would be (the panel declares
+       `ownsToolStrip`, so the dock renders none of its own). It carries the two things that belong to
+       the request as a whole: its name — which doubles as the tab title — and Send. -->
+  <app-panel-toolbar role="group" aria-label="Request">
+    <app-text-field
+      class="request__name"
+      [value]="request.name"
+      placeholder="Request name"
+      ariaLabel="Request name"
+      (valueChange)="rename($event)"
+    />
+    <span class="panel-toolbar__spacer"></span>
+    <app-button
+      variant="none"
+      [icon]="sending() ? Icon.STOP : Icon.SEND"
+      [label]="sending() ? 'Cancel' : 'Send'"
+      [tooltip]="sending() ? 'Cancel this request' : 'Send this request'"
+      (click)="send()"
+    />
+  </app-panel-toolbar>
 
-    <!-- The send bar: method, URL, and the one button that matters. -->
+  <div class="request">
+    <!-- The send bar: the method and the address it is sent to. -->
     <div class="request__bar">
       <app-dropdown
         class="request__method"
@@ -26,12 +37,6 @@
         ariaLabel="Request URL"
         (valueChange)="update({ url: $event })"
         (enter)="send()"
-      />
-      <app-button
-        variant="solid"
-        [icon]="sending() ? Icon.STOP : Icon.SEND"
-        [label]="sending() ? 'Cancel' : 'Send'"
-        (click)="send()"
       />
     </div>
 
@@ -58,15 +63,27 @@
     <div class="request__body">
       @switch (section()) {
         @case ('params') {
-          <ng-container
-            *ngTemplateOutlet="fields; context: { rows: paramRows(), list: 'params' }"
-          ></ng-container>
+          <app-property-grid
+            [rows]="request.params"
+            nameHeader="Parameter"
+            valueHeader="Value"
+            ariaLabel="Query parameters"
+            (rowChange)="updateField('params', $event)"
+            (add)="addField('params', $event)"
+            (remove)="removeField('params', $event)"
+          />
         }
 
         @case ('headers') {
-          <ng-container
-            *ngTemplateOutlet="fields; context: { rows: headerRows(), list: 'headers' }"
-          ></ng-container>
+          <app-property-grid
+            [rows]="request.headers"
+            nameHeader="Header"
+            valueHeader="Value"
+            ariaLabel="Request headers"
+            (rowChange)="updateField('headers', $event)"
+            (add)="addField('headers', $event)"
+            (remove)="removeField('headers', $event)"
+          />
         }
 
         @case ('auth') {
@@ -138,14 +155,10 @@
                 <p class="request__hint">This request is sent without a body.</p>
               }
               @case ('form') {
-                <ng-container
-                  *ngTemplateOutlet="fields; context: { rows: bodyRows(), list: 'body' }"
-                ></ng-container>
+                <ng-container *ngTemplateOutlet="bodyFields"></ng-container>
               }
               @case ('urlencoded') {
-                <ng-container
-                  *ngTemplateOutlet="fields; context: { rows: bodyRows(), list: 'body' }"
-                ></ng-container>
+                <ng-container *ngTemplateOutlet="bodyFields"></ng-container>
               }
               @default {
                 <app-textarea
@@ -239,31 +252,17 @@
     </div>
   </div>
 
-  <!-- One editor for every name/value list: query parameters, headers, and form bodies. -->
-  <ng-template #fields let-rows="rows" let-list="list">
-    <div class="request__fields">
-      @for (row of rows; track row.id) {
-        <div class="request__field">
-          <app-checkbox
-            [checked]="row.enabled"
-            [disabled]="row.name === '' && row.value === ''"
-            (checkedChange)="updateField(list, row.id, { enabled: $event })"
-          />
-          <app-text-field
-            [value]="row.name"
-            placeholder="Key"
-            ariaLabel="Name"
-            (valueChange)="updateField(list, row.id, { name: $event })"
-          />
-          <app-text-field
-            [value]="row.value"
-            placeholder="Value"
-            ariaLabel="Value"
-            (valueChange)="updateField(list, row.id, { value: $event })"
-          />
-        </div>
-      }
-    </div>
+  <!-- The form and url-encoded bodies are the same name/value list, so they share one grid. -->
+  <ng-template #bodyFields>
+    <app-property-grid
+      [rows]="request.body.fields"
+      nameHeader="Field"
+      valueHeader="Value"
+      ariaLabel="Body fields"
+      (rowChange)="updateField('body', $event)"
+      (add)="addField('body', $event)"
+      (remove)="removeField('body', $event)"
+    />
   </ng-template>
 } @else {
   <p class="request__hint">This request has been deleted.</p>
