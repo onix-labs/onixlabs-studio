@@ -59,6 +59,7 @@
     <app-dock-tool-strip class="dock-tab-group__tool-strip" />
   }
 
+  <!-- Pressing the rail itself (never a tab, which carries its own drag) docks the whole group. -->
   <div
     #tabstrip
     class="dock-tab-group__tabstrip"
@@ -68,6 +69,7 @@
     [cdkDropListData]="stack()"
     [cdkDropListEnterPredicate]="canEnter"
     (cdkDropListDropped)="onDrop($event)"
+    (mousedown)="startGroupDrag($event)"
   >
     @for (panel of panels(); track panel.id) {
       <div

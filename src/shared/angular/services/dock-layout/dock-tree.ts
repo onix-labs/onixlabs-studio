@@ -422,14 +422,30 @@ export function splitStack(
   if (findNode(tree, stackId) === null) {
     return tree;
   }
+  return insertNodeBeside(tree, stackId, mkStack(role, [panelId]), side);
+}
+
+/**
+ * Places an already-built node beside the target node on the given side, wrapping the whole tree
+ * when the target is the root. Shared by the single-panel split and the whole-group split, so both
+ * land in exactly the same place for a given side.
+ * @param tree The root of the tree to transform.
+ * @param targetId The identifier of the node to dock beside.
+ * @param node The node to place alongside it.
+ * @param side The side of the target the node docks against.
+ * @returns Returns the transformed tree.
+ */
+function insertNodeBeside(
+  tree: DockNode,
+  targetId: string,
+  node: DockNode,
+  side: DockSide,
+): DockNode {
   const dir: SplitDirection = axisOf(side);
   const before: boolean = isBefore(side);
-  const sibling: StackNode = mkStack(role, [panelId]);
-
-  if (tree.id === stackId) {
-    return wrap(tree, sibling, dir, before);
-  }
-  return insertBeside(tree, stackId, sibling, dir, before);
+  return tree.id === targetId
+    ? wrap(tree, node, dir, before)
+    : insertBeside(tree, targetId, node, dir, before);
 }
 
 /**
@@ -599,6 +615,185 @@ export function movePanel(
   const active: string | null = source.active === panelId ? (remaining[0] ?? null) : source.active;
   const updatedSource: StackNode = { ...source, panels: remaining, active };
   return pruneStack(replaceNode(withTarget, source.id, updatedSource), updatedSource);
+}
+
+/**
+ * A stack lifted out of the tree, ready to be re-seated somewhere else as one group.
+ */
+interface LiftedStack {
+  /**
+   * Gets the tree left behind, with the stack emptied and pruned.
+   */
+  readonly tree: DockNode;
+
+  /**
+   * Gets the ordered identifiers of the panels the stack held.
+   */
+  readonly panels: readonly string[];
+
+  /**
+   * Gets the identifier of the panel that was active in the stack.
+   */
+  readonly active: string | null;
+
+  /**
+   * Gets the role of the stack.
+   */
+  readonly role: StackRole;
+}
+
+/**
+ * Lifts every panel out of a stack in one go, so the group can be re-seated elsewhere. The stack is
+ * emptied and then handed to {@link pruneStack}, which is what keeps a whole-group move honest: the
+ * hole collapses exactly as it does when the last tab is closed, the centre anchor passes to a
+ * surviving well, and a tool-occupied centre that is the last documents-home reverts to an empty
+ * well rather than vanishing.
+ * @param tree The root of the tree to transform.
+ * @param stackId The identifier of the stack to lift.
+ * @returns Returns the lifted stack, or null when the node does not exist, is not a stack, or holds
+ * no panels (an empty group has nothing to move).
+ */
+function liftStack(tree: DockNode, stackId: string): LiftedStack | null {
+  const source: DockNode | null = findNode(tree, stackId);
+  if (source === null || !isStackNode(source) || source.panels.length === 0) {
+    return null;
+  }
+  const emptied: StackNode = { ...source, panels: [], active: null };
+  return {
+    tree: pruneStack(replaceNode(tree, stackId, emptied), emptied),
+    panels: source.panels,
+    active: source.active,
+    role: source.role,
+  };
+}
+
+/**
+ * Builds the stack a lifted group is re-seated in. It keeps the source stack's identifier whenever
+ * the lift removed that stack from the tree, so a moved group keeps its identity (and with it the
+ * focus accent) across the move; when the source survived the lift — the last documents-home, kept
+ * as an empty well — a fresh identifier is minted instead, because reusing it would put the same id
+ * in the tree twice.
+ * @param lifted The lifted stack.
+ * @param sourceStackId The identifier of the stack the group was lifted from.
+ * @returns Returns the stack node to seat the group in.
+ */
+function reseatedStack(lifted: LiftedStack, sourceStackId: string): StackNode {
+  const seat: StackNode = mkStack(lifted.role, lifted.panels);
+  const keepsIdentity: boolean = findNode(lifted.tree, sourceStackId) === null;
+  return {
+    ...seat,
+    ...(keepsIdentity ? { id: sourceStackId } : {}),
+    active: lifted.active ?? seat.active,
+  };
+}
+
+/**
+ * Moves every panel of one stack into another as tabs, in order, keeping the moved group's active
+ * panel active. The source stack is lifted first, so the layout collapses around it exactly as it
+ * would if its tabs had been closed. The call is ignored when either stack does not exist, the
+ * source holds no panels, or both are the same stack.
+ * @param tree The root of the tree to transform.
+ * @param sourceStackId The identifier of the stack whose panels move.
+ * @param targetStackId The identifier of the stack they move into.
+ * @returns Returns the transformed tree.
+ */
+export function tabStackInto(
+  tree: DockNode,
+  sourceStackId: string,
+  targetStackId: string,
+): DockNode {
+  if (sourceStackId === targetStackId) {
+    return tree;
+  }
+  const lifted: LiftedStack | null = liftStack(tree, sourceStackId);
+  if (lifted === null) {
+    return tree;
+  }
+  const target: DockNode | null = findNode(lifted.tree, targetStackId);
+  if (target === null || !isStackNode(target)) {
+    return tree;
+  }
+  return replaceNode(lifted.tree, targetStackId, {
+    ...target,
+    panels: [...target.panels, ...lifted.panels],
+    active: lifted.active ?? target.active,
+  });
+}
+
+/**
+ * Occupies the empty primary well with a whole tool group: the well's role flips to `tool` in place
+ * and the group is seated in it, the group counterpart of {@link occupyWell}. The call is ignored
+ * unless the target is an empty document well and the source is a non-empty tool stack.
+ * @param tree The root of the tree to transform.
+ * @param sourceStackId The identifier of the tool stack to move.
+ * @param targetStackId The identifier of the empty well to occupy.
+ * @returns Returns the transformed tree.
+ */
+export function occupyWellWithStack(
+  tree: DockNode,
+  sourceStackId: string,
+  targetStackId: string,
+): DockNode {
+  if (sourceStackId === targetStackId) {
+    return tree;
+  }
+  const lifted: LiftedStack | null = liftStack(tree, sourceStackId);
+  if (lifted?.role !== 'tool') {
+    return tree;
+  }
+  const well: DockNode | null = findNode(lifted.tree, targetStackId);
+  if (well === null || !isStackNode(well) || well.role !== 'document' || well.panels.length > 0) {
+    return tree;
+  }
+  return replaceNode(lifted.tree, targetStackId, {
+    ...well,
+    role: 'tool',
+    panels: [...lifted.panels],
+    active: lifted.active ?? lifted.panels[0],
+  });
+}
+
+/**
+ * Docks a whole stack beside another as a new sibling group, the group counterpart of
+ * {@link splitStack}. The call is ignored when either stack does not exist, the source holds no
+ * panels, or both are the same stack (a group cannot split beside itself).
+ * @param tree The root of the tree to transform.
+ * @param sourceStackId The identifier of the stack to move.
+ * @param targetStackId The identifier of the stack to dock beside.
+ * @param side The side of the target the moved group docks against.
+ * @returns Returns the transformed tree.
+ */
+export function splitStackBeside(
+  tree: DockNode,
+  sourceStackId: string,
+  targetStackId: string,
+  side: DockSide,
+): DockNode {
+  if (sourceStackId === targetStackId) {
+    return tree;
+  }
+  const lifted: LiftedStack | null = liftStack(tree, sourceStackId);
+  if (lifted === null || findNode(lifted.tree, targetStackId) === null) {
+    return tree;
+  }
+  return insertNodeBeside(lifted.tree, targetStackId, reseatedStack(lifted, sourceStackId), side);
+}
+
+/**
+ * Docks a whole tool stack first-class against an application edge, the group counterpart of
+ * {@link dockEdge}. Document wells never edge-dock, so the call is ignored for them, as it is for a
+ * stack that does not exist or holds no panels.
+ * @param tree The root of the tree to transform.
+ * @param sourceStackId The identifier of the stack to move.
+ * @param side The edge to dock against.
+ * @returns Returns the transformed tree.
+ */
+export function dockStackEdge(tree: DockNode, sourceStackId: string, side: DockSide): DockNode {
+  const lifted: LiftedStack | null = liftStack(tree, sourceStackId);
+  if (lifted?.role !== 'tool') {
+    return tree;
+  }
+  return dockNodeEdge(lifted.tree, reseatedStack(lifted, sourceStackId), side);
 }
 
 /**

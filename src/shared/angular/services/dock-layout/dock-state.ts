@@ -11,8 +11,10 @@ import {
   defaultLayout,
   dockEdge,
   dockNodeEdge,
+  dockStackEdge,
   movePanel,
   occupyWell,
+  occupyWellWithStack,
   removeFromLayout,
   removeNode,
   reorderTab,
@@ -20,8 +22,10 @@ import {
   setCollapsed,
   setSizes,
   splitStack,
+  splitStackBeside,
   splitWellBeside,
   tabInto,
+  tabStackInto,
 } from './dock-tree';
 
 /**
@@ -268,6 +272,54 @@ export class DockState {
    */
   public movePanel(panelId: string, targetStackId: string, targetIndex: number): void {
     this.commit(movePanel(this.tree(), panelId, targetStackId, targetIndex));
+  }
+
+  /**
+   * Moves every panel of one stack into another as tabs, used to commit a whole-group drag onto the
+   * centre guide. The move is one mutation, so a single undo puts the group back.
+   * @param sourceStackId The identifier of the stack whose panels move.
+   * @param targetStackId The identifier of the stack they move into.
+   */
+  public tabStackInto(sourceStackId: string, targetStackId: string): void {
+    this.log.info('DockState', `Moved stack '${sourceStackId}' into stack '${targetStackId}'`);
+    this.commit(tabStackInto(this.tree(), sourceStackId, targetStackId));
+  }
+
+  /**
+   * Occupies the empty primary (centre) well with a whole tool group, flipping the centre slot to
+   * hold it. Used when a tool group is dropped on the blank centre.
+   * @param sourceStackId The identifier of the tool stack to move.
+   * @param targetStackId The identifier of the primary well to occupy.
+   */
+  public occupyWellWithStack(sourceStackId: string, targetStackId: string): void {
+    this.log.info('DockState', `Stack '${sourceStackId}' occupied well '${targetStackId}'`);
+    this.commit(occupyWellWithStack(this.tree(), sourceStackId, targetStackId));
+  }
+
+  /**
+   * Docks a whole stack beside another as a new sibling group, used to commit a whole-group drag
+   * onto a split guide.
+   * @param sourceStackId The identifier of the stack to move.
+   * @param targetStackId The identifier of the stack to dock beside.
+   * @param side The side of the target the moved group docks against.
+   */
+  public splitStackBeside(sourceStackId: string, targetStackId: string, side: DockSide): void {
+    this.log.info(
+      'DockState',
+      `Docked stack '${sourceStackId}' to the ${side} of stack '${targetStackId}'`,
+    );
+    this.commit(splitStackBeside(this.tree(), sourceStackId, targetStackId, side));
+  }
+
+  /**
+   * Docks a whole tool stack first-class against an application edge, used to commit a whole-group
+   * drag onto an edge guide.
+   * @param sourceStackId The identifier of the stack to move.
+   * @param side The edge to dock against.
+   */
+  public dockStackEdge(sourceStackId: string, side: DockSide): void {
+    this.log.info('DockState', `Docked stack '${sourceStackId}' to ${side} edge`);
+    this.commit(dockStackEdge(this.tree(), sourceStackId, side));
   }
 
   /**

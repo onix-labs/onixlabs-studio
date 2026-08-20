@@ -140,6 +140,16 @@ token: `createLayout()` returns the initial `DockNode` tree, and `panels[]` is t
 tab `REPOSITORY_DOCK_BLUEPRINT` — each cataloguing its own feature panels. `defaultLayout()` (pure ID
 strings) stays in the dock; the panel _components_ are contributed by the blueprint.
 
+**Two drag gestures, and the difference is what moves.** A group's **title bar** (or a document
+well's grip, standing in for the title bar it does not have) docks the **active panel** alone; the
+group's **tab rail** docks the **whole group**, every tab travelling with it — tool stacks and
+document wells alike. A tab itself keeps its own CDK drag (reorder within a strip, move between
+same-role strips), so the rail gesture only starts on the rail's own surface. Both run through
+`DockDrag` — `begin()` for a panel, `beginGroup()` for a group — and resolve against the same
+compass, a group docking by its stack's role exactly as a panel docks by its own. A group move is a
+single `DockState` commit (one undo step), and a group released over nothing stays where it is:
+the floating layer and pop-out windows hold single panels, so neither can take a group.
+
 ### 4.3 IPC — a generic bridge
 
 The preload exposes a **dumb pub/sub transport**, so it can live in `shared` without naming features:

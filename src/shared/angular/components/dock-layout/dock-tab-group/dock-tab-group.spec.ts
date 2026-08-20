@@ -4,6 +4,8 @@ import { TEST_DOCK_BLUEPRINT } from '../../../services/dock-layout/dock-test-blu
 import { DockDrag } from '../../../services/dock-layout/dock-drag';
 import { DockFloating } from '../../../services/dock-layout/dock-floating';
 import { mkStack, StackNode } from '../../../services/dock-layout/dock-node';
+import { DockState } from '../../../services/dock-layout/dock-state';
+import { findStackOfPanel } from '../../../services/dock-layout/dock-tree';
 import { DockTabGroup } from './dock-tab-group';
 
 describe('DockTabGroup', () => {
@@ -82,6 +84,53 @@ describe('DockTabGroup', () => {
     document.dispatchEvent(new MouseEvent('mousemove', { clientX: 60, clientY: 60 }));
 
     expect(drag.panel()?.id).toBe('output');
+
+    document.dispatchEvent(new MouseEvent('mouseup'));
+  });
+
+  it('startGroupDrag_whenTabRailPressedAndDragged_startsACompassDragForTheWholeGroup', () => {
+    // The group must be the one the layout holds: a group drag moves a stack of the live tree.
+    const stack: StackNode = findStackOfPanel(TestBed.inject(DockState).layout(), 'output')!;
+    render(stack);
+
+    const element: HTMLElement = fixture.nativeElement as HTMLElement;
+    const rail: HTMLElement | null = element.querySelector<HTMLElement>(
+      '.dock-tab-group__tabstrip',
+    );
+    rail?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: 10, clientY: 10 }));
+    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 60, clientY: 60 }));
+
+    expect(drag.subject()).toEqual(
+      expect.objectContaining({ kind: 'group', stackId: stack.id, count: stack.panels.length }),
+    );
+
+    document.dispatchEvent(new MouseEvent('mouseup'));
+  });
+
+  it('startGroupDrag_whenTheStackIsNotInTheLayout_startsNothing', () => {
+    render(mkStack('tool', ['output', 'errors']));
+
+    const element: HTMLElement = fixture.nativeElement as HTMLElement;
+    const rail: HTMLElement | null = element.querySelector<HTMLElement>(
+      '.dock-tab-group__tabstrip',
+    );
+    rail?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: 10, clientY: 10 }));
+    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 60, clientY: 60 }));
+
+    expect(drag.active()).toBe(false);
+
+    document.dispatchEvent(new MouseEvent('mouseup'));
+  });
+
+  it('startGroupDrag_whenATabIsPressed_leavesTheTabsOwnDragToTheDropList', () => {
+    render(mkStack('tool', ['output', 'errors']));
+
+    const element: HTMLElement = fixture.nativeElement as HTMLElement;
+    const tab: HTMLElement | null = element.querySelector<HTMLElement>('.dock-tab');
+    tab?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: 10, clientY: 10 }));
+    document.dispatchEvent(new MouseEvent('mousemove', { clientX: 60, clientY: 60 }));
+
+    expect(drag.active()).toBe(false);
 
     document.dispatchEvent(new MouseEvent('mouseup'));
   });

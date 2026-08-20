@@ -13,12 +13,14 @@ import {
   defaultLayout,
   dockEdge,
   dockNodeEdge,
+  dockStackEdge,
   findNode,
   findPrimaryStack,
   findStackOfPanel,
   firstStackOfRole,
   movePanel,
   occupyWell,
+  occupyWellWithStack,
   pruneStack,
   removeFromLayout,
   removeNode,
@@ -28,8 +30,10 @@ import {
   setCollapsed,
   setSizes,
   splitStack,
+  splitStackBeside,
   splitWellBeside,
   tabInto,
+  tabStackInto,
 } from './dock-tree';
 
 /**
@@ -653,6 +657,171 @@ describe('dock-tree', () => {
       const tree: DockNode = mkStack('tool', ['a']);
 
       expect(movePanel(tree, 'missing', tree.id, 0)).toBe(tree);
+    });
+  });
+
+  describe('tabStackInto', () => {
+    it('tabStackInto_whenGroupMoves_appendsEveryTabAndPrunesTheSource', () => {
+      const source: StackNode = mkStack('tool', ['a', 'b']);
+      const target: StackNode = mkStack('tool', ['c']);
+      const tree: DockNode = mkSplit('row', [source, target, mkStack('document', ['doc'])]);
+
+      const result: DockNode = tabStackInto(tree, source.id, target.id);
+
+      expect(findNode(result, source.id)).toBeNull();
+      expect(asStack(findNode(result, target.id)).panels).toEqual(['c', 'a', 'b']);
+    });
+
+    it('tabStackInto_whenGroupMoves_keepsTheMovedGroupsActivePanelActive', () => {
+      const source: StackNode = { ...mkStack('tool', ['a', 'b']), active: 'b' };
+      const target: StackNode = mkStack('tool', ['c']);
+      const tree: DockNode = mkSplit('row', [source, target, mkStack('document', ['doc'])]);
+
+      const result: DockNode = tabStackInto(tree, source.id, target.id);
+
+      expect(asStack(findNode(result, target.id)).active).toBe('b');
+    });
+
+    it('tabStackInto_whenSourceHeldTheCentreAnchor_handsItToASurvivingWell', () => {
+      const source: StackNode = mkStack('document', ['doc1'], true);
+      const target: StackNode = mkStack('document', ['doc2']);
+      const tree: DockNode = mkSplit('row', [source, target]);
+
+      const result: DockNode = tabStackInto(tree, source.id, target.id);
+
+      expect(findPrimaryStack(result)?.id).toBe(target.id);
+      expect(asStack(result).panels).toEqual(['doc2', 'doc1']);
+    });
+
+    it('tabStackInto_whenTargetIsTheSourceOrMissing_returnsTheSameReference', () => {
+      const source: StackNode = mkStack('tool', ['a']);
+      const tree: DockNode = mkSplit('row', [source, mkStack('document', ['doc'])]);
+
+      expect(tabStackInto(tree, source.id, source.id)).toBe(tree);
+      expect(tabStackInto(tree, source.id, 'absent')).toBe(tree);
+      expect(tabStackInto(tree, 'absent', source.id)).toBe(tree);
+    });
+
+    it('tabStackInto_whenSourceIsEmpty_returnsTheSameReference', () => {
+      const source: StackNode = mkStack('document', []);
+      const target: StackNode = mkStack('document', ['doc']);
+      const tree: DockNode = mkSplit('row', [source, target]);
+
+      expect(tabStackInto(tree, source.id, target.id)).toBe(tree);
+    });
+  });
+
+  describe('occupyWellWithStack', () => {
+    it('occupyWellWithStack_whenToolGroupTakesTheEmptyCentre_seatsEveryTabInIt', () => {
+      const tools: StackNode = { ...mkStack('tool', ['a', 'b']), active: 'b' };
+      const well: StackNode = mkStack('document', [], true);
+      const tree: DockNode = mkSplit('row', [tools, well]);
+
+      const result: DockNode = occupyWellWithStack(tree, tools.id, well.id);
+      const occupied: StackNode = asStack(findNode(result, well.id));
+
+      expect(occupied.role).toBe('tool');
+      expect(occupied.panels).toEqual(['a', 'b']);
+      expect(occupied.active).toBe('b');
+      expect(occupied.primary).toBe(true);
+      expect(findNode(result, tools.id)).toBeNull();
+    });
+
+    it('occupyWellWithStack_whenTargetHoldsDocuments_returnsTheSameReference', () => {
+      const tools: StackNode = mkStack('tool', ['a']);
+      const well: StackNode = mkStack('document', ['doc'], true);
+      const tree: DockNode = mkSplit('row', [tools, well]);
+
+      expect(occupyWellWithStack(tree, tools.id, well.id)).toBe(tree);
+    });
+
+    it('occupyWellWithStack_whenSourceIsADocumentWell_returnsTheSameReference', () => {
+      const docs: StackNode = mkStack('document', ['doc']);
+      const well: StackNode = mkStack('document', [], true);
+      const tree: DockNode = mkSplit('row', [docs, well]);
+
+      expect(occupyWellWithStack(tree, docs.id, well.id)).toBe(tree);
+    });
+  });
+
+  describe('splitStackBeside', () => {
+    it('splitStackBeside_whenGroupDocksBesideAnother_movesEveryTabAsOneStack', () => {
+      const source: StackNode = { ...mkStack('tool', ['a', 'b']), active: 'b' };
+      const target: StackNode = mkStack('document', ['doc']);
+      const tree: DockNode = mkSplit('row', [source, target]);
+
+      const result: DockNode = splitStackBeside(tree, source.id, target.id, 'bottom');
+
+      expect(isSplitNode(result) && result.dir).toBe('col');
+      if (isSplitNode(result)) {
+        expect(result.children[0]).toBe(target);
+        const moved: StackNode = asStack(result.children[1]);
+        expect(moved.panels).toEqual(['a', 'b']);
+        expect(moved.active).toBe('b');
+      }
+    });
+
+    it('splitStackBeside_whenTheSourceStackIsGone_reusesItsIdentity', () => {
+      const source: StackNode = mkStack('tool', ['a', 'b']);
+      const target: StackNode = mkStack('document', ['doc']);
+      const tree: DockNode = mkSplit('row', [source, target]);
+
+      const result: DockNode = splitStackBeside(tree, source.id, target.id, 'top');
+
+      expect(asStack(findNode(result, source.id)).panels).toEqual(['a', 'b']);
+    });
+
+    it('splitStackBeside_whenSourceIsTheLastDocumentsHome_mintsAFreshIdentity', () => {
+      // The tool-occupied centre is the only documents-home, so lifting it leaves an empty well
+      // behind under the source's id — the moved group must not reuse that id.
+      const centre: StackNode = { ...mkStack('tool', ['a', 'b'], true), role: 'tool' as const };
+      const side: StackNode = mkStack('tool', ['c']);
+      const tree: DockNode = mkSplit('row', [centre, side]);
+
+      const result: DockNode = splitStackBeside(tree, centre.id, side.id, 'bottom');
+      const kept: StackNode = asStack(findNode(result, centre.id));
+
+      expect(kept.role).toBe('document');
+      expect(kept.panels).toEqual([]);
+      expect(asStack(findStackOfPanel(result, 'a')).id).not.toBe(centre.id);
+      expect(asStack(findStackOfPanel(result, 'a')).panels).toEqual(['a', 'b']);
+    });
+
+    it('splitStackBeside_whenTargetIsTheSourceOrMissing_returnsTheSameReference', () => {
+      const source: StackNode = mkStack('tool', ['a']);
+      const tree: DockNode = mkSplit('row', [source, mkStack('document', ['doc'])]);
+
+      expect(splitStackBeside(tree, source.id, source.id, 'left')).toBe(tree);
+      expect(splitStackBeside(tree, source.id, 'absent', 'left')).toBe(tree);
+    });
+  });
+
+  describe('dockStackEdge', () => {
+    it('dockStackEdge_whenToolGroupDocksToAnEdge_movesEveryTabAsOneStack', () => {
+      const source: StackNode = mkStack('tool', ['a', 'b']);
+      const well: StackNode = mkStack('document', ['doc'], true);
+      const tree: DockNode = mkSplit('col', [well, source]);
+
+      const result: DockNode = dockStackEdge(tree, source.id, 'left');
+
+      expect(isSplitNode(result) && result.dir).toBe('row');
+      if (isSplitNode(result)) {
+        expect(asStack(result.children[0]).panels).toEqual(['a', 'b']);
+        expect(result.children[1]).toBe(well);
+      }
+    });
+
+    it('dockStackEdge_whenSourceIsADocumentWell_returnsTheSameReference', () => {
+      const docs: StackNode = mkStack('document', ['doc']);
+      const tree: DockNode = mkSplit('row', [mkStack('document', ['other']), docs]);
+
+      expect(dockStackEdge(tree, docs.id, 'left')).toBe(tree);
+    });
+
+    it('dockStackEdge_whenSourceMissing_returnsTheSameReference', () => {
+      const tree: DockNode = mkStack('tool', ['a']);
+
+      expect(dockStackEdge(tree, 'absent', 'left')).toBe(tree);
     });
   });
 
