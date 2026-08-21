@@ -48,12 +48,12 @@ export class Icon {
   /**
    * Gets the icon marking a shown agent on Mission Control's per-agent hide toggle.
    */
-  public static readonly AGENT_VISIBLE: Icon = new Icon('ph ph-eye');
+  public static readonly AGENT_VISIBLE: Icon = new Icon('ph-duotone ph-eye');
 
   /**
    * Gets the icon marking a hidden agent on Mission Control's per-agent hide toggle.
    */
-  public static readonly AGENT_HIDDEN: Icon = new Icon('ph ph-eye-slash');
+  public static readonly AGENT_HIDDEN: Icon = new Icon('ph-duotone ph-eye-slash');
 
   /**
    * Gets the remote-control icon shown on an agent's Remote toggle (its tool strip and ribbon) and on
@@ -692,7 +692,8 @@ export class Icon {
   public static readonly GRIP: Icon = new Icon('ph ph-dots-six');
 
   /**
-   * Gets the bold drag-handle (grip) icon, used on the document well's move handle.
+   * Gets the bold drag-handle (grip) icon, used on the document well's move handle and as the reorder
+   * handle on Mission Control's agent rail.
    */
   public static readonly GRIP_BOLD: Icon = new Icon('ph-bold ph-dots-six');
 

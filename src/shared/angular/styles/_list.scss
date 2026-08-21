@@ -49,7 +49,8 @@ app-list-view {
 
 // The trailing reorder handle, present only on a reorderable list. It sits on the row's trailing edge
 // (pushed there past the projected content), stays faint until the row is hovered so it never competes
-// with the row's own content, and shows the grab cursor to advertise the drag.
+// with the row's own content, and swaps its cursor to the vertical-resize arrows once held, naming the
+// one axis a row can actually be dragged along.
 .list-row__grip {
   flex: none;
   align-self: stretch;
@@ -57,7 +58,7 @@ app-list-view {
   align-items: center;
   padding-inline: 0.4rem 0.6rem;
   color: var(--gray-500);
-  cursor: grab;
+  cursor: default;
   opacity: 0;
   transition: opacity var(--hover-transition);
 
@@ -67,7 +68,20 @@ app-list-view {
   }
 
   &:active {
-    cursor: grabbing;
+    cursor: ns-resize;
+  }
+}
+
+// The cursor for the rest of the gesture. `:active` above only holds while the pointer is still on the
+// grip, which a drag leaves almost at once — from there the pointer is over the rows the preview slides
+// through (the preview itself does not take the hit test), and each would supply its own cursor. The
+// drop list wears `cdk-drop-list-dragging` for the whole drag, so it names the gesture for everything
+// beneath it. `!important` because row chrome — buttons most of all — carries its own cursor at a
+// higher specificity than a descendant selector can reach.
+.cdk-drop-list-dragging {
+  &,
+  * {
+    cursor: ns-resize !important;
   }
 }
 

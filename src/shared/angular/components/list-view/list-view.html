@@ -6,12 +6,18 @@
   (cdkDropListDropped)="onDrop()"
 >
   @for (row of displayRows(); track row.id) {
+    <!-- The drag preview is a clone of the row, and by default the CDK parks it on `<body>`. Out there
+         it sits outside `app-list-view`, so any styling a consumer scoped to its own list — row padding
+         most of all — stops applying and the clone re-lays-out: its content shifts, and the grip slides
+         out from under the cursor that is dragging it. Rendering the preview into the row's own parent
+         keeps those selectors matching, so the clone is laid out identically to the row it replaces. -->
     <div
       class="list-row"
       role="option"
       tabindex="0"
       cdkDrag
       cdkDragLockAxis="y"
+      cdkDragPreviewContainer="parent"
       [cdkDragDisabled]="!reorderable()"
       (cdkDragStarted)="onDragStarted()"
       [attr.data-list-id]="row.id"

@@ -29,9 +29,18 @@
   padding: 0.75rem 0.75rem 0.6rem;
 }
 
-// The column's identity block: the icon and title on one line, with the branch (when the column is
-// backed by a project) on the line beneath.
+// The column's identity block: the icon, then the title over the branch (when the column is backed by
+// a project) beside it.
 .tile__identity {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-inline-size: 0;
+  flex: 1 1 auto;
+}
+
+// The title-over-branch stack the icon stands against.
+.tile__identity-text {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -48,8 +57,12 @@
   min-inline-size: 0;
 }
 
-// The origin tab's icon beside the title. Centred against the baseline-aligned row so it sits level
-// with the title text; the glyph inherits the ambient foreground, matching the tab strip.
+// The origin tab's icon, spanning both lines of the stack beside it — its top on the title's, its
+// bottom on the branch's. That holds only while the two are the same height, so both lines carry an
+// explicit line-height (the app sets none globally) and the template asks for the glyph at their sum:
+// 0.95 × 1.25 + 0.05 gap + 0.75 × 1.25 = 2.175rem here, and 1.05 × 1.25 + 0.05 + 0.75 × 1.25 = 2.3rem
+// in the focus header, whose name line is larger. Change a font-size or line-height and the matching
+// `[size]` has to follow. The glyph inherits the ambient foreground, matching the tab strip.
 .tile__icon {
   flex: none;
   align-self: center;
@@ -59,6 +72,7 @@
   flex: 0 1 auto;
   min-inline-size: 0;
   font-size: 0.95rem;
+  line-height: 1.25;
   font-weight: 600;
   color: var(--dock-title-foreground-color--focused);
   white-space: nowrap;
@@ -66,12 +80,12 @@
   text-overflow: ellipsis;
 }
 
-// The branch a workspace or repository column is working on, on the line beneath the title and
-// indented past the icon so it aligns with the name above it.
+// The branch a workspace or repository column is working on, on the line beneath the title. It needs
+// no indent of its own: it sits inside the stack, which starts past the icon.
 .tile__branch {
   max-inline-size: 100%;
-  padding-inline-start: 1.45rem;
   font-size: 0.75rem;
+  line-height: 1.25;
   color: var(--gray-500);
   white-space: nowrap;
   overflow: hidden;
@@ -171,14 +185,10 @@ button.tile__name {
   padding-inline-end: 5rem;
 }
 
-// The focus header's icon is a shade larger than the column's, so its branch line is indented to match.
-.tile__focus-header .tile__branch {
-  padding-inline-start: 1.55rem;
-}
-
 .tile__focus-name {
   min-inline-size: 0;
   font-size: 1.05rem;
+  line-height: 1.25;
   font-weight: 600;
   color: var(--dock-title-foreground-color--focused);
   white-space: nowrap;
