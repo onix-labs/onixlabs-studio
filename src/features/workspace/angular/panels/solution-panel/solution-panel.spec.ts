@@ -372,16 +372,13 @@ describe('SolutionPanel', () => {
       expect(solution.refreshCount).toBe(1);
     });
 
-    it('moreItems_reflectTheCurrentToggleStates', () => {
-      // The toggles read as ticks in the menu, so their `active` flag has to track the model rather
-      // than being a snapshot taken when the panel was built.
-      solution.followsActiveDocument.set(false);
-      fixture.detectChanges();
-
-      const follow: MenuItem | undefined = component
-        .moreItems()
-        .find((item: MenuItem): boolean => item.id === 'follow-active');
-      expect(follow?.active).toBe(false);
+    it('moreItems_areAllPlainRows', () => {
+      // `active` renders as the accent marking the chosen row of a pick-one list. These are ordinary
+      // commands and independent switches, so none of them claims to be a selection.
+      const flags: (boolean | undefined)[] = component.moreItems.map(
+        (item: MenuItem): boolean | undefined => item.active,
+      );
+      expect(flags.every((flag: boolean | undefined): boolean => flag === undefined)).toBe(true);
     });
 
     it('statusFor_whenGitStatusHidden_reportsNoBadge', () => {

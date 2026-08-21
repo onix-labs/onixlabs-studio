@@ -116,23 +116,17 @@ export class SolutionPanel {
   /**
    * Gets the toolbar's overflow items: the options that belong to the panel as a whole rather than to
    * any one row, which is what the row context menu is for.
+   *
+   * Every row is a plain item. `active` is not used here even though two of these toggle something:
+   * it renders as the accent that marks the chosen row of a pick-one list, so on independent
+   * switches — both of which start on — it reads as a selection rather than as an on state.
    */
-  public readonly moreItems: Signal<readonly MenuItem[]> = computed((): readonly MenuItem[] => [
-    {
-      id: ACTION_FOLLOW,
-      label: 'Sync with Active Document',
-      icon: Icon.LINK,
-      active: this.solution.followsActiveDocument(),
-    },
-    {
-      id: ACTION_GIT_STATUS,
-      label: 'Show Git Status',
-      icon: Icon.SOURCE_CONTROL,
-      active: this.solution.showsGitStatus(),
-    },
+  public readonly moreItems: readonly MenuItem[] = [
+    { id: ACTION_FOLLOW, label: 'Sync with Active Document', icon: Icon.LINK },
+    { id: ACTION_GIT_STATUS, label: 'Show Git Status', icon: Icon.SOURCE_CONTROL },
     { id: ACTION_OPEN_ROOT, label: OPEN_ROOT_LABEL, icon: Icon.DIRECTORY },
     { id: ACTION_RELOAD, label: 'Reload Solution', icon: Icon.REFRESH },
-  ]);
+  ];
 
   /**
    * Builds a row's context-menu items.
