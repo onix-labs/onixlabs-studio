@@ -66,9 +66,15 @@ class FakeSolutionModel {
  */
 class FakeShell {
   public readonly revealed: string[] = [];
+  public readonly opened: string[] = [];
 
   public revealPath(path: string): Promise<void> {
     this.revealed.push(path);
+    return Promise.resolve();
+  }
+
+  public openPath(path: string): Promise<void> {
+    this.opened.push(path);
     return Promise.resolve();
   }
 }
@@ -344,6 +350,21 @@ describe('SolutionPanel', () => {
     it('onMoreAction_showGitStatus_togglesTheBadges', () => {
       component.onMoreAction('git-status');
       expect(solution.showsGitStatus()).toBe(false);
+    });
+
+    it('onMoreAction_openInFileManager_opensTheSolutionRootItself', () => {
+      // Opening, not revealing: revealing the root would show it selected inside whatever directory
+      // happens to contain the workspace, rather than showing the root's own contents.
+      solution.model.set(model);
+      component.onMoreAction('open-root');
+
+      expect(shell.opened).toEqual(['/root']);
+      expect(shell.revealed).toEqual([]);
+    });
+
+    it('onMoreAction_openInFileManager_withNoModel_doesNothing', () => {
+      component.onMoreAction('open-root');
+      expect(shell.opened).toEqual([]);
     });
 
     it('onMoreAction_reloadSolution_rebuildsFromDisk', () => {

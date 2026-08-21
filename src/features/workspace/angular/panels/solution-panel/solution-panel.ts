@@ -37,6 +37,7 @@ const ACTION_REVEAL: string = 'reveal';
 const ACTION_FOLLOW: string = 'follow-active';
 const ACTION_GIT_STATUS: string = 'git-status';
 const ACTION_RELOAD: string = 'reload';
+const ACTION_OPEN_ROOT: string = 'open-root';
 
 /**
  * The label for revealing a path in the operating system's file manager, named for the platform so it
@@ -47,6 +48,19 @@ const REVEAL_LABEL: string = navigator.userAgent.includes('Mac')
   : navigator.userAgent.includes('Windows')
     ? 'Show in File Explorer'
     : 'Show in File Manager';
+
+/**
+ * The label for opening the workspace root in the operating system's file manager.
+ *
+ * Deliberately "open" rather than the rows' "reveal": revealing selects an item inside its parent
+ * folder, which for the root would show it sitting in whatever directory happens to contain the
+ * workspace. Opening shows the root's own contents, which is what is wanted of it.
+ */
+const OPEN_ROOT_LABEL: string = navigator.userAgent.includes('Mac')
+  ? 'Open in Finder'
+  : navigator.userAgent.includes('Windows')
+    ? 'Open in File Explorer'
+    : 'Open in File Manager';
 
 /**
  * Renders the logical solution model (solution folders, projects, and each project's files) as the body
@@ -116,6 +130,7 @@ export class SolutionPanel {
       icon: Icon.SOURCE_CONTROL,
       active: this.solution.showsGitStatus(),
     },
+    { id: ACTION_OPEN_ROOT, label: OPEN_ROOT_LABEL, icon: Icon.DIRECTORY },
     { id: ACTION_RELOAD, label: 'Reload Solution', icon: Icon.REFRESH },
   ]);
 
@@ -262,6 +277,13 @@ export class SolutionPanel {
       case ACTION_GIT_STATUS:
         this.solution.toggleGitStatus();
         return;
+      case ACTION_OPEN_ROOT: {
+        const root: string | undefined = this.model()?.root;
+        if (root !== undefined) {
+          void this.shell.openPath(root);
+        }
+        return;
+      }
       case ACTION_RELOAD:
         this.solution.refreshFromDisk();
         return;
