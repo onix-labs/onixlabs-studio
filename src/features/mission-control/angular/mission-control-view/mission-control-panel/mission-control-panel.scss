@@ -1,6 +1,6 @@
-// The Mission Control left column: a header, an Agents/Settings tab switch, and a scrolling body that
-// hosts either the live agent rail or the settings mirror. It paints no surface of its own — the
-// hosting panel supplies it — so it reads as one piece with the rest of the layout.
+// The Mission Control left column: a header over a scrolling body that hosts the live agent rail. It
+// paints no surface of its own — the hosting panel supplies it — so it reads as one piece with the rest
+// of the layout.
 :host {
   display: flex;
   flex-direction: column;
@@ -23,48 +23,6 @@
   font-weight: 600;
   color: var(--dock-title-foreground-color--focused);
 }
-.panel__tabs {
-  display: flex;
-  gap: 1rem;
-  padding: 0 0.9rem;
-  border-block-end: 0.0625rem solid var(--dock-border-color);
-}
-
-.panel__tab {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.5rem 0;
-  font-size: 0.85rem;
-  color: var(--gray-500);
-  background: transparent;
-  border: none;
-  border-block-end: 0.125rem solid transparent;
-  transition: color 150ms ease-in-out;
-
-  &:hover {
-    color: var(--dock-title-foreground-color--focused);
-  }
-
-  &--active {
-    color: var(--dock-title-foreground-color--focused);
-    border-block-end-color: var(--accent-color);
-  }
-}
-
-.panel__badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-inline-size: 1.1rem;
-  padding: 0 0.3rem;
-  font-size: 0.7rem;
-  line-height: 1.1rem;
-  color: var(--accent-surface-foreground-color);
-  background: var(--accent-surface-background-color);
-  border-radius: 0.6rem;
-}
 
 .panel__body {
   flex: 1 1 auto;
@@ -77,8 +35,8 @@
 }
 
 // The agent list breaks out of the body's horizontal padding so its rows — and their full-width
-// hover fill — run edge to edge. Everything else in the body (empty state, orphan requests, settings
-// mirror) stays within the padding.
+// hover fill — run edge to edge. Everything else in the body (empty state, orphan requests) stays
+// within the padding.
 app-list-view {
   margin-inline: -0.85rem;
 
@@ -86,6 +44,14 @@ app-list-view {
   // shared row padding for this list to keep the total inset at exactly 1rem.
   ::ng-deep .list-row {
     padding: 0;
+  }
+
+  // The shared list keeps its reorder grip faint until the row is hovered, so it never competes with
+  // the row's content. The rail wants the opposite: the columns' left-to-right order is the rail's
+  // order, so the handle that sets it stays permanently visible — the same reasoning that keeps the
+  // hide toggle beside it always on. Scoped to this list, so other lists keep the reveal-on-hover.
+  ::ng-deep .list-row__grip {
+    opacity: 1;
   }
 }
 
@@ -131,12 +97,18 @@ app-list-view {
   min-inline-size: 0;
 }
 
+// The icon spans both lines of text beside it, its top on the title's and its bottom on the branch's.
+// That only holds if the two are the same height, so the text stack below is pinned to a known one —
+// 0.88 × 1.25 + 0.05 gap + 0.72 × 1.25 = 2.05rem — and the template asks for the glyph at that size.
+// Change either line's font-size or line-height and the icon's `[size]` has to follow.
 .rail__icon {
   flex: none;
 }
 
 // The title over the branch, stacked. `min-inline-size: 0` lets both lines truncate rather than push
-// the run-state column out of the row.
+// the run-state column out of the row. Both lines carry an explicit line-height: the app sets none
+// globally, so without these the stack would be as tall as the ambient font's default leading makes it
+// and the icon could no longer be matched to it.
 .rail__text {
   display: flex;
   flex-direction: column;
@@ -146,6 +118,7 @@ app-list-view {
 
 .rail__name {
   font-size: 0.88rem;
+  line-height: 1.25;
   font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
@@ -155,6 +128,7 @@ app-list-view {
 // The branch a workspace or repository agent is working on, beneath its title in the same column.
 .rail__branch {
   font-size: 0.72rem;
+  line-height: 1.25;
   color: var(--gray-500);
   white-space: nowrap;
   overflow: hidden;
@@ -170,13 +144,21 @@ app-list-view {
 
 // The leading pulse dot sits first, then the label. A fixed width anchors the block so the dot lands
 // at the same x on every row (the label right-pads into the spare space), keeping the dots aligned
-// down the rail regardless of whether a row reads Working, Ready, or Idle.
+// down the rail regardless of whether a row reads Working, Ready, or Idle. The width is trimmed to just
+// past the longest label — "Working" — so it never truncates.
+//
+// The block is right-anchored (the name column absorbs the slack), so its position is set by what sits
+// to its right: this row's 1rem trailing padding plus the list row's 0.5rem gap before the hide button.
+// The negative margin spends exactly that 1.5rem, carrying the status out of the padding to sit flush
+// beside the hide toggle. On a `--pending` row that puts it over the tinted card's right padding — the
+// price of the shift; cap this at -1rem to keep it inside the card instead.
 .rail__status {
   display: flex;
   align-items: center;
   gap: 0.35rem;
   flex: none;
-  inline-size: 4.75rem;
+  inline-size: 4.25rem;
+  margin-inline-end: -1.5rem;
   justify-content: flex-start;
   font-size: 0.72rem;
   color: var(--gray-500);
@@ -240,80 +222,4 @@ app-list-view {
 .panel__empty-text {
   margin: 0;
   font-size: 0.78rem;
-}
-
-.panel__rules-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.panel__rule {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  padding: 0.5rem 0.65rem;
-  background: var(--dock-title-background-color--focused);
-  border: 0.0625rem solid var(--dock-border-color);
-  border-radius: calc(0.5rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-}
-
-.panel__rule-icon {
-  font-size: 1.1rem;
-  color: var(--accent-color);
-
-  &--deny {
-    color: var(--gray-500);
-  }
-}
-
-.panel__rule-text {
-  display: flex;
-  flex-direction: column;
-  min-inline-size: 0;
-}
-
-.panel__rule-title {
-  font-size: 0.82rem;
-  font-weight: 500;
-  color: var(--dock-title-foreground-color--focused);
-}
-
-.panel__rule-detail {
-  font-size: 0.72rem;
-  font-family: var(--font-monospace, monospace);
-  color: var(--gray-500);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.panel__note {
-  margin: 0.15rem 0 0;
-  font-size: 0.72rem;
-  font-style: italic;
-  color: var(--gray-500);
-}
-
-.panel__policy {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-}
-
-.panel__policy-label {
-  font-size: 0.82rem;
-  color: var(--dock-title-foreground-color--focused);
-}
-
-.panel__policy-select {
-  flex: 0 0 auto;
-  min-inline-size: 9rem;
-}
-
-.panel__policy-help {
-  margin: 0.5rem 0 0;
-  font-size: 0.74rem;
-  color: var(--gray-500);
 }

@@ -1,14 +1,12 @@
 import { signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
-import type { AiPermissionPosture } from '@shared/api/ai-types';
 import { AgentHost, AgentHosts } from '@shared/angular/services/agent-hosts/agent-hosts';
 import {
   AgentRequestEntry,
   AgentRequests,
 } from '@shared/angular/services/agent-requests/agent-requests';
 import { Settings } from '@shared/angular/services/settings/settings';
-import { SettingsNavigation } from '@shared/angular/services/settings-navigation/settings-navigation';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { MissionControlTiles } from '../mission-control-tiles';
 import { MissionControlPanel } from './mission-control-panel';
@@ -67,14 +65,10 @@ describe('MissionControlPanel', () => {
   let host: HTMLElement;
   let hosts: WritableSignal<readonly AgentHost[]>;
   let revealed: string[];
-  let posture: WritableSignal<AiPermissionPosture>;
-  let postureCalls: AiPermissionPosture[];
 
   beforeEach(async () => {
     hosts = signal<readonly AgentHost[]>([]);
     revealed = [];
-    posture = signal<AiPermissionPosture>('prompt');
-    postureCalls = [];
 
     const agentHostsStub: Partial<AgentHosts> = { hosts };
     const agentRequestsStub: Partial<AgentRequests> = {
@@ -89,13 +83,7 @@ describe('MissionControlPanel', () => {
     };
     const settingsStub: Partial<Settings> = {
       missionControlShowPermissionsAtTop: signal<boolean>(false),
-      aiPermissionPosture: posture,
-      setAiPermissionPosture: (value: AiPermissionPosture): void => {
-        postureCalls.push(value);
-        posture.set(value);
-      },
     };
-    const navStub: Partial<SettingsNavigation> = { open: () => undefined };
 
     await TestBed.configureTestingModule({
       imports: [MissionControlPanel],
@@ -105,7 +93,6 @@ describe('MissionControlPanel', () => {
         { provide: Tabs, useValue: tabsStub },
         { provide: MissionControlTiles, useValue: tilesStub },
         { provide: Settings, useValue: settingsStub },
-        { provide: SettingsNavigation, useValue: navStub },
       ],
     }).compileComponents();
 
@@ -187,11 +174,13 @@ describe('MissionControlPanel', () => {
     expect(revealed).toEqual(['h2']);
   });
 
-  it('tabs_agentsTabIsActiveByDefault', () => {
-    const tabs: HTMLElement[] = Array.from(host.querySelectorAll<HTMLElement>('.panel__tab'));
-    const active: HTMLElement | undefined = tabs.find((tab: HTMLElement): boolean =>
-      tab.classList.contains('panel__tab--active'),
-    );
-    expect(active?.textContent?.trim()).toContain('Agents');
+  it('render_showsNoTabSwitchOrSettingsButton', () => {
+    hosts.set([makeHost('h1', { label: 'Alpha' })]);
+    fixture.detectChanges();
+
+    // The panel is the agent rail and nothing else: no Agents/Settings tab switch, and no gear in the
+    // header deep-linking to the settings category.
+    expect(host.querySelector('.panel__tabs')).toBeNull();
+    expect(host.querySelector('.panel__header app-button')).toBeNull();
   });
 });
