@@ -11,6 +11,7 @@
     [attr.aria-selected]="selectedId() !== null ? row.id === selectedId() : null"
     [cdkContextMenuTriggerFor]="hasContextMenu() ? (contextMenu.panel() ?? null) : null"
     [cdkContextMenuTriggerData]="{ $implicit: row }"
+    [cdkContextMenuDisabled]="!rowHasMenu(row)"
     (click)="rowClick.emit(row)"
     (keydown.enter)="activate($event, row)"
     (keydown.space)="activate($event, row)"

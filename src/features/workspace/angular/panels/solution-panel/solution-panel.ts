@@ -131,15 +131,16 @@ export class SolutionPanel {
     treeRow: TreeRow,
   ): readonly MenuItem[] => {
     const row: SolutionRow = this.rowOf(treeRow);
+    const path: string | null = this.pathFor(row);
     const items: MenuItem[] = [];
 
-    if (row.kind === 'file' && row.path !== null) {
+    if (row.kind === 'file') {
       items.push({ id: ACTION_OPEN, label: 'Open', icon: Icon.FILE });
     }
-    if (row.kind === 'project' && row.path !== null) {
+    if (row.kind === 'project') {
       items.push({ id: ACTION_EDIT_PROJECT, label: 'Edit Project File', icon: Icon.PROJECT });
     }
-    if (row.path !== null) {
+    if (path !== null) {
       items.push(
         { id: ACTION_COPY_PATH, label: 'Copy Path', icon: Icon.COPY },
         { id: ACTION_COPY_RELATIVE, label: 'Copy Relative Path', icon: Icon.COPY },
@@ -148,6 +149,24 @@ export class SolutionPanel {
     }
     return items;
   };
+
+  /**
+   * Resolves the path a row's commands act on.
+   *
+   * The workspace root row carries no path of its own — it is synthesised to head the tree rather
+   * than read from the project model — but it plainly stands for the root directory, and offering
+   * nothing on the one row every solution has reads as a broken menu. Solution folders are the
+   * opposite case and genuinely resolve to nothing: they are groupings inside the `.sln` with no
+   * directory behind them, so a path command would have to invent one.
+   * @param row The row to resolve.
+   * @returns Returns the path the row's commands act on, or null when it stands for nothing on disk.
+   */
+  private pathFor(row: SolutionRow): string | null {
+    if (row.path !== null) {
+      return row.path;
+    }
+    return row.kind === 'solution' ? (this.model()?.root ?? null) : null;
+  }
 
   /**
    * Maps a change status to its badge letter, exposed for the template.
@@ -257,7 +276,7 @@ export class SolutionPanel {
    */
   public onContextAction(selection: TreeMenuSelection): void {
     const row: SolutionRow = this.rowOf(selection.row);
-    const path: string | null = row.path;
+    const path: string | null = this.pathFor(row);
     if (path === null) {
       return;
     }

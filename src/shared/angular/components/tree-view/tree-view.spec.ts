@@ -234,3 +234,59 @@ describe('TreeView context menu', () => {
     expect(component.chosen[0].row.id).toBe('beta');
   });
 });
+
+/**
+ * Hosts the tree with a context menu that only some rows have items for, so the suppression of empty
+ * menus can be observed.
+ */
+@Component({
+  imports: [TreeView],
+  template: `
+    <app-tree-view [rows]="rows()" [contextMenuFor]="menuFor">
+      <ng-template let-row
+        ><span class="probe-label">{{ row.data }}</span></ng-template
+      >
+    </app-tree-view>
+  `,
+})
+class SparseMenuHost {
+  public readonly rows: WritableSignal<readonly TreeRow[]> = signal<readonly TreeRow[]>([
+    makeRow('actionable', 0, false, false),
+    makeRow('inert', 0, false, false),
+  ]);
+
+  public readonly menuFor: (row: TreeRow) => readonly MenuItem[] = (
+    row: TreeRow,
+  ): readonly MenuItem[] => (row.id === 'actionable' ? [{ id: 'act', label: 'Act' }] : []);
+}
+
+describe('TreeView context menu suppression', () => {
+  let fixture: ComponentFixture<SparseMenuHost>;
+
+  beforeEach(() => {
+    fixture = TestBed.createComponent(SparseMenuHost);
+    fixture.detectChanges();
+  });
+
+  /**
+   * Right-clicks the row at the given index.
+   * @param index The row index.
+   */
+  function rightClick(index: number): void {
+    Array.from((fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.tree-row'))[
+      index
+    ].dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    fixture.detectChanges();
+  }
+
+  it('contextMenu_onARowWithItems_opens', () => {
+    rightClick(0);
+    expect(document.querySelectorAll('.app-menu-panel__item')).toHaveLength(1);
+  });
+
+  it('contextMenu_onARowWithNoItems_doesNotOpenAnEmptyPanel', () => {
+    // An empty panel on a row nothing can be done to reads as a bug rather than as an answer.
+    rightClick(1);
+    expect(document.querySelectorAll('.app-menu-panel')).toHaveLength(0);
+  });
+});

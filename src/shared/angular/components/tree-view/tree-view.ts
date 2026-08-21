@@ -289,6 +289,22 @@ export class TreeView {
   }
 
   /**
+   * Gets whether a row has any context-menu items, which is what decides whether right-clicking it
+   * opens anything.
+   *
+   * A tree usually has rows its commands cannot act on — a grouping that stands for nothing on disk,
+   * a placeholder — and opening an empty panel on those reads as a bug rather than as an answer. The
+   * factory is asked per row rather than cached because a row's items depend on state that moves
+   * under it; the cost is one small array per rendered row, and only the rows in the scrollport
+   * render.
+   * @param row The row to test.
+   * @returns Returns true when the row has at least one item; otherwise, false.
+   */
+  protected rowHasMenu(row: TreeRow): boolean {
+    return this.menuItemsFor(row).length > 0;
+  }
+
+  /**
    * Re-emits a context-menu choice with the row it was made on.
    * @param choice The chosen item and the data its menu opened with.
    */

@@ -254,9 +254,29 @@ describe('SolutionPanel', () => {
       expect(ids).toEqual(['edit-project', 'copy-path', 'copy-relative-path', 'reveal']);
     });
 
-    it('contextMenuFor_aRowWithNoPath_offersNothing', () => {
-      // A logical solution folder maps to nothing on disk, so every item this menu offers would be
-      // meaningless on it. An empty menu is the honest answer.
+    it('contextMenuFor_theWorkspaceRoot_offersThePathActionsAgainstTheSolutionRoot', () => {
+      // The root row is synthesised to head the tree and carries no path of its own, but it stands
+      // for the root directory — and it is the one row every solution has.
+      solution.model.set(model);
+      expect(menuIds(makeRow({ kind: 'solution', path: null }))).toEqual([
+        'copy-path',
+        'copy-relative-path',
+        'reveal',
+      ]);
+    });
+
+    it('onContextAction_theWorkspaceRoot_revealsTheSolutionRoot', () => {
+      solution.model.set(model);
+      const row: SolutionRow = makeRow({ kind: 'solution', path: null });
+      component.onContextAction({ itemId: 'reveal', row: treeRow(row) });
+
+      expect(shell.revealed).toEqual(['/root']);
+    });
+
+    it('contextMenuFor_aSolutionFolder_offersNothing', () => {
+      // A solution folder is a grouping inside the .sln with no directory behind it, so a path
+      // command would have to invent one. The tree suppresses the menu rather than open it empty.
+      solution.model.set(model);
       expect(menuIds(makeRow({ kind: 'folder', path: null }))).toEqual([]);
     });
 
