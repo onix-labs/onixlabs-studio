@@ -24,23 +24,39 @@ interface FakeAgent {
    * Gets the number of times the agent was stopped.
    */
   readonly stops: () => number;
+
+  /**
+   * Gets the writable exposed-via-Remote-Control signal backing the agent.
+   */
+  readonly remote: WritableSignal<boolean>;
 }
 
 /**
- * Creates a fake agent whose `isRunning` signal is writable and whose `stop` records its invocations.
+ * Creates a fake agent whose `isRunning` and Remote Control signals are writable and whose `stop`
+ * records its invocations.
  * @param running The initial run state.
+ * @param supportsRemote Whether the agent's provider offers Remote Control at all.
  * @returns Returns the fake agent.
  */
-function makeAgent(running: boolean = false): FakeAgent {
+function makeAgent(running: boolean = false, supportsRemote: boolean = true): FakeAgent {
   const runningState: WritableSignal<boolean> = signal<boolean>(running);
+  const remoteState: WritableSignal<boolean> = signal<boolean>(false);
   let stopCount: number = 0;
   const agent: unknown = {
     isRunning: runningState.asReadonly(),
     stop: (): void => {
       stopCount += 1;
     },
+    supportsRemoteControl: signal<boolean>(supportsRemote).asReadonly(),
+    remoteControlEnabled: remoteState.asReadonly(),
+    setRemoteControlEnabled: (enabled: boolean): void => remoteState.set(enabled),
   };
-  return { agent: agent as Agent, running: runningState, stops: (): number => stopCount };
+  return {
+    agent: agent as Agent,
+    running: runningState,
+    stops: (): number => stopCount,
+    remote: remoteState,
+  };
 }
 
 /**
@@ -201,5 +217,54 @@ describe('AgentHosts', () => {
 
     expect(busy.stops()).toBe(1);
     expect(idle.stops()).toBe(0);
+  });
+
+  it('remoteCapableHosts_leavesOutHostsWhoseProviderHasNoRemoteControl', () => {
+    registry.register(makeHost(makeAgent(false, true).agent, 'Claude'));
+    registry.register(makeHost(makeAgent(false, false).agent, 'Local model'));
+
+    expect(registry.remoteCapableHosts().map((host: AgentHost): string => host.label())).toEqual([
+      'Claude',
+    ]);
+  });
+
+  it('allRemoteControlled_holdsOnlyWhenEveryCapableHostIsExposed', () => {
+    const first: FakeAgent = makeAgent();
+    const second: FakeAgent = makeAgent();
+    registry.register(makeHost(first.agent));
+    registry.register(makeHost(second.agent));
+
+    expect(registry.allRemoteControlled()).toBe(false);
+
+    first.remote.set(true);
+    expect(registry.allRemoteControlled()).toBe(false);
+
+    second.remote.set(true);
+    expect(registry.allRemoteControlled()).toBe(true);
+  });
+
+  it('allRemoteControlled_withNothingToExpose_isFalse', () => {
+    // Nothing exposed is not "everything exposed": a bulk toggle must not read as on with no agents
+    // behind it, nor with only agents whose provider cannot be exposed at all.
+    expect(registry.allRemoteControlled()).toBe(false);
+
+    registry.register(makeHost(makeAgent(false, false).agent));
+    expect(registry.allRemoteControlled()).toBe(false);
+  });
+
+  it('setRemoteControlAll_exposesEveryCapableHost_andLeavesTheRestAlone', () => {
+    const capable: FakeAgent = makeAgent(false, true);
+    const incapable: FakeAgent = makeAgent(false, false);
+    registry.register(makeHost(capable.agent));
+    registry.register(makeHost(incapable.agent));
+
+    registry.setRemoteControlAll(true);
+
+    expect(capable.remote()).toBe(true);
+    expect(incapable.remote()).toBe(false);
+
+    registry.setRemoteControlAll(false);
+
+    expect(capable.remote()).toBe(false);
   });
 });

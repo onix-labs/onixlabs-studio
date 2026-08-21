@@ -1,5 +1,13 @@
-import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
-import type { AgentMode, AiModelInfo, AiProviderInfo, AiRemoteControlMode } from '@shared/api/ai-types';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  signal,
+  Signal,
+  WritableSignal,
+} from '@angular/core';
+import type { AgentMode, AiModelInfo, AiProviderInfo } from '@shared/api/ai-types';
 import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine';
 import { AgentSessions } from '@shared/angular/services/agent-sessions/agent-sessions';
 import { EditorCommands } from '@shared/angular/services/editor-commands/editor-commands';
@@ -7,10 +15,12 @@ import { Log } from '@shared/angular/services/log/log';
 import { Icon } from '@shared/angular/icons/icon';
 import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host';
 import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button';
+import { RibbonStripButtonSmall } from '@shared/angular/components/ribbon-strip/ribbon-strip-button-small/ribbon-strip-button-small';
 import { RibbonStripColumn } from '@shared/angular/components/ribbon-strip/ribbon-strip-column/ribbon-strip-column';
 import { RibbonStripField } from '@shared/angular/components/ribbon-strip/ribbon-strip-field/ribbon-strip-field';
 import { RibbonStripGroup } from '@shared/angular/components/ribbon-strip/ribbon-strip-group/ribbon-strip-group';
 import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/ribbon-strip-overflow/ribbon-strip-overflow';
+import { AgentRemoteModal } from '@shared/angular/components/agent-remote-modal/agent-remote-modal';
 
 /**
  * Represents the contextual ribbon shown when an agent tab is active. The Session group drives the
@@ -28,7 +38,9 @@ import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/rib
     RibbonStripGroup,
     RibbonStripColumn,
     RibbonStripButton,
+    RibbonStripButtonSmall,
     RibbonStripField,
+    AgentRemoteModal,
   ],
   templateUrl: './agent-ribbon.html',
   hostDirectives: [RibbonHost],
@@ -96,26 +108,15 @@ export class AgentRibbon {
   protected readonly supportsRemoteControl: Signal<boolean> = this.sessions.supportsRemoteControl;
 
   /**
-   * Gets the labels offered by the Remote Control field.
+   * Gets whether the active tab's session is exposed via Remote Control, for the toggle's pressed state.
    */
-  protected readonly remoteControlLabels: readonly string[] = [
-    'Remote off',
-    'Remote mirror (view-only)',
-    'Full remote control',
-  ];
+  protected readonly remoteControlEnabled: Signal<boolean> = this.sessions.remoteControlEnabled;
 
   /**
-   * Gets the label of the active tab's Remote Control mode, for the field's value. The field has no
-   * visible label, so the values themselves carry the meaning.
+   * Holds whether the Remote Control confirmation is open. The toggle never flips on the press itself:
+   * exposing a session (or dropping a peer already on one) is confirmed first.
    */
-  protected readonly remoteControlLabel: Signal<string> = computed((): string => {
-    const mode: AiRemoteControlMode = this.sessions.remoteControl();
-    return mode === 'control'
-      ? 'Full remote control'
-      : mode === 'mirror'
-        ? 'Remote mirror (view-only)'
-        : 'Remote off';
-  });
+  protected readonly remoteConfirmOpen: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
    * Gets the provider labels offered by the Provider field.
@@ -235,14 +236,27 @@ export class AgentRibbon {
   }
 
   /**
-   * Sets the active tab's Remote Control mode from the chosen label.
-   * @param label The label emitted by the Remote Control field.
+   * Asks whether to flip the active tab's Remote Control, opening the confirmation.
    */
-  protected onRemoteControlLabel(label: string): void {
-    const mode: AiRemoteControlMode =
-      label === 'Full remote control' ? 'control' : label === 'Remote mirror (view-only)' ? 'mirror' : 'off';
-    this.log.debug('agent.ribbon', 'Remote control changed', { mode });
-    this.sessions.setRemoteControl(mode);
+  protected onRemoteControlToggle(): void {
+    this.remoteConfirmOpen.set(true);
+  }
+
+  /**
+   * Flips the active tab's Remote Control, the confirmation having been answered Yes.
+   */
+  protected onRemoteControlConfirmed(): void {
+    this.remoteConfirmOpen.set(false);
+    const enabled: boolean = !this.sessions.remoteControlEnabled();
+    this.log.debug('agent.ribbon', 'Remote control changed', { enabled });
+    this.sessions.setRemoteControlEnabled(enabled);
+  }
+
+  /**
+   * Closes the confirmation unanswered, leaving Remote Control where it was.
+   */
+  protected onRemoteControlDismissed(): void {
+    this.remoteConfirmOpen.set(false);
   }
 
   /**

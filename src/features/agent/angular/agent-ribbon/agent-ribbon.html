@@ -70,14 +70,24 @@
         [value]="modeLabel()"
         (changed)="onModeLabel($event)"
       />
+      <!-- Remote Control is on or off; how much a peer may do once on is the global posture, set in
+           Settings. The press only opens the confirmation — the toggle flips on Yes. -->
       @if (supportsRemoteControl()) {
-        <app-ribbon-strip-field
+        <app-ribbon-strip-button-small
+          [icon]="Icon.REMOTE_CONTROL"
           label="Remote"
-          [options]="remoteControlLabels"
-          [value]="remoteControlLabel()"
-          (changed)="onRemoteControlLabel($event)"
+          [toggle]="true"
+          [pressed]="remoteControlEnabled()"
+          (action)="onRemoteControlToggle()"
         />
       }
     </app-ribbon-strip-column>
   </app-ribbon-strip-group>
 </app-ribbon-overflow>
+
+<app-agent-remote-modal
+  [open]="remoteConfirmOpen()"
+  [enabling]="!remoteControlEnabled()"
+  (confirmed)="onRemoteControlConfirmed()"
+  (dismissed)="onRemoteControlDismissed()"
+/>

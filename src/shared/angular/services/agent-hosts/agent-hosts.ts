@@ -216,6 +216,41 @@ export class AgentHosts {
   }
 
   /**
+   * Gets the live hosts whose provider supports Remote Control — the ones a bulk toggle can act on.
+   * A host on a provider without the feature is not counted, and never reported as "not exposed yet".
+   */
+  public readonly remoteCapableHosts: Signal<readonly AgentHost[]> = computed(
+    (): readonly AgentHost[] =>
+      this.hostList().filter((host: AgentHost): boolean => host.agent.supportsRemoteControl()),
+  );
+
+  /**
+   * Gets whether every remote-capable host is currently exposed via Remote Control, which is what a
+   * bulk toggle reads as its pressed state. False when no host can be exposed at all, so the toggle
+   * never reads as on with nothing behind it.
+   */
+  public readonly allRemoteControlled: Signal<boolean> = computed((): boolean => {
+    const capable: readonly AgentHost[] = this.remoteCapableHosts();
+    return (
+      capable.length > 0 &&
+      capable.every((host: AgentHost): boolean => host.agent.remoteControlEnabled())
+    );
+  });
+
+  /**
+   * Exposes every remote-capable host via Remote Control, or stops exposing them. A host already in
+   * the requested state is left alone (its live session is not disturbed).
+   * @param enabled Whether the sessions are exposed.
+   */
+  public setRemoteControlAll(enabled: boolean): void {
+    const capable: readonly AgentHost[] = this.remoteCapableHosts();
+    this.log.info('AgentHosts', 'Setting remote control on all hosts', enabled, capable.length);
+    for (const host of capable) {
+      host.agent.setRemoteControlEnabled(enabled);
+    }
+  }
+
+  /**
    * Stops every running host.
    */
   public stopAll(): void {

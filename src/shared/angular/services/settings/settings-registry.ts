@@ -1,6 +1,7 @@
 import type {
   AiConnection,
   AiPermissionPosture,
+  AiRemoteControlPosture,
   AiToolPolicy,
   ClaudeExecutableMode,
 } from '@shared/api/ai-types';
@@ -93,6 +94,7 @@ export interface SettingsValues {
   readonly 'ai.connectionModels': AiConnectionModels;
   readonly 'ai.autoScroll': boolean;
   readonly 'ai.permissionPosture': AiPermissionPosture;
+  readonly 'ai.remoteControlPosture': AiRemoteControlPosture;
   readonly 'ai.toolPolicies': Readonly<Record<string, AiToolPolicy>>;
   readonly 'ai.allowedWritePaths': readonly string[];
   readonly 'ai.deniedWritePaths': readonly string[];
@@ -697,6 +699,21 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           ],
         },
         default: 'prompt',
+      },
+      {
+        key: 'ai.remoteControlPosture',
+        title: 'Remote control posture',
+        description:
+          'How much a remote peer may do on an agent you expose. Each agent chooses only whether it ' +
+          'is exposed; this decides what that exposure means.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'control', label: 'Full Control' },
+            { value: 'mirror', label: 'Read-Only' },
+          ],
+        },
+        default: 'control',
       },
       {
         key: 'ai.toolPolicies',

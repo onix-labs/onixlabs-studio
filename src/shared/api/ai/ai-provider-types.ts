@@ -75,6 +75,24 @@ export type AiRemoteControlMode = 'off' | 'mirror' | 'control';
 export const AI_REMOTE_CONTROL_MODES: readonly AiRemoteControlMode[] = ['off', 'mirror', 'control'];
 
 /**
+ * How much a remote peer may do once an agent is exposed — the user's global choice, made once in
+ * Settings rather than per agent. An agent's own control is therefore a plain on/off toggle: turning
+ * it on exposes that session at whichever posture is set here.
+ *
+ * The two values are the non-`off` {@link AiRemoteControlMode}s, so a posture maps straight onto the
+ * mode a run is dispatched with:
+ *
+ * - `control`: **Full Control** — a peer can drive the session.
+ * - `mirror`: **Read-Only** — a peer can watch but not act.
+ */
+export type AiRemoteControlPosture = Exclude<AiRemoteControlMode, 'off'>;
+
+/**
+ * The remote-control postures in display order.
+ */
+export const AI_REMOTE_CONTROL_POSTURES: readonly AiRemoteControlPosture[] = ['control', 'mirror'];
+
+/**
  * Describes a model a provider can run a turn with.
  */
 export interface AiModelInfo {

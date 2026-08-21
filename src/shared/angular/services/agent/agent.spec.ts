@@ -239,19 +239,41 @@ describe('Agent', () => {
     expect(runCalls[2].effort).toBeUndefined();
   });
 
-  it('send_carriesTheRemoteControlMode_andOmitsOffByDefault', () => {
+  it('send_carriesTheRemoteControlPosture_andOmitsOffByDefault', () => {
     agent.send('hello');
     expect(runCalls[0].remoteControl).toBeUndefined();
     fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
 
-    agent.setRemoteControl('control');
+    // The agent chooses only whether it is exposed; the mode a run carries is the settings posture.
+    agent.setRemoteControlEnabled(true);
     agent.send('again');
     expect(runCalls[1].remoteControl).toBe('control');
     fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
 
-    agent.setRemoteControl('off');
+    agent.setRemoteControlEnabled(false);
     agent.send('once more');
     expect(runCalls[2].remoteControl).toBeUndefined();
+  });
+
+  it('setRemoteControlEnabled_whenPostureIsReadOnly_carriesMirror', () => {
+    TestBed.inject(Settings).setAiRemoteControlPosture('mirror');
+
+    agent.setRemoteControlEnabled(true);
+    agent.send('hello');
+
+    expect(runCalls[0].remoteControl).toBe('mirror');
+  });
+
+  it('setRemoteControlEnabled_whenIdle_endsTheLiveSessionSoTheNextTurnReopensBridged', () => {
+    agent.send('hello');
+    const first: string | undefined = runCalls[0].agentSessionId;
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+
+    agent.setRemoteControlEnabled(true);
+    agent.send('again');
+
+    expect(closeSessionCalls).toContain(first);
+    expect(runCalls[1].agentSessionId).not.toBe(first);
   });
 
   it('clear_closesTheLiveSessionAndMintsAFreshOne', () => {

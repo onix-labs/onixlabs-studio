@@ -25,6 +25,21 @@
     (click)="conversation.compact()"
   />
 
+  <!-- Remote Control is on or off here; how much a peer may do once on is the global posture, set in
+       Settings. Either way round the press only opens the confirmation — the toggle flips on Yes. It
+       sits with the session actions rather than the fields: it is a button, and the fields either side
+       of it are the ones that give way when the strip narrows. -->
+  @if (supportsRemoteControl()) {
+    <app-button
+      variant="none"
+      [icon]="Icon.REMOTE_CONTROL"
+      [pressed]="remoteControlEnabled()"
+      [ariaLabel]="remoteControlLabel()"
+      [tooltip]="remoteControlLabel()"
+      (click)="onRemoteControlToggle()"
+    />
+  }
+
   <app-dropdown
     class="strip__field"
     ariaLabel="Provider"
@@ -41,16 +56,6 @@
     [value]="model()"
     (valueChange)="onModel($event)"
   />
-  @if (supportsRemoteControl()) {
-    <app-dropdown
-      class="strip__field"
-      ariaLabel="Remote control"
-      [fullWidth]="true"
-      [options]="remoteControlOptions"
-      [value]="remoteControl()"
-      (valueChange)="onRemoteControl($event)"
-    />
-  }
 
   <app-button
     variant="none"
@@ -85,3 +90,10 @@
     (click)="onHistoryToggle()"
   />
 </div>
+
+<app-agent-remote-modal
+  [open]="remoteConfirmOpen()"
+  [enabling]="!remoteControlEnabled()"
+  (confirmed)="onRemoteControlConfirmed()"
+  (dismissed)="onRemoteControlDismissed()"
+/>

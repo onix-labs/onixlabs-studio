@@ -2,6 +2,7 @@ import { computed, effect, inject, Service, signal, Signal, WritableSignal } fro
 import type {
   AiConnection,
   AiPermissionPosture,
+  AiRemoteControlPosture,
   AiToolPolicy,
   ClaudeExecutableMode,
 } from '@shared/api/ai-types';
@@ -635,6 +636,13 @@ export class Settings {
     this.value('ai.permissionPosture');
 
   /**
+   * Gets how much a remote peer may do on an agent exposed via Remote Control. An agent's own control
+   * is a plain on/off toggle; this is what being on means.
+   */
+  public readonly aiRemoteControlPosture: Signal<AiRemoteControlPosture> =
+    this.value('ai.remoteControlPosture');
+
+  /**
    * Gets the user's default allow/ask/deny decision per gateable tool, keyed by tool display name.
    * A missing entry means "ask" (the posture decides).
    */
@@ -1039,6 +1047,15 @@ export class Settings {
   public setAiPermissionPosture(posture: AiPermissionPosture): void {
     this.set('ai.permissionPosture', posture);
     this.log.info('Settings', `Agent permission posture set to '${posture}'`);
+  }
+
+  /**
+   * Sets how much a remote peer may do on an agent exposed via Remote Control.
+   * @param posture The remote-control posture.
+   */
+  public setAiRemoteControlPosture(posture: AiRemoteControlPosture): void {
+    this.set('ai.remoteControlPosture', posture);
+    this.log.info('Settings', `Agent remote control posture set to '${posture}'`);
   }
 
   /**

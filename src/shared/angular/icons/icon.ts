@@ -56,6 +56,12 @@ export class Icon {
   public static readonly AGENT_HIDDEN: Icon = new Icon('ph ph-eye-slash');
 
   /**
+   * Gets the remote-control icon shown on an agent's Remote toggle (its tool strip and ribbon) and on
+   * Mission Control's enable-for-every-agent toggle.
+   */
+  public static readonly REMOTE_CONTROL: Icon = new Icon('ph-duotone ph-sliders-horizontal');
+
+  /**
    * Gets the close icon shown on tab close buttons.
    */
   public static readonly CLOSE: Icon = new Icon('ph ph-x');
@@ -564,6 +570,21 @@ export class Icon {
   public static readonly ARTICLE: Icon = new Icon('ph-duotone ph-article');
 
   // --- Ribbon: agent and terminal ---
+
+  /**
+   * Gets the ask-every-time icon, shown on the `prompt` permission posture.
+   */
+  public static readonly PERMISSION_PROMPT: Icon = new Icon('ph-duotone ph-hand-palm');
+
+  /**
+   * Gets the auto-allow-file-edits icon, shown on the `auto-edits` permission posture.
+   */
+  public static readonly PERMISSION_EDITS: Icon = new Icon('ph-duotone ph-pencil-line');
+
+  /**
+   * Gets the auto-allow-everything icon, shown on the `auto-all` permission posture.
+   */
+  public static readonly PERMISSION_ALL: Icon = new Icon('ph-duotone ph-lock-simple-open');
 
   /**
    * Gets the attach-file icon.

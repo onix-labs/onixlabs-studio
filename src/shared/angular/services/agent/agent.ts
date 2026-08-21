@@ -528,11 +528,12 @@ export class Agent {
   private readonly effortState: WritableSignal<AiEffort | null> = signal<AiEffort | null>(null);
 
   /**
-   * Holds how this conversation's session is exposed via the provider's Remote Control feature (#331).
-   * Persists across new chats within this session; ignored by providers that do not support it.
+   * Holds whether this conversation's session is exposed via the provider's Remote Control feature
+   * (#331). Just on or off: HOW MUCH a peer may do once exposed is the user's global Remote control
+   * posture, not a per-agent choice. Persists across new chats within this session; ignored by
+   * providers that do not support it.
    */
-  private readonly remoteControlState: WritableSignal<AiRemoteControlMode> =
-    signal<AiRemoteControlMode>('off');
+  private readonly remoteControlState: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
    * Holds the slash commands the live provider has discovered for this conversation (#330), or empty
@@ -729,9 +730,21 @@ export class Agent {
   public readonly effort: Signal<AiEffort | null> = this.effortState.asReadonly();
 
   /**
-   * Gets how this conversation's session is exposed via Remote Control (#331).
+   * Gets whether this conversation's session is exposed via Remote Control (#331) — the on/off state
+   * the agent's own toggle drives.
    */
-  public readonly remoteControl: Signal<AiRemoteControlMode> = this.remoteControlState.asReadonly();
+  public readonly remoteControlEnabled: Signal<boolean> = this.remoteControlState.asReadonly();
+
+  /**
+   * Gets the mode this conversation's runs are dispatched with: `off` while the agent is not exposed,
+   * and otherwise whatever the user's global Remote control posture says exposure means. Reading the
+   * posture here (rather than latching it when the toggle is pressed) means changing it in Settings
+   * re-aims every exposed agent, without each having to be toggled off and on again.
+   */
+  public readonly remoteControl: Signal<AiRemoteControlMode> = computed(
+    (): AiRemoteControlMode =>
+      this.remoteControlState() ? this.settings.aiRemoteControlPosture() : 'off',
+  );
 
   /**
    * Gets whether the selected provider supports Remote Control, so the UI offers the control only when
@@ -1094,7 +1107,7 @@ export class Agent {
       surface,
       mode: this.modeState(),
       ...(this.effortState() === null ? {} : { effort: this.effortState()! }),
-      ...(this.remoteControlState() === 'off' ? {} : { remoteControl: this.remoteControlState() }),
+      ...(this.remoteControl() === 'off' ? {} : { remoteControl: this.remoteControl() }),
       contextPaths: attached,
       resumeSessionId: this.sessionIdState(),
       ...(forkAt === null ? {} : { resumeSessionAt: forkAt, forkSession: true }),
@@ -1129,12 +1142,29 @@ export class Agent {
   }
 
   /**
-   * Sets how this conversation's session is exposed via the provider's Remote Control feature (#331).
-   * Takes effect on the next turn (and, for a held-open live session, on its next reopen).
-   * @param mode The remote-control mode: `off`, `mirror` (view-only) or `control`.
+   * Exposes this conversation's session via the provider's Remote Control feature (#331), or stops
+   * exposing it. What exposure means is the user's global Remote control posture, not an argument here.
+   *
+   * The provider binds the bridge when it opens the session, so a live session is ended on a change:
+   * the next turn reopens it — resuming the same provider conversation — with the bridge in its new
+   * state, rather than the toggle sitting on while nothing is actually exposed. A session mid-run is
+   * left alone (ending it would abort the run); that turn finishes, and the change lands on the next.
+   * @param enabled Whether the session is exposed.
    */
-  public setRemoteControl(mode: AiRemoteControlMode): void {
-    this.remoteControlState.set(mode);
+  public setRemoteControlEnabled(enabled: boolean): void {
+    if (this.remoteControlState() === enabled) {
+      return;
+    }
+    this.remoteControlState.set(enabled);
+    this.logger.info(
+      'Agent',
+      `Remote control ${enabled ? 'enabled' : 'disabled'}`,
+      this.remoteControl(),
+    );
+    if (!this.busy()) {
+      this.runtime.closeSession(this.agentSessionId);
+      this.agentSessionId = crypto.randomUUID();
+    }
   }
 
   /**

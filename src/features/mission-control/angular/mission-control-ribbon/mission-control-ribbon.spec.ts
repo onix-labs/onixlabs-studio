@@ -1,14 +1,10 @@
 import { Signal, signal, WritableSignal } from '@angular/core';
-import { TestBed } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 
-import type { AiPermissionPosture } from '@shared/api/ai-types';
-import type { Agent, AgentItem } from '@shared/angular/services/agent/agent';
-import { AgentHosts } from '@shared/angular/services/agent-hosts/agent-hosts';
-import {
-  AgentRequestEntry,
-  AgentRequests,
-} from '@shared/angular/services/agent-requests/agent-requests';
-import { Settings } from '@shared/angular/services/settings/settings';
+import type { AiPermissionPosture, AiRemoteControlPosture } from '@shared/api/ai-types';
+import type { Agent } from '@shared/angular/services/agent/agent';
+import { AgentHost, AgentHosts } from '@shared/angular/services/agent-hosts/agent-hosts';
+import { RibbonAlignment, Settings } from '@shared/angular/services/settings/settings';
 import { MissionControl } from '@features/mission-control/angular/mission-control/mission-control';
 import { MissionControlRibbon } from './mission-control-ribbon';
 
@@ -17,53 +13,29 @@ import { MissionControlRibbon } from './mission-control-ribbon';
  */
 interface RibbonInternals {
   readonly runningCount: Signal<number>;
-  readonly pendingPermissions: Signal<number>;
-  readonly policyLabel: Signal<string>;
+  readonly remoteCapableCount: Signal<number>;
+  readonly allRemoteControlled: Signal<boolean>;
+  readonly remoteConfirmOpen: Signal<boolean>;
+  readonly permissionPosture: Signal<AiPermissionPosture>;
   onStopAll(): void;
-  onAllowAll(): void;
-  onDenyAll(): void;
+  onRemoteToggle(): void;
+  onRemoteConfirmed(): void;
+  onRemoteDismissed(): void;
   onResetLayout(): void;
   onToggleHideEmpty(): void;
   onToggleHideIdle(): void;
-  onPolicy(label: string): void;
-}
-
-/**
- * Records how a request entry was answered.
- */
-interface Answer {
-  readonly item: AgentItem;
-  readonly granted: boolean;
-}
-
-/**
- * Builds a request entry of the given kind whose agent records how it is answered.
- * @param kind The transcript item's kind.
- * @param answers The recorder the entry's agent appends to.
- * @returns Returns the entry.
- */
-function makeEntry(kind: string, answers: Answer[]): AgentRequestEntry {
-  const item: unknown = { kind };
-  const agent: unknown = {
-    respondPermission: (target: AgentItem, granted: boolean): void => {
-      answers.push({ item: target, granted });
-    },
-  };
-  return {
-    key: `k-${kind}-${answers.length}`,
-    tabId: null,
-    label: 'Alpha',
-    item: item as AgentItem,
-    agent: agent as Agent,
-  };
+  onPosture(posture: AiPermissionPosture): void;
 }
 
 describe('MissionControlRibbon', () => {
+  let fixture: ComponentFixture<MissionControlRibbon>;
+  let host: HTMLElement;
   let ribbon: RibbonInternals;
   let runningCount: WritableSignal<number>;
   let hideEmpty: WritableSignal<boolean>;
   let hideIdle: WritableSignal<boolean>;
-  let entries: WritableSignal<readonly AgentRequestEntry[]>;
+  let remoteCapable: WritableSignal<readonly AgentHost[]>;
+  let allRemote: WritableSignal<boolean>;
   let posture: WritableSignal<AiPermissionPosture>;
   let calls: string[];
 
@@ -71,7 +43,8 @@ describe('MissionControlRibbon', () => {
     runningCount = signal<number>(0);
     hideEmpty = signal<boolean>(false);
     hideIdle = signal<boolean>(false);
-    entries = signal<readonly AgentRequestEntry[]>([]);
+    remoteCapable = signal<readonly AgentHost[]>([]);
+    allRemote = signal<boolean>(false);
     posture = signal<AiPermissionPosture>('prompt');
     calls = [];
 
@@ -90,11 +63,18 @@ describe('MissionControlRibbon', () => {
     };
     const agentHostsStub: Partial<AgentHosts> = {
       runningCount: runningCount.asReadonly(),
+      remoteCapableHosts: remoteCapable.asReadonly(),
+      allRemoteControlled: allRemote.asReadonly(),
       stopAll: (): void => void calls.push('stopAll'),
+      setRemoteControlAll: (enabled: boolean): void => {
+        calls.push(`setRemoteControlAll:${enabled}`);
+        allRemote.set(enabled);
+      },
     };
-    const requestsStub: Partial<AgentRequests> = { entries };
     const settingsStub: Partial<Settings> = {
       aiPermissionPosture: posture.asReadonly(),
+      aiRemoteControlPosture: signal<AiRemoteControlPosture>('control').asReadonly(),
+      ribbonAlignment: signal<RibbonAlignment>('left').asReadonly(),
       setAiPermissionPosture: (value: AiPermissionPosture): void => {
         calls.push(`setPosture:${value}`);
         posture.set(value);
@@ -106,12 +86,55 @@ describe('MissionControlRibbon', () => {
       providers: [
         { provide: MissionControl, useValue: missionControlStub },
         { provide: AgentHosts, useValue: agentHostsStub },
-        { provide: AgentRequests, useValue: requestsStub },
         { provide: Settings, useValue: settingsStub },
       ],
     });
-    ribbon = TestBed.createComponent(MissionControlRibbon)
-      .componentInstance as unknown as RibbonInternals;
+    fixture = TestBed.createComponent(MissionControlRibbon);
+    host = fixture.nativeElement as HTMLElement;
+    ribbon = fixture.componentInstance as unknown as RibbonInternals;
+  });
+
+  /**
+   * Finds a rendered ribbon button by its label.
+   * @param label The button's label.
+   * @returns Returns the button element.
+   */
+  function button(label: string): HTMLButtonElement {
+    const match: HTMLButtonElement | undefined = Array.from(
+      host.querySelectorAll<HTMLButtonElement>('button'),
+    ).find((element: HTMLButtonElement): boolean => element.textContent?.trim() === label);
+    if (match === undefined) {
+      throw new Error(`No button labelled "${label}"`);
+    }
+    return match;
+  }
+
+  it('render_drawsStopAll_theStackedViewToggles_threePostures_andTheRemoteToggle', () => {
+    fixture.detectChanges();
+
+    expect(button('Stop All')).toBeTruthy();
+    expect(button('Remote Control')).toBeTruthy();
+    expect(button('Hide Empty')).toBeTruthy();
+    expect(button('Hide Idle')).toBeTruthy();
+    expect(button('Reset Widths')).toBeTruthy();
+    expect(button('Prompt All')).toBeTruthy();
+    expect(button('Allow Edits')).toBeTruthy();
+    expect(button('Allow All')).toBeTruthy();
+    // The bulk Remote toggle has nothing to expose until an agent registers.
+    expect(button('Remote Control').disabled).toBe(true);
+  });
+
+  it('postureButtons_pressExactlyTheOneInForce', () => {
+    fixture.detectChanges();
+    expect(button('Prompt All').getAttribute('aria-pressed')).toBe('true');
+    expect(button('Allow All').getAttribute('aria-pressed')).toBe('false');
+
+    button('Allow All').click();
+    fixture.detectChanges();
+
+    expect(calls).toEqual(['setPosture:auto-all']);
+    expect(button('Prompt All').getAttribute('aria-pressed')).toBe('false');
+    expect(button('Allow All').getAttribute('aria-pressed')).toBe('true');
   });
 
   it('runningCount_reflectsTheLiveHostRegistry', () => {
@@ -120,26 +143,12 @@ describe('MissionControlRibbon', () => {
     expect(ribbon.runningCount()).toBe(3);
   });
 
-  it('pendingPermissions_countsOnlyPermissionRequests', () => {
-    const answers: Answer[] = [];
-    entries.set([
-      makeEntry('permission', answers),
-      makeEntry('edit-decision', answers),
-      makeEntry('permission', answers),
-      makeEntry('input-request', answers),
-    ]);
+  it('remoteCapableCount_countsTheHostsABulkToggleWouldActOn', () => {
+    expect(ribbon.remoteCapableCount()).toBe(0);
 
-    expect(ribbon.pendingPermissions()).toBe(2);
-  });
+    remoteCapable.set([{ agent: {} as Agent } as AgentHost, { agent: {} as Agent } as AgentHost]);
 
-  it('policyLabel_mapsThePostureToItsLabel', () => {
-    expect(ribbon.policyLabel()).toBe('Prompt');
-
-    posture.set('auto-edits');
-    expect(ribbon.policyLabel()).toBe('Auto-allow edits');
-
-    posture.set('auto-all');
-    expect(ribbon.policyLabel()).toBe('Auto-allow everything');
+    expect(ribbon.remoteCapableCount()).toBe(2);
   });
 
   it('onStopAll_stopsEveryRunningHost', () => {
@@ -147,29 +156,36 @@ describe('MissionControlRibbon', () => {
     expect(calls).toEqual(['stopAll']);
   });
 
-  it('onAllowAll_grantsEveryPendingPermission_andLeavesOtherKinds', () => {
-    const answers: Answer[] = [];
-    const permission: AgentRequestEntry = makeEntry('permission', answers);
-    const edit: AgentRequestEntry = makeEntry('edit-decision', answers);
-    entries.set([permission, edit]);
+  it('onRemoteToggle_opensTheConfirmation_withoutFlippingAnything', () => {
+    ribbon.onRemoteToggle();
 
-    ribbon.onAllowAll();
-
-    expect(answers).toEqual([{ item: permission.item, granted: true }]);
+    expect(ribbon.remoteConfirmOpen()).toBe(true);
+    expect(calls).toEqual([]);
   });
 
-  it('onDenyAll_deniesEveryPendingPermission', () => {
-    const answers: Answer[] = [];
-    const a: AgentRequestEntry = makeEntry('permission', answers);
-    const b: AgentRequestEntry = makeEntry('permission', answers);
-    entries.set([a, b]);
+  it('onRemoteConfirmed_exposesEveryRemoteCapableHost_andClosesTheConfirmation', () => {
+    ribbon.onRemoteToggle();
+    ribbon.onRemoteConfirmed();
 
-    ribbon.onDenyAll();
+    expect(calls).toEqual(['setRemoteControlAll:true']);
+    expect(ribbon.remoteConfirmOpen()).toBe(false);
+  });
 
-    expect(answers).toEqual([
-      { item: a.item, granted: false },
-      { item: b.item, granted: false },
-    ]);
+  it('onRemoteConfirmed_whenAllAreExposed_stopsExposingThem', () => {
+    allRemote.set(true);
+
+    ribbon.onRemoteToggle();
+    ribbon.onRemoteConfirmed();
+
+    expect(calls).toEqual(['setRemoteControlAll:false']);
+  });
+
+  it('onRemoteDismissed_closesTheConfirmation_andChangesNothing', () => {
+    ribbon.onRemoteToggle();
+    ribbon.onRemoteDismissed();
+
+    expect(ribbon.remoteConfirmOpen()).toBe(false);
+    expect(calls).toEqual([]);
   });
 
   it('onResetLayout_resetsTheTileWidths', () => {
@@ -190,11 +206,14 @@ describe('MissionControlRibbon', () => {
     expect(calls).toEqual(['setHideIdle:true']);
   });
 
-  it('onPolicy_setsThePostureForAKnownLabel_andIgnoresAnUnknownOne', () => {
-    ribbon.onPolicy('Auto-allow everything');
+  it('onPosture_movesThePosture_andIgnoresTheOneAlreadyInForce', () => {
+    ribbon.onPosture('auto-all');
     expect(calls).toEqual(['setPosture:auto-all']);
+    expect(ribbon.permissionPosture()).toBe('auto-all');
 
-    ribbon.onPolicy('Not a real policy');
+    // The three buttons are radios, not switches: pressing the pressed one must not un-set it.
+    ribbon.onPosture('auto-all');
     expect(calls).toEqual(['setPosture:auto-all']);
+    expect(ribbon.permissionPosture()).toBe('auto-all');
   });
 });

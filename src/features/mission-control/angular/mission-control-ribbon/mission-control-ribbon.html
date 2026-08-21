@@ -9,51 +9,62 @@
     />
   </app-ribbon-strip-group>
 
-  <app-ribbon-strip-group title="Permissions">
-    <app-ribbon-strip-column [spread]="true">
-      <app-ribbon-strip-row>
-        <app-ribbon-strip-button-small
-          [icon]="Icon.CHECK"
-          label="Allow all"
-          [disabled]="pendingPermissions() === 0"
-          (action)="onAllowAll()"
-        />
-        <app-ribbon-strip-button-small
-          [icon]="Icon.CLOSE"
-          label="Deny all"
-          [disabled]="pendingPermissions() === 0"
-          (action)="onDenyAll()"
-        />
-      </app-ribbon-strip-row>
-      <app-ribbon-strip-field
-        label="Policy"
-        [options]="policyOptions"
-        [value]="policyLabel()"
-        [fullWidth]="false"
-        (changed)="onPolicy($event)"
+  <app-ribbon-strip-group title="View">
+    <app-ribbon-strip-column>
+      <app-ribbon-strip-button-small
+        [icon]="Icon.HIDE_EMPTY"
+        label="Hide Empty"
+        [toggle]="true"
+        [pressed]="hideEmpty()"
+        (action)="onToggleHideEmpty()"
+      />
+      <app-ribbon-strip-button-small
+        [icon]="Icon.HIDE_IDLE"
+        label="Hide Idle"
+        [toggle]="true"
+        [pressed]="hideIdle()"
+        (action)="onToggleHideIdle()"
+      />
+      <app-ribbon-strip-button-small
+        [icon]="Icon.LAYOUT_SPLIT"
+        label="Reset Widths"
+        (action)="onResetLayout()"
       />
     </app-ribbon-strip-column>
   </app-ribbon-strip-group>
 
-  <app-ribbon-strip-group title="View">
+  <!-- Everything governing what an agent may do without you: the posture, and who is allowed to
+       answer for you. The posture is three buttons rather than a field — one is always pressed, and
+       pressing one moves the posture there, so they read as the answer to "how much may they do
+       before asking?" rather than as three independent switches. -->
+  <app-ribbon-strip-group title="Permissions">
+    @for (posture of postures; track posture.value) {
+      <app-ribbon-strip-button
+        [icon]="posture.icon"
+        [label]="posture.label"
+        [toggle]="true"
+        [pressed]="permissionPosture() === posture.value"
+        (action)="onPosture(posture.value)"
+      />
+    }
+    <!-- Exposes every remote-capable agent at once — the bulk version of an agent's own toggle, and a
+         permission in its own right: it decides whether a peer elsewhere may answer these prompts.
+         Latching, not one of the posture radios; the press opens the confirmation and it flips on Yes. -->
     <app-ribbon-strip-button
-      [icon]="Icon.HIDE_EMPTY"
-      label="Hide Empty"
+      [icon]="Icon.REMOTE_CONTROL"
+      label="Remote Control"
       [toggle]="true"
-      [pressed]="hideEmpty()"
-      (action)="onToggleHideEmpty()"
-    />
-    <app-ribbon-strip-button
-      [icon]="Icon.HIDE_IDLE"
-      label="Hide Idle"
-      [toggle]="true"
-      [pressed]="hideIdle()"
-      (action)="onToggleHideIdle()"
-    />
-    <app-ribbon-strip-button
-      [icon]="Icon.LAYOUT_SPLIT"
-      label="Reset Widths"
-      (action)="onResetLayout()"
+      [pressed]="allRemoteControlled()"
+      [disabled]="remoteCapableCount() === 0"
+      (action)="onRemoteToggle()"
     />
   </app-ribbon-strip-group>
 </app-ribbon-overflow>
+
+<app-agent-remote-modal
+  [open]="remoteConfirmOpen()"
+  [enabling]="!allRemoteControlled()"
+  [count]="remoteCapableCount()"
+  (confirmed)="onRemoteConfirmed()"
+  (dismissed)="onRemoteDismissed()"
+/>

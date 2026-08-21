@@ -7,7 +7,9 @@ import {
   InputSignal,
   output,
   OutputEmitterRef,
+  signal,
   Signal,
+  WritableSignal,
 } from '@angular/core';
 import type { AiModelInfo, AiProviderInfo } from '@shared/api/ai-types';
 import { Agent } from '@shared/angular/services/agent/agent';
@@ -17,6 +19,7 @@ import { EditorCommands } from '@shared/angular/services/editor-commands/editor-
 import { Icon } from '@shared/angular/icons/icon';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
+import { AgentRemoteModal } from '@shared/angular/components/agent-remote-modal/agent-remote-modal';
 
 /**
  * A compact tool strip for a docked agent conversation — a mini version of the standalone agent tab's
@@ -29,7 +32,7 @@ import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropd
  */
 @Component({
   selector: 'app-agent-tool-strip',
-  imports: [Dropdown, Button],
+  imports: [Dropdown, Button, AgentRemoteModal],
   templateUrl: './agent-tool-strip.html',
   styleUrl: './agent-tool-strip.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -102,18 +105,24 @@ export class AgentToolStrip {
   );
 
   /**
-   * Gets the Remote Control options: off, view-only mirror, or full control.
+   * Gets whether this conversation is exposed via Remote Control, for the toggle's pressed state.
    */
-  protected readonly remoteControlOptions: readonly DropdownOption[] = [
-    { value: 'off', label: 'Remote off' },
-    { value: 'mirror', label: 'Remote mirror (view-only)' },
-    { value: 'control', label: 'Full remote control' },
-  ];
+  protected readonly remoteControlEnabled: Signal<boolean> = computed(
+    (): boolean => this.agent.remoteControlEnabled(),
+  );
 
   /**
-   * Gets this conversation's Remote Control mode, for the field's value.
+   * Gets the Remote Control toggle's name, which states what pressing it would do.
    */
-  protected readonly remoteControl: Signal<string> = computed((): string => this.agent.remoteControl());
+  protected readonly remoteControlLabel: Signal<string> = computed((): string =>
+    this.remoteControlEnabled() ? 'Disable remote control' : 'Enable remote control',
+  );
+
+  /**
+   * Holds whether the Remote Control confirmation is open. The toggle never flips on the press itself:
+   * exposing a session (or dropping a peer already on one) is confirmed first.
+   */
+  protected readonly remoteConfirmOpen: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
    * Gets an external history-open state overriding the conversation's own, or null to drive the shared
@@ -169,12 +178,24 @@ export class AgentToolStrip {
   }
 
   /**
-   * Sets this conversation's Remote Control mode.
-   * @param mode The mode emitted by the Remote Control field.
+   * Asks whether to flip this conversation's Remote Control, opening the confirmation.
    */
-  protected onRemoteControl(mode: string): void {
-    if (mode === 'off' || mode === 'mirror' || mode === 'control') {
-      this.agent.setRemoteControl(mode);
-    }
+  protected onRemoteControlToggle(): void {
+    this.remoteConfirmOpen.set(true);
+  }
+
+  /**
+   * Flips this conversation's Remote Control, the confirmation having been answered Yes.
+   */
+  protected onRemoteControlConfirmed(): void {
+    this.remoteConfirmOpen.set(false);
+    this.agent.setRemoteControlEnabled(!this.agent.remoteControlEnabled());
+  }
+
+  /**
+   * Closes the confirmation unanswered, leaving Remote Control where it was.
+   */
+  protected onRemoteControlDismissed(): void {
+    this.remoteConfirmOpen.set(false);
   }
 }
