@@ -1,7 +1,7 @@
-import { ApplicationRef } from '@angular/core';
-import { TestBed } from '@angular/core/testing';
+import { describe, expect, it } from 'vitest';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 
-import { StatusBar } from '@shared/angular/services/status-bar/status-bar';
+import { CodeStatusStrip } from './code-status-strip';
 import { CodeContext, CodeStatus } from './code-status';
 
 const CONTEXT: CodeContext = {
@@ -12,46 +12,60 @@ const CONTEXT: CodeContext = {
   encoding: 'UTF-8',
 };
 
-describe('CodeStatus', () => {
-  let codeStatus: CodeStatus;
-  let statusBar: StatusBar;
+/**
+ * Reads the rendered segment texts from one of the strip's two groups.
+ * @param fixture The mounted status-strip fixture.
+ * @param group The group to read: 0 for the leading group, 1 for the trailing one.
+ * @returns Returns the segment texts in render order.
+ */
+function segmentsOf(fixture: ComponentFixture<CodeStatusStrip>, group: number): string[] {
+  const host: HTMLElement = fixture.nativeElement as HTMLElement;
+  const groups: NodeListOf<Element> = host.querySelectorAll('.status-strip-segments__group');
+  return [...(groups.item(group)?.querySelectorAll('.status-strip-segment') ?? [])].map(
+    (element: Element): string => (element.textContent ?? '').trim(),
+  );
+}
+
+describe('CodeStatusStrip', () => {
+  let status: CodeStatus;
+  let fixture: ComponentFixture<CodeStatusStrip>;
 
   beforeEach(() => {
-    codeStatus = TestBed.inject(CodeStatus);
-    statusBar = TestBed.inject(StatusBar);
+    TestBed.configureTestingModule({ providers: [CodeStatus] });
+    status = TestBed.inject(CodeStatus);
+    fixture = TestBed.createComponent(CodeStatusStrip);
   });
 
   it('publish_whenContextSet_showsPathLeadingAndCaretEolEncodingTrailing', () => {
-    codeStatus.publish('tab-1', CONTEXT);
-    TestBed.inject(ApplicationRef).tick();
-    expect(statusBar.leading()[0]?.text).toBe('/home/user/file.ts');
-    expect(statusBar.trailing().map((segment) => segment.text)).toEqual([
-      'Ln 3',
-      'Col 7',
-      'LF',
-      'UTF-8',
-    ]);
+    status.publish(CONTEXT);
+    fixture.detectChanges();
+
+    expect(segmentsOf(fixture, 0)).toEqual(['/home/user/file.ts']);
+    expect(segmentsOf(fixture, 1)).toEqual(['Ln 3', 'Col 7', 'LF', 'UTF-8']);
   });
 
   it('publish_whenPathIsNull_showsNewDocument', () => {
-    codeStatus.publish('tab-1', { ...CONTEXT, path: null });
-    TestBed.inject(ApplicationRef).tick();
-    expect(statusBar.leading()[0]?.text).toBe('New Document');
+    status.publish({ ...CONTEXT, path: null });
+    fixture.detectChanges();
+
+    expect(segmentsOf(fixture, 0)).toEqual(['New Document']);
   });
 
-  it('clear_whenOwningTab_removesSegments', () => {
-    codeStatus.publish('tab-1', CONTEXT);
-    TestBed.inject(ApplicationRef).tick();
-    codeStatus.clear('tab-1');
-    TestBed.inject(ApplicationRef).tick();
-    expect(statusBar.leading().length + statusBar.trailing().length).toBe(0);
+  it('clear_whenCalled_removesEverySegment', () => {
+    status.publish(CONTEXT);
+    fixture.detectChanges();
+
+    status.clear();
+    fixture.detectChanges();
+
+    expect(segmentsOf(fixture, 0)).toEqual([]);
+    expect(segmentsOf(fixture, 1)).toEqual([]);
   });
 
-  it('clear_whenDifferentTab_leavesSegments', () => {
-    codeStatus.publish('tab-1', CONTEXT);
-    TestBed.inject(ApplicationRef).tick();
-    codeStatus.clear('tab-2');
-    TestBed.inject(ApplicationRef).tick();
-    expect(statusBar.leading().length).toBe(1);
+  it('beforeAnyPublish_showsNothing', () => {
+    fixture.detectChanges();
+
+    expect(segmentsOf(fixture, 0)).toEqual([]);
+    expect(segmentsOf(fixture, 1)).toEqual([]);
   });
 });

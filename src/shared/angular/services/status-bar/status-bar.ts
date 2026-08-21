@@ -1,53 +1,17 @@
 import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
-import { Icon } from '@shared/angular/icons/icon';
 import { Log } from '@shared/angular/services/log/log';
+import { StatusSegment } from './status-segment';
 
 /**
- * Defines a single segment of contextual information shown in the status strip.
+ * Holds a registered owner's segments together with the priority that orders them against other
+ * owners (lower priority renders first).
  */
-export interface StatusSegment {
+interface OwnerEntry {
   /**
-   * Gets the unique identifier of the segment.
+   * Gets the segments contributed by the owner.
    */
-  readonly id: string;
+  readonly segments: readonly StatusSegment[];
 
-  /**
-   * Gets the text of the segment.
-   */
-  readonly text: string;
-
-  /**
-   * Gets the optional icon of the segment.
-   */
-  readonly icon?: Icon;
-
-  /**
-   * Gets the optional hover title of the segment, spelling out what a terse icon-and-count segment
-   * (for example a commits-to-push arrow) means.
-   */
-  readonly title?: string;
-}
-
-/**
- * Defines a single owner's contribution to the status strip: its leading and trailing segments.
- */
-export interface StatusContribution {
-  /**
-   * Gets the leading (start-aligned) segments contributed by the owner.
-   */
-  readonly leading: readonly StatusSegment[];
-
-  /**
-   * Gets the trailing (end-aligned) segments contributed by the owner.
-   */
-  readonly trailing: readonly StatusSegment[];
-}
-
-/**
- * Holds a registered owner's contribution together with the priority that orders it against other
- * owners (lower priority renders first within each slot).
- */
-interface OwnerEntry extends StatusContribution {
   /**
    * Gets the priority that orders this owner against others (lower renders first).
    */
@@ -55,10 +19,16 @@ interface OwnerEntry extends StatusContribution {
 }
 
 /**
- * Represents the contextual status bar content. Multiple views ("owners") contribute leading and
- * trailing segments concurrently — for example the code editor (path, cursor, line-ending, encoding)
- * and the terminal (working directory) are visible at the same time when a terminal is docked in a
- * code tab. Contributions are merged in priority order rather than overwriting one another.
+ * Holds the status strip's **ambient** segments: app-wide state that is true no matter which tab is
+ * in front, such as the count of running containers. Several owners contribute concurrently and are
+ * merged in priority order, and the strip renders them at its end, alongside the language-server and
+ * notification menus.
+ *
+ * This registry is deliberately not for a view's own status. A view's segments belong to its feature's
+ * status component, which the strip mounts for the active tab and destroys on tab switch (see
+ * `FeatureDescriptor.status`) — so they cannot outlive the view that means them. Publishing view state
+ * here instead reintroduces exactly that bug: the owner key survives the view, and its segments strand
+ * themselves over whatever tab the user opens next.
  */
 @Service()
 export class StatusBar {
@@ -68,72 +38,53 @@ export class StatusBar {
   private readonly log: Log = inject(Log);
 
   /**
-   * Holds every owner's contribution, keyed by owner identifier.
+   * Holds every owner's segments, keyed by owner identifier.
    */
   private readonly owners: WritableSignal<ReadonlyMap<string, OwnerEntry>> = signal<
     ReadonlyMap<string, OwnerEntry>
   >(new Map<string, OwnerEntry>());
 
   /**
-   * Gets the merged leading (start-aligned) status segments, ordered by owner priority.
+   * Gets the merged ambient segments, ordered by owner priority.
    */
-  public readonly leading: Signal<readonly StatusSegment[]> = computed(
+  public readonly segments: Signal<readonly StatusSegment[]> = computed(
     (): readonly StatusSegment[] =>
-      this.collect((entry: OwnerEntry): readonly StatusSegment[] => entry.leading),
+      [...this.owners().values()]
+        .sort((a: OwnerEntry, b: OwnerEntry): number => a.priority - b.priority)
+        .flatMap((entry: OwnerEntry): readonly StatusSegment[] => entry.segments),
   );
 
   /**
-   * Gets the merged trailing (end-aligned) status segments, ordered by owner priority.
-   */
-  public readonly trailing: Signal<readonly StatusSegment[]> = computed(
-    (): readonly StatusSegment[] =>
-      this.collect((entry: OwnerEntry): readonly StatusSegment[] => entry.trailing),
-  );
-
-  /**
-   * Registers (or replaces) an owner's status contribution.
+   * Registers (or replaces) an owner's ambient segments.
    * @param ownerId The identifier of the contributing owner.
-   * @param contribution The leading and trailing segments the owner contributes.
+   * @param segments The segments the owner contributes.
    * @param priority The priority that orders this owner against others (lower renders first).
    */
-  public contribute(ownerId: string, contribution: StatusContribution, priority: number): void {
+  public contribute(ownerId: string, segments: readonly StatusSegment[], priority: number): void {
     this.owners.update(
       (current: ReadonlyMap<string, OwnerEntry>): ReadonlyMap<string, OwnerEntry> => {
         const next: Map<string, OwnerEntry> = new Map<string, OwnerEntry>(current);
-        next.set(ownerId, { ...contribution, priority });
+        next.set(ownerId, { segments, priority });
         return next;
       },
     );
   }
 
   /**
-   * Removes an owner's contribution, so it no longer appears in the status strip.
+   * Removes an owner's segments, so they no longer appear in the status strip.
    * @param ownerId The identifier of the owner to clear.
    */
   public clearOwner(ownerId: string): void {
+    if (!this.owners().has(ownerId)) {
+      return;
+    }
     this.owners.update(
       (current: ReadonlyMap<string, OwnerEntry>): ReadonlyMap<string, OwnerEntry> => {
-        if (!current.has(ownerId)) {
-          return current;
-        }
         const next: Map<string, OwnerEntry> = new Map<string, OwnerEntry>(current);
         next.delete(ownerId);
         return next;
       },
     );
     this.log.trace('StatusBar', `Cleared status contribution`, ownerId);
-  }
-
-  /**
-   * Flattens the registered owners' segments for one slot, ordered by ascending priority.
-   * @param select Selects the leading or trailing segments from an owner entry.
-   * @returns Returns the merged segments for the slot.
-   */
-  private collect(
-    select: (entry: OwnerEntry) => readonly StatusSegment[],
-  ): readonly StatusSegment[] {
-    return [...this.owners().values()]
-      .sort((a: OwnerEntry, b: OwnerEntry): number => a.priority - b.priority)
-      .flatMap((entry: OwnerEntry): readonly StatusSegment[] => select(entry));
   }
 }

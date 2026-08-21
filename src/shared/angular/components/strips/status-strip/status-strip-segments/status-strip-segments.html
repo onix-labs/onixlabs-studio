@@ -1,0 +1,14 @@
+<div class="status-strip-segments__group">
+  @for (segment of leading(); track segment.id) {
+    <app-status-strip-segment [segment]="segment" />
+  }
+</div>
+
+<!-- Pushes the trailing group, and everything the strip renders after this component, to the end. -->
+<div class="status-strip-segments__spacer"></div>
+
+<div class="status-strip-segments__group">
+  @for (segment of trailing(); track segment.id) {
+    <app-status-strip-segment [segment]="segment" />
+  }
+</div>

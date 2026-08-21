@@ -1,57 +1,103 @@
-import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
-import { StatusBar, StatusSegment } from '@shared/angular/services/status-bar/status-bar';
+import { NgComponentOutlet } from '@angular/common';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  Injector,
+  Signal,
+  Type,
+} from '@angular/core';
+import { FeatureRegistry } from '@shared/angular/services/feature-registry';
+import { StatusBar } from '@shared/angular/services/status-bar/status-bar';
+import { StatusSegment } from '@shared/angular/services/status-bar/status-segment';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
-import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { ViewInjectors } from '@shared/angular/services/view-injectors/view-injectors';
 import { StatusStripLspMenu } from '../status-strip-lsp-menu/status-strip-lsp-menu';
 import { StatusStripNotificationsMenu } from '../status-strip-notifications-menu/status-strip-notifications-menu';
+import { StatusStripSegment } from '../status-strip-segment/status-strip-segment';
+import { StatusStripSegments } from '../status-strip-segments/status-strip-segments';
 
 /**
- * Represents the status strip, which shows contextual segments published by the active view and
- * falls back to the active tab (or a ready indicator) when nothing has been published. The language
- * servers running for the active workspace and the notification centre are surfaced by the embedded
- * drop-up menus.
+ * Represents the status strip, which is split into two regions.
+ *
+ * The **view region** belongs wholly to the active tab: the strip mounts the active feature's status
+ * component (from its {@link FeatureRegistry} descriptor) through that view's own injector, so the
+ * component reads the view's per-tab services directly. Exactly one is mounted at a time and it is
+ * destroyed on tab switch, so a view's status cannot linger over another view — the strip always
+ * shows the current view, with nothing to clear and no owner keys to collide. A feature that
+ * registers no status component falls back to the tab's title.
+ *
+ * The **ambient region** shows app-wide state that outlives any one tab — the {@link StatusBar}
+ * registry's segments, the language servers running for the active workspace, and the notification
+ * centre.
  */
 @Component({
   selector: 'app-status-strip-container',
-  imports: [AppIcon, StatusStripLspMenu, StatusStripNotificationsMenu],
+  imports: [
+    NgComponentOutlet,
+    StatusStripLspMenu,
+    StatusStripNotificationsMenu,
+    StatusStripSegment,
+    StatusStripSegments,
+  ],
   templateUrl: './status-strip-container.html',
   styleUrl: './status-strip-container.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class StatusStripContainer {
   /**
-   * Holds the status bar content registry.
+   * Holds the ambient status registry.
    */
   private readonly statusBar: StatusBar = inject(StatusBar);
 
   /**
-   * Holds the tab registry, used to derive a default leading segment.
+   * Holds the registry the active feature's status component is resolved from.
+   */
+  private readonly registry: FeatureRegistry = inject(FeatureRegistry);
+
+  /**
+   * Holds the tab registry, used to resolve the active tab and its type.
    */
   private readonly tabsService: Tabs = inject(Tabs);
 
   /**
-   * Gets the leading status segments, defaulting to the active tab (or a ready indicator) when
-   * nothing has been published.
+   * Holds the mounted views' injectors, so the active feature's status component is created inside
+   * the view whose state it reports.
    */
-  protected readonly leading: Signal<readonly StatusSegment[]> = computed(
+  private readonly viewInjectors: ViewInjectors = inject(ViewInjectors);
+
+  /**
+   * Gets the active feature's status component, or undefined when the feature contributes none.
+   */
+  protected readonly viewStatus: Signal<Type<unknown> | undefined> = computed(
+    (): Type<unknown> | undefined => this.registry.statusFor(this.tabsService.activeTab()?.type),
+  );
+
+  /**
+   * Gets the active view's injector, through which its status component is mounted, or null when no
+   * view has registered one yet (the first render of a newly opened tab).
+   */
+  protected readonly viewInjector: Signal<Injector | null> = this.viewInjectors.injectorFor(
+    this.tabsService.activeTabId,
+  );
+
+  /**
+   * Gets the fallback leading segments, naming the active tab (or a ready indicator) for a feature
+   * that contributes no status component of its own.
+   */
+  protected readonly fallback: Signal<readonly StatusSegment[]> = computed(
     (): readonly StatusSegment[] => {
-      const published: readonly StatusSegment[] = this.statusBar.leading();
-      if (published.length > 0) {
-        return published;
-      }
-
       const activeTab: Tab | undefined = this.tabsService.activeTab();
-      if (activeTab === undefined) {
-        return [{ id: 'ready', text: 'Ready' }];
-      }
-
-      return [{ id: 'active-tab', text: activeTab.title, icon: activeTab.icon }];
+      return activeTab === undefined
+        ? [{ id: 'ready', text: 'Ready' }]
+        : [{ id: 'active-tab', text: activeTab.title, icon: activeTab.icon }];
     },
   );
 
   /**
-   * Gets the trailing status segments.
+   * Gets the ambient segments, shown at the end of the strip whichever tab is active.
    */
-  protected readonly trailing: Signal<readonly StatusSegment[]> = this.statusBar.trailing;
+  protected readonly ambient: Signal<readonly StatusSegment[]> = this.statusBar.segments;
 }

@@ -6,8 +6,8 @@ import {
   BinaryEditOp,
   BinaryVisibleRange,
 } from '@shared/angular/components/binary-editor/binary-editor';
-import { StatusBar, StatusSegment } from '@shared/angular/services/status-bar/status-bar';
 import { Tab } from '@shared/angular/services/tabs/tab';
+import { BinaryContext, BinaryStatus } from '../binary-status/binary-status';
 import { BinaryDocumentEntry, BinaryDocuments } from '../binary-document/binary-document';
 import { BinaryPanels } from '../binary-panels/binary-panels';
 import { BinaryView } from './binary-view';
@@ -67,7 +67,6 @@ function flush(): Promise<void> {
 describe('BinaryView', () => {
   let documents: BinaryDocuments;
   let panels: BinaryPanels;
-  let statusBar: StatusBar;
 
   beforeEach(async () => {
     (window as unknown as { bridge: Bridge }).bridge = fakeBridge();
@@ -76,7 +75,6 @@ describe('BinaryView', () => {
     }).compileComponents();
     documents = TestBed.inject(BinaryDocuments);
     panels = TestBed.inject(BinaryPanels);
-    statusBar = TestBed.inject(StatusBar);
   });
 
   afterEach(() => {
@@ -117,17 +115,15 @@ describe('BinaryView', () => {
     expect((fixture.nativeElement as HTMLElement).querySelector('app-panel-layout')).toBeNull();
   });
 
-  it('status_publishesThePathAndSizeWhileActiveAndClearsOnDeactivation', async () => {
+  it('status_publishesThePathAndSizeToTheViewsOwnStatus', async () => {
     const { fixture } = await createView(true);
-    expect(statusBar.leading()[0]?.text).toBe('/ws/blob.bin');
-    expect(statusBar.trailing().map((segment: StatusSegment): string => segment.text)).toContain(
-      `${FILE.length} bytes`,
-    );
 
-    fixture.componentRef.setInput('isActive', false);
-    await fixture.whenStable();
+    // The view's status is scoped to its own injector: the strip mounts it only for the active tab
+    // and destroys it on a tab switch, so the view publishes regardless of activation.
+    const context: BinaryContext | null = fixture.debugElement.injector.get(BinaryStatus).context();
 
-    expect(statusBar.leading().length + statusBar.trailing().length).toBe(0);
+    expect(context?.path).toBe('/ws/blob.bin');
+    expect(context?.size).toBe(FILE.length);
   });
 
   it('onVisibleRange_loadsTheReportedByteWindow', async () => {
@@ -183,7 +179,7 @@ describe('BinaryView', () => {
     expect(host.querySelector('app-binary-inspector')).not.toBeNull();
   });
 
-  it('destroy_releasesTheDocumentPanelStateAndStatus', async () => {
+  it('destroy_releasesTheDocumentAndPanelState', async () => {
     const { fixture, tab } = await createView(true);
     panels.toggle(tab.id, 'inspector');
     await fixture.whenStable();
@@ -193,6 +189,5 @@ describe('BinaryView', () => {
 
     expect(documents.get(tab.id)).toBeUndefined();
     expect(panels.isMounted(tab.id, 'inspector')).toBe(false);
-    expect(statusBar.leading().length + statusBar.trailing().length).toBe(0);
   });
 });

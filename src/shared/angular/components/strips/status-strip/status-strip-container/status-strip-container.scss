@@ -2,7 +2,6 @@
   footer {
     display: flex;
     align-items: center;
-    justify-content: space-between;
     gap: 1rem;
     padding-block: 0.5rem;
     padding-inline: 1rem;
@@ -11,17 +10,19 @@
   }
 }
 
-.status-strip__group {
+// The view region adds no box of its own, so the feature's segment groups and their flexible spacer
+// land directly in the footer's flex row — that spacer is what pushes the ambient region to the end
+// of the bar. The mounted status component must be transparent too, but it declares that on its own
+// `:host` (see `FeatureDescriptor.status`): this component's encapsulated styles do not reach a host
+// element created by `ngComponentOutlet`.
+.status-strip__view {
+  display: contents;
+}
+
+// The ambient region closes the strip. The view region ends in a flexible spacer, so this group is
+// pushed to the end whether or not the active view fills the bar.
+.status-strip__ambient {
   display: flex;
   align-items: center;
   gap: 1rem;
-}
-
-.status-strip__segment {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  // Use the font's tabular figures so digits keep a stable width as values change (e.g. the Ln/Col
-  // cursor position), stopping segments from jittering. Only digit glyphs are affected.
-  font-variant-numeric: tabular-nums;
 }

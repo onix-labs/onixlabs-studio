@@ -52,7 +52,10 @@ import {
   ApiExplorerCommandHandler,
   ApiExplorerCommands,
 } from '../api-explorer-commands/api-explorer-commands';
-import { ApiExplorerStatus } from '../api-explorer-status/api-explorer-status';
+import {
+  createViewInjectorRegistrar,
+  ViewInjectorRegistrar,
+} from '@shared/angular/services/view-injectors/view-injector-registration';
 import { ApiPrompts } from '../api-prompts/api-prompts';
 import { ApiHttp } from '../api-http/api-http';
 import { ApiRequestOpener } from '../api-request-opener/api-request-opener';
@@ -84,7 +87,6 @@ import { ApiWorkspace } from '../api-workspace/api-workspace';
     ApiWorkspace,
     ApiPrompts,
     ApiRequestOpener,
-    ApiExplorerStatus,
     // The agent's in-app tools, registered against this tab's workspace for as long as it is open.
     ApiAgentCapabilities,
     // The dock framework, instantiated per dock-hosting view.
@@ -201,10 +203,13 @@ export class ApiExplorerView implements OnInit, OnDestroy, ApiExplorerCommandHan
   protected readonly variableSyntax: string = '{{base_url}}';
 
   /**
-   * Holds the status-strip contribution. Injected purely to instantiate it: it publishes from its own
-   * constructor and needs nothing from the view.
+   * Publishes this view's injector so the shell's status strip can mount the API Explorer status
+   * component inside it, reaching this tab's own API workspace. Finalised in {@link ngOnInit} once
+   * the tab id is readable.
    */
-  private readonly status: ApiExplorerStatus = inject(ApiExplorerStatus);
+  private readonly statusHost: ViewInjectorRegistrar = createViewInjectorRegistrar({
+    isActive: this.isActive,
+  });
 
   /**
    * Holds the agent's in-app capabilities. Injected purely to instantiate them: they register
@@ -261,8 +266,8 @@ export class ApiExplorerView implements OnInit, OnDestroy, ApiExplorerCommandHan
    * view opens, which matches how a workspace restores its documents.
    */
   public ngOnInit(): void {
-    void this.status;
     void this.capabilities;
+    this.statusHost.register(this.tabId());
     this.commands.register(this);
     // Panels that need a globally-unique session id (the terminal) read the owning tab from here.
     this.tabContext.setTabId(this.tabId());

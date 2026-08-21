@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 
-import { StatusBar, StatusSegment } from './status-bar';
+import { StatusBar } from './status-bar';
+import { StatusSegment } from './status-segment';
 
 describe('StatusBar', () => {
   let service: StatusBar;
@@ -14,31 +15,47 @@ describe('StatusBar', () => {
     expect(service).toBeTruthy();
   });
 
-  it('contribute_whenCalled_updatesTheLeadingSegments', () => {
-    const segments: readonly StatusSegment[] = [{ id: 'line', text: 'Ln 1, Col 1' }];
+  it('contribute_whenCalled_publishesTheOwnersSegments', () => {
+    const segments: readonly StatusSegment[] = [{ id: 'running', text: '2 running' }];
 
-    service.contribute('code', { leading: segments, trailing: [] }, 10);
+    service.contribute('containers', segments, 15);
 
-    expect(service.leading()).toEqual(segments);
+    expect(service.segments()).toEqual(segments);
   });
 
   it('contribute_whenMultipleOwners_mergesByPriority', () => {
-    service.contribute('terminal', { leading: [], trailing: [{ id: 'cwd', text: '/tmp' }] }, 20);
-    service.contribute('code', { leading: [], trailing: [{ id: 'enc', text: 'UTF-8' }] }, 10);
+    service.contribute('late', [{ id: 'cwd', text: '/tmp' }], 20);
+    service.contribute('early', [{ id: 'enc', text: 'UTF-8' }], 10);
 
-    expect(service.trailing().map((segment: StatusSegment): string => segment.id)).toEqual([
+    expect(service.segments().map((segment: StatusSegment): string => segment.id)).toEqual([
       'enc',
       'cwd',
     ]);
   });
 
+  it('contribute_whenOwnerContributesAgain_replacesItsPreviousSegments', () => {
+    service.contribute('containers', [{ id: 'running', text: '2 running' }], 15);
+    service.contribute('containers', [{ id: 'running', text: '3 running' }], 15);
+
+    expect(service.segments().map((segment: StatusSegment): string => segment.text)).toEqual([
+      '3 running',
+    ]);
+  });
+
   it('clearOwner_whenCalled_removesOnlyThatOwnersSegments', () => {
-    service.contribute('code', { leading: [{ id: 'path', text: 'a.ts' }], trailing: [] }, 10);
-    service.contribute('terminal', { leading: [], trailing: [{ id: 'cwd', text: '/tmp' }] }, 20);
+    service.contribute('containers', [{ id: 'running', text: '2 running' }], 15);
+    service.contribute('other', [{ id: 'cwd', text: '/tmp' }], 20);
 
-    service.clearOwner('code');
+    service.clearOwner('containers');
 
-    expect(service.leading().length).toBe(0);
-    expect(service.trailing().length).toBe(1);
+    expect(service.segments().map((segment: StatusSegment): string => segment.id)).toEqual(['cwd']);
+  });
+
+  it('clearOwner_whenOwnerIsUnknown_leavesTheStripUnchanged', () => {
+    service.contribute('containers', [{ id: 'running', text: '2 running' }], 15);
+
+    service.clearOwner('never-registered');
+
+    expect(service.segments().length).toBe(1);
   });
 });

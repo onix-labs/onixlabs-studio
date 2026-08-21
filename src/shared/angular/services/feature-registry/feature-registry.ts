@@ -61,6 +61,17 @@ export class FeatureRegistry {
   }
 
   /**
+   * Gets the status component registered for a tab type, shown in the status strip while a tab of
+   * that type is active.
+   * @param type The tab type, or undefined when no tab is active.
+   * @returns Returns the status component, or undefined when the type has no registered feature or
+   * the feature contributes no status.
+   */
+  public statusFor(type: string | undefined): Type<unknown> | undefined {
+    return type === undefined ? undefined : this.descriptors().get(type)?.status;
+  }
+
+  /**
    * Gets the document-panel component registered for a feature type, mounted in a workspace document
    * well to display an open document of that type.
    * @param type The feature type, or undefined when none resolves.

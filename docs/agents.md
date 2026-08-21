@@ -104,7 +104,7 @@ Do **not** sub-divide a capability wrapper or "improve" it while touching it. It
 These mechanisms are why a feature is a deletable plug-in. Know them before adding or changing a
 feature.
 
-### 4.1 Feature registry (tab views + ribbons)
+### 4.1 Feature registry (tab views, ribbons + status)
 
 `shared/angular/services/feature-registry` holds a multi-provider `FeatureRegistry` keyed by tab-type
 string. Each feature contributes a descriptor:
@@ -114,6 +114,7 @@ interface FeatureDescriptor {
   readonly type: string; // the tab-type identifier and registry key, e.g. 'terminal'
   readonly view: Type<unknown>; // mounted per tab; MUST declare tabId + isActive inputs
   readonly ribbon?: Type<unknown>; // contextual ribbon shown while the tab is active
+  readonly status?: Type<unknown>; // status strip shown while the tab is active
   readonly documentPanel?: Type<unknown>; // lean editor surface for a document well, if any
   readonly chrome?: Partial<{ ribbon: boolean; status: boolean }>; // e.g. settings = full-bleed
 }
@@ -130,6 +131,30 @@ contains no `@switch` on tab type and no feature-type string.
 
 `welcome` is the exception: it is shell-slotted (`root` mounts `<app-welcome-screen>` directly, it is
 not a tab type), which is why it has no descriptor.
+
+**Chrome belongs to the active view, never to a registry.** The ribbon and the status strip are both
+mounted for the active tab and destroyed on a tab switch, so neither can describe a view the user is
+no longer looking at. They differ only in how they reach view state:
+
+- A **ribbon** is created in the shell's injector, so it drives the view through a per-feature command
+  registry the active view registers a handler with (`ApiExplorerCommands`, `ContainersCommands`, …).
+- A **status** component is created through the view's OWN injector, published while the view is
+  active by `createViewInjectorRegistrar({ isActive })` into `ViewInjectors` (keyed by tab id). It
+  therefore injects the view's per-tab services directly (`ApiWorkspace`, `Workspace`, `CodeStatus`)
+  with no forwarding registry, no owner keys, and nothing to clear. A worktree container tab's
+  sub-views share one tab id, and the _selected_ checkout's injector is the one published.
+
+> ⛔ Do **not** push a view's status into the shared `StatusBar`. That registry is for **ambient**
+> segments only — app-wide facts that outlive any tab, like the running-container count. An owner key
+> there survives the view that set it, which is exactly how a closed editor left `Ln 1 Col 1 LF UTF-8`
+> stranded over Mission Control. View status goes in the feature's `status` component.
+
+The strip renders the view region (feature status, or the active tab's title as a fallback), then the
+ambient region (`StatusBar` segments, the language-server drop-up, the notification bell). Segments
+are always composed from `app-status-strip-segments` / `app-status-strip-segment` — a feature never
+emits status markup of its own. A document well additionally has its own strip (`DockStatusStrip`,
+fed by `DocumentStatus`) describing the active document in that well; the window strip describes the
+active tab.
 
 ### 4.2 The dock (per-tab panel catalogue + layout)
 

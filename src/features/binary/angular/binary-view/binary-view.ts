@@ -37,6 +37,10 @@ import { BinaryDisasmPanel } from '../binary-disasm-panel/binary-disasm-panel';
 import { BinaryInspector } from '../binary-inspector/binary-inspector';
 import { BinaryPanels } from '../binary-panels/binary-panels';
 import { BinaryStatus } from '../binary-status/binary-status';
+import {
+  createViewInjectorRegistrar,
+  ViewInjectorRegistrar,
+} from '@shared/angular/services/view-injectors/view-injector-registration';
 
 /**
  * The number of bytes decoded before the focus offset in the disassembly window, giving the listing a
@@ -79,7 +83,13 @@ interface DisasmWindow {
   // The tab's agent and conversation live on the VIEW, not the docked agent panel: the panel mounts
   // lazily on first show, and the conversation (and an in-flight run) must span the panel's whole
   // mounted/unmounted life — and register with Mission Control whether or not the panel was opened.
-  providers: [Agent, AgentConversation, { provide: AGENT_CONVERSATION_KIND, useValue: 'code' }],
+  providers: [
+    Agent,
+    AgentConversation,
+    { provide: AGENT_CONVERSATION_KIND, useValue: 'code' },
+    // One per binary tab: the status strip reads this view's own context through its injector.
+    BinaryStatus,
+  ],
   templateUrl: './binary-view.html',
   styleUrl: './binary-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -122,6 +132,14 @@ export class BinaryView implements OnInit, OnDestroy {
    * Gets a value indicating whether this view belongs to the active tab.
    */
   public readonly isActive: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Publishes this view's injector so the shell's status strip can mount the binary status component
+   * inside it. Finalised in {@link ngOnInit} once the tab id is readable.
+   */
+  private readonly statusHost: ViewInjectorRegistrar = createViewInjectorRegistrar({
+    isActive: this.isActive,
+  });
 
   /**
    * Registers this tab's live agent with Mission Control and the requests inbox for the tab's whole
@@ -174,23 +192,25 @@ export class BinaryView implements OnInit, OnDestroy {
       document.loadDisassembly(active.offset, active.length);
     });
 
-    // Publish this view's context to the status strip while it is the active tab.
+    // Keep this view's context current for its status strip. Activation is not consulted: the strip
+    // mounts this view's status component only while the view is active, and destroys it on tab
+    // switch, so an inactive view's context is never on screen to go stale.
     effect((): void => {
       const document: BinaryDocumentEntry | undefined = this.document();
-      if (this.isActive() && document !== undefined) {
-        const selection: BinarySelection | null = document.selection();
-        this.binaryStatus.publish(this.tabId(), {
-          path: document.path,
-          offset: document.cursor(),
-          selectionLength: selection === null ? 0 : selection.end - selection.start,
-          size: document.size(),
-          format: describeFormat(document.format()),
-          dirty: document.dirty(),
-          insertMode: document.insertMode(),
-        });
-      } else {
-        this.binaryStatus.clear(this.tabId());
+      if (document === undefined) {
+        this.binaryStatus.clear();
+        return;
       }
+      const selection: BinarySelection | null = document.selection();
+      this.binaryStatus.publish({
+        path: document.path,
+        offset: document.cursor(),
+        selectionLength: selection === null ? 0 : selection.end - selection.start,
+        size: document.size(),
+        format: describeFormat(document.format()),
+        dirty: document.dirty(),
+        insertMode: document.insertMode(),
+      });
     });
   }
 
@@ -200,14 +220,15 @@ export class BinaryView implements OnInit, OnDestroy {
   public ngOnInit(): void {
     this.log.info('binary.view', 'Binary view opened', this.tabId());
     this.agentHost.register(this.tabId());
+    this.statusHost.register(this.tabId());
   }
 
   /**
-   * Clears this view's status contribution and panel state when the tab closes.
+   * Clears this view's panel state when the tab closes. Its status needs no clearing: the strip's
+   * status component is scoped to this view and is destroyed with it.
    */
   public ngOnDestroy(): void {
     this.log.info('binary.view', 'Binary view closed', this.tabId());
-    this.binaryStatus.clear(this.tabId());
     this.binaryPanels.remove(this.tabId());
     this.binaryDocuments.release(this.tabId());
   }

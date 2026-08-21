@@ -78,8 +78,6 @@ import { PackageModel } from '@features/workspace/angular/project/package-model'
 import { PackageExplorer } from '@features/workspace/angular/project/package-explorer';
 import { Output } from '@shared/angular/services/output/output';
 import { Repository } from '@shared/angular/services/repository/repository';
-import { GitBranch } from '@shared/angular/services/repository/repository-data';
-import { StatusBar, StatusSegment } from '@shared/angular/services/status-bar/status-bar';
 import {
   WorkspaceSourceControlCommandHandler,
   WorkspaceSourceControlCommands,
@@ -107,6 +105,10 @@ import {
   SourceControlCommands,
 } from '@shared/angular/services/source-control-commands/source-control-commands';
 import { WorktreeSession } from '@features/workspace/angular/worktree/worktree-session';
+import {
+  createViewInjectorRegistrar,
+  ViewInjectorRegistrar,
+} from '@shared/angular/services/view-injectors/view-injector-registration';
 
 /**
  * Maps a project model's kind to the language server prestarted when its workspace opens, so the
@@ -115,16 +117,6 @@ import { WorktreeSession } from '@features/workspace/angular/worktree/worktree-s
  * clangd for a CMake/Make C/C++ project, rust-analyzer for a Cargo project, gopls for a Go module. A
  * kind with no entry prestarts nothing.
  */
-/**
- * Names this view's status-strip contribution (ported from the retired repository view).
- */
-const STATUS_OWNER: string = 'source-control';
-
-/**
- * Orders the source-control status segments among other contributors.
- */
-const STATUS_PRIORITY: number = 30;
-
 const PRESTART_SERVERS: Readonly<Record<string, string>> = {
   dotnet: 'csharp',
   node: 'typescript',
@@ -341,6 +333,16 @@ export class DirectoryView implements OnInit, OnDestroy {
    * Worktrees panel's activity glyphs.
    */
   private readonly agent: Agent = inject(Agent);
+
+  /**
+   * Publishes this view's injector, while it is active, so the shell's status strip can mount the
+   * workspace status component inside it. A container tab's sub-views share the tab id, so the
+   * selected checkout's registration is the one the strip reads. Finalised in {@link ngOnInit} once
+   * the tab id is readable.
+   */
+  private readonly statusHost: ViewInjectorRegistrar = createViewInjectorRegistrar({
+    isActive: this.isActive,
+  });
 
   /**
    * Holds this tab's agent-host registrar, so the workspace agent appears in Mission Control for the
@@ -600,11 +602,6 @@ export class DirectoryView implements OnInit, OnDestroy {
   private readonly layoutPresets: LayoutPresets = inject(LayoutPresets);
 
   /**
-   * Holds the status strip this view contributes branch and change segments to.
-   */
-  private readonly statusBar: StatusBar = inject(StatusBar);
-
-  /**
    * Holds a value indicating whether the transient Git switch should return to the prior preset
    * once the change count reaches zero (the commit that motivated the switch landed).
    */
@@ -812,65 +809,6 @@ export class DirectoryView implements OnInit, OnDestroy {
         this.returnWhenCommitted = false;
         untracked((): void => this.layoutPresets.returnFromTransient());
       }
-    });
-
-    // Publish branch and change status to the status strip while active (ported from the retired
-    // repository view). Clears when inactive or no repository is bound. The owner is qualified by
-    // the view scope: a container tab hosts several sub-views whose activation effects run in
-    // creation order, so a shared owner key could be wiped by a later-created sibling deactivating.
-    effect((): void => {
-      const owner: string = `${STATUS_OWNER}:${this.viewScope()}`;
-      const root: DirectoryListing | null = this.workspace.root();
-      if (!this.isActive() || root === null) {
-        this.statusBar.clearOwner(owner);
-        return;
-      }
-      // The workspace segment: the open folder, always shown while the workspace is in view — whether
-      // or not it is a git repository. A checkout's directory is a GUID, so a container tab names the
-      // container instead.
-      const workspaceName: string =
-        this.containerName() ?? root.name ?? this.repository.repoName();
-      const leading: StatusSegment[] = [
-        { id: 'ws-folder', text: workspaceName, icon: Icon.FOLDER_SIMPLE, title: workspaceName },
-      ];
-      // The git segments follow, only when the folder is a repository: branch, then the commits to
-      // push and to pull, left to right.
-      if (this.repository.isBound()) {
-        const branch: GitBranch | undefined = this.repository.currentBranch();
-        // The worktree indicator: which checkout the container tab is scoped to. Shown only when it
-        // says something the branch segment does not (an alias) — an unaliased checkout's label IS
-        // its branch, and "main main" is noise.
-        if (this.worktreeSession.isContainer()) {
-          const label: string | null = this.worktreeSession.activeLabel();
-          if (label !== null && label !== (branch?.name ?? '')) {
-            leading.push({ id: 'ws-worktree', text: label, icon: Icon.WORKTREE, title: label });
-          }
-        }
-        const branchName: string = branch?.name ?? 'detached HEAD';
-        leading.push({
-          id: 'ws-branch',
-          text: branchName,
-          icon: Icon.BRANCH,
-          title: `On branch ${branchName}`,
-        });
-        if (branch !== undefined) {
-          leading.push(
-            {
-              id: 'ws-push',
-              text: `${branch.ahead}`,
-              icon: Icon.COMMITS_AHEAD,
-              title: `${branch.ahead} commit(s) to push`,
-            },
-            {
-              id: 'ws-pull',
-              text: `${branch.behind}`,
-              icon: Icon.COMMITS_BEHIND,
-              title: `${branch.behind} commit(s) to pull`,
-            },
-          );
-        }
-      }
-      this.statusBar.contribute(owner, { leading, trailing: [] }, STATUS_PRIORITY);
     });
 
     // Register this workspace's source-control handlers while active: the workspace facade (open
@@ -1182,6 +1120,7 @@ export class DirectoryView implements OnInit, OnDestroy {
    */
   public ngOnInit(): void {
     this.agentHost.register(this.tabId());
+    this.statusHost.register(this.tabId());
     this.documents.setOwningTab(this.tabId());
     // Surface this workspace's well documents to the app-wide close flows for the tab's lifetime.
     this.destroyRef.onDestroy(this.unsavedWork.register(this.documents));
@@ -1215,7 +1154,6 @@ export class DirectoryView implements OnInit, OnDestroy {
     this.keybindings.forget(this.viewScope());
     this.workspaceFind.unregister(this.revealSearchHandler);
     this.workspaceDocuments.unregister(this.documentHandler);
-    this.statusBar.clearOwner(`${STATUS_OWNER}:${this.viewScope()}`);
     // A sub-view destroyed while its tab stays open (a removed checkout, the promotion transition)
     // must not clear the tab's published root — the successor view republishes it, but only the
     // whole tab closing should drop the entry.

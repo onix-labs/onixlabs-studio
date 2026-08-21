@@ -1,16 +1,4 @@
-import { effect, inject, Service, signal, WritableSignal } from '@angular/core';
-import { StatusBar, StatusSegment } from '@shared/angular/services/status-bar/status-bar';
-
-/**
- * Holds the status-bar owner identifier for the markdown editor's contribution.
- */
-const STATUS_OWNER: string = 'markdown';
-
-/**
- * Holds the status-bar priority for the markdown editor, matching the code editor's so a document's
- * stats sit ahead of the terminal's trailing working-directory segment.
- */
-const STATUS_PRIORITY: number = 10;
+import { Service, signal, Signal, WritableSignal } from '@angular/core';
 
 /**
  * Holds the average reading speed, in words per minute, used to estimate a document's read time.
@@ -46,66 +34,36 @@ export function computeMarkdownStats(content: string): MarkdownStats {
 }
 
 /**
- * Publishes the active markdown editor's document statistics to the status strip.
+ * Holds one markdown view's content for its status strip.
  *
- * The active editor pushes its content here; an effect derives the word count and read time and
- * projects them as trailing segments, clearing the contribution when no markdown editor is active (the
- * content is null). The document name is left to the strip's active-tab fallback, so only the stats are
- * contributed here.
+ * Provided by the markdown view, so there is one instance per markdown tab and its lifetime is the
+ * view's. The strip reaches it through the active view's injector and is torn down with the view, so
+ * there is no owner key to collide with a sibling tab and nothing to clear on a tab switch.
  */
 @Service()
 export class MarkdownStatus {
   /**
-   * Holds the status bar the statistics are published to.
+   * Holds the view's editor content, or null before the editor's pane is ready.
    */
-  private readonly statusBar: StatusBar = inject(StatusBar);
+  private readonly contentSignal: WritableSignal<string | null> = signal<string | null>(null);
 
   /**
-   * Holds the active editor's content and the tab that published it, or null when no markdown editor
-   * is active. The tab is tracked so a deactivating editor only clears the strip when it still owns it —
-   * never wiping out the editor that just became active.
+   * Gets the view's editor content, or null when it has nothing to report.
    */
-  private readonly contentSignal: WritableSignal<{ tabId: string; content: string } | null> =
-    signal<{ tabId: string; content: string } | null>(null);
+  public readonly content: Signal<string | null> = this.contentSignal.asReadonly();
 
   /**
-   * Initializes the service, projecting the document statistics as trailing status segments.
-   */
-  public constructor() {
-    effect((): void => {
-      const current: { tabId: string; content: string } | null = this.contentSignal();
-      if (current === null) {
-        this.statusBar.clearOwner(STATUS_OWNER);
-        return;
-      }
-      const stats: MarkdownStats = computeMarkdownStats(current.content);
-      const trailing: StatusSegment[] = [
-        { id: 'markdown-words', text: stats.words === 1 ? '1 word' : `${stats.words} words` },
-      ];
-      if (stats.words > 0) {
-        trailing.push({ id: 'markdown-read', text: `${stats.readMinutes} min read` });
-      }
-      this.statusBar.contribute(STATUS_OWNER, { leading: [], trailing }, STATUS_PRIORITY);
-    });
-  }
-
-  /**
-   * Publishes the given tab's editor content as the active document statistics.
-   * @param tabId The identifier of the publishing tab.
+   * Publishes the view's editor content.
    * @param content The editor's markdown content.
    */
-  public publish(tabId: string, content: string): void {
-    this.contentSignal.set({ tabId, content });
+  public publish(content: string): void {
+    this.contentSignal.set(content);
   }
 
   /**
-   * Clears the statistics, but only when the given tab is the one currently shown, so a deactivating
-   * editor never wipes out the editor that just became active.
-   * @param tabId The identifier of the deactivating tab.
+   * Drops the view's content, so its status strip reports nothing.
    */
-  public clear(tabId: string): void {
-    if (this.contentSignal()?.tabId === tabId) {
-      this.contentSignal.set(null);
-    }
+  public clear(): void {
+    this.contentSignal.set(null);
   }
 }

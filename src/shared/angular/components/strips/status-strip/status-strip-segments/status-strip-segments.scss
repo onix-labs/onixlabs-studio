@@ -1,0 +1,20 @@
+// The host contributes no box of its own: its groups and spacer are laid out directly by the status
+// strip's flex row, so a feature's segments sit alongside the strip's ambient ones.
+:host {
+  display: contents;
+}
+
+.status-strip-segments__group {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+
+  // An empty group must not add a gap of its own to the strip.
+  &:empty {
+    display: none;
+  }
+}
+
+.status-strip-segments__spacer {
+  flex: 1 1 auto;
+}

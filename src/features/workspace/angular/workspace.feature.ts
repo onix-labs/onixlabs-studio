@@ -9,6 +9,7 @@ import { provideKeybindingCatalogue } from '@shared/angular/services/keybindings
 import { WORKSPACE_KEYBINDINGS } from './workspace-keybindings';
 import { DirectoryHost } from './directory-host/directory-host';
 import { DirectoryRibbon } from './directory-ribbon/directory-ribbon';
+import { DirectoryStatusStrip } from './directory-status/directory-status-strip';
 import { AgentRunConfigurationCapabilities } from './agent-run-configuration-capabilities/agent-run-configuration-capabilities';
 
 /**
@@ -22,6 +23,8 @@ const workspaceFeature: FeatureDescriptor = {
   // kept-alive sub-view per checkout.
   view: DirectoryHost,
   ribbon: DirectoryRibbon,
+  // Mounted through the ACTIVE sub-view's injector, so a container tab reports the selected checkout.
+  status: DirectoryStatusStrip,
 };
 
 /**

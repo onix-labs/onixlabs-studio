@@ -1,72 +1,65 @@
-import { ApplicationRef } from '@angular/core';
-import { TestBed } from '@angular/core/testing';
+import { describe, expect, it } from 'vitest';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 
-import { StatusBar } from '@shared/angular/services/status-bar/status-bar';
-import { Icon } from '@shared/angular/icons/icon';
+import { TerminalStatusStrip } from './terminal-status-strip';
 import { TerminalStatus } from './terminal-status';
 
-describe('TerminalStatus', () => {
+/**
+ * Reads the rendered segment texts from one of the strip's two groups.
+ * @param fixture The mounted status-strip fixture.
+ * @param group The group to read: 0 for the leading group, 1 for the trailing one.
+ * @returns Returns the segment texts in render order.
+ */
+function segmentsOf(fixture: ComponentFixture<TerminalStatusStrip>, group: number): string[] {
+  const host: HTMLElement = fixture.nativeElement as HTMLElement;
+  const groups: NodeListOf<Element> = host.querySelectorAll('.status-strip-segments__group');
+  return [...(groups.item(group)?.querySelectorAll('.status-strip-segment') ?? [])].map(
+    (element: Element): string => (element.textContent ?? '').trim(),
+  );
+}
+
+describe('TerminalStatusStrip', () => {
+  let status: TerminalStatus;
+  let fixture: ComponentFixture<TerminalStatusStrip>;
+
   beforeEach(() => {
-    TestBed.configureTestingModule({});
+    TestBed.configureTestingModule({ providers: [TerminalStatus] });
+    status = TestBed.inject(TerminalStatus);
+    fixture = TestBed.createComponent(TerminalStatusStrip);
   });
 
-  it('should be created', () => {
-    expect(TestBed.inject(TerminalStatus)).toBeTruthy();
+  it('publish_whenContextSet_showsAddressLeadingAndShellTrailing', () => {
+    status.publish({ address: 'john@machine:~/Projects', shell: 'zsh' });
+    fixture.detectChanges();
+
+    expect(segmentsOf(fixture, 0)).toEqual(['john@machine:~/Projects']);
+    expect(segmentsOf(fixture, 1)).toEqual(['zsh']);
   });
 
-  it('publish_whenGivenAShell_publishesATrailingStatusSegment', () => {
-    const status: TerminalStatus = TestBed.inject(TerminalStatus);
-    const statusBar: StatusBar = TestBed.inject(StatusBar);
+  it('publish_whenAddressUnknown_showsOnlyTheShell', () => {
+    status.publish({ address: null, shell: 'bash' });
+    fixture.detectChanges();
 
-    status.publish('tab-1', { address: null, shell: 'zsh' });
-    TestBed.inject(ApplicationRef).tick();
-
-    expect(statusBar.trailing()).toEqual([
-      { id: 'terminal-shell', text: 'zsh', icon: Icon.TERMINAL },
-    ]);
+    expect(segmentsOf(fixture, 0)).toEqual([]);
+    expect(segmentsOf(fixture, 1)).toEqual(['bash']);
   });
 
-  it('publish_whenGivenAnAddress_publishesALeadingStatusSegment', () => {
-    const status: TerminalStatus = TestBed.inject(TerminalStatus);
-    const statusBar: StatusBar = TestBed.inject(StatusBar);
+  it('publish_whenShellUnknown_showsOnlyTheAddress', () => {
+    status.publish({ address: 'john@machine:~', shell: null });
+    fixture.detectChanges();
 
-    status.publish('tab-1', { address: 'john@machine:~/Foo/Bar', shell: 'zsh' });
-    TestBed.inject(ApplicationRef).tick();
-
-    expect(statusBar.leading()).toEqual([
-      { id: 'terminal-address', text: 'john@machine:~/Foo/Bar' },
-    ]);
+    expect(segmentsOf(fixture, 0)).toEqual(['john@machine:~']);
+    expect(segmentsOf(fixture, 1)).toEqual([]);
   });
 
-  it('clear_whenTheClearingTabOwnsTheStatus_removesTheSegments', () => {
-    const status: TerminalStatus = TestBed.inject(TerminalStatus);
-    const statusBar: StatusBar = TestBed.inject(StatusBar);
+  it('clear_whenCalled_removesEverySegment', () => {
+    status.publish({ address: 'john@machine:~', shell: 'zsh' });
+    fixture.detectChanges();
 
-    status.publish('tab-1', { address: 'john@machine:~', shell: 'zsh' });
-    TestBed.inject(ApplicationRef).tick();
-    status.clear('tab-1');
-    TestBed.inject(ApplicationRef).tick();
+    status.clear();
+    fixture.detectChanges();
 
-    expect(statusBar.leading()).toEqual([]);
-    expect(statusBar.trailing()).toEqual([]);
-  });
-
-  it('clear_whenAnotherTabOwnsTheStatus_leavesTheActiveSegments', () => {
-    const status: TerminalStatus = TestBed.inject(TerminalStatus);
-    const statusBar: StatusBar = TestBed.inject(StatusBar);
-
-    // The active terminal (tab-2) publishes, then the deactivating terminal (tab-1) clears. The clear
-    // must not wipe the active terminal's contribution.
-    status.publish('tab-2', { address: 'john@machine:~/Active', shell: 'zsh' });
-    TestBed.inject(ApplicationRef).tick();
-    status.clear('tab-1');
-    TestBed.inject(ApplicationRef).tick();
-
-    expect(statusBar.leading()).toEqual([
-      { id: 'terminal-address', text: 'john@machine:~/Active' },
-    ]);
-    expect(statusBar.trailing()).toEqual([
-      { id: 'terminal-shell', text: 'zsh', icon: Icon.TERMINAL },
-    ]);
+    expect(segmentsOf(fixture, 0)).toEqual([]);
+    expect(segmentsOf(fixture, 1)).toEqual([]);
   });
 });
