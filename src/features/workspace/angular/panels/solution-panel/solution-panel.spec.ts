@@ -5,6 +5,9 @@ import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { SolutionModel, SolutionRow } from '@features/workspace/angular/project/solution-model';
 import { Icon } from '@shared/angular/icons/icon';
+import { MenuItem } from '@shared/angular/components/menu/menu';
+import { Shell } from '@shared/angular/services/shell/shell';
+import { TreeRow } from '@shared/angular/components/tree-view/tree-view';
 import { SolutionPanel } from './solution-panel';
 
 /**
@@ -16,13 +19,28 @@ class FakeSolutionModel {
   public readonly rows: WritableSignal<readonly SolutionRow[]> = signal<readonly SolutionRow[]>([]);
   public readonly query: WritableSignal<string> = signal<string>('');
   public readonly selectedKey: WritableSignal<string | null> = signal<string | null>(null);
+  public readonly followsActiveDocument: WritableSignal<boolean> = signal<boolean>(true);
+  public readonly showsGitStatus: WritableSignal<boolean> = signal<boolean>(true);
   public readonly toggled: SolutionRow[] = [];
   public readonly queries: string[] = [];
   public expandAllCount: number = 0;
   public collapseAllCount: number = 0;
+  public refreshCount: number = 0;
 
   public toggle(row: SolutionRow): void {
     this.toggled.push(row);
+  }
+
+  public toggleFollowActiveDocument(): void {
+    this.followsActiveDocument.update((value: boolean): boolean => !value);
+  }
+
+  public toggleGitStatus(): void {
+    this.showsGitStatus.update((value: boolean): boolean => !value);
+  }
+
+  public refreshFromDisk(): void {
+    this.refreshCount++;
   }
 
   public select(key: string): void {
@@ -40,6 +58,18 @@ class FakeSolutionModel {
 
   public collapseAll(): void {
     this.collapseAllCount++;
+  }
+}
+
+/**
+ * A fake shell that records revealed paths.
+ */
+class FakeShell {
+  public readonly revealed: string[] = [];
+
+  public revealPath(path: string): Promise<void> {
+    this.revealed.push(path);
+    return Promise.resolve();
   }
 }
 
@@ -79,6 +109,8 @@ describe('SolutionPanel', () => {
   let fixture: ComponentFixture<SolutionPanel>;
   let solution: FakeSolutionModel;
   let opener: FakeOpener;
+  let shell: FakeShell;
+  let copied: string[];
 
   const panel: DockPanel = {
     id: 'solution',
@@ -100,11 +132,23 @@ describe('SolutionPanel', () => {
   beforeEach(async () => {
     solution = new FakeSolutionModel();
     opener = new FakeOpener();
+    shell = new FakeShell();
+    copied = [];
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText: (text: string): Promise<void> => {
+          copied.push(text);
+          return Promise.resolve();
+        },
+      },
+    });
     await TestBed.configureTestingModule({
       imports: [SolutionPanel],
       providers: [
         { provide: SolutionModel, useValue: solution },
         { provide: FileOpener, useValue: opener },
+        { provide: Shell, useValue: shell },
       ],
     }).compileComponents();
 
@@ -173,6 +217,140 @@ describe('SolutionPanel', () => {
 
     expect(opener.opened).toEqual(['/root/A/g.cs']);
     expect(solution.toggled).toEqual([]);
+  });
+
+  /**
+   * Wraps a solution row as the tree row the context menu is opened with.
+   * @param row The solution row.
+   * @returns Returns the tree row.
+   */
+  function treeRow(row: SolutionRow): TreeRow {
+    return {
+      id: row.key,
+      depth: row.depth,
+      expandable: row.expandable,
+      expanded: row.expanded,
+      data: row,
+    };
+  }
+
+  /**
+   * Gets the ids of the context-menu items offered for a row.
+   * @param row The row to open the menu on.
+   * @returns Returns the item ids.
+   */
+  function menuIds(row: SolutionRow): string[] {
+    return component.contextMenuFor(treeRow(row)).map((item: MenuItem): string => item.id);
+  }
+
+  describe('context menu', () => {
+    it('contextMenuFor_aFile_offersOpenAndThePathActions', () => {
+      const ids: string[] = menuIds(makeRow({ kind: 'file', path: '/root/A/g.cs' }));
+      expect(ids).toEqual(['open', 'copy-path', 'copy-relative-path', 'reveal']);
+    });
+
+    it('contextMenuFor_aProject_offersEditProjectFileRatherThanOpen', () => {
+      const ids: string[] = menuIds(makeRow({ kind: 'project', path: '/root/A/A.csproj' }));
+      expect(ids).toEqual(['edit-project', 'copy-path', 'copy-relative-path', 'reveal']);
+    });
+
+    it('contextMenuFor_aRowWithNoPath_offersNothing', () => {
+      // A logical solution folder maps to nothing on disk, so every item this menu offers would be
+      // meaningless on it. An empty menu is the honest answer.
+      expect(menuIds(makeRow({ kind: 'folder', path: null }))).toEqual([]);
+    });
+
+    it('onContextAction_open_opensThePathAndSelectsTheRow', () => {
+      const row: SolutionRow = makeRow({ key: 'k', kind: 'file', path: '/root/A/g.cs' });
+      component.onContextAction({ itemId: 'open', row: treeRow(row) });
+
+      expect(opener.opened).toEqual(['/root/A/g.cs']);
+      expect(solution.selectedKey()).toBe('k');
+    });
+
+    it('onContextAction_editProject_opensTheProjectFileItself', () => {
+      const row: SolutionRow = makeRow({ kind: 'project', path: '/root/A/A.csproj' });
+      component.onContextAction({ itemId: 'edit-project', row: treeRow(row) });
+
+      expect(opener.opened).toEqual(['/root/A/A.csproj']);
+    });
+
+    it('onContextAction_copyPath_copiesTheAbsolutePath', () => {
+      const row: SolutionRow = makeRow({ kind: 'file', path: '/root/A/g.cs' });
+      component.onContextAction({ itemId: 'copy-path', row: treeRow(row) });
+
+      expect(copied).toEqual(['/root/A/g.cs']);
+    });
+
+    it('onContextAction_copyRelativePath_copiesItRelativeToTheSolutionRoot', () => {
+      solution.model.set(model);
+      const row: SolutionRow = makeRow({ kind: 'file', path: '/root/A/g.cs' });
+      component.onContextAction({ itemId: 'copy-relative-path', row: treeRow(row) });
+
+      expect(copied).toEqual(['A/g.cs']);
+    });
+
+    it('onContextAction_copyRelativePath_whenOutsideTheRoot_fallsBackToTheAbsolutePath', () => {
+      // Project systems allow linked files from outside the tree; there is no relative form to give.
+      solution.model.set(model);
+      const row: SolutionRow = makeRow({ kind: 'file', path: '/elsewhere/shared.cs' });
+      component.onContextAction({ itemId: 'copy-relative-path', row: treeRow(row) });
+
+      expect(copied).toEqual(['/elsewhere/shared.cs']);
+    });
+
+    it('onContextAction_reveal_revealsThePathInTheFileManager', () => {
+      const row: SolutionRow = makeRow({ kind: 'file', path: '/root/A/g.cs' });
+      component.onContextAction({ itemId: 'reveal', row: treeRow(row) });
+
+      expect(shell.revealed).toEqual(['/root/A/g.cs']);
+    });
+
+    it('onContextAction_aRowWithNoPath_doesNothing', () => {
+      component.onContextAction({ itemId: 'reveal', row: treeRow(makeRow({ path: null })) });
+
+      expect(shell.revealed).toEqual([]);
+      expect(copied).toEqual([]);
+    });
+  });
+
+  describe('toolbar overflow', () => {
+    it('onMoreAction_syncWithActiveDocument_togglesFollowing', () => {
+      expect(solution.followsActiveDocument()).toBe(true);
+      component.onMoreAction('follow-active');
+      expect(solution.followsActiveDocument()).toBe(false);
+    });
+
+    it('onMoreAction_showGitStatus_togglesTheBadges', () => {
+      component.onMoreAction('git-status');
+      expect(solution.showsGitStatus()).toBe(false);
+    });
+
+    it('onMoreAction_reloadSolution_rebuildsFromDisk', () => {
+      component.onMoreAction('reload');
+      expect(solution.refreshCount).toBe(1);
+    });
+
+    it('moreItems_reflectTheCurrentToggleStates', () => {
+      // The toggles read as ticks in the menu, so their `active` flag has to track the model rather
+      // than being a snapshot taken when the panel was built.
+      solution.followsActiveDocument.set(false);
+      fixture.detectChanges();
+
+      const follow: MenuItem | undefined = component
+        .moreItems()
+        .find((item: MenuItem): boolean => item.id === 'follow-active');
+      expect(follow?.active).toBe(false);
+    });
+
+    it('statusFor_whenGitStatusHidden_reportsNoBadge', () => {
+      solution.model.set(model);
+      solution.rows.set([makeRow({ kind: 'file', path: '/root/A/g.cs' })]);
+      solution.showsGitStatus.set(false);
+      fixture.detectChanges();
+
+      expect((fixture.nativeElement as HTMLElement).querySelector('.tree-status')).toBeNull();
+    });
   });
 
   it('iconFor_resolvesByKindAndExpansion', () => {

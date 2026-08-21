@@ -18,7 +18,35 @@ import { Icon } from '@shared/angular/icons/icon';
 import { ExplorerToolbar } from '@shared/angular/components/explorer-toolbar/explorer-toolbar';
 import { HighlightedText } from '@shared/angular/components/highlighted-text/highlighted-text';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
-import { TreeRow, TreeView } from '@shared/angular/components/tree-view/tree-view';
+import { MenuItem } from '@shared/angular/components/menu/menu';
+import { Shell } from '@shared/angular/services/shell/shell';
+import {
+  TreeMenuSelection,
+  TreeRow,
+  TreeView,
+} from '@shared/angular/components/tree-view/tree-view';
+
+/**
+ * Identifies the context-menu and toolbar actions the panel offers.
+ */
+const ACTION_OPEN: string = 'open';
+const ACTION_EDIT_PROJECT: string = 'edit-project';
+const ACTION_COPY_PATH: string = 'copy-path';
+const ACTION_COPY_RELATIVE: string = 'copy-relative-path';
+const ACTION_REVEAL: string = 'reveal';
+const ACTION_FOLLOW: string = 'follow-active';
+const ACTION_GIT_STATUS: string = 'git-status';
+const ACTION_RELOAD: string = 'reload';
+
+/**
+ * The label for revealing a path in the operating system's file manager, named for the platform so it
+ * matches what the user's own menus call it.
+ */
+const REVEAL_LABEL: string = navigator.userAgent.includes('Mac')
+  ? 'Reveal in Finder'
+  : navigator.userAgent.includes('Windows')
+    ? 'Show in File Explorer'
+    : 'Show in File Manager';
 
 /**
  * Renders the logical solution model (solution folders, projects, and each project's files) as the body
@@ -65,6 +93,61 @@ export class SolutionPanel {
    * Holds the structured logger for solution explorer actions.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds the shell service used to reveal a path in the operating system's file manager.
+   */
+  private readonly shell: Shell = inject(Shell);
+
+  /**
+   * Gets the toolbar's overflow items: the options that belong to the panel as a whole rather than to
+   * any one row, which is what the row context menu is for.
+   */
+  public readonly moreItems: Signal<readonly MenuItem[]> = computed((): readonly MenuItem[] => [
+    {
+      id: ACTION_FOLLOW,
+      label: 'Sync with Active Document',
+      icon: Icon.LINK,
+      active: this.solution.followsActiveDocument(),
+    },
+    {
+      id: ACTION_GIT_STATUS,
+      label: 'Show Git Status',
+      icon: Icon.SOURCE_CONTROL,
+      active: this.solution.showsGitStatus(),
+    },
+    { id: ACTION_RELOAD, label: 'Reload Solution', icon: Icon.REFRESH },
+  ]);
+
+  /**
+   * Builds a row's context-menu items.
+   *
+   * Bound as a value rather than a method, because the tree calls it as its item factory when a menu
+   * opens — `this` must stay this component. Items that do not apply to the row are omitted rather
+   * than disabled: unlike a fixed toolbar menu, a context menu is summoned onto a specific row, so
+   * there is no expectation of a stable shape to preserve.
+   */
+  public readonly contextMenuFor: (treeRow: TreeRow) => readonly MenuItem[] = (
+    treeRow: TreeRow,
+  ): readonly MenuItem[] => {
+    const row: SolutionRow = this.rowOf(treeRow);
+    const items: MenuItem[] = [];
+
+    if (row.kind === 'file' && row.path !== null) {
+      items.push({ id: ACTION_OPEN, label: 'Open', icon: Icon.FILE });
+    }
+    if (row.kind === 'project' && row.path !== null) {
+      items.push({ id: ACTION_EDIT_PROJECT, label: 'Edit Project File', icon: Icon.PROJECT });
+    }
+    if (row.path !== null) {
+      items.push(
+        { id: ACTION_COPY_PATH, label: 'Copy Path', icon: Icon.COPY },
+        { id: ACTION_COPY_RELATIVE, label: 'Copy Relative Path', icon: Icon.COPY },
+        { id: ACTION_REVEAL, label: REVEAL_LABEL, icon: Icon.DIRECTORY },
+      );
+    }
+    return items;
+  };
 
   /**
    * Maps a change status to its badge letter, exposed for the template.
@@ -135,13 +218,83 @@ export class SolutionPanel {
   }
 
   /**
-   * Gets the git change status of a row that maps to a file, or null when it is unchanged or has no
-   * path (a logical folder).
+   * Gets the git change status of a row that maps to a file, or null when it is unchanged, has no
+   * path (a logical folder), or the badges are switched off.
    * @param path The row's path, or null.
    * @returns Returns the change status, or null.
    */
   protected statusFor(path: string | null): GitChangeStatus | null {
-    return path === null ? null : this.git.statusFor(path);
+    if (path === null || !this.solution.showsGitStatus()) {
+      return null;
+    }
+    return this.git.statusFor(path);
+  }
+
+  /**
+   * Runs a toolbar overflow action.
+   * @param id The chosen action.
+   */
+  public onMoreAction(id: string): void {
+    this.log.info('workspace.solution', 'Toolbar action', id);
+    switch (id) {
+      case ACTION_FOLLOW:
+        this.solution.toggleFollowActiveDocument();
+        return;
+      case ACTION_GIT_STATUS:
+        this.solution.toggleGitStatus();
+        return;
+      case ACTION_RELOAD:
+        this.solution.refreshFromDisk();
+        return;
+      default:
+        return;
+    }
+  }
+
+  /**
+   * Runs a row's context-menu action.
+   * @param selection The chosen item and the row it was chosen for.
+   */
+  public onContextAction(selection: TreeMenuSelection): void {
+    const row: SolutionRow = this.rowOf(selection.row);
+    const path: string | null = row.path;
+    if (path === null) {
+      return;
+    }
+    this.log.info('workspace.solution', 'Context action', selection.itemId, path);
+
+    switch (selection.itemId) {
+      case ACTION_OPEN:
+      case ACTION_EDIT_PROJECT:
+        this.solution.select(row.key);
+        void this.fileOpener.openPath(path);
+        return;
+      case ACTION_COPY_PATH:
+        void navigator.clipboard.writeText(path).catch((): void => undefined);
+        return;
+      case ACTION_COPY_RELATIVE:
+        void navigator.clipboard.writeText(this.relativePath(path)).catch((): void => undefined);
+        return;
+      case ACTION_REVEAL:
+        void this.shell.revealPath(path);
+        return;
+      default:
+        return;
+    }
+  }
+
+  /**
+   * Expresses a path relative to the solution root, falling back to the absolute path when it lies
+   * outside (a linked file, which project systems do allow).
+   * @param path The absolute path.
+   * @returns Returns the relative path, or the absolute path when it is not beneath the root.
+   */
+  private relativePath(path: string): string {
+    const root: string | undefined = this.model()?.root;
+    if (root === undefined || !path.startsWith(root)) {
+      return path;
+    }
+    return path.slice(root.length).replace(/^[/\\]+/, '');
   }
 
   /**

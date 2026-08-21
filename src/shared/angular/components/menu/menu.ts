@@ -62,6 +62,21 @@ export interface MenuItem {
 }
 
 /**
+ * A chosen menu row together with the data its menu was opened with.
+ */
+export interface MenuChoice {
+  /**
+   * Gets the chosen row's identifier.
+   */
+  readonly id: string;
+
+  /**
+   * Gets the data the menu's trigger opened with, or undefined when it opened without any.
+   */
+  readonly data: unknown;
+}
+
+/**
  * Represents a reusable drop menu: a list of activatable rows shown in a CDK overlay, opened by a
  * trigger the caller owns. The caller binds its trigger to {@link panel} and {@link position} and
  * receives the chosen row's id through {@link select}. The rows are rendered here — rather than
@@ -78,9 +93,24 @@ export interface MenuItem {
 })
 export class Menu {
   /**
-   * Gets the rows shown in the menu.
+   * Gets the rows shown in the menu. Menus whose rows depend on what the trigger was pointing at
+   * supply {@link itemsFor} instead.
    */
-  public readonly items: InputSignal<readonly MenuItem[]> = input.required<readonly MenuItem[]>();
+  public readonly items: InputSignal<readonly MenuItem[]> = input<readonly MenuItem[]>([]);
+
+  /**
+   * Gets the factory that builds the rows from the data its trigger opened with, or null for a menu
+   * whose rows are fixed.
+   *
+   * A context menu's rows depend on what was right-clicked, and that subject arrives as the trigger's
+   * data rather than as an input — so it cannot be known before the menu opens. Deriving the rows
+   * from it here keeps the subject and its rows in one atomic step; the alternative, writing the
+   * subject to a signal from a `contextmenu` handler and hoping it lands before the overlay renders,
+   * is a race against listener ordering.
+   */
+  public readonly itemsFor: InputSignal<((data: unknown) => readonly MenuItem[]) | null> = input<
+    ((data: unknown) => readonly MenuItem[]) | null
+  >(null);
 
   /**
    * Gets where the menu opens relative to its trigger.
@@ -91,6 +121,12 @@ export class Menu {
    * Emits the chosen row's id when an item is selected.
    */
   public readonly selected: OutputEmitterRef<string> = output<string>();
+
+  /**
+   * Emits the chosen row's id together with the data the menu was opened with, for menus whose rows
+   * act on a subject.
+   */
+  public readonly chosen: OutputEmitterRef<MenuChoice> = output<MenuChoice>();
 
   /**
    * Gets the panel template the caller's trigger opens through `cdkMenuTriggerFor`.
@@ -106,10 +142,21 @@ export class Menu {
   );
 
   /**
-   * Emits the given row's id as the selection.
-   * @param id The chosen row's id.
+   * Resolves the rows to render for the data the menu was opened with.
+   * @param data The trigger's data, or undefined for a menu opened without any.
+   * @returns Returns the rows to render.
    */
-  protected onSelect(id: string): void {
+  protected rowsFor(data: unknown): readonly MenuItem[] {
+    return this.itemsFor()?.(data) ?? this.items();
+  }
+
+  /**
+   * Emits the given row's id as the selection, and the id with its subject for callers that need it.
+   * @param id The chosen row's id.
+   * @param data The data the menu was opened with.
+   */
+  protected onSelect(id: string, data: unknown): void {
     this.selected.emit(id);
+    this.chosen.emit({ id, data });
   }
 }

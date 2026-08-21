@@ -2,16 +2,20 @@
   <app-explorer-toolbar
     [query]="query()"
     searchPlaceholder="Search solution"
+    [moreItems]="moreItems()"
     (queryChange)="onSearch($event)"
     (expandAll)="expandAll()"
     (collapseAll)="collapseAll()"
+    (moreSelected)="onMoreAction($event)"
   />
 
   <app-tree-view
     [rows]="rows()"
     [selectedId]="selectedKey()"
     [virtual]="true"
+    [contextMenuFor]="contextMenuFor"
     (rowClick)="onRowClick($event)"
+    (contextMenuSelect)="onContextAction($event)"
   >
     <ng-template let-row>
       @let r = rowOf(row);

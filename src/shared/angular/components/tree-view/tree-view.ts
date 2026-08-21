@@ -16,8 +16,10 @@ import {
   TemplateRef,
   viewChild,
 } from '@angular/core';
+import { CdkContextMenuTrigger } from '@angular/cdk/menu';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { Menu, MenuChoice, MenuItem } from '@shared/angular/components/menu/menu';
 
 /**
  * Specifies the base left padding of a tree row, in pixels.
@@ -80,6 +82,21 @@ export interface TreeRow {
 }
 
 /**
+ * A row's context-menu selection: the chosen item together with the row it was opened on.
+ */
+export interface TreeMenuSelection {
+  /**
+   * Gets the chosen menu item's identifier.
+   */
+  readonly itemId: string;
+
+  /**
+   * Gets the row the menu was opened on.
+   */
+  readonly row: TreeRow;
+}
+
+/**
  * A reusable tree presenter for hierarchical row surfaces — file trees, solution trees, change
  * lists, and the like. It owns the structural concerns — the flat list of indented rows, the
  * expand/collapse chevron, hover and selection chrome (a full-width fill with an inset accent bar),
@@ -95,7 +112,7 @@ export interface TreeRow {
  */
 @Component({
   selector: 'app-tree-view',
-  imports: [AppIcon, NgTemplateOutlet, ScrollingModule],
+  imports: [AppIcon, NgTemplateOutlet, ScrollingModule, CdkContextMenuTrigger, Menu],
   templateUrl: './tree-view.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -133,6 +150,43 @@ export class TreeView {
    * Emits the row that was clicked.
    */
   public readonly rowClick: OutputEmitterRef<TreeRow> = output<TreeRow>();
+
+  /**
+   * Gets the factory that builds a row's context-menu items, or null for a tree without one.
+   *
+   * A function rather than a list, because the items depend on the row: a project offers different
+   * commands from a file, and a consumer's capabilities decide which of them are live. It is called
+   * when a menu opens, with the row it opened on, so the two can never disagree.
+   */
+  public readonly contextMenuFor: InputSignal<((row: TreeRow) => readonly MenuItem[]) | null> =
+    input<((row: TreeRow) => readonly MenuItem[]) | null>(null);
+
+  /**
+   * Emits the chosen context-menu item together with the row it was chosen for.
+   */
+  public readonly contextMenuSelect: OutputEmitterRef<TreeMenuSelection> =
+    output<TreeMenuSelection>();
+
+  /**
+   * Gets whether a context menu is offered, which is what puts the trigger on each row.
+   */
+  protected readonly hasContextMenu: Signal<boolean> = computed(
+    (): boolean => this.contextMenuFor() !== null,
+  );
+
+  /**
+   * Builds the context-menu items for the row a menu opened on.
+   *
+   * Bound as a value rather than called from the template, because it is handed to the menu as its
+   * item factory: `this` must stay this component when the menu invokes it.
+   */
+  protected readonly menuItemsFor: (data: unknown) => readonly MenuItem[] = (
+    data: unknown,
+  ): readonly MenuItem[] => {
+    const row: TreeRow | null = (data ?? null) as TreeRow | null;
+    const build: ((row: TreeRow) => readonly MenuItem[]) | null = this.contextMenuFor();
+    return row === null || build === null ? [] : build(row);
+  };
 
   /**
    * Holds the projected row-content template, rendered for each row with the row as its implicit
@@ -232,6 +286,17 @@ export class TreeView {
    */
   protected trackRow(_index: number, row: TreeRow): string {
     return row.id;
+  }
+
+  /**
+   * Re-emits a context-menu choice with the row it was made on.
+   * @param choice The chosen item and the data its menu opened with.
+   */
+  protected onContextChoice(choice: MenuChoice): void {
+    const row: TreeRow | null = (choice.data ?? null) as TreeRow | null;
+    if (row !== null) {
+      this.contextMenuSelect.emit({ itemId: choice.id, row });
+    }
   }
 }
 

@@ -205,6 +205,21 @@ export class SolutionModel {
   private readonly selectedKeySignal: WritableSignal<string | null> = signal<string | null>(null);
 
   /**
+   * Holds whether the tree follows the active document, expanding to and selecting it as the editor
+   * changes.
+   *
+   * On by default, because following is what the tree is usually wanted to do; offered as a switch
+   * because it is not always — reading around a solution while a generated file stays open drags the
+   * selection back with every tab change.
+   */
+  private readonly syncWithActive: WritableSignal<boolean> = signal<boolean>(true);
+
+  /**
+   * Holds whether rows carry their git change badge.
+   */
+  private readonly gitStatusShown: WritableSignal<boolean> = signal<boolean>(true);
+
+  /**
    * Holds the generation of the current load, so a stale load (the root changed while it was in flight)
    * does not apply its results.
    */
@@ -467,6 +482,38 @@ export class SolutionModel {
   }
 
   /**
+   * Gets whether the tree follows the active document.
+   */
+  public readonly followsActiveDocument: Signal<boolean> = this.syncWithActive.asReadonly();
+
+  /**
+   * Gets whether rows carry their git change badge.
+   */
+  public readonly showsGitStatus: Signal<boolean> = this.gitStatusShown.asReadonly();
+
+  /**
+   * Toggles whether the tree follows the active document.
+   */
+  public toggleFollowActiveDocument(): void {
+    this.syncWithActive.update((value: boolean): boolean => !value);
+  }
+
+  /**
+   * Toggles whether rows carry their git change badge.
+   */
+  public toggleGitStatus(): void {
+    this.gitStatusShown.update((value: boolean): boolean => !value);
+  }
+
+  /**
+   * Rebuilds the solution from disk, preserving expansion. Used when a project file has been edited
+   * outside anything the watcher attributes to the tree.
+   */
+  public refreshFromDisk(): void {
+    void this.refresh(this.workspace.root()?.path ?? null);
+  }
+
+  /**
    * Expands every node in the tree, so the whole structure is revealed.
    */
   public expandAll(): void {
@@ -634,7 +681,10 @@ export class SolutionModel {
     if (kept.size !== cache.size) {
       this.itemsByProject.set(kept);
     }
-    this.log.trace('workspace.solution', `Reloaded solution, ${stale.length} project(s) re-evaluating`);
+    this.log.trace(
+      'workspace.solution',
+      `Reloaded solution, ${stale.length} project(s) re-evaluating`,
+    );
     this.scheduleContents(stale, generation);
   }
 

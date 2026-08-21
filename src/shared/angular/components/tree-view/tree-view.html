@@ -9,6 +9,8 @@
     [style.padding-left.px]="indentFor(row.depth)"
     [attr.aria-expanded]="row.expandable ? row.expanded : null"
     [attr.aria-selected]="selectedId() !== null ? row.id === selectedId() : null"
+    [cdkContextMenuTriggerFor]="hasContextMenu() ? (contextMenu.panel() ?? null) : null"
+    [cdkContextMenuTriggerData]="{ $implicit: row }"
     (click)="rowClick.emit(row)"
     (keydown.enter)="activate($event, row)"
     (keydown.space)="activate($event, row)"
@@ -51,3 +53,7 @@
     }
   </div>
 }
+
+<!-- One menu shared by every row: the row it was opened on travels with the trigger's data, so the
+     items and their subject are resolved together when it opens. -->
+<app-menu #contextMenu [itemsFor]="menuItemsFor" (chosen)="onContextChoice($event)" />

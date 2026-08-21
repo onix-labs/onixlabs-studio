@@ -961,7 +961,11 @@ export class DirectoryView implements OnInit, OnDestroy {
       this.lastRevealedPath = path;
       untracked((): void => {
         void this.workspace.revealPath(path);
-        this.solutionModel.revealPath(path);
+        // The Solution Explorer follows only while asked to: reading around a solution with a
+        // generated file open otherwise drags the selection back on every tab change.
+        if (this.solutionModel.followsActiveDocument()) {
+          this.solutionModel.revealPath(path);
+        }
       });
     });
 

@@ -1,6 +1,7 @@
 import { ApplicationRef, Component, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { TreeRow, TreeView } from './tree-view';
+import { MenuItem } from '@shared/angular/components/menu/menu';
+import { TreeMenuSelection, TreeRow, TreeView } from './tree-view';
 
 /**
  * Builds a tree row with the given identity, depth, and expansion state, carrying its id as the
@@ -133,5 +134,103 @@ describe('TreeView', () => {
     } finally {
       delete (Element.prototype as unknown as { scrollIntoView?: unknown }).scrollIntoView;
     }
+  });
+});
+
+/**
+ * Hosts the tree with a row context menu, offering items that depend on the row so a test can tell
+ * which row the menu was opened on.
+ */
+@Component({
+  imports: [TreeView],
+  template: `
+    <app-tree-view
+      [rows]="rows()"
+      [contextMenuFor]="menuFor"
+      (contextMenuSelect)="onChoice($event)"
+    >
+      <ng-template let-row
+        ><span class="probe-label">{{ row.data }}</span></ng-template
+      >
+    </app-tree-view>
+  `,
+})
+class MenuHost {
+  public readonly rows: WritableSignal<readonly TreeRow[]> = signal<readonly TreeRow[]>([
+    makeRow('alpha', 0, false, false),
+    makeRow('beta', 0, false, false),
+  ]);
+  public readonly chosen: TreeMenuSelection[] = [];
+
+  public readonly menuFor: (row: TreeRow) => readonly MenuItem[] = (
+    row: TreeRow,
+  ): readonly MenuItem[] => [{ id: `act:${row.id}`, label: `Act on ${row.id}` }];
+
+  public onChoice(selection: TreeMenuSelection): void {
+    this.chosen.push(selection);
+  }
+}
+
+describe('TreeView context menu', () => {
+  let fixture: ComponentFixture<MenuHost>;
+  let component: MenuHost;
+
+  beforeEach(() => {
+    fixture = TestBed.createComponent(MenuHost);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+  });
+
+  /**
+   * Gets the rendered row elements.
+   * @returns Returns the rows.
+   */
+  function rows(): HTMLElement[] {
+    return Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.tree-row'),
+    );
+  }
+
+  /**
+   * Gets the items of the open context menu, which the CDK renders into an overlay outside the host.
+   * @returns Returns the item buttons.
+   */
+  function menuItems(): HTMLButtonElement[] {
+    return Array.from(document.querySelectorAll<HTMLButtonElement>('.app-menu-panel__item'));
+  }
+
+  /**
+   * Right-clicks a row and settles the resulting render.
+   * @param index The row to right-click.
+   */
+  function rightClick(index: number): void {
+    rows()[index].dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    fixture.detectChanges();
+  }
+
+  it('contextMenu_onRightClick_showsTheItemsBuiltForThatRow', () => {
+    rightClick(0);
+    expect(menuItems().map((b: HTMLButtonElement): string => b.textContent?.trim() ?? '')).toEqual([
+      'Act on alpha',
+    ]);
+  });
+
+  it('contextMenu_onADifferentRow_showsThatRowsItems', () => {
+    // The row travels with the trigger's data rather than through a signal set by a separate
+    // listener, so the items can never belong to a previously right-clicked row.
+    rightClick(1);
+    expect(menuItems().map((b: HTMLButtonElement): string => b.textContent?.trim() ?? '')).toEqual([
+      'Act on beta',
+    ]);
+  });
+
+  it('contextMenuSelect_whenAnItemIsChosen_emitsItWithItsRow', () => {
+    rightClick(1);
+    menuItems()[0].click();
+    fixture.detectChanges();
+
+    expect(component.chosen).toHaveLength(1);
+    expect(component.chosen[0].itemId).toBe('act:beta');
+    expect(component.chosen[0].row.id).toBe('beta');
   });
 });

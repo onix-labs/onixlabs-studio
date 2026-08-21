@@ -1,6 +1,6 @@
-<ng-template #panel>
+<ng-template #panel let-data>
   <div class="app-menu-panel" cdkMenu>
-    @for (item of items(); track item.id) {
+    @for (item of rowsFor(data); track item.id) {
       <button
         type="button"
         class="app-menu-panel__item"
@@ -11,7 +11,7 @@
         [class.app-menu-panel__item--tone-info]="item.tone === 'info'"
         cdkMenuItem
         [cdkMenuItemDisabled]="item.disabled ?? false"
-        (cdkMenuItemTriggered)="onSelect(item.id)"
+        (cdkMenuItemTriggered)="onSelect(item.id, data)"
       >
         @if (item.icon; as icon) {
           <app-icon [icon]="icon" />
