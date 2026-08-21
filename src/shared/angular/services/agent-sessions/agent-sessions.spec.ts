@@ -56,14 +56,15 @@ function createSession(): FakeSession {
     models: signal<readonly AiModelInfo[]>([]).asReadonly(),
     supportsRemoteControl: signal<boolean>(true).asReadonly(),
     remoteControl: signal<AiRemoteControlMode>('off').asReadonly(),
+    remoteControlEnabled: signal<boolean>(false).asReadonly(),
     setProvider: (id: string): void => {
       calls.push(`setProvider:${id}`);
     },
     setModel: (id: string): void => {
       calls.push(`setModel:${id}`);
     },
-    setRemoteControl: (mode: AiRemoteControlMode): void => {
-      calls.push(`setRemoteControl:${mode}`);
+    setRemoteControlEnabled: (enabled: boolean): void => {
+      calls.push(`setRemoteControlEnabled:${enabled}`);
     },
     newChat: (): void => {
       calls.push('newChat');

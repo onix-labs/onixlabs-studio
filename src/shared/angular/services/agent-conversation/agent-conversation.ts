@@ -171,8 +171,14 @@ export class AgentConversation implements AgentSessionHandle {
   public readonly supportsRemoteControl: Signal<boolean> = this.agent.supportsRemoteControl;
 
   /**
-   * Gets how this conversation's session is exposed via Remote Control (part of
+   * Gets whether this conversation's session is exposed via Remote Control (part of
    * {@link AgentSessionHandle}).
+   */
+  public readonly remoteControlEnabled: Signal<boolean> = this.agent.remoteControlEnabled;
+
+  /**
+   * Gets the mode this conversation's session is exposed at — `off`, or the user's global Remote
+   * control posture while it is exposed (part of {@link AgentSessionHandle}).
    */
   public readonly remoteControl: Signal<AiRemoteControlMode> = this.agent.remoteControl;
 
@@ -372,12 +378,12 @@ export class AgentConversation implements AgentSessionHandle {
   }
 
   /**
-   * Sets how this conversation's session is exposed via Remote Control (part of
+   * Exposes this conversation's session via Remote Control, or stops exposing it (part of
    * {@link AgentSessionHandle}).
-   * @param mode The remote-control mode: `off`, `mirror` (view-only) or `control`.
+   * @param enabled Whether the session is exposed.
    */
-  public setRemoteControl(mode: AiRemoteControlMode): void {
-    this.agent.setRemoteControl(mode);
+  public setRemoteControlEnabled(enabled: boolean): void {
+    this.agent.setRemoteControlEnabled(enabled);
   }
 
   /**

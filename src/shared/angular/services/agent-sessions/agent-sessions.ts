@@ -42,7 +42,13 @@ export interface AgentSessionHandle {
   readonly supportsRemoteControl: Signal<boolean>;
 
   /**
-   * Gets how the conversation's session is exposed via Remote Control.
+   * Gets whether the conversation's session is exposed via Remote Control.
+   */
+  readonly remoteControlEnabled: Signal<boolean>;
+
+  /**
+   * Gets the mode the conversation's session is exposed at — `off`, or the user's global Remote
+   * control posture while it is exposed.
    */
   readonly remoteControl: Signal<AiRemoteControlMode>;
 
@@ -101,10 +107,10 @@ export interface AgentSessionHandle {
   setModel(id: string): void;
 
   /**
-   * Sets how the conversation's session is exposed via Remote Control.
-   * @param mode The remote-control mode.
+   * Exposes the conversation's session via Remote Control, or stops exposing it.
+   * @param enabled Whether the session is exposed.
    */
-  setRemoteControl(mode: AiRemoteControlMode): void;
+  setRemoteControlEnabled(enabled: boolean): void;
 
   /**
    * Prompts for a file and attaches it to the conversation's context.
@@ -195,7 +201,15 @@ export class AgentSessions {
   );
 
   /**
-   * Gets how the active agent tab's session is exposed via Remote Control. `off` when no tab is active.
+   * Gets whether the active agent tab's session is exposed via Remote Control. False when no tab is
+   * active.
+   */
+  public readonly remoteControlEnabled: Signal<boolean> = computed(
+    (): boolean => this.activeSession()?.remoteControlEnabled() ?? false,
+  );
+
+  /**
+   * Gets the mode the active agent tab's session is exposed at. `off` when no tab is active.
    */
   public readonly remoteControl: Signal<AiRemoteControlMode> = computed(
     (): AiRemoteControlMode => this.activeSession()?.remoteControl() ?? 'off',
@@ -296,11 +310,11 @@ export class AgentSessions {
   }
 
   /**
-   * Sets how the active agent tab's session is exposed via Remote Control.
-   * @param mode The remote-control mode.
+   * Exposes the active agent tab's session via Remote Control, or stops exposing it.
+   * @param enabled Whether the session is exposed.
    */
-  public setRemoteControl(mode: AiRemoteControlMode): void {
-    this.activeSession()?.setRemoteControl(mode);
+  public setRemoteControlEnabled(enabled: boolean): void {
+    this.activeSession()?.setRemoteControlEnabled(enabled);
   }
 
   /**

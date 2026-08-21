@@ -45,7 +45,6 @@
       @if (runStarting()) {
         <app-button
           variant="none"
-          size="small"
           tone="danger"
           [icon]="Icon.STOP"
           [loading]="true"
@@ -57,7 +56,6 @@
       } @else if (runRunning()) {
         <app-button
           variant="none"
-          size="small"
           tone="danger"
           [icon]="Icon.STOP"
           ariaLabel="Stop"
@@ -67,7 +65,6 @@
       } @else {
         <app-button
           variant="none"
-          size="small"
           [icon]="Icon.PLAY"
           ariaLabel="Run"
           [tooltip]="'Run ' + configuration.name"
@@ -79,7 +76,6 @@
          (modal) button. Hiding collapses this column; it is shown again from the rail. -->
     <app-button
       variant="none"
-      size="small"
       [icon]="manuallyHidden() ? Icon.AGENT_HIDDEN : Icon.AGENT_VISIBLE"
       [pressed]="manuallyHidden()"
       [ariaLabel]="manuallyHidden() ? 'Show agent column' : 'Hide agent column'"
@@ -88,7 +84,6 @@
     />
     <app-button
       variant="none"
-      size="small"
       [icon]="Icon.FRAME_CORNERS"
       ariaLabel="Focus"
       tooltip="Focus"

@@ -54,6 +54,13 @@
       <app-setting-control key="ai.permissionPosture" />
     </app-setting-row>
 
+    <app-setting-row
+      label="Remote control posture"
+      description="How much a remote peer may do on an agent you expose via Remote Control. Each agent chooses only whether it is exposed; this decides what that exposure means. Full Control lets a peer drive the session; Read-Only lets them watch it."
+    >
+      <app-setting-control key="ai.remoteControlPosture" />
+    </app-setting-row>
+
     <app-ai-tool-policies />
 
     <app-ai-write-paths />

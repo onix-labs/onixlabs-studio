@@ -57,9 +57,10 @@ describe('AgentToolStrip', () => {
       models: signal<readonly AiModelInfo[]>([]),
       supportsRemoteControl: signal<boolean>(false),
       remoteControl: signal<AiRemoteControlMode>('off'),
+      remoteControlEnabled: signal<boolean>(false),
       setProvider: (): void => undefined,
       setModel: (): void => undefined,
-      setRemoteControl: (): void => undefined,
+      setRemoteControlEnabled: (): void => undefined,
     };
     const engineStub: Partial<AgentEngine> = {
       providers: signal<readonly AiProviderInfo[]>([]),

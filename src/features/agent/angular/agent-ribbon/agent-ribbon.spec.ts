@@ -1,4 +1,4 @@
-import { signal, WritableSignal } from '@angular/core';
+import { Signal, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import type {
@@ -44,8 +44,18 @@ const PROVIDERS: readonly AiProviderInfo[] = [
   },
 ];
 
+/**
+ * The ribbon internals the Remote Control tests reach into (protected on the component).
+ */
+interface RibbonInternals {
+  readonly remoteConfirmOpen: Signal<boolean>;
+  onRemoteControlConfirmed(): void;
+  onRemoteControlDismissed(): void;
+}
+
 describe('AgentRibbon', () => {
   let component: AgentRibbon;
+  let internals: RibbonInternals;
   let fixture: ComponentFixture<AgentRibbon>;
   let host: HTMLElement;
   let cleared: number;
@@ -53,9 +63,10 @@ describe('AgentRibbon', () => {
   let historyToggles: number;
   let providerChoices: AiProviderId[];
   let modelChoices: string[];
-  let remoteControlChoices: AiRemoteControlMode[];
+  let remoteControlChoices: boolean[];
   let running: WritableSignal<boolean>;
   let hasMessages: WritableSignal<boolean>;
+  let remoteControlEnabled: WritableSignal<boolean>;
   let historyOpen: WritableSignal<boolean>;
   let mode: WritableSignal<AgentMode>;
   let modeChoices: AgentMode[];
@@ -106,6 +117,7 @@ describe('AgentRibbon', () => {
     remoteControlChoices = [];
     running = signal<boolean>(false);
     hasMessages = signal<boolean>(true);
+    remoteControlEnabled = signal<boolean>(false);
     historyOpen = signal<boolean>(false);
     mode = signal<AgentMode>('agent');
     modeChoices = [];
@@ -130,9 +142,10 @@ describe('AgentRibbon', () => {
       models: signal<readonly AiModelInfo[]>(MODELS),
       supportsRemoteControl: signal<boolean>(true),
       remoteControl: signal<AiRemoteControlMode>('off'),
+      remoteControlEnabled,
       setProvider: (id: AiProviderId): void => void providerChoices.push(id),
       setModel: (id: string): void => void modelChoices.push(id),
-      setRemoteControl: (mode: AiRemoteControlMode): void => void remoteControlChoices.push(mode),
+      setRemoteControlEnabled: (enabled: boolean): void => void remoteControlChoices.push(enabled),
       newChat: (): void => void (cleared += 1),
       stop: (): void => void (stopped += 1),
       toggleHistory: (): void => void (historyToggles += 1),
@@ -157,6 +170,7 @@ describe('AgentRibbon', () => {
 
     fixture = TestBed.createComponent(AgentRibbon);
     component = fixture.componentInstance;
+    internals = component as unknown as RibbonInternals;
     host = fixture.nativeElement as HTMLElement;
     fixture.detectChanges();
     await fixture.whenStable();
@@ -210,12 +224,31 @@ describe('AgentRibbon', () => {
     expect(modelChoices).toEqual(['claude-haiku-4-5']);
   });
 
-  it('remote_whenChanged_setsTheMatchingRemoteControlMode', () => {
-    const select: HTMLSelectElement = field('Remote');
-    select.value = 'Remote mirror (view-only)';
-    select.dispatchEvent(new Event('change'));
+  it('remote_whenClicked_doesNotFlipUntilTheConfirmationIsAnswered', () => {
+    button('Remote').click();
+    fixture.detectChanges();
 
-    expect(remoteControlChoices).toEqual(['mirror']);
+    expect(remoteControlChoices).toEqual([]);
+    expect(internals.remoteConfirmOpen()).toBe(true);
+  });
+
+  it('remote_whenConfirmed_flipsTheRemoteControlState', () => {
+    button('Remote').click();
+    fixture.detectChanges();
+    internals.onRemoteControlConfirmed();
+
+    expect(remoteControlChoices).toEqual([true]);
+    expect(internals.remoteConfirmOpen()).toBe(false);
+  });
+
+  it('remote_whenDismissed_leavesRemoteControlWhereItWas', () => {
+    remoteControlEnabled.set(true);
+    button('Remote').click();
+    fixture.detectChanges();
+    internals.onRemoteControlDismissed();
+
+    expect(remoteControlChoices).toEqual([]);
+    expect(internals.remoteConfirmOpen()).toBe(false);
   });
 
   it('history_whenClicked_togglesTheHistoryList', () => {

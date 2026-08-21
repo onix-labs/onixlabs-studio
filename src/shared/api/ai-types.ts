@@ -47,12 +47,14 @@ export type {
   AiModelInfo,
   AiProviderInfo,
   AiRemoteControlMode,
+  AiRemoteControlPosture,
   ClaudeExecutableChoice,
   ClaudeExecutableMode,
 } from './ai/ai-provider-types';
 export {
   AI_EFFORT_LEVELS,
   AI_REMOTE_CONTROL_MODES,
+  AI_REMOTE_CONTROL_POSTURES,
   DEFAULT_CLAUDE_EXECUTABLE,
 } from './ai/ai-provider-types';
 export type { AiProviderKind, AiAuthKind, AiConnection } from './ai/ai-connection-types';

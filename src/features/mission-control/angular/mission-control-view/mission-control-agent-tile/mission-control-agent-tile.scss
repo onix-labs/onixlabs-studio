@@ -109,10 +109,13 @@ button.tile__name {
   }
 }
 
+// The header's Run/Hide/Focus controls. They are standard-size buttons, not the dense `small` variant:
+// the column's own tool strip sits directly beneath them, and a header of smaller buttons above a strip
+// of larger ones read as two unrelated rows. Spaced to match that strip for the same reason.
 .tile__actions {
   display: flex;
   align-items: center;
-  gap: 0.125rem;
+  gap: 0.3rem;
   flex: none;
 }
 // The run-state pill sits inline beside the title in the header row.
