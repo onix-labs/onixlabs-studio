@@ -98,6 +98,17 @@
   --status-strip-background-color: var(--gray-400);
   --status-strip-foreground-color: var(--gray-800);
 
+  // The etched groove between neighbouring status segments: a shadow line with a highlight line beside
+  // it. On this already-light strip both sides are kept high — the shadow a quarter of the way to
+  // black, the highlight all the way to white — so the groove reads as a crease in a bright surface
+  // rather than as the hard scored line the same mix would give on a dark one.
+  --status-strip-bevel-shadow-color: color-mix(
+    in srgb,
+    var(--status-strip-background-color) 75%,
+    black
+  );
+  --status-strip-bevel-highlight-color: white;
+
   // The backdrop behind the docked panes (and, since splitters are transparent, the gaps between
   // them). The single knob for the dock container surface; decoupled from --root-content so it can
   // be retuned without moving the app root.

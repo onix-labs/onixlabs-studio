@@ -9,3 +9,30 @@
 app-status-strip-container app-icon {
   font-size: 1.125rem; // 18px
 }
+
+// A carved separator between neighbouring segments, so a run of them (Ln / Col / LF / UTF-8) reads as
+// distinct readings rather than as one drifting sentence. The groove is the classic etched pair — a
+// shadow line with a highlight line beside it — and each theme names its own two colours, since the
+// contrast that carves a dark bar overpowers a light one.
+//
+// Written globally because it spans a component boundary: each segment is its own component, and the
+// rule has to see one as the sibling of the next. Only segment-to-segment pairs match, so the ambient
+// region's drop-up triggers (the language server and the bell) are left to close the strip unfenced.
+app-status-strip-container app-status-strip-segment {
+  display: inline-flex;
+  align-items: center;
+
+  + app-status-strip-segment::before {
+    content: '';
+    align-self: center;
+    inline-size: 0;
+    // A little taller than the 1rem text it divides, so the groove reads as a rule drawn through the
+    // strip rather than as a mark sitting on the same line as the words.
+    block-size: 1.25rem;
+    // The groove hangs in the middle of the group's 1rem gap: pulled half a gap back, then giving the
+    // half back on its other side, so it divides the space rather than eating into it.
+    margin-inline: -0.5rem 0.5rem;
+    border-inline-start: 0.0625rem solid var(--status-strip-bevel-shadow-color);
+    border-inline-end: 0.0625rem solid var(--status-strip-bevel-highlight-color);
+  }
+}

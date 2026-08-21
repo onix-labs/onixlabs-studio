@@ -858,7 +858,8 @@ export class Icon {
   // --- Agent chat ---
 
   /**
-   * Gets the new-conversation icon (a chat bubble with dots), shown on the agent ribbon's New button.
+   * Gets the new-conversation icon (a chat bubble with dots), shown on the agent ribbon's New button
+   * and on the agent tool strip's New chat button.
    */
   public static readonly CHAT_NEW: Icon = new Icon('ph-duotone ph-chat-teardrop-dots');
 
