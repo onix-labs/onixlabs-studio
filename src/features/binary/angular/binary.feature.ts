@@ -10,18 +10,20 @@ import { provideUnsavedWork } from '@shared/angular/services/unsaved-work/unsave
 import { BinaryDocuments } from './binary-document/binary-document';
 import { BinaryAgentCapabilities } from './binary-agent-capabilities/binary-agent-capabilities';
 import { BinaryRibbon } from './binary-ribbon/binary-ribbon';
+import { BinaryStatusStrip } from './binary-status/binary-status-strip';
 import { BinaryView } from './binary-view/binary-view';
 
 /**
  * Describes the binary feature's contribution to the application shell: the tab view mounted for each
- * binary tab and its contextual ribbon. The shell renders both by looking the `binary` type up in the
- * feature registry, with no hard-coded knowledge of the feature. Binary tabs are top-level (like the
- * terminal), so no document-well panel is contributed.
+ * binary tab, its contextual ribbon, and its status strip. The shell renders all three by looking the
+ * `binary` type up in the feature registry, with no hard-coded knowledge of the feature. Binary tabs
+ * are top-level (like the terminal), so no document-well panel is contributed.
  */
 const binaryFeature: FeatureDescriptor = {
   type: 'binary',
   view: BinaryView,
   ribbon: BinaryRibbon,
+  status: BinaryStatusStrip,
 };
 
 /**

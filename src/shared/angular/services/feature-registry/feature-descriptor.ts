@@ -89,6 +89,19 @@ export interface FeatureDescriptor {
   readonly ribbon?: Type<unknown>;
 
   /**
+   * Gets the status component shown in the status strip while a tab of this type is active, if any.
+   * It takes no inputs, and is mounted through the active view's own injector — so it reads the
+   * view's per-tab services directly. Because exactly one is mounted at a time, and it is destroyed
+   * on tab switch, a feature's status can never linger over another feature's tab.
+   *
+   * It must compose `app-status-strip-segments` and declare `:host { display: contents; }`, so its
+   * segment groups and their flexible spacer are laid out by the strip's own flex row. A host that
+   * makes a box of its own traps the spacer and bunches the trailing segments — and the strip's
+   * ambient region behind them — up on the left.
+   */
+  readonly status?: Type<unknown>;
+
+  /**
    * Gets the panel component the workspace mounts in a document well to display an open document of
    * this feature's type, if any. It is a lean editor surface (editor, toolstrip, status) distinct
    * from the full tab {@link view}, and must declare the {@link FeatureDocumentPanelInputs} inputs.

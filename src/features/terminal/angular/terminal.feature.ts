@@ -10,17 +10,19 @@ import { provideKeybindingCatalogue } from '@shared/angular/services/keybindings
 import { TERMINAL_KEYBINDINGS } from './terminal-keybindings';
 import { AgentTerminalCapabilities } from './agent-terminal-capabilities/agent-terminal-capabilities';
 import { TerminalRibbon } from './terminal-ribbon/terminal-ribbon';
+import { TerminalStatusStrip } from './terminal-status/terminal-status-strip';
 import { TerminalView } from './terminal-view/terminal-view';
 
 /**
  * Describes the terminal feature's contribution to the application shell: the leaf view mounted for
- * each terminal tab and its contextual ribbon. The shell renders both by looking the `terminal` type
- * up in the feature registry, with no hard-coded knowledge of the feature.
+ * each terminal tab, its contextual ribbon, and its status strip. The shell renders all three by
+ * looking the `terminal` type up in the feature registry, with no hard-coded knowledge of the feature.
  */
 const terminalFeature: FeatureDescriptor = {
   type: 'terminal',
   view: TerminalView,
   ribbon: TerminalRibbon,
+  status: TerminalStatusStrip,
 };
 
 /**

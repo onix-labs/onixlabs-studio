@@ -1,8 +1,21 @@
-import { ApplicationRef } from '@angular/core';
-import { TestBed } from '@angular/core/testing';
+import { describe, expect, it } from 'vitest';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 
-import { StatusBar } from '@shared/angular/services/status-bar/status-bar';
+import { MarkdownStatusStrip } from './markdown-status-strip';
 import { computeMarkdownStats, MarkdownStatus } from './markdown-status';
+
+/**
+ * Reads the rendered segment texts from the strip's trailing group.
+ * @param fixture The mounted status-strip fixture.
+ * @returns Returns the segment texts in render order.
+ */
+function trailingOf(fixture: ComponentFixture<MarkdownStatusStrip>): string[] {
+  const host: HTMLElement = fixture.nativeElement as HTMLElement;
+  const groups: NodeListOf<Element> = host.querySelectorAll('.status-strip-segments__group');
+  return [...(groups.item(1)?.querySelectorAll('.status-strip-segment') ?? [])].map(
+    (element: Element): string => (element.textContent ?? '').trim(),
+  );
+}
 
 describe('computeMarkdownStats', () => {
   it('emptyOrWhitespace_countsZeroWordsAndZeroReadMinutes', () => {
@@ -24,46 +37,44 @@ describe('computeMarkdownStats', () => {
   });
 });
 
-describe('MarkdownStatus', () => {
-  let markdownStatus: MarkdownStatus;
-  let statusBar: StatusBar;
+describe('MarkdownStatusStrip', () => {
+  let status: MarkdownStatus;
+  let fixture: ComponentFixture<MarkdownStatusStrip>;
 
   beforeEach(() => {
-    markdownStatus = TestBed.inject(MarkdownStatus);
-    statusBar = TestBed.inject(StatusBar);
+    TestBed.configureTestingModule({ providers: [MarkdownStatus] });
+    status = TestBed.inject(MarkdownStatus);
+    fixture = TestBed.createComponent(MarkdownStatusStrip);
   });
 
-  it('publish_whenContentSet_showsWordCountAndReadTimeTrailing', () => {
-    markdownStatus.publish('tab-1', 'the quick brown fox');
-    TestBed.inject(ApplicationRef).tick();
-    expect(statusBar.trailing().map((segment) => segment.text)).toEqual(['4 words', '1 min read']);
+  it('publish_whenContentSet_showsWordCountAndReadTime', () => {
+    status.publish('the quick brown fox');
+    fixture.detectChanges();
+
+    expect(trailingOf(fixture)).toEqual(['4 words', '1 min read']);
   });
 
   it('publish_whenSingleWord_usesSingularLabel', () => {
-    markdownStatus.publish('tab-1', 'solo');
-    TestBed.inject(ApplicationRef).tick();
-    expect(statusBar.trailing()[0]?.text).toBe('1 word');
+    status.publish('solo');
+    fixture.detectChanges();
+
+    expect(trailingOf(fixture)[0]).toBe('1 word');
   });
 
   it('publish_whenEmpty_showsZeroWordsAndOmitsReadTime', () => {
-    markdownStatus.publish('tab-1', '   ');
-    TestBed.inject(ApplicationRef).tick();
-    expect(statusBar.trailing().map((segment) => segment.text)).toEqual(['0 words']);
+    status.publish('   ');
+    fixture.detectChanges();
+
+    expect(trailingOf(fixture)).toEqual(['0 words']);
   });
 
-  it('clear_whenOwningTab_removesSegments', () => {
-    markdownStatus.publish('tab-1', 'hello world');
-    TestBed.inject(ApplicationRef).tick();
-    markdownStatus.clear('tab-1');
-    TestBed.inject(ApplicationRef).tick();
-    expect(statusBar.trailing().length).toBe(0);
-  });
+  it('clear_whenCalled_removesEverySegment', () => {
+    status.publish('hello world');
+    fixture.detectChanges();
 
-  it('clear_whenDifferentTab_leavesSegments', () => {
-    markdownStatus.publish('tab-1', 'hello world');
-    TestBed.inject(ApplicationRef).tick();
-    markdownStatus.clear('tab-2');
-    TestBed.inject(ApplicationRef).tick();
-    expect(statusBar.trailing().length).toBe(2);
+    status.clear();
+    fixture.detectChanges();
+
+    expect(trailingOf(fixture)).toEqual([]);
   });
 });

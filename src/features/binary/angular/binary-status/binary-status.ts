@@ -1,19 +1,7 @@
-import { effect, inject, Service, signal, WritableSignal } from '@angular/core';
-import { StatusBar } from '@shared/angular/services/status-bar/status-bar';
+import { Service, signal, Signal, WritableSignal } from '@angular/core';
 
 /**
- * Holds the status-bar owner identifier for the binary editor's contribution.
- */
-const STATUS_OWNER: string = 'binary';
-
-/**
- * Holds the status-bar priority for the binary editor, matching the code editor so its segments sit
- * ahead of the terminal's trailing working-directory segment.
- */
-const STATUS_PRIORITY: number = 10;
-
-/**
- * Describes the contextual information the active binary editor publishes to the status strip.
+ * Describes the contextual information a binary editor publishes to the status strip.
  */
 export interface BinaryContext {
   /**
@@ -53,85 +41,37 @@ export interface BinaryContext {
 }
 
 /**
- * Publishes the active binary editor's context to the status strip.
+ * Holds one binary view's editor context for its status strip. Mirrors `CodeStatus`.
  *
- * The active editor pushes its context here; an effect projects the file path as a leading segment and
- * the cursor offset, selection length and file size as trailing segments, clearing the contribution
- * when no binary editor is active (the context is null). Mirrors {@link CodeStatus}.
+ * Provided by the binary view, so there is one instance per binary tab and its lifetime is the view's.
+ * The strip reaches it through the active view's injector and is torn down with the view, so there is
+ * no owner key to collide with a sibling tab and nothing to clear on a tab switch.
  */
 @Service()
 export class BinaryStatus {
   /**
-   * Holds the status bar the context is published to.
+   * Holds the view's editor context, or null before the editor has a document.
    */
-  private readonly statusBar: StatusBar = inject(StatusBar);
+  private readonly contextSignal: WritableSignal<BinaryContext | null> =
+    signal<BinaryContext | null>(null);
 
   /**
-   * Holds the active editor's context and the tab that published it, or null when no binary editor is
-   * active. The tab is tracked so a deactivating editor only clears the strip when it still owns it.
+   * Gets the view's editor context, or null when it has no document to report.
    */
-  private readonly contextSignal: WritableSignal<{ tabId: string; context: BinaryContext } | null> =
-    signal<{ tabId: string; context: BinaryContext } | null>(null);
+  public readonly context: Signal<BinaryContext | null> = this.contextSignal.asReadonly();
 
   /**
-   * Initializes the service, projecting the context as leading and trailing status segments.
-   */
-  public constructor() {
-    effect((): void => {
-      const current: { tabId: string; context: BinaryContext } | null = this.contextSignal();
-      if (current === null) {
-        this.statusBar.clearOwner(STATUS_OWNER);
-        return;
-      }
-      const context: BinaryContext = current.context;
-      this.statusBar.contribute(
-        STATUS_OWNER,
-        {
-          leading: [
-            { id: 'binary-path', text: context.dirty ? `${context.path} ●` : context.path },
-            { id: 'binary-format', text: context.format },
-          ],
-          trailing: [
-            { id: 'binary-mode', text: context.insertMode ? 'INS' : 'OVR' },
-            {
-              id: 'binary-offset',
-              text: context.offset === null ? 'Offset —' : `Offset ${this.hex(context.offset)}`,
-            },
-            { id: 'binary-selection', text: `Sel ${context.selectionLength}` },
-            { id: 'binary-size', text: `${context.size} bytes` },
-          ],
-        },
-        STATUS_PRIORITY,
-      );
-    });
-  }
-
-  /**
-   * Publishes the given tab's editor context as the active status.
-   * @param tabId The identifier of the publishing tab.
+   * Publishes the view's editor context.
    * @param context The editor context.
    */
-  public publish(tabId: string, context: BinaryContext): void {
-    this.contextSignal.set({ tabId, context });
+  public publish(context: BinaryContext): void {
+    this.contextSignal.set(context);
   }
 
   /**
-   * Clears the status, but only when the given tab is the one currently shown, so a deactivating
-   * editor never wipes out the editor that just became active.
-   * @param tabId The identifier of the deactivating tab.
+   * Drops the view's editor context, so its status strip reports nothing.
    */
-  public clear(tabId: string): void {
-    if (this.contextSignal()?.tabId === tabId) {
-      this.contextSignal.set(null);
-    }
-  }
-
-  /**
-   * Formats a byte offset as an upper-case, `0x`-prefixed hex string.
-   * @param offset The byte offset.
-   * @returns Returns the formatted offset.
-   */
-  private hex(offset: number): string {
-    return `0x${offset.toString(16).toUpperCase()}`;
+  public clear(): void {
+    this.contextSignal.set(null);
   }
 }

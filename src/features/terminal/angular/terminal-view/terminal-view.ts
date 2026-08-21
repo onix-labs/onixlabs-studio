@@ -7,6 +7,7 @@ import {
   input,
   InputSignal,
   OnDestroy,
+  OnInit,
   output,
   OutputEmitterRef,
   signal,
@@ -31,6 +32,10 @@ import {
 } from '@features/terminal/angular/terminal-commands/terminal-commands';
 import { TerminalFindAdapter } from '@features/terminal/angular/find/terminal-find-adapter';
 import { TerminalStatus } from '@features/terminal/angular/terminal-status/terminal-status';
+import {
+  createViewInjectorRegistrar,
+  ViewInjectorRegistrar,
+} from '@shared/angular/services/view-injectors/view-injector-registration';
 import { TerminalAgentPanel } from './terminal-agent-panel/terminal-agent-panel';
 
 /**
@@ -48,8 +53,10 @@ import { TerminalAgentPanel } from './terminal-agent-panel/terminal-agent-panel'
   templateUrl: './terminal-view.html',
   styleUrl: './terminal-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  // One per terminal tab: the status strip reads this view's own context through its injector.
+  providers: [TerminalStatus],
 })
-export class TerminalView implements OnDestroy {
+export class TerminalView implements OnInit, OnDestroy {
   /**
    * Holds the tab registry used to rename the owning tab when the shell sets the terminal title.
    */
@@ -172,6 +179,15 @@ export class TerminalView implements OnDestroy {
   public readonly isActive: InputSignal<boolean> = input<boolean>(false);
 
   /**
+   * Publishes this view's injector so the shell's status strip can mount the terminal status
+   * component inside it. Declared after {@link isActive}, whose signal it reads, and finalised in
+   * {@link ngOnInit} once the tab id is readable.
+   */
+  private readonly statusHost: ViewInjectorRegistrar = createViewInjectorRegistrar({
+    isActive: this.isActive,
+  });
+
+  /**
    * Emits once the PTY session is created and its I/O is wired up.
    */
   public readonly ready: OutputEmitterRef<void> = output<void>();
@@ -180,17 +196,18 @@ export class TerminalView implements OnDestroy {
    * Initializes a new instance of the {@link TerminalView} class, wiring the active-tab effects.
    */
   public constructor() {
-    // Publish the address (full prompt title) and shell (terminal type) to the status strip while the
-    // terminal is active, clearing them when another view takes over.
+    // Keep this view's address (full prompt title) and shell (terminal type) current for its status
+    // strip. Activation is not consulted: the strip mounts this view's status component only while
+    // the view is active, and destroys it on tab switch, so an inactive terminal's address is never
+    // on screen to go stale.
     effect((): void => {
-      const active: boolean = this.isActive() && this.paneReady();
-      if (active) {
-        this.terminalStatus.publish(this.tabId(), {
+      if (this.paneReady()) {
+        this.terminalStatus.publish({
           address: this.currentTitle(),
           shell: this.currentShell(),
         });
       } else {
-        this.terminalStatus.clear(this.tabId());
+        this.terminalStatus.clear();
       }
     });
 
@@ -228,6 +245,13 @@ export class TerminalView implements OnDestroy {
   }
 
   /**
+   * Publishes this view's injector for the status strip, once the tab id is readable.
+   */
+  public ngOnInit(): void {
+    this.statusHost.register(this.tabId());
+  }
+
+  /**
    * Unregisters the command handler and tears down the agent panel state on destroy. The pane manages
    * its own xterm and PTY lifecycle.
    */
@@ -238,7 +262,6 @@ export class TerminalView implements OnDestroy {
       this.commandHandler = null;
     }
     this.terminalAgents.remove(this.tabId());
-    this.terminalStatus.clear(this.tabId());
     this.log.info('terminal.view', 'Terminal closed', this.tabId());
   }
 
@@ -259,7 +282,10 @@ export class TerminalView implements OnDestroy {
     const base: string = shell.split(/[\\/]/).pop() ?? shell;
     const name: string = base.replace(/\.[^.]+$/, '');
     this.currentShell.set(name);
-    this.log.debug('terminal.view', 'Terminal shell reported', { tabId: this.tabId(), shell: name });
+    this.log.debug('terminal.view', 'Terminal shell reported', {
+      tabId: this.tabId(),
+      shell: name,
+    });
   }
 
   /**

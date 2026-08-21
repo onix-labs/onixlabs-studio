@@ -1,22 +1,25 @@
 <footer>
-  <div class="status-strip__group">
-    @for (segment of leading(); track segment.id) {
-      <span class="status-strip__segment" [title]="segment.title ?? segment.text">
-        @if (segment.icon; as icon) {
-          <app-icon [icon]="icon" />
-        }
-        {{ segment.text }}
-      </span>
+  <!-- The view region: the active feature's own status, mounted through that view's injector so it
+       reads the view's per-tab services. It is destroyed on tab switch, so it can never go stale.
+       Both halves of the condition matter: without the view's injector the component would be built
+       in the shell's, silently binding to root-scoped services instead of the tab's. A feature
+       contributing no status (or one whose view has not registered yet) names the active tab. -->
+  <div class="status-strip__view">
+    @if (viewStatus(); as status) {
+      @if (viewInjector(); as injector) {
+        <ng-container *ngComponentOutlet="status; injector: injector" />
+      } @else {
+        <app-status-strip-segments [leading]="fallback()" />
+      }
+    } @else {
+      <app-status-strip-segments [leading]="fallback()" />
     }
   </div>
-  <div class="status-strip__group">
-    @for (segment of trailing(); track segment.id) {
-      <span class="status-strip__segment" [title]="segment.title ?? segment.text">
-        @if (segment.icon; as icon) {
-          <app-icon [icon]="icon" />
-        }
-        {{ segment.text }}
-      </span>
+
+  <!-- The ambient region: app-wide state that outlives any one tab. -->
+  <div class="status-strip__ambient">
+    @for (segment of ambient(); track segment.id) {
+      <app-status-strip-segment [segment]="segment" />
     }
     <app-status-strip-lsp-menu />
     <app-status-strip-notifications-menu />

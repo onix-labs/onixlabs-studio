@@ -50,6 +50,10 @@ import {
   MarkdownCommands,
 } from '@shared/angular/services/markdown-commands/markdown-commands';
 import { MarkdownStatus } from '@features/markdown/angular/markdown-status/markdown-status';
+import {
+  createViewInjectorRegistrar,
+  ViewInjectorRegistrar,
+} from '@shared/angular/services/view-injectors/view-injector-registration';
 import { Documents } from '@shared/angular/services/documents/documents';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { Log } from '@shared/angular/services/log/log';
@@ -128,7 +132,13 @@ const ROOT_DEPTH: number = 0;
   // The tab's agent and conversation live on the VIEW, not the docked agent panel: the panel mounts
   // lazily on first show, and the conversation (and an in-flight run) must span the panel's whole
   // mounted/unmounted life — and register with Mission Control whether or not the panel was opened.
-  providers: [Agent, AgentConversation, { provide: AGENT_CONVERSATION_KIND, useValue: 'code' }],
+  providers: [
+    Agent,
+    AgentConversation,
+    { provide: AGENT_CONVERSATION_KIND, useValue: 'code' },
+    // One per markdown tab: the status strip reads this view's own content through its injector.
+    MarkdownStatus,
+  ],
   templateUrl: './markdown-view.html',
   styleUrl: './markdown-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -264,6 +274,7 @@ export class MarkdownView implements OnInit, OnDestroy {
    */
   public ngOnInit(): void {
     this.agentHost.register(this.tabId());
+    this.statusHost.register(this.tabId());
     this.log.info('markdown.view', 'Markdown view initialised', { tabId: this.tabId() });
   }
 
@@ -286,6 +297,14 @@ export class MarkdownView implements OnInit, OnDestroy {
    * so their editor state is preserved, but they do not own the ribbon command handler.
    */
   public readonly isActive: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Publishes this view's injector so the shell's status strip can mount the markdown status
+   * component inside it. Finalised in {@link ngOnInit} once the tab id is readable.
+   */
+  private readonly statusHost: ViewInjectorRegistrar = createViewInjectorRegistrar({
+    isActive: this.isActive,
+  });
 
   /**
    * Registers this tab's live agent with Mission Control and the requests inbox for the tab's whole
@@ -355,15 +374,16 @@ export class MarkdownView implements OnInit, OnDestroy {
       }
     });
 
-    // Publish the live word count to the status strip while this view is active, re-deriving it as the
-    // document is edited (the content signal is tracked here). Inactive views clear their contribution
-    // so the active document's stats are never wiped out.
+    // Keep this view's content current for its status strip, re-deriving the word count as the
+    // document is edited (the content signal is tracked here). Activation is not consulted: the strip
+    // mounts this view's status component only while the view is active, and destroys it on tab
+    // switch, so an inactive view's stats are never on screen to go stale.
     effect((): void => {
       const id: string = this.tabId();
-      if (this.isActive() && this.paneReady()) {
-        this.markdownStatus.publish(id, this.documents.get(id)?.content() ?? '');
+      if (this.paneReady()) {
+        this.markdownStatus.publish(this.documents.get(id)?.content() ?? '');
       } else {
-        this.markdownStatus.clear(id);
+        this.markdownStatus.clear();
       }
     });
   }
@@ -384,7 +404,6 @@ export class MarkdownView implements OnInit, OnDestroy {
     }
     this.reviewReveal.unregister();
     this.readAlong.unregister();
-    this.markdownStatus.clear(this.tabId());
     this.panels.remove(this.tabId());
   }
 

@@ -1,10 +1,11 @@
 import { FeatureDescriptor } from '@shared/angular/services/feature-registry';
 import { ApiExplorerRibbon } from './api-explorer-ribbon/api-explorer-ribbon';
+import { ApiExplorerStatus } from './api-explorer-status/api-explorer-status';
 import { ApiExplorerView } from './api-explorer-view/api-explorer-view';
 
 /**
  * Describes the API Explorer feature's contribution to the application shell: a tab for building and
- * sending HTTP requests, and its contextual ribbon. Contributed through the lazy
+ * sending HTTP requests, its contextual ribbon, and its status strip. Contributed through the lazy
  * `featureContributions` seam (#388), so it lands in its own code-split chunk and the shell renders it
  * without being compiled against it.
  *
@@ -17,4 +18,5 @@ export const descriptor: FeatureDescriptor = {
   type: 'api-explorer',
   view: ApiExplorerView,
   ribbon: ApiExplorerRibbon,
+  status: ApiExplorerStatus,
 };

@@ -59,8 +59,13 @@ describe('ContainersStatus', () => {
 
     await settle();
 
-    expect(statusBar.trailing()).toEqual([
-      { id: 'containers-running', text: '1 running', icon: Icon.CONTAINERS, title: 'Running containers' },
+    expect(statusBar.segments()).toEqual([
+      {
+        id: 'containers-running',
+        text: '1 running',
+        icon: Icon.CONTAINERS,
+        title: 'Running containers',
+      },
     ]);
   });
 
@@ -71,6 +76,6 @@ describe('ContainersStatus', () => {
 
     await settle();
 
-    expect(statusBar.trailing()).toEqual([]);
+    expect(statusBar.segments()).toEqual([]);
   });
 });

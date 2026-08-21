@@ -36,6 +36,10 @@ import {
 } from '@shared/angular/services/editor-commands/editor-commands';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { CodeStatus, EndOfLine } from '@features/code/angular/code-status/code-status';
+import {
+  createViewInjectorRegistrar,
+  ViewInjectorRegistrar,
+} from '@shared/angular/services/view-injectors/view-injector-registration';
 import { EditorTerminals } from '@shared/angular/services/editor-terminals/editor-terminals';
 import { CodeDocument, Documents } from '@shared/angular/services/documents/documents';
 import { Editors, RevealRequest } from '@shared/angular/services/editors/editors';
@@ -68,7 +72,13 @@ import { CodeTerminalPanel } from './code-terminal-panel/code-terminal-panel';
   // mounts lazily on first show, and the conversation (and an in-flight run) must span the panel's
   // whole mounted/unmounted life — and register with Mission Control whether or not the panel was
   // ever opened.
-  providers: [Agent, AgentConversation, { provide: AGENT_CONVERSATION_KIND, useValue: 'code' }],
+  providers: [
+    Agent,
+    AgentConversation,
+    { provide: AGENT_CONVERSATION_KIND, useValue: 'code' },
+    // One per code tab: the status strip reads this view's own context through its injector.
+    CodeStatus,
+  ],
   templateUrl: './code-view.html',
   styleUrl: './code-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -216,6 +226,14 @@ export class CodeView implements OnInit, OnDestroy {
   });
 
   /**
+   * Publishes this view's injector so the shell's status strip can mount the code status component
+   * inside it. Finalised in {@link ngOnInit} once the tab id is readable.
+   */
+  private readonly statusHost: ViewInjectorRegistrar = createViewInjectorRegistrar({
+    isActive: this.isActive,
+  });
+
+  /**
    * Holds the string form of the pane's model URI while registered, or null when not registered.
    */
   private modelUri: string | null = null;
@@ -279,18 +297,20 @@ export class CodeView implements OnInit, OnDestroy {
       }
     });
 
-    // Publish the active editor's context (path, cursor, line-ending, encoding) to the status strip.
-    // Reads the document's path/encoding signals so it refreshes on save and rename, and the local
-    // caret/eol signals fed by the pane's cursor and content outputs. Clears when not active.
+    // Keep this view's editor context (path, cursor, line-ending, encoding) current for its status
+    // strip. Reads the document's path/encoding signals so it refreshes on save and rename, and the
+    // local caret/eol signals fed by the pane's cursor and content outputs. Activation is not
+    // consulted: the strip mounts this view's status component only while the view is active, and
+    // destroys it on tab switch, so an inactive view's context is never on screen to go stale.
     effect((): void => {
       const document: CodeDocument | null = this.doc();
       const caret: { line: number; column: number } | null = this.caret();
-      if (!this.isActive() || document === null || caret === null) {
-        this.codeStatus.clear(this.tabId());
+      if (document === null || caret === null) {
+        this.codeStatus.clear();
         return;
       }
       const encoding: string = document.encoding();
-      this.codeStatus.publish(this.tabId(), {
+      this.codeStatus.publish({
         path: document.filePath(),
         line: caret.line,
         column: caret.column,
@@ -355,6 +375,7 @@ export class CodeView implements OnInit, OnDestroy {
   public ngOnInit(): void {
     this.log.info('code.view', 'Code view opened', this.tabId());
     this.agentHost.register(this.tabId());
+    this.statusHost.register(this.tabId());
   }
 
   /**

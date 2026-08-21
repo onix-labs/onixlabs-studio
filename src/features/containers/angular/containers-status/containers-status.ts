@@ -13,10 +13,14 @@ const STATUS_OWNER: string = 'containers';
 const STATUS_PRIORITY: number = 15;
 
 /**
- * Contributes the running-container count to the shared status strip. It watches the Docker backend —
- * seeded once on creation and refreshed on every engine event — and publishes a trailing segment while
+ * Contributes the running-container count to the status strip's ambient region. It watches the Docker
+ * backend — seeded once on creation and refreshed on every engine event — and publishes a segment while
  * the daemon is reachable, clearing it when Docker is absent. Instantiated by the Containers view, it
  * is a singleton and keeps the count live for the rest of the session.
+ *
+ * Ambient is the right register here: how many containers are running is true of the machine, not of
+ * whichever tab is in front, so the segment is meant to survive a tab switch. Contrast a view's own
+ * status, which belongs to its feature's status component (see `FeatureDescriptor.status`).
  */
 @Service()
 export class ContainersStatus {
@@ -52,17 +56,14 @@ export class ContainersStatus {
       }
       this.statusBar.contribute(
         STATUS_OWNER,
-        {
-          leading: [],
-          trailing: [
-            {
-              id: RUNNING_SEGMENT_ID,
-              text: `${count} running`,
-              icon: Icon.CONTAINERS,
-              title: 'Running containers',
-            },
-          ],
-        },
+        [
+          {
+            id: RUNNING_SEGMENT_ID,
+            text: `${count} running`,
+            icon: Icon.CONTAINERS,
+            title: 'Running containers',
+          },
+        ],
         STATUS_PRIORITY,
       );
     });
@@ -88,7 +89,8 @@ export class ContainersStatus {
     }
     const containers: ContainerSummary[] = await this.docker.listContainers();
     this.runningCount.set(
-      containers.filter((container: ContainerSummary): boolean => container.state === 'running').length,
+      containers.filter((container: ContainerSummary): boolean => container.state === 'running')
+        .length,
     );
   }
 }
