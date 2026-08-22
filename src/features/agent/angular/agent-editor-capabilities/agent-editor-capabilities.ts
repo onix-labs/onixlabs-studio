@@ -20,7 +20,7 @@ import { EditorTerminals } from '@shared/angular/services/editor-terminals/edito
 import { Terminals } from '@shared/angular/services/terminals/terminals';
 import { RunFileTaskProvider } from '@shared/angular/services/tasks/providers/run-file-task-provider';
 import { Task } from '@shared/angular/services/tasks/task';
-import { supportedLanguages } from '@shared/angular/services/monaco/monaco-languages';
+import { resolveLanguageId } from '@shared/angular/services/monaco/monaco-languages';
 import { AgentEditPreview } from '../agent-edit-preview/agent-edit-preview';
 import { EditOutcome, resolveEdit, resolveInsert } from './document-edit';
 import { parseRunOutput, RunOutputParse } from './run-output';
@@ -333,7 +333,7 @@ export class AgentEditorCapabilities {
     if (requested === null) {
       return { ok: false, detail: 'No language was provided.' };
     }
-    const resolved: string | null = this.resolveLanguageId(requested);
+    const resolved: string | null = resolveLanguageId(requested);
     if (resolved === null) {
       return {
         ok: false,
@@ -350,22 +350,6 @@ export class AgentEditorCapabilities {
       language: resolved,
     });
     return { ok: true, detail: `The editor language is now ${resolved}.` };
-  }
-
-  /**
-   * Resolves a requested language to a supported Monaco language id, matching its id or display name
-   * case-insensitively (so `csharp` and `C#` both resolve).
-   * @param requested The requested language.
-   * @returns Returns the Monaco language id, or null when unsupported.
-   */
-  private resolveLanguageId(requested: string): string | null {
-    const normalized: string = requested.trim().toLowerCase();
-    for (const language of supportedLanguages()) {
-      if (language.id.toLowerCase() === normalized || language.name.toLowerCase() === normalized) {
-        return language.id;
-      }
-    }
-    return null;
   }
 
   /**
@@ -416,7 +400,11 @@ export class AgentEditorCapabilities {
     const sentinelCommand: string = `${command}; printf '\\n${markerPrefix}%s__\\n' "$?"`;
     // Queue the command into the tab's docked run terminal (mounting and showing it if needed); the
     // panel writes it once the terminal is ready.
-    this.log.info('agent.editor-capabilities', 'Running active document', { tabId, language, command });
+    this.log.info('agent.editor-capabilities', 'Running active document', {
+      tabId,
+      language,
+      command,
+    });
     this.editorTerminals.queueCommand(tabId, sentinelCommand);
     const terminalId: string = `${RUN_TERMINAL_PREFIX}${tabId}`;
     const completion: { exitCode: number | null; output: string; timedOut: boolean } =

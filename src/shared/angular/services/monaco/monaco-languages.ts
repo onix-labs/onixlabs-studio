@@ -132,6 +132,25 @@ export function extensionForLanguage(language: string): string {
 }
 
 /**
+ * Resolves a language named by a human (or a model) to a supported Monaco language identifier,
+ * matching its id or its display name case-insensitively — so both `csharp` and `C#` resolve.
+ *
+ * Shared because more than one agent capability takes a language as free text: what the model may
+ * write must not depend on which tool it reached for.
+ * @param requested The requested language, as an id or a display name.
+ * @returns Returns the Monaco language identifier, or null when it names no supported language.
+ */
+export function resolveLanguageId(requested: string): string | null {
+  const normalised: string = requested.trim().toLowerCase();
+  for (const language of supportedLanguages()) {
+    if (language.id.toLowerCase() === normalised || language.name.toLowerCase() === normalised) {
+      return language.id;
+    }
+  }
+  return null;
+}
+
+/**
  * Gets the supported languages with their display names, sorted by display name.
  * @returns Returns the supported languages.
  */

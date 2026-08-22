@@ -386,6 +386,12 @@ export class DirectoryView implements OnInit, OnDestroy {
   private readonly activeWorkspace: ActiveWorkspace = inject(ActiveWorkspace);
 
   /**
+   * Holds this workspace's file opener, published to the active-workspace seam so a file can be
+   * opened into this tab's document well from outside the tab's injector.
+   */
+  private readonly fileOpener: FileOpener = inject(FileOpener);
+
+  /**
    * Holds this tab's scoped dock layout.
    */
   private readonly dockState: DockState = inject(DockState);
@@ -1126,6 +1132,13 @@ export class DirectoryView implements OnInit, OnDestroy {
     this.agentHost.register(this.tabId());
     this.statusHost.register(this.tabId());
     this.documents.setOwningTab(this.tabId());
+    // Publish this workspace's document well, so something outside the tab's injector — the agent's
+    // workbench tools — can open a file into it. The opener is provided per workspace tab, so this
+    // published closure is the only way to reach it from the root.
+    this.activeWorkspace.setWell(
+      this.tabId(),
+      (path: string): Promise<boolean> => this.fileOpener.openPath(path),
+    );
     // Surface this workspace's well documents to the app-wide close flows for the tab's lifetime.
     this.destroyRef.onDestroy(this.unsavedWork.register(this.documents));
     // The dock context carries the VIEW scope, not the raw tab id: it feeds pop-out keybinding
@@ -1163,6 +1176,7 @@ export class DirectoryView implements OnInit, OnDestroy {
     // whole tab closing should drop the entry.
     if (this.checkoutId() === null) {
       this.activeWorkspace.clearRoot(this.tabId());
+      this.activeWorkspace.clearWell(this.tabId());
     }
     this.workspaceGit.dispose();
     if (this.repository.isBound()) {

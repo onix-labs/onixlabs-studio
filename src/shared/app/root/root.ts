@@ -11,6 +11,7 @@ import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { ScrollReveal } from '@shared/angular/services/scroll-reveal/scroll-reveal';
 import { ShellPresence } from '@shared/angular/services/shell-presence/shell-presence';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
+import { WorkbenchAgentCapabilities } from '@shared/angular/services/workbench-agent-capabilities/workbench-agent-capabilities';
 import { ContentHost } from '@shared/angular/components/content-host/content-host';
 import { ModalBackdropView } from '@shared/angular/components/modal-backdrop/modal-backdrop-view';
 import { ToastHost } from '@shared/angular/components/toast-host/toast-host';
@@ -68,6 +69,18 @@ export class Root {
    * Injected for its effect; the shell never calls it.
    */
   private readonly scrollReveal: ScrollReveal = inject(ScrollReveal);
+
+  /**
+   * Holds the workbench agent capabilities, which let an agent on any surface open and populate a new
+   * top-level tab. Injected for its effect; the shell never calls it.
+   *
+   * Registered here rather than by a view because the capabilities are application-global and must
+   * resolve the *root* tab and document registries — a view-scoped injector would reach a workspace's
+   * document well instead, and a view-scoped lifetime would take them away with the tab.
+   */
+  private readonly workbenchCapabilities: WorkbenchAgentCapabilities = inject(
+    WorkbenchAgentCapabilities,
+  );
 
   /**
    * Gets a value indicating whether any tab is open. When none are, the chrome strips and content

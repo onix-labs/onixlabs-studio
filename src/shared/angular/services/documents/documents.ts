@@ -407,13 +407,19 @@ export class Documents implements UnsavedWorkSource {
   }
 
   /**
-   * Gets the initial (last-saved) content of a document, used to seed an editor that manages its own
-   * content thereafter. Returns an empty string when no document is registered for the tab.
+   * Gets the content used to seed an editor that manages its own text thereafter (the markdown
+   * editor): the document's **current** content, not its last-saved content.
+   *
+   * The distinction only shows when a document is already dirty before its editor mounts — an agent
+   * opening a tab and filling it, which happens a render before the view appears. Seeding from the
+   * last-saved text showed such a document as blank until the user saved it, since saving is what
+   * copies the content over. The two are identical for a document opened from a file, which is why
+   * this read the wrong one for so long.
    * @param id The identifier of the tab.
-   * @returns Returns the document's last-saved content, or an empty string.
+   * @returns Returns the document's current content, or an empty string when none is registered.
    */
   public initialContentOf(id: string): string {
-    return this.entries.get(id)?.original() ?? '';
+    return this.entries.get(id)?.content() ?? '';
   }
 
   /**

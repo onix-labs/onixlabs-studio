@@ -176,6 +176,44 @@ export const SEND_API_REQUEST: string = 'send_api_request';
 export const SET_API_VARIABLE: string = 'set_api_variable';
 
 /**
+ * The in-app capability that opens a new, unsaved top-level document tab — markdown or code — and
+ * fills it with content for the user to review in the editor.
+ *
+ * A **workbench** capability rather than a surface-bound one: it acts on the global tab registry, not
+ * on whatever the agent is docked to, so every surface offers it. That is what lets an agent spin a
+ * report, a draft, or a scratch file out of a conversation into its own tab instead of burying it in
+ * the transcript.
+ */
+export const OPEN_DOCUMENT: string = 'open_document';
+
+/**
+ * The in-app capability that offers to save a document opened by {@link OPEN_DOCUMENT}, through the
+ * operating system's save dialog. The agent never picks the path: the dialog is the user's decision.
+ */
+export const SAVE_DOCUMENT: string = 'save_document';
+
+/**
+ * The in-app capability that opens a new terminal tab.
+ */
+export const OPEN_TERMINAL: string = 'open_terminal';
+
+/**
+ * The in-app capability that opens an existing file from the open workspace into that workspace's
+ * document well, and brings its tab to the front.
+ *
+ * The counterpart to {@link OPEN_DOCUMENT}: that one hands the user something the agent wrote, this
+ * one puts the user's own code in front of them. It opens rather than edits — a way to say "look at
+ * this file" that leaves the user reading it in their editor rather than in a transcript.
+ */
+export const OPEN_FILE: string = 'open_file';
+
+/**
+ * The formats {@link OPEN_DOCUMENT} can open a document in: the markdown editor (rendered prose) or
+ * the code editor (syntax-highlighted text).
+ */
+export type OpenDocumentFormat = 'markdown' | 'code';
+
+/**
  * Identifies what an agent run acts on: the open editor document (`editor`), the owning terminal
  * (`terminal`), the owning binary document (`binary`), the API Explorer's collections (`api`), or the
  * project as a whole (`project` — the standalone agent tab, which has no owning document and works

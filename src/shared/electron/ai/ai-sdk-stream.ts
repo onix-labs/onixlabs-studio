@@ -14,6 +14,10 @@ import {
   SEND_API_REQUEST,
   SET_API_VARIABLE,
   UPDATE_API_REQUEST,
+  OPEN_DOCUMENT,
+  OPEN_FILE,
+  OPEN_TERMINAL,
+  SAVE_DOCUMENT,
   READ_BINARY_OVERVIEW,
   READ_BINARY_SELECTION,
   READ_TERMINAL_OUTPUT,
@@ -41,6 +45,11 @@ import {
   PROJECT_PROMPT_APPENDIX,
   STUDIO_PROMPT_APPENDIX,
   TERMINAL_PROMPT_APPENDIX,
+  WORKBENCH_PROMPT_APPENDIX,
+  openDocument,
+  openFile,
+  openTerminal,
+  saveDocument,
   askUser,
   deleteBinaryBytes,
   editActiveDocument,
@@ -399,6 +408,77 @@ export async function createTerminalTools(context: AgentRunContext): Promise<Too
 }
 
 /**
+ * Builds the workbench tools every AI-SDK-backed provider exposes on **every** surface: opening a new
+ * document tab and filling it, offering to save it, and opening a terminal. They are not surface-bound
+ * because opening a top-level tab is an application action rather than something the agent's own
+ * surface does. Withheld in read-only chat mode, which creates nothing.
+ * @param context The run context the tools act through.
+ * @returns Returns the workbench tool set, or an empty set in chat mode.
+ */
+export async function createWorkbenchTools(context: AgentRunContext): Promise<ToolSet> {
+  if (context.mode === 'chat') {
+    return {};
+  }
+  const { tool } = await import('ai');
+  const { z } = await import('zod');
+  return {
+    [OPEN_DOCUMENT]: tool({
+      description:
+        'Open a new tab containing a document you have written — a report, a design note, a draft file — and show it to the user. The document opens UNSAVED and touches nothing on disk, so opening one is free and reversible. Use it instead of pasting anything long into the conversation. Returns an id to pass to save_document.',
+      inputSchema: z.object({
+        format: z
+          .enum(['markdown', 'code'])
+          .describe('markdown for prose, code for anything else.'),
+        title: z
+          .string()
+          .min(1)
+          .describe("The tab's title, and the name suggested in the save dialog."),
+        content: z.string().describe('The full content of the document.'),
+        language: z
+          .string()
+          .optional()
+          .describe('For a code document, its language (e.g. csharp or C#). Ignored for markdown.'),
+      }),
+      execute: (args: {
+        format: string;
+        title: string;
+        content: string;
+        language?: string;
+      }): Promise<string> =>
+        openDocument(context, args.format, args.title, args.content, args.language),
+    }),
+    [SAVE_DOCUMENT]: tool({
+      description:
+        'Offer to save a document you opened with open_document, through the operating system save dialog. Call it only when the user has said they want to keep the document.',
+      inputSchema: z.object({
+        id: z.string().min(1).describe('The id returned by open_document.'),
+      }),
+      execute: (args: { id: string }): Promise<string> => saveDocument(context, args.id),
+    }),
+    [OPEN_FILE]: tool({
+      description:
+        "Open one of the user's own workspace files in their editor, so they can look at it while you talk about it. Prefer it to quoting a long passage back at them. It only opens the file — use the edit tools to change it.",
+      inputSchema: z.object({
+        path: z
+          .string()
+          .min(1)
+          .describe('An absolute path, or one relative to the workspace root.'),
+      }),
+      execute: (args: { path: string }): Promise<string> => openFile(context, args.path),
+    }),
+    // Gated, unlike the two document tools above: opening a terminal spawns a real shell process, so
+    // it prompts under every posture but `auto-all` — matching the Claude path, where it is the one
+    // workbench tool left out of `allowedTools`.
+    [OPEN_TERMINAL]: tool({
+      description:
+        "Open a new terminal tab in the user's default shell. It spawns a real shell, so do not open one speculatively.",
+      inputSchema: z.object({}),
+      execute: gated(context, OPEN_TERMINAL, (): Promise<string> => openTerminal(context)),
+    }),
+  };
+}
+
+/**
  * Builds the API Explorer tools for an API-surface run: reading the collections, creating and
  * changing saved requests, sending one, and setting an environment variable. The handlers are the
  * same provider-agnostic ones the Claude path uses — only the tool-definition dialect differs — so
@@ -650,7 +730,11 @@ export function promptForSurface(context: AgentRunContext): string {
     }
   })();
   const withAsk: string = `${base}\n\n${ASK_USER_PROMPT_APPENDIX}`;
-  return context.mode === 'chat' ? `${withAsk}\n\n${READ_ONLY_APPENDIX}` : withAsk;
+  // The workbench tools are registered on every surface, so every surface is told about them — except
+  // in chat mode, where they are withheld and describing them would only invite a refusal.
+  return context.mode === 'chat'
+    ? `${withAsk}\n\n${READ_ONLY_APPENDIX}`
+    : `${withAsk}\n\n${WORKBENCH_PROMPT_APPENDIX}`;
 }
 
 /**
@@ -662,6 +746,8 @@ export function promptForSurface(context: AgentRunContext): string {
  */
 export async function toolsForSurface(context: AgentRunContext): Promise<ToolSet> {
   const askUserTool: ToolSet = await createAskUserTool(context);
+  // The workbench tools ride on every surface — see createWorkbenchTools.
+  const workbenchTools: ToolSet = await createWorkbenchTools(context);
   const surfaceTools: ToolSet = await ((): Promise<ToolSet> => {
     switch (context.surface) {
       case 'terminal':
@@ -678,7 +764,7 @@ export async function toolsForSurface(context: AgentRunContext): Promise<ToolSet
         return createStudioTools(context);
     }
   })();
-  return { ...askUserTool, ...surfaceTools };
+  return { ...askUserTool, ...workbenchTools, ...surfaceTools };
 }
 
 /**
