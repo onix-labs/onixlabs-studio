@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { OPEN_DOCUMENT, OPEN_TERMINAL, SAVE_DOCUMENT } from '@shared/api/ai-types';
+import { OPEN_DOCUMENT, OPEN_FILE, OPEN_TERMINAL, SAVE_DOCUMENT } from '@shared/api/ai-types';
 import type { AgentRunContext } from './agent-provider';
-import { openDocument, openTerminal, saveDocument } from './studio-tools';
+import { openDocument, openFile, openTerminal, saveDocument } from './studio-tools';
 
 /**
  * Builds a run context whose bridge answers with a fixed result and records what it was asked, which
@@ -91,6 +91,28 @@ describe('workbench studio tools', () => {
       const { context } = contextWith({ ok: false, error: 'No open document with id "tab-9".' });
 
       expect(await saveDocument(context, 'tab-9')).toBe('No open document with id "tab-9".');
+    });
+  });
+
+  describe('openFile', () => {
+    it('reportsThePathThatWasActuallyOpened', async () => {
+      // The renderer resolves a relative path against the workspace root, so the path it reports back
+      // is the one the user is now looking at — not the one the model guessed.
+      const { context, calls } = contextWith({ ok: true, path: '/repo/src/a.ts' });
+
+      const text: string = await openFile(context, 'src/a.ts');
+
+      expect(calls[0]).toEqual({ capability: OPEN_FILE, input: { path: 'src/a.ts' } });
+      expect(text).toContain('/repo/src/a.ts');
+    });
+
+    it('surfacesTheReasonAFileCouldNotBeOpened', async () => {
+      const { context } = contextWith({
+        ok: false,
+        error: 'No workspace is open, so there is no document well to open the file into.',
+      });
+
+      expect(await openFile(context, 'src/a.ts')).toContain('No workspace is open');
     });
   });
 

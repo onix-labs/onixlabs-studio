@@ -4,7 +4,11 @@ import { AiRuntime } from '@shared/angular/services/ai-runtime/ai-runtime';
 import { CodeDocument, Documents } from '@shared/angular/services/documents/documents';
 import { Tab, TabType } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
-import { OPEN_DOCUMENT, OPEN_TERMINAL, SAVE_DOCUMENT } from '@shared/api/ai-types';
+import {
+  ActiveWorkspace,
+  WorkspaceWell,
+} from '@shared/angular/services/workspace/active-workspace';
+import { OPEN_DOCUMENT, OPEN_FILE, OPEN_TERMINAL, SAVE_DOCUMENT } from '@shared/api/ai-types';
 import { WorkbenchAgentCapabilities } from './workbench-agent-capabilities';
 
 /**
@@ -29,11 +33,60 @@ class FakeRuntime {
 }
 
 /**
+ * A stand-in active-workspace seam publishing one well, or none.
+ */
+class FakeActiveWorkspace {
+  public readonly requested: string[] = [];
+
+  /**
+   * Whether opening succeeds; false stands for a path outside the workspace.
+   */
+  public opens: boolean = true;
+
+  /**
+   * The well published, or null when no workspace is open.
+   */
+  public well: WorkspaceWell | null = null;
+
+  /**
+   * Publishes a well backed by this fake.
+   * @param root The workspace root.
+   */
+  public publish(root: string | null): void {
+    this.well = {
+      tabId: 'workspace-tab',
+      root,
+      open: (path: string): Promise<boolean> => {
+        this.requested.push(path);
+        return Promise.resolve(this.opens);
+      },
+    };
+  }
+
+  /**
+   * Resolves the published well.
+   * @returns Returns the well, or null.
+   */
+  public activeWell(): WorkspaceWell | null {
+    return this.well;
+  }
+}
+
+/**
  * A stand-in tab registry recording what was opened.
  */
 class FakeTabs {
   public readonly opened: { type: TabType; resourceKey?: string }[] = [];
+  public readonly activated: string[] = [];
   private sequence: number = 0;
+
+  /**
+   * Records an activation.
+   * @param id The tab id.
+   */
+  public activate(id: string): void {
+    this.activated.push(id);
+  }
 
   /**
    * Opens a tab and records it.
@@ -121,6 +174,7 @@ describe('WorkbenchAgentCapabilities', () => {
   let runtime: FakeRuntime;
   let tabs: FakeTabs;
   let documents: FakeDocuments;
+  let workspace: FakeActiveWorkspace;
 
   /**
    * Invokes a registered capability.
@@ -138,12 +192,14 @@ describe('WorkbenchAgentCapabilities', () => {
     runtime = new FakeRuntime();
     tabs = new FakeTabs();
     documents = new FakeDocuments();
+    workspace = new FakeActiveWorkspace();
     TestBed.configureTestingModule({
       providers: [
         WorkbenchAgentCapabilities,
         { provide: AiRuntime, useValue: runtime },
         { provide: Tabs, useValue: tabs },
         { provide: Documents, useValue: documents },
+        { provide: ActiveWorkspace, useValue: workspace },
       ],
     });
     TestBed.inject(WorkbenchAgentCapabilities);
@@ -151,7 +207,7 @@ describe('WorkbenchAgentCapabilities', () => {
 
   it('constructor_registersTheWorkbenchCapabilities', () => {
     expect([...runtime.capabilities.keys()].sort()).toEqual(
-      [OPEN_DOCUMENT, SAVE_DOCUMENT, OPEN_TERMINAL].sort(),
+      [OPEN_DOCUMENT, SAVE_DOCUMENT, OPEN_TERMINAL, OPEN_FILE].sort(),
     );
   });
 
@@ -252,6 +308,66 @@ describe('WorkbenchAgentCapabilities', () => {
 
       expect(result['ok']).toBe(false);
       expect(documents.savedIds).toEqual([]);
+    });
+  });
+
+  describe(OPEN_FILE, () => {
+    it('opensAnAbsolutePathIntoTheWellAndBringsTheTabForward', async () => {
+      workspace.publish('/repo');
+
+      const result: Record<string, unknown> = await invoke(OPEN_FILE, { path: '/repo/src/a.ts' });
+
+      expect(result['ok']).toBe(true);
+      expect(workspace.requested).toEqual(['/repo/src/a.ts']);
+      // Opening into a well the user cannot see is indistinguishable from doing nothing, and the well
+      // may belong to a workspace that is not the active tab.
+      expect(tabs.activated).toEqual(['workspace-tab']);
+    });
+
+    it('resolvesAWorkspaceRelativePathAgainstTheRoot', async () => {
+      // Models name files the way the repository does; requiring an absolute path would make the tool
+      // fail on the most natural input.
+      workspace.publish('/repo');
+
+      await invoke(OPEN_FILE, { path: 'src/a.ts' });
+
+      expect(workspace.requested).toEqual(['/repo/src/a.ts']);
+    });
+
+    it('doesNotDoubleTheSeparatorWhenTheRootHasATrailingSlash', async () => {
+      workspace.publish('/repo/');
+
+      await invoke(OPEN_FILE, { path: '/src/a.ts'.slice(1) });
+
+      expect(workspace.requested).toEqual(['/repo/src/a.ts']);
+    });
+
+    it('withNoWorkspaceOpen_saysSoRatherThanFailingSilently', async () => {
+      const result: Record<string, unknown> = await invoke(OPEN_FILE, { path: 'src/a.ts' });
+
+      expect(result['ok']).toBe(false);
+      expect(String(result['error'])).toContain('No workspace is open');
+      expect(tabs.activated).toEqual([]);
+    });
+
+    it('whenTheFileCannotBeOpened_reportsWhyAndLeavesTheTabAlone', async () => {
+      workspace.publish('/repo');
+      workspace.opens = false;
+
+      const result: Record<string, unknown> = await invoke(OPEN_FILE, { path: 'nope.ts' });
+
+      expect(result['ok']).toBe(false);
+      expect(String(result['error'])).toContain('/repo/nope.ts');
+      expect(tabs.activated).toEqual([]);
+    });
+
+    it('withNoPath_isRefused', async () => {
+      workspace.publish('/repo');
+
+      const result: Record<string, unknown> = await invoke(OPEN_FILE, {});
+
+      expect(result['ok']).toBe(false);
+      expect(workspace.requested).toEqual([]);
     });
   });
 

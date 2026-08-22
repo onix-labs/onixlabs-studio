@@ -5,7 +5,11 @@ import { Log } from '@shared/angular/services/log/log';
 import { resolveLanguageId } from '@shared/angular/services/monaco/monaco-languages';
 import { Tab, TabType } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
-import { OPEN_DOCUMENT, OPEN_TERMINAL, SAVE_DOCUMENT } from '@shared/api/ai-types';
+import {
+  ActiveWorkspace,
+  WorkspaceWell,
+} from '@shared/angular/services/workspace/active-workspace';
+import { OPEN_DOCUMENT, OPEN_FILE, OPEN_TERMINAL, SAVE_DOCUMENT } from '@shared/api/ai-types';
 
 /**
  * The title a document opens under when the agent supplies none.
@@ -64,6 +68,26 @@ interface SaveDocumentResult {
 }
 
 /**
+ * The result of opening a file into a workspace's document well.
+ */
+interface OpenFileResult {
+  /**
+   * Gets whether the file was opened.
+   */
+  readonly ok: boolean;
+
+  /**
+   * Gets the reason the file was not opened, when it was not.
+   */
+  readonly error?: string;
+
+  /**
+   * Gets the absolute path that was opened.
+   */
+  readonly path?: string;
+}
+
+/**
  * The result of opening a terminal.
  */
 interface OpenTerminalResult {
@@ -116,6 +140,11 @@ export class WorkbenchAgentCapabilities {
   private readonly documents: Documents = inject(Documents);
 
   /**
+   * Holds the seam that resolves which workspace's document well a file opens into.
+   */
+  private readonly workspace: ActiveWorkspace = inject(ActiveWorkspace);
+
+  /**
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
@@ -133,6 +162,10 @@ export class WorkbenchAgentCapabilities {
       (input: unknown): Promise<SaveDocumentResult> => this.saveDocument(input),
     );
     this.runtime.registerCapability(OPEN_TERMINAL, (): OpenTerminalResult => this.openTerminal());
+    this.runtime.registerCapability(
+      OPEN_FILE,
+      (input: unknown): Promise<OpenFileResult> => this.openFile(input),
+    );
     this.log.info('workbench.agent', 'Workbench agent capabilities registered');
   }
 
@@ -214,6 +247,59 @@ export class WorkbenchAgentCapabilities {
     const path: string | null = this.documents.get(id)?.filePath() ?? null;
     this.log.info('workbench.agent', 'Agent document saved', id, path ?? '');
     return { ok: true, path: path ?? undefined };
+  }
+
+  /**
+   * Opens an existing workspace file into that workspace's document well and brings its tab forward.
+   *
+   * Activating the tab is part of the action rather than a courtesy: the well may belong to a
+   * workspace the user is not looking at (an agent docked to a terminal reaches the last active one),
+   * and opening a file into a tab nobody can see is indistinguishable from doing nothing.
+   * @param input The tool input: the path to open.
+   * @returns Returns the {@link OpenFileResult}.
+   */
+  private async openFile(input: unknown): Promise<OpenFileResult> {
+    const args: { path?: unknown } = input ?? {};
+    const requested: string = typeof args.path === 'string' ? args.path.trim() : '';
+    if (requested.length === 0) {
+      return { ok: false, error: 'No path was given.' };
+    }
+    const well: WorkspaceWell | null = this.workspace.activeWell();
+    if (well === null) {
+      return {
+        ok: false,
+        error: 'No workspace is open, so there is no document well to open the file into.',
+      };
+    }
+    const path: string = this.absolutePath(requested, well.root);
+    const opened: boolean = await well.open(path);
+    if (!opened) {
+      return {
+        ok: false,
+        error:
+          `"${path}" could not be opened. It may not exist, may lie outside the open workspace, ` +
+          'or may be a directory.',
+      };
+    }
+    this.tabs.activate(well.tabId);
+    this.log.info('workbench.agent', 'Agent opened a file in the well', path);
+    return { ok: true, path };
+  }
+
+  /**
+   * Resolves a requested path against the workspace root, so a model that names a file the way the
+   * repository does (`src/app/main.ts`) reaches the same file as one that gives a full path.
+   * @param requested The requested path, absolute or workspace-relative.
+   * @param root The workspace root, or null when the tab has no folder open.
+   * @returns Returns the absolute path.
+   */
+  private absolutePath(requested: string, root: string | null): string {
+    const absolute: boolean = requested.startsWith('/') || /^[A-Za-z]:[\\/]/.test(requested);
+    if (absolute || root === null) {
+      return requested;
+    }
+    const separator: string = root.includes('\\') && !root.includes('/') ? '\\' : '/';
+    return `${root.replace(/[\\/]+$/, '')}${separator}${requested.replace(/^[\\/]+/, '')}`;
   }
 
   /**

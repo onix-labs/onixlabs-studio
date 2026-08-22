@@ -42,6 +42,7 @@ import {
   READ_BINARY_OVERVIEW,
   READ_BINARY_SELECTION,
   OPEN_DOCUMENT,
+  OPEN_FILE,
   OPEN_TERMINAL,
   READ_TERMINAL_OUTPUT,
   REPLACE_ACTIVE_DOCUMENT,
@@ -109,9 +110,11 @@ import {
   OPEN_DOCUMENT_FQN,
   SAVE_DOCUMENT_FQN,
   OPEN_TERMINAL_FQN,
+  OPEN_FILE_FQN,
   openDocument,
   saveDocument,
   openTerminal,
+  openFile,
   WRITE_TERMINAL_FQN,
   buildRunPrompt,
   deleteBinaryBytes,
@@ -235,6 +238,7 @@ const TERMINAL_SURFACE_TOOLS: readonly string[] = [
   OPEN_DOCUMENT_FQN,
   SAVE_DOCUMENT_FQN,
   OPEN_TERMINAL_FQN,
+  OPEN_FILE_FQN,
 ];
 
 /**
@@ -583,6 +587,19 @@ export class ClaudeAgentProvider implements AgentProvider {
                     .describe('The id returned by open_document for the document to save.'),
                 },
                 async (args: { id: string }) => text(await saveDocument(getContext(), args.id)),
+              ),
+              tool(
+                OPEN_FILE,
+                "Open one of the user's own workspace files in their editor, so they can look at it while you talk about it. Prefer this to quoting a long passage back at them, or to naming a path they then have to find. It only opens the file — use the edit tools to change it.",
+                {
+                  path: z
+                    .string()
+                    .min(1)
+                    .describe(
+                      'The file to open: an absolute path, or one relative to the workspace root (src/app/main.ts).',
+                    ),
+                },
+                async (args: { path: string }) => text(await openFile(getContext(), args.path)),
               ),
               tool(
                 OPEN_TERMINAL,
@@ -1282,7 +1299,7 @@ export class ClaudeAgentProvider implements AgentProvider {
         // tools: a new tab is unsaved and reversible, and saving asks through the OS dialog, which is
         // the gate. `open_terminal` is absent on purpose — it spawns a shell, so it goes through
         // canUseTool like write_terminal_input does.
-        ...(readOnly ? [] : [OPEN_DOCUMENT_FQN, SAVE_DOCUMENT_FQN]),
+        ...(readOnly ? [] : [OPEN_DOCUMENT_FQN, SAVE_DOCUMENT_FQN, OPEN_FILE_FQN]),
         // `AskUserQuestion` is intentionally NOT auto-allowed: it must reach `canUseTool` so Studio can
         // render it and (under remote control) forward it to the peer, then return the answer.
         // Listing run configurations is a read: auto-allowed wherever the tools are registered, so the

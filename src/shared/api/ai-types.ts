@@ -36,6 +36,7 @@ export {
   OPEN_DOCUMENT,
   SAVE_DOCUMENT,
   OPEN_TERMINAL,
+  OPEN_FILE,
 } from './ai/ai-tool-surface';
 export type { AgentSurface, InsertPlacement, OpenDocumentFormat } from './ai/ai-tool-surface';
 export type {

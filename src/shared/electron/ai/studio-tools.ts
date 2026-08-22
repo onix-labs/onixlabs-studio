@@ -16,6 +16,7 @@ import {
   InsertPlacement,
   LIST_RUN_CONFIGURATIONS,
   OPEN_DOCUMENT,
+  OPEN_FILE,
   OPEN_TERMINAL,
   PATCH_BINARY_BYTES,
   SAVE_DOCUMENT,
@@ -144,6 +145,13 @@ export const LIST_API_REQUESTS_FQN: string = `mcp__studio__${LIST_API_REQUESTS}`
 export const OPEN_DOCUMENT_FQN: string = `mcp__studio__${OPEN_DOCUMENT}`;
 export const SAVE_DOCUMENT_FQN: string = `mcp__studio__${SAVE_DOCUMENT}`;
 export const OPEN_TERMINAL_FQN: string = `mcp__studio__${OPEN_TERMINAL}`;
+
+/**
+ * The fully-qualified name the open-file tool is exposed under to the Claude Agent SDK. Auto-allowed:
+ * showing the user one of their own files is a display action that mutates nothing, and reading files
+ * is already auto-allowed wherever the agent can read at all.
+ */
+export const OPEN_FILE_FQN: string = `mcp__studio__${OPEN_FILE}`;
 
 /**
  * The fully-qualified tool names of the mutating run-configuration tools, which go through the
@@ -1187,6 +1195,7 @@ export const WORKBENCH_PROMPT_APPENDIX: string = [
   'Whatever else you are docked to, you can put a document in front of the user as its own tab:',
   `- "${OPEN_DOCUMENT}" opens a new markdown or code tab and fills it with your content.`,
   `- "${SAVE_DOCUMENT}" offers to save one of those documents through the save dialog.`,
+  `- "${OPEN_FILE}" opens one of the user's own workspace files in their editor.`,
   `- "${OPEN_TERMINAL}" opens a new terminal tab.`,
   'Use them when what you are producing is a thing in its own right rather than an answer — a report,',
   'a design note, a draft file, a script. A long document pasted into this conversation is hard to',
@@ -1202,6 +1211,9 @@ export const WORKBENCH_PROMPT_APPENDIX: string = [
   'conversation.',
   `Only call "${SAVE_DOCUMENT}" when the user has said they want to keep the document; it puts an`,
   'operating-system dialog in front of them, so calling it uninvited interrupts them.',
+  `Reach for "${OPEN_FILE}" when you are talking about a specific file: opening it beside the`,
+  'conversation beats quoting it, and beats naming a path the user then has to go and find. Say what',
+  'to look at once it is open — the place in it, and what is worth noticing.',
   'Say what you opened and why, briefly, rather than repeating the content you just put in the tab.',
 ].join('\n');
 
@@ -1261,6 +1273,24 @@ export async function saveDocument(context: AgentRunContext, id: string): Promis
   }
   logger.info('StudioTools', `Saved agent document ${id}`);
   return `Saved to ${saved.path ?? 'the chosen location'}.`;
+}
+
+/**
+ * Opens one of the workspace's own files into its document well through the renderer bridge.
+ * @param context The agent run context (carries the bridge).
+ * @param path The absolute or workspace-relative path to open.
+ * @returns Returns a confirmation, or the reason the file was not opened.
+ */
+export async function openFile(context: AgentRunContext, path: string): Promise<string> {
+  logger.trace('StudioTools', `Tool invoked: open_file (${path})`);
+  const result: unknown = await context.bridge.request(OPEN_FILE, { path });
+  const opened: { ok?: boolean; error?: string; path?: string } = result ?? {};
+  if (opened.ok !== true) {
+    logger.debug('StudioTools', `open_file refused: ${opened.error ?? 'unknown reason'}`);
+    return opened.error ?? 'The file could not be opened.';
+  }
+  logger.info('StudioTools', `Opened file in the well: ${opened.path ?? path}`);
+  return `Opened ${opened.path ?? path} in the user's editor.`;
 }
 
 /**

@@ -198,6 +198,16 @@ export const SAVE_DOCUMENT: string = 'save_document';
 export const OPEN_TERMINAL: string = 'open_terminal';
 
 /**
+ * The in-app capability that opens an existing file from the open workspace into that workspace's
+ * document well, and brings its tab to the front.
+ *
+ * The counterpart to {@link OPEN_DOCUMENT}: that one hands the user something the agent wrote, this
+ * one puts the user's own code in front of them. It opens rather than edits — a way to say "look at
+ * this file" that leaves the user reading it in their editor rather than in a transcript.
+ */
+export const OPEN_FILE: string = 'open_file';
+
+/**
  * The formats {@link OPEN_DOCUMENT} can open a document in: the markdown editor (rendered prose) or
  * the code editor (syntax-highlighted text).
  */

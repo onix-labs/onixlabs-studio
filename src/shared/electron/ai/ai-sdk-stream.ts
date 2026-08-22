@@ -15,6 +15,7 @@ import {
   SET_API_VARIABLE,
   UPDATE_API_REQUEST,
   OPEN_DOCUMENT,
+  OPEN_FILE,
   OPEN_TERMINAL,
   SAVE_DOCUMENT,
   READ_BINARY_OVERVIEW,
@@ -46,6 +47,7 @@ import {
   TERMINAL_PROMPT_APPENDIX,
   WORKBENCH_PROMPT_APPENDIX,
   openDocument,
+  openFile,
   openTerminal,
   saveDocument,
   askUser,
@@ -452,6 +454,17 @@ export async function createWorkbenchTools(context: AgentRunContext): Promise<To
         id: z.string().min(1).describe('The id returned by open_document.'),
       }),
       execute: (args: { id: string }): Promise<string> => saveDocument(context, args.id),
+    }),
+    [OPEN_FILE]: tool({
+      description:
+        "Open one of the user's own workspace files in their editor, so they can look at it while you talk about it. Prefer it to quoting a long passage back at them. It only opens the file — use the edit tools to change it.",
+      inputSchema: z.object({
+        path: z
+          .string()
+          .min(1)
+          .describe('An absolute path, or one relative to the workspace root.'),
+      }),
+      execute: (args: { path: string }): Promise<string> => openFile(context, args.path),
     }),
     // Gated, unlike the two document tools above: opening a terminal spawns a real shell process, so
     // it prompts under every posture but `auto-all` — matching the Claude path, where it is the one
