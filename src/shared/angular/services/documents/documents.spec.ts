@@ -129,6 +129,17 @@ describe('Documents', () => {
     expect(documents.initialContentOf('absent')).toBe('');
   });
 
+  it('initialContentOf_whenContentWasSetBeforeTheEditorMounts_returnsIt', () => {
+    // The markdown editor seeds itself once from this and manages its own text thereafter, so it must
+    // read the CURRENT content. Reading the last-saved content instead showed a document filled before
+    // its view mounted — an agent opening a tab and writing into it — as blank until it was saved.
+    const tab: Tab = tabs.open('markdown');
+    documents.ensure(tab.id, 'Report');
+    documents.setContent(tab.id, '# Findings\n');
+
+    expect(documents.initialContentOf(tab.id)).toBe('# Findings\n');
+  });
+
   it('removeMissing_whenPanelStillPresent_keepsTheDocument', () => {
     const id: string = documents.createWellDocument(SAMPLE_FILE);
 
