@@ -96,6 +96,15 @@ export class RibbonStripMenuButton {
   public readonly disabled: InputSignal<boolean> = input<boolean>(false);
 
   /**
+   * Gets the meaning the button carries, which colours it. Defaults to the accent, matching every other
+   * ribbon button; a caller states a state tone (a destructive `danger`) for a command whose meaning
+   * should read at a glance. As on {@link RibbonStripButton} the tone colours the hover surface only, so
+   * the control rests exactly like its neighbours and reads its meaning under the pointer — and both
+   * halves take it together, since hovering either lifts the whole control.
+   */
+  public readonly tone: InputSignal<ButtonTone> = input<ButtonTone>('accent');
+
+  /**
    * Emits when the primary action is activated.
    */
   public readonly action: OutputEmitterRef<void> = output<void>();

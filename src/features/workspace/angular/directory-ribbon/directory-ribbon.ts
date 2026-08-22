@@ -24,6 +24,7 @@ import { ProjectCapabilities } from '@shared/api/project-system';
 import {
   expandRunConfiguration,
   isCompoundConfiguration,
+  resolveDefaultRunConfiguration,
   RunConfiguration,
 } from '@shared/api/studio';
 import { Icon } from '@shared/angular/icons/icon';
@@ -38,7 +39,6 @@ import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host';
 import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button';
 import { RibbonStripButtonSmall } from '@shared/angular/components/ribbon-strip/ribbon-strip-button-small/ribbon-strip-button-small';
-import { RibbonStripActionsButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-actions-button/ribbon-strip-actions-button';
 import {
   RibbonMenuItem,
   RibbonStripMenuButton,
@@ -69,14 +69,16 @@ const COMMIT_STASH: string = 'stash';
  * routes through the {@link EditorCommands} seam, and holds the document-level actions — the clipboard
  * trio, the history pair, and Find. View drives layout presets: the big button applies the DEFAULT
  * preset (named on its face) and its menu lists every preset, while Save, Save As and Manage write
- * them. Solution is the single group for launching the project. Actions is a large button with no
- * primary action of its own: its whole face opens a dropdown of the workspace's authored `.studio` run
- * configurations (nothing is inferred), each coloured and glyphed by whether it is running — a running
- * configuration is red and stops on click, a stopped one is green and starts on click, both through the
- * {@link Builds} seam. Configure opens the run configurations dialog where those are authored. (The
- * Start/Stop, Debug, and Build/Rebuild/Clean seams remain wired on this component but are not currently
- * surfaced, pending where they land in the run-configuration model.) Source Control is the workspace's
- * one-stop git group, dispatching through the {@link SourceControlCommands} and
+ * them. Solution is the single group for launching the project. Start is a split button: its face runs
+ * the workspace's default configuration (falling back to the effective selection) in one press, and its
+ * chevron opens a dropdown of the workspace's authored `.studio` run configurations (nothing is
+ * inferred), each coloured and glyphed by whether it is running — a running configuration is red and
+ * stops on click, a stopped one is green and starts on click, both through the {@link Builds} seam. The
+ * face flips to Stop, red-toned, as soon as anything is in flight, and cancels every run rather than
+ * only what it started. Configure opens the run configurations dialog where those are authored. (The
+ * Debug and Build/Rebuild/Clean seams remain wired on this component but are not currently surfaced,
+ * pending where they land in the run-configuration model.) Source Control is the workspace's one-stop
+ * git group, dispatching through the {@link SourceControlCommands} and
  * {@link WorkspaceSourceControlCommands} seams.
  */
 @Component({
@@ -90,7 +92,6 @@ const COMMIT_STASH: string = 'stash';
     RibbonStripColumn,
     RibbonStripButton,
     RibbonStripButtonSmall,
-    RibbonStripActionsButton,
     RibbonStripMenuButton,
     Checkbox,
     Modal,
@@ -385,11 +386,34 @@ export class DirectoryRibbon {
   );
 
   /**
-   * Gets whether there are any run configurations for the Actions button to list. It is disabled when
+   * Gets whether there are any run configurations for the Start button to list. It is disabled when
    * the workspace has authored none — Configure is then the way to create the first.
    */
   protected readonly hasActions: Signal<boolean> = computed(
     (): boolean => this.studio.runConfigurations().length > 0,
+  );
+
+  /**
+   * Gets whether the workspace is running anything at all, which flips the Solution group's Start button
+   * into its Stop state. Deliberately "anything", not "the configuration the face would start": once a
+   * run is in flight the single big button is how the user stops it, whichever configuration — or
+   * dropdown row — started it.
+   */
+  protected readonly anyRunning: Signal<boolean> = computed(
+    (): boolean => this.activeRuns().length > 0,
+  );
+
+  /**
+   * Gets the configuration the Start button's face launches: the workspace's flagged default, falling
+   * back to the effective selection. Most workspaces flag no default (the flag is opt-in), and a Start
+   * button that were dead until someone set one would be worse than one that starts the configuration
+   * the workspace already considers current — so the fallback keeps the single press meaningful, and
+   * flagging a default simply pins which one it is.
+   */
+  private readonly startConfiguration: Signal<RunConfiguration | undefined> = computed(
+    (): RunConfiguration | undefined =>
+      resolveDefaultRunConfiguration(this.studio.runConfigurations()) ??
+      this.selectedConfiguration(),
   );
 
   /**
@@ -625,7 +649,28 @@ export class DirectoryRibbon {
   }
 
   /**
-   * Toggles a run configuration chosen from the Actions dropdown: a running configuration is stopped, a
+   * Acts on the Solution group's Start button face: stops everything when the workspace is running
+   * anything, and otherwise launches {@link startConfiguration}. No stop-and-restart prompt can arise —
+   * the two states are exclusive, so the face never starts a configuration while a run is in flight, and
+   * the Stop half is itself the explicit stop.
+   */
+  protected onStartStop(): void {
+    if (this.anyRunning()) {
+      this.onStop();
+      return;
+    }
+    const configuration: RunConfiguration | undefined = this.startConfiguration();
+    if (configuration === undefined) {
+      return;
+    }
+    this.log.info('workspace.run', 'Run configuration started', configuration.name);
+    this.builds.runConfiguration(configuration, this.studio.runConfigurations(), {
+      restart: false,
+    });
+  }
+
+  /**
+   * Toggles a run configuration chosen from the Start dropdown: a running configuration is stopped, a
    * stopped one is started. Starting only ever happens from a stopped state, so no stop-and-restart
    * prompt is needed — choosing a running row is itself the explicit stop.
    * @param id The chosen configuration's id.

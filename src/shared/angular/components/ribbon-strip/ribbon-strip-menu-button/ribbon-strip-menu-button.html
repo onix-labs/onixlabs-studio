@@ -1,4 +1,10 @@
-<div class="ribbon-menu-button">
+<div
+  class="ribbon-menu-button"
+  [class.ribbon-menu-button--tone-success]="tone() === 'success'"
+  [class.ribbon-menu-button--tone-warning]="tone() === 'warning'"
+  [class.ribbon-menu-button--tone-danger]="tone() === 'danger'"
+  [class.ribbon-menu-button--tone-info]="tone() === 'info'"
+>
   <button
     type="button"
     class="ribbon-menu-button__action"

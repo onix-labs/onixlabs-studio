@@ -72,17 +72,22 @@
     }
   </app-ribbon-strip-group>
 
-  <!-- Everything you launch against the project, as one group. Actions is a large button with no
-       primary action of its own: its whole face opens a dropdown listing the workspace's run
-       configurations, each coloured and glyphed by whether it is running — a running one is red and
-       stops on click, a stopped one is green and starts on click. Configure opens the run
-       configurations dialog, where those configurations are authored. -->
+  <!-- Everything you launch against the project, as one group. Start is a split button: its face runs
+       the workspace's default configuration in one press — the same single-press Run the Mission
+       Control tiles offer — and its chevron opens the dropdown listing every authored configuration,
+       each coloured and glyphed by whether it is running, so a running one is red and stops on click
+       and a stopped one is green and starts on click. Once anything is in flight the face becomes the
+       Stop-everything button: stop glyph, red on hover, and it cancels every run rather than only the
+       one it started, which is why it names the count when there is more than one. Configure opens the
+       run configurations dialog, where those configurations are authored. -->
   <app-ribbon-strip-group title="Solution">
-    <app-ribbon-strip-actions-button
-      [icon]="Icon.ROCKET_LAUNCH"
-      label="Actions"
+    <app-ribbon-strip-menu-button
+      [icon]="anyRunning() ? Icon.STOP : Icon.PLAY"
+      [label]="anyRunning() ? stopLabel() : 'Start'"
+      [tone]="anyRunning() ? 'danger' : 'accent'"
       [items]="actionItems()"
       [disabled]="!hasActions()"
+      (action)="onStartStop()"
       (selected)="onActionItem($event)"
     />
     <app-ribbon-strip-button

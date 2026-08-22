@@ -38,6 +38,8 @@ interface RibbonInternals {
   actionItems(): readonly RibbonMenuItem[];
   onActionItem(id: string): void;
   hasActions(): boolean;
+  anyRunning(): boolean;
+  onStartStop(): void;
   canBuild(): boolean;
   canClean(): boolean;
   canRebuild(): boolean;
@@ -482,6 +484,60 @@ describe('DirectoryRibbon', () => {
     internals().onRun();
 
     expect(builds.runConfigurationCalls).toEqual([]);
+  });
+
+  describe('the Start button face', () => {
+    it('startsTheFlaggedDefaultConfiguration_notMerelyTheFirst', () => {
+      const web: RunConfiguration = { ...configuration('b', 'Web'), default: true };
+      studio.runConfigurations.set([configuration('a', 'App'), web]);
+
+      internals().onStartStop();
+
+      expect(builds.runConfigurationCalls).toEqual([web]);
+      expect(builds.runConfigurationOptions[0]).toEqual({ restart: false });
+    });
+
+    it('withNoFlaggedDefault_fallsBackToTheEffectiveSelection', () => {
+      // Flagging a default is opt-in and most workspaces do not, so the face starts what the workspace
+      // already considers current rather than going dead.
+      const app: RunConfiguration = configuration('a', 'App');
+      studio.runConfigurations.set([app, configuration('b', 'Web')]);
+
+      internals().onStartStop();
+
+      expect(builds.runConfigurationCalls).toEqual([app]);
+    });
+
+    it('withNoConfigurationsAtAll_startsNothing', () => {
+      internals().onStartStop();
+
+      expect(builds.runConfigurationCalls).toEqual([]);
+      expect(builds.cancelAllCalls).toBe(0);
+    });
+
+    it('onceAnythingRuns_theFaceStopsEverything_whicheverConfigurationStartedIt', () => {
+      studio.runConfigurations.set([configuration('a', 'App'), configuration('b', 'Web')]);
+      expect(internals().anyRunning()).toBe(false);
+
+      // A run of a configuration the face would not itself have started still flips it to Stop.
+      builds.runs.set([{ id: 'run:b', label: 'Web', taskId: 'b', startedAt: 0 }]);
+
+      expect(internals().anyRunning()).toBe(true);
+      internals().onStartStop();
+
+      expect(builds.cancelAllCalls).toBe(1);
+      expect(builds.runConfigurationCalls).toEqual([]);
+    });
+
+    it('inItsStopState_neverStartsAnything_soNoRestartPromptCanArise', () => {
+      studio.runConfigurations.set([{ ...configuration('a', 'App'), default: true }]);
+      builds.runs.set([{ id: 'run:a', label: 'App', taskId: 'a', startedAt: 0 }]);
+
+      internals().onStartStop();
+
+      expect(internals().pendingRunConfiguration()).toBeNull();
+      expect(builds.runConfigurationCalls).toEqual([]);
+    });
   });
 
   describe('the Actions button', () => {

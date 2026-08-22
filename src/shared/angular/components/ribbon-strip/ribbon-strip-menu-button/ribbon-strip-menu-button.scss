@@ -5,6 +5,13 @@
 }
 
 .ribbon-menu-button {
+  // The control's tone surface, defaulting to the accent so an untoned menu button is unchanged. A tone
+  // class (below) repoints these onto a state colour; the hover surfaces read them.
+  --ribbon-tone-surface-background: var(--accent-surface-background-color);
+  --ribbon-tone-surface-background-strong: var(--accent-surface-background-color-strong);
+  --ribbon-tone-surface-border: var(--accent-surface-border-color);
+  --ribbon-tone-surface-foreground: var(--accent-surface-foreground-color);
+
   display: flex;
   flex-direction: column;
   background: transparent;
@@ -14,22 +21,54 @@
   overflow: hidden;
   transition: border-color 150ms ease-in-out;
 
-  // Hovering either half lifts the whole control onto the accent surface, so the primary action and
+  // Hovering either half lifts the whole control onto the tone surface, so the primary action and
   // its dropdown read as one button.
   &:hover {
-    border-color: var(--accent-surface-border-color);
+    border-color: var(--ribbon-tone-surface-border);
 
     .ribbon-menu-button__action,
     .ribbon-menu-button__menu {
-      background: var(--accent-surface-background-color);
-      color: var(--accent-surface-foreground-color);
+      background: var(--ribbon-tone-surface-background);
+      color: var(--ribbon-tone-surface-foreground);
     }
 
     // Hovering the dropdown half directly brightens it above the shared surface.
     .ribbon-menu-button__menu:hover {
-      background: var(--accent-surface-background-color-strong);
+      background: var(--ribbon-tone-surface-background-strong);
     }
   }
+}
+
+// Tone: repoints the hover surface onto a state colour while the glyph and label rest neutral, so a
+// destructive command sits as quietly as its neighbours until hovered, then reads red. Only the four
+// state tones carry a class; the accent tone is the default and adds none. Mirrors the tone block on
+// `ribbon-strip-button`, with the extra `-strong` step the dropdown half's own hover needs.
+.ribbon-menu-button--tone-success {
+  --ribbon-tone-surface-background: rgba(var(--success-color-rgb), 0.15);
+  --ribbon-tone-surface-background-strong: rgba(var(--success-color-rgb), 0.25);
+  --ribbon-tone-surface-border: rgba(var(--success-color-rgb), 0.6);
+  --ribbon-tone-surface-foreground: var(--success-color);
+}
+
+.ribbon-menu-button--tone-warning {
+  --ribbon-tone-surface-background: rgba(var(--warning-color-rgb), 0.15);
+  --ribbon-tone-surface-background-strong: rgba(var(--warning-color-rgb), 0.25);
+  --ribbon-tone-surface-border: rgba(var(--warning-color-rgb), 0.6);
+  --ribbon-tone-surface-foreground: var(--warning-color);
+}
+
+.ribbon-menu-button--tone-danger {
+  --ribbon-tone-surface-background: rgba(var(--danger-color-rgb), 0.15);
+  --ribbon-tone-surface-background-strong: rgba(var(--danger-color-rgb), 0.25);
+  --ribbon-tone-surface-border: rgba(var(--danger-color-rgb), 0.6);
+  --ribbon-tone-surface-foreground: var(--danger-color);
+}
+
+.ribbon-menu-button--tone-info {
+  --ribbon-tone-surface-background: rgba(var(--info-color-rgb), 0.15);
+  --ribbon-tone-surface-background-strong: rgba(var(--info-color-rgb), 0.25);
+  --ribbon-tone-surface-border: rgba(var(--info-color-rgb), 0.6);
+  --ribbon-tone-surface-foreground: var(--info-color);
 }
 
 .ribbon-menu-button__action {
