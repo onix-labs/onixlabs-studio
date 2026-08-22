@@ -106,7 +106,14 @@ export class ModalWindowHost {
   public measure(): number {
     const content: HTMLElement = this.content().nativeElement;
     const panel: HTMLElement | null = content.parentElement;
-    const style: CSSStyleDeclaration | null = panel === null ? null : getComputedStyle(panel);
+    // getComputedStyle can throw outside a real browser engine (a test environment that cannot parse
+    // one of the application's stylesheets); the padding it contributes is then simply left out.
+    let style: CSSStyleDeclaration | null;
+    try {
+      style = panel === null ? null : getComputedStyle(panel);
+    } catch {
+      style = null;
+    }
     const padding: number =
       style === null
         ? 0

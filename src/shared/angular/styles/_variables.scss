@@ -32,6 +32,16 @@
   --tab-foot-reach: 0.0625rem;
 }
 
+// Reduced-GPU feature gate. Set by the Display service (data-reduced-gpu="true" on <html>) when the
+// user's "modern UI features" choice resolves to off — either chosen, or the automatic default on a
+// GPU flagged as a poor fit for the heavier effects. It strips the decorative effects that are cheap
+// to describe but expensive to composite; the modal backdrop blur is the first (the darkening tint
+// stays, so a modal still reads as modal).
+:root[data-reduced-gpu='true'] {
+  --modal-backdrop-filter: none;
+  --modal-backdrop-transition: none;
+}
+
 :root {
   --border-radius-multiplier: 1;
   --concave-border-radius-multiplier: 1;
@@ -164,6 +174,20 @@
   --modal-backdrop-blur: 0.5rem;
   --modal-fade-duration: 200ms;
   --modal-panel-padding: 1rem;
+
+  // The whole backdrop-filter a modal's dimmed layer draws, routed through one token so the modern-UI
+  // gate below can collapse it to `none`. Blurring the window behind a modal — and animating that blur
+  // in — is one of the app's costlier GPU effects, so it rides the same reduced-GPU switch as the
+  // squircle corners: when modern UI features are off the backdrop keeps its darkening tint
+  // (--modal-backdrop-color) but drops the blur. `none` rather than `blur(0)` so no backdrop-filter
+  // layer (or its transition) is created at all.
+  --modal-backdrop-filter: blur(var(--modal-backdrop-blur));
+
+  // How the backdrop's tint and blur fade in. Routed through a token for the same reason: with the
+  // blur gone under reduced GPU there is nothing worth crossfading, so the gate collapses this to
+  // `none` and the darkening snaps in at once instead.
+  --modal-backdrop-transition:
+    background var(--modal-fade-duration) ease, backdrop-filter var(--modal-fade-duration) ease;
 
   // Corner radius shared by dock panels, their tabs and the pane cells that frame them.
   --dock-panel-radius: calc(0.5rem * var(--border-radius-multiplier));

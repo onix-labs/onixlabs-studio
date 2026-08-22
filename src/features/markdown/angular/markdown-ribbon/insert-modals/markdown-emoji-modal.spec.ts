@@ -1,6 +1,8 @@
-import { Component, signal, WritableSignal } from '@angular/core';
+import { ApplicationRef, Component, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
+import { ModalWindows } from '@shared/angular/services/modal-windows/modal-windows';
+import { FakeModalWindows } from '@shared/angular/services/modal-windows/modal-windows.fake';
 import { SettingsStore } from '@shared/angular/services/settings-store/settings-store';
 import { MarkdownEmojiModal } from './markdown-emoji-modal';
 
@@ -25,21 +27,34 @@ class TestHost {
 
 describe('MarkdownEmojiModal', () => {
   let fixture: ComponentFixture<TestHost>;
+  let windows: FakeModalWindows;
   let host: HTMLElement;
   let component: TestHost;
 
   beforeEach(async () => {
+    windows = new FakeModalWindows();
     await TestBed.configureTestingModule({
       imports: [TestHost],
+      providers: [{ provide: ModalWindows, useValue: windows }],
     }).compileComponents();
 
     TestBed.inject(SettingsStore).set('markdown.recent-emoji', []);
 
     fixture = TestBed.createComponent(TestHost);
     component = fixture.componentInstance;
-    host = fixture.nativeElement as HTMLElement;
     fixture.detectChanges();
+    // The modal is presented in a window; its content renders into that window's host.
+    host = windows.contentHost!;
   });
+
+  /**
+   * Flushes change detection through the modal window's attached view, then re-points the content
+   * host at the current window (a reopen presents a fresh one).
+   */
+  function flush(): void {
+    TestBed.inject(ApplicationRef).tick();
+    host = windows.contentHost!;
+  }
 
   function categoryTitles(): string[] {
     return Array.from(host.querySelectorAll('.emoji-category-title')).map(
@@ -51,7 +66,7 @@ describe('MarkdownEmojiModal', () => {
     const input: HTMLInputElement = host.querySelector<HTMLInputElement>('#emoji-search')!;
     input.value = value;
     input.dispatchEvent(new Event('input'));
-    fixture.detectChanges();
+    flush();
   }
 
   it('should create', () => {
@@ -89,7 +104,7 @@ describe('MarkdownEmojiModal', () => {
     ).find((tab: HTMLButtonElement): boolean => tab.getAttribute('aria-label') === 'Flags')!;
 
     flags.click();
-    fixture.detectChanges();
+    flush();
 
     expect(flags.classList).toContain('emoji-tab--active');
   });
@@ -132,7 +147,8 @@ describe('MarkdownEmojiModal', () => {
 
     const recentFixture: ComponentFixture<TestHost> = TestBed.createComponent(TestHost);
     recentFixture.detectChanges();
-    const recentHost: HTMLElement = recentFixture.nativeElement as HTMLElement;
+    // The modal is presented in a window; its content renders into that window's host.
+    const recentHost: HTMLElement = windows.contentHost!;
 
     const titles: string[] = Array.from(recentHost.querySelectorAll('.emoji-category-title')).map(
       (title: Element): string => title.textContent?.trim() ?? '',

@@ -1,39 +1,11 @@
 import { Component, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ModalBackdrop } from '@shared/angular/services/modal-backdrop/modal-backdrop';
-import {
-  ModalWindow,
-  ModalWindowRequest,
-  ModalWindows,
-} from '@shared/angular/services/modal-windows/modal-windows';
+import { ModalWindowRequest, ModalWindows } from '@shared/angular/services/modal-windows/modal-windows';
+import { FakeModalWindows } from '@shared/angular/services/modal-windows/modal-windows.fake';
 
 import { Modal } from './modal';
 import { ModalContent } from './modal-content';
-
-@Component({
-  imports: [Modal],
-  template: `
-    <app-modal
-      [open]="open()"
-      [dismissable]="dismissable()"
-      [width]="width()"
-      ariaLabel="Test modal"
-      (dismiss)="onDismiss()"
-    >
-      <p class="modal-content">Body</p>
-    </app-modal>
-  `,
-})
-class TestHost {
-  public readonly open: WritableSignal<boolean> = signal<boolean>(true);
-  public readonly dismissable: WritableSignal<boolean> = signal<boolean>(true);
-  public readonly width: WritableSignal<number | undefined> = signal<number | undefined>(undefined);
-  public dismissed: number = 0;
-
-  public onDismiss(): void {
-    this.dismissed += 1;
-  }
-}
 
 /**
  * A host whose content is marked for window presentation.
@@ -83,152 +55,7 @@ class WindowedHost {
   }
 }
 
-/**
- * A stand-in for the modal window opener, recording what was asked for and letting the test drive
- * the window's own events. Its content host is a detached element in the test document, which is
- * where the modal's content renders.
- */
-class FakeModalWindows {
-  public readonly requests: ModalWindowRequest[] = [];
-  public readonly fitted: { width: number; height: number }[] = [];
-  public contentHost: HTMLElement | null = null;
-  public closed: number = 0;
-  private closedListeners: (() => void)[] = [];
-
-  public open(request: ModalWindowRequest): ModalWindow | null {
-    this.requests.push(request);
-    const contentHost: HTMLElement = document.createElement('div');
-    this.contentHost = contentHost;
-    return {
-      contentHost,
-      document,
-      view: window,
-      fit: (width: number, height: number): void => {
-        this.fitted.push({ width, height });
-      },
-      focus: (): void => undefined,
-      close: (): void => this.notifyClosed(),
-      onClosed: (listener: () => void): void => {
-        this.closedListeners.push(listener);
-      },
-    };
-  }
-
-  public notifyClosed(): void {
-    this.closed += 1;
-    const listeners: (() => void)[] = this.closedListeners;
-    this.closedListeners = [];
-    for (const listener of listeners) {
-      listener();
-    }
-  }
-}
-
 describe('Modal', () => {
-  let fixture: ComponentFixture<TestHost>;
-  let component: TestHost;
-  let host: HTMLElement;
-
-  beforeEach(async () => {
-    await TestBed.configureTestingModule({
-      imports: [TestHost],
-    }).compileComponents();
-
-    fixture = TestBed.createComponent(TestHost);
-    component = fixture.componentInstance;
-    host = fixture.nativeElement as HTMLElement;
-    fixture.detectChanges();
-  });
-
-  it('should create', () => {
-    expect(component).toBeTruthy();
-  });
-
-  it('open_whenTrue_isVisibleAndProjectsContent', () => {
-    expect(host.querySelector('.modal--visible')).not.toBeNull();
-    expect(host.querySelector('.modal-content')?.textContent).toContain('Body');
-  });
-
-  it('width_whenSet_sizesThePanel', () => {
-    component.width.set(30);
-    fixture.detectChanges();
-
-    const panel: HTMLElement = host.querySelector<HTMLElement>('.modal__panel')!;
-    expect(panel.style.getPropertyValue('--modal-panel-inline-size')).toBe('min(30rem, 100%)');
-  });
-
-  it('width_whenUnset_defersToTheThemedDefault', () => {
-    const panel: HTMLElement = host.querySelector<HTMLElement>('.modal__panel')!;
-    expect(panel.style.getPropertyValue('--modal-panel-inline-size')).toBe('');
-  });
-
-  it('open_whenFalse_isNotVisible', () => {
-    component.open.set(false);
-    fixture.detectChanges();
-
-    expect(host.querySelector('.modal--visible')).toBeNull();
-  });
-
-  it('backdropClick_whenDismissable_emitsDismiss', () => {
-    const backdrop: HTMLElement = host.querySelector<HTMLElement>('.modal')!;
-    backdrop.click();
-
-    expect(component.dismissed).toBe(1);
-  });
-
-  it('panelClick_whenDismissable_doesNotEmitDismiss', () => {
-    const panel: HTMLElement = host.querySelector<HTMLElement>('.modal__panel')!;
-    panel.click();
-
-    expect(component.dismissed).toBe(0);
-  });
-
-  it('escapeKey_whenDismissable_emitsDismiss', () => {
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
-    fixture.detectChanges();
-
-    expect(component.dismissed).toBe(1);
-  });
-
-  it('closeButton_whenDismissable_isShownAndEmitsDismiss', () => {
-    const close: HTMLButtonElement | null =
-      host.querySelector<HTMLButtonElement>('.modal__control');
-    expect(close).not.toBeNull();
-
-    close!.click();
-
-    expect(component.dismissed).toBe(1);
-  });
-
-  it('backdropClick_whenNotDismissable_doesNotEmitDismiss', () => {
-    component.dismissable.set(false);
-    fixture.detectChanges();
-
-    const backdrop: HTMLElement = host.querySelector<HTMLElement>('.modal')!;
-    backdrop.click();
-
-    expect(component.dismissed).toBe(0);
-  });
-
-  it('escapeKey_whenNotDismissable_doesNotEmitDismiss', () => {
-    component.dismissable.set(false);
-    fixture.detectChanges();
-
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
-    fixture.detectChanges();
-
-    expect(component.dismissed).toBe(0);
-  });
-
-  it('closeButton_whenNotDismissable_isNotShown', () => {
-    component.dismissable.set(false);
-    fixture.detectChanges();
-
-    expect(host.querySelector('.modal__control')).toBeNull();
-  });
-});
-
-describe('Modal (window presentation)', () => {
   let fixture: ComponentFixture<WindowedHost>;
   let component: WindowedHost;
   let host: HTMLElement;
@@ -249,12 +76,17 @@ describe('Modal (window presentation)', () => {
     fixture.detectChanges();
   });
 
-  it('open_whenTemplated_opensAWindowInsteadOfTheInlineOverlay', () => {
+  it('should create', () => {
+    expect(component).toBeTruthy();
+  });
+
+  it('open_whenTemplated_opensAWindowAndRendersContentThere', () => {
     component.open.set(true);
     fixture.detectChanges();
 
     expect(windows.requests.length).toBe(1);
-    expect(host.querySelector('.modal--visible')).toBeNull();
+    // The modal renders nothing where it is declared; its content lives in the window.
+    expect(host.querySelector('.modal-content')).toBeNull();
     expect(windows.contentHost?.querySelector('.modal-content')?.textContent).toContain('Body');
   });
 
@@ -263,6 +95,18 @@ describe('Modal (window presentation)', () => {
     fixture.detectChanges();
 
     expect(backdrop.raised()).toBe(true);
+  });
+
+  it('open_whenNoWindowOpens_emitsDismissRatherThanStranding', () => {
+    windows.refuseOpen = true;
+    component.open.set(true);
+    fixture.detectChanges();
+
+    // The open was attempted, refused, and reported back as a dismissal so the caller unsticks.
+    expect(windows.requests.length).toBe(1);
+    expect(windows.openWindows).toBe(0);
+    expect(component.dismissed).toBe(1);
+    expect(backdrop.raised()).toBe(false);
   });
 
   it('request_carriesTheModalsTitleWidthAndChrome', () => {

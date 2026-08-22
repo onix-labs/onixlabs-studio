@@ -1,4 +1,4 @@
-import { computed, signal, Signal, WritableSignal } from '@angular/core';
+import { ApplicationRef, computed, signal, Signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActiveRun, Builds, BuildTask } from '@shared/angular/services/tasks/builds';
 import { Debugger } from '@shared/angular/services/debug/debugger';
@@ -14,6 +14,8 @@ import {
   LayoutPresets,
 } from '@shared/angular/services/layout-presets/layout-presets';
 import { SourceControlCommands } from '@shared/angular/services/source-control-commands/source-control-commands';
+import { ModalWindows } from '@shared/angular/services/modal-windows/modal-windows';
+import { FakeModalWindows } from '@shared/angular/services/modal-windows/modal-windows.fake';
 import {
   WorkspaceDocumentCommandHandler,
   WorkspaceDocumentCommands,
@@ -301,6 +303,7 @@ describe('DirectoryRibbon', () => {
   let documentHandler: FakeDocumentHandler;
   let repositoryCommands: FakeRepositoryCommands;
   let presets: LayoutPresets;
+  let windows: FakeModalWindows;
 
   /**
    * Reveals the protected surface under test.
@@ -320,6 +323,7 @@ describe('DirectoryRibbon', () => {
     debuggerSeam = new FakeDebugger();
     documentHandler = new FakeDocumentHandler();
     repositoryCommands = new FakeRepositoryCommands();
+    windows = new FakeModalWindows();
     await TestBed.configureTestingModule({
       imports: [DirectoryRibbon],
       providers: [
@@ -328,6 +332,7 @@ describe('DirectoryRibbon', () => {
         { provide: WorkspaceCapabilities, useValue: capabilities },
         { provide: Debugger, useValue: debuggerSeam },
         { provide: SourceControlCommands, useValue: repositoryCommands },
+        { provide: ModalWindows, useValue: windows },
       ],
     }).compileComponents();
 
@@ -882,27 +887,32 @@ describe('DirectoryRibbon', () => {
 
     it('presetModals_renderTheirContentOnlyWhileOpen', () => {
       const customId: string = saveAs('Custom', false);
-      const host: HTMLElement = fixture.nativeElement as HTMLElement;
+      const appRef: ApplicationRef = TestBed.inject(ApplicationRef);
 
-      expect(host.querySelector('.directory-ribbon__confirm-title')).toBeNull();
+      expect(windows.openWindows).toBe(0);
 
       internals().onSavePresetAs();
       fixture.detectChanges();
-      expect(host.querySelector('.directory-ribbon__confirm-title')?.textContent).toContain(
-        'Save layout as preset',
-      );
+      appRef.tick();
+      expect(windows.openWindows).toBe(1);
+      expect(
+        windows.contentHost?.querySelector('.directory-ribbon__confirm-title')?.textContent,
+      ).toContain('Save layout as preset');
 
       internals().cancelSaveAs();
       internals().onManagePresets();
       fixture.detectChanges();
-      const manage: string = host.textContent ?? '';
+      appRef.tick();
+      expect(windows.openWindows).toBe(1);
+      const manage: string = windows.contentHost?.textContent ?? '';
       expect(manage).toContain('Manage layouts');
       expect(manage).toContain('Coding');
 
       internals().onDeletePreset(customId);
       internals().closeManage();
       fixture.detectChanges();
-      expect(host.querySelector('.directory-ribbon__confirm-title')).toBeNull();
+      appRef.tick();
+      expect(windows.openWindows).toBe(0);
     });
 
     it('saveAs_withAnEmptyName_savesNothingAndStaysOpen', () => {

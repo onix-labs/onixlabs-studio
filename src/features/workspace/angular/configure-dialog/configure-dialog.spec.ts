@@ -3,6 +3,8 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { StudioConfig } from '@shared/angular/services/studio/studio-config';
 import { ConfigureDialog } from '@shared/angular/services/configure-dialog/configure-dialog';
+import { ModalWindows } from '@shared/angular/services/modal-windows/modal-windows';
+import { FakeModalWindows } from '@shared/angular/services/modal-windows/modal-windows.fake';
 import { WorkspaceCapabilities } from '@shared/angular/services/workspace/workspace-capabilities';
 import { ProjectCapabilities } from '@shared/api/project-system';
 import { RunConfiguration } from '@shared/api/studio';
@@ -125,6 +127,7 @@ describe('ConfigureDialogPanel', () => {
   let dialog: FakeDialog;
   let studio: FakeStudio;
   let capabilities: FakeCapabilities;
+  let windows: FakeModalWindows;
 
   /**
    * Reveals the protected surface under test.
@@ -145,12 +148,14 @@ describe('ConfigureDialogPanel', () => {
     dialog = new FakeDialog();
     studio = new FakeStudio();
     capabilities = new FakeCapabilities();
+    windows = new FakeModalWindows();
     await TestBed.configureTestingModule({
       imports: [ConfigureDialogPanel],
       providers: [
         { provide: ConfigureDialog, useValue: dialog },
         { provide: StudioConfig, useValue: studio },
         { provide: WorkspaceCapabilities, useValue: capabilities },
+        { provide: ModalWindows, useValue: windows },
       ],
     }).compileComponents();
 
@@ -174,19 +179,20 @@ describe('ConfigureDialogPanel', () => {
 
   it('whenOpened_rendersTheDialogContent_andRetiresItOnClose', () => {
     studio.runConfigurations.set([config({ id: 'a', name: 'A' })]);
-    const host: HTMLElement = fixture.nativeElement as HTMLElement;
-    expect(host.querySelector('.configure__title')).toBeNull();
+    expect(windows.openWindows).toBe(0);
 
     dialog.open();
     tick();
 
+    const host: HTMLElement = windows.contentHost!;
+    expect(windows.openWindows).toBe(1);
     expect(host.querySelector('.configure__title')?.textContent).toContain('Run Configurations');
     expect(host.textContent).toContain('A');
 
     internals().onCancel();
     tick();
 
-    expect(host.querySelector('.configure__title')).toBeNull();
+    expect(windows.openWindows).toBe(0);
   });
 
   it('addsANewConfigurationBoundToTheActiveProviderKind', () => {
@@ -413,6 +419,7 @@ describe('ConfigureDialogPanel external writes', () => {
   let fixture: ComponentFixture<ConfigureDialogPanel>;
   let dialog: FakeDialog;
   let studio: FakeStudio;
+  let windows: FakeModalWindows;
 
   /**
    * Reveals the protected surface under test.
@@ -443,12 +450,14 @@ describe('ConfigureDialogPanel external writes', () => {
   beforeEach(async () => {
     dialog = new FakeDialog();
     studio = new FakeStudio();
+    windows = new FakeModalWindows();
     await TestBed.configureTestingModule({
       imports: [ConfigureDialogPanel],
       providers: [
         { provide: ConfigureDialog, useValue: dialog },
         { provide: StudioConfig, useValue: studio },
         { provide: WorkspaceCapabilities, useValue: new FakeCapabilities() },
+        { provide: ModalWindows, useValue: windows },
       ],
     }).compileComponents();
 

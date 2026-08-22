@@ -12,6 +12,8 @@ import type {
 import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine';
 import { AgentSessions } from '@shared/angular/services/agent-sessions/agent-sessions';
 import { EditorCommands } from '@shared/angular/services/editor-commands/editor-commands';
+import { ModalWindows } from '@shared/angular/services/modal-windows/modal-windows';
+import { FakeModalWindows } from '@shared/angular/services/modal-windows/modal-windows.fake';
 import { AgentRibbon } from './agent-ribbon';
 
 /**
@@ -77,6 +79,7 @@ describe('AgentRibbon', () => {
   let clearedContexts: number;
   let contextRefs: WritableSignal<readonly AgentContextRef[]>;
   let hasSelection: WritableSignal<boolean>;
+  let windows: FakeModalWindows;
 
   /**
    * Finds a ribbon button by its visible label.
@@ -128,6 +131,7 @@ describe('AgentRibbon', () => {
     clearedContexts = 0;
     contextRefs = signal<readonly AgentContextRef[]>([]);
     hasSelection = signal<boolean>(false);
+    windows = new FakeModalWindows();
     const engineStub: Partial<AgentEngine> = {
       providers: signal<readonly AiProviderInfo[]>(PROVIDERS),
     };
@@ -165,6 +169,7 @@ describe('AgentRibbon', () => {
         { provide: AgentEngine, useValue: engineStub },
         { provide: AgentSessions, useValue: sessionsStub },
         { provide: EditorCommands, useValue: editorsStub },
+        { provide: ModalWindows, useValue: windows },
       ],
     }).compileComponents();
 
@@ -228,6 +233,9 @@ describe('AgentRibbon', () => {
     button('Remote').click();
     fixture.detectChanges();
 
+    // The confirmation is now presented in its own modal window; the press opens it but must not flip
+    // the toggle until it is answered.
+    expect(windows.openWindows).toBe(1);
     expect(remoteControlChoices).toEqual([]);
     expect(internals.remoteConfirmOpen()).toBe(true);
   });

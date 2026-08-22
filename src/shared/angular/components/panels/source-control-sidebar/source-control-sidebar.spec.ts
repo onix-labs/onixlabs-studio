@@ -1,5 +1,7 @@
-import { WritableSignal } from '@angular/core';
+import { ApplicationRef, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { ModalWindows } from '@shared/angular/services/modal-windows/modal-windows';
+import { FakeModalWindows } from '@shared/angular/services/modal-windows/modal-windows.fake';
 import { Icon } from '@shared/angular/icons/icon';
 import { TreeRow } from '@shared/angular/components/tree-view/tree-view';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
@@ -206,6 +208,7 @@ describe('SourceControlSidebar', () => {
   let fixture: ComponentFixture<SourceControlSidebar>;
   let repository: Repository;
   let provider: FakeProvider;
+  let windows: FakeModalWindows;
 
   const panel: DockPanel = {
     id: 'repository',
@@ -216,10 +219,12 @@ describe('SourceControlSidebar', () => {
   };
 
   beforeEach(async () => {
+    windows = new FakeModalWindows();
     await TestBed.configureTestingModule({
       imports: [SourceControlSidebar],
       providers: [
         Repository,
+        { provide: ModalWindows, useValue: windows },
         {
           provide: SourceControlProviders,
           useValue: {
@@ -481,8 +486,9 @@ describe('SourceControlSidebar', () => {
       expect(provider.calls).not.toContain('dropStash:0');
 
       internals().requestDropStash(stash);
-      fixture.detectChanges();
-      expect((fixture.nativeElement as HTMLElement).textContent).toContain('Drop this stash?');
+      TestBed.inject(ApplicationRef).tick();
+      expect(windows.openWindows).toBe(1);
+      expect(windows.contentHost?.textContent).toContain('Drop this stash?');
 
       internals().confirmDropStash();
       await fixture.whenStable();
@@ -519,16 +525,18 @@ describe('SourceControlSidebar', () => {
 
     it('whenOpen_rendersItsFields_andClosingRetiresThem', () => {
       internals().openBranchDialog();
-      fixture.detectChanges();
+      TestBed.inject(ApplicationRef).tick();
 
-      const host: HTMLElement = fixture.nativeElement as HTMLElement;
-      expect(host.querySelector('.rail__dialog-title')?.textContent).toContain('New branch');
-      expect(host.querySelector('.rail__dialog-input')).not.toBeNull();
+      expect(windows.openWindows).toBe(1);
+      const host: HTMLElement | null = windows.contentHost;
+      expect(host?.querySelector('.rail__dialog-title')?.textContent).toContain('New branch');
+      expect(host?.querySelector('.rail__dialog-input')).not.toBeNull();
 
       internals().cancelBranch();
-      fixture.detectChanges();
+      TestBed.inject(ApplicationRef).tick();
 
-      expect(host.querySelector('.rail__dialog-title')).toBeNull();
+      expect(windows.openWindows).toBe(0);
+      expect(host?.querySelector('.rail__dialog-title')).toBeNull();
     });
 
     it('rejectsADuplicateName_beforeTheCommandRuns', () => {

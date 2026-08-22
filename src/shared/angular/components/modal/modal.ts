@@ -1,10 +1,9 @@
-import { DOCUMENT, NgTemplateOutlet } from '@angular/common';
+import { DOCUMENT } from '@angular/common';
 import {
   ApplicationRef,
   ChangeDetectionStrategy,
   Component,
   ComponentRef,
-  computed,
   contentChild,
   createComponent,
   effect,
@@ -17,15 +16,11 @@ import {
   OnDestroy,
   output,
   OutputEmitterRef,
-  signal,
   Signal,
   TemplateRef,
   untracked,
-  WritableSignal,
 } from '@angular/core';
-import { Icon } from '@shared/angular/icons/icon';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
-import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Log } from '@shared/angular/services/log/log';
 import {
   MODAL_WINDOW_CONFIG,
@@ -58,12 +53,11 @@ const MAX_WINDOW_FRACTION: number = 0.9;
  * modal (closed by its window's close button or Escape) and a blocking modal (closed only by an
  * action the projected content provides, its window offering no close button).
  *
- * Content is taken as a `<ng-template>` rather than plain projection, because it is instantiated in
- * the modal window with that window's injector: overlays, menus, and drags inside a modal then
- * happen in the modal's own window. Bindings and handlers still act on the component that declared
- * the template. A caller that has not yet moved to a template is rendered the old way — inline, over
- * the raising window's content — which is also the fallback when no window can be opened at all
- * (unit tests, and any environment without a window opener).
+ * Content is taken as a `<ng-template appModalContent>` rather than plain projection, because it is
+ * instantiated in the modal window with that window's injector: overlays, menus, and drags inside a
+ * modal then happen in the modal's own window. Bindings and handlers still act on the component that
+ * declared the template. A modal therefore renders nothing in the window that declares it; the
+ * component itself has no template.
  *
  * The panel is themed through `--modal-panel-*` properties, which are carried across to the modal
  * window; the backdrop over the raising window reads the theme's `--modal-backdrop-*` and the global
@@ -71,20 +65,10 @@ const MAX_WINDOW_FRACTION: number = 0.9;
  */
 @Component({
   selector: 'app-modal',
-  imports: [AppIcon, NgTemplateOutlet],
-  templateUrl: './modal.html',
-  styleUrl: './modal.scss',
+  template: '',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  host: {
-    '(document:keydown.escape)': 'onEscape()',
-  },
 })
 export class Modal implements OnDestroy {
-  /**
-   * Gets the icon set, exposed for the template.
-   */
-  protected readonly Icon: typeof Icon = Icon;
-
   /**
    * Holds the opener of modal windows.
    */
@@ -198,8 +182,7 @@ export class Modal implements OnDestroy {
 
   /**
    * Gets a value indicating whether the modal may be resized. Content that benefits from more room
-   * opts in, and its window becomes user-resizable; everything else is sized to its content. In the
-   * inline fallback this is the expand/restore control.
+   * opts in, and its window becomes user-resizable; everything else is sized to its content.
    */
   public readonly expandable: InputSignal<boolean> = input<boolean>(false);
 
@@ -212,47 +195,19 @@ export class Modal implements OnDestroy {
   public readonly chromeless: InputSignal<boolean> = input<boolean>(false);
 
   /**
-   * Gets the caller's marked content template, when it has declared one. Only templated content can
-   * be presented in a window; anything else falls back to the inline presentation.
+   * Gets the caller's marked content template. A modal is presented in a window, which can only
+   * render templated content; a modal that declares none cannot be presented.
    */
   protected readonly content: Signal<ModalContent | undefined> = contentChild(ModalContent);
 
   /**
-   * Holds the open modal window, or null while the modal is closed or presented inline.
+   * Holds the open modal window, or null while the modal is closed.
    */
   private presented: PresentedModal | null = null;
 
   /**
-   * Holds a value indicating whether the modal is currently presented inline — because it has no
-   * templated content, or because no window could be opened for it.
-   */
-  private readonly inline: WritableSignal<boolean> = signal<boolean>(false);
-
-  /**
-   * Gets a value indicating whether the inline overlay is visible.
-   */
-  protected readonly inlineVisible: Signal<boolean> = computed(
-    (): boolean => this.open() && this.inline(),
-  );
-
-  /**
-   * Gets the resolved panel inline-size for the inline presentation, or null to defer to the themed
-   * default. Capped at the viewport width so the panel stays responsive.
-   */
-  protected readonly panelInlineSize: Signal<string | null> = computed((): string | null => {
-    const width: number | undefined = this.width();
-    return width === undefined ? null : `min(${width}rem, 100%)`;
-  });
-
-  /**
-   * Holds a value indicating whether the inline panel is expanded to fill the window.
-   */
-  protected readonly expanded: WritableSignal<boolean> = signal<boolean>(false);
-
-  /**
-   * Emitted when the user dismisses the modal — by closing its window, pressing Escape, or (inline)
-   * clicking the backdrop or the close button. The caller owns the open state and is responsible for
-   * acting on this.
+   * Emitted when the user dismisses the modal — by closing its window or pressing Escape in it. The
+   * caller owns the open state and is responsible for acting on this.
    */
   public readonly dismiss: OutputEmitterRef<void> = output<void>();
 
@@ -262,8 +217,8 @@ export class Modal implements OnDestroy {
    */
   public constructor() {
     // Both the open state and the content are tracked: the content query resolves as the view is
-    // built, so a modal that opens immediately may first be seen without it. Re-running then
-    // upgrades the presentation from inline to a window rather than stranding it.
+    // built, so a modal that opens immediately may first be seen without it. Re-running once it
+    // resolves presents the modal then rather than stranding it.
     effect((): void => {
       const open: boolean = this.open();
       const content: ModalContent | undefined = this.content();
@@ -278,13 +233,6 @@ export class Modal implements OnDestroy {
   }
 
   /**
-   * Toggles the inline panel between its default size and filling the window.
-   */
-  protected toggleExpanded(): void {
-    this.expanded.update((value: boolean): boolean => !value);
-  }
-
-  /**
    * Requests dismissal, emitting only when the modal is currently dismissable.
    */
   protected requestDismiss(): void {
@@ -294,30 +242,9 @@ export class Modal implements OnDestroy {
   }
 
   /**
-   * Handles a click on the inline backdrop, requesting dismissal only when the click falls on the
-   * backdrop itself rather than bubbling up from the panel.
-   * @param event The originating click event.
-   */
-  protected onBackdrop(event: MouseEvent): void {
-    if (event.target === event.currentTarget) {
-      this.requestDismiss();
-    }
-  }
-
-  /**
-   * Handles the Escape key in the raising window, requesting dismissal when the modal is presented
-   * inline. A modal window handles its own Escape, in its own document.
-   */
-  protected onEscape(): void {
-    if (this.open() && this.inline()) {
-      this.requestDismiss();
-    }
-  }
-
-  /**
-   * Presents the modal: in its own window when its content is templated and a window can be opened,
-   * and inline over the raising window's content otherwise.
-   * @param content The caller's marked content, when it has declared a template.
+   * Presents the modal in its own window. Waits until the content template has resolved (the content
+   * query lands as the view is built), then opens and mounts the window.
+   * @param content The caller's marked content, once it has declared a template.
    */
   private present(content: ModalContent | undefined): void {
     if (this.presented !== null) {
@@ -325,8 +252,8 @@ export class Modal implements OnDestroy {
     }
     const owner: Window | null = this.document.defaultView;
     if (content === undefined || owner === null) {
-      this.log.debug('Modal', `Presenting modal inline '${this.ariaLabel() ?? 'dialog'}'`);
-      this.inline.set(true);
+      // No template yet (or no window environment): the effect re-runs when the content resolves and
+      // presents then. A modal that never declares a template simply never opens.
       return;
     }
     const window: ModalWindow | null = this.windows.open(
@@ -346,11 +273,13 @@ export class Modal implements OnDestroy {
       owner,
     );
     if (window === null) {
-      this.log.warn('Modal', `No window opened; presenting inline '${this.ariaLabel() ?? 'dialog'}'`);
-      this.inline.set(true);
+      // A modal requires its own window; in Electron the main process always grants one, so a refusal
+      // is an error, not a state to render around. Report it and dismiss so the caller's open state
+      // does not stick with nothing shown.
+      this.log.error('Modal', `No window opened for '${this.ariaLabel() ?? 'dialog'}'`);
+      this.dismiss.emit();
       return;
     }
-    this.inline.set(false);
     this.log.info('Modal', `Opened modal window '${this.ariaLabel() ?? 'dialog'}'`);
     this.presented = this.mount(window, content.template, owner);
   }
@@ -467,12 +396,10 @@ export class Modal implements OnDestroy {
   }
 
   /**
-   * Retires the modal's presentation: closing its window (which unwinds the rest through the closed
-   * notification) or clearing the inline overlay.
+   * Retires the modal's presentation, closing its window — which unwinds the rest through the closed
+   * notification.
    */
   private retire(): void {
-    this.inline.set(false);
-    this.expanded.set(false);
     this.presented?.window.close();
   }
 
@@ -615,16 +542,22 @@ export class Modal implements OnDestroy {
    * @returns Returns the root font size in pixels, falling back to the browser default.
    */
   private rootFontSize(): number {
-    const size: number = Number.parseFloat(
-      getComputedStyle(this.document.documentElement).fontSize || '16',
-    );
-    return Number.isFinite(size) && size > 0 ? size : 16;
+    try {
+      const size: number = Number.parseFloat(
+        getComputedStyle(this.document.documentElement).fontSize || '16',
+      );
+      return Number.isFinite(size) && size > 0 ? size : 16;
+    } catch {
+      // getComputedStyle can throw outside a real browser engine (a test environment that cannot
+      // parse one of the application's stylesheets); the browser default is a safe fallback.
+      return 16;
+    }
   }
 
   /**
    * Carries the call site's own theming onto the modal window's root, so the panel there looks
-   * exactly as it did inline. Content in a modal window cannot inherit it: the panel no longer lives
-   * inside the element that declared it.
+   * exactly as it does at the call site. Content in a modal window cannot inherit it: the panel no
+   * longer lives inside the element that declared it.
    *
    * Only custom properties whose value at the call site DIFFERS from the document root's are
    * carried, which is precisely the caller's own theming (the welcome screen's palette, a bespoke
@@ -635,8 +568,18 @@ export class Modal implements OnDestroy {
    * @param target The modal window's body.
    */
   private copyThemedProperties(target: HTMLElement): void {
-    const style: CSSStyleDeclaration = getComputedStyle(this.element.nativeElement);
-    const root: CSSStyleDeclaration = getComputedStyle(this.document.documentElement);
+    let style: CSSStyleDeclaration;
+    let root: CSSStyleDeclaration;
+    try {
+      style = getComputedStyle(this.element.nativeElement);
+      root = getComputedStyle(this.document.documentElement);
+    } catch (error: unknown) {
+      // Resolving a computed style can fail outside a real browser engine (a test environment that
+      // cannot parse one of the application's stylesheets). The carried theming is a courtesy; a
+      // modal must never fail to open for want of it.
+      this.log.warn('Modal', 'Could not carry themed properties to the modal window', error);
+      return;
+    }
     for (const property of Array.from(style)) {
       if (!property.startsWith('--')) {
         continue;

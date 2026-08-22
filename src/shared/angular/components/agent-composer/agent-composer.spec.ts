@@ -1,6 +1,9 @@
-import { signal, WritableSignal } from '@angular/core';
+import { ApplicationRef, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
+
+import { ModalWindows } from '@shared/angular/services/modal-windows/modal-windows';
+import { FakeModalWindows } from '@shared/angular/services/modal-windows/modal-windows.fake';
 
 import type {
   AgentContextRef,
@@ -62,9 +65,11 @@ describe('AgentComposer', () => {
   let attachedContext: AgentContextRef[];
   let conversationDraft: WritableSignal<string>;
   let sentEvents: number;
+  let windows: FakeModalWindows;
 
   beforeEach(async () => {
     localStorage.clear();
+    windows = new FakeModalWindows();
     conversationDraft = signal<string>('');
     compacted = 0;
     clearedChats = 0;
@@ -178,6 +183,7 @@ describe('AgentComposer', () => {
           provide: AgentConversation,
           useValue: { draft: conversationDraft } as unknown as AgentConversation,
         },
+        { provide: ModalWindows, useValue: windows },
       ],
     })
       .overrideComponent(AgentComposer, {
@@ -734,17 +740,21 @@ describe('AgentComposer', () => {
 
   it('markdownComposer_whenOpened_rendersItsEditorAndRetiresItOnCancel', () => {
     const comp: { openMarkdown(): void; cancelMarkdown(): void } = component;
-    const host: HTMLElement = fixture.nativeElement as HTMLElement;
-    expect(host.querySelector('.agent__md-modal')).toBeNull();
+    expect(windows.openWindows).toBe(0);
 
     comp.openMarkdown();
     fixture.detectChanges();
+    TestBed.inject(ApplicationRef).tick();
 
-    expect(host.querySelector('.agent__md-title')?.textContent).toContain('Markdown Prompt Editor');
+    expect(windows.openWindows).toBe(1);
+    expect(windows.contentHost?.querySelector('.agent__md-title')?.textContent).toContain(
+      'Markdown Prompt Editor',
+    );
 
     comp.cancelMarkdown();
     fixture.detectChanges();
+    TestBed.inject(ApplicationRef).tick();
 
-    expect(host.querySelector('.agent__md-modal')).toBeNull();
+    expect(windows.openWindows).toBe(0);
   });
 });

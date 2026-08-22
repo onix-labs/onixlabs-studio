@@ -44,10 +44,8 @@ import { ModalBackdrop } from '@shared/angular/services/modal-backdrop/modal-bac
       :host(.modal-backdrop--raised) {
         display: block;
         background: var(--modal-backdrop-color);
-        backdrop-filter: blur(var(--modal-backdrop-blur));
-        transition:
-          background var(--modal-fade-duration) ease,
-          backdrop-filter var(--modal-fade-duration) ease;
+        backdrop-filter: var(--modal-backdrop-filter);
+        transition: var(--modal-backdrop-transition);
 
         @starting-style {
           background: transparent;

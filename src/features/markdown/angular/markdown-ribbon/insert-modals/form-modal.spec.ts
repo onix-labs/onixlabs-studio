@@ -1,6 +1,8 @@
-import { Component, signal, WritableSignal } from '@angular/core';
+import { ApplicationRef, Component, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
+import { ModalWindows } from '@shared/angular/services/modal-windows/modal-windows';
+import { FakeModalWindows } from '@shared/angular/services/modal-windows/modal-windows.fake';
 import { FormModal } from './form-modal';
 
 @Component({
@@ -27,19 +29,32 @@ class TestHost {
 
 describe('FormModal', () => {
   let fixture: ComponentFixture<TestHost>;
+  let windows: FakeModalWindows;
   let host: HTMLElement;
   let component: TestHost;
 
   beforeEach(async () => {
+    windows = new FakeModalWindows();
     await TestBed.configureTestingModule({
       imports: [TestHost],
+      providers: [{ provide: ModalWindows, useValue: windows }],
     }).compileComponents();
 
     fixture = TestBed.createComponent(TestHost);
     component = fixture.componentInstance;
-    host = fixture.nativeElement as HTMLElement;
     fixture.detectChanges();
+    // The modal is presented in a window; its content renders into that window's host.
+    host = windows.contentHost!;
   });
+
+  /**
+   * Flushes change detection through the modal window's attached view, then re-points the content
+   * host at the current window (a reopen presents a fresh one).
+   */
+  function flush(): void {
+    TestBed.inject(ApplicationRef).tick();
+    host = windows.contentHost!;
+  }
 
   /**
    * Finds the primary (submit) action button.
@@ -73,7 +88,7 @@ describe('FormModal', () => {
 
   it('primaryButton_whenCanSubmitTrue_emitsConfirmedOnClick', () => {
     component.canSubmit.set(true);
-    fixture.detectChanges();
+    flush();
 
     expect(primaryButton().disabled).toBe(false);
 
@@ -94,7 +109,7 @@ describe('FormModal', () => {
     expect(primaryButton().textContent?.trim()).toBe('Insert');
 
     component.submitLabel.set('Save');
-    fixture.detectChanges();
+    flush();
 
     expect(primaryButton().textContent?.trim()).toBe('Save');
   });

@@ -6,6 +6,8 @@ import {
 } from '@shared/angular/services/markdown-commands/markdown-commands';
 import { MarkdownPanels } from '@features/markdown/angular/markdown-panels/markdown-panels';
 import { Documents } from '@shared/angular/services/documents/documents';
+import { ModalWindows } from '@shared/angular/services/modal-windows/modal-windows';
+import { FakeModalWindows } from '@shared/angular/services/modal-windows/modal-windows.fake';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { MarkdownRibbon } from './markdown-ribbon';
 
@@ -50,10 +52,13 @@ describe('MarkdownRibbon', () => {
   let component: MarkdownRibbon;
   let fixture: ComponentFixture<MarkdownRibbon>;
   let element: HTMLElement;
+  let windows: FakeModalWindows;
 
   beforeEach(async () => {
+    windows = new FakeModalWindows();
     await TestBed.configureTestingModule({
       imports: [MarkdownRibbon],
+      providers: [{ provide: ModalWindows, useValue: windows }],
     }).compileComponents();
 
     fixture = TestBed.createComponent(MarkdownRibbon);
@@ -169,12 +174,14 @@ describe('MarkdownRibbon', () => {
   });
 
   it('imageButton_whenClicked_opensTheImageModal', () => {
-    expect(element.querySelector('.modal--visible')).toBeNull();
+    // A modal is presented in its own window, so opening one is observed as a window opening rather
+    // than an inline overlay appearing.
+    expect(windows.openWindows).toBe(0);
 
     smallButton('Image').click();
     fixture.detectChanges();
 
-    expect(element.querySelector('.modal--visible')).not.toBeNull();
+    expect(windows.openWindows).toBe(1);
   });
 
   /**

@@ -2,6 +2,8 @@ import { ChangeDetectionStrategy, Component, input, InputSignal } from '@angular
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { FeatureRegistry } from '@shared/angular/services/feature-registry';
+import { ModalWindows } from '@shared/angular/services/modal-windows/modal-windows';
+import { FakeModalWindows } from '@shared/angular/services/modal-windows/modal-windows.fake';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { Root } from './root';
 
@@ -23,10 +25,13 @@ class StubView {
 describe('Root', () => {
   let component: Root;
   let fixture: ComponentFixture<Root>;
+  let windows: FakeModalWindows;
 
   beforeEach(async () => {
+    windows = new FakeModalWindows();
     await TestBed.configureTestingModule({
       imports: [Root],
+      providers: [{ provide: ModalWindows, useValue: windows }],
     }).compileComponents();
 
     fixture = TestBed.createComponent(Root);
@@ -41,8 +46,9 @@ describe('Root', () => {
   it('render_whenNoTabsOpen_showsTheWelcomeScreenInsteadOfTheStrips', () => {
     const element: HTMLElement = fixture.nativeElement as HTMLElement;
 
-    // The welcome screen stays mounted; it shows by taking the modal's visible state.
-    expect(element.querySelector('.modal--visible')).not.toBeNull();
+    // The welcome screen stays mounted; at a cold start it shows by opening its (freestanding) modal
+    // window, which the test observes through the window opener.
+    expect(windows.openWindows).toBe(1);
     expect(element.querySelector('.title-strip')).toBeNull();
     expect(element.querySelector('.status-strip')).toBeNull();
   });
@@ -54,8 +60,8 @@ describe('Root', () => {
 
     const element: HTMLElement = fixture.nativeElement as HTMLElement;
 
-    // Mounted but not visible (no cold-start, no modal summoned).
-    expect(element.querySelector('.modal--visible')).toBeNull();
+    // Mounted but not shown (no cold-start, no modal summoned): its window is closed.
+    expect(windows.openWindows).toBe(0);
     expect(element.querySelector('.title-strip')).not.toBeNull();
     expect(element.querySelector('.ribbon-strip')).not.toBeNull();
     expect(element.querySelector('.content')).not.toBeNull();

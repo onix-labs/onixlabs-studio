@@ -1,10 +1,12 @@
-import { signal, WritableSignal } from '@angular/core';
+import { ApplicationRef, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { AgentConversationSummary } from '@shared/api/agent-conversation-channels';
 import { AgentCategory } from '@shared/api/agent-category-channels';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
 import { AgentCategories } from '@shared/angular/services/agent-categories/agent-categories';
+import { ModalWindows } from '@shared/angular/services/modal-windows/modal-windows';
+import { FakeModalWindows } from '@shared/angular/services/modal-windows/modal-windows.fake';
 import { AgentConversationList } from './agent-conversation-list';
 
 describe('AgentConversationList', () => {
@@ -13,6 +15,7 @@ describe('AgentConversationList', () => {
   let summaries: WritableSignal<readonly AgentConversationSummary[]>;
   let categories: WritableSignal<readonly AgentCategory[]>;
   let opened: string[];
+  let windows: FakeModalWindows;
 
   const SUMMARY: AgentConversationSummary = {
     id: 'c1',
@@ -61,6 +64,7 @@ describe('AgentConversationList', () => {
 
   beforeEach(async () => {
     opened = [];
+    windows = new FakeModalWindows();
     summaries = signal<readonly AgentConversationSummary[]>([]);
     categories = signal<readonly AgentCategory[]>([]);
     const conversationStub: Partial<AgentConversation> = {
@@ -89,6 +93,7 @@ describe('AgentConversationList', () => {
       providers: [
         { provide: AgentConversation, useValue: conversationStub },
         { provide: AgentCategories, useValue: categoriesStub },
+        { provide: ModalWindows, useValue: windows },
       ],
     }).compileComponents();
 
@@ -219,21 +224,29 @@ describe('AgentConversationList', () => {
 
     tool('Manage categories').click();
     fixture.detectChanges();
+    TestBed.inject(ApplicationRef).tick();
 
+    expect(windows.openWindows).toBe(1);
+    const content: HTMLElement = windows.contentHost!;
     const rows: HTMLElement[] = Array.from(
-      host.querySelectorAll<HTMLElement>('.history__manage-row'),
+      content.querySelectorAll<HTMLElement>('.history__manage-row'),
     );
     expect(rows.length).toBe(1);
     expect(rows[0].textContent).toContain('Work');
-    expect(host.querySelector('.history__modal-title')?.textContent).toContain('Manage categories');
+    expect(content.querySelector('.history__modal-title')?.textContent).toContain(
+      'Manage categories',
+    );
   });
 
   it('newCategory_opensTheEditorModalWithAnEmptyName', () => {
     tool('New category').click();
     fixture.detectChanges();
+    TestBed.inject(ApplicationRef).tick();
 
-    expect(host.querySelector('.history__modal-title')?.textContent).toContain('New category');
-    expect(host.querySelector<HTMLInputElement>('.history__modal-input input')!.value).toBe('');
+    expect(windows.openWindows).toBe(1);
+    const content: HTMLElement = windows.contentHost!;
+    expect(content.querySelector('.history__modal-title')?.textContent).toContain('New category');
+    expect(content.querySelector<HTMLInputElement>('.history__modal-input input')!.value).toBe('');
   });
 
   it('delete_whenConfirmed_promptsWithTheCheckedCount', () => {
@@ -244,14 +257,17 @@ describe('AgentConversationList', () => {
 
     tool('Delete').click();
     fixture.detectChanges();
+    TestBed.inject(ApplicationRef).tick();
 
-    expect(host.querySelector('.history__modal-title')?.textContent).toContain(
+    expect(windows.openWindows).toBe(1);
+    const content: HTMLElement = windows.contentHost!;
+    expect(content.querySelector('.history__modal-title')?.textContent).toContain(
       'Delete conversations?',
     );
-    expect(host.querySelector('.history__modal-body')?.textContent).toContain('1 conversation');
+    expect(content.querySelector('.history__modal-body')?.textContent).toContain('1 conversation');
   });
 
   it('modal_whenClosed_doesNotRenderItsContent', () => {
-    expect(host.querySelector('.history__modal-title')).toBeNull();
+    expect(windows.openWindows).toBe(0);
   });
 });
