@@ -34,6 +34,7 @@ const ACTION_EDIT_PROJECT: string = 'edit-project';
 const ACTION_COPY_PATH: string = 'copy-path';
 const ACTION_COPY_RELATIVE: string = 'copy-relative-path';
 const ACTION_REVEAL: string = 'reveal';
+const ACTION_OPTIONS: string = 'options';
 const ACTION_FOLLOW: string = 'follow-active';
 const ACTION_GIT_STATUS: string = 'git-status';
 const ACTION_RELOAD: string = 'reload';
@@ -114,19 +115,36 @@ export class SolutionPanel {
   private readonly shell: Shell = inject(Shell);
 
   /**
-   * Gets the toolbar's overflow items: the options that belong to the panel as a whole rather than to
+   * Gets the toolbar's overflow items: the actions that belong to the panel as a whole rather than to
    * any one row, which is what the row context menu is for.
    *
-   * Every row is a plain item. `active` is not used here even though two of these toggle something:
-   * it renders as the accent that marks the chosen row of a pick-one list, so on independent
-   * switches — both of which start on — it reads as a selection rather than as an on state.
+   * The panel's two standing switches are gathered under an Options submenu, leaving the top level to
+   * the commands — things that happen once when chosen. Each switch carries a checkbox showing its
+   * current state, so the menu answers "is this on?" without the user having to look at the tree and
+   * infer it. Computed rather than fixed for exactly that reason: the boxes must read the model each
+   * time the menu opens.
    */
-  public readonly moreItems: readonly MenuItem[] = [
-    { id: ACTION_FOLLOW, label: 'Sync with Active Document', icon: Icon.LINK },
-    { id: ACTION_GIT_STATUS, label: 'Show Git Status', icon: Icon.SOURCE_CONTROL },
+  public readonly moreItems: Signal<readonly MenuItem[]> = computed((): readonly MenuItem[] => [
+    {
+      id: ACTION_OPTIONS,
+      label: 'Options',
+      icon: Icon.OPTIONS,
+      children: [
+        {
+          id: ACTION_FOLLOW,
+          label: 'Follow Focused Document',
+          checked: this.solution.followsActiveDocument(),
+        },
+        {
+          id: ACTION_GIT_STATUS,
+          label: 'Show Git Status',
+          checked: this.solution.showsGitStatus(),
+        },
+      ],
+    },
     { id: ACTION_OPEN_ROOT, label: OPEN_ROOT_LABEL, icon: Icon.DIRECTORY },
     { id: ACTION_RELOAD, label: 'Reload Solution', icon: Icon.REFRESH },
-  ];
+  ]);
 
   /**
    * Builds a row's context-menu items.

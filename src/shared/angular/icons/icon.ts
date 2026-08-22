@@ -1064,6 +1064,14 @@ export class Icon {
   public static readonly SELECT_ALL: Icon = new Icon('ph ph-checks');
 
   /**
+   * Gets the options icon: a checked list, for the menu row gathering a panel's standing switches.
+   *
+   * Deliberately not the gear, which stands for Settings — these are a panel's own switches, not the
+   * application's preferences, and the checked list says so by picturing what the submenu holds.
+   */
+  public static readonly OPTIONS: Icon = new Icon('ph ph-list-checks');
+
+  /**
    * Gets the downward caret used on menus and split buttons.
    */
   public static readonly CARET_DOWN: Icon = new Icon('ph ph-caret-down');

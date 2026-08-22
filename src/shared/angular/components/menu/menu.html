@@ -1,6 +1,24 @@
-<ng-template #panel let-data>
+<!--
+  One popup surface: a `cdkMenu` of rows, and the single template every level of a menu is built
+  from. The caller's trigger opens it for the top level, and a row carrying children opens it again
+  for its submenu, so a menu nests to any depth from the item tree alone.
+
+  ⚠️ The `cdkMenu` element must stay this template's ROOT node. Every level is instantiated by a CDK
+  trigger's `TemplatePortal`, and that portal is what supplies the injector carrying `MENU_TRIGGER`
+  and `MENU_STACK`. Wrapping it — outletting the rows in from a second template, say — puts the
+  `cdkMenu` in a view whose injector comes from its declaration site instead, and CDK then reads it
+  as an *inline* menu: it builds its own menu stack, so the trigger's `closeAll()` acts on an empty
+  one, clicking away never dismisses the menu, and the panel lays out as an inline strip that
+  stretches to its container rather than as a popup sized to its rows.
+
+  The trigger's data rides along as `$implicit` at every level, so a row deep inside a context menu
+  still acts on the subject the menu was opened for. `items` is set only for a submenu; the top level
+  has none and resolves its rows from the data instead.
+-->
+<ng-template #surface let-data let-items="items">
   <div class="app-menu-panel" cdkMenu>
-    @for (item of rowsFor(data); track item.id) {
+    @for (item of items ?? rowsFor(data); track item.id) {
+      @let children = childrenOf(item);
       <button
         type="button"
         class="app-menu-panel__item"
@@ -11,14 +29,26 @@
         [class.app-menu-panel__item--tone-info]="item.tone === 'info'"
         cdkMenuItem
         [cdkMenuItemDisabled]="item.disabled ?? false"
+        [cdkMenuTriggerFor]="children ? surface : null"
+        [cdkMenuTriggerData]="{ $implicit: data, items: children }"
+        [attr.role]="item.checked === undefined ? 'menuitem' : 'menuitemcheckbox'"
+        [attr.aria-checked]="item.checked"
         (cdkMenuItemTriggered)="onSelect(item.id, data)"
       >
-        @if (item.icon; as icon) {
+        @if (item.checked !== undefined) {
+          <span
+            class="app-menu-panel__item-check"
+            [class.app-menu-panel__item-check--checked]="item.checked"
+          ></span>
+        } @else if (item.icon; as icon) {
           <app-icon [icon]="icon" />
         }
         <span class="app-menu-panel__item-label">{{ item.label }}</span>
         @if (item.status; as status) {
           <span class="app-menu-panel__item-status">{{ status }}</span>
+        }
+        @if (children) {
+          <app-icon class="app-menu-panel__item-caret" [icon]="Icon.CARET_RIGHT" />
         }
       </button>
     }

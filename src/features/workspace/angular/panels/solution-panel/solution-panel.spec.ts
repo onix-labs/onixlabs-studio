@@ -341,7 +341,31 @@ describe('SolutionPanel', () => {
   });
 
   describe('toolbar overflow', () => {
-    it('onMoreAction_syncWithActiveDocument_togglesFollowing', () => {
+    /**
+     * Reads the rows of the Options submenu.
+     * @returns Returns the submenu's rows, or an empty list when there is no Options row.
+     */
+    function optionsChildren(): readonly MenuItem[] {
+      return (
+        component.moreItems().find((item: MenuItem): boolean => item.id === 'options')?.children ??
+        []
+      );
+    }
+
+    /**
+     * Reads the checked state of each row in the Options submenu, keyed by its action id.
+     * @returns Returns the checked state per action.
+     */
+    function checkedById(): Record<string, boolean | undefined> {
+      return Object.fromEntries(
+        optionsChildren().map((item: MenuItem): [string, boolean | undefined] => [
+          item.id,
+          item.checked,
+        ]),
+      );
+    }
+
+    it('onMoreAction_followFocusedDocument_togglesFollowing', () => {
       expect(solution.followsActiveDocument()).toBe(true);
       component.onMoreAction('follow-active');
       expect(solution.followsActiveDocument()).toBe(false);
@@ -372,13 +396,44 @@ describe('SolutionPanel', () => {
       expect(solution.refreshCount).toBe(1);
     });
 
+    it('moreItems_gathersTheStandingSwitchesUnderOptions', () => {
+      // The top level holds only commands — things that happen once when chosen. The two switches,
+      // which describe how the panel behaves from now on, live one level down.
+      expect(component.moreItems().map((item: MenuItem): string => item.id)).toEqual([
+        'options',
+        'open-root',
+        'reload',
+      ]);
+      expect(optionsChildren().map((item: MenuItem): string => item.id)).toEqual([
+        'follow-active',
+        'git-status',
+      ]);
+    });
+
+    it('moreItems_theSwitches_carryTheirLiveCheckedState', () => {
+      // Recomputed from the model rather than fixed, so a box read on opening the menu is current.
+      expect(checkedById()).toEqual({ 'follow-active': true, 'git-status': true });
+
+      solution.followsActiveDocument.set(false);
+
+      expect(checkedById()).toEqual({ 'follow-active': false, 'git-status': true });
+    });
+
     it('moreItems_areAllPlainRows', () => {
       // `active` renders as the accent marking the chosen row of a pick-one list. These are ordinary
-      // commands and independent switches, so none of them claims to be a selection.
-      const flags: (boolean | undefined)[] = component.moreItems.map(
-        (item: MenuItem): boolean | undefined => item.active,
-      );
-      expect(flags.every((flag: boolean | undefined): boolean => flag === undefined)).toBe(true);
+      // commands and independent switches, so none of them claims to be a selection — the switches
+      // say so with a checkbox instead.
+      const rows: readonly MenuItem[] = [...component.moreItems(), ...optionsChildren()];
+      expect(rows.every((item: MenuItem): boolean => item.active === undefined)).toBe(true);
+    });
+
+    it('moreItems_theCommands_areNotCheckboxes', () => {
+      // `checked` is what makes a row a switch, so a command must leave it undefined: an unchecked
+      // box beside "Reload Solution" would claim it has an off state.
+      const commands: readonly MenuItem[] = component
+        .moreItems()
+        .filter((item: MenuItem): boolean => item.children === undefined);
+      expect(commands.every((item: MenuItem): boolean => item.checked === undefined)).toBe(true);
     });
 
     it('statusFor_whenGitStatusHidden_reportsNoBadge', () => {

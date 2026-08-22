@@ -233,6 +233,42 @@ describe('TreeView context menu', () => {
     expect(component.chosen[0].itemId).toBe('act:beta');
     expect(component.chosen[0].row.id).toBe('beta');
   });
+
+  it('contextMenu_isAPopupRatherThanAnInlineMenu', () => {
+    rightClick(0);
+
+    // The tell for a menu whose `cdkMenu` could not reach its trigger's injector: CDK falls back to
+    // treating it as an inline menu, which builds its own menu stack. The panel then cannot be
+    // dismissed by its trigger and lays out as a stretched strip instead of a popup. Asserted on the
+    // class because that is the one visible symptom of the injector chain being wrong.
+    const panel: Element | null = document.querySelector('.app-menu-panel');
+    expect(panel).not.toBeNull();
+    expect(panel?.classList.contains('cdk-menu-inline')).toBe(false);
+  });
+
+  it('contextMenu_whenClickingAway_dismissesIt', () => {
+    rightClick(0);
+    expect(menuItems()).toHaveLength(1);
+
+    document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    fixture.detectChanges();
+
+    expect(menuItems()).toHaveLength(0);
+  });
+
+  it('contextMenu_whenClickingAnotherRow_dismissesIt', () => {
+    // Clicking a row is the ordinary way out of a context menu — opening a file, say — so it has to
+    // dismiss the menu rather than leave it stranded over the tree.
+    rightClick(0);
+    expect(menuItems()).toHaveLength(1);
+
+    rows()[1].dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    rows()[1].click();
+    fixture.detectChanges();
+
+    expect(menuItems()).toHaveLength(0);
+  });
 });
 
 /**

@@ -1,4 +1,4 @@
-import { CdkMenu, CdkMenuItem } from '@angular/cdk/menu';
+import { CdkMenu, CdkMenuItem, CdkMenuTrigger } from '@angular/cdk/menu';
 import { ConnectedPosition } from '@angular/cdk/overlay';
 import {
   ChangeDetectionStrategy,
@@ -40,6 +40,25 @@ export interface MenuItem {
    * Gets a value indicating whether the item is the current selection, shown with an accent marker.
    */
   readonly active?: boolean;
+
+  /**
+   * Gets the state of a row that is a binary switch, shown with a checkbox before its label. Leave it
+   * undefined for an ordinary command, which is what distinguishes the two: an unchecked switch is
+   * still a switch and must keep its (empty) box.
+   *
+   * This is the counterpart to {@link active}, not a synonym for it. `active` accents the chosen row
+   * of a pick-one list; a switch is independent of its neighbours, and several may be on at once.
+   */
+  readonly checked?: boolean;
+
+  /**
+   * Gets the rows of the submenu this item opens, or undefined for a row that is acted on directly.
+   *
+   * A row with children is a container: it opens its own panel on hover or on the right-arrow key,
+   * and choosing it does nothing, so it never emits through {@link Menu.selected}. Its own children
+   * may nest further — the panel renders itself recursively.
+   */
+  readonly children?: readonly MenuItem[];
 
   /**
    * Gets a value indicating whether the item is inert (shown muted and not selectable).
@@ -86,12 +105,17 @@ export interface MenuChoice {
  */
 @Component({
   selector: 'app-menu',
-  imports: [AppIcon, CdkMenu, CdkMenuItem],
+  imports: [AppIcon, CdkMenu, CdkMenuItem, CdkMenuTrigger],
   templateUrl: './menu.html',
   styleUrl: './menu.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class Menu {
+  /**
+   * Gets the icon set, exposed for the template's submenu caret.
+   */
+  protected readonly Icon: typeof Icon = Icon;
+
   /**
    * Gets the rows shown in the menu. Menus whose rows depend on what the trigger was pointing at
    * supply {@link itemsFor} instead.
@@ -130,9 +154,12 @@ export class Menu {
 
   /**
    * Gets the panel template the caller's trigger opens through `cdkMenuTriggerFor`.
+   *
+   * It is the same template each submenu opens, so the caller's trigger and every nested row build
+   * their panel the same way — see the template for why that matters.
    */
   public readonly panel: Signal<TemplateRef<unknown> | undefined> =
-    viewChild<TemplateRef<unknown>>('panel');
+    viewChild<TemplateRef<unknown>>('surface');
 
   /**
    * Gets the overlay position the caller's trigger passes to `cdkMenuPosition`.
@@ -148,6 +175,16 @@ export class Menu {
    */
   protected rowsFor(data: unknown): readonly MenuItem[] {
     return this.itemsFor()?.(data) ?? this.items();
+  }
+
+  /**
+   * Resolves a row's submenu rows, treating an empty list as no submenu at all: a row that opens an
+   * empty panel reads as a bug rather than as an answer, exactly as an empty context menu does.
+   * @param item The row to resolve.
+   * @returns Returns the submenu's rows, or null when the row is acted on directly.
+   */
+  protected childrenOf(item: MenuItem): readonly MenuItem[] | null {
+    return item.children?.length ? item.children : null;
   }
 
   /**

@@ -279,6 +279,56 @@
   color: var(--form-muted-foreground-color);
 }
 
+// A row that is a binary switch draws the checkbox control's box in place of an icon, so a menu
+// switch reads as the same control the settings pages use.
+//
+// It is a span rather than the `app-checkbox` atom because the atom is an `<input>`, and interactive
+// content cannot nest inside the row's own `<button>`. Its geometry is therefore copied from
+// `forms/checkbox/checkbox.scss` and must be kept in step with it.
+.app-menu-panel__item-check {
+  position: relative;
+  flex: none;
+  inline-size: 1.1rem;
+  block-size: 1.1rem;
+  background: var(--form-control-background-color);
+  border: 0.0625rem solid var(--form-control-border-color);
+  border-radius: calc(0.3rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  transition:
+    background-color 150ms ease-in-out,
+    border-color 150ms ease-in-out;
+
+  // The tick, drawn as two borders of a rotated box, revealed only when checked.
+  &::before {
+    content: '';
+    position: absolute;
+    inset-block-start: 0.16rem;
+    inset-inline-start: 0.34rem;
+    inline-size: 0.28rem;
+    block-size: 0.55rem;
+    border-inline-end: 0.13rem solid var(--form-on-accent-color);
+    border-block-end: 0.13rem solid var(--form-on-accent-color);
+    transform: rotate(45deg) scale(0);
+    transition: transform 150ms ease-in-out;
+  }
+}
+
+.app-menu-panel__item-check--checked {
+  background: var(--accent-color);
+  border-color: var(--accent-color);
+
+  &::before {
+    transform: rotate(45deg) scale(1.2);
+  }
+}
+
+// The caret marking a row that opens a submenu, pushed to the row's end by the label filling it. It
+// is an affordance rather than an icon, so it stays muted and does not claim the row's leading slot.
+.app-menu-panel__item-caret {
+  margin-inline-start: 0.5rem;
+  color: var(--form-muted-foreground-color);
+}
+
 // The status strip's language-server drop-up. It reuses the popup-menu surface but lists servers
 // (not actions), so each row pairs the server's name and live state with a restart button rather
 // than being a single activatable menu item.

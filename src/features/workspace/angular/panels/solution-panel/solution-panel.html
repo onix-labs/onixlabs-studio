@@ -2,7 +2,7 @@
   <app-explorer-toolbar
     [query]="query()"
     searchPlaceholder="Search solution"
-    [moreItems]="moreItems"
+    [moreItems]="moreItems()"
     (queryChange)="onSearch($event)"
     (expandAll)="expandAll()"
     (collapseAll)="collapseAll()"
