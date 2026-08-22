@@ -9,7 +9,15 @@
     />
   </app-ribbon-strip-group>
 
+  <!-- Reset Widths leads as the large button: it is the group's one command, and the only control here
+       that does something rather than filter. The three toggles beside it are the run-state filters —
+       empty, idle, working — which partition every column, so they read as one set and compose. -->
   <app-ribbon-strip-group title="View">
+    <app-ribbon-strip-button
+      [icon]="Icon.LAYOUT_SPLIT"
+      label="Reset Widths"
+      (action)="onResetLayout()"
+    />
     <app-ribbon-strip-column>
       <app-ribbon-strip-button-small
         [icon]="Icon.HIDE_EMPTY"
@@ -26,9 +34,11 @@
         (action)="onToggleHideIdle()"
       />
       <app-ribbon-strip-button-small
-        [icon]="Icon.LAYOUT_SPLIT"
-        label="Reset Widths"
-        (action)="onResetLayout()"
+        [icon]="Icon.HIDE_WORKING"
+        label="Hide Working"
+        [toggle]="true"
+        [pressed]="hideWorking()"
+        (action)="onToggleHideWorking()"
       />
     </app-ribbon-strip-column>
   </app-ribbon-strip-group>

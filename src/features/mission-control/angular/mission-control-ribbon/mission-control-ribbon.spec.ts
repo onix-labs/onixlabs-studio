@@ -34,6 +34,7 @@ describe('MissionControlRibbon', () => {
   let runningCount: WritableSignal<number>;
   let hideEmpty: WritableSignal<boolean>;
   let hideIdle: WritableSignal<boolean>;
+  let hideWorking: WritableSignal<boolean>;
   let remoteCapable: WritableSignal<readonly AgentHost[]>;
   let allRemote: WritableSignal<boolean>;
   let posture: WritableSignal<AiPermissionPosture>;
@@ -43,6 +44,7 @@ describe('MissionControlRibbon', () => {
     runningCount = signal<number>(0);
     hideEmpty = signal<boolean>(false);
     hideIdle = signal<boolean>(false);
+    hideWorking = signal<boolean>(false);
     remoteCapable = signal<readonly AgentHost[]>([]);
     allRemote = signal<boolean>(false);
     posture = signal<AiPermissionPosture>('prompt');
@@ -51,6 +53,7 @@ describe('MissionControlRibbon', () => {
     const missionControlStub: Partial<MissionControl> = {
       hideEmpty: hideEmpty.asReadonly(),
       hideIdle: hideIdle.asReadonly(),
+      hideWorking: hideWorking.asReadonly(),
       resetWidths: (): void => void calls.push('resetWidths'),
       setHideEmpty: (value: boolean): void => {
         calls.push(`setHideEmpty:${value}`);
@@ -59,6 +62,10 @@ describe('MissionControlRibbon', () => {
       setHideIdle: (value: boolean): void => {
         calls.push(`setHideIdle:${value}`);
         hideIdle.set(value);
+      },
+      setHideWorking: (value: boolean): void => {
+        calls.push(`setHideWorking:${value}`);
+        hideWorking.set(value);
       },
     };
     const agentHostsStub: Partial<AgentHosts> = {
@@ -109,19 +116,38 @@ describe('MissionControlRibbon', () => {
     return match;
   }
 
-  it('render_drawsStopAll_theStackedViewToggles_threePostures_andTheRemoteToggle', () => {
+  it('render_drawsStopAll_resetWidths_theThreeStateToggles_threePostures_andTheRemoteToggle', () => {
     fixture.detectChanges();
 
     expect(button('Stop All')).toBeTruthy();
     expect(button('Remote Control')).toBeTruthy();
+    expect(button('Reset Widths')).toBeTruthy();
     expect(button('Hide Empty')).toBeTruthy();
     expect(button('Hide Idle')).toBeTruthy();
-    expect(button('Reset Widths')).toBeTruthy();
+    expect(button('Hide Working')).toBeTruthy();
     expect(button('Prompt All')).toBeTruthy();
     expect(button('Allow Edits')).toBeTruthy();
     expect(button('Allow All')).toBeTruthy();
     // The bulk Remote toggle has nothing to expose until an agent registers.
     expect(button('Remote Control').disabled).toBe(true);
+  });
+
+  it('viewToggles_areTheThreeRunStates_andResetWidthsIsNotOneOfThem', () => {
+    // Reset Widths leads the group as a command, so it must not have picked up toggle semantics: only
+    // the three run-state filters latch, and each reports its own pressed state.
+    fixture.detectChanges();
+
+    expect(button('Reset Widths').getAttribute('aria-pressed')).toBeNull();
+    for (const label of ['Hide Empty', 'Hide Idle', 'Hide Working']) {
+      expect(button(label).getAttribute('aria-pressed')).toBe('false');
+    }
+
+    button('Hide Working').click();
+    fixture.detectChanges();
+
+    expect(calls).toEqual(['setHideWorking:true']);
+    expect(button('Hide Working').getAttribute('aria-pressed')).toBe('true');
+    expect(button('Hide Idle').getAttribute('aria-pressed')).toBe('false');
   });
 
   it('postureButtons_pressExactlyTheOneInForce', () => {

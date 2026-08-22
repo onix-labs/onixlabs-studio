@@ -236,24 +236,29 @@ export class MissionControlAgentTile {
   );
 
   /**
-   * Gets a value indicating whether the tile is hidden — the user has manually hidden this agent, an
-   * empty host while empty tiles are suppressed, or an idle host while idle tiles are suppressed.
+   * Gets a value indicating whether the tile is hidden — the user has manually hidden this agent, or a
+   * blanket toggle catches its run state: empty, idle, or working.
    *
-   * The three conditions are OR-ed: the per-agent hide toggle in the rail hides this column outright,
-   * independently of the blanket Hide Empty and Hide Idle toggles. Hide Idle applies to every tile: an
-   * idle column (a settled conversation) is decluttered wherever it lives, and remains reachable
-   * through its tab and by turning the toggle back off. Hide Empty likewise declutters every empty
-   * column — including agent tabs, which is what the toggle is for — with one exception: the tile the
-   * user is actively working in ({@link focusWithin}) is never hidden while empty. That keeps the
-   * New-chat protection (New chat empties the transcript, and hiding the column out from under the
-   * button the user just clicked is the bug we are avoiding) without neutering Hide Empty for every
-   * other empty agent tab, which no longer has focus and can be decluttered normally. The manual hide
-   * carries no such exemption — it is the user's explicit choice.
+   * The conditions are OR-ed: the per-agent hide toggle in the rail hides this column outright,
+   * independently of the blanket Hide Empty, Hide Idle and Hide Working toggles. The three run states
+   * partition every tile — empty (nothing said), idle (a settled conversation), working (a run in
+   * flight) — so the toggles compose: pressing all three empties the view, and pressing Hide Idle and
+   * Hide Empty together leaves exactly the agents currently doing something. Hide Idle applies to every
+   * tile: an idle column is decluttered wherever it lives, and remains reachable through its tab and by
+   * turning the toggle back off. Hide Working reads the same way for a column with a run in flight — it
+   * keeps running, out of sight. Hide Empty likewise declutters every empty column — including agent
+   * tabs, which is what the toggle is for — with one exception: the tile the user is actively working
+   * in ({@link focusWithin}) is never hidden while empty. That keeps the New-chat protection (New chat
+   * empties the transcript, and hiding the column out from under the button the user just clicked is
+   * the bug we are avoiding) without neutering Hide Empty for every other empty agent tab, which no
+   * longer has focus and can be decluttered normally. The manual hide carries no such exemption — it is
+   * the user's explicit choice.
    */
   protected readonly hidden: Signal<boolean> = computed(
     (): boolean =>
       this.missionControl.hiddenHosts().has(this.host.id) ||
       (this.isIdle() && this.missionControl.hideIdle()) ||
+      (this.isRunning() && this.missionControl.hideWorking()) ||
       (this.isEmpty() && this.missionControl.hideEmpty() && !this.focusWithin()),
   );
 

@@ -54,8 +54,8 @@ const POSTURES: readonly PostureChoice[] = [
 /**
  * The contextual ribbon shown while the Mission Control tab is active. The Agents group acts on every
  * live agent at once through {@link AgentHosts} — currently Stop All, which aborts each running one.
- * The View group toggles which columns are shown and resets their widths via the shared
- * {@link MissionControl} state.
+ * The View group resets the column widths and toggles which run states are shown — empty, idle, working
+ * — via the shared {@link MissionControl} state.
  *
  * The Permissions group carries everything governing what an agent may do without the user. The global
  * permission posture is drawn as three mutually exclusive toggles rather than a field: one is always
@@ -149,6 +149,11 @@ export class MissionControlRibbon {
   protected readonly hideIdle: Signal<boolean> = this.missionControl.hideIdle;
 
   /**
+   * Gets whether working agent columns (a run in flight) are hidden.
+   */
+  protected readonly hideWorking: Signal<boolean> = this.missionControl.hideWorking;
+
+  /**
    * Stops every running agent across all live hosts.
    */
   protected onStopAll(): void {
@@ -209,6 +214,15 @@ export class MissionControlRibbon {
     const next: boolean = !this.missionControl.hideIdle();
     this.log.info('mission-control.ribbon', 'Toggled Hide Idle', { hidden: next });
     this.missionControl.setHideIdle(next);
+  }
+
+  /**
+   * Toggles whether working agent columns are hidden.
+   */
+  protected onToggleHideWorking(): void {
+    const next: boolean = !this.missionControl.hideWorking();
+    this.log.info('mission-control.ribbon', 'Toggled Hide Working', { hidden: next });
+    this.missionControl.setHideWorking(next);
   }
 
   /**

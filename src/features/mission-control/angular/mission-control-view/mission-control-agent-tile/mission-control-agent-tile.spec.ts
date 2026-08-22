@@ -61,6 +61,7 @@ interface Knobs {
   readonly items: WritableSignal<readonly unknown[]>;
   readonly hideEmpty: WritableSignal<boolean>;
   readonly hideIdle: WritableSignal<boolean>;
+  readonly hideWorking: WritableSignal<boolean>;
   readonly hiddenHosts: WritableSignal<ReadonlySet<string>>;
 }
 
@@ -87,6 +88,7 @@ function setUp(
   const items: WritableSignal<readonly unknown[]> = signal<readonly unknown[]>([]);
   const hideEmpty: WritableSignal<boolean> = signal<boolean>(false);
   const hideIdle: WritableSignal<boolean> = signal<boolean>(false);
+  const hideWorking: WritableSignal<boolean> = signal<boolean>(false);
   const hiddenHosts: WritableSignal<ReadonlySet<string>> = signal<ReadonlySet<string>>(
     new Set<string>(),
   );
@@ -106,6 +108,7 @@ function setUp(
   const missionControlStub: Partial<MissionControl> = {
     hideEmpty: hideEmpty.asReadonly(),
     hideIdle: hideIdle.asReadonly(),
+    hideWorking: hideWorking.asReadonly(),
     hiddenHosts: hiddenHosts.asReadonly(),
     widthFor: (): number => 320,
     setWidth: (): void => undefined,
@@ -130,7 +133,11 @@ function setUp(
   const fixture: ComponentFixture<MissionControlAgentTile> =
     TestBed.createComponent(MissionControlAgentTile);
   const state: TileState = fixture.componentInstance as unknown as TileState;
-  return { state, knobs: { running, items, hideEmpty, hideIdle, hiddenHosts }, fixture };
+  return {
+    state,
+    knobs: { running, items, hideEmpty, hideIdle, hideWorking, hiddenHosts },
+    fixture,
+  };
 }
 
 describe('MissionControlAgentTile', () => {
@@ -178,7 +185,9 @@ describe('MissionControlAgentTile', () => {
     expect(state.hidden()).toBe(true);
   });
 
-  it('hidden_whenRunning_isNeverHiddenRegardlessOfPreferences', () => {
+  it('hidden_whenRunning_isUntouchedByTheOtherTwoStatePreferences', () => {
+    // The three run-state toggles partition the tiles, so each catches only its own state: a working
+    // column is not decluttered by Hide Empty or Hide Idle, which describe columns it is not one of.
     const { state, knobs } = setUp();
     knobs.running.set(true);
     knobs.items.set([{}]);
@@ -188,9 +197,31 @@ describe('MissionControlAgentTile', () => {
     expect(state.hidden()).toBe(false);
   });
 
+  it('hidden_whenRunning_followsTheHideWorkingPreference', () => {
+    // Hide Working is the third of the run-state filters and carries no focus exemption: a working
+    // column keeps running out of sight, and comes back when the toggle goes off.
+    const { state, knobs } = setUp();
+    knobs.running.set(true);
+
+    expect(state.hidden()).toBe(false);
+    knobs.hideWorking.set(true);
+    expect(state.hidden()).toBe(true);
+  });
+
+  it('hidden_whenIdleOrEmpty_isUntouchedByHideWorking', () => {
+    // The other side of the partition: Hide Working catches only a run in flight, so a settled or
+    // never-used column stays put under it.
+    const { state, knobs } = setUp();
+    knobs.hideWorking.set(true);
+    expect(state.hidden()).toBe(false);
+
+    knobs.items.set([{}]); // idle: has messages, not running
+    expect(state.hidden()).toBe(false);
+  });
+
   it('hidden_whenManuallyHidden_isHiddenEvenWhileRunning', () => {
     // The per-agent hide toggle is OR-ed with (and carries no exemption from) the blanket toggles: a
-    // manually hidden agent is hidden even while running, when Hide Empty and Hide Idle are both off.
+    // manually hidden agent is hidden even while running, with every blanket toggle off.
     const { state, knobs } = setUp();
     knobs.running.set(true);
     expect(state.hidden()).toBe(false);

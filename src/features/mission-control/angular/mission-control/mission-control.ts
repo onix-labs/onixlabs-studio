@@ -13,7 +13,7 @@ export const MIN_TILE_WIDTH: number = 240;
 
 /**
  * The Mission Control feature's shared view state: the per-tile width overrides the user sets by
- * dragging (keyed so a tile keeps its width while the view is open) and whether idle agents are shown.
+ * dragging (keyed so a tile keeps its width while the view is open) and which run states are shown.
  * A root singleton — Mission Control is a singleton tab, and the view, tiles, and contextual ribbon
  * (mounted by the shell in a different injector branch) must share one instance. The live agent list
  * itself lives in {@link import('@shared/angular/services/agent-hosts/agent-hosts').AgentHosts}.
@@ -38,9 +38,14 @@ export class MissionControl {
   private readonly hideIdleState: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
+   * Holds whether working agent tiles (a run in flight) are hidden.
+   */
+  private readonly hideWorkingState: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
    * Holds the ids of the hosts the user has manually hidden, keyed by host id (the stable id shared by
-   * the rail rows and the tiles). Manual hiding is OR-ed with Hide Empty and Hide Idle: an agent is
-   * hidden when the user has hidden it, or when a blanket toggle catches it.
+   * the rail rows and the tiles). Manual hiding is OR-ed with the blanket toggles: an agent is hidden
+   * when the user has hidden it, or when Hide Empty, Hide Idle or Hide Working catches it.
    */
   private readonly hiddenHostsState: WritableSignal<ReadonlySet<string>> = signal<
     ReadonlySet<string>
@@ -55,6 +60,11 @@ export class MissionControl {
    * Gets whether idle agent tiles are hidden.
    */
   public readonly hideIdle: Signal<boolean> = this.hideIdleState.asReadonly();
+
+  /**
+   * Gets whether working agent tiles are hidden.
+   */
+  public readonly hideWorking: Signal<boolean> = this.hideWorkingState.asReadonly();
 
   /**
    * Gets the set of host ids the user has manually hidden.
@@ -106,6 +116,14 @@ export class MissionControl {
    */
   public setHideIdle(value: boolean): void {
     this.hideIdleState.set(value);
+  }
+
+  /**
+   * Sets whether working agent tiles are hidden.
+   * @param value Whether to hide working tiles.
+   */
+  public setHideWorking(value: boolean): void {
+    this.hideWorkingState.set(value);
   }
 
   /**

@@ -46,6 +46,13 @@ export class Icon {
   public static readonly HIDE_IDLE: Icon = new Icon('ph-duotone ph-pause-circle');
 
   /**
+   * Gets the hide-working-agents icon shown on Mission Control's View group toggle. Completes the
+   * circle family the other two toggles wear — dashed for empty, paused for idle, playing for working
+   * — so the three read as one set of run states rather than three unrelated glyphs.
+   */
+  public static readonly HIDE_WORKING: Icon = new Icon('ph-duotone ph-play-circle');
+
+  /**
    * Gets the icon marking a shown agent on Mission Control's per-agent hide toggle.
    */
   public static readonly AGENT_VISIBLE: Icon = new Icon('ph-duotone ph-eye');
