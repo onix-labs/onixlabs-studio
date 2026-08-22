@@ -33,8 +33,11 @@ export {
   UPDATE_API_REQUEST,
   SEND_API_REQUEST,
   SET_API_VARIABLE,
+  OPEN_DOCUMENT,
+  SAVE_DOCUMENT,
+  OPEN_TERMINAL,
 } from './ai/ai-tool-surface';
-export type { AgentSurface, InsertPlacement } from './ai/ai-tool-surface';
+export type { AgentSurface, InsertPlacement, OpenDocumentFormat } from './ai/ai-tool-surface';
 export type {
   AiAuthSource,
   AiAuthStatus,

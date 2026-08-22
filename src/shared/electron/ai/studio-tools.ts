@@ -15,7 +15,10 @@ import {
   INSERT_BINARY_BYTES,
   InsertPlacement,
   LIST_RUN_CONFIGURATIONS,
+  OPEN_DOCUMENT,
+  OPEN_TERMINAL,
   PATCH_BINARY_BYTES,
+  SAVE_DOCUMENT,
   READ_ACTIVE_DOCUMENT,
   RUN_ACTIVE_DOCUMENT,
   SET_ACTIVE_DOCUMENT_LANGUAGE,
@@ -126,6 +129,21 @@ export const LIST_RUN_CONFIGURATIONS_FQN: string = `mcp__studio__${LIST_RUN_CONF
  * collections is auto-allowed; creating, updating and sending are not.
  */
 export const LIST_API_REQUESTS_FQN: string = `mcp__studio__${LIST_API_REQUESTS}`;
+
+/**
+ * The fully-qualified names the workbench tools are exposed under to the Claude Agent SDK.
+ *
+ * Opening and saving are auto-allowed, for the same reason the in-app editor tools are: a new tab is
+ * unsaved, touches nothing on disk, and is undone by closing it, so it is no more consequential than
+ * an edit the user can see. Saving reaches the file system only through the operating system's save
+ * dialog, which is itself the gate — a prompt in front of a prompt asks the same question twice.
+ *
+ * Opening a terminal is deliberately NOT auto-allowed: it spawns a real shell process, which puts it
+ * with `write_terminal_input` rather than with the document tools.
+ */
+export const OPEN_DOCUMENT_FQN: string = `mcp__studio__${OPEN_DOCUMENT}`;
+export const SAVE_DOCUMENT_FQN: string = `mcp__studio__${SAVE_DOCUMENT}`;
+export const OPEN_TERMINAL_FQN: string = `mcp__studio__${OPEN_TERMINAL}`;
 
 /**
  * The fully-qualified tool names of the mutating run-configuration tools, which go through the
@@ -1158,6 +1176,101 @@ export async function sendApiRequest(context: AgentRunContext, id: string): Prom
     `Headers:\n${JSON.stringify(sent.headers ?? {}, null, 2)}`,
     `Body${sent.truncated === true ? ' (truncated)' : ''}:\n${sent.body ?? ''}`,
   ].join('\n\n');
+}
+
+/**
+ * Appended to every surface's system prompt, because the workbench tools belong to the application
+ * rather than to whatever the agent is docked to. It tells the model that a document is something it
+ * can hand over rather than paste into the conversation.
+ */
+export const WORKBENCH_PROMPT_APPENDIX: string = [
+  'Whatever else you are docked to, you can put a document in front of the user as its own tab:',
+  `- "${OPEN_DOCUMENT}" opens a new markdown or code tab and fills it with your content.`,
+  `- "${SAVE_DOCUMENT}" offers to save one of those documents through the save dialog.`,
+  `- "${OPEN_TERMINAL}" opens a new terminal tab.`,
+  'Use them when what you are producing is a thing in its own right rather than an answer — a report,',
+  'a design note, a draft file, a script. A long document pasted into this conversation is hard to',
+  'read, impossible to edit and gone when the conversation is; the same document in a tab is none of',
+  'those. Keep answering in the conversation for anything short, and for explanation.',
+  'A document opens UNSAVED, so opening one costs the user nothing and touches nothing on disk: they',
+  'read it in the editor and decide. Do not ask permission to open one — open it, then say what you',
+  `opened. Only call "${SAVE_DOCUMENT}" when the user has said they want to keep it; it puts an`,
+  'operating-system dialog in front of them, so calling it uninvited interrupts them.',
+  'Say what you opened and why, briefly, rather than repeating the content you just put in the tab.',
+].join('\n');
+
+/**
+ * Opens a new unsaved document tab through the renderer bridge and fills it with content.
+ * @param context The agent run context (carries the bridge).
+ * @param format Whether the document opens in the markdown or the code editor.
+ * @param title The tab's title.
+ * @param content The document's content.
+ * @param language The code document's language, when it is a code document.
+ * @returns Returns a confirmation carrying the id a later save refers to, or the reason it failed.
+ */
+export async function openDocument(
+  context: AgentRunContext,
+  format: string,
+  title: string,
+  content: string,
+  language?: string,
+): Promise<string> {
+  logger.trace('StudioTools', `Tool invoked: open_document (${format})`);
+  const result: unknown = await context.bridge.request(OPEN_DOCUMENT, {
+    format,
+    title,
+    content,
+    language,
+  });
+  const opened: { ok?: boolean; error?: string; id?: string; title?: string } = result ?? {};
+  if (opened.ok !== true) {
+    logger.warn('StudioTools', `open_document refused: ${opened.error ?? 'unknown reason'}`);
+    return opened.error ?? 'The document could not be opened.';
+  }
+  logger.info('StudioTools', `Opened ${format} document ${opened.id ?? ''}`);
+  return (
+    `Opened "${opened.title ?? title}" in a new ${format} tab (id ${opened.id ?? ''}). ` +
+    'It is unsaved — the user can read it in the editor and decide whether to keep it. ' +
+    `Pass that id to ${SAVE_DOCUMENT} if they ask you to save it.`
+  );
+}
+
+/**
+ * Offers to save a document the agent opened, through the operating system's save dialog.
+ * @param context The agent run context (carries the bridge).
+ * @param id The identifier returned when the document was opened.
+ * @returns Returns the saved path, the fact that the user declined, or the reason it failed.
+ */
+export async function saveDocument(context: AgentRunContext, id: string): Promise<string> {
+  logger.trace('StudioTools', `Tool invoked: save_document (${id})`);
+  const result: unknown = await context.bridge.request(SAVE_DOCUMENT, { id });
+  const saved: { ok?: boolean; error?: string; cancelled?: boolean; path?: string } = result ?? {};
+  if (saved.cancelled === true) {
+    // Not a failure: the user was asked and said no. Reported as its own outcome so the model does
+    // not read it as a transient error and try again.
+    return 'The user closed the save dialog without saving. The document is still open and unsaved.';
+  }
+  if (saved.ok !== true) {
+    return saved.error ?? 'The document could not be saved.';
+  }
+  logger.info('StudioTools', `Saved agent document ${id}`);
+  return `Saved to ${saved.path ?? 'the chosen location'}.`;
+}
+
+/**
+ * Opens a new terminal tab through the renderer bridge.
+ * @param context The agent run context (carries the bridge).
+ * @returns Returns a confirmation, or the reason it failed.
+ */
+export async function openTerminal(context: AgentRunContext): Promise<string> {
+  logger.trace('StudioTools', 'Tool invoked: open_terminal');
+  const result: unknown = await context.bridge.request(OPEN_TERMINAL, {});
+  const opened: { ok?: boolean; id?: string } = result ?? {};
+  if (opened.ok !== true) {
+    return 'The terminal could not be opened.';
+  }
+  logger.info('StudioTools', `Opened terminal tab ${opened.id ?? ''}`);
+  return `Opened a new terminal tab (id ${opened.id ?? ''}) in the user's default shell.`;
 }
 
 /**

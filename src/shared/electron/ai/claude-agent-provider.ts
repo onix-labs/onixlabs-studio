@@ -41,9 +41,12 @@ import {
   READ_BINARY_DISASSEMBLY,
   READ_BINARY_OVERVIEW,
   READ_BINARY_SELECTION,
+  OPEN_DOCUMENT,
+  OPEN_TERMINAL,
   READ_TERMINAL_OUTPUT,
   REPLACE_ACTIVE_DOCUMENT,
   RUN_ACTIVE_DOCUMENT,
+  SAVE_DOCUMENT,
   SET_ACTIVE_DOCUMENT_LANGUAGE,
   WRITE_BINARY_ASSEMBLY,
   WRITE_TERMINAL_INPUT,
@@ -102,6 +105,13 @@ import {
   SET_LANGUAGE_TOOL_FQN,
   STUDIO_PROMPT_APPENDIX,
   TERMINAL_PROMPT_APPENDIX,
+  WORKBENCH_PROMPT_APPENDIX,
+  OPEN_DOCUMENT_FQN,
+  SAVE_DOCUMENT_FQN,
+  OPEN_TERMINAL_FQN,
+  openDocument,
+  saveDocument,
+  openTerminal,
   WRITE_TERMINAL_FQN,
   buildRunPrompt,
   deleteBinaryBytes,
@@ -213,6 +223,19 @@ function parseAskUserQuestions(input: Record<string, unknown>): readonly AskUser
  * Holds the built-in file-editing tools auto-allowed under the `auto-edits` permission posture.
  */
 const EDIT_TOOLS: readonly string[] = ['Write', 'Edit', 'MultiEdit', 'NotebookEdit'];
+
+/**
+ * Holds the tools a terminal-surface run may reach: its own two terminal tools, plus the workbench
+ * tools every surface carries. The confinement exists to stop a terminal-docked agent acting on the
+ * file system or on another view's document; opening a tab of its own does neither.
+ */
+const TERMINAL_SURFACE_TOOLS: readonly string[] = [
+  READ_TERMINAL_FQN,
+  WRITE_TERMINAL_FQN,
+  OPEN_DOCUMENT_FQN,
+  SAVE_DOCUMENT_FQN,
+  OPEN_TERMINAL_FQN,
+];
 
 /**
  * Holds built-in tools the audit log ignores beyond the read-only set (#311): planning/delegation
@@ -504,6 +527,70 @@ export class ClaudeAgentProvider implements AgentProvider {
       name: 'studio',
       version: '0.0.0',
       tools: [
+        // The workbench tools ride on EVERY surface, unlike everything else here. Opening a top-level
+        // tab is an application action rather than a surface one, so an agent docked to a terminal, a
+        // binary or an API collection reaches the same global tab registry as one docked to an editor.
+        // Withheld only in read-only chat mode, which never creates anything.
+        ...(readOnly
+          ? []
+          : [
+              tool(
+                OPEN_DOCUMENT,
+                'Open a new tab containing a document you have written — a report, a design note, a draft file — and show it to the user. The document opens UNSAVED and touches nothing on disk, so opening one is free and reversible (the user closes the tab). Use it instead of pasting anything long into the conversation. Returns an id to pass to save_document if the user later asks to keep it.',
+                {
+                  format: z
+                    .enum(['markdown', 'code'])
+                    .describe(
+                      'markdown for prose (rendered in the markdown editor), code for anything else.',
+                    ),
+                  title: z
+                    .string()
+                    .min(1)
+                    .describe(
+                      "The tab's title, and the name suggested in the save dialog. Write it for a human.",
+                    ),
+                  content: z.string().describe('The full content of the document.'),
+                  language: z
+                    .string()
+                    .optional()
+                    .describe(
+                      'For a code document, its language: a Monaco language id (csharp) or display name (C#). Ignored for markdown.',
+                    ),
+                },
+                async (args: {
+                  format: string;
+                  title: string;
+                  content: string;
+                  language?: string;
+                }) =>
+                  text(
+                    await openDocument(
+                      getContext(),
+                      args.format,
+                      args.title,
+                      args.content,
+                      args.language,
+                    ),
+                  ),
+              ),
+              tool(
+                SAVE_DOCUMENT,
+                'Offer to save a document you opened with open_document, through the operating system save dialog. The user chooses the location, or dismisses the dialog. Call it only when the user has said they want to keep the document — it interrupts them with a modal dialog.',
+                {
+                  id: z
+                    .string()
+                    .min(1)
+                    .describe('The id returned by open_document for the document to save.'),
+                },
+                async (args: { id: string }) => text(await saveDocument(getContext(), args.id)),
+              ),
+              tool(
+                OPEN_TERMINAL,
+                "Open a new terminal tab in the user's default shell. Use it when the user needs a terminal of their own; it spawns a real shell, so do not open one speculatively.",
+                {},
+                async () => text(await openTerminal(getContext())),
+              ),
+            ]),
         // Asking the user a clarifying question is not a custom tool: it is the model's built-in
         // `AskUserQuestion`, handled in `canUseTool` below (rendered locally and, under remote control,
         // forwarded to claude.ai). See the `disallowedTools` note above.
@@ -1012,7 +1099,12 @@ export class ClaudeAgentProvider implements AgentProvider {
       // A terminal-surface run is confined to its terminal: deny every tool that is not one of the two
       // terminal tools, blocking all built-ins (file system, shell, editor). The write tool then falls
       // through to the posture logic below so it prompts unless the posture auto-allows.
-      if (terminal && toolName !== READ_TERMINAL_FQN && toolName !== WRITE_TERMINAL_FQN) {
+      //
+      // The workbench tools are exempt: the confinement is about what the agent may *act on* — it must
+      // not reach the file system or another view's document — and opening a tab of its own reaches
+      // neither. A terminal-docked agent asked to write up what it found would otherwise have nowhere
+      // to put it. (Only `open_terminal` reaches this line; the document tools are auto-allowed.)
+      if (terminal && !TERMINAL_SURFACE_TOOLS.includes(toolName)) {
         return { behavior: 'deny', message: 'This agent can only use the terminal.' };
       }
       // Chat mode is read-only: allow read-only project exploration, deny anything mutating or
@@ -1186,6 +1278,11 @@ export class ClaudeAgentProvider implements AgentProvider {
       // and read-only project exploration; canUseTool gates everything else. A project run auto-allows
       // read-only exploration only.
       allowedTools: [
+        // The workbench document tools are auto-allowed on every surface, like the in-app editor
+        // tools: a new tab is unsaved and reversible, and saving asks through the OS dialog, which is
+        // the gate. `open_terminal` is absent on purpose — it spawns a shell, so it goes through
+        // canUseTool like write_terminal_input does.
+        ...(readOnly ? [] : [OPEN_DOCUMENT_FQN, SAVE_DOCUMENT_FQN]),
         // `AskUserQuestion` is intentionally NOT auto-allowed: it must reach `canUseTool` so Studio can
         // render it and (under remote control) forward it to the peer, then return the answer.
         // Listing run configurations is a read: auto-allowed wherever the tools are registered, so the
@@ -1511,11 +1608,13 @@ export class ClaudeAgentProvider implements AgentProvider {
     if (readOnly) {
       return `${withAsk}\n\n${READ_ONLY_APPENDIX}`;
     }
+    // The workbench tools are registered on every surface, so every surface is told about them.
+    const withWorkbench: string = `${withAsk}\n\n${WORKBENCH_PROMPT_APPENDIX}`;
     // The run-configuration tools are registered on the workspace-scoped surfaces only, so only those
     // are told how to author them (see the tool registration in `buildRunOptions`).
     return surface === 'terminal' || surface === 'binary' || surface === 'api'
-      ? withAsk
-      : `${withAsk}\n\n${RUN_CONFIGURATION_PROMPT_APPENDIX}`;
+      ? withWorkbench
+      : `${withWorkbench}\n\n${RUN_CONFIGURATION_PROMPT_APPENDIX}`;
   }
 
   /**
