@@ -43,7 +43,7 @@ const VARIANT_EXPORT_PDF: string = 'export-pdf';
 /**
  * Represents the contextual ribbon shown when a code tab is active. File actions act on the active
  * document, editor commands route through the {@link EditorCommands} registry, the language field sets
- * the active document's syntax, and Run/Terminal drive the docked run terminal.
+ * the active document's syntax, and Start/Terminal drive the docked run terminal.
  */
 @Component({
   selector: 'app-code-ribbon',
@@ -99,7 +99,7 @@ export class CodeRibbon {
   private readonly monaco: Monaco = inject(Monaco);
 
   /**
-   * Holds the code runner driving the Run action.
+   * Holds the code runner driving the Start action.
    */
   private readonly runner: CodeRunner = inject(CodeRunner);
 
