@@ -348,6 +348,14 @@ export interface AgentSession {
   interrupt(): void;
 
   /**
+   * Stops a task the session is running in the background, if the harness supports it. The task settles
+   * as `stopped` through the ordinary lifecycle events. Optional: a provider with no task model (the
+   * stateless AI-SDK path, Codex) simply does not implement it, and the control degrades to absent.
+   * @param taskId The provider's identifier for the task.
+   */
+  stopTask?(taskId: string): void;
+
+  /**
    * Ends the session and releases its resources (the harness subprocess).
    */
   close(): Promise<void>;

@@ -284,9 +284,21 @@ export class AiRuntime {
   }
 
   /**
+   * Stops a task an agent is running in the background. The provider settles it as `stopped`, which
+   * arrives through the ordinary task-lifecycle events, so nothing here waits on a confirmation.
+   * @param agentSessionId The conversation whose session owns the task.
+   * @param taskId The provider's identifier for the task.
+   */
+  public stopTask(agentSessionId: string, taskId: string): void {
+    this.log.debug('AiRuntime', `Stopping task ${taskId} on session ${agentSessionId}`);
+    void this.api?.stopTask({ agentSessionId, taskId });
+  }
+
+  /**
    * Closes an agent's held-open live session (New chat / tab close); no-op when none is open.
    * @param agentSessionId The agent conversation whose session to close.
    */
+
   public closeSession(agentSessionId: string): void {
     this.log.trace('AiRuntime', 'Session close requested', agentSessionId);
     void this.api?.closeSession(agentSessionId);

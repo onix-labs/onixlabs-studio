@@ -97,6 +97,21 @@ export interface AiEditDecisionReply {
 }
 
 /**
+ * Identifies a task to stop: the conversation running it, and the provider's task id.
+ */
+export interface AiStopTaskRequest {
+  /**
+   * Gets the conversation whose session owns the task.
+   */
+  readonly agentSessionId: string;
+
+  /**
+   * Gets the provider's identifier for the task.
+   */
+  readonly taskId: string;
+}
+
+/**
  * A request to inject a user message into an in-flight run (mid-run steering). Accepted only when the
  * run's provider supports streaming input (the Claude Agent SDK); the manager answers whether the
  * message was taken, so the renderer can queue it for after the run instead.
