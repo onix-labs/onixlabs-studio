@@ -54,9 +54,11 @@ export class AppMenu {
   >(new Map<string, ContributionEntry>());
 
   /**
-   * Holds the handler for each command id in the current menu, rebuilt whenever the menu changes.
+   * Holds the entry behind each command id in the current menu, rebuilt whenever the menu changes.
+   * Whole entries rather than bare handlers, because a native role has no handler and is dispatched to
+   * the main process instead.
    */
-  private handlers: ReadonlyMap<string, () => void> = new Map<string, () => void>();
+  private entries: ReadonlyMap<string, MenuEntry> = new Map<string, MenuEntry>();
 
   /**
    * Gets the merged menu, in bar order.
@@ -97,7 +99,7 @@ export class AppMenu {
     this.client?.onCommand((commandId: string): void => this.dispatch(commandId));
     effect((): void => {
       const sections: readonly MenuContribution[] = this.sections();
-      this.handlers = AppMenu.collectHandlers(sections);
+      this.entries = AppMenu.collectEntries(sections);
       this.client?.setMenu(AppMenu.toWire(sections));
     });
   }
@@ -137,34 +139,42 @@ export class AppMenu {
   }
 
   /**
-   * Runs the handler registered for a command id. A command with no handler is logged rather than
-   * thrown: the menu is rebuilt asynchronously, so a click can land microseconds after the command that
-   * raised it left the bar.
+   * Runs a command by id, from either menu surface: the native bar's click round-trip, or the
+   * in-window menu choosing a row. An unknown command is logged rather than thrown, because the menu is
+   * rebuilt asynchronously and a click can land just after the command that raised it left the menu.
    * @param commandId The chosen command's identifier.
    */
-  private dispatch(commandId: string): void {
-    const handler: (() => void) | undefined = this.handlers.get(commandId);
-    if (handler === undefined) {
-      this.log.warn('AppMenu', `No handler for menu command '${commandId}'`);
+  public dispatch(commandId: string): void {
+    const entry: MenuEntry | undefined = this.entries.get(commandId);
+    if (entry === undefined) {
+      this.log.warn('AppMenu', `No entry for menu command '${commandId}'`);
       return;
     }
     this.log.debug('AppMenu', `Menu command '${commandId}'`);
-    handler();
+    if (entry.run !== undefined) {
+      entry.run();
+      return;
+    }
+    // A role has no renderer-side handler: the native menu performs it itself, and the in-window menu
+    // asks the main process to.
+    if (entry.role !== undefined) {
+      this.client?.runRole(entry.role);
+    }
   }
 
   /**
-   * Collects every runnable entry's handler, keyed by command id.
+   * Collects every identified entry, keyed by command id.
    * @param sections The merged menu.
-   * @returns Returns the handler map.
+   * @returns Returns the entry map.
    */
-  private static collectHandlers(
+  private static collectEntries(
     sections: readonly MenuContribution[],
-  ): ReadonlyMap<string, () => void> {
-    const handlers: Map<string, () => void> = new Map<string, () => void>();
+  ): ReadonlyMap<string, MenuEntry> {
+    const entries: Map<string, MenuEntry> = new Map<string, MenuEntry>();
     const walk: (items: readonly MenuEntry[]) => void = (items: readonly MenuEntry[]): void => {
       for (const item of items) {
-        if (item.id !== undefined && item.run !== undefined) {
-          handlers.set(item.id, item.run);
+        if (item.id !== undefined) {
+          entries.set(item.id, item);
         }
         if (item.items !== undefined) {
           walk(item.items);
@@ -174,7 +184,7 @@ export class AppMenu {
     for (const section of sections) {
       walk(section.items);
     }
-    return handlers;
+    return entries;
   }
 
   /**
@@ -214,6 +224,9 @@ export class AppMenu {
     return {
       setMenu: (sections: readonly AppMenuSection[]): void => {
         bridge.send(MenuChannel.SetMenu, sections);
+      },
+      runRole: (role: string): void => {
+        bridge.send(MenuChannel.RunRole, role);
       },
       onCommand: (listener: (commandId: string) => void): (() => void) =>
         bridge.on(MenuChannel.Command, (...args: unknown[]): void => listener(args[0] as string)),

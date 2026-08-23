@@ -3,3 +3,11 @@
 :host {
   display: none;
 }
+
+// A divider between groups of rows. Inset from the panel's edges so it reads as separating the rows
+// rather than as a border on the panel itself.
+.app-menu-panel__separator {
+  margin: 0.25rem 0.5rem;
+  border: none;
+  border-block-start: 0.0625rem solid var(--menu-border-color);
+}

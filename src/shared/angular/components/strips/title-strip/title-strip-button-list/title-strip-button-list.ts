@@ -3,16 +3,17 @@ import { WelcomeModal } from '@shared/angular/services/welcome-modal/welcome-mod
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { Icon } from '@shared/angular/icons/icon';
 import { TitleStripButton } from '../title-strip-button/title-strip-button';
+import { TitleStripMenu } from '../title-strip-menu/title-strip-menu';
 import { TitleStripTabMenu } from '../title-strip-tab-menu/title-strip-tab-menu';
 
 /**
- * Represents the action buttons in the title strip: the settings button, the welcome button that
- * summons the welcome screen for creating a new tab, then the Mission Control button that opens the
- * all-agents management view.
+ * Represents the action buttons in the title strip: the application menu, the settings button, the
+ * welcome button that summons the welcome screen for creating a new tab, then the Mission Control
+ * button that opens the all-agents management view.
  */
 @Component({
   selector: 'app-title-strip-button-list',
-  imports: [TitleStripButton, TitleStripTabMenu],
+  imports: [TitleStripButton, TitleStripMenu, TitleStripTabMenu],
   templateUrl: './title-strip-button-list.html',
   styleUrl: './title-strip-button-list.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

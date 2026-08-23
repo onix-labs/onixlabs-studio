@@ -14,6 +14,11 @@ export enum MenuChannel {
    * Reports that a menu command was chosen, by its identifier (main→renderer, on).
    */
   Command = 'menu:command',
+
+  /**
+   * Asks the main process to perform a native window role the renderer cannot (renderer→main, send).
+   */
+  RunRole = 'menu:run-role',
 }
 
 /**
@@ -32,4 +37,12 @@ export interface MenuClient {
    * @returns Returns a function that unsubscribes.
    */
   onCommand(listener: (commandId: string) => void): () => void;
+
+  /**
+   * Asks the main process to perform a native window role — full screen, developer tools, minimise —
+   * which the software-rendered menu cannot do for itself. The native menu performs its own roles, so
+   * this is only used by the in-window menu.
+   * @param role The role to perform.
+   */
+  runRole(role: string): void;
 }

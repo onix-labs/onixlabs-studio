@@ -61,6 +61,13 @@ export interface MenuItem {
   readonly children?: readonly MenuItem[];
 
   /**
+   * Gets a value indicating whether the row is a divider rather than an entry: a rule drawn between
+   * groups, carrying no label and never selectable. A long menu without them reads as one undivided
+   * list, which is exactly the problem grouping solves.
+   */
+  readonly separator?: boolean;
+
+  /**
    * Gets a value indicating whether the item is inert (shown muted and not selectable).
    */
   readonly disabled?: boolean;
