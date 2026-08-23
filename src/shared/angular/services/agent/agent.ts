@@ -1453,7 +1453,7 @@ export class Agent {
     // spontaneous note plus a notification, keeping the agent's "I'll tell you when it's done" promise.
     if (event.kind === 'background-task') {
       if (event.agentSessionId === this.agentSessionId) {
-        this.onBackgroundTask(event.status, event.summary);
+        this.onBackgroundTask(event.status, event.summary, event.requestId);
       }
       return;
     }
@@ -1774,8 +1774,14 @@ export class Agent {
    * note, not a turn.
    * @param status How the task settled.
    * @param summary The one-line summary of what the task did.
+   * @param requestId The request id the settle arrived under, adopted when the agent reports back.
    */
-  private onBackgroundTask(status: 'completed' | 'failed' | 'stopped', summary: string): void {
+  private onBackgroundTask(
+    status: 'completed' | 'failed' | 'stopped',
+    summary: string,
+    requestId: string,
+  ): void {
+    this.adoptReportBackTurn(requestId);
     const detail: string = summary.trim();
     const word: string =
       status === 'completed' ? 'finished' : status === 'failed' ? 'failed' : 'was stopped';
@@ -1798,6 +1804,32 @@ export class Agent {
       key: `agent-task:${tabId ?? 'panel'}`,
       route: watching ? 'history-only' : 'default',
     });
+  }
+
+  /**
+   * Adopts the turn the CLI starts on its own when a backgrounded task settles (#426), so the report it
+   * writes renders in this conversation instead of being dropped.
+   *
+   * Diagnosed rather than assumed: the harness genuinely does resume by itself a second or two after the
+   * settle (`task_notification` → `init` → assistant text → `result`). Nothing was missing from the
+   * agent's side; the messages were arriving under the launching turn's request id while
+   * {@link activeRequestId} was already null, so the per-turn filter in {@link onEvent} discarded every
+   * one of them. Adopting that request id is the whole fix — no synthetic prompt is sent, and no tokens
+   * are spent beyond what the harness was already going to spend.
+   *
+   * Declined in two cases. When the setting is off the conversation stays idle and the caller's note and
+   * notification are the whole story. When a turn is already in flight the settle is genuinely
+   * out-of-band — the user has moved on and asked for something else — and clobbering
+   * {@link activeRequestId} would strand that turn's spinner.
+   * @param requestId The request id the settle arrived under, which the report will also arrive under.
+   */
+  private adoptReportBackTurn(requestId: string): void {
+    if (!this.settings.aiReportBackgroundTasks() || this.activeRequestId !== null) {
+      return;
+    }
+    this.flushStream();
+    this.activeRequestId = requestId;
+    this.busy.set(true);
   }
 
   /**

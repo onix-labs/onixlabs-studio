@@ -8,6 +8,13 @@
       <app-setting-control key="ai.autoScroll" />
     </app-setting-row>
 
+    <app-setting-row
+      label="Report background tasks back"
+      description="When a task the agent backgrounded finishes, let the agent pick the conversation back up and tell you what it found, rather than only noting that it finished. The agent resumes on its own and spends tokens to do it, so turn this off to keep an idle conversation idle."
+    >
+      <app-setting-control key="ai.reportBackgroundTasks" />
+    </app-setting-row>
+
     <app-ai-remote-notifications />
 
     <app-setting-row

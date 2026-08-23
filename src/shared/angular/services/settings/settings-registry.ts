@@ -93,6 +93,7 @@ export interface SettingsValues {
   readonly 'ai.activeConnectionId': string;
   readonly 'ai.connectionModels': AiConnectionModels;
   readonly 'ai.autoScroll': boolean;
+  readonly 'ai.reportBackgroundTasks': boolean;
   readonly 'ai.permissionPosture': AiPermissionPosture;
   readonly 'ai.remoteControlPosture': AiRemoteControlPosture;
   readonly 'ai.toolPolicies': Readonly<Record<string, AiToolPolicy>>;
@@ -683,6 +684,16 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         description:
           'Keep agent conversations pinned to the newest message as the response streams. Scrolling ' +
           'up pauses the follow; scrolling back to the bottom resumes it. Applies to every agent view.',
+        control: { kind: 'toggle' },
+        default: true,
+      },
+      {
+        key: 'ai.reportBackgroundTasks',
+        title: 'Report background tasks back',
+        description:
+          'When a task the agent backgrounded finishes, let the agent pick the conversation back up ' +
+          'and tell you what it found, rather than only noting that it finished. The agent resumes on ' +
+          'its own and spends tokens to do it, so turn this off to keep an idle conversation idle.',
         control: { kind: 'toggle' },
         default: true,
       },
