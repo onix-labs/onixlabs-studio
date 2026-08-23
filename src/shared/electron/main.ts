@@ -62,6 +62,7 @@ import { LspManager } from './lsp/lsp-manager';
 import { LspServerRegistry } from './lsp/lsp-server-registry';
 import { LspSettingsManager } from './lsp/lsp-settings';
 import { MediaProtocol } from '@shared/electron/media-protocol';
+import { MenuManager } from '@shared/electron/menu-manager';
 import { openFilePathsFromArgv } from '@shared/electron/open-with-paths';
 import {
   createFileJournalStore,
@@ -276,6 +277,13 @@ class Program {
   private readonly fileManager: FileManager = new FileManager(
     (): BrowserWindow | null => this.windows.main(),
     this.trustedPaths,
+  );
+
+  /**
+   * Renders the contextual application menu the renderer composes.
+   */
+  private readonly menuManager: MenuManager = new MenuManager((): BrowserWindow | null =>
+    this.windows.main(),
   );
 
   /**
@@ -737,6 +745,7 @@ class Program {
     this.printManager.register();
     this.terminalManager.register();
     this.fileManager.register();
+    this.menuManager.register();
     this.codeRunner.register();
     this.gitManager.register();
     this.workspaceManager.register();
@@ -863,31 +872,19 @@ class Program {
   }
 
   /**
-   * Installs the application menu: the default menu minus the View menu's zoom items (Zoom In,
-   * Zoom Out, Actual Size). Page zoom is disabled in the application — the UI is designed for a
-   * fixed scale, and the editors provide their own content zoom — so the menu omits the zoom roles,
-   * which also unregisters their Cmd/Ctrl+=, - and 0 accelerators.
+   * Installs the bootstrap application menu: the platform's own app menu and nothing else.
+   *
+   * The real menu is contextual and composed in the renderer, which knows the active tab and what it
+   * can do (see {@link MenuManager}); it replaces this one as soon as the renderer publishes it. This
+   * stub exists only for the moment between the app becoming ready and the first paint, so macOS has
+   * a menu bar rather than none — and deliberately omits the default File/Edit/View roles, whose
+   * accelerators would otherwise be live while pointing at nothing the application does.
    */
   private installApplicationMenu(): void {
     const template: MenuItemConstructorOptions[] = [];
     if (process.platform === 'darwin') {
       template.push({ role: 'appMenu' });
     }
-    template.push(
-      { role: 'fileMenu' },
-      { role: 'editMenu' },
-      {
-        label: 'View',
-        submenu: [
-          { role: 'reload' },
-          { role: 'forceReload' },
-          { role: 'toggleDevTools' },
-          { type: 'separator' },
-          { role: 'togglefullscreen' },
-        ],
-      },
-      { role: 'windowMenu' },
-    );
     Menu.setApplicationMenu(Menu.buildFromTemplate(template));
   }
 
@@ -931,9 +928,15 @@ class Program {
     const override: string | undefined = process.env['STUDIO_CORNERS'];
     if (override === 'round' || override === 'squircle') {
       recommendReducedEffects = override === 'round';
-      this.logger.info('startup', `Rendering recommendation forced to '${override}' (STUDIO_CORNERS)`);
+      this.logger.info(
+        'startup',
+        `Rendering recommendation forced to '${override}' (STUDIO_CORNERS)`,
+      );
     } else if (recommendReducedEffects) {
-      this.logger.info('startup', `Weak GPU detected ('${description}'); recommending reduced effects`);
+      this.logger.info(
+        'startup',
+        `Weak GPU detected ('${description}'); recommending reduced effects`,
+      );
     }
 
     this.gpuRendering = { recommendReducedEffects, description };

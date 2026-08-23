@@ -14,6 +14,8 @@ import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/
 import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button';
 import { RibbonStripButtonSmall } from '@shared/angular/components/ribbon-strip/ribbon-strip-button-small/ribbon-strip-button-small';
 import { RibbonStripCheck } from '@shared/angular/components/ribbon-strip/ribbon-strip-check/ribbon-strip-check';
+import { contributeFeatureMenu } from '@shared/angular/services/app-menu/contribute-feature-menu';
+import { MENU_SEPARATOR, MenuContribution } from '@shared/angular/services/app-menu/app-menu-model';
 import { RibbonStripColumn } from '@shared/angular/components/ribbon-strip/ribbon-strip-column/ribbon-strip-column';
 import { RibbonStripField } from '@shared/angular/components/ribbon-strip/ribbon-strip-field/ribbon-strip-field';
 import { RibbonStripGroup } from '@shared/angular/components/ribbon-strip/ribbon-strip-group/ribbon-strip-group';
@@ -191,6 +193,127 @@ export class CodeRibbon {
   );
 
   /**
+   * Contributes this tab's menu for as long as the code ribbon is mounted: the File, Edit and Language
+   * commands the ribbon offers, folded into the core's sections.
+   */
+  private readonly menu: void = contributeFeatureMenu('code', (): readonly MenuContribution[] => [
+    {
+      id: 'file',
+      label: 'File',
+      items: [
+        {
+          id: 'code.save',
+          label: 'Save',
+          accelerator: 'CmdOrCtrl+S',
+          run: (): void => this.onSave(),
+        },
+        {
+          id: 'code.saveAs',
+          label: 'Save As…',
+          accelerator: 'CmdOrCtrl+Shift+S',
+          run: (): void => this.onSaveVariant(VARIANT_SAVE_AS),
+        },
+        MENU_SEPARATOR,
+        {
+          id: 'code.print',
+          label: 'Print…',
+          accelerator: 'CmdOrCtrl+P',
+          run: (): void => this.onPrint(),
+        },
+        { id: 'code.exportPdf', label: 'Export to PDF…', run: (): void => this.onExportPdf() },
+      ],
+    },
+    {
+      id: 'edit',
+      label: 'Edit',
+      items: [
+        {
+          id: 'code.undo',
+          label: 'Undo',
+          accelerator: 'CmdOrCtrl+Z',
+          run: (): void => this.onUndo(),
+        },
+        {
+          id: 'code.redo',
+          label: 'Redo',
+          accelerator: 'CmdOrCtrl+Shift+Z',
+          run: (): void => this.onRedo(),
+        },
+        MENU_SEPARATOR,
+        { id: 'code.cut', label: 'Cut', accelerator: 'CmdOrCtrl+X', run: (): void => this.onCut() },
+        {
+          id: 'code.copy',
+          label: 'Copy',
+          accelerator: 'CmdOrCtrl+C',
+          run: (): void => this.onCopy(),
+        },
+        {
+          id: 'code.paste',
+          label: 'Paste',
+          accelerator: 'CmdOrCtrl+V',
+          run: (): void => this.onPaste(),
+        },
+        MENU_SEPARATOR,
+        {
+          id: 'code.find',
+          label: 'Find…',
+          accelerator: 'CmdOrCtrl+F',
+          run: (): void => this.onFind(),
+        },
+        {
+          id: 'code.format',
+          label: 'Format Document',
+          accelerator: 'Alt+Shift+F',
+          run: (): void => this.onFormat(),
+        },
+      ],
+    },
+    {
+      id: 'view',
+      label: 'View',
+      items: [
+        {
+          id: 'code.wordWrap',
+          label: 'Word Wrap',
+          kind: 'checkbox',
+          checked: this.wordWrap(),
+          run: (): void => this.onWordWrap(!this.wordWrap()),
+        },
+        {
+          id: 'code.minimap',
+          label: 'Minimap',
+          kind: 'checkbox',
+          checked: this.minimap(),
+          run: (): void => this.onMinimap(!this.minimap()),
+        },
+        {
+          id: 'code.lineNumbers',
+          label: 'Line Numbers',
+          kind: 'checkbox',
+          checked: this.lineNumbers(),
+          run: (): void => this.onLineNumbers(!this.lineNumbers()),
+        },
+      ],
+    },
+    {
+      id: 'code',
+      label: 'Code',
+      items: [
+        {
+          id: 'code.run',
+          label: 'Start',
+          accelerator: 'CmdOrCtrl+R',
+          enabled: this.canRun(),
+          run: (): void => this.onRun(),
+        },
+        MENU_SEPARATOR,
+        { id: 'code.terminal', label: 'Open Terminal', run: (): void => this.onTerminal() },
+        { id: 'code.agent', label: 'Ask the Agent', run: (): void => this.onAgent() },
+      ],
+    },
+  ]);
+
+  /**
    * Gets the extra actions offered by the Save menu button's dropdown.
    */
   protected readonly saveItems: readonly RibbonMenuItem[] = [
@@ -249,7 +372,11 @@ export class CodeRibbon {
    * Exports the active document to PDF, prompting for a destination and opening the result.
    */
   protected onExportPdf(): void {
-    this.log.info('code.ribbon', 'Export to PDF requested', this.activeDocument()?.fileName() ?? '');
+    this.log.info(
+      'code.ribbon',
+      'Export to PDF requested',
+      this.activeDocument()?.fileName() ?? '',
+    );
     void this.printing.exportPdf(this.activeDocument()?.fileName() ?? '');
   }
 
