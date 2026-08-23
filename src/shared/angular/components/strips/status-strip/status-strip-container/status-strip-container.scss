@@ -26,3 +26,18 @@
   align-items: center;
   gap: 1rem;
 }
+
+// The drop-up triggers are icon buttons that read as one cluster, so they sit far closer than the
+// ambient segments beside them. Each already carries its own padding as a hover target, so the gap
+// only has to keep the glyphs from touching.
+.status-strip__menus {
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+
+  // A trigger that renders nothing (no tasks running, no language servers) must not leave its gap
+  // behind, or hiding it would shift the cluster instead of collapsing it.
+  > *:empty {
+    display: none;
+  }
+}
