@@ -101,6 +101,13 @@ export interface AgentItem {
   readonly text: string;
 
   /**
+   * Gets whether the item is closed to continuation, so streamed text never folds into it. Set on
+   * out-of-band notes the agent did not stream — a background-task settle, for instance — which are
+   * complete sentences in their own right and must not absorb whatever the agent says next.
+   */
+  readonly sealed?: boolean;
+
+  /**
    * Gets the images attached to a user message (pasted or dropped into the composer), rendered as
    * thumbnails and persisted with the transcript.
    */
@@ -1453,7 +1460,7 @@ export class Agent {
     // spontaneous note plus a notification, keeping the agent's "I'll tell you when it's done" promise.
     if (event.kind === 'background-task') {
       if (event.agentSessionId === this.agentSessionId) {
-        this.onBackgroundTask(event.status, event.summary);
+        this.onBackgroundTask(event.status, event.summary, event.requestId);
       }
       return;
     }
@@ -1774,14 +1781,24 @@ export class Agent {
    * note, not a turn.
    * @param status How the task settled.
    * @param summary The one-line summary of what the task did.
+   * @param requestId The request id the settle arrived under, adopted when the agent reports back.
    */
-  private onBackgroundTask(status: 'completed' | 'failed' | 'stopped', summary: string): void {
+  private onBackgroundTask(
+    status: 'completed' | 'failed' | 'stopped',
+    summary: string,
+    requestId: string,
+  ): void {
+    this.adoptReportBackTurn(requestId);
     const detail: string = summary.trim();
     const word: string =
       status === 'completed' ? 'finished' : status === 'failed' ? 'failed' : 'was stopped';
     const note: string =
       detail.length > 0 ? `_Background task ${word}:_ ${detail}` : `_Background task ${word}._`;
-    this.push({ kind: 'assistant', text: note });
+    // Sealed: the report the agent is about to stream must start its own message. Without this the
+    // first text chunk folds into the note (same `assistant` kind, trailing item) and you get
+    // "…completed (exit code 0)The command completed." run together in one bubble — which only shows
+    // up when the agent leads with plain text, since a thinking block would break the run for you.
+    this.push({ kind: 'assistant', text: note, sealed: true });
     const tabId: string | undefined = this.lastOwningTabId;
     const label: string =
       this.tabs.tabs().find((tab: Tab): boolean => tab.id === tabId)?.title ?? 'Agent';
@@ -1798,6 +1815,32 @@ export class Agent {
       key: `agent-task:${tabId ?? 'panel'}`,
       route: watching ? 'history-only' : 'default',
     });
+  }
+
+  /**
+   * Adopts the turn the CLI starts on its own when a backgrounded task settles (#426), so the report it
+   * writes renders in this conversation instead of being dropped.
+   *
+   * Diagnosed rather than assumed: the harness genuinely does resume by itself a second or two after the
+   * settle (`task_notification` → `init` → assistant text → `result`). Nothing was missing from the
+   * agent's side; the messages were arriving under the launching turn's request id while
+   * {@link activeRequestId} was already null, so the per-turn filter in {@link onEvent} discarded every
+   * one of them. Adopting that request id is the whole fix — no synthetic prompt is sent, and no tokens
+   * are spent beyond what the harness was already going to spend.
+   *
+   * Declined in two cases. When the setting is off the conversation stays idle and the caller's note and
+   * notification are the whole story. When a turn is already in flight the settle is genuinely
+   * out-of-band — the user has moved on and asked for something else — and clobbering
+   * {@link activeRequestId} would strand that turn's spinner.
+   * @param requestId The request id the settle arrived under, which the report will also arrive under.
+   */
+  private adoptReportBackTurn(requestId: string): void {
+    if (!this.settings.aiReportBackgroundTasks() || this.activeRequestId !== null) {
+      return;
+    }
+    this.flushStream();
+    this.activeRequestId = requestId;
+    this.busy.set(true);
   }
 
   /**
@@ -2056,7 +2099,11 @@ export class Agent {
     this.perf.streamFlushed();
     const items: readonly AgentItem[] = this.log();
     const last: AgentItem | undefined = items[items.length - 1];
-    if (last?.kind === pending.kind && last.parentToolId === pending.parentToolId) {
+    if (
+      last?.kind === pending.kind &&
+      last.parentToolId === pending.parentToolId &&
+      last.sealed !== true
+    ) {
       // The matched item is the trailing one, so fold the chunk into the tail directly rather than
       // scanning the whole transcript for it (the hot streaming path).
       this.updateLast(

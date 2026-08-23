@@ -619,6 +619,12 @@ export class Settings {
   public readonly aiAutoScroll: Signal<boolean> = this.value('ai.autoScroll');
 
   /**
+   * Gets whether a settled background task lets the agent resume the conversation to report on it.
+   * When false the conversation stays idle and only the transcript note and notification are raised.
+   */
+  public readonly aiReportBackgroundTasks: Signal<boolean> = this.value('ai.reportBackgroundTasks');
+
+  /**
    * Gets the active connection, or undefined when no connection matches the active id (for example
    * after the active connection was removed).
    */

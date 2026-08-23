@@ -560,6 +560,40 @@ describe('ClaudeAgentSession (live multi-turn)', () => {
     await harness.session.close();
   });
 
+  it('result_forATaskDrivenTurn_withNoBridge_stillEmitsATerminalStatus', async () => {
+    const events: AiEvent[] = [];
+    const c1: AbortController = new AbortController();
+    const harness: SessionHarness = makeSession(
+      turnCtx('run-1', 'claude-opus-4-8', c1.signal, events, 'conv-1'),
+    );
+    const turn1: Promise<void> = harness.session.turn(
+      turnCtx('run-1', 'claude-opus-4-8', c1.signal, events, 'conv-1'),
+    );
+    await flush();
+    harness.query()?.emit({ type: 'result', session_id: 'sess-a' });
+    await turn1;
+
+    // A backgrounded task settles and the CLI resumes the conversation on its own (#426): a second
+    // `result` arrives with no run awaiting it and — unlike the remote-control case — NO bridge. The
+    // renderer adopted this turn on `background-task`, so without a terminal status its spinner would
+    // run forever.
+    events.length = 0;
+    harness.query()?.emit({ type: 'result', session_id: 'sess-a' });
+    await flush();
+
+    const status: Record<string, unknown> | undefined = (
+      events as unknown as Record<string, unknown>[]
+    ).find(
+      (event: Record<string, unknown>): boolean =>
+        event['kind'] === 'status' && event['state'] === 'completed',
+    );
+    expect(status).toBeDefined();
+    // Emitted under the request id the adoption used, or the renderer's filter would drop it.
+    expect(status?.['requestId']).toBe('run-1');
+
+    await harness.session.close();
+  });
+
   it('turn_appliesAModelChangeLive_butNotWhenTheModelIsUnchanged', async () => {
     const events: AiEvent[] = [];
     const signal: AbortSignal = new AbortController().signal;

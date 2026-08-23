@@ -206,11 +206,182 @@ describe('Agent', () => {
       agentSessionId: sessionId ?? null,
       text: 'from another device',
     });
-    expect(agent.items().some((i: AgentItem): boolean => i.kind === 'user' && i.text === 'from another device')).toBe(true);
+    expect(
+      agent
+        .items()
+        .some((i: AgentItem): boolean => i.kind === 'user' && i.text === 'from another device'),
+    ).toBe(true);
 
     // A following event under the adopted request id renders (proving adoption past the per-turn filter).
-    fireEvent({ requestId: 'remote-turn', kind: 'tool-start', toolId: 't1', name: 'Read', detail: 'readme' });
-    expect(agent.items().some((i: AgentItem): boolean => i.kind === 'tool' && i.toolId === 't1')).toBe(true);
+    fireEvent({
+      requestId: 'remote-turn',
+      kind: 'tool-start',
+      toolId: 't1',
+      name: 'Read',
+      detail: 'readme',
+    });
+    expect(
+      agent.items().some((i: AgentItem): boolean => i.kind === 'tool' && i.toolId === 't1'),
+    ).toBe(true);
+  });
+
+  it('backgroundTask_whenIdle_adoptsTheTurn_soTheAgentsOwnReportRenders', () => {
+    agent.send('run something slow in the background');
+    const sessionId: string | undefined = runCalls[0].agentSessionId;
+    // The launching turn ends. The conversation is idle, which is exactly when the harness resumes on
+    // its own — and exactly when the per-turn filter used to discard everything it then said.
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+    expect(agent.isRunning()).toBe(false);
+
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'background-task',
+      agentSessionId: sessionId ?? null,
+      taskId: 'task-1',
+      status: 'completed',
+      summary: 'Tests passed',
+      outputFile: '/tmp/task-1.out',
+    });
+
+    // The turn is adopted, so the report the harness is about to write renders here.
+    expect(agent.isRunning()).toBe(true);
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'tool-start',
+      toolId: 'rt1',
+      name: 'Read',
+      detail: 'log',
+    });
+    expect(
+      agent.items().some((i: AgentItem): boolean => i.kind === 'tool' && i.toolId === 'rt1'),
+    ).toBe(true);
+
+    // ...and the terminal status the provider now emits for an unawaited turn clears the spinner.
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+    expect(agent.isRunning()).toBe(false);
+  });
+
+  it('backgroundTask_theNoteIsSealed_soTheAgentsReportStartsItsOwnMessage', async () => {
+    agent.send('run something slow in the background');
+    const sessionId: string | undefined = runCalls[0].agentSessionId;
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'background-task',
+      agentSessionId: sessionId ?? null,
+      taskId: 'task-1',
+      status: 'completed',
+      summary: 'Tests passed',
+      outputFile: '/tmp/task-1.out',
+    });
+
+    // The adopted turn leads with plain text — no thinking block to break the run. The note and the
+    // report share the `assistant` kind, so an unsealed note would absorb the report into its own
+    // bubble and render "…Tests passedThe suite passed." as one sentence.
+    fireEvent({ requestId: 'run-1', kind: 'text', delta: 'The suite passed.' });
+    await settleStream();
+
+    const assistants: readonly AgentItem[] = agent
+      .items()
+      .filter((i: AgentItem): boolean => i.kind === 'assistant');
+    const note: AgentItem | undefined = assistants.find((i: AgentItem): boolean =>
+      i.text.includes('Background task finished'),
+    );
+    expect(note).toBeDefined();
+    expect(note?.text.includes('The suite passed.')).toBe(false);
+    expect(
+      assistants.some(
+        (i: AgentItem): boolean =>
+          i.text === 'The suite passed.' && !i.text.includes('Background task'),
+      ),
+    ).toBe(true);
+  });
+
+  it('backgroundTask_withReportingOff_notesItButLeavesTheConversationIdle', () => {
+    const settings: Settings = TestBed.inject(Settings);
+    settings.set('ai.reportBackgroundTasks', false);
+    agent.send('run something slow in the background');
+    const sessionId: string | undefined = runCalls[0].agentSessionId;
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'background-task',
+      agentSessionId: sessionId ?? null,
+      taskId: 'task-1',
+      status: 'completed',
+      summary: 'Tests passed',
+      outputFile: '/tmp/task-1.out',
+    });
+
+    // Auto-resuming spends tokens the user did not ask for, so with the setting off the conversation
+    // stays idle and the note is the whole story.
+    expect(agent.isRunning()).toBe(false);
+    expect(
+      agent
+        .items()
+        .some(
+          (i: AgentItem): boolean =>
+            i.kind === 'assistant' && i.text.includes('Background task finished'),
+        ),
+    ).toBe(true);
+    // Anything the harness says anyway is still filtered out, as before.
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'tool-start',
+      toolId: 'nope',
+      name: 'Read',
+      detail: 'x',
+    });
+    expect(
+      agent.items().some((i: AgentItem): boolean => i.kind === 'tool' && i.toolId === 'nope'),
+    ).toBe(false);
+  });
+
+  it('backgroundTask_whileAnotherTurnIsInFlight_doesNotClobberIt', () => {
+    agent.send('first');
+    const sessionId: string | undefined = runCalls[0].agentSessionId;
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+    // The user has moved on and asked for something else; that turn is live under 'run-1'.
+    agent.send('second');
+
+    // The stale task settles under the request id of the turn that launched it, which is NOT the turn
+    // now in flight.
+    fireEvent({
+      requestId: 'stale-run',
+      kind: 'background-task',
+      agentSessionId: sessionId ?? null,
+      taskId: 'task-1',
+      status: 'completed',
+      summary: 'Tests passed',
+      outputFile: '/tmp/task-1.out',
+    });
+
+    // The settle is genuinely out-of-band here: adopting would strand the in-flight turn's spinner.
+    expect(agent.isRunning()).toBe(true);
+    // Adoption did not switch the active turn — an event under the settle's id is still filtered out...
+    fireEvent({
+      requestId: 'stale-run',
+      kind: 'tool-start',
+      toolId: 'nope',
+      name: 'Read',
+      detail: 'x',
+    });
+    expect(
+      agent.items().some((i: AgentItem): boolean => i.kind === 'tool' && i.toolId === 'nope'),
+    ).toBe(false);
+    // ...while the live turn keeps rendering.
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'tool-start',
+      toolId: 'live',
+      name: 'Read',
+      detail: 'x',
+    });
+    expect(
+      agent.items().some((i: AgentItem): boolean => i.kind === 'tool' && i.toolId === 'live'),
+    ).toBe(true);
   });
 
   it('remoteMessage_forAnotherConversation_isIgnored', () => {

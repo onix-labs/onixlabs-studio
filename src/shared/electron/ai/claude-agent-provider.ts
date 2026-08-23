@@ -2601,14 +2601,18 @@ export class ClaudeAgentSession implements AgentSession {
         // interrupts the turn without ending the session.
         if (message.type === 'result' && this.pendingMessages.length === 0) {
           // A Studio-initiated turn is awaited by an AiManager run (turnSettle set), which emits the
-          // terminal status that clears the renderer's spinner. A turn driven entirely by a remote peer
-          // (any device driving the session) was injected straight into the stream (see the bridge's
-          // onInbound) with no run behind it, so nothing would emit its completion — the turn the
-          // renderer adopted via `remote-message` (busy=true) would spin forever. Emit the terminal
-          // status here for that case, under the same request id the adoption used.
-          const peerDrivenTurn: boolean = this.turnSettle === null && this.bridge !== null;
+          // terminal status that clears the renderer's spinner. A turn nothing is awaiting has no run
+          // behind it, so unless its completion is emitted here the renderer that adopted it spins
+          // forever. Two kinds reach this branch, and the bridge was only the first of them:
+          //   - a turn driven entirely by a remote peer, injected straight into the stream (#331),
+          //     adopted by the renderer via `remote-message`;
+          //   - a turn the CLI starts on its own when a backgrounded task settles (#426), adopted via
+          //     `background-task` — this one has no bridge, so the old `bridge !== null` test missed it.
+          // Emit under the same request id the adoption used. A stray unawaited `result` with nothing
+          // adopted is harmless: the renderer's per-turn filter drops a status it is not expecting.
+          const unawaitedTurn: boolean = this.turnSettle === null;
           this.settleTurn();
-          if (peerDrivenTurn) {
+          if (unawaitedTurn) {
             this.currentContext.emit({
               requestId: this.currentContext.requestId,
               kind: 'status',

@@ -74,8 +74,9 @@ describe('AiSettingsSection', () => {
   });
 
   it('render_whenGeneralView_rendersARowPerGlobalControl', () => {
-    // Auto-scroll, remote-control notifications, token cap, run timeout, session lifetime, agent shell.
-    expect(host.querySelectorAll('app-setting-row').length).toBe(6);
+    // Auto-scroll, report-background-tasks, remote-control notifications, token cap, run timeout,
+    // session lifetime, agent shell.
+    expect(host.querySelectorAll('app-setting-row').length).toBe(7);
   });
 
   it('render_whenSecurityView_rendersThePermissionPostureRow', () => {
