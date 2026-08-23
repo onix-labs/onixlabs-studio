@@ -1,0 +1,54 @@
+@if (count() > 0) {
+  <button
+    type="button"
+    class="tasks-menu__trigger"
+    [title]="triggerTitle()"
+    [attr.aria-label]="triggerTitle()"
+    [cdkMenuTriggerFor]="menu"
+    [cdkMenuPosition]="menuPosition"
+  >
+    <app-icon class="tasks-menu__glyph" [icon]="Icon.SPINNER" />
+    <span class="tasks-menu__count">{{ count() }}</span>
+  </button>
+}
+
+<!-- `cdkMenu` must be this template's root node: on an inner element the CDK silently falls back to
+     an inline menu, which never dismisses and stretches the panel across the strip. -->
+<ng-template #menu>
+  <div class="tasks-menu__panel" cdkMenu>
+    <div class="tasks-menu__header">
+      <p class="tasks-menu__heading">Running tasks</p>
+    </div>
+    @for (task of tasks(); track task.taskId) {
+      <div class="tasks-menu__item" [class.tasks-menu__item--ambient]="task.skipTranscript">
+        <app-icon class="tasks-menu__item-icon" [icon]="Icon.SPINNER" />
+        <span class="tasks-menu__item-text">
+          <span class="tasks-menu__item-title">{{ task.description }}</span>
+          <span class="tasks-menu__item-detail">{{ detail(task) }}</span>
+        </span>
+        <!-- Plain buttons rather than cdkMenuItems so the flyout stays open: stopping one task of
+             several should not close the list you are working through. -->
+        @if (task.ownerTabId) {
+          <app-button
+            variant="none"
+            size="small"
+            [icon]="Icon.ARROWS_OUT"
+            [ariaLabel]="'Show the agent running: ' + task.description"
+            tooltip="Show the agent"
+            (pointerdown)="$event.preventDefault()"
+            (click)="reveal(task); $event.stopPropagation()"
+          />
+        }
+        <app-button
+          variant="none"
+          size="small"
+          [icon]="Icon.CLOSE"
+          [ariaLabel]="'Stop: ' + task.description"
+          tooltip="Stop this task"
+          (pointerdown)="$event.preventDefault()"
+          (click)="stop(task); $event.stopPropagation()"
+        />
+      </div>
+    }
+  </div>
+</ng-template>

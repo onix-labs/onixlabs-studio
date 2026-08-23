@@ -1,0 +1,46 @@
+// The trigger reads as a status segment, mirroring the notification bell beside it: flush with the
+// strip until hovered, with a spinning glyph while work is in flight. The drop-up panel renders through
+// the CDK overlay (outside this component), so its styles live in the global _menu.scss.
+:host {
+  display: inline-flex;
+}
+
+.tasks-menu__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.1rem 0.4rem;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: none;
+  border-radius: calc(0.375rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  cursor: default;
+  transition: var(--hover-transition);
+
+  &:hover,
+  &:focus-visible {
+    background: var(--title-strip-button-background-color--hover);
+    outline: none;
+  }
+}
+
+// The glyph carries the "still working" signal, so it spins for as long as the indicator is shown.
+// `Icon.SPINNER` is a static mark on its own — every spinning use in the app supplies its own
+// animation.
+.tasks-menu__glyph {
+  display: inline-grid;
+  animation: tasks-menu-spin 1s linear infinite;
+}
+
+@keyframes tasks-menu-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+.tasks-menu__count {
+  font-size: 0.7rem;
+  font-weight: 600;
+}
