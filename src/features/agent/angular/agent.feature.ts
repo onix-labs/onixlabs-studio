@@ -9,6 +9,7 @@ import { provideKeybindingCatalogue } from '@shared/angular/services/keybindings
 import { AGENT_KEYBINDINGS } from './agent-keybindings';
 import { AgentEditorCapabilities } from './agent-editor-capabilities/agent-editor-capabilities';
 import { AgentRibbon } from './agent-ribbon/agent-ribbon';
+import { AgentStatusStrip } from './agent-status/agent-status-strip';
 import { AgentView } from './agent-view/agent-view';
 
 /**
@@ -20,6 +21,7 @@ const agentFeature: FeatureDescriptor = {
   type: 'agent',
   view: AgentView,
   ribbon: AgentRibbon,
+  status: AgentStatusStrip,
 };
 
 /**
