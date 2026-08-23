@@ -1939,6 +1939,12 @@ export class Agent {
    * @param event The task-started, task-progress or task-updated event.
    */
   private onTaskEvent(event: AiTaskStartedEvent | AiTaskProgressEvent | AiTaskUpdatedEvent): void {
+    this.logger.debug(
+      'Agent.task',
+      `${event.kind} task=${event.taskId} tool=${
+        event.kind === 'task-started' ? (event.toolId ?? 'none') : 'n/a'
+      }`,
+    );
     this.taskState.update((tasks: readonly AgentTask[]): readonly AgentTask[] => {
       const existing: AgentTask | undefined = tasks.find(
         (task: AgentTask): boolean => task.taskId === event.taskId,
@@ -2398,6 +2404,12 @@ export class Agent {
     // `backgrounded` state and only resolves when the task actually settles.
     const backgrounded: boolean = this.tasks().some(
       (task: AgentTask): boolean => task.toolId === toolId,
+    );
+    this.logger.debug(
+      'Agent.task',
+      `tool-end tool=${toolId} backgrounded=${String(backgrounded)} liveTasks=[${this.tasks()
+        .map((task: AgentTask): string => `${task.taskId}:${task.toolId ?? 'none'}`)
+        .join(', ')}]`,
     );
     this.log.update((items: readonly AgentItem[]): readonly AgentItem[] =>
       items.map(
