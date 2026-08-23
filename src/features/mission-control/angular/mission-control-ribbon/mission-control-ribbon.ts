@@ -18,6 +18,8 @@ import { RibbonStripGroup } from '@shared/angular/components/ribbon-strip/ribbon
 import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/ribbon-strip-overflow/ribbon-strip-overflow';
 import { AgentRemoteModal } from '@shared/angular/components/agent-remote-modal/agent-remote-modal';
 import { Settings } from '@shared/angular/services/settings/settings';
+import { contributeFeatureMenu } from '@shared/angular/services/app-menu/contribute-feature-menu';
+import { MENU_SEPARATOR, MenuContribution } from '@shared/angular/services/app-menu/app-menu-model';
 import { Log } from '@shared/angular/services/log/log';
 import { MissionControl } from '@features/mission-control/angular/mission-control/mission-control';
 
@@ -152,6 +154,65 @@ export class MissionControlRibbon {
    * Gets whether working agent columns (a run in flight) are hidden.
    */
   protected readonly hideWorking: Signal<boolean> = this.missionControl.hideWorking;
+
+  /**
+   * Contributes this tab's menu while the Mission Control ribbon is mounted.
+   */
+  private readonly menu: void = contributeFeatureMenu(
+    'mission-control',
+    (): readonly MenuContribution[] => [
+      {
+        id: 'agent',
+        label: 'Agents',
+        items: [
+          {
+            id: 'mc.stopAll',
+            label: 'Stop All',
+            enabled: this.runningCount() > 0,
+            run: (): void => this.onStopAll(),
+          },
+          MENU_SEPARATOR,
+          {
+            id: 'mc.remoteControl',
+            label: 'Remote Control All',
+            kind: 'checkbox',
+            checked: this.allRemoteControlled(),
+            enabled: this.remoteCapableCount() > 0,
+            run: (): void => this.onRemoteToggle(),
+          },
+        ],
+      },
+      {
+        id: 'view',
+        label: 'View',
+        items: [
+          {
+            id: 'mc.hideEmpty',
+            label: 'Hide Empty',
+            kind: 'checkbox',
+            checked: this.hideEmpty(),
+            run: (): void => this.onToggleHideEmpty(),
+          },
+          {
+            id: 'mc.hideIdle',
+            label: 'Hide Idle',
+            kind: 'checkbox',
+            checked: this.hideIdle(),
+            run: (): void => this.onToggleHideIdle(),
+          },
+          {
+            id: 'mc.hideWorking',
+            label: 'Hide Working',
+            kind: 'checkbox',
+            checked: this.hideWorking(),
+            run: (): void => this.onToggleHideWorking(),
+          },
+          MENU_SEPARATOR,
+          { id: 'mc.resetLayout', label: 'Reset Widths', run: (): void => this.onResetLayout() },
+        ],
+      },
+    ],
+  );
 
   /**
    * Stops every running agent across all live hosts.

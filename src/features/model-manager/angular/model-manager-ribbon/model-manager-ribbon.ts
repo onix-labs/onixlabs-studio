@@ -5,6 +5,8 @@ import { RibbonStripGroup } from '@shared/angular/components/ribbon-strip/ribbon
 import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/ribbon-strip-overflow/ribbon-strip-overflow';
 import { Icon } from '@shared/angular/icons/icon';
 import { ModelManagerCommands } from '../model-manager-commands/model-manager-commands';
+import { contributeFeatureMenu } from '@shared/angular/services/app-menu/contribute-feature-menu';
+import { MENU_SEPARATOR, MenuContribution } from '@shared/angular/services/app-menu/app-menu-model';
 
 /**
  * The contextual ribbon shown while an AI Model Manager tab is active. Its actions drive the active
@@ -46,6 +48,40 @@ export class ModelManagerRibbon {
    * Gets whether an operation is in flight, disabling the actions.
    */
   protected readonly busy: Signal<boolean> = this.commands.busy;
+
+  /**
+   * Contributes this tab's menu while the model-manager ribbon is mounted.
+   */
+  private readonly menu: void = contributeFeatureMenu(
+    'model-manager',
+    (): readonly MenuContribution[] => [
+      {
+        id: 'models',
+        label: 'Models',
+        items: [
+          {
+            id: 'models.start',
+            label: 'Start Runtime',
+            enabled: !this.running() && !this.busy(),
+            run: (): void => this.onStart(),
+          },
+          {
+            id: 'models.stop',
+            label: 'Stop Runtime',
+            enabled: this.stoppable() && !this.busy(),
+            run: (): void => this.onStop(),
+          },
+          MENU_SEPARATOR,
+          {
+            id: 'models.refresh',
+            label: 'Refresh',
+            accelerator: 'CmdOrCtrl+Shift+R',
+            run: (): void => this.onRefresh(),
+          },
+        ],
+      },
+    ],
+  );
 
   /**
    * Reloads the models and status.

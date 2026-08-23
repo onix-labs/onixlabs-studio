@@ -1,4 +1,6 @@
 import { ChangeDetectionStrategy, Component, inject, Signal } from '@angular/core';
+import { contributeFeatureMenu } from '@shared/angular/services/app-menu/contribute-feature-menu';
+import { MENU_SEPARATOR, MenuContribution } from '@shared/angular/services/app-menu/app-menu-model';
 import { Log } from '@shared/angular/services/log/log';
 import { Icon } from '@shared/angular/icons/icon';
 import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host';
@@ -44,6 +46,59 @@ export class ContainersRibbon {
    * Gets whether the selected container is running.
    */
   protected readonly selectionRunning: Signal<boolean> = this.commands.selectionRunning;
+
+  /**
+   * Contributes this tab's menu while the containers ribbon is mounted.
+   */
+  private readonly menu: void = contributeFeatureMenu(
+    'containers',
+    (): readonly MenuContribution[] => [
+      {
+        id: 'containers',
+        label: 'Containers',
+        items: [
+          {
+            id: 'containers.start',
+            label: 'Start',
+            enabled: this.hasSelection() && !this.selectionRunning(),
+            run: (): void => this.onStart(),
+          },
+          {
+            id: 'containers.stop',
+            label: 'Stop',
+            enabled: this.selectionRunning(),
+            run: (): void => this.onStop(),
+          },
+          {
+            id: 'containers.remove',
+            label: 'Remove…',
+            enabled: this.hasSelection(),
+            run: (): void => this.onRemove(),
+          },
+          MENU_SEPARATOR,
+          {
+            id: 'containers.logs',
+            label: 'Logs',
+            enabled: this.hasSelection(),
+            run: (): void => this.onLogs(),
+          },
+          {
+            id: 'containers.shell',
+            label: 'Shell',
+            enabled: this.selectionRunning(),
+            run: (): void => this.onShell(),
+          },
+          MENU_SEPARATOR,
+          {
+            id: 'containers.refresh',
+            label: 'Refresh',
+            accelerator: 'CmdOrCtrl+Shift+R',
+            run: (): void => this.onRefresh(),
+          },
+        ],
+      },
+    ],
+  );
 
   /**
    * Starts the selected container.

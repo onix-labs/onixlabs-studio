@@ -11,6 +11,8 @@ import type { AgentMode, AiModelInfo, AiProviderInfo } from '@shared/api/ai-type
 import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine';
 import { AgentSessions } from '@shared/angular/services/agent-sessions/agent-sessions';
 import { EditorCommands } from '@shared/angular/services/editor-commands/editor-commands';
+import { contributeFeatureMenu } from '@shared/angular/services/app-menu/contribute-feature-menu';
+import { MENU_SEPARATOR, MenuContribution } from '@shared/angular/services/app-menu/app-menu-model';
 import { Log } from '@shared/angular/services/log/log';
 import { Icon } from '@shared/angular/icons/icon';
 import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host';
@@ -117,6 +119,79 @@ export class AgentRibbon {
    * exposing a session (or dropping a peer already on one) is confirmed first.
    */
   protected readonly remoteConfirmOpen: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Contributes this tab's menu while the agent ribbon is mounted.
+   */
+  private readonly menu: void = contributeFeatureMenu('agent', (): readonly MenuContribution[] => [
+    {
+      id: 'agent',
+      label: 'Agent',
+      items: [
+        {
+          id: 'agent.newChat',
+          label: 'New Chat',
+          accelerator: 'CmdOrCtrl+Shift+N',
+          run: (): void => this.newChat(),
+        },
+        {
+          id: 'agent.stop',
+          label: 'Stop',
+          accelerator: 'CmdOrCtrl+.',
+          enabled: this.isRunning(),
+          run: (): void => this.stop(),
+        },
+        MENU_SEPARATOR,
+        {
+          id: 'agent.compact',
+          label: 'Compact Conversation',
+          enabled: this.hasMessages(),
+          run: (): void => this.compact(),
+        },
+        {
+          id: 'agent.history',
+          label: 'Conversation History',
+          kind: 'checkbox',
+          checked: this.historyOpen(),
+          run: (): void => this.toggleHistory(),
+        },
+        MENU_SEPARATOR,
+        {
+          id: 'agent.attach',
+          label: 'Attach',
+          items: [
+            { id: 'agent.attachFile', label: 'Files…', run: (): void => void this.attachFile() },
+            {
+              id: 'agent.attachFolder',
+              label: 'Folder…',
+              run: (): void => void this.attachFolder(),
+            },
+            {
+              id: 'agent.attachSelection',
+              label: 'Editor Selection',
+              enabled: this.hasSelection(),
+              run: (): void => this.attachSelection(),
+            },
+          ],
+        },
+        {
+          id: 'agent.clearContext',
+          label: 'Clear Attachments',
+          enabled: this.hasContext(),
+          run: (): void => this.clearContext(),
+        },
+        MENU_SEPARATOR,
+        {
+          id: 'agent.remoteControl',
+          label: 'Remote Control',
+          kind: 'checkbox',
+          checked: this.remoteControlEnabled(),
+          enabled: this.supportsRemoteControl(),
+          run: (): void => this.onRemoteControlToggle(),
+        },
+      ],
+    },
+  ]);
 
   /**
    * Gets the provider labels offered by the Provider field.

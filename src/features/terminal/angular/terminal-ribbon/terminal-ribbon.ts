@@ -10,6 +10,8 @@ import {
   RibbonStripMenuButton,
 } from '@shared/angular/components/ribbon-strip/ribbon-strip-menu-button/ribbon-strip-menu-button';
 import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/ribbon-strip-overflow/ribbon-strip-overflow';
+import { contributeFeatureMenu } from '@shared/angular/services/app-menu/contribute-feature-menu';
+import { MENU_SEPARATOR, MenuContribution } from '@shared/angular/services/app-menu/app-menu-model';
 import { Log } from '@shared/angular/services/log/log';
 import { ShellInfo } from '@shared/api/terminal-channels';
 import { TerminalAgents } from '@features/terminal/angular/terminal-agents/terminal-agents';
@@ -78,6 +80,86 @@ export class TerminalRibbon {
    * Gets a value indicating whether the active terminal has scroll lock engaged.
    */
   protected readonly scrollLocked: Signal<boolean> = this.commands.scrollLocked;
+
+  /**
+   * Contributes this tab's menu while the terminal ribbon is mounted.
+   */
+  private readonly menu: void = contributeFeatureMenu(
+    'terminal',
+    (): readonly MenuContribution[] => [
+      {
+        id: 'file',
+        label: 'File',
+        items: [
+          {
+            id: 'terminal.new',
+            label: 'New Terminal',
+            accelerator: 'CmdOrCtrl+Shift+T',
+            run: (): void => this.onNew(),
+          },
+        ],
+      },
+      {
+        id: 'edit',
+        label: 'Edit',
+        items: [
+          {
+            id: 'terminal.cut',
+            label: 'Cut',
+            accelerator: 'CmdOrCtrl+X',
+            run: (): void => this.onCut(),
+          },
+          {
+            id: 'terminal.copy',
+            label: 'Copy',
+            accelerator: 'CmdOrCtrl+C',
+            run: (): void => this.onCopy(),
+          },
+          {
+            id: 'terminal.paste',
+            label: 'Paste',
+            accelerator: 'CmdOrCtrl+V',
+            run: (): void => this.onPaste(),
+          },
+          MENU_SEPARATOR,
+          {
+            id: 'terminal.find',
+            label: 'Find…',
+            accelerator: 'CmdOrCtrl+F',
+            run: (): void => this.onFind(),
+          },
+          { id: 'terminal.clear', label: 'Clear', run: (): void => this.onClear() },
+        ],
+      },
+      {
+        id: 'terminal',
+        label: 'Terminal',
+        items: [
+          { id: 'terminal.list', label: 'List', run: (): void => this.onList() },
+          { id: 'terminal.listAll', label: 'List All', run: (): void => this.onListAll() },
+          MENU_SEPARATOR,
+          { id: 'terminal.home', label: 'Go Home', run: (): void => this.onHome() },
+          { id: 'terminal.root', label: 'Go to Workspace Root', run: (): void => this.onRoot() },
+          { id: 'terminal.open', label: 'Reveal in Finder', run: (): void => this.onOpen() },
+          MENU_SEPARATOR,
+          {
+            id: 'terminal.scrollLock',
+            label: 'Scroll Lock',
+            kind: 'checkbox',
+            checked: this.scrollLocked(),
+            run: (): void => this.onScrollLock(!this.scrollLocked()),
+          },
+          {
+            id: 'terminal.scrollToBottom',
+            label: 'Scroll to Bottom',
+            run: (): void => this.onScrollToBottom(),
+          },
+          MENU_SEPARATOR,
+          { id: 'terminal.agent', label: 'Ask the Agent', run: (): void => this.onAgent() },
+        ],
+      },
+    ],
+  );
 
   /**
    * Gets the New button's dropdown items: one per installed shell, each starting a fresh session under

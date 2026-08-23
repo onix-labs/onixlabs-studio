@@ -10,6 +10,8 @@ import {
 } from '@shared/angular/components/ribbon-strip/ribbon-strip-menu-button/ribbon-strip-menu-button';
 import { Icon } from '@shared/angular/icons/icon';
 import { ApiExplorerCommands } from '../api-explorer-commands/api-explorer-commands';
+import { contributeFeatureMenu } from '@shared/angular/services/app-menu/contribute-feature-menu';
+import { MenuContribution } from '@shared/angular/services/app-menu/app-menu-model';
 
 /**
  * Identifies the Save-As item in the Save menu button's dropdown.
@@ -57,6 +59,44 @@ export class ApiExplorerRibbon {
   protected readonly saveItems: readonly RibbonMenuItem[] = [
     { id: VARIANT_SAVE_AS, label: 'Save As', icon: Icon.SAVE_AS },
   ];
+
+  /**
+   * Contributes this tab's menu while the API Explorer ribbon is mounted.
+   */
+  private readonly menu: void = contributeFeatureMenu(
+    'api-explorer',
+    (): readonly MenuContribution[] => [
+      {
+        id: 'file',
+        label: 'File',
+        items: [
+          {
+            id: 'api.save',
+            label: 'Save',
+            accelerator: 'CmdOrCtrl+S',
+            run: (): void => this.onSave(),
+          },
+        ],
+      },
+      {
+        id: 'api',
+        label: 'API',
+        items: [
+          { id: 'api.newRequest', label: 'New Request', run: (): void => this.onNewRequest() },
+          {
+            id: 'api.newCollection',
+            label: 'New Collection',
+            run: (): void => this.onNewCollection(),
+          },
+          {
+            id: 'api.newEnvironment',
+            label: 'New Environment',
+            run: (): void => this.onNewEnvironment(),
+          },
+        ],
+      },
+    ],
+  );
 
   /**
    * Saves the collection to its file, asking for one when it is still untitled.

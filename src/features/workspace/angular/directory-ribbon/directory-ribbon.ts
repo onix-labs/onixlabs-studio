@@ -10,6 +10,8 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { EditorCommands } from '@shared/angular/services/editor-commands/editor-commands';
+import { contributeFeatureMenu } from '@shared/angular/services/app-menu/contribute-feature-menu';
+import { MENU_SEPARATOR, MenuContribution } from '@shared/angular/services/app-menu/app-menu-model';
 import { Log } from '@shared/angular/services/log/log';
 import { WorkspaceFind } from '@features/workspace/angular/workspace-find/workspace-find';
 import { WorkspaceDocumentCommands } from '@features/workspace/angular/workspace-document-commands/workspace-document-commands';
@@ -103,6 +105,112 @@ const COMMIT_STASH: string = 'stash';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class DirectoryRibbon {
+  /**
+   * Contributes this tab's menu while the workspace ribbon is mounted: the editing commands the
+   * embedded editor offers, and the source-control and layout commands that belong to the workspace.
+   */
+  private readonly menu: void = contributeFeatureMenu(
+    'directory',
+    (): readonly MenuContribution[] => [
+      {
+        id: 'file',
+        label: 'File',
+        items: [
+          {
+            id: 'directory.save',
+            label: 'Save',
+            accelerator: 'CmdOrCtrl+S',
+            run: (): void => this.onSave(),
+          },
+        ],
+      },
+      {
+        id: 'edit',
+        label: 'Edit',
+        items: [
+          {
+            id: 'directory.undo',
+            label: 'Undo',
+            accelerator: 'CmdOrCtrl+Z',
+            run: (): void => this.onUndo(),
+          },
+          {
+            id: 'directory.redo',
+            label: 'Redo',
+            accelerator: 'CmdOrCtrl+Shift+Z',
+            run: (): void => this.onRedo(),
+          },
+          MENU_SEPARATOR,
+          {
+            id: 'directory.cut',
+            label: 'Cut',
+            accelerator: 'CmdOrCtrl+X',
+            run: (): void => this.onCut(),
+          },
+          {
+            id: 'directory.copy',
+            label: 'Copy',
+            accelerator: 'CmdOrCtrl+C',
+            run: (): void => this.onCopy(),
+          },
+          {
+            id: 'directory.paste',
+            label: 'Paste',
+            accelerator: 'CmdOrCtrl+V',
+            run: (): void => this.onPaste(),
+          },
+          MENU_SEPARATOR,
+          {
+            id: 'directory.find',
+            label: 'Find…',
+            accelerator: 'CmdOrCtrl+F',
+            run: (): void => this.onFind(),
+          },
+        ],
+      },
+      {
+        id: 'source-control',
+        label: 'Source Control',
+        items: [
+          { id: 'directory.commit', label: 'Commit…', run: (): void => this.onCommit() },
+          MENU_SEPARATOR,
+          { id: 'directory.pull', label: 'Pull', run: (): void => this.onPull() },
+          { id: 'directory.push', label: 'Push', run: (): void => this.onPush() },
+          { id: 'directory.fetch', label: 'Fetch', run: (): void => this.onRepoFetch() },
+          MENU_SEPARATOR,
+          { id: 'directory.promote', label: 'Promote Worktree', run: (): void => this.onPromote() },
+        ],
+      },
+      {
+        id: 'view',
+        label: 'View',
+        items: [
+          {
+            id: 'directory.savePresetAs',
+            label: 'Save Layout As…',
+            run: (): void => this.onSavePresetAs(),
+          },
+          {
+            id: 'directory.updatePreset',
+            label: 'Update Layout',
+            run: (): void => this.onUpdatePreset(),
+          },
+          {
+            id: 'directory.managePresets',
+            label: 'Manage Layouts…',
+            run: (): void => this.onManagePresets(),
+          },
+          MENU_SEPARATOR,
+          {
+            id: 'directory.resetLayout',
+            label: 'Reset Layout',
+            run: (): void => this.onApplyDefaultPreset(),
+          },
+        ],
+      },
+    ],
+  );
+
   /**
    * Gets the icon set, exposed for the template.
    */
