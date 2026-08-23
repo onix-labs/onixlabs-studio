@@ -1,0 +1,12 @@
+<button
+  type="button"
+  class="title-strip-menu__trigger"
+  title="Menu"
+  aria-label="Menu"
+  [cdkMenuTriggerFor]="appMenuPanel.panel() ?? null"
+  [cdkMenuPosition]="appMenuPanel.position()"
+>
+  <app-icon [icon]="Icon.LIST" />
+</button>
+
+<app-menu #appMenuPanel placement="down-start" [items]="rows()" (selected)="onSelect($event)" />

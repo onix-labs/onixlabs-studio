@@ -41,6 +41,52 @@ export class MenuManager {
       }
       this.install(sections as readonly AppMenuSection[]);
     });
+    ipcMain.on(MenuChannel.RunRole, (_event: IpcMainEvent, role: unknown): void => {
+      if (typeof role === 'string') {
+        this.runRole(role);
+      }
+    });
+  }
+
+  /**
+   * Performs a native window role for the in-window menu, which cannot do these for itself. Only the
+   * roles the menu actually offers are honoured; anything else is ignored rather than trusted, since
+   * the renderer is untrusted input.
+   * @param role The role to perform.
+   */
+  private runRole(role: string): void {
+    const window: BrowserWindow | null = this.windowGetter();
+    if (window === null) {
+      return;
+    }
+    logger.debug('MenuManager.runRole', `Performing window role '${role}'`);
+    switch (role) {
+      case 'togglefullscreen':
+        window.setFullScreen(!window.isFullScreen());
+        break;
+      case 'toggleDevTools':
+        window.webContents.toggleDevTools();
+        break;
+      case 'forceReload':
+        window.webContents.reloadIgnoringCache();
+        break;
+      case 'minimize':
+        window.minimize();
+        break;
+      case 'zoom':
+        if (window.isMaximized()) {
+          window.unmaximize();
+        } else {
+          window.maximize();
+        }
+        break;
+      case 'close':
+        window.close();
+        break;
+      default:
+        logger.warn('MenuManager.runRole', `Ignoring unknown window role '${role}'`);
+        break;
+    }
   }
 
   /**
@@ -48,6 +94,14 @@ export class MenuManager {
    * @param sections The menu bar's sections, in bar order.
    */
   private install(sections: readonly AppMenuSection[]): void {
+    // Only macOS gets the native menu, where the bar lives outside the window. On Windows and Linux a
+    // native menu is drawn *inside* the frame, above the title strip, which looks wrong against the
+    // application's own chrome — so there is deliberately no menu bar there and the in-window menu
+    // button is the whole surface. Clearing it also unregisters the accelerators the bar would own.
+    if (process.platform !== 'darwin') {
+      Menu.setApplicationMenu(null);
+      return;
+    }
     logger.trace('MenuManager.install', `Installing ${sections.length} menu section(s)`);
     const template: MenuItemConstructorOptions[] = sections.map(
       (section: AppMenuSection): MenuItemConstructorOptions => ({
