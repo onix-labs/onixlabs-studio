@@ -67,12 +67,13 @@ export class FileSystem {
   }
 
   /**
-   * Shows an open-file dialog and reads the chosen file.
-   * @returns Returns the chosen file's info, or null when cancelled or unavailable.
+   * Shows an open-file dialog and reads every chosen file. The dialog is multi-select: opening several
+   * files at once is ordinary behaviour, and the tab system already holds many documents.
+   * @returns Returns the chosen files' info, empty when cancelled or unavailable.
    */
-  public openDialog(): Promise<FileInfo | null> {
+  public openDialog(): Promise<readonly FileInfo[]> {
     return (
-      this.bridge?.invoke<FileInfo | null>(FileChannel.OpenFileDialog) ?? Promise.resolve(null)
+      this.bridge?.invoke<readonly FileInfo[]>(FileChannel.OpenFileDialog) ?? Promise.resolve([])
     );
   }
 
@@ -90,8 +91,32 @@ export class FileSystem {
    * @param kind Whether to pick a file or a folder.
    * @returns Returns the chosen path, or null when cancelled or unavailable.
    */
-  public pickPath(kind: 'file' | 'folder'): Promise<string | null> {
-    return this.bridge?.invoke<string | null>(FileChannel.PickPath, kind) ?? Promise.resolve(null);
+  public async pickPath(kind: 'file' | 'folder'): Promise<string | null> {
+    const paths: readonly string[] = await this.pickPathsOfKind(kind, false);
+    return paths[0] ?? null;
+  }
+
+  /**
+   * Shows a multi-select open dialog for files and returns every chosen absolute path, without reading
+   * them. Folders are deliberately not offered here: multi-select is possible for directories but
+   * nothing asks for it (see {@link pickPath}).
+   * @returns Returns the chosen paths, empty when cancelled or unavailable.
+   */
+  public pickPaths(): Promise<readonly string[]> {
+    return this.pickPathsOfKind('file', true);
+  }
+
+  /**
+   * Invokes the pick-path dialog.
+   * @param kind Whether to pick files or a folder.
+   * @param multiple Whether the file dialog accepts more than one selection.
+   * @returns Returns the chosen paths, empty when cancelled or unavailable.
+   */
+  private pickPathsOfKind(kind: 'file' | 'folder', multiple: boolean): Promise<readonly string[]> {
+    return (
+      this.bridge?.invoke<readonly string[]>(FileChannel.PickPath, kind, multiple) ??
+      Promise.resolve([])
+    );
   }
 
   /**

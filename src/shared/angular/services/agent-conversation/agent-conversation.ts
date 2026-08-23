@@ -464,12 +464,22 @@ export class AgentConversation implements AgentSessionHandle {
   }
 
   /**
-   * Prompts for a file or folder and attaches the chosen path to the conversation's context.
-   * @param kind Whether to pick a file or a folder.
+   * Prompts for files or a folder and attaches each chosen path to the conversation's context.
+   *
+   * The file picker is multi-select — attaching eight screenshots should be one trip through the dialog,
+   * not eight. A folder is picked one at a time: multi-select is possible for directories but attaching
+   * several roots to one conversation is not a thing anyone has asked for.
+   * @param kind Whether to pick files or a folder.
    */
   private async attach(kind: 'file' | 'folder'): Promise<void> {
-    const path: string | null = await this.files.pickPath(kind);
-    if (path !== null) {
+    if (kind === 'folder') {
+      const folder: string | null = await this.files.pickPath('folder');
+      if (folder !== null) {
+        this.agent.attachContext({ path: folder, kind });
+      }
+      return;
+    }
+    for (const path of await this.files.pickPaths()) {
       this.agent.attachContext({ path, kind });
     }
   }

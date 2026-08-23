@@ -351,13 +351,21 @@ export class Documents implements UnsavedWorkSource {
   }
 
   /**
-   * Shows an open-file dialog and, when a file is chosen, opens it in a new code tab.
+   * Shows an open-file dialog and opens each chosen file in its own code tab.
    */
   public async openFile(): Promise<void> {
-    const fileInfo: FileInfo | null = await this.fileSystem.openDialog();
-    if (fileInfo === null) {
-      return;
+    for (const fileInfo of await this.fileSystem.openDialog()) {
+      this.openChosenFile(fileInfo);
     }
+  }
+
+  /**
+   * Opens a file chosen from the open dialog in a new code tab. Distinct from the public
+   * {@link openFileInfo}, which reuses a tab already showing the file; a file picked explicitly from
+   * the dialog always gets its own tab, as it did before the dialog became multi-select.
+   * @param fileInfo The file to open.
+   */
+  private openChosenFile(fileInfo: FileInfo): void {
     const id: string = this.tabs.open('code').id;
     this.log.info('Documents', `Opened file '${fileInfo.name}'`, id, fileInfo.path);
     const entry: DocumentEntry = this.createEntry(id);

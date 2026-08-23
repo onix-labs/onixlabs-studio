@@ -21,7 +21,17 @@ describe('FileSystem', () => {
     expect((await fileSystem.write('/tmp/file.txt', 'data')).success).toBe(false);
   });
 
-  it('openDialog_whenOutsideElectron_returnsNull', async () => {
-    expect(await fileSystem.openDialog()).toBeNull();
+  it('openDialog_whenOutsideElectron_returnsNoFiles', async () => {
+    expect(await fileSystem.openDialog()).toEqual([]);
+  });
+
+  it('pickPaths_whenOutsideElectron_returnsNoPaths', async () => {
+    expect(await fileSystem.pickPaths()).toEqual([]);
+  });
+
+  it('pickPath_whenOutsideElectron_returnsNull', async () => {
+    // The single-result convenience still answers null rather than an empty array, so its callers —
+    // locating a workspace, choosing a write-path root — read unchanged.
+    expect(await fileSystem.pickPath('folder')).toBeNull();
   });
 });
