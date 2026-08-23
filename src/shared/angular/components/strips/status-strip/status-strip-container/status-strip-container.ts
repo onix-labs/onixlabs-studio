@@ -16,6 +16,7 @@ import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { ViewInjectors } from '@shared/angular/services/view-injectors/view-injectors';
 import { StatusStripLspMenu } from '../status-strip-lsp-menu/status-strip-lsp-menu';
 import { StatusStripNotificationsMenu } from '../status-strip-notifications-menu/status-strip-notifications-menu';
+import { StatusStripTasksMenu } from '../status-strip-tasks-menu/status-strip-tasks-menu';
 import { StatusStripSegment } from '../status-strip-segment/status-strip-segment';
 import { StatusStripSegments } from '../status-strip-segments/status-strip-segments';
 
@@ -39,6 +40,7 @@ import { StatusStripSegments } from '../status-strip-segments/status-strip-segme
     NgComponentOutlet,
     StatusStripLspMenu,
     StatusStripNotificationsMenu,
+    StatusStripTasksMenu,
     StatusStripSegment,
     StatusStripSegments,
   ],

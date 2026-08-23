@@ -2516,6 +2516,23 @@ export class ClaudeAgentSession implements AgentSession {
   }
 
   /**
+   * Stops a task the session is running in the background. Best-effort: the query may have ended, or the
+   * task may have settled between the user pressing Stop and the request arriving. The harness emits a
+   * `task_notification` with status `stopped`, which settles the task through the ordinary path — so
+   * nothing is emitted here.
+   * @param taskId The provider's identifier for the task.
+   */
+  public stopTask(taskId: string): void {
+    const query: Query | null = this.sdkQuery;
+    if (query === null) {
+      return;
+    }
+    void query.stopTask(taskId).catch((error: unknown): void => {
+      logger.debug('ClaudeAgentSession.stopTask', `Stopping task ${taskId} failed`, error);
+    });
+  }
+
+  /**
    * The streaming-input generator: yields queued messages, then parks until the next message is queued
    * or the input closes.
    * @returns Yields the session's user messages.

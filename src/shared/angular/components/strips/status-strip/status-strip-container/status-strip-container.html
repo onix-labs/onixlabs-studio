@@ -21,7 +21,13 @@
     @for (segment of ambient(); track segment.id) {
       <app-status-strip-segment [segment]="segment" />
     }
-    <app-status-strip-lsp-menu />
-    <app-status-strip-notifications-menu />
+    <!-- The drop-up triggers sit together as one cluster of controls, spaced far more tightly than
+         the ambient segments beside them: a segment is a run of words that needs room to read as its
+         own item, whereas these are icon buttons that read as a group. -->
+    <div class="status-strip__menus">
+      <app-status-strip-tasks-menu />
+      <app-status-strip-lsp-menu />
+      <app-status-strip-notifications-menu />
+    </div>
   </div>
 </footer>

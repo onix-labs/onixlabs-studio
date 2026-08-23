@@ -118,4 +118,5 @@ export type {
   AiEditDecision,
   AiEditDecisionReply,
   AiSteerRequest,
+  AiStopTaskRequest,
 } from './ai/ai-bridge-types';

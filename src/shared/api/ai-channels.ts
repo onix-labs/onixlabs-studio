@@ -20,6 +20,7 @@ import type {
   AiRunRequest,
   AiSetConnectionKeyRequest,
   AiSteerRequest,
+  AiStopTaskRequest,
   ClaudeAuthStatus,
   ClaudeLoginStatus,
 } from '@shared/api/ai-types';
@@ -76,6 +77,12 @@ export enum AiChannel {
    * Closes an agent's held-open live session (New chat / tab close); no-op when none is open (invoke).
    */
   CloseSession = 'ai:close-session',
+
+  /**
+   * Stops a task the agent is running in the background; no-op when the session or task has already
+   * gone (invoke).
+   */
+  StopTask = 'ai:stop-task',
 
   /**
    * Reads whether Claude Code's mobile push for a remote-controlled agent needing input (a permission
@@ -219,6 +226,13 @@ export interface AiClient {
    * @param agentSessionId The agent conversation whose session to close.
    */
   closeSession(agentSessionId: string): Promise<void>;
+
+  /**
+   * Stops a task an agent is running in the background. The provider settles it as `stopped`, which
+   * arrives through the ordinary task-lifecycle events, so no separate confirmation is needed.
+   * @param request The conversation and the task to stop.
+   */
+  stopTask(request: AiStopTaskRequest): Promise<void>;
 
   /**
    * Reads whether mobile push notifications are enabled for a remote-controlled agent that needs input

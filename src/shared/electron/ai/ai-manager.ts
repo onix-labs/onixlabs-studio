@@ -11,6 +11,7 @@ import type {
   AiEditDecisionReply,
   AiEffort,
   AiEvent,
+  AiStopTaskRequest,
   AiImageRef,
   AiInputChoice,
   AiRemoteControlMode,
@@ -487,6 +488,16 @@ export class AiManager {
         );
       }
       return accepted;
+    });
+    ipcMain.handle(AiChannel.StopTask, (_event: IpcMainInvokeEvent, request: unknown): void => {
+      logger.trace('AiManager.register', 'StopTask invoked');
+      // The renderer is untrusted: validate both fields rather than trusting the payload's shape.
+      const payload: Partial<AiStopTaskRequest> = request ?? {};
+      const agentSessionId: unknown = payload.agentSessionId;
+      const taskId: unknown = payload.taskId;
+      if (typeof agentSessionId === 'string' && typeof taskId === 'string') {
+        this.stopTask(agentSessionId, taskId);
+      }
     });
     ipcMain.handle(AiChannel.CloseSession, (_event: IpcMainInvokeEvent, id: unknown): void => {
       logger.trace('AiManager.register', 'CloseSession invoked');
@@ -1056,6 +1067,23 @@ export class AiManager {
       entry.mode === context.mode &&
       entry.agentShell === context.agentShell
     );
+  }
+
+  /**
+   * Closes an agent's held-open live session and drops it from the registry; a no-op when none is open.
+   * Called on New chat / tab close from the renderer.
+   * @param agentSessionId The agent conversation whose session to close.
+   */
+  private stopTask(agentSessionId: string, taskId: string): void {
+    const entry: LiveSessionEntry | undefined = this.liveSessions.get(agentSessionId);
+    // No session, or a provider with no task model: nothing to stop, and nothing to report — the task
+    // either never existed here or has already settled through its own lifecycle events.
+    if (entry?.session.stopTask === undefined) {
+      logger.debug('AiManager.stopTask', `No live session able to stop task ${taskId}`);
+      return;
+    }
+    logger.info('AiManager.stopTask', `Stopping task ${taskId} on session ${agentSessionId}`);
+    entry.session.stopTask(taskId);
   }
 
   /**

@@ -35,6 +35,7 @@ import {
   NotificationAction,
   Notifications,
 } from '@shared/angular/services/notifications/notifications';
+import { AgentTasks } from '@shared/angular/services/agent-tasks/agent-tasks';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
@@ -560,6 +561,11 @@ export class Agent {
   private readonly destroyRef: DestroyRef = inject(DestroyRef);
 
   /**
+   * Holds the app-wide task registry this conversation publishes its running tasks to.
+   */
+  private readonly agentTasks: AgentTasks = inject(AgentTasks);
+
+  /**
    * Holds the structured logger.
    */
   private readonly logger: Log = inject(Log);
@@ -943,6 +949,21 @@ export class Agent {
     const unsubscribe: () => void = this.runtime.onEvent((event: AiEvent): void =>
       this.onEvent(event),
     );
+    // Publish this conversation's tasks app-wide, so the strip can report work that outlives the tab
+    // it was started from. Dropped on destroy, so the registry can never name an agent that has gone.
+    const unregisterTasks: () => void = this.agentTasks.register(this.agentSessionId, {
+      tasks: this.tasks,
+      title: (): string => this.conversationTitle(),
+      tabId: (): string | undefined => this.lastOwningTabId,
+      reveal: (): void => {
+        const tabId: string | undefined = this.lastOwningTabId;
+        if (tabId !== undefined) {
+          this.tabs.activate(tabId);
+        }
+      },
+      stop: (taskId: string): void => this.runtime.stopTask(this.agentSessionId, taskId),
+    });
+    this.destroyRef.onDestroy(unregisterTasks);
     this.destroyRef.onDestroy((): void => {
       unsubscribe();
       // Tie the live session's teardown to the host's lifetime (#327): closing the tab ends its agent's
@@ -1869,8 +1890,7 @@ export class Agent {
       return;
     }
     const tabId: string | undefined = this.lastOwningTabId;
-    const label: string =
-      this.tabs.tabs().find((tab: Tab): boolean => tab.id === tabId)?.title ?? 'Agent';
+    const label: string = this.conversationTitle();
     const watching: boolean = this.isConversationVisible(tabId);
     const actions: readonly NotificationAction[] =
       tabId === undefined || watching
@@ -1914,8 +1934,7 @@ export class Agent {
     // up when the agent leads with plain text, since a thinking block would break the run for you.
     this.push({ kind: 'assistant', text: note, sealed: true });
     const tabId: string | undefined = this.lastOwningTabId;
-    const label: string =
-      this.tabs.tabs().find((tab: Tab): boolean => tab.id === tabId)?.title ?? 'Agent';
+    const label: string = this.conversationTitle();
     const watching: boolean = this.isConversationVisible(tabId);
     const actions: readonly NotificationAction[] =
       tabId === undefined || watching
@@ -2062,6 +2081,16 @@ export class Agent {
     this.flushStream();
     this.activeRequestId = requestId;
     this.busy.set(true);
+  }
+
+  /**
+   * Gets the conversation's display name: its owning tab's title, or a fallback for a conversation with
+   * no tab of its own (a docked agent panel).
+   * @returns Returns the title to show for this conversation.
+   */
+  private conversationTitle(): string {
+    const tabId: string | undefined = this.lastOwningTabId;
+    return this.tabs.tabs().find((tab: Tab): boolean => tab.id === tabId)?.title ?? 'Agent';
   }
 
   /**
