@@ -6,13 +6,8 @@ import {
   input,
   InputSignal,
   OnDestroy,
-  OnInit,
   untracked,
 } from '@angular/core';
-import {
-  createViewInjectorRegistrar,
-  ViewInjectorRegistrar,
-} from '@shared/angular/services/view-injectors/view-injector-registration';
 import { AgentChat } from '@shared/angular/components/agent-chat/agent-chat';
 import { AgentConversationList } from '@shared/angular/components/agent-conversation-list/agent-conversation-list';
 import { ToolPanel } from '@shared/angular/components/panels/tool-panel/tool-panel';
@@ -41,7 +36,7 @@ import { Icon } from '@shared/angular/icons/icon';
   styleUrl: './agent-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class AgentView implements OnInit, OnDestroy {
+export class AgentView implements OnDestroy {
   /**
    * Gets the icon set, exposed for the template.
    */
@@ -85,15 +80,6 @@ export class AgentView implements OnInit, OnDestroy {
   public readonly isActive: InputSignal<boolean> = input<boolean>(false);
 
   /**
-   * Publishes this view's injector so the shell's status strip can mount the agent status component
-   * inside it, where it reaches this tab's own {@link Agent}. Declared after {@link isActive}, whose
-   * signal it reads, and finalised in {@link ngOnInit} once the tab id is readable.
-   */
-  private readonly statusHost: ViewInjectorRegistrar = createViewInjectorRegistrar({
-    isActive: this.isActive,
-  });
-
-  /**
    * Initializes a new instance of the {@link AgentView} class, publishing this tab's conversation to
    * the session registry while active (so the ribbon drives it) and registering/releasing the keyboard
    * accelerators as the view's active state changes.
@@ -125,18 +111,6 @@ export class AgentView implements OnInit, OnDestroy {
         this.registered = false;
       }
     });
-  }
-
-  /**
-   * Publishes this view's injector for the status strip, once the tab id is readable. A docked agent
-   * panel has no tab of its own, so there is nothing to publish against and the strip shows the
-   * hosting view's status instead.
-   */
-  public ngOnInit(): void {
-    const id: string | undefined = this.tabId();
-    if (id !== undefined) {
-      this.statusHost.register(id);
-    }
   }
 
   /**
