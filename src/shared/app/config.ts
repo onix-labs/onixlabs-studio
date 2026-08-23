@@ -16,6 +16,7 @@ import { Printing } from '@shared/angular/services/printing/printing';
 import { Theme } from '@shared/angular/services/theme/theme';
 import { FeatureDescriptor, FeatureRegistry } from '@shared/angular/services/feature-registry';
 import { featureContributions } from '@shared/app/feature-contributions';
+import { CoreMenu } from '@shared/angular/services/app-menu/core-menu';
 import { provideAgentFeature } from '@features/agent/angular/agent.feature';
 import { provideBinaryFeature } from '@features/binary/angular/binary.feature';
 import { provideCodeFeature } from '@features/code/angular/code.feature';
@@ -56,6 +57,12 @@ export const config: ApplicationConfig = {
     // toasts (when the setting is on) whichever panels happen to be mounted.
     provideAppInitializer((): void => {
       inject(AgentRequestToasts);
+    }),
+    // Instantiate the core application menu at start-up, so the menu bar carries Studio's own commands
+    // from the first paint rather than the platform's default roles. Features fold their own entries
+    // into it as their tabs become active.
+    provideAppInitializer((): void => {
+      inject(CoreMenu);
     }),
     // Stand up the terminal feature: register its view + ribbon with the shell and eagerly register
     // its agent terminal capabilities. The one line that enumerates the terminal feature here.

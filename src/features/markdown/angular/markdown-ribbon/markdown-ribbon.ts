@@ -12,6 +12,8 @@ import {
   MarkdownCommands,
 } from '@shared/angular/services/markdown-commands/markdown-commands';
 import { Documents } from '@shared/angular/services/documents/documents';
+import { contributeFeatureMenu } from '@shared/angular/services/app-menu/contribute-feature-menu';
+import { MENU_SEPARATOR, MenuContribution } from '@shared/angular/services/app-menu/app-menu-model';
 import { Log } from '@shared/angular/services/log/log';
 import { Printing } from '@shared/angular/services/printing/printing';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
@@ -223,6 +225,166 @@ export class MarkdownRibbon {
    * Gets a value indicating whether there is an undone edit that can be redone.
    */
   protected readonly canRedo: Signal<boolean> = this.commands.canRedo;
+
+  /**
+   * Contributes this tab's menu while the markdown ribbon is mounted: the file, editing, formatting and
+   * insert commands the ribbon offers.
+   */
+  private readonly menu: void = contributeFeatureMenu(
+    'markdown',
+    (): readonly MenuContribution[] => [
+      {
+        id: 'file',
+        label: 'File',
+        items: [
+          {
+            id: 'markdown.save',
+            label: 'Save',
+            accelerator: 'CmdOrCtrl+S',
+            run: (): void => this.onSave(),
+          },
+          MENU_SEPARATOR,
+          {
+            id: 'markdown.print',
+            label: 'Print…',
+            accelerator: 'CmdOrCtrl+P',
+            run: (): void => this.onPrint(),
+          },
+          {
+            id: 'markdown.exportPdf',
+            label: 'Export to PDF…',
+            run: (): void => this.onExportPdf(),
+          },
+        ],
+      },
+      {
+        id: 'edit',
+        label: 'Edit',
+        items: [
+          {
+            id: 'markdown.undo',
+            label: 'Undo',
+            accelerator: 'CmdOrCtrl+Z',
+            enabled: this.canUndo(),
+            run: (): void => this.onUndo(),
+          },
+          {
+            id: 'markdown.redo',
+            label: 'Redo',
+            accelerator: 'CmdOrCtrl+Shift+Z',
+            enabled: this.canRedo(),
+            run: (): void => this.onRedo(),
+          },
+          MENU_SEPARATOR,
+          {
+            id: 'markdown.cut',
+            label: 'Cut',
+            accelerator: 'CmdOrCtrl+X',
+            run: (): void => this.onCut(),
+          },
+          {
+            id: 'markdown.copy',
+            label: 'Copy',
+            accelerator: 'CmdOrCtrl+C',
+            run: (): void => this.onCopy(),
+          },
+          {
+            id: 'markdown.paste',
+            label: 'Paste',
+            accelerator: 'CmdOrCtrl+V',
+            run: (): void => this.onPaste(),
+          },
+          MENU_SEPARATOR,
+          {
+            id: 'markdown.find',
+            label: 'Find…',
+            accelerator: 'CmdOrCtrl+F',
+            run: (): void => this.onFind(),
+          },
+        ],
+      },
+      {
+        id: 'format',
+        label: 'Format',
+        items: [
+          {
+            id: 'markdown.bold',
+            label: 'Bold',
+            accelerator: 'CmdOrCtrl+B',
+            run: (): void => this.onBold(),
+          },
+          {
+            id: 'markdown.italic',
+            label: 'Italic',
+            accelerator: 'CmdOrCtrl+I',
+            run: (): void => this.onItalic(),
+          },
+          {
+            id: 'markdown.strikethrough',
+            label: 'Strikethrough',
+            run: (): void => this.onStrikethrough(),
+          },
+          { id: 'markdown.inlineCode', label: 'Inline Code', run: (): void => this.onInlineCode() },
+          MENU_SEPARATOR,
+          {
+            id: 'markdown.bulletList',
+            label: 'Bulleted List',
+            run: (): void => this.onBulletList(),
+          },
+          {
+            id: 'markdown.orderedList',
+            label: 'Numbered List',
+            run: (): void => this.onOrderedList(),
+          },
+          { id: 'markdown.taskList', label: 'Task List', run: (): void => this.onTaskList() },
+        ],
+      },
+      {
+        id: 'insert',
+        label: 'Insert',
+        items: [
+          {
+            id: 'markdown.link',
+            label: 'Link…',
+            accelerator: 'CmdOrCtrl+K',
+            run: (): void => this.onLink(),
+          },
+          { id: 'markdown.image', label: 'Image…', run: (): void => this.onImage() },
+          { id: 'markdown.table', label: 'Table', run: (): void => this.onTable() },
+          { id: 'markdown.diagram', label: 'Diagram…', run: (): void => this.onDiagram() },
+          { id: 'markdown.math', label: 'Equation…', run: (): void => this.onMath() },
+          MENU_SEPARATOR,
+          { id: 'markdown.divider', label: 'Divider', run: (): void => this.onDivider() },
+        ],
+      },
+      {
+        id: 'view',
+        label: 'View',
+        items: [
+          {
+            id: 'markdown.outline',
+            label: 'Outline',
+            enabled: this.hasHeadings(),
+            run: (): void => this.onOutline(),
+          },
+          {
+            id: 'markdown.review',
+            label: 'Review',
+            enabled: !this.isDocumentEmpty(),
+            run: (): void => this.onReview(),
+          },
+          {
+            id: 'markdown.reader',
+            label: 'Reader',
+            enabled: !this.isDocumentEmpty(),
+            run: (): void => this.onReader(),
+          },
+          MENU_SEPARATOR,
+          { id: 'markdown.agent', label: 'Ask the Agent', run: (): void => this.onAgent() },
+        ],
+      },
+    ],
+  );
 
   /**
    * Gets a value indicating whether the active document has any headings, so the Outline toggle is

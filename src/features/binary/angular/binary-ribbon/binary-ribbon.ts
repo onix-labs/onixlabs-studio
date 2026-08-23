@@ -1,4 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
+import { contributeFeatureMenu } from '@shared/angular/services/app-menu/contribute-feature-menu';
+import { MENU_SEPARATOR, MenuContribution } from '@shared/angular/services/app-menu/app-menu-model';
 import { Log } from '@shared/angular/services/log/log';
 import { Icon } from '@shared/angular/icons/icon';
 import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host';
@@ -151,6 +153,76 @@ export class BinaryRibbon {
       document.insertMode.set(next);
     }
   }
+
+  /**
+   * Contributes this tab's menu while the binary ribbon is mounted.
+   */
+  private readonly menu: void = contributeFeatureMenu('binary', (): readonly MenuContribution[] => [
+    {
+      id: 'edit',
+      label: 'Edit',
+      items: [
+        {
+          id: 'binary.undo',
+          label: 'Undo',
+          accelerator: 'CmdOrCtrl+Z',
+          enabled: this.canUndo(),
+          run: (): void => this.onUndo(),
+        },
+        {
+          id: 'binary.redo',
+          label: 'Redo',
+          accelerator: 'CmdOrCtrl+Shift+Z',
+          enabled: this.canRedo(),
+          run: (): void => this.onRedo(),
+        },
+        MENU_SEPARATOR,
+        {
+          id: 'binary.insertMode',
+          label: 'Insert Mode',
+          kind: 'checkbox',
+          checked: this.insertMode(),
+          run: (): void => this.onToggleInsertMode(),
+        },
+      ],
+    },
+    {
+      id: 'binary',
+      label: 'Binary',
+      items: [
+        { id: 'binary.goToStart', label: 'Go to Start', run: (): void => this.onGoToStart() },
+        { id: 'binary.goToEnd', label: 'Go to End', run: (): void => this.onGoToEnd() },
+        {
+          id: 'binary.goToCode',
+          label: 'Go to Code',
+          enabled: this.codeAvailable(),
+          run: (): void => this.onGoToCode(),
+        },
+        MENU_SEPARATOR,
+        {
+          id: 'binary.disassembly',
+          label: 'Disassembly',
+          kind: 'checkbox',
+          checked: this.disassemblyShown(),
+          run: (): void => this.onToggleDisassembly(),
+        },
+        {
+          id: 'binary.inspector',
+          label: 'Inspector',
+          kind: 'checkbox',
+          checked: this.inspectorShown(),
+          run: (): void => this.onToggleInspector(),
+        },
+        {
+          id: 'binary.agent',
+          label: 'Agent',
+          kind: 'checkbox',
+          checked: this.agentShown(),
+          run: (): void => this.onToggleAgent(),
+        },
+      ],
+    },
+  ]);
 
   /**
    * Gets whether the active document has a known code offset to jump to.

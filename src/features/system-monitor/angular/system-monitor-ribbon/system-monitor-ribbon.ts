@@ -5,6 +5,8 @@ import { RibbonStripGroup } from '@shared/angular/components/ribbon-strip/ribbon
 import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/ribbon-strip-overflow/ribbon-strip-overflow';
 import { Icon } from '@shared/angular/icons/icon';
 import { SystemMonitorCommands } from '../system-monitor-commands/system-monitor-commands';
+import { contributeFeatureMenu } from '@shared/angular/services/app-menu/contribute-feature-menu';
+import { MenuContribution } from '@shared/angular/services/app-menu/app-menu-model';
 
 /**
  * The contextual ribbon shown while a System Monitor tab is active. Its actions drive the active view
@@ -34,6 +36,41 @@ export class SystemMonitorRibbon {
    * Gets whether the active view's audit shows any records, gating Copy.
    */
   protected readonly hasRecords: Signal<boolean> = this.commands.hasRecords;
+
+  /**
+   * Contributes this tab's menu while the System Monitor ribbon is mounted.
+   */
+  private readonly menu: void = contributeFeatureMenu(
+    'system-monitor',
+    (): readonly MenuContribution[] => [
+      {
+        id: 'edit',
+        label: 'Edit',
+        items: [
+          {
+            id: 'monitor.copy',
+            label: 'Copy',
+            accelerator: 'CmdOrCtrl+C',
+            enabled: this.hasRecords(),
+            run: (): void => this.onCopy(),
+          },
+        ],
+      },
+      {
+        id: 'monitor',
+        label: 'Monitor',
+        items: [
+          {
+            id: 'monitor.refresh',
+            label: 'Refresh',
+            accelerator: 'CmdOrCtrl+Shift+R',
+            run: (): void => this.onRefresh(),
+          },
+          { id: 'monitor.clearFilters', label: 'Clear Filters', run: (): void => this.onClear() },
+        ],
+      },
+    ],
+  );
 
   /**
    * Reloads the audit.
