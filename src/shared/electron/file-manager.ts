@@ -94,7 +94,7 @@ export class FileManager {
     );
     ipcMain.handle(
       FileChannel.OpenFileDialog,
-      (event: IpcMainInvokeEvent): Promise<FileInfo | null> => this.openDialog(event.sender),
+      (event: IpcMainInvokeEvent): Promise<readonly FileInfo[]> => this.openDialog(event.sender),
     );
     ipcMain.handle(
       FileChannel.PickImage,
@@ -102,8 +102,8 @@ export class FileManager {
     );
     ipcMain.handle(
       FileChannel.PickPath,
-      (event: IpcMainInvokeEvent, kind: unknown): Promise<string | null> =>
-        this.pickPath(event.sender, kind === 'folder' ? 'folder' : 'file'),
+      (event: IpcMainInvokeEvent, kind: unknown, multiple: unknown): Promise<readonly string[]> =>
+        this.pickPaths(event.sender, kind === 'folder' ? 'folder' : 'file', multiple === true),
     );
     ipcMain.handle(
       FileChannel.SaveFileDialog,
@@ -176,27 +176,32 @@ export class FileManager {
   }
 
   /**
-   * Shows an open-file dialog and reads the chosen file.
+   * Shows an open-file dialog and reads every chosen file.
    * @param sender The web contents that requested the dialog.
-   * @returns Returns the chosen file's info, or null when cancelled or unreadable.
+   * @returns Returns the chosen files' info, empty when cancelled. A file that cannot be read is
+   * skipped rather than failing the whole selection: one unreadable file among ten should not lose the
+   * other nine.
    */
-  private async openDialog(sender: WebContents): Promise<FileInfo | null> {
+  private async openDialog(sender: WebContents): Promise<readonly FileInfo[]> {
     logger.trace('FileManager.openDialog', 'Open-file dialog requested');
     const result: OpenDialogReturnValue = await showOpenDialog(sender, this.windowGetter, {
-      properties: ['openFile'],
+      properties: ['openFile', 'multiSelections'],
       filters: [{ name: 'All Files', extensions: ['*'] }],
     });
     if (result.canceled || result.filePaths.length === 0) {
       logger.trace('FileManager.openDialog', 'Open-file dialog cancelled');
-      return null;
+      return [];
     }
-    try {
-      logger.debug('FileManager.openDialog', `Chosen file ${result.filePaths[0]}`);
-      return await this.readFileInfo(result.filePaths[0]);
-    } catch (error: unknown) {
-      logger.error('FileManager.openDialog', `Failed to read chosen file ${result.filePaths[0]}`, error);
-      return null;
+    logger.debug('FileManager.openDialog', `Chosen ${result.filePaths.length} file(s)`);
+    const opened: FileInfo[] = [];
+    for (const filePath of result.filePaths) {
+      try {
+        opened.push(await this.readFileInfo(filePath));
+      } catch (error: unknown) {
+        logger.error('FileManager.openDialog', `Failed to read chosen file ${filePath}`, error);
+      }
     }
+    return opened;
   }
 
   /**
@@ -222,23 +227,36 @@ export class FileManager {
   }
 
   /**
-   * Shows an open dialog for a single file or folder and returns the chosen path, without reading its
+   * Shows an open dialog for files or a folder and returns the chosen paths, without reading their
    * contents. Used to attach context to an agent conversation.
+   *
+   * Folders are always single: multi-select is possible for directories but nothing asks for it, and it
+   * complicates what attaching several roots to one conversation would mean.
    * @param sender The web contents that requested the dialog.
-   * @param kind Whether to pick a file or a folder.
-   * @returns Returns the chosen path, or null when cancelled.
+   * @param kind Whether to pick files or a folder.
+   * @param multiple Whether the file dialog accepts more than one selection.
+   * @returns Returns the chosen paths, empty when cancelled.
    */
-  private async pickPath(sender: WebContents, kind: 'file' | 'folder'): Promise<string | null> {
-    logger.trace('FileManager.pickPath', `Pick-${kind} dialog requested`);
+  private async pickPaths(
+    sender: WebContents,
+    kind: 'file' | 'folder',
+    multiple: boolean,
+  ): Promise<readonly string[]> {
+    logger.trace('FileManager.pickPaths', `Pick-${kind} dialog requested (multiple: ${multiple})`);
     const result: OpenDialogReturnValue = await showOpenDialog(sender, this.windowGetter, {
-      properties: [kind === 'folder' ? 'openDirectory' : 'openFile'],
+      properties:
+        kind === 'folder'
+          ? ['openDirectory']
+          : multiple
+            ? ['openFile', 'multiSelections']
+            : ['openFile'],
     });
     if (result.canceled || result.filePaths.length === 0) {
-      logger.trace('FileManager.pickPath', `Pick-${kind} dialog cancelled`);
-      return null;
+      logger.trace('FileManager.pickPaths', `Pick-${kind} dialog cancelled`);
+      return [];
     }
-    logger.debug('FileManager.pickPath', `Chosen ${kind} ${result.filePaths[0]}`);
-    return result.filePaths[0];
+    logger.debug('FileManager.pickPaths', `Chosen ${result.filePaths.length} ${kind}(s)`);
+    return result.filePaths;
   }
 
   /**
@@ -248,7 +266,10 @@ export class FileManager {
    * @returns Returns the chosen path, or null when cancelled.
    */
   private async saveDialog(sender: WebContents, defaultPath?: string): Promise<string | null> {
-    logger.trace('FileManager.saveDialog', `Save dialog requested (defaultPath=${String(defaultPath)})`);
+    logger.trace(
+      'FileManager.saveDialog',
+      `Save dialog requested (defaultPath=${String(defaultPath)})`,
+    );
     const result: SaveDialogReturnValue = await showSaveDialog(sender, this.windowGetter, {
       defaultPath,
       filters: [{ name: 'All Files', extensions: ['*'] }],
@@ -305,7 +326,10 @@ export class FileManager {
       typeof candidate.detail !== 'string' ||
       typeof candidate.confirmLabel !== 'string'
     ) {
-      logger.warn('FileManager.confirmDestructive', 'Rejected malformed confirm-destructive request');
+      logger.warn(
+        'FileManager.confirmDestructive',
+        'Rejected malformed confirm-destructive request',
+      );
       return false;
     }
     const result: MessageBoxReturnValue = await showMessageBox(sender, this.windowGetter, {
@@ -330,7 +354,10 @@ export class FileManager {
     // A UTF-8 BOM decodes to a leading U+FEFF; strip it from the content but record its presence so
     // it can be written back, and so the editor never shows the mark as an invisible character.
     const hasBom: boolean = raw.charCodeAt(0) === 0xfeff;
-    logger.debug('FileManager.readFileInfo', `Read ${filePath} (${raw.length} bytes, hasBom=${hasBom})`);
+    logger.debug(
+      'FileManager.readFileInfo',
+      `Read ${filePath} (${raw.length} bytes, hasBom=${hasBom})`,
+    );
     return {
       path: filePath,
       name: path.basename(filePath),
