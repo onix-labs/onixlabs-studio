@@ -261,6 +261,43 @@ describe('Agent', () => {
     expect(agent.isRunning()).toBe(false);
   });
 
+  it('backgroundTask_theNoteIsSealed_soTheAgentsReportStartsItsOwnMessage', async () => {
+    agent.send('run something slow in the background');
+    const sessionId: string | undefined = runCalls[0].agentSessionId;
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'background-task',
+      agentSessionId: sessionId ?? null,
+      taskId: 'task-1',
+      status: 'completed',
+      summary: 'Tests passed',
+      outputFile: '/tmp/task-1.out',
+    });
+
+    // The adopted turn leads with plain text — no thinking block to break the run. The note and the
+    // report share the `assistant` kind, so an unsealed note would absorb the report into its own
+    // bubble and render "…Tests passedThe suite passed." as one sentence.
+    fireEvent({ requestId: 'run-1', kind: 'text', delta: 'The suite passed.' });
+    await settleStream();
+
+    const assistants: readonly AgentItem[] = agent
+      .items()
+      .filter((i: AgentItem): boolean => i.kind === 'assistant');
+    const note: AgentItem | undefined = assistants.find((i: AgentItem): boolean =>
+      i.text.includes('Background task finished'),
+    );
+    expect(note).toBeDefined();
+    expect(note?.text.includes('The suite passed.')).toBe(false);
+    expect(
+      assistants.some(
+        (i: AgentItem): boolean =>
+          i.text === 'The suite passed.' && !i.text.includes('Background task'),
+      ),
+    ).toBe(true);
+  });
+
   it('backgroundTask_withReportingOff_notesItButLeavesTheConversationIdle', () => {
     const settings: Settings = TestBed.inject(Settings);
     settings.set('ai.reportBackgroundTasks', false);

@@ -101,6 +101,13 @@ export interface AgentItem {
   readonly text: string;
 
   /**
+   * Gets whether the item is closed to continuation, so streamed text never folds into it. Set on
+   * out-of-band notes the agent did not stream — a background-task settle, for instance — which are
+   * complete sentences in their own right and must not absorb whatever the agent says next.
+   */
+  readonly sealed?: boolean;
+
+  /**
    * Gets the images attached to a user message (pasted or dropped into the composer), rendered as
    * thumbnails and persisted with the transcript.
    */
@@ -1787,7 +1794,11 @@ export class Agent {
       status === 'completed' ? 'finished' : status === 'failed' ? 'failed' : 'was stopped';
     const note: string =
       detail.length > 0 ? `_Background task ${word}:_ ${detail}` : `_Background task ${word}._`;
-    this.push({ kind: 'assistant', text: note });
+    // Sealed: the report the agent is about to stream must start its own message. Without this the
+    // first text chunk folds into the note (same `assistant` kind, trailing item) and you get
+    // "…completed (exit code 0)The command completed." run together in one bubble — which only shows
+    // up when the agent leads with plain text, since a thinking block would break the run for you.
+    this.push({ kind: 'assistant', text: note, sealed: true });
     const tabId: string | undefined = this.lastOwningTabId;
     const label: string =
       this.tabs.tabs().find((tab: Tab): boolean => tab.id === tabId)?.title ?? 'Agent';
@@ -2088,7 +2099,11 @@ export class Agent {
     this.perf.streamFlushed();
     const items: readonly AgentItem[] = this.log();
     const last: AgentItem | undefined = items[items.length - 1];
-    if (last?.kind === pending.kind && last.parentToolId === pending.parentToolId) {
+    if (
+      last?.kind === pending.kind &&
+      last.parentToolId === pending.parentToolId &&
+      last.sealed !== true
+    ) {
       // The matched item is the trailing one, so fold the chunk into the tail directly rather than
       // scanning the whole transcript for it (the hot streaming path).
       this.updateLast(
