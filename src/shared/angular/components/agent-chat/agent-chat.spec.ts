@@ -421,6 +421,29 @@ describe('AgentChat', () => {
     expect(payloads[1].textContent).toContain('no such directory');
   });
 
+  it('backgroundedTool_rendersAsLive_withASpinningNode', () => {
+    items.set([
+      {
+        id: 'item-1',
+        kind: 'tool',
+        text: '',
+        toolId: 't1',
+        toolName: 'Bash',
+        toolDetail: 'sleep 45',
+        toolState: 'backgrounded',
+      },
+    ]);
+    fixture.detectChanges();
+
+    // The card is still live: its result came back the instant it backgrounded, but the work carries
+    // on until the task settles.
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    expect(host.querySelectorAll('.agent__spin').length).toBe(1);
+    // ...and it says so in words. The spinning node alone is a 12px signal on a row whose label is
+    // unchanged, which reads as "finished" at a glance.
+    expect(host.textContent).toContain('In background…');
+  });
+
   it('subAgent_rendersItsActivityAsANestedTimeline_notAFlatList', () => {
     items.set([
       {
