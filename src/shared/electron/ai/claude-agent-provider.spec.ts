@@ -142,10 +142,12 @@ function turnCtx(
   model: string,
   signal: AbortSignal,
   events: AiEvent[],
+  agentSessionId: string | null = null,
 ): AgentRunContext {
   return {
     requestId,
     model,
+    agentSessionId,
     signal,
     prompt: 'hello',
     images: [],
@@ -702,6 +704,259 @@ describe('ClaudeAgentSession (live multi-turn)', () => {
     expect(latest.commands.map((command: { name: string }): string => command.name)).toEqual([
       'review',
     ]);
+
+    await harness.session.close();
+  });
+});
+
+describe('ClaudeAgentSession (task lifecycle)', () => {
+  /**
+   * Opens a session, runs one turn to completion, and clears the collected events — leaving a live
+   * session with NO turn in flight, which is the state every task-lifecycle message must survive.
+   * @param events The collected event sink.
+   * @returns The opened harness.
+   */
+  async function openIdleSession(events: AiEvent[]): Promise<SessionHarness> {
+    const controller: AbortController = new AbortController();
+    const harness: SessionHarness = makeSession(
+      turnCtx('run-1', 'claude-opus-4-8', controller.signal, events, 'conv-1'),
+    );
+    const turn: Promise<void> = harness.session.turn(
+      turnCtx('run-1', 'claude-opus-4-8', controller.signal, events, 'conv-1'),
+    );
+    await flush();
+    harness.query()?.emit({ type: 'result', session_id: 'sess-a' });
+    await turn;
+    events.length = 0;
+    return harness;
+  }
+
+  /**
+   * Finds the single event of a kind in the sink.
+   * @param events The collected event sink.
+   * @param kind The event discriminator to look for.
+   * @returns The matching event as a bag of fields.
+   */
+  function only(events: AiEvent[], kind: string): Record<string, unknown> {
+    const found: AiEvent[] = events.filter(
+      (event: AiEvent): boolean => (event as unknown as Record<string, unknown>)['kind'] === kind,
+    );
+    expect(found.length).toBe(1);
+    return found[0] as unknown as Record<string, unknown>;
+  }
+
+  it('taskStarted_isPublishedSessionScoped_carryingTheToolUseAndSubagentType', async () => {
+    const events: AiEvent[] = [];
+    const harness: SessionHarness = await openIdleSession(events);
+
+    harness.query()?.emit({
+      type: 'system',
+      subtype: 'task_started',
+      task_id: 'task-1',
+      tool_use_id: 'tool-9',
+      description: 'Auditing the auth module',
+      subagent_type: 'security-reviewer',
+      session_id: 'sess-a',
+    });
+    await flush();
+
+    const started: Record<string, unknown> = only(events, 'task-started');
+    // Session-scoped, not turn-scoped: it correlates by conversation, because the launching turn has
+    // already ended and the renderer's per-turn request-id filter would otherwise drop it.
+    expect(started['agentSessionId']).toBe('conv-1');
+    expect(started['taskId']).toBe('task-1');
+    expect(started['toolId']).toBe('tool-9');
+    expect(started['description']).toBe('Auditing the auth module');
+    expect(started['agentType']).toBe('security-reviewer');
+    // Nothing the SDK omitted is invented.
+    expect('workflowName' in started).toBe(false);
+    expect('skipTranscript' in started).toBe(false);
+
+    await harness.session.close();
+  });
+
+  it('taskStarted_forALocalWorkflow_carriesTheWorkflowNameAndSkipTranscript', async () => {
+    const events: AiEvent[] = [];
+    const harness: SessionHarness = await openIdleSession(events);
+
+    harness.query()?.emit({
+      type: 'system',
+      subtype: 'task_started',
+      task_id: 'task-2',
+      description: 'Running the spec workflow',
+      task_type: 'local_workflow',
+      workflow_name: 'spec',
+      skip_transcript: true,
+      session_id: 'sess-a',
+    });
+    await flush();
+
+    const started: Record<string, unknown> = only(events, 'task-started');
+    expect(started['taskType']).toBe('local_workflow');
+    expect(started['workflowName']).toBe('spec');
+    // Ambient housekeeping the transcript should hide — a tasks surface may still list it.
+    expect(started['skipTranscript']).toBe(true);
+    // No tool use started it, so no tool id is claimed.
+    expect('toolId' in started).toBe(false);
+
+    await harness.session.close();
+  });
+
+  it('taskProgress_carriesTheUsageTriple_andTheLastToolName', async () => {
+    const events: AiEvent[] = [];
+    const harness: SessionHarness = await openIdleSession(events);
+
+    harness.query()?.emit({
+      type: 'system',
+      subtype: 'task_progress',
+      task_id: 'task-1',
+      description: 'Reading src/auth',
+      last_tool_name: 'Grep',
+      usage: { total_tokens: 4200, tool_uses: 7, duration_ms: 15_000 },
+      session_id: 'sess-a',
+    });
+    await flush();
+
+    const progress: Record<string, unknown> = only(events, 'task-progress');
+    expect(progress['agentSessionId']).toBe('conv-1');
+    expect(progress['taskId']).toBe('task-1');
+    expect(progress['description']).toBe('Reading src/auth');
+    expect(progress['lastToolName']).toBe('Grep');
+    expect(progress['tokens']).toBe(4200);
+    expect(progress['toolUses']).toBe(7);
+    expect(progress['durationMs']).toBe(15_000);
+
+    await harness.session.close();
+  });
+
+  it('taskUpdated_carriesOnlyThePatchedFields_soConsumersMergeRatherThanReplace', async () => {
+    const events: AiEvent[] = [];
+    const harness: SessionHarness = await openIdleSession(events);
+
+    harness.query()?.emit({
+      type: 'system',
+      subtype: 'task_updated',
+      task_id: 'task-1',
+      patch: { status: 'running', is_backgrounded: true },
+      session_id: 'sess-a',
+    });
+    await flush();
+
+    const updated: Record<string, unknown> = only(events, 'task-updated');
+    expect(updated['agentSessionId']).toBe('conv-1');
+    expect(updated['taskId']).toBe('task-1');
+    expect(updated['status']).toBe('running');
+    expect(updated['backgrounded']).toBe(true);
+    // A patch is a delta: fields the SDK did not send must not appear, or a merging consumer would
+    // clobber what it already knows with undefined.
+    expect('error' in updated).toBe(false);
+    expect('endTime' in updated).toBe(false);
+    expect('description' in updated).toBe(false);
+
+    await harness.session.close();
+  });
+
+  it('taskNotification_afterTheLaunchingTurnEnded_publishesWithTheTaskIdAndOutputFile', async () => {
+    const events: AiEvent[] = [];
+    const harness: SessionHarness = await openIdleSession(events);
+
+    // No turn is in flight — this is exactly the "I'll tell you when it finishes" case.
+    harness.query()?.emit({
+      type: 'system',
+      subtype: 'task_notification',
+      task_id: 'task-1',
+      tool_use_id: 'tool-9',
+      status: 'completed',
+      output_file: '/tmp/task-1.out',
+      summary: 'Audit finished: 3 findings',
+      session_id: 'sess-a',
+    });
+    await flush();
+
+    const settled: Record<string, unknown> = only(events, 'background-task');
+    expect(settled['agentSessionId']).toBe('conv-1');
+    expect(settled['taskId']).toBe('task-1');
+    expect(settled['status']).toBe('completed');
+    expect(settled['summary']).toBe('Audit finished: 3 findings');
+    // P2 needs the output file: the summary is one line, but the work itself landed here.
+    expect(settled['outputFile']).toBe('/tmp/task-1.out');
+
+    await harness.session.close();
+  });
+
+  it('liveTasks_areRegisteredOnStart_andPrunedOnSettle_orOnATerminalPatch', async () => {
+    const events: AiEvent[] = [];
+    const harness: SessionHarness = await openIdleSession(events);
+    const registry: Map<string, { toolId?: string; description: string }> = (
+      harness.session as unknown as {
+        liveTasks: Map<string, { toolId?: string; description: string }>;
+      }
+    ).liveTasks;
+
+    harness.query()?.emit({
+      type: 'system',
+      subtype: 'task_started',
+      task_id: 'task-1',
+      tool_use_id: 'tool-9',
+      description: 'Auditing',
+      session_id: 'sess-a',
+    });
+    harness.query()?.emit({
+      type: 'system',
+      subtype: 'task_started',
+      task_id: 'task-2',
+      description: 'Building',
+      session_id: 'sess-a',
+    });
+    await flush();
+    expect(registry.get('task-1')?.toolId).toBe('tool-9');
+    expect(registry.size).toBe(2);
+
+    // A backgrounded task settles through `task_notification`...
+    harness.query()?.emit({
+      type: 'system',
+      subtype: 'task_notification',
+      task_id: 'task-1',
+      status: 'completed',
+      output_file: '/tmp/task-1.out',
+      summary: 'done',
+      session_id: 'sess-a',
+    });
+    // ...but one that ends in the foreground is only ever reported by a terminal `task_updated` patch,
+    // so that path must prune too or the registry leaks for the session's whole life.
+    harness.query()?.emit({
+      type: 'system',
+      subtype: 'task_updated',
+      task_id: 'task-2',
+      patch: { status: 'failed', error: 'compile error' },
+      session_id: 'sess-a',
+    });
+    await flush();
+
+    expect(registry.size).toBe(0);
+
+    await harness.session.close();
+  });
+
+  it('taskMessages_areNotEmittedByTheCodexProvider_orAnyNonClaudeStream', async () => {
+    // The task lifecycle is a Claude-SDK concern: the shared protocol gained the event kinds, but no
+    // other provider fabricates them. Guarded here by asserting the pump only reacts to the four
+    // subtypes it subscribes to, and ignores a system message it does not know.
+    const events: AiEvent[] = [];
+    const harness: SessionHarness = await openIdleSession(events);
+
+    harness.query()?.emit({
+      type: 'system',
+      subtype: 'some_unknown_subtype',
+      task_id: 'task-1',
+      session_id: 'sess-a',
+    });
+    await flush();
+
+    const taskEvents: AiEvent[] = events.filter((event: AiEvent): boolean =>
+      String((event as unknown as Record<string, unknown>)['kind']).startsWith('task-'),
+    );
+    expect(taskEvents).toEqual([]);
 
     await harness.session.close();
   });

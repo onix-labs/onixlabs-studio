@@ -12,6 +12,9 @@ import type {
   Query,
   SDKMessage,
   SDKTaskNotificationMessage,
+  SDKTaskProgressMessage,
+  SDKTaskStartedMessage,
+  SDKTaskUpdatedMessage,
   SandboxSettings,
   SDKUserMessage,
   SlashCommand,
@@ -2074,6 +2077,23 @@ export interface SessionDeps {
  * applies it live via `Query.setModel`; a later turn that changes a frozen structural field is not
  * continued here — the live-session router reopens the session (`AiManager.isCompatibleTurn`).
  */
+/**
+ * A task the session has seen start and not yet seen settle. Holds only what a later message cannot
+ * supply for itself: the SDK's `task_updated` carries the task id and a patch but no `tool_use_id`, so
+ * the launching tool is remembered here.
+ */
+interface LiveTask {
+  /**
+   * Gets the `toolId` of the tool use that started the task, when a tool use started it.
+   */
+  toolId?: string;
+
+  /**
+   * Gets the task's latest known description, refreshed as progress arrives.
+   */
+  description: string;
+}
+
 export class ClaudeAgentSession implements AgentSession {
   /**
    * The context of the turn currently in flight; swapped on each {@link turn} so the message pump emits
@@ -2125,6 +2145,14 @@ export class ClaudeAgentSession implements AgentSession {
    * and the last top-level assistant usage (the true context occupancy).
    */
   private readonly usageState: RunUsageState = { lastCostUsd: 0, lastAssistantUsage: null };
+
+  /**
+   * The session's live tasks, keyed by the SDK's `task_id`. Session-scoped rather than turn-scoped
+   * because a task outlives the turn that launched it. The SDK's `task_updated` carries only the task id
+   * and a patch — no `tool_use_id` — so the entry is what lets a later update be attributed back to the
+   * tool card that started the task. Entries are pruned when the task settles.
+   */
+  private readonly liveTasks: Map<string, LiveTask> = new Map<string, LiveTask>();
 
   /**
    * The running message pump, awaited by {@link close} so teardown waits for it to finish.
@@ -2396,13 +2424,93 @@ export class ClaudeAgentSession implements AgentSession {
    * @param message The SDK task-notification message.
    */
   private publishBackgroundTask(message: SDKTaskNotificationMessage): void {
+    // The task has settled, so its registry entry has served its purpose. Prune before emitting so a
+    // consumer reacting to the settle never observes a stale live entry.
+    this.liveTasks.delete(message.task_id);
     this.currentContext.emit({
       requestId: this.currentContext.requestId,
       kind: 'background-task',
       agentSessionId: this.currentContext.agentSessionId,
+      taskId: message.task_id,
       status: message.status,
       summary: message.summary,
+      outputFile: message.output_file,
       ...(message.tool_use_id === undefined ? {} : { toolId: message.tool_use_id }),
+    });
+  }
+
+  /**
+   * Records a started task in the session registry and publishes it to the renderer. Session-scoped like
+   * {@link publishBackgroundTask}: the task outlives the turn that launched it.
+   * @param message The SDK task-started message.
+   */
+  private publishTaskStarted(message: SDKTaskStartedMessage): void {
+    this.liveTasks.set(message.task_id, {
+      description: message.description,
+      ...(message.tool_use_id === undefined ? {} : { toolId: message.tool_use_id }),
+    });
+    this.currentContext.emit({
+      requestId: this.currentContext.requestId,
+      kind: 'task-started',
+      agentSessionId: this.currentContext.agentSessionId,
+      taskId: message.task_id,
+      description: message.description,
+      ...(message.tool_use_id === undefined ? {} : { toolId: message.tool_use_id }),
+      ...(message.subagent_type === undefined ? {} : { agentType: message.subagent_type }),
+      ...(message.task_type === undefined ? {} : { taskType: message.task_type }),
+      ...(message.workflow_name === undefined ? {} : { workflowName: message.workflow_name }),
+      ...(message.skip_transcript === undefined ? {} : { skipTranscript: message.skip_transcript }),
+    });
+  }
+
+  /**
+   * Publishes a running task's progress to the renderer, refreshing the registry entry's description so
+   * a later update that omits one can still be attributed. Ignored for a task the session never saw
+   * start, which would otherwise open a registry entry that nothing prunes.
+   * @param message The SDK task-progress message.
+   */
+  private publishTaskProgress(message: SDKTaskProgressMessage): void {
+    const entry: LiveTask | undefined = this.liveTasks.get(message.task_id);
+    if (entry !== undefined) {
+      entry.description = message.description;
+    }
+    this.currentContext.emit({
+      requestId: this.currentContext.requestId,
+      kind: 'task-progress',
+      agentSessionId: this.currentContext.agentSessionId,
+      taskId: message.task_id,
+      description: message.description,
+      ...(message.last_tool_name === undefined ? {} : { lastToolName: message.last_tool_name }),
+      tokens: message.usage.total_tokens,
+      toolUses: message.usage.tool_uses,
+      durationMs: message.usage.duration_ms,
+    });
+  }
+
+  /**
+   * Publishes a task's state patch to the renderer, and prunes the registry entry when the patch reports
+   * the task reaching a terminal state. A `task_updated` carries only the task id and the fields that
+   * changed, so everything absent from the patch is absent from the event too — consumers merge it into
+   * their own task map rather than treating it as a whole task.
+   * @param message The SDK task-updated message.
+   */
+  private publishTaskUpdated(message: SDKTaskUpdatedMessage): void {
+    const patch: SDKTaskUpdatedMessage['patch'] = message.patch;
+    // A backgrounded task also settles via `task_notification`, but one that ends in the foreground is
+    // only ever reported here — so terminal states must prune the registry from this path too.
+    if (patch.status === 'completed' || patch.status === 'failed' || patch.status === 'killed') {
+      this.liveTasks.delete(message.task_id);
+    }
+    this.currentContext.emit({
+      requestId: this.currentContext.requestId,
+      kind: 'task-updated',
+      agentSessionId: this.currentContext.agentSessionId,
+      taskId: message.task_id,
+      ...(patch.status === undefined ? {} : { status: patch.status }),
+      ...(patch.description === undefined ? {} : { description: patch.description }),
+      ...(patch.error === undefined ? {} : { error: patch.error }),
+      ...(patch.is_backgrounded === undefined ? {} : { backgrounded: patch.is_backgrounded }),
+      ...(patch.end_time === undefined ? {} : { endTime: patch.end_time }),
     });
   }
 
@@ -2466,8 +2574,23 @@ export class ClaudeAgentSession implements AgentSession {
         // turn has ended and the conversation has gone idle. Surface it so the "I'll tell you when it
         // finishes" promise is actually kept, rather than the completion being silently dropped.
         const task: { type?: string; subtype?: string } = message;
-        if (task.type === 'system' && task.subtype === 'task_notification') {
-          this.publishBackgroundTask(message as SDKTaskNotificationMessage);
+        if (task.type === 'system') {
+          switch (task.subtype) {
+            case 'task_started':
+              this.publishTaskStarted(message as SDKTaskStartedMessage);
+              break;
+            case 'task_progress':
+              this.publishTaskProgress(message as SDKTaskProgressMessage);
+              break;
+            case 'task_updated':
+              this.publishTaskUpdated(message as SDKTaskUpdatedMessage);
+              break;
+            case 'task_notification':
+              this.publishBackgroundTask(message as SDKTaskNotificationMessage);
+              break;
+            default:
+              break;
+          }
         }
         this.deps.handleMessage(message, this.currentContext, this.usageState);
         // Mirror the message to claude.ai/code when the session is bridged (#331). Best-effort.

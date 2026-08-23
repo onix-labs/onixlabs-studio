@@ -103,6 +103,9 @@ export type {
   AiUsageEvent,
   AiSlashCommand,
   AiCommandsEvent,
+  AiTaskStartedEvent,
+  AiTaskProgressEvent,
+  AiTaskUpdatedEvent,
   AiBackgroundTaskEvent,
   AiEvent,
 } from './ai/ai-event-types';

@@ -391,6 +391,159 @@ export interface AiCommandsEvent extends AiEventBase {
 }
 
 /**
+ * Reports that the agent has started a task — a `run_in_background` shell command, a subagent, or a
+ * local workflow. Like {@link AiCommandsEvent} it is session-level rather than per-turn (it carries the
+ * agent session id) because a task outlives the turn that launched it: the launching turn can end while
+ * the task runs on, and its later progress and settle events must still correlate to the same agent.
+ */
+export interface AiTaskStartedEvent extends AiEventBase {
+  /**
+   * Gets the discriminator.
+   */
+  readonly kind: 'task-started';
+
+  /**
+   * Gets the conversation (agent session) the task belongs to, so the renderer correlates it to the
+   * right agent regardless of which turn is in flight. Null for a run with no agent session id.
+   */
+  readonly agentSessionId: string | null;
+
+  /**
+   * Gets the provider's identifier for the task (the SDK's `task_id`), the key every later event for
+   * this task carries.
+   */
+  readonly taskId: string;
+
+  /**
+   * Gets the `toolId` of the tool use that started the task (the SDK's `tool_use_id`), when known, so a
+   * renderer can correlate the task to the tool card that launched it.
+   */
+  readonly toolId?: string;
+
+  /**
+   * Gets the one-line description of what the task is doing.
+   */
+  readonly description: string;
+
+  /**
+   * Gets the subagent type for a Task-tool subagent (the SDK's `subagent_type`), when the task is one.
+   */
+  readonly agentType?: string;
+
+  /**
+   * Gets the provider's task classification (the SDK's `task_type`), when reported — used to tell a
+   * subagent apart from a local workflow.
+   */
+  readonly taskType?: string;
+
+  /**
+   * Gets the workflow's name (the SDK's `workflow_name`), set only when the task is a local workflow.
+   */
+  readonly workflowName?: string;
+
+  /**
+   * Gets whether the task is ambient housekeeping the transcript should hide (the SDK's
+   * `skip_transcript`). A tasks surface may still list it.
+   */
+  readonly skipTranscript?: boolean;
+}
+
+/**
+ * Reports progress for a running task. Session-level for the same reason as {@link AiTaskStartedEvent}:
+ * progress arrives while the launching turn may already have ended.
+ */
+export interface AiTaskProgressEvent extends AiEventBase {
+  /**
+   * Gets the discriminator.
+   */
+  readonly kind: 'task-progress';
+
+  /**
+   * Gets the conversation (agent session) the task belongs to, so the renderer correlates it to the
+   * right agent regardless of which turn is in flight. Null for a run with no agent session id.
+   */
+  readonly agentSessionId: string | null;
+
+  /**
+   * Gets the provider's identifier for the task (the SDK's `task_id`).
+   */
+  readonly taskId: string;
+
+  /**
+   * Gets the current one-line description of what the task is doing.
+   */
+  readonly description: string;
+
+  /**
+   * Gets the name of the last tool the task ran (the SDK's `last_tool_name`), when reported.
+   */
+  readonly lastToolName?: string;
+
+  /**
+   * Gets the task's running total of tokens consumed.
+   */
+  readonly tokens: number;
+
+  /**
+   * Gets the task's running count of tool uses.
+   */
+  readonly toolUses: number;
+
+  /**
+   * Gets how long the task has been running, in milliseconds.
+   */
+  readonly durationMs: number;
+}
+
+/**
+ * Reports a change to a task's state — the SDK sends a wire-safe patch of only the fields that changed,
+ * which consumers merge into their local task map rather than treating as a whole task. Session-level for
+ * the same reason as {@link AiTaskStartedEvent}.
+ */
+export interface AiTaskUpdatedEvent extends AiEventBase {
+  /**
+   * Gets the discriminator.
+   */
+  readonly kind: 'task-updated';
+
+  /**
+   * Gets the conversation (agent session) the task belongs to, so the renderer correlates it to the
+   * right agent regardless of which turn is in flight. Null for a run with no agent session id.
+   */
+  readonly agentSessionId: string | null;
+
+  /**
+   * Gets the provider's identifier for the task (the SDK's `task_id`).
+   */
+  readonly taskId: string;
+
+  /**
+   * Gets the task's new lifecycle state, when the patch changed it.
+   */
+  readonly status?: 'pending' | 'running' | 'completed' | 'failed' | 'killed' | 'paused';
+
+  /**
+   * Gets the task's new description, when the patch changed it.
+   */
+  readonly description?: string;
+
+  /**
+   * Gets the task's failure text, when the patch reported one.
+   */
+  readonly error?: string;
+
+  /**
+   * Gets whether the task has been moved to the background, when the patch changed it.
+   */
+  readonly backgrounded?: boolean;
+
+  /**
+   * Gets when the task ended, as a Unix epoch in milliseconds, when the patch reported it.
+   */
+  readonly endTime?: number;
+}
+
+/**
  * Reports that a task the agent backgrounded (a `run_in_background` shell command, a backgrounded
  * subagent) has settled. A live-harness holds its session open across turns, so this can arrive after
  * the turn that launched the task has already finished and the conversation has gone idle — the agent
@@ -411,9 +564,22 @@ export interface AiBackgroundTaskEvent extends AiEventBase {
   readonly agentSessionId: string | null;
 
   /**
+   * Gets the provider's identifier for the task (the SDK's `task_id`), so the settle correlates to the
+   * task registry entry opened by {@link AiTaskStartedEvent}.
+   */
+  readonly taskId: string;
+
+  /**
    * Gets how the task settled.
    */
   readonly status: 'completed' | 'failed' | 'stopped';
+
+  /**
+   * Gets the path of the file holding the task's real output (the SDK's `output_file`). The summary is
+   * one line; this is where the work itself landed, so a consumer can read the result back rather than
+   * only reporting that it finished.
+   */
+  readonly outputFile: string;
 
   /**
    * Gets the one-line summary of what the task did (the SDK's `summary`), shown on the note.
@@ -470,5 +636,8 @@ export type AiEvent =
   | AiStatusEvent
   | AiUsageEvent
   | AiCommandsEvent
+  | AiTaskStartedEvent
+  | AiTaskProgressEvent
+  | AiTaskUpdatedEvent
   | AiBackgroundTaskEvent
   | AiRemoteMessageEvent;
