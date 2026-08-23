@@ -23,6 +23,9 @@ import type {
   AiProviderInfo,
   AiRemoteControlMode,
   AiRunState,
+  AiTaskProgressEvent,
+  AiTaskStartedEvent,
+  AiTaskUpdatedEvent,
 } from '@shared/api/ai-types';
 import { AiRuntime } from '../ai-runtime/ai-runtime';
 import { AgentEngine } from '../agent-engine/agent-engine';
@@ -61,7 +64,76 @@ export type AgentItemKind =
 /**
  * Identifies the lifecycle state of a tool item.
  */
-export type AgentToolState = 'running' | 'ok' | 'error';
+export type AgentToolState = 'running' | 'backgrounded' | 'ok' | 'error';
+
+/**
+ * A task the agent has started and not yet seen settle — a `run_in_background` command, a subagent, or
+ * a local workflow. Live-session state: the registry is rebuilt from the provider's events and never
+ * persisted, because a task belongs to the harness session rather than to the transcript.
+ */
+export interface AgentTask {
+  /**
+   * Gets the provider's identifier for the task, the key every later event for it carries.
+   */
+  readonly taskId: string;
+
+  /**
+   * Gets the `toolId` of the tool use that launched the task, when one did, joining the task to its
+   * tool card in the transcript.
+   */
+  readonly toolId?: string;
+
+  /**
+   * Gets the latest description of what the task is doing, refreshed as progress arrives.
+   */
+  readonly description: string;
+
+  /**
+   * Gets the subagent type, when the task is a Task-tool subagent.
+   */
+  readonly agentType?: string;
+
+  /**
+   * Gets the workflow's name, when the task is a local workflow.
+   */
+  readonly workflowName?: string;
+
+  /**
+   * Gets the name of the last tool the task ran, when it has reported one.
+   */
+  readonly lastToolName?: string;
+
+  /**
+   * Gets the task's running total of tokens consumed.
+   */
+  readonly tokens: number;
+
+  /**
+   * Gets the task's running count of tool uses.
+   */
+  readonly toolUses: number;
+
+  /**
+   * Gets how long the task has been running, in milliseconds, as last reported.
+   */
+  readonly durationMs: number;
+
+  /**
+   * Gets the task's lifecycle state as last patched by the provider.
+   */
+  readonly status: 'pending' | 'running' | 'paused';
+
+  /**
+   * Gets whether the task has been moved to the background.
+   */
+  readonly backgrounded: boolean;
+
+  /**
+   * Gets whether the task is ambient housekeeping the transcript hides. It stays in the registry so a
+   * tasks surface can list it, but raises no inline note.
+   */
+  readonly skipTranscript: boolean;
+}
 
 /**
  * Identifies the state of a permission request item.
@@ -725,6 +797,28 @@ export class Agent {
    * Gets a value indicating whether a run is in flight.
    */
   public readonly isRunning: Signal<boolean> = this.busy.asReadonly();
+
+  /**
+   * Holds the conversation's live tasks, keyed by task id in arrival order.
+   */
+  private readonly taskState: WritableSignal<readonly AgentTask[]> = signal<readonly AgentTask[]>(
+    [],
+  );
+
+  /**
+   * Gets the tasks the agent has started and not yet seen settle. Live-session state only: never
+   * persisted, and rebuilt from the provider's events after a resume.
+   */
+  public readonly tasks: Signal<readonly AgentTask[]> = this.taskState.asReadonly();
+
+  /**
+   * Gets the count of live tasks the transcript does not hide, which is what a status surface counts.
+   * Ambient housekeeping tasks stay in {@link tasks} but are deliberately not advertised.
+   */
+  public readonly visibleTaskCount: Signal<number> = computed(
+    (): number =>
+      this.taskState().filter((task: AgentTask): boolean => !task.skipTranscript).length,
+  );
 
   /**
    * Gets how much autonomy the conversation's runs use: `agent` (full tools) or `chat` (read-only).
@@ -1458,9 +1552,29 @@ export class Agent {
     // has ended (the conversation is idle, so activeRequestId is null and the per-turn filter below
     // would drop it). Correlate it by agent session id — as for `commands` — and surface it as a
     // spontaneous note plus a notification, keeping the agent's "I'll tell you when it's done" promise.
+    // The task lifecycle is session-level for the same reason `commands` and `background-task` are: a
+    // task outlives the turn that launched it, so the per-turn filter below would drop every update
+    // that arrives once the conversation goes idle — which is most of them.
+    if (
+      event.kind === 'task-started' ||
+      event.kind === 'task-progress' ||
+      event.kind === 'task-updated'
+    ) {
+      if (event.agentSessionId === this.agentSessionId) {
+        this.onTaskEvent(event);
+      }
+      return;
+    }
     if (event.kind === 'background-task') {
       if (event.agentSessionId === this.agentSessionId) {
-        this.onBackgroundTask(event.status, event.summary, event.requestId);
+        this.settleTask(event.taskId, event.status, event.toolId);
+        // Ambient housekeeping settles silently: it never earned a place in the transcript, so it does
+        // not get a note or a notification. It still leaves the registry above.
+        if (event.skipTranscript !== true) {
+          this.onBackgroundTask(event.status, event.summary, event.requestId);
+        } else {
+          this.adoptReportBackTurn(event.requestId);
+        }
       }
       return;
     }
@@ -1815,6 +1929,113 @@ export class Agent {
       key: `agent-task:${tabId ?? 'panel'}`,
       route: watching ? 'history-only' : 'default',
     });
+  }
+
+  /**
+   * Folds a task-lifecycle event into the registry: a start opens an entry, progress and updates merge
+   * into it. The provider sends `task-updated` as a **patch** of only what changed, so absent fields are
+   * left alone rather than overwritten — replacing the entry wholesale would blank the description and
+   * usage every time a status flips.
+   * @param event The task-started, task-progress or task-updated event.
+   */
+  private onTaskEvent(event: AiTaskStartedEvent | AiTaskProgressEvent | AiTaskUpdatedEvent): void {
+    this.logger.debug(
+      'Agent.task',
+      `${event.kind} task=${event.taskId} tool=${
+        event.kind === 'task-started' ? (event.toolId ?? 'none') : 'n/a'
+      }`,
+    );
+    this.taskState.update((tasks: readonly AgentTask[]): readonly AgentTask[] => {
+      const existing: AgentTask | undefined = tasks.find(
+        (task: AgentTask): boolean => task.taskId === event.taskId,
+      );
+      if (event.kind === 'task-started') {
+        const opened: AgentTask = {
+          taskId: event.taskId,
+          description: event.description,
+          tokens: 0,
+          toolUses: 0,
+          durationMs: 0,
+          status: 'running',
+          backgrounded: false,
+          skipTranscript: event.skipTranscript === true,
+          ...(event.toolId === undefined ? {} : { toolId: event.toolId }),
+          ...(event.agentType === undefined ? {} : { agentType: event.agentType }),
+          ...(event.workflowName === undefined ? {} : { workflowName: event.workflowName }),
+        };
+        return existing === undefined ? [...tasks, opened] : tasks;
+      }
+      // Progress and updates for a task this conversation never saw start are dropped: opening an entry
+      // from them would strand a task nothing can settle.
+      if (existing === undefined) {
+        return tasks;
+      }
+      const merged: AgentTask =
+        event.kind === 'task-progress'
+          ? {
+              ...existing,
+              description: event.description,
+              tokens: event.tokens,
+              toolUses: event.toolUses,
+              durationMs: event.durationMs,
+              ...(event.lastToolName === undefined ? {} : { lastToolName: event.lastToolName }),
+            }
+          : {
+              ...existing,
+              ...(event.description === undefined ? {} : { description: event.description }),
+              ...(event.backgrounded === undefined ? {} : { backgrounded: event.backgrounded }),
+              ...(event.status === 'pending' ||
+              event.status === 'running' ||
+              event.status === 'paused'
+                ? { status: event.status }
+                : {}),
+            };
+      return tasks.map(
+        (task: AgentTask): AgentTask => (task.taskId === event.taskId ? merged : task),
+      );
+    });
+    // A terminal patch settles the task even when no `background-task` follows — a task that ends in
+    // the foreground never sends one.
+    if (
+      event.kind === 'task-updated' &&
+      (event.status === 'completed' || event.status === 'failed' || event.status === 'killed')
+    ) {
+      this.settleTask(event.taskId, event.status === 'completed' ? 'completed' : 'failed');
+    }
+  }
+
+  /**
+   * Removes a settled task from the registry and resolves the tool card it was holding open.
+   * @param taskId The settled task's identifier.
+   * @param status How it settled.
+   * @param toolId The launching tool use, when the settle reported one.
+   */
+  private settleTask(
+    taskId: string,
+    status: 'completed' | 'failed' | 'stopped' | 'killed',
+    toolId?: string,
+  ): void {
+    const settled: AgentTask | undefined = this.taskState().find(
+      (task: AgentTask): boolean => task.taskId === taskId,
+    );
+    this.taskState.update((tasks: readonly AgentTask[]): readonly AgentTask[] =>
+      tasks.filter((task: AgentTask): boolean => task.taskId !== taskId),
+    );
+    // The card was parked in `backgrounded` while the task ran; now it can say how it went. The settle
+    // does not always carry the tool use, so fall back to the one recorded when the task started.
+    const card: string | undefined = toolId ?? settled?.toolId;
+    if (card === undefined) {
+      return;
+    }
+    const ok: boolean = status === 'completed';
+    this.log.update((items: readonly AgentItem[]): readonly AgentItem[] =>
+      items.map(
+        (item: AgentItem): AgentItem =>
+          item.kind === 'tool' && item.toolId === card && item.toolState === 'backgrounded'
+            ? { ...item, toolState: ok ? 'ok' : 'error' }
+            : item,
+      ),
+    );
   }
 
   /**
@@ -2177,13 +2398,26 @@ export class Agent {
    * @param output The tool's raw output or error detail, or undefined for none.
    */
   private endTool(toolId: string, ok: boolean, output?: string): void {
+    // A backgrounded tool returns its result the instant it backgrounds — "running in the background"
+    // — so taking that at face value would flip the card to done while the work carries on for another
+    // half hour. When a live task is registered against this tool use, the card stays live in a
+    // `backgrounded` state and only resolves when the task actually settles.
+    const backgrounded: boolean = this.tasks().some(
+      (task: AgentTask): boolean => task.toolId === toolId,
+    );
+    this.logger.debug(
+      'Agent.task',
+      `tool-end tool=${toolId} backgrounded=${String(backgrounded)} liveTasks=[${this.tasks()
+        .map((task: AgentTask): string => `${task.taskId}:${task.toolId ?? 'none'}`)
+        .join(', ')}]`,
+    );
     this.log.update((items: readonly AgentItem[]): readonly AgentItem[] =>
       items.map(
         (item: AgentItem): AgentItem =>
           item.kind === 'tool' && item.toolId === toolId
             ? {
                 ...item,
-                toolState: ok ? 'ok' : 'error',
+                toolState: backgrounded ? 'backgrounded' : ok ? 'ok' : 'error',
                 ...(output === undefined ? {} : { toolOutput: output }),
               }
             : item,

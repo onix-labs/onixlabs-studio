@@ -550,8 +550,11 @@ export class AgentChat implements OnInit {
       const onRail: (kind: TranscriptRowKind) => boolean = (kind: TranscriptRowKind): boolean =>
         kind === 'assistant' || kind === 'thinking' || kind === 'tool' || kind === 'working';
 
+      // A backgrounded tool is still live: its result came back the instant it backgrounded, but the
+      // work carries on until the task settles. Treating it as finished is the lie #427 exists to fix.
       const running: (entry: RailEntry) => boolean = (entry: RailEntry): boolean =>
-        entry.kind === 'tool' && entry.item?.toolState === 'running';
+        entry.kind === 'tool' &&
+        (entry.item?.toolState === 'running' || entry.item?.toolState === 'backgrounded');
 
       const nodeIconFor: (entry: RailEntry) => Icon = (entry: RailEntry): Icon => {
         switch (entry.kind) {
@@ -562,7 +565,7 @@ export class AgentChat implements OnInit {
           case 'working':
             return Icon.SPINNER;
           case 'tool':
-            if (entry.item?.toolState === 'running') {
+            if (entry.item?.toolState === 'running' || entry.item?.toolState === 'backgrounded') {
               return Icon.SPINNER;
             }
             if (entry.item?.toolState === 'error') {
@@ -599,9 +602,11 @@ export class AgentChat implements OnInit {
         const status: string =
           item.toolState === 'running'
             ? `${active !== undefined ? friendlyToolLabel(active.toolName) : 'Working'}…`
-            : item.toolState === 'error'
-              ? 'Failed'
-              : 'Done';
+            : item.toolState === 'backgrounded'
+              ? 'In background…'
+              : item.toolState === 'error'
+                ? 'Failed'
+                : 'Done';
         const meta: string[] = [];
         if (tools.length > 0) {
           meta.push(tools.length === 1 ? '1 tool' : `${tools.length} tools`);

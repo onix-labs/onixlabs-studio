@@ -261,6 +261,183 @@ describe('Agent', () => {
     expect(agent.isRunning()).toBe(false);
   });
 
+  /**
+   * Fires a task-started for this conversation.
+   * @param sessionId The conversation's agent session id.
+   * @param taskId The task's identifier.
+   * @param extra Additional task-started fields.
+   */
+  function startTask(
+    sessionId: string | undefined,
+    taskId: string,
+    extra: Record<string, unknown> = {},
+  ): void {
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'task-started',
+      agentSessionId: sessionId ?? null,
+      taskId,
+      description: `doing ${taskId}`,
+      ...extra,
+    } as unknown as AiEvent);
+  }
+
+  it('taskEvents_areSessionScoped_soTheySurviveTheLaunchingTurnEnding', () => {
+    agent.send('go');
+    const sessionId: string | undefined = runCalls[0].agentSessionId;
+    // The launching turn ends: activeRequestId is null, so the per-turn filter would drop everything.
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+
+    startTask(sessionId, 'task-1', { toolId: 'tool-9', agentType: 'security-reviewer' });
+    expect(agent.tasks().length).toBe(1);
+    expect(agent.tasks()[0].agentType).toBe('security-reviewer');
+
+    // Another conversation's task is ignored.
+    startTask('someone-else', 'task-x');
+    expect(agent.tasks().length).toBe(1);
+
+    fireEvent({
+      requestId: 'stale',
+      kind: 'task-progress',
+      agentSessionId: sessionId ?? null,
+      taskId: 'task-1',
+      description: 'reading src/auth',
+      lastToolName: 'Grep',
+      tokens: 4200,
+      toolUses: 7,
+      durationMs: 15_000,
+    } as unknown as AiEvent);
+
+    expect(agent.tasks()[0].description).toBe('reading src/auth');
+    expect(agent.tasks()[0].lastToolName).toBe('Grep');
+    expect(agent.tasks()[0].tokens).toBe(4200);
+  });
+
+  it('taskUpdated_mergesThePatch_ratherThanReplacingTheEntry', () => {
+    agent.send('go');
+    const sessionId: string | undefined = runCalls[0].agentSessionId;
+    startTask(sessionId, 'task-1');
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'task-progress',
+      agentSessionId: sessionId ?? null,
+      taskId: 'task-1',
+      description: 'reading src/auth',
+      tokens: 4200,
+      toolUses: 7,
+      durationMs: 15_000,
+    } as unknown as AiEvent);
+
+    // A patch carrying only `is_backgrounded` must not blank the description or the usage counters.
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'task-updated',
+      agentSessionId: sessionId ?? null,
+      taskId: 'task-1',
+      backgrounded: true,
+    } as unknown as AiEvent);
+
+    expect(agent.tasks()[0].backgrounded).toBe(true);
+    expect(agent.tasks()[0].description).toBe('reading src/auth');
+    expect(agent.tasks()[0].tokens).toBe(4200);
+  });
+
+  it('backgroundedToolCard_staysLive_untilTheTaskActuallySettles', () => {
+    agent.send('go');
+    const sessionId: string | undefined = runCalls[0].agentSessionId;
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'tool-start',
+      toolId: 'tool-9',
+      name: 'Bash',
+      detail: 'sleep 30',
+    });
+    startTask(sessionId, 'task-1', { toolId: 'tool-9' });
+
+    // A backgrounded tool returns "running in the background" immediately. Taking that at face value
+    // would mark the card done while the work carries on.
+    fireEvent({ requestId: 'run-1', kind: 'tool-end', toolId: 'tool-9', ok: true, detail: '' });
+    const card: () => AgentItem | undefined = (): AgentItem | undefined =>
+      agent.items().find((i: AgentItem): boolean => i.toolId === 'tool-9');
+    expect(card()?.toolState).toBe('backgrounded');
+
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'background-task',
+      agentSessionId: sessionId ?? null,
+      taskId: 'task-1',
+      toolId: 'tool-9',
+      status: 'completed',
+      summary: 'done',
+      outputFile: '/tmp/o',
+    });
+
+    expect(card()?.toolState).toBe('ok');
+    expect(agent.tasks().length).toBe(0);
+  });
+
+  it('ambientTask_staysInTheRegistry_butRaisesNoNoteAndIsNotCounted', () => {
+    agent.send('go');
+    const sessionId: string | undefined = runCalls[0].agentSessionId;
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+    startTask(sessionId, 'task-1', { skipTranscript: true });
+
+    // In the registry for a tasks surface, but deliberately not advertised.
+    expect(agent.tasks().length).toBe(1);
+    expect(agent.visibleTaskCount()).toBe(0);
+
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'background-task',
+      agentSessionId: sessionId ?? null,
+      taskId: 'task-1',
+      status: 'completed',
+      summary: 'housekeeping',
+      outputFile: '/tmp/o',
+      skipTranscript: true,
+    });
+
+    expect(agent.tasks().length).toBe(0);
+    expect(
+      agent
+        .items()
+        .some(
+          (i: AgentItem): boolean =>
+            i.kind === 'assistant' && i.text.includes('Background task finished'),
+        ),
+    ).toBe(false);
+  });
+
+  it('taskUpdated_withATerminalStatus_settlesTheTask_evenWithNoBackgroundTaskEvent', () => {
+    agent.send('go');
+    const sessionId: string | undefined = runCalls[0].agentSessionId;
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'tool-start',
+      toolId: 'tool-9',
+      name: 'Task',
+      detail: 'review',
+    });
+    startTask(sessionId, 'task-1', { toolId: 'tool-9' });
+    fireEvent({ requestId: 'run-1', kind: 'tool-end', toolId: 'tool-9', ok: true, detail: '' });
+
+    // A task that ends in the foreground never sends `task_notification`, so the terminal patch is the
+    // only signal that it is over. Without this the card would stay backgrounded forever.
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'task-updated',
+      agentSessionId: sessionId ?? null,
+      taskId: 'task-1',
+      status: 'failed',
+      error: 'boom',
+    } as unknown as AiEvent);
+
+    expect(agent.tasks().length).toBe(0);
+    expect(agent.items().find((i: AgentItem): boolean => i.toolId === 'tool-9')?.toolState).toBe(
+      'error',
+    );
+  });
+
   it('backgroundTask_theNoteIsSealed_soTheAgentsReportStartsItsOwnMessage', async () => {
     agent.send('run something slow in the background');
     const sessionId: string | undefined = runCalls[0].agentSessionId;

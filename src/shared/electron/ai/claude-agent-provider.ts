@@ -2436,6 +2436,7 @@ export class ClaudeAgentSession implements AgentSession {
       summary: message.summary,
       outputFile: message.output_file,
       ...(message.tool_use_id === undefined ? {} : { toolId: message.tool_use_id }),
+      ...(message.skip_transcript === undefined ? {} : { skipTranscript: message.skip_transcript }),
     });
   }
 

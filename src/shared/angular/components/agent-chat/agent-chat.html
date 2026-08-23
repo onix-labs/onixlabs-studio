@@ -375,6 +375,12 @@
               >
                 <summary class="agent__action-summary">
                   <span class="agent__action-label">{{ row.label }}</span>
+                  <!-- A backgrounded tool has returned its result but is still working. Say so on the
+                       row itself: the rail node's spinner alone is a 12px signal that reads the same
+                       as "finished" at a glance, and the label does not change. -->
+                  @if (row.item!.toolState === 'backgrounded') {
+                    <span class="agent__lane-status">In background…</span>
+                  }
                   <app-icon class="agent__action-caret" [icon]="Icon.CARET_DOWN" />
                 </summary>
                 <div class="agent__action-detail">

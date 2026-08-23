@@ -591,6 +591,13 @@ export interface AiBackgroundTaskEvent extends AiEventBase {
    * the note can reference the originating tool.
    */
   readonly toolId?: string;
+
+  /**
+   * Gets whether the task is ambient housekeeping the transcript should hide (the SDK's
+   * `skip_transcript`). Its settle raises no inline note and no notification; a tasks surface may
+   * still list it.
+   */
+  readonly skipTranscript?: boolean;
 }
 
 /**
