@@ -213,19 +213,45 @@ describe('AgentRibbon', () => {
     expect(stopped).toBe(1);
   });
 
-  it('provider_whenChanged_selectsTheMatchingProvider', () => {
-    const select: HTMLSelectElement = field('Provider');
-    select.value = 'Vercel AI SDK';
-    select.dispatchEvent(new Event('change'));
+  it('engine_whenRendered_offersOneFieldGroupingModelsByProvider', () => {
+    // One merged field, not a Provider field and a Model field.
+    expect(host.querySelector('select[aria-label="Provider"]')).toBeNull();
+    expect(host.querySelector('select[aria-label="Model"]')).toBeNull();
 
-    expect(providerChoices).toEqual(['vercel']);
+    const select: HTMLSelectElement = field('Provider and model');
+    const groups: NodeListOf<HTMLOptGroupElement> = select.querySelectorAll('optgroup');
+    expect(Array.from(groups, (group: HTMLOptGroupElement): string => group.label)).toEqual([
+      'Claude (Agent SDK)',
+      'Vercel AI SDK',
+    ]);
+    // Both providers offer the same model ids, so the values must name the pair, not the model alone.
+    expect(Array.from(select.options, (option: HTMLOptionElement): string => option.value)).toEqual(
+      [
+        'claude::claude-opus-4-8',
+        'claude::claude-haiku-4-5',
+        'vercel::claude-opus-4-8',
+        'vercel::claude-haiku-4-5',
+      ],
+    );
+    expect(select.value).toBe('claude::claude-opus-4-8');
   });
 
-  it('model_whenChanged_selectsTheMatchingModel', () => {
-    const select: HTMLSelectElement = field('Model');
-    select.value = 'Haiku 4.5';
+  it('engine_whenAModelOfAnotherProviderIsPicked_setsTheProviderThenTheModel', () => {
+    const select: HTMLSelectElement = field('Provider and model');
+    select.value = 'vercel::claude-haiku-4-5';
     select.dispatchEvent(new Event('change'));
 
+    // The provider must be applied first: setting it resets the model to that provider's default.
+    expect(providerChoices).toEqual(['vercel']);
+    expect(modelChoices).toEqual(['claude-haiku-4-5']);
+  });
+
+  it('engine_whenAModelOfTheCurrentProviderIsPicked_leavesTheProviderAlone', () => {
+    const select: HTMLSelectElement = field('Provider and model');
+    select.value = 'claude::claude-haiku-4-5';
+    select.dispatchEvent(new Event('change'));
+
+    expect(providerChoices).toEqual([]);
     expect(modelChoices).toEqual(['claude-haiku-4-5']);
   });
 
@@ -319,6 +345,17 @@ describe('AgentRibbon', () => {
   it('attachSelection_whenNothingIsSelected_isDisabled', () => {
     // Nothing to attach, so the control does not offer itself rather than silently doing nothing.
     expect(button('Selection').disabled).toBe(true);
+  });
+
+  it('groups_whenRendered_areSessionEngineAndAttachmentsOnly', () => {
+    // Permissions is gone: its Mode field moved into Engine and its Remote toggle into Session.
+    const titles: string[] = Array.from(
+      host.querySelectorAll<HTMLElement>('.ribbon-group__title'),
+      (title: HTMLElement): string => title.textContent?.trim() ?? '',
+    );
+    expect(titles).toEqual(['Session', 'Engine', 'Attachments']);
+    expect(field('Mode').closest('.ribbon-group')?.textContent).toContain('Engine');
+    expect(button('Remote').closest('.ribbon-group')?.textContent).toContain('Session');
   });
 
   it('clearContext_whenNothingAttached_isDisabledOtherwiseClears', () => {

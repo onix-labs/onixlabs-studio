@@ -7,14 +7,20 @@ import {
   Signal,
   WritableSignal,
 } from '@angular/core';
-import type { AgentMode, AiModelInfo, AiProviderInfo } from '@shared/api/ai-types';
+import type { AgentMode } from '@shared/api/ai-types';
 import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine';
+import {
+  applyEngineOption,
+  engineOptions,
+  engineOptionValue,
+} from '@shared/angular/services/agent-engine/engine-options';
 import { AgentSessions } from '@shared/angular/services/agent-sessions/agent-sessions';
 import { EditorCommands } from '@shared/angular/services/editor-commands/editor-commands';
 import { contributeFeatureMenu } from '@shared/angular/services/app-menu/contribute-feature-menu';
 import { MENU_SEPARATOR, MenuContribution } from '@shared/angular/services/app-menu/app-menu-model';
 import { Log } from '@shared/angular/services/log/log';
 import { Icon } from '@shared/angular/icons/icon';
+import { DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host';
 import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button';
 import { RibbonStripButtonSmall } from '@shared/angular/components/ribbon-strip/ribbon-strip-button-small/ribbon-strip-button-small';
@@ -27,11 +33,11 @@ import { AgentRemoteModal } from '@shared/angular/components/agent-remote-modal/
 /**
  * Represents the contextual ribbon shown when an agent tab is active. The Session group drives the
  * active tab's conversation through {@link AgentSessions} — New clears its transcript, Stop aborts its
- * in-flight run, and Clear removes everything attached — while the Engine group's Provider and Model
- * fields drive the active tab's own connection/model selection (also through {@link AgentSessions}),
- * with the option list drawn from {@link AgentEngine}. The Attachments group attaches files, folders,
- * and the current editor selection to the conversation; the Options group drives the autonomy mode and
- * the follow-the-tail preference.
+ * in-flight run, Remote exposes the session to another machine, and the stacked Compact/Clear/History
+ * controls summarise it, drop its attachments, and show its past conversations. The Engine group's
+ * fields drive the active tab's connection/model selection (also through {@link AgentSessions}) and its
+ * autonomy mode, with the option list drawn from {@link AgentEngine} and grouped by provider. The
+ * Attachments group attaches files, folders, and the current editor selection to the conversation.
  */
 @Component({
   selector: 'app-agent-ribbon',
@@ -194,38 +200,18 @@ export class AgentRibbon {
   ]);
 
   /**
-   * Gets the provider labels offered by the Provider field.
+   * Gets the options offered by the Engine field: every registered provider's models, each under its
+   * provider's label as a group heading.
    */
-  protected readonly providerLabels: Signal<readonly string[]> = computed((): readonly string[] =>
-    this.engine.providers().map((provider: AiProviderInfo): string => provider.label),
+  protected readonly engineOptions: Signal<readonly DropdownOption[]> = computed(
+    (): readonly DropdownOption[] => engineOptions(this.engine.providers()),
   );
 
   /**
-   * Gets the label of the active tab's selected provider, for the Provider field's value.
+   * Gets the active tab's selected provider/model pair, for the Engine field's value.
    */
-  protected readonly providerLabel: Signal<string> = computed(
-    (): string =>
-      this.engine
-        .providers()
-        .find((provider: AiProviderInfo): boolean => provider.id === this.sessions.provider())
-        ?.label ?? '',
-  );
-
-  /**
-   * Gets the model labels offered by the Model field (the active tab's effective provider's models).
-   */
-  protected readonly modelLabels: Signal<readonly string[]> = computed((): readonly string[] =>
-    this.sessions.models().map((model: AiModelInfo): string => model.label),
-  );
-
-  /**
-   * Gets the label of the active tab's selected model, for the Model field's value.
-   */
-  protected readonly modelLabel: Signal<string> = computed(
-    (): string =>
-      this.sessions
-        .models()
-        .find((model: AiModelInfo): boolean => model.id === this.sessions.model())?.label ?? '',
+  protected readonly engineSelection: Signal<string> = computed((): string =>
+    engineOptionValue(this.sessions.provider(), this.sessions.model()),
   );
 
   /**
@@ -335,30 +321,11 @@ export class AgentRibbon {
   }
 
   /**
-   * Selects the provider matching the chosen label.
-   * @param label The label emitted by the Provider field.
+   * Selects the chosen provider/model pair for the active tab.
+   * @param value The provider/model pair emitted by the Engine field.
    */
-  protected onProviderLabel(label: string): void {
-    const match: AiProviderInfo | undefined = this.engine
-      .providers()
-      .find((provider: AiProviderInfo): boolean => provider.label === label);
-    if (match !== undefined) {
-      this.log.debug('agent.ribbon', 'Provider selected', { provider: match.id, label });
-      this.sessions.setProvider(match.id);
-    }
-  }
-
-  /**
-   * Selects the model matching the chosen label.
-   * @param label The label emitted by the Model field.
-   */
-  protected onModelLabel(label: string): void {
-    const match: AiModelInfo | undefined = this.sessions
-      .models()
-      .find((model: AiModelInfo): boolean => model.label === label);
-    if (match !== undefined) {
-      this.log.debug('agent.ribbon', 'Model selected', { model: match.id, label });
-      this.sessions.setModel(match.id);
-    }
+  protected onEngine(value: string): void {
+    this.log.debug('agent.ribbon', 'Engine selected', { value });
+    applyEngineOption(value, this.engine.providers(), this.sessions);
   }
 }

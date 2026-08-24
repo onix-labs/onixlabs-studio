@@ -40,21 +40,14 @@
     />
   }
 
+  <!-- One field for the pair: the models of every connection, grouped under their provider's label. -->
   <app-dropdown
     class="strip__field"
-    ariaLabel="Provider"
+    ariaLabel="Provider and model"
     [fullWidth]="true"
-    [options]="providerOptions()"
-    [value]="provider()"
-    (valueChange)="onProvider($event)"
-  />
-  <app-dropdown
-    class="strip__field"
-    ariaLabel="Model"
-    [fullWidth]="true"
-    [options]="modelOptions()"
-    [value]="model()"
-    (valueChange)="onModel($event)"
+    [options]="engineOptions()"
+    [value]="engineSelection()"
+    (valueChange)="onEngine($event)"
   />
 
   <app-button
