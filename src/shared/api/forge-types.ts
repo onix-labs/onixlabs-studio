@@ -259,4 +259,11 @@ export type ForgeResult<T> =
        * answers with "sign in" rather than "try again".
        */
       readonly unauthorized: boolean;
+
+      /**
+       * Gets when the forge will accept requests again, as epoch milliseconds, for a failure that is
+       * the rate limit rather than anything wrong. Present only then — its presence is what tells a
+       * caller to wait rather than to retry, and what lets the panel say how long for.
+       */
+      readonly retryAt?: number;
     };

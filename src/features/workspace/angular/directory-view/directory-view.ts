@@ -620,6 +620,12 @@ export class DirectoryView implements OnInit, OnDestroy {
   private readonly dockPanelCommands: DockPanelCommands = inject(DockPanelCommands);
 
   /**
+   * Holds this tab's forge-backed repository view, told when this tab is in front so it polls only
+   * then.
+   */
+  private readonly forgeRepository: ForgeRepository = inject(ForgeRepository);
+
+  /**
    * Gets whether each panel that depends on something existing actually has it: a Solution Explorer
    * needs a recognised project system, Packages a recognised ecosystem, Debug a running session,
    * Worktrees a container, and the source-control trio a repository. A panel absent from this map has
@@ -1159,6 +1165,12 @@ export class DirectoryView implements OnInit, OnDestroy {
       }
     });
 
+    // The forge polls only for the tab in front. Every view stays mounted while hidden, so a panel
+    // being alive says nothing about anyone looking at it.
+    effect((): void => {
+      this.forgeRepository.setActive(this.isActive());
+    });
+
     // Keep the Worktrees panel present while this view belongs to a container: every preset apply
     // rebuilds the layout from the preset's definition, so the container's defining panel is
     // re-added (and shown) whenever it is missing.
@@ -1339,6 +1351,7 @@ export class DirectoryView implements OnInit, OnDestroy {
     this.workspaceFind.unregister(this.revealSearchHandler);
     this.workspaceDocuments.unregister(this.documentHandler);
     this.dockPanelCommands.unregister(this.dockPanelHandler);
+    this.forgeRepository.dispose();
     // A sub-view destroyed while its tab stays open (a removed checkout, the promotion transition)
     // must not clear the tab's published root — the successor view republishes it, but only the
     // whole tab closing should drop the entry.

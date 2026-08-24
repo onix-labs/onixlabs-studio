@@ -1,3 +1,4 @@
+import { vi } from 'vitest';
 import { signal, WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Forge } from '@shared/angular/services/forge/forge';
@@ -89,7 +90,13 @@ class FakeForge {
     return Promise.resolve(this.forgeUrls.includes(remoteUrl) ? REFERENCE : null);
   }
 
+  /**
+   * Counts the reads of each section, so the poll can be observed.
+   */
+  public readonly readCounts: { pullRequests: number } = { pullRequests: 0 };
+
   public pullRequests(): Promise<ForgeResult<readonly ForgePullRequest[]>> {
+    this.readCounts.pullRequests += 1;
     return Promise.resolve(this.pullRequestResult);
   }
 
@@ -406,6 +413,135 @@ describe('ForgeRepository', () => {
 
       expect(result.ok).toBe(false);
       expect(forge.commands).toEqual([]);
+    });
+  });
+
+  describe('staleness, the rate limit, and polling', () => {
+    beforeEach(() => {
+      repository.remotes.set([
+        { name: 'origin', url: 'https://github.com/onix-labs/onixlabs-studio.git', branches: [] },
+      ]);
+    });
+
+    it('keepsTheLastGoodDataWhenAReadFails_ratherThanBlanking', async () => {
+      // Pull requests read a minute ago are still the best answer available; losing them because the
+      // network blinked tells the user less than leaving them up does.
+      await service.loadPullRequests();
+      expect(service.pullRequests().items.length).toBe(1);
+
+      forge.pullRequestResult = { ok: false, error: 'Offline', unauthorized: false };
+      await service.loadPullRequests();
+
+      expect(service.pullRequests().state).toBe('error');
+      expect(service.pullRequests().items.length).toBe(1);
+      expect(service.pullRequests().stale).toBe(true);
+    });
+
+    it('clearsOnAnAuthenticationFailure_becauseTheCredentialCanNoLongerSeeIt', async () => {
+      await service.loadPullRequests();
+
+      forge.pullRequestResult = { ok: false, error: 'Rejected', unauthorized: true };
+      await service.loadPullRequests();
+
+      expect(service.pullRequests().items).toEqual([]);
+      expect(service.pullRequests().stale).toBe(false);
+    });
+
+    it('reportsRateLimited_distinctlyFromAnyOtherFailure_andSaysHowLong', async () => {
+      await service.loadPullRequests();
+      forge.pullRequestResult = {
+        ok: false,
+        error: 'Rate limit exhausted.',
+        unauthorized: false,
+        retryAt: Date.now() + 12 * 60_000,
+      };
+
+      await service.loadPullRequests();
+
+      expect(service.pullRequests().state).toBe('rate-limited');
+      expect(service.pullRequests().message).toContain('12 minutes');
+      // Still showing what it had, since none of it stopped being true.
+      expect(service.pullRequests().items.length).toBe(1);
+    });
+
+    it('doesNotBlankWhileLoading', async () => {
+      // A poll that emptied the section for the length of a request would make an idle panel flicker.
+      await service.loadPullRequests();
+      forge.pullRequestResult = { ok: true, value: [pullRequest()] };
+
+      const pending: Promise<void> = service.loadPullRequests();
+      // Read mid-flight: the section is loading, and still holding what it had.
+      const duringLoad: number = service.pullRequests().items.length;
+      await pending;
+
+      expect(duringLoad).toBe(1);
+    });
+
+    it('pollsNothingUntilASectionIsWatched', async () => {
+      vi.useFakeTimers();
+      try {
+        await vi.advanceTimersByTimeAsync(5 * 60_000);
+        expect(forge.readCounts.pullRequests).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('pollsAWatchedSection_andStopsWhenItIsUnwatched', async () => {
+      vi.useFakeTimers();
+      try {
+        service.watch('pullRequests');
+        await vi.advanceTimersByTimeAsync(60_000);
+        expect(forge.readCounts.pullRequests).toBe(1);
+
+        service.unwatch('pullRequests');
+        await vi.advanceTimersByTimeAsync(5 * 60_000);
+        expect(forge.readCounts.pullRequests).toBe(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('stopsPollingWhileTheViewIsNotTheOneInFront', async () => {
+      // Every view stays mounted while hidden, so a live panel says nothing about anyone looking.
+      vi.useFakeTimers();
+      try {
+        service.watch('pullRequests');
+        service.setActive(false);
+        await vi.advanceTimersByTimeAsync(5 * 60_000);
+        expect(forge.readCounts.pullRequests).toBe(0);
+
+        service.setActive(true);
+        await vi.advanceTimersByTimeAsync(60_000);
+        expect(forge.readCounts.pullRequests).toBe(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('dispose_stopsThePoll', async () => {
+      vi.useFakeTimers();
+      try {
+        service.watch('pullRequests');
+        service.dispose();
+        await vi.advanceTimersByTimeAsync(5 * 60_000);
+
+        expect(forge.readCounts.pullRequests).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('watch_ignoresASectionThatIsNotForgeBacked', async () => {
+      vi.useFakeTimers();
+      try {
+        service.watch('tags');
+        await vi.advanceTimersByTimeAsync(5 * 60_000);
+
+        expect(forge.readCounts.pullRequests).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 });

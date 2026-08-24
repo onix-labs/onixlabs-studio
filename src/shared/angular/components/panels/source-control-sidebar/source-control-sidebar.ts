@@ -5,6 +5,7 @@ import {
   inject,
   input,
   InputSignal,
+  OnDestroy,
   Signal,
   signal,
   WritableSignal,
@@ -92,6 +93,11 @@ interface RepoNode {
    * Gets the section key, for a section header row.
    */
   readonly sectionKey?: string;
+
+  /**
+   * Gets a muted note shown after a section header's label — why what is beneath it is not current.
+   */
+  readonly note?: string;
 
   /**
    * Gets the branch, for a local-branch row (drives the ahead/behind deltas and checkout action).
@@ -280,7 +286,7 @@ interface SectionDef {
   styleUrl: './source-control-sidebar.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class SourceControlSidebar {
+export class SourceControlSidebar implements OnDestroy {
   /**
    * Gets the dock panel descriptor this panel was projected for. Supplied by the dock outlet; the
    * sidebar reads its state from the shared {@link Repository} rather than the descriptor.
@@ -395,12 +401,48 @@ export class SourceControlSidebar {
           icon: section.icon,
           label: section.label,
           sectionKey: section.key,
+          ...(this.noteFor(section.key) === null ? {} : { note: this.noteFor(section.key) }),
         },
       });
       out.push(...matched);
     }
     return out;
   });
+
+  /**
+   * Resolves a section header's muted note: why what is beneath it is not current.
+   *
+   * Only a section still showing something needs one. A section with nothing to show says why in the
+   * placeholder row instead, where there is room for the whole sentence.
+   *
+   * @param key The section key.
+   * @returns Returns the note, or null when the section is current or empty.
+   */
+  private noteFor(key: string): string | null {
+    const section: ForgeSection<unknown> | null = this.forgeSectionFor(key);
+    if (!section?.stale) {
+      return null;
+    }
+    return section.state === 'rate-limited' ? 'rate limited' : 'offline';
+  }
+
+  /**
+   * Resolves a forge-backed section by key.
+   * @param key The section key.
+   * @returns Returns the section, or null for a section backed by git rather than the forge.
+   */
+  private forgeSectionFor(key: string): ForgeSection<unknown> | null {
+    switch (key) {
+      case 'pullRequests':
+        return this.forge.pullRequests();
+      case 'issues':
+        return this.forge.issues();
+      case 'actions':
+        return this.forge.workflowRuns();
+      default:
+        return null;
+    }
+  }
 
   /**
    * Determines whether a row survives the filter. Placeholder rows never match: an empty section's
@@ -488,6 +530,7 @@ export class SourceControlSidebar {
     this.expandedSections.set(new Set<string>(keys));
     for (const key of keys) {
       this.loadSection(key);
+      this.forge.watch(key);
     }
   }
 
@@ -496,6 +539,15 @@ export class SourceControlSidebar {
    */
   protected collapseAll(): void {
     this.expandedSections.set(new Set<string>());
+    this.forge.unwatchAll();
+  }
+
+  /**
+   * Stops keeping the forge sections current when the panel goes away. A tool panel is destroyed
+   * whenever another in its stack activates, so this is the common case rather than the rare one.
+   */
+  public ngOnDestroy(): void {
+    this.forge.unwatchAll();
   }
 
   /**
@@ -750,11 +802,13 @@ export class SourceControlSidebar {
     const next: Set<string> = new Set<string>(this.expandedSections());
     if (next.has(key)) {
       next.delete(key);
+      // Out of sight, so it stops being kept current: an idle workspace must not talk to the forge.
+      this.forge.unwatch(key);
     } else {
       next.add(key);
-      // Read on first expand rather than eagerly: the forge is rate-limited, and a section the user
-      // never opens should cost nothing. (P5 adds the refresh cadence and caching around this.)
+      // Read on first expand rather than eagerly: a section the user never opens should cost nothing.
       this.loadSection(key);
+      this.forge.watch(key);
     }
     this.expandedSections.set(next);
   }
@@ -879,7 +933,7 @@ export class SourceControlSidebar {
    */
   private pullRequestRows(): readonly TreeRow[] {
     const section: ForgeSection<ForgePullRequest> = this.forge.pullRequests();
-    if (section.state !== 'ready') {
+    if (section.state !== 'ready' && section.items.length === 0) {
       return [
         this.emptyRow(
           'pullRequests',
@@ -1071,7 +1125,7 @@ export class SourceControlSidebar {
    */
   private issueRows(): readonly TreeRow[] {
     const section: ForgeSection<ForgeIssue> = this.forge.issues();
-    if (section.state !== 'ready') {
+    if (section.state !== 'ready' && section.items.length === 0) {
       return [
         this.emptyRow('issues', Icon.INFO, section.message ?? PENDING_MESSAGES[section.state]),
       ];
@@ -1113,7 +1167,7 @@ export class SourceControlSidebar {
    */
   private actionRows(): readonly TreeRow[] {
     const section: ForgeSection<ForgeWorkflowRun> = this.forge.workflowRuns();
-    if (section.state !== 'ready') {
+    if (section.state !== 'ready' && section.items.length === 0) {
       return [
         this.emptyRow('actions', Icon.PLAY, section.message ?? PENDING_MESSAGES[section.state]),
       ];

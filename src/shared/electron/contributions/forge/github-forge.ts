@@ -9,6 +9,7 @@ import {
   ForgeWorkflowRun,
 } from '@shared/api/forge-types';
 import { ForgeFetch, ForgeProvider, ForgeResponse, ForgeTokenResolver } from './forge-provider';
+import { Clock, EtagCache, RateLimitLedger } from './forge-budget';
 
 /**
  * The REST API origin for github.com. A self-hosted instance would vary this, which is why it is
@@ -202,13 +203,31 @@ export class GitHubForge implements ForgeProvider {
   private readonly token: ForgeTokenResolver;
 
   /**
+   * Holds the entity-tag cache, which is what makes a re-read cost nothing when nothing changed.
+   */
+  private readonly cache: EtagCache = new EtagCache();
+
+  /**
+   * Holds the rate-limit ledger.
+   */
+  private readonly ledger: RateLimitLedger;
+
+  /**
+   * Holds the credential the cache and ledger were filled against, so both can be dropped when it
+   * changes — they belong to the token, not to the provider.
+   */
+  private seenToken: string | null = null;
+
+  /**
    * Initializes a new instance of the {@link GitHubForge} class.
    * @param http The fetch used to reach the API.
    * @param token Resolves the credential to authenticate with.
+   * @param now The clock the rate-limit ledger reads.
    */
-  public constructor(http: ForgeFetch, token: ForgeTokenResolver) {
+  public constructor(http: ForgeFetch, token: ForgeTokenResolver, now: Clock = Date.now) {
     this.http = http;
     this.token = token;
+    this.ledger = new RateLimitLedger(now);
   }
 
   /**
@@ -470,13 +489,37 @@ export class GitHubForge implements ForgeProvider {
         unauthorized: true,
       };
     }
+    // A different credential sees different things at the same URL, and carries its own budget.
+    if (token !== this.seenToken) {
+      this.cache.clear();
+      this.ledger.clear();
+      this.seenToken = token;
+    }
+
+    const blockedUntil: number | null = this.ledger.blockedUntil();
+    if (blockedUntil !== null) {
+      // Refused here rather than sent and refused by the forge: spending a request to be told the
+      // budget is gone is the one thing that cannot help.
+      return {
+        ok: false,
+        error: 'GitHub\u2019s rate limit is exhausted.',
+        unauthorized: false,
+        retryAt: blockedUntil,
+      };
+    }
+
+    const url: string = `${originFor(host)}${path}`;
+    const etag: string | null = this.cache.tagFor(url);
     let response: ForgeResponse;
     try {
-      response = await this.http(`${originFor(host)}${path}`, {
+      response = await this.http(url, {
         headers: {
           accept: 'application/vnd.github+json',
           authorization: `Bearer ${token}`,
           'x-github-api-version': API_VERSION,
+          // The whole point of the cache: GitHub does not charge a conditional request that answers
+          // 304 against the budget, so a poll costs nothing while nothing has changed.
+          ...(etag === null ? {} : { 'if-none-match': etag }),
         },
       });
     } catch (error: unknown) {
@@ -484,15 +527,42 @@ export class GitHubForge implements ForgeProvider {
       // here than a generic one, but it is never the token — nothing secret reaches this path.
       return { ok: false, error: messageOf(error), unauthorized: false };
     }
+
+    this.ledger.record(
+      response.header('x-ratelimit-remaining'),
+      response.header('x-ratelimit-reset'),
+      response.header('retry-after'),
+    );
+
+    // Not modified: the cached body is the answer. A 304 carries no body at all, so reading one would
+    // yield nothing and look like an emptied section.
+    if (response.status === 304 && this.cache.has(url)) {
+      return { ok: true, value: this.cache.bodyFor(url) };
+    }
+
     if (!response.ok) {
+      const exhausted: number | null = this.ledger.blockedUntil();
+      // A 403 is what both an exhausted budget and a missing scope look like; the headers are what
+      // tell them apart, and the two are answered differently — one by waiting, one by the user.
+      if (response.status === 403 && exhausted !== null) {
+        return {
+          ok: false,
+          error: 'GitHub\u2019s rate limit is exhausted.',
+          unauthorized: false,
+          retryAt: exhausted,
+        };
+      }
       return {
         ok: false,
         error: describeStatus(response.status),
         unauthorized: response.status === 401 || response.status === 403,
       };
     }
+
     try {
-      return { ok: true, value: await response.json() };
+      const body: unknown = await response.json();
+      this.cache.store(url, response.header('etag'), body);
+      return { ok: true, value: body };
     } catch (error: unknown) {
       return { ok: false, error: messageOf(error), unauthorized: false };
     }

@@ -20,7 +20,7 @@ import {
   ForgeCredentialStorePorts,
   ResolvedToken,
 } from './forge-credential-store';
-import { ForgeFetch, ForgeProvider } from './forge-provider';
+import { ForgeFetch, ForgeProvider, ForgeResponse } from './forge-provider';
 import { GitHubForge } from './github-forge';
 
 /**
@@ -398,7 +398,20 @@ function defaultStore(): ForgeCredentialStore {
  * @returns Returns the provider.
  */
 function defaultProvider(token: () => string | null): ForgeProvider {
-  const http: ForgeFetch = (url: string, init?: Parameters<ForgeFetch>[1]) => fetch(url, init);
+  // The platform Response is adapted rather than used directly: the seam asks for a header reader so
+  // a provider never depends on the DOM Headers type, which is what keeps it testable with a fake.
+  const http: ForgeFetch = async (
+    url: string,
+    init?: Parameters<ForgeFetch>[1],
+  ): Promise<ForgeResponse> => {
+    const response: Response = await fetch(url, init);
+    return {
+      ok: response.ok,
+      status: response.status,
+      json: (): Promise<unknown> => response.json(),
+      header: (name: string): string | null => response.headers.get(name),
+    };
+  };
   return new GitHubForge(http, token);
 }
 
