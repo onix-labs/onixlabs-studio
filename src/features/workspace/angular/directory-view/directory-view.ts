@@ -39,7 +39,7 @@ import { DiffOpener } from '@shared/angular/services/diffs/diff-opener';
 import { Diffs } from '@shared/angular/services/diffs/diffs';
 import { DockAutoHide } from '@shared/angular/services/dock-layout/dock-auto-hide';
 import { DockDrag } from '@shared/angular/services/dock-layout/dock-drag';
-import { DockFloating } from '@shared/angular/services/dock-layout/dock-floating';
+import { DockFloating, FloatWindow } from '@shared/angular/services/dock-layout/dock-floating';
 import { DockFocus } from '@shared/angular/services/dock-layout/dock-focus';
 import { DockGeometry } from '@shared/angular/services/dock-layout/dock-geometry';
 import { StackNode } from '@shared/angular/services/dock-layout/dock-node';
@@ -52,6 +52,11 @@ import {
   LayoutPresetSession,
 } from '@shared/angular/services/layout-presets/layout-presets';
 import { DockPanelRegistry } from '@shared/angular/services/dock-layout/dock-panel-registry';
+import {
+  DockPanelCommandHandler,
+  DockPanelCommands,
+  DockPanelState,
+} from '@shared/angular/services/dock-panel-commands/dock-panel-commands';
 import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
 import { PopoutPanels } from '@shared/angular/services/dock-layout/popout-panels';
 import { PanelPopout } from '@shared/angular/services/panel-popout/panel-popout';
@@ -142,6 +147,30 @@ const HIDDEN_LSP_REAP_MS: number = 10 * 60_000;
  * heard me and is starting" before settling into Stop.
  */
 const RUN_SPINNER_MINIMUM_MS: number = 5_000;
+
+/**
+ * Where each tool panel joins the dock when View → Panels adds one back, as the identifiers of the
+ * stacks it prefers to tab into, in order. A panel the menu adds has no position of its own to return
+ * to — the layout is the preset's, not a remembered per-panel tree — so it joins the neighbour it
+ * belongs beside: the explorers go left with the File Explorer, the bottom tools join the Error List,
+ * and the source-control pair join the agent's column. A panel with no surviving preference falls back
+ * to whatever tool stack exists, and failing that docks against the left edge as a stack of its own.
+ */
+const PANEL_ANCHORS: Readonly<Record<string, readonly string[]>> = {
+  files: ['solution', 'agent'],
+  solution: ['files', 'agent'],
+  search: ['files', 'agent'],
+  worktrees: ['files', 'solution'],
+  branches: ['files', 'solution'],
+  agent: ['commit', 'files'],
+  commit: ['agent', 'files'],
+  errors: ['terminal', 'output'],
+  terminal: ['errors', 'output'],
+  output: ['errors', 'terminal'],
+  packages: ['errors', 'terminal'],
+  debug: ['errors', 'terminal'],
+  history: ['errors', 'terminal'],
+};
 
 /**
  * Hosts one workspace as a top-level directory tab: a complete IDE instance with its own dock,
@@ -564,9 +593,140 @@ export class DirectoryView implements OnInit, OnDestroy {
   private readonly outputService: Output = inject(Output);
 
   /**
-   * Holds this tab's dock panel registry, used to register the reused commit panel on first use.
+   * Holds this tab's dock panel registry, used to register the reused commit panel on first use, and
+   * to enumerate the catalogue the View → Panels menu lists.
    */
   private readonly registry: DockPanelRegistry = inject(DockPanelRegistry);
+
+  /**
+   * Holds this tab's floating layer, so a panel floated over the dock still reads as showing.
+   */
+  private readonly dockFloating: DockFloating = inject(DockFloating);
+
+  /**
+   * Holds this tab's popped-panel registry, so a panel living in its own OS window still reads as
+   * showing.
+   */
+  private readonly popoutPanels: PopoutPanels = inject(PopoutPanels);
+
+  /**
+   * Holds the panel seam the application menu's View → Panels submenu is served from.
+   */
+  private readonly dockPanelCommands: DockPanelCommands = inject(DockPanelCommands);
+
+  /**
+   * Gets whether each panel that depends on something existing actually has it: a Solution Explorer
+   * needs a recognised project system, Packages a recognised ecosystem, Debug a running session,
+   * Worktrees a container, and the source-control trio a repository. A panel absent from this map has
+   * nothing to depend on and is always available.
+   */
+  private readonly panelAvailability: Signal<Readonly<Record<string, boolean>>> = computed(
+    (): Readonly<Record<string, boolean>> => {
+      const repository: boolean = this.workspaceGit.isRepository();
+      return {
+        solution: this.solutionModel.model() !== null,
+        packages: this.packageModel.model() !== null,
+        debug: this.debugSession.state() !== 'idle',
+        worktrees: this.worktreeSession.isContainer(),
+        branches: repository,
+        history: repository,
+        commit: repository,
+      };
+    },
+  );
+
+  /**
+   * Gets this tab's dockable tool panels for the View → Panels menu: the whole unified catalogue (the
+   * workspace's own panels and the repository view's), each marked with whether it is showing and
+   * whether it can be toggled. Document panels are excluded — a file in the well is not a panel the
+   * user docks from a menu.
+   */
+  private readonly dockPanelStates: Signal<readonly DockPanelState[]> = computed(
+    (): readonly DockPanelState[] => {
+      const present: ReadonlySet<string> = new Set<string>(
+        collectPanelIds(this.dockState.layout()),
+      );
+      const floats: readonly FloatWindow[] = this.dockFloating.floats();
+      const availability: Readonly<Record<string, boolean>> = this.panelAvailability();
+      return this.registry
+        .list()
+        .filter((panel: DockPanel): boolean => panel.role === 'tool')
+        .map((panel: DockPanel): DockPanelState => {
+          const popped: boolean = this.popoutPanels.isPopped(panel.id);
+          const docked: boolean =
+            present.has(panel.id) ||
+            popped ||
+            floats.some((float: FloatWindow): boolean => float.panelId === panel.id);
+          return {
+            id: panel.id,
+            title: panel.title,
+            docked,
+            // A showing panel can always be dismissed, whatever is behind it — except one in its own
+            // OS window, which that window closes. A hidden one is offered only when it has something
+            // to show.
+            enabled: popped ? false : docked || (availability[panel.id] ?? true),
+          };
+        });
+    },
+  );
+
+  /**
+   * Holds the panel handler registered with {@link dockPanelCommands} while this tab is active.
+   */
+  private readonly dockPanelHandler: DockPanelCommandHandler = {
+    panels: this.dockPanelStates,
+    toggle: (panelId: string): void => this.togglePanel(panelId),
+  };
+
+  /**
+   * Toggles a panel from the View → Panels menu: a showing panel is closed wherever it lives, and a
+   * hidden one is docked beside the neighbour it belongs to and revealed.
+   * @param panelId The identifier of the panel to toggle.
+   */
+  private togglePanel(panelId: string): void {
+    if (this.popoutPanels.isPopped(panelId)) {
+      // Unreachable from the menu (the row is disabled), but a popped panel is never silently
+      // discarded: bring its window forward instead.
+      this.dockReveal.reveal(panelId);
+      return;
+    }
+    if (
+      this.dockFloating.floats().some((float: FloatWindow): boolean => float.panelId === panelId)
+    ) {
+      void this.dockFloating.requestClose(panelId);
+      return;
+    }
+    if (collectPanelIds(this.dockState.layout()).includes(panelId)) {
+      this.log.debug('workspace.panels', 'Panel closed from the menu', panelId);
+      void this.dockState.requestClose(panelId);
+      return;
+    }
+    this.dockPanelIntoLayout(panelId);
+  }
+
+  /**
+   * Docks a panel that is not in the layout, tabbing it into the first of its preferred neighbours
+   * that survives, then reveals it.
+   * @param panelId The identifier of the panel to dock.
+   */
+  private dockPanelIntoLayout(panelId: string): void {
+    this.log.debug('workspace.panels', 'Panel docked from the menu', panelId);
+    const layout: DockNode = this.dockState.layout();
+    let anchor: StackNode | null = null;
+    for (const candidate of PANEL_ANCHORS[panelId] ?? []) {
+      anchor = findStackOfPanel(layout, candidate);
+      if (anchor !== null) {
+        break;
+      }
+    }
+    anchor ??= firstStackOfRole(layout, 'tool');
+    if (anchor !== null) {
+      this.dockState.tabInto(anchor.id, panelId);
+    } else {
+      this.dockState.dockEdge(panelId, 'left');
+    }
+    this.dockReveal.reveal(panelId);
+  }
 
   /**
    * Holds the keyboard-binding router this tab registers its find accelerator with while active.
@@ -985,10 +1145,12 @@ export class DirectoryView implements OnInit, OnDestroy {
         ]);
         this.workspaceFind.register(this.revealSearchHandler);
         this.workspaceDocuments.register(this.documentHandler);
+        this.dockPanelCommands.register(this.dockPanelHandler);
       } else {
         this.keybindings.deactivate(this.viewScope());
         this.workspaceFind.unregister(this.revealSearchHandler);
         this.workspaceDocuments.unregister(this.documentHandler);
+        this.dockPanelCommands.unregister(this.dockPanelHandler);
       }
     });
 
@@ -1171,6 +1333,7 @@ export class DirectoryView implements OnInit, OnDestroy {
     this.keybindings.forget(this.viewScope());
     this.workspaceFind.unregister(this.revealSearchHandler);
     this.workspaceDocuments.unregister(this.documentHandler);
+    this.dockPanelCommands.unregister(this.dockPanelHandler);
     // A sub-view destroyed while its tab stays open (a removed checkout, the promotion transition)
     // must not clear the tab's published root — the successor view republishes it, but only the
     // whole tab closing should drop the entry.

@@ -41,6 +41,17 @@ export class DockPanelRegistry {
   }
 
   /**
+   * Gets every registered panel, in registration order — the blueprint's catalogue first, then
+   * whatever registered dynamically after it (a document as it opens, a panel a view adds on demand).
+   * Deliberately a snapshot rather than a signal: the registry is seeded once per view and the callers
+   * that enumerate it (the menu's panel list) recompute from the layout, which is signal-backed.
+   * @returns Returns the registered panels.
+   */
+  public list(): readonly DockPanel[] {
+    return [...this.panels.values()];
+  }
+
+  /**
    * Gets the panel with the given identifier.
    * @param id The identifier of the panel to resolve.
    * @returns Returns the registered panel, or undefined when none is registered.

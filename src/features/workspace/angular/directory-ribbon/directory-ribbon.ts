@@ -11,7 +11,15 @@ import {
 } from '@angular/core';
 import { EditorCommands } from '@shared/angular/services/editor-commands/editor-commands';
 import { contributeFeatureMenu } from '@shared/angular/services/app-menu/contribute-feature-menu';
-import { MENU_SEPARATOR, MenuContribution } from '@shared/angular/services/app-menu/app-menu-model';
+import {
+  MENU_SEPARATOR,
+  MenuContribution,
+  MenuEntry,
+} from '@shared/angular/services/app-menu/app-menu-model';
+import {
+  DockPanelCommands,
+  DockPanelState,
+} from '@shared/angular/services/dock-panel-commands/dock-panel-commands';
 import { Log } from '@shared/angular/services/log/log';
 import { WorkspaceFind } from '@features/workspace/angular/workspace-find/workspace-find';
 import { WorkspaceDocumentCommands } from '@features/workspace/angular/workspace-document-commands/workspace-document-commands';
@@ -185,6 +193,28 @@ export class DirectoryRibbon {
         id: 'view',
         label: 'View',
         items: [
+          // Every panel this workspace's dock can hold, ticked when it is showing. Omitted entirely
+          // while the view has yet to register its dock, since an empty submenu would open onto
+          // nothing; the separator behind it is tidied away with it.
+          ...(this.panels().length === 0
+            ? []
+            : [
+                {
+                  id: 'directory.panels',
+                  label: 'Panels',
+                  items: this.panels().map(
+                    (panel: DockPanelState): MenuEntry => ({
+                      id: `directory.panels.${panel.id}`,
+                      label: panel.title,
+                      kind: 'checkbox',
+                      checked: panel.docked,
+                      enabled: panel.enabled,
+                      run: (): void => this.dockPanels.toggle(panel.id),
+                    }),
+                  ),
+                },
+              ]),
+          MENU_SEPARATOR,
           {
             id: 'directory.savePresetAs',
             label: 'Save Layout As…',
@@ -940,6 +970,17 @@ export class DirectoryRibbon {
   protected cancelPromote(): void {
     this.promoteConfirmOpen.set(false);
   }
+
+  /**
+   * Holds the panel seam the View menu's Panels submenu reads and dispatches through, served by the
+   * active workspace's own dock.
+   */
+  private readonly dockPanels: DockPanelCommands = inject(DockPanelCommands);
+
+  /**
+   * Gets the active workspace's dockable panels, listed under View → Panels.
+   */
+  protected readonly panels: Signal<readonly DockPanelState[]> = this.dockPanels.panels;
 
   /**
    * Holds the layout preset store the View group's commands dispatch through.
