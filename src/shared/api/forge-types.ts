@@ -125,10 +125,19 @@ export interface ForgePullRequest {
   readonly draft: boolean;
 
   /**
-   * Gets the name of the branch the changes are on, which is what checking the pull request out
-   * checks out.
+   * Gets the name of the branch the changes are on, which names the local branch a checkout creates.
    */
   readonly headRef: string;
+
+  /**
+   * Gets the ref on the repository's own remote that carries the pull request's head.
+   *
+   * This is what a checkout actually fetches, and it is the forge's convention rather than git's —
+   * GitHub publishes `refs/pull/N/head`. It matters because a pull request opened from a fork has its
+   * branch in the contributor's repository, not this one: there is no {@link headRef} here to check
+   * out, but the head is reachable through this ref either way.
+   */
+  readonly headRefspec: string;
 
   /**
    * Gets the rolled-up outcome of the pull request's checks.

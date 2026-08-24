@@ -89,6 +89,11 @@ class FakeProvider implements SourceControlProvider {
   public readonly calls: string[] = [];
 
   /**
+   * Holds what {@link fetchRef} resolves to, so a failed fetch can be driven from a test.
+   */
+  public fetchRefResult: MutationResult = { success: true };
+
+  /**
    * Makes the next discard fail with this message, so error surfacing can be exercised.
    */
   public failNextDiscardWith: string | null = null;
@@ -161,6 +166,11 @@ class FakeProvider implements SourceControlProvider {
   public fetch(): Promise<MutationResult> {
     this.calls.push('fetch');
     return Promise.resolve({ success: true });
+  }
+
+  public fetchRef(remote: string, sourceRef: string, localBranch: string): Promise<MutationResult> {
+    this.calls.push(`fetchRef:${remote}:${sourceRef}:${localBranch}`);
+    return Promise.resolve(this.fetchRefResult);
   }
 
   public pull(): Promise<MutationResult> {
@@ -538,5 +548,29 @@ describe('Repository', () => {
 
     await repository.createBranch('feature/two', false);
     expect(provider.calls).toContain('createBranch:feature/two:false');
+  });
+
+  describe('checkoutRef', () => {
+    it('fetchesTheRefIntoALocalBranch_thenChecksItOut', async () => {
+      await repository.checkoutRef('origin', 'refs/pull/7/head', 'feature/thing');
+
+      expect(provider.calls).toContain('fetchRef:origin:refs/pull/7/head:feature/thing');
+      expect(provider.calls).toContain('checkout:feature/thing');
+    });
+
+    it('doesNotCheckOut_whenTheFetchFailed', async () => {
+      // Checking out after a failed fetch would land on whatever that branch name happened to mean
+      // locally, which is not what the user asked for.
+      provider.fetchRefResult = { success: false, error: 'no such ref' };
+
+      const result: MutationResult = await repository.checkoutRef(
+        'origin',
+        'refs/pull/9/head',
+        'x',
+      );
+
+      expect(result.success).toBe(false);
+      expect(provider.calls).not.toContain('checkout:x');
+    });
   });
 });

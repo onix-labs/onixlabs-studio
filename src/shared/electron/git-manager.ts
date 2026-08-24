@@ -210,6 +210,16 @@ export class GitManager {
       (_event: IpcMainInvokeEvent, root: unknown): Promise<GitRunResult> => this.fetch(root),
     );
     ipcMain.handle(
+      SourceControlChannel.FetchRef,
+      (
+        _event: IpcMainInvokeEvent,
+        root: unknown,
+        remote: unknown,
+        sourceRef: unknown,
+        localBranch: unknown,
+      ): Promise<GitRunResult> => this.fetchRef(root, remote, sourceRef, localBranch),
+    );
+    ipcMain.handle(
       SourceControlChannel.Pull,
       (_event: IpcMainInvokeEvent, root: unknown): Promise<GitRunResult> => this.pull(root),
     );
@@ -628,6 +638,35 @@ export class GitManager {
   private fetch(root: unknown): Promise<GitRunResult> {
     logger.trace('GitManager.fetch', 'Fetching all remotes with prune');
     return this.runNetwork(root, ['fetch', '--all', '--prune']);
+  }
+
+  /**
+   * Fetches one ref from a remote into a local branch, as `git fetch <remote> <source>:<local>`.
+   *
+   * The refspec is built here from three validated operands rather than accepted whole from the
+   * renderer: a colon inside any of them would let one argument become several refspecs, and a `+`
+   * prefix would silently make the fetch a force-update over whatever the local branch held.
+   *
+   * @param root The repository root.
+   * @param remote The remote to fetch from.
+   * @param sourceRef The ref on the remote to fetch.
+   * @param localBranch The local branch to create or update.
+   * @returns Returns the raw command result.
+   */
+  private fetchRef(
+    root: unknown,
+    remote: unknown,
+    sourceRef: unknown,
+    localBranch: unknown,
+  ): Promise<GitRunResult> {
+    if (!isSafeOperand(remote) || !isSafeOperand(sourceRef) || !isSafeOperand(localBranch)) {
+      return Promise.resolve({ success: false, error: 'Invalid remote, ref, or branch name' });
+    }
+    if ([remote, sourceRef, localBranch].some((part: string): boolean => part.includes(':'))) {
+      return Promise.resolve({ success: false, error: 'Invalid remote, ref, or branch name' });
+    }
+    logger.trace('GitManager.fetchRef', `Fetching ${remote} ${sourceRef} into ${localBranch}`);
+    return this.runNetwork(root, ['fetch', remote, `${sourceRef}:${localBranch}`]);
   }
 
   /**

@@ -404,6 +404,12 @@ export class Icon {
   public static readonly LINK: Icon = new Icon('ph ph-link');
 
   /**
+   * Gets the open-externally icon, shown on a control that leaves Studio for the user's browser (a
+   * pull request or issue on its forge).
+   */
+  public static readonly OPEN_EXTERNAL: Icon = new Icon('ph ph-arrow-square-out');
+
+  /**
    * Gets the math icon, shown on the markdown Insert group's Math button.
    */
   public static readonly MATH: Icon = new Icon('ph ph-function');
@@ -804,6 +810,12 @@ export class Icon {
    * Gets the error-severity icon.
    */
   public static readonly ERROR: Icon = new Icon('ph ph-x-circle');
+
+  /**
+   * Gets the filled error icon, the counterpart to {@link SUCCESS_FILL} where a status warrants a
+   * solid, semantically-coloured badge (for example a pull request whose checks failed).
+   */
+  public static readonly ERROR_FILL: Icon = new Icon('ph-fill ph-x-circle');
 
   /**
    * Gets the warning-severity icon.

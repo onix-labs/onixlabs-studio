@@ -13,6 +13,12 @@ import { Icon } from '@shared/angular/icons/icon';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { Repository, WORKING_NODE_ID } from '@shared/angular/services/repository/repository';
 import {
+  ForgeRepository,
+  ForgeSection,
+} from '@shared/angular/services/forge-repository/forge-repository';
+import { ForgeCheckStatus, ForgePullRequest } from '@shared/api/forge-types';
+import { Shell } from '@shared/angular/services/shell/shell';
+import {
   GitBranch,
   GitRemote,
   GitStash,
@@ -24,38 +30,24 @@ import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
-import { TreeRow, TreeView } from '@shared/angular/components/tree-view/tree-view';
+import { PulseDot } from '@shared/angular/components/pulse-dot/pulse-dot';
+import {
+  TreeMenuSelection,
+  TreeRow,
+  TreeView,
+} from '@shared/angular/components/tree-view/tree-view';
+import { MenuItem } from '@shared/angular/components/menu/menu';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { Log } from '@shared/angular/services/log/log';
 
 /**
- * Identifies the outcome of a build/check on a pull request or a CI/CD action: in progress, passed, or
- * failed. Drives the status badge shown beside the entry.
+ * Identifies the outcome of a pull request's checks, as the status badge shows it. Re-exported from
+ * the forge model so the panel and the provider cannot drift apart.
  */
-export type CheckStatus = 'running' | 'succeeded' | 'failed';
+export type CheckStatus = ForgeCheckStatus;
 
 /**
- * A placeholder pull request shown in the (not-yet-wired) Pull Requests section.
- */
-interface StubPullRequest {
-  /**
-   * Gets the pull request number.
-   */
-  readonly number: number;
-
-  /**
-   * Gets the pull request title.
-   */
-  readonly title: string;
-
-  /**
-   * Gets the status of the pull request's checks.
-   */
-  readonly status: CheckStatus;
-}
-
-/**
- * A placeholder issue shown in the (not-yet-wired) Issues section.
+ * A placeholder issue shown in the (not-yet-wired) Issues section. Replaced in P3 (#434).
  */
 interface StubIssue {
   /**
@@ -70,7 +62,7 @@ interface StubIssue {
 }
 
 /**
- * A placeholder CI/CD action shown in the (not-yet-wired) Actions section.
+ * A placeholder CI/CD action shown in the (not-yet-wired) Actions section. Replaced in P4 (#435).
  */
 interface StubAction {
   /**
@@ -137,6 +129,11 @@ interface RepoNode {
   readonly commit?: string;
 
   /**
+   * Gets the pull request, for a pull-request row (drives the open and checkout actions).
+   */
+  readonly pullRequest?: ForgePullRequest;
+
+  /**
    * Gets the check/run status badge to show, for a pull-request or action row.
    */
   readonly status?: CheckStatus | StubAction['status'];
@@ -146,6 +143,28 @@ interface RepoNode {
    */
   readonly muted?: boolean;
 }
+
+/**
+ * Identifies the Check Out command on a pull request's context menu.
+ */
+const ACTION_CHECKOUT_PULL_REQUEST: string = 'pr.checkout';
+
+/**
+ * Identifies the Open command on a pull request's context menu.
+ */
+const ACTION_OPEN_PULL_REQUEST: string = 'pr.open';
+
+/**
+ * What an unhappy forge section says when the read itself supplied no message. `no-forge`, `error` and
+ * `unauthorized` always carry one, so only the two quiet states need an entry here.
+ */
+const PENDING_MESSAGES: Readonly<Record<string, string>> = {
+  'no-repository': 'No repository open',
+  loading: 'Loading…',
+  'no-forge': 'This repository has no remote on a supported forge',
+  error: 'Could not read from the forge',
+  unauthorized: 'Not signed in — add a token in Settings → Source Control',
+};
 
 /**
  * Describes a collapsible section of the repository tree.
@@ -190,7 +209,17 @@ interface SectionDef {
  */
 @Component({
   selector: 'app-source-control-sidebar',
-  imports: [TextField, Button, AppIcon, Checkbox, Modal, ModalContent, PanelToolbar, TreeView],
+  imports: [
+    TextField,
+    Button,
+    AppIcon,
+    Checkbox,
+    Modal,
+    ModalContent,
+    PanelToolbar,
+    PulseDot,
+    TreeView,
+  ],
   templateUrl: './source-control-sidebar.html',
   styleUrl: './source-control-sidebar.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -223,21 +252,22 @@ export class SourceControlSidebar {
   private readonly log: Log = inject(Log);
 
   /**
+   * Holds this workspace's forge-backed view of the repository, behind the Pull Requests section.
+   */
+  protected readonly forge: ForgeRepository = inject(ForgeRepository);
+
+  /**
+   * Holds the shell seam a pull request is opened in the browser through.
+   */
+  private readonly shell: Shell = inject(Shell);
+
+  /**
    * Holds the keys of the currently expanded sections. Only the local branches start open; the rest
    * are collapsed until the user opens them.
    */
   private readonly expandedSections: WritableSignal<ReadonlySet<string>> = signal<
     ReadonlySet<string>
   >(new Set<string>(['local']));
-
-  /**
-   * Holds the placeholder pull requests shown until the Pull Requests section is wired to a provider.
-   */
-  protected readonly pullRequests: readonly StubPullRequest[] = [
-    { number: 142, title: 'feat(git): network ops', status: 'succeeded' },
-    { number: 145, title: 'feat(git): docked terminal', status: 'running' },
-    { number: 139, title: 'fix(git): status parsing', status: 'failed' },
-  ];
 
   /**
    * Holds the placeholder issues shown until the Issues section is wired to a provider.
@@ -357,6 +387,10 @@ export class SourceControlSidebar {
   protected refresh(): void {
     this.log.info('SourceControlSidebar', 'Refreshing repository');
     void this.repository.refresh();
+    // Refresh what the panel is actually showing, which includes any forge section the user has
+    // open — but only those: a collapsed section has nothing on screen to bring up to date, and the
+    // forge is rate-limited.
+    this.refreshForge();
   }
 
   /**
@@ -422,13 +456,14 @@ export class SourceControlSidebar {
    */
   protected statusIcon(status: CheckStatus | StubAction['status']): Icon {
     switch (status) {
+      // Filled, because a settled outcome is a badge the eye should catch at a glance rather than an
+      // outline competing with the row's own icon.
       case 'succeeded':
-        return Icon.SUCCESS;
+        return Icon.SUCCESS_FILL;
       case 'failed':
-        return Icon.ERROR;
-      case 'running':
-        return Icon.SPINNER;
+        return Icon.ERROR_FILL;
       default:
+        // `running` never reaches here — the template draws a pulsing dot for it instead.
         return Icon.PLAY;
     }
   }
@@ -596,8 +631,22 @@ export class SourceControlSidebar {
       next.delete(key);
     } else {
       next.add(key);
+      // Read on first expand rather than eagerly: the forge is rate-limited, and a section the user
+      // never opens should cost nothing. (P5 adds the refresh cadence and caching around this.)
+      this.loadSection(key);
     }
     this.expandedSections.set(next);
+  }
+
+  /**
+   * Loads a forge-backed section's data, if it is one and it has nothing yet. Sections backed by git
+   * are already loaded with the repository and need nothing here.
+   * @param key The section key being expanded.
+   */
+  private loadSection(key: string): void {
+    if (key === 'pullRequests' && this.forge.pullRequests().state !== 'ready') {
+      void this.forge.loadPullRequests();
+    }
   }
 
   /**
@@ -702,23 +751,116 @@ export class SourceControlSidebar {
    * @returns Returns the rows.
    */
   private pullRequestRows(): readonly TreeRow[] {
-    if (this.pullRequests.length === 0) {
+    const section: ForgeSection<ForgePullRequest> = this.forge.pullRequests();
+    if (section.state !== 'ready') {
+      return [
+        this.emptyRow(
+          'pullRequests',
+          Icon.GIT_PULL_REQUEST,
+          section.message ?? PENDING_MESSAGES[section.state],
+        ),
+      ];
+    }
+    if (section.items.length === 0) {
       return [this.emptyRow('pullRequests', Icon.GIT_PULL_REQUEST, 'No open pull requests')];
     }
-    return this.pullRequests.map(
-      (pr: StubPullRequest): TreeRow => ({
-        id: `pr:${pr.number}`,
+    return section.items.map(
+      (pull: ForgePullRequest): TreeRow => ({
+        id: `pr:${pull.number}`,
         depth: 1,
         expandable: false,
         expanded: false,
         data: {
           kind: 'pr',
           icon: Icon.GIT_PULL_REQUEST,
-          label: `#${pr.number} ${pr.title}`,
-          status: pr.status,
+          label: `#${pull.number} ${pull.title}${pull.draft ? ' (draft)' : ''}`,
+          pullRequest: pull,
+          // A pull request whose checks have not reported gets no badge at all, rather than one
+          // implying work is in flight.
+          ...(pull.checks === 'none' ? {} : { status: pull.checks }),
         },
       }),
     );
+  }
+
+  /**
+   * Builds a row's context-menu items.
+   *
+   * Bound as a value rather than a method, because the tree calls it as its item factory when a menu
+   * opens — `this` must stay this component. A row with no commands returns nothing and the tree
+   * suppresses its trigger, so right-clicking a branch or a tag does not open an empty panel.
+   */
+  public readonly contextMenuFor: (treeRow: TreeRow) => readonly MenuItem[] = (
+    treeRow: TreeRow,
+  ): readonly MenuItem[] => {
+    const node: RepoNode = this.nodeOf(treeRow);
+    if (node.pullRequest === undefined) {
+      return [];
+    }
+    return [
+      {
+        id: ACTION_CHECKOUT_PULL_REQUEST,
+        label: 'Check Out',
+        icon: Icon.CHECK,
+      },
+      {
+        id: ACTION_OPEN_PULL_REQUEST,
+        label: 'Open on GitHub',
+        icon: Icon.OPEN_EXTERNAL,
+      },
+    ];
+  };
+
+  /**
+   * Runs a context-menu command against the row it was chosen on.
+   * @param choice The chosen item and its row.
+   */
+  protected onContextAction(choice: TreeMenuSelection): void {
+    const pullRequest: ForgePullRequest | undefined = this.nodeOf(choice.row).pullRequest;
+    if (pullRequest === undefined) {
+      return;
+    }
+    switch (choice.itemId) {
+      case ACTION_CHECKOUT_PULL_REQUEST:
+        this.checkoutPullRequest(pullRequest);
+        break;
+      case ACTION_OPEN_PULL_REQUEST:
+        this.openPullRequest(pullRequest);
+        break;
+      default:
+        break;
+    }
+  }
+
+  /**
+   * Opens a pull request on the forge, in the user's browser.
+   * @param pullRequest The pull request to open.
+   */
+  private openPullRequest(pullRequest: ForgePullRequest): void {
+    if (pullRequest.url.length === 0) {
+      return;
+    }
+    this.log.info('forge', `Opening pull request #${pullRequest.number} in the browser`);
+    void this.shell.openExternal(pullRequest.url);
+  }
+
+  /**
+   * Checks a pull request's head out as a local branch.
+   * @param pullRequest The pull request to check out.
+   */
+  private checkoutPullRequest(pullRequest: ForgePullRequest): void {
+    void this.forge.checkout(pullRequest);
+  }
+
+  /**
+   * Re-reads the forge-backed sections. Separate from {@link refresh}, which re-reads git: the two
+   * have entirely different costs, and a rate-limited API should not be hit every time the working
+   * tree is re-read.
+   */
+  protected refreshForge(): void {
+    if (this.expandedSections().has('pullRequests')) {
+      void this.forge.loadPullRequests();
+    }
   }
 
   /**

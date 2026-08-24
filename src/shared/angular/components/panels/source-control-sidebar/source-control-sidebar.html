@@ -51,7 +51,13 @@
   />
 </app-panel-toolbar>
 
-<app-tree-view [rows]="rows()" [selectedId]="selectedId()" (rowClick)="onRowClick($event)">
+<app-tree-view
+  [rows]="rows()"
+  [selectedId]="selectedId()"
+  [contextMenuFor]="contextMenuFor"
+  (rowClick)="onRowClick($event)"
+  (contextMenuSelect)="onContextAction($event)"
+>
   <ng-template let-row>
     @let node = nodeOf(row);
     <app-icon
@@ -140,7 +146,16 @@
     }
 
     @if (node.status; as status) {
-      <app-icon class="rail__status rail__status--{{ status }}" [icon]="statusIcon(status)" />
+      @if (status === 'running') {
+        <!-- Checks in flight get a pulsing dot rather than a spinner glyph nothing rotates. Warning
+             rather than accent: it sits between the green and red outcomes as the third state of one
+             badge, so it belongs to the same semantic scale rather than to the theme's accent. Sized
+             to the circle the filled badges draw at the 1rem `.rail__status` sets, so the three
+             states occupy the same optical space rather than the dot reading as a lesser thing. -->
+        <app-pulse-dot class="rail__status" tone="warning" [pulse]="true" [size]="0.8" />
+      } @else {
+        <app-icon class="rail__status rail__status--{{ status }}" [icon]="statusIcon(status)" />
+      }
     }
   </ng-template>
 </app-tree-view>

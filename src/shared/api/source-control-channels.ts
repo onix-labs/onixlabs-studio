@@ -118,6 +118,13 @@ export enum SourceControlChannel {
   Fetch = 'source-control:fetch',
 
   /**
+   * Fetches one ref from a remote into a local branch. The caller supplies the source ref, because
+   * which ref carries a pull request's head is the forge's convention rather than git's — GitHub
+   * publishes `refs/pull/N/head`, and another forge names it differently.
+   */
+  FetchRef = 'source-control:fetch-ref',
+
+  /**
    * Pulls the current branch from its upstream.
    */
   Pull = 'source-control:pull',
@@ -336,6 +343,21 @@ export interface SourceControlClient {
    * @returns Returns the raw command result.
    */
   fetch(root: string): Promise<GitRunResult>;
+
+  /**
+   * Fetches one ref from a remote into a local branch.
+   * @param root The absolute repository root; must be an open root.
+   * @param remote The remote to fetch from.
+   * @param sourceRef The ref on the remote to fetch (for example `refs/pull/7/head`).
+   * @param localBranch The local branch to create or update.
+   * @returns Returns the raw command result.
+   */
+  fetchRef(
+    root: string,
+    remote: string,
+    sourceRef: string,
+    localBranch: string,
+  ): Promise<GitRunResult>;
 
   /**
    * Pulls the current branch from its upstream.

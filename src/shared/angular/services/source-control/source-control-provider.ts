@@ -161,6 +161,16 @@ export interface SourceControlProvider {
   fetch(): Promise<MutationResult>;
 
   /**
+   * Fetches one ref from a remote into a local branch. Which ref carries a pull request's head is
+   * the forge's convention rather than git's, so the source ref is supplied by the caller.
+   * @param remote The remote to fetch from.
+   * @param sourceRef The ref on the remote to fetch.
+   * @param localBranch The local branch to create or update.
+   * @returns Returns the outcome.
+   */
+  fetchRef(remote: string, sourceRef: string, localBranch: string): Promise<MutationResult>;
+
+  /**
    * Pulls the current branch from its upstream.
    * @returns Returns the outcome.
    */

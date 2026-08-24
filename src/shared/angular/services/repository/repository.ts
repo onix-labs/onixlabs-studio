@@ -783,6 +783,35 @@ export class Repository {
   }
 
   /**
+   * Fetches a pull request's head into a local branch and checks it out.
+   *
+   * Fetching the forge's own head ref rather than checking out a branch name is what makes this work
+   * for a pull request opened from a fork: the contributor's branch exists in their repository, not
+   * in this one, so there is no branch of that name here to check out — but the forge publishes the
+   * head under a ref on this remote either way.
+   *
+   * @param remote The remote the pull request's head is published on.
+   * @param sourceRef The ref carrying the head (GitHub publishes `refs/pull/N/head`).
+   * @param localBranch The local branch to create or update.
+   * @returns Returns the outcome.
+   */
+  public async checkoutRef(
+    remote: string,
+    sourceRef: string,
+    localBranch: string,
+  ): Promise<MutationResult> {
+    this.log.info('Repository', `Checking out '${sourceRef}' as '${localBranch}'`);
+    const fetched: MutationResult = await this.mutate(
+      (provider: SourceControlProvider): Promise<MutationResult> =>
+        provider.fetchRef(remote, sourceRef, localBranch),
+    );
+    if (!fetched.success) {
+      return fetched;
+    }
+    return this.checkout(localBranch);
+  }
+
+  /**
    * Restores a stash onto the working tree, keeping it on the stack, then reloads and selects the
    * working tree so the restored changes are what the user is looking at.
    * @param index The stack index of the stash (0 is the most recent).

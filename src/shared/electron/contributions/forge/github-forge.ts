@@ -98,33 +98,54 @@ function asNumber(value: unknown, fallback: number = 0): number {
 }
 
 /**
- * Maps a check-runs rollup to the panel's badge status. A pull request whose checks have not reported
- * at all is `none` rather than `running`, so the badge stays absent instead of implying work is
- * happening.
- * @param runs The check runs for the pull request's head commit.
+ * The check-run conclusions that mean the user has something to fix. `neutral`, `skipped`, `stale`
+ * and `cancelled` are deliberately absent: none of them is a failure to act on.
+ */
+const FAILING_CONCLUSIONS: readonly string[] = [
+  'failure',
+  'timed_out',
+  'action_required',
+  'startup_failure',
+];
+
+/**
+ * Rolls a commit's checks up to the panel's badge status.
+ *
+ * GitHub reports CI through **two** systems and shows the union of them: check runs (the Checks API,
+ * which is what GitHub Actions and most Apps use) and commit statuses (the older Status API, which is
+ * what Codecov, Vercel, Travis, Jenkins and friends still use). Reading only the first makes a pull
+ * request whose Actions pass but whose commit status failed show green here and red on GitHub.
+ *
+ * @param runs The check runs for the commit.
+ * @param statusState The combined state of the commit's statuses, or an empty string when the commit
+ * has none. It must be empty rather than `pending` in that case — the combined-status endpoint reports
+ * `pending` for a commit with no statuses at all, and taking that at face value would leave every
+ * repository that uses only Actions pulsing for ever.
  * @returns Returns the rolled-up status.
  */
 export function rollUpChecks(
   runs: readonly { readonly status?: unknown; readonly conclusion?: unknown }[],
+  statusState: string = '',
 ): ForgeCheckStatus {
-  if (runs.length === 0) {
+  if (runs.length === 0 && statusState.length === 0) {
+    // Nothing has reported at all. `none` rather than `running`, so the badge stays absent instead of
+    // implying work is happening.
     return 'none';
   }
   // Failure dominates: one failed check is what the user needs to see, whatever the others did.
-  const failed: boolean = runs.some((run): boolean =>
-    ['failure', 'timed_out', 'action_required', 'startup_failure'].includes(
-      asString(run.conclusion),
-    ),
-  );
+  const failed: boolean =
+    runs.some((run): boolean => FAILING_CONCLUSIONS.includes(asString(run.conclusion))) ||
+    statusState === 'failure' ||
+    statusState === 'error';
   if (failed) {
     return 'failed';
   }
-  const running: boolean = runs.some((run): boolean => asString(run.status) !== 'completed');
+  const running: boolean =
+    runs.some((run): boolean => asString(run.status) !== 'completed') || statusState === 'pending';
   if (running) {
     return 'running';
   }
-  // Everything completed and nothing failed. Neutral, skipped and cancelled all land here: none of
-  // them is a failure the user must act on.
+  // Everything settled and nothing failed.
   return 'succeeded';
 }
 
@@ -199,7 +220,7 @@ export class GitHubForge implements ForgeProvider {
     if (!result.ok) {
       return result;
     }
-    const user: RawUser = (result.value ?? {});
+    const user: RawUser = result.value ?? {};
     const login: string = asString(user.login);
     if (login.length === 0) {
       return { ok: false, error: 'GitHub returned an account with no login.', unauthorized: false };
@@ -244,6 +265,9 @@ export class GitHubForge implements ForgeProvider {
           url: asString(pull.html_url),
           draft: pull.draft === true,
           headRef: asString(pull.head?.ref),
+          // GitHub publishes every pull request's head under this ref on the base repository, which
+          // is what makes a fork's pull request checkoutable at all.
+          headRefspec: `refs/pull/${asNumber(pull.number)}/head`,
           checks: checks[index],
         }),
       ),
@@ -302,7 +326,7 @@ export class GitHubForge implements ForgeProvider {
     if (!result.ok) {
       return result;
     }
-    const body: { readonly workflow_runs?: unknown } = (result.value ?? {});
+    const body: { readonly workflow_runs?: unknown } = result.value ?? {};
     const raw: readonly RawWorkflowRun[] = Array.isArray(body.workflow_runs)
       ? (body.workflow_runs as readonly RawWorkflowRun[])
       : [];
@@ -332,17 +356,17 @@ export class GitHubForge implements ForgeProvider {
    * @returns Returns the rolled-up status.
    */
   private async checksFor(repository: ForgeRepositoryRef, sha: string): Promise<ForgeCheckStatus> {
-    const path: string = `/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/commits/${encodeURIComponent(sha)}/check-runs`;
-    const result: ForgeResult<unknown> = await this.get(repository.host, path);
-    if (!result.ok) {
-      return 'none';
-    }
-    const body: { readonly check_runs?: unknown } = (result.value ?? {});
-    return rollUpChecks(
-      Array.isArray(body.check_runs)
-        ? (body.check_runs as readonly { status?: unknown; conclusion?: unknown }[])
-        : [],
-    );
+    const base: string = `/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/commits/${encodeURIComponent(sha)}`;
+    // Both systems, together rather than in series: they are independent, and a pull request already
+    // costs one round trip of its own.
+    const [checks, statuses]: [ForgeResult<unknown>, ForgeResult<unknown>] = await Promise.all([
+      this.get(repository.host, `${base}/check-runs`),
+      this.get(repository.host, `${base}/status`),
+    ]);
+    const runs: readonly { status?: unknown; conclusion?: unknown }[] = checks.ok
+      ? readCheckRuns(checks.value)
+      : [];
+    return rollUpChecks(runs, statuses.ok ? readStatusState(statuses.value) : '');
   }
 
   /**
@@ -388,6 +412,30 @@ export class GitHubForge implements ForgeProvider {
       return { ok: false, error: messageOf(error), unauthorized: false };
     }
   }
+}
+
+/**
+ * Reads the check runs out of a check-runs response.
+ * @param body The parsed response body.
+ * @returns Returns the check runs, or an empty list when the body is not shaped as expected.
+ */
+function readCheckRuns(body: unknown): readonly { status?: unknown; conclusion?: unknown }[] {
+  const wrapper: { readonly check_runs?: unknown } = body ?? {};
+  return Array.isArray(wrapper.check_runs)
+    ? (wrapper.check_runs as readonly { status?: unknown; conclusion?: unknown }[])
+    : [];
+}
+
+/**
+ * Reads the combined state out of a commit-status response, treating a commit with no statuses as
+ * having no state at all rather than as pending — which is what the endpoint literally reports for it.
+ * @param body The parsed response body.
+ * @returns Returns the combined state, or an empty string when the commit carries no statuses.
+ */
+function readStatusState(body: unknown): string {
+  const wrapper: { readonly state?: unknown; readonly statuses?: unknown } = body ?? {};
+  const statuses: readonly unknown[] = Array.isArray(wrapper.statuses) ? wrapper.statuses : [];
+  return statuses.length === 0 ? '' : asString(wrapper.state);
 }
 
 /**

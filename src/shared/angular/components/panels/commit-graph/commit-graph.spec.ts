@@ -149,6 +149,10 @@ class FakeProvider implements SourceControlProvider {
     return Promise.resolve({ success: true });
   }
 
+  public fetchRef(): Promise<MutationResult> {
+    return Promise.resolve({ success: true });
+  }
+
   public pull(): Promise<MutationResult> {
     return Promise.resolve({ success: true });
   }

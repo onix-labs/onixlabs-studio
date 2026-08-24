@@ -90,10 +90,10 @@ class FakeHttp {
 }
 
 describe('rollUpChecks', () => {
-  it('reportsNone_whenThereAreNoChecks', () => {
+  it('reportsNone_whenNeitherSystemHasReported', () => {
     // A pull request whose checks have not reported is not "running": the badge stays absent rather
     // than implying work is happening.
-    expect(rollUpChecks([])).toBe('none');
+    expect(rollUpChecks([], '')).toBe('none');
   });
 
   it('reportsFailed_whenAnyCheckFailed_evenAlongsideRunningOnes', () => {
@@ -129,6 +129,43 @@ describe('rollUpChecks', () => {
   it('treatsTimedOutAndActionRequiredAsFailures', () => {
     expect(rollUpChecks([{ status: 'completed', conclusion: 'timed_out' }])).toBe('failed');
     expect(rollUpChecks([{ status: 'completed', conclusion: 'action_required' }])).toBe('failed');
+  });
+
+  describe('commit statuses — the other system GitHub shows', () => {
+    it('reportsFailed_whenAStatusFailedThoughEveryCheckRunPassed', () => {
+      // The bug this exists for: Actions green, Codecov (or any Status-API reporter) red. GitHub
+      // shows the union and marks the pull request failed; reading only check runs showed it green.
+      expect(rollUpChecks([{ status: 'completed', conclusion: 'success' }], 'failure')).toBe(
+        'failed',
+      );
+      expect(rollUpChecks([{ status: 'completed', conclusion: 'success' }], 'error')).toBe(
+        'failed',
+      );
+    });
+
+    it('reportsFailed_whenAStatusFailedAndThereAreNoCheckRunsAtAll', () => {
+      // A repository whose CI is entirely Status-API based (Travis, Jenkins) has no check runs.
+      expect(rollUpChecks([], 'failure')).toBe('failed');
+    });
+
+    it('reportsRunning_whileAStatusIsStillPending', () => {
+      expect(rollUpChecks([{ status: 'completed', conclusion: 'success' }], 'pending')).toBe(
+        'running',
+      );
+    });
+
+    it('reportsSucceeded_whenBothSystemsAreGreen', () => {
+      expect(rollUpChecks([{ status: 'completed', conclusion: 'success' }], 'success')).toBe(
+        'succeeded',
+      );
+    });
+
+    it('treatsAnAbsentStatusStateAsSilence_notAsPending', () => {
+      // The combined-status endpoint reports `pending` for a commit with NO statuses at all, so the
+      // caller passes an empty string instead. Taking the endpoint at its word would leave every
+      // repository that uses only Actions pulsing for ever.
+      expect(rollUpChecks([{ status: 'completed', conclusion: 'success' }], '')).toBe('succeeded');
+    });
   });
 });
 
@@ -294,9 +331,57 @@ describe('GitHubForge', () => {
           url: 'https://github.com/onix-labs/onixlabs-studio/pull/7',
           draft: false,
           headRef: 'feature/thing',
+          headRefspec: 'refs/pull/7/head',
           checks: 'succeeded',
         },
       ]);
+    });
+
+    it('marksAPullRequestFailed_whenOnlyItsCommitStatusFailed', async () => {
+      const { forge } = setup([
+        {
+          match: '/pulls',
+          status: 200,
+          body: [{ number: 7, title: 'X', head: { ref: 'f', sha: 'abc' }, user: { login: 'm' } }],
+        },
+        {
+          match: '/check-runs',
+          status: 200,
+          body: { check_runs: [{ status: 'completed', conclusion: 'success' }] },
+        },
+        {
+          match: '/status',
+          status: 200,
+          body: { state: 'failure', statuses: [{ state: 'failure', context: 'codecov' }] },
+        },
+      ]);
+
+      const result: ForgeResult<readonly ForgePullRequest[]> =
+        await forge.listPullRequests(REPOSITORY);
+
+      expect(result.ok === true && result.value[0].checks).toBe('failed');
+    });
+
+    it('ignoresTheCombinedStatus_whenTheCommitCarriesNoStatuses', async () => {
+      // Verified against the real API: a commit with no statuses reports `state: 'pending'`.
+      const { forge } = setup([
+        {
+          match: '/pulls',
+          status: 200,
+          body: [{ number: 7, title: 'X', head: { ref: 'f', sha: 'abc' }, user: { login: 'm' } }],
+        },
+        {
+          match: '/check-runs',
+          status: 200,
+          body: { check_runs: [{ status: 'completed', conclusion: 'success' }] },
+        },
+        { match: '/status', status: 200, body: { state: 'pending', statuses: [] } },
+      ]);
+
+      const result: ForgeResult<readonly ForgePullRequest[]> =
+        await forge.listPullRequests(REPOSITORY);
+
+      expect(result.ok === true && result.value[0].checks).toBe('succeeded');
     });
 
     it('degradesTheBadgeRatherThanTheListing_whenChecksCannotBeRead', async () => {
@@ -331,6 +416,7 @@ describe('GitHubForge', () => {
         url: '',
         draft: false,
         headRef: '',
+        headRefspec: 'refs/pull/0/head',
         checks: 'none',
       });
     });
