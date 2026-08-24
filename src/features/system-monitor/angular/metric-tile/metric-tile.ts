@@ -1,4 +1,11 @@
-import { ChangeDetectionStrategy, Component, computed, input, InputSignal, Signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  input,
+  InputSignal,
+  Signal,
+} from '@angular/core';
 import { Sparkline } from '../sparkline/sparkline';
 
 /**
@@ -79,8 +86,10 @@ export class MetricTile {
    * Gets the single channel whose reading is shown beside the label, or null for a multi-channel tile
    * (whose readings caption each graph instead).
    */
-  protected readonly headerChannel: Signal<TileChannel | null> = computed((): TileChannel | null => {
-    const channels: readonly TileChannel[] = this.channels();
-    return channels.length === 1 && channels[0].caption === undefined ? channels[0] : null;
-  });
+  protected readonly headerChannel: Signal<TileChannel | null> = computed(
+    (): TileChannel | null => {
+      const channels: readonly TileChannel[] = this.channels();
+      return channels.length === 1 && channels[0].caption === undefined ? channels[0] : null;
+    },
+  );
 }

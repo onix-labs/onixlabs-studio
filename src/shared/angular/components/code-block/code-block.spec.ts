@@ -1,6 +1,9 @@
 import { Component, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { TerminalLaunch, TerminalSessions } from '@shared/angular/services/terminal-sessions/terminal-sessions';
+import {
+  TerminalLaunch,
+  TerminalSessions,
+} from '@shared/angular/services/terminal-sessions/terminal-sessions';
 import { CodeBlock } from './code-block';
 
 /**
@@ -89,6 +92,8 @@ describe('CodeBlock', () => {
     const terminals: FakeTerminals = new FakeTerminals();
     const { host } = build(terminals);
     host.querySelector<HTMLElement>('[aria-label="Run in terminal"]')!.click();
-    expect(terminals.launched).toEqual([{ name: 'Run: npm test', kind: 'run', command: 'npm test' }]);
+    expect(terminals.launched).toEqual([
+      { name: 'Run: npm test', kind: 'run', command: 'npm test' },
+    ]);
   });
 });

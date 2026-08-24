@@ -4,6 +4,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import type { AiPermissionPosture, AiRemoteControlPosture } from '@shared/api/ai-types';
 import type { Agent } from '@shared/angular/services/agent/agent';
 import { AgentHost, AgentHosts } from '@shared/angular/services/agent-hosts/agent-hosts';
+import { AppMenu } from '@shared/angular/services/app-menu/app-menu';
 import { RibbonAlignment, Settings } from '@shared/angular/services/settings/settings';
 import { MissionControl } from '@features/mission-control/angular/mission-control/mission-control';
 import { MissionControlRibbon } from './mission-control-ribbon';
@@ -241,5 +242,65 @@ describe('MissionControlRibbon', () => {
     ribbon.onPosture('auto-all');
     expect(calls).toEqual(['setPosture:auto-all']);
     expect(ribbon.permissionPosture()).toBe('auto-all');
+  });
+
+  it('buttons_whenPressed_runTheSameCommandsAsTheHandlers', () => {
+    runningCount.set(2);
+    fixture.detectChanges();
+
+    button('Stop All').click();
+    button('Reset Widths').click();
+    button('Hide Empty').click();
+    button('Hide Idle').click();
+    button('Hide Working').click();
+
+    expect(calls).toEqual([
+      'stopAll',
+      'resetWidths',
+      'setHideEmpty:true',
+      'setHideIdle:true',
+      'setHideWorking:true',
+    ]);
+  });
+
+  it('postureButtons_whenPressed_moveThePosture', () => {
+    fixture.detectChanges();
+
+    button('Allow Edits').click();
+
+    expect(calls).toEqual(['setPosture:auto-edits']);
+  });
+
+  it('menu_whenACommandIsChosen_runsTheSameHandlerAsTheRibbon', () => {
+    runningCount.set(2);
+    fixture.detectChanges();
+    TestBed.tick();
+    const menu: AppMenu = TestBed.inject(AppMenu);
+
+    menu.dispatch('mc.stopAll');
+    menu.dispatch('mc.resetLayout');
+    menu.dispatch('mc.hideEmpty');
+    menu.dispatch('mc.hideIdle');
+    menu.dispatch('mc.hideWorking');
+
+    expect(calls).toEqual([
+      'stopAll',
+      'resetWidths',
+      'setHideEmpty:true',
+      'setHideIdle:true',
+      'setHideWorking:true',
+    ]);
+  });
+
+  it('menu_whenRemoteControlIsChosen_opensTheConfirmationRatherThanFlipping', () => {
+    remoteCapable.set([{ id: 'host-1' } as unknown as AgentHost]);
+    fixture.detectChanges();
+    TestBed.tick();
+
+    TestBed.inject(AppMenu).dispatch('mc.remoteControl');
+
+    // Exposing every session at once is confirmed first, exactly as the single-session toggle is.
+    expect(calls).toEqual([]);
+    expect(ribbon.remoteConfirmOpen()).toBe(true);
   });
 });

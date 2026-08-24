@@ -367,9 +367,12 @@ export class WorkspaceManager {
   private searchOptions(options: unknown): PackageSearchOptions {
     const record: { skip?: unknown; take?: unknown; prerelease?: unknown } =
       typeof options === 'object' && options !== null ? options : {};
-    const skip: number = typeof record.skip === 'number' && record.skip > 0 ? Math.floor(record.skip) : 0;
+    const skip: number =
+      typeof record.skip === 'number' && record.skip > 0 ? Math.floor(record.skip) : 0;
     const take: number =
-      typeof record.take === 'number' && record.take > 0 ? Math.min(Math.floor(record.take), 100) : 50;
+      typeof record.take === 'number' && record.take > 0
+        ? Math.min(Math.floor(record.take), 100)
+        : 50;
     return { skip, take, prerelease: record.prerelease === true };
   }
 
@@ -575,7 +578,10 @@ export class WorkspaceManager {
           await handle.write(Buffer.from(run.bytes), 0, run.bytes.length, run.offset);
         }
       }
-      logger.info('WorkspaceManager.writeBytes', `Wrote ${runs.length} byte patch(es) to ${resolved}`);
+      logger.info(
+        'WorkspaceManager.writeBytes',
+        `Wrote ${runs.length} byte patch(es) to ${resolved}`,
+      );
       return true;
     } catch (error: unknown) {
       logger.error('WorkspaceManager', `Failed to write bytes to ${resolved}`, error);
@@ -841,7 +847,10 @@ export class WorkspaceManager {
       return { kind: 'binary', path: filePath };
     }
     const content: string = await fs.readFile(filePath, 'utf-8');
-    logger.trace('WorkspaceManager.readFileSelection', `Read text file ${filePath} (${stats.size} bytes)`);
+    logger.trace(
+      'WorkspaceManager.readFileSelection',
+      `Read text file ${filePath} (${stats.size} bytes)`,
+    );
     return { kind: 'file', file: this.readFileInfo(filePath, content) };
   }
 

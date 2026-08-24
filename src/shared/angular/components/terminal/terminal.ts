@@ -267,7 +267,11 @@ export class Terminal implements AfterViewInit, OnDestroy {
    * process, even when the process itself has already exited.
    */
   public ngOnDestroy(): void {
-    this.log.info('Terminal', `Destroying pane '${this.terminalId()}'`, `persistent=${this.persistent()}`);
+    this.log.info(
+      'Terminal',
+      `Destroying pane '${this.terminalId()}'`,
+      `persistent=${this.persistent()}`,
+    );
     this.cleanupOnData?.();
     this.cleanupOnExit?.();
     this.resizeObserver?.disconnect();
@@ -645,7 +649,11 @@ export class Terminal implements AfterViewInit, OnDestroy {
       });
       if (!result.success) {
         this.pendingChunks = null;
-        this.log.error('Terminal', `Failed to start session '${id}'`, result.error ?? 'unknown error');
+        this.log.error(
+          'Terminal',
+          `Failed to start session '${id}'`,
+          result.error ?? 'unknown error',
+        );
         xterm.writeln(
           `\x1b[31mFailed to start terminal: ${result.error ?? 'unknown error'}\x1b[0m`,
         );

@@ -90,7 +90,9 @@ export class SystemMonitorView {
   /**
    * Holds the most recent metrics sample, or null before the first arrives.
    */
-  private readonly latest: WritableSignal<MetricsSample | null> = signal<MetricsSample | null>(null);
+  private readonly latest: WritableSignal<MetricsSample | null> = signal<MetricsSample | null>(
+    null,
+  );
 
   /**
    * Holds the recent CPU utilisation history (percent), oldest first, for the CPU sparkline.
@@ -100,17 +102,23 @@ export class SystemMonitorView {
   /**
    * Holds the recent memory-use history (percent), oldest first, for the memory sparkline.
    */
-  protected readonly memoryHistory: WritableSignal<readonly number[]> = signal<readonly number[]>([]);
+  protected readonly memoryHistory: WritableSignal<readonly number[]> = signal<readonly number[]>(
+    [],
+  );
 
   /**
    * Holds the recent app CPU-share history (percent), oldest first, overlaid on the CPU sparkline.
    */
-  protected readonly appCpuHistory: WritableSignal<readonly number[]> = signal<readonly number[]>([]);
+  protected readonly appCpuHistory: WritableSignal<readonly number[]> = signal<readonly number[]>(
+    [],
+  );
 
   /**
    * Holds the recent app memory-share history (percent), oldest first, overlaid on the memory sparkline.
    */
-  protected readonly appMemoryHistory: WritableSignal<readonly number[]> = signal<readonly number[]>([]);
+  protected readonly appMemoryHistory: WritableSignal<readonly number[]> = signal<
+    readonly number[]
+  >([]);
 
   /**
    * Gets the CPU tile's current machine-wide reading, formatted as a percentage.
@@ -165,22 +173,30 @@ export class SystemMonitorView {
   /**
    * Holds the recent inbound (received) network-throughput history (bytes/sec), oldest first.
    */
-  protected readonly networkRxHistory: WritableSignal<readonly number[]> = signal<readonly number[]>([]);
+  protected readonly networkRxHistory: WritableSignal<readonly number[]> = signal<
+    readonly number[]
+  >([]);
 
   /**
    * Holds the recent outbound (sent) network-throughput history (bytes/sec), oldest first.
    */
-  protected readonly networkTxHistory: WritableSignal<readonly number[]> = signal<readonly number[]>([]);
+  protected readonly networkTxHistory: WritableSignal<readonly number[]> = signal<
+    readonly number[]
+  >([]);
 
   /**
    * Holds the recent disk read-throughput history (bytes/sec), oldest first.
    */
-  protected readonly diskReadHistory: WritableSignal<readonly number[]> = signal<readonly number[]>([]);
+  protected readonly diskReadHistory: WritableSignal<readonly number[]> = signal<readonly number[]>(
+    [],
+  );
 
   /**
    * Holds the recent disk write-throughput history (bytes/sec), oldest first.
    */
-  protected readonly diskWriteHistory: WritableSignal<readonly number[]> = signal<readonly number[]>([]);
+  protected readonly diskWriteHistory: WritableSignal<readonly number[]> = signal<
+    readonly number[]
+  >([]);
 
   /**
    * Holds the recent GPU-utilisation history (percent), oldest first.
@@ -233,21 +249,23 @@ export class SystemMonitorView {
   /**
    * Gets the CPU tile's channel: a single graph with the machine reading and the app overlay.
    */
-  protected readonly cpuChannels: Signal<readonly TileChannel[]> = computed((): readonly TileChannel[] => [
-    {
-      value: this.cpuValue(),
-      values: this.cpuHistory(),
-      appValue: this.cpuAppValue(),
-      appValues: this.appCpuHistory(),
-    },
-  ]);
+  protected readonly cpuChannels: Signal<readonly TileChannel[]> = computed(
+    (): readonly TileChannel[] => [
+      {
+        value: this.cpuValue(),
+        values: this.cpuHistory(),
+        appValue: this.cpuAppValue(),
+        appValues: this.appCpuHistory(),
+      },
+    ],
+  );
 
   /**
    * Gets the GPU tile's channel: a single utilisation graph (no app attribution is possible).
    */
-  protected readonly gpuChannels: Signal<readonly TileChannel[]> = computed((): readonly TileChannel[] => [
-    { value: this.gpuValue(), values: this.gpuHistory() },
-  ]);
+  protected readonly gpuChannels: Signal<readonly TileChannel[]> = computed(
+    (): readonly TileChannel[] => [{ value: this.gpuValue(), values: this.gpuHistory() }],
+  );
 
   /**
    * Gets the Memory tile's channel: a single graph with the used reading and the app overlay.
@@ -306,12 +324,16 @@ export class SystemMonitorView {
   /**
    * Holds the records of the selected session, oldest first.
    */
-  protected readonly records: WritableSignal<readonly LogRecord[]> = signal<readonly LogRecord[]>([]);
+  protected readonly records: WritableSignal<readonly LogRecord[]> = signal<readonly LogRecord[]>(
+    [],
+  );
 
   /**
    * Holds the known app sessions, newest first.
    */
-  protected readonly sessions: WritableSignal<readonly LogSession[]> = signal<readonly LogSession[]>([]);
+  protected readonly sessions: WritableSignal<readonly LogSession[]> = signal<
+    readonly LogSession[]
+  >([]);
 
   /**
    * Holds the identifier of the live (current) session, so a selection can be recognised as live.
@@ -366,7 +388,10 @@ export class SystemMonitorView {
       if (!enabled.has(record.severity)) {
         return false;
       }
-      if (needle.length > 0 && !`${record.source} ${record.message}`.toLowerCase().includes(needle)) {
+      if (
+        needle.length > 0 &&
+        !`${record.source} ${record.message}`.toLowerCase().includes(needle)
+      ) {
         return false;
       }
       return true;
@@ -383,7 +408,9 @@ export class SystemMonitorView {
   /**
    * Gets whether the audit currently shows any records, gating the ribbon's Copy action.
    */
-  private readonly hasRecords: Signal<boolean> = computed((): boolean => this.filtered().length > 0);
+  private readonly hasRecords: Signal<boolean> = computed(
+    (): boolean => this.filtered().length > 0,
+  );
 
   /**
    * Holds the command registry the ribbon drives this view through while active.
@@ -408,7 +435,9 @@ export class SystemMonitorView {
       this.sessions().map(
         (session: LogSession): DropdownOption => ({
           value: session.id,
-          label: session.current ? `Current session — ${this.formatDate(session.startedAt)}` : this.formatDate(session.startedAt),
+          label: session.current
+            ? `Current session — ${this.formatDate(session.startedAt)}`
+            : this.formatDate(session.startedAt),
         }),
       ),
   );
@@ -684,7 +713,9 @@ export class SystemMonitorView {
   private async loadSessions(): Promise<void> {
     const sessions: LogSession[] = await this.log.sessions();
     this.sessions.set(sessions);
-    const current: LogSession | undefined = sessions.find((session: LogSession): boolean => session.current);
+    const current: LogSession | undefined = sessions.find(
+      (session: LogSession): boolean => session.current,
+    );
     this.currentSessionId.set(current?.id ?? null);
     if (this.selectedSessionId() === null) {
       this.selectedSessionId.set(current?.id ?? null);
@@ -697,9 +728,7 @@ export class SystemMonitorView {
    */
   private async loadRecords(): Promise<void> {
     const sessionId: string | null = this.selectedSessionId();
-    const records: LogRecord[] = await this.log.query(
-      sessionId === null ? {} : { sessionId },
-    );
+    const records: LogRecord[] = await this.log.query(sessionId === null ? {} : { sessionId });
     this.records.set(records);
   }
 }

@@ -231,7 +231,10 @@ export async function runDiscovery(
   }
 
   if (!response.ok) {
-    logger.warn('model-discovery', `Models endpoint ${target.url} returned HTTP ${response.status}`);
+    logger.warn(
+      'model-discovery',
+      `Models endpoint ${target.url} returned HTTP ${response.status}`,
+    );
     return {
       ok: false,
       models: connection.models,

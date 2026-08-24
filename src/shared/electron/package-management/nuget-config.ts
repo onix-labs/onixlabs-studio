@@ -76,7 +76,10 @@ function attribute(attributes: string, name: string): string | null {
  * @returns Returns the normalised name.
  */
 export function normaliseSourceName(name: string): string {
-  return name.replace(/_x0020_/gi, ' ').trim().toLowerCase();
+  return name
+    .replace(/_x0020_/gi, ' ')
+    .trim()
+    .toLowerCase();
 }
 
 /**
@@ -86,9 +89,10 @@ export function normaliseSourceName(name: string): string {
  * @returns Returns the inner content, or null.
  */
 function section(xml: string, element: string): string | null {
-  const match: RegExpExecArray | null = new RegExp(`<${element}\\b[^>]*>([\\s\\S]*?)</${element}>`, 'i').exec(
-    xml,
-  );
+  const match: RegExpExecArray | null = new RegExp(
+    `<${element}\\b[^>]*>([\\s\\S]*?)</${element}>`,
+    'i',
+  ).exec(xml);
   return match === null ? null : match[1];
 }
 

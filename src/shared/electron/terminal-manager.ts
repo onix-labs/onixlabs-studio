@@ -187,7 +187,10 @@ export class TerminalManager {
 
     const existing: pty.IPty | undefined = this.terminals.get(id);
     if (existing !== undefined) {
-      logger.debug('TerminalManager.create', `Reusing existing session ${id} (pid ${existing.pid})`);
+      logger.debug(
+        'TerminalManager.create',
+        `Reusing existing session ${id} (pid ${existing.pid})`,
+      );
       return { success: true, pid: existing.pid, shell: existing.process };
     }
 
@@ -290,7 +293,10 @@ export class TerminalManager {
       this.terminals.set(id, terminal);
       this.kinds.set(id, kind);
       pidJournal()?.register(terminal.pid, 'terminal', spec.file);
-      logger.info('TerminalManager', `Spawned ${kind} terminal (pid ${terminal.pid}, ${spec.file})`);
+      logger.info(
+        'TerminalManager',
+        `Spawned ${kind} terminal (pid ${terminal.pid}, ${spec.file})`,
+      );
       return { success: true, pid: terminal.pid, shell: spec.file };
     } catch (error: unknown) {
       const message: string = error instanceof Error ? error.message : 'Unknown error';

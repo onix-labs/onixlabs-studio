@@ -3,7 +3,9 @@ import { DockerSocket, DockerSocketFactory, resolveDockerSocketPath } from './do
 
 describe('DockerSocketFactory', () => {
   it('mintsAHandleBoundToTheInjectedPath', () => {
-    const factory: DockerSocketFactory = new DockerSocketFactory((): string => '/custom/docker.sock');
+    const factory: DockerSocketFactory = new DockerSocketFactory(
+      (): string => '/custom/docker.sock',
+    );
     const socket: DockerSocket = factory.create();
     expect(socket.path).toBe('/custom/docker.sock');
     expect(typeof socket.connect).toBe('function');

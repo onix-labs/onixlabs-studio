@@ -67,10 +67,12 @@ export class ContainerTerminals implements OnDestroy {
   public open(name: string, command: string): void {
     const id: string = `docker-${crypto.randomUUID()}`;
     this.log.info('containers.terminals', 'Opening terminal', name, command);
-    this.sessionList.update((sessions: readonly ContainerTerminal[]): readonly ContainerTerminal[] => [
-      ...sessions,
-      { id, name },
-    ]);
+    this.sessionList.update(
+      (sessions: readonly ContainerTerminal[]): readonly ContainerTerminal[] => [
+        ...sessions,
+        { id, name },
+      ],
+    );
     this.activeSessionId.set(id);
     void this.bridge.create({ id, kind: 'run', command });
   }
@@ -92,8 +94,9 @@ export class ContainerTerminals implements OnDestroy {
   public close(id: string): void {
     this.log.debug('containers.terminals', 'Closing terminal', id);
     void this.bridge.dispose(id);
-    this.sessionList.update((sessions: readonly ContainerTerminal[]): readonly ContainerTerminal[] =>
-      sessions.filter((session: ContainerTerminal): boolean => session.id !== id),
+    this.sessionList.update(
+      (sessions: readonly ContainerTerminal[]): readonly ContainerTerminal[] =>
+        sessions.filter((session: ContainerTerminal): boolean => session.id !== id),
     );
     if (this.activeSessionId() === id) {
       this.activeSessionId.set(this.sessionList()[0]?.id ?? null);

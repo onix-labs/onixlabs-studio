@@ -158,7 +158,13 @@ export class KeyboardSettingsSection {
       return;
     }
     const error: string | null = this.keybindings.setOverride(id, chord);
-    this.log.info('settings.keyboard', 'Keybinding override applied', id, chord, error ?? 'accepted');
+    this.log.info(
+      'settings.keyboard',
+      'Keybinding override applied',
+      id,
+      chord,
+      error ?? 'accepted',
+    );
     if (error !== null) {
       this.rejection.set({ id, message: error });
     }

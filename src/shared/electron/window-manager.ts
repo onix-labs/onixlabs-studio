@@ -230,11 +230,17 @@ export class WindowManager {
    */
   public showWindow(window: BrowserWindow): void {
     if (window.isDestroyed() || window.isVisible()) {
-      logger.trace('WindowManager.showWindow', 'window already destroyed or visible; nothing to do');
+      logger.trace(
+        'WindowManager.showWindow',
+        'window already destroyed or visible; nothing to do',
+      );
       return;
     }
     if (window === this.main() && this.mainStartsMaximized) {
-      logger.debug('WindowManager.showWindow', 'restoring persisted maximized state for main window');
+      logger.debug(
+        'WindowManager.showWindow',
+        'restoring persisted maximized state for main window',
+      );
       this.mainStartsMaximized = false;
       window.maximize();
     }
@@ -301,14 +307,20 @@ export class WindowManager {
     // first word from the renderer, show or hide, retires it.
     window.once('ready-to-show', (): void => {
       if (this.mainPresenceClaimed) {
-        logger.trace('WindowManager.createMainWindow', 'ready-to-show; presence claimed, no safety net');
+        logger.trace(
+          'WindowManager.createMainWindow',
+          'ready-to-show; presence claimed, no safety net',
+        );
         return;
       }
       logger.debug('WindowManager.createMainWindow', 'ready-to-show; arming show safety-net timer');
       this.mainShowFallback = setTimeout((): void => {
         this.mainShowFallback = null;
         if (!window.isDestroyed() && !window.isVisible()) {
-          logger.warn('WindowManager.createMainWindow', 'renderer never spoke for main window; showing via safety net');
+          logger.warn(
+            'WindowManager.createMainWindow',
+            'renderer never spoke for main window; showing via safety net',
+          );
           this.showWindow(window);
         }
       }, WindowManager.MAIN_SHOW_FALLBACK_MS);
@@ -337,7 +349,10 @@ export class WindowManager {
       logger.debug('WindowManager.createMainWindow', `loading start URL: ${this.options.startUrl}`);
       void window.loadURL(this.options.startUrl);
     } else {
-      logger.debug('WindowManager.createMainWindow', `loading index file: ${this.options.indexHtml}`);
+      logger.debug(
+        'WindowManager.createMainWindow',
+        `loading index file: ${this.options.indexHtml}`,
+      );
       void window.loadFile(this.options.indexHtml);
     }
 
@@ -533,7 +548,10 @@ export class WindowManager {
       logger.debug('WindowManager.adoptModalWindow', 'parenting modal to its opener');
       window.setParentWindow(parent);
     } else {
-      logger.debug('WindowManager.adoptModalWindow', 'modal opens free-standing (no visible parent)');
+      logger.debug(
+        'WindowManager.adoptModalWindow',
+        'modal opens free-standing (no visible parent)',
+      );
     }
     logger.info('WindowManager.adoptModalWindow', 'modal window adopted');
   }

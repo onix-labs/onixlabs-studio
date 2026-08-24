@@ -35,10 +35,14 @@ export function readClaudeAccessToken(): string | null {
  */
 function readFromKeychain(): string | null {
   try {
-    return execFileSync('security', ['find-generic-password', '-s', 'Claude Code-credentials', '-w'], {
-      encoding: 'utf8',
-      timeout: 5000,
-    });
+    return execFileSync(
+      'security',
+      ['find-generic-password', '-s', 'Claude Code-credentials', '-w'],
+      {
+        encoding: 'utf8',
+        timeout: 5000,
+      },
+    );
   } catch {
     return null;
   }

@@ -1,4 +1,11 @@
-import { ChangeDetectionStrategy, Component, computed, input, InputSignal, Signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  input,
+  InputSignal,
+  Signal,
+} from '@angular/core';
 
 /**
  * The sparkline's unitless viewBox width and height. The SVG stretches to its host with
@@ -54,17 +61,23 @@ export class Sparkline {
   /**
    * Gets the SVG path for the filled area beneath the primary line, or an empty string when empty.
    */
-  protected readonly areaPath: Signal<string> = computed((): string => this.toArea(this.linePath()));
+  protected readonly areaPath: Signal<string> = computed((): string =>
+    this.toArea(this.linePath()),
+  );
 
   /**
    * Gets the SVG path for the overlaid app line, or an empty string when no app series was supplied.
    */
-  protected readonly appLinePath: Signal<string> = computed((): string => this.toLine(this.appValues()));
+  protected readonly appLinePath: Signal<string> = computed((): string =>
+    this.toLine(this.appValues()),
+  );
 
   /**
    * Gets the SVG path for the filled area beneath the app line, or an empty string when empty.
    */
-  protected readonly appAreaPath: Signal<string> = computed((): string => this.toArea(this.appLinePath()));
+  protected readonly appAreaPath: Signal<string> = computed((): string =>
+    this.toArea(this.appLinePath()),
+  );
 
   /**
    * Builds the SVG line path for a series, scaled to {@link max}, oldest left to newest right.
@@ -89,7 +102,9 @@ export class Sparkline {
       return `M 0 ${y} L ${VIEW_WIDTH} ${y}`;
     }
     return points
-      .map(([x, y]: [number, number], index: number): string => `${index === 0 ? 'M' : 'L'} ${x} ${y}`)
+      .map(
+        ([x, y]: [number, number], index: number): string => `${index === 0 ? 'M' : 'L'} ${x} ${y}`,
+      )
       .join(' ');
   }
 

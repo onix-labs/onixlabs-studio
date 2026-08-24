@@ -64,7 +64,10 @@ describe('WelcomeScreen', () => {
    */
   async function clickGroupHeader(title: string): Promise<void> {
     Array.from(host.querySelectorAll<HTMLButtonElement>('.welcome__group-header'))
-      .find((header: HTMLButtonElement): boolean => header.textContent?.trim().startsWith(title) ?? false)
+      .find(
+        (header: HTMLButtonElement): boolean =>
+          header.textContent?.trim().startsWith(title) ?? false,
+      )
       ?.click();
     await fixture.whenStable();
   }

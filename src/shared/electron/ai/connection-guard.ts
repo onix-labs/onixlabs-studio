@@ -47,8 +47,8 @@ export function sanitizeConnections(value: unknown): readonly AiConnection[] {
     logger.warn('connection-guard', 'Connections payload was not an array; accepting none');
     return [];
   }
-  const accepted: readonly AiConnection[] = value.filter(
-    (entry: unknown): entry is AiConnection => isConnection(entry),
+  const accepted: readonly AiConnection[] = value.filter((entry: unknown): entry is AiConnection =>
+    isConnection(entry),
   );
   if (accepted.length < value.length) {
     logger.warn(
@@ -72,14 +72,18 @@ export function sanitizeClaudeExecutable(value: unknown): ClaudeExecutableChoice
     return DEFAULT_CLAUDE_EXECUTABLE;
   }
   const candidate: Record<string, unknown> = value as Record<string, unknown>;
-  const known: boolean = CLAUDE_EXECUTABLE_MODES.includes(candidate['mode'] as ClaudeExecutableMode);
+  const known: boolean = CLAUDE_EXECUTABLE_MODES.includes(
+    candidate['mode'] as ClaudeExecutableMode,
+  );
   if (!known) {
     logger.warn(
       'connection-guard',
       `Unknown Claude executable mode '${String(candidate['mode'])}'; falling back to bundled`,
     );
   }
-  const mode: ClaudeExecutableMode = known ? (candidate['mode'] as ClaudeExecutableMode) : 'bundled';
+  const mode: ClaudeExecutableMode = known
+    ? (candidate['mode'] as ClaudeExecutableMode)
+    : 'bundled';
   const path: string = typeof candidate['path'] === 'string' ? candidate['path'] : '';
   return { mode, path };
 }

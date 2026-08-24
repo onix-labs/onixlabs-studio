@@ -196,7 +196,9 @@ class MonacoCodeBlockView implements NodeView {
     this.languageInput.setAttribute('spellcheck', 'false');
     this.languageInput.placeholder = 'plain text';
     this.languageInput.value = this.languageAttr();
-    this.languageInput.addEventListener('change', (): void => this.setLanguage(this.languageInput.value));
+    this.languageInput.addEventListener('change', (): void =>
+      this.setLanguage(this.languageInput.value),
+    );
     // Committing the language on Enter keeps focus off the editor mount, so a fence stays in its
     // placeholder state until the code area itself is entered.
     this.languageInput.addEventListener('keydown', (event: KeyboardEvent): void => {
@@ -444,8 +446,8 @@ class MonacoCodeBlockView implements NodeView {
     this.editorDisposers = [
       model,
       this.editor,
-      this.editor.onDidChangeModelContent((event: MonacoApi.editor.IModelContentChangedEvent): void =>
-        this.forwardEdit(event),
+      this.editor.onDidChangeModelContent(
+        (event: MonacoApi.editor.IModelContentChangedEvent): void => this.forwardEdit(event),
       ),
       this.editor.onDidContentSizeChange((): void => this.syncHeight()),
       this.editor.onDidBlurEditorWidget((): void => this.scheduleTeardown()),
@@ -539,7 +541,11 @@ class MonacoCodeBlockView implements NodeView {
    * @param direction -1 to leave before the fence, 1 to leave after it.
    * @param event The originating key event, consumed when navigation is taken over.
    */
-  private maybeEscape(unit: 'line' | 'char', direction: -1 | 1, event: MonacoApi.IKeyboardEvent): void {
+  private maybeEscape(
+    unit: 'line' | 'char',
+    direction: -1 | 1,
+    event: MonacoApi.IKeyboardEvent,
+  ): void {
     const editor: MonacoApi.editor.IStandaloneCodeEditor | null = this.editor;
     const model: MonacoApi.editor.ITextModel | null = editor?.getModel() ?? null;
     const selection: MonacoApi.Selection | null = editor?.getSelection() ?? null;

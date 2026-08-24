@@ -169,7 +169,10 @@ export class RunConfigurationAgent {
   private dispatch(prompt: string): boolean {
     const host: AgentHost | null = this.host();
     if (host === null || this.activeWorkspace.rootPath() === null) {
-      this.log.warn('workspace.run', 'Run-configuration agent dispatch skipped: no host or no folder');
+      this.log.warn(
+        'workspace.run',
+        'Run-configuration agent dispatch skipped: no host or no folder',
+      );
       return false;
     }
     this.log.info('workspace.run', 'Run-configuration agent dispatched');

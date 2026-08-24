@@ -2,7 +2,12 @@ import { inject, Service } from '@angular/core';
 import { Log } from '@shared/angular/services/log/log';
 import { Bridge } from '@shared/api/bridge';
 import { DockerChannel } from '@shared/api/docker-channels';
-import { ContainerSummary, DockerEvent, DockerStatus, ImageSummary } from '@shared/api/docker-types';
+import {
+  ContainerSummary,
+  DockerEvent,
+  DockerStatus,
+  ImageSummary,
+} from '@shared/api/docker-types';
 
 /**
  * The renderer client for the Docker backend contribution (#391): a thin, typed wrapper over the
@@ -27,7 +32,9 @@ export class Docker {
    * @returns Returns the container summaries, or an empty list when unavailable.
    */
   public listContainers(): Promise<ContainerSummary[]> {
-    return this.bridge?.invoke<ContainerSummary[]>(DockerChannel.ListContainers) ?? Promise.resolve([]);
+    return (
+      this.bridge?.invoke<ContainerSummary[]>(DockerChannel.ListContainers) ?? Promise.resolve([])
+    );
   }
 
   /**
@@ -73,7 +80,10 @@ export class Docker {
    * @returns Returns the daemon status.
    */
   public status(): Promise<DockerStatus> {
-    return this.bridge?.invoke<DockerStatus>(DockerChannel.Status) ?? Promise.resolve({ available: false });
+    return (
+      this.bridge?.invoke<DockerStatus>(DockerChannel.Status) ??
+      Promise.resolve({ available: false })
+    );
   }
 
   /**

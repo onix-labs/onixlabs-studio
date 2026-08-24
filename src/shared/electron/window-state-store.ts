@@ -27,7 +27,9 @@ export class WindowStateStore {
    */
   public static read(kind: WindowKind): StoredWindowState | null {
     logger.trace('WindowStateStore.read', `reading state for '${kind}'`);
-    const state: StoredWindowState | null = parseStoredWindowState(WindowStateStore.readAll()[kind]);
+    const state: StoredWindowState | null = parseStoredWindowState(
+      WindowStateStore.readAll()[kind],
+    );
     if (state === null) {
       logger.debug('WindowStateStore.read', `no usable persisted state for '${kind}'`);
     } else {

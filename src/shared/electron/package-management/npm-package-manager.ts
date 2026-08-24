@@ -7,10 +7,7 @@ import {
   PackageManagerModel,
   PackageProject,
 } from '@shared/api/package-management';
-import {
-  parseWorkspacePatterns,
-  splitWorkspacePattern,
-} from '../project-system/node-workspaces';
+import { parseWorkspacePatterns, splitWorkspacePattern } from '../project-system/node-workspaces';
 import { fetchLatestVersion } from './npm-registry';
 import { endpointFor, readNpmConfig } from './npm-sources';
 import { NpmrcConfig } from './npmrc';
@@ -87,7 +84,11 @@ export class NpmPackageManager implements PackageManager {
 
     const installed: ReadonlyMap<string, string> = await this.readInstalledVersions(root);
     const manifests: readonly ManifestEntry[] = [
-      { name: this.manifestName(rootManifest, root), manifestPath: path.join(root, MANIFEST), manifest: rootManifest },
+      {
+        name: this.manifestName(rootManifest, root),
+        manifestPath: path.join(root, MANIFEST),
+        manifest: rootManifest,
+      },
       ...(await this.workspaceManifests(root, rootManifest)),
     ];
 
@@ -113,7 +114,10 @@ export class NpmPackageManager implements PackageManager {
         packages: this.readPackages(entry.manifest, installed, latest),
       }),
     );
-    logger.info('NpmPackageManager', `Loaded npm package model for '${root}' (${projects.length} project(s)).`);
+    logger.info(
+      'NpmPackageManager',
+      `Loaded npm package model for '${root}' (${projects.length} project(s)).`,
+    );
     return { ecosystem: 'npm', root, projects };
   }
 
@@ -126,7 +130,9 @@ export class NpmPackageManager implements PackageManager {
     try {
       const content: string = await fs.readFile(manifestPath, 'utf8');
       const parsed: unknown = JSON.parse(content);
-      return typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, unknown>) : null;
+      return typeof parsed === 'object' && parsed !== null
+        ? (parsed as Record<string, unknown>)
+        : null;
     } catch {
       return null;
     }
@@ -270,8 +276,9 @@ export class NpmPackageManager implements PackageManager {
       }
     };
     await Promise.all(
-      Array.from({ length: Math.min(REGISTRY_CONCURRENCY, queue.length) }, (): Promise<void> =>
-        worker(),
+      Array.from(
+        { length: Math.min(REGISTRY_CONCURRENCY, queue.length) },
+        (): Promise<void> => worker(),
       ),
     );
     return latest;

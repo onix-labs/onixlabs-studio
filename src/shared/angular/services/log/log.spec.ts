@@ -54,7 +54,10 @@ describe('Log', () => {
   it('info_sendsAnInfoSeverityStructuredLog', () => {
     setup().info('Composer', 'ready');
     expect(sent).toEqual([
-      { channel: LogChannel.Append, input: { severity: 'info', source: 'Composer', message: 'ready' } },
+      {
+        channel: LogChannel.Append,
+        input: { severity: 'info', source: 'Composer', message: 'ready' },
+      },
     ]);
   });
 

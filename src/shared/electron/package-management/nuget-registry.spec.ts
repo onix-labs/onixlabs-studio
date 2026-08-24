@@ -50,9 +50,7 @@ describe('latestStableFromVersions', () => {
 
 describe('baseAddressFromIndex', () => {
   it('reads the PackageBaseAddress resource', () => {
-    expect(baseAddressFromIndex(SERVICE_INDEX)).toBe(
-      'https://api.nuget.org/v3-flatcontainer',
-    );
+    expect(baseAddressFromIndex(SERVICE_INDEX)).toBe('https://api.nuget.org/v3-flatcontainer');
   });
 
   it('is null when the resource is absent', () => {
@@ -62,7 +60,11 @@ describe('baseAddressFromIndex', () => {
 });
 
 describe('fetchLatestVersion', () => {
-  const nugetOrg: NuGetSource = { name: 'nuget.org', url: 'https://api.nuget.org/v3/index.json', headers: {} };
+  const nugetOrg: NuGetSource = {
+    name: 'nuget.org',
+    url: 'https://api.nuget.org/v3/index.json',
+    headers: {},
+  };
 
   it('resolves the flat container from the service index, then the latest stable', async () => {
     const fetchFn: HttpFetch = (url: string): Promise<HttpResponse> => {
@@ -85,12 +87,24 @@ describe('fetchLatestVersion', () => {
       headers: { Authorization: 'Basic dXNlcjp0b2tlbg==' },
     };
     const seenAuth: (string | undefined)[] = [];
-    const fetchFn: HttpFetch = (url: string, init?: { headers?: Record<string, string> }): Promise<HttpResponse> => {
+    const fetchFn: HttpFetch = (
+      url: string,
+      init?: { headers?: Record<string, string> },
+    ): Promise<HttpResponse> => {
       seenAuth.push(init?.headers?.['Authorization']);
       if (url.startsWith('https://nuget.pkg.github.com')) {
         // The private feed has no such package (empty versions), so resolution moves on.
         return url.endsWith('/index.json') && url.includes('/acme/')
-          ? Promise.resolve(response(true, { resources: [{ '@type': 'PackageBaseAddress/3.0.0', '@id': 'https://nuget.pkg.github.com/acme/download/' }] }))
+          ? Promise.resolve(
+              response(true, {
+                resources: [
+                  {
+                    '@type': 'PackageBaseAddress/3.0.0',
+                    '@id': 'https://nuget.pkg.github.com/acme/download/',
+                  },
+                ],
+              }),
+            )
           : Promise.resolve(response(true, { versions: [] }));
       }
       if (url.endsWith('/v3/index.json')) {
@@ -130,7 +144,13 @@ describe('parseNuGetSearch', () => {
     const body: unknown = {
       totalHits: 2,
       data: [
-        { id: 'Serilog', version: '3.1.1', description: 'Logging', totalDownloads: 500_000_000, verified: true },
+        {
+          id: 'Serilog',
+          version: '3.1.1',
+          description: 'Logging',
+          totalDownloads: 500_000_000,
+          verified: true,
+        },
         { id: 'NoMeta' },
       ],
     };
@@ -145,7 +165,14 @@ describe('parseNuGetSearch', () => {
         verified: true,
         sourceName: 'nuget.org',
       },
-      { name: 'NoMeta', version: '', description: '', downloads: null, verified: false, sourceName: 'nuget.org' },
+      {
+        name: 'NoMeta',
+        version: '',
+        description: '',
+        downloads: null,
+        verified: false,
+        sourceName: 'nuget.org',
+      },
     ]);
   });
 });
@@ -153,7 +180,10 @@ describe('parseNuGetSearch', () => {
 describe('fetchSearch', () => {
   it('resolves the search service, queries it with auth, and reports paging', async () => {
     const seenAuth: (string | undefined)[] = [];
-    const fetchFn: HttpFetch = (url: string, init?: { headers?: Record<string, string> }): Promise<HttpResponse> => {
+    const fetchFn: HttpFetch = (
+      url: string,
+      init?: { headers?: Record<string, string> },
+    ): Promise<HttpResponse> => {
       seenAuth.push(init?.headers?.['Authorization']);
       if (url.endsWith('/v3/index.json')) {
         return Promise.resolve(response(true, SERVICE_INDEX));

@@ -154,9 +154,9 @@ describe('ApiAgentCapabilities', () => {
     expect(result['available']).toBe(true);
     expect((result['collections'] as unknown[]).length).toBeGreaterThan(0);
     const environments: { active: boolean }[] = result['environments'] as { active: boolean }[];
-    expect(environments.some((environment: { active: boolean }): boolean => environment.active)).toBe(
-      true,
-    );
+    expect(
+      environments.some((environment: { active: boolean }): boolean => environment.active),
+    ).toBe(true);
   });
 
   it('create_savesTheRequestAndOpensItSoTheUserSeesIt', async () => {
@@ -269,9 +269,9 @@ describe('ApiAgentCapabilities', () => {
     await invoke(SET_API_VARIABLE, { name: 'token', value: 'second' });
 
     const active: ApiEnvironment | null = workspace.activeEnvironment();
-    expect(
-      active?.variables.filter((variable): boolean => variable.name === 'token').length,
-    ).toBe(1);
+    expect(active?.variables.filter((variable): boolean => variable.name === 'token').length).toBe(
+      1,
+    );
     expect(workspace.substitute('{{token}}')).toBe('second');
   });
 

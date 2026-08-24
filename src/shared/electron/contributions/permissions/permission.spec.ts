@@ -18,7 +18,10 @@ describe('sanitizePermissions', () => {
   });
 
   it('deduplicatesRepeatedIds', () => {
-    const result: ReadonlySet<PermissionId> = sanitizePermissions(['docker.socket', 'docker.socket']);
+    const result: ReadonlySet<PermissionId> = sanitizePermissions([
+      'docker.socket',
+      'docker.socket',
+    ]);
     expect(result.size).toBe(1);
   });
 
@@ -29,12 +32,18 @@ describe('sanitizePermissions', () => {
 
 describe('PermissionDeniedError', () => {
   it('carriesTheContributionPermissionAndReasonInMessageAndFields', () => {
-    const error: PermissionDeniedError = new PermissionDeniedError('docker', 'docker.socket', 'undeclared');
+    const error: PermissionDeniedError = new PermissionDeniedError(
+      'docker',
+      'docker.socket',
+      'undeclared',
+    );
     expect(error).toBeInstanceOf(Error);
     expect(error.name).toBe('PermissionDeniedError');
     expect(error.contributionId).toBe('docker');
     expect(error.permission).toBe('docker.socket');
     expect(error.reason).toBe('undeclared');
-    expect(error.message).toContain("contribution 'docker' denied permission 'docker.socket' (undeclared)");
+    expect(error.message).toContain(
+      "contribution 'docker' denied permission 'docker.socket' (undeclared)",
+    );
   });
 });

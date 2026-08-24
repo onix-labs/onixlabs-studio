@@ -89,7 +89,9 @@ export class MonacoHighlighter {
     }
     // Aligning the theme is a no-op once it already matches the mode, so doing it per fence does not
     // churn any open editors; it only matters for the first fence rendered before any editor exists.
-    monaco.editor.setTheme(this.monaco.getThemeName(this.settings.globalTextEditor().currentLineHighlight));
+    monaco.editor.setTheme(
+      this.monaco.getThemeName(this.settings.globalTextEditor().currentLineHighlight),
+    );
     return monaco.editor.colorize(code, this.resolveLanguageId(lang), {
       tabSize: this.settings.globalTextEditor().tabSize,
     });

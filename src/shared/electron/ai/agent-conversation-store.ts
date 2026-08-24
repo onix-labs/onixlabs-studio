@@ -280,7 +280,11 @@ export class AgentConversationStore {
         mode: 0o600,
       });
     } catch (error: unknown) {
-      logger.error('AgentConversationStore.writeIndex', 'Failed to persist conversation index', error);
+      logger.error(
+        'AgentConversationStore.writeIndex',
+        'Failed to persist conversation index',
+        error,
+      );
     }
   }
 

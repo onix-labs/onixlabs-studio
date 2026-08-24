@@ -73,19 +73,29 @@ export class WorktreeManager {
         options: unknown,
       ): Promise<WorktreeOutcome<WorktreeCheckoutInfo>> => {
         logger.trace('WorktreeManager', `Add checkout in ${String(root)}`);
-        return this.logged(`Add checkout in ${String(root)}`, this.operations.addCheckout(root, options));
+        return this.logged(
+          `Add checkout in ${String(root)}`,
+          this.operations.addCheckout(root, options),
+        );
       },
     );
     ipcMain.handle(
       WorktreeChannel.RemoveCheckout,
       (_event: IpcMainInvokeEvent, root: unknown, id: unknown): Promise<WorktreeOutcome<null>> => {
         logger.trace('WorktreeManager', `Remove checkout ${String(id)} in ${String(root)}`);
-        return this.logged(`Remove checkout ${String(id)}`, this.operations.removeCheckout(root, id));
+        return this.logged(
+          `Remove checkout ${String(id)}`,
+          this.operations.removeCheckout(root, id),
+        );
       },
     );
     ipcMain.handle(
       WorktreeChannel.OpenCheckout,
-      (_event: IpcMainInvokeEvent, root: unknown, id: unknown): Promise<WorktreeOutcome<string>> => {
+      (
+        _event: IpcMainInvokeEvent,
+        root: unknown,
+        id: unknown,
+      ): Promise<WorktreeOutcome<string>> => {
         logger.trace('WorktreeManager', `Open checkout ${String(id)} in ${String(root)}`);
         return this.operations.openCheckout(root, id);
       },
@@ -117,7 +127,10 @@ export class WorktreeManager {
    * @param outcome The operation's promised outcome.
    * @returns Returns the same outcome, for the handler to reply with.
    */
-  private async logged<T>(action: string, outcome: Promise<WorktreeOutcome<T>>): Promise<WorktreeOutcome<T>> {
+  private async logged<T>(
+    action: string,
+    outcome: Promise<WorktreeOutcome<T>>,
+  ): Promise<WorktreeOutcome<T>> {
     const result: WorktreeOutcome<T> = await outcome;
     if (result.ok) {
       logger.info('WorktreeManager', `${action} succeeded`);

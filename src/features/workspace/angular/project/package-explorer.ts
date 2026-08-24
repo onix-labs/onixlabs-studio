@@ -53,7 +53,9 @@ export class PackageExplorer {
   /**
    * Holds the selected source name, or null when none is chosen yet.
    */
-  private readonly selectedSourceSignal: WritableSignal<string | null> = signal<string | null>(null);
+  private readonly selectedSourceSignal: WritableSignal<string | null> = signal<string | null>(
+    null,
+  );
 
   /**
    * Holds the active query text.
@@ -259,8 +261,9 @@ export class PackageExplorer {
     if (generation !== this.generation) {
       return;
     }
-    this.resultsSignal.update((current: readonly PackageSearchItem[]): readonly PackageSearchItem[] =>
-      skip === 0 ? result.items : [...current, ...result.items],
+    this.resultsSignal.update(
+      (current: readonly PackageSearchItem[]): readonly PackageSearchItem[] =>
+        skip === 0 ? result.items : [...current, ...result.items],
     );
     this.totalSignal.set(result.total);
     this.hasMoreSignal.set(result.hasMore);

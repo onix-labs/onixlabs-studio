@@ -176,7 +176,10 @@ export class RemoteControlBridge {
     public readonly sessionId: string,
     private readonly mode: RemoteControlAttachMode,
     private readonly pendingPermissions: Map<string, (granted: boolean) => void>,
-    private readonly pendingQuestions: Map<string, (answer: Record<string, unknown> | null) => void>,
+    private readonly pendingQuestions: Map<
+      string,
+      (answer: Record<string, unknown> | null) => void
+    >,
   ) {}
 
   /**
@@ -216,12 +219,8 @@ export class RemoteControlBridge {
         logger.warn('ClaudeRemoteControl', 'Could not create a claude.ai code session');
         return null;
       }
-      const creds: RemoteCredentials | CredentialsFailure | null = await bridge.fetchRemoteCredentials(
-        sessionId,
-        BASE_URL,
-        token,
-        CALL_TIMEOUT_MS,
-      );
+      const creds: RemoteCredentials | CredentialsFailure | null =
+        await bridge.fetchRemoteCredentials(sessionId, BASE_URL, token, CALL_TIMEOUT_MS);
       if (creds === null || bridge.isCredentialsFailure(creds)) {
         const reason: string = creds === null ? 'transient failure' : creds.reason;
         logger.warn('ClaudeRemoteControl', `Could not mint worker credentials: ${reason}`);
@@ -234,10 +233,8 @@ export class RemoteControlBridge {
         string,
         (granted: boolean) => void
       >();
-      const pendingQuestions: Map<string, (answer: Record<string, unknown> | null) => void> = new Map<
-        string,
-        (answer: Record<string, unknown> | null) => void
-      >();
+      const pendingQuestions: Map<string, (answer: Record<string, unknown> | null) => void> =
+        new Map<string, (answer: Record<string, unknown> | null) => void>();
       const handle: BridgeSessionHandle = await bridge.attachBridgeSession({
         sessionId,
         ingressToken: creds.worker_jwt,
@@ -316,33 +313,43 @@ export class RemoteControlBridge {
   public requestPermission(
     toolName: string,
     input: Record<string, unknown>,
-    action?: { readonly displayName?: string; readonly description?: string; readonly toolUseId?: string },
+    action?: {
+      readonly displayName?: string;
+      readonly description?: string;
+      readonly toolUseId?: string;
+    },
   ): { readonly id: string; readonly granted: Promise<boolean> } {
     const id: string = `studio-perm-${(this.permissionSeq += 1)}`;
-    const granted: Promise<boolean> = new Promise<boolean>((resolve: (granted: boolean) => void): void => {
-      this.pendingPermissions.set(id, resolve);
-      try {
-        this.handle.sendControlRequest({
-          type: 'control_request',
-          request_id: id,
-          request: { subtype: 'can_use_tool', tool_name: toolName, input },
-        });
-        // Mark the session "waiting on you" so claude.ai shows it needs attention and pushes a
-        // notification (the runtime does not derive this from the control request itself).
-        this.reportAction({
-          tool_name: toolName,
-          display_tool_name: action?.displayName,
-          action_description: action?.description,
-          request_id: id,
-          tool_use_id: action?.toolUseId,
-        });
-      } catch (error: unknown) {
-        // Forwarding failed: drop the pending entry and never resolve, so the local prompt decides the
-        // race instead.
-        this.pendingPermissions.delete(id);
-        logger.debug('ClaudeRemoteControl', 'Forwarding a permission prompt to the bridge failed', error);
-      }
-    });
+    const granted: Promise<boolean> = new Promise<boolean>(
+      (resolve: (granted: boolean) => void): void => {
+        this.pendingPermissions.set(id, resolve);
+        try {
+          this.handle.sendControlRequest({
+            type: 'control_request',
+            request_id: id,
+            request: { subtype: 'can_use_tool', tool_name: toolName, input },
+          });
+          // Mark the session "waiting on you" so claude.ai shows it needs attention and pushes a
+          // notification (the runtime does not derive this from the control request itself).
+          this.reportAction({
+            tool_name: toolName,
+            display_tool_name: action?.displayName,
+            action_description: action?.description,
+            request_id: id,
+            tool_use_id: action?.toolUseId,
+          });
+        } catch (error: unknown) {
+          // Forwarding failed: drop the pending entry and never resolve, so the local prompt decides the
+          // race instead.
+          this.pendingPermissions.delete(id);
+          logger.debug(
+            'ClaudeRemoteControl',
+            'Forwarding a permission prompt to the bridge failed',
+            error,
+          );
+        }
+      },
+    );
     return { id, granted };
   }
 
@@ -379,9 +386,10 @@ export class RemoteControlBridge {
     firstQuestion?: string,
   ): { readonly id: string; readonly answer: Promise<Record<string, unknown> | null> } {
     const id: string = `studio-ask-${(this.permissionSeq += 1)}`;
-    const answer: Promise<Record<string, unknown> | null> = new Promise<
-      Record<string, unknown> | null
-    >((resolve: (answer: Record<string, unknown> | null) => void): void => {
+    const answer: Promise<Record<string, unknown> | null> = new Promise<Record<
+      string,
+      unknown
+    > | null>((resolve: (answer: Record<string, unknown> | null) => void): void => {
       this.pendingQuestions.set(id, resolve);
       try {
         this.handle.sendControlRequest({

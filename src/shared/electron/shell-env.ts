@@ -262,5 +262,8 @@ export function hydrateLoginShellEnvironment(): void {
   const before: number = Object.keys(process.env).length;
   Object.assign(process.env, applyCapturedEnvironment(process.env, captured, false));
   const added: number = Object.keys(process.env).length - before;
-  logger.info('shell-env', `Hydrated shell environment from ${shell} (+${added} vars, PATH merged)`);
+  logger.info(
+    'shell-env',
+    `Hydrated shell environment from ${shell} (+${added} vars, PATH merged)`,
+  );
 }

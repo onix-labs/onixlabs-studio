@@ -22,7 +22,10 @@ import { Log } from '@shared/angular/services/log/log';
 import { Icon } from '@shared/angular/icons/icon';
 import { ContainerSummary, ImageSummary } from '@shared/api/docker-types';
 import { ContainerTerminals } from '../container-terminals/container-terminals';
-import { ContainersCommandHandler, ContainersCommands } from '../containers-commands/containers-commands';
+import {
+  ContainersCommandHandler,
+  ContainersCommands,
+} from '../containers-commands/containers-commands';
 import { ContainersStatus } from '../containers-status/containers-status';
 import { Docker } from '../docker/docker';
 
@@ -103,9 +106,9 @@ export class ContainersView implements OnDestroy {
   /**
    * Holds the current image list.
    */
-  protected readonly images: WritableSignal<readonly ImageSummary[]> = signal<readonly ImageSummary[]>(
-    [],
-  );
+  protected readonly images: WritableSignal<readonly ImageSummary[]> = signal<
+    readonly ImageSummary[]
+  >([]);
 
   /**
    * Holds the id of the selected container, or null when none is selected.
@@ -134,7 +137,9 @@ export class ContainersView implements OnDestroy {
   private readonly hasSelection: Signal<boolean> = computed(
     (): boolean =>
       this.selectedId() !== null &&
-      this.containers().some((container: ContainerSummary): boolean => container.id === this.selectedId()),
+      this.containers().some(
+        (container: ContainerSummary): boolean => container.id === this.selectedId(),
+      ),
   );
 
   /**
@@ -143,7 +148,8 @@ export class ContainersView implements OnDestroy {
   private readonly selectionRunning: Signal<boolean> = computed((): boolean => {
     const id: string | null = this.selectedId();
     return this.containers().some(
-      (container: ContainerSummary): boolean => container.id === id && container.state === 'running',
+      (container: ContainerSummary): boolean =>
+        container.id === id && container.state === 'running',
     );
   });
 
@@ -448,7 +454,10 @@ export class ContainersView implements OnDestroy {
     this.containers.set(containers);
     this.images.set(images);
     const id: string | null = this.selectedId();
-    if (id !== null && !containers.some((container: ContainerSummary): boolean => container.id === id)) {
+    if (
+      id !== null &&
+      !containers.some((container: ContainerSummary): boolean => container.id === id)
+    ) {
       this.selectedId.set(null);
     }
   }

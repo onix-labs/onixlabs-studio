@@ -5,11 +5,7 @@ import {
   ImageSummary,
 } from '@shared/api/docker-types';
 import { DockerSocket } from '../permissions/brokers/docker-socket';
-import {
-  DockerStreamHandle,
-  DockerTransport,
-  HttpDockerTransport,
-} from './docker-transport';
+import { DockerStreamHandle, DockerTransport, HttpDockerTransport } from './docker-transport';
 
 /**
  * The raw container shape from `GET /containers/json`.

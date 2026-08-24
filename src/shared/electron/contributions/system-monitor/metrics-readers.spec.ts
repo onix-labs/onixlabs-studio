@@ -13,7 +13,10 @@ describe('sumNetwork', () => {
   });
 
   it('treatsNullAndNegativeRatesAsZero', () => {
-    expect(sumNetwork([{ rx_sec: null, tx_sec: -1 }])).toEqual({ rxBytesPerSec: 0, txBytesPerSec: 0 });
+    expect(sumNetwork([{ rx_sec: null, tx_sec: -1 }])).toEqual({
+      rxBytesPerSec: 0,
+      txBytesPerSec: 0,
+    });
   });
 
   it('isZeroForNoInterfaces', () => {
@@ -30,7 +33,10 @@ describe('readDisk', () => {
   });
 
   it('treatsNullRatesAsZero', () => {
-    expect(readDisk({ rx_sec: null, wx_sec: null })).toEqual({ readBytesPerSec: 0, writeBytesPerSec: 0 });
+    expect(readDisk({ rx_sec: null, wx_sec: null })).toEqual({
+      readBytesPerSec: 0,
+      writeBytesPerSec: 0,
+    });
   });
 
   it('returnsUndefinedWhenStatsAreAbsent', () => {
@@ -59,7 +65,10 @@ describe('readAppUsage', () => {
   it('sumsProcessCpuAndNormalisesByCoreCount', () => {
     // Two processes at 200% + 40% of a single core, across 4 cores → (240 / 4) = 60% of the machine.
     const usage: AppUsageMetric = readAppUsage(
-      [{ cpu: { percentCPUUsage: 200 }, memory: { workingSetSize: 0 } }, { cpu: { percentCPUUsage: 40 } }],
+      [
+        { cpu: { percentCPUUsage: 200 }, memory: { workingSetSize: 0 } },
+        { cpu: { percentCPUUsage: 40 } },
+      ],
       4,
       0,
     );

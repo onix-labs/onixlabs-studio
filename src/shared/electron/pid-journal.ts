@@ -291,7 +291,10 @@ export class PidJournal {
       }
       const probe: ProcessProbe | null = await this.probe(entry.pid).catch((): null => null);
       if (probe !== null && matchesEntry(entry, probe)) {
-        logger.info('PidJournal', `Reaping orphaned ${entry.kind} pid ${entry.pid} (${entry.comm})`);
+        logger.info(
+          'PidJournal',
+          `Reaping orphaned ${entry.kind} pid ${entry.pid} (${entry.comm})`,
+        );
         this.killer(entry.pid);
         reaped += 1;
       }
@@ -322,7 +325,12 @@ export class PidJournal {
       return false;
     }
     return matchesEntry(
-      { pid: entry.ownerPid, kind: 'owner', comm: entry.ownerComm, spawnTimeMs: entry.ownerStartTimeMs },
+      {
+        pid: entry.ownerPid,
+        kind: 'owner',
+        comm: entry.ownerComm,
+        spawnTimeMs: entry.ownerStartTimeMs,
+      },
       probe,
     );
   }

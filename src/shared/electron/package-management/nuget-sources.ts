@@ -117,9 +117,10 @@ function authHeaders(credential: SourceCredential | undefined): Record<string, s
   if (credential?.password === undefined || credential.password.length === 0) {
     return {};
   }
-  const blob: string = Buffer.from(`${credential.username ?? ''}:${credential.password}`, 'utf8').toString(
-    'base64',
-  );
+  const blob: string = Buffer.from(
+    `${credential.username ?? ''}:${credential.password}`,
+    'utf8',
+  ).toString('base64');
   return { Authorization: `Basic ${blob}` };
 }
 

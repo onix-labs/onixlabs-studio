@@ -67,8 +67,7 @@ function childVersion(body: string): string | null {
 export function parsePackageReferences(xml: string): readonly NuGetReference[] {
   const references: NuGetReference[] = [];
   // Match a self-closing tag or an open/close pair (capturing the body for the child-element version).
-  const pattern: RegExp =
-    /<PackageReference\b([^>]*?)(?:\/>|>([\s\S]*?)<\/PackageReference>)/gi;
+  const pattern: RegExp = /<PackageReference\b([^>]*?)(?:\/>|>([\s\S]*?)<\/PackageReference>)/gi;
   for (const match of xml.matchAll(pattern)) {
     const attributes: string = match[1];
     const body: string = match[2] ?? '';
@@ -123,7 +122,8 @@ export function parsePackagesConfig(xml: string): readonly NuGetReference[] {
     if (id === null || id.length === 0) {
       continue;
     }
-    const development: boolean = attribute(attributes, 'developmentDependency')?.toLowerCase() === 'true';
+    const development: boolean =
+      attribute(attributes, 'developmentDependency')?.toLowerCase() === 'true';
     references.push({ id, version, scope: development ? 'development' : 'production' });
   }
   return references;

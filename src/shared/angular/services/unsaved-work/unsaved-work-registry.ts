@@ -41,7 +41,11 @@ export class UnsavedWorkRegistry {
    */
   public register(source: UnsavedWorkSource): () => void {
     this.dynamicSources.add(source);
-    this.log.trace('UnsavedWorkRegistry', 'Registered unsaved-work source', this.dynamicSources.size);
+    this.log.trace(
+      'UnsavedWorkRegistry',
+      'Registered unsaved-work source',
+      this.dynamicSources.size,
+    );
     return (): void => {
       this.dynamicSources.delete(source);
       this.log.trace(

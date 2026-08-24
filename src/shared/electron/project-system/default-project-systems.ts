@@ -25,7 +25,10 @@ export function createProjectSystems(): ProjectSystemRegistry {
   registry.register(new RustProjectSystem());
   registry.register(new GoProjectSystem());
   registry.register(new NodeProjectSystem());
-  logger.info('default-project-systems', 'Seeded the project-system registry with 7 built-in providers.');
+  logger.info(
+    'default-project-systems',
+    'Seeded the project-system registry with 7 built-in providers.',
+  );
   return registry;
 }
 

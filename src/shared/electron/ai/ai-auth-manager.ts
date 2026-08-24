@@ -110,7 +110,10 @@ export class AiAuthManager {
    * @returns Returns the connection's updated status.
    */
   public clearConnectionKey(connectionId: string, authKind: AiAuthKind): AiAuthStatus {
-    logger.info('AiAuthManager.clearConnectionKey', `Clearing API key for connection ${connectionId}`);
+    logger.info(
+      'AiAuthManager.clearConnectionKey',
+      `Clearing API key for connection ${connectionId}`,
+    );
     this.store.clearKey(connectionId);
     return this.store.statusFor(connectionId, authKind);
   }
@@ -196,7 +199,10 @@ export class AiAuthManager {
       return;
     }
     if (!safeStorage.isEncryptionAvailable()) {
-      logger.warn('AiAuthManager.saveBlob', 'OS secure storage unavailable; cannot store the API key');
+      logger.warn(
+        'AiAuthManager.saveBlob',
+        'OS secure storage unavailable; cannot store the API key',
+      );
       throw new Error('Operating-system secure storage is unavailable; cannot store the API key.');
     }
     mkdirSync(dirname(this.keyFile), { recursive: true });

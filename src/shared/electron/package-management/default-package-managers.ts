@@ -14,7 +14,10 @@ export function createPackageManagers(): PackageManagerRegistry {
   const registry: PackageManagerRegistry = new PackageManagerRegistry();
   registry.register(new NuGetPackageManager());
   registry.register(new NpmPackageManager());
-  logger.info('default-package-managers', 'Seeded the package-manager registry with 2 built-in managers.');
+  logger.info(
+    'default-package-managers',
+    'Seeded the package-manager registry with 2 built-in managers.',
+  );
   return registry;
 }
 

@@ -244,7 +244,10 @@ export class SearchManager {
           buffer = buffer.slice(newline + 1);
           if (this.consumeLine(line, files, order) && ++total >= MAX_TOTAL_MATCHES) {
             capped = true;
-            logger.warn('SearchManager.spawnSearch', `Capped search at ${MAX_TOTAL_MATCHES} matches`);
+            logger.warn(
+              'SearchManager.spawnSearch',
+              `Capped search at ${MAX_TOTAL_MATCHES} matches`,
+            );
             child.kill();
             finish();
             return;

@@ -240,7 +240,11 @@ export class LspStatus {
       setTimeout((): void => {
         this.watchdogs.delete(sessionId);
         if (this.entries().get(sessionId)?.state === 'starting') {
-          this.log.warn('LspStatus', 'Server readiness watchdog fired; marking unavailable', sessionId);
+          this.log.warn(
+            'LspStatus',
+            'Server readiness watchdog fired; marking unavailable',
+            sessionId,
+          );
           this.setState(
             sessionId,
             'unavailable',

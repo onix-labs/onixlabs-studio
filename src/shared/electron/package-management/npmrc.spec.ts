@@ -14,18 +14,15 @@ describe('parseNpmrc', () => {
     const config: NpmrcConfig = parseNpmrc(text, { GH_TOKEN: 'secret-123' });
     expect(config.registry).toBe('https://registry.npmjs.org');
     expect(config.scopedRegistries['@acme']).toBe('https://npm.pkg.github.com');
-    expect(config.auth).toEqual([
-      { prefix: '//npm.pkg.github.com/', token: 'secret-123' },
-    ]);
+    expect(config.auth).toEqual([{ prefix: '//npm.pkg.github.com/', token: 'secret-123' }]);
   });
 });
 
 describe('resolveNpmEndpoint', () => {
   const config: NpmrcConfig = parseNpmrc(
-    [
-      '@acme:registry=https://npm.pkg.github.com',
-      '//npm.pkg.github.com/:_authToken=tok',
-    ].join('\n'),
+    ['@acme:registry=https://npm.pkg.github.com', '//npm.pkg.github.com/:_authToken=tok'].join(
+      '\n',
+    ),
     {},
   );
 

@@ -77,7 +77,10 @@ export class FileWatcher {
    * Closes every directory watcher and clears pending timers. Called on application shutdown.
    */
   public disposeAll(): void {
-    logger.info('FileWatcher', `Disposing all file watchers (${this.directories.size} directories)`);
+    logger.info(
+      'FileWatcher',
+      `Disposing all file watchers (${this.directories.size} directories)`,
+    );
     for (const directory of this.directories.values()) {
       directory.watcher.close();
     }

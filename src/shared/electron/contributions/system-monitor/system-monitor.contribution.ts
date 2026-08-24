@@ -144,7 +144,9 @@ export class SystemMonitorContribution implements MainContribution {
     }
     this.sampling = true;
     void this.readSample()
-      .then((sample: MetricsSample): void => this.context?.send(SystemMonitorChannel.Sample, sample))
+      .then((sample: MetricsSample): void =>
+        this.context?.send(SystemMonitorChannel.Sample, sample),
+      )
       .finally((): void => {
         this.sampling = false;
       });
@@ -163,8 +165,11 @@ export class SystemMonitorContribution implements MainContribution {
       os.freemem(),
       new Date().toISOString(),
     );
-    const [network, disk, gpu]: [NetworkMetric | undefined, DiskMetric | undefined, GpuMetric | undefined] =
-      await Promise.all([this.readNetwork(), this.readDisk(), this.readGpu()]);
+    const [network, disk, gpu]: [
+      NetworkMetric | undefined,
+      DiskMetric | undefined,
+      GpuMetric | undefined,
+    ] = await Promise.all([this.readNetwork(), this.readDisk(), this.readGpu()]);
     return { ...base, network, disk, gpu, app: this.readApp() };
   }
 

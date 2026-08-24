@@ -113,7 +113,9 @@ export class LogArchive {
     } catch {
       // Missing directory or unreadable entries leave only the current session.
     }
-    return found.sort((a: LogSession, b: LogSession): number => b.startedAt.localeCompare(a.startedAt));
+    return found.sort((a: LogSession, b: LogSession): number =>
+      b.startedAt.localeCompare(a.startedAt),
+    );
   }
 
   /**

@@ -31,7 +31,10 @@ export class WorkspaceContext {
   public removeRoot(root: string): void {
     const resolved: string = path.resolve(root);
     this.roots.delete(resolved);
-    logger.debug('WorkspaceContext.removeRoot', `Root removed ${resolved} (${this.roots.size} open)`);
+    logger.debug(
+      'WorkspaceContext.removeRoot',
+      `Root removed ${resolved} (${this.roots.size} open)`,
+    );
   }
 
   /**
