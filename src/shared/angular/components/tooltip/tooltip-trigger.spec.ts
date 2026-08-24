@@ -9,10 +9,18 @@ import { TooltipTrigger } from './tooltip-trigger';
  */
 @Component({
   imports: [TooltipTrigger],
-  template: `<button type="button" [appTooltip]="name()">icon</button>`,
+  template: `<button
+    type="button"
+    [disabled]="disabled()"
+    [appTooltip]="name()"
+    [appTooltipDisabled]="disabled()"
+  >
+    icon
+  </button>`,
 })
 class TooltipHost {
   public readonly name: WritableSignal<string | undefined> = signal<string | undefined>('New chat');
+  public readonly disabled: WritableSignal<boolean> = signal<boolean>(false);
 }
 
 describe('TooltipTrigger', () => {
@@ -144,6 +152,30 @@ describe('TooltipTrigger', () => {
     expect(bubbleText()).toBe('New chat');
 
     fixture.destroy();
+
+    expect(bubbleText()).toBeNull();
+  });
+
+  it('hover_whenTheControlIsDisabled_showsNothing', () => {
+    fixture.componentInstance.disabled.set(true);
+    fixture.detectChanges();
+
+    control().dispatchEvent(new MouseEvent('mouseenter'));
+    fixture.detectChanges();
+
+    expect(bubbleText()).toBeNull();
+  });
+
+  it('disabling_whileTheBubbleIsShowing_takesItAway', () => {
+    // No mouseleave is coming: a browser stops sending a control mouse events the moment it is
+    // disabled, so a control that disables itself under the pointer would wear its name for ever.
+    control().dispatchEvent(new MouseEvent('mouseenter'));
+    fixture.detectChanges();
+    expect(bubbleText()).toBe('New chat');
+
+    fixture.componentInstance.disabled.set(true);
+    fixture.detectChanges();
+    TestBed.tick();
 
     expect(bubbleText()).toBeNull();
   });

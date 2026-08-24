@@ -10,6 +10,7 @@
   [attr.aria-pressed]="pressed()"
   [attr.title]="nativeTooltip()"
   [appTooltip]="bubble()"
+  [appTooltipDisabled]="nonInteractive()"
 >
   <!-- The caller's icon and the loading spinner are both present while loading; the stylesheet shows
        one at a time (spinner at rest, and — for an interactive loading button — the icon on hover), so

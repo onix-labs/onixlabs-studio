@@ -10,6 +10,7 @@ import {
   ComponentRef,
   DestroyRef,
   Directive,
+  effect,
   ElementRef,
   inject,
   input,
@@ -82,6 +83,19 @@ export class TooltipTrigger {
   public readonly appTooltip: InputSignal<string | undefined> = input<string>();
 
   /**
+   * Gets whether the control is disabled, in which case it is not named.
+   *
+   * A disabled control cannot be pointed at in the first place — a browser sends it no mouse events —
+   * so this is less about suppressing the bubble than about taking one away. A control that disables
+   * itself under the pointer (a Stop that finishes running) would otherwise never see the mouse leave
+   * it, and would leave its name hanging there over nothing.
+   *
+   * Stated by the control atoms, which know their own disabled state as a signal. A caller putting the
+   * trigger on a plain button can leave it alone: the element's own disabled state is read as well.
+   */
+  public readonly appTooltipDisabled: InputSignal<boolean> = input<boolean>(false);
+
+  /**
    * Holds the element the bubble is placed against.
    */
   private readonly element: ElementRef<HTMLElement> = inject<ElementRef<HTMLElement>>(ElementRef);
@@ -120,6 +134,26 @@ export class TooltipTrigger {
    */
   public constructor() {
     inject(DestroyRef).onDestroy((): void => this.onLeave());
+    // Takes the bubble away from a control that disables itself while wearing it, which no mouseleave
+    // is coming to do — the browser stops sending the control mouse events the moment it is disabled.
+    effect((): void => {
+      if (this.appTooltipDisabled()) {
+        this.onLeave();
+      }
+    });
+  }
+
+  /**
+   * Gets whether the control the trigger sits on is disabled in the document, for a plain button that
+   * states its disabled state as an attribute rather than through {@link appTooltipDisabled}.
+   * @returns Returns true when the element is disabled.
+   */
+  private isElementDisabled(): boolean {
+    const element: HTMLElement = this.element.nativeElement;
+    return (
+      (element as Partial<HTMLButtonElement>).disabled === true ||
+      element.getAttribute('aria-disabled') === 'true'
+    );
   }
 
   /**
@@ -129,7 +163,13 @@ export class TooltipTrigger {
    */
   protected onShow(): void {
     const text: string = this.appTooltip()?.trim() ?? '';
-    if (!this.enabled() || text.length === 0 || this.overlayRef !== null) {
+    if (
+      !this.enabled() ||
+      this.appTooltipDisabled() ||
+      this.isElementDisabled() ||
+      text.length === 0 ||
+      this.overlayRef !== null
+    ) {
       return;
     }
     this.overlayRef = this.overlay.create({

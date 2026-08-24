@@ -23,6 +23,7 @@
     [disabled]="disabled()"
     [attr.aria-label]="menuName()"
     [appTooltip]="menuName()"
+    [appTooltipDisabled]="disabled()"
     [cdkMenuTriggerFor]="menu.panel() ?? null"
     [cdkMenuPosition]="menu.position()"
   >
