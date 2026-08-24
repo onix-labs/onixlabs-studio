@@ -49,9 +49,9 @@ export class MenuManager {
   }
 
   /**
-   * Performs a native window role for the in-window menu, which cannot do these for itself. Only the
-   * roles the menu actually offers are honoured; anything else is ignored rather than trusted, since
-   * the renderer is untrusted input.
+   * Performs a native role for the in-window menu, which cannot do these for itself. Only the roles the
+   * menu actually offers are honoured; anything else is ignored rather than trusted, since the renderer
+   * is untrusted input.
    * @param role The role to perform.
    */
   private runRole(role: string): void {
@@ -59,8 +59,29 @@ export class MenuManager {
     if (window === null) {
       return;
     }
-    logger.debug('MenuManager.runRole', `Performing window role '${role}'`);
+    logger.debug('MenuManager.runRole', `Performing role '${role}'`);
     switch (role) {
+      // The editing roles. The native bar performs these itself, but the in-window menu cannot: it is
+      // renderer chrome, so choosing Paste there arrives here as a role to perform against the window's
+      // focused element.
+      case 'undo':
+        window.webContents.undo();
+        break;
+      case 'redo':
+        window.webContents.redo();
+        break;
+      case 'cut':
+        window.webContents.cut();
+        break;
+      case 'copy':
+        window.webContents.copy();
+        break;
+      case 'paste':
+        window.webContents.paste();
+        break;
+      case 'selectAll':
+        window.webContents.selectAll();
+        break;
       case 'togglefullscreen':
         window.setFullScreen(!window.isFullScreen());
         break;
