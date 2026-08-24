@@ -100,6 +100,36 @@
     text-overflow: ellipsis;
   }
 
+  // A group of related options. The UA styles optgroup for the native popup (indent, italic label);
+  // in base appearance it is an ordinary block whose heading is the legend below, so those are reset.
+  optgroup {
+    display: block;
+    padding: 0;
+    margin: 0;
+    font: inherit;
+  }
+
+  // The group heading, drawn from the optgroup's legend. Muted and slightly smaller than the options
+  // it heads, so it reads as a divider rather than as something selectable.
+  .dropdown__group {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--form-muted-foreground-color);
+  }
+
+  // Separate consecutive groups: the first heading sits flush against the popup's own padding, later
+  // ones need air between them and the options of the group above.
+  optgroup:not(:first-of-type) > .dropdown__group {
+    margin-block-start: 0.25rem;
+  }
+
+  // Indent a group's options under its heading, which is what makes the grouping legible: the popup
+  // otherwise renders headings and options in the same column.
+  optgroup option {
+    padding-inline-start: 0.85rem;
+  }
+
   // Options render inside the popup but remain children of the select, so they stay in scope.
   option {
     display: flex;

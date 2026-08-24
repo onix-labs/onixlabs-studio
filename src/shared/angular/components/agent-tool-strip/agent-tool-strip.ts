@@ -11,10 +11,14 @@ import {
   Signal,
   WritableSignal,
 } from '@angular/core';
-import type { AiModelInfo, AiProviderInfo } from '@shared/api/ai-types';
 import { Agent } from '@shared/angular/services/agent/agent';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
 import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine';
+import {
+  applyEngineOption,
+  engineOptions,
+  engineOptionValue,
+} from '@shared/angular/services/agent-engine/engine-options';
 import { EditorCommands } from '@shared/angular/services/editor-commands/editor-commands';
 import { Icon } from '@shared/angular/icons/icon';
 import { Button } from '@shared/angular/components/forms/button/button';
@@ -26,8 +30,8 @@ import { AgentRemoteModal } from '@shared/angular/components/agent-remote-modal/
  * ribbon. It carries the session actions (New Chat, Stop, Compact), this conversation's own
  * provider/model selection, and the history toggle, so a docked panel (which has no ribbon) gets the
  * same controls. The session actions and history toggle drive the injected {@link AgentConversation};
- * the provider/model fields drive the injected {@link Agent}'s own selection (each conversation can run
- * through a different connection), with the option list drawn from the global {@link AgentEngine}.
+ * the Engine field drives the injected {@link Agent}'s own selection (each conversation can run through
+ * a different connection), with the option list drawn from the global {@link AgentEngine}.
  * Built from the shared ribbon-button and dropdown atoms so it inherits the app's control styling.
  */
 @Component({
@@ -65,50 +69,32 @@ export class AgentToolStrip {
   protected readonly hasSelection: Signal<boolean> = inject(EditorCommands).hasSelection;
 
   /**
-   * Gets the provider options offered by the Provider field.
+   * Gets the options offered by the Engine field: every registered provider's models, each under its
+   * provider's label as a group heading.
    */
-  protected readonly providerOptions: Signal<readonly DropdownOption[]> = computed(
-    (): readonly DropdownOption[] =>
-      this.engine.providers().map(
-        (provider: AiProviderInfo): DropdownOption => ({
-          value: provider.id,
-          label: provider.label,
-        }),
-      ),
+  protected readonly engineOptions: Signal<readonly DropdownOption[]> = computed(
+    (): readonly DropdownOption[] => engineOptions(this.engine.providers()),
   );
 
   /**
-   * Gets this conversation's selected provider id, for the Provider field's value.
+   * Gets this conversation's selected provider/model pair, for the Engine field's value.
    */
-  protected readonly provider: Signal<string> = computed((): string => this.agent.provider());
-
-  /**
-   * Gets the model options offered by the Model field: this conversation's effective provider's models.
-   */
-  protected readonly modelOptions: Signal<readonly DropdownOption[]> = computed(
-    (): readonly DropdownOption[] =>
-      this.agent
-        .models()
-        .map((model: AiModelInfo): DropdownOption => ({ value: model.id, label: model.label })),
+  protected readonly engineSelection: Signal<string> = computed((): string =>
+    engineOptionValue(this.agent.provider(), this.agent.model()),
   );
-
-  /**
-   * Gets this conversation's selected model id, for the Model field's value.
-   */
-  protected readonly model: Signal<string> = computed((): string => this.agent.model());
 
   /**
    * Gets whether the effective provider supports Remote Control, so the field is offered only then.
    */
-  protected readonly supportsRemoteControl: Signal<boolean> = computed(
-    (): boolean => this.agent.supportsRemoteControl(),
+  protected readonly supportsRemoteControl: Signal<boolean> = computed((): boolean =>
+    this.agent.supportsRemoteControl(),
   );
 
   /**
    * Gets whether this conversation is exposed via Remote Control, for the toggle's pressed state.
    */
-  protected readonly remoteControlEnabled: Signal<boolean> = computed(
-    (): boolean => this.agent.remoteControlEnabled(),
+  protected readonly remoteControlEnabled: Signal<boolean> = computed((): boolean =>
+    this.agent.remoteControlEnabled(),
   );
 
   /**
@@ -157,24 +143,11 @@ export class AgentToolStrip {
   }
 
   /**
-   * Selects the provider with the chosen id for this conversation.
-   * @param id The provider id emitted by the Provider field.
+   * Selects the chosen provider/model pair for this conversation.
+   * @param value The provider/model pair emitted by the Engine field.
    */
-  protected onProvider(id: string): void {
-    const match: AiProviderInfo | undefined = this.engine
-      .providers()
-      .find((provider: AiProviderInfo): boolean => provider.id === id);
-    if (match !== undefined) {
-      this.agent.setProvider(match.id);
-    }
-  }
-
-  /**
-   * Selects the model with the chosen id for this conversation.
-   * @param id The model id emitted by the Model field.
-   */
-  protected onModel(id: string): void {
-    this.agent.setModel(id);
+  protected onEngine(value: string): void {
+    applyEngineOption(value, this.engine.providers(), this.agent);
   }
 
   /**

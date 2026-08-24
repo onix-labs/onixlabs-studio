@@ -11,6 +11,13 @@ import {
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 
 /**
+ * Represents an option offered by a {@link RibbonStripField}: either a bare string, whose text is both
+ * the value and the label, or a full {@link DropdownOption} for a field whose values differ from their
+ * labels or whose options are grouped under headings.
+ */
+export type RibbonFieldOption = string | DropdownOption;
+
+/**
  * Represents a labelled select (dropdown) field in the ribbon, backed by the shared
  * {@link Dropdown} atom so the picker menu and chevron match the rest of the app.
  */
@@ -28,9 +35,12 @@ export class RibbonStripField {
   public readonly label: InputSignal<string> = input.required<string>();
 
   /**
-   * Gets the options offered by the field.
+   * Gets the options offered by the field. Strings and {@link DropdownOption}s may be mixed: a field
+   * whose labels are its values passes the former, one with distinct values or group headings the
+   * latter.
    */
-  public readonly options: InputSignal<readonly string[]> = input.required<readonly string[]>();
+  public readonly options: InputSignal<readonly RibbonFieldOption[]> =
+    input.required<readonly RibbonFieldOption[]>();
 
   /**
    * Gets the currently selected option.
@@ -54,17 +64,21 @@ export class RibbonStripField {
   public readonly changed: OutputEmitterRef<string> = output<string>();
 
   /**
-   * Gets the string options projected onto the dropdown's value/label shape (the two are identical).
+   * Gets the options normalized onto the dropdown's shape: a string option becomes an entry whose value
+   * and label are identical, while a {@link DropdownOption} passes through as supplied.
    */
   protected readonly dropdownOptions: Signal<readonly DropdownOption[]> = computed(
     (): readonly DropdownOption[] =>
-      this.options().map((option: string) => ({ value: option, label: option })),
+      this.options().map(
+        (option: RibbonFieldOption): DropdownOption =>
+          typeof option === 'string' ? { value: option, label: option } : option,
+      ),
   );
 
   /**
    * Gets the value shown by the control, falling back to the first option when none is supplied.
    */
   protected readonly selectedValue: Signal<string> = computed(
-    (): string => this.value() ?? this.options()[0] ?? '',
+    (): string => this.value() ?? this.dropdownOptions()[0]?.value ?? '',
   );
 }

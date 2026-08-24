@@ -3,8 +3,8 @@
   flex: 0 0 auto;
 }
 
-// A single compact row of controls that never wraps: when the panel narrows, the provider/model
-// fields shrink and truncate their labels with an ellipsis instead of growing the strip's height.
+// A single compact row of controls that never wraps: when the panel narrows, the Engine field
+// shrinks and truncates its label with an ellipsis instead of growing the strip's height.
 .strip {
   display: flex;
   flex-wrap: nowrap;
@@ -19,15 +19,15 @@ app-button {
   flex: 0 0 auto;
 }
 
-// The provider/model fields size to their content but shrink before anything else does; the
-// dropdowns' full-width variant drops the select's content-width floor so the shrink (and its
-// ellipsis) can actually happen.
+// The Engine field sizes to its content but shrinks before anything else does; the dropdown's
+// full-width variant drops the select's content-width floor so the shrink (and its ellipsis) can
+// actually happen.
 .strip__field {
   flex: 0 1 auto;
   min-inline-size: 0;
 }
 
-// Pins the history toggle to the far end of the strip, past the provider/model fields.
+// Pins the history toggle to the far end of the strip, past the Engine field.
 .strip__history {
   margin-inline-start: auto;
 }

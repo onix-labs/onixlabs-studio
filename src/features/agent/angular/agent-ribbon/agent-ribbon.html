@@ -13,40 +13,57 @@
       [disabled]="!isRunning()"
       (action)="stop()"
     />
-    <app-ribbon-strip-button
-      [icon]="Icon.COMPACT"
-      label="Compact"
-      [disabled]="isRunning() || !hasMessages()"
-      (action)="compact()"
-    />
-    <app-ribbon-strip-button
-      [icon]="Icon.CLEAR"
-      label="Clear"
-      [disabled]="!hasContext()"
-      (action)="clearContext()"
-    />
-    <app-ribbon-strip-button
-      [icon]="Icon.RECENT"
-      label="History"
-      [toggle]="true"
-      [pressed]="historyOpen()"
-      (action)="toggleHistory()"
-    />
+    <!-- Remote Control is on or off; how much a peer may do once on is the global posture, set in
+         Settings. The press only opens the confirmation — the toggle flips on Yes. -->
+    @if (supportsRemoteControl()) {
+      <app-ribbon-strip-button
+        [icon]="Icon.REMOTE_CONTROL"
+        label="Remote"
+        [toggle]="true"
+        [pressed]="remoteControlEnabled()"
+        (action)="onRemoteControlToggle()"
+      />
+    }
+    <!-- The secondary session commands, stacked three-to-a-lane: they sit at the same height as the
+         large buttons beside them without claiming the same weight. -->
+    <app-ribbon-strip-column>
+      <app-ribbon-strip-button-small
+        [icon]="Icon.COMPACT"
+        label="Compact"
+        [disabled]="isRunning() || !hasMessages()"
+        (action)="compact()"
+      />
+      <app-ribbon-strip-button-small
+        [icon]="Icon.CLEAR"
+        label="Clear"
+        [disabled]="!hasContext()"
+        (action)="clearContext()"
+      />
+      <app-ribbon-strip-button-small
+        [icon]="Icon.RECENT"
+        label="History"
+        [toggle]="true"
+        [pressed]="historyOpen()"
+        (action)="toggleHistory()"
+      />
+    </app-ribbon-strip-column>
   </app-ribbon-strip-group>
 
   <app-ribbon-strip-group title="Engine">
     <app-ribbon-strip-column [spread]="true">
+      <!-- One field for the pair: the models of every connection, grouped under their provider's
+           label. The autonomy mode sits beneath, since it too settles how a run is carried out. -->
       <app-ribbon-strip-field
-        label="Provider"
-        [options]="providerLabels()"
-        [value]="providerLabel()"
-        (changed)="onProviderLabel($event)"
+        label="Provider and model"
+        [options]="engineOptions()"
+        [value]="engineSelection()"
+        (changed)="onEngine($event)"
       />
       <app-ribbon-strip-field
-        label="Model"
-        [options]="modelLabels()"
-        [value]="modelLabel()"
-        (changed)="onModelLabel($event)"
+        label="Mode"
+        [options]="modeLabels"
+        [value]="modeLabel()"
+        (changed)="onModeLabel($event)"
       />
     </app-ribbon-strip-column>
   </app-ribbon-strip-group>
@@ -60,28 +77,6 @@
       [disabled]="!hasSelection()"
       (action)="attachSelection()"
     />
-  </app-ribbon-strip-group>
-
-  <app-ribbon-strip-group title="Permissions">
-    <app-ribbon-strip-column [spread]="true">
-      <app-ribbon-strip-field
-        label="Mode"
-        [options]="modeLabels"
-        [value]="modeLabel()"
-        (changed)="onModeLabel($event)"
-      />
-      <!-- Remote Control is on or off; how much a peer may do once on is the global posture, set in
-           Settings. The press only opens the confirmation — the toggle flips on Yes. -->
-      @if (supportsRemoteControl()) {
-        <app-ribbon-strip-button-small
-          [icon]="Icon.REMOTE_CONTROL"
-          label="Remote"
-          [toggle]="true"
-          [pressed]="remoteControlEnabled()"
-          (action)="onRemoteControlToggle()"
-        />
-      }
-    </app-ribbon-strip-column>
   </app-ribbon-strip-group>
 </app-ribbon-overflow>
 
