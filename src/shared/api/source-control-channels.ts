@@ -40,6 +40,13 @@ export enum SourceControlChannel {
   Refs = 'source-control:refs',
 
   /**
+   * Reads the configured remotes of a repository with their URLs (`git remote -v`). Separate from
+   * {@link Refs}, which reads remote-tracking *branches* and so knows nothing of a remote's URL — nor
+   * of a remote that has never been fetched.
+   */
+  Remotes = 'source-control:remotes',
+
+  /**
    * Reads the stash entries of a repository.
    */
   Stashes = 'source-control:stashes',
@@ -207,6 +214,13 @@ export interface SourceControlClient {
    * @returns Returns the raw command result.
    */
   refs(root: string): Promise<GitRunResult>;
+
+  /**
+   * Reads the configured remotes of a repository with their URLs.
+   * @param root The absolute repository root; must be an open root.
+   * @returns Returns the raw command result.
+   */
+  remotes(root: string): Promise<GitRunResult>;
 
   /**
    * Reads the stash entries of a repository.

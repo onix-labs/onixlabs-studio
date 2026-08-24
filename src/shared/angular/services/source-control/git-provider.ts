@@ -5,7 +5,9 @@ import {
   ParsedStatus,
   parseCommitFiles,
   parseLog,
+  mergeRemoteUrls,
   parseRefs,
+  parseRemoteUrls,
   parseStashes,
   parseStatus,
 } from './git-output';
@@ -72,9 +74,15 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the parsed refs.
    */
   public async getRefs(): Promise<ParsedRefs> {
-    return parseRefs(
-      await this.read((api: SourceControlClient): Promise<GitRunResult> => api.refs(this.root)),
-    );
+    // Two reads rather than one: `for-each-ref` knows the remote-tracking branches but nothing of a
+    // remote's URL, and `git remote -v` knows the URLs but nothing of the branches. Run together,
+    // since neither touches the network and the pair is what one caller wants.
+    const [refs, remoteUrls]: [string, string] = await Promise.all([
+      this.read((api: SourceControlClient): Promise<GitRunResult> => api.refs(this.root)),
+      this.read((api: SourceControlClient): Promise<GitRunResult> => api.remotes(this.root)),
+    ]);
+    const parsed: ParsedRefs = parseRefs(refs);
+    return { ...parsed, remotes: mergeRemoteUrls(parsed.remotes, parseRemoteUrls(remoteUrls)) };
   }
 
   /**

@@ -1,0 +1,24 @@
+<app-setting-row label="GitHub" [description]="status().detail">
+  <span class="source-control-settings__controls">
+    <app-password-field
+      class="source-control-settings__wide"
+      [value]="draft()"
+      [disabled]="!isAvailable || busy()"
+      placeholder="Personal access token"
+      (valueChange)="onDraft($event)"
+    />
+    <app-button variant="solid" label="Save" [disabled]="!canSave()" (click)="onSave()" />
+    <app-button label="Clear" [disabled]="!canClear()" (click)="onClear()" />
+    <app-button label="Recheck" [disabled]="!isAvailable || busy()" (click)="refresh()" />
+  </span>
+</app-setting-row>
+
+<app-setting-row
+  label="How the token is stored"
+  description="The token is encrypted with your operating system's secure storage and kept in the main process. Studio never sends it anywhere except GitHub, and it is never readable from this page once saved. It needs the repo scope to see private repositories, and read:org to see an organisation's."
+/>
+
+<app-setting-row
+  label="Signing in with the GitHub CLI"
+  description="If you are already logged in with `gh auth login`, Studio uses that automatically and you need not paste anything here. A token saved above takes precedence; clearing it falls back to the CLI rather than signing you out."
+/>

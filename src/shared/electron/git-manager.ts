@@ -131,6 +131,10 @@ export class GitManager {
       (_event: IpcMainInvokeEvent, root: unknown): Promise<GitRunResult> => this.refs(root),
     );
     ipcMain.handle(
+      SourceControlChannel.Remotes,
+      (_event: IpcMainInvokeEvent, root: unknown): Promise<GitRunResult> => this.remotes(root),
+    );
+    ipcMain.handle(
       SourceControlChannel.Stashes,
       (_event: IpcMainInvokeEvent, root: unknown): Promise<GitRunResult> => this.stashes(root),
     );
@@ -331,6 +335,16 @@ export class GitManager {
       'refs/remotes',
       'refs/tags',
     ]);
+  }
+
+  /**
+   * Reads the configured remotes with their URLs. Purely local configuration — no network is touched,
+   * so this runs on the ordinary timeout rather than the network one.
+   * @param root The repository root.
+   * @returns Returns the raw command result.
+   */
+  private remotes(root: unknown): Promise<GitRunResult> {
+    return this.runInRoot(root, ['remote', '-v']);
   }
 
   /**

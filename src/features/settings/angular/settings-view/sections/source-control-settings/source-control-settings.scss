@@ -1,0 +1,12 @@
+// The token field and its actions on one row, mirroring the AI connection editor's key row so the two
+// credential surfaces read the same.
+.source-control-settings__controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+// A password field that should be comfortably wide: a personal access token is long.
+.source-control-settings__wide {
+  min-inline-size: 18rem;
+}

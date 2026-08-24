@@ -1,10 +1,12 @@
-import { GitCommit, GitFileChange } from '../repository/repository-data';
+import { GitCommit, GitFileChange, GitRemote } from '../repository/repository-data';
 import {
   ParsedRefs,
   ParsedStatus,
+  mergeRemoteUrls,
   parseCommitFiles,
   parseLog,
   parseRefs,
+  parseRemoteUrls,
   parseStashes,
   parseStatus,
 } from './git-output';
@@ -138,8 +140,95 @@ describe('git-output', () => {
       });
       expect(refs.branches[1].current).toBe(false);
       expect(refs.branches[1].upstream).toBeUndefined();
+      // `for-each-ref` carries no remote URL at all; mergeRemoteUrls is what fills it in.
       expect(refs.remotes).toEqual([{ name: 'origin', url: '', branches: ['origin/main'] }]);
       expect(refs.tags).toEqual([{ name: 'v1.0', commit: 'CCC' }]);
+    });
+  });
+
+  describe('parseRemoteUrls', () => {
+    it('readsTheFetchUrlOfEachRemote', () => {
+      const output: string = [
+        'origin\thttps://github.com/onix-labs/onixlabs-studio.git (fetch)',
+        'origin\thttps://github.com/onix-labs/onixlabs-studio.git (push)',
+        'upstream\tgit@github.com:someone/onixlabs-studio.git (fetch)',
+        'upstream\tgit@github.com:someone/onixlabs-studio.git (push)',
+      ].join('\n');
+
+      expect([...parseRemoteUrls(output)]).toEqual([
+        ['origin', 'https://github.com/onix-labs/onixlabs-studio.git'],
+        ['upstream', 'git@github.com:someone/onixlabs-studio.git'],
+      ]);
+    });
+
+    it('prefersTheFetchUrl_whenFetchAndPushDiffer', () => {
+      // A fork commonly pushes somewhere other than it fetches. The fetch URL names the repository
+      // the branches actually came from, which is what forge detection needs.
+      const output: string = [
+        'origin\thttps://github.com/upstream/repo.git (fetch)',
+        'origin\tgit@github.com:me/repo.git (push)',
+      ].join('\n');
+
+      expect(parseRemoteUrls(output).get('origin')).toBe('https://github.com/upstream/repo.git');
+    });
+
+    it('stillReadsARemoteThatOnlyListsAPushUrl', () => {
+      const output: string = 'origin\tgit@github.com:me/repo.git (push)';
+
+      expect(parseRemoteUrls(output).get('origin')).toBe('git@github.com:me/repo.git');
+    });
+
+    it('ignoresBlankAndUnparseableLines', () => {
+      const output: string = ['', 'nonsense', 'origin\thttps://x/y.git (fetch)', '   '].join('\n');
+
+      expect([...parseRemoteUrls(output)]).toEqual([['origin', 'https://x/y.git']]);
+    });
+
+    it('yieldsNothingForARepositoryWithNoRemotes', () => {
+      expect([...parseRemoteUrls('')]).toEqual([]);
+    });
+  });
+
+  describe('mergeRemoteUrls', () => {
+    it('fillsInTheUrlOfARemoteThatHasTrackingBranches', () => {
+      const remotes: readonly GitRemote[] = [
+        { name: 'origin', url: '', branches: ['origin/main'] },
+      ];
+
+      expect(
+        mergeRemoteUrls(remotes, new Map<string, string>([['origin', 'https://x/y.git']])),
+      ).toEqual([{ name: 'origin', url: 'https://x/y.git', branches: ['origin/main'] }]);
+    });
+
+    it('addsAConfiguredRemoteThatHasNoTrackingBranchesYet', () => {
+      // A freshly-added remote has no refs/remotes entries until something is fetched. Refs alone
+      // would omit it, leaving a repository with a perfectly good remote looking like it had none.
+      expect(mergeRemoteUrls([], new Map<string, string>([['origin', 'https://x/y.git']]))).toEqual(
+        [{ name: 'origin', url: 'https://x/y.git', branches: [] }],
+      );
+    });
+
+    it('keepsARemoteThatHasBranchesButNoConfiguredUrl', () => {
+      // A stale refs/remotes entry for a removed remote. Its branches are still checkoutable refs, so
+      // dropping it would lose them from the panel.
+      const remotes: readonly GitRemote[] = [{ name: 'gone', url: '', branches: ['gone/old'] }];
+
+      expect(mergeRemoteUrls(remotes, new Map<string, string>())).toEqual([
+        { name: 'gone', url: '', branches: ['gone/old'] },
+      ]);
+    });
+
+    it('ordersConfiguredRemotesFirst_withRefOnlyOnesAppended', () => {
+      const remotes: readonly GitRemote[] = [
+        { name: 'gone', url: '', branches: ['gone/old'] },
+        { name: 'origin', url: '', branches: ['origin/main'] },
+      ];
+
+      expect(
+        mergeRemoteUrls(remotes, new Map<string, string>([['origin', 'https://x/y.git']])).map(
+          (remote: GitRemote): string => remote.name,
+        ),
+      ).toEqual(['origin', 'gone']);
     });
   });
 
