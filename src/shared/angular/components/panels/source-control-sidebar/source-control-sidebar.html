@@ -164,8 +164,10 @@
       @if (status === 'running') {
         <!-- Checks in flight get a pulsing dot rather than a spinner glyph nothing rotates. Warning
              rather than accent: it sits between the green and red outcomes as the third state of one
-             badge, so it belongs to the same semantic scale rather than to the theme's accent. -->
-        <app-pulse-dot class="rail__status" tone="warning" [pulse]="true" [size]="0.5" />
+             badge, so it belongs to the same semantic scale rather than to the theme's accent. Sized
+             to the filled circle the settled badges draw at this rail's 0.8rem, so the three states
+             occupy the same optical space instead of the dot reading as a smaller, lesser thing. -->
+        <app-pulse-dot class="rail__status" tone="warning" [pulse]="true" [size]="0.65" />
       } @else {
         <app-icon class="rail__status rail__status--{{ status }}" [icon]="statusIcon(status)" />
       }
