@@ -23,7 +23,8 @@ test.describe('keyboard shortcuts', () => {
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
     await expect(page.locator('app-settings-view')).toBeVisible();
 
-    await page.locator('app-settings-view').getByRole('button', { name: 'Keyboard' }).click();
+    // The settings navigation is a tree, so its sections are tree items rather than buttons.
+    await page.locator('app-settings-view').getByRole('treeitem', { name: 'Keyboard' }).click();
     const section: Locator = page.locator('app-keyboard-settings');
     await expect(section).toContainText('Markdown Editor');
 
