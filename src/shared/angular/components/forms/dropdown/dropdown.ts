@@ -33,9 +33,49 @@ export interface DropdownOption {
   readonly color?: string;
 
   /**
+   * Gets an optional heading the option sits beneath. Consecutive options sharing a group are rendered
+   * together under that heading; options without one render loose. Options are never reordered — a
+   * group is a run of neighbours, so a caller that emits the same heading in two places gets two
+   * headings rather than a silent re-sort. Absent on every option leaves the list flat, so this is
+   * backward-compatible with ungrouped dropdowns.
+   */
+  readonly group?: string;
+
+  /**
    * Gets a value indicating whether the option is offered but cannot be selected.
    */
   readonly disabled?: boolean;
+}
+
+/**
+ * Represents a run of consecutive {@link DropdownOption}s sharing a heading, as rendered by
+ * {@link Dropdown}. A run whose {@link label} is undefined holds loose options and gets no heading.
+ */
+export interface DropdownGroup {
+  /**
+   * Gets the heading shown above the run, or undefined when its options are ungrouped.
+   */
+  readonly label: string | undefined;
+
+  /**
+   * Gets the options in the run, in the order the caller supplied them.
+   */
+  readonly options: readonly DropdownOption[];
+}
+
+/**
+ * Represents a group under construction while the flat option list is folded into runs.
+ */
+interface MutableDropdownGroup {
+  /**
+   * Gets or sets the heading shown above the run, or undefined when its options are ungrouped.
+   */
+  label: string | undefined;
+
+  /**
+   * Gets the options accumulated into the run so far.
+   */
+  options: DropdownOption[];
 }
 
 /**
@@ -116,6 +156,27 @@ export class Dropdown {
       const value: string = this.value();
       return this.options().find((option: DropdownOption): boolean => option.value === value)
         ?.color;
+    },
+  );
+
+  /**
+   * Gets the options folded into runs for rendering: each run of neighbours sharing a {@link
+   * DropdownOption.group} becomes one group, and options without a group fall into runs of their own
+   * that render loose. An ungrouped option list yields a single run with no label, which renders
+   * exactly as it did before grouping existed.
+   */
+  protected readonly groups: Signal<readonly DropdownGroup[]> = computed(
+    (): readonly DropdownGroup[] => {
+      const groups: MutableDropdownGroup[] = [];
+      for (const option of this.options()) {
+        const current: MutableDropdownGroup | undefined = groups.at(-1);
+        if (current === undefined || current.label !== option.group) {
+          groups.push({ label: option.group, options: [option] });
+        } else {
+          current.options.push(option);
+        }
+      }
+      return groups;
     },
   );
 

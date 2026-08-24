@@ -14,16 +14,42 @@
     }
     <span class="dropdown__label">{{ selectedLabel() }}</span>
   </button>
-  @for (option of options(); track option.value) {
-    <option
-      [value]="option.value"
-      [disabled]="option.disabled"
-      [selected]="option.value === value()"
-    >
-      @if (option.color; as color) {
-        <span class="dropdown__chip" [style.background]="color"></span>
+  <!-- Options are rendered run by run rather than flat, so a run carrying a group heading can be
+       wrapped in the <optgroup> that draws it. Tracked by index: runs are rebuilt wholesale from the
+       option list, and two runs may legitimately share a label. -->
+  @for (group of groups(); track $index) {
+    @if (group.label; as groupLabel) {
+      <optgroup [attr.label]="groupLabel">
+        <!-- In base appearance the browser does not render optgroup's own label attribute; a <legend>
+             as the first child supplies the visible heading. The attribute stays for assistive
+             technology, which reads it rather than the legend. -->
+        <legend class="dropdown__group">{{ groupLabel }}</legend>
+        @for (option of group.options; track option.value) {
+          <option
+            [value]="option.value"
+            [disabled]="option.disabled"
+            [selected]="option.value === value()"
+          >
+            @if (option.color; as color) {
+              <span class="dropdown__chip" [style.background]="color"></span>
+            }
+            {{ option.label }}
+          </option>
+        }
+      </optgroup>
+    } @else {
+      @for (option of group.options; track option.value) {
+        <option
+          [value]="option.value"
+          [disabled]="option.disabled"
+          [selected]="option.value === value()"
+        >
+          @if (option.color; as color) {
+            <span class="dropdown__chip" [style.background]="color"></span>
+          }
+          {{ option.label }}
+        </option>
       }
-      {{ option.label }}
-    </option>
+    }
   }
 </select>
