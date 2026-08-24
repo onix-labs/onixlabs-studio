@@ -108,4 +108,21 @@ export interface ForgeProvider {
   listWorkflowRuns(
     repository: ForgeRepositoryRef,
   ): Promise<ForgeResult<readonly ForgeWorkflowRun[]>>;
+
+  /**
+   * Re-runs a CI/CD workflow run. The forge starts a *new* run rather than mutating this one, so the
+   * caller re-reads the list to see it.
+   * @param repository The repository the run belongs to.
+   * @param runId The run to re-run.
+   * @returns Returns nothing on success, or the reason it could not be started.
+   */
+  rerunWorkflowRun(repository: ForgeRepositoryRef, runId: number): Promise<ForgeResult<void>>;
+
+  /**
+   * Cancels a CI/CD workflow run that is in flight.
+   * @param repository The repository the run belongs to.
+   * @param runId The run to cancel.
+   * @returns Returns nothing on success, or the reason it could not be cancelled.
+   */
+  cancelWorkflowRun(repository: ForgeRepositoryRef, runId: number): Promise<ForgeResult<void>>;
 }

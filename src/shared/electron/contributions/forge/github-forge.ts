@@ -348,6 +348,54 @@ export class GitHubForge implements ForgeProvider {
   }
 
   /**
+   * Re-runs a workflow run. GitHub starts a new run rather than mutating this one.
+   * @param repository The repository the run belongs to.
+   * @param runId The run to re-run.
+   * @returns Returns nothing on success, or the reason it could not be started.
+   */
+  public rerunWorkflowRun(
+    repository: ForgeRepositoryRef,
+    runId: number,
+  ): Promise<ForgeResult<void>> {
+    return this.post(repository, runId, 'rerun');
+  }
+
+  /**
+   * Cancels a workflow run that is in flight.
+   * @param repository The repository the run belongs to.
+   * @param runId The run to cancel.
+   * @returns Returns nothing on success, or the reason it could not be cancelled.
+   */
+  public cancelWorkflowRun(
+    repository: ForgeRepositoryRef,
+    runId: number,
+  ): Promise<ForgeResult<void>> {
+    return this.post(repository, runId, 'cancel');
+  }
+
+  /**
+   * Posts a workflow-run command. The run id is coerced to an integer rather than interpolated as
+   * given: it arrives from the renderer, and a non-numeric value would otherwise extend the path.
+   * @param repository The repository the run belongs to.
+   * @param runId The run to act on.
+   * @param action The command's path segment.
+   * @returns Returns nothing on success, or the reason it failed.
+   */
+  private async post(
+    repository: ForgeRepositoryRef,
+    runId: number,
+    action: 'rerun' | 'cancel',
+  ): Promise<ForgeResult<void>> {
+    const id: number = Math.trunc(runId);
+    if (!Number.isSafeInteger(id) || id <= 0) {
+      return { ok: false, error: 'Invalid workflow run.', unauthorized: false };
+    }
+    const path: string = `/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/actions/runs/${id}/${action}`;
+    const result: ForgeResult<unknown> = await this.send(repository.host, path);
+    return result.ok ? { ok: true, value: undefined } : result;
+  }
+
+  /**
    * Reads the rolled-up check status for a commit. A failure here is swallowed to `none` rather than
    * failing the whole listing: a missing badge is a far smaller loss than an empty Pull Requests
    * section, and checks are the one part of the row that is decoration.
@@ -367,6 +415,43 @@ export class GitHubForge implements ForgeProvider {
       ? readCheckRuns(checks.value)
       : [];
     return rollUpChecks(runs, statuses.ok ? readStatusState(statuses.value) : '');
+  }
+
+  /**
+   * Performs an authenticated POST with no body, for the run commands. GitHub answers these with 201
+   * or 202 and an empty body, so nothing is parsed back.
+   * @param host The forge host, which determines the API origin.
+   * @param path The API path.
+   * @returns Returns success, or the reason the request failed.
+   */
+  private async send(host: string, path: string): Promise<ForgeResult<unknown>> {
+    const token: string | null = this.token();
+    if (token === null) {
+      return {
+        ok: false,
+        error: 'No GitHub token. Add one in Settings → Source Control.',
+        unauthorized: true,
+      };
+    }
+    try {
+      const response: ForgeResponse = await this.http(`${originFor(host)}${path}`, {
+        method: 'POST',
+        headers: {
+          accept: 'application/vnd.github+json',
+          authorization: `Bearer ${token}`,
+          'x-github-api-version': API_VERSION,
+        },
+      });
+      return response.ok
+        ? { ok: true, value: undefined }
+        : {
+            ok: false,
+            error: describeStatus(response.status),
+            unauthorized: response.status === 401 || response.status === 403,
+          };
+    } catch (error: unknown) {
+      return { ok: false, error: messageOf(error), unauthorized: false };
+    }
   }
 
   /**

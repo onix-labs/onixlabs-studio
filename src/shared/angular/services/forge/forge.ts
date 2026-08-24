@@ -149,4 +149,38 @@ export class Forge implements ForgeClient {
       ) ?? Promise.resolve(UNAVAILABLE_RESULT)
     );
   }
+
+  /**
+   * Re-runs a CI/CD workflow run.
+   * @param repository The repository the run belongs to.
+   * @param runId The run to re-run.
+   * @returns Returns nothing on success, or the reason it could not be started.
+   */
+  public rerunWorkflowRun(
+    repository: ForgeRepositoryRef,
+    runId: number,
+  ): Promise<ForgeResult<void>> {
+    this.log.info('forge', `Re-running workflow run ${runId}`);
+    return (
+      this.bridge?.invoke<ForgeResult<void>>(ForgeChannel.RerunWorkflowRun, repository, runId) ??
+      Promise.resolve(UNAVAILABLE_RESULT)
+    );
+  }
+
+  /**
+   * Cancels a CI/CD workflow run that is in flight.
+   * @param repository The repository the run belongs to.
+   * @param runId The run to cancel.
+   * @returns Returns nothing on success, or the reason it could not be cancelled.
+   */
+  public cancelWorkflowRun(
+    repository: ForgeRepositoryRef,
+    runId: number,
+  ): Promise<ForgeResult<void>> {
+    this.log.info('forge', `Cancelling workflow run ${runId}`);
+    return (
+      this.bridge?.invoke<ForgeResult<void>>(ForgeChannel.CancelWorkflowRun, repository, runId) ??
+      Promise.resolve(UNAVAILABLE_RESULT)
+    );
+  }
 }

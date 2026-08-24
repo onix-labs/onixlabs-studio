@@ -71,6 +71,27 @@ class FakeProvider implements ForgeProvider {
     this.listed.push(repository);
     return Promise.resolve({ ok: true, value: [] });
   }
+
+  /**
+   * Holds the run commands issued, in order.
+   */
+  public readonly commands: string[] = [];
+
+  public rerunWorkflowRun(
+    repository: ForgeRepositoryRef,
+    runId: number,
+  ): Promise<ForgeResult<void>> {
+    this.commands.push(`rerun:${repository.owner}/${repository.name}:${runId}`);
+    return Promise.resolve({ ok: true, value: undefined });
+  }
+
+  public cancelWorkflowRun(
+    repository: ForgeRepositoryRef,
+    runId: number,
+  ): Promise<ForgeResult<void>> {
+    this.commands.push(`cancel:${repository.owner}/${repository.name}:${runId}`);
+    return Promise.resolve({ ok: true, value: undefined });
+  }
 }
 
 /**
@@ -198,6 +219,8 @@ describe('ForgeContribution', () => {
         ForgeChannel.PullRequests,
         ForgeChannel.SetToken,
         ForgeChannel.WorkflowRuns,
+        ForgeChannel.RerunWorkflowRun,
+        ForgeChannel.CancelWorkflowRun,
       ].sort(),
     );
   });
@@ -315,6 +338,34 @@ describe('ForgeContribution', () => {
 
     expect(result.ok).toBe(false);
     expect(provider.listed).toEqual([]);
+  });
+
+  it('runCommands_reachTheProviderWithTheValidatedReferenceAndId', async () => {
+    const { fake, provider } = activate();
+
+    await fake.invoke(ForgeChannel.RerunWorkflowRun, { ...REPOSITORY }, 99);
+    await fake.invoke(ForgeChannel.CancelWorkflowRun, { ...REPOSITORY }, 99);
+
+    expect(provider.commands).toEqual([
+      'rerun:onix-labs/onixlabs-studio:99',
+      'cancel:onix-labs/onixlabs-studio:99',
+    ]);
+  });
+
+  it('runCommands_refuseAnIdThatIsNotAPositiveInteger', async () => {
+    // The id addresses a mutating endpoint and arrives from the renderer, which is untrusted.
+    const { fake, provider } = activate();
+
+    for (const bad of ['99', -1, 0, 1.5, Number.NaN, null, undefined]) {
+      const result: ForgeResult<void> = (await fake.invoke(
+        ForgeChannel.RerunWorkflowRun,
+        { ...REPOSITORY },
+        bad,
+      )) as ForgeResult<void>;
+      expect(result.ok).toBe(false);
+    }
+
+    expect(provider.commands).toEqual([]);
   });
 
   it('afterDispose_theBackendReportsItselfUnavailable', async () => {

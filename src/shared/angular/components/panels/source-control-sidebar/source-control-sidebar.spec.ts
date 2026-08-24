@@ -2,8 +2,16 @@ import {
   ForgeRepository,
   ForgeSection,
 } from '@shared/angular/services/forge-repository/forge-repository';
-import { ForgePullRequest } from '@shared/api/forge-types';
+import {
+  ForgeIssue,
+  ForgePullRequest,
+  ForgeRepositoryRef,
+  ForgeWorkflowRun,
+} from '@shared/api/forge-types';
 import { Shell } from '@shared/angular/services/shell/shell';
+import { Agent } from '@shared/angular/services/agent/agent';
+import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
+import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
 import { ApplicationRef, signal, Signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ModalWindows } from '@shared/angular/services/modal-windows/modal-windows';
@@ -232,11 +240,58 @@ class FakeForgeRepository {
    */
   public readonly checkedOut: ForgePullRequest[] = [];
 
+  public readonly issueSection: WritableSignal<ForgeSection<ForgeIssue>> = signal<
+    ForgeSection<ForgeIssue>
+  >({ state: 'no-repository', items: [], message: null });
+
+  public readonly runSection: WritableSignal<ForgeSection<ForgeWorkflowRun>> = signal<
+    ForgeSection<ForgeWorkflowRun>
+  >({ state: 'no-repository', items: [], message: null });
+
+  /**
+   * Holds the run commands issued, in order.
+   */
+  public readonly commands: string[] = [];
+
+  /**
+   * Holds the detected forge repository, which names the issue in the agent's opening message.
+   */
+  public readonly repositoryRef: Signal<ForgeRepositoryRef | null> =
+    signal<ForgeRepositoryRef | null>({
+      kind: 'github',
+      host: 'github.com',
+      owner: 'onix-labs',
+      name: 'onixlabs-studio',
+    });
+
   public readonly pullRequests: Signal<ForgeSection<ForgePullRequest>> = this.section.asReadonly();
+  public readonly issues: Signal<ForgeSection<ForgeIssue>> = this.issueSection.asReadonly();
+  public readonly workflowRuns: Signal<ForgeSection<ForgeWorkflowRun>> =
+    this.runSection.asReadonly();
 
   public loadPullRequests(): Promise<void> {
     this.loads += 1;
     return Promise.resolve();
+  }
+
+  public loadIssues(): Promise<void> {
+    this.loads += 1;
+    return Promise.resolve();
+  }
+
+  public loadWorkflowRuns(): Promise<void> {
+    this.loads += 1;
+    return Promise.resolve();
+  }
+
+  public rerun(entry: ForgeWorkflowRun): Promise<{ ok: boolean }> {
+    this.commands.push(`rerun:${entry.id}`);
+    return Promise.resolve({ ok: true });
+  }
+
+  public cancel(entry: ForgeWorkflowRun): Promise<{ ok: boolean }> {
+    this.commands.push(`cancel:${entry.id}`);
+    return Promise.resolve({ ok: true });
   }
 
   public checkout(pull: ForgePullRequest): Promise<{ success: boolean }> {
@@ -289,6 +344,91 @@ function pullRequestRow(overrides: Partial<ForgePullRequest> = {}): TreeRow {
   };
 }
 
+/**
+ * Builds a workflow run.
+ * @param overrides The fields to vary.
+ * @returns Returns the run.
+ */
+function workflowRun(overrides: Partial<ForgeWorkflowRun> = {}): ForgeWorkflowRun {
+  return {
+    id: 99,
+    name: 'CI',
+    status: 'succeeded',
+    url: 'https://github.com/onix-labs/onixlabs-studio/actions/runs/99',
+    branch: 'main',
+    event: 'push',
+    startedAt: '2026-08-24T10:00:00Z',
+    ...overrides,
+  };
+}
+
+/**
+ * Builds the tree row a workflow run renders as.
+ * @param overrides The run fields to vary.
+ * @returns Returns the row.
+ */
+function runRow(overrides: Partial<ForgeWorkflowRun> = {}): TreeRow {
+  const entry: ForgeWorkflowRun = workflowRun(overrides);
+  return {
+    id: `action:${entry.id}`,
+    depth: 1,
+    expandable: false,
+    expanded: false,
+    data: { kind: 'action', icon: Icon.PLAY, label: entry.name, run: entry, status: entry.status },
+  };
+}
+
+/**
+ * Builds the tree row an issue renders as.
+ * @returns Returns the row.
+ */
+function issueRow(): TreeRow {
+  const issue: ForgeIssue = {
+    number: 12,
+    title: 'Something is broken',
+    author: 'matthew',
+    url: 'https://github.com/onix-labs/onixlabs-studio/issues/12',
+    labels: [],
+    assignees: [],
+  };
+  return {
+    id: `issue:${issue.number}`,
+    depth: 1,
+    expandable: false,
+    expanded: false,
+    data: { kind: 'issue', icon: Icon.INFO, label: `#12 ${issue.title}`, issue },
+  };
+}
+
+/**
+ * A recording stand-in for this view's agent.
+ */
+class FakeAgent {
+  public readonly messages: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds the messages sent, in order.
+   */
+  public readonly sent: string[] = [];
+
+  public readonly hasMessages: Signal<boolean> = this.messages.asReadonly();
+
+  public send(text: string): void {
+    this.sent.push(text);
+  }
+}
+
+/**
+ * A recording stand-in for the conversation, which owns starting a fresh one.
+ */
+class FakeConversation {
+  public newChats: number = 0;
+
+  public newChat(): void {
+    this.newChats += 1;
+  }
+}
+
 describe('SourceControlSidebar', () => {
   let component: SourceControlSidebar;
   let fixture: ComponentFixture<SourceControlSidebar>;
@@ -297,6 +437,9 @@ describe('SourceControlSidebar', () => {
   let windows: FakeModalWindows;
   let forge: FakeForgeRepository;
   let opened: string[];
+  let agent: FakeAgent;
+  let conversation: FakeConversation;
+  let revealed: string[];
 
   const panel: DockPanel = {
     id: 'repository',
@@ -310,12 +453,25 @@ describe('SourceControlSidebar', () => {
     windows = new FakeModalWindows();
     forge = new FakeForgeRepository();
     opened = [];
+    agent = new FakeAgent();
+    conversation = new FakeConversation();
+    revealed = [];
     await TestBed.configureTestingModule({
       imports: [SourceControlSidebar],
       providers: [
         Repository,
         { provide: ModalWindows, useValue: windows },
         { provide: ForgeRepository, useValue: forge },
+        { provide: Agent, useValue: agent },
+        { provide: AgentConversation, useValue: conversation },
+        {
+          provide: DockReveal,
+          useValue: {
+            reveal: (panelId: string): void => {
+              revealed.push(panelId);
+            },
+          },
+        },
         {
           provide: Shell,
           useValue: {
@@ -359,12 +515,14 @@ describe('SourceControlSidebar', () => {
     expect(text).not.toContain('v1.0.0');
   });
 
-  it('render_whenWorkingTreeDirty_showsTheChangeCountBadge', () => {
+  it('render_whenWorkingTreeDirty_showsTheChangeCountAsABarePill', () => {
     const badge: HTMLElement | null = (fixture.nativeElement as HTMLElement).querySelector(
-      '.rail__count',
+      '.rail__changes',
     );
 
+    // The count is the whole of the moniker: no container box, no icon beside it.
     expect(badge?.textContent?.trim()).toBe('2');
+    expect(badge?.querySelector('app-icon')).toBeNull();
   });
 
   it('onRowClick_whenSectionRowClicked_togglesTheSection', () => {
@@ -416,35 +574,67 @@ describe('SourceControlSidebar', () => {
     );
 
     expect(develop?.querySelector('.rail__changes')).toBeNull();
-    // It carries the checkout action instead.
-    expect(develop?.querySelector('button[aria-label="Check out branch"]')).not.toBeNull();
+    // Its checkout lives on the context menu now; the row itself carries no buttons at all.
+    expect(develop?.querySelector('.tree-row-action')).toBeNull();
   });
 
-  it('changesBadge_staysReachableWhenTheTreeIsClean_butReadsAsEmpty', async () => {
+  it('changesBadge_isAbsentWhenTheTreeIsClean', async () => {
+    // A pill reading zero would be a badge for nothing; with the count gone there is nothing to draw.
     provider.working = { staged: [], unstaged: [] };
     await repository.refresh();
     fixture.detectChanges();
 
-    const badge: HTMLButtonElement | null = (fixture.nativeElement as HTMLElement).querySelector(
-      '.rail__changes',
-    );
-
-    expect(badge).not.toBeNull();
-    expect(badge?.classList.contains('rail__changes--empty')).toBe(true);
-    // No count is drawn at zero, but the working tree is still one click away.
-    expect(badge?.querySelector('.rail__count')).toBeNull();
+    expect((fixture.nativeElement as HTMLElement).querySelector('.rail__changes')).toBeNull();
   });
 
-  it('checkout_whenBranchActionClicked_checksOutTheBranch', () => {
-    const action: HTMLButtonElement | null = (fixture.nativeElement as HTMLElement).querySelector(
-      'button[aria-label="Check out branch"]',
-    );
+  it('checkout_isChosenFromTheBranchContextMenu', () => {
+    const row: TreeRow = {
+      id: 'branch:develop',
+      depth: 1,
+      expandable: false,
+      expanded: false,
+      data: {
+        kind: 'branch',
+        icon: Icon.SOURCE_CONTROL,
+        label: 'develop',
+        branch: { name: 'develop', current: false, ahead: 0, behind: 0, tip: 'c1' },
+      },
+    };
+    const menu: {
+      contextMenuFor(r: TreeRow): readonly MenuItem[];
+      onContextAction(c: TreeMenuSelection): void;
+    } = component as unknown as {
+      contextMenuFor(r: TreeRow): readonly MenuItem[];
+      onContextAction(c: TreeMenuSelection): void;
+    };
 
-    expect(action).not.toBeNull();
+    expect(menu.contextMenuFor(row).map((item: MenuItem): string => item.label)).toEqual([
+      'Check Out',
+    ]);
 
-    action?.click();
+    menu.onContextAction({ itemId: 'branch.checkout', row });
 
     expect(provider.calls).toContain('checkout:develop');
+  });
+
+  it('theCheckedOutBranchOffersNothing_becauseItsChangesBadgeIsAlwaysThere', () => {
+    // It cannot be checked out again, and its uncommitted changes are one always-visible click away.
+    const menu: { contextMenuFor(r: TreeRow): readonly MenuItem[] } = component;
+
+    expect(
+      menu.contextMenuFor({
+        id: 'branch:main',
+        depth: 1,
+        expandable: false,
+        expanded: false,
+        data: {
+          kind: 'branch',
+          icon: Icon.SOURCE_CONTROL,
+          label: 'main',
+          branch: { name: 'main', current: true, ahead: 0, behind: 0, tip: 'c2' },
+        },
+      }),
+    ).toEqual([]);
   });
 
   /**
@@ -855,6 +1045,340 @@ describe('SourceControlSidebar', () => {
 
       internals.refresh();
       expect(forge.loads).toBe(2);
+    });
+  });
+
+  describe('the Issues and Actions sections', () => {
+    /**
+     * Reveals the protected surface these tests drive.
+     * @returns Returns the internals.
+     */
+    function internals(): {
+      contextMenuFor(row: TreeRow): readonly MenuItem[];
+      onContextAction(choice: TreeMenuSelection): void;
+      pendingRerun(): ForgeWorkflowRun | null;
+      pendingCancel(): ForgeWorkflowRun | null;
+      confirmRerun(): void;
+      confirmCancelRun(): void;
+      cancelRerun(): void;
+    } {
+      return component as unknown as ReturnType<typeof internals>;
+    }
+
+    it('showTheRealDataAndNotTheSampleArrays', () => {
+      forge.issueSection.set({
+        state: 'ready',
+        items: [issueRow().data as { issue: ForgeIssue }].map(
+          (data: { issue: ForgeIssue }): ForgeIssue => data.issue,
+        ),
+        message: null,
+      });
+      forge.runSection.set({ state: 'ready', items: [workflowRun()], message: null });
+
+      component.onRowClick(sectionRow('issues', 'Issues'));
+      component.onRowClick(sectionRow('actions', 'Actions'));
+      fixture.detectChanges();
+
+      const text: string = (fixture.nativeElement as HTMLElement).textContent ?? '';
+      expect(text).toContain('#12 Something is broken');
+      expect(text).toContain('CI — main');
+      // The sample data both sections shipped with is gone for good.
+      expect(text).not.toContain('Source-control provider abstraction');
+      expect(text).not.toContain('CI / build');
+    });
+
+    it('readNothing_untilTheirSectionsAreExpanded', () => {
+      expect(forge.loads).toBe(0);
+
+      component.onRowClick(sectionRow('issues', 'Issues'));
+      expect(forge.loads).toBe(1);
+
+      component.onRowClick(sectionRow('actions', 'Actions'));
+      expect(forge.loads).toBe(2);
+    });
+
+    it('aRunOffersCancelWhileGoing_andReRunOnceStopped', () => {
+      // Offering the inapplicable one would be offering a command the forge would simply refuse.
+      expect(
+        internals()
+          .contextMenuFor(runRow({ status: 'running' }))
+          .map((item: MenuItem): string => item.label),
+      ).toEqual(['Cancel Run', 'Open on GitHub']);
+      expect(
+        internals()
+          .contextMenuFor(runRow({ status: 'queued' }))
+          .map((item: MenuItem): string => item.label),
+      ).toEqual(['Cancel Run', 'Open on GitHub']);
+      expect(
+        internals()
+          .contextMenuFor(runRow({ status: 'failed' }))
+          .map((item: MenuItem): string => item.label),
+      ).toEqual(['Re-run', 'Open on GitHub']);
+    });
+
+    it('openingAnIssueOrRunReachesTheBrowser', () => {
+      internals().onContextAction({ itemId: 'issue.open', row: issueRow() });
+      internals().onContextAction({ itemId: 'run.open', row: runRow() });
+
+      expect(opened).toEqual([
+        'https://github.com/onix-labs/onixlabs-studio/issues/12',
+        'https://github.com/onix-labs/onixlabs-studio/actions/runs/99',
+      ]);
+    });
+
+    it('reRunAndCancel_areConfirmedBeforeAnythingHappens', () => {
+      // Re-running spends CI minutes and can redeploy; cancelling abandons work in flight.
+      internals().onContextAction({ itemId: 'run.rerun', row: runRow() });
+
+      expect(internals().pendingRerun()?.id).toBe(99);
+      expect(forge.commands).toEqual([]);
+
+      internals().confirmRerun();
+
+      expect(internals().pendingRerun()).toBeNull();
+      expect(forge.commands).toEqual(['rerun:99']);
+    });
+
+    it('dismissingTheConfirmation_leavesTheRunAlone', () => {
+      internals().onContextAction({ itemId: 'run.rerun', row: runRow() });
+
+      internals().cancelRerun();
+
+      expect(internals().pendingRerun()).toBeNull();
+      expect(forge.commands).toEqual([]);
+    });
+
+    it('cancelRun_isConfirmedToo', () => {
+      internals().onContextAction({ itemId: 'run.cancel', row: runRow({ status: 'running' }) });
+
+      expect(internals().pendingCancel()?.id).toBe(99);
+      internals().confirmCancelRun();
+
+      expect(forge.commands).toEqual(['cancel:99']);
+    });
+
+    it('aQueuedRunPulses_becauseItIsWorkTheUserIsWaitingOn', () => {
+      forge.runSection.set({
+        state: 'ready',
+        items: [workflowRun({ status: 'queued' })],
+        message: null,
+      });
+
+      component.onRowClick(sectionRow('actions', 'Actions'));
+      fixture.detectChanges();
+
+      expect(
+        (fixture.nativeElement as HTMLElement).querySelector('app-pulse-dot.rail__status'),
+      ).not.toBeNull();
+    });
+  });
+
+  describe('Open in Agent', () => {
+    /**
+     * Reveals the protected surface these tests drive.
+     * @returns Returns the internals.
+     */
+    function internals(): {
+      contextMenuFor(row: TreeRow): readonly MenuItem[];
+      onContextAction(choice: TreeMenuSelection): void;
+      pendingAgentIssue(): ForgeIssue | null;
+      confirmOpenInAgent(): void;
+      dismissOpenInAgent(): void;
+    } {
+      return component as unknown as ReturnType<typeof internals>;
+    }
+
+    it('isOfferedOnAnIssue', () => {
+      expect(
+        internals()
+          .contextMenuFor(issueRow())
+          .map((item: MenuItem): string => item.label),
+      ).toEqual(['Open in Agent', 'Open on GitHub']);
+    });
+
+    it('startsImmediately_whenThereIsNoConversationToLose', () => {
+      internals().onContextAction({ itemId: 'issue.agent', row: issueRow() });
+
+      expect(internals().pendingAgentIssue()).toBeNull();
+      expect(conversation.newChats).toBe(1);
+      expect(agent.sent.length).toBe(1);
+    });
+
+    it('opensWithAMessageNamingTheIssueAndItsUrl', () => {
+      internals().onContextAction({ itemId: 'issue.agent', row: issueRow() });
+
+      const message: string = agent.sent[0];
+      expect(message).toContain('#12');
+      expect(message).toContain('Something is broken');
+      expect(message).toContain('onix-labs/onixlabs-studio');
+      expect(message).toContain('https://github.com/onix-labs/onixlabs-studio/issues/12');
+      // A conversation started by one menu click should arrive at an understanding, not at edits.
+      expect(message).toContain("Don't make any changes yet");
+    });
+
+    it('bringsTheAgentPanelForward_soTheConversationIsVisible', () => {
+      internals().onContextAction({ itemId: 'issue.agent', row: issueRow() });
+
+      expect(revealed).toEqual(['agent']);
+    });
+
+    it('asksFirst_whenAConversationAlreadyHoldsSomething', () => {
+      // Starting a new one discards the transcript; a half-aimed menu click must not lose it.
+      agent.messages.set(true);
+
+      internals().onContextAction({ itemId: 'issue.agent', row: issueRow() });
+
+      expect(internals().pendingAgentIssue()?.number).toBe(12);
+      expect(conversation.newChats).toBe(0);
+      expect(agent.sent).toEqual([]);
+    });
+
+    it('yes_endsTheOldConversationAndStartsTheNewOne', () => {
+      agent.messages.set(true);
+      internals().onContextAction({ itemId: 'issue.agent', row: issueRow() });
+
+      internals().confirmOpenInAgent();
+
+      expect(internals().pendingAgentIssue()).toBeNull();
+      expect(conversation.newChats).toBe(1);
+      expect(agent.sent.length).toBe(1);
+      expect(revealed).toEqual(['agent']);
+    });
+
+    it('no_leavesTheConversationAlone', () => {
+      agent.messages.set(true);
+      internals().onContextAction({ itemId: 'issue.agent', row: issueRow() });
+
+      internals().dismissOpenInAgent();
+
+      expect(internals().pendingAgentIssue()).toBeNull();
+      expect(conversation.newChats).toBe(0);
+      expect(agent.sent).toEqual([]);
+      expect(revealed).toEqual([]);
+    });
+  });
+
+  describe('the tool strip', () => {
+    /**
+     * Reveals the protected surface these tests drive.
+     * @returns Returns the internals.
+     */
+    function internals(): {
+      moreItems(): readonly MenuItem[];
+      onMoreAction(id: string): void;
+      expandAll(): void;
+      branchDialogOpen(): boolean;
+    } {
+      return component as unknown as ReturnType<typeof internals>;
+    }
+
+    it('isTheSharedExplorerStrip_asTheOtherExplorersUse', () => {
+      const host: HTMLElement = fixture.nativeElement as HTMLElement;
+
+      expect(host.querySelector('app-explorer-toolbar')).not.toBeNull();
+      // The bespoke strip it replaced is gone, along with its row of buttons.
+      expect(host.querySelector('app-panel-toolbar')).toBeNull();
+    });
+
+    it('offersTheRepositoryWideCommandsOnItsMenu', () => {
+      // Anything acting on a row the user can see lives on that row's context menu instead.
+      expect(
+        internals()
+          .moreItems()
+          .filter((item: MenuItem): boolean => item.separator !== true)
+          .map((item: MenuItem): string => item.label),
+      ).toEqual(['New Branch…', 'Stash Changes', 'Fetch', 'Refresh']);
+    });
+
+    it('disablesStash_whenThereIsNothingToStash', () => {
+      const stash: MenuItem | undefined = internals()
+        .moreItems()
+        .find((item: MenuItem): boolean => item.label === 'Stash Changes');
+
+      // The fixture's working tree is dirty, so the command is live.
+      expect(stash?.disabled).toBe(false);
+    });
+
+    it('newBranch_opensTheDialogFromTheMenu', () => {
+      internals().onMoreAction('repo.newBranch');
+
+      expect(internals().branchDialogOpen()).toBe(true);
+    });
+
+    it('expandAll_opensEverySection_andReadsTheForgeBackedOnes', () => {
+      // Expanding a section by hand is what loads it, so expanding them all must do the same or the
+      // three forge sections would open onto nothing.
+      internals().expandAll();
+      fixture.detectChanges();
+
+      const text: string = (fixture.nativeElement as HTMLElement).textContent ?? '';
+      expect(text).toContain('v1.0.0');
+      expect(forge.loads).toBe(3);
+    });
+
+    it('theSectionHeadingsReadLikeTheExplorersRootRows', () => {
+      // Bold body text, not the small uppercase treatment the rail used to give them.
+      const heading: HTMLElement | null = (fixture.nativeElement as HTMLElement).querySelector(
+        '.tree-name.bold',
+      );
+
+      expect(heading).not.toBeNull();
+      expect(
+        (fixture.nativeElement as HTMLElement).querySelector('.rail__section-name'),
+      ).toBeNull();
+    });
+  });
+
+  describe('stash commands on the context menu', () => {
+    const stashRow: TreeRow = {
+      id: 'stash:0',
+      depth: 1,
+      expandable: false,
+      expanded: false,
+      data: {
+        kind: 'stash',
+        icon: Icon.STASH,
+        label: 'WIP on main',
+        stash: { index: 0, message: 'WIP on main', branch: 'main', files: [] },
+      },
+    };
+
+    /**
+     * Reveals the menu surface.
+     * @returns Returns the internals.
+     */
+    function menu(): {
+      contextMenuFor(row: TreeRow): readonly MenuItem[];
+      onContextAction(choice: TreeMenuSelection): void;
+      pendingDrop(): GitStash | null;
+    } {
+      return component as unknown as ReturnType<typeof menu>;
+    }
+
+    it('offersApplyPopAndDrop_andSaysWhatBecomesOfTheStash', () => {
+      // Apply and pop differ only in what happens to the stash afterwards, which is what the
+      // buttons' tooltips used to explain and the muted trailing note now carries.
+      const items: readonly MenuItem[] = menu().contextMenuFor(stashRow);
+
+      expect(items.map((item: MenuItem): string => item.label)).toEqual(['Apply', 'Pop', 'Drop…']);
+      expect(items[0].status).toBe('keep the stash');
+      expect(items[1].status).toBe('drop the stash');
+    });
+
+    it('applyAndPop_actImmediately', () => {
+      menu().onContextAction({ itemId: 'stash.apply', row: stashRow });
+      menu().onContextAction({ itemId: 'stash.pop', row: stashRow });
+
+      expect(provider.calls).toContain('applyStash:0');
+      expect(provider.calls).toContain('popStash:0');
+    });
+
+    it('drop_stillAsksFirst', () => {
+      // Dropping discards the stashed work with no way back, whichever surface asks for it.
+      menu().onContextAction({ itemId: 'stash.drop', row: stashRow });
+
+      expect(menu().pendingDrop()?.index).toBe(0);
+      expect(provider.calls).not.toContain('dropStash:0');
     });
   });
 });

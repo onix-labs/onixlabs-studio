@@ -1,55 +1,12 @@
-<app-panel-toolbar>
-  <app-text-field
-    class="rail__filter"
-    kind="search"
-    placeholder="Filter"
-    ariaLabel="Filter the repository tree"
-    [value]="filter()"
-    (valueChange)="onFilterValue($event)"
-    (escape)="clearFilter()"
-  />
-  <app-button
-    variant="none"
-    [icon]="Icon.PLUS"
-    ariaLabel="New Branch"
-    tooltip="New Branch"
-    [disabled]="!repository.isBound()"
-    (click)="openBranchDialog()"
-  />
-  <app-button
-    variant="none"
-    [icon]="Icon.STASH"
-    ariaLabel="Stash"
-    tooltip="Stash the working-tree changes"
-    [disabled]="repository.changeCount() === 0"
-    (click)="stash()"
-  />
-  <span class="panel-toolbar__spacer"></span>
-  <app-button
-    variant="none"
-    [icon]="Icon.CLOUD"
-    ariaLabel="Fetch"
-    tooltip="Fetch from all remotes"
-    [disabled]="!repository.isBound()"
-    (click)="fetch()"
-  />
-  <app-button
-    variant="none"
-    [icon]="Icon.LIST"
-    ariaLabel="Collapse All"
-    tooltip="Collapse All"
-    [disabled]="filter().trim().length > 0"
-    (click)="collapseAll()"
-  />
-  <app-button
-    variant="none"
-    [icon]="Icon.REFRESH"
-    ariaLabel="Refresh"
-    tooltip="Refresh"
-    [disabled]="!repository.isBound()"
-    (click)="refresh()"
-  />
-</app-panel-toolbar>
+<app-explorer-toolbar
+  [query]="filter()"
+  searchPlaceholder="Search repository"
+  [moreItems]="moreItems()"
+  (queryChange)="onFilterValue($event)"
+  (expandAll)="expandAll()"
+  (collapseAll)="collapseAll()"
+  (moreSelected)="onMoreAction($event)"
+/>
 
 <app-tree-view
   [rows]="rows()"
@@ -65,11 +22,7 @@
       [class.tree-icon--folder]="node.kind === 'section'"
       [icon]="node.icon"
     />
-    <span
-      class="tree-name"
-      [class.rail__section-name]="node.kind === 'section'"
-      [class.rail__muted]="node.muted"
-    >
+    <span class="tree-name" [class.bold]="node.kind === 'section'" [class.rail__muted]="node.muted">
       {{ node.label }}
     </span>
 
@@ -80,73 +33,26 @@
       @if (branch.behind > 0) {
         <span class="rail__delta"><app-icon [icon]="Icon.ARROW_DOWN" />{{ branch.behind }}</span>
       }
-      @if (branch.current) {
+      @if (branch.current && repository.changeCount() > 0) {
         <!-- Uncommitted changes belong to the branch they sit on, so the checked-out branch carries
-             them. Always shown (muted at zero) so the Commit panel's composer stays reachable from
-             the rail even when the tree is clean. -->
+             them — as a bare count, which is the whole of what there is to say. Clicking it shows
+             them in the Commit panel. -->
         <button
           type="button"
           class="tree-row-action rail__changes"
           [class.rail__changes--active]="workingSelected()"
-          [class.rail__changes--empty]="repository.changeCount() === 0"
           [attr.aria-pressed]="workingSelected()"
-          [title]="
-            repository.changeCount() === 0
-              ? 'No uncommitted changes'
-              : repository.changeCount() + ' uncommitted change(s)'
-          "
+          [title]="repository.changeCount() + ' uncommitted change(s)'"
           aria-label="Show uncommitted changes"
           (click)="selectWorking(); $event.stopPropagation()"
         >
-          <app-icon [icon]="Icon.PENCIL" />
-          @if (repository.changeCount() > 0) {
-            <span class="rail__count">{{ repository.changeCount() }}</span>
-          }
+          {{ repository.changeCount() }}
         </button>
-      } @else {
-        <app-button
-          class="tree-row-action"
-          variant="none"
-          size="small"
-          [icon]="Icon.CHECK"
-          ariaLabel="Check out branch"
-          (click)="checkout(branch); $event.stopPropagation()"
-        />
       }
     }
 
-    @if (node.stash; as stash) {
-      <app-button
-        class="tree-row-action"
-        variant="none"
-        size="small"
-        [icon]="Icon.ARROW_DOWN"
-        ariaLabel="Apply stash"
-        tooltip="Apply — restore these changes and keep the stash"
-        (click)="applyStash(stash); $event.stopPropagation()"
-      />
-      <app-button
-        class="tree-row-action"
-        variant="none"
-        size="small"
-        [icon]="Icon.ARROW_UP"
-        ariaLabel="Pop stash"
-        tooltip="Pop — restore these changes and drop the stash"
-        (click)="popStash(stash); $event.stopPropagation()"
-      />
-      <app-button
-        class="tree-row-action"
-        variant="none"
-        size="small"
-        [icon]="Icon.TRASH"
-        ariaLabel="Drop stash"
-        tooltip="Drop — delete this stash without restoring it"
-        (click)="requestDropStash(stash); $event.stopPropagation()"
-      />
-    }
-
     @if (node.status; as status) {
-      @if (status === 'running') {
+      @if (status === 'running' || status === 'queued') {
         <!-- Checks in flight get a pulsing dot rather than a spinner glyph nothing rotates. Warning
              rather than accent: it sits between the green and red outcomes as the third state of one
              badge, so it belongs to the same semantic scale rather than to the theme's accent. Sized
@@ -216,6 +122,72 @@
     <div class="rail__dialog-actions">
       <app-button label="Cancel" (click)="cancelDropStash()" />
       <app-button variant="solid" label="Drop" (click)="confirmDropStash()" />
+    </div>
+  </ng-template>
+</app-modal>
+
+<!-- Asked before a run is re-run: it spends CI minutes and, for a deploy workflow, can push again. -->
+<app-modal
+  [open]="pendingRerun() !== null"
+  [width]="26"
+  ariaLabel="Re-run workflow"
+  (dismiss)="cancelRerun()"
+>
+  <ng-template appModalContent>
+    <h2 class="rail__dialog-title">Re-run this workflow?</h2>
+    <p class="rail__dialog-message">
+      “{{ pendingRerun()?.name }}” runs again on {{ pendingRerun()?.branch }}. This starts a new run
+      rather than replacing the old one.
+    </p>
+    <div class="rail__dialog-actions">
+      <app-button label="Cancel" (click)="cancelRerun()" />
+      <app-button variant="solid" label="Re-run" (click)="confirmRerun()" />
+    </div>
+  </ng-template>
+</app-modal>
+
+<!-- Asked before a run in flight is cancelled: whatever it had done so far is abandoned. -->
+<app-modal
+  [open]="pendingCancel() !== null"
+  [width]="26"
+  ariaLabel="Cancel workflow run"
+  (dismiss)="dismissCancelRun()"
+>
+  <ng-template appModalContent>
+    <h2 class="rail__dialog-title">Cancel this run?</h2>
+    <p class="rail__dialog-message">
+      “{{ pendingCancel()?.name }}” stops on {{ pendingCancel()?.branch }}. Anything it has not
+      finished is abandoned.
+    </p>
+    <div class="rail__dialog-actions">
+      <app-button label="Keep running" (click)="dismissCancelRun()" />
+      <app-button variant="solid" label="Cancel run" (click)="confirmCancelRun()" />
+    </div>
+  </ng-template>
+</app-modal>
+
+<!-- Asked before an issue replaces a conversation that already holds something: starting a new one
+     discards the transcript, and a menu click the user half-aimed should not lose it. -->
+<app-modal
+  [open]="pendingAgentIssue() !== null"
+  [width]="26"
+  ariaLabel="Open issue in agent"
+  (dismiss)="dismissOpenInAgent()"
+>
+  <ng-template appModalContent>
+    <h2 class="rail__dialog-title">Start a new conversation?</h2>
+    <p class="rail__dialog-message">
+      Your current conversation ends, and a new one starts about “#{{ pendingAgentIssue()?.number }}
+      {{ pendingAgentIssue()?.title }}”.
+    </p>
+    <div class="rail__dialog-actions">
+      <app-button
+        class="rail__dialog-choice"
+        variant="solid"
+        label="Yes"
+        (click)="confirmOpenInAgent()"
+      />
+      <app-button class="rail__dialog-choice" label="No" (click)="dismissOpenInAgent()" />
     </div>
   </ng-template>
 </app-modal>

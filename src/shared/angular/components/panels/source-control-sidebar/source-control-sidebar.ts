@@ -16,8 +16,18 @@ import {
   ForgeRepository,
   ForgeSection,
 } from '@shared/angular/services/forge-repository/forge-repository';
-import { ForgeCheckStatus, ForgePullRequest } from '@shared/api/forge-types';
+import {
+  ForgeCheckStatus,
+  ForgeIssue,
+  ForgePullRequest,
+  ForgeRepositoryRef,
+  ForgeRunStatus,
+  ForgeWorkflowRun,
+} from '@shared/api/forge-types';
 import { Shell } from '@shared/angular/services/shell/shell';
+import { Agent } from '@shared/angular/services/agent/agent';
+import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
+import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
 import {
   GitBranch,
   GitRemote,
@@ -29,7 +39,7 @@ import { Button } from '@shared/angular/components/forms/button/button';
 import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
-import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
+import { ExplorerToolbar } from '@shared/angular/components/explorer-toolbar/explorer-toolbar';
 import { PulseDot } from '@shared/angular/components/pulse-dot/pulse-dot';
 import {
   TreeMenuSelection,
@@ -45,36 +55,6 @@ import { Log } from '@shared/angular/services/log/log';
  * the forge model so the panel and the provider cannot drift apart.
  */
 export type CheckStatus = ForgeCheckStatus;
-
-/**
- * A placeholder issue shown in the (not-yet-wired) Issues section. Replaced in P3 (#434).
- */
-interface StubIssue {
-  /**
-   * Gets the issue number.
-   */
-  readonly number: number;
-
-  /**
-   * Gets the issue title.
-   */
-  readonly title: string;
-}
-
-/**
- * A placeholder CI/CD action shown in the (not-yet-wired) Actions section. Replaced in P4 (#435).
- */
-interface StubAction {
-  /**
-   * Gets the action's name.
-   */
-  readonly name: string;
-
-  /**
-   * Gets whether the action is currently running or merely available to run.
-   */
-  readonly status: 'available' | 'running';
-}
 
 /**
  * Describes a row of the repository tree. The same flat shape covers every kind of row (section header,
@@ -134,9 +114,20 @@ interface RepoNode {
   readonly pullRequest?: ForgePullRequest;
 
   /**
-   * Gets the check/run status badge to show, for a pull-request or action row.
+   * Gets the issue, for an issue row (drives the open action).
    */
-  readonly status?: CheckStatus | StubAction['status'];
+  readonly issue?: ForgeIssue;
+
+  /**
+   * Gets the workflow run, for an action row (drives the open, re-run and cancel actions).
+   */
+  readonly run?: ForgeWorkflowRun;
+
+  /**
+   * Gets the badge to show beside a pull-request or action row: a pull request's rolled-up checks, or
+   * a workflow run's own lifecycle.
+   */
+  readonly status?: CheckStatus | ForgeRunStatus;
 
   /**
    * Gets a value indicating whether the row is a muted placeholder (an empty-section message).
@@ -153,6 +144,71 @@ const ACTION_CHECKOUT_PULL_REQUEST: string = 'pr.checkout';
  * Identifies the Open command on a pull request's context menu.
  */
 const ACTION_OPEN_PULL_REQUEST: string = 'pr.open';
+
+/**
+ * Identifies the Open command on an issue's context menu.
+ */
+const ACTION_OPEN_ISSUE: string = 'issue.open';
+
+/**
+ * Identifies the Check Out command on a branch's context menu.
+ */
+const ACTION_CHECKOUT_BRANCH: string = 'branch.checkout';
+
+/**
+ * Identifies the Apply command on a stash's context menu.
+ */
+const ACTION_APPLY_STASH: string = 'stash.apply';
+
+/**
+ * Identifies the Pop command on a stash's context menu.
+ */
+const ACTION_POP_STASH: string = 'stash.pop';
+
+/**
+ * Identifies the Drop command on a stash's context menu.
+ */
+const ACTION_DROP_STASH: string = 'stash.drop';
+
+/**
+ * Identifies the New Branch command on the tool strip's more-actions menu.
+ */
+const ACTION_NEW_BRANCH: string = 'repo.newBranch';
+
+/**
+ * Identifies the Stash command on the tool strip's more-actions menu.
+ */
+const ACTION_STASH: string = 'repo.stash';
+
+/**
+ * Identifies the Fetch command on the tool strip's more-actions menu.
+ */
+const ACTION_FETCH: string = 'repo.fetch';
+
+/**
+ * Identifies the Refresh command on the tool strip's more-actions menu.
+ */
+const ACTION_REFRESH: string = 'repo.refresh';
+
+/**
+ * Identifies the Open in Agent command on an issue's context menu.
+ */
+const ACTION_ISSUE_IN_AGENT: string = 'issue.agent';
+
+/**
+ * Identifies the Open command on a workflow run's context menu.
+ */
+const ACTION_OPEN_RUN: string = 'run.open';
+
+/**
+ * Identifies the Re-run command on a workflow run's context menu.
+ */
+const ACTION_RERUN: string = 'run.rerun';
+
+/**
+ * Identifies the Cancel command on a workflow run's context menu.
+ */
+const ACTION_CANCEL_RUN: string = 'run.cancel';
 
 /**
  * What an unhappy forge section says when the read itself supplied no message. `no-forge`, `error` and
@@ -216,7 +272,7 @@ interface SectionDef {
     Checkbox,
     Modal,
     ModalContent,
-    PanelToolbar,
+    ExplorerToolbar,
     PulseDot,
     TreeView,
   ],
@@ -262,29 +318,28 @@ export class SourceControlSidebar {
   private readonly shell: Shell = inject(Shell);
 
   /**
+   * Holds this view's agent, whose transcript Open in Agent replaces.
+   */
+  private readonly agent: Agent = inject(Agent);
+
+  /**
+   * Holds this view's conversation, which owns starting a fresh one.
+   */
+  private readonly conversation: AgentConversation = inject(AgentConversation);
+
+  /**
+   * Holds this view's dock reveal helper, used to bring the agent panel forward once a conversation
+   * has been started from here — starting one the user cannot see would be a strange thing to do.
+   */
+  private readonly dockReveal: DockReveal = inject(DockReveal);
+
+  /**
    * Holds the keys of the currently expanded sections. Only the local branches start open; the rest
    * are collapsed until the user opens them.
    */
   private readonly expandedSections: WritableSignal<ReadonlySet<string>> = signal<
     ReadonlySet<string>
   >(new Set<string>(['local']));
-
-  /**
-   * Holds the placeholder issues shown until the Issues section is wired to a provider.
-   */
-  protected readonly issues: readonly StubIssue[] = [
-    { number: 96, title: 'Source-control provider abstraction' },
-    { number: 99, title: 'Workspace git decorations' },
-  ];
-
-  /**
-   * Holds the placeholder actions shown until the Actions section is wired to a provider.
-   */
-  protected readonly actions: readonly StubAction[] = [
-    { name: 'CI / build', status: 'running' },
-    { name: 'CI / test', status: 'available' },
-    { name: 'Release', status: 'available' },
-  ];
 
   /**
    * Describes the rail's sections in display order, each with a builder for its child rows.
@@ -368,14 +423,76 @@ export class SourceControlSidebar {
   }
 
   /**
-   * Clears the filter, restoring the sections' own collapsed state.
+   * Gets the tool strip's more-actions menu: the repository commands that act on the whole
+   * repository rather than on a row. Anything acting on a row the user can see lives on that row's
+   * context menu instead, which is the rule the panel already followed with its buttons.
    */
-  protected clearFilter(): void {
-    this.filter.set('');
+  protected readonly moreItems: Signal<readonly MenuItem[]> = computed((): readonly MenuItem[] => [
+    {
+      id: ACTION_NEW_BRANCH,
+      label: 'New Branch…',
+      icon: Icon.PLUS,
+      disabled: !this.repository.isBound(),
+    },
+    {
+      id: ACTION_STASH,
+      label: 'Stash Changes',
+      icon: Icon.STASH,
+      disabled: this.repository.changeCount() === 0,
+    },
+    { separator: true, id: 'repo.sep', label: '' },
+    {
+      id: ACTION_FETCH,
+      label: 'Fetch',
+      icon: Icon.CLOUD,
+      disabled: !this.repository.isBound(),
+    },
+    {
+      id: ACTION_REFRESH,
+      label: 'Refresh',
+      icon: Icon.REFRESH,
+      disabled: !this.repository.isBound(),
+    },
+  ]);
+
+  /**
+   * Runs a command chosen from the tool strip's more-actions menu.
+   * @param id The chosen item's identifier.
+   */
+  protected onMoreAction(id: string): void {
+    switch (id) {
+      case ACTION_NEW_BRANCH:
+        this.openBranchDialog();
+        break;
+      case ACTION_STASH:
+        this.stash();
+        break;
+      case ACTION_FETCH:
+        this.fetch();
+        break;
+      case ACTION_REFRESH:
+        this.refresh();
+        break;
+      default:
+        break;
+    }
   }
 
   /**
-   * Collapses every section. Disabled while filtering, when the collapsed state is not in force.
+   * Expands every section, and reads whatever the forge-backed ones have not read yet — expanding a
+   * section by hand is what loads it, so expanding them all must do the same or the three would open
+   * onto nothing.
+   */
+  protected expandAll(): void {
+    const keys: readonly string[] = this.sections.map((section: SectionDef): string => section.key);
+    this.expandedSections.set(new Set<string>(keys));
+    for (const key of keys) {
+      this.loadSection(key);
+    }
+  }
+
+  /**
+   * Collapses every section.
    */
   protected collapseAll(): void {
     this.expandedSections.set(new Set<string>());
@@ -454,7 +571,7 @@ export class SourceControlSidebar {
    * @param status The status.
    * @returns Returns the icon.
    */
-  protected statusIcon(status: CheckStatus | StubAction['status']): Icon {
+  protected statusIcon(status: CheckStatus | ForgeRunStatus): Icon {
     switch (status) {
       // Filled, because a settled outcome is a badge the eye should catch at a glance rather than an
       // outline competing with the row's own icon.
@@ -462,8 +579,12 @@ export class SourceControlSidebar {
         return Icon.SUCCESS_FILL;
       case 'failed':
         return Icon.ERROR_FILL;
+      case 'cancelled':
+        // Not a failure to act on, so it is muted rather than red — the run simply stopped.
+        return Icon.CLOSE;
       default:
-        // `running` never reaches here — the template draws a pulsing dot for it instead.
+        // `running` and `queued` never reach here: the template draws a pulsing dot for both, since
+        // a queued run is work the user is waiting on just as much as one in progress.
         return Icon.PLAY;
     }
   }
@@ -472,7 +593,7 @@ export class SourceControlSidebar {
    * Checks out a branch.
    * @param branch The branch to check out.
    */
-  protected checkout(branch: GitBranch): void {
+  private checkout(branch: GitBranch): void {
     this.log.info('SourceControlSidebar', `Checking out branch '${branch.name}'`);
     void this.repository.checkout(branch.name);
   }
@@ -498,7 +619,7 @@ export class SourceControlSidebar {
    * Restores a stash onto the working tree, keeping it on the stack.
    * @param stash The stash to apply.
    */
-  protected applyStash(stash: GitStash): void {
+  private applyStash(stash: GitStash): void {
     void this.repository.applyStash(stash.index);
   }
 
@@ -506,7 +627,7 @@ export class SourceControlSidebar {
    * Restores a stash onto the working tree and drops it from the stack.
    * @param stash The stash to pop.
    */
-  protected popStash(stash: GitStash): void {
+  private popStash(stash: GitStash): void {
     void this.repository.popStash(stash.index);
   }
 
@@ -520,7 +641,7 @@ export class SourceControlSidebar {
    * Opens the drop confirmation for a stash.
    * @param stash The stash to drop.
    */
-  protected requestDropStash(stash: GitStash): void {
+  private requestDropStash(stash: GitStash): void {
     this.pendingDrop.set(stash);
   }
 
@@ -646,6 +767,12 @@ export class SourceControlSidebar {
   private loadSection(key: string): void {
     if (key === 'pullRequests' && this.forge.pullRequests().state !== 'ready') {
       void this.forge.loadPullRequests();
+    }
+    if (key === 'issues' && this.forge.issues().state !== 'ready') {
+      void this.forge.loadIssues();
+    }
+    if (key === 'actions' && this.forge.workflowRuns().state !== 'ready') {
+      void this.forge.loadWorkflowRuns();
     }
   }
 
@@ -794,21 +921,47 @@ export class SourceControlSidebar {
     treeRow: TreeRow,
   ): readonly MenuItem[] => {
     const node: RepoNode = this.nodeOf(treeRow);
-    if (node.pullRequest === undefined) {
-      return [];
+    if (node.branch !== undefined) {
+      // The checked-out branch cannot be checked out again, and its uncommitted changes are already
+      // one always-visible click away on the row itself — so it offers nothing here.
+      return node.branch.current
+        ? []
+        : [{ id: ACTION_CHECKOUT_BRANCH, label: 'Check Out', icon: Icon.CHECK }];
     }
-    return [
-      {
-        id: ACTION_CHECKOUT_PULL_REQUEST,
-        label: 'Check Out',
-        icon: Icon.CHECK,
-      },
-      {
-        id: ACTION_OPEN_PULL_REQUEST,
-        label: 'Open on GitHub',
-        icon: Icon.OPEN_EXTERNAL,
-      },
-    ];
+    if (node.stash !== undefined) {
+      // Apply and pop differ only in what becomes of the stash afterwards, which is exactly what the
+      // buttons' tooltips used to say; the muted trailing note carries it into the menu.
+      return [
+        { id: ACTION_APPLY_STASH, label: 'Apply', icon: Icon.ARROW_DOWN, status: 'keep the stash' },
+        { id: ACTION_POP_STASH, label: 'Pop', icon: Icon.ARROW_UP, status: 'drop the stash' },
+        { id: ACTION_DROP_STASH, label: 'Drop…', icon: Icon.TRASH },
+      ];
+    }
+    if (node.pullRequest !== undefined) {
+      return [
+        { id: ACTION_CHECKOUT_PULL_REQUEST, label: 'Check Out', icon: Icon.CHECK },
+        { id: ACTION_OPEN_PULL_REQUEST, label: 'Open on GitHub', icon: Icon.OPEN_EXTERNAL },
+      ];
+    }
+    if (node.issue !== undefined) {
+      return [
+        { id: ACTION_ISSUE_IN_AGENT, label: 'Open in Agent', icon: Icon.AGENT },
+        { id: ACTION_OPEN_ISSUE, label: 'Open on GitHub', icon: Icon.OPEN_EXTERNAL },
+      ];
+    }
+    if (node.run !== undefined) {
+      const items: MenuItem[] = [];
+      // Cancel applies only to a run still going, re-run only to one that has stopped. Offering the
+      // inapplicable one would be offering a command the forge would simply refuse.
+      if (node.run.status === 'queued' || node.run.status === 'running') {
+        items.push({ id: ACTION_CANCEL_RUN, label: 'Cancel Run', icon: Icon.STOP });
+      } else {
+        items.push({ id: ACTION_RERUN, label: 'Re-run', icon: Icon.REFRESH });
+      }
+      items.push({ id: ACTION_OPEN_RUN, label: 'Open on GitHub', icon: Icon.OPEN_EXTERNAL });
+      return items;
+    }
+    return [];
   };
 
   /**
@@ -816,16 +969,58 @@ export class SourceControlSidebar {
    * @param choice The chosen item and its row.
    */
   protected onContextAction(choice: TreeMenuSelection): void {
-    const pullRequest: ForgePullRequest | undefined = this.nodeOf(choice.row).pullRequest;
-    if (pullRequest === undefined) {
-      return;
-    }
+    const node: RepoNode = this.nodeOf(choice.row);
     switch (choice.itemId) {
+      case ACTION_CHECKOUT_BRANCH:
+        if (node.branch !== undefined) {
+          this.checkout(node.branch);
+        }
+        break;
+      case ACTION_APPLY_STASH:
+        if (node.stash !== undefined) {
+          this.applyStash(node.stash);
+        }
+        break;
+      case ACTION_POP_STASH:
+        if (node.stash !== undefined) {
+          this.popStash(node.stash);
+        }
+        break;
+      case ACTION_DROP_STASH:
+        if (node.stash !== undefined) {
+          this.requestDropStash(node.stash);
+        }
+        break;
       case ACTION_CHECKOUT_PULL_REQUEST:
-        this.checkoutPullRequest(pullRequest);
+        if (node.pullRequest !== undefined) {
+          this.checkoutPullRequest(node.pullRequest);
+        }
         break;
       case ACTION_OPEN_PULL_REQUEST:
-        this.openPullRequest(pullRequest);
+        if (node.pullRequest !== undefined) {
+          this.openPullRequest(node.pullRequest);
+        }
+        break;
+      case ACTION_OPEN_ISSUE:
+        if (node.issue !== undefined) {
+          this.openIssue(node.issue);
+        }
+        break;
+      case ACTION_ISSUE_IN_AGENT:
+        if (node.issue !== undefined) {
+          this.openIssueInAgent(node.issue);
+        }
+        break;
+      case ACTION_OPEN_RUN:
+        if (node.run !== undefined) {
+          this.openRun(node.run);
+        }
+        break;
+      case ACTION_RERUN:
+        this.pendingRerun.set(node.run ?? null);
+        break;
+      case ACTION_CANCEL_RUN:
+        this.pendingCancel.set(node.run ?? null);
         break;
       default:
         break;
@@ -858,8 +1053,15 @@ export class SourceControlSidebar {
    * tree is re-read.
    */
   protected refreshForge(): void {
-    if (this.expandedSections().has('pullRequests')) {
+    const open: ReadonlySet<string> = this.expandedSections();
+    if (open.has('pullRequests')) {
       void this.forge.loadPullRequests();
+    }
+    if (open.has('issues')) {
+      void this.forge.loadIssues();
+    }
+    if (open.has('actions')) {
+      void this.forge.loadWorkflowRuns();
     }
   }
 
@@ -868,18 +1070,41 @@ export class SourceControlSidebar {
    * @returns Returns the rows.
    */
   private issueRows(): readonly TreeRow[] {
-    if (this.issues.length === 0) {
-      return [this.emptyRow('issues', Icon.INFO, 'No issues')];
+    const section: ForgeSection<ForgeIssue> = this.forge.issues();
+    if (section.state !== 'ready') {
+      return [
+        this.emptyRow('issues', Icon.INFO, section.message ?? PENDING_MESSAGES[section.state]),
+      ];
     }
-    return this.issues.map(
-      (issue: StubIssue): TreeRow => ({
+    if (section.items.length === 0) {
+      return [this.emptyRow('issues', Icon.INFO, 'No open issues')];
+    }
+    return section.items.map(
+      (issue: ForgeIssue): TreeRow => ({
         id: `issue:${issue.number}`,
         depth: 1,
         expandable: false,
         expanded: false,
-        data: { kind: 'issue', icon: Icon.INFO, label: `#${issue.number} ${issue.title}` },
+        data: {
+          kind: 'issue',
+          icon: Icon.INFO,
+          label: `#${issue.number} ${issue.title}`,
+          issue,
+        },
       }),
     );
+  }
+
+  /**
+   * Opens an issue on the forge, in the user's browser.
+   * @param issue The issue to open.
+   */
+  private openIssue(issue: ForgeIssue): void {
+    if (issue.url.length === 0) {
+      return;
+    }
+    this.log.info('forge', `Opening issue #${issue.number} in the browser`);
+    void this.shell.openExternal(issue.url);
   }
 
   /**
@@ -887,18 +1112,150 @@ export class SourceControlSidebar {
    * @returns Returns the rows.
    */
   private actionRows(): readonly TreeRow[] {
-    if (this.actions.length === 0) {
-      return [this.emptyRow('actions', Icon.PLAY, 'No actions')];
+    const section: ForgeSection<ForgeWorkflowRun> = this.forge.workflowRuns();
+    if (section.state !== 'ready') {
+      return [
+        this.emptyRow('actions', Icon.PLAY, section.message ?? PENDING_MESSAGES[section.state]),
+      ];
     }
-    return this.actions.map(
-      (action: StubAction): TreeRow => ({
-        id: `action:${action.name}`,
+    if (section.items.length === 0) {
+      return [this.emptyRow('actions', Icon.PLAY, 'No recent workflow runs')];
+    }
+    return section.items.map(
+      (run: ForgeWorkflowRun): TreeRow => ({
+        id: `action:${run.id}`,
         depth: 1,
         expandable: false,
         expanded: false,
-        data: { kind: 'action', icon: Icon.PLAY, label: action.name, status: action.status },
+        data: {
+          kind: 'action',
+          icon: Icon.PLAY,
+          // The branch is what tells two runs of the same workflow apart, which is the common case.
+          label: run.branch.length > 0 ? `${run.name} — ${run.branch}` : run.name,
+          run,
+          status: run.status,
+        },
       }),
     );
+  }
+
+  /**
+   * Opens a workflow run on the forge, in the user's browser.
+   * @param run The run to open.
+   */
+  private openRun(run: ForgeWorkflowRun): void {
+    if (run.url.length === 0) {
+      return;
+    }
+    this.log.info('forge', `Opening workflow run ${run.id} in the browser`);
+    void this.shell.openExternal(run.url);
+  }
+
+  /**
+   * Holds the issue awaiting the user's confirmation to replace the current conversation, or null
+   * when none is.
+   */
+  protected readonly pendingAgentIssue: WritableSignal<ForgeIssue | null> =
+    signal<ForgeIssue | null>(null);
+
+  /**
+   * Opens an issue in this workspace's agent, starting a fresh conversation about it.
+   *
+   * A conversation that already holds anything is not replaced silently: starting a new one discards
+   * the transcript, and doing that from a menu click the user may have half-aimed would lose work.
+   * The check is on the transcript rather than on a run being in flight — a settled conversation is
+   * every bit as much a thing to lose.
+   *
+   * @param issue The issue to open.
+   */
+  private openIssueInAgent(issue: ForgeIssue): void {
+    if (this.agent.hasMessages()) {
+      this.pendingAgentIssue.set(issue);
+      return;
+    }
+    this.startAgentConversation(issue);
+  }
+
+  /**
+   * Confirms replacing the current conversation with one about the pending issue.
+   */
+  protected confirmOpenInAgent(): void {
+    const issue: ForgeIssue | null = this.pendingAgentIssue();
+    this.pendingAgentIssue.set(null);
+    if (issue !== null) {
+      this.startAgentConversation(issue);
+    }
+  }
+
+  /**
+   * Dismisses the prompt, leaving the current conversation alone.
+   */
+  protected dismissOpenInAgent(): void {
+    this.pendingAgentIssue.set(null);
+  }
+
+  /**
+   * Starts a fresh conversation about an issue and brings the agent panel forward.
+   * @param issue The issue to open.
+   */
+  private startAgentConversation(issue: ForgeIssue): void {
+    this.log.info('forge', `Opening issue #${issue.number} in the agent`);
+    this.conversation.newChat();
+    this.agent.send(agentPromptFor(issue, this.forge.repositoryRef()));
+    // The agent panel is in both built-in layout presets; a user who has closed it can bring it back
+    // from View → Panels, and the conversation is waiting when they do.
+    this.dockReveal.reveal('agent');
+  }
+
+  /**
+   * Holds the run awaiting the user's re-run confirmation, or null when none is. Re-running spends
+   * CI minutes and can redeploy, so it is never done from a bare menu click.
+   */
+  protected readonly pendingRerun: WritableSignal<ForgeWorkflowRun | null> =
+    signal<ForgeWorkflowRun | null>(null);
+
+  /**
+   * Holds the run awaiting the user's cancel confirmation, or null when none is.
+   */
+  protected readonly pendingCancel: WritableSignal<ForgeWorkflowRun | null> =
+    signal<ForgeWorkflowRun | null>(null);
+
+  /**
+   * Confirms the re-run.
+   */
+  protected confirmRerun(): void {
+    const run: ForgeWorkflowRun | null = this.pendingRerun();
+    this.pendingRerun.set(null);
+    if (run !== null) {
+      this.log.info('forge', `Re-running workflow run ${run.id}`);
+      void this.forge.rerun(run);
+    }
+  }
+
+  /**
+   * Dismisses the re-run confirmation.
+   */
+  protected cancelRerun(): void {
+    this.pendingRerun.set(null);
+  }
+
+  /**
+   * Confirms the cancellation.
+   */
+  protected confirmCancelRun(): void {
+    const run: ForgeWorkflowRun | null = this.pendingCancel();
+    this.pendingCancel.set(null);
+    if (run !== null) {
+      this.log.info('forge', `Cancelling workflow run ${run.id}`);
+      void this.forge.cancel(run);
+    }
+  }
+
+  /**
+   * Dismisses the cancellation confirmation.
+   */
+  protected dismissCancelRun(): void {
+    this.pendingCancel.set(null);
   }
 
   /**
@@ -917,4 +1274,26 @@ export class SourceControlSidebar {
       data: { kind: 'empty', icon, label, muted: true },
     };
   }
+}
+
+/**
+ * Builds the message a conversation about an issue opens with.
+ *
+ * It names the issue, quotes its title, and gives the URL — the agent has the tools to read the body
+ * itself, and fetching it here would be a request per issue for text nobody may ask about. The
+ * closing instruction is deliberate: a conversation started by one click on a menu should arrive at
+ * an understanding of the issue, not at a working tree full of edits nobody asked for.
+ *
+ * @param issue The issue the conversation is about.
+ * @param repository The repository it belongs to, or null when the forge is not known.
+ * @returns Returns the opening message.
+ */
+function agentPromptFor(issue: ForgeIssue, repository: ForgeRepositoryRef | null): string {
+  const where: string = repository === null ? '' : ` in ${repository.owner}/${repository.name}`;
+  const link: string = issue.url.length === 0 ? '' : `\n${issue.url}`;
+  return (
+    `Read GitHub issue #${issue.number}${where} — "${issue.title}".${link}\n\n` +
+    'Summarise what it asks for, then tell me how you would approach it in this codebase. ' +
+    "Don't make any changes yet."
+  );
 }

@@ -4,7 +4,13 @@ import { Forge } from '@shared/angular/services/forge/forge';
 import { Repository } from '@shared/angular/services/repository/repository';
 import { GitRemote } from '@shared/angular/services/repository/repository-data';
 import { MutationResult } from '@shared/angular/services/source-control/source-control-provider';
-import { ForgePullRequest, ForgeRepositoryRef, ForgeResult } from '@shared/api/forge-types';
+import {
+  ForgeIssue,
+  ForgePullRequest,
+  ForgeRepositoryRef,
+  ForgeResult,
+  ForgeWorkflowRun,
+} from '@shared/api/forge-types';
 import { ForgeRepository, ForgeSection } from './forge-repository';
 
 /**
@@ -32,6 +38,24 @@ function pullRequest(overrides: Partial<ForgePullRequest> = {}): ForgePullReques
     headRef: 'feature/thing',
     headRefspec: 'refs/pull/7/head',
     checks: 'succeeded',
+    ...overrides,
+  };
+}
+
+/**
+ * Builds a workflow run.
+ * @param overrides The fields to vary.
+ * @returns Returns the run.
+ */
+function run(overrides: Partial<ForgeWorkflowRun> = {}): ForgeWorkflowRun {
+  return {
+    id: 99,
+    name: 'CI',
+    status: 'succeeded',
+    url: 'https://github.com/onix-labs/onixlabs-studio/actions/runs/99',
+    branch: 'main',
+    event: 'push',
+    startedAt: '2026-08-24T10:00:00Z',
     ...overrides,
   };
 }
@@ -67,6 +91,51 @@ class FakeForge {
 
   public pullRequests(): Promise<ForgeResult<readonly ForgePullRequest[]>> {
     return Promise.resolve(this.pullRequestResult);
+  }
+
+  /**
+   * Holds what {@link issues} resolves to.
+   */
+  public issueResult: ForgeResult<readonly ForgeIssue[]> = {
+    ok: true,
+    value: [
+      {
+        number: 12,
+        title: 'Something is broken',
+        author: 'matthew',
+        url: 'https://github.com/onix-labs/onixlabs-studio/issues/12',
+        labels: ['bug'],
+        assignees: [],
+      },
+    ],
+  };
+
+  /**
+   * Holds what {@link workflowRuns} resolves to.
+   */
+  public runResult: ForgeResult<readonly ForgeWorkflowRun[]> = { ok: true, value: [run()] };
+
+  /**
+   * Holds the run commands issued, in order.
+   */
+  public readonly commands: string[] = [];
+
+  public issues(): Promise<ForgeResult<readonly ForgeIssue[]>> {
+    return Promise.resolve(this.issueResult);
+  }
+
+  public workflowRuns(): Promise<ForgeResult<readonly ForgeWorkflowRun[]>> {
+    return Promise.resolve(this.runResult);
+  }
+
+  public rerunWorkflowRun(_: ForgeRepositoryRef, runId: number): Promise<ForgeResult<void>> {
+    this.commands.push(`rerun:${runId}`);
+    return Promise.resolve({ ok: true, value: undefined });
+  }
+
+  public cancelWorkflowRun(_: ForgeRepositoryRef, runId: number): Promise<ForgeResult<void>> {
+    this.commands.push(`cancel:${runId}`);
+    return Promise.resolve({ ok: true, value: undefined });
   }
 }
 
@@ -270,5 +339,73 @@ describe('ForgeRepository', () => {
     expect(service.repositoryRef()).toBeNull();
     expect(service.hasForge()).toBe(false);
     expect(service.pullRequests().state).toBe('no-repository');
+  });
+
+  describe('issues and workflow runs', () => {
+    beforeEach(() => {
+      repository.remotes.set([
+        { name: 'origin', url: 'https://github.com/onix-labs/onixlabs-studio.git', branches: [] },
+      ]);
+    });
+
+    it('readsTheIssues', async () => {
+      await service.loadIssues();
+
+      expect(service.issues().state).toBe('ready');
+      expect(service.issues().items.map((issue: ForgeIssue): number => issue.number)).toEqual([12]);
+    });
+
+    it('readsTheWorkflowRuns', async () => {
+      await service.loadWorkflowRuns();
+
+      expect(service.workflowRuns().state).toBe('ready');
+      expect(
+        service.workflowRuns().items.map((entry: ForgeWorkflowRun): number => entry.id),
+      ).toEqual([99]);
+    });
+
+    it('everySectionReportsTheSameUnhappyState', async () => {
+      // A section that said "no forge" differently from its neighbours would be a puzzle rather than
+      // a panel, which is why all three share one loader.
+      forge.forgeUrls = [];
+
+      await Promise.all([
+        service.loadPullRequests(),
+        service.loadIssues(),
+        service.loadWorkflowRuns(),
+      ]);
+
+      expect(service.pullRequests().state).toBe('no-forge');
+      expect(service.issues().state).toBe('no-forge');
+      expect(service.workflowRuns().state).toBe('no-forge');
+    });
+
+    it('rerun_issuesTheCommandAndReReadsTheRuns', async () => {
+      await service.loadWorkflowRuns();
+      forge.runResult = { ok: true, value: [run({ id: 100, status: 'queued' })] };
+
+      await service.rerun(run());
+
+      expect(forge.commands).toEqual(['rerun:99']);
+      // The forge starts a NEW run, so the list is what shows the result.
+      expect(
+        service.workflowRuns().items.map((entry: ForgeWorkflowRun): number => entry.id),
+      ).toEqual([100]);
+    });
+
+    it('cancel_issuesTheCommand', async () => {
+      await service.loadWorkflowRuns();
+
+      await service.cancel(run({ id: 42 }));
+
+      expect(forge.commands).toEqual(['cancel:42']);
+    });
+
+    it('runCommands_failWithoutTouchingTheForge_whenNoRepositoryWasDetected', async () => {
+      const result: ForgeResult<void> = await service.rerun(run());
+
+      expect(result.ok).toBe(false);
+      expect(forge.commands).toEqual([]);
+    });
   });
 });
