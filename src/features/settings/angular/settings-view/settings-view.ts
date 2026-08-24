@@ -15,6 +15,7 @@ import { SettingsNavigation } from '@shared/angular/services/settings-navigation
 import { Log } from '@shared/angular/services/log/log';
 import { AiSettingsSection } from './sections/ai-settings/ai-settings';
 import { KeyboardSettingsSection } from './sections/keyboard-settings/keyboard-settings';
+import { SourceControlSettingsSection } from './sections/source-control-settings/source-control-settings';
 import { TerminalSettingsSection } from './sections/terminal-settings/terminal-settings';
 import { EditorProfiles } from './editor-profiles/editor-profiles';
 import { SettingsSection } from './settings-section/settings-section';
@@ -46,6 +47,7 @@ type SettingsSectionId =
   | 'ai-provider-xai'
   | 'ai-provider-ollama'
   | 'ai-provider-custom'
+  | 'source-control'
   | 'language-servers'
   | 'security'
   | 'workspaces';
@@ -120,6 +122,7 @@ interface SettingsTreeData {
     EditorProfiles,
     AiSettingsSection,
     KeyboardSettingsSection,
+    SourceControlSettingsSection,
     TerminalSettingsSection,
     SettingsSection,
     AppIcon,
@@ -229,6 +232,12 @@ export class SettingsView {
       label: 'Workspaces',
       icon: Icon.DIRECTORY,
       children: [{ id: 'workspaces-general', label: 'General', sectionId: 'workspaces' }],
+    },
+    {
+      id: 'source-control',
+      label: 'Source Control',
+      icon: Icon.SOURCE_CONTROL,
+      children: [{ id: 'source-control-general', label: 'General', sectionId: 'source-control' }],
     },
     {
       id: 'text-editor',

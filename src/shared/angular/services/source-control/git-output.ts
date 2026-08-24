@@ -313,9 +313,72 @@ export function parseRefs(output: string): ParsedRefs {
   }
 
   const remotes: GitRemote[] = [...remoteBranches.entries()].map(
+    // The URL is not in `for-each-ref` output at all; {@link mergeRemoteUrls} fills it from
+    // `git remote -v`, which is also what surfaces a remote that has no fetched branches.
     ([name, list]: [string, string[]]): GitRemote => ({ name, url: '', branches: list }),
   );
   return { branches, remotes, tags };
+}
+
+/**
+ * Parses `git remote -v` output into a remote-name-to-URL map.
+ *
+ * Each remote appears twice, once for fetch and once for push, and the two can differ (a fork's push
+ * URL against an upstream's fetch URL). The fetch URL wins: it names the repository the branches and
+ * pull requests being read actually come from, which is what the forge detection needs.
+ *
+ * @param output The raw command output.
+ * @returns Returns the URL by remote name.
+ */
+export function parseRemoteUrls(output: string): ReadonlyMap<string, string> {
+  const urls: Map<string, string> = new Map<string, string>();
+  for (const line of output.split('\n')) {
+    const trimmed: string = line.trim();
+    if (trimmed.length === 0) {
+      continue;
+    }
+    // `origin\thttps://host/owner/repo.git (fetch)` — name and URL are tab-separated, the direction
+    // follows in parentheses.
+    const match: RegExpMatchArray | null = /^(\S+)\s+(\S+)\s+\((fetch|push)\)$/.exec(trimmed);
+    if (match === null) {
+      continue;
+    }
+    const [, name, url, direction]: string[] = match;
+    if (direction === 'fetch' || !urls.has(name)) {
+      urls.set(name, url);
+    }
+  }
+  return urls;
+}
+
+/**
+ * Fills in each remote's URL, and adds any configured remote that has no remote-tracking branches yet.
+ *
+ * A freshly-cloned or newly-added remote has no `refs/remotes/*` entries until something is fetched, so
+ * refs alone would omit it entirely — which would leave a repository with a perfectly good remote
+ * looking like it had none.
+ *
+ * @param remotes The remotes parsed from refs.
+ * @param urls The URL by remote name.
+ * @returns Returns the merged remotes, in configuration order with ref-only remotes appended.
+ */
+export function mergeRemoteUrls(
+  remotes: readonly GitRemote[],
+  urls: ReadonlyMap<string, string>,
+): readonly GitRemote[] {
+  const byName: Map<string, GitRemote> = new Map<string, GitRemote>(
+    remotes.map((remote: GitRemote): [string, GitRemote] => [remote.name, remote]),
+  );
+  const merged: GitRemote[] = [];
+  for (const [name, url] of urls) {
+    const existing: GitRemote | undefined = byName.get(name);
+    merged.push({ name, url, branches: existing?.branches ?? [] });
+    byName.delete(name);
+  }
+  // Anything left had tracking branches but no configured URL — a stale `refs/remotes` entry for a
+  // removed remote. Kept rather than dropped: its branches are still checkoutable refs.
+  merged.push(...byName.values());
+  return merged;
 }
 
 /**

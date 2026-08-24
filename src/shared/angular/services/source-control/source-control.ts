@@ -28,6 +28,8 @@ function createClient(bridge: Bridge): SourceControlClient {
     log: (root: string, limit: number): Promise<GitRunResult> =>
       bridge.invoke(SourceControlChannel.Log, root, limit),
     refs: (root: string): Promise<GitRunResult> => bridge.invoke(SourceControlChannel.Refs, root),
+    remotes: (root: string): Promise<GitRunResult> =>
+      bridge.invoke(SourceControlChannel.Remotes, root),
     stashes: (root: string): Promise<GitRunResult> =>
       bridge.invoke(SourceControlChannel.Stashes, root),
     commitFiles: (root: string, hash: string): Promise<GitRunResult> =>
