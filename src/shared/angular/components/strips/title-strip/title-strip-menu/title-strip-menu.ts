@@ -5,6 +5,7 @@ import { Menu, MenuItem } from '@shared/angular/components/menu/menu';
 import { AppMenu } from '@shared/angular/services/app-menu/app-menu';
 import { MenuContribution, MenuEntry } from '@shared/angular/services/app-menu/app-menu-model';
 import { Icon } from '@shared/angular/icons/icon';
+import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigger';
 
 /**
  * The application menu, in the window.
@@ -21,7 +22,7 @@ import { Icon } from '@shared/angular/icons/icon';
  */
 @Component({
   selector: 'app-title-strip-menu',
-  imports: [AppIcon, Menu, CdkMenuTrigger],
+  imports: [AppIcon, Menu, CdkMenuTrigger, TooltipTrigger],
   templateUrl: './title-strip-menu.html',
   styleUrl: './title-strip-menu.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

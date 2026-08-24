@@ -7,6 +7,7 @@ import { ActiveWorkspace } from '@shared/angular/services/workspace/active-works
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { MENU_POSITIONS } from '@shared/angular/components/menu/menu-position';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigger';
 
 /**
  * The status strip's language-server control: a plain article icon that opens a drop-up menu listing
@@ -17,7 +18,7 @@ import { Button } from '@shared/angular/components/forms/button/button';
  */
 @Component({
   selector: 'app-status-strip-lsp-menu',
-  imports: [Button, AppIcon, CdkMenuTrigger, CdkMenu],
+  imports: [Button, AppIcon, CdkMenuTrigger, CdkMenu, TooltipTrigger],
   templateUrl: './status-strip-lsp-menu.html',
   styleUrl: './status-strip-lsp-menu.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

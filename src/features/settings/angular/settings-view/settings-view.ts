@@ -30,6 +30,7 @@ import { TreeRow, TreeView } from '@shared/angular/components/tree-view/tree-vie
 type SettingsSectionId =
   | 'appearance'
   | 'application'
+  | 'accessibility'
   | 'notifications'
   | 'text-editor'
   | 'markdown'
@@ -195,6 +196,7 @@ export class SettingsView {
         { id: 'application-general', label: 'General', sectionId: 'application' },
         { id: 'application-appearance', label: 'Appearance', sectionId: 'appearance' },
         { id: 'application-keyboard', label: 'Keyboard', sectionId: 'keyboard' },
+        { id: 'application-accessibility', label: 'Accessibility', sectionId: 'accessibility' },
         { id: 'application-notifications', label: 'Notifications', sectionId: 'notifications' },
         { id: 'application-security', label: 'Security', sectionId: 'security' },
       ],

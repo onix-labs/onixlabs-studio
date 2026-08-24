@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { Studio } from '@shared/angular/services/studio/studio';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigger';
 
 /**
  * Represents the custom window controls (minimize, maximize, close) shown on platforms without
@@ -9,7 +10,7 @@ import { AppIcon } from '@shared/angular/components/icon/app-icon';
  */
 @Component({
   selector: 'app-window-controls',
-  imports: [AppIcon],
+  imports: [AppIcon, TooltipTrigger],
   templateUrl: './window-controls.html',
   styleUrl: './window-controls.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

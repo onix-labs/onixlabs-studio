@@ -4,6 +4,7 @@
       type="button"
       class="window-controls__button"
       aria-label="Minimize"
+      [appTooltip]="'Minimize'"
       (click)="minimize()"
     >
       <app-icon [icon]="Icon.WINDOW_MINIMIZE" />
@@ -12,6 +13,7 @@
       type="button"
       class="window-controls__button"
       aria-label="Maximize"
+      [appTooltip]="'Maximize'"
       (click)="toggleMaximize()"
     >
       <app-icon [icon]="Icon.WINDOW_MAXIMIZE" />
@@ -20,6 +22,7 @@
       type="button"
       class="window-controls__button window-controls__button--close"
       aria-label="Close"
+      [appTooltip]="'Close'"
       (click)="close()"
     >
       <app-icon [icon]="Icon.WINDOW_CLOSE" />

@@ -17,6 +17,7 @@ import {
 } from '@angular/core';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Icon } from '@shared/angular/icons/icon';
+import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigger';
 
 /**
  * How a column's header and cells are horizontally aligned.
@@ -145,7 +146,7 @@ export class TableGroupDef {
  */
 @Component({
   selector: 'app-table',
-  imports: [NgTemplateOutlet, AppIcon],
+  imports: [NgTemplateOutlet, AppIcon, TooltipTrigger],
   templateUrl: './table.html',
   styleUrl: './table.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

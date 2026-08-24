@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, input, InputSignal } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigger';
 
 /**
  * Represents a single tool shown in a dock panel's tool strip.
@@ -44,7 +45,7 @@ const DEFAULT_TOOLS: readonly DockTool[] = [
  */
 @Component({
   selector: 'app-dock-tool-strip',
-  imports: [AppIcon],
+  imports: [AppIcon, TooltipTrigger],
   templateUrl: './dock-tool-strip.html',
   styleUrl: './dock-tool-strip.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

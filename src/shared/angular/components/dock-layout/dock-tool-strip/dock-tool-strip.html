@@ -5,6 +5,7 @@
     class="dock-tool-strip__tool"
     [title]="tool.label"
     [attr.aria-label]="tool.label"
+    [appTooltip]="tool.label"
   >
     <app-icon [icon]="tool.icon" [rotation]="tool.iconRotation ?? 0" />
   </button>

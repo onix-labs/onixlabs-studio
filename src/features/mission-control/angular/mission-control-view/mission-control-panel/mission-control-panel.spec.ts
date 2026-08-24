@@ -1,4 +1,4 @@
-import { signal, WritableSignal } from '@angular/core';
+import { Signal, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { AgentHost, AgentHosts } from '@shared/angular/services/agent-hosts/agent-hosts';
@@ -7,6 +7,11 @@ import {
   AgentRequests,
 } from '@shared/angular/services/agent-requests/agent-requests';
 import { Settings } from '@shared/angular/services/settings/settings';
+import {
+  SETTINGS_DEFAULTS,
+  SettingsKey,
+  SettingsValues,
+} from '@shared/angular/services/settings/settings-registry';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { MissionControlTiles } from '../mission-control-tiles';
 import { MissionControlPanel } from './mission-control-panel';
@@ -82,6 +87,11 @@ describe('MissionControlPanel', () => {
       },
     };
     const settingsStub: Partial<Settings> = {
+      // Every control the ribbon draws may ask the settings for its own preferences — an icon-only
+      // button asks whether to name itself — so the double answers for any key, with what the
+      // registry says that key defaults to.
+      value: <K extends SettingsKey>(key: K): Signal<SettingsValues[K]> =>
+        signal(SETTINGS_DEFAULTS[key]),
       missionControlShowPermissionsAtTop: signal<boolean>(false),
     };
 

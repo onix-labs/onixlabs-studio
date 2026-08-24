@@ -2,8 +2,8 @@
   type="button"
   class="ribbon-button-small"
   [disabled]="disabled()"
-  [attr.title]="iconOnly() ? label() : null"
   [attr.aria-label]="iconOnly() ? label() : null"
+  [appTooltip]="iconOnly() ? label() : undefined"
   [attr.aria-pressed]="toggle() ? pressed() : null"
   (click)="onClick()"
 >

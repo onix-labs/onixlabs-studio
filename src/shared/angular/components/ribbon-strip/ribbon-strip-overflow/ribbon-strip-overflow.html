@@ -14,6 +14,7 @@
       [attr.aria-expanded]="flyoutOpen()"
       aria-haspopup="menu"
       aria-label="More ribbon groups"
+      [appTooltip]="'More ribbon groups'"
       (click)="toggle($event)"
     >
       <app-icon [icon]="Icon.CARET_DOWN" />

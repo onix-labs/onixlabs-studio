@@ -7,6 +7,7 @@ import {
   OutputEmitterRef,
 } from '@angular/core';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigger';
 import { ButtonTone } from '@shared/angular/components/forms/button/button';
 import { Icon } from '@shared/angular/icons/icon';
 
@@ -15,7 +16,7 @@ import { Icon } from '@shared/angular/icons/icon';
  */
 @Component({
   selector: 'app-ribbon-strip-button',
-  imports: [AppIcon],
+  imports: [AppIcon, TooltipTrigger],
   templateUrl: './ribbon-strip-button.html',
   styleUrl: './ribbon-strip-button.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

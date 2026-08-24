@@ -1,0 +1,15 @@
+.tooltip {
+  max-inline-size: 18rem;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: var(--tooltip-foreground-color);
+  text-align: center;
+  background: var(--tooltip-background-color);
+  border: 0.0625rem solid var(--tooltip-border-color);
+  border-radius: calc(0.375rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  box-shadow: 0 0.125rem 0.5rem rgba(0, 0, 0, 0.35);
+  // A name, not a paragraph: long ones wrap rather than run off, and short ones stay on one line.
+  overflow-wrap: anywhere;
+}

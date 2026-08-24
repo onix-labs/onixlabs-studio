@@ -176,6 +176,7 @@
               type="button"
               class="containers__terminal-tab-close"
               [attr.aria-label]="'Close ' + session.name"
+              [appTooltip]="'Close ' + session.name"
               (click)="terminals.close(session.id)"
             >
               <app-icon [icon]="Icon.CLOSE" />

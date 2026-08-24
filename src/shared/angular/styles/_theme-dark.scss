@@ -40,6 +40,12 @@
   --menu-border-color: var(--gray-700);
   --menu-item-background-color--hover: var(--gray-700);
 
+  // Tooltip bubble: a control's own name, drawn beneath it. Deliberately the inverse of the surface
+  // it sits over, so it reads as an annotation rather than as another panel.
+  --tooltip-background-color: var(--gray-100);
+  --tooltip-foreground-color: var(--gray-900);
+  --tooltip-border-color: var(--gray-300);
+
   --view-placeholder-color: var(--gray-600);
 
   --ribbon-strip-background-color: var(--gray-800);

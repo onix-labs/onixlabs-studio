@@ -23,13 +23,14 @@ import { Tab } from '@shared/angular/services/tabs/tab';
 import { isPinnedTabType } from '@shared/angular/services/tabs/tabs';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigger';
 
 /**
  * Represents a single tab in the title strip.
  */
 @Component({
   selector: 'app-title-strip-tab',
-  imports: [CdkDrag, CdkDragPreview, AppIcon],
+  imports: [CdkDrag, CdkDragPreview, AppIcon, TooltipTrigger],
   templateUrl: './title-strip-tab.html',
   styleUrl: './title-strip-tab.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
