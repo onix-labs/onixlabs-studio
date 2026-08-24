@@ -15,53 +15,42 @@
 // The uncommitted-changes badge on the checked-out branch's row. Unlike the other row actions it is
 // always rendered rather than revealed on hover — it carries a count, and the working tree has to
 // stay reachable — so it opts out of the global `.tree-row-action` hover reveal.
+// The uncommitted-change count on the checked-out branch: a bare pill, since the number is the whole
+// of what there is to say. It is a button because it selects the working tree, but it is styled as the
+// badge it reads as rather than as a control with a badge inside it.
 .rail__changes {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.2rem;
   flex: 0 0 auto;
+  min-inline-size: 1.25rem;
   margin-inline-start: 0.35rem;
-  padding: 0.1rem 0.3rem;
+  padding: 0.05rem 0.35rem;
   border: 0;
-  border-radius: calc(0.3rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-  background: transparent;
-  color: var(--accent-color);
+  border-radius: 999px;
+  background: var(--accent-color);
+  color: var(--form-on-accent-color);
+  font-family: inherit;
+  font-size: 0.65rem;
+  font-weight: 600;
+  line-height: 1.5;
+  text-align: center;
   cursor: default;
+  // Not hover-revealed like the row's other controls: a count nobody can see until they hover is a
+  // count that may as well not be there.
   opacity: 1;
 
   &:hover,
   &:focus-visible {
-    background: var(--accent-surface-background-color);
-    color: var(--accent-surface-foreground-color);
+    background: color-mix(in srgb, var(--accent-color) 80%, var(--form-on-accent-color));
     outline: none;
   }
 
-  // The current selection: the Commit panel is showing these changes.
+  // The current selection: the Commit panel is showing these changes. A ring rather than a fill,
+  // since the pill is already filled.
   &--active {
-    background: color-mix(in srgb, var(--accent-color) 22%, transparent);
-    color: var(--accent-surface-foreground-color);
-  }
-
-  // Nothing uncommitted: still reachable, but it recedes.
-  &--empty {
-    color: var(--form-muted-foreground-color);
-    opacity: 0.5;
+    outline: 2px solid var(--accent-surface-border-color);
+    outline-offset: 1px;
   }
 }
 
-.rail__count {
-  min-inline-size: 1.25rem;
-  padding: 0.05rem 0.35rem;
-  border-radius: 999px;
-  background: var(--accent-color);
-  color: var(--form-on-accent-color);
-  font-size: 0.65rem;
-  font-weight: 600;
-  text-align: center;
-}
-
-// An empty-section placeholder row's label.
 .tree-name.rail__muted {
   color: var(--form-muted-foreground-color);
   font-style: italic;

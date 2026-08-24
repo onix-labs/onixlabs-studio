@@ -515,12 +515,14 @@ describe('SourceControlSidebar', () => {
     expect(text).not.toContain('v1.0.0');
   });
 
-  it('render_whenWorkingTreeDirty_showsTheChangeCountBadge', () => {
+  it('render_whenWorkingTreeDirty_showsTheChangeCountAsABarePill', () => {
     const badge: HTMLElement | null = (fixture.nativeElement as HTMLElement).querySelector(
-      '.rail__count',
+      '.rail__changes',
     );
 
+    // The count is the whole of the moniker: no container box, no icon beside it.
     expect(badge?.textContent?.trim()).toBe('2');
+    expect(badge?.querySelector('app-icon')).toBeNull();
   });
 
   it('onRowClick_whenSectionRowClicked_togglesTheSection', () => {
@@ -576,19 +578,13 @@ describe('SourceControlSidebar', () => {
     expect(develop?.querySelector('.tree-row-action')).toBeNull();
   });
 
-  it('changesBadge_staysReachableWhenTheTreeIsClean_butReadsAsEmpty', async () => {
+  it('changesBadge_isAbsentWhenTheTreeIsClean', async () => {
+    // A pill reading zero would be a badge for nothing; with the count gone there is nothing to draw.
     provider.working = { staged: [], unstaged: [] };
     await repository.refresh();
     fixture.detectChanges();
 
-    const badge: HTMLButtonElement | null = (fixture.nativeElement as HTMLElement).querySelector(
-      '.rail__changes',
-    );
-
-    expect(badge).not.toBeNull();
-    expect(badge?.classList.contains('rail__changes--empty')).toBe(true);
-    // No count is drawn at zero, but the working tree is still one click away.
-    expect(badge?.querySelector('.rail__count')).toBeNull();
+    expect((fixture.nativeElement as HTMLElement).querySelector('.rail__changes')).toBeNull();
   });
 
   it('checkout_isChosenFromTheBranchContextMenu', () => {

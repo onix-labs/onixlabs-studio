@@ -33,28 +33,20 @@
       @if (branch.behind > 0) {
         <span class="rail__delta"><app-icon [icon]="Icon.ARROW_DOWN" />{{ branch.behind }}</span>
       }
-      @if (branch.current) {
+      @if (branch.current && repository.changeCount() > 0) {
         <!-- Uncommitted changes belong to the branch they sit on, so the checked-out branch carries
-             them. Always shown (muted at zero) so the Commit panel's composer stays reachable from
-             the rail even when the tree is clean. -->
+             them — as a bare count, which is the whole of what there is to say. Clicking it shows
+             them in the Commit panel. -->
         <button
           type="button"
           class="tree-row-action rail__changes"
           [class.rail__changes--active]="workingSelected()"
-          [class.rail__changes--empty]="repository.changeCount() === 0"
           [attr.aria-pressed]="workingSelected()"
-          [title]="
-            repository.changeCount() === 0
-              ? 'No uncommitted changes'
-              : repository.changeCount() + ' uncommitted change(s)'
-          "
+          [title]="repository.changeCount() + ' uncommitted change(s)'"
           aria-label="Show uncommitted changes"
           (click)="selectWorking(); $event.stopPropagation()"
         >
-          <app-icon [icon]="Icon.PENCIL" />
-          @if (repository.changeCount() > 0) {
-            <span class="rail__count">{{ repository.changeCount() }}</span>
-          }
+          {{ repository.changeCount() }}
         </button>
       }
     }
