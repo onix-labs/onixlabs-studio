@@ -44,7 +44,9 @@
   // inverting it, so a name reads as part of the interface it names and not as something laid over it.
   --tooltip-background-color: var(--gray-100);
   --tooltip-foreground-color: var(--gray-900);
-  --tooltip-border-color: var(--gray-400);
+  // Darker than the menu borders around it: those separate a panel from a surface it is already
+  // distinct from, while a pale bubble on a pale surface has only its edge to hold it apart.
+  --tooltip-border-color: var(--gray-550);
 
   --view-placeholder-color: var(--gray-300);
 
