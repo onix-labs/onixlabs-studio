@@ -572,8 +572,8 @@ describe('SourceControlSidebar', () => {
     );
 
     expect(develop?.querySelector('.rail__changes')).toBeNull();
-    // It carries the checkout action instead.
-    expect(develop?.querySelector('button[aria-label="Check out branch"]')).not.toBeNull();
+    // Its checkout lives on the context menu now; the row itself carries no buttons at all.
+    expect(develop?.querySelector('.tree-row-action')).toBeNull();
   });
 
   it('changesBadge_staysReachableWhenTheTreeIsClean_butReadsAsEmpty', async () => {
@@ -591,16 +591,54 @@ describe('SourceControlSidebar', () => {
     expect(badge?.querySelector('.rail__count')).toBeNull();
   });
 
-  it('checkout_whenBranchActionClicked_checksOutTheBranch', () => {
-    const action: HTMLButtonElement | null = (fixture.nativeElement as HTMLElement).querySelector(
-      'button[aria-label="Check out branch"]',
-    );
+  it('checkout_isChosenFromTheBranchContextMenu', () => {
+    const row: TreeRow = {
+      id: 'branch:develop',
+      depth: 1,
+      expandable: false,
+      expanded: false,
+      data: {
+        kind: 'branch',
+        icon: Icon.SOURCE_CONTROL,
+        label: 'develop',
+        branch: { name: 'develop', current: false, ahead: 0, behind: 0, tip: 'c1' },
+      },
+    };
+    const menu: {
+      contextMenuFor(r: TreeRow): readonly MenuItem[];
+      onContextAction(c: TreeMenuSelection): void;
+    } = component as unknown as {
+      contextMenuFor(r: TreeRow): readonly MenuItem[];
+      onContextAction(c: TreeMenuSelection): void;
+    };
 
-    expect(action).not.toBeNull();
+    expect(menu.contextMenuFor(row).map((item: MenuItem): string => item.label)).toEqual([
+      'Check Out',
+    ]);
 
-    action?.click();
+    menu.onContextAction({ itemId: 'branch.checkout', row });
 
     expect(provider.calls).toContain('checkout:develop');
+  });
+
+  it('theCheckedOutBranchOffersNothing_becauseItsChangesBadgeIsAlwaysThere', () => {
+    // It cannot be checked out again, and its uncommitted changes are one always-visible click away.
+    const menu: { contextMenuFor(r: TreeRow): readonly MenuItem[] } = component;
+
+    expect(
+      menu.contextMenuFor({
+        id: 'branch:main',
+        depth: 1,
+        expandable: false,
+        expanded: false,
+        data: {
+          kind: 'branch',
+          icon: Icon.SOURCE_CONTROL,
+          label: 'main',
+          branch: { name: 'main', current: true, ahead: 0, behind: 0, tip: 'c2' },
+        },
+      }),
+    ).toEqual([]);
   });
 
   /**
@@ -1292,6 +1330,59 @@ describe('SourceControlSidebar', () => {
       expect(
         (fixture.nativeElement as HTMLElement).querySelector('.rail__section-name'),
       ).toBeNull();
+    });
+  });
+
+  describe('stash commands on the context menu', () => {
+    const stashRow: TreeRow = {
+      id: 'stash:0',
+      depth: 1,
+      expandable: false,
+      expanded: false,
+      data: {
+        kind: 'stash',
+        icon: Icon.STASH,
+        label: 'WIP on main',
+        stash: { index: 0, message: 'WIP on main', branch: 'main', files: [] },
+      },
+    };
+
+    /**
+     * Reveals the menu surface.
+     * @returns Returns the internals.
+     */
+    function menu(): {
+      contextMenuFor(row: TreeRow): readonly MenuItem[];
+      onContextAction(choice: TreeMenuSelection): void;
+      pendingDrop(): GitStash | null;
+    } {
+      return component as unknown as ReturnType<typeof menu>;
+    }
+
+    it('offersApplyPopAndDrop_andSaysWhatBecomesOfTheStash', () => {
+      // Apply and pop differ only in what happens to the stash afterwards, which is what the
+      // buttons' tooltips used to explain and the muted trailing note now carries.
+      const items: readonly MenuItem[] = menu().contextMenuFor(stashRow);
+
+      expect(items.map((item: MenuItem): string => item.label)).toEqual(['Apply', 'Pop', 'Drop…']);
+      expect(items[0].status).toBe('keep the stash');
+      expect(items[1].status).toBe('drop the stash');
+    });
+
+    it('applyAndPop_actImmediately', () => {
+      menu().onContextAction({ itemId: 'stash.apply', row: stashRow });
+      menu().onContextAction({ itemId: 'stash.pop', row: stashRow });
+
+      expect(provider.calls).toContain('applyStash:0');
+      expect(provider.calls).toContain('popStash:0');
+    });
+
+    it('drop_stillAsksFirst', () => {
+      // Dropping discards the stashed work with no way back, whichever surface asks for it.
+      menu().onContextAction({ itemId: 'stash.drop', row: stashRow });
+
+      expect(menu().pendingDrop()?.index).toBe(0);
+      expect(provider.calls).not.toContain('dropStash:0');
     });
   });
 });

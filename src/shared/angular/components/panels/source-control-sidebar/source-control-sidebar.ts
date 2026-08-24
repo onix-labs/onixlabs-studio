@@ -151,6 +151,26 @@ const ACTION_OPEN_PULL_REQUEST: string = 'pr.open';
 const ACTION_OPEN_ISSUE: string = 'issue.open';
 
 /**
+ * Identifies the Check Out command on a branch's context menu.
+ */
+const ACTION_CHECKOUT_BRANCH: string = 'branch.checkout';
+
+/**
+ * Identifies the Apply command on a stash's context menu.
+ */
+const ACTION_APPLY_STASH: string = 'stash.apply';
+
+/**
+ * Identifies the Pop command on a stash's context menu.
+ */
+const ACTION_POP_STASH: string = 'stash.pop';
+
+/**
+ * Identifies the Drop command on a stash's context menu.
+ */
+const ACTION_DROP_STASH: string = 'stash.drop';
+
+/**
  * Identifies the New Branch command on the tool strip's more-actions menu.
  */
 const ACTION_NEW_BRANCH: string = 'repo.newBranch';
@@ -573,7 +593,7 @@ export class SourceControlSidebar {
    * Checks out a branch.
    * @param branch The branch to check out.
    */
-  protected checkout(branch: GitBranch): void {
+  private checkout(branch: GitBranch): void {
     this.log.info('SourceControlSidebar', `Checking out branch '${branch.name}'`);
     void this.repository.checkout(branch.name);
   }
@@ -599,7 +619,7 @@ export class SourceControlSidebar {
    * Restores a stash onto the working tree, keeping it on the stack.
    * @param stash The stash to apply.
    */
-  protected applyStash(stash: GitStash): void {
+  private applyStash(stash: GitStash): void {
     void this.repository.applyStash(stash.index);
   }
 
@@ -607,7 +627,7 @@ export class SourceControlSidebar {
    * Restores a stash onto the working tree and drops it from the stack.
    * @param stash The stash to pop.
    */
-  protected popStash(stash: GitStash): void {
+  private popStash(stash: GitStash): void {
     void this.repository.popStash(stash.index);
   }
 
@@ -621,7 +641,7 @@ export class SourceControlSidebar {
    * Opens the drop confirmation for a stash.
    * @param stash The stash to drop.
    */
-  protected requestDropStash(stash: GitStash): void {
+  private requestDropStash(stash: GitStash): void {
     this.pendingDrop.set(stash);
   }
 
@@ -901,6 +921,22 @@ export class SourceControlSidebar {
     treeRow: TreeRow,
   ): readonly MenuItem[] => {
     const node: RepoNode = this.nodeOf(treeRow);
+    if (node.branch !== undefined) {
+      // The checked-out branch cannot be checked out again, and its uncommitted changes are already
+      // one always-visible click away on the row itself — so it offers nothing here.
+      return node.branch.current
+        ? []
+        : [{ id: ACTION_CHECKOUT_BRANCH, label: 'Check Out', icon: Icon.CHECK }];
+    }
+    if (node.stash !== undefined) {
+      // Apply and pop differ only in what becomes of the stash afterwards, which is exactly what the
+      // buttons' tooltips used to say; the muted trailing note carries it into the menu.
+      return [
+        { id: ACTION_APPLY_STASH, label: 'Apply', icon: Icon.ARROW_DOWN, status: 'keep the stash' },
+        { id: ACTION_POP_STASH, label: 'Pop', icon: Icon.ARROW_UP, status: 'drop the stash' },
+        { id: ACTION_DROP_STASH, label: 'Drop…', icon: Icon.TRASH },
+      ];
+    }
     if (node.pullRequest !== undefined) {
       return [
         { id: ACTION_CHECKOUT_PULL_REQUEST, label: 'Check Out', icon: Icon.CHECK },
@@ -935,6 +971,26 @@ export class SourceControlSidebar {
   protected onContextAction(choice: TreeMenuSelection): void {
     const node: RepoNode = this.nodeOf(choice.row);
     switch (choice.itemId) {
+      case ACTION_CHECKOUT_BRANCH:
+        if (node.branch !== undefined) {
+          this.checkout(node.branch);
+        }
+        break;
+      case ACTION_APPLY_STASH:
+        if (node.stash !== undefined) {
+          this.applyStash(node.stash);
+        }
+        break;
+      case ACTION_POP_STASH:
+        if (node.stash !== undefined) {
+          this.popStash(node.stash);
+        }
+        break;
+      case ACTION_DROP_STASH:
+        if (node.stash !== undefined) {
+          this.requestDropStash(node.stash);
+        }
+        break;
       case ACTION_CHECKOUT_PULL_REQUEST:
         if (node.pullRequest !== undefined) {
           this.checkoutPullRequest(node.pullRequest);

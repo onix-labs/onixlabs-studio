@@ -56,46 +56,7 @@
             <span class="rail__count">{{ repository.changeCount() }}</span>
           }
         </button>
-      } @else {
-        <app-button
-          class="tree-row-action"
-          variant="none"
-          size="small"
-          [icon]="Icon.CHECK"
-          ariaLabel="Check out branch"
-          (click)="checkout(branch); $event.stopPropagation()"
-        />
       }
-    }
-
-    @if (node.stash; as stash) {
-      <app-button
-        class="tree-row-action"
-        variant="none"
-        size="small"
-        [icon]="Icon.ARROW_DOWN"
-        ariaLabel="Apply stash"
-        tooltip="Apply — restore these changes and keep the stash"
-        (click)="applyStash(stash); $event.stopPropagation()"
-      />
-      <app-button
-        class="tree-row-action"
-        variant="none"
-        size="small"
-        [icon]="Icon.ARROW_UP"
-        ariaLabel="Pop stash"
-        tooltip="Pop — restore these changes and drop the stash"
-        (click)="popStash(stash); $event.stopPropagation()"
-      />
-      <app-button
-        class="tree-row-action"
-        variant="none"
-        size="small"
-        [icon]="Icon.TRASH"
-        ariaLabel="Drop stash"
-        tooltip="Drop — delete this stash without restoring it"
-        (click)="requestDropStash(stash); $event.stopPropagation()"
-      />
     }
 
     @if (node.status; as status) {
