@@ -83,18 +83,40 @@ describe('Modal', () => {
   function stateSurfaceColours(values: Readonly<Record<string, string>>): void {
     const real: (element: Element, pseudo?: string | null) => CSSStyleDeclaration =
       window.getComputedStyle.bind(window);
-    vi.spyOn(window, 'getComputedStyle').mockImplementation(
-      (element: Element, pseudo?: string | null): CSSStyleDeclaration =>
-        new Proxy(real(element, pseudo), {
-          get(target: CSSStyleDeclaration, key: string | symbol): unknown {
-            if (key === 'getPropertyValue') {
-              return (name: string): string => values[name] ?? target.getPropertyValue(name);
-            }
-            const value: unknown = Reflect.get(target, key) as unknown;
-            return typeof value === 'function' ? (value as () => unknown).bind(target) : value;
-          },
-        }),
-    );
+    const stated: (element: Element, pseudo?: string | null) => CSSStyleDeclaration = (
+      element: Element,
+      pseudo?: string | null,
+    ): CSSStyleDeclaration => {
+      // The engine is asked first and its answer used for everything not stated here — but an engine
+      // that cannot compute a style at all (which is what the CI runner turned out to do, and what the
+      // component itself guards against) must not decide the outcome of a test about the component.
+      let computed: CSSStyleDeclaration | null = null;
+      try {
+        computed = real(element, pseudo);
+      } catch {
+        computed = null;
+      }
+      const read: (name: string) => string = (name: string): string =>
+        values[name] ?? computed?.getPropertyValue(name) ?? '';
+      if (computed === null) {
+        return { getPropertyValue: read } as unknown as CSSStyleDeclaration;
+      }
+      return new Proxy(computed, {
+        get(target: CSSStyleDeclaration, key: string | symbol): unknown {
+          if (key === 'getPropertyValue') {
+            return read;
+          }
+          const value: unknown = Reflect.get(target, key) as unknown;
+          return typeof value === 'function' ? (value as () => unknown).bind(target) : value;
+        },
+      });
+    };
+    vi.spyOn(window, 'getComputedStyle').mockImplementation(stated);
+    // The component calls the bare global. That is normally the same binding as `window`'s, but it
+    // costs nothing to state both rather than depend on the environment holding them identical.
+    if ((globalThis as unknown) !== (window as unknown)) {
+      vi.spyOn(globalThis, 'getComputedStyle').mockImplementation(stated);
+    }
   }
 
   /**
