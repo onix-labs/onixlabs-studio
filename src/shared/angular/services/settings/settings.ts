@@ -1,4 +1,13 @@
-import { computed, effect, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import {
+  computed,
+  DestroyRef,
+  effect,
+  inject,
+  Service,
+  signal,
+  Signal,
+  WritableSignal,
+} from '@angular/core';
 import type {
   AiConnection,
   AiPermissionPosture,
@@ -741,6 +750,11 @@ export class Settings {
    * Initialises the service: persists the override map to the store whenever it changes locally, and
    * follows changes other windows make to it (a pop-out window tracking the main window's settings —
    * and the reverse), so every window's signals reflect the latest write.
+   *
+   * The cross-window listener is dropped with the injector that owns it. It is a listener on the
+   * global object, so it outlives this service unless it is taken away: a discarded subscription
+   * leaves a dead service listening for storage events and reaching for collaborators its injector no
+   * longer has.
    */
   public constructor() {
     effect((): void => {
@@ -749,12 +763,13 @@ export class Settings {
         this.store.set<SettingsOverrides>(SETTINGS_KEY, overrides);
       }
     });
-    this.store.onExternalChange(SETTINGS_KEY, (): void => {
+    const unfollow: () => void = this.store.onExternalChange(SETTINGS_KEY, (): void => {
       const loaded: SettingsOverrides = this.load();
       this.externallyApplied = loaded;
       this.overrides.set(loaded);
       this.log.debug('Settings', 'Applied settings changed by another window');
     });
+    inject(DestroyRef).onDestroy(unfollow);
   }
 
   /**
