@@ -795,8 +795,7 @@ describe('SourceControlSidebar', () => {
     });
 
     it('offersItsCommandsOnTheContextMenu_notAsInlineButtons', () => {
-      const internals: { contextMenuFor(row: TreeRow): readonly MenuItem[] } =
-        component;
+      const internals: { contextMenuFor(row: TreeRow): readonly MenuItem[] } = component;
 
       const items: readonly MenuItem[] = internals.contextMenuFor(pullRequestRow());
 
@@ -809,8 +808,7 @@ describe('SourceControlSidebar', () => {
     it('offersNothingOnARowWithNoCommands_soTheTreeSuppressesItsTrigger', () => {
       // An empty context menu opens onto nothing; the tree hides the trigger when the factory yields
       // no items, which only works if this returns none.
-      const internals: { contextMenuFor(row: TreeRow): readonly MenuItem[] } =
-        component;
+      const internals: { contextMenuFor(row: TreeRow): readonly MenuItem[] } = component;
 
       expect(internals.contextMenuFor(sectionRow('tags', 'Tags'))).toEqual([]);
       expect(
