@@ -294,6 +294,7 @@ describe('GitHubForge', () => {
           url: 'https://github.com/onix-labs/onixlabs-studio/pull/7',
           draft: false,
           headRef: 'feature/thing',
+          headRefspec: 'refs/pull/7/head',
           checks: 'succeeded',
         },
       ]);
@@ -331,6 +332,7 @@ describe('GitHubForge', () => {
         url: '',
         draft: false,
         headRef: '',
+        headRefspec: 'refs/pull/0/head',
         checks: 'none',
       });
     });

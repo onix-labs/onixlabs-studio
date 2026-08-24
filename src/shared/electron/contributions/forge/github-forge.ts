@@ -199,7 +199,7 @@ export class GitHubForge implements ForgeProvider {
     if (!result.ok) {
       return result;
     }
-    const user: RawUser = (result.value ?? {});
+    const user: RawUser = result.value ?? {};
     const login: string = asString(user.login);
     if (login.length === 0) {
       return { ok: false, error: 'GitHub returned an account with no login.', unauthorized: false };
@@ -244,6 +244,9 @@ export class GitHubForge implements ForgeProvider {
           url: asString(pull.html_url),
           draft: pull.draft === true,
           headRef: asString(pull.head?.ref),
+          // GitHub publishes every pull request's head under this ref on the base repository, which
+          // is what makes a fork's pull request checkoutable at all.
+          headRefspec: `refs/pull/${asNumber(pull.number)}/head`,
           checks: checks[index],
         }),
       ),
@@ -302,7 +305,7 @@ export class GitHubForge implements ForgeProvider {
     if (!result.ok) {
       return result;
     }
-    const body: { readonly workflow_runs?: unknown } = (result.value ?? {});
+    const body: { readonly workflow_runs?: unknown } = result.value ?? {};
     const raw: readonly RawWorkflowRun[] = Array.isArray(body.workflow_runs)
       ? (body.workflow_runs as readonly RawWorkflowRun[])
       : [];
@@ -337,7 +340,7 @@ export class GitHubForge implements ForgeProvider {
     if (!result.ok) {
       return 'none';
     }
-    const body: { readonly check_runs?: unknown } = (result.value ?? {});
+    const body: { readonly check_runs?: unknown } = result.value ?? {};
     return rollUpChecks(
       Array.isArray(body.check_runs)
         ? (body.check_runs as readonly { status?: unknown; conclusion?: unknown }[])

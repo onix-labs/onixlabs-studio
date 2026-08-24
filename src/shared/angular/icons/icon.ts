@@ -404,6 +404,12 @@ export class Icon {
   public static readonly LINK: Icon = new Icon('ph ph-link');
 
   /**
+   * Gets the open-externally icon, shown on a control that leaves Studio for the user's browser (a
+   * pull request or issue on its forge).
+   */
+  public static readonly OPEN_EXTERNAL: Icon = new Icon('ph ph-arrow-square-out');
+
+  /**
    * Gets the math icon, shown on the markdown Insert group's Math button.
    */
   public static readonly MATH: Icon = new Icon('ph ph-function');

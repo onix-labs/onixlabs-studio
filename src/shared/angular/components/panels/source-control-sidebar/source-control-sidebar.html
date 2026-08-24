@@ -139,6 +139,27 @@
       />
     }
 
+    @if (node.pullRequest; as pullRequest) {
+      <app-button
+        class="tree-row-action"
+        variant="none"
+        size="small"
+        [icon]="Icon.CHECK"
+        ariaLabel="Check out pull request"
+        tooltip="Check out — fetch this pull request's head as a local branch"
+        (click)="checkoutPullRequest(pullRequest); $event.stopPropagation()"
+      />
+      <app-button
+        class="tree-row-action"
+        variant="none"
+        size="small"
+        [icon]="Icon.OPEN_EXTERNAL"
+        ariaLabel="Open pull request in browser"
+        tooltip="Open on GitHub"
+        (click)="openPullRequest(pullRequest); $event.stopPropagation()"
+      />
+    }
+
     @if (node.status; as status) {
       <app-icon class="rail__status rail__status--{{ status }}" [icon]="statusIcon(status)" />
     }

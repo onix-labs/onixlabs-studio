@@ -257,6 +257,20 @@ export class GitProvider implements SourceControlProvider {
   }
 
   /**
+   * Fetches one ref from a remote into a local branch.
+   * @param remote The remote to fetch from.
+   * @param sourceRef The ref on the remote to fetch.
+   * @param localBranch The local branch to create or update.
+   * @returns Returns the outcome.
+   */
+  public fetchRef(remote: string, sourceRef: string, localBranch: string): Promise<MutationResult> {
+    return this.mutate(
+      (api: SourceControlClient): Promise<GitRunResult> =>
+        api.fetchRef(this.root, remote, sourceRef, localBranch),
+    );
+  }
+
+  /**
    * Pulls the current branch from its upstream.
    * @returns Returns the outcome.
    */

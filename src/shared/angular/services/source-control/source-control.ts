@@ -56,6 +56,13 @@ function createClient(bridge: Bridge): SourceControlClient {
     createBranch: (root: string, name: string, checkout: boolean): Promise<GitRunResult> =>
       bridge.invoke(SourceControlChannel.CreateBranch, root, name, checkout),
     fetch: (root: string): Promise<GitRunResult> => bridge.invoke(SourceControlChannel.Fetch, root),
+    fetchRef: (
+      root: string,
+      remote: string,
+      sourceRef: string,
+      localBranch: string,
+    ): Promise<GitRunResult> =>
+      bridge.invoke(SourceControlChannel.FetchRef, root, remote, sourceRef, localBranch),
     pull: (root: string): Promise<GitRunResult> => bridge.invoke(SourceControlChannel.Pull, root),
     push: (root: string, remote?: string, branch?: string): Promise<GitRunResult> =>
       bridge.invoke(SourceControlChannel.Push, root, remote, branch),

@@ -83,6 +83,7 @@ import { PackageModel } from '@features/workspace/angular/project/package-model'
 import { PackageExplorer } from '@features/workspace/angular/project/package-explorer';
 import { Output } from '@shared/angular/services/output/output';
 import { Repository } from '@shared/angular/services/repository/repository';
+import { ForgeRepository } from '@shared/angular/services/forge-repository/forge-repository';
 import {
   WorkspaceSourceControlCommandHandler,
   WorkspaceSourceControlCommands,
@@ -206,6 +207,10 @@ const PANEL_ANCHORS: Readonly<Record<string, readonly string[]>> = {
     FileOpener,
     WorkspaceGit,
     Repository,
+    // The forge's view of this tab's repository (pull requests, issues, CI runs). Per view, beside
+    // Repository: a dock panel is destroyed when another tool in its stack activates, so state owned
+    // by the panel would be re-fetched on every tool switch against a rate-limited API.
+    ForgeRepository,
     Diffs,
     DiffOpener,
     DockTabContext,

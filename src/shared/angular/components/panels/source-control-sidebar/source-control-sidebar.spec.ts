@@ -1,4 +1,10 @@
-import { ApplicationRef, WritableSignal } from '@angular/core';
+import {
+  ForgeRepository,
+  ForgeSection,
+} from '@shared/angular/services/forge-repository/forge-repository';
+import { ForgePullRequest } from '@shared/api/forge-types';
+import { Shell } from '@shared/angular/services/shell/shell';
+import { ApplicationRef, signal, Signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ModalWindows } from '@shared/angular/services/modal-windows/modal-windows';
 import { FakeModalWindows } from '@shared/angular/services/modal-windows/modal-windows.fake';
@@ -174,6 +180,10 @@ class FakeProvider implements SourceControlProvider {
     return Promise.resolve({ success: true });
   }
 
+  public fetchRef(): Promise<MutationResult> {
+    return Promise.resolve({ success: true });
+  }
+
   public pull(): Promise<MutationResult> {
     return Promise.resolve({ success: true });
   }
@@ -203,12 +213,68 @@ function sectionRow(key: string, label: string): TreeRow {
   };
 }
 
+/**
+ * A controllable stand-in for the forge-backed view of the repository.
+ */
+class FakeForgeRepository {
+  public readonly section: WritableSignal<ForgeSection<ForgePullRequest>> = signal<
+    ForgeSection<ForgePullRequest>
+  >({ state: 'no-repository', items: [], message: null });
+
+  /**
+   * Holds how many times the pull requests were loaded, so lazy loading can be asserted.
+   */
+  public loads: number = 0;
+
+  /**
+   * Holds the pull requests checked out through this fake.
+   */
+  public readonly checkedOut: ForgePullRequest[] = [];
+
+  public readonly pullRequests: Signal<ForgeSection<ForgePullRequest>> = this.section.asReadonly();
+
+  public loadPullRequests(): Promise<void> {
+    this.loads += 1;
+    return Promise.resolve();
+  }
+
+  public checkout(pull: ForgePullRequest): Promise<{ success: boolean }> {
+    this.checkedOut.push(pull);
+    return Promise.resolve({ success: true });
+  }
+
+  public reset(): void {
+    this.section.set({ state: 'no-repository', items: [], message: null });
+  }
+}
+
+/**
+ * Builds a pull request.
+ * @param overrides The fields to vary.
+ * @returns Returns the pull request.
+ */
+function pullRequest(overrides: Partial<ForgePullRequest> = {}): ForgePullRequest {
+  return {
+    number: 7,
+    title: 'Add the thing',
+    author: 'matthew',
+    url: 'https://github.com/onix-labs/onixlabs-studio/pull/7',
+    draft: false,
+    headRef: 'feature/thing',
+    headRefspec: 'refs/pull/7/head',
+    checks: 'succeeded',
+    ...overrides,
+  };
+}
+
 describe('SourceControlSidebar', () => {
   let component: SourceControlSidebar;
   let fixture: ComponentFixture<SourceControlSidebar>;
   let repository: Repository;
   let provider: FakeProvider;
   let windows: FakeModalWindows;
+  let forge: FakeForgeRepository;
+  let opened: string[];
 
   const panel: DockPanel = {
     id: 'repository',
@@ -220,11 +286,23 @@ describe('SourceControlSidebar', () => {
 
   beforeEach(async () => {
     windows = new FakeModalWindows();
+    forge = new FakeForgeRepository();
+    opened = [];
     await TestBed.configureTestingModule({
       imports: [SourceControlSidebar],
       providers: [
         Repository,
         { provide: ModalWindows, useValue: windows },
+        { provide: ForgeRepository, useValue: forge },
+        {
+          provide: Shell,
+          useValue: {
+            openExternal: (url: string): Promise<void> => {
+              opened.push(url);
+              return Promise.resolve();
+            },
+          },
+        },
         {
           provide: SourceControlProviders,
           useValue: {
@@ -573,6 +651,121 @@ describe('SourceControlSidebar', () => {
 
       expect(internals().branchName()).toBe('');
       expect(internals().branchCheckout()).toBe(true);
+    });
+  });
+
+  describe('the Pull Requests section', () => {
+    /**
+     * Expands the Pull Requests section.
+     */
+    function expand(): void {
+      component.onRowClick(sectionRow('pullRequests', 'Pull Requests'));
+      fixture.detectChanges();
+    }
+
+    it('readsNothing_untilTheSectionIsExpanded', () => {
+      // The forge is rate-limited: a section the user never opens must cost nothing.
+      expect(forge.loads).toBe(0);
+
+      expand();
+
+      expect(forge.loads).toBe(1);
+    });
+
+    it('showsTheRealPullRequests_notSampleData', () => {
+      forge.section.set({ state: 'ready', items: [pullRequest()], message: null });
+
+      expand();
+
+      const text: string = (fixture.nativeElement as HTMLElement).textContent ?? '';
+      expect(text).toContain('#7 Add the thing');
+      // The sample data the section used to ship with is gone for good.
+      expect(text).not.toContain('feat(git): network ops');
+    });
+
+    it('marksADraft', () => {
+      forge.section.set({
+        state: 'ready',
+        items: [pullRequest({ draft: true })],
+        message: null,
+      });
+
+      expand();
+
+      expect((fixture.nativeElement as HTMLElement).textContent).toContain('(draft)');
+    });
+
+    it('showsTheCheckBadge_butOmitsItWhenNothingHasReported', () => {
+      forge.section.set({ state: 'ready', items: [pullRequest()], message: null });
+      expand();
+      expect(
+        (fixture.nativeElement as HTMLElement).querySelector('.rail__status--succeeded'),
+      ).not.toBeNull();
+
+      forge.section.set({
+        state: 'ready',
+        items: [pullRequest({ checks: 'none' })],
+        message: null,
+      });
+      fixture.detectChanges();
+
+      expect((fixture.nativeElement as HTMLElement).querySelector('.rail__status')).toBeNull();
+    });
+
+    it('distinguishesNoPullRequests_fromEveryFailedState', () => {
+      const cases: readonly [ForgeSection<ForgePullRequest>, string][] = [
+        [{ state: 'ready', items: [], message: null }, 'No open pull requests'],
+        [{ state: 'no-forge', items: [], message: 'No forge here' }, 'No forge here'],
+        [{ state: 'unauthorized', items: [], message: 'Sign in first' }, 'Sign in first'],
+        [{ state: 'error', items: [], message: 'It broke' }, 'It broke'],
+      ];
+      expand();
+
+      for (const [section, expected] of cases) {
+        forge.section.set(section);
+        fixture.detectChanges();
+        expect((fixture.nativeElement as HTMLElement).textContent).toContain(expected);
+      }
+    });
+
+    it('fallsBackToAStateMessage_whenTheReadSuppliedNone', () => {
+      forge.section.set({ state: 'loading', items: [], message: null });
+
+      expand();
+
+      expect((fixture.nativeElement as HTMLElement).textContent).toContain('Loading');
+    });
+
+    it('checksOutAPullRequest_andOpensItInTheBrowser', () => {
+      forge.section.set({ state: 'ready', items: [pullRequest()], message: null });
+      expand();
+      // The aria-label sits on the button the atom renders, not on its host element.
+      const host: HTMLElement = fixture.nativeElement as HTMLElement;
+      const checkout: HTMLButtonElement | null = host.querySelector(
+        'button[aria-label="Check out pull request"]',
+      );
+      const open: HTMLButtonElement | null = host.querySelector(
+        'button[aria-label="Open pull request in browser"]',
+      );
+
+      checkout?.click();
+      open?.click();
+
+      expect(forge.checkedOut.map((pull: ForgePullRequest): number => pull.number)).toEqual([7]);
+      expect(opened).toEqual(['https://github.com/onix-labs/onixlabs-studio/pull/7']);
+    });
+
+    it('refresh_reReadsTheForge_onlyWhileTheSectionIsOpen', () => {
+      const internals: { refresh(): void } = component as unknown as { refresh(): void };
+
+      internals.refresh();
+      expect(forge.loads).toBe(0);
+
+      expand();
+      expect(forge.loads).toBe(1);
+
+      internals.refresh();
+      expect(forge.loads).toBe(2);
     });
   });
 });
