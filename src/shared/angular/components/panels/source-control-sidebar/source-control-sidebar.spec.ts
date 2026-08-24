@@ -713,8 +713,8 @@ describe('SourceControlSidebar', () => {
     });
 
     it('pulsesWhileChecksAreRunning_ratherThanShowingAStaticSpinner', () => {
-      // A spinner glyph nothing rotates reads as a rendering glitch; the pulsing dot is the same cue
-      // Mission Control uses for a working agent.
+      // A spinner glyph nothing rotates reads as a rendering glitch. Warning-toned, so the badge's
+      // three states read as one scale: in flight, passed, failed.
       forge.section.set({
         state: 'ready',
         items: [pullRequest({ checks: 'running' })],
@@ -727,7 +727,7 @@ describe('SourceControlSidebar', () => {
       const dot: HTMLElement | null = host.querySelector('app-pulse-dot.rail__status');
       expect(dot).not.toBeNull();
       expect(dot?.classList.contains('pulse-dot--pulsing')).toBe(true);
-      expect(dot?.classList.contains('pulse-dot--accent')).toBe(true);
+      expect(dot?.classList.contains('pulse-dot--warning')).toBe(true);
       // No icon badge competes with it.
       expect(host.querySelector('app-icon.rail__status')).toBeNull();
     });

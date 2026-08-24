@@ -162,9 +162,10 @@
 
     @if (node.status; as status) {
       @if (status === 'running') {
-        <!-- Checks in flight get the same pulsing dot Mission Control uses for a working agent, rather
-             than a spinner glyph nothing rotates. -->
-        <app-pulse-dot class="rail__status" tone="accent" [pulse]="true" [size]="0.5" />
+        <!-- Checks in flight get a pulsing dot rather than a spinner glyph nothing rotates. Warning
+             rather than accent: it sits between the green and red outcomes as the third state of one
+             badge, so it belongs to the same semantic scale rather than to the theme's accent. -->
+        <app-pulse-dot class="rail__status" tone="warning" [pulse]="true" [size]="0.5" />
       } @else {
         <app-icon class="rail__status rail__status--{{ status }}" [icon]="statusIcon(status)" />
       }
