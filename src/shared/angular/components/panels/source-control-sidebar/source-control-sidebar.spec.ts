@@ -9,7 +9,8 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ModalWindows } from '@shared/angular/services/modal-windows/modal-windows';
 import { FakeModalWindows } from '@shared/angular/services/modal-windows/modal-windows.fake';
 import { Icon } from '@shared/angular/icons/icon';
-import { TreeRow } from '@shared/angular/components/tree-view/tree-view';
+import { TreeMenuSelection, TreeRow } from '@shared/angular/components/tree-view/tree-view';
+import { MenuItem } from '@shared/angular/components/menu/menu';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { ParsedRefs, ParsedStatus } from '@shared/angular/services/source-control/git-output';
 import {
@@ -264,6 +265,27 @@ function pullRequest(overrides: Partial<ForgePullRequest> = {}): ForgePullReques
     headRefspec: 'refs/pull/7/head',
     checks: 'succeeded',
     ...overrides,
+  };
+}
+
+/**
+ * Builds the tree row a pull request renders as.
+ * @param overrides The pull-request fields to vary.
+ * @returns Returns the row.
+ */
+function pullRequestRow(overrides: Partial<ForgePullRequest> = {}): TreeRow {
+  const pull: ForgePullRequest = pullRequest(overrides);
+  return {
+    id: `pr:${pull.number}`,
+    depth: 1,
+    expandable: false,
+    expanded: false,
+    data: {
+      kind: 'pr',
+      icon: Icon.GIT_PULL_REQUEST,
+      label: `#${pull.number} ${pull.title}`,
+      pullRequest: pull,
+    },
   };
 }
 
@@ -772,23 +794,56 @@ describe('SourceControlSidebar', () => {
       expect((fixture.nativeElement as HTMLElement).textContent).toContain('Loading');
     });
 
-    it('checksOutAPullRequest_andOpensItInTheBrowser', () => {
-      forge.section.set({ state: 'ready', items: [pullRequest()], message: null });
-      expand();
-      // The aria-label sits on the button the atom renders, not on its host element.
-      const host: HTMLElement = fixture.nativeElement as HTMLElement;
-      const checkout: HTMLButtonElement | null = host.querySelector(
-        'button[aria-label="Check out pull request"]',
-      );
-      const open: HTMLButtonElement | null = host.querySelector(
-        'button[aria-label="Open pull request in browser"]',
-      );
+    it('offersItsCommandsOnTheContextMenu_notAsInlineButtons', () => {
+      const internals: { contextMenuFor(row: TreeRow): readonly MenuItem[] } =
+        component;
 
-      checkout?.click();
-      open?.click();
+      const items: readonly MenuItem[] = internals.contextMenuFor(pullRequestRow());
+
+      expect(items.map((item: MenuItem): string => item.label)).toEqual([
+        'Check Out',
+        'Open on GitHub',
+      ]);
+    });
+
+    it('offersNothingOnARowWithNoCommands_soTheTreeSuppressesItsTrigger', () => {
+      // An empty context menu opens onto nothing; the tree hides the trigger when the factory yields
+      // no items, which only works if this returns none.
+      const internals: { contextMenuFor(row: TreeRow): readonly MenuItem[] } =
+        component;
+
+      expect(internals.contextMenuFor(sectionRow('tags', 'Tags'))).toEqual([]);
+      expect(
+        internals.contextMenuFor({
+          id: 'branch:main',
+          depth: 1,
+          expandable: false,
+          expanded: false,
+          data: { kind: 'branch', icon: Icon.SOURCE_CONTROL, label: 'main' },
+        }),
+      ).toEqual([]);
+    });
+
+    it('checksOutAPullRequest_andOpensItInTheBrowser_fromTheMenu', () => {
+      const internals: { onContextAction(choice: TreeMenuSelection): void } =
+        component as unknown as { onContextAction(choice: TreeMenuSelection): void };
+      const row: TreeRow = pullRequestRow();
+
+      internals.onContextAction({ itemId: 'pr.checkout', row });
+      internals.onContextAction({ itemId: 'pr.open', row });
 
       expect(forge.checkedOut.map((pull: ForgePullRequest): number => pull.number)).toEqual([7]);
       expect(opened).toEqual(['https://github.com/onix-labs/onixlabs-studio/pull/7']);
+    });
+
+    it('ignoresAnUnknownCommand', () => {
+      const internals: { onContextAction(choice: TreeMenuSelection): void } =
+        component as unknown as { onContextAction(choice: TreeMenuSelection): void };
+
+      internals.onContextAction({ itemId: 'nonsense', row: pullRequestRow() });
+
+      expect(forge.checkedOut).toEqual([]);
+      expect(opened).toEqual([]);
     });
 
     it('refresh_reReadsTheForge_onlyWhileTheSectionIsOpen', () => {

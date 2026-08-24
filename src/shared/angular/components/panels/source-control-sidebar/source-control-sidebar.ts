@@ -31,7 +31,12 @@ import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
 import { PulseDot } from '@shared/angular/components/pulse-dot/pulse-dot';
-import { TreeRow, TreeView } from '@shared/angular/components/tree-view/tree-view';
+import {
+  TreeMenuSelection,
+  TreeRow,
+  TreeView,
+} from '@shared/angular/components/tree-view/tree-view';
+import { MenuItem } from '@shared/angular/components/menu/menu';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { Log } from '@shared/angular/services/log/log';
 
@@ -138,6 +143,16 @@ interface RepoNode {
    */
   readonly muted?: boolean;
 }
+
+/**
+ * Identifies the Check Out command on a pull request's context menu.
+ */
+const ACTION_CHECKOUT_PULL_REQUEST: string = 'pr.checkout';
+
+/**
+ * Identifies the Open command on a pull request's context menu.
+ */
+const ACTION_OPEN_PULL_REQUEST: string = 'pr.open';
 
 /**
  * What an unhappy forge section says when the read itself supplied no message. `no-forge`, `error` and
@@ -769,10 +784,59 @@ export class SourceControlSidebar {
   }
 
   /**
+   * Builds a row's context-menu items.
+   *
+   * Bound as a value rather than a method, because the tree calls it as its item factory when a menu
+   * opens — `this` must stay this component. A row with no commands returns nothing and the tree
+   * suppresses its trigger, so right-clicking a branch or a tag does not open an empty panel.
+   */
+  public readonly contextMenuFor: (treeRow: TreeRow) => readonly MenuItem[] = (
+    treeRow: TreeRow,
+  ): readonly MenuItem[] => {
+    const node: RepoNode = this.nodeOf(treeRow);
+    if (node.pullRequest === undefined) {
+      return [];
+    }
+    return [
+      {
+        id: ACTION_CHECKOUT_PULL_REQUEST,
+        label: 'Check Out',
+        icon: Icon.CHECK,
+      },
+      {
+        id: ACTION_OPEN_PULL_REQUEST,
+        label: 'Open on GitHub',
+        icon: Icon.OPEN_EXTERNAL,
+      },
+    ];
+  };
+
+  /**
+   * Runs a context-menu command against the row it was chosen on.
+   * @param choice The chosen item and its row.
+   */
+  protected onContextAction(choice: TreeMenuSelection): void {
+    const pullRequest: ForgePullRequest | undefined = this.nodeOf(choice.row).pullRequest;
+    if (pullRequest === undefined) {
+      return;
+    }
+    switch (choice.itemId) {
+      case ACTION_CHECKOUT_PULL_REQUEST:
+        this.checkoutPullRequest(pullRequest);
+        break;
+      case ACTION_OPEN_PULL_REQUEST:
+        this.openPullRequest(pullRequest);
+        break;
+      default:
+        break;
+    }
+  }
+
+  /**
    * Opens a pull request on the forge, in the user's browser.
    * @param pullRequest The pull request to open.
    */
-  protected openPullRequest(pullRequest: ForgePullRequest): void {
+  private openPullRequest(pullRequest: ForgePullRequest): void {
     if (pullRequest.url.length === 0) {
       return;
     }
@@ -784,7 +848,7 @@ export class SourceControlSidebar {
    * Checks a pull request's head out as a local branch.
    * @param pullRequest The pull request to check out.
    */
-  protected checkoutPullRequest(pullRequest: ForgePullRequest): void {
+  private checkoutPullRequest(pullRequest: ForgePullRequest): void {
     void this.forge.checkout(pullRequest);
   }
 
