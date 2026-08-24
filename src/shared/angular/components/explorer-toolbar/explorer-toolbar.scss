@@ -1,6 +1,13 @@
+// The strip owns the TEXT SIZE of what it hosts, which is why it is stated here rather than left to
+// each control — the same rule `app-panel-toolbar` follows, and for the same reason. It is dense
+// chrome: a button that inherited the ambient body size would tower over the search field beside it,
+// which pins 0.8rem of its own. Left unstated, a strip's icons came out whatever size its panel
+// happened to be, so the Repository panel (whose host sets 0.8rem) drew them smaller than the
+// Solution and File Explorers, which inherit the body's.
 :host {
   display: block;
   flex: 0 0 auto;
+  font-size: 0.8rem;
 }
 
 .explorer-toolbar {
