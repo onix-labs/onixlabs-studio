@@ -49,6 +49,25 @@ describe('TooltipTrigger', () => {
     fixture.destroy();
   });
 
+  it('hover_whenTheControlIsNamed_showsTheNameAtOnce', () => {
+    // No dwell: the name is what the control was unable to say for itself, so waiting for it means
+    // waiting to find out what you are pointing at.
+    control().dispatchEvent(new MouseEvent('mouseenter'));
+    fixture.detectChanges();
+
+    expect(bubbleText()).toBe('New chat');
+  });
+
+  it('mouseleave_whenShowing_takesTheBubbleAway', () => {
+    control().dispatchEvent(new MouseEvent('mouseenter'));
+    fixture.detectChanges();
+
+    control().dispatchEvent(new MouseEvent('mouseleave'));
+    fixture.detectChanges();
+
+    expect(bubbleText()).toBeNull();
+  });
+
   it('focus_whenTheControlIsNamed_showsTheNameBeneathIt', () => {
     control().dispatchEvent(new FocusEvent('focus'));
     fixture.detectChanges();

@@ -1,5 +1,4 @@
 .tooltip {
-  max-inline-size: 18rem;
   padding: 0.4rem 0.7rem;
   font-size: 0.75rem;
   line-height: 1.35;
@@ -14,6 +13,7 @@
   corner-shape: var(--app-corner-shape, squircle);
   // Themed rather than fixed: the weight a shadow needs to read as depth depends on what it falls on.
   box-shadow: 0 0.125rem 0.5rem var(--tooltip-shadow-color);
-  // A name, not a paragraph: long ones wrap rather than run off, and short ones stay on one line.
-  overflow-wrap: anywhere;
+  // A name, not a paragraph: it stays on one line however long it is. The bubble is sized by its text
+  // rather than capped, since a wrapped name reads as prose and a name is not prose.
+  white-space: nowrap;
 }

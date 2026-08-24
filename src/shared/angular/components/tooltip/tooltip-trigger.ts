@@ -49,13 +49,6 @@ const TOOLTIP_POSITIONS: readonly ConnectedPosition[] = [
 ];
 
 /**
- * How long a pointer must rest on a control before its name appears, in milliseconds. Long enough that
- * sweeping the pointer across a strip of icons does not trail bubbles behind it; short enough that
- * pausing on one is answered rather than waited on.
- */
-const HOVER_DELAY: number = 400;
-
-/**
  * Shows a control's name in a bubble beneath it, on hover or keyboard focus.
  *
  * Applied by the control atoms to their own element rather than by callers, so that a control which
@@ -72,7 +65,7 @@ const HOVER_DELAY: number = 400;
 @Directive({
   selector: '[appTooltip]',
   host: {
-    '(mouseenter)': 'onEnter()',
+    '(mouseenter)': 'onShow()',
     '(mouseleave)': 'onLeave()',
     '(focus)': 'onShow()',
     '(blur)': 'onLeave()',
@@ -121,11 +114,6 @@ export class TooltipTrigger {
   private overlayRef: OverlayRef | null = null;
 
   /**
-   * Holds the pending hover timer, or null when no open is pending.
-   */
-  private timer: ReturnType<typeof setTimeout> | null = null;
-
-  /**
    * Initializes a new instance of the {@link TooltipTrigger} class, tearing down any open bubble with
    * the control. A control can be destroyed while its bubble is open — a toolbar that re-lays out
    * under the pointer, a panel that closes — and the overlay would outlive it.
@@ -135,18 +123,11 @@ export class TooltipTrigger {
   }
 
   /**
-   * Opens the bubble after the hover delay.
-   */
-  protected onEnter(): void {
-    this.cancel();
-    this.timer = setTimeout((): void => this.onShow(), HOVER_DELAY);
-  }
-
-  /**
-   * Opens the bubble now, for focus, which has already waited by the act of arriving.
+   * Opens the bubble, on the pointer arriving or on focus reaching the control. Immediately in both
+   * cases: the name is what the control was already unable to say for itself, so making the user wait
+   * for it is making them wait to find out what they are pointing at.
    */
   protected onShow(): void {
-    this.cancel();
     const text: string = this.appTooltip()?.trim() ?? '';
     if (!this.enabled() || text.length === 0 || this.overlayRef !== null) {
       return;
@@ -167,21 +148,10 @@ export class TooltipTrigger {
   }
 
   /**
-   * Closes the bubble and drops any pending open.
+   * Closes the bubble.
    */
   protected onLeave(): void {
-    this.cancel();
     this.overlayRef?.dispose();
     this.overlayRef = null;
-  }
-
-  /**
-   * Drops a pending open without touching an bubble already showing.
-   */
-  private cancel(): void {
-    if (this.timer !== null) {
-      clearTimeout(this.timer);
-      this.timer = null;
-    }
   }
 }
