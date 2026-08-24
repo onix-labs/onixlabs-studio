@@ -1,3 +1,4 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Component, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ModalBackdrop } from '@shared/angular/services/modal-backdrop/modal-backdrop';
@@ -64,6 +65,49 @@ describe('Modal', () => {
   let host: HTMLElement;
   let windows: FakeModalWindows;
   let backdrop: ModalBackdrop;
+
+  /**
+   * States what the engine reports for the surface tokens the modal reads its opening colour from.
+   *
+   * Deliberately stated rather than set as an inline custom property and read back through the
+   * cascade. A modal's opening colour is whatever the engine resolves those tokens to, and what a
+   * headless engine makes of a custom property is its own business — jsdom resolves one here and on
+   * every Linux container this was checked against, but not on the CI runner, where these tests
+   * failed for want of a cascade rather than for anything the component did. Stating the resolved
+   * value tests the part that is actually the component's contract: which tokens it consults, in what
+   * order, and what it makes of each form a colour arrives in.
+   *
+   * @param values The resolved value to report per custom property; anything else falls through to
+   * the real computed style.
+   */
+  function stateSurfaceColours(values: Readonly<Record<string, string>>): void {
+    const real: (element: Element, pseudo?: string | null) => CSSStyleDeclaration =
+      window.getComputedStyle.bind(window);
+    vi.spyOn(window, 'getComputedStyle').mockImplementation(
+      (element: Element, pseudo?: string | null): CSSStyleDeclaration =>
+        new Proxy(real(element, pseudo), {
+          get(target: CSSStyleDeclaration, key: string | symbol): unknown {
+            if (key === 'getPropertyValue') {
+              return (name: string): string => values[name] ?? target.getPropertyValue(name);
+            }
+            const value: unknown = Reflect.get(target, key) as unknown;
+            return typeof value === 'function' ? (value as () => unknown).bind(target) : value;
+          },
+        }),
+    );
+  }
+
+  /**
+   * States the resolved panel colour, the token a modal prefers for its opening colour.
+   * @param value The resolved colour.
+   */
+  function statePanelColour(value: string): void {
+    stateSurfaceColours({ '--modal-panel-background-color': value });
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
 
   beforeEach(async () => {
     windows = new FakeModalWindows();
@@ -168,9 +212,7 @@ describe('Modal', () => {
 
   it('request_carriesTheColourTheModalsPanelWillLandOn', () => {
     // The window paints this until its content arrives, so it opens on its own colour.
-    host
-      .querySelector<HTMLElement>('app-modal')!
-      .style.setProperty('--modal-panel-background-color', '#1e2124');
+    statePanelColour('#1e2124');
     component.open.set(true);
     fixture.detectChanges();
 
@@ -180,12 +222,7 @@ describe('Modal', () => {
   it('request_whenTheColourIsStatedInFractionalChannels_carriesItAsATriplet', () => {
     // What the engine hands back for a colour it worked out itself: the dark theme's panel surface
     // is a color-mix, and it resolves to this rather than to an rgb().
-    host
-      .querySelector<HTMLElement>('app-modal')!
-      .style.setProperty(
-        '--modal-panel-background-color',
-        'color(srgb 0.166667 0.186275 0.205882)',
-      );
+    statePanelColour('color(srgb 0.166667 0.186275 0.205882)');
     component.open.set(true);
     fixture.detectChanges();
 
@@ -195,13 +232,27 @@ describe('Modal', () => {
   it('request_whenThePanelColourCannotBeResolved_fallsBackToTheBodyRatherThanNothing', () => {
     // The dark theme states the panel surface as a color-mix, which only a real engine works out;
     // whatever the panel colour turns out to be, a modal must still open on SOME colour.
-    const element: HTMLElement = host.querySelector<HTMLElement>('app-modal')!;
-    element.style.setProperty('--modal-panel-background-color', 'linear-gradient(red, blue)');
-    element.style.setProperty('--body-background-color', '#212529');
+    stateSurfaceColours({
+      '--modal-panel-background-color': 'linear-gradient(red, blue)',
+      '--body-background-color': '#212529',
+    });
     component.open.set(true);
     fixture.detectChanges();
 
     expect(windows.requests[0].background).toBe('#212529');
+  });
+
+  it('request_whenNoSurfaceColourResolves_opensAnyway', () => {
+    // The colour is a courtesy. An engine that resolves neither token must cost a modal its window.
+    stateSurfaceColours({
+      '--modal-panel-background-color': 'linear-gradient(red, blue)',
+      '--body-background-color': 'linear-gradient(red, blue)',
+    });
+    component.open.set(true);
+    fixture.detectChanges();
+
+    expect(windows.requests[0].background).toBeNull();
+    expect(windows.openWindows).toBe(1);
   });
 
   it('request_whenExpandable_asksForAResizableWindow', () => {
