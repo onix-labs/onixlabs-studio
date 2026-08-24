@@ -14,6 +14,22 @@ describe('Button', () => {
   });
 
   /**
+   * Exposes the protected members the tooltip wiring is derived into, so what the button decides to
+   * draw beneath itself can be stated directly rather than inferred from an overlay.
+   */
+  interface ButtonInternals {
+    bubble(): string | undefined;
+  }
+
+  /**
+   * Reads the button's internals.
+   * @returns Returns the component's protected surface.
+   */
+  function component(): ButtonInternals {
+    return fixture.componentInstance as unknown as ButtonInternals;
+  }
+
+  /**
    * Applies inputs and renders.
    * @param inputs The inputs to set.
    */
@@ -79,10 +95,33 @@ describe('Button', () => {
     expect(host.querySelector('button')!.disabled).toBe(true);
   });
 
-  it('tooltip_whenGiven_titlesTheButton', () => {
-    render({ icon: Icon.TRASH, tooltip: 'Remove item' });
+  it('tooltip_whenTheButtonIsLabelled_titlesIt', () => {
+    // A labelled button already reads as itself, so its tooltip stays the platform's own.
+    render({ icon: Icon.TRASH, label: 'Delete', tooltip: 'Remove item' });
 
     expect(host.querySelector('button')?.getAttribute('title')).toBe('Remove item');
+  });
+
+  it('tooltip_whenTheButtonIsIconOnly_isDrawnBeneathItRatherThanTitled', () => {
+    // Both at once would show the same words twice, in two places, on two different delays.
+    render({ icon: Icon.TRASH, tooltip: 'Remove item' });
+
+    const button: HTMLElement = host.querySelector('button')!;
+    expect(button.getAttribute('title')).toBeNull();
+    expect(component().bubble()).toBe('Remove item');
+  });
+
+  it('tooltip_whenIconOnlyAndUnstated_fallsBackToTheAccessibleName', () => {
+    // Almost no call site needed changing for this: an icon-only button already had to name itself.
+    render({ icon: Icon.TRASH, ariaLabel: 'Remove item' });
+
+    expect(component().bubble()).toBe('Remove item');
+  });
+
+  it('tooltip_whenTheButtonIsLabelled_hasNothingToDrawBeneathIt', () => {
+    render({ icon: Icon.TRASH, label: 'Delete', ariaLabel: 'Remove item' });
+
+    expect(component().bubble()).toBeUndefined();
   });
 
   it('pressed_whenStated_announcesTheToggleState_andWearsItsOnTreatment', () => {

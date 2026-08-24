@@ -14,10 +14,16 @@
     <app-icon [icon]="icon()" [size]="1.5" />
     <span>{{ label() }}</span>
   </button>
+  <!-- The chevron is a control in its own right — it opens a different thing from the button beside
+       it — and showed only a glyph, with no name for either a screen reader or a pointer. It takes its
+       name from what it drops down: "More Save actions". -->
   <button
     type="button"
     class="ribbon-menu-button__menu"
     [disabled]="disabled()"
+    [attr.aria-label]="menuName()"
+    [appTooltip]="menuName()"
+    [appTooltipDisabled]="disabled()"
     [cdkMenuTriggerFor]="menu.panel() ?? null"
     [cdkMenuPosition]="menu.position()"
   >

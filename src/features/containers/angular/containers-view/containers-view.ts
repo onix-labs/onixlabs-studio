@@ -28,6 +28,7 @@ import {
 } from '../containers-commands/containers-commands';
 import { ContainersStatus } from '../containers-status/containers-status';
 import { Docker } from '../docker/docker';
+import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigger';
 
 /**
  * The Containers tab: a thin dashboard over the Docker backend contribution (#391). It lists
@@ -37,7 +38,7 @@ import { Docker } from '../docker/docker';
  */
 @Component({
   selector: 'app-containers-view',
-  imports: [Button, AppIcon, PanelLayout, Panel, Terminal],
+  imports: [Button, AppIcon, PanelLayout, Panel, Terminal, TooltipTrigger],
   templateUrl: './containers-view.html',
   styleUrl: './containers-view.scss',
   providers: [ContainerTerminals],

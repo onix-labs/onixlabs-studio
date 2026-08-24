@@ -2,8 +2,10 @@ import { CdkMenuTrigger } from '@angular/cdk/menu';
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
   input,
   InputSignal,
+  Signal,
   output,
   OutputEmitterRef,
 } from '@angular/core';
@@ -11,6 +13,7 @@ import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Menu } from '@shared/angular/components/menu/menu';
 import { ButtonTone } from '@shared/angular/components/forms/button/button';
 import { Icon } from '@shared/angular/icons/icon';
+import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigger';
 
 /**
  * Describes a single entry in a {@link RibbonStripMenuButton}'s dropdown.
@@ -63,7 +66,7 @@ export interface RibbonMenuItem {
  */
 @Component({
   selector: 'app-ribbon-strip-menu-button',
-  imports: [AppIcon, CdkMenuTrigger, Menu],
+  imports: [AppIcon, CdkMenuTrigger, Menu, TooltipTrigger],
   templateUrl: './ribbon-strip-menu-button.html',
   styleUrl: './ribbon-strip-menu-button.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -83,6 +86,14 @@ export class RibbonStripMenuButton {
    * Gets the label displayed beneath the primary action's icon.
    */
   public readonly label: InputSignal<string> = input.required<string>();
+
+  /**
+   * Gets the chevron's name: what its drop-down offers, stated in terms of the button it sits beside.
+   * The chevron opens further actions for that button, so "Save" gives "More Save actions".
+   */
+  protected readonly menuName: Signal<string> = computed(
+    (): string => `More ${this.label()} actions`,
+  );
 
   /**
    * Gets the items listed in the dropdown the chevron opens.

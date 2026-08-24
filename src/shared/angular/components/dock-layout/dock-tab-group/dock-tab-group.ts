@@ -35,6 +35,7 @@ import { Menu, MenuItem } from '@shared/angular/components/menu/menu';
 import { DockPanelOutlet } from '../dock-panel-outlet/dock-panel-outlet';
 import { DockStatusStrip } from '../dock-status-strip/dock-status-strip';
 import { DockTool, DockToolStrip } from '../dock-tool-strip/dock-tool-strip';
+import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigger';
 
 /**
  * The rectangle a panel floats into when its group cannot be measured.
@@ -65,6 +66,7 @@ const FALLBACK_FLOAT_RECT: Rect = { left: 120, top: 120, width: 360, height: 240
     Menu,
     AppIcon,
     Button,
+    TooltipTrigger,
   ],
   templateUrl: './dock-tab-group.html',
   styleUrl: './dock-tab-group.scss',

@@ -15,6 +15,7 @@ import {
 import { RibbonAlignment, Settings } from '@shared/angular/services/settings/settings';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigger';
 
 /**
  * Pixel tolerance applied when comparing the row's content width to its visible width, so sub-pixel
@@ -35,7 +36,7 @@ const OVERFLOW_TOLERANCE: number = 1;
  */
 @Component({
   selector: 'app-ribbon-overflow',
-  imports: [AppIcon],
+  imports: [AppIcon, TooltipTrigger],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './ribbon-strip-overflow.html',
   styleUrl: './ribbon-strip-overflow.scss',

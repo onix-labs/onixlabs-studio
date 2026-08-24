@@ -6,8 +6,9 @@
   [class.ribbon-button--tone-danger]="tone() === 'danger'"
   [class.ribbon-button--tone-info]="tone() === 'info'"
   [disabled]="disabled()"
-  [attr.title]="iconOnly() ? label() : null"
   [attr.aria-label]="iconOnly() ? label() : null"
+  [appTooltip]="iconOnly() ? label() : undefined"
+  [appTooltipDisabled]="disabled()"
   [attr.aria-pressed]="toggle() ? pressed() : null"
   (click)="onClick()"
 >

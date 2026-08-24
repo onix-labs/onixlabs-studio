@@ -8,13 +8,14 @@ import {
 } from '@angular/core';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Icon } from '@shared/angular/icons/icon';
+import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigger';
 
 /**
  * Represents an icon button in the title strip.
  */
 @Component({
   selector: 'app-title-strip-button',
-  imports: [AppIcon],
+  imports: [AppIcon, TooltipTrigger],
   templateUrl: './title-strip-button.html',
   styleUrl: './title-strip-button.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

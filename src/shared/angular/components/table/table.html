@@ -57,6 +57,7 @@
                     class="table-group__twisty"
                     [attr.aria-expanded]="!isCollapsed(row.id)"
                     [attr.aria-label]="isCollapsed(row.id) ? 'Expand group' : 'Collapse group'"
+                    [appTooltip]="isCollapsed(row.id) ? 'Expand group' : 'Collapse group'"
                     (click)="$event.stopPropagation(); toggleGroup(row)"
                   >
                     <app-icon

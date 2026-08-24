@@ -100,6 +100,7 @@
             class="dock-tab__close"
             title="Close"
             aria-label="Close"
+            [appTooltip]="'Close'"
             (mousedown)="$event.stopPropagation()"
             (click)="close(panel.id); $event.stopPropagation()"
           >
@@ -127,6 +128,7 @@
           class="dock-tab-group__menu-button"
           title="Documents"
           aria-label="Documents"
+          [appTooltip]="'Documents'"
           [cdkMenuTriggerFor]="documentMenu.panel() ?? null"
           [cdkMenuPosition]="documentMenu.position()"
         >

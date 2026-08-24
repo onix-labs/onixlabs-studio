@@ -44,6 +44,7 @@
             type="button"
             class="title-strip-tab-menu__close"
             [attr.aria-label]="'Close ' + tab.title"
+            [appTooltip]="'Close ' + tab.title"
             (pointerdown)="$event.preventDefault()"
             (click)="onClose(tab); $event.stopPropagation()"
           >

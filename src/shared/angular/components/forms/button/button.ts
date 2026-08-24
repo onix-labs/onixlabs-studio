@@ -8,6 +8,7 @@ import {
 } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigger';
 
 /**
  * The glyph shown, spinning, in place of a button's icon while it is {@link Button.loading}.
@@ -63,7 +64,7 @@ export type ButtonSize = 'medium' | 'small';
  */
 @Component({
   selector: 'app-button',
-  imports: [AppIcon],
+  imports: [AppIcon, TooltipTrigger],
   templateUrl: './button.html',
   styleUrl: './button.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -175,6 +176,27 @@ export class Button {
    */
   protected readonly isIconOnly: Signal<boolean> = computed(
     (): boolean => this.icon() !== undefined && this.label().length === 0,
+  );
+
+  /**
+   * Gets the name shown in the bubble beneath an icon-only button, or undefined for a button whose
+   * label is already visible.
+   *
+   * A button showing only a glyph already states its name for a screen reader; this shows that same
+   * name to everyone else. The explicit {@link tooltip} wins where a caller states one, since it is
+   * written to be read; otherwise the accessible name serves, which is why almost no call site needed
+   * changing for this.
+   */
+  protected readonly bubble: Signal<string | undefined> = computed((): string | undefined =>
+    this.isIconOnly() ? (this.tooltip() ?? this.ariaLabel()) : undefined,
+  );
+
+  /**
+   * Gets the native tooltip, which an icon-only button no longer carries: its name is drawn beneath it
+   * instead, and both at once would show the same words twice, in two places, on two different delays.
+   */
+  protected readonly nativeTooltip: Signal<string | undefined> = computed((): string | undefined =>
+    this.isIconOnly() ? undefined : this.tooltip(),
   );
 
   /**

@@ -54,6 +54,8 @@ export interface SettingsValues {
   readonly 'application.undoStackSize': number;
   readonly 'application.printMargin': PrintMargin;
 
+  readonly 'accessibility.showTooltips': boolean;
+
   readonly 'notifications.toastDuration': number;
   readonly 'notifications.agentRequestsInTabList': boolean;
   readonly 'notifications.agentRequestToasts': boolean;
@@ -248,6 +250,22 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           ],
         },
         default: 'regular',
+      },
+    ],
+  },
+  {
+    id: 'accessibility',
+    label: 'Accessibility',
+    settings: [
+      {
+        key: 'accessibility.showTooltips',
+        title: 'Tooltips on icon-only controls',
+        description:
+          'Name a control that shows only an icon, in a tooltip below it, on hover or keyboard ' +
+          'focus. These controls always carry their name for a screen reader; this shows the same ' +
+          'name to everyone else. Controls with visible text are unaffected.',
+        control: { kind: 'toggle' },
+        default: true,
       },
     ],
   },

@@ -28,6 +28,7 @@ import { Button } from '@shared/angular/components/forms/button/button';
 import { Menu, MenuItem } from '@shared/angular/components/menu/menu';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
+import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigger';
 
 /**
  * Describes a recent-items filter pill.
@@ -79,7 +80,7 @@ const ROW_ACTION_REMOVE: string = 'remove';
  */
 @Component({
   selector: 'app-welcome-screen',
-  imports: [AppIcon, Button, Modal, ModalContent, Menu, CdkMenuTrigger],
+  imports: [AppIcon, Button, Modal, ModalContent, Menu, CdkMenuTrigger, TooltipTrigger],
   templateUrl: './welcome-screen.html',
   styleUrl: './welcome-screen.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

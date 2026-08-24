@@ -21,6 +21,7 @@ import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { MENU_POSITIONS } from '@shared/angular/components/menu/menu-position';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigger';
 
 /**
  * Pairs a category heading with the open tabs that fall under it, for the grouped tab menu.
@@ -82,7 +83,7 @@ const TAB_CATEGORY_ORDER: readonly string[] = [
  */
 @Component({
   selector: 'app-title-strip-tab-menu',
-  imports: [Button, AppIcon, CdkMenuTrigger, CdkMenu, CdkMenuItem],
+  imports: [Button, AppIcon, CdkMenuTrigger, CdkMenu, CdkMenuItem, TooltipTrigger],
   templateUrl: './title-strip-tab-menu.html',
   styleUrl: './title-strip-tab-menu.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

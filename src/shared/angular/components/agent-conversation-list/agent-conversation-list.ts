@@ -27,6 +27,7 @@ import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { TreeRow, TreeView } from '@shared/angular/components/tree-view/tree-view';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
+import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigger';
 
 /**
  * The identifier of the always-present All Conversations root node.
@@ -143,6 +144,7 @@ type HistoryRowData =
     CdkMenu,
     CdkMenuItem,
     CdkMenuTrigger,
+    TooltipTrigger,
   ],
   templateUrl: './agent-conversation-list.html',
   styleUrl: './agent-conversation-list.scss',

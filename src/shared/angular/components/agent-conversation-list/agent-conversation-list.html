@@ -114,6 +114,7 @@
             type="button"
             class="history__overflow tree-row-action"
             aria-label="Conversation actions"
+            [appTooltip]="'Conversation actions'"
             (click)="$event.stopPropagation(); onOpenMenu(data.item.summary)"
             [cdkMenuTriggerFor]="itemMenu"
           >

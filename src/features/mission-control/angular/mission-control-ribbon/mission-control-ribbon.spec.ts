@@ -6,6 +6,11 @@ import type { Agent } from '@shared/angular/services/agent/agent';
 import { AgentHost, AgentHosts } from '@shared/angular/services/agent-hosts/agent-hosts';
 import { AppMenu } from '@shared/angular/services/app-menu/app-menu';
 import { RibbonAlignment, Settings } from '@shared/angular/services/settings/settings';
+import {
+  SETTINGS_DEFAULTS,
+  SettingsKey,
+  SettingsValues,
+} from '@shared/angular/services/settings/settings-registry';
 import { MissionControl } from '@features/mission-control/angular/mission-control/mission-control';
 import { MissionControlRibbon } from './mission-control-ribbon';
 
@@ -80,6 +85,11 @@ describe('MissionControlRibbon', () => {
       },
     };
     const settingsStub: Partial<Settings> = {
+      // Every control the ribbon draws may ask the settings for its own preferences — an icon-only
+      // button asks whether to name itself — so the double answers for any key, with what the
+      // registry says that key defaults to.
+      value: <K extends SettingsKey>(key: K): Signal<SettingsValues[K]> =>
+        signal(SETTINGS_DEFAULTS[key]),
       aiPermissionPosture: posture.asReadonly(),
       aiRemoteControlPosture: signal<AiRemoteControlPosture>('control').asReadonly(),
       ribbonAlignment: signal<RibbonAlignment>('left').asReadonly(),
