@@ -40,11 +40,11 @@
   --menu-border-color: var(--gray-700);
   --menu-item-background-color--hover: var(--gray-700);
 
-  // Tooltip bubble: a control's own name, drawn beneath it. Deliberately the inverse of the surface
-  // it sits over, so it reads as an annotation rather than as another panel.
-  --tooltip-background-color: var(--gray-100);
-  --tooltip-foreground-color: var(--gray-900);
-  --tooltip-border-color: var(--gray-300);
+  // Tooltip bubble: a control's own name, drawn beneath it. Takes the theme's own surface rather than
+  // inverting it, so a name reads as part of the interface it names and not as something laid over it.
+  --tooltip-background-color: var(--gray-800);
+  --tooltip-foreground-color: var(--gray-100);
+  --tooltip-border-color: var(--gray-700);
 
   --view-placeholder-color: var(--gray-600);
 
