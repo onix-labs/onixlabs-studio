@@ -161,7 +161,13 @@
     }
 
     @if (node.status; as status) {
-      <app-icon class="rail__status rail__status--{{ status }}" [icon]="statusIcon(status)" />
+      @if (status === 'running') {
+        <!-- Checks in flight get the same pulsing dot Mission Control uses for a working agent, rather
+             than a spinner glyph nothing rotates. -->
+        <app-pulse-dot class="rail__status" tone="accent" [pulse]="true" [size]="0.5" />
+      } @else {
+        <app-icon class="rail__status rail__status--{{ status }}" [icon]="statusIcon(status)" />
+      }
     }
   </ng-template>
 </app-tree-view>

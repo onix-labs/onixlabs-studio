@@ -148,11 +148,6 @@
     color: var(--error-color);
   }
 
-  // Running/active stays on the accent for now (a "happening now" cue, not a state colour).
-  &--running {
-    color: var(--accent-orange);
-  }
-
   &--available {
     color: var(--form-muted-foreground-color);
   }

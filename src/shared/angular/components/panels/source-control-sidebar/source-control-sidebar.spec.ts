@@ -712,6 +712,42 @@ describe('SourceControlSidebar', () => {
       expect((fixture.nativeElement as HTMLElement).querySelector('.rail__status')).toBeNull();
     });
 
+    it('pulsesWhileChecksAreRunning_ratherThanShowingAStaticSpinner', () => {
+      // A spinner glyph nothing rotates reads as a rendering glitch; the pulsing dot is the same cue
+      // Mission Control uses for a working agent.
+      forge.section.set({
+        state: 'ready',
+        items: [pullRequest({ checks: 'running' })],
+        message: null,
+      });
+
+      expand();
+
+      const host: HTMLElement = fixture.nativeElement as HTMLElement;
+      const dot: HTMLElement | null = host.querySelector('app-pulse-dot.rail__status');
+      expect(dot).not.toBeNull();
+      expect(dot?.classList.contains('pulse-dot--pulsing')).toBe(true);
+      expect(dot?.classList.contains('pulse-dot--accent')).toBe(true);
+      // No icon badge competes with it.
+      expect(host.querySelector('app-icon.rail__status')).toBeNull();
+    });
+
+    it('usesFilledBadgesForASettledOutcome', () => {
+      forge.section.set({
+        state: 'ready',
+        items: [pullRequest({ checks: 'failed' })],
+        message: null,
+      });
+
+      expand();
+
+      const icon: HTMLElement | null = (fixture.nativeElement as HTMLElement).querySelector(
+        '.rail__status--failed i',
+      );
+      expect(icon?.className).toContain('ph-fill');
+      expect(icon?.className).toContain('ph-x-circle');
+    });
+
     it('distinguishesNoPullRequests_fromEveryFailedState', () => {
       const cases: readonly [ForgeSection<ForgePullRequest>, string][] = [
         [{ state: 'ready', items: [], message: null }, 'No open pull requests'],

@@ -812,6 +812,12 @@ export class Icon {
   public static readonly ERROR: Icon = new Icon('ph ph-x-circle');
 
   /**
+   * Gets the filled error icon, the counterpart to {@link SUCCESS_FILL} where a status warrants a
+   * solid, semantically-coloured badge (for example a pull request whose checks failed).
+   */
+  public static readonly ERROR_FILL: Icon = new Icon('ph-fill ph-x-circle');
+
+  /**
    * Gets the warning-severity icon.
    */
   public static readonly WARNING: Icon = new Icon('ph ph-warning');

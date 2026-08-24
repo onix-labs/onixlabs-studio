@@ -30,6 +30,7 @@ import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
+import { PulseDot } from '@shared/angular/components/pulse-dot/pulse-dot';
 import { TreeRow, TreeView } from '@shared/angular/components/tree-view/tree-view';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { Log } from '@shared/angular/services/log/log';
@@ -193,7 +194,17 @@ interface SectionDef {
  */
 @Component({
   selector: 'app-source-control-sidebar',
-  imports: [TextField, Button, AppIcon, Checkbox, Modal, ModalContent, PanelToolbar, TreeView],
+  imports: [
+    TextField,
+    Button,
+    AppIcon,
+    Checkbox,
+    Modal,
+    ModalContent,
+    PanelToolbar,
+    PulseDot,
+    TreeView,
+  ],
   templateUrl: './source-control-sidebar.html',
   styleUrl: './source-control-sidebar.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -430,13 +441,14 @@ export class SourceControlSidebar {
    */
   protected statusIcon(status: CheckStatus | StubAction['status']): Icon {
     switch (status) {
+      // Filled, because a settled outcome is a badge the eye should catch at a glance rather than an
+      // outline competing with the row's own icon.
       case 'succeeded':
-        return Icon.SUCCESS;
+        return Icon.SUCCESS_FILL;
       case 'failed':
-        return Icon.ERROR;
-      case 'running':
-        return Icon.SPINNER;
+        return Icon.ERROR_FILL;
       default:
+        // `running` never reaches here — the template draws a pulsing dot for it instead.
         return Icon.PLAY;
     }
   }
