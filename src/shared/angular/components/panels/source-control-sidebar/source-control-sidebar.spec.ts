@@ -2,7 +2,7 @@ import {
   ForgeRepository,
   ForgeSection,
 } from '@shared/angular/services/forge-repository/forge-repository';
-import { ForgePullRequest } from '@shared/api/forge-types';
+import { ForgeIssue, ForgePullRequest, ForgeWorkflowRun } from '@shared/api/forge-types';
 import { Shell } from '@shared/angular/services/shell/shell';
 import { ApplicationRef, signal, Signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
@@ -232,11 +232,47 @@ class FakeForgeRepository {
    */
   public readonly checkedOut: ForgePullRequest[] = [];
 
+  public readonly issueSection: WritableSignal<ForgeSection<ForgeIssue>> = signal<
+    ForgeSection<ForgeIssue>
+  >({ state: 'no-repository', items: [], message: null });
+
+  public readonly runSection: WritableSignal<ForgeSection<ForgeWorkflowRun>> = signal<
+    ForgeSection<ForgeWorkflowRun>
+  >({ state: 'no-repository', items: [], message: null });
+
+  /**
+   * Holds the run commands issued, in order.
+   */
+  public readonly commands: string[] = [];
+
   public readonly pullRequests: Signal<ForgeSection<ForgePullRequest>> = this.section.asReadonly();
+  public readonly issues: Signal<ForgeSection<ForgeIssue>> = this.issueSection.asReadonly();
+  public readonly workflowRuns: Signal<ForgeSection<ForgeWorkflowRun>> =
+    this.runSection.asReadonly();
 
   public loadPullRequests(): Promise<void> {
     this.loads += 1;
     return Promise.resolve();
+  }
+
+  public loadIssues(): Promise<void> {
+    this.loads += 1;
+    return Promise.resolve();
+  }
+
+  public loadWorkflowRuns(): Promise<void> {
+    this.loads += 1;
+    return Promise.resolve();
+  }
+
+  public rerun(entry: ForgeWorkflowRun): Promise<{ ok: boolean }> {
+    this.commands.push(`rerun:${entry.id}`);
+    return Promise.resolve({ ok: true });
+  }
+
+  public cancel(entry: ForgeWorkflowRun): Promise<{ ok: boolean }> {
+    this.commands.push(`cancel:${entry.id}`);
+    return Promise.resolve({ ok: true });
   }
 
   public checkout(pull: ForgePullRequest): Promise<{ success: boolean }> {
@@ -286,6 +322,62 @@ function pullRequestRow(overrides: Partial<ForgePullRequest> = {}): TreeRow {
       label: `#${pull.number} ${pull.title}`,
       pullRequest: pull,
     },
+  };
+}
+
+/**
+ * Builds a workflow run.
+ * @param overrides The fields to vary.
+ * @returns Returns the run.
+ */
+function workflowRun(overrides: Partial<ForgeWorkflowRun> = {}): ForgeWorkflowRun {
+  return {
+    id: 99,
+    name: 'CI',
+    status: 'succeeded',
+    url: 'https://github.com/onix-labs/onixlabs-studio/actions/runs/99',
+    branch: 'main',
+    event: 'push',
+    startedAt: '2026-08-24T10:00:00Z',
+    ...overrides,
+  };
+}
+
+/**
+ * Builds the tree row a workflow run renders as.
+ * @param overrides The run fields to vary.
+ * @returns Returns the row.
+ */
+function runRow(overrides: Partial<ForgeWorkflowRun> = {}): TreeRow {
+  const entry: ForgeWorkflowRun = workflowRun(overrides);
+  return {
+    id: `action:${entry.id}`,
+    depth: 1,
+    expandable: false,
+    expanded: false,
+    data: { kind: 'action', icon: Icon.PLAY, label: entry.name, run: entry, status: entry.status },
+  };
+}
+
+/**
+ * Builds the tree row an issue renders as.
+ * @returns Returns the row.
+ */
+function issueRow(): TreeRow {
+  const issue: ForgeIssue = {
+    number: 12,
+    title: 'Something is broken',
+    author: 'matthew',
+    url: 'https://github.com/onix-labs/onixlabs-studio/issues/12',
+    labels: [],
+    assignees: [],
+  };
+  return {
+    id: `issue:${issue.number}`,
+    depth: 1,
+    expandable: false,
+    expanded: false,
+    data: { kind: 'issue', icon: Icon.INFO, label: `#12 ${issue.title}`, issue },
   };
 }
 
@@ -855,6 +947,139 @@ describe('SourceControlSidebar', () => {
 
       internals.refresh();
       expect(forge.loads).toBe(2);
+    });
+  });
+
+  describe('the Issues and Actions sections', () => {
+    /**
+     * Reveals the protected surface these tests drive.
+     * @returns Returns the internals.
+     */
+    function internals(): {
+      contextMenuFor(row: TreeRow): readonly MenuItem[];
+      onContextAction(choice: TreeMenuSelection): void;
+      pendingRerun(): ForgeWorkflowRun | null;
+      pendingCancel(): ForgeWorkflowRun | null;
+      confirmRerun(): void;
+      confirmCancelRun(): void;
+      cancelRerun(): void;
+    } {
+      return component as unknown as ReturnType<typeof internals>;
+    }
+
+    it('showTheRealDataAndNotTheSampleArrays', () => {
+      forge.issueSection.set({
+        state: 'ready',
+        items: [issueRow().data as { issue: ForgeIssue }].map(
+          (data: { issue: ForgeIssue }): ForgeIssue => data.issue,
+        ),
+        message: null,
+      });
+      forge.runSection.set({ state: 'ready', items: [workflowRun()], message: null });
+
+      component.onRowClick(sectionRow('issues', 'Issues'));
+      component.onRowClick(sectionRow('actions', 'Actions'));
+      fixture.detectChanges();
+
+      const text: string = (fixture.nativeElement as HTMLElement).textContent ?? '';
+      expect(text).toContain('#12 Something is broken');
+      expect(text).toContain('CI — main');
+      // The sample data both sections shipped with is gone for good.
+      expect(text).not.toContain('Source-control provider abstraction');
+      expect(text).not.toContain('CI / build');
+    });
+
+    it('readNothing_untilTheirSectionsAreExpanded', () => {
+      expect(forge.loads).toBe(0);
+
+      component.onRowClick(sectionRow('issues', 'Issues'));
+      expect(forge.loads).toBe(1);
+
+      component.onRowClick(sectionRow('actions', 'Actions'));
+      expect(forge.loads).toBe(2);
+    });
+
+    it('anIssueOffersOnlyOpen', () => {
+      expect(
+        internals()
+          .contextMenuFor(issueRow())
+          .map((item: MenuItem): string => item.label),
+      ).toEqual(['Open on GitHub']);
+    });
+
+    it('aRunOffersCancelWhileGoing_andReRunOnceStopped', () => {
+      // Offering the inapplicable one would be offering a command the forge would simply refuse.
+      expect(
+        internals()
+          .contextMenuFor(runRow({ status: 'running' }))
+          .map((item: MenuItem): string => item.label),
+      ).toEqual(['Cancel Run', 'Open on GitHub']);
+      expect(
+        internals()
+          .contextMenuFor(runRow({ status: 'queued' }))
+          .map((item: MenuItem): string => item.label),
+      ).toEqual(['Cancel Run', 'Open on GitHub']);
+      expect(
+        internals()
+          .contextMenuFor(runRow({ status: 'failed' }))
+          .map((item: MenuItem): string => item.label),
+      ).toEqual(['Re-run', 'Open on GitHub']);
+    });
+
+    it('openingAnIssueOrRunReachesTheBrowser', () => {
+      internals().onContextAction({ itemId: 'issue.open', row: issueRow() });
+      internals().onContextAction({ itemId: 'run.open', row: runRow() });
+
+      expect(opened).toEqual([
+        'https://github.com/onix-labs/onixlabs-studio/issues/12',
+        'https://github.com/onix-labs/onixlabs-studio/actions/runs/99',
+      ]);
+    });
+
+    it('reRunAndCancel_areConfirmedBeforeAnythingHappens', () => {
+      // Re-running spends CI minutes and can redeploy; cancelling abandons work in flight.
+      internals().onContextAction({ itemId: 'run.rerun', row: runRow() });
+
+      expect(internals().pendingRerun()?.id).toBe(99);
+      expect(forge.commands).toEqual([]);
+
+      internals().confirmRerun();
+
+      expect(internals().pendingRerun()).toBeNull();
+      expect(forge.commands).toEqual(['rerun:99']);
+    });
+
+    it('dismissingTheConfirmation_leavesTheRunAlone', () => {
+      internals().onContextAction({ itemId: 'run.rerun', row: runRow() });
+
+      internals().cancelRerun();
+
+      expect(internals().pendingRerun()).toBeNull();
+      expect(forge.commands).toEqual([]);
+    });
+
+    it('cancelRun_isConfirmedToo', () => {
+      internals().onContextAction({ itemId: 'run.cancel', row: runRow({ status: 'running' }) });
+
+      expect(internals().pendingCancel()?.id).toBe(99);
+      internals().confirmCancelRun();
+
+      expect(forge.commands).toEqual(['cancel:99']);
+    });
+
+    it('aQueuedRunPulses_becauseItIsWorkTheUserIsWaitingOn', () => {
+      forge.runSection.set({
+        state: 'ready',
+        items: [workflowRun({ status: 'queued' })],
+        message: null,
+      });
+
+      component.onRowClick(sectionRow('actions', 'Actions'));
+      fixture.detectChanges();
+
+      expect(
+        (fixture.nativeElement as HTMLElement).querySelector('app-pulse-dot.rail__status'),
+      ).not.toBeNull();
     });
   });
 });

@@ -16,7 +16,13 @@ import {
   ForgeRepository,
   ForgeSection,
 } from '@shared/angular/services/forge-repository/forge-repository';
-import { ForgeCheckStatus, ForgePullRequest } from '@shared/api/forge-types';
+import {
+  ForgeCheckStatus,
+  ForgeIssue,
+  ForgePullRequest,
+  ForgeRunStatus,
+  ForgeWorkflowRun,
+} from '@shared/api/forge-types';
 import { Shell } from '@shared/angular/services/shell/shell';
 import {
   GitBranch,
@@ -45,36 +51,6 @@ import { Log } from '@shared/angular/services/log/log';
  * the forge model so the panel and the provider cannot drift apart.
  */
 export type CheckStatus = ForgeCheckStatus;
-
-/**
- * A placeholder issue shown in the (not-yet-wired) Issues section. Replaced in P3 (#434).
- */
-interface StubIssue {
-  /**
-   * Gets the issue number.
-   */
-  readonly number: number;
-
-  /**
-   * Gets the issue title.
-   */
-  readonly title: string;
-}
-
-/**
- * A placeholder CI/CD action shown in the (not-yet-wired) Actions section. Replaced in P4 (#435).
- */
-interface StubAction {
-  /**
-   * Gets the action's name.
-   */
-  readonly name: string;
-
-  /**
-   * Gets whether the action is currently running or merely available to run.
-   */
-  readonly status: 'available' | 'running';
-}
 
 /**
  * Describes a row of the repository tree. The same flat shape covers every kind of row (section header,
@@ -134,9 +110,20 @@ interface RepoNode {
   readonly pullRequest?: ForgePullRequest;
 
   /**
-   * Gets the check/run status badge to show, for a pull-request or action row.
+   * Gets the issue, for an issue row (drives the open action).
    */
-  readonly status?: CheckStatus | StubAction['status'];
+  readonly issue?: ForgeIssue;
+
+  /**
+   * Gets the workflow run, for an action row (drives the open, re-run and cancel actions).
+   */
+  readonly run?: ForgeWorkflowRun;
+
+  /**
+   * Gets the badge to show beside a pull-request or action row: a pull request's rolled-up checks, or
+   * a workflow run's own lifecycle.
+   */
+  readonly status?: CheckStatus | ForgeRunStatus;
 
   /**
    * Gets a value indicating whether the row is a muted placeholder (an empty-section message).
@@ -153,6 +140,26 @@ const ACTION_CHECKOUT_PULL_REQUEST: string = 'pr.checkout';
  * Identifies the Open command on a pull request's context menu.
  */
 const ACTION_OPEN_PULL_REQUEST: string = 'pr.open';
+
+/**
+ * Identifies the Open command on an issue's context menu.
+ */
+const ACTION_OPEN_ISSUE: string = 'issue.open';
+
+/**
+ * Identifies the Open command on a workflow run's context menu.
+ */
+const ACTION_OPEN_RUN: string = 'run.open';
+
+/**
+ * Identifies the Re-run command on a workflow run's context menu.
+ */
+const ACTION_RERUN: string = 'run.rerun';
+
+/**
+ * Identifies the Cancel command on a workflow run's context menu.
+ */
+const ACTION_CANCEL_RUN: string = 'run.cancel';
 
 /**
  * What an unhappy forge section says when the read itself supplied no message. `no-forge`, `error` and
@@ -268,23 +275,6 @@ export class SourceControlSidebar {
   private readonly expandedSections: WritableSignal<ReadonlySet<string>> = signal<
     ReadonlySet<string>
   >(new Set<string>(['local']));
-
-  /**
-   * Holds the placeholder issues shown until the Issues section is wired to a provider.
-   */
-  protected readonly issues: readonly StubIssue[] = [
-    { number: 96, title: 'Source-control provider abstraction' },
-    { number: 99, title: 'Workspace git decorations' },
-  ];
-
-  /**
-   * Holds the placeholder actions shown until the Actions section is wired to a provider.
-   */
-  protected readonly actions: readonly StubAction[] = [
-    { name: 'CI / build', status: 'running' },
-    { name: 'CI / test', status: 'available' },
-    { name: 'Release', status: 'available' },
-  ];
 
   /**
    * Describes the rail's sections in display order, each with a builder for its child rows.
@@ -454,7 +444,7 @@ export class SourceControlSidebar {
    * @param status The status.
    * @returns Returns the icon.
    */
-  protected statusIcon(status: CheckStatus | StubAction['status']): Icon {
+  protected statusIcon(status: CheckStatus | ForgeRunStatus): Icon {
     switch (status) {
       // Filled, because a settled outcome is a badge the eye should catch at a glance rather than an
       // outline competing with the row's own icon.
@@ -462,8 +452,12 @@ export class SourceControlSidebar {
         return Icon.SUCCESS_FILL;
       case 'failed':
         return Icon.ERROR_FILL;
+      case 'cancelled':
+        // Not a failure to act on, so it is muted rather than red — the run simply stopped.
+        return Icon.CLOSE;
       default:
-        // `running` never reaches here — the template draws a pulsing dot for it instead.
+        // `running` and `queued` never reach here: the template draws a pulsing dot for both, since
+        // a queued run is work the user is waiting on just as much as one in progress.
         return Icon.PLAY;
     }
   }
@@ -647,6 +641,12 @@ export class SourceControlSidebar {
     if (key === 'pullRequests' && this.forge.pullRequests().state !== 'ready') {
       void this.forge.loadPullRequests();
     }
+    if (key === 'issues' && this.forge.issues().state !== 'ready') {
+      void this.forge.loadIssues();
+    }
+    if (key === 'actions' && this.forge.workflowRuns().state !== 'ready') {
+      void this.forge.loadWorkflowRuns();
+    }
   }
 
   /**
@@ -794,21 +794,28 @@ export class SourceControlSidebar {
     treeRow: TreeRow,
   ): readonly MenuItem[] => {
     const node: RepoNode = this.nodeOf(treeRow);
-    if (node.pullRequest === undefined) {
-      return [];
+    if (node.pullRequest !== undefined) {
+      return [
+        { id: ACTION_CHECKOUT_PULL_REQUEST, label: 'Check Out', icon: Icon.CHECK },
+        { id: ACTION_OPEN_PULL_REQUEST, label: 'Open on GitHub', icon: Icon.OPEN_EXTERNAL },
+      ];
     }
-    return [
-      {
-        id: ACTION_CHECKOUT_PULL_REQUEST,
-        label: 'Check Out',
-        icon: Icon.CHECK,
-      },
-      {
-        id: ACTION_OPEN_PULL_REQUEST,
-        label: 'Open on GitHub',
-        icon: Icon.OPEN_EXTERNAL,
-      },
-    ];
+    if (node.issue !== undefined) {
+      return [{ id: ACTION_OPEN_ISSUE, label: 'Open on GitHub', icon: Icon.OPEN_EXTERNAL }];
+    }
+    if (node.run !== undefined) {
+      const items: MenuItem[] = [];
+      // Cancel applies only to a run still going, re-run only to one that has stopped. Offering the
+      // inapplicable one would be offering a command the forge would simply refuse.
+      if (node.run.status === 'queued' || node.run.status === 'running') {
+        items.push({ id: ACTION_CANCEL_RUN, label: 'Cancel Run', icon: Icon.STOP });
+      } else {
+        items.push({ id: ACTION_RERUN, label: 'Re-run', icon: Icon.REFRESH });
+      }
+      items.push({ id: ACTION_OPEN_RUN, label: 'Open on GitHub', icon: Icon.OPEN_EXTERNAL });
+      return items;
+    }
+    return [];
   };
 
   /**
@@ -816,16 +823,33 @@ export class SourceControlSidebar {
    * @param choice The chosen item and its row.
    */
   protected onContextAction(choice: TreeMenuSelection): void {
-    const pullRequest: ForgePullRequest | undefined = this.nodeOf(choice.row).pullRequest;
-    if (pullRequest === undefined) {
-      return;
-    }
+    const node: RepoNode = this.nodeOf(choice.row);
     switch (choice.itemId) {
       case ACTION_CHECKOUT_PULL_REQUEST:
-        this.checkoutPullRequest(pullRequest);
+        if (node.pullRequest !== undefined) {
+          this.checkoutPullRequest(node.pullRequest);
+        }
         break;
       case ACTION_OPEN_PULL_REQUEST:
-        this.openPullRequest(pullRequest);
+        if (node.pullRequest !== undefined) {
+          this.openPullRequest(node.pullRequest);
+        }
+        break;
+      case ACTION_OPEN_ISSUE:
+        if (node.issue !== undefined) {
+          this.openIssue(node.issue);
+        }
+        break;
+      case ACTION_OPEN_RUN:
+        if (node.run !== undefined) {
+          this.openRun(node.run);
+        }
+        break;
+      case ACTION_RERUN:
+        this.pendingRerun.set(node.run ?? null);
+        break;
+      case ACTION_CANCEL_RUN:
+        this.pendingCancel.set(node.run ?? null);
         break;
       default:
         break;
@@ -858,8 +882,15 @@ export class SourceControlSidebar {
    * tree is re-read.
    */
   protected refreshForge(): void {
-    if (this.expandedSections().has('pullRequests')) {
+    const open: ReadonlySet<string> = this.expandedSections();
+    if (open.has('pullRequests')) {
       void this.forge.loadPullRequests();
+    }
+    if (open.has('issues')) {
+      void this.forge.loadIssues();
+    }
+    if (open.has('actions')) {
+      void this.forge.loadWorkflowRuns();
     }
   }
 
@@ -868,18 +899,41 @@ export class SourceControlSidebar {
    * @returns Returns the rows.
    */
   private issueRows(): readonly TreeRow[] {
-    if (this.issues.length === 0) {
-      return [this.emptyRow('issues', Icon.INFO, 'No issues')];
+    const section: ForgeSection<ForgeIssue> = this.forge.issues();
+    if (section.state !== 'ready') {
+      return [
+        this.emptyRow('issues', Icon.INFO, section.message ?? PENDING_MESSAGES[section.state]),
+      ];
     }
-    return this.issues.map(
-      (issue: StubIssue): TreeRow => ({
+    if (section.items.length === 0) {
+      return [this.emptyRow('issues', Icon.INFO, 'No open issues')];
+    }
+    return section.items.map(
+      (issue: ForgeIssue): TreeRow => ({
         id: `issue:${issue.number}`,
         depth: 1,
         expandable: false,
         expanded: false,
-        data: { kind: 'issue', icon: Icon.INFO, label: `#${issue.number} ${issue.title}` },
+        data: {
+          kind: 'issue',
+          icon: Icon.INFO,
+          label: `#${issue.number} ${issue.title}`,
+          issue,
+        },
       }),
     );
+  }
+
+  /**
+   * Opens an issue on the forge, in the user's browser.
+   * @param issue The issue to open.
+   */
+  private openIssue(issue: ForgeIssue): void {
+    if (issue.url.length === 0) {
+      return;
+    }
+    this.log.info('forge', `Opening issue #${issue.number} in the browser`);
+    void this.shell.openExternal(issue.url);
   }
 
   /**
@@ -887,18 +941,94 @@ export class SourceControlSidebar {
    * @returns Returns the rows.
    */
   private actionRows(): readonly TreeRow[] {
-    if (this.actions.length === 0) {
-      return [this.emptyRow('actions', Icon.PLAY, 'No actions')];
+    const section: ForgeSection<ForgeWorkflowRun> = this.forge.workflowRuns();
+    if (section.state !== 'ready') {
+      return [
+        this.emptyRow('actions', Icon.PLAY, section.message ?? PENDING_MESSAGES[section.state]),
+      ];
     }
-    return this.actions.map(
-      (action: StubAction): TreeRow => ({
-        id: `action:${action.name}`,
+    if (section.items.length === 0) {
+      return [this.emptyRow('actions', Icon.PLAY, 'No recent workflow runs')];
+    }
+    return section.items.map(
+      (run: ForgeWorkflowRun): TreeRow => ({
+        id: `action:${run.id}`,
         depth: 1,
         expandable: false,
         expanded: false,
-        data: { kind: 'action', icon: Icon.PLAY, label: action.name, status: action.status },
+        data: {
+          kind: 'action',
+          icon: Icon.PLAY,
+          // The branch is what tells two runs of the same workflow apart, which is the common case.
+          label: run.branch.length > 0 ? `${run.name} — ${run.branch}` : run.name,
+          run,
+          status: run.status,
+        },
       }),
     );
+  }
+
+  /**
+   * Opens a workflow run on the forge, in the user's browser.
+   * @param run The run to open.
+   */
+  private openRun(run: ForgeWorkflowRun): void {
+    if (run.url.length === 0) {
+      return;
+    }
+    this.log.info('forge', `Opening workflow run ${run.id} in the browser`);
+    void this.shell.openExternal(run.url);
+  }
+
+  /**
+   * Holds the run awaiting the user's re-run confirmation, or null when none is. Re-running spends
+   * CI minutes and can redeploy, so it is never done from a bare menu click.
+   */
+  protected readonly pendingRerun: WritableSignal<ForgeWorkflowRun | null> =
+    signal<ForgeWorkflowRun | null>(null);
+
+  /**
+   * Holds the run awaiting the user's cancel confirmation, or null when none is.
+   */
+  protected readonly pendingCancel: WritableSignal<ForgeWorkflowRun | null> =
+    signal<ForgeWorkflowRun | null>(null);
+
+  /**
+   * Confirms the re-run.
+   */
+  protected confirmRerun(): void {
+    const run: ForgeWorkflowRun | null = this.pendingRerun();
+    this.pendingRerun.set(null);
+    if (run !== null) {
+      this.log.info('forge', `Re-running workflow run ${run.id}`);
+      void this.forge.rerun(run);
+    }
+  }
+
+  /**
+   * Dismisses the re-run confirmation.
+   */
+  protected cancelRerun(): void {
+    this.pendingRerun.set(null);
+  }
+
+  /**
+   * Confirms the cancellation.
+   */
+  protected confirmCancelRun(): void {
+    const run: ForgeWorkflowRun | null = this.pendingCancel();
+    this.pendingCancel.set(null);
+    if (run !== null) {
+      this.log.info('forge', `Cancelling workflow run ${run.id}`);
+      void this.forge.cancel(run);
+    }
+  }
+
+  /**
+   * Dismisses the cancellation confirmation.
+   */
+  protected dismissCancelRun(): void {
+    this.pendingCancel.set(null);
   }
 
   /**

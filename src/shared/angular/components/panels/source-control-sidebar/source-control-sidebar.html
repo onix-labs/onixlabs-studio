@@ -146,7 +146,7 @@
     }
 
     @if (node.status; as status) {
-      @if (status === 'running') {
+      @if (status === 'running' || status === 'queued') {
         <!-- Checks in flight get a pulsing dot rather than a spinner glyph nothing rotates. Warning
              rather than accent: it sits between the green and red outcomes as the third state of one
              badge, so it belongs to the same semantic scale rather than to the theme's accent. Sized
@@ -216,6 +216,46 @@
     <div class="rail__dialog-actions">
       <app-button label="Cancel" (click)="cancelDropStash()" />
       <app-button variant="solid" label="Drop" (click)="confirmDropStash()" />
+    </div>
+  </ng-template>
+</app-modal>
+
+<!-- Asked before a run is re-run: it spends CI minutes and, for a deploy workflow, can push again. -->
+<app-modal
+  [open]="pendingRerun() !== null"
+  [width]="26"
+  ariaLabel="Re-run workflow"
+  (dismiss)="cancelRerun()"
+>
+  <ng-template appModalContent>
+    <h2 class="rail__dialog-title">Re-run this workflow?</h2>
+    <p class="rail__dialog-message">
+      “{{ pendingRerun()?.name }}” runs again on {{ pendingRerun()?.branch }}. This starts a new run
+      rather than replacing the old one.
+    </p>
+    <div class="rail__dialog-actions">
+      <app-button label="Cancel" (click)="cancelRerun()" />
+      <app-button variant="solid" label="Re-run" (click)="confirmRerun()" />
+    </div>
+  </ng-template>
+</app-modal>
+
+<!-- Asked before a run in flight is cancelled: whatever it had done so far is abandoned. -->
+<app-modal
+  [open]="pendingCancel() !== null"
+  [width]="26"
+  ariaLabel="Cancel workflow run"
+  (dismiss)="dismissCancelRun()"
+>
+  <ng-template appModalContent>
+    <h2 class="rail__dialog-title">Cancel this run?</h2>
+    <p class="rail__dialog-message">
+      “{{ pendingCancel()?.name }}” stops on {{ pendingCancel()?.branch }}. Anything it has not
+      finished is abandoned.
+    </p>
+    <div class="rail__dialog-actions">
+      <app-button label="Keep running" (click)="dismissCancelRun()" />
+      <app-button variant="solid" label="Cancel run" (click)="confirmCancelRun()" />
     </div>
   </ng-template>
 </app-modal>

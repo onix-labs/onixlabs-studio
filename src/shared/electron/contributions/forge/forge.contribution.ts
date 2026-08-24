@@ -153,6 +153,29 @@ export class ForgeContribution implements MainContribution {
         ),
     );
 
+    context.handle(
+      ForgeChannel.RerunWorkflowRun,
+      (
+        _event: IpcMainInvokeEvent,
+        repository: unknown,
+        runId: unknown,
+      ): Promise<ForgeResult<void>> =>
+        this.run(repository, runId, (provider, target, id) =>
+          provider.rerunWorkflowRun(target, id),
+        ),
+    );
+    context.handle(
+      ForgeChannel.CancelWorkflowRun,
+      (
+        _event: IpcMainInvokeEvent,
+        repository: unknown,
+        runId: unknown,
+      ): Promise<ForgeResult<void>> =>
+        this.run(repository, runId, (provider, target, id) =>
+          provider.cancelWorkflowRun(target, id),
+        ),
+    );
+
     context.log.info('forge contribution active; serving github');
   }
 
@@ -213,6 +236,37 @@ export class ForgeContribution implements MainContribution {
           ? `Signed in as ${result.value.login} using the GitHub CLI's login.`
           : `Signed in as ${result.value.login}.`,
     };
+  }
+
+  /**
+   * Runs a workflow-run command, validating both the repository and the run id from the renderer
+   * before either reaches the provider.
+   * @param repository The reference the renderer sent, which is untrusted input.
+   * @param runId The run id the renderer sent, likewise.
+   * @param act The provider operation to run.
+   * @returns Returns the operation's result, or the reason it could not run.
+   */
+  private async run(
+    repository: unknown,
+    runId: unknown,
+    act: (
+      provider: ForgeProvider,
+      target: ForgeRepositoryRef,
+      id: number,
+    ) => Promise<ForgeResult<void>>,
+  ): Promise<ForgeResult<void>> {
+    const provider: ForgeProvider | null = this.provider;
+    if (provider === null) {
+      return { ok: false, error: 'The forge backend is not available.', unauthorized: false };
+    }
+    const target: ForgeRepositoryRef | null = asRepository(repository);
+    if (target === null) {
+      return { ok: false, error: 'No forge repository was named.', unauthorized: false };
+    }
+    if (typeof runId !== 'number' || !Number.isSafeInteger(runId) || runId <= 0) {
+      return { ok: false, error: 'Invalid workflow run.', unauthorized: false };
+    }
+    return act(provider, target, runId);
   }
 
   /**

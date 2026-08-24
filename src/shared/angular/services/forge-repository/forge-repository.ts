@@ -4,7 +4,13 @@ import { Log } from '@shared/angular/services/log/log';
 import { Repository } from '@shared/angular/services/repository/repository';
 import { MutationResult } from '@shared/angular/services/source-control/source-control-provider';
 import { GitRemote } from '@shared/angular/services/repository/repository-data';
-import { ForgePullRequest, ForgeRepositoryRef, ForgeResult } from '@shared/api/forge-types';
+import {
+  ForgeIssue,
+  ForgePullRequest,
+  ForgeRepositoryRef,
+  ForgeResult,
+  ForgeWorkflowRun,
+} from '@shared/api/forge-types';
 
 /**
  * The remote names preferred when a repository has several, in order. A fork typically has both, and
@@ -97,10 +103,33 @@ export class ForgeRepository {
   public readonly repositoryRef: Signal<ForgeRepositoryRef | null> = this.detected.asReadonly();
 
   /**
+   * Holds the issue section's state.
+   */
+  private readonly issueSection: WritableSignal<ForgeSection<ForgeIssue>> =
+    signal<ForgeSection<ForgeIssue>>(IDLE);
+
+  /**
+   * Holds the workflow-run section's state.
+   */
+  private readonly runSection: WritableSignal<ForgeSection<ForgeWorkflowRun>> =
+    signal<ForgeSection<ForgeWorkflowRun>>(IDLE);
+
+  /**
    * Gets the pull-request section.
    */
   public readonly pullRequests: Signal<ForgeSection<ForgePullRequest>> =
     this.pullRequestSection.asReadonly();
+
+  /**
+   * Gets the issue section.
+   */
+  public readonly issues: Signal<ForgeSection<ForgeIssue>> = this.issueSection.asReadonly();
+
+  /**
+   * Gets the workflow-run section.
+   */
+  public readonly workflowRuns: Signal<ForgeSection<ForgeWorkflowRun>> =
+    this.runSection.asReadonly();
 
   /**
    * Gets the remote the detected repository was found on, which is where a pull request's head is
@@ -148,24 +177,59 @@ export class ForgeRepository {
    * when it has not been already.
    * @returns Returns a promise that resolves once the section has settled.
    */
-  public async loadPullRequests(): Promise<void> {
+  public loadPullRequests(): Promise<void> {
+    return this.load(this.pullRequestSection, (reference: ForgeRepositoryRef) =>
+      this.forge.pullRequests(reference),
+    );
+  }
+
+  /**
+   * Reads the repository's open issues into {@link issues}.
+   * @returns Returns a promise that resolves once the section has settled.
+   */
+  public loadIssues(): Promise<void> {
+    return this.load(this.issueSection, (reference: ForgeRepositoryRef) =>
+      this.forge.issues(reference),
+    );
+  }
+
+  /**
+   * Reads the repository's recent CI/CD workflow runs into {@link workflowRuns}.
+   * @returns Returns a promise that resolves once the section has settled.
+   */
+  public loadWorkflowRuns(): Promise<void> {
+    return this.load(this.runSection, (reference: ForgeRepositoryRef) =>
+      this.forge.workflowRuns(reference),
+    );
+  }
+
+  /**
+   * Reads one section, detecting the forge first when it has not been already. Shared by all three so
+   * their states cannot drift apart — a section that reported "no forge" differently from its
+   * neighbours would be a puzzle rather than a panel.
+   * @param section The section to fill.
+   * @param read The forge read that fills it.
+   * @returns Returns a promise that resolves once the section has settled.
+   */
+  private async load<T>(
+    section: WritableSignal<ForgeSection<T>>,
+    read: (reference: ForgeRepositoryRef) => Promise<ForgeResult<readonly T[]>>,
+  ): Promise<void> {
     if (!this.repository.isBound()) {
-      this.pullRequestSection.set(IDLE);
+      section.set(IDLE);
       return;
     }
     const reference: ForgeRepositoryRef | null = this.detected() ?? (await this.detect());
     if (reference === null) {
-      this.pullRequestSection.set({
+      section.set({
         state: 'no-forge',
         items: [],
         message: 'This repository has no remote on a supported forge.',
       });
       return;
     }
-    this.pullRequestSection.set({ state: 'loading', items: [], message: null });
-    const result: ForgeResult<readonly ForgePullRequest[]> =
-      await this.forge.pullRequests(reference);
-    this.pullRequestSection.set(sectionFor(result));
+    section.set({ state: 'loading', items: [], message: null });
+    section.set(sectionFor(await read(reference)));
   }
 
   /**
@@ -191,12 +255,59 @@ export class ForgeRepository {
   }
 
   /**
+   * Re-runs a workflow run, then re-reads the section — the forge starts a *new* run rather than
+   * mutating this one, so the list is what shows the result.
+   * @param run The run to re-run.
+   * @returns Returns the outcome.
+   */
+  public rerun(run: ForgeWorkflowRun): Promise<ForgeResult<void>> {
+    return this.command((reference: ForgeRepositoryRef) =>
+      this.forge.rerunWorkflowRun(reference, run.id),
+    );
+  }
+
+  /**
+   * Cancels a workflow run in flight, then re-reads the section.
+   * @param run The run to cancel.
+   * @returns Returns the outcome.
+   */
+  public cancel(run: ForgeWorkflowRun): Promise<ForgeResult<void>> {
+    return this.command((reference: ForgeRepositoryRef) =>
+      this.forge.cancelWorkflowRun(reference, run.id),
+    );
+  }
+
+  /**
+   * Runs a workflow-run command against the detected repository and re-reads the run list, so the
+   * panel shows what the command did rather than what it showed before.
+   * @param act The command to run.
+   * @returns Returns the outcome.
+   */
+  private async command(
+    act: (reference: ForgeRepositoryRef) => Promise<ForgeResult<void>>,
+  ): Promise<ForgeResult<void>> {
+    const reference: ForgeRepositoryRef | null = this.detected();
+    if (reference === null) {
+      return { ok: false, error: 'No forge repository for this workspace.', unauthorized: false };
+    }
+    const result: ForgeResult<void> = await act(reference);
+    if (result.ok) {
+      await this.loadWorkflowRuns();
+    } else {
+      this.log.error('forge', 'Workflow run command failed', result.error);
+    }
+    return result;
+  }
+
+  /**
    * Clears everything read, for a view whose repository has gone away.
    */
   public reset(): void {
     this.detected.set(null);
     this.detectedRemote.set(null);
     this.pullRequestSection.set(IDLE);
+    this.issueSection.set(IDLE);
+    this.runSection.set(IDLE);
   }
 
   /**
