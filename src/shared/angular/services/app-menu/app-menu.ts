@@ -26,7 +26,9 @@ interface ContributionEntry {
  * The menu is contextual: it follows the active tab, exactly as the ribbon does (#362). The shell
  * contributes the core sections that are true whatever is in front — File, Edit, View, Window, Help —
  * and the active feature contributes its own on top, folding into a core section where the ids match so
- * a feature adds *to* File rather than creating a second one.
+ * a feature adds *to* File rather than creating a second one. Where the two want the same keyboard
+ * chord the later contributor wins it outright: the core's Edit section carries the platform's editing
+ * commands for every tab that has none of its own, and a feature takes back only the chords it declares.
  *
  * Handlers never leave the renderer. The published model carries command ids; a chosen command comes
  * back by id and is routed to the handler registered under it. That indirection is what lets the menu be
@@ -83,11 +85,19 @@ export class AppMenu {
           // second File beside it. The core's entries come first because the core contributes first.
           merged[existing] = {
             ...merged[existing],
-            items: [...merged[existing].items, ...section.items],
+            items: [
+              ...AppMenu.withoutClaimed(merged[existing].items, section.items),
+              ...section.items,
+            ],
           };
         }
       }
-      return merged;
+      return merged.map(
+        (section: MenuContribution): MenuContribution => ({
+          ...section,
+          items: AppMenu.tidySeparators(section.items),
+        }),
+      );
     },
   );
 
@@ -160,6 +170,72 @@ export class AppMenu {
     if (entry.role !== undefined) {
       this.client?.runRole(entry.role);
     }
+  }
+
+  /**
+   * Drops the entries an incoming contribution claims the chord of, so a later contributor wins a
+   * keyboard chord an earlier one bound.
+   *
+   * This is what lets the core carry the platform's editing commands without taking them from the
+   * editors. The core binds Undo to the native role, which suits a plain text box; a code tab needs its
+   * own model-level undo instead, and by contributing an entry with the same accelerator it replaces the
+   * core's rather than competing with it — two menu items sharing an accelerator would otherwise both be
+   * live, and the first would silently win. Only top-level entries are compared: a chord buried in a
+   * submenu is not a claim on the section.
+   *
+   * @param existing The entries already folded into the section.
+   * @param incoming The entries being folded in.
+   * @returns Returns the existing entries the incoming ones do not claim.
+   */
+  private static withoutClaimed(
+    existing: readonly MenuEntry[],
+    incoming: readonly MenuEntry[],
+  ): readonly MenuEntry[] {
+    const claimed: ReadonlySet<string> = new Set<string>(
+      incoming
+        .map((entry: MenuEntry): string | undefined => entry.accelerator)
+        .filter(
+          (accelerator: string | undefined): accelerator is string => accelerator !== undefined,
+        ),
+    );
+    if (claimed.size === 0) {
+      return existing;
+    }
+    return existing.filter(
+      (entry: MenuEntry): boolean =>
+        entry.accelerator === undefined || !claimed.has(entry.accelerator),
+    );
+  }
+
+  /**
+   * Collapses runs of separators and trims them from either end, so a section reads cleanly however its
+   * contributors happened to fall. The core deliberately ends a section with a separator to leave room
+   * for a feature's entries; when no feature adds any — or when a feature's claim removed the entries
+   * one was dividing — that separator would otherwise be left dangling.
+   * @param items The section's entries.
+   * @returns Returns the tidied entries.
+   */
+  private static tidySeparators(items: readonly MenuEntry[]): readonly MenuEntry[] {
+    const isSeparator: (entry: MenuEntry) => boolean = (entry: MenuEntry): boolean =>
+      entry.kind === 'separator';
+    const collapsed: MenuEntry[] = [];
+    for (const entry of items) {
+      const nested: MenuEntry =
+        entry.items === undefined
+          ? entry
+          : { ...entry, items: AppMenu.tidySeparators(entry.items) };
+      if (
+        isSeparator(nested) &&
+        (collapsed.length === 0 || isSeparator(collapsed[collapsed.length - 1]))
+      ) {
+        continue;
+      }
+      collapsed.push(nested);
+    }
+    while (collapsed.length > 0 && isSeparator(collapsed[collapsed.length - 1])) {
+      collapsed.pop();
+    }
+    return collapsed;
   }
 
   /**

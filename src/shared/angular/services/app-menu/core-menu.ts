@@ -46,6 +46,15 @@ const TOOL_TAB_TYPES: readonly { readonly type: TabType; readonly label: string 
  * the openers first and the closers last puts a feature's Save exactly where it belongs, without the
  * feature having to know anything about the core.
  *
+ * The Edit section is the platform's own editing commands, carried as native roles. It matters more than
+ * it looks: on macOS the application menu is what binds the editing chords into the window at all, so
+ * without these Cmd+X/C/V do nothing in any plain text box — which is exactly what happened when this
+ * menu replaced Electron's default one. Roles are routed by focus rather than by tab, so the same entry
+ * serves a composer's textarea, a code editor and a markdown pane without knowing which is in front.
+ *
+ * Select All is deliberately absent: the editors bind Cmd+A to their own selection model, and a core
+ * entry claiming it would take the chord away from them. That one waits for focus-scoped keybindings.
+ *
  * Instantiated once by the shell.
  */
 @Service()
@@ -98,6 +107,19 @@ export class CoreMenu {
             accelerator: 'CmdOrCtrl+O',
             run: (): void => void this.documents.openFile(),
           },
+          MENU_SEPARATOR,
+        ],
+      },
+      {
+        id: 'edit',
+        label: 'Edit',
+        items: [
+          { id: 'core.edit.undo', label: 'Undo', accelerator: 'CmdOrCtrl+Z', role: 'undo' },
+          { id: 'core.edit.redo', label: 'Redo', accelerator: 'CmdOrCtrl+Shift+Z', role: 'redo' },
+          MENU_SEPARATOR,
+          { id: 'core.edit.cut', label: 'Cut', accelerator: 'CmdOrCtrl+X', role: 'cut' },
+          { id: 'core.edit.copy', label: 'Copy', accelerator: 'CmdOrCtrl+C', role: 'copy' },
+          { id: 'core.edit.paste', label: 'Paste', accelerator: 'CmdOrCtrl+V', role: 'paste' },
           MENU_SEPARATOR,
         ],
       },

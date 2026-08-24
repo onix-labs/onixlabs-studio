@@ -275,25 +275,11 @@ export class MarkdownRibbon {
             enabled: this.canRedo(),
             run: (): void => this.onRedo(),
           },
-          MENU_SEPARATOR,
-          {
-            id: 'markdown.cut',
-            label: 'Cut',
-            accelerator: 'CmdOrCtrl+X',
-            run: (): void => this.onCut(),
-          },
-          {
-            id: 'markdown.copy',
-            label: 'Copy',
-            accelerator: 'CmdOrCtrl+C',
-            run: (): void => this.onCopy(),
-          },
-          {
-            id: 'markdown.paste',
-            label: 'Paste',
-            accelerator: 'CmdOrCtrl+V',
-            run: (): void => this.onPaste(),
-          },
+          // Cut, Copy and Paste are deliberately not here. The core contributes them as native roles,
+          // which go to whatever holds focus — this pane's own handlers force focus into the editor
+          // first, so as a chord they took the clipboard from every other text box on the tab. Undo and
+          // Redo stay: those are the document's history, not the focused element's. The ribbon's
+          // clipboard buttons remain, since pressing one is an explicit instruction to act on the pane.
           MENU_SEPARATOR,
           {
             id: 'markdown.find',
