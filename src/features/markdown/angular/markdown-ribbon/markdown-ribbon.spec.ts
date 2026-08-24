@@ -5,6 +5,8 @@ import {
   MarkdownCommands,
 } from '@shared/angular/services/markdown-commands/markdown-commands';
 import { MarkdownPanels } from '@features/markdown/angular/markdown-panels/markdown-panels';
+import { AppMenu } from '@shared/angular/services/app-menu/app-menu';
+import { MenuContribution, MenuEntry } from '@shared/angular/services/app-menu/app-menu-model';
 import { Documents } from '@shared/angular/services/documents/documents';
 import { ModalWindows } from '@shared/angular/services/modal-windows/modal-windows';
 import { FakeModalWindows } from '@shared/angular/services/modal-windows/modal-windows.fake';
@@ -173,6 +175,100 @@ describe('MarkdownRibbon', () => {
     expect(toolButton('Reader').disabled).toBe(false);
   });
 
+  it('formattingButtons_whenClicked_reachTheEditorCommands', () => {
+    const inserted: string[] = [];
+    const commands: MarkdownCommands = TestBed.inject(MarkdownCommands);
+    commands.register('doc-1', recordingHandler(inserted));
+    commands.setHistoryState(true, true);
+    fixture.detectChanges();
+
+    smallButton('Numbers').click();
+    smallButton('Tasks').click();
+    smallButton('Divider').click();
+    smallButton('Redo').click();
+
+    expect(inserted).toEqual(
+      expect.arrayContaining(['ordered-list', 'task-list', 'divider', 'redo']),
+    );
+  });
+
+  it('menu_whenAFormattingCommandIsChosen_runsTheSameHandlerAsTheRibbon', () => {
+    const inserted: string[] = [];
+    const commands: MarkdownCommands = TestBed.inject(MarkdownCommands);
+    commands.register('doc-1', recordingHandler(inserted));
+    commands.setHistoryState(true, true);
+    fixture.detectChanges();
+    TestBed.tick();
+
+    const menu: AppMenu = TestBed.inject(AppMenu);
+    menu.dispatch('markdown.bulletList');
+    menu.dispatch('markdown.orderedList');
+    menu.dispatch('markdown.taskList');
+    menu.dispatch('markdown.table');
+    menu.dispatch('markdown.divider');
+    menu.dispatch('markdown.undo');
+    menu.dispatch('markdown.redo');
+
+    expect(inserted).toEqual(
+      expect.arrayContaining([
+        'bullet-list',
+        'ordered-list',
+        'task-list',
+        'table',
+        'divider',
+        'undo',
+        'redo',
+      ]),
+    );
+  });
+
+  it('menu_whenAnInsertCommandIsChosen_opensItsModal', () => {
+    TestBed.tick();
+    expect(windows.openWindows).toBe(0);
+
+    TestBed.inject(AppMenu).dispatch('markdown.link');
+    fixture.detectChanges();
+
+    expect(windows.openWindows).toBe(1);
+  });
+
+  it('editMenu_whenContributed_leavesTheClipboardChordsToTheCore', () => {
+    // This pane's own clipboard handlers focus the editor first, so as chords they would take the
+    // clipboard from every other text box on the tab. The core's focus-routed roles own them instead.
+    TestBed.tick();
+    const menu: AppMenu = TestBed.inject(AppMenu);
+    const claimed: readonly (string | undefined)[] = (
+      menu.sections().find((section: MenuContribution): boolean => section.id === 'edit')?.items ??
+      []
+    )
+      .filter((entry: MenuEntry): boolean => entry.id?.startsWith('markdown.') === true)
+      .map((entry: MenuEntry): string | undefined => entry.accelerator);
+
+    expect(claimed).not.toContain('CmdOrCtrl+X');
+    expect(claimed).not.toContain('CmdOrCtrl+C');
+    expect(claimed).not.toContain('CmdOrCtrl+V');
+  });
+
+  it('clipboardButtons_whenClicked_reachTheEditorCommands', () => {
+    const calls: string[] = [];
+    const handler: MarkdownCommandHandler = recordingHandler([]);
+    const commands: MarkdownCommands = TestBed.inject(MarkdownCommands);
+    commands.register('doc-1', {
+      ...handler,
+      cut: (): void => void calls.push('cut'),
+      copy: (): void => void calls.push('copy'),
+      paste: (): void => void calls.push('paste'),
+    });
+    fixture.detectChanges();
+
+    menuButton('Cut').click();
+    menuButton('Copy').click();
+    menuButton('Paste').click();
+
+    // The buttons stay: pressing one is an explicit instruction to act on the pane.
+    expect(calls).toEqual(['cut', 'copy', 'paste']);
+  });
+
   it('imageButton_whenClicked_opensTheImageModal', () => {
     // A modal is presented in its own window, so opening one is observed as a window opening rather
     // than an inline overlay appearing.
@@ -197,6 +293,26 @@ describe('MarkdownRibbon', () => {
       (button: HTMLButtonElement): boolean =>
         button.querySelector('span')?.textContent?.trim() === label,
     )!;
+  }
+
+  /**
+   * Finds a split menu-button's primary action by its label. The clipboard controls are menu buttons —
+   * a primary press plus a dropdown of variants — rather than plain small buttons.
+   * @param label The button's label text.
+   * @returns Returns the matching button.
+   */
+  function menuButton(label: string): HTMLButtonElement {
+    const host: Element | undefined = Array.from(
+      element.querySelectorAll('app-ribbon-strip-menu-button'),
+    ).find(
+      (candidate: Element): boolean => candidate.textContent?.trim().startsWith(label) === true,
+    );
+    const match: HTMLButtonElement | null | undefined =
+      host?.querySelector<HTMLButtonElement>('button');
+    if (match === null || match === undefined) {
+      throw new Error(`No menu button labelled "${label}"`);
+    }
+    return match;
   }
 
   /**

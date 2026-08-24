@@ -11,6 +11,8 @@ import type {
 } from '@shared/api/ai-types';
 import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine';
 import { AgentSessions } from '@shared/angular/services/agent-sessions/agent-sessions';
+import { AppMenu } from '@shared/angular/services/app-menu/app-menu';
+import { MenuContribution, MenuEntry } from '@shared/angular/services/app-menu/app-menu-model';
 import { EditorCommands } from '@shared/angular/services/editor-commands/editor-commands';
 import { ModalWindows } from '@shared/angular/services/modal-windows/modal-windows';
 import { FakeModalWindows } from '@shared/angular/services/modal-windows/modal-windows.fake';
@@ -356,6 +358,61 @@ describe('AgentRibbon', () => {
     expect(titles).toEqual(['Session', 'Engine', 'Attachments']);
     expect(field('Mode').closest('.ribbon-group')?.textContent).toContain('Engine');
     expect(button('Remote').closest('.ribbon-group')?.textContent).toContain('Session');
+  });
+
+  it('menu_whenACommandIsChosen_runsTheSameHandlerAsTheRibbon', () => {
+    // The ribbon contributes the agent tab's menu, so the menu is a second route into these commands
+    // and needs to be exercised as one: a menu entry wired to the wrong handler looks fine on the bar.
+    const menu: AppMenu = TestBed.inject(AppMenu);
+    TestBed.tick();
+
+    menu.dispatch('agent.newChat');
+    menu.dispatch('agent.stop');
+    menu.dispatch('agent.compact');
+    menu.dispatch('agent.history');
+    menu.dispatch('agent.attachFile');
+    menu.dispatch('agent.attachFolder');
+    menu.dispatch('agent.attachSelection');
+    menu.dispatch('agent.clearContext');
+
+    expect(cleared).toBe(1);
+    expect(stopped).toBe(1);
+    expect(compacted).toBe(1);
+    expect(historyToggles).toBe(1);
+    expect(attachedFiles).toBe(1);
+    expect(attachedFolders).toBe(1);
+    expect(attachedSelections).toBe(1);
+    expect(clearedContexts).toBe(1);
+  });
+
+  it('menu_whenRemoteControlIsChosen_opensTheConfirmationRatherThanFlipping', () => {
+    const menu: AppMenu = TestBed.inject(AppMenu);
+    TestBed.tick();
+
+    menu.dispatch('agent.remoteControl');
+
+    // Same rule as the ribbon button: exposing a session is confirmed before it happens.
+    expect(remoteControlChoices).toEqual([]);
+    expect(internals.remoteConfirmOpen()).toBe(true);
+  });
+
+  it('menu_whenStateChanges_reflectsEnablementAndChecks', () => {
+    const menu: AppMenu = TestBed.inject(AppMenu);
+    running.set(true);
+    hasMessages.set(false);
+    historyOpen.set(true);
+    fixture.detectChanges();
+    TestBed.tick();
+
+    const items: readonly MenuEntry[] =
+      menu.sections().find((section: MenuContribution): boolean => section.id === 'agent')?.items ??
+      [];
+    const entry: (id: string) => MenuEntry | undefined = (id: string): MenuEntry | undefined =>
+      items.find((candidate: MenuEntry): boolean => candidate.id === id);
+
+    expect(entry('agent.stop')?.enabled).toBe(true);
+    expect(entry('agent.compact')?.enabled).toBe(false);
+    expect(entry('agent.history')?.checked).toBe(true);
   });
 
   it('clearContext_whenNothingAttached_isDisabledOtherwiseClears', () => {

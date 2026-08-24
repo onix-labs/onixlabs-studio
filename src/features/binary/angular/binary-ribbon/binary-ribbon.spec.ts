@@ -3,6 +3,7 @@ import { Bridge } from '@shared/api/bridge';
 import { WorkspaceChannel } from '@shared/api/workspace-channels';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { BinaryDocumentEntry, BinaryDocuments } from '../binary-document/binary-document';
+import { AppMenu } from '@shared/angular/services/app-menu/app-menu';
 import { BinaryPanels } from '../binary-panels/binary-panels';
 import { BinaryRibbon } from './binary-ribbon';
 
@@ -158,4 +159,91 @@ describe('BinaryRibbon', () => {
       }
     }
   });
+
+  it('navigationButtons_whenPressed_moveThroughTheFile', async () => {
+    const document: BinaryDocumentEntry = await openDocument();
+    fixture.detectChanges();
+
+    button('End').click();
+    expect(document.cursor()).toBe(FILE.length - 1);
+
+    button('Start').click();
+    expect(document.cursor()).toBe(0);
+  });
+
+  it('panelButtons_whenPressed_toggleTheirPanelsForTheActiveTab', async () => {
+    const document: BinaryDocumentEntry = await openDocument();
+    fixture.detectChanges();
+
+    button('Inspector').click();
+    button('Agent').click();
+
+    expect(panels.isVisible(document.tabId, 'inspector')).toBe(true);
+    expect(panels.isVisible(document.tabId, 'agent')).toBe(true);
+  });
+
+  it('insertButton_whenPressed_flipsBetweenInsertAndOverwrite', async () => {
+    const document: BinaryDocumentEntry = await openDocument();
+    fixture.detectChanges();
+    expect(document.insertMode()).toBe(false);
+
+    button('Insert').click();
+
+    expect(document.insertMode()).toBe(true);
+  });
+
+  it('menu_whenACommandIsChosen_runsTheSameHandlerAsTheRibbon', async () => {
+    const document: BinaryDocumentEntry = await openDocument();
+    fixture.detectChanges();
+    TestBed.tick();
+    const menu: AppMenu = TestBed.inject(AppMenu);
+
+    menu.dispatch('binary.goToEnd');
+    expect(document.cursor()).toBe(FILE.length - 1);
+
+    menu.dispatch('binary.goToStart');
+    expect(document.cursor()).toBe(0);
+
+    menu.dispatch('binary.insertMode');
+    expect(document.insertMode()).toBe(true);
+
+    menu.dispatch('binary.inspector');
+    menu.dispatch('binary.disassembly');
+    menu.dispatch('binary.agent');
+    expect(panels.isVisible(document.tabId, 'inspector')).toBe(true);
+    expect(panels.isVisible(document.tabId, 'disassembly')).toBe(true);
+    expect(panels.isVisible(document.tabId, 'agent')).toBe(true);
+  });
+
+  it('commands_whenNoBinaryTabIsActive_doNothingRatherThanThrow', () => {
+    // The ribbon outlives any one document, so every handler has to tolerate there being none.
+    TestBed.tick();
+    const menu: AppMenu = TestBed.inject(AppMenu);
+
+    expect((): void => {
+      menu.dispatch('binary.undo');
+      menu.dispatch('binary.redo');
+      menu.dispatch('binary.goToStart');
+      menu.dispatch('binary.goToEnd');
+      menu.dispatch('binary.goToCode');
+      menu.dispatch('binary.insertMode');
+      menu.dispatch('binary.inspector');
+    }).not.toThrow();
+  });
+
+  /**
+   * Finds a ribbon button by its visible label.
+   * @param label The button label.
+   * @returns Returns the matching button element.
+   */
+  function button(label: string): HTMLButtonElement {
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    const match: HTMLButtonElement | undefined = Array.from(
+      host.querySelectorAll<HTMLButtonElement>('button'),
+    ).find((element: HTMLButtonElement): boolean => element.textContent?.trim() === label);
+    if (match === undefined) {
+      throw new Error(`No button labelled "${label}"`);
+    }
+    return match;
+  }
 });
