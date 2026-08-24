@@ -1223,4 +1223,75 @@ describe('SourceControlSidebar', () => {
       expect(revealed).toEqual([]);
     });
   });
+
+  describe('the tool strip', () => {
+    /**
+     * Reveals the protected surface these tests drive.
+     * @returns Returns the internals.
+     */
+    function internals(): {
+      moreItems(): readonly MenuItem[];
+      onMoreAction(id: string): void;
+      expandAll(): void;
+      branchDialogOpen(): boolean;
+    } {
+      return component as unknown as ReturnType<typeof internals>;
+    }
+
+    it('isTheSharedExplorerStrip_asTheOtherExplorersUse', () => {
+      const host: HTMLElement = fixture.nativeElement as HTMLElement;
+
+      expect(host.querySelector('app-explorer-toolbar')).not.toBeNull();
+      // The bespoke strip it replaced is gone, along with its row of buttons.
+      expect(host.querySelector('app-panel-toolbar')).toBeNull();
+    });
+
+    it('offersTheRepositoryWideCommandsOnItsMenu', () => {
+      // Anything acting on a row the user can see lives on that row's context menu instead.
+      expect(
+        internals()
+          .moreItems()
+          .filter((item: MenuItem): boolean => item.separator !== true)
+          .map((item: MenuItem): string => item.label),
+      ).toEqual(['New Branch…', 'Stash Changes', 'Fetch', 'Refresh']);
+    });
+
+    it('disablesStash_whenThereIsNothingToStash', () => {
+      const stash: MenuItem | undefined = internals()
+        .moreItems()
+        .find((item: MenuItem): boolean => item.label === 'Stash Changes');
+
+      // The fixture's working tree is dirty, so the command is live.
+      expect(stash?.disabled).toBe(false);
+    });
+
+    it('newBranch_opensTheDialogFromTheMenu', () => {
+      internals().onMoreAction('repo.newBranch');
+
+      expect(internals().branchDialogOpen()).toBe(true);
+    });
+
+    it('expandAll_opensEverySection_andReadsTheForgeBackedOnes', () => {
+      // Expanding a section by hand is what loads it, so expanding them all must do the same or the
+      // three forge sections would open onto nothing.
+      internals().expandAll();
+      fixture.detectChanges();
+
+      const text: string = (fixture.nativeElement as HTMLElement).textContent ?? '';
+      expect(text).toContain('v1.0.0');
+      expect(forge.loads).toBe(3);
+    });
+
+    it('theSectionHeadingsReadLikeTheExplorersRootRows', () => {
+      // Bold body text, not the small uppercase treatment the rail used to give them.
+      const heading: HTMLElement | null = (fixture.nativeElement as HTMLElement).querySelector(
+        '.tree-name.bold',
+      );
+
+      expect(heading).not.toBeNull();
+      expect(
+        (fixture.nativeElement as HTMLElement).querySelector('.rail__section-name'),
+      ).toBeNull();
+    });
+  });
 });

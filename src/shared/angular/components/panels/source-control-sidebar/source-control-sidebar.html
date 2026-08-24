@@ -1,55 +1,12 @@
-<app-panel-toolbar>
-  <app-text-field
-    class="rail__filter"
-    kind="search"
-    placeholder="Filter"
-    ariaLabel="Filter the repository tree"
-    [value]="filter()"
-    (valueChange)="onFilterValue($event)"
-    (escape)="clearFilter()"
-  />
-  <app-button
-    variant="none"
-    [icon]="Icon.PLUS"
-    ariaLabel="New Branch"
-    tooltip="New Branch"
-    [disabled]="!repository.isBound()"
-    (click)="openBranchDialog()"
-  />
-  <app-button
-    variant="none"
-    [icon]="Icon.STASH"
-    ariaLabel="Stash"
-    tooltip="Stash the working-tree changes"
-    [disabled]="repository.changeCount() === 0"
-    (click)="stash()"
-  />
-  <span class="panel-toolbar__spacer"></span>
-  <app-button
-    variant="none"
-    [icon]="Icon.CLOUD"
-    ariaLabel="Fetch"
-    tooltip="Fetch from all remotes"
-    [disabled]="!repository.isBound()"
-    (click)="fetch()"
-  />
-  <app-button
-    variant="none"
-    [icon]="Icon.LIST"
-    ariaLabel="Collapse All"
-    tooltip="Collapse All"
-    [disabled]="filter().trim().length > 0"
-    (click)="collapseAll()"
-  />
-  <app-button
-    variant="none"
-    [icon]="Icon.REFRESH"
-    ariaLabel="Refresh"
-    tooltip="Refresh"
-    [disabled]="!repository.isBound()"
-    (click)="refresh()"
-  />
-</app-panel-toolbar>
+<app-explorer-toolbar
+  [query]="filter()"
+  searchPlaceholder="Search repository"
+  [moreItems]="moreItems()"
+  (queryChange)="onFilterValue($event)"
+  (expandAll)="expandAll()"
+  (collapseAll)="collapseAll()"
+  (moreSelected)="onMoreAction($event)"
+/>
 
 <app-tree-view
   [rows]="rows()"
@@ -65,11 +22,7 @@
       [class.tree-icon--folder]="node.kind === 'section'"
       [icon]="node.icon"
     />
-    <span
-      class="tree-name"
-      [class.rail__section-name]="node.kind === 'section'"
-      [class.rail__muted]="node.muted"
-    >
+    <span class="tree-name" [class.bold]="node.kind === 'section'" [class.rail__muted]="node.muted">
       {{ node.label }}
     </span>
 

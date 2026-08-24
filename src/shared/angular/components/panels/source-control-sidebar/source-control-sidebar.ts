@@ -39,7 +39,7 @@ import { Button } from '@shared/angular/components/forms/button/button';
 import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
-import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
+import { ExplorerToolbar } from '@shared/angular/components/explorer-toolbar/explorer-toolbar';
 import { PulseDot } from '@shared/angular/components/pulse-dot/pulse-dot';
 import {
   TreeMenuSelection,
@@ -151,6 +151,26 @@ const ACTION_OPEN_PULL_REQUEST: string = 'pr.open';
 const ACTION_OPEN_ISSUE: string = 'issue.open';
 
 /**
+ * Identifies the New Branch command on the tool strip's more-actions menu.
+ */
+const ACTION_NEW_BRANCH: string = 'repo.newBranch';
+
+/**
+ * Identifies the Stash command on the tool strip's more-actions menu.
+ */
+const ACTION_STASH: string = 'repo.stash';
+
+/**
+ * Identifies the Fetch command on the tool strip's more-actions menu.
+ */
+const ACTION_FETCH: string = 'repo.fetch';
+
+/**
+ * Identifies the Refresh command on the tool strip's more-actions menu.
+ */
+const ACTION_REFRESH: string = 'repo.refresh';
+
+/**
  * Identifies the Open in Agent command on an issue's context menu.
  */
 const ACTION_ISSUE_IN_AGENT: string = 'issue.agent';
@@ -232,7 +252,7 @@ interface SectionDef {
     Checkbox,
     Modal,
     ModalContent,
-    PanelToolbar,
+    ExplorerToolbar,
     PulseDot,
     TreeView,
   ],
@@ -383,14 +403,76 @@ export class SourceControlSidebar {
   }
 
   /**
-   * Clears the filter, restoring the sections' own collapsed state.
+   * Gets the tool strip's more-actions menu: the repository commands that act on the whole
+   * repository rather than on a row. Anything acting on a row the user can see lives on that row's
+   * context menu instead, which is the rule the panel already followed with its buttons.
    */
-  protected clearFilter(): void {
-    this.filter.set('');
+  protected readonly moreItems: Signal<readonly MenuItem[]> = computed((): readonly MenuItem[] => [
+    {
+      id: ACTION_NEW_BRANCH,
+      label: 'New Branch…',
+      icon: Icon.PLUS,
+      disabled: !this.repository.isBound(),
+    },
+    {
+      id: ACTION_STASH,
+      label: 'Stash Changes',
+      icon: Icon.STASH,
+      disabled: this.repository.changeCount() === 0,
+    },
+    { separator: true, id: 'repo.sep', label: '' },
+    {
+      id: ACTION_FETCH,
+      label: 'Fetch',
+      icon: Icon.CLOUD,
+      disabled: !this.repository.isBound(),
+    },
+    {
+      id: ACTION_REFRESH,
+      label: 'Refresh',
+      icon: Icon.REFRESH,
+      disabled: !this.repository.isBound(),
+    },
+  ]);
+
+  /**
+   * Runs a command chosen from the tool strip's more-actions menu.
+   * @param id The chosen item's identifier.
+   */
+  protected onMoreAction(id: string): void {
+    switch (id) {
+      case ACTION_NEW_BRANCH:
+        this.openBranchDialog();
+        break;
+      case ACTION_STASH:
+        this.stash();
+        break;
+      case ACTION_FETCH:
+        this.fetch();
+        break;
+      case ACTION_REFRESH:
+        this.refresh();
+        break;
+      default:
+        break;
+    }
   }
 
   /**
-   * Collapses every section. Disabled while filtering, when the collapsed state is not in force.
+   * Expands every section, and reads whatever the forge-backed ones have not read yet — expanding a
+   * section by hand is what loads it, so expanding them all must do the same or the three would open
+   * onto nothing.
+   */
+  protected expandAll(): void {
+    const keys: readonly string[] = this.sections.map((section: SectionDef): string => section.key);
+    this.expandedSections.set(new Set<string>(keys));
+    for (const key of keys) {
+      this.loadSection(key);
+    }
+  }
+
+  /**
+   * Collapses every section.
    */
   protected collapseAll(): void {
     this.expandedSections.set(new Set<string>());
