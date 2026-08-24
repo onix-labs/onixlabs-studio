@@ -134,11 +134,14 @@
   justify-content: flex-end;
   gap: 0.6rem;
 }
-// A pull-request or action status badge, pushed to the trailing edge of the row.
+// A pull-request or action status badge, pushed to the trailing edge of the row. Sized explicitly
+// rather than inheriting the rail's 0.8rem: this is the one thing on the row a user scans for, so it
+// matches the row's leading icon instead of shrinking to the text.
 .rail__status {
   flex: 0 0 auto;
   margin-inline-start: auto;
   padding-inline-start: 0.35rem;
+  font-size: 1rem;
 
   &--succeeded {
     color: var(--success-color);
