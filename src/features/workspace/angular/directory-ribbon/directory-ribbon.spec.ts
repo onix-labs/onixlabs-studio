@@ -20,6 +20,13 @@ import {
   WorkspaceDocumentCommandHandler,
   WorkspaceDocumentCommands,
 } from '@features/workspace/angular/workspace-document-commands/workspace-document-commands';
+import { AppMenu } from '@shared/angular/services/app-menu/app-menu';
+import { MenuContribution, MenuEntry } from '@shared/angular/services/app-menu/app-menu-model';
+import {
+  DockPanelCommandHandler,
+  DockPanelCommands,
+  DockPanelState,
+} from '@shared/angular/services/dock-panel-commands/dock-panel-commands';
 import { DirectoryRibbon } from './directory-ribbon';
 
 /**
@@ -82,6 +89,36 @@ interface RibbonInternals {
   onRenamePreset(id: string, name: string): void;
   onDeletePreset(id: string): void;
   onResetPreset(): void;
+}
+
+/**
+ * A recording stand-in for an active workspace's dock, behind the View menu's Panels submenu. Its
+ * panels stand for a workspace whose File Explorer and Agent are showing, whose Solution Explorer is
+ * available but not docked, and whose History panel has no repository behind it.
+ */
+class FakePanelHandler implements DockPanelCommandHandler {
+  /**
+   * Holds the panels the workspace offers.
+   */
+  public readonly panels: Signal<readonly DockPanelState[]> = signal<readonly DockPanelState[]>([
+    { id: 'files', title: 'File Explorer', docked: true, enabled: true },
+    { id: 'solution', title: 'Solution Explorer', docked: false, enabled: true },
+    { id: 'agent', title: 'Agent', docked: true, enabled: true },
+    { id: 'history', title: 'History', docked: false, enabled: false },
+  ]);
+
+  /**
+   * Holds the identifiers toggled through this handler, in order.
+   */
+  public readonly toggled: string[] = [];
+
+  /**
+   * Records a toggle.
+   * @param panelId The identifier of the panel toggled.
+   */
+  public toggle(panelId: string): void {
+    this.toggled.push(panelId);
+  }
 }
 
 /**
@@ -306,6 +343,9 @@ describe('DirectoryRibbon', () => {
   let repositoryCommands: FakeRepositoryCommands;
   let presets: LayoutPresets;
   let windows: FakeModalWindows;
+  let menu: AppMenu;
+  let dockPanels: DockPanelCommands;
+  let panelHandler: FakePanelHandler;
 
   /**
    * Reveals the protected surface under test.
@@ -338,9 +378,13 @@ describe('DirectoryRibbon', () => {
       ],
     }).compileComponents();
 
-    // The well and the preset store are what the File and View groups act through; register the
-    // stand-ins exactly as an active directory view would.
+    // The well, the dock and the preset store are what the File and View groups act through;
+    // register the stand-ins exactly as an active directory view would.
     TestBed.inject(WorkspaceDocumentCommands).register(documentHandler);
+    panelHandler = new FakePanelHandler();
+    dockPanels = TestBed.inject(DockPanelCommands);
+    dockPanels.register(panelHandler);
+    menu = TestBed.inject(AppMenu);
     presets = TestBed.inject(LayoutPresets);
     presets.registerBuiltIn({
       id: 'coding',
@@ -356,6 +400,9 @@ describe('DirectoryRibbon', () => {
     fixture = TestBed.createComponent(DirectoryRibbon);
     component = fixture.componentInstance;
     await fixture.whenStable();
+    // The menu contribution is an effect: without a tick it has never run, so the composed menu is
+    // empty and dispatch finds nothing.
+    TestBed.tick();
   });
 
   it('should create', () => {
@@ -866,6 +913,64 @@ describe('DirectoryRibbon', () => {
       expect(ribbon['onToggleDiff']).toBeUndefined();
       expect(typeof ribbon['onRepoFetch']).toBe('function');
       expect(typeof ribbon['onStash']).toBe('function');
+    });
+  });
+
+  describe('the View menu Panels submenu', () => {
+    /**
+     * Reads the Panels submenu's rows from the composed application menu.
+     * @returns Returns the rows, or an empty list when the submenu is absent.
+     */
+    function panelRows(): readonly MenuEntry[] {
+      const view: readonly MenuEntry[] =
+        menu.sections().find((section: MenuContribution): boolean => section.id === 'view')
+          ?.items ?? [];
+      return view.find((entry: MenuEntry): boolean => entry.id === 'directory.panels')?.items ?? [];
+    }
+
+    it('isAbsent_untilAViewRegistersItsDock', () => {
+      // The ribbon renders for the tab before the view has published its dock; an empty submenu
+      // would open onto nothing, so it is not offered at all.
+      dockPanels.unregister(panelHandler);
+      TestBed.tick();
+
+      expect(panelRows()).toEqual([]);
+    });
+
+    it('listsEveryPanel_asATickBoxMarkingTheOnesShowing', () => {
+      const rows: readonly MenuEntry[] = panelRows();
+
+      expect(rows.map((row: MenuEntry): string | undefined => row.label)).toEqual([
+        'File Explorer',
+        'Solution Explorer',
+        'Agent',
+        'History',
+      ]);
+      expect(rows.every((row: MenuEntry): boolean => row.kind === 'checkbox')).toBe(true);
+      expect(rows.map((row: MenuEntry): boolean | undefined => row.checked)).toEqual([
+        true,
+        false,
+        true,
+        false,
+      ]);
+    });
+
+    it('disablesAPanelWithNothingBehindIt_butStillListsIt', () => {
+      // The Solution Explorer needs a recognised project system; the menu stays a stable map of what
+      // the workspace can hold rather than a list that reshuffles under the pointer.
+      const rows: readonly MenuEntry[] = panelRows();
+
+      expect(rows.find((row: MenuEntry): boolean => row.label === 'History')?.enabled).toBe(false);
+      expect(
+        rows.find((row: MenuEntry): boolean => row.label === 'Solution Explorer')?.enabled,
+      ).toBe(true);
+    });
+
+    it('choosingARow_togglesThatPanelInTheActiveViewsDock', () => {
+      menu.dispatch('directory.panels.solution');
+      menu.dispatch('directory.panels.files');
+
+      expect(panelHandler.toggled).toEqual(['solution', 'files']);
     });
   });
 
