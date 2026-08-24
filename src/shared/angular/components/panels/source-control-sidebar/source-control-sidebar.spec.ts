@@ -2,8 +2,16 @@ import {
   ForgeRepository,
   ForgeSection,
 } from '@shared/angular/services/forge-repository/forge-repository';
-import { ForgeIssue, ForgePullRequest, ForgeWorkflowRun } from '@shared/api/forge-types';
+import {
+  ForgeIssue,
+  ForgePullRequest,
+  ForgeRepositoryRef,
+  ForgeWorkflowRun,
+} from '@shared/api/forge-types';
 import { Shell } from '@shared/angular/services/shell/shell';
+import { Agent } from '@shared/angular/services/agent/agent';
+import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
+import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
 import { ApplicationRef, signal, Signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ModalWindows } from '@shared/angular/services/modal-windows/modal-windows';
@@ -245,6 +253,17 @@ class FakeForgeRepository {
    */
   public readonly commands: string[] = [];
 
+  /**
+   * Holds the detected forge repository, which names the issue in the agent's opening message.
+   */
+  public readonly repositoryRef: Signal<ForgeRepositoryRef | null> =
+    signal<ForgeRepositoryRef | null>({
+      kind: 'github',
+      host: 'github.com',
+      owner: 'onix-labs',
+      name: 'onixlabs-studio',
+    });
+
   public readonly pullRequests: Signal<ForgeSection<ForgePullRequest>> = this.section.asReadonly();
   public readonly issues: Signal<ForgeSection<ForgeIssue>> = this.issueSection.asReadonly();
   public readonly workflowRuns: Signal<ForgeSection<ForgeWorkflowRun>> =
@@ -381,6 +400,35 @@ function issueRow(): TreeRow {
   };
 }
 
+/**
+ * A recording stand-in for this view's agent.
+ */
+class FakeAgent {
+  public readonly messages: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds the messages sent, in order.
+   */
+  public readonly sent: string[] = [];
+
+  public readonly hasMessages: Signal<boolean> = this.messages.asReadonly();
+
+  public send(text: string): void {
+    this.sent.push(text);
+  }
+}
+
+/**
+ * A recording stand-in for the conversation, which owns starting a fresh one.
+ */
+class FakeConversation {
+  public newChats: number = 0;
+
+  public newChat(): void {
+    this.newChats += 1;
+  }
+}
+
 describe('SourceControlSidebar', () => {
   let component: SourceControlSidebar;
   let fixture: ComponentFixture<SourceControlSidebar>;
@@ -389,6 +437,9 @@ describe('SourceControlSidebar', () => {
   let windows: FakeModalWindows;
   let forge: FakeForgeRepository;
   let opened: string[];
+  let agent: FakeAgent;
+  let conversation: FakeConversation;
+  let revealed: string[];
 
   const panel: DockPanel = {
     id: 'repository',
@@ -402,12 +453,25 @@ describe('SourceControlSidebar', () => {
     windows = new FakeModalWindows();
     forge = new FakeForgeRepository();
     opened = [];
+    agent = new FakeAgent();
+    conversation = new FakeConversation();
+    revealed = [];
     await TestBed.configureTestingModule({
       imports: [SourceControlSidebar],
       providers: [
         Repository,
         { provide: ModalWindows, useValue: windows },
         { provide: ForgeRepository, useValue: forge },
+        { provide: Agent, useValue: agent },
+        { provide: AgentConversation, useValue: conversation },
+        {
+          provide: DockReveal,
+          useValue: {
+            reveal: (panelId: string): void => {
+              revealed.push(panelId);
+            },
+          },
+        },
         {
           provide: Shell,
           useValue: {
@@ -999,14 +1063,6 @@ describe('SourceControlSidebar', () => {
       expect(forge.loads).toBe(2);
     });
 
-    it('anIssueOffersOnlyOpen', () => {
-      expect(
-        internals()
-          .contextMenuFor(issueRow())
-          .map((item: MenuItem): string => item.label),
-      ).toEqual(['Open on GitHub']);
-    });
-
     it('aRunOffersCancelWhileGoing_andReRunOnceStopped', () => {
       // Offering the inapplicable one would be offering a command the forge would simply refuse.
       expect(
@@ -1080,6 +1136,91 @@ describe('SourceControlSidebar', () => {
       expect(
         (fixture.nativeElement as HTMLElement).querySelector('app-pulse-dot.rail__status'),
       ).not.toBeNull();
+    });
+  });
+
+  describe('Open in Agent', () => {
+    /**
+     * Reveals the protected surface these tests drive.
+     * @returns Returns the internals.
+     */
+    function internals(): {
+      contextMenuFor(row: TreeRow): readonly MenuItem[];
+      onContextAction(choice: TreeMenuSelection): void;
+      pendingAgentIssue(): ForgeIssue | null;
+      confirmOpenInAgent(): void;
+      dismissOpenInAgent(): void;
+    } {
+      return component as unknown as ReturnType<typeof internals>;
+    }
+
+    it('isOfferedOnAnIssue', () => {
+      expect(
+        internals()
+          .contextMenuFor(issueRow())
+          .map((item: MenuItem): string => item.label),
+      ).toEqual(['Open in Agent', 'Open on GitHub']);
+    });
+
+    it('startsImmediately_whenThereIsNoConversationToLose', () => {
+      internals().onContextAction({ itemId: 'issue.agent', row: issueRow() });
+
+      expect(internals().pendingAgentIssue()).toBeNull();
+      expect(conversation.newChats).toBe(1);
+      expect(agent.sent.length).toBe(1);
+    });
+
+    it('opensWithAMessageNamingTheIssueAndItsUrl', () => {
+      internals().onContextAction({ itemId: 'issue.agent', row: issueRow() });
+
+      const message: string = agent.sent[0];
+      expect(message).toContain('#12');
+      expect(message).toContain('Something is broken');
+      expect(message).toContain('onix-labs/onixlabs-studio');
+      expect(message).toContain('https://github.com/onix-labs/onixlabs-studio/issues/12');
+      // A conversation started by one menu click should arrive at an understanding, not at edits.
+      expect(message).toContain("Don't make any changes yet");
+    });
+
+    it('bringsTheAgentPanelForward_soTheConversationIsVisible', () => {
+      internals().onContextAction({ itemId: 'issue.agent', row: issueRow() });
+
+      expect(revealed).toEqual(['agent']);
+    });
+
+    it('asksFirst_whenAConversationAlreadyHoldsSomething', () => {
+      // Starting a new one discards the transcript; a half-aimed menu click must not lose it.
+      agent.messages.set(true);
+
+      internals().onContextAction({ itemId: 'issue.agent', row: issueRow() });
+
+      expect(internals().pendingAgentIssue()?.number).toBe(12);
+      expect(conversation.newChats).toBe(0);
+      expect(agent.sent).toEqual([]);
+    });
+
+    it('yes_endsTheOldConversationAndStartsTheNewOne', () => {
+      agent.messages.set(true);
+      internals().onContextAction({ itemId: 'issue.agent', row: issueRow() });
+
+      internals().confirmOpenInAgent();
+
+      expect(internals().pendingAgentIssue()).toBeNull();
+      expect(conversation.newChats).toBe(1);
+      expect(agent.sent.length).toBe(1);
+      expect(revealed).toEqual(['agent']);
+    });
+
+    it('no_leavesTheConversationAlone', () => {
+      agent.messages.set(true);
+      internals().onContextAction({ itemId: 'issue.agent', row: issueRow() });
+
+      internals().dismissOpenInAgent();
+
+      expect(internals().pendingAgentIssue()).toBeNull();
+      expect(conversation.newChats).toBe(0);
+      expect(agent.sent).toEqual([]);
+      expect(revealed).toEqual([]);
     });
   });
 });

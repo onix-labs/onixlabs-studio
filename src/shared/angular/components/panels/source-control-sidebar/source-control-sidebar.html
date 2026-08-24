@@ -259,3 +259,24 @@
     </div>
   </ng-template>
 </app-modal>
+
+<!-- Asked before an issue replaces a conversation that already holds something: starting a new one
+     discards the transcript, and a menu click the user half-aimed should not lose it. -->
+<app-modal
+  [open]="pendingAgentIssue() !== null"
+  [width]="26"
+  ariaLabel="Open issue in agent"
+  (dismiss)="dismissOpenInAgent()"
+>
+  <ng-template appModalContent>
+    <h2 class="rail__dialog-title">Start a new conversation?</h2>
+    <p class="rail__dialog-message">
+      Your current conversation ends, and a new one starts about “#{{ pendingAgentIssue()?.number }}
+      {{ pendingAgentIssue()?.title }}”.
+    </p>
+    <div class="rail__dialog-actions">
+      <app-button label="No" (click)="dismissOpenInAgent()" />
+      <app-button variant="solid" label="Yes" (click)="confirmOpenInAgent()" />
+    </div>
+  </ng-template>
+</app-modal>
