@@ -1,13 +1,16 @@
 .tooltip {
   max-inline-size: 18rem;
-  padding: 0.25rem 0.5rem;
+  padding: 0.4rem 0.7rem;
   font-size: 0.75rem;
   line-height: 1.35;
   color: var(--tooltip-foreground-color);
   text-align: center;
   background: var(--tooltip-background-color);
   border: 0.0625rem solid var(--tooltip-border-color);
-  border-radius: calc(0.375rem * var(--border-radius-multiplier));
+  // Authored against the app's radius multiplier and corner-shape gate, as every convex corner is: a
+  // squircle by default, falling back to a plain — and tighter — rounded corner when the modern UI
+  // features are off.
+  border-radius: calc(0.55rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
   // Themed rather than fixed: the weight a shadow needs to read as depth depends on what it falls on.
   box-shadow: 0 0.125rem 0.5rem var(--tooltip-shadow-color);

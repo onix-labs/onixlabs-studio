@@ -20,13 +20,32 @@ import { Settings } from '@shared/angular/services/settings/settings';
 import { Tooltip } from './tooltip';
 
 /**
+ * How far the bubble stands off the control it names, in CSS pixels. Far enough to read as a separate
+ * thing pointing at the control rather than as part of it, and far enough that the bubble's own shadow
+ * is not cast onto the control's edge.
+ */
+const TOOLTIP_GAP: number = 10;
+
+/**
  * Places the bubble centred beneath the control, which is where a tooltip for an icon belongs: the
  * icon is square and unlabelled, so there is no text baseline to align to and no start edge that reads
  * as its beginning. The fallback flips it above for a control near the bottom of the window.
  */
 const TOOLTIP_POSITIONS: readonly ConnectedPosition[] = [
-  { originX: 'center', originY: 'bottom', overlayX: 'center', overlayY: 'top', offsetY: 6 },
-  { originX: 'center', originY: 'top', overlayX: 'center', overlayY: 'bottom', offsetY: -6 },
+  {
+    originX: 'center',
+    originY: 'bottom',
+    overlayX: 'center',
+    overlayY: 'top',
+    offsetY: TOOLTIP_GAP,
+  },
+  {
+    originX: 'center',
+    originY: 'top',
+    overlayX: 'center',
+    overlayY: 'bottom',
+    offsetY: -TOOLTIP_GAP,
+  },
 ];
 
 /**
