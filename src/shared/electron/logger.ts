@@ -1,5 +1,12 @@
 import * as path from 'node:path';
-import { app, BrowserWindow, ipcMain, IpcMainEvent, IpcMainInvokeEvent, WebContents } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  ipcMain,
+  IpcMainEvent,
+  IpcMainInvokeEvent,
+  WebContents,
+} from 'electron';
 import {
   consoleLevelToSeverity,
   LOG_LEVELS,
@@ -90,7 +97,8 @@ export class Logger {
     });
 
     ipcMain.on(LogChannel.Append, (event: IpcMainEvent, input: unknown): void => {
-      const candidate: Partial<StructuredLogInput> = (input as Partial<StructuredLogInput> | null) ?? {};
+      const candidate: Partial<StructuredLogInput> =
+        (input as Partial<StructuredLogInput> | null) ?? {};
       if (
         !SEVERITIES.includes(candidate.severity!) ||
         typeof candidate.source !== 'string' ||
@@ -152,7 +160,12 @@ export class Logger {
    * @param details Extra values appended to the message; an `Error` keeps its stack.
    */
   public trace(source: string, message: string, ...details: unknown[]): void {
-    this.log({ origin: 'main', severity: 'trace', source, message: appendDetails(message, details) });
+    this.log({
+      origin: 'main',
+      severity: 'trace',
+      source,
+      message: appendDetails(message, details),
+    });
   }
 
   /**
@@ -162,7 +175,12 @@ export class Logger {
    * @param details Extra values appended to the message; an `Error` keeps its stack.
    */
   public debug(source: string, message: string, ...details: unknown[]): void {
-    this.log({ origin: 'main', severity: 'debug', source, message: appendDetails(message, details) });
+    this.log({
+      origin: 'main',
+      severity: 'debug',
+      source,
+      message: appendDetails(message, details),
+    });
   }
 
   /**
@@ -172,7 +190,12 @@ export class Logger {
    * @param details Extra values appended to the message; an `Error` keeps its stack.
    */
   public info(source: string, message: string, ...details: unknown[]): void {
-    this.log({ origin: 'main', severity: 'info', source, message: appendDetails(message, details) });
+    this.log({
+      origin: 'main',
+      severity: 'info',
+      source,
+      message: appendDetails(message, details),
+    });
   }
 
   /**
@@ -182,7 +205,12 @@ export class Logger {
    * @param details Extra values appended to the message; an `Error` keeps its stack.
    */
   public warn(source: string, message: string, ...details: unknown[]): void {
-    this.log({ origin: 'main', severity: 'warning', source, message: appendDetails(message, details) });
+    this.log({
+      origin: 'main',
+      severity: 'warning',
+      source,
+      message: appendDetails(message, details),
+    });
   }
 
   /**
@@ -193,7 +221,12 @@ export class Logger {
    * @param details Extra values appended to the message; an `Error` keeps its stack.
    */
   public error(source: string, message: string, ...details: unknown[]): void {
-    this.log({ origin: 'main', severity: 'error', source, message: appendDetails(message, details) });
+    this.log({
+      origin: 'main',
+      severity: 'error',
+      source,
+      message: appendDetails(message, details),
+    });
   }
 
   /**

@@ -94,7 +94,10 @@ export function resolveClaudeExecutable(
       logger.debug('claude-executable', `Resolved system Claude CLI on PATH: ${onPath}`);
       return onPath;
     }
-    logger.warn('claude-executable', 'System Claude CLI not found on PATH; falling back to bundled');
+    logger.warn(
+      'claude-executable',
+      'System Claude CLI not found on PATH; falling back to bundled',
+    );
     return resolveBundledClaudeExecutable();
   }
   const custom: string = choice.path.trim();

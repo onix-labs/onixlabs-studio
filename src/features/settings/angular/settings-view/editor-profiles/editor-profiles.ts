@@ -165,7 +165,13 @@ export class EditorProfiles {
       ...this.profileSettings(profile),
       [this.fieldOf(key)]: value,
     };
-    this.log.info('settings.profiles', 'Editor profile override value changed', profile.id, key, value);
+    this.log.info(
+      'settings.profiles',
+      'Editor profile override value changed',
+      profile.id,
+      key,
+      value,
+    );
     this.settings.updateProfile(profile.id, { settings: next });
   }
 

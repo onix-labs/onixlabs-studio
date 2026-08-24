@@ -136,7 +136,11 @@ export function restoreWindowRect(
     width,
     height,
   };
-  logger.warn('WindowState.restore', 'persisted bounds off-screen; re-centred on display', recentred);
+  logger.warn(
+    'WindowState.restore',
+    'persisted bounds off-screen; re-centred on display',
+    recentred,
+  );
   return recentred;
 }
 

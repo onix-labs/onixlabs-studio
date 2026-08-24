@@ -40,12 +40,7 @@ type LoginPhase = 'idle' | 'starting' | 'browser' | 'success' | 'error';
   imports: [Modal, ModalContent, Button],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <app-modal
-      [open]="open()"
-      [width]="30"
-      ariaLabel="Sign in to Claude"
-      (dismiss)="close()"
-    >
+    <app-modal [open]="open()" [width]="30" ariaLabel="Sign in to Claude" (dismiss)="close()">
       <ng-template appModalContent>
         <div class="login-modal">
           <h2 class="login-modal__title">You're not signed in to Claude</h2>
@@ -176,7 +171,9 @@ export class AgentLoginModal {
    * Holds the sign-in URL for the manual "open the sign-in page" fallback, or undefined when none was
    * surfaced.
    */
-  protected readonly url: WritableSignal<string | undefined> = signal<string | undefined>(undefined);
+  protected readonly url: WritableSignal<string | undefined> = signal<string | undefined>(
+    undefined,
+  );
 
   /**
    * Holds the short reason shown in the error phase.

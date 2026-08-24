@@ -563,7 +563,11 @@ export class SourceControlSidebar {
     }
     const name: string = this.branchName().trim();
     this.branchDialogOpen.set(false);
-    this.log.info('SourceControlSidebar', `Creating branch '${name}'`, `checkout=${this.branchCheckout()}`);
+    this.log.info(
+      'SourceControlSidebar',
+      `Creating branch '${name}'`,
+      `checkout=${this.branchCheckout()}`,
+    );
     void this.repository.createBranch(name, this.branchCheckout());
   }
 

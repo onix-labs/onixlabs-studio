@@ -79,7 +79,9 @@ describe('inboundText', () => {
 
   it('joinsTextBlocks_andIgnoresNonText', () => {
     const msg: SDKMessage = {
-      message: { content: [{ type: 'text', text: 'a' }, { type: 'image' }, { type: 'text', text: 'b' }] },
+      message: {
+        content: [{ type: 'text', text: 'a' }, { type: 'image' }, { type: 'text', text: 'b' }],
+      },
     } as unknown as SDKMessage;
     expect(inboundText(msg)).toBe('ab');
   });
@@ -141,7 +143,10 @@ describe('RemoteControlBridge.canPrompt', () => {
 describe('RemoteControlBridge.requestPermission', () => {
   it('forwardsACanUseToolControlRequest_andResolvesWhenThePeerAnswers', async () => {
     const handle: FakeHandle = new FakeHandle();
-    const pending: Map<string, (granted: boolean) => void> = new Map<string, (granted: boolean) => void>();
+    const pending: Map<string, (granted: boolean) => void> = new Map<
+      string,
+      (granted: boolean) => void
+    >();
     const bridge: RemoteControlBridge = bridgeOver(handle, 'control', pending);
 
     const { id, granted } = bridge.requestPermission(
@@ -151,7 +156,11 @@ describe('RemoteControlBridge.requestPermission', () => {
     );
 
     expect(handle.controlRequests).toEqual([
-      { type: 'control_request', request_id: id, request: { subtype: 'can_use_tool', tool_name: 'Bash', input: { command: 'ls' } } },
+      {
+        type: 'control_request',
+        request_id: id,
+        request: { subtype: 'can_use_tool', tool_name: 'Bash', input: { command: 'ls' } },
+      },
     ]);
     // The session is marked requires_action so claude.ai shows it needs attention (and pushes).
     expect(handle.states).toContain('requires_action');
@@ -171,7 +180,10 @@ describe('RemoteControlBridge.requestPermission', () => {
 
   it('cancelPermission_sendsACancelAndDropsThePending', () => {
     const handle: FakeHandle = new FakeHandle();
-    const pending: Map<string, (granted: boolean) => void> = new Map<string, (granted: boolean) => void>();
+    const pending: Map<string, (granted: boolean) => void> = new Map<
+      string,
+      (granted: boolean) => void
+    >();
     const bridge: RemoteControlBridge = bridgeOver(handle, 'control', pending);
 
     const { id } = bridge.requestPermission('Bash', { command: 'ls' });
@@ -264,8 +276,13 @@ describe('RemoteControlBridge.clearAction', () => {
 
 describe('resolveControlResponse', () => {
   it('resolvesFalseForAnErrorSubtypePermission', async () => {
-    const pending: Map<string, (granted: boolean) => void> = new Map<string, (granted: boolean) => void>();
-    const answer: Promise<boolean> = new Promise<boolean>((resolve) => pending.set('id-1', resolve));
+    const pending: Map<string, (granted: boolean) => void> = new Map<
+      string,
+      (granted: boolean) => void
+    >();
+    const answer: Promise<boolean> = new Promise<boolean>((resolve) =>
+      pending.set('id-1', resolve),
+    );
     resolveControlResponse(pending, new Map(), {
       type: 'control_response',
       response: { subtype: 'error', request_id: 'id-1', error: 'boom' },
@@ -278,9 +295,10 @@ describe('resolveControlResponse', () => {
       string,
       (answer: Record<string, unknown> | null) => void
     >();
-    const answer: Promise<Record<string, unknown> | null> = new Promise<
-      Record<string, unknown> | null
-    >((resolve) => pendingQuestions.set('q-1', resolve));
+    const answer: Promise<Record<string, unknown> | null> = new Promise<Record<
+      string,
+      unknown
+    > | null>((resolve) => pendingQuestions.set('q-1', resolve));
     resolveControlResponse(new Map(), pendingQuestions, {
       type: 'control_response',
       response: { subtype: 'error', request_id: 'q-1', error: 'boom' },
@@ -289,7 +307,10 @@ describe('resolveControlResponse', () => {
   });
 
   it('ignoresAnUnknownRequestId', () => {
-    const pending: Map<string, (granted: boolean) => void> = new Map<string, (granted: boolean) => void>();
+    const pending: Map<string, (granted: boolean) => void> = new Map<
+      string,
+      (granted: boolean) => void
+    >();
     // Must not throw when no resolver matches in either map.
     resolveControlResponse(pending, new Map(), {
       type: 'control_response',

@@ -214,9 +214,9 @@ export class Table {
    * Holds the ids of the currently collapsed group rows. Keyed by row id, so the collapse state
    * survives the row list recomputing (a refresh or a re-sort).
    */
-  private readonly collapsedGroups: WritableSignal<ReadonlySet<string>> = signal<ReadonlySet<string>>(
-    new Set<string>(),
-  );
+  private readonly collapsedGroups: WritableSignal<ReadonlySet<string>> = signal<
+    ReadonlySet<string>
+  >(new Set<string>());
 
   /**
    * Gets the rows actually rendered: every row when not collapsible, otherwise every group row plus the

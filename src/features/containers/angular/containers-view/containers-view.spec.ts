@@ -100,7 +100,9 @@ describe('ContainersView', () => {
     });
 
     expect(
-      calls.some((call: RecordedCall): boolean => (call.channel as DockerChannel) === DockerChannel.Start),
+      calls.some(
+        (call: RecordedCall): boolean => (call.channel as DockerChannel) === DockerChannel.Start,
+      ),
     ).toBe(true);
   });
 
@@ -109,9 +111,9 @@ describe('ContainersView', () => {
     const fixture: ComponentFixture<ContainersView> = await createView();
     const terminals: ContainerTerminals = fixture.debugElement.injector.get(ContainerTerminals);
 
-    (fixture.componentInstance as unknown as { viewLogs(container: ContainerSummary): void }).viewLogs(
-      CONTAINER,
-    );
+    (
+      fixture.componentInstance as unknown as { viewLogs(container: ContainerSummary): void }
+    ).viewLogs(CONTAINER);
 
     expect(terminals.sessions()).toHaveLength(1);
     expect(terminals.sessions()[0].name).toContain('Logs');
@@ -122,9 +124,9 @@ describe('ContainersView', () => {
     const fixture: ComponentFixture<ContainersView> = await createView();
     const terminals: ContainerTerminals = fixture.debugElement.injector.get(ContainerTerminals);
 
-    (fixture.componentInstance as unknown as { openShell(container: ContainerSummary): void }).openShell(
-      CONTAINER,
-    );
+    (
+      fixture.componentInstance as unknown as { openShell(container: ContainerSummary): void }
+    ).openShell(CONTAINER);
 
     expect(terminals.sessions()).toHaveLength(1);
     expect(terminals.sessions()[0].name).toContain('shell');

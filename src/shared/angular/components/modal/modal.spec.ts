@@ -1,7 +1,10 @@
 import { Component, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ModalBackdrop } from '@shared/angular/services/modal-backdrop/modal-backdrop';
-import { ModalWindowRequest, ModalWindows } from '@shared/angular/services/modal-windows/modal-windows';
+import {
+  ModalWindowRequest,
+  ModalWindows,
+} from '@shared/angular/services/modal-windows/modal-windows';
 import { FakeModalWindows } from '@shared/angular/services/modal-windows/modal-windows.fake';
 
 import { Modal } from './modal';

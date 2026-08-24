@@ -21,7 +21,9 @@ export async function fetchLatestVersion(
   const encoded: string = encodeURIComponent(name).replace('%40', '@').replace('%2F', '/');
   const url: string = `${endpoint.registry}/${encoded}`;
   try {
-    const response: Awaited<ReturnType<HttpFetch>> = await fetchFn(url, { headers: endpoint.headers });
+    const response: Awaited<ReturnType<HttpFetch>> = await fetchFn(url, {
+      headers: endpoint.headers,
+    });
     if (!response.ok) {
       return null;
     }

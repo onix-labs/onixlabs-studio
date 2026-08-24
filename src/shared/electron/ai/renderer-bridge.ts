@@ -96,10 +96,7 @@ export class RendererBridge {
   ): Promise<unknown> {
     const window: BrowserWindow | null = this.windowGetter();
     if (window === null) {
-      logger.warn(
-        'RendererBridge.request',
-        `No window available for capability "${capability}"`,
-      );
+      logger.warn('RendererBridge.request', `No window available for capability "${capability}"`);
       return Promise.reject(new Error('No window is available to handle the capability request.'));
     }
     const requestId: string = randomUUID();

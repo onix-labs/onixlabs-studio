@@ -103,7 +103,9 @@ export class Log {
    */
   public onRecord(listener: (record: LogRecord) => void): () => void {
     return (
-      this.bridge?.on(LogChannel.Record, (...args: unknown[]): void => listener(args[0] as LogRecord)) ??
+      this.bridge?.on(LogChannel.Record, (...args: unknown[]): void =>
+        listener(args[0] as LogRecord),
+      ) ??
       ((): void => {
         // No bridge outside Electron; there is nothing to unsubscribe.
       })
@@ -118,7 +120,12 @@ export class Log {
    * @param message The message text.
    * @param details The detail values appended to the message.
    */
-  private emit(severity: Severity, source: string, message: string, details: readonly unknown[]): void {
+  private emit(
+    severity: Severity,
+    source: string,
+    message: string,
+    details: readonly unknown[],
+  ): void {
     if (this.bridge === undefined) {
       return;
     }

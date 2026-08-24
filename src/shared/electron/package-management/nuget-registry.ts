@@ -1,4 +1,8 @@
-import { PackageSearchItem, PackageSearchOptions, PackageSearchResult } from '@shared/api/package-management';
+import {
+  PackageSearchItem,
+  PackageSearchOptions,
+  PackageSearchResult,
+} from '@shared/api/package-management';
 import { NuGetSource } from './nuget-sources';
 import { HttpFetch } from './package-manager';
 
@@ -117,7 +121,11 @@ export function baseAddressFromIndex(index: unknown): string | null {
     }
     const type: unknown = (resource as { '@type'?: unknown })['@type'];
     const id: unknown = (resource as { '@id'?: unknown })['@id'];
-    if (typeof type === 'string' && type.startsWith(PACKAGE_BASE_ADDRESS) && typeof id === 'string') {
+    if (
+      typeof type === 'string' &&
+      type.startsWith(PACKAGE_BASE_ADDRESS) &&
+      typeof id === 'string'
+    ) {
       return stripTrailingSlash(id);
     }
   }
@@ -143,7 +151,11 @@ export function searchServiceFromIndex(index: unknown): string | null {
     }
     const type: unknown = (resource as { '@type'?: unknown })['@type'];
     const id: unknown = (resource as { '@id'?: unknown })['@id'];
-    if (typeof type === 'string' && type.startsWith(SEARCH_QUERY_SERVICE) && typeof id === 'string') {
+    if (
+      typeof type === 'string' &&
+      type.startsWith(SEARCH_QUERY_SERVICE) &&
+      typeof id === 'string'
+    ) {
       return stripTrailingSlash(id);
     }
   }
@@ -221,7 +233,9 @@ export async function fetchSearch(
     `&skip=${options.skip}&take=${options.take}` +
     `&prerelease=${options.prerelease ? 'true' : 'false'}&semVerLevel=2.0.0`;
   try {
-    const response: Awaited<ReturnType<HttpFetch>> = await fetchFn(url, { headers: source.headers });
+    const response: Awaited<ReturnType<HttpFetch>> = await fetchFn(url, {
+      headers: source.headers,
+    });
     if (!response.ok) {
       return { items: [], total: 0, hasMore: false };
     }
@@ -315,7 +329,9 @@ export function latestStableFromVersions(body: unknown): string | null {
   if (!Array.isArray(versions)) {
     return null;
   }
-  const all: string[] = versions.filter((entry: unknown): entry is string => typeof entry === 'string');
+  const all: string[] = versions.filter(
+    (entry: unknown): entry is string => typeof entry === 'string',
+  );
   const stable: string[] = all.filter((version: string): boolean => !version.includes('-'));
   const pool: string[] = stable.length > 0 ? stable : all;
   return pool.length > 0 ? pool[pool.length - 1] : null;

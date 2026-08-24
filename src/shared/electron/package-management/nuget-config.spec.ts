@@ -48,7 +48,9 @@ describe('resolveSources', () => {
       {},
     );
     const sources: readonly NuGetSource[] = resolveSources([config]);
-    const github: NuGetSource | undefined = sources.find((s: NuGetSource): boolean => s.name === 'github');
+    const github: NuGetSource | undefined = sources.find(
+      (s: NuGetSource): boolean => s.name === 'github',
+    );
     // nuget.org is seeded and kept (no <clear/>), plus the added github source.
     expect(sources.map((s: NuGetSource): string => s.name)).toEqual(['nuget.org', 'github']);
     expect(github?.headers).toEqual({

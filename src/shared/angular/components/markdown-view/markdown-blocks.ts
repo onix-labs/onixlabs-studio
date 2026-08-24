@@ -101,7 +101,9 @@ const inlineMath: TokenizerAndRendererExtension = {
     return index === -1 ? undefined : index;
   },
   tokenizer(src: string): Tokens.Generic | undefined {
-    const match: RegExpExecArray | null = /^\$(?![\s$])((?:[^$\n]|\\\$)+?)(?<![\s])\$(?!\d)/.exec(src);
+    const match: RegExpExecArray | null = /^\$(?![\s$])((?:[^$\n]|\\\$)+?)(?<![\s])\$(?!\d)/.exec(
+      src,
+    );
     if (match === null) {
       return undefined;
     }

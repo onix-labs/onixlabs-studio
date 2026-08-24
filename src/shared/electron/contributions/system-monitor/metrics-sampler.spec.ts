@@ -53,7 +53,12 @@ describe('MetricsSampler', () => {
   });
 
   it('carriesTheTimestampThrough', () => {
-    const sample: MetricsSample = new MetricsSampler().sample([core(0, 100)], 1000, 250, '2026-08-10T00:00:00.000Z');
+    const sample: MetricsSample = new MetricsSampler().sample(
+      [core(0, 100)],
+      1000,
+      250,
+      '2026-08-10T00:00:00.000Z',
+    );
     expect(sample.timestamp).toBe('2026-08-10T00:00:00.000Z');
   });
 });

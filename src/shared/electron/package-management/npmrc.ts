@@ -89,14 +89,13 @@ function interpolate(value: string, env: Record<string, string | undefined>): st
  * @param env The environment used to interpolate `${VAR}` references.
  * @returns Returns the parsed configuration.
  */
-export function parseNpmrc(
-  contents: string,
-  env: Record<string, string | undefined>,
-): NpmrcConfig {
+export function parseNpmrc(contents: string, env: Record<string, string | undefined>): NpmrcConfig {
   let registry: string | null = null;
   const scopedRegistries: Record<string, string> = {};
-  const auth: Map<string, { token?: string; basic?: string; username?: string; password?: string }> =
-    new Map<string, { token?: string; basic?: string; username?: string; password?: string }>();
+  const auth: Map<
+    string,
+    { token?: string; basic?: string; username?: string; password?: string }
+  > = new Map<string, { token?: string; basic?: string; username?: string; password?: string }>();
 
   for (const rawLine of contents.split(/\r?\n/)) {
     const line: string = rawLine.trim();
@@ -119,9 +118,8 @@ export function parseNpmrc(
       scopedRegistries[scoped[1]] = stripTrailingSlash(value);
       continue;
     }
-    const credential: RegExpExecArray | null = /^(\/\/.+?):(_authToken|_auth|username|_password)$/.exec(
-      key,
-    );
+    const credential: RegExpExecArray | null =
+      /^(\/\/.+?):(_authToken|_auth|username|_password)$/.exec(key);
     if (credential !== null) {
       const prefix: string = credential[1].endsWith('/') ? credential[1] : `${credential[1]}/`;
       const entry: { token?: string; basic?: string; username?: string; password?: string } =
@@ -227,7 +225,10 @@ function authHeaders(auth: readonly NpmAuthEntry[], registry: string): Record<st
   const schemeless: string = `${registry.replace(/^https?:/, '')}/`;
   let best: NpmAuthEntry | null = null;
   for (const entry of auth) {
-    if (schemeless.startsWith(entry.prefix) && (best === null || entry.prefix.length > best.prefix.length)) {
+    if (
+      schemeless.startsWith(entry.prefix) &&
+      (best === null || entry.prefix.length > best.prefix.length)
+    ) {
       best = entry;
     }
   }

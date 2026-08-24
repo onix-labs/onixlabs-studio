@@ -154,7 +154,9 @@
       } @else if (exploreRows().length === 0) {
         <span>No packages found.</span>
       } @else {
-        <span class="packages-footer__count">{{ exploreRows().length }} of {{ explorer.total() }}</span>
+        <span class="packages-footer__count"
+          >{{ exploreRows().length }} of {{ explorer.total() }}</span
+        >
         @if (explorer.hasMore()) {
           <app-button variant="none" label="Load more" (click)="explorer.loadMore()" />
         }

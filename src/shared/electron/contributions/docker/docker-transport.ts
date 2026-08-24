@@ -88,9 +88,7 @@ export class HttpDockerTransport implements DockerTransport {
             response.on('data', (chunk: string): void => {
               body += chunk;
             });
-            response.on('end', (): void =>
-              resolve({ statusCode: response.statusCode ?? 0, body }),
-            );
+            response.on('end', (): void => resolve({ statusCode: response.statusCode ?? 0, body }));
           },
         );
         request.on('error', reject);

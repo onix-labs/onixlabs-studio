@@ -34,10 +34,7 @@ export class BinaryAssembly {
     architecture: string,
     address: number,
   ): Promise<AssembleResult> {
-    this.log.trace(
-      'binary.assembly',
-      `Assemble ${architecture} at 0x${address.toString(16)}`,
-    );
+    this.log.trace('binary.assembly', `Assemble ${architecture} at 0x${address.toString(16)}`);
     return (
       this.bridge?.invoke<AssembleResult>(
         BinaryChannel.Assemble,

@@ -68,15 +68,25 @@ describe('LogArchive', () => {
   it('sessions_includesTheCurrentSessionFlaggedLiveNewestFirst', () => {
     const archive: LogArchive = new LogArchive(dir);
     archive.persist(record({ sessionId: 'past-1' }));
-    const current: LogSession = { id: 'current', startedAt: '2999-01-01T00:00:00.000Z', current: true };
+    const current: LogSession = {
+      id: 'current',
+      startedAt: '2999-01-01T00:00:00.000Z',
+      current: true,
+    };
     const sessions: readonly LogSession[] = archive.sessions(current);
     expect(sessions[0]).toEqual(current);
     expect(sessions.some((session: LogSession): boolean => session.id === 'past-1')).toBe(true);
-    expect(sessions.find((session: LogSession): boolean => session.id === 'past-1')?.current).toBe(false);
+    expect(sessions.find((session: LogSession): boolean => session.id === 'past-1')?.current).toBe(
+      false,
+    );
   });
 
   it('sessions_returnsOnlyTheCurrentWhenNoFilesExist', () => {
-    const current: LogSession = { id: 'current', startedAt: '2026-08-10T00:00:00.000Z', current: true };
+    const current: LogSession = {
+      id: 'current',
+      startedAt: '2026-08-10T00:00:00.000Z',
+      current: true,
+    };
     expect(new LogArchive(dir).sessions(current)).toEqual([current]);
   });
 

@@ -257,7 +257,13 @@ describe('SystemMonitorView', () => {
     const writeText: Mock = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
     await create([
-      record({ id: 1, severity: 'error', source: 'S', message: 'boom', timestamp: '2026-08-10T10:00:00.000Z' }),
+      record({
+        id: 1,
+        severity: 'error',
+        source: 'S',
+        message: 'boom',
+        timestamp: '2026-08-10T10:00:00.000Z',
+      }),
     ]);
     TestBed.inject(SystemMonitorCommands).copy();
     await Promise.resolve();
@@ -268,8 +274,20 @@ describe('SystemMonitorView', () => {
     const writeText: Mock = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
     await create([
-      record({ id: 1, severity: 'error', source: 'A', message: 'first', timestamp: '2026-08-10T10:00:00.000Z' }),
-      record({ id: 2, severity: 'info', source: 'B', message: 'second', timestamp: '2026-08-10T10:00:01.000Z' }),
+      record({
+        id: 1,
+        severity: 'error',
+        source: 'A',
+        message: 'first',
+        timestamp: '2026-08-10T10:00:00.000Z',
+      }),
+      record({
+        id: 2,
+        severity: 'info',
+        source: 'B',
+        message: 'second',
+        timestamp: '2026-08-10T10:00:01.000Z',
+      }),
     ]);
 
     // Select only the second row, then copy.
@@ -281,7 +299,13 @@ describe('SystemMonitorView', () => {
 
   it('toggleRow_deselectsOnASecondClick_andClearSelectionEmptiesIt', async () => {
     await create([
-      record({ id: 1, severity: 'error', source: 'A', message: 'first', timestamp: '2026-08-10T10:00:00.000Z' }),
+      record({
+        id: 1,
+        severity: 'error',
+        source: 'A',
+        message: 'first',
+        timestamp: '2026-08-10T10:00:00.000Z',
+      }),
     ]);
     const row: TableRow = view.rows()[0];
     view.toggleRow(row);
@@ -304,7 +328,12 @@ describe('SystemMonitorView', () => {
 
   it('sample_updatesTheTileValuesAndHistories', async () => {
     await create();
-    metrics.listener?.(sample({ cpu: 42, memory: { usedBytes: 8 * 1024 ** 3, totalBytes: 16 * 1024 ** 3, percent: 50 } }));
+    metrics.listener?.(
+      sample({
+        cpu: 42,
+        memory: { usedBytes: 8 * 1024 ** 3, totalBytes: 16 * 1024 ** 3, percent: 50 },
+      }),
+    );
     expect(view.cpuValue()).toBe('42%');
     expect(view.memoryValue()).toBe('8.0 GB (50%)');
     expect(view.memoryTotal()).toBe('16.0 GB');

@@ -86,7 +86,12 @@ export class PermissionBroker {
         'PermissionBroker',
         `Denied '${permission}' for '${request.contributionId}': undeclared`,
       );
-      this.audit({ contributionId: request.contributionId, permission, decision: 'deny', source: 'undeclared' });
+      this.audit({
+        contributionId: request.contributionId,
+        permission,
+        decision: 'deny',
+        source: 'undeclared',
+      });
       throw new PermissionDeniedError(request.contributionId, permission, 'undeclared');
     }
 
@@ -96,7 +101,12 @@ export class PermissionBroker {
         'PermissionBroker',
         `Denied '${permission}' for '${request.contributionId}': policy decided '${decision}'`,
       );
-      this.audit({ contributionId: request.contributionId, permission, decision, source: 'policy' });
+      this.audit({
+        contributionId: request.contributionId,
+        permission,
+        decision,
+        source: 'policy',
+      });
       throw new PermissionDeniedError(request.contributionId, permission, 'denied');
     }
 
@@ -107,12 +117,22 @@ export class PermissionBroker {
         'PermissionBroker',
         `Denied '${permission}' for '${request.contributionId}': no registered factory`,
       );
-      this.audit({ contributionId: request.contributionId, permission, decision: 'deny', source: 'policy' });
+      this.audit({
+        contributionId: request.contributionId,
+        permission,
+        decision: 'deny',
+        source: 'policy',
+      });
       throw new PermissionDeniedError(request.contributionId, permission, 'denied');
     }
 
     logger.debug('PermissionBroker', `Granted '${permission}' to '${request.contributionId}'`);
-    this.audit({ contributionId: request.contributionId, permission, decision: 'allow', source: 'policy' });
+    this.audit({
+      contributionId: request.contributionId,
+      permission,
+      decision: 'allow',
+      source: 'policy',
+    });
     return factory.create() as T;
   }
 }

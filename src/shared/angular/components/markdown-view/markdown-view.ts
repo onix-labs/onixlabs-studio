@@ -49,7 +49,9 @@ export class MarkdownView {
   /**
    * Gets the markdown text to render.
    */
-  public readonly text: InputSignal<string | null | undefined> = input<string | null | undefined>('');
+  public readonly text: InputSignal<string | null | undefined> = input<string | null | undefined>(
+    '',
+  );
 
   /**
    * Holds the sanitiser used to bind the already-sanitised prose HTML as trusted.
@@ -59,12 +61,14 @@ export class MarkdownView {
   /**
    * Gets the rendered blocks in document order, prose HTML wrapped as trusted.
    */
-  protected readonly blocks: Signal<readonly RenderedBlock[]> = computed((): readonly RenderedBlock[] =>
-    renderMarkdownBlocks(this.text() ?? '').map((block): RenderedBlock =>
-      block.kind === 'html'
-        ? { kind: 'html', safe: this.sanitizer.bypassSecurityTrustHtml(block.html) }
-        : block,
-    ),
+  protected readonly blocks: Signal<readonly RenderedBlock[]> = computed(
+    (): readonly RenderedBlock[] =>
+      renderMarkdownBlocks(this.text() ?? '').map(
+        (block): RenderedBlock =>
+          block.kind === 'html'
+            ? { kind: 'html', safe: this.sanitizer.bypassSecurityTrustHtml(block.html) }
+            : block,
+      ),
   );
 
   /**

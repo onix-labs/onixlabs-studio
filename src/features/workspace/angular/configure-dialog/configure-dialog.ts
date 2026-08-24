@@ -408,7 +408,11 @@ export class ConfigureDialogPanel {
       providerKind: this.workspaceCapabilities.kind() ?? 'dotnet',
       mode: 'run',
     };
-    this.log.debug('workspace.run', 'New run configuration added to draft', configuration.providerKind);
+    this.log.debug(
+      'workspace.run',
+      'New run configuration added to draft',
+      configuration.providerKind,
+    );
     this.draft.update((list: readonly RunConfiguration[]): readonly RunConfiguration[] => [
       ...list,
       configuration,

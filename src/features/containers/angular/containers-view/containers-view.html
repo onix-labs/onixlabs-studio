@@ -14,8 +14,18 @@
         } @else {
           <p class="containers__empty-hint">Start Docker to manage containers and images.</p>
           <div class="containers__empty-actions">
-            <app-button variant="solid" [icon]="Icon.PLAY" label="Start Docker" (click)="startDocker()" />
-            <app-button variant="outline" [icon]="Icon.REFRESH" label="Refresh" (click)="refresh()" />
+            <app-button
+              variant="solid"
+              [icon]="Icon.PLAY"
+              label="Start Docker"
+              (click)="startDocker()"
+            />
+            <app-button
+              variant="outline"
+              [icon]="Icon.REFRESH"
+              label="Refresh"
+              (click)="refresh()"
+            />
           </div>
         }
       </div>

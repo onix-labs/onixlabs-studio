@@ -16,7 +16,11 @@ describe('MetricTile', () => {
    * @param suffix The optional label suffix.
    * @returns Returns the rendered host element.
    */
-  function create(label: string, channels: readonly TileChannel[], suffix: string | null = null): HTMLElement {
+  function create(
+    label: string,
+    channels: readonly TileChannel[],
+    suffix: string | null = null,
+  ): HTMLElement {
     fixture = TestBed.createComponent(MetricTile);
     fixture.componentRef.setInput('label', label);
     fixture.componentRef.setInput('suffix', suffix);
@@ -32,7 +36,11 @@ describe('MetricTile', () => {
   });
 
   it('rendersTheLabelSuffix', () => {
-    const element: HTMLElement = create('Memory', [{ value: '8.0 GB (50%)', values: [50] }], '16.0 GB');
+    const element: HTMLElement = create(
+      'Memory',
+      [{ value: '8.0 GB (50%)', values: [50] }],
+      '16.0 GB',
+    );
     expect(element.querySelector('.metric-tile__suffix')?.textContent).toContain('16.0 GB');
   });
 

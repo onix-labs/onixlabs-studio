@@ -185,42 +185,53 @@ export class PackagesPanel {
    */
   protected readonly sourceOptions: Signal<readonly DropdownOption[]> = computed(
     (): readonly DropdownOption[] =>
-      this.explorer.sources().map((source): DropdownOption => ({ value: source.name, label: source.name })),
+      this.explorer
+        .sources()
+        .map((source): DropdownOption => ({ value: source.name, label: source.name })),
   );
 
   /**
    * Gets the Installed-mode rows adapted to the table's row shape: a project becomes a group header
    * carrying its manifest and outdated count, its packages become data rows, sorted within each group.
    */
-  protected readonly installedRows: Signal<readonly TableRow[]> = computed((): readonly TableRow[] => {
-    const sort: TableSort | null = this.installedSort();
-    const result: TableRow[] = [];
-    let buffer: PackageDataRow[] = [];
-    const flush: () => void = (): void => {
-      for (const row of this.sortInstalled(buffer, sort)) {
-        result.push({ id: row.key, data: row.package });
+  protected readonly installedRows: Signal<readonly TableRow[]> = computed(
+    (): readonly TableRow[] => {
+      const sort: TableSort | null = this.installedSort();
+      const result: TableRow[] = [];
+      let buffer: PackageDataRow[] = [];
+      const flush: () => void = (): void => {
+        for (const row of this.sortInstalled(buffer, sort)) {
+          result.push({ id: row.key, data: row.package });
+        }
+        buffer = [];
+      };
+      for (const row of this.packages.rows()) {
+        if (row.kind === 'project') {
+          flush();
+          const data: PackageGroupData = {
+            name: row.name,
+            manifestPath: row.key,
+            outdated: row.outdated,
+          };
+          result.push({ id: row.key, data, group: true });
+        } else {
+          buffer.push(row);
+        }
       }
-      buffer = [];
-    };
-    for (const row of this.packages.rows()) {
-      if (row.kind === 'project') {
-        flush();
-        const data: PackageGroupData = { name: row.name, manifestPath: row.key, outdated: row.outdated };
-        result.push({ id: row.key, data, group: true });
-      } else {
-        buffer.push(row);
-      }
-    }
-    flush();
-    return result;
-  });
+      flush();
+      return result;
+    },
+  );
 
   /**
    * Gets the Explore-mode rows: the loaded results, client-side sorted when a header sort is active.
    */
   protected readonly exploreRows: Signal<readonly TableRow[]> = computed((): readonly TableRow[] =>
     this.sortExplore(this.explorer.results(), this.exploreSort()).map(
-      (item: PackageSearchItem): TableRow => ({ id: `${item.sourceName}:${item.name}`, data: item }),
+      (item: PackageSearchItem): TableRow => ({
+        id: `${item.sourceName}:${item.name}`,
+        data: item,
+      }),
     ),
   );
 

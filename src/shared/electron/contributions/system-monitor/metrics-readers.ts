@@ -1,4 +1,9 @@
-import { AppUsageMetric, DiskMetric, GpuMetric, NetworkMetric } from '@shared/api/system-monitor-channels';
+import {
+  AppUsageMetric,
+  DiskMetric,
+  GpuMetric,
+  NetworkMetric,
+} from '@shared/api/system-monitor-channels';
 
 /**
  * The subset of a `systeminformation` network-interface stat this reads. Structural, so the
@@ -138,7 +143,8 @@ export function parseIoregGpu(output: string): GpuMetric {
   const at: number = output.indexOf(marker);
   const region: string = at >= 0 ? output.slice(at) : output;
   const match: RegExpExecArray | null =
-    /"Device Utilization %"\s*=\s*(\d+)/.exec(region) ?? /"GPU Activity\(%\)"\s*=\s*(\d+)/.exec(region);
+    /"Device Utilization %"\s*=\s*(\d+)/.exec(region) ??
+    /"GPU Activity\(%\)"\s*=\s*(\d+)/.exec(region);
   if (match === null) {
     return { available: false, percent: 0 };
   }

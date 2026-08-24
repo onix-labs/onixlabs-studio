@@ -85,7 +85,10 @@ export class CommitMessageGenerator {
       return null;
     }
     this.generatingSignal.set(true);
-    this.log.info('CommitMessageGenerator', `Generating commit message for ${files.length} file(s)`);
+    this.log.info(
+      'CommitMessageGenerator',
+      `Generating commit message for ${files.length} file(s)`,
+    );
     try {
       const providers: readonly AiProviderInfo[] = await this.runtime.listProviders(
         this.settings.aiConnections(),

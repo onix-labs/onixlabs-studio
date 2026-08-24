@@ -106,7 +106,10 @@ export class ProjectSystemRegistry {
     logger.trace('ProjectSystemRegistry', `Matching a project system for '${root}'.`);
     for (const system of this.systems.values()) {
       if (await system.detect(root)) {
-        logger.debug('ProjectSystemRegistry', `Matched project system '${system.kind}' for '${root}'.`);
+        logger.debug(
+          'ProjectSystemRegistry',
+          `Matched project system '${system.kind}' for '${root}'.`,
+        );
         return system;
       }
     }

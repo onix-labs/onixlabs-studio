@@ -1,4 +1,10 @@
-import { LogOrigin, LogQuery, LogRecord, MAX_LOG_MESSAGE_LENGTH, Severity } from '@shared/api/log-channels';
+import {
+  LogOrigin,
+  LogQuery,
+  LogRecord,
+  MAX_LOG_MESSAGE_LENGTH,
+  Severity,
+} from '@shared/api/log-channels';
 
 /**
  * Caps a record's source ("Where") length, so a runaway source string cannot bloat a record.

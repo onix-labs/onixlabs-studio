@@ -64,7 +64,10 @@ function clampPayload(text: string): string {
     return text;
   }
   const omitted: number = text.length - MAX_PAYLOAD_CHARS;
-  logger.debug('ToolFormat', `Clamped tool payload, omitting ${omitted.toLocaleString()} characters`);
+  logger.debug(
+    'ToolFormat',
+    `Clamped tool payload, omitting ${omitted.toLocaleString()} characters`,
+  );
   return `${text.slice(0, MAX_PAYLOAD_CHARS)}\n… [truncated: ${omitted.toLocaleString()} more characters]`;
 }
 

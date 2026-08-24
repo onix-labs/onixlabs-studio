@@ -164,7 +164,10 @@ export class DirectoryWatcher {
       // A vanished root (deleted, unmounted) errors rather than events; report it as an overflow so
       // subscribers re-read what they show and discover the root is gone, then drop the dead watcher.
       watcher.on('error', (): void => {
-        logger.warn('DirectoryWatcher', `Watcher errored for ${root}; dropping and reporting overflow`);
+        logger.warn(
+          'DirectoryWatcher',
+          `Watcher errored for ${root}; dropping and reporting overflow`,
+        );
         watcher.close();
         this.roots.delete(root);
         this.recordOverflow(root);

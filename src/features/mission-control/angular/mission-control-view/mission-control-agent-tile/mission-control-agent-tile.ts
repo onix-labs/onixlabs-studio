@@ -325,7 +325,10 @@ export class MissionControlAgentTile {
    */
   protected toggleHistory(): void {
     const next: boolean = !this.historyOpen();
-    this.log.debug('mission-control.tile', 'Toggled history view', { host: this.host.id, open: next });
+    this.log.debug('mission-control.tile', 'Toggled history view', {
+      host: this.host.id,
+      open: next,
+    });
     this.historyOpen.set(next);
   }
 

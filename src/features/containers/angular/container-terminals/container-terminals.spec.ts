@@ -8,7 +8,9 @@ import { ContainerTerminal, ContainerTerminals } from './container-terminals';
  * A stub terminal bridge recording the create/dispose calls the service makes.
  */
 function stubBridge(): { create: Mock; dispose: Mock } {
-  const create: Mock = vi.fn((): Promise<{ success: boolean }> => Promise.resolve({ success: true }));
+  const create: Mock = vi.fn(
+    (): Promise<{ success: boolean }> => Promise.resolve({ success: true }),
+  );
   const dispose: Mock = vi.fn((): Promise<boolean> => Promise.resolve(true));
   TestBed.configureTestingModule({
     providers: [ContainerTerminals, { provide: TerminalBridge, useValue: { create, dispose } }],

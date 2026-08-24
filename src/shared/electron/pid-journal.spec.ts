@@ -144,7 +144,11 @@ describe('PidJournal', () => {
     // and Claude Code agent. Every child here is owned by pid 999, which is still alive.
     const store: MemoryStore = new MemoryStore();
     store.text = JSON.stringify([
-      owned(20, 'Microsoft.CodeAnalysis.LanguageServer', { pid: 999, comm: 'Electron', startTimeMs: 5000 }),
+      owned(20, 'Microsoft.CodeAnalysis.LanguageServer', {
+        pid: 999,
+        comm: 'Electron',
+        startTimeMs: 5000,
+      }),
       owned(21, 'node', { pid: 999, comm: 'Electron', startTimeMs: 5000 }),
     ]);
     const killed: number[] = [];
@@ -167,14 +171,22 @@ describe('PidJournal', () => {
     expect(reaped).toBe(0);
     expect(killed).toEqual([]);
     // The spared children stay journalled so their own (live) owner can reap them later.
-    expect(parseJournal(store.text).map((e: JournalEntry): number => e.pid).sort()).toEqual([20, 21]);
+    expect(
+      parseJournal(store.text)
+        .map((e: JournalEntry): number => e.pid)
+        .sort(),
+    ).toEqual([20, 21]);
   });
 
   it('reapStale_reapsChildrenWhoseOwnerIsGone', async () => {
     // The owning instance (pid 998) is dead, so its surviving children are genuine orphans and reaped.
     const store: MemoryStore = new MemoryStore();
     store.text = JSON.stringify([
-      owned(30, 'Microsoft.CodeAnalysis.LanguageServer', { pid: 998, comm: 'Electron', startTimeMs: 5000 }),
+      owned(30, 'Microsoft.CodeAnalysis.LanguageServer', {
+        pid: 998,
+        comm: 'Electron',
+        startTimeMs: 5000,
+      }),
     ]);
     const killed: number[] = [];
     const probes: Map<number, ProcessProbe | null> = new Map<number, ProcessProbe | null>([

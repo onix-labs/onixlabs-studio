@@ -56,7 +56,10 @@ function fakeLogger(): SpiedLogger {
  * Builds the context the registry hands a contribution: delegates IPC to the tracker (the behaviour
  * under test) and stubs the rest.
  */
-function contextFactory(): (contribution: MainContribution, track: TrackedIpc) => ContributionContext {
+function contextFactory(): (
+  contribution: MainContribution,
+  track: TrackedIpc,
+) => ContributionContext {
   return (_contribution: MainContribution, track: TrackedIpc): ContributionContext => ({
     handle: (channel: string, handler: InvokeHandler): void => track.handle(channel, handler),
     on: (channel: string, listener: ContributionListener): void => track.on(channel, listener),
@@ -211,14 +214,16 @@ describe('MainContributionRegistry', () => {
     const goodDispose: Mock = vi.fn();
     const throwing: MainContribution = {
       id: 'throws',
-      activate: (context: ContributionContext): void => context.handle('throws:x', (): void => undefined),
+      activate: (context: ContributionContext): void =>
+        context.handle('throws:x', (): void => undefined),
       dispose: (): void => {
         throw new Error('dispose failed');
       },
     };
     const good: MainContribution = {
       id: 'good',
-      activate: (context: ContributionContext): void => context.handle('good:x', (): void => undefined),
+      activate: (context: ContributionContext): void =>
+        context.handle('good:x', (): void => undefined),
       dispose: goodDispose,
     };
     const registry: MainContributionRegistry = new MainContributionRegistry(
@@ -243,7 +248,8 @@ describe('MainContributionRegistry', () => {
     const ipc: FakeIpc = new FakeIpc();
     const contribution: MainContribution = {
       id: 'sample',
-      activate: (context: ContributionContext): void => context.handle('sample:ping', (): void => undefined),
+      activate: (context: ContributionContext): void =>
+        context.handle('sample:ping', (): void => undefined),
     };
     const registry: MainContributionRegistry = new MainContributionRegistry(
       [contribution],

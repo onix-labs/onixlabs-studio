@@ -52,10 +52,7 @@ const COPIED_FEEDBACK_MS: number = 1500;
  * @returns Returns the escaped text.
  */
 function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 /**
@@ -91,7 +88,9 @@ export class CodeBlock {
    * Holds the terminal sessions the play action launches into — the hosting view's when one is in
    * scope, otherwise the app-wide instance.
    */
-  private readonly terminals: TerminalSessions | null = inject(TerminalSessions, { optional: true });
+  private readonly terminals: TerminalSessions | null = inject(TerminalSessions, {
+    optional: true,
+  });
 
   /**
    * Holds the Monaco loader, read for its ready signal so the block re-highlights once Monaco arrives.
@@ -179,7 +178,9 @@ export class CodeBlock {
         .colorize(code, lang)
         .then((html: string): void => {
           if (this.highlightRequest === request) {
-            this.highlighted.set(html.length > 0 ? this.sanitizer.bypassSecurityTrustHtml(html) : null);
+            this.highlighted.set(
+              html.length > 0 ? this.sanitizer.bypassSecurityTrustHtml(html) : null,
+            );
           }
         })
         .catch((): void => {

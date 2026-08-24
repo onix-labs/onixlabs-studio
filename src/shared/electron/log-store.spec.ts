@@ -23,7 +23,13 @@ describe('LogStore', () => {
   it('add_carriesOriginSeveritySourceMessageAndWindow', () => {
     const store: LogStore = new LogStore('s1');
     const record: LogRecord = store.add(
-      input({ origin: 'renderer', severity: 'warning', source: 'Composer', message: 'eek', window: 'main' }),
+      input({
+        origin: 'renderer',
+        severity: 'warning',
+        source: 'Composer',
+        message: 'eek',
+        window: 'main',
+      }),
     );
     expect(record).toMatchObject({
       origin: 'renderer',
@@ -36,7 +42,9 @@ describe('LogStore', () => {
 
   it('add_capsSourceAndMessageLength', () => {
     const store: LogStore = new LogStore('s1');
-    const record: LogRecord = store.add(input({ source: 'x'.repeat(500), message: 'y'.repeat(20000) }));
+    const record: LogRecord = store.add(
+      input({ source: 'x'.repeat(500), message: 'y'.repeat(20000) }),
+    );
     expect(record.source).toHaveLength(256);
     expect(record.message).toHaveLength(8192);
   });

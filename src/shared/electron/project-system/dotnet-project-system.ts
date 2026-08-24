@@ -234,7 +234,10 @@ export class DotnetProjectSystem implements ProjectSystem {
   public loadProjectItems(projectPath: string): Promise<ProjectItems | null> {
     const existing: Promise<ProjectItems | null> | undefined = this.inFlightItems.get(projectPath);
     if (existing !== undefined) {
-      logger.trace('DotnetProjectSystem', `Joined an in-flight item evaluation for '${projectPath}'.`);
+      logger.trace(
+        'DotnetProjectSystem',
+        `Joined an in-flight item evaluation for '${projectPath}'.`,
+      );
       return existing;
     }
     logger.trace('DotnetProjectSystem', `Evaluating items for '${projectPath}'.`);
@@ -302,7 +305,10 @@ export class DotnetProjectSystem implements ProjectSystem {
     }
     const dotnet: string | null = await this.resolveDotnet();
     if (dotnet === null) {
-      logger.warn('DotnetProjectSystem', 'The `dotnet` command could not be found for a debug build.');
+      logger.warn(
+        'DotnetProjectSystem',
+        'The `dotnet` command could not be found for a debug build.',
+      );
       return { target: null, error: 'The `dotnet` command could not be found on this machine.' };
     }
     const configurationName: string = this.buildConfigurationName(configuration.buildConfiguration);
@@ -336,7 +342,10 @@ export class DotnetProjectSystem implements ProjectSystem {
         error: 'The build succeeded but its output assembly could not be found.',
       };
     }
-    logger.info('DotnetProjectSystem', `Resolved debug target '${targetPath}' for '${projectPath}'.`);
+    logger.info(
+      'DotnetProjectSystem',
+      `Resolved debug target '${targetPath}' for '${projectPath}'.`,
+    );
     return { target: { program: targetPath, cwd: path.dirname(projectPath) }, error: null };
   }
 
@@ -380,7 +389,11 @@ export class DotnetProjectSystem implements ProjectSystem {
       const targetPath: string = stdout.trim();
       return targetPath.length > 0 ? targetPath : null;
     } catch (error: unknown) {
-      logger.error('DotnetProjectSystem', `Failed to query the target path for '${projectPath}'.`, error);
+      logger.error(
+        'DotnetProjectSystem',
+        `Failed to query the target path for '${projectPath}'.`,
+        error,
+      );
       return null;
     }
   }
@@ -419,7 +432,10 @@ export class DotnetProjectSystem implements ProjectSystem {
           timeout: PROBE_TIMEOUT_MS,
           killSignal: 'SIGKILL',
         });
-        logger.debug('DotnetProjectSystem', `Resolved the \`dotnet\` executable at '${candidate}'.`);
+        logger.debug(
+          'DotnetProjectSystem',
+          `Resolved the \`dotnet\` executable at '${candidate}'.`,
+        );
         return candidate;
       } catch {
         // Try the next candidate.
@@ -476,7 +492,11 @@ export class DotnetProjectSystem implements ProjectSystem {
         items: this.collectItems(parsed.Items),
       };
     } catch (error: unknown) {
-      logger.error('DotnetProjectSystem', `Failed to evaluate project items for '${projectPath}'.`, error);
+      logger.error(
+        'DotnetProjectSystem',
+        `Failed to evaluate project items for '${projectPath}'.`,
+        error,
+      );
       return null;
     }
   }
@@ -660,7 +680,11 @@ export class DotnetProjectSystem implements ProjectSystem {
     try {
       content = await fs.readFile(solutionPath, 'utf8');
     } catch (error: unknown) {
-      logger.error('DotnetProjectSystem', `Failed to read the solution file '${solutionPath}'.`, error);
+      logger.error(
+        'DotnetProjectSystem',
+        `Failed to read the solution file '${solutionPath}'.`,
+        error,
+      );
       return [];
     }
     const directory: string = path.dirname(solutionPath);

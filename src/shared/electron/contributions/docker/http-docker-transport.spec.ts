@@ -27,7 +27,8 @@ describe.skipIf(process.platform === 'win32')('HttpDockerTransport', () => {
       response.end();
     };
     server = http.createServer(
-      (request: http.IncomingMessage, response: http.ServerResponse): void => handler(request, response),
+      (request: http.IncomingMessage, response: http.ServerResponse): void =>
+        handler(request, response),
     );
     counter += 1;
     socketPath = join(tmpdir(), `docker-http-${process.pid}-${counter}.sock`);

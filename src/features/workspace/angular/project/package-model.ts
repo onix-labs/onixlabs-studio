@@ -125,7 +125,9 @@ export class PackageModel {
     }
     return model.projects.reduce(
       (total: number, project: PackageProject): number =>
-        total + project.packages.filter((entry: InstalledPackage): boolean => entry.status === 'outdated').length,
+        total +
+        project.packages.filter((entry: InstalledPackage): boolean => entry.status === 'outdated')
+          .length,
       0,
     );
   });
@@ -153,7 +155,11 @@ export class PackageModel {
       ).length;
       rows.push({ kind: 'project', key: project.manifestPath, name: project.name, outdated });
       for (const entry of this.ordered(visible)) {
-        rows.push({ kind: 'package', key: `${project.manifestPath}:${entry.name}`, package: entry });
+        rows.push({
+          kind: 'package',
+          key: `${project.manifestPath}:${entry.name}`,
+          package: entry,
+        });
       }
     }
     return rows;
