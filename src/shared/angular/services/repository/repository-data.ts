@@ -313,14 +313,9 @@ export interface GitStash {
  */
 export interface GraphNode {
   /**
-   * Gets the node identifier (a commit hash, or the working-tree sentinel).
+   * Gets the node identifier (the commit hash).
    */
   readonly id: string;
-
-  /**
-   * Gets the node kind.
-   */
-  readonly kind: 'commit' | 'working';
 
   /**
    * Gets the zero-based row index.
@@ -338,9 +333,10 @@ export interface GraphNode {
   readonly color: string;
 
   /**
-   * Gets the backing commit, or null for the working-tree node.
+   * Gets the backing commit. Every row is one — the graph is history, and the working tree is shown
+   * on the branch it belongs to rather than as a row above it.
    */
-  readonly commit: GitCommit | null;
+  readonly commit: GitCommit;
 
   /**
    * Gets the references that point at this node.

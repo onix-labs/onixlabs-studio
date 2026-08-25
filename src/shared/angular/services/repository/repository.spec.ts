@@ -384,11 +384,17 @@ describe('Repository', () => {
     ]);
   });
 
-  it('graph_whenWorkingTreeDirty_prependsWorkingNode', () => {
+  it('graph_whenWorkingTreeDirty_isStillJustTheHistory', () => {
+    // The working tree is shown on the branch it belongs to, not as a row above the history.
     const graph: readonly GraphNode[] = repository.graph();
 
-    expect(graph[0].kind).toBe('working');
-    expect(graph[0].id).toBe(WORKING_NODE_ID);
+    expect(graph.map((node: GraphNode): string => node.id)).toEqual(['c2', 'c1']);
+    expect(repository.changeCount()).toBeGreaterThan(0);
+  });
+
+  it('graph_rowsAreNumberedFromTheTip', () => {
+    // Nothing is prepended, so the newest commit is row zero.
+    expect(repository.graph()[0].row).toBe(0);
   });
 
   it('loadDiff_returnsTheProvidersDiff', async () => {

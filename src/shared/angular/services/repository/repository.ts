@@ -317,11 +317,15 @@ export class Repository {
   );
 
   /**
-   * Gets the commit-graph rows: the optional working-tree node followed by every commit, each
-   * resolved to a lane, colour, and the edges that connect it to its parents.
+   * Gets the commit-graph rows: every commit, each resolved to a lane, colour, and the edges that
+   * connect it to its parents.
+   *
+   * The history is history. The working tree used to lead it as a synthetic row, which put the
+   * uncommitted changes in two places at once — the checked-out branch already carries them in the
+   * Repository panel, which is where they belong, since they belong to the branch they sit on.
    */
   public readonly graph: Signal<readonly GraphNode[]> = computed((): readonly GraphNode[] =>
-    this.buildGraph(this.commitsSignal(), this.changeCount() > 0),
+    this.buildGraph(this.commitsSignal()),
   );
 
   /**
@@ -1484,23 +1488,17 @@ export class Repository {
 
   /**
    * Builds the commit-graph rows from the history, assigning each commit a lane and resolving the
-   * edges to its parents. When the working tree is dirty, a synthetic node is prepended on the tip's
-   * lane so uncommitted changes are selectable in the graph.
+   * edges to its parents.
    * @param commits The commit history, newest first.
-   * @param hasWorking Whether the working tree has changes worth a node.
    * @returns Returns the ordered graph rows.
    */
-  private buildGraph(commits: readonly GitCommit[], hasWorking: boolean): readonly GraphNode[] {
+  private buildGraph(commits: readonly GitCommit[]): readonly GraphNode[] {
     const placement: Map<string, { lane: number; color: string }> = this.assignLanes(commits);
-    const rowOffset: number = hasWorking ? 1 : 0;
     const rowOf: Map<string, number> = new Map<string, number>(
-      commits.map((commit: GitCommit, index: number): [string, number] => [
-        commit.hash,
-        index + rowOffset,
-      ]),
+      commits.map((commit: GitCommit, index: number): [string, number] => [commit.hash, index]),
     );
 
-    const nodes: GraphNode[] = commits.map((commit: GitCommit, index: number): GraphNode => {
+    return commits.map((commit: GitCommit, index: number): GraphNode => {
       const place: { lane: number; color: string } = placement.get(commit.hash) ?? {
         lane: 0,
         color: LANE_COLORS[0],
@@ -1522,8 +1520,7 @@ export class Repository {
 
       return {
         id: commit.hash,
-        kind: 'commit',
-        row: index + rowOffset,
+        row: index,
         lane: place.lane,
         color: place.color,
         commit,
@@ -1531,23 +1528,6 @@ export class Repository {
         edges,
       };
     });
-
-    if (!hasWorking) {
-      return nodes;
-    }
-
-    const tip: GraphNode | undefined = nodes[0];
-    const workingNode: GraphNode = {
-      id: WORKING_NODE_ID,
-      kind: 'working',
-      row: 0,
-      lane: tip?.lane ?? 0,
-      color: tip?.color ?? LANE_COLORS[0],
-      commit: null,
-      refs: [],
-      edges: tip === undefined ? [] : [{ toRow: tip.row, toLane: tip.lane, color: tip.color }],
-    };
-    return [workingNode, ...nodes];
   }
 
   /**

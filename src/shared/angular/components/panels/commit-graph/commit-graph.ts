@@ -58,11 +58,6 @@ interface DotViewModel {
    * Gets the dot's colour.
    */
   readonly color: string;
-
-  /**
-   * Gets a value indicating whether the node is the synthetic working-tree node, drawn hollow.
-   */
-  readonly working: boolean;
 }
 
 /**
@@ -141,7 +136,7 @@ export class CommitGraph {
   }
 
   /**
-   * Gets the ordered graph nodes (working node, then commits).
+   * Gets the ordered graph nodes.
    */
   protected readonly nodes: Signal<readonly GraphNode[]> = this.repository.graph;
 
@@ -189,7 +184,6 @@ export class CommitGraph {
         cx: this.laneX(node.lane),
         cy: this.rowY(node.row),
         color: node.color,
-        working: node.kind === 'working',
       }),
     ),
   );
