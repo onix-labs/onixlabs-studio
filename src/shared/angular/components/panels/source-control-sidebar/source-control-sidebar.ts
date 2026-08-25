@@ -1446,11 +1446,11 @@ export class SourceControlSidebar implements OnDestroy {
             {
               id: ACTION_COMMIT_BRANCH,
               label: 'Commit…',
-              icon: Icon.SOURCE_CONTROL,
+              icon: Icon.GIT_COMMIT,
               status: `${this.repository.changeCount()} changed`,
             },
           ]
-      : [{ id: ACTION_CHECKOUT_BRANCH, label: 'Check Out', icon: Icon.CHECK }];
+      : [{ id: ACTION_CHECKOUT_BRANCH, label: 'Check Out', icon: Icon.TRAY_UP }];
     return lead.length === 0
       ? this.upstreamItems(branch)
       : [...lead, { separator: true, id: 'branch.sep', label: '' }, ...this.upstreamItems(branch)];
@@ -1486,7 +1486,7 @@ export class SourceControlSidebar implements OnDestroy {
       {
         id: ACTION_PUSH_BRANCH,
         label: 'Push',
-        icon: Icon.ARROW_UP,
+        icon: Icon.CLOUD_UP,
         disabled: noRemote,
         // A branch with no upstream is published by the push, so the count is what it is sending, not
         // a comparison with something that does not exist yet.
@@ -1499,7 +1499,7 @@ export class SourceControlSidebar implements OnDestroy {
       {
         id: ACTION_PULL_BRANCH,
         label: 'Pull',
-        icon: Icon.ARROW_DOWN,
+        icon: Icon.CLOUD_DOWN,
         disabled: noRemote || noUpstream,
         status:
           reason ??
@@ -1516,7 +1516,7 @@ export class SourceControlSidebar implements OnDestroy {
       {
         id: ACTION_SYNC_BRANCH,
         label: 'Sync',
-        icon: Icon.REFRESH,
+        icon: Icon.CLOUD_CHECK,
         disabled: noRemote || noUpstream,
         status: reason ?? 'pull, then push',
       },
@@ -1598,7 +1598,7 @@ export class SourceControlSidebar implements OnDestroy {
         {
           id: ACTION_CHECKOUT_REMOTE_BRANCH,
           label: 'Check Out',
-          icon: Icon.CHECK,
+          icon: Icon.TRAY_UP,
           status: 'as a local branch',
         },
       ];
@@ -1644,7 +1644,7 @@ export class SourceControlSidebar implements OnDestroy {
     }
     if (node.pullRequest !== undefined) {
       return [
-        { id: ACTION_CHECKOUT_PULL_REQUEST, label: 'Check Out', icon: Icon.CHECK },
+        { id: ACTION_CHECKOUT_PULL_REQUEST, label: 'Check Out', icon: Icon.TRAY_UP },
         { id: ACTION_OPEN_PULL_REQUEST, label: 'Open on GitHub', icon: Icon.OPEN_EXTERNAL },
       ];
     }
