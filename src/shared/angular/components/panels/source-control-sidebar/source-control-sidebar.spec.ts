@@ -115,7 +115,14 @@ class FakeProvider implements SourceControlProvider {
    * submenu, so it has to be drivable.
    */
   public remoteEntries: readonly GitRemote[] = [
-    { name: 'origin', url: '', branches: ['main', 'develop'] },
+    {
+      name: 'origin',
+      url: 'https://example.com/onix/studio.git',
+      branches: [
+        { name: 'origin/main', commit: 'c2' },
+        { name: 'origin/develop', commit: 'c1' },
+      ],
+    },
   ];
 
   public getStatus(): Promise<ParsedStatus> {
@@ -247,6 +254,31 @@ class FakeProvider implements SourceControlProvider {
 
   public pushAllTags(remote: string): Promise<MutationResult> {
     this.calls.push(`pushAllTags:${remote}`);
+    return Promise.resolve({ success: true });
+  }
+
+  public fetchRemote(remote: string): Promise<MutationResult> {
+    this.calls.push(`fetchRemote:${remote}`);
+    return Promise.resolve({ success: true });
+  }
+
+  public pruneRemote(remote: string): Promise<MutationResult> {
+    this.calls.push(`pruneRemote:${remote}`);
+    return Promise.resolve({ success: true });
+  }
+
+  public addRemote(name: string, url: string): Promise<MutationResult> {
+    this.calls.push(`addRemote:${name}:${url}`);
+    return Promise.resolve({ success: true });
+  }
+
+  public removeRemote(name: string): Promise<MutationResult> {
+    this.calls.push(`removeRemote:${name}`);
+    return Promise.resolve({ success: true });
+  }
+
+  public checkoutTracking(remoteBranch: string, localBranch: string): Promise<MutationResult> {
+    this.calls.push(`checkoutTracking:${remoteBranch}:${localBranch}`);
     return Promise.resolve({ success: true });
   }
 
@@ -743,6 +775,214 @@ describe('SourceControlSidebar', () => {
       },
     };
   }
+
+  describe('the Remote section', () => {
+    /**
+     * Builds a remote row, as the Remote section produces one.
+     * @returns Returns the row.
+     */
+    function remoteRow(): TreeRow {
+      return {
+        id: 'remote:origin',
+        depth: 1,
+        expandable: false,
+        expanded: false,
+        data: {
+          kind: 'remote',
+          icon: Icon.CLOUD,
+          label: 'origin',
+          remote: provider.remoteEntries[0],
+        },
+      };
+    }
+
+    /**
+     * Builds a remote-tracking branch row.
+     * @returns Returns the row.
+     */
+    function remoteBranchRow(name: string = 'origin/release'): TreeRow {
+      return {
+        id: `remote:${name}`,
+        depth: 2,
+        expandable: false,
+        expanded: false,
+        data: {
+          kind: 'remote-branch',
+          icon: Icon.SOURCE_CONTROL,
+          label: name,
+          commit: 'c1',
+          remote: provider.remoteEntries[0],
+          remoteBranch: { name, commit: 'c1' },
+        },
+      };
+    }
+
+    /**
+     * Expands the Remote section and returns its rows.
+     * @returns Returns the rows.
+     */
+    function remoteRows(): readonly TreeRow[] {
+      const internals: { rows(): readonly TreeRow[]; onRowClick(row: TreeRow): void } =
+        component as unknown as { rows(): readonly TreeRow[]; onRowClick(row: TreeRow): void };
+      internals.onRowClick(sectionRow('remote', 'Remote'));
+      fixture.detectChanges();
+      return internals.rows();
+    }
+
+    it('showsEachRemotesUrl_whichWasReadAndNeverDrawn', () => {
+      const row: TreeRow | undefined = remoteRows().find(
+        (candidate: TreeRow): boolean => candidate.id === 'remote:origin',
+      );
+
+      expect((row?.data as { note?: string }).note).toBe('https://example.com/onix/studio.git');
+    });
+
+    it('aRemoteBranchRowNavigatesToItsTip', () => {
+      component.onRowClick(remoteBranchRow());
+
+      // It was inert only because the hash was dropped at parse time.
+      expect(repository.selectedNodeId()).toBe('c1');
+    });
+
+    it('checksOutARemoteBranchAsALocalTrackingBranch', async () => {
+      const menu: {
+        contextMenuFor(r: TreeRow): readonly MenuItem[];
+        onContextAction(c: TreeMenuSelection): void;
+      } = component as unknown as {
+        contextMenuFor(r: TreeRow): readonly MenuItem[];
+        onContextAction(c: TreeMenuSelection): void;
+      };
+      const row: TreeRow = remoteBranchRow();
+
+      expect(menu.contextMenuFor(row).map((item: MenuItem): string => item.label)).toEqual([
+        'Check Out',
+      ]);
+
+      menu.onContextAction({ itemId: 'remoteBranch.checkout', row });
+      await fixture.whenStable();
+
+      // The remote is stripped: the row said `origin/release`, the local branch is `release`.
+      expect(provider.calls).toContain('checkoutTracking:origin/release:release');
+    });
+
+    it('whenTheLocalBranchAlreadyExists_checksItOutRatherThanFailing', async () => {
+      // `develop` is already local in the fixture. Refusing under `-b` would be git's answer, not a
+      // useful one — the branch they asked for is the branch they get.
+      const menu: { onContextAction(c: TreeMenuSelection): void } = component as unknown as {
+        onContextAction(c: TreeMenuSelection): void;
+      };
+
+      menu.onContextAction({
+        itemId: 'remoteBranch.checkout',
+        row: remoteBranchRow('origin/develop'),
+      });
+      await fixture.whenStable();
+
+      expect(provider.calls).toContain('checkout:develop');
+      expect(provider.calls).not.toContain('checkoutTracking:origin/develop:develop');
+    });
+
+    it('offersFetchPruneAndRemoveOnARemote', () => {
+      const menu: { contextMenuFor(r: TreeRow): readonly MenuItem[] } = component;
+
+      expect(
+        menu
+          .contextMenuFor(remoteRow())
+          .filter((item: MenuItem): boolean => item.separator !== true)
+          .map((item: MenuItem): string => item.label),
+      ).toEqual(['Fetch', 'Prune', 'Remove…']);
+    });
+
+    it('fetchesAndPrunesOneRemote_ratherThanAllOfThem', async () => {
+      const menu: { onContextAction(c: TreeMenuSelection): void } = component as unknown as {
+        onContextAction(c: TreeMenuSelection): void;
+      };
+      const row: TreeRow = remoteRow();
+
+      menu.onContextAction({ itemId: 'remote.fetch', row });
+      await fixture.whenStable();
+      menu.onContextAction({ itemId: 'remote.prune', row });
+      await fixture.whenStable();
+
+      expect(provider.calls).toContain('fetchRemote:origin');
+      expect(provider.calls).toContain('pruneRemote:origin');
+    });
+
+    it('removingARemoteAsksFirst_andOnlyRemovesOnceConfirmed', async () => {
+      const internals: {
+        onContextAction(c: TreeMenuSelection): void;
+        pendingRemoveRemote(): GitRemote | null;
+        confirmRemoveRemote(): void;
+        cancelRemoveRemote(): void;
+      } = component as unknown as {
+        onContextAction(c: TreeMenuSelection): void;
+        pendingRemoveRemote(): GitRemote | null;
+        confirmRemoveRemote(): void;
+        cancelRemoveRemote(): void;
+      };
+
+      internals.onContextAction({ itemId: 'remote.remove', row: remoteRow() });
+      expect(internals.pendingRemoveRemote()?.name).toBe('origin');
+      internals.cancelRemoveRemote();
+      expect(provider.calls).not.toContain('removeRemote:origin');
+
+      internals.onContextAction({ itemId: 'remote.remove', row: remoteRow() });
+      internals.confirmRemoveRemote();
+      await fixture.whenStable();
+
+      expect(provider.calls).toContain('removeRemote:origin');
+    });
+
+    it('addsARemote_fromTheToolStripDialog', async () => {
+      const internals: {
+        onMoreAction(id: string): void;
+        remoteName: WritableSignal<string>;
+        remoteUrl: WritableSignal<string>;
+        canAddRemote(): boolean;
+        remoteNameError(): string | null;
+        confirmRemote(): void;
+      } = component as unknown as {
+        onMoreAction(id: string): void;
+        remoteName: WritableSignal<string>;
+        remoteUrl: WritableSignal<string>;
+        canAddRemote(): boolean;
+        remoteNameError(): string | null;
+        confirmRemote(): void;
+      };
+
+      internals.onMoreAction('repo.addRemote');
+      internals.remoteName.set('  upstream  ');
+
+      // A name without a URL is not a remote git would accept.
+      expect(internals.canAddRemote()).toBe(false);
+
+      internals.remoteUrl.set('  https://example.com/upstream.git  ');
+      internals.confirmRemote();
+      await fixture.whenStable();
+
+      expect(provider.calls).toContain('addRemote:upstream:https://example.com/upstream.git');
+    });
+
+    it('rejectsADuplicateRemoteName_beforeTheCommandRuns', () => {
+      const internals: {
+        onMoreAction(id: string): void;
+        remoteName: WritableSignal<string>;
+        remoteNameError(): string | null;
+        canAddRemote(): boolean;
+      } = component as unknown as {
+        onMoreAction(id: string): void;
+        remoteName: WritableSignal<string>;
+        remoteNameError(): string | null;
+        canAddRemote(): boolean;
+      };
+
+      internals.onMoreAction('repo.addRemote');
+      internals.remoteName.set('origin');
+
+      expect(internals.remoteNameError()).toBe('A remote with that name already exists.');
+      expect(internals.canAddRemote()).toBe(false);
+    });
+  });
 
   it('theCheckedOutBranchOffersCommitThenItsExchangeCommands', () => {
     // It cannot be checked out again. What it can do is commit what is in the working tree — the
@@ -1819,6 +2059,7 @@ describe('SourceControlSidebar', () => {
       ).toEqual([
         'New Branch…',
         'New Tag…',
+        'Add Remote…',
         'Stash Changes',
         'Fetch',
         'Push All Tags to origin',

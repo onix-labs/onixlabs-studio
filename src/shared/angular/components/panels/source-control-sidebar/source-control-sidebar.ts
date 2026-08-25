@@ -33,6 +33,7 @@ import {
   GitBranch,
   GitCommit,
   GitRemote,
+  GitRemoteBranch,
   GitStash,
   GitTag,
 } from '@shared/angular/services/repository/repository-data';
@@ -116,6 +117,17 @@ interface RepoNode {
   readonly tag?: GitTag;
 
   /**
+   * Gets the remote, for a remote row and for the remote-branch rows beneath it (drives the fetch,
+   * prune and remove actions, and tells a branch row which remote to track from).
+   */
+  readonly remote?: GitRemote;
+
+  /**
+   * Gets the remote-tracking branch, for a remote-branch row (drives the check-out action).
+   */
+  readonly remoteBranch?: GitRemoteBranch;
+
+  /**
    * Gets the commit a row navigates to when selected (a branch tip or a tag's commit).
    */
   readonly commit?: string;
@@ -166,6 +178,31 @@ const ACTION_OPEN_ISSUE: string = 'issue.open';
  * Identifies the Check Out command on a branch's context menu.
  */
 const ACTION_CHECKOUT_BRANCH: string = 'branch.checkout';
+
+/**
+ * Identifies the Check Out command on a remote-tracking branch's context menu.
+ */
+const ACTION_CHECKOUT_REMOTE_BRANCH: string = 'remoteBranch.checkout';
+
+/**
+ * Identifies the Fetch command on a remote's context menu.
+ */
+const ACTION_FETCH_REMOTE: string = 'remote.fetch';
+
+/**
+ * Identifies the Prune command on a remote's context menu.
+ */
+const ACTION_PRUNE_REMOTE: string = 'remote.prune';
+
+/**
+ * Identifies the Remove command on a remote's context menu.
+ */
+const ACTION_REMOVE_REMOTE: string = 'remote.remove';
+
+/**
+ * Identifies the Add Remote command on the tool strip's more-actions menu.
+ */
+const ACTION_ADD_REMOTE: string = 'repo.addRemote';
 
 /**
  * Identifies the Commit command on the checked-out branch's context menu.
@@ -532,6 +569,12 @@ export class SourceControlSidebar implements OnDestroy {
       disabled: !this.repository.isBound(),
     },
     {
+      id: ACTION_ADD_REMOTE,
+      label: 'Add Remote…',
+      icon: Icon.CLOUD,
+      disabled: !this.repository.isBound(),
+    },
+    {
       id: ACTION_STASH,
       label: 'Stash Changes',
       icon: Icon.STASH,
@@ -572,6 +615,9 @@ export class SourceControlSidebar implements OnDestroy {
         break;
       case ACTION_NEW_TAG:
         this.openTagDialog();
+        break;
+      case ACTION_ADD_REMOTE:
+        this.openRemoteDialog();
         break;
       case ACTION_STASH:
         this.stash();
@@ -674,8 +720,11 @@ export class SourceControlSidebar implements OnDestroy {
           this.toggleSection(node.sectionKey);
         }
         break;
+      // A remote-tracking branch navigates like any other ref now that it knows its tip; it was only
+      // ever inert because the hash was dropped at parse time.
       case 'branch':
       case 'tag':
+      case 'remote-branch':
         if (node.commit !== undefined) {
           this.repository.selectNode(node.commit);
         }
@@ -873,6 +922,133 @@ export class SourceControlSidebar implements OnDestroy {
    */
   protected onBranchNameValue(value: string): void {
     this.branchName.set(value);
+  }
+
+  /**
+   * Checks out a remote-tracking branch as a local branch that tracks it.
+   *
+   * The local name is the branch's own, with the remote stripped: `origin/main` becomes `main`, which
+   * is what the row said and what the user is asking for.
+   *
+   * @param remote The remote the branch belongs to.
+   * @param branch The remote-tracking branch.
+   */
+  private checkoutTracking(remote: GitRemote, branch: GitRemoteBranch): void {
+    const local: string = branch.name.startsWith(`${remote.name}/`)
+      ? branch.name.slice(remote.name.length + 1)
+      : branch.name;
+    this.log.info('SourceControlSidebar', `Checking out '${local}' tracking '${branch.name}'`);
+    void this.repository.checkoutTracking(branch.name, local);
+  }
+
+  /**
+   * Holds the remote awaiting removal confirmation, or null when none is.
+   */
+  protected readonly pendingRemoveRemote: WritableSignal<GitRemote | null> =
+    signal<GitRemote | null>(null);
+
+  /**
+   * Confirms the removal, dropping the remote and its tracking branches.
+   */
+  protected confirmRemoveRemote(): void {
+    const remote: GitRemote | null = this.pendingRemoveRemote();
+    this.pendingRemoveRemote.set(null);
+    if (remote !== null) {
+      this.log.info('SourceControlSidebar', `Removing remote '${remote.name}'`);
+      void this.repository.removeRemote(remote.name);
+    }
+  }
+
+  /**
+   * Dismisses the removal confirmation, leaving the remote alone.
+   */
+  protected cancelRemoveRemote(): void {
+    this.pendingRemoveRemote.set(null);
+  }
+
+  /**
+   * Holds whether the add-remote dialog is open.
+   */
+  protected readonly remoteDialogOpen: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds the name being entered in the add-remote dialog.
+   */
+  protected readonly remoteName: WritableSignal<string> = signal<string>('');
+
+  /**
+   * Holds the URL being entered in the add-remote dialog.
+   */
+  protected readonly remoteUrl: WritableSignal<string> = signal<string>('');
+
+  /**
+   * Gets the reason the entered remote name cannot be used, or null when it can.
+   */
+  protected readonly remoteNameError: Signal<string | null> = computed((): string | null => {
+    const name: string = this.remoteName().trim();
+    if (name.length === 0) {
+      return null;
+    }
+    return this.repository.remotes().some((remote: GitRemote): boolean => remote.name === name)
+      ? 'A remote with that name already exists.'
+      : null;
+  });
+
+  /**
+   * Gets whether the entered remote can be added. Both fields are required: a remote without a URL is
+   * not a remote, and git would reject it anyway.
+   */
+  protected readonly canAddRemote: Signal<boolean> = computed(
+    (): boolean =>
+      this.remoteName().trim().length > 0 &&
+      this.remoteUrl().trim().length > 0 &&
+      this.remoteNameError() === null,
+  );
+
+  /**
+   * Opens the add-remote dialog.
+   */
+  protected openRemoteDialog(): void {
+    this.remoteName.set('');
+    this.remoteUrl.set('');
+    this.remoteDialogOpen.set(true);
+  }
+
+  /**
+   * Confirms the add-remote dialog.
+   */
+  protected confirmRemote(): void {
+    if (!this.canAddRemote()) {
+      return;
+    }
+    const name: string = this.remoteName().trim();
+    const url: string = this.remoteUrl().trim();
+    this.remoteDialogOpen.set(false);
+    this.log.info('SourceControlSidebar', `Adding remote '${name}'`);
+    void this.repository.addRemote(name, url);
+  }
+
+  /**
+   * Dismisses the add-remote dialog without adding anything.
+   */
+  protected cancelRemote(): void {
+    this.remoteDialogOpen.set(false);
+  }
+
+  /**
+   * Records the remote name as it is typed.
+   * @param value The entered name.
+   */
+  protected onRemoteNameValue(value: string): void {
+    this.remoteName.set(value);
+  }
+
+  /**
+   * Records the remote URL as it is typed.
+   * @param value The entered URL.
+   */
+  protected onRemoteUrlValue(value: string): void {
+    this.remoteUrl.set(value);
   }
 
   /**
@@ -1125,15 +1301,30 @@ export class SourceControlSidebar implements OnDestroy {
         depth: 1,
         expandable: false,
         expanded: false,
-        data: { kind: 'remote', icon: Icon.CLOUD, label: remote.name },
+        // The URL rides as the row's note. It was read and never shown, which made two remotes
+        // pointing at different repositories indistinguishable by anything the panel drew.
+        data: {
+          kind: 'remote',
+          icon: Icon.CLOUD,
+          label: remote.name,
+          remote,
+          ...(remote.url.length === 0 ? {} : { note: remote.url }),
+        },
       });
       for (const branch of remote.branches) {
         out.push({
-          id: `remote:${remote.name}/${branch}`,
+          id: `remote:${branch.name}`,
           depth: 2,
           expandable: false,
           expanded: false,
-          data: { kind: 'remote-branch', icon: Icon.SOURCE_CONTROL, label: branch },
+          data: {
+            kind: 'remote-branch',
+            icon: Icon.SOURCE_CONTROL,
+            label: branch.name,
+            commit: branch.commit,
+            remote,
+            remoteBranch: branch,
+          },
         });
       }
     }
@@ -1383,6 +1574,30 @@ export class SourceControlSidebar implements OnDestroy {
         { id: ACTION_DROP_STASH, label: 'Drop…', icon: Icon.TRASH },
       ];
     }
+    if (node.remoteBranch !== undefined) {
+      // Checking one out as a local tracking branch is the thing people come to this section for.
+      return [
+        {
+          id: ACTION_CHECKOUT_REMOTE_BRANCH,
+          label: 'Check Out',
+          icon: Icon.CHECK,
+          status: 'as a local branch',
+        },
+      ];
+    }
+    if (node.remote !== undefined) {
+      return [
+        { id: ACTION_FETCH_REMOTE, label: 'Fetch', icon: Icon.CLOUD },
+        {
+          id: ACTION_PRUNE_REMOTE,
+          label: 'Prune',
+          icon: Icon.REFRESH,
+          status: 'drop deleted branches',
+        },
+        { separator: true, id: 'remote.sep', label: '' },
+        { id: ACTION_REMOVE_REMOTE, label: 'Remove…', icon: Icon.TRASH },
+      ];
+    }
     if (node.tag !== undefined) {
       return [
         this.pushToRemoteItem(ACTION_PUSH_TAG, 'Push'),
@@ -1441,6 +1656,26 @@ export class SourceControlSidebar implements OnDestroy {
         break;
       case ACTION_COMMIT_BRANCH:
         this.commitOnBranch();
+        break;
+      case ACTION_CHECKOUT_REMOTE_BRANCH:
+        if (node.remoteBranch !== undefined && node.remote !== undefined) {
+          this.checkoutTracking(node.remote, node.remoteBranch);
+        }
+        break;
+      case ACTION_FETCH_REMOTE:
+        if (node.remote !== undefined) {
+          void this.repository.fetchRemote(node.remote.name);
+        }
+        break;
+      case ACTION_PRUNE_REMOTE:
+        if (node.remote !== undefined) {
+          void this.repository.pruneRemote(node.remote.name);
+        }
+        break;
+      case ACTION_REMOVE_REMOTE:
+        if (node.remote !== undefined) {
+          this.pendingRemoveRemote.set(node.remote);
+        }
         break;
       case ACTION_PUSH_BRANCH:
         if (node.branch !== undefined) {

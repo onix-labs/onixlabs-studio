@@ -259,6 +259,31 @@ class FakeProvider implements SourceControlProvider {
     return Promise.resolve({ success: true });
   }
 
+  public fetchRemote(remote: string): Promise<MutationResult> {
+    this.calls.push(`fetchRemote:${remote}`);
+    return Promise.resolve({ success: true });
+  }
+
+  public pruneRemote(remote: string): Promise<MutationResult> {
+    this.calls.push(`pruneRemote:${remote}`);
+    return Promise.resolve({ success: true });
+  }
+
+  public addRemote(name: string, url: string): Promise<MutationResult> {
+    this.calls.push(`addRemote:${name}:${url}`);
+    return Promise.resolve({ success: true });
+  }
+
+  public removeRemote(name: string): Promise<MutationResult> {
+    this.calls.push(`removeRemote:${name}`);
+    return Promise.resolve({ success: true });
+  }
+
+  public checkoutTracking(remoteBranch: string, localBranch: string): Promise<MutationResult> {
+    this.calls.push(`checkoutTracking:${remoteBranch}:${localBranch}`);
+    return Promise.resolve({ success: true });
+  }
+
   public close(): Promise<void> {
     return Promise.resolve();
   }
@@ -612,6 +637,47 @@ describe('Repository', () => {
 
     await repository.createBranch('feature/two', false);
     expect(provider.calls).toContain('createBranch:feature/two:false');
+  });
+
+  describe('remotes', () => {
+    it('fetchRemote_fetchesOneRatherThanAllOfThem', async () => {
+      await repository.fetchRemote('origin');
+
+      expect(provider.calls).toContain('fetchRemote:origin');
+      expect(notifications.toasts()[0].title).toBe('Fetched origin');
+    });
+
+    it('pruneRemote_dropsBranchesDeletedUpstream', async () => {
+      await repository.pruneRemote('origin');
+
+      expect(provider.calls).toContain('pruneRemote:origin');
+      expect(notifications.toasts()[0].title).toBe('Pruned origin');
+    });
+
+    it('addRemote_andRemoveRemote_reachTheProvider', async () => {
+      await repository.addRemote('upstream', 'https://example.com/u.git');
+      await repository.removeRemote('upstream');
+
+      expect(provider.calls).toContain('addRemote:upstream:https://example.com/u.git');
+      expect(provider.calls).toContain('removeRemote:upstream');
+    });
+
+    it('checkoutTracking_createsALocalBranchTrackingTheRemoteOne', async () => {
+      await repository.checkoutTracking('origin/release', 'release');
+
+      expect(provider.calls).toContain('checkoutTracking:origin/release:release');
+    });
+
+    it('checkoutTracking_whenTheLocalBranchExists_checksItOutInstead', async () => {
+      // `main` is the fixture's local branch. Refusing under `-b` would be git's answer, not a useful
+      // one — the branch asked for is the branch delivered.
+      await repository.checkoutTracking('origin/main', 'main');
+
+      expect(provider.calls).toContain('checkout:main');
+      expect(
+        provider.calls.some((call: string): boolean => call.startsWith('checkoutTracking:')),
+      ).toBe(false);
+    });
   });
 
   describe('branch-named push, pull and sync', () => {

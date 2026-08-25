@@ -5,6 +5,7 @@ import {
   GitFileChange,
   GitRef,
   GitRemote,
+  GitRemoteBranch,
   GitStash,
   GitTag,
 } from '../repository/repository-data';
@@ -282,7 +283,7 @@ export interface ParsedRefs {
 export function parseRefs(output: string): ParsedRefs {
   const branches: GitBranch[] = [];
   const tags: GitTag[] = [];
-  const remoteBranches: Map<string, string[]> = new Map<string, string[]>();
+  const remoteBranches: Map<string, GitRemoteBranch[]> = new Map<string, GitRemoteBranch[]>();
 
   for (const line of output.split('\n')) {
     if (line.trim().length === 0) {
@@ -304,8 +305,9 @@ export function parseRefs(output: string): ParsedRefs {
     } else if (refName.startsWith('refs/remotes/')) {
       const short: string = refName.slice('refs/remotes/'.length);
       const remoteName: string = short.split('/')[0];
-      const list: string[] = remoteBranches.get(remoteName) ?? [];
-      list.push(short);
+      const list: GitRemoteBranch[] = remoteBranches.get(remoteName) ?? [];
+      // The tip is kept, not dropped: a row that cannot name a commit cannot navigate to one.
+      list.push({ name: short, commit: objectName });
       remoteBranches.set(remoteName, list);
     } else if (refName.startsWith('refs/tags/')) {
       tags.push({ name: refName.slice('refs/tags/'.length), commit: objectName });
@@ -315,7 +317,7 @@ export function parseRefs(output: string): ParsedRefs {
   const remotes: GitRemote[] = [...remoteBranches.entries()].map(
     // The URL is not in `for-each-ref` output at all; {@link mergeRemoteUrls} fills it from
     // `git remote -v`, which is also what surfaces a remote that has no fetched branches.
-    ([name, list]: [string, string[]]): GitRemote => ({ name, url: '', branches: list }),
+    ([name, list]: [string, GitRemoteBranch[]]): GitRemote => ({ name, url: '', branches: list }),
   );
   return { branches, remotes, tags };
 }

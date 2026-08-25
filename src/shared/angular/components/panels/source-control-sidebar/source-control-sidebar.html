@@ -113,6 +113,68 @@
   </ng-template>
 </app-modal>
 
+<app-modal
+  [open]="remoteDialogOpen()"
+  [width]="30"
+  ariaLabel="Add remote"
+  (dismiss)="cancelRemote()"
+>
+  <ng-template appModalContent>
+    <h2 class="rail__dialog-title">Add remote</h2>
+    <app-text-field
+      class="rail__dialog-input"
+      placeholder="Remote name (for example, upstream)"
+      ariaLabel="Remote name"
+      [value]="remoteName()"
+      (valueChange)="onRemoteNameValue($event)"
+      (enter)="confirmRemote()"
+      (escape)="cancelRemote()"
+    />
+    @if (remoteNameError(); as error) {
+      <p class="rail__dialog-error" role="alert">{{ error }}</p>
+    }
+    <app-text-field
+      class="rail__dialog-input"
+      placeholder="URL"
+      ariaLabel="Remote URL"
+      [value]="remoteUrl()"
+      (valueChange)="onRemoteUrlValue($event)"
+      (enter)="confirmRemote()"
+      (escape)="cancelRemote()"
+    />
+    <div class="rail__dialog-actions">
+      <app-button
+        variant="solid"
+        label="Add"
+        [disabled]="!canAddRemote()"
+        (click)="confirmRemote()"
+      />
+      <app-button label="Cancel" (click)="cancelRemote()" />
+    </div>
+  </ng-template>
+</app-modal>
+
+<!-- Asked before a remote goes: its tracking branches go with it, which is more than the one row the
+     command was chosen on suggests. -->
+<app-modal
+  [open]="pendingRemoveRemote() !== null"
+  [width]="30"
+  ariaLabel="Remove remote"
+  (dismiss)="cancelRemoveRemote()"
+>
+  <ng-template appModalContent>
+    <h2 class="rail__dialog-title">Remove this remote?</h2>
+    <p class="rail__dialog-message">
+      “{{ pendingRemoveRemote()?.name }}” and its remote-tracking branches are removed from this
+      repository. Nothing on the remote itself is touched.
+    </p>
+    <div class="rail__dialog-actions">
+      <app-button variant="solid" label="Remove" (click)="confirmRemoveRemote()" />
+      <app-button label="Cancel" (click)="cancelRemoveRemote()" />
+    </div>
+  </ng-template>
+</app-modal>
+
 <app-modal [open]="tagDialogOpen()" [width]="26" ariaLabel="New tag" (dismiss)="cancelTag()">
   <ng-template appModalContent>
     <h2 class="rail__dialog-title">New tag</h2>

@@ -45,13 +45,23 @@ const EXTERNAL_REFRESH_DEBOUNCE_MS: number = 500;
 /**
  * Specifies the network operations whose outcomes raise a notification toast.
  */
-type NetworkOperation = 'fetch' | 'pull' | 'push' | 'sync' | 'push-tags' | 'delete-remote-tag';
+type NetworkOperation =
+  | 'fetch'
+  | 'fetch-remote'
+  | 'prune-remote'
+  | 'pull'
+  | 'push'
+  | 'sync'
+  | 'push-tags'
+  | 'delete-remote-tag';
 
 /**
  * The display labels of the network operations, used in their failure toasts.
  */
 const NETWORK_OPERATION_LABELS: Readonly<Record<NetworkOperation, string>> = {
   fetch: 'Fetch',
+  'fetch-remote': 'Fetch',
+  'prune-remote': 'Prune',
   pull: 'Pull',
   push: 'Push',
   sync: 'Sync',
@@ -1085,6 +1095,89 @@ export class Repository {
   }
 
   /**
+   * Fetches one remote, then reloads. The outcome raises a toast.
+   * @param remote The remote to fetch.
+   * @returns Returns the outcome.
+   */
+  public async fetchRemote(remote: string): Promise<MutationResult> {
+    this.log.info('Repository', `Fetching remote '${remote}'`);
+    const result: MutationResult = await this.mutate(
+      (provider: SourceControlProvider): Promise<MutationResult> => provider.fetchRemote(remote),
+    );
+    this.notifyNetworkOutcome('fetch-remote', result, remote);
+    return result;
+  }
+
+  /**
+   * Prunes one remote's tracking branches that no longer exist on it, then reloads. The outcome
+   * raises a toast.
+   * @param remote The remote to prune.
+   * @returns Returns the outcome.
+   */
+  public async pruneRemote(remote: string): Promise<MutationResult> {
+    this.log.info('Repository', `Pruning remote '${remote}'`);
+    const result: MutationResult = await this.mutate(
+      (provider: SourceControlProvider): Promise<MutationResult> => provider.pruneRemote(remote),
+    );
+    this.notifyNetworkOutcome('prune-remote', result, remote);
+    return result;
+  }
+
+  /**
+   * Adds a remote, then reloads so the Remote section shows it.
+   * @param name The remote name.
+   * @param url The remote URL.
+   * @returns Returns the outcome.
+   */
+  public addRemote(name: string, url: string): Promise<MutationResult> {
+    this.log.info('Repository', `Adding remote '${name}'`);
+    return this.mutate(
+      (provider: SourceControlProvider): Promise<MutationResult> => provider.addRemote(name, url),
+    );
+  }
+
+  /**
+   * Removes a remote, then reloads. Destructive; the caller confirms first.
+   * @param name The remote name.
+   * @returns Returns the outcome.
+   */
+  public removeRemote(name: string): Promise<MutationResult> {
+    this.log.info('Repository', `Removing remote '${name}'`);
+    return this.mutate(
+      (provider: SourceControlProvider): Promise<MutationResult> => provider.removeRemote(name),
+    );
+  }
+
+  /**
+   * Checks out a remote-tracking branch as a local branch that tracks it, then reloads.
+   *
+   * A local branch of that name already existing is not a failure to report — it is the branch the
+   * user was asking for. It is checked out instead, which is what they meant and what git would have
+   * refused to do under `-b`.
+   *
+   * @param remoteBranch The remote-tracking branch, as `origin/main`.
+   * @param localBranch The local branch to create or check out.
+   * @returns Returns the outcome.
+   */
+  public checkoutTracking(remoteBranch: string, localBranch: string): Promise<MutationResult> {
+    const existing: boolean = this.branchesSignal().some(
+      (branch: GitBranch): boolean => branch.name === localBranch,
+    );
+    if (existing) {
+      this.log.info(
+        'Repository',
+        `'${localBranch}' already exists locally; checking it out rather than creating it`,
+      );
+      return this.checkout(localBranch);
+    }
+    this.log.info('Repository', `Checking out '${localBranch}' tracking '${remoteBranch}'`);
+    return this.mutate(
+      (provider: SourceControlProvider): Promise<MutationResult> =>
+        provider.checkoutTracking(remoteBranch, localBranch),
+    );
+  }
+
+  /**
    * Creates a tag at a commit, then reloads so the Tags section shows it.
    * @param name The tag name.
    * @param commit The commit to tag; defaults to the current head.
@@ -1241,6 +1334,8 @@ export class Repository {
     const branch: string = subject ?? this.currentBranch()?.name ?? 'HEAD';
     const titles: Readonly<Record<NetworkOperation, string>> = {
       fetch: 'Fetched all remotes',
+      'fetch-remote': `Fetched ${subject ?? 'the remote'}`,
+      'prune-remote': `Pruned ${subject ?? 'the remote'}`,
       pull: `Pulled ${branch}`,
       push: `Pushed ${branch}`,
       sync: `Synced ${branch}`,
@@ -1248,7 +1343,8 @@ export class Repository {
       'delete-remote-tag': `Deleted ${subject ?? 'the tag'}`,
     };
     this.notifications.notify({
-      severity: operation === 'fetch' ? 'info' : 'success',
+      // Fetching and pruning report rather than celebrate: neither changes anything the user wrote.
+      severity: operation.startsWith('fetch') || operation === 'prune-remote' ? 'info' : 'success',
       title: titles[operation],
       detail: this.repoName(),
       key: this.notificationKey(operation),

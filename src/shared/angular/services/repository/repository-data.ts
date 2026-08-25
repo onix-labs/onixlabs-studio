@@ -244,9 +244,27 @@ export interface GitRemote {
   readonly url: string;
 
   /**
-   * Gets the remote-tracking branch names.
+   * Gets the remote-tracking branches.
    */
-  readonly branches: readonly string[];
+  readonly branches: readonly GitRemoteBranch[];
+}
+
+/**
+ * Describes a remote-tracking branch.
+ *
+ * It carries its tip because a row that cannot name a commit cannot navigate to one, which is what
+ * left the Remote section inert: the hash was read and then dropped at parse time (#437).
+ */
+export interface GitRemoteBranch {
+  /**
+   * Gets the remote-qualified name, as `origin/main`.
+   */
+  readonly name: string;
+
+  /**
+   * Gets the hash of the branch's tip commit.
+   */
+  readonly commit: string;
 }
 
 /**
