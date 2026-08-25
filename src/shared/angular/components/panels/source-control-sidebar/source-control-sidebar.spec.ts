@@ -661,9 +661,9 @@ describe('SourceControlSidebar', () => {
     expect(row.textContent).toContain('0');
   });
 
-  it('render_aBranchWithNoUpstream_showsNoAheadOrBehind', () => {
-    // There is nothing to be ahead of. Zeros here would claim parity with a branch that does not
-    // exist. The fixture's `develop` tracks nothing.
+  it('render_everyBranchShowsAheadAndBehind_trackingOrNot', () => {
+    // The fixture's `develop` tracks nothing. It still shows both counts, so a glance down the list
+    // compares like with like rather than meeting a gap where two numbers should be.
     const rows: NodeListOf<HTMLElement> = (fixture.nativeElement as HTMLElement).querySelectorAll(
       '.tree-row',
     );
@@ -671,7 +671,30 @@ describe('SourceControlSidebar', () => {
       (row: HTMLElement): boolean => row.dataset['treeId'] === 'branch:develop',
     )!;
 
-    expect(develop.querySelectorAll('.rail__delta').length).toBe(0);
+    expect(
+      [...develop.querySelectorAll('.rail__delta')].map((element: Element): string =>
+        (element.textContent ?? '').trim(),
+      ),
+    ).toEqual(['0', '2']);
+  });
+
+  it('render_aBranchThatTracksNothing_saysSoOnHover', () => {
+    // Zero there means "has never been pushed", not "level with its upstream". The number cannot
+    // carry that distinction, so the title does.
+    const rows: NodeListOf<HTMLElement> = (fixture.nativeElement as HTMLElement).querySelectorAll(
+      '.tree-row',
+    );
+    const develop: HTMLElement = [...rows].find(
+      (row: HTMLElement): boolean => row.dataset['treeId'] === 'branch:develop',
+    )!;
+    const main: HTMLElement = [...rows].find(
+      (row: HTMLElement): boolean => row.dataset['treeId'] === 'branch:main',
+    )!;
+
+    expect(develop.querySelectorAll('.rail__delta')[0].getAttribute('title')).toContain(
+      'Not tracking a remote branch',
+    );
+    expect(main.querySelectorAll('.rail__delta')[1].getAttribute('title')).toContain('origin/main');
   });
 
   it('onRowClick_whenSectionRowClicked_togglesTheSection', () => {

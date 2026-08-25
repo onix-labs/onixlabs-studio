@@ -50,16 +50,16 @@
           <app-icon [icon]="Icon.GIT_COMMIT" />{{ repository.changeCount() }}
         </button>
       }
-      <!-- Only a branch that tracks something can be ahead of or behind it. Drawn at zero, because
-           "nothing to push" is an answer; drawn for a branch with no upstream it would be a lie. -->
-      @if (branch.upstream !== undefined) {
-        <span class="rail__delta" [title]="branch.ahead + ' commit(s) to push'">
-          <app-icon [icon]="Icon.ARROW_UP" />{{ branch.ahead }}
-        </span>
-        <span class="rail__delta" [title]="branch.behind + ' commit(s) to pull'">
-          <app-icon [icon]="Icon.ARROW_DOWN" />{{ branch.behind }}
-        </span>
-      }
+      <!-- Every branch shows all three, so the rows line up and a glance down the list compares like
+           with like. A branch that tracks nothing reads zero and zero — true, in that it has sent and
+           received nothing — and says why on hover, which is where the distinction belongs rather
+           than in a gap where two numbers should be. -->
+      <span class="rail__delta" [title]="pushTitle(branch)">
+        <app-icon [icon]="Icon.ARROW_UP" />{{ branch.ahead }}
+      </span>
+      <span class="rail__delta" [title]="pullTitle(branch)">
+        <app-icon [icon]="Icon.ARROW_DOWN" />{{ branch.behind }}
+      </span>
     }
 
     @if (node.status; as status) {

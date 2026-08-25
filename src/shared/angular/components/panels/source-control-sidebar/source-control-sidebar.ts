@@ -806,6 +806,34 @@ export class SourceControlSidebar implements OnDestroy {
   }
 
   /**
+   * Gets what a branch row's push delta means on hover.
+   *
+   * A branch that tracks nothing still shows the number, so every row carries the same three counts
+   * and a glance down the list compares like with like — but zero there means "has never been
+   * pushed" rather than "is level with its upstream", and the two are worth telling apart somewhere.
+   * Hover is that somewhere.
+   *
+   * @param branch The branch the row carries.
+   * @returns Returns the title.
+   */
+  protected pushTitle(branch: GitBranch): string {
+    return branch.upstream === undefined
+      ? 'Not tracking a remote branch — nothing has been pushed'
+      : `${branch.ahead} commit(s) to push to ${branch.upstream}`;
+  }
+
+  /**
+   * Gets what a branch row's pull delta means on hover.
+   * @param branch The branch the row carries.
+   * @returns Returns the title.
+   */
+  protected pullTitle(branch: GitBranch): string {
+    return branch.upstream === undefined
+      ? 'Not tracking a remote branch — there is nothing to pull from'
+      : `${branch.behind} commit(s) to pull from ${branch.upstream}`;
+  }
+
+  /**
    * Selects the working tree, so the Commit panel shows the uncommitted changes and its composer.
    * Reached from the changes badge on the checked-out branch's row: uncommitted changes belong to
    * the branch they sit on, so that is where the rail shows them.
