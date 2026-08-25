@@ -154,6 +154,7 @@
 }
 .detail__composer-actions {
   display: flex;
+  justify-content: flex-end;
   gap: 0.5rem;
 }
 // Layout only: how the field is DRAWN belongs to the atom, which is asked for its seamless variant
