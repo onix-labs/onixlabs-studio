@@ -56,6 +56,32 @@ function isSafeOperand(value: unknown): value is string {
 }
 
 /**
+ * The revision naming the index (the staged content), as the renderer spells it.
+ */
+export const INDEX_REVISION: string = ':';
+
+/**
+ * Builds the `git show` argument naming one file at one revision.
+ *
+ * Git spells a blob as `<revision>:<path>` — and the index is the revision with no name at all, so
+ * its blob is `:path`. The renderer names that revision `:`, which means the separator is already
+ * there and must not be written twice: joining them naively produces `::path`, which git rejects as
+ * an ambiguous argument.
+ *
+ * That was worth a bug. The rejection was indistinguishable from a blob that legitimately does not
+ * exist at a revision, which {@link GitManager.readBlob} reports as an empty side — so every
+ * working-tree diff quietly lost the side that came from the index. An unstaged file read as though
+ * every line had just been added; a staged one as though every line had been deleted.
+ *
+ * @param revision The revision to read at.
+ * @param filePath The repository-relative file path.
+ * @returns Returns the argument to pass to `git show`.
+ */
+export function blobSpec(revision: string, filePath: string): string {
+  return revision === INDEX_REVISION ? `${INDEX_REVISION}${filePath}` : `${revision}:${filePath}`;
+}
+
+/**
  * Runs the git CLI safely on behalf of the renderer. Every invocation uses `execFile` with array
  * arguments (never a shell), runs with its working directory set to a repository root the user has
  * explicitly opened, and has its variable arguments validated so no argument can be parsed as an
@@ -479,10 +505,18 @@ export class GitManager {
   }
 
   /**
-   * Reads the contents of a file at a revision for one side of a diff. An empty revision reads the
-   * working-tree file from disk (confined to the root); otherwise the file is read from the git object
-   * at `revision:path`. A missing blob yields an empty string rather than an error, so an added or
-   * deleted file simply has an empty side.
+   * Reads the contents of a file at a revision for one side of a diff.
+   *
+   * Three kinds of revision arrive here. An empty string is the working tree, read from disk and
+   * confined to the root. {@link INDEX_REVISION} is the staged content. Anything else is a real
+   * revision, and the blob is read from the git object at `revision:path` — see {@link blobSpec} for
+   * why those last two cannot be joined the same way.
+   *
+   * A missing blob yields an empty string rather than an error, so an added or deleted file simply
+   * has an empty side. That forgiveness is deliberate but it is also blind: it cannot tell a blob
+   * that is absent from an argument git could not parse, which is why the spec is built by a function
+   * that has a test rather than inline here.
+   *
    * @param root The repository root.
    * @param revision The revision to read at, or an empty string for the working tree.
    * @param filePath The repository-relative file path.
@@ -518,7 +552,10 @@ export class GitManager {
     if (!isSafeOperand(revision)) {
       return { success: false, error: 'Invalid revision' };
     }
-    const result: GitRunResult = await this.run(resolvedRoot, ['show', `${revision}:${filePath}`]);
+    const result: GitRunResult = await this.run(resolvedRoot, [
+      'show',
+      blobSpec(revision, filePath),
+    ]);
     // A blob that does not exist at the revision (added or deleted file) is an empty side, not a failure.
     return result.success ? result : { success: true, stdout: '' };
   }

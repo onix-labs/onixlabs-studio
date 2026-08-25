@@ -317,8 +317,14 @@ export interface SourceControlClient {
   commitFiles(root: string, hash: string): Promise<GitRunResult>;
 
   /**
-   * Reads the contents of a file at a revision for one side of a diff. An empty revision reads the
-   * working-tree file from disk; otherwise the file is read from the git object at `revision:path`.
+   * Reads the contents of a file at a revision for one side of a diff.
+   *
+   * Three revisions are spelled specially and the difference matters, because a diff has two sides
+   * and each is fetched separately: an empty string is the working tree (read from disk), `:` is the
+   * index (the staged content), and anything else is a real revision read from the git object store.
+   * Note that `:` is not a revision *name* — it is git's way of writing a blob with no revision in
+   * front of it — so it is the one case that does not simply prefix `:path`.
+   *
    * @param root The absolute repository root; must be an open root.
    * @param revision The revision to read at (for example `HEAD`, a commit hash, `<hash>^`, or `:` for
    * the index), or an empty string for the working tree.
