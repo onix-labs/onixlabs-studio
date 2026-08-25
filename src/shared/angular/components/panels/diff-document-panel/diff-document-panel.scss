@@ -1,6 +1,22 @@
+// Fills the well panel with the diff's tool strip above the comparison itself. A column, so the
+// strip keeps its height and the diff takes the rest — the Monaco editor lays itself out to whatever
+// box it is given.
 :host {
-  display: block;
+  display: flex;
+  flex-direction: column;
   block-size: 100%;
   min-block-size: 0;
   background: var(--body-background-color);
+}
+
+// Wide enough for "Side by side" without the control resizing between the two choices, which would
+// make the strip twitch every time the layout changed.
+.diff-panel__layout {
+  flex: 0 0 auto;
+  min-inline-size: 9rem;
+}
+
+app-diff-view {
+  flex: 1 1 auto;
+  min-block-size: 0;
 }

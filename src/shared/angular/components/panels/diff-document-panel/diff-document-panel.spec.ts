@@ -1,4 +1,4 @@
-import { signal, Signal } from '@angular/core';
+import { DebugElement, signal, Signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Icon } from '@shared/angular/icons/icon';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
@@ -10,6 +10,7 @@ import {
 } from '@shared/angular/services/repository/repository-data';
 import { Settings, TextEditorSettings } from '@shared/angular/services/settings/settings';
 import { ResolvedThemeMode, Theme } from '@shared/angular/services/theme/theme';
+import { DiffView } from '../diff-view/diff-view';
 import { DiffDocumentPanel } from './diff-document-panel';
 
 /**
@@ -119,6 +120,94 @@ describe('DiffDocumentPanel', () => {
     expect(host.querySelector('app-diff-view')).not.toBeNull();
     expect(host.querySelector('.diff__header-path')?.textContent).toContain('src/app/main.ts');
     expect(host.querySelector('.diff__badge')?.classList).toContain('diff__badge--modified');
+  });
+
+  describe('the tool strip', () => {
+    /**
+     * Resolves a tool-strip button by its accessible label.
+     * @param label The button's aria-label.
+     * @returns Returns the button.
+     */
+    function tool(label: string): HTMLButtonElement {
+      return host.querySelector<HTMLButtonElement>(`app-panel-toolbar [aria-label="${label}"]`)!;
+    }
+
+    it('offersBothLayouts_ratherThanAToggleThatHasToBePressedToBeRead', async () => {
+      fixture.componentRef.setInput('panel', makePanel('diff:src/app/main.ts'));
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      const select: HTMLSelectElement = host.querySelector<HTMLSelectElement>(
+        'app-panel-toolbar select',
+      )!;
+      expect(
+        Array.from(select.options).map((option: HTMLOptionElement): string => option.value),
+      ).toEqual(['side-by-side', 'inline']);
+      // Side by side is the standing default, and the control says so without being touched.
+      expect(select.value).toBe('side-by-side');
+    });
+
+    it('choosingALayout_setsItForEveryOpenDiff', async () => {
+      fixture.componentRef.setInput('panel', makePanel('diff:src/app/main.ts'));
+      fixture.detectChanges();
+      await fixture.whenStable();
+      const select: HTMLSelectElement = host.querySelector<HTMLSelectElement>(
+        'app-panel-toolbar select',
+      )!;
+
+      select.value = 'inline';
+      select.dispatchEvent(new Event('change'));
+      fixture.detectChanges();
+
+      expect(diffs.inlineDiff()).toBe(true);
+
+      // Choosing the same layout again leaves it alone rather than flipping back, which a toggle
+      // behind a two-choice control would have done.
+      select.value = 'inline';
+      select.dispatchEvent(new Event('change'));
+      fixture.detectChanges();
+
+      expect(diffs.inlineDiff()).toBe(true);
+    });
+
+    it('theNavigationArrowsAreInert_untilThereIsAComparison', async () => {
+      fixture.componentRef.setInput('panel', makePanel('diff:src/app/main.ts'));
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      expect(tool('Previous Change').disabled).toBe(true);
+      expect(tool('Next Change').disabled).toBe(true);
+
+      diffs.put('diff:src/app/main.ts', makeFile('src/app/main.ts', 'modified'));
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      expect(tool('Previous Change').disabled).toBe(false);
+      expect(tool('Next Change').disabled).toBe(false);
+    });
+
+    it('theArrowsAskTheDiffView_whichAsksMonaco', async () => {
+      diffs.put('diff:src/app/main.ts', makeFile('src/app/main.ts', 'modified'));
+      fixture.componentRef.setInput('panel', makePanel('diff:src/app/main.ts'));
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      // Monaco is unavailable in jsdom, so the view has no editor to forward to. Pressing the arrows
+      // must still be harmless — the point is that the panel reaches the view rather than reaching
+      // for the editor itself.
+      const targets: string[] = [];
+      const view: DiffView = fixture.debugElement.query(
+        (candidate: DebugElement): boolean => candidate.name === 'app-diff-view',
+      ).componentInstance as DiffView;
+      view.goToDiff = (target: 'next' | 'previous'): void => {
+        targets.push(target);
+      };
+
+      tool('Next Change').click();
+      tool('Previous Change').click();
+
+      expect(targets).toEqual(['next', 'previous']);
+    });
   });
 
   it('file_whenTheStoreReplacesTheEntry_updatesTheProjectedDiff', async () => {

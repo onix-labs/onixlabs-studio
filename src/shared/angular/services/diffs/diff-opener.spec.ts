@@ -78,6 +78,9 @@ describe('DiffOpener', () => {
     expect(well().panels).toContain(id);
     expect(well().active).toBe(id);
     expect(diffs.has(id)).toBe(true);
+    // The panel draws its own strip; without this the dock adds the well's stubbed editor tools
+    // (Split Editor, Find in File) above it, which a diff cannot do.
+    expect(registry.get(id)?.ownsToolStrip).toBe(true);
   });
 
   it('open_whenFirstOpened_focusesTheWell', () => {

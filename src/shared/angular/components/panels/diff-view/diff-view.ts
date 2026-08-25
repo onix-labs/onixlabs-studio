@@ -1,4 +1,11 @@
-import { ChangeDetectionStrategy, Component, input, InputSignal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  input,
+  InputSignal,
+  Signal,
+  viewChild,
+} from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
 import { GitChangeStatus } from '@shared/angular/services/repository/repository-data';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
@@ -54,4 +61,22 @@ export class DiffView {
    * Gets a value indicating whether the diff renders inline (unified) rather than side by side.
    */
   public readonly inline: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Holds the shared pane that owns the Monaco diff editor.
+   */
+  private readonly pane: Signal<DiffEditor | undefined> = viewChild<DiffEditor>(DiffEditor);
+
+  /**
+   * Moves the diff to the next or previous change.
+   *
+   * Forwarded to Monaco, which owns what "the next change" means: it knows where the hunks are, wraps
+   * at the end, and scrolls both sides together. Re-deriving any of that here from the line changes
+   * would be a second opinion about a diff Monaco has already computed.
+   *
+   * @param target Which way to go.
+   */
+  public goToDiff(target: 'next' | 'previous'): void {
+    this.pane()?.getDiffEditor()?.goToDiff(target);
+  }
 }

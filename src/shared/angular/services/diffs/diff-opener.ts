@@ -75,6 +75,10 @@ export class DiffOpener {
         icon: Icon.GIT_DIFF,
         role: 'document',
         component: DiffDocumentPanel,
+        // The panel draws its own strip. Without this the dock adds the well's stubbed editor tools
+        // above it — Split Editor, Find in File — which a diff cannot do, over a strip of commands
+        // it can.
+        ownsToolStrip: true,
       });
       this.dockState.tabInto(well.id, id);
     }

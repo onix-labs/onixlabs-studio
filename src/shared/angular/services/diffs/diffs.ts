@@ -76,8 +76,23 @@ export class Diffs {
    * Toggles inline versus side-by-side rendering for every open diff.
    */
   public toggleInline(): void {
-    this.inline.update((value: boolean): boolean => !value);
-    this.log.debug('Diffs', `Diff layout set to ${this.inline() ? 'inline' : 'side-by-side'}`);
+    this.setInline(!this.inline());
+  }
+
+  /**
+   * Sets inline versus side-by-side rendering for every open diff.
+   *
+   * Separate from {@link toggleInline} because a control that shows both choices asks for the one it
+   * wants rather than for the other one: picking "Inline" from a list twice must leave it inline.
+   *
+   * @param inline Whether diffs render inline (unified) rather than side by side.
+   */
+  public setInline(inline: boolean): void {
+    if (this.inline() === inline) {
+      return;
+    }
+    this.inline.set(inline);
+    this.log.debug('Diffs', `Diff layout set to ${inline ? 'inline' : 'side-by-side'}`);
   }
 
   /**

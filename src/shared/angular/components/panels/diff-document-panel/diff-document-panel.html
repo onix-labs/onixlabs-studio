@@ -1,12 +1,29 @@
 <app-panel-toolbar>
+  <app-dropdown
+    class="diff-panel__layout"
+    ariaLabel="Diff layout"
+    [options]="layoutOptions"
+    [value]="inline() ? 'inline' : 'side-by-side'"
+    (valueChange)="onLayoutChange($event)"
+  />
   <span class="panel-toolbar__spacer"></span>
+  <!-- Monaco owns what "the next change" is: where the hunks are, how they wrap, and scrolling both
+       sides to them together. These only ask. -->
   <app-button
     variant="none"
-    [icon]="Icon.GIT_DIFF"
-    [pressed]="inline()"
-    ariaLabel="Diff Layout"
-    [tooltip]="inline() ? 'Diff layout: inline' : 'Diff layout: side by side'"
-    (click)="toggleLayout()"
+    [icon]="Icon.ARROW_UP"
+    ariaLabel="Previous Change"
+    tooltip="Previous change"
+    [disabled]="!hasFile()"
+    (click)="previousChange()"
+  />
+  <app-button
+    variant="none"
+    [icon]="Icon.ARROW_DOWN"
+    ariaLabel="Next Change"
+    tooltip="Next change"
+    [disabled]="!hasFile()"
+    (click)="nextChange()"
   />
 </app-panel-toolbar>
 
