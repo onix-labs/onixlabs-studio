@@ -10,6 +10,7 @@ import {
 import {
   FileDiff,
   MutationResult,
+  PushTarget,
   SourceControlProvider,
 } from '../source-control/source-control-provider';
 import { ParsedRefs, ParsedStatus } from '../source-control/git-output';
@@ -44,7 +45,7 @@ const EXTERNAL_REFRESH_DEBOUNCE_MS: number = 500;
 /**
  * Specifies the network operations whose outcomes raise a notification toast.
  */
-type NetworkOperation = 'fetch' | 'pull' | 'push';
+type NetworkOperation = 'fetch' | 'pull' | 'push' | 'sync' | 'push-tags' | 'delete-remote-tag';
 
 /**
  * The display labels of the network operations, used in their failure toasts.
@@ -53,6 +54,9 @@ const NETWORK_OPERATION_LABELS: Readonly<Record<NetworkOperation, string>> = {
   fetch: 'Fetch',
   pull: 'Pull',
   push: 'Push',
+  sync: 'Sync',
+  'push-tags': 'Push tags',
+  'delete-remote-tag': 'Remote tag delete',
 };
 
 /**
@@ -897,10 +901,7 @@ export class Repository {
    * @returns Returns the outcome.
    */
   public async pull(): Promise<MutationResult> {
-    this.log.info('Repository', `Pulling '${this.currentBranch()?.name ?? 'HEAD'}'`);
-    const result: MutationResult = await this.mutate(
-      (provider: SourceControlProvider): Promise<MutationResult> => provider.pull(),
-    );
+    const result: MutationResult = await this.runPull();
     this.notifyNetworkOutcome('pull', result);
     return result;
   }
@@ -912,23 +913,280 @@ export class Repository {
    * @returns Returns the outcome.
    */
   public async push(): Promise<MutationResult> {
-    const branch: GitBranch | undefined = this.currentBranch();
-    const setUpstream: { readonly remote: string; readonly branch: string } | undefined =
-      branch !== undefined && branch.upstream === undefined
-        ? { remote: this.remotesSignal()[0]?.name ?? 'origin', branch: branch.name }
-        : undefined;
-    if (setUpstream !== undefined) {
-      this.log.warn(
-        'Repository',
-        `Branch '${setUpstream.branch}' has no upstream; setting to '${setUpstream.remote}'`,
-      );
-    }
-    this.log.info('Repository', `Pushing '${branch?.name ?? 'HEAD'}'`, this.infoSignal()?.root);
-    const result: MutationResult = await this.mutate(
-      (provider: SourceControlProvider): Promise<MutationResult> => provider.push(setUpstream),
-    );
+    const result: MutationResult = await this.runPush();
     this.notifyNetworkOutcome('push', result);
     return result;
+  }
+
+  /**
+   * Pulls and then pushes the current branch, so a branch that has moved on both sides is squared up
+   * in one command rather than two.
+   *
+   * The pull comes first because the push would be refused otherwise: a branch behind its upstream is
+   * exactly what a non-fast-forward rejection is. A pull that fails stops the sync there — pushing on
+   * top of a failed merge would publish a half-finished state — and its failure is reported as the
+   * sync's, since the sync is what the user asked for.
+   *
+   * @returns Returns the outcome: the pull's failure when there was one, otherwise the push's.
+   */
+  public async sync(): Promise<MutationResult> {
+    this.log.info('Repository', `Syncing '${this.currentBranch()?.name ?? 'HEAD'}'`);
+    const pulled: MutationResult = await this.runPull();
+    if (!pulled.success) {
+      this.notifyNetworkOutcome('sync', pulled);
+      return pulled;
+    }
+    const pushed: MutationResult = await this.runPush();
+    this.notifyNetworkOutcome('sync', pushed);
+    return pushed;
+  }
+
+  /**
+   * Pushes a named branch, then reloads. The outcome raises a toast.
+   * @param branch The branch to push.
+   * @returns Returns the outcome.
+   */
+  public async pushBranch(branch: GitBranch): Promise<MutationResult> {
+    const result: MutationResult = await this.runPush(branch);
+    this.notifyNetworkOutcome('push', result, branch.name);
+    return result;
+  }
+
+  /**
+   * Brings a named branch up to date with its upstream, then reloads. The outcome raises a toast.
+   * @param branch The branch to update.
+   * @returns Returns the outcome.
+   */
+  public async pullBranch(branch: GitBranch): Promise<MutationResult> {
+    const result: MutationResult = await this.runPull(branch);
+    this.notifyNetworkOutcome('pull', result, branch.name);
+    return result;
+  }
+
+  /**
+   * Brings a named branch up to date and then publishes it, then reloads. The outcome raises a toast.
+   * @param branch The branch to sync.
+   * @returns Returns the outcome.
+   */
+  public async syncBranch(branch: GitBranch): Promise<MutationResult> {
+    this.log.info('Repository', `Syncing '${branch.name}'`);
+    const pulled: MutationResult = await this.runPull(branch);
+    if (!pulled.success) {
+      this.notifyNetworkOutcome('sync', pulled, branch.name);
+      return pulled;
+    }
+    const pushed: MutationResult = await this.runPush(branch);
+    this.notifyNetworkOutcome('sync', pushed, branch.name);
+    return pushed;
+  }
+
+  /**
+   * Pulls without reporting the outcome, so a caller doing more than one thing can report once rather
+   * than once per step.
+   *
+   * The checked-out branch is pulled, which merges. Any other branch is fast-forwarded from its
+   * upstream instead, because that is the only honest reading of "pull" for a branch you are not on:
+   * a merge needs a working tree, and git will not give one to a branch that does not have it. A
+   * branch that has diverged cannot be fast-forwarded, and git says so rather than inventing a merge.
+   *
+   * @param branch The branch to update, or undefined for the checked-out one.
+   * @returns Returns the outcome.
+   */
+  private runPull(branch?: GitBranch): Promise<MutationResult> {
+    const target: GitBranch | undefined = branch ?? this.currentBranch();
+    if (target === undefined || target.current) {
+      this.log.info('Repository', `Pulling '${target?.name ?? 'HEAD'}'`);
+      return this.mutate(
+        (provider: SourceControlProvider): Promise<MutationResult> => provider.pull(),
+      );
+    }
+    const upstream: { readonly remote: string; readonly branch: string } | null =
+      this.splitUpstream(target.upstream);
+    if (upstream === null) {
+      return Promise.resolve({ success: false, error: `'${target.name}' has no upstream.` });
+    }
+    this.log.info(
+      'Repository',
+      `Fast-forwarding '${target.name}' from '${upstream.remote}/${upstream.branch}'`,
+    );
+    return this.mutate(
+      (provider: SourceControlProvider): Promise<MutationResult> =>
+        provider.fetchRef(upstream.remote, upstream.branch, target.name),
+    );
+  }
+
+  /**
+   * Pushes without reporting the outcome, claiming the upstream when the branch has none so a
+   * freshly-created branch publishes without a separate step.
+   * @param branch The branch to push, or undefined for the checked-out one.
+   * @returns Returns the outcome.
+   */
+  private runPush(branch?: GitBranch): Promise<MutationResult> {
+    const target: GitBranch | undefined = branch ?? this.currentBranch();
+    if (target === undefined) {
+      // Detached, with no branch to name. The bare push is the only thing left to mean.
+      this.log.info('Repository', 'Pushing HEAD', this.infoSignal()?.root);
+      return this.mutate(
+        (provider: SourceControlProvider): Promise<MutationResult> => provider.push(),
+      );
+    }
+    const upstream: { readonly remote: string; readonly branch: string } | null =
+      this.splitUpstream(target.upstream);
+    if (upstream === null) {
+      this.log.warn(
+        'Repository',
+        `Branch '${target.name}' has no upstream; setting to '${this.defaultRemote()}'`,
+      );
+    }
+    const push: PushTarget = {
+      remote: upstream?.remote ?? this.defaultRemote(),
+      branch: target.name,
+      setUpstream: upstream === null,
+    };
+    this.log.info('Repository', `Pushing '${target.name}'`, this.infoSignal()?.root);
+    return this.mutate(
+      (provider: SourceControlProvider): Promise<MutationResult> => provider.push(push),
+    );
+  }
+
+  /**
+   * Splits an upstream ref into its remote and branch.
+   *
+   * Matched against the configured remotes rather than cut at the first slash: both remote names and
+   * branch names may contain slashes, so `origin/feature/thing` and a remote literally named
+   * `origin/feature` are told apart only by knowing which remotes exist. The longest match wins, for
+   * the same reason.
+   *
+   * When no configured remote matches, the first slash is used after all. A branch that says it has
+   * an upstream has one, whatever the remote list currently looks like, and reporting none would send
+   * the push off to claim an upstream the branch already had — repointing it silently, which is the
+   * one outcome worth going out of the way to avoid.
+   *
+   * @param upstream The upstream ref, or undefined when the branch has none.
+   * @returns Returns the remote and branch, or null when there is no upstream to split.
+   */
+  private splitUpstream(
+    upstream: string | undefined,
+  ): { readonly remote: string; readonly branch: string } | null {
+    if (upstream === undefined || upstream.length === 0) {
+      return null;
+    }
+    const matches: readonly GitRemote[] = this.remotesSignal()
+      .filter((remote: GitRemote): boolean => upstream.startsWith(`${remote.name}/`))
+      .sort((left: GitRemote, right: GitRemote): number => right.name.length - left.name.length);
+    const remote: GitRemote | undefined = matches[0];
+    if (remote !== undefined) {
+      return { remote: remote.name, branch: upstream.slice(remote.name.length + 1) };
+    }
+    const slash: number = upstream.indexOf('/');
+    return slash <= 0 || slash === upstream.length - 1
+      ? null
+      : { remote: upstream.slice(0, slash), branch: upstream.slice(slash + 1) };
+  }
+
+  /**
+   * Creates a tag at a commit, then reloads so the Tags section shows it.
+   * @param name The tag name.
+   * @param commit The commit to tag; defaults to the current head.
+   * @param message The annotation message, or undefined for a lightweight tag. An annotated tag is
+   * what a release wants — it is an object in its own right, carrying its author, date and message.
+   * @returns Returns the outcome.
+   */
+  public createTag(
+    name: string,
+    commit: string = 'HEAD',
+    message?: string,
+  ): Promise<MutationResult> {
+    this.log.info(
+      'Repository',
+      `Creating ${message === undefined ? 'lightweight' : 'annotated'} tag '${name}' at ${commit}`,
+    );
+    return this.mutate(
+      (provider: SourceControlProvider): Promise<MutationResult> =>
+        provider.createTag(name, commit, message),
+    );
+  }
+
+  /**
+   * Deletes a local tag, then reloads. Destructive; the caller confirms first. Deleting a tag that
+   * has been pushed does not delete it on the remote, so this is local-only.
+   * @param name The tag name.
+   * @returns Returns the outcome.
+   */
+  public deleteTag(name: string): Promise<MutationResult> {
+    this.log.info('Repository', `Deleting tag '${name}'`);
+    return this.mutate(
+      (provider: SourceControlProvider): Promise<MutationResult> => provider.deleteTag(name),
+    );
+  }
+
+  /**
+   * Deletes a tag on a remote and then locally, so the tag is gone everywhere rather than in one
+   * place and not the other.
+   *
+   * The remote goes first deliberately. A remote delete is the step that can fail — the network, the
+   * credential, a protected ref — and doing it first means a failure leaves the local tag exactly
+   * where it was, with nothing lost and the retry obvious. The other order would delete the tag from
+   * under the user, leave it standing on the remote, and show a panel that disagrees with the forge.
+   *
+   * @param name The tag name.
+   * @param remote The remote to delete on; defaults to the first configured remote.
+   * @returns Returns the outcome — the remote failure when there was one, otherwise the local delete.
+   */
+  public async deleteTagEverywhere(name: string, remote?: string): Promise<MutationResult> {
+    const target: string = remote ?? this.defaultRemote();
+    this.log.info('Repository', `Deleting tag '${name}' on '${target}' and locally`);
+    const remoteResult: MutationResult = await this.mutate(
+      (provider: SourceControlProvider): Promise<MutationResult> =>
+        provider.deleteRemoteTag(target, name),
+    );
+    this.notifyNetworkOutcome('delete-remote-tag', remoteResult, `tag ${name} on ${target}`);
+    if (!remoteResult.success) {
+      return remoteResult;
+    }
+    return this.deleteTag(name);
+  }
+
+  /**
+   * Pushes one tag to a remote. The outcome raises a toast — a tag push can fail on authentication
+   * as readily as any other network operation, and must not do so silently.
+   * @param name The tag name.
+   * @param remote The remote to push to; defaults to the first configured remote.
+   * @returns Returns the outcome.
+   */
+  public async pushTag(name: string, remote?: string): Promise<MutationResult> {
+    const target: string = remote ?? this.defaultRemote();
+    this.log.info('Repository', `Pushing tag '${name}' to '${target}'`);
+    const result: MutationResult = await this.mutate(
+      (provider: SourceControlProvider): Promise<MutationResult> => provider.pushTag(target, name),
+    );
+    this.notifyNetworkOutcome('push-tags', result, `tag ${name}`);
+    return result;
+  }
+
+  /**
+   * Pushes every local tag to a remote. The outcome raises a toast.
+   * @param remote The remote to push to; defaults to the first configured remote.
+   * @returns Returns the outcome.
+   */
+  public async pushAllTags(remote?: string): Promise<MutationResult> {
+    const target: string = remote ?? this.defaultRemote();
+    this.log.info('Repository', `Pushing all tags to '${target}'`);
+    const result: MutationResult = await this.mutate(
+      (provider: SourceControlProvider): Promise<MutationResult> => provider.pushAllTags(target),
+    );
+    this.notifyNetworkOutcome('push-tags', result, 'all tags');
+    return result;
+  }
+
+  /**
+   * Gets the remote to act on when the caller names none: the first configured one, or `origin` for a
+   * repository that has no remotes at all — where the push will fail and say so, which is a better
+   * answer than refusing locally for a repository that may well have just been given one.
+   * @returns Returns the remote name.
+   */
+  private defaultRemote(): string {
+    return this.remotesSignal()[0]?.name ?? 'origin';
   }
 
   /**
@@ -959,9 +1217,13 @@ export class Repository {
    * @param operation The finished operation.
    * @param result The operation's outcome.
    */
-  private notifyNetworkOutcome(operation: NetworkOperation, result: MutationResult): void {
+  private notifyNetworkOutcome(
+    operation: NetworkOperation,
+    result: MutationResult,
+    subject?: string,
+  ): void {
     if (result.success) {
-      this.notifyNetworkSuccess(operation);
+      this.notifyNetworkSuccess(operation, subject);
     } else {
       this.notifyNetworkFailure(operation, result.error);
     }
@@ -970,13 +1232,20 @@ export class Repository {
   /**
    * Raises the transient toast reporting a successful network operation.
    * @param operation The finished operation.
+   * @param subject What was pushed, for an operation whose object varies from call to call — one
+   * named tag or all of them. The branch-shaped operations name the branch themselves.
    */
-  private notifyNetworkSuccess(operation: NetworkOperation): void {
-    const branch: string = this.currentBranch()?.name ?? 'HEAD';
+  private notifyNetworkSuccess(operation: NetworkOperation, subject?: string): void {
+    // The branch-shaped operations can name a branch other than the checked-out one, so a supplied
+    // subject wins: a toast reading "Pushed main" for a push of `develop` would be a lie.
+    const branch: string = subject ?? this.currentBranch()?.name ?? 'HEAD';
     const titles: Readonly<Record<NetworkOperation, string>> = {
       fetch: 'Fetched all remotes',
       pull: `Pulled ${branch}`,
       push: `Pushed ${branch}`,
+      sync: `Synced ${branch}`,
+      'push-tags': `Pushed ${subject ?? 'tags'}`,
+      'delete-remote-tag': `Deleted ${subject ?? 'the tag'}`,
     };
     this.notifications.notify({
       severity: operation === 'fetch' ? 'info' : 'success',

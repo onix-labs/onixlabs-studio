@@ -11,7 +11,12 @@ import {
   parseStashes,
   parseStatus,
 } from './git-output';
-import { FileDiff, MutationResult, SourceControlProvider } from './source-control-provider';
+import {
+  FileDiff,
+  MutationResult,
+  PushTarget,
+  SourceControlProvider,
+} from './source-control-provider';
 
 /**
  * Holds the default number of commits the history loads.
@@ -279,18 +284,75 @@ export class GitProvider implements SourceControlProvider {
   }
 
   /**
-   * Pushes the current branch, setting the upstream on the push when one is given.
-   * @param setUpstream The remote and branch to set the upstream to, or undefined to use the existing
-   * upstream.
+   * Pushes a branch, or the checked-out one to its upstream when no target is given.
+   * @param target The branch to push and where.
    * @returns Returns the outcome.
    */
-  public push(setUpstream?: {
-    readonly remote: string;
-    readonly branch: string;
-  }): Promise<MutationResult> {
+  public push(target?: PushTarget): Promise<MutationResult> {
     return this.mutate(
       (api: SourceControlClient): Promise<GitRunResult> =>
-        api.push(this.root, setUpstream?.remote, setUpstream?.branch),
+        api.push(this.root, target?.remote, target?.branch, target?.setUpstream),
+    );
+  }
+
+  /**
+   * Creates a tag at a commit, annotated when a message is given.
+   * @param name The tag name.
+   * @param commit The commit to tag.
+   * @param message The annotation message, or undefined for a lightweight tag.
+   * @returns Returns the outcome.
+   */
+  public createTag(name: string, commit: string, message?: string): Promise<MutationResult> {
+    return this.mutate(
+      (api: SourceControlClient): Promise<GitRunResult> =>
+        api.createTag(this.root, name, commit, message),
+    );
+  }
+
+  /**
+   * Deletes a local tag. Destructive; the caller confirms first.
+   * @param name The tag name.
+   * @returns Returns the outcome.
+   */
+  public deleteTag(name: string): Promise<MutationResult> {
+    return this.mutate(
+      (api: SourceControlClient): Promise<GitRunResult> => api.deleteTag(this.root, name),
+    );
+  }
+
+  /**
+   * Deletes a tag on a remote. Destructive for everyone who has fetched it, not just the caller.
+   * @param remote The remote to delete on.
+   * @param name The tag name.
+   * @returns Returns the outcome.
+   */
+  public deleteRemoteTag(remote: string, name: string): Promise<MutationResult> {
+    return this.mutate(
+      (api: SourceControlClient): Promise<GitRunResult> =>
+        api.deleteRemoteTag(this.root, remote, name),
+    );
+  }
+
+  /**
+   * Pushes one tag to a remote.
+   * @param remote The remote to push to.
+   * @param name The tag name.
+   * @returns Returns the outcome.
+   */
+  public pushTag(remote: string, name: string): Promise<MutationResult> {
+    return this.mutate(
+      (api: SourceControlClient): Promise<GitRunResult> => api.pushTag(this.root, remote, name),
+    );
+  }
+
+  /**
+   * Pushes every local tag to a remote.
+   * @param remote The remote to push to.
+   * @returns Returns the outcome.
+   */
+  public pushAllTags(remote: string): Promise<MutationResult> {
+    return this.mutate(
+      (api: SourceControlClient): Promise<GitRunResult> => api.pushAllTags(this.root, remote),
     );
   }
 

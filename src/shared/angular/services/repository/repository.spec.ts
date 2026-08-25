@@ -4,11 +4,12 @@ import { ParsedRefs, ParsedStatus } from '../source-control/git-output';
 import {
   FileDiff,
   MutationResult,
+  PushTarget,
   SourceControlProvider,
 } from '../source-control/source-control-provider';
 import { SourceControlProviders } from '../source-control/source-control-providers';
 import { Repository, WORKING_NODE_ID } from './repository';
-import { GitCommit, GitFileChange, GitStash, GraphNode } from './repository-data';
+import { GitBranch, GitCommit, GitFileChange, GitStash, GraphNode } from './repository-data';
 
 /**
  * Builds a file change with a working-tree target.
@@ -173,8 +174,18 @@ class FakeProvider implements SourceControlProvider {
     return Promise.resolve(this.fetchRefResult);
   }
 
+  /**
+   * Makes the next pull fail with this message, so the sync abort path can be exercised.
+   */
+  public failNextPullWith: string | null = null;
+
   public pull(): Promise<MutationResult> {
     this.calls.push('pull');
+    if (this.failNextPullWith !== null) {
+      const error: string = this.failNextPullWith;
+      this.failNextPullWith = null;
+      return Promise.resolve({ success: false, error });
+    }
     return Promise.resolve({ success: true });
   }
 
@@ -183,14 +194,66 @@ class FakeProvider implements SourceControlProvider {
    */
   public failNextPushWith: string | null = null;
 
-  public push(setUpstream?: {
-    readonly remote: string;
-    readonly branch: string;
-  }): Promise<MutationResult> {
-    this.calls.push(`push:${setUpstream?.remote ?? ''}/${setUpstream?.branch ?? ''}`);
+  public push(target?: PushTarget): Promise<MutationResult> {
+    this.calls.push(
+      `push:${target?.remote ?? ''}/${target?.branch ?? ''}:${String(target?.setUpstream ?? '')}`,
+    );
     if (this.failNextPushWith !== null) {
       const error: string = this.failNextPushWith;
       this.failNextPushWith = null;
+      return Promise.resolve({ success: false, error });
+    }
+    return Promise.resolve({ success: true });
+  }
+
+  /**
+   * Makes the next tag push fail with this message, so failure toasts can be exercised.
+   */
+  public failNextTagPushWith: string | null = null;
+
+  public createTag(name: string, commit: string, message?: string): Promise<MutationResult> {
+    this.calls.push(`createTag:${name}@${commit}:${message ?? ''}`);
+    return Promise.resolve({ success: true });
+  }
+
+  public deleteTag(name: string): Promise<MutationResult> {
+    this.calls.push(`deleteTag:${name}`);
+    return Promise.resolve({ success: true });
+  }
+
+  /**
+   * Makes the next remote tag delete fail with this message, so the abort path can be exercised.
+   */
+  public failNextRemoteTagDeleteWith: string | null = null;
+
+  public deleteRemoteTag(remote: string, name: string): Promise<MutationResult> {
+    this.calls.push(`deleteRemoteTag:${remote}:${name}`);
+    if (this.failNextRemoteTagDeleteWith !== null) {
+      const error: string = this.failNextRemoteTagDeleteWith;
+      this.failNextRemoteTagDeleteWith = null;
+      return Promise.resolve({ success: false, error });
+    }
+    return Promise.resolve({ success: true });
+  }
+
+  public pushTag(remote: string, name: string): Promise<MutationResult> {
+    this.calls.push(`pushTag:${remote}:${name}`);
+    return this.tagPushOutcome();
+  }
+
+  public pushAllTags(remote: string): Promise<MutationResult> {
+    this.calls.push(`pushAllTags:${remote}`);
+    return this.tagPushOutcome();
+  }
+
+  /**
+   * Resolves a tag push, consuming a queued failure when one is set.
+   * @returns Returns the outcome.
+   */
+  private tagPushOutcome(): Promise<MutationResult> {
+    if (this.failNextTagPushWith !== null) {
+      const error: string = this.failNextTagPushWith;
+      this.failNextTagPushWith = null;
       return Promise.resolve({ success: false, error });
     }
     return Promise.resolve({ success: true });
@@ -345,7 +408,8 @@ describe('Repository', () => {
 
     await repository.push();
 
-    expect(provider.calls).toContain('push:/');
+    // The branch is named rather than left to HEAD, and its upstream is not re-claimed.
+    expect(provider.calls).toContain('push:origin/main:false');
   });
 
   it('push_whenCurrentBranchHasNoUpstream_setsUpstreamToTheFirstRemote', async () => {
@@ -355,7 +419,7 @@ describe('Repository', () => {
 
     await repository.push();
 
-    expect(provider.calls).toContain('push:upstream/main');
+    expect(provider.calls).toContain('push:upstream/main:true');
   });
 
   it('push_whenNoUpstreamAndNoRemotes_defaultsTheUpstreamToOrigin', async () => {
@@ -365,7 +429,7 @@ describe('Repository', () => {
 
     await repository.push();
 
-    expect(provider.calls).toContain('push:origin/main');
+    expect(provider.calls).toContain('push:origin/main:true');
   });
 
   it('commitFiles_resetsTheIndexStagesExactlyTheGivenFilesAndCommits', async () => {
@@ -548,6 +612,264 @@ describe('Repository', () => {
 
     await repository.createBranch('feature/two', false);
     expect(provider.calls).toContain('createBranch:feature/two:false');
+  });
+
+  describe('branch-named push, pull and sync', () => {
+    /**
+     * Builds a branch that is not the checked-out one.
+     * @param upstream The branch's upstream, or undefined for none.
+     * @returns Returns the branch.
+     */
+    function otherBranch(upstream: string | undefined): GitBranch {
+      return { name: 'develop', current: false, upstream, ahead: 0, behind: 2, tip: 'c1' };
+    }
+
+    it('pushBranch_namesTheBranch_soOneThatIsNotCheckedOutCanBePushed', async () => {
+      provider.remoteNames = ['origin'];
+      await repository.refresh();
+
+      await repository.pushBranch(otherBranch('origin/develop'));
+
+      expect(provider.calls).toContain('push:origin/develop:false');
+    });
+
+    it('pushBranch_whenTheBranchHasNoUpstream_claimsOne', async () => {
+      provider.remoteNames = ['origin'];
+      await repository.refresh();
+
+      await repository.pushBranch(otherBranch(undefined));
+
+      expect(provider.calls).toContain('push:origin/develop:true');
+    });
+
+    it('pushBranch_namesTheBranchInItsToast_notWhicheverIsCheckedOut', async () => {
+      await repository.pushBranch(otherBranch('origin/develop'));
+
+      expect(notifications.toasts()[0].title).toBe('Pushed develop');
+    });
+
+    it('pullBranch_offTheWorkingTree_fastForwardsFromTheUpstreamInsteadOfMerging', async () => {
+      provider.remoteNames = ['origin'];
+      await repository.refresh();
+
+      await repository.pullBranch(otherBranch('origin/develop'));
+
+      // A merge needs a working tree, which a branch that is not checked out does not have.
+      expect(provider.calls).toContain('fetchRef:origin:develop:develop');
+      expect(provider.calls).not.toContain('pull');
+    });
+
+    it('pullBranch_forTheCheckedOutBranch_pullsProperly', async () => {
+      await repository.pullBranch({
+        name: 'main',
+        current: true,
+        upstream: 'origin/main',
+        ahead: 0,
+        behind: 1,
+        tip: 'c2',
+      });
+
+      expect(provider.calls).toContain('pull');
+    });
+
+    it('pullBranch_whenTheBranchHasNoUpstream_saysSoRatherThanGuessing', async () => {
+      const result: MutationResult = await repository.pullBranch(otherBranch(undefined));
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('no upstream');
+    });
+
+    it('splitsAnUpstreamOnItsRemote_notOnItsFirstSlash', async () => {
+      // Branch names contain slashes; only knowing the remotes tells the two apart.
+      provider.remoteNames = ['origin'];
+      await repository.refresh();
+
+      await repository.pullBranch({
+        name: 'feature/thing',
+        current: false,
+        upstream: 'origin/feature/thing',
+        ahead: 0,
+        behind: 1,
+        tip: 'c1',
+      });
+
+      expect(provider.calls).toContain('fetchRef:origin:feature/thing:feature/thing');
+    });
+
+    it('syncBranch_fastForwardsThenPushes', async () => {
+      provider.remoteNames = ['origin'];
+      await repository.refresh();
+
+      await repository.syncBranch(otherBranch('origin/develop'));
+
+      expect(provider.calls.filter((call: string): boolean => call.includes('develop'))).toEqual([
+        'fetchRef:origin:develop:develop',
+        'push:origin/develop:false',
+      ]);
+    });
+
+    it('syncBranch_whenTheFastForwardFails_doesNotPush', async () => {
+      provider.remoteNames = ['origin'];
+      provider.fetchRefResult = { success: false, error: 'Not a fast-forward.' };
+      await repository.refresh();
+
+      const result: MutationResult = await repository.syncBranch(otherBranch('origin/develop'));
+
+      expect(result.success).toBe(false);
+      expect(provider.calls.some((call: string): boolean => call.startsWith('push:'))).toBe(false);
+    });
+  });
+
+  describe('sync', () => {
+    it('pullsBeforePushing_soThePushIsNotRefusedForBeingBehind', async () => {
+      await repository.sync();
+
+      expect(provider.calls.filter((call: string): boolean => call.startsWith('p'))).toEqual([
+        'pull',
+        'push:origin/main:true',
+      ]);
+    });
+
+    it('whenThePullFails_stopsThere_ratherThanPublishingAHalfFinishedMerge', async () => {
+      provider.failNextPullWith = 'Merge conflict.';
+
+      const result: MutationResult = await repository.sync();
+
+      expect(result.success).toBe(false);
+      expect(provider.calls.some((call: string): boolean => call.startsWith('push'))).toBe(false);
+    });
+
+    it('whenItSucceeds_raisesOneToastForTheWholeThing', async () => {
+      await repository.sync();
+
+      // A sync is one command as far as the user is concerned, so it reports once.
+      expect(notifications.toasts().length).toBe(1);
+      expect(notifications.toasts()[0].title).toBe('Synced main');
+    });
+
+    it('whenThePullFails_reportsItAsTheSyncsFailure', async () => {
+      provider.failNextPullWith = 'Merge conflict.';
+
+      await repository.sync();
+
+      const toast: Notification = notifications.toasts()[0];
+      expect(toast.severity).toBe('error');
+      expect(toast.title).toContain('Sync failed');
+      expect(toast.detail).toBe('Merge conflict.');
+    });
+  });
+
+  describe('tags', () => {
+    it('createTag_withNoMessage_createsALightweightTagAtTheCurrentHead', async () => {
+      await repository.createTag('v1.0.0');
+
+      expect(provider.calls).toContain('createTag:v1.0.0@HEAD:');
+    });
+
+    it('createTag_withAMessage_annotatesItAtTheGivenCommit', async () => {
+      await repository.createTag('v1.0.0', 'c2', 'First release');
+
+      expect(provider.calls).toContain('createTag:v1.0.0@c2:First release');
+    });
+
+    it('deleteTag_removesItLocally', async () => {
+      await repository.deleteTag('v0.9.0');
+
+      expect(provider.calls).toContain('deleteTag:v0.9.0');
+    });
+
+    it('deleteTagEverywhere_deletesOnTheRemoteBeforeDeletingLocally', async () => {
+      await repository.deleteTagEverywhere('v0.9.0', 'origin');
+
+      // The order is the point: the remote is the step that can fail.
+      expect(provider.calls.filter((call: string): boolean => call.includes('Tag'))).toEqual([
+        'deleteRemoteTag:origin:v0.9.0',
+        'deleteTag:v0.9.0',
+      ]);
+    });
+
+    it('deleteTagEverywhere_whenTheRemoteRefuses_leavesTheLocalTagAlone', async () => {
+      provider.failNextRemoteTagDeleteWith = 'Authentication required.';
+
+      const result: MutationResult = await repository.deleteTagEverywhere('v0.9.0', 'origin');
+
+      // Nothing was lost, so the tag is still there to try again with.
+      expect(result.success).toBe(false);
+      expect(provider.calls).not.toContain('deleteTag:v0.9.0');
+    });
+
+    it('deleteTagEverywhere_whenTheRemoteRefuses_raisesAnErrorToast', async () => {
+      provider.failNextRemoteTagDeleteWith = 'Authentication required.';
+
+      await repository.deleteTagEverywhere('v0.9.0', 'origin');
+
+      const toast: Notification = notifications.toasts()[0];
+      expect(toast.severity).toBe('error');
+      expect(toast.detail).toBe('Authentication required.');
+    });
+
+    it('deleteTagEverywhere_whenItSucceeds_namesTheTagAndRemoteInItsToast', async () => {
+      await repository.deleteTagEverywhere('v0.9.0', 'origin');
+
+      expect(notifications.toasts()[0].title).toBe('Deleted tag v0.9.0 on origin');
+    });
+
+    it('deleteTagEverywhere_whenNoRemoteIsNamed_usesTheFirstConfiguredOne', async () => {
+      provider.remoteNames = ['upstream', 'origin'];
+      await repository.refresh();
+
+      await repository.deleteTagEverywhere('v0.9.0');
+
+      expect(provider.calls).toContain('deleteRemoteTag:upstream:v0.9.0');
+    });
+
+    it('pushTag_whenNoRemoteIsNamed_usesTheFirstConfiguredOne', async () => {
+      provider.remoteNames = ['upstream', 'origin'];
+      await repository.refresh();
+
+      await repository.pushTag('v1.0.0');
+
+      expect(provider.calls).toContain('pushTag:upstream:v1.0.0');
+    });
+
+    it('pushTag_whenARemoteIsNamed_pushesToThatOne', async () => {
+      provider.remoteNames = ['upstream', 'origin'];
+      await repository.refresh();
+
+      await repository.pushTag('v1.0.0', 'origin');
+
+      expect(provider.calls).toContain('pushTag:origin:v1.0.0');
+    });
+
+    it('pushTag_whenTheRepositoryHasNoRemotes_fallsBackToOrigin', async () => {
+      await repository.pushTag('v1.0.0');
+
+      expect(provider.calls).toContain('pushTag:origin:v1.0.0');
+    });
+
+    it('pushTag_whenItSucceeds_namesTheTagInItsToast', async () => {
+      await repository.pushTag('v1.0.0');
+
+      const toast: Notification = notifications.toasts()[0];
+      expect(toast.severity).toBe('success');
+      expect(toast.title).toBe('Pushed tag v1.0.0');
+    });
+
+    it('pushAllTags_whenItSucceeds_saysSoInItsToast', async () => {
+      await repository.pushAllTags();
+
+      expect(notifications.toasts()[0].title).toBe('Pushed all tags');
+    });
+
+    it('pushTag_whenItFails_raisesAnErrorToastRatherThanFailingSilently', async () => {
+      provider.failNextTagPushWith = 'Authentication required.';
+
+      await repository.pushTag('v1.0.0');
+
+      const toast: Notification = notifications.toasts()[0];
+      expect(toast.severity).toBe('error');
+      expect(toast.detail).toBe('Authentication required.');
+    });
   });
 
   describe('checkoutRef', () => {

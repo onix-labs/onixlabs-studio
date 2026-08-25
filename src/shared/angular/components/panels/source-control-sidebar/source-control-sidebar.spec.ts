@@ -24,14 +24,18 @@ import { ParsedRefs, ParsedStatus } from '@shared/angular/services/source-contro
 import {
   FileDiff,
   MutationResult,
+  PushTarget,
   SourceControlProvider,
 } from '@shared/angular/services/source-control/source-control-provider';
 import { SourceControlProviders } from '@shared/angular/services/source-control/source-control-providers';
 import { Repository, WORKING_NODE_ID } from '@shared/angular/services/repository/repository';
 import {
+  GitBranch,
   GitCommit,
   GitFileChange,
+  GitRemote,
   GitStash,
+  GitTag,
 } from '@shared/angular/services/repository/repository-data';
 
 import { SourceControlSidebar } from './source-control-sidebar';
@@ -101,6 +105,19 @@ class FakeProvider implements SourceControlProvider {
    */
   public stashEntries: readonly GitStash[] = [];
 
+  /**
+   * Holds the tags reported by {@link getRefs}, so a spec can empty them or add more.
+   */
+  public tagEntries: readonly GitTag[] = [{ name: 'v1.0.0', commit: 'c1' }];
+
+  /**
+   * Holds the remotes reported by {@link getRefs}. A second one is what turns a push command into a
+   * submenu, so it has to be drivable.
+   */
+  public remoteEntries: readonly GitRemote[] = [
+    { name: 'origin', url: '', branches: ['main', 'develop'] },
+  ];
+
   public getStatus(): Promise<ParsedStatus> {
     return Promise.resolve({
       branch: 'main',
@@ -122,8 +139,8 @@ class FakeProvider implements SourceControlProvider {
         { name: 'main', current: true, upstream: 'origin/main', ahead: 1, behind: 0, tip: 'c2' },
         { name: 'develop', current: false, upstream: undefined, ahead: 0, behind: 2, tip: 'c1' },
       ],
-      remotes: [{ name: 'origin', url: '', branches: ['main', 'develop'] }],
-      tags: [{ name: 'v1.0.0', commit: 'c1' }],
+      remotes: [...this.remoteEntries],
+      tags: [...this.tagEntries],
     });
   }
 
@@ -189,15 +206,47 @@ class FakeProvider implements SourceControlProvider {
     return Promise.resolve({ success: true });
   }
 
-  public fetchRef(): Promise<MutationResult> {
+  public fetchRef(remote: string, sourceRef: string, localBranch: string): Promise<MutationResult> {
+    this.calls.push(`fetchRef:${remote}:${sourceRef}:${localBranch}`);
     return Promise.resolve({ success: true });
   }
 
   public pull(): Promise<MutationResult> {
+    this.calls.push('pull');
     return Promise.resolve({ success: true });
   }
 
-  public push(): Promise<MutationResult> {
+  public push(target?: PushTarget): Promise<MutationResult> {
+    this.calls.push(
+      target === undefined
+        ? 'push'
+        : `push:${target.remote}/${target.branch}:${target.setUpstream}`,
+    );
+    return Promise.resolve({ success: true });
+  }
+
+  public createTag(name: string, commit: string, message?: string): Promise<MutationResult> {
+    this.calls.push(`createTag:${name}@${commit}:${message ?? ''}`);
+    return Promise.resolve({ success: true });
+  }
+
+  public deleteTag(name: string): Promise<MutationResult> {
+    this.calls.push(`deleteTag:${name}`);
+    return Promise.resolve({ success: true });
+  }
+
+  public deleteRemoteTag(remote: string, name: string): Promise<MutationResult> {
+    this.calls.push(`deleteRemoteTag:${remote}:${name}`);
+    return Promise.resolve({ success: true });
+  }
+
+  public pushTag(remote: string, name: string): Promise<MutationResult> {
+    this.calls.push(`pushTag:${remote}:${name}`);
+    return Promise.resolve({ success: true });
+  }
+
+  public pushAllTags(remote: string): Promise<MutationResult> {
+    this.calls.push(`pushAllTags:${remote}`);
     return Promise.resolve({ success: true });
   }
 
@@ -629,33 +678,247 @@ describe('SourceControlSidebar', () => {
       onContextAction(c: TreeMenuSelection): void;
     };
 
-    expect(menu.contextMenuFor(row).map((item: MenuItem): string => item.label)).toEqual([
-      'Check Out',
-    ]);
+    // Check Out leads a branch that is not checked out; its exchange commands follow the rule.
+    expect(
+      menu
+        .contextMenuFor(row)
+        .filter((item: MenuItem): boolean => item.separator !== true)
+        .map((item: MenuItem): string => item.label),
+    ).toEqual(['Check Out', 'Push', 'Pull', 'Sync']);
 
     menu.onContextAction({ itemId: 'branch.checkout', row });
 
     expect(provider.calls).toContain('checkout:develop');
   });
 
-  it('theCheckedOutBranchOffersNothing_becauseItsChangesBadgeIsAlwaysThere', () => {
-    // It cannot be checked out again, and its uncommitted changes are one always-visible click away.
+  /**
+   * Builds the checked-out branch's row.
+   * @param branch The branch to carry, defaulting to the fixture's `main` with an upstream.
+   * @returns Returns the row.
+   */
+  function currentBranchRow(branch?: GitBranch): TreeRow {
+    return {
+      id: 'branch:main',
+      depth: 1,
+      expandable: false,
+      expanded: false,
+      data: {
+        kind: 'branch',
+        icon: Icon.SOURCE_CONTROL,
+        label: 'main',
+        branch: branch ?? {
+          name: 'main',
+          current: true,
+          upstream: 'origin/main',
+          ahead: 1,
+          behind: 0,
+          tip: 'c2',
+        },
+      },
+    };
+  }
+
+  /**
+   * Builds a row for a branch that is not checked out, tracking a remote so its pull is live.
+   * @returns Returns the row.
+   */
+  function otherBranchRow(): TreeRow {
+    return {
+      id: 'branch:develop',
+      depth: 1,
+      expandable: false,
+      expanded: false,
+      data: {
+        kind: 'branch',
+        icon: Icon.SOURCE_CONTROL,
+        label: 'develop',
+        branch: {
+          name: 'develop',
+          current: false,
+          upstream: 'origin/develop',
+          ahead: 0,
+          behind: 2,
+          tip: 'c1',
+        },
+      },
+    };
+  }
+
+  it('theCheckedOutBranchOffersCommitThenItsExchangeCommands', () => {
+    // It cannot be checked out again. What it can do is commit what is in the working tree — the
+    // fixture's is dirty — and exchange commits with its upstream.
     const menu: { contextMenuFor(r: TreeRow): readonly MenuItem[] } = component;
 
     expect(
-      menu.contextMenuFor({
-        id: 'branch:main',
-        depth: 1,
-        expandable: false,
-        expanded: false,
-        data: {
-          kind: 'branch',
-          icon: Icon.SOURCE_CONTROL,
-          label: 'main',
-          branch: { name: 'main', current: true, ahead: 0, behind: 0, tip: 'c2' },
-        },
+      menu
+        .contextMenuFor(currentBranchRow())
+        .filter((item: MenuItem): boolean => item.separator !== true)
+        .map((item: MenuItem): string => item.label),
+    ).toEqual(['Commit…', 'Push', 'Pull', 'Sync']);
+  });
+
+  it('theCheckedOutBranchDropsCommit_whenThereIsNothingToCommit', async () => {
+    provider.working = { staged: [], unstaged: [] };
+    await repository.refreshStatus();
+    const menu: { contextMenuFor(r: TreeRow): readonly MenuItem[] } = component;
+
+    expect(
+      menu
+        .contextMenuFor(currentBranchRow())
+        .filter((item: MenuItem): boolean => item.separator !== true)
+        .map((item: MenuItem): string => item.label),
+    ).toEqual(['Push', 'Pull', 'Sync']);
+  });
+
+  it('commit_selectsTheWorkingTreeAndBringsTheCommitPanelForward', () => {
+    const menu: { onContextAction(c: TreeMenuSelection): void } = component as unknown as {
+      onContextAction(c: TreeMenuSelection): void;
+    };
+
+    menu.onContextAction({ itemId: 'branch.commit', row: currentBranchRow() });
+
+    // It does not commit — a commit needs a message, and the composer is where one is written.
+    expect(repository.selectedNodeId()).toBe(WORKING_NODE_ID);
+    expect(revealed).toContain('commit');
+  });
+
+  it('aBranchThatIsNotCheckedOut_offersCheckOutAndTheExchangeCommands', () => {
+    const menu: { contextMenuFor(r: TreeRow): readonly MenuItem[] } = component;
+
+    expect(
+      menu
+        .contextMenuFor(otherBranchRow())
+        .filter((item: MenuItem): boolean => item.separator !== true)
+        .map((item: MenuItem): string => item.label),
+    ).toEqual(['Check Out', 'Push', 'Pull', 'Sync']);
+  });
+
+  it('aBranchThatIsNotCheckedOut_saysItsPullIsAFastForward', () => {
+    // Off the working tree there is no merge to be had, and saying so beats letting git refuse.
+    const menu: { contextMenuFor(r: TreeRow): readonly MenuItem[] } = component;
+
+    const pull: MenuItem | undefined = menu
+      .contextMenuFor(otherBranchRow())
+      .find((item: MenuItem): boolean => item.label === 'Pull');
+
+    expect(pull?.status).toContain('fast-forward');
+    expect(pull?.disabled).toBe(false);
+  });
+
+  it('runsPushPullAndSync_againstTheBranchTheRowNamed', async () => {
+    const menu: { onContextAction(c: TreeMenuSelection): void } = component as unknown as {
+      onContextAction(c: TreeMenuSelection): void;
+    };
+    const row: TreeRow = otherBranchRow();
+
+    menu.onContextAction({ itemId: 'branch.push', row });
+    await fixture.whenStable();
+
+    // `develop` is not checked out, so it is named rather than left to HEAD.
+    expect(provider.calls).toContain('push:origin/develop:false');
+
+    menu.onContextAction({ itemId: 'branch.pull', row });
+    await fixture.whenStable();
+
+    expect(provider.calls).toContain('fetchRef:origin:develop:develop');
+  });
+
+  /**
+   * Finds a menu item by its label.
+   * @param items The menu items.
+   * @param label The label to find.
+   * @returns Returns the item.
+   */
+  function labelled(items: readonly MenuItem[], label: string): MenuItem {
+    const found: MenuItem | undefined = items.find(
+      (item: MenuItem): boolean => item.label === label,
+    );
+    if (found === undefined) {
+      throw new Error(`No menu item labelled '${label}'.`);
+    }
+    return found;
+  }
+
+  it('theCheckedOutBranchCarriesItsCountsIntoTheMenu', () => {
+    const menu: { contextMenuFor(r: TreeRow): readonly MenuItem[] } = component;
+
+    const items: readonly MenuItem[] = menu.contextMenuFor(
+      currentBranchRow({
+        name: 'main',
+        current: true,
+        upstream: 'origin/main',
+        ahead: 2,
+        behind: 3,
+        tip: 'c2',
       }),
-    ).toEqual([]);
+    );
+
+    expect(labelled(items, 'Push').status).toBe('2 ahead');
+    expect(labelled(items, 'Pull').status).toBe('3 behind');
+    expect(
+      items
+        .filter((item: MenuItem): boolean => item.separator !== true)
+        .every((item: MenuItem): boolean => item.disabled !== true),
+    ).toBe(true);
+  });
+
+  it('aBranchWithNoUpstream_canStillBePushed_butNotPulledOrSynced', () => {
+    // The push is what publishes it and sets the upstream; the other two have nothing to work from.
+    const menu: { contextMenuFor(r: TreeRow): readonly MenuItem[] } = component;
+
+    const items: readonly MenuItem[] = menu.contextMenuFor(
+      currentBranchRow({ name: 'main', current: true, ahead: 0, behind: 0, tip: 'c2' }),
+    );
+
+    expect(labelled(items, 'Push').disabled).toBe(false);
+    expect(labelled(items, 'Pull').disabled).toBe(true);
+    expect(labelled(items, 'Sync').disabled).toBe(true);
+    expect(labelled(items, 'Pull').status).toBe('no upstream');
+  });
+
+  it('aRepositoryWithNoRemote_offersNoneOfThem', async () => {
+    provider.remoteEntries = [];
+    await repository.refresh();
+    const menu: { contextMenuFor(r: TreeRow): readonly MenuItem[] } = component;
+
+    const items: readonly MenuItem[] = menu.contextMenuFor(currentBranchRow());
+
+    // Commit is unaffected — it needs no remote — so only the exchange commands go inert.
+    expect(
+      ['Push', 'Pull', 'Sync'].every(
+        (label: string): boolean => labelled(items, label).disabled === true,
+      ),
+    ).toBe(true);
+    expect(labelled(items, 'Push').status).toBe('no remotes');
+  });
+
+  it('runsPushAndPull_fromTheCheckedOutBranchesMenu', async () => {
+    const menu: { onContextAction(c: TreeMenuSelection): void } = component as unknown as {
+      onContextAction(c: TreeMenuSelection): void;
+    };
+    const row: TreeRow = currentBranchRow();
+
+    menu.onContextAction({ itemId: 'branch.push', row });
+    await fixture.whenStable();
+    menu.onContextAction({ itemId: 'branch.pull', row });
+    await fixture.whenStable();
+
+    // The branch is named even when it is the checked-out one, and its upstream is left alone.
+    expect(provider.calls).toContain('push:origin/main:false');
+    expect(provider.calls).toContain('pull');
+  });
+
+  it('runsSync_fromTheCheckedOutBranchesMenu', async () => {
+    // What a sync is made of is the repository's business and is covered there; the panel's job is
+    // that the row dispatches it at all.
+    const menu: { onContextAction(c: TreeMenuSelection): void } = component as unknown as {
+      onContextAction(c: TreeMenuSelection): void;
+    };
+
+    menu.onContextAction({ itemId: 'branch.sync', row: currentBranchRow() });
+    await fixture.whenStable();
+
+    expect(provider.calls).toContain('pull');
   });
 
   /**
@@ -887,6 +1150,107 @@ describe('SourceControlSidebar', () => {
     });
   });
 
+  describe('the new-tag dialog', () => {
+    /**
+     * Reveals the protected surface these tests drive.
+     * @returns Returns the internals.
+     */
+    function tagDialog(): {
+      openTagDialog(): void;
+      tagDialogOpen(): boolean;
+      tagName: WritableSignal<string>;
+      tagMessage: WritableSignal<string>;
+      tagNameError(): string | null;
+      canCreateTag(): boolean;
+      tagTargetLabel(): string;
+      confirmTag(): void;
+      cancelTag(): void;
+    } {
+      return component as unknown as ReturnType<typeof tagDialog>;
+    }
+
+    it('withNoMessage_createsALightweightTagAtTheSelectedCommit', async () => {
+      repository.selectNode('c1');
+      tagDialog().openTagDialog();
+      tagDialog().tagName.set('  v2.0.0  ');
+
+      tagDialog().confirmTag();
+      await fixture.whenStable();
+
+      // The name is trimmed, no message means lightweight, and the dialog closes behind it.
+      expect(provider.calls).toContain('createTag:v2.0.0@c1:');
+      expect(tagDialog().tagDialogOpen()).toBe(false);
+    });
+
+    it('withAMessage_annotatesTheTag', async () => {
+      repository.selectNode('c1');
+      tagDialog().openTagDialog();
+      tagDialog().tagName.set('v2.0.0');
+      tagDialog().tagMessage.set('  Second release  ');
+
+      tagDialog().confirmTag();
+      await fixture.whenStable();
+
+      expect(provider.calls).toContain('createTag:v2.0.0@c1:Second release');
+    });
+
+    it('whenNoCommitIsSelected_tagsTheCurrentHead_andSaysSo', async () => {
+      repository.selectNode(WORKING_NODE_ID);
+      tagDialog().openTagDialog();
+      tagDialog().tagName.set('v2.0.0');
+
+      expect(tagDialog().tagTargetLabel()).toBe('the current head');
+
+      tagDialog().confirmTag();
+      await fixture.whenStable();
+
+      expect(provider.calls).toContain('createTag:v2.0.0@HEAD:');
+    });
+
+    it('namesTheCommitBeingTagged_soTheTargetIsNeverAGuess', () => {
+      repository.selectNode('c1');
+
+      tagDialog().openTagDialog();
+
+      expect(tagDialog().tagTargetLabel()).toContain('c1');
+    });
+
+    it('rejectsADuplicateName_beforeTheCommandRuns', () => {
+      tagDialog().openTagDialog();
+      tagDialog().tagName.set('v1.0.0');
+
+      expect(tagDialog().tagNameError()).toBe('A tag with that name already exists.');
+      expect(tagDialog().canCreateTag()).toBe(false);
+
+      tagDialog().confirmTag();
+
+      expect(provider.calls.some((call: string): boolean => call.startsWith('createTag:'))).toBe(
+        false,
+      );
+      expect(tagDialog().tagDialogOpen()).toBe(true);
+    });
+
+    it('anEmptyNameIsNeitherAnErrorNorSubmittable', () => {
+      tagDialog().openTagDialog();
+      tagDialog().tagName.set('   ');
+
+      expect(tagDialog().tagNameError()).toBeNull();
+      expect(tagDialog().canCreateTag()).toBe(false);
+    });
+
+    it('reopening_startsFromACleanNameAndMessage', () => {
+      tagDialog().openTagDialog();
+      tagDialog().tagName.set('v9.9.9');
+      tagDialog().tagMessage.set('leftover');
+      tagDialog().cancelTag();
+
+      tagDialog().openTagDialog();
+
+      expect(tagDialog().tagName()).toBe('');
+      expect(tagDialog().tagMessage()).toBe('');
+    });
+  });
+
   describe('the Pull Requests section', () => {
     /**
      * Expands the Pull Requests section.
@@ -1038,6 +1402,141 @@ describe('SourceControlSidebar', () => {
           data: { kind: 'branch', icon: Icon.SOURCE_CONTROL, label: 'main' },
         }),
       ).toEqual([]);
+    });
+
+    /**
+     * Builds a tag row, as the Tags section produces one.
+     * @param name The tag name.
+     * @returns Returns the row.
+     */
+    function tagRow(name: string = 'v1.0.0'): TreeRow {
+      return {
+        id: `tag:${name}`,
+        depth: 1,
+        expandable: false,
+        expanded: false,
+        data: {
+          kind: 'tag',
+          icon: Icon.TAG,
+          label: name,
+          commit: 'c1',
+          tag: { name, commit: 'c1' },
+        },
+      };
+    }
+
+    it('offersPushAndDeleteOnATag_namingTheOnlyRemoteItWouldPushTo', () => {
+      const menu: { contextMenuFor(row: TreeRow): readonly MenuItem[] } = component;
+
+      expect(menu.contextMenuFor(tagRow()).map((item: MenuItem): string => item.label)).toEqual([
+        'Push to origin',
+        'Delete…',
+      ]);
+    });
+
+    it('offersARemotePerRow_whenThereIsMoreThanOneToPushTo', async () => {
+      // A fork has both origin and upstream, and pushing a tag to the wrong one is exactly what a
+      // silent default would invite.
+      provider.remoteEntries = [
+        { name: 'origin', url: '', branches: [] },
+        { name: 'upstream', url: '', branches: [] },
+      ];
+      await repository.refresh();
+      fixture.detectChanges();
+      const menu: { contextMenuFor(row: TreeRow): readonly MenuItem[] } = component;
+
+      const push: MenuItem = menu.contextMenuFor(tagRow())[0];
+
+      expect(push.label).toBe('Push to');
+      expect(push.children?.map((item: MenuItem): string => item.id)).toEqual([
+        'tag.push:origin',
+        'tag.push:upstream',
+      ]);
+    });
+
+    it('leavesPushInert_whenTheRepositoryHasNoRemote', async () => {
+      provider.remoteEntries = [];
+      await repository.refresh();
+      fixture.detectChanges();
+      const menu: { contextMenuFor(row: TreeRow): readonly MenuItem[] } = component;
+
+      expect(menu.contextMenuFor(tagRow())[0].disabled).toBe(true);
+    });
+
+    it('pushesATagToTheRemoteItsRowNamed', async () => {
+      provider.remoteEntries = [
+        { name: 'origin', url: '', branches: [] },
+        { name: 'upstream', url: '', branches: [] },
+      ];
+      await repository.refresh();
+      const internals: { onContextAction(choice: TreeMenuSelection): void } =
+        component as unknown as { onContextAction(choice: TreeMenuSelection): void };
+
+      internals.onContextAction({ itemId: 'tag.push:upstream', row: tagRow() });
+      await fixture.whenStable();
+
+      expect(provider.calls).toContain('pushTag:upstream:v1.0.0');
+    });
+
+    it('deletingATagAsksFirst_andOnlyDeletesOnceConfirmed', async () => {
+      const internals: {
+        onContextAction(choice: TreeMenuSelection): void;
+        pendingDeleteTag(): GitTag | null;
+        confirmDeleteTag(): void;
+        cancelDeleteTag(): void;
+      } = component as unknown as {
+        onContextAction(choice: TreeMenuSelection): void;
+        pendingDeleteTag(): GitTag | null;
+        confirmDeleteTag(): void;
+        cancelDeleteTag(): void;
+      };
+
+      internals.onContextAction({ itemId: 'tag.delete', row: tagRow() });
+      expect(internals.pendingDeleteTag()?.name).toBe('v1.0.0');
+      expect(provider.calls).not.toContain('deleteTag:v1.0.0');
+
+      internals.cancelDeleteTag();
+      expect(internals.pendingDeleteTag()).toBeNull();
+      expect(provider.calls).not.toContain('deleteTag:v1.0.0');
+
+      internals.onContextAction({ itemId: 'tag.delete', row: tagRow() });
+      internals.confirmDeleteTag();
+      await fixture.whenStable();
+
+      expect(provider.calls).toContain('deleteTag:v1.0.0');
+    });
+
+    it('deletingATagOnTheRemoteToo_namesTheRemoteAndDeletesInBothPlaces', async () => {
+      const internals: {
+        onContextAction(choice: TreeMenuSelection): void;
+        deleteTagRemote(): string | null;
+        confirmDeleteTagEverywhere(): void;
+      } = component as unknown as {
+        onContextAction(choice: TreeMenuSelection): void;
+        deleteTagRemote(): string | null;
+        confirmDeleteTagEverywhere(): void;
+      };
+
+      internals.onContextAction({ itemId: 'tag.delete', row: tagRow() });
+      expect(internals.deleteTagRemote()).toBe('origin');
+
+      internals.confirmDeleteTagEverywhere();
+      await fixture.whenStable();
+
+      expect(provider.calls).toContain('deleteRemoteTag:origin:v1.0.0');
+      expect(provider.calls).toContain('deleteTag:v1.0.0');
+    });
+
+    it('offersNoRemoteDelete_whenTheRepositoryHasNoRemote', async () => {
+      provider.remoteEntries = [];
+      await repository.refresh();
+      fixture.detectChanges();
+      const internals: { deleteTagRemote(): string | null } = component as unknown as {
+        deleteTagRemote(): string | null;
+      };
+
+      // The button is bound to this being non-null, so there is nothing to press.
+      expect(internals.deleteTagRemote()).toBeNull();
     });
 
     it('checksOutAPullRequest_andOpensItInTheBrowser_fromTheMenu', () => {
@@ -1317,7 +1816,14 @@ describe('SourceControlSidebar', () => {
           .moreItems()
           .filter((item: MenuItem): boolean => item.separator !== true)
           .map((item: MenuItem): string => item.label),
-      ).toEqual(['New Branch…', 'Stash Changes', 'Fetch', 'Refresh']);
+      ).toEqual([
+        'New Branch…',
+        'New Tag…',
+        'Stash Changes',
+        'Fetch',
+        'Push All Tags to origin',
+        'Refresh',
+      ]);
     });
 
     it('disablesStash_whenThereIsNothingToStash', () => {
@@ -1333,6 +1839,24 @@ describe('SourceControlSidebar', () => {
       internals().onMoreAction('repo.newBranch');
 
       expect(internals().branchDialogOpen()).toBe(true);
+    });
+
+    it('pushAllTags_pushesToTheRemoteTheRowNamed', () => {
+      internals().onMoreAction('repo.pushAllTags');
+
+      expect(provider.calls).toContain('pushAllTags:origin');
+    });
+
+    it('pushAllTags_isAbsent_whenThereAreNoTagsToPush', async () => {
+      provider.tagEntries = [];
+      await repository.refresh();
+      fixture.detectChanges();
+
+      expect(
+        internals()
+          .moreItems()
+          .some((item: MenuItem): boolean => item.id.startsWith('repo.pushAllTags')),
+      ).toBe(false);
     });
 
     it('expandAll_opensEverySection_andReadsTheForgeBackedOnes', () => {

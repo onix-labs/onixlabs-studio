@@ -113,6 +113,83 @@
   </ng-template>
 </app-modal>
 
+<app-modal [open]="tagDialogOpen()" [width]="26" ariaLabel="New tag" (dismiss)="cancelTag()">
+  <ng-template appModalContent>
+    <h2 class="rail__dialog-title">New tag</h2>
+    <!-- Which commit is being tagged, spelled out: the dialog is opened from a menu rather than from
+         the commit itself, so the target is otherwise something the user has to remember. -->
+    <p class="rail__dialog-message">Tagging {{ tagTargetLabel() }}.</p>
+    <app-text-field
+      class="rail__dialog-input"
+      placeholder="Tag name"
+      ariaLabel="Tag name"
+      [value]="tagName()"
+      (valueChange)="onTagNameValue($event)"
+      (enter)="confirmTag()"
+      (escape)="cancelTag()"
+    />
+    @if (tagNameError(); as error) {
+      <p class="rail__dialog-error" role="alert">{{ error }}</p>
+    }
+    <!-- A message is what makes the tag annotated; leaving it empty makes a lightweight one. That is
+         why this is a field rather than a switch beside one. -->
+    <app-text-field
+      class="rail__dialog-input"
+      placeholder="Message (optional — annotates the tag)"
+      ariaLabel="Tag message"
+      [value]="tagMessage()"
+      (valueChange)="onTagMessageValue($event)"
+      (enter)="confirmTag()"
+      (escape)="cancelTag()"
+    />
+    <div class="rail__dialog-actions">
+      <app-button label="Cancel" (click)="cancelTag()" />
+      <app-button
+        variant="solid"
+        label="Create"
+        [disabled]="!canCreateTag()"
+        (click)="confirmTag()"
+      />
+    </div>
+  </ng-template>
+</app-modal>
+
+<!-- Asked before a tag is deleted, and the two answers are genuinely different acts: deleting here
+     is undone by fetching, deleting on the remote is undone by nobody. -->
+<app-modal
+  [open]="pendingDeleteTag() !== null"
+  [width]="30"
+  ariaLabel="Delete tag"
+  (dismiss)="cancelDeleteTag()"
+>
+  <ng-template appModalContent>
+    <h2 class="rail__dialog-title">Delete this tag?</h2>
+    @if (deleteTagRemote(); as remote) {
+      <p class="rail__dialog-message">
+        “{{ pendingDeleteTag()?.name }}” is deleted from this repository. Deleting it on
+        {{ remote }} as well removes it for everyone, and cannot be undone.
+      </p>
+    } @else {
+      <p class="rail__dialog-message">
+        “{{ pendingDeleteTag()?.name }}” is deleted from this repository.
+      </p>
+    }
+    <!-- The local delete stays the solid one: it is the answer that is nearly always meant, and the
+         far more destructive of the two should not be the one wearing the emphasis. -->
+    <div class="rail__dialog-actions">
+      <app-button variant="solid" label="Delete" (click)="confirmDeleteTag()" />
+      @if (deleteTagRemote(); as remote) {
+        <app-button
+          tone="danger"
+          [label]="'Delete on ' + remote + ' too'"
+          (click)="confirmDeleteTagEverywhere()"
+        />
+      }
+      <app-button label="Cancel" (click)="cancelDeleteTag()" />
+    </div>
+  </ng-template>
+</app-modal>
+
 <!-- Asked before a stash is dropped: dropping discards the stashed work with no way back. -->
 <app-modal
   [open]="pendingDrop() !== null"
@@ -187,13 +264,8 @@
       {{ pendingAgentIssue()?.title }}”.
     </p>
     <div class="rail__dialog-actions">
-      <app-button
-        class="rail__dialog-choice"
-        variant="solid"
-        label="Yes"
-        (click)="confirmOpenInAgent()"
-      />
-      <app-button class="rail__dialog-choice" label="No" (click)="dismissOpenInAgent()" />
+      <app-button variant="solid" label="Yes" (click)="confirmOpenInAgent()" />
+      <app-button label="No" (click)="dismissOpenInAgent()" />
     </div>
   </ng-template>
 </app-modal>

@@ -31,6 +31,7 @@ import { AgentConversation } from '@shared/angular/services/agent-conversation/a
 import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
 import {
   GitBranch,
+  GitCommit,
   GitRemote,
   GitStash,
   GitTag,
@@ -110,6 +111,11 @@ interface RepoNode {
   readonly stash?: GitStash;
 
   /**
+   * Gets the tag, for a tag row (drives the push and delete actions).
+   */
+  readonly tag?: GitTag;
+
+  /**
    * Gets the commit a row navigates to when selected (a branch tip or a tag's commit).
    */
   readonly commit?: string;
@@ -162,6 +168,26 @@ const ACTION_OPEN_ISSUE: string = 'issue.open';
 const ACTION_CHECKOUT_BRANCH: string = 'branch.checkout';
 
 /**
+ * Identifies the Commit command on the checked-out branch's context menu.
+ */
+const ACTION_COMMIT_BRANCH: string = 'branch.commit';
+
+/**
+ * Identifies the Push command on a branch's context menu.
+ */
+const ACTION_PUSH_BRANCH: string = 'branch.push';
+
+/**
+ * Identifies the Pull command on the checked-out branch's context menu.
+ */
+const ACTION_PULL_BRANCH: string = 'branch.pull';
+
+/**
+ * Identifies the Sync command on the checked-out branch's context menu.
+ */
+const ACTION_SYNC_BRANCH: string = 'branch.sync';
+
+/**
  * Identifies the Apply command on a stash's context menu.
  */
 const ACTION_APPLY_STASH: string = 'stash.apply';
@@ -175,6 +201,29 @@ const ACTION_POP_STASH: string = 'stash.pop';
  * Identifies the Drop command on a stash's context menu.
  */
 const ACTION_DROP_STASH: string = 'stash.drop';
+
+/**
+ * Identifies the Push command on a tag's context menu. A repository with more than one remote gets a
+ * submenu instead, whose rows carry the remote after this prefix and a colon — the tag is addressed
+ * by the row it was chosen on, so only the remote needs saying.
+ */
+const ACTION_PUSH_TAG: string = 'tag.push';
+
+/**
+ * Identifies the Delete command on a tag's context menu.
+ */
+const ACTION_DELETE_TAG: string = 'tag.delete';
+
+/**
+ * Identifies the New Tag command on the tool strip's more-actions menu.
+ */
+const ACTION_NEW_TAG: string = 'repo.newTag';
+
+/**
+ * Identifies the Push All Tags command on the tool strip's more-actions menu, and the prefix of its
+ * per-remote submenu rows.
+ */
+const ACTION_PUSH_ALL_TAGS: string = 'repo.pushAllTags';
 
 /**
  * Identifies the New Branch command on the tool strip's more-actions menu.
@@ -477,6 +526,12 @@ export class SourceControlSidebar implements OnDestroy {
       disabled: !this.repository.isBound(),
     },
     {
+      id: ACTION_NEW_TAG,
+      label: 'New Tag…',
+      icon: Icon.TAG,
+      disabled: !this.repository.isBound(),
+    },
+    {
       id: ACTION_STASH,
       label: 'Stash Changes',
       icon: Icon.STASH,
@@ -489,6 +544,11 @@ export class SourceControlSidebar implements OnDestroy {
       icon: Icon.CLOUD,
       disabled: !this.repository.isBound(),
     },
+    // Pushing every tag acts on the whole repository rather than on a row, which is what puts it
+    // here rather than on a tag's own menu. Nothing to push is a reason not to offer it.
+    ...(this.repository.tags().length === 0
+      ? []
+      : [this.pushToRemoteItem(ACTION_PUSH_ALL_TAGS, 'Push All Tags')]),
     {
       id: ACTION_REFRESH,
       label: 'Refresh',
@@ -502,9 +562,16 @@ export class SourceControlSidebar implements OnDestroy {
    * @param id The chosen item's identifier.
    */
   protected onMoreAction(id: string): void {
+    if (id.startsWith(ACTION_PUSH_ALL_TAGS)) {
+      void this.repository.pushAllTags(this.remoteOf(id, ACTION_PUSH_ALL_TAGS));
+      return;
+    }
     switch (id) {
       case ACTION_NEW_BRANCH:
         this.openBranchDialog();
+        break;
+      case ACTION_NEW_TAG:
+        this.openTagDialog();
         break;
       case ACTION_STASH:
         this.stash();
@@ -660,6 +727,20 @@ export class SourceControlSidebar implements OnDestroy {
   }
 
   /**
+   * Selects the working tree and brings the Commit panel forward, so the composer is in front of the
+   * user rather than merely pointed at.
+   *
+   * Reached from the checked-out branch's menu, which is the one row that can have uncommitted
+   * changes. This does not commit: a commit needs a message, and the composer is where one is
+   * written — which is exactly what the ellipsis on the label promises.
+   */
+  private commitOnBranch(): void {
+    this.log.info('SourceControlSidebar', 'Revealing the Commit panel for the working tree');
+    this.selectWorking();
+    this.dockReveal.reveal('commit');
+  }
+
+  /**
    * Gets a value indicating whether the working tree is the current selection, so the changes badge
    * can show itself as active.
    */
@@ -795,6 +876,178 @@ export class SourceControlSidebar implements OnDestroy {
   }
 
   /**
+   * Holds the tag awaiting delete confirmation, or null when none is.
+   */
+  protected readonly pendingDeleteTag: WritableSignal<GitTag | null> = signal<GitTag | null>(null);
+
+  /**
+   * Holds whether the new-tag dialog is open.
+   */
+  protected readonly tagDialogOpen: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds the name being entered in the new-tag dialog.
+   */
+  protected readonly tagName: WritableSignal<string> = signal<string>('');
+
+  /**
+   * Holds the annotation message being entered. An empty message makes the tag lightweight, which is
+   * what makes this one field rather than a field and a switch: a tag is annotated exactly when there
+   * is something to annotate it with.
+   */
+  protected readonly tagMessage: WritableSignal<string> = signal<string>('');
+
+  /**
+   * Gets the commit a new tag would be created at: the one selected in the graph, or the current head
+   * when the selection is the working tree or nothing.
+   */
+  protected readonly tagTarget: Signal<GitCommit | null> = computed((): GitCommit | null =>
+    this.repository.selectedCommit(),
+  );
+
+  /**
+   * Gets how the new tag's target reads in the dialog, so the commit being tagged is never a guess.
+   */
+  protected readonly tagTargetLabel: Signal<string> = computed((): string => {
+    const commit: GitCommit | null = this.tagTarget();
+    return commit === null ? 'the current head' : `${commit.shortHash} — ${commit.summary}`;
+  });
+
+  /**
+   * Gets the reason the entered tag name cannot be used, or null when it can. Git would reject a
+   * duplicate itself, but saying so before the command runs is friendlier than surfacing its error.
+   */
+  protected readonly tagNameError: Signal<string | null> = computed((): string | null => {
+    const name: string = this.tagName().trim();
+    if (name.length === 0) {
+      return null;
+    }
+    return this.repository.tags().some((tag: GitTag): boolean => tag.name === name)
+      ? 'A tag with that name already exists.'
+      : null;
+  });
+
+  /**
+   * Gets whether the entered tag can be created.
+   */
+  protected readonly canCreateTag: Signal<boolean> = computed(
+    (): boolean => this.tagName().trim().length > 0 && this.tagNameError() === null,
+  );
+
+  /**
+   * Opens the new-tag dialog.
+   */
+  protected openTagDialog(): void {
+    this.tagName.set('');
+    this.tagMessage.set('');
+    this.tagDialogOpen.set(true);
+  }
+
+  /**
+   * Confirms the new-tag dialog, creating the tag at the selected commit.
+   */
+  protected confirmTag(): void {
+    if (!this.canCreateTag()) {
+      return;
+    }
+    const name: string = this.tagName().trim();
+    const message: string = this.tagMessage().trim();
+    const commit: string = this.tagTarget()?.hash ?? 'HEAD';
+    this.tagDialogOpen.set(false);
+    this.log.info('SourceControlSidebar', `Creating tag '${name}' at ${commit}`);
+    void this.repository.createTag(name, commit, message.length === 0 ? undefined : message);
+  }
+
+  /**
+   * Dismisses the new-tag dialog without creating anything.
+   */
+  protected cancelTag(): void {
+    this.tagDialogOpen.set(false);
+  }
+
+  /**
+   * Records the tag name as it is typed.
+   * @param value The entered name.
+   */
+  protected onTagNameValue(value: string): void {
+    this.tagName.set(value);
+  }
+
+  /**
+   * Records the annotation message as it is typed.
+   * @param value The entered message.
+   */
+  protected onTagMessageValue(value: string): void {
+    this.tagMessage.set(value);
+  }
+
+  /**
+   * Pushes a tag to a remote.
+   * @param tag The tag to push.
+   * @param remote The remote to push to, or undefined to let the repository choose.
+   */
+  private pushTag(tag: GitTag, remote?: string): void {
+    this.log.info(
+      'SourceControlSidebar',
+      `Pushing tag '${tag.name}' to ${remote ?? 'the default remote'}`,
+    );
+    void this.repository.pushTag(tag.name, remote);
+  }
+
+  /**
+   * Asks for confirmation before deleting a tag.
+   * @param tag The tag to delete.
+   */
+  private requestDeleteTag(tag: GitTag): void {
+    this.pendingDeleteTag.set(tag);
+  }
+
+  /**
+   * Confirms the delete, removing the tag locally.
+   */
+  protected confirmDeleteTag(): void {
+    const tag: GitTag | null = this.pendingDeleteTag();
+    this.pendingDeleteTag.set(null);
+    if (tag !== null) {
+      this.log.info('SourceControlSidebar', `Deleting tag '${tag.name}'`);
+      void this.repository.deleteTag(tag.name);
+    }
+  }
+
+  /**
+   * Gets the remote a tag delete would also reach, or null when the repository has none — which is
+   * what decides whether the confirmation offers the remote at all. Named in the button rather than
+   * left implicit: with more than one remote configured this is the first, and deleting a tag on the
+   * wrong one is not something the user can quietly undo.
+   */
+  protected readonly deleteTagRemote: Signal<string | null> = computed(
+    (): string | null => this.repository.remotes()[0]?.name ?? null,
+  );
+
+  /**
+   * Confirms the delete, removing the tag locally and on its remote.
+   */
+  protected confirmDeleteTagEverywhere(): void {
+    const tag: GitTag | null = this.pendingDeleteTag();
+    const remote: string | null = this.deleteTagRemote();
+    this.pendingDeleteTag.set(null);
+    if (tag !== null && remote !== null) {
+      this.log.info(
+        'SourceControlSidebar',
+        `Deleting tag '${tag.name}' on '${remote}' and locally`,
+      );
+      void this.repository.deleteTagEverywhere(tag.name, remote);
+    }
+  }
+
+  /**
+   * Dismisses the delete confirmation, leaving the tag alone.
+   */
+  protected cancelDeleteTag(): void {
+    this.pendingDeleteTag.set(null);
+  }
+
+  /**
    * Toggles a section between expanded and collapsed.
    * @param key The section key.
    */
@@ -902,7 +1155,7 @@ export class SourceControlSidebar implements OnDestroy {
         depth: 1,
         expandable: false,
         expanded: false,
-        data: { kind: 'tag', icon: Icon.TAG, label: tag.name, commit: tag.commit },
+        data: { kind: 'tag', icon: Icon.TAG, label: tag.name, commit: tag.commit, tag },
       }),
     );
   }
@@ -965,6 +1218,149 @@ export class SourceControlSidebar implements OnDestroy {
   }
 
   /**
+   * Builds a branch row's commands: what to do with the branch itself, then what to exchange with its
+   * upstream.
+   *
+   * The first command is whichever the row can offer. A branch that is not checked out offers to
+   * become so; the checked-out one cannot be checked out again, and instead offers to commit what is
+   * sitting in the working tree — but only when there is something sitting there, since a commit of
+   * nothing is not a command, it is an error message waiting to happen.
+   *
+   * @param branch The branch the row carries.
+   * @returns Returns the menu items.
+   */
+  private branchItems(branch: GitBranch): readonly MenuItem[] {
+    const lead: readonly MenuItem[] = branch.current
+      ? this.repository.changeCount() === 0
+        ? []
+        : [
+            {
+              id: ACTION_COMMIT_BRANCH,
+              label: 'Commit…',
+              icon: Icon.SOURCE_CONTROL,
+              status: `${this.repository.changeCount()} changed`,
+            },
+          ]
+      : [{ id: ACTION_CHECKOUT_BRANCH, label: 'Check Out', icon: Icon.CHECK }];
+    return lead.length === 0
+      ? this.upstreamItems(branch)
+      : [...lead, { separator: true, id: 'branch.sep', label: '' }, ...this.upstreamItems(branch)];
+  }
+
+  /**
+   * Builds a branch's exchange commands, each offered only where git could honour it.
+   *
+   * A repository with no remote has nowhere to send anything, so all three are inert. A branch with
+   * no upstream can still be pushed — the push publishes it and sets the upstream, which is how a
+   * freshly-created branch is meant to reach the remote — but there is nothing to pull from and so
+   * nothing to sync with, and offering either would be offering a command git would only refuse.
+   *
+   * A branch that is not checked out is fast-forwarded rather than merged, which the note says: a
+   * merge needs a working tree and git will not give one to a branch that does not have it. Saying so
+   * in the menu is cheaper than letting the refusal explain it afterwards.
+   *
+   * The counts ride along as muted notes, because whether there is anything to send or receive is the
+   * question the user opened the menu to answer.
+   *
+   * @param branch The branch the row carries.
+   * @returns Returns the menu items.
+   */
+  private upstreamItems(branch: GitBranch): readonly MenuItem[] {
+    const noRemote: boolean = this.repository.remotes().length === 0;
+    const noUpstream: boolean = branch.upstream === undefined;
+    const reason: string | undefined = noRemote
+      ? 'no remotes'
+      : noUpstream
+        ? 'no upstream'
+        : undefined;
+    return [
+      {
+        id: ACTION_PUSH_BRANCH,
+        label: 'Push',
+        icon: Icon.ARROW_UP,
+        disabled: noRemote,
+        // A branch with no upstream is published by the push, so the count is what it is sending, not
+        // a comparison with something that does not exist yet.
+        ...(noRemote
+          ? { status: 'no remotes' }
+          : branch.ahead > 0
+            ? { status: `${branch.ahead} ahead` }
+            : {}),
+      },
+      {
+        id: ACTION_PULL_BRANCH,
+        label: 'Pull',
+        icon: Icon.ARROW_DOWN,
+        disabled: noRemote || noUpstream,
+        status:
+          reason ??
+          // Off the working tree there is no merge to be had, so the note says which kind of update
+          // this is before it is chosen rather than after git refuses.
+          (branch.current
+            ? branch.behind > 0
+              ? `${branch.behind} behind`
+              : 'up to date'
+            : branch.behind > 0
+              ? `${branch.behind} behind, fast-forward`
+              : 'fast-forward'),
+      },
+      {
+        id: ACTION_SYNC_BRANCH,
+        label: 'Sync',
+        icon: Icon.REFRESH,
+        disabled: noRemote || noUpstream,
+        status: reason ?? 'pull, then push',
+      },
+    ];
+  }
+
+  /**
+   * Builds a push command that names the remote it would push to.
+   *
+   * One remote is the ordinary case and gets a single row saying where it goes, because a command
+   * whose destination is not in doubt should not make the user open a submenu to confirm it. Several
+   * remotes get one row each: a fork has both `origin` and `upstream`, and pushing to the wrong one
+   * is exactly the mistake a silent default would invite. None at all leaves the row inert rather
+   * than absent, so the command's existence is still discoverable.
+   *
+   * @param action The command's identifier, which its submenu rows extend with `:<remote>`.
+   * @param label The command's verb.
+   * @returns Returns the menu item.
+   */
+  private pushToRemoteItem(action: string, label: string): MenuItem {
+    const remotes: readonly GitRemote[] = this.repository.remotes();
+    if (remotes.length === 0) {
+      return { id: action, label, icon: Icon.CLOUD, disabled: true, status: 'no remotes' };
+    }
+    if (remotes.length === 1) {
+      return { id: action, label: `${label} to ${remotes[0].name}`, icon: Icon.CLOUD };
+    }
+    return {
+      id: action,
+      label: `${label} to`,
+      icon: Icon.CLOUD,
+      children: remotes.map(
+        (remote: GitRemote): MenuItem => ({
+          id: `${action}:${remote.name}`,
+          label: remote.name,
+          icon: Icon.CLOUD,
+        }),
+      ),
+    };
+  }
+
+  /**
+   * Reads the remote a push command was chosen for: the part after the identifier's colon for a
+   * submenu row, or undefined for the single-remote row, which leaves the choice to the repository.
+   * @param itemId The chosen item's identifier.
+   * @param action The command's identifier.
+   * @returns Returns the remote name, or undefined when the command named none.
+   */
+  private remoteOf(itemId: string, action: string): string | undefined {
+    return itemId.startsWith(`${action}:`) ? itemId.slice(action.length + 1) : undefined;
+  }
+
+  /**
    * Builds a row's context-menu items.
    *
    * Bound as a value rather than a method, because the tree calls it as its item factory when a menu
@@ -976,11 +1372,7 @@ export class SourceControlSidebar implements OnDestroy {
   ): readonly MenuItem[] => {
     const node: RepoNode = this.nodeOf(treeRow);
     if (node.branch !== undefined) {
-      // The checked-out branch cannot be checked out again, and its uncommitted changes are already
-      // one always-visible click away on the row itself — so it offers nothing here.
-      return node.branch.current
-        ? []
-        : [{ id: ACTION_CHECKOUT_BRANCH, label: 'Check Out', icon: Icon.CHECK }];
+      return this.branchItems(node.branch);
     }
     if (node.stash !== undefined) {
       // Apply and pop differ only in what becomes of the stash afterwards, which is exactly what the
@@ -989,6 +1381,12 @@ export class SourceControlSidebar implements OnDestroy {
         { id: ACTION_APPLY_STASH, label: 'Apply', icon: Icon.ARROW_DOWN, status: 'keep the stash' },
         { id: ACTION_POP_STASH, label: 'Pop', icon: Icon.ARROW_UP, status: 'drop the stash' },
         { id: ACTION_DROP_STASH, label: 'Drop…', icon: Icon.TRASH },
+      ];
+    }
+    if (node.tag !== undefined) {
+      return [
+        this.pushToRemoteItem(ACTION_PUSH_TAG, 'Push'),
+        { id: ACTION_DELETE_TAG, label: 'Delete…', icon: Icon.TRASH },
       ];
     }
     if (node.pullRequest !== undefined) {
@@ -1024,10 +1422,42 @@ export class SourceControlSidebar implements OnDestroy {
    */
   protected onContextAction(choice: TreeMenuSelection): void {
     const node: RepoNode = this.nodeOf(choice.row);
+    // Push carries its remote in the identifier, so it is matched by prefix before the exact-match
+    // switch below — a `case` cannot express "this command, whichever remote it named".
+    if (node.tag !== undefined && choice.itemId.startsWith(ACTION_PUSH_TAG)) {
+      this.pushTag(node.tag, this.remoteOf(choice.itemId, ACTION_PUSH_TAG));
+      return;
+    }
     switch (choice.itemId) {
+      case ACTION_DELETE_TAG:
+        if (node.tag !== undefined) {
+          this.requestDeleteTag(node.tag);
+        }
+        break;
       case ACTION_CHECKOUT_BRANCH:
         if (node.branch !== undefined) {
           this.checkout(node.branch);
+        }
+        break;
+      case ACTION_COMMIT_BRANCH:
+        this.commitOnBranch();
+        break;
+      case ACTION_PUSH_BRANCH:
+        if (node.branch !== undefined) {
+          this.log.info('SourceControlSidebar', `Pushing '${node.branch.name}'`);
+          void this.repository.pushBranch(node.branch);
+        }
+        break;
+      case ACTION_PULL_BRANCH:
+        if (node.branch !== undefined) {
+          this.log.info('SourceControlSidebar', `Pulling '${node.branch.name}'`);
+          void this.repository.pullBranch(node.branch);
+        }
+        break;
+      case ACTION_SYNC_BRANCH:
+        if (node.branch !== undefined) {
+          this.log.info('SourceControlSidebar', `Syncing '${node.branch.name}'`);
+          void this.repository.syncBranch(node.branch);
         }
         break;
       case ACTION_APPLY_STASH:
