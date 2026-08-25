@@ -637,14 +637,64 @@ describe('SourceControlSidebar', () => {
     expect(text).not.toContain('v1.0.0');
   });
 
-  it('render_whenWorkingTreeDirty_showsTheChangeCountAsABarePill', () => {
-    const badge: HTMLElement | null = (fixture.nativeElement as HTMLElement).querySelector(
-      '.rail__changes',
-    );
+  it('render_theCheckedOutBranchReadsChangesThenAheadThenBehind', () => {
+    const row: HTMLElement = [
+      ...(fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.tree-row'),
+    ].find((candidate: HTMLElement): boolean => candidate.dataset['treeId'] === 'branch:main')!;
 
-    // The count is the whole of the moniker: no container box, no icon beside it.
-    expect(badge?.textContent?.trim()).toBe('2');
-    expect(badge?.querySelector('app-icon')).toBeNull();
+    // Written, then sent, then received — the order the workspace strip reads in too.
+    expect(
+      [...row.querySelectorAll('.rail__delta')].map((element: Element): string =>
+        (element.textContent ?? '').trim(),
+      ),
+    ).toEqual(['2', '1', '0']);
+    // Each is a glyph and a number, the change count included.
+    expect(row.querySelector('.rail__changes')?.querySelector('app-icon')).not.toBeNull();
+  });
+
+  it('render_showsAheadAndBehindAtZero_ratherThanHidingThem', () => {
+    // "Nothing to push" is an answer; a row that omits it is a row that has not been asked.
+    const row: HTMLElement = [
+      ...(fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.tree-row'),
+    ].find((candidate: HTMLElement): boolean => candidate.dataset['treeId'] === 'branch:main')!;
+
+    expect(row.textContent).toContain('0');
+  });
+
+  it('render_everyBranchShowsAheadAndBehind_trackingOrNot', () => {
+    // The fixture's `develop` tracks nothing. It still shows both counts, so a glance down the list
+    // compares like with like rather than meeting a gap where two numbers should be.
+    const rows: NodeListOf<HTMLElement> = (fixture.nativeElement as HTMLElement).querySelectorAll(
+      '.tree-row',
+    );
+    const develop: HTMLElement = [...rows].find(
+      (row: HTMLElement): boolean => row.dataset['treeId'] === 'branch:develop',
+    )!;
+
+    expect(
+      [...develop.querySelectorAll('.rail__delta')].map((element: Element): string =>
+        (element.textContent ?? '').trim(),
+      ),
+    ).toEqual(['0', '2']);
+  });
+
+  it('render_aBranchThatTracksNothing_saysSoOnHover', () => {
+    // Zero there means "has never been pushed", not "level with its upstream". The number cannot
+    // carry that distinction, so the title does.
+    const rows: NodeListOf<HTMLElement> = (fixture.nativeElement as HTMLElement).querySelectorAll(
+      '.tree-row',
+    );
+    const develop: HTMLElement = [...rows].find(
+      (row: HTMLElement): boolean => row.dataset['treeId'] === 'branch:develop',
+    )!;
+    const main: HTMLElement = [...rows].find(
+      (row: HTMLElement): boolean => row.dataset['treeId'] === 'branch:main',
+    )!;
+
+    expect(develop.querySelectorAll('.rail__delta')[0].getAttribute('title')).toContain(
+      'Not tracking a remote branch',
+    );
+    expect(main.querySelectorAll('.rail__delta')[1].getAttribute('title')).toContain('origin/main');
   });
 
   it('onRowClick_whenSectionRowClicked_togglesTheSection', () => {
@@ -700,13 +750,18 @@ describe('SourceControlSidebar', () => {
     expect(develop?.querySelector('.tree-row-action')).toBeNull();
   });
 
-  it('changesBadge_isAbsentWhenTheTreeIsClean', async () => {
-    // A pill reading zero would be a badge for nothing; with the count gone there is nothing to draw.
+  it('changesBadge_readsZeroWhenTheTreeIsClean_ratherThanVanishing', async () => {
+    // It reads as a delta now, beside two others that show their zeros. A count that disappears when
+    // it reaches nothing makes the row twitch on every commit, and says nothing where it stood.
     provider.working = { staged: [], unstaged: [] };
     await repository.refresh();
     fixture.detectChanges();
 
-    expect((fixture.nativeElement as HTMLElement).querySelector('.rail__changes')).toBeNull();
+    const badge: HTMLElement | null = (fixture.nativeElement as HTMLElement).querySelector(
+      '.rail__changes',
+    );
+    expect(badge).not.toBeNull();
+    expect(badge?.textContent?.trim()).toBe('0');
   });
 
   it('checkout_isChosenFromTheBranchContextMenu', () => {

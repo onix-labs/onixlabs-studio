@@ -10,8 +10,8 @@ import { WorktreeSession } from '@features/workspace/angular/worktree/worktree-s
 
 /**
  * Shows the active workspace view's status at the start of the strip: the open folder, and — when
- * that folder is a git repository — the checkout, branch, and the commits waiting to be pushed and
- * pulled.
+ * that folder is a git repository — the checkout, the branch, the uncommitted changes, and the
+ * commits waiting to be pushed and pulled.
  *
  * Mounted by the status strip through the active workspace view's injector, so it reads that view's
  * own {@link Workspace} and {@link Repository}. A worktree container tab holds one sub-view per
@@ -81,6 +81,17 @@ export class DirectoryStatusStrip {
         text: branchName,
         icon: Icon.BRANCH,
         title: `On branch ${branchName}`,
+      });
+      // What is waiting to be committed, before what is waiting to be pushed: the three counts read
+      // left to right in the order work actually travels — written, then committed, then sent. Shown
+      // at zero like its neighbours, and outside the branch check because a detached HEAD can have
+      // uncommitted changes just as readily.
+      const changes: number = this.repository.changeCount();
+      segments.push({
+        id: 'ws-changes',
+        text: `${changes}`,
+        icon: Icon.GIT_COMMIT,
+        title: `${changes} uncommitted change(s)`,
       });
       if (branch !== undefined) {
         segments.push(

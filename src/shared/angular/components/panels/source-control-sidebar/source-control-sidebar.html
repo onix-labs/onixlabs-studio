@@ -33,28 +33,33 @@
     }
 
     @if (node.branch; as branch) {
-      @if (branch.ahead > 0) {
-        <span class="rail__delta"><app-icon [icon]="Icon.ARROW_UP" />{{ branch.ahead }}</span>
-      }
-      @if (branch.behind > 0) {
-        <span class="rail__delta"><app-icon [icon]="Icon.ARROW_DOWN" />{{ branch.behind }}</span>
-      }
-      @if (branch.current && repository.changeCount() > 0) {
-        <!-- Uncommitted changes belong to the branch they sit on, so the checked-out branch carries
-             them — as a bare count, which is the whole of what there is to say. Clicking it shows
-             them in the Commit panel. -->
+      <!-- Written, then sent, then received — the same order the workspace strip reads in, so a count
+           means the same thing wherever it is met. -->
+      @if (branch.current) {
+        <!-- Uncommitted changes belong to the branch they sit on, so only the checked-out row carries
+             them. Still a button: it is the way to the Commit panel from here. -->
         <button
           type="button"
-          class="tree-row-action tree-count rail__changes"
+          class="tree-row-action rail__delta rail__changes"
           [class.rail__changes--active]="workingSelected()"
           [attr.aria-pressed]="workingSelected()"
           [title]="repository.changeCount() + ' uncommitted change(s)'"
           aria-label="Show uncommitted changes"
           (click)="selectWorking(); $event.stopPropagation()"
         >
-          {{ repository.changeCount() }}
+          <app-icon [icon]="Icon.GIT_COMMIT" />{{ repository.changeCount() }}
         </button>
       }
+      <!-- Every branch shows all three, so the rows line up and a glance down the list compares like
+           with like. A branch that tracks nothing reads zero and zero — true, in that it has sent and
+           received nothing — and says why on hover, which is where the distinction belongs rather
+           than in a gap where two numbers should be. -->
+      <span class="rail__delta" [title]="pushTitle(branch)">
+        <app-icon [icon]="Icon.ARROW_UP" />{{ branch.ahead }}
+      </span>
+      <span class="rail__delta" [title]="pullTitle(branch)">
+        <app-icon [icon]="Icon.ARROW_DOWN" />{{ branch.behind }}
+      </span>
     }
 
     @if (node.status; as status) {

@@ -3,7 +3,12 @@ import { TestBed } from '@angular/core/testing';
 import { DockFocus } from '@shared/angular/services/dock-layout/dock-focus';
 import { DockPanelRegistry } from '@shared/angular/services/dock-layout/dock-panel-registry';
 import { DockState } from '@shared/angular/services/dock-layout/dock-state';
-import { StackNode } from '@shared/angular/services/dock-layout/dock-node';
+import {
+  DockNode,
+  mkSplit,
+  mkStack,
+  StackNode,
+} from '@shared/angular/services/dock-layout/dock-node';
 import { firstStackOfRole } from '@shared/angular/services/dock-layout/dock-tree';
 import { GitFileChange } from '@shared/angular/services/repository/repository-data';
 import { Repository } from '@shared/angular/services/repository/repository';
@@ -119,5 +124,53 @@ describe('DiffOpener', () => {
     opener.open(change('README.md'));
 
     expect(registry.get(diffs.idForPath('README.md'))?.title).toBe('README.md');
+  });
+
+  describe('a layout with no document well', () => {
+    /**
+     * Replaces the layout with one that has no document stack at all, as the Git preset does: a
+     * centre slot with a tool panel in it and nothing else.
+     * @returns Returns the centre stack's id.
+     */
+    function withoutAWell(): string {
+      const centre: StackNode = mkStack('tool', ['history'], true);
+      dockState.reset();
+      const layout: DockNode = mkSplit('row', [mkStack('tool', ['branches']), centre], [1, 3]);
+      (dockState as unknown as { commit(next: DockNode): void }).commit(layout);
+      return centre.id;
+    }
+
+    it('open_makesOne_ratherThanSilentlyDoingNothing', () => {
+      withoutAWell();
+      expect(firstStackOfRole(dockState.layout(), 'document')).toBeNull();
+
+      opener.open(change('src/app.ts'));
+
+      // A surface may reasonably start without a well; a diff is what earns it one.
+      const made: StackNode | null = firstStackOfRole(dockState.layout(), 'document');
+      expect(made).not.toBeNull();
+      expect(made?.panels).toContain(diffs.idForPath('src/app.ts'));
+      expect(made?.active).toBe(diffs.idForPath('src/app.ts'));
+    });
+
+    it('open_madeOnce_isReusedByTheNextDiff', () => {
+      withoutAWell();
+      opener.open(change('src/app.ts'));
+      const first: string | undefined = firstStackOfRole(dockState.layout(), 'document')?.id;
+
+      opener.open(change('src/other.ts'));
+
+      const second: StackNode | null = firstStackOfRole(dockState.layout(), 'document');
+      expect(second?.id).toBe(first);
+      expect(second?.panels).toHaveLength(2);
+    });
+
+    it('open_focusesTheWellItMade', () => {
+      withoutAWell();
+
+      opener.open(change('src/app.ts'));
+
+      expect(dockFocus.focusedStackId()).toBe(firstStackOfRole(dockState.layout(), 'document')?.id);
+    });
   });
 });

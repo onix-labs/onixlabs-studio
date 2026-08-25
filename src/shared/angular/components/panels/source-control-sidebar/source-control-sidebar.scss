@@ -18,10 +18,14 @@
 // The uncommitted-change count on the checked-out branch: a bare pill, since the number is the whole
 // of what there is to say. It is a button because it selects the working tree, but it is styled as the
 // badge it reads as rather than as a control with a badge inside it.
-// The pill itself is `.tree-count`, shared with the Commit panel's group counts. What is left here
-// is only what makes this one a button.
+// The uncommitted-changes count reads as one of the row's deltas — the same glyph-and-number shape
+// as ahead and behind, because it is the same kind of fact. What is left here is only what makes
+// this one a button: it is still the way to the Commit panel from a branch row.
 .rail__changes {
+  padding: 0;
+  background: transparent;
   border: 0;
+  font: inherit;
   cursor: default;
   // Not hover-revealed like the row's other controls: a count nobody can see until they hover is a
   // count that may as well not be there.
@@ -29,15 +33,14 @@
 
   &:hover,
   &:focus-visible {
-    background: color-mix(in srgb, var(--accent-color) 80%, var(--form-on-accent-color));
+    color: var(--body-foreground-color);
     outline: none;
   }
 
-  // The current selection: the Commit panel is showing these changes. A ring rather than a fill,
-  // since the pill is already filled.
+  // The current selection: the Commit panel is showing these changes. The accent rather than a ring,
+  // now that there is no filled pill for a ring to sit around.
   &--active {
-    outline: 2px solid var(--accent-surface-border-color);
-    outline-offset: 1px;
+    color: var(--accent-color);
   }
 }
 
