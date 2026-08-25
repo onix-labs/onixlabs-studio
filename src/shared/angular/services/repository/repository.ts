@@ -1,6 +1,11 @@
 import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { DirectoryChangeEvent } from '@shared/api/file-channels';
-import { GitOperationState, RepositoryInfo } from '@shared/api/source-control-channels';
+import {
+  GitMergeMode,
+  GitOperationState,
+  RepositoryInfo,
+  SourceControlCode,
+} from '@shared/api/source-control-channels';
 import { DirectoryWatch } from '@shared/angular/services/directory-watch/directory-watch';
 import { Log } from '@shared/angular/services/log/log';
 import {
@@ -1217,6 +1222,100 @@ export class Repository {
       (provider: SourceControlProvider): Promise<MutationResult> =>
         provider.setUpstream(branch, null),
     );
+  }
+
+  /**
+   * Merges a branch into the checked-out one, then reloads.
+   * @param branch The branch to merge in.
+   * @param mode How the merge records its result.
+   * @returns Returns the outcome, coded {@link SourceControlCode.Conflicted} when it stopped on
+   * conflicts.
+   */
+  public merge(branch: string, mode: GitMergeMode = 'default'): Promise<MutationResult> {
+    this.log.info('Repository', `Merging '${branch}' (${mode})`);
+    return this.integrate(
+      (provider: SourceControlProvider): Promise<MutationResult> => provider.merge(branch, mode),
+    );
+  }
+
+  /**
+   * Replays the checked-out branch onto another, then reloads. Rewrites history; the caller confirms
+   * first.
+   * @param onto The branch to replay onto.
+   * @returns Returns the outcome, coded {@link SourceControlCode.Conflicted} when it stopped on
+   * conflicts.
+   */
+  public rebase(onto: string): Promise<MutationResult> {
+    this.log.info('Repository', `Rebasing onto '${onto}'`);
+    return this.integrate(
+      (provider: SourceControlProvider): Promise<MutationResult> => provider.rebase(onto),
+    );
+  }
+
+  /**
+   * Carries on the operation in flight, then reloads.
+   * @returns Returns the outcome.
+   */
+  public continueOperation(): Promise<MutationResult> {
+    this.log.info('Repository', `Continuing ${this.operationSignal().kind ?? 'nothing'}`);
+    return this.integrate(
+      (provider: SourceControlProvider): Promise<MutationResult> => provider.continueOperation(),
+    );
+  }
+
+  /**
+   * Skips the commit the operation in flight is stuck on, then reloads.
+   * @returns Returns the outcome.
+   */
+  public skipOperation(): Promise<MutationResult> {
+    this.log.warn('Repository', `Skipping a commit of ${this.operationSignal().kind ?? 'nothing'}`);
+    return this.integrate(
+      (provider: SourceControlProvider): Promise<MutationResult> => provider.skipOperation(),
+    );
+  }
+
+  /**
+   * Abandons the operation in flight, then reloads.
+   * @returns Returns the outcome.
+   */
+  public abortOperation(): Promise<MutationResult> {
+    this.log.info('Repository', `Aborting ${this.operationSignal().kind ?? 'nothing'}`);
+    return this.integrate(
+      (provider: SourceControlProvider): Promise<MutationResult> => provider.abortOperation(),
+    );
+  }
+
+  /**
+   * Runs a merge, rebase, or one of the commands that finishes one, and reloads — whatever the
+   * outcome.
+   *
+   * Two things separate this from {@link Repository.mutate}. It reloads on failure as well as
+   * success, because an operation that stopped part-way has still changed the working tree, and a
+   * panel showing the state before it ran would be showing a repository that no longer exists. And a
+   * stop on conflicts is not reported as an error: git did what it was asked as far as it could and
+   * is waiting to be told how to finish, which the panel says for itself. Every other failure still
+   * reaches the error surface.
+   *
+   * @param op Invokes the desired provider operation.
+   * @returns Returns the outcome.
+   */
+  private async integrate(
+    op: (provider: SourceControlProvider) => Promise<MutationResult>,
+  ): Promise<MutationResult> {
+    const provider: SourceControlProvider | null = this.provider;
+    if (provider === null) {
+      return { success: false, error: 'No repository open' };
+    }
+    const result: MutationResult = await op(provider);
+    const conflicted: boolean = result.code === SourceControlCode.Conflicted;
+    if (result.success || conflicted) {
+      this.lastErrorSignal.set(null);
+    } else {
+      this.lastErrorSignal.set(result.error ?? 'The operation failed.');
+      this.log.error('Repository', 'Operation failed', result.error ?? 'The operation failed.');
+    }
+    await this.refresh();
+    return result;
   }
 
   /**

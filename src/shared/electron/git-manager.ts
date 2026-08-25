@@ -15,6 +15,7 @@ import {
   GitRunResult,
   RepositoryInfo,
   SourceControlChannel,
+  SourceControlCode,
 } from '../api/source-control-channels';
 
 /**
@@ -48,6 +49,34 @@ const GIT_NETWORK_TIMEOUT_MS: number = 120000;
 const GIT_NETWORK_ENV: NodeJS.ProcessEnv = {
   GIT_TERMINAL_PROMPT: '0',
   GIT_SSH_COMMAND: 'ssh -o BatchMode=yes -o ConnectTimeout=10',
+};
+
+/**
+ * Holds the maximum time, in milliseconds, a merge or rebase may run. Local work, but not necessarily
+ * quick work: a merge across a large tree, or a rebase replaying dozens of commits, does real work per
+ * file and per commit, and being killed part-way through would leave exactly the half-finished state
+ * these operations are hard enough to reason about without.
+ */
+const GIT_INTEGRATION_TIMEOUT_MS: number = 120000;
+
+/**
+ * What a continue, skip, or abort says when the working tree is in the middle of nothing at all.
+ */
+const NO_OPERATION_ERROR: string = 'There is no operation in progress.';
+
+/**
+ * Holds the environment overlay applied to merges, rebases, and the commands that finish them.
+ *
+ * Every one of these opens an editor by default — `merge` for the merge message, `rebase --continue`
+ * for the commit it is finishing, `rebase -i` for its todo list. Under `execFile` there is no terminal
+ * for an editor to run in, so git would block until the timeout killed it, and the kill would land
+ * mid-operation. Pointing all three editor hooks at `true` (the command that exits successfully
+ * having done nothing) makes git accept the message it prepared and carry on.
+ */
+const GIT_NO_EDITOR_ENV: NodeJS.ProcessEnv = {
+  GIT_EDITOR: 'true',
+  GIT_SEQUENCE_EDITOR: 'true',
+  GIT_MERGE_AUTOEDIT: 'no',
 };
 
 /**
@@ -484,6 +513,35 @@ export class GitManager {
         remoteBranch: unknown,
         localBranch: unknown,
       ): Promise<GitRunResult> => this.checkoutTracking(root, remoteBranch, localBranch),
+    );
+    ipcMain.handle(
+      SourceControlChannel.Merge,
+      (
+        _event: IpcMainInvokeEvent,
+        root: unknown,
+        branch: unknown,
+        mode: unknown,
+      ): Promise<GitRunResult> => this.merge(root, branch, mode),
+    );
+    ipcMain.handle(
+      SourceControlChannel.Rebase,
+      (_event: IpcMainInvokeEvent, root: unknown, onto: unknown): Promise<GitRunResult> =>
+        this.rebase(root, onto),
+    );
+    ipcMain.handle(
+      SourceControlChannel.OperationContinue,
+      (_event: IpcMainInvokeEvent, root: unknown): Promise<GitRunResult> =>
+        this.continueOperation(root),
+    );
+    ipcMain.handle(
+      SourceControlChannel.OperationSkip,
+      (_event: IpcMainInvokeEvent, root: unknown): Promise<GitRunResult> =>
+        this.skipOperation(root),
+    );
+    ipcMain.handle(
+      SourceControlChannel.OperationAbort,
+      (_event: IpcMainInvokeEvent, root: unknown): Promise<GitRunResult> =>
+        this.abortOperation(root),
     );
     ipcMain.handle(
       SourceControlChannel.CreateTag,
@@ -1108,7 +1166,7 @@ export class GitManager {
       name,
       'HEAD',
     ]);
-    return merged.success ? result : { ...result, code: 'branch-not-merged' };
+    return merged.success ? result : { ...result, code: SourceControlCode.BranchNotMerged };
   }
 
   /**
@@ -1320,6 +1378,135 @@ export class GitManager {
   }
 
   /**
+   * Merges a branch into the checked-out one.
+   *
+   * `--no-edit` is not decoration: without it git opens an editor for the merge message and, with no
+   * terminal to open one in, waits for an answer that cannot come.
+   *
+   * @param root The repository root.
+   * @param branch The branch to merge in.
+   * @param mode How the merge records its result.
+   * @returns Returns the raw command result.
+   */
+  private merge(root: unknown, branch: unknown, mode: unknown): Promise<GitRunResult> {
+    if (!isSafeOperand(branch)) {
+      return Promise.resolve({ success: false, error: 'Invalid branch name' });
+    }
+    // A squash neither commits nor records a merge, so it has no message to decline to edit.
+    const options: readonly string[] =
+      mode === 'squash'
+        ? ['--squash']
+        : mode === 'no-ff'
+          ? ['--no-ff', '--no-edit']
+          : ['--no-edit'];
+    logger.info('GitManager.merge', `Merging ${branch} (${String(mode)})`);
+    return this.runIntegration(root, ['merge', ...options, branch]);
+  }
+
+  /**
+   * Replays the checked-out branch onto another. Rewrites history; the caller confirms first.
+   * @param root The repository root.
+   * @param onto The branch to replay onto.
+   * @returns Returns the raw command result.
+   */
+  private rebase(root: unknown, onto: unknown): Promise<GitRunResult> {
+    if (!isSafeOperand(onto)) {
+      return Promise.resolve({ success: false, error: 'Invalid branch name' });
+    }
+    logger.info('GitManager.rebase', `Rebasing onto ${onto}`);
+    return this.runIntegration(root, ['rebase', onto]);
+  }
+
+  /**
+   * Carries on the operation in flight, once its conflicts have been resolved.
+   *
+   * Which command that is follows from the operation the repository is actually in, read here rather
+   * than taken from the caller: the renderer's idea of the state is a snapshot that anything — a
+   * terminal in the next tab, an abort a moment ago — may since have made false, and the cost of
+   * being wrong is running the wrong command against a half-finished operation.
+   *
+   * @param root The repository root.
+   * @returns Returns the raw command result.
+   */
+  private async continueOperation(root: unknown): Promise<GitRunResult> {
+    const state: GitOperationState = await this.operationState(root);
+    switch (state.kind) {
+      case 'rebase':
+        return this.runIntegration(root, ['rebase', '--continue']);
+      case 'merge':
+        return this.runIntegration(root, ['merge', '--continue']);
+      case 'cherry-pick':
+        return this.runIntegration(root, ['cherry-pick', '--continue']);
+      case 'revert':
+        return this.runIntegration(root, ['revert', '--continue']);
+      case 'squash-merge':
+        // There is nothing for git to carry on: a squash records no merge, so what is staged is
+        // committed like any other change, with a message of the user's own.
+        return {
+          success: false,
+          error: 'A squashed merge is finished by committing the staged result.',
+          code: SourceControlCode.SquashCommitRequired,
+        };
+      default:
+        return { success: false, error: NO_OPERATION_ERROR, code: SourceControlCode.NoOperation };
+    }
+  }
+
+  /**
+   * Skips the commit the operation in flight is stuck on, dropping its changes.
+   * @param root The repository root.
+   * @returns Returns the raw command result.
+   */
+  private async skipOperation(root: unknown): Promise<GitRunResult> {
+    const state: GitOperationState = await this.operationState(root);
+    switch (state.kind) {
+      case 'rebase':
+        return this.runIntegration(root, ['rebase', '--skip']);
+      case 'cherry-pick':
+        return this.runIntegration(root, ['cherry-pick', '--skip']);
+      case null:
+        return { success: false, error: NO_OPERATION_ERROR, code: SourceControlCode.NoOperation };
+      default:
+        // A merge applies one change rather than a sequence, so there is no next commit to move on to.
+        return {
+          success: false,
+          error: 'This operation applies a single change, so there is nothing to skip.',
+          code: SourceControlCode.SkipUnsupported,
+        };
+    }
+  }
+
+  /**
+   * Abandons the operation in flight, returning the working tree to where it started.
+   *
+   * A squash merge is the exception that makes reading the state worthwhile: it records no
+   * `MERGE_HEAD`, so `git merge --abort` refuses it outright with "there is no merge to abort". What
+   * undoes it is a reset back to the head it never left — `--merge` rather than `--hard`, so a change
+   * the merge did not touch is not destroyed along with it.
+   *
+   * @param root The repository root.
+   * @returns Returns the raw command result.
+   */
+  private async abortOperation(root: unknown): Promise<GitRunResult> {
+    const state: GitOperationState = await this.operationState(root);
+    logger.info('GitManager.abortOperation', `Aborting ${state.kind ?? 'nothing'}`);
+    switch (state.kind) {
+      case 'rebase':
+        return this.runIntegration(root, ['rebase', '--abort']);
+      case 'merge':
+        return this.runIntegration(root, ['merge', '--abort']);
+      case 'cherry-pick':
+        return this.runIntegration(root, ['cherry-pick', '--abort']);
+      case 'revert':
+        return this.runIntegration(root, ['revert', '--abort']);
+      case 'squash-merge':
+        return this.runIntegration(root, ['reset', '--merge']);
+      default:
+        return { success: false, error: NO_OPERATION_ERROR, code: SourceControlCode.NoOperation };
+    }
+  }
+
+  /**
    * Creates a tag at a commit, annotated when a message is given.
    *
    * The message is the one argument not held to {@link isSafeOperand}: it is bound positionally to
@@ -1462,6 +1649,32 @@ export class GitManager {
       return Promise.resolve({ success: false, error: 'Repository is not open' });
     }
     return this.run(path.resolve(root), args);
+  }
+
+  /**
+   * Runs a merge, a rebase, or one of the commands that finishes them: with no editor to block on, a
+   * budget that suits work measured in files and commits, and the outcome classified so the caller can
+   * tell a conflict from a failure.
+   * @param root The repository root, which must be open.
+   * @param args The fully-built git argument vector.
+   * @returns Returns the raw command result.
+   */
+  private async runIntegration(root: unknown, args: readonly string[]): Promise<GitRunResult> {
+    if (!this.isOpenRoot(root)) {
+      return { success: false, error: 'Repository is not open' };
+    }
+    const result: GitRunResult = await this.run(path.resolve(root), args, {
+      env: { ...process.env, ...GIT_NO_EDITOR_ENV },
+      timeoutMs: GIT_INTEGRATION_TIMEOUT_MS,
+    });
+    if (result.success) {
+      return result;
+    }
+    // Git exits non-zero on a conflict exactly as it does on a failure, and the difference is not in
+    // the message but in what it left behind: an operation still in flight means it stopped to ask,
+    // not that it could not proceed. Asking the repository beats reading the prose.
+    const state: GitOperationState = await this.operationState(root);
+    return state.kind === null ? result : { ...result, code: SourceControlCode.Conflicted };
   }
 
   /**

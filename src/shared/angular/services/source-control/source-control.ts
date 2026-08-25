@@ -1,6 +1,7 @@
 import { inject, Service } from '@angular/core';
 import { Bridge } from '@shared/api/bridge';
 import {
+  GitMergeMode,
   GitOperationState,
   GitRunResult,
   RepositoryInfo,
@@ -94,6 +95,16 @@ function createClient(bridge: Bridge): SourceControlClient {
       localBranch: string,
     ): Promise<GitRunResult> =>
       bridge.invoke(SourceControlChannel.CheckoutTracking, root, remoteBranch, localBranch),
+    merge: (root: string, branch: string, mode: GitMergeMode): Promise<GitRunResult> =>
+      bridge.invoke(SourceControlChannel.Merge, root, branch, mode),
+    rebase: (root: string, onto: string): Promise<GitRunResult> =>
+      bridge.invoke(SourceControlChannel.Rebase, root, onto),
+    continueOperation: (root: string): Promise<GitRunResult> =>
+      bridge.invoke(SourceControlChannel.OperationContinue, root),
+    skipOperation: (root: string): Promise<GitRunResult> =>
+      bridge.invoke(SourceControlChannel.OperationSkip, root),
+    abortOperation: (root: string): Promise<GitRunResult> =>
+      bridge.invoke(SourceControlChannel.OperationAbort, root),
     createTag: (
       root: string,
       name: string,

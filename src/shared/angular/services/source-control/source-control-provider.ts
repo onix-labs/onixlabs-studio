@@ -1,4 +1,4 @@
-import { GitOperationState } from '@shared/api/source-control-channels';
+import { GitMergeMode, GitOperationState } from '@shared/api/source-control-channels';
 import { GitCommit, GitFileChange, GitStash } from '../repository/repository-data';
 import { ParsedRefs, ParsedStatus } from './git-output';
 
@@ -281,6 +281,40 @@ export interface SourceControlProvider {
    * @returns Returns the outcome.
    */
   checkoutTracking(remoteBranch: string, localBranch: string): Promise<MutationResult>;
+
+  /**
+   * Merges a branch into the checked-out one.
+   * @param branch The branch to merge in.
+   * @param mode How the merge records its result.
+   * @returns Returns the outcome, coded `conflicted` when the merge stopped on conflicts rather than
+   * failing outright.
+   */
+  merge(branch: string, mode: GitMergeMode): Promise<MutationResult>;
+
+  /**
+   * Replays the checked-out branch onto another. Rewrites history; the caller confirms first.
+   * @param onto The branch to replay onto.
+   * @returns Returns the outcome, coded `conflicted` when the rebase stopped on conflicts.
+   */
+  rebase(onto: string): Promise<MutationResult>;
+
+  /**
+   * Carries on the operation in flight, once its conflicts have been resolved.
+   * @returns Returns the outcome.
+   */
+  continueOperation(): Promise<MutationResult>;
+
+  /**
+   * Skips the commit the operation in flight is stuck on, dropping its changes.
+   * @returns Returns the outcome.
+   */
+  skipOperation(): Promise<MutationResult>;
+
+  /**
+   * Abandons the operation in flight, returning the working tree to where it started.
+   * @returns Returns the outcome.
+   */
+  abortOperation(): Promise<MutationResult>;
 
   /**
    * Creates a tag at a commit, annotated when a message is given.

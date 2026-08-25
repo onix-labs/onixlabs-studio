@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { Notification, Notifications } from '@shared/angular/services/notifications/notifications';
-import { GitOperationState } from '@shared/api/source-control-channels';
+import { GitMergeMode, GitOperationState } from '@shared/api/source-control-channels';
 import { ParsedRefs, ParsedStatus } from '../source-control/git-output';
 import {
   FileDiff,
@@ -304,11 +304,42 @@ class FakeProvider implements SourceControlProvider {
   /**
    * Holds what an unforced {@link deleteBranch} resolves to, so the unmerged refusal can be driven.
    */
+  /**
+   * Holds the outcome the merge, rebase, and operation commands report, so a spec can make one stop
+   * on conflicts instead of succeeding.
+   */
+  public integrationOutcome: Promise<MutationResult> | null = null;
+
   public deleteBranchOutcome: Promise<MutationResult> | null = null;
 
   public deleteBranch(name: string, force: boolean): Promise<MutationResult> {
     this.calls.push(`deleteBranch:${name}:${force}`);
     return this.deleteBranchOutcome ?? Promise.resolve({ success: true });
+  }
+
+  public merge(branch: string, mode: GitMergeMode): Promise<MutationResult> {
+    this.calls.push(`merge:${branch}:${mode}`);
+    return this.integrationOutcome ?? Promise.resolve({ success: true });
+  }
+
+  public rebase(onto: string): Promise<MutationResult> {
+    this.calls.push(`rebase:${onto}`);
+    return this.integrationOutcome ?? Promise.resolve({ success: true });
+  }
+
+  public continueOperation(): Promise<MutationResult> {
+    this.calls.push('continueOperation');
+    return this.integrationOutcome ?? Promise.resolve({ success: true });
+  }
+
+  public skipOperation(): Promise<MutationResult> {
+    this.calls.push('skipOperation');
+    return this.integrationOutcome ?? Promise.resolve({ success: true });
+  }
+
+  public abortOperation(): Promise<MutationResult> {
+    this.calls.push('abortOperation');
+    return this.integrationOutcome ?? Promise.resolve({ success: true });
   }
 
   public renameBranch(from: string, to: string): Promise<MutationResult> {
@@ -432,6 +463,74 @@ describe('Repository', () => {
     await repository.refresh();
 
     await repository.close();
+
+    expect(repository.operationInFlight()).toBe(false);
+    expect(repository.conflicted()).toEqual([]);
+  });
+
+  it('merge_passesTheModeThrough', async () => {
+    await repository.merge('topic');
+    await repository.merge('topic', 'no-ff');
+    await repository.merge('topic', 'squash');
+
+    expect(provider.calls.filter((call: string): boolean => call.startsWith('merge:'))).toEqual([
+      'merge:topic:default',
+      'merge:topic:no-ff',
+      'merge:topic:squash',
+    ]);
+  });
+
+  it('merge_whenItStopsOnConflicts_refreshesWithoutRaisingAnError', async () => {
+    // The merge did what it was asked as far as it could, and the working tree has changed — so the
+    // panel must reload to show the conflicts, and must not report a failure it will also be showing
+    // as a state of its own.
+    provider.integrationOutcome = Promise.resolve({
+      success: false,
+      error: 'Automatic merge failed',
+      code: 'conflicted',
+    });
+    provider.conflicted = [workingFile('both.ts')];
+    provider.operation = { kind: 'merge', target: 'topic' };
+
+    const result: MutationResult = await repository.merge('topic');
+
+    expect(result.code).toBe('conflicted');
+    expect(repository.lastError()).toBeNull();
+    expect(repository.operationInFlight()).toBe(true);
+    expect(repository.conflicted().length).toBe(1);
+  });
+
+  it('merge_whenItFailsOutright_surfacesTheErrorAndStillReloads', async () => {
+    // A refusal is not a conflict: it reaches the error surface like any other failure. The reload
+    // happens regardless, since a merge that got part-way has still moved the working tree.
+    provider.integrationOutcome = Promise.resolve({ success: false, error: 'refusing to merge' });
+
+    await repository.merge('topic');
+
+    expect(repository.lastError()).toBe('refusing to merge');
+    expect(repository.operationInFlight()).toBe(false);
+  });
+
+  it('rebaseAndTheOperationCommands_reachTheProvider', async () => {
+    await repository.rebase('main');
+    await repository.continueOperation();
+    await repository.skipOperation();
+    await repository.abortOperation();
+
+    expect(provider.calls).toContain('rebase:main');
+    expect(provider.calls).toContain('continueOperation');
+    expect(provider.calls).toContain('skipOperation');
+    expect(provider.calls).toContain('abortOperation');
+  });
+
+  it('abortOperation_clearsTheStateItWasStartedFrom', async () => {
+    provider.conflicted = [workingFile('both.ts')];
+    provider.operation = { kind: 'merge' };
+    await repository.refresh();
+
+    provider.conflicted = [];
+    provider.operation = { kind: null };
+    await repository.abortOperation();
 
     expect(repository.operationInFlight()).toBe(false);
     expect(repository.conflicted()).toEqual([]);

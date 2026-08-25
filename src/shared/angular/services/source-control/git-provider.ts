@@ -1,4 +1,5 @@
 import {
+  GitMergeMode,
   GitOperationState,
   GitRunResult,
   SourceControlClient,
@@ -437,6 +438,59 @@ export class GitProvider implements SourceControlProvider {
     return this.mutate(
       (api: SourceControlClient): Promise<GitRunResult> =>
         api.checkoutTracking(this.root, remoteBranch, localBranch),
+    );
+  }
+
+  /**
+   * Merges a branch into the checked-out one.
+   * @param branch The branch to merge in.
+   * @param mode How the merge records its result.
+   * @returns Returns the outcome.
+   */
+  public merge(branch: string, mode: GitMergeMode): Promise<MutationResult> {
+    return this.mutate(
+      (api: SourceControlClient): Promise<GitRunResult> => api.merge(this.root, branch, mode),
+    );
+  }
+
+  /**
+   * Replays the checked-out branch onto another.
+   * @param onto The branch to replay onto.
+   * @returns Returns the outcome.
+   */
+  public rebase(onto: string): Promise<MutationResult> {
+    return this.mutate(
+      (api: SourceControlClient): Promise<GitRunResult> => api.rebase(this.root, onto),
+    );
+  }
+
+  /**
+   * Carries on the operation in flight, once its conflicts have been resolved.
+   * @returns Returns the outcome.
+   */
+  public continueOperation(): Promise<MutationResult> {
+    return this.mutate(
+      (api: SourceControlClient): Promise<GitRunResult> => api.continueOperation(this.root),
+    );
+  }
+
+  /**
+   * Skips the commit the operation in flight is stuck on.
+   * @returns Returns the outcome.
+   */
+  public skipOperation(): Promise<MutationResult> {
+    return this.mutate(
+      (api: SourceControlClient): Promise<GitRunResult> => api.skipOperation(this.root),
+    );
+  }
+
+  /**
+   * Abandons the operation in flight, returning the working tree to where it started.
+   * @returns Returns the outcome.
+   */
+  public abortOperation(): Promise<MutationResult> {
+    return this.mutate(
+      (api: SourceControlClient): Promise<GitRunResult> => api.abortOperation(this.root),
     );
   }
 

@@ -181,6 +181,31 @@ export enum SourceControlChannel {
   SetUpstream = 'source-control:set-upstream',
 
   /**
+   * Merges a branch into the checked-out one.
+   */
+  Merge = 'source-control:merge',
+
+  /**
+   * Replays the checked-out branch onto another. Rewrites history; the caller confirms first.
+   */
+  Rebase = 'source-control:rebase',
+
+  /**
+   * Carries on the operation in flight, once its conflicts have been resolved.
+   */
+  OperationContinue = 'source-control:operation-continue',
+
+  /**
+   * Skips the commit the operation in flight is stuck on, dropping its changes.
+   */
+  OperationSkip = 'source-control:operation-skip',
+
+  /**
+   * Abandons the operation in flight, returning the working tree to where it started.
+   */
+  OperationAbort = 'source-control:operation-abort',
+
+  /**
    * Creates a tag at a commit, annotated when a message is given.
    */
   CreateTag = 'source-control:create-tag',
@@ -220,6 +245,60 @@ export interface RepositoryInfo {
    */
   readonly name: string;
 }
+
+/**
+ * Names the failures a caller answers differently from any other, so it never has to tell one refusal
+ * from another by reading git's prose. That prose is not a contract, and it is not always English.
+ */
+export enum SourceControlCode {
+  /**
+   * An unforced branch delete git refused because the branch still holds commits of its own.
+   */
+  BranchNotMerged = 'branch-not-merged',
+
+  /**
+   * An operation that stopped on conflicts. Not an error in the ordinary sense: git did what it was
+   * asked as far as it could, and is waiting to be told how to finish. The working tree has changed,
+   * so the caller refreshes — but shows the conflicts rather than a failure.
+   */
+  Conflicted = 'conflicted',
+
+  /**
+   * A continue asked of a squash merge, which git cannot carry on: it recorded no merge to resume, so
+   * the resolved result is committed like any other staged change.
+   */
+  SquashCommitRequired = 'squash-commit-required',
+
+  /**
+   * An operation command asked of a working tree that is in the middle of nothing.
+   */
+  NoOperation = 'no-operation',
+
+  /**
+   * A skip asked of an operation that has no notion of skipping — a merge applies one change, so
+   * there is no next one to move on to.
+   */
+  SkipUnsupported = 'skip-unsupported',
+}
+
+/**
+ * Specifies how a merge records its result.
+ */
+export type GitMergeMode =
+  /**
+   * Fast-forwards where it can, and writes a merge commit where it cannot.
+   */
+  | 'default'
+
+  /**
+   * Always writes a merge commit, so the branch stays legible in the history.
+   */
+  | 'no-ff'
+
+  /**
+   * Applies the changes and stages them without committing or recording a merge at all.
+   */
+  | 'squash';
 
 /**
  * Names a multi-step operation a working tree can be left in the middle of.
@@ -595,6 +674,47 @@ export interface SourceControlClient {
    * @returns Returns the raw command result.
    */
   checkoutTracking(root: string, remoteBranch: string, localBranch: string): Promise<GitRunResult>;
+
+  /**
+   * Merges a branch into the checked-out one.
+   * @param root The absolute repository root; must be an open root.
+   * @param branch The branch to merge in.
+   * @param mode How the merge records its result.
+   * @returns Returns the raw command result, coded {@link SourceControlCode.Conflicted} when the
+   * merge stopped on conflicts rather than failing outright.
+   */
+  merge(root: string, branch: string, mode: GitMergeMode): Promise<GitRunResult>;
+
+  /**
+   * Replays the checked-out branch onto another. Rewrites history; the caller confirms first.
+   * @param root The absolute repository root; must be an open root.
+   * @param onto The branch to replay onto.
+   * @returns Returns the raw command result, coded {@link SourceControlCode.Conflicted} when the
+   * rebase stopped on conflicts.
+   */
+  rebase(root: string, onto: string): Promise<GitRunResult>;
+
+  /**
+   * Carries on the operation in flight, once its conflicts have been resolved. Which command that is
+   * follows from the operation git is actually in, read at the time rather than taken from the caller.
+   * @param root The absolute repository root; must be an open root.
+   * @returns Returns the raw command result.
+   */
+  continueOperation(root: string): Promise<GitRunResult>;
+
+  /**
+   * Skips the commit the operation in flight is stuck on, dropping its changes.
+   * @param root The absolute repository root; must be an open root.
+   * @returns Returns the raw command result.
+   */
+  skipOperation(root: string): Promise<GitRunResult>;
+
+  /**
+   * Abandons the operation in flight, returning the working tree to where it started.
+   * @param root The absolute repository root; must be an open root.
+   * @returns Returns the raw command result.
+   */
+  abortOperation(root: string): Promise<GitRunResult>;
 
   /**
    * Creates a tag at a commit. A message makes it annotated — which is what a release wants, since an

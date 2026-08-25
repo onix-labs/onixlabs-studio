@@ -8,7 +8,7 @@ import {
   ForgeRepositoryRef,
   ForgeWorkflowRun,
 } from '@shared/api/forge-types';
-import { GitOperationState } from '@shared/api/source-control-channels';
+import { GitMergeMode, GitOperationState } from '@shared/api/source-control-channels';
 import { Shell } from '@shared/angular/services/shell/shell';
 import { Agent } from '@shared/angular/services/agent/agent';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
@@ -305,11 +305,42 @@ class FakeProvider implements SourceControlProvider {
   /**
    * Holds what an unforced {@link deleteBranch} resolves to, so the unmerged refusal can be driven.
    */
+  /**
+   * Holds the outcome the merge, rebase, and operation commands report, so a spec can make one stop
+   * on conflicts instead of succeeding.
+   */
+  public integrationOutcome: Promise<MutationResult> | null = null;
+
   public deleteBranchOutcome: Promise<MutationResult> | null = null;
 
   public deleteBranch(name: string, force: boolean): Promise<MutationResult> {
     this.calls.push(`deleteBranch:${name}:${force}`);
     return this.deleteBranchOutcome ?? Promise.resolve({ success: true });
+  }
+
+  public merge(branch: string, mode: GitMergeMode): Promise<MutationResult> {
+    this.calls.push(`merge:${branch}:${mode}`);
+    return this.integrationOutcome ?? Promise.resolve({ success: true });
+  }
+
+  public rebase(onto: string): Promise<MutationResult> {
+    this.calls.push(`rebase:${onto}`);
+    return this.integrationOutcome ?? Promise.resolve({ success: true });
+  }
+
+  public continueOperation(): Promise<MutationResult> {
+    this.calls.push('continueOperation');
+    return this.integrationOutcome ?? Promise.resolve({ success: true });
+  }
+
+  public skipOperation(): Promise<MutationResult> {
+    this.calls.push('skipOperation');
+    return this.integrationOutcome ?? Promise.resolve({ success: true });
+  }
+
+  public abortOperation(): Promise<MutationResult> {
+    this.calls.push('abortOperation');
+    return this.integrationOutcome ?? Promise.resolve({ success: true });
   }
 
   public renameBranch(from: string, to: string): Promise<MutationResult> {
