@@ -1,13 +1,12 @@
 <app-panel-toolbar>
   <app-button
     variant="none"
-    [icon]="Icon.GIT_DIFF"
-    [pressed]="inlineDiff()"
-    ariaLabel="Diff Layout"
-    [tooltip]="inlineDiff() ? 'Diff layout: inline' : 'Diff layout: side by side'"
-    (click)="toggleDiffLayout()"
+    [icon]="Icon.REFRESH"
+    ariaLabel="Refresh"
+    tooltip="Refresh"
+    [disabled]="!repository.isBound()"
+    (click)="refresh()"
   />
-  <span class="panel-toolbar__spacer"></span>
   <app-button
     variant="none"
     [icon]="Icon.TRASH"
@@ -18,11 +17,36 @@
   />
   <app-button
     variant="none"
-    [icon]="Icon.REFRESH"
-    ariaLabel="Refresh"
-    tooltip="Refresh"
-    [disabled]="!repository.isBound()"
-    (click)="refresh()"
+    [icon]="Icon.GIT_DIFF"
+    ariaLabel="Show Diff"
+    tooltip="Show the selected file's diff"
+    [disabled]="repository.selectedFile() === null"
+    (click)="showDiff()"
+  />
+  <app-button
+    variant="none"
+    [icon]="Icon.STASH"
+    ariaLabel="Stash"
+    tooltip="Stash the uncommitted changes"
+    [disabled]="repository.changeCount() === 0"
+    (click)="stash()"
+  />
+  <span class="panel-toolbar__spacer"></span>
+  <!-- The same pair the Solution Explorer wears, in the same order and on the same glyphs, because
+       they do the same thing to the same kind of tree. -->
+  <app-button
+    variant="none"
+    [icon]="Icon.PLUS_SQUARE"
+    ariaLabel="Expand All"
+    tooltip="Expand All"
+    (click)="expandAll()"
+  />
+  <app-button
+    variant="none"
+    [icon]="Icon.MINUS_SQUARE"
+    ariaLabel="Collapse All"
+    tooltip="Collapse All"
+    (click)="collapseAll()"
   />
 </app-panel-toolbar>
 

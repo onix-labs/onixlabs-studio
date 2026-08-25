@@ -3,7 +3,6 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Icon } from '@shared/angular/icons/icon';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { DiffOpener } from '@shared/angular/services/diffs/diff-opener';
-import { Diffs } from '@shared/angular/services/diffs/diffs';
 import { CommitMessageGenerator } from '@shared/angular/services/repository/commit-message-generator';
 import { Repository } from '@shared/angular/services/repository/repository';
 import {
@@ -144,6 +143,11 @@ class StubRepository {
     return Promise.resolve();
   }
 
+  public stash(): Promise<MutationResult> {
+    this.calls.push('stash');
+    return Promise.resolve({ success: true });
+  }
+
   public commitFiles(paths: readonly string[]): Promise<MutationResult> {
     this.calls.push(`commitFiles:${paths.join(',')}`);
     return Promise.resolve({ success: true });
@@ -186,7 +190,6 @@ describe('CommitDetail', () => {
   let generator: StubGenerator;
   let opened: GitFileChange[];
   let confirmAnswer: boolean;
-  let diffs: Diffs;
   let host: HTMLElement;
 
   beforeEach(async () => {
@@ -216,7 +219,6 @@ describe('CommitDetail', () => {
       ],
     }).compileComponents();
 
-    diffs = TestBed.inject(Diffs);
     fixture = TestBed.createComponent(CommitDetail);
     fixture.componentRef.setInput('panel', PANEL);
     host = fixture.nativeElement as HTMLElement;
@@ -462,15 +464,70 @@ describe('CommitDetail', () => {
       return host.querySelector<HTMLButtonElement>(`app-panel-toolbar [aria-label="${label}"]`)!;
     }
 
-    it('diffLayout_togglesTheSharedInlinePreference_andReflectsIt', async () => {
-      expect(tool('Diff Layout').getAttribute('aria-pressed')).toBe('false');
+    it('readsLeftToRight_inTheOrderTheCommandsAreReachedFor', () => {
+      // The diff-layout toggle that used to lead this strip now lives on the diff panel itself.
+      expect(
+        Array.from(host.querySelectorAll<HTMLButtonElement>('app-panel-toolbar [aria-label]')).map(
+          (button: HTMLButtonElement): string | null => button.getAttribute('aria-label'),
+        ),
+      ).toEqual(['Refresh', 'Discard All', 'Show Diff', 'Stash', 'Expand All', 'Collapse All']);
+    });
 
-      tool('Diff Layout').click();
-      await fixture.whenStable();
+    it('showDiff_opensTheSelectedFilesDiff_andIsInertWithoutOne', async () => {
+      expect(tool('Show Diff').disabled).toBe(true);
+
+      const file: GitFileChange = makeFile('a.ts', 'modified');
+      repository.unstaged.set([file]);
+      repository.selectedFile.set(file);
       fixture.detectChanges();
 
-      expect(diffs.inlineDiff()).toBe(true);
-      expect(tool('Diff Layout').getAttribute('aria-pressed')).toBe('true');
+      expect(tool('Show Diff').disabled).toBe(false);
+      tool('Show Diff').click();
+      await fixture.whenStable();
+
+      expect(opened.map((file: GitFileChange): string => file.path)).toContain('a.ts');
+    });
+
+    it('stash_isDisabledWhenTheWorkingTreeIsClean', () => {
+      expect(tool('Stash').disabled).toBe(true);
+
+      repository.unstaged.set([makeFile('a.ts', 'modified')]);
+      fixture.detectChanges();
+
+      expect(tool('Stash').disabled).toBe(false);
+    });
+
+    it('stash_putsTheChangesOnTheStack', async () => {
+      repository.unstaged.set([makeFile('a.ts', 'modified')]);
+      fixture.detectChanges();
+
+      tool('Stash').click();
+      await fixture.whenStable();
+
+      expect(repository.calls).toContain('stash');
+    });
+
+    it('expandAllAndCollapseAll_openAndCloseBothFileGroups', () => {
+      repository.staged.set([makeFile('tracked.ts', 'modified')]);
+      repository.unstaged.set([makeFile('untracked.ts', 'added', true)]);
+      repository.isWorkingSelected.set(true);
+      fixture.detectChanges();
+
+      const fileRows: () => number = (): number =>
+        host.querySelectorAll('app-tree-view [role="treeitem"], .tree-row').length;
+      const expanded: number = fileRows();
+
+      tool('Collapse All').click();
+      fixture.detectChanges();
+      const collapsed: number = fileRows();
+
+      // Both groups shut, so only the two headers are left.
+      expect(collapsed).toBeLessThan(expanded);
+
+      tool('Expand All').click();
+      fixture.detectChanges();
+
+      expect(fileRows()).toBe(expanded);
     });
 
     it('refresh_reReadsTheRepository', async () => {

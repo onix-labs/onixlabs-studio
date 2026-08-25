@@ -1,3 +1,15 @@
+<app-panel-toolbar>
+  <span class="panel-toolbar__spacer"></span>
+  <app-button
+    variant="none"
+    [icon]="Icon.GIT_DIFF"
+    [pressed]="inline()"
+    ariaLabel="Diff Layout"
+    [tooltip]="inline() ? 'Diff layout: inline' : 'Diff layout: side by side'"
+    (click)="toggleLayout()"
+  />
+</app-panel-toolbar>
+
 @if (file(); as change) {
   <app-diff-view
     [fileName]="change.path"

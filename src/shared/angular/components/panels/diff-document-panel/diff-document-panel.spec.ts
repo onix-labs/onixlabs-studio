@@ -1,4 +1,4 @@
-import { signal } from '@angular/core';
+import { signal, Signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Icon } from '@shared/angular/icons/icon';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
@@ -88,7 +88,11 @@ describe('DiffDocumentPanel', () => {
         { provide: Theme, useValue: { resolvedMode: signal<ResolvedThemeMode>('dark') } },
         {
           provide: Settings,
-          useValue: { globalTextEditor: signal<TextEditorSettings>(TEXT_EDITOR_SETTINGS) },
+          useValue: {
+            globalTextEditor: signal<TextEditorSettings>(TEXT_EDITOR_SETTINGS),
+            // The tool strip's button names itself through a tooltip, which reads this.
+            value: (): Signal<boolean> => signal<boolean>(true),
+          },
         },
       ],
     }).compileComponents();
