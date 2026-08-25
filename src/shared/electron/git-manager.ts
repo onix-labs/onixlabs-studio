@@ -234,6 +234,33 @@ export class GitManager {
       ): Promise<GitRunResult> => this.push(root, remote, branch, setUpstream),
     );
     ipcMain.handle(
+      SourceControlChannel.DeleteBranch,
+      (
+        _event: IpcMainInvokeEvent,
+        root: unknown,
+        name: unknown,
+        force: unknown,
+      ): Promise<GitRunResult> => this.deleteBranch(root, name, force),
+    );
+    ipcMain.handle(
+      SourceControlChannel.RenameBranch,
+      (
+        _event: IpcMainInvokeEvent,
+        root: unknown,
+        from: unknown,
+        to: unknown,
+      ): Promise<GitRunResult> => this.renameBranch(root, from, to),
+    );
+    ipcMain.handle(
+      SourceControlChannel.SetUpstream,
+      (
+        _event: IpcMainInvokeEvent,
+        root: unknown,
+        branch: unknown,
+        upstream: unknown,
+      ): Promise<GitRunResult> => this.setUpstream(root, branch, upstream),
+    );
+    ipcMain.handle(
       SourceControlChannel.FetchRemote,
       (_event: IpcMainInvokeEvent, root: unknown, remote: unknown): Promise<GitRunResult> =>
         this.fetchRemote(root, remote),
@@ -710,6 +737,93 @@ export class GitManager {
   private fetch(root: unknown): Promise<GitRunResult> {
     logger.trace('GitManager.fetch', 'Fetching all remotes with prune');
     return this.runNetwork(root, ['fetch', '--all', '--prune']);
+  }
+
+  /**
+   * Deletes a local branch. Destructive; the caller confirms first.
+   *
+   * An unforced delete that git refuses is classified here rather than left to the renderer to read
+   * out of the error text. Git declines when a branch holds commits merged neither into HEAD nor into
+   * its upstream, and that is the one refusal the user is offered a way past — so it is worth knowing
+   * for certain rather than by matching an English sentence that is not a contract.
+   *
+   * The check is made in two steps because they answer different questions: whether the branch is
+   * still there at all, and only then whether it is an ancestor of HEAD. Skipping the first would let
+   * a delete of something already gone be reported as unmerged, and offer to force what does not
+   * exist.
+   *
+   * @param root The repository root.
+   * @param name The branch name.
+   * @param force Whether to delete a branch whose commits are not merged anywhere.
+   * @returns Returns the raw command result.
+   */
+  private async deleteBranch(root: unknown, name: unknown, force: unknown): Promise<GitRunResult> {
+    if (!isSafeOperand(name)) {
+      return { success: false, error: 'Invalid branch name' };
+    }
+    const forced: boolean = force === true;
+    logger.trace('GitManager.deleteBranch', `Deleting branch ${name}${forced ? ' (forced)' : ''}`);
+    const result: GitRunResult = await this.runInRoot(root, ['branch', forced ? '-D' : '-d', name]);
+    if (result.success || forced) {
+      return result;
+    }
+    const exists: GitRunResult = await this.runInRoot(root, [
+      'rev-parse',
+      '--verify',
+      '--quiet',
+      `refs/heads/${name}`,
+    ]);
+    if (!exists.success) {
+      return result;
+    }
+    const merged: GitRunResult = await this.runInRoot(root, [
+      'merge-base',
+      '--is-ancestor',
+      name,
+      'HEAD',
+    ]);
+    return merged.success ? result : { ...result, code: 'branch-not-merged' };
+  }
+
+  /**
+   * Renames a local branch, including the checked-out one.
+   * @param root The repository root.
+   * @param from The current branch name.
+   * @param to The new branch name.
+   * @returns Returns the raw command result.
+   */
+  private renameBranch(root: unknown, from: unknown, to: unknown): Promise<GitRunResult> {
+    if (!isSafeOperand(from) || !isSafeOperand(to)) {
+      return Promise.resolve({ success: false, error: 'Invalid branch name' });
+    }
+    logger.trace('GitManager.renameBranch', `Renaming branch ${from} to ${to}`);
+    return this.runInRoot(root, ['branch', '-m', from, to]);
+  }
+
+  /**
+   * Points a local branch's upstream at a remote-tracking branch, or clears it.
+   *
+   * The upstream travels inside `--set-upstream-to=`, so it is validated as an operand in its own
+   * right before the flag is built around it — the flag is Studio's, but the value is the renderer's.
+   *
+   * @param root The repository root.
+   * @param branch The local branch.
+   * @param upstream The remote-tracking branch to track, or null to clear the upstream.
+   * @returns Returns the raw command result.
+   */
+  private setUpstream(root: unknown, branch: unknown, upstream: unknown): Promise<GitRunResult> {
+    if (!isSafeOperand(branch)) {
+      return Promise.resolve({ success: false, error: 'Invalid branch name' });
+    }
+    if (upstream === null) {
+      logger.trace('GitManager.setUpstream', `Clearing the upstream of ${branch}`);
+      return this.runInRoot(root, ['branch', '--unset-upstream', branch]);
+    }
+    if (!isSafeOperand(upstream)) {
+      return Promise.resolve({ success: false, error: 'Invalid upstream' });
+    }
+    logger.trace('GitManager.setUpstream', `Setting the upstream of ${branch} to ${upstream}`);
+    return this.runInRoot(root, ['branch', `--set-upstream-to=${upstream}`, branch]);
   }
 
   /**

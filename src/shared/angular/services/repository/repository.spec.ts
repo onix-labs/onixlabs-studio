@@ -284,6 +284,26 @@ class FakeProvider implements SourceControlProvider {
     return Promise.resolve({ success: true });
   }
 
+  /**
+   * Holds what an unforced {@link deleteBranch} resolves to, so the unmerged refusal can be driven.
+   */
+  public deleteBranchOutcome: Promise<MutationResult> | null = null;
+
+  public deleteBranch(name: string, force: boolean): Promise<MutationResult> {
+    this.calls.push(`deleteBranch:${name}:${force}`);
+    return this.deleteBranchOutcome ?? Promise.resolve({ success: true });
+  }
+
+  public renameBranch(from: string, to: string): Promise<MutationResult> {
+    this.calls.push(`renameBranch:${from}:${to}`);
+    return Promise.resolve({ success: true });
+  }
+
+  public setUpstream(branch: string, upstream: string | null): Promise<MutationResult> {
+    this.calls.push(`setUpstream:${branch}:${upstream ?? ''}`);
+    return Promise.resolve({ success: true });
+  }
+
   public close(): Promise<void> {
     return Promise.resolve();
   }
@@ -637,6 +657,40 @@ describe('Repository', () => {
 
     await repository.createBranch('feature/two', false);
     expect(provider.calls).toContain('createBranch:feature/two:false');
+  });
+
+  describe('branch housekeeping', () => {
+    it('deleteBranch_defaultsToUnforced', async () => {
+      await repository.deleteBranch('develop');
+
+      expect(provider.calls).toContain('deleteBranch:develop:false');
+    });
+
+    it('deleteBranch_passesTheFailureCodeThrough_soTheCallerCanOfferToForceIt', async () => {
+      provider.deleteBranchOutcome = Promise.resolve({
+        success: false,
+        error: 'not fully merged',
+        code: 'branch-not-merged',
+      });
+
+      const result: MutationResult = await repository.deleteBranch('develop');
+
+      expect(result.code).toBe('branch-not-merged');
+    });
+
+    it('renameBranch_reachesTheProvider', async () => {
+      await repository.renameBranch('develop', 'feature/renamed');
+
+      expect(provider.calls).toContain('renameBranch:develop:feature/renamed');
+    });
+
+    it('setUpstream_andClearUpstream_differOnlyInWhatTheyPass', async () => {
+      await repository.setUpstream('develop', 'origin/develop');
+      await repository.clearUpstream('develop');
+
+      expect(provider.calls).toContain('setUpstream:develop:origin/develop');
+      expect(provider.calls).toContain('setUpstream:develop:');
+    });
   });
 
   describe('remotes', () => {

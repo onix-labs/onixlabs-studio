@@ -35,6 +35,12 @@ export interface MutationResult {
    * Gets the error message, when the operation failed.
    */
   readonly error?: string;
+
+  /**
+   * Gets a stable identifier for a failure the caller answers differently from any other. Present so
+   * a caller never has to read git's prose to tell one refusal from another.
+   */
+  readonly code?: string;
 }
 
 /**
@@ -205,6 +211,31 @@ export interface SourceControlProvider {
    * @returns Returns the outcome.
    */
   push(target?: PushTarget): Promise<MutationResult>;
+
+  /**
+   * Deletes a local branch. Destructive; the caller confirms first.
+   * @param name The branch name.
+   * @param force Whether to delete a branch whose commits are not merged anywhere.
+   * @returns Returns the outcome, coded `branch-not-merged` when an unforced delete was refused
+   * because the branch still holds commits of its own.
+   */
+  deleteBranch(name: string, force: boolean): Promise<MutationResult>;
+
+  /**
+   * Renames a local branch, including the checked-out one.
+   * @param from The current branch name.
+   * @param to The new branch name.
+   * @returns Returns the outcome.
+   */
+  renameBranch(from: string, to: string): Promise<MutationResult>;
+
+  /**
+   * Points a local branch's upstream at a remote-tracking branch, or clears it.
+   * @param branch The local branch.
+   * @param upstream The remote-tracking branch to track, or null to clear the upstream.
+   * @returns Returns the outcome.
+   */
+  setUpstream(branch: string, upstream: string | null): Promise<MutationResult>;
 
   /**
    * Fetches one remote, rather than all of them.

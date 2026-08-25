@@ -160,6 +160,21 @@ export enum SourceControlChannel {
   CheckoutTracking = 'source-control:checkout-tracking',
 
   /**
+   * Deletes a local branch. Destructive; the caller confirms first.
+   */
+  DeleteBranch = 'source-control:delete-branch',
+
+  /**
+   * Renames a local branch, including the checked-out one.
+   */
+  RenameBranch = 'source-control:rename-branch',
+
+  /**
+   * Points a local branch's upstream at a remote-tracking branch, or clears it.
+   */
+  SetUpstream = 'source-control:set-upstream',
+
+  /**
    * Creates a tag at a commit, annotated when a message is given.
    */
   CreateTag = 'source-control:create-tag',
@@ -224,6 +239,13 @@ export interface GitRunResult {
    * Gets the error message, when the command failed or the request was rejected.
    */
   readonly error?: string;
+
+  /**
+   * Gets a stable identifier for a failure the caller answers differently from any other, when the
+   * command produced one. Present so a caller never has to read git's prose to tell one refusal from
+   * another — that prose is not a contract, and it is not always English.
+   */
+  readonly code?: string;
 }
 
 /**
@@ -433,6 +455,34 @@ export interface SourceControlClient {
     branch?: string,
     setUpstream?: boolean,
   ): Promise<GitRunResult>;
+
+  /**
+   * Deletes a local branch. Destructive; the caller confirms first.
+   * @param root The absolute repository root; must be an open root.
+   * @param name The branch name.
+   * @param force Whether to delete a branch whose commits are not merged anywhere.
+   * @returns Returns the raw command result, whose code is `branch-not-merged` when an unforced
+   * delete was refused because the branch still holds commits of its own.
+   */
+  deleteBranch(root: string, name: string, force: boolean): Promise<GitRunResult>;
+
+  /**
+   * Renames a local branch, including the checked-out one.
+   * @param root The absolute repository root; must be an open root.
+   * @param from The current branch name.
+   * @param to The new branch name.
+   * @returns Returns the raw command result.
+   */
+  renameBranch(root: string, from: string, to: string): Promise<GitRunResult>;
+
+  /**
+   * Points a local branch's upstream at a remote-tracking branch, or clears it.
+   * @param root The absolute repository root; must be an open root.
+   * @param branch The local branch.
+   * @param upstream The remote-tracking branch to track, or null to clear the upstream.
+   * @returns Returns the raw command result.
+   */
+  setUpstream(root: string, branch: string, upstream: string | null): Promise<GitRunResult>;
 
   /**
    * Fetches one remote, rather than all of them.
