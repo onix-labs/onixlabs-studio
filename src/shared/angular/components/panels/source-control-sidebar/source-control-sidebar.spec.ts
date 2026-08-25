@@ -29,6 +29,7 @@ import {
 import { SourceControlProviders } from '@shared/angular/services/source-control/source-control-providers';
 import { Repository, WORKING_NODE_ID } from '@shared/angular/services/repository/repository';
 import {
+  GitBranch,
   GitCommit,
   GitFileChange,
   GitRemote,
@@ -209,10 +210,12 @@ class FakeProvider implements SourceControlProvider {
   }
 
   public pull(): Promise<MutationResult> {
+    this.calls.push('pull');
     return Promise.resolve({ success: true });
   }
 
   public push(): Promise<MutationResult> {
+    this.calls.push('push');
     return Promise.resolve({ success: true });
   }
 
@@ -678,24 +681,112 @@ describe('SourceControlSidebar', () => {
     expect(provider.calls).toContain('checkout:develop');
   });
 
-  it('theCheckedOutBranchOffersNothing_becauseItsChangesBadgeIsAlwaysThere', () => {
-    // It cannot be checked out again, and its uncommitted changes are one always-visible click away.
+  /**
+   * Builds the checked-out branch's row.
+   * @param branch The branch to carry, defaulting to the fixture's `main` with an upstream.
+   * @returns Returns the row.
+   */
+  function currentBranchRow(branch?: GitBranch): TreeRow {
+    return {
+      id: 'branch:main',
+      depth: 1,
+      expandable: false,
+      expanded: false,
+      data: {
+        kind: 'branch',
+        icon: Icon.SOURCE_CONTROL,
+        label: 'main',
+        branch: branch ?? {
+          name: 'main',
+          current: true,
+          upstream: 'origin/main',
+          ahead: 1,
+          behind: 0,
+          tip: 'c2',
+        },
+      },
+    };
+  }
+
+  it('theCheckedOutBranchOffersItsExchangeCommands', () => {
+    // It cannot be checked out again. What it can do is exchange commits with its upstream.
     const menu: { contextMenuFor(r: TreeRow): readonly MenuItem[] } = component;
 
     expect(
-      menu.contextMenuFor({
-        id: 'branch:main',
-        depth: 1,
-        expandable: false,
-        expanded: false,
-        data: {
-          kind: 'branch',
-          icon: Icon.SOURCE_CONTROL,
-          label: 'main',
-          branch: { name: 'main', current: true, ahead: 0, behind: 0, tip: 'c2' },
-        },
+      menu.contextMenuFor(currentBranchRow()).map((item: MenuItem): string => item.label),
+    ).toEqual(['Push', 'Pull', 'Sync']);
+  });
+
+  it('theCheckedOutBranchCarriesItsCountsIntoTheMenu', () => {
+    const menu: { contextMenuFor(r: TreeRow): readonly MenuItem[] } = component;
+
+    const items: readonly MenuItem[] = menu.contextMenuFor(
+      currentBranchRow({
+        name: 'main',
+        current: true,
+        upstream: 'origin/main',
+        ahead: 2,
+        behind: 3,
+        tip: 'c2',
       }),
-    ).toEqual([]);
+    );
+
+    expect(items[0].status).toBe('2 ahead');
+    expect(items[1].status).toBe('3 behind');
+    expect(items.every((item: MenuItem): boolean => item.disabled !== true)).toBe(true);
+  });
+
+  it('aBranchWithNoUpstream_canStillBePushed_butNotPulledOrSynced', () => {
+    // The push is what publishes it and sets the upstream; the other two have nothing to work from.
+    const menu: { contextMenuFor(r: TreeRow): readonly MenuItem[] } = component;
+
+    const items: readonly MenuItem[] = menu.contextMenuFor(
+      currentBranchRow({ name: 'main', current: true, ahead: 0, behind: 0, tip: 'c2' }),
+    );
+
+    expect(items[0].disabled).toBe(false);
+    expect(items[1].disabled).toBe(true);
+    expect(items[2].disabled).toBe(true);
+    expect(items[1].status).toBe('no upstream');
+  });
+
+  it('aRepositoryWithNoRemote_offersNoneOfThem', async () => {
+    provider.remoteEntries = [];
+    await repository.refresh();
+    const menu: { contextMenuFor(r: TreeRow): readonly MenuItem[] } = component;
+
+    const items: readonly MenuItem[] = menu.contextMenuFor(currentBranchRow());
+
+    expect(items.every((item: MenuItem): boolean => item.disabled === true)).toBe(true);
+    expect(items[0].status).toBe('no remotes');
+  });
+
+  it('runsPushAndPull_fromTheCheckedOutBranchesMenu', async () => {
+    const menu: { onContextAction(c: TreeMenuSelection): void } = component as unknown as {
+      onContextAction(c: TreeMenuSelection): void;
+    };
+    const row: TreeRow = currentBranchRow();
+
+    menu.onContextAction({ itemId: 'branch.push', row });
+    await fixture.whenStable();
+    menu.onContextAction({ itemId: 'branch.pull', row });
+    await fixture.whenStable();
+
+    expect(provider.calls).toContain('push');
+    expect(provider.calls).toContain('pull');
+  });
+
+  it('runsSync_fromTheCheckedOutBranchesMenu', async () => {
+    // What a sync is made of is the repository's business and is covered there; the panel's job is
+    // that the row dispatches it at all.
+    const menu: { onContextAction(c: TreeMenuSelection): void } = component as unknown as {
+      onContextAction(c: TreeMenuSelection): void;
+    };
+
+    menu.onContextAction({ itemId: 'branch.sync', row: currentBranchRow() });
+    await fixture.whenStable();
+
+    expect(provider.calls).toContain('pull');
   });
 
   /**

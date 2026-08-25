@@ -168,6 +168,21 @@ const ACTION_OPEN_ISSUE: string = 'issue.open';
 const ACTION_CHECKOUT_BRANCH: string = 'branch.checkout';
 
 /**
+ * Identifies the Push command on the checked-out branch's context menu.
+ */
+const ACTION_PUSH_BRANCH: string = 'branch.push';
+
+/**
+ * Identifies the Pull command on the checked-out branch's context menu.
+ */
+const ACTION_PULL_BRANCH: string = 'branch.pull';
+
+/**
+ * Identifies the Sync command on the checked-out branch's context menu.
+ */
+const ACTION_SYNC_BRANCH: string = 'branch.sync';
+
+/**
  * Identifies the Apply command on a stash's context menu.
  */
 const ACTION_APPLY_STASH: string = 'stash.apply';
@@ -1184,6 +1199,63 @@ export class SourceControlSidebar implements OnDestroy {
   }
 
   /**
+   * Builds the checked-out branch's exchange commands, each offered only where git could honour it.
+   *
+   * A repository with no remote has nowhere to send anything, so all three are inert. A branch with
+   * no upstream can still be pushed — the push publishes it and sets the upstream, which is how a
+   * freshly-created branch is meant to reach the remote — but there is nothing to pull from and so
+   * nothing to sync with, and offering either would be offering a command git would only refuse.
+   *
+   * The counts ride along as muted notes, because whether there is anything to send or receive is the
+   * question the user opened the menu to answer.
+   *
+   * @param branch The checked-out branch.
+   * @returns Returns the menu items.
+   */
+  private upstreamItems(branch: GitBranch): readonly MenuItem[] {
+    const noRemote: boolean = this.repository.remotes().length === 0;
+    const noUpstream: boolean = branch.upstream === undefined;
+    const reason: string | undefined = noRemote
+      ? 'no remotes'
+      : noUpstream
+        ? 'no upstream'
+        : undefined;
+    return [
+      {
+        id: ACTION_PUSH_BRANCH,
+        label: 'Push',
+        icon: Icon.ARROW_UP,
+        disabled: noRemote,
+        // A branch with no upstream is published by the push, so the count is what it is sending, not
+        // a comparison with something that does not exist yet.
+        ...(noRemote
+          ? { status: 'no remotes' }
+          : branch.ahead > 0
+            ? { status: `${branch.ahead} ahead` }
+            : {}),
+      },
+      {
+        id: ACTION_PULL_BRANCH,
+        label: 'Pull',
+        icon: Icon.ARROW_DOWN,
+        disabled: noRemote || noUpstream,
+        ...(reason !== undefined
+          ? { status: reason }
+          : branch.behind > 0
+            ? { status: `${branch.behind} behind` }
+            : {}),
+      },
+      {
+        id: ACTION_SYNC_BRANCH,
+        label: 'Sync',
+        icon: Icon.REFRESH,
+        disabled: noRemote || noUpstream,
+        ...(reason !== undefined ? { status: reason } : { status: 'pull, then push' }),
+      },
+    ];
+  }
+
+  /**
    * Builds a push command that names the remote it would push to.
    *
    * One remote is the ordinary case and gets a single row saying where it goes, because a command
@@ -1241,10 +1313,11 @@ export class SourceControlSidebar implements OnDestroy {
   ): readonly MenuItem[] => {
     const node: RepoNode = this.nodeOf(treeRow);
     if (node.branch !== undefined) {
-      // The checked-out branch cannot be checked out again, and its uncommitted changes are already
-      // one always-visible click away on the row itself — so it offers nothing here.
+      // The checked-out branch cannot be checked out again; what it can do is exchange commits with
+      // its upstream, which is what git means by push, pull and sync — all three act on HEAD, so a
+      // branch that is not checked out has no honest version of them to offer.
       return node.branch.current
-        ? []
+        ? this.upstreamItems(node.branch)
         : [{ id: ACTION_CHECKOUT_BRANCH, label: 'Check Out', icon: Icon.CHECK }];
     }
     if (node.stash !== undefined) {
@@ -1311,6 +1384,18 @@ export class SourceControlSidebar implements OnDestroy {
         if (node.branch !== undefined) {
           this.checkout(node.branch);
         }
+        break;
+      case ACTION_PUSH_BRANCH:
+        this.log.info('SourceControlSidebar', `Pushing '${node.branch?.name ?? 'HEAD'}'`);
+        void this.repository.push();
+        break;
+      case ACTION_PULL_BRANCH:
+        this.log.info('SourceControlSidebar', `Pulling '${node.branch?.name ?? 'HEAD'}'`);
+        void this.repository.pull();
+        break;
+      case ACTION_SYNC_BRANCH:
+        this.log.info('SourceControlSidebar', `Syncing '${node.branch?.name ?? 'HEAD'}'`);
+        void this.repository.sync();
         break;
       case ACTION_APPLY_STASH:
         if (node.stash !== undefined) {

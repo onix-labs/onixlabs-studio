@@ -44,7 +44,7 @@ const EXTERNAL_REFRESH_DEBOUNCE_MS: number = 500;
 /**
  * Specifies the network operations whose outcomes raise a notification toast.
  */
-type NetworkOperation = 'fetch' | 'pull' | 'push' | 'push-tags' | 'delete-remote-tag';
+type NetworkOperation = 'fetch' | 'pull' | 'push' | 'sync' | 'push-tags' | 'delete-remote-tag';
 
 /**
  * The display labels of the network operations, used in their failure toasts.
@@ -53,6 +53,7 @@ const NETWORK_OPERATION_LABELS: Readonly<Record<NetworkOperation, string>> = {
   fetch: 'Fetch',
   pull: 'Pull',
   push: 'Push',
+  sync: 'Sync',
   'push-tags': 'Push tags',
   'delete-remote-tag': 'Remote tag delete',
 };
@@ -899,10 +900,7 @@ export class Repository {
    * @returns Returns the outcome.
    */
   public async pull(): Promise<MutationResult> {
-    this.log.info('Repository', `Pulling '${this.currentBranch()?.name ?? 'HEAD'}'`);
-    const result: MutationResult = await this.mutate(
-      (provider: SourceControlProvider): Promise<MutationResult> => provider.pull(),
-    );
+    const result: MutationResult = await this.runPull();
     this.notifyNetworkOutcome('pull', result);
     return result;
   }
@@ -914,10 +912,56 @@ export class Repository {
    * @returns Returns the outcome.
    */
   public async push(): Promise<MutationResult> {
+    const result: MutationResult = await this.runPush();
+    this.notifyNetworkOutcome('push', result);
+    return result;
+  }
+
+  /**
+   * Pulls and then pushes the current branch, so a branch that has moved on both sides is squared up
+   * in one command rather than two.
+   *
+   * The pull comes first because the push would be refused otherwise: a branch behind its upstream is
+   * exactly what a non-fast-forward rejection is. A pull that fails stops the sync there — pushing on
+   * top of a failed merge would publish a half-finished state — and its failure is reported as the
+   * sync's, since the sync is what the user asked for.
+   *
+   * @returns Returns the outcome: the pull's failure when there was one, otherwise the push's.
+   */
+  public async sync(): Promise<MutationResult> {
+    this.log.info('Repository', `Syncing '${this.currentBranch()?.name ?? 'HEAD'}'`);
+    const pulled: MutationResult = await this.runPull();
+    if (!pulled.success) {
+      this.notifyNetworkOutcome('sync', pulled);
+      return pulled;
+    }
+    const pushed: MutationResult = await this.runPush();
+    this.notifyNetworkOutcome('sync', pushed);
+    return pushed;
+  }
+
+  /**
+   * Pulls the current branch without reporting the outcome, so a caller that is doing more than one
+   * thing can report once rather than once per step.
+   * @returns Returns the outcome.
+   */
+  private runPull(): Promise<MutationResult> {
+    this.log.info('Repository', `Pulling '${this.currentBranch()?.name ?? 'HEAD'}'`);
+    return this.mutate(
+      (provider: SourceControlProvider): Promise<MutationResult> => provider.pull(),
+    );
+  }
+
+  /**
+   * Pushes the current branch without reporting the outcome, setting the upstream when the branch has
+   * none so a freshly-created branch publishes without a separate step.
+   * @returns Returns the outcome.
+   */
+  private runPush(): Promise<MutationResult> {
     const branch: GitBranch | undefined = this.currentBranch();
     const setUpstream: { readonly remote: string; readonly branch: string } | undefined =
       branch !== undefined && branch.upstream === undefined
-        ? { remote: this.remotesSignal()[0]?.name ?? 'origin', branch: branch.name }
+        ? { remote: this.defaultRemote(), branch: branch.name }
         : undefined;
     if (setUpstream !== undefined) {
       this.log.warn(
@@ -926,11 +970,9 @@ export class Repository {
       );
     }
     this.log.info('Repository', `Pushing '${branch?.name ?? 'HEAD'}'`, this.infoSignal()?.root);
-    const result: MutationResult = await this.mutate(
+    return this.mutate(
       (provider: SourceControlProvider): Promise<MutationResult> => provider.push(setUpstream),
     );
-    this.notifyNetworkOutcome('push', result);
-    return result;
   }
 
   /**
@@ -1090,6 +1132,7 @@ export class Repository {
       fetch: 'Fetched all remotes',
       pull: `Pulled ${branch}`,
       push: `Pushed ${branch}`,
+      sync: `Synced ${branch}`,
       'push-tags': `Pushed ${subject ?? 'tags'}`,
       'delete-remote-tag': `Deleted ${subject ?? 'the tag'}`,
     };

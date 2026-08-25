@@ -173,8 +173,18 @@ class FakeProvider implements SourceControlProvider {
     return Promise.resolve(this.fetchRefResult);
   }
 
+  /**
+   * Makes the next pull fail with this message, so the sync abort path can be exercised.
+   */
+  public failNextPullWith: string | null = null;
+
   public pull(): Promise<MutationResult> {
     this.calls.push('pull');
+    if (this.failNextPullWith !== null) {
+      const error: string = this.failNextPullWith;
+      this.failNextPullWith = null;
+      return Promise.resolve({ success: false, error });
+    }
     return Promise.resolve({ success: true });
   }
 
@@ -601,6 +611,45 @@ describe('Repository', () => {
 
     await repository.createBranch('feature/two', false);
     expect(provider.calls).toContain('createBranch:feature/two:false');
+  });
+
+  describe('sync', () => {
+    it('pullsBeforePushing_soThePushIsNotRefusedForBeingBehind', async () => {
+      await repository.sync();
+
+      expect(provider.calls.filter((call: string): boolean => call.startsWith('p'))).toEqual([
+        'pull',
+        'push:origin/main',
+      ]);
+    });
+
+    it('whenThePullFails_stopsThere_ratherThanPublishingAHalfFinishedMerge', async () => {
+      provider.failNextPullWith = 'Merge conflict.';
+
+      const result: MutationResult = await repository.sync();
+
+      expect(result.success).toBe(false);
+      expect(provider.calls.some((call: string): boolean => call.startsWith('push'))).toBe(false);
+    });
+
+    it('whenItSucceeds_raisesOneToastForTheWholeThing', async () => {
+      await repository.sync();
+
+      // A sync is one command as far as the user is concerned, so it reports once.
+      expect(notifications.toasts().length).toBe(1);
+      expect(notifications.toasts()[0].title).toBe('Synced main');
+    });
+
+    it('whenThePullFails_reportsItAsTheSyncsFailure', async () => {
+      provider.failNextPullWith = 'Merge conflict.';
+
+      await repository.sync();
+
+      const toast: Notification = notifications.toasts()[0];
+      expect(toast.severity).toBe('error');
+      expect(toast.title).toContain('Sync failed');
+      expect(toast.detail).toBe('Merge conflict.');
+    });
   });
 
   describe('tags', () => {
