@@ -4,6 +4,7 @@ import {
   ForgeAuthStatus,
   ForgeIdentity,
   ForgeIssue,
+  ForgeIssueComment,
   ForgePullRequest,
   ForgeRepositoryRef,
   ForgeResult,
@@ -62,6 +63,21 @@ class FakeProvider implements ForgeProvider {
 
   public listIssues(repository: ForgeRepositoryRef): Promise<ForgeResult<readonly ForgeIssue[]>> {
     this.listed.push(repository);
+    return Promise.resolve({ ok: true, value: [] });
+  }
+
+  /**
+   * Holds the issue numbers {@link listIssueComments} was asked for, so the number guard can be
+   * exercised.
+   */
+  public readonly commentedOn: number[] = [];
+
+  public listIssueComments(
+    repository: ForgeRepositoryRef,
+    issueNumber: number,
+  ): Promise<ForgeResult<readonly ForgeIssueComment[]>> {
+    this.listed.push(repository);
+    this.commentedOn.push(issueNumber);
     return Promise.resolve({ ok: true, value: [] });
   }
 
@@ -216,6 +232,7 @@ describe('ForgeContribution', () => {
         ForgeChannel.ClearToken,
         ForgeChannel.Detect,
         ForgeChannel.Issues,
+        ForgeChannel.IssueComments,
         ForgeChannel.PullRequests,
         ForgeChannel.SetToken,
         ForgeChannel.WorkflowRuns,

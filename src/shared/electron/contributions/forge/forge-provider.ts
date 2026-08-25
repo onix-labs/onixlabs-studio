@@ -1,6 +1,7 @@
 import {
   ForgeIdentity,
   ForgeIssue,
+  ForgeIssueComment,
   ForgePullRequest,
   ForgeRepositoryRef,
   ForgeResult,
@@ -111,6 +112,17 @@ export interface ForgeProvider {
    * @returns Returns the issues, or the reason they could not be read.
    */
   listIssues(repository: ForgeRepositoryRef): Promise<ForgeResult<readonly ForgeIssue[]>>;
+
+  /**
+   * Lists an issue's comments, oldest first.
+   * @param repository The repository to read.
+   * @param issueNumber The issue whose comments to read.
+   * @returns Returns the comments, or the reason they could not be read.
+   */
+  listIssueComments(
+    repository: ForgeRepositoryRef,
+    issueNumber: number,
+  ): Promise<ForgeResult<readonly ForgeIssueComment[]>>;
 
   /**
    * Lists a repository's recent CI/CD workflow runs, most recent first.

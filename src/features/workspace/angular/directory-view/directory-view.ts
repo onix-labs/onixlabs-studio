@@ -37,6 +37,7 @@ import { EditorTerminals } from '@shared/angular/services/editor-terminals/edito
 import { Diagnostics } from '@shared/angular/services/diagnostics/diagnostics';
 import { DiffOpener } from '@shared/angular/services/diffs/diff-opener';
 import { Diffs } from '@shared/angular/services/diffs/diffs';
+import { IssueStore } from '@shared/angular/services/issues/issue-store';
 import { DockAutoHide } from '@shared/angular/services/dock-layout/dock-auto-hide';
 import { DockDrag } from '@shared/angular/services/dock-layout/dock-drag';
 import { DockFloating, FloatWindow } from '@shared/angular/services/dock-layout/dock-floating';
@@ -573,6 +574,11 @@ export class DirectoryView implements OnInit, OnDestroy {
   private readonly diffs: Diffs = inject(Diffs);
 
   /**
+   * Holds the issue store, whose records are dropped with their dock tabs.
+   */
+  private readonly issues: IssueStore = inject(IssueStore);
+
+  /**
    * Holds the root source-control command seam this tab registers its handler with while active, so
    * the directory ribbon's Source Control group reaches this workspace.
    */
@@ -1001,13 +1007,15 @@ export class DirectoryView implements OnInit, OnDestroy {
       }
     });
 
-    // Drop diff records once their dock tab is gone, so closed diffs (opened from the commit panel)
-    // are not retained.
+    // Drop diff and issue records once their dock tab is gone, so what was closed is not retained.
+    // Both stores hold content keyed by panel id, and both are filled by opening something from the
+    // source-control surface; neither is told when its tab is closed.
     effect((): void => {
       const present: ReadonlySet<string> = new Set<string>(
         collectPanelIds(this.dockState.layout()),
       );
       this.diffs.removeMissing(present);
+      this.issues.removeMissing(present);
     });
 
     // Refresh the explorers' git decorations whenever the tab is shown, catching changes made while

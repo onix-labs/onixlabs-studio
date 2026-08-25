@@ -6,6 +6,7 @@ import { MutationResult } from '@shared/angular/services/source-control/source-c
 import { GitRemote } from '@shared/angular/services/repository/repository-data';
 import {
   ForgeIssue,
+  ForgeIssueComment,
   ForgePullRequest,
   ForgeRepositoryRef,
   ForgeResult,
@@ -218,6 +219,29 @@ export class ForgeRepository {
     return this.load(this.issueSection, (reference: ForgeRepositoryRef) =>
       this.forge.issues(reference),
     );
+  }
+
+  /**
+   * Reads one issue's comments.
+   *
+   * Not a section: a section is something the panel keeps current, and a conversation is read when an
+   * issue is opened and then left alone. The detected repository is required, so this answers a
+   * failure rather than detecting on demand — anything with an issue in front of it has detected one
+   * already.
+   *
+   * @param issueNumber The issue whose comments to read.
+   * @returns Returns the comments, or the reason they could not be read.
+   */
+  public issueComments(issueNumber: number): Promise<ForgeResult<readonly ForgeIssueComment[]>> {
+    const reference: ForgeRepositoryRef | null = this.detected();
+    if (reference === null) {
+      return Promise.resolve({
+        ok: false,
+        error: 'This repository has no remote on a supported forge.',
+        unauthorized: false,
+      });
+    }
+    return this.forge.issueComments(reference, issueNumber);
   }
 
   /**

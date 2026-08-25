@@ -29,6 +29,7 @@ import { Shell } from '@shared/angular/services/shell/shell';
 import { Agent } from '@shared/angular/services/agent/agent';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
 import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
+import { IssueOpener } from '@shared/angular/services/issues/issue-opener';
 import {
   GitBranch,
   GitCommit,
@@ -465,6 +466,11 @@ export class SourceControlSidebar implements OnDestroy {
   private readonly dockReveal: DockReveal = inject(DockReveal);
 
   /**
+   * Holds the opener that surfaces an issue as a document in the well.
+   */
+  private readonly issueOpener: IssueOpener = inject(IssueOpener);
+
+  /**
    * Holds the keys of the currently expanded sections. Only the local branches start open; the rest
    * are collapsed until the user opens them.
    */
@@ -770,6 +776,21 @@ export class SourceControlSidebar implements OnDestroy {
         break;
       default:
         break;
+    }
+  }
+
+  /**
+   * Opens what a row stands for, when a double click asks for more than the row itself can show.
+   *
+   * Only issues answer this today. A single click still selects, which is why this is a second event
+   * rather than a replacement: the first click is a choice, the second is a request to read.
+   *
+   * @param row The row that was double-clicked.
+   */
+  public onRowDoubleClick(row: TreeRow): void {
+    const node: RepoNode = this.nodeOf(row);
+    if (node.issue !== undefined) {
+      this.issueOpener.open(node.issue);
     }
   }
 

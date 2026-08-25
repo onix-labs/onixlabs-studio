@@ -13,6 +13,7 @@
     [cdkContextMenuTriggerData]="{ $implicit: row }"
     [cdkContextMenuDisabled]="!rowHasMenu(row)"
     (click)="rowClick.emit(row)"
+    (dblclick)="rowDoubleClick.emit(row)"
     (keydown.enter)="activate($event, row)"
     (keydown.space)="activate($event, row)"
   >

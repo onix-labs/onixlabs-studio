@@ -113,6 +113,11 @@ class FakeForge {
         url: 'https://github.com/onix-labs/onixlabs-studio/issues/12',
         labels: ['bug'],
         assignees: [],
+        state: 'open',
+        body: '',
+        createdAt: '2026-08-01T10:00:00Z',
+        updatedAt: '2026-08-01T10:00:00Z',
+        commentCount: 0,
       },
     ],
   };

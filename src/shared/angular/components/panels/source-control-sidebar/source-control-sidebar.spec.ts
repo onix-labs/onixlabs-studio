@@ -38,6 +38,8 @@ import {
   GitTag,
 } from '@shared/angular/services/repository/repository-data';
 
+import { IssueStore } from '@shared/angular/services/issues/issue-store';
+
 import { browsableRemoteUrl, SourceControlSidebar } from './source-control-sidebar';
 
 /**
@@ -512,6 +514,11 @@ function issueRow(): TreeRow {
     url: 'https://github.com/onix-labs/onixlabs-studio/issues/12',
     labels: [],
     assignees: [],
+    state: 'open',
+    body: 'Steps to reproduce are in the log.',
+    createdAt: '2026-08-01T10:00:00Z',
+    updatedAt: '2026-08-02T10:00:00Z',
+    commentCount: 0,
   };
   return {
     id: `issue:${issue.number}`,
@@ -2085,6 +2092,20 @@ describe('SourceControlSidebar', () => {
 
       // The button is bound to this being non-null, so there is nothing to press.
       expect(internals.deleteTagRemote()).toBeNull();
+    });
+
+    it('doubleClickingAnIssue_opensItInTheWell', () => {
+      // A single click still selects; the second asks for the issue to be read properly.
+      component.onRowDoubleClick(issueRow());
+
+      expect(TestBed.inject(IssueStore).has('issue:12')).toBe(true);
+    });
+
+    it('doubleClickingAnythingElse_opensNothing', () => {
+      component.onRowDoubleClick(sectionRow('issues', 'Issues'));
+      component.onRowDoubleClick(pullRequestRow());
+
+      expect(TestBed.inject(IssueStore).opened().size).toBe(0);
     });
 
     it('checksOutAPullRequest_andOpensItInTheBrowser_fromTheMenu', () => {

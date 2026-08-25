@@ -1,0 +1,91 @@
+@if (issue(); as issue) {
+  <app-panel-toolbar>
+    <span class="issue__state" [class]="'issue__state--' + issue.state">
+      <app-icon [icon]="issue.state === 'open' ? Icon.INFO : Icon.SUCCESS_FILL" />
+      {{ issue.state }}
+    </span>
+    <span class="panel-toolbar__spacer"></span>
+    <app-button
+      variant="none"
+      [icon]="Icon.OPEN_EXTERNAL"
+      ariaLabel="Open on GitHub"
+      tooltip="Open on GitHub"
+      (click)="openExternally()"
+    />
+  </app-panel-toolbar>
+
+  <div class="issue__scroll">
+    <header class="issue__header">
+      <h1 class="issue__title">
+        {{ issue.title }} <span class="issue__number">#{{ issue.number }}</span>
+      </h1>
+      <p class="issue__byline">
+        <strong>{{ issue.author }}</strong> opened this on {{ formatDate(issue.createdAt) }}
+        @if (issue.closedAt; as closed) {
+          · closed {{ formatDate(closed) }}
+        }
+      </p>
+    </header>
+
+    <!-- What the issue is filed under. Each row is omitted when empty rather than shown as "none":
+         a heading with nothing after it is a question the reader has to answer for themselves. -->
+    <dl class="issue__facts">
+      @if (issue.labels.length > 0) {
+        <div class="issue__fact">
+          <dt>Labels</dt>
+          <dd>
+            @for (label of issue.labels; track label) {
+              <span class="issue__label">{{ label }}</span>
+            }
+          </dd>
+        </div>
+      }
+      @if (issue.assignees.length > 0) {
+        <div class="issue__fact">
+          <dt>Assignees</dt>
+          <dd>{{ issue.assignees.join(', ') }}</dd>
+        </div>
+      }
+      @if (issue.milestone; as milestone) {
+        <div class="issue__fact">
+          <dt>Milestone</dt>
+          <dd>{{ milestone }}</dd>
+        </div>
+      }
+      <div class="issue__fact">
+        <dt>Updated</dt>
+        <dd>{{ formatDate(issue.updatedAt) }}</dd>
+      </div>
+    </dl>
+
+    <section class="issue__body">
+      @if (hasBody()) {
+        <app-markdown-view [text]="issue.body" />
+      } @else {
+        <p class="issue__empty">No description was given.</p>
+      }
+    </section>
+
+    <section class="issue__comments" aria-label="Comments">
+      <h2 class="issue__comments-title">
+        {{ issue.commentCount }} {{ issue.commentCount === 1 ? 'comment' : 'comments' }}
+      </h2>
+
+      @if (entry()?.loading) {
+        <p class="issue__empty">Reading the conversation…</p>
+      } @else if (entry()?.error; as error) {
+        <p class="issue__error" role="alert">{{ error }}</p>
+      } @else {
+        @for (comment of comments(); track comment.id) {
+          <article class="issue__comment">
+            <header class="issue__comment-head">
+              <strong>{{ comment.author }}</strong>
+              <span class="issue__comment-date">{{ formatDate(comment.createdAt) }}</span>
+            </header>
+            <app-markdown-view [text]="comment.body" />
+          </article>
+        }
+      }
+    </section>
+  </div>
+}

@@ -13,6 +13,7 @@
   [selectedId]="selectedId()"
   [contextMenuFor]="contextMenuFor"
   (rowClick)="onRowClick($event)"
+  (rowDoubleClick)="onRowDoubleClick($event)"
   (contextMenuSelect)="onContextAction($event)"
 >
   <ng-template let-row>
