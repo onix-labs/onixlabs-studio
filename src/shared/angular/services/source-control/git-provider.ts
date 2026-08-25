@@ -296,6 +296,43 @@ export class GitProvider implements SourceControlProvider {
   }
 
   /**
+   * Deletes a local branch. Destructive; the caller confirms first.
+   * @param name The branch name.
+   * @param force Whether to delete a branch whose commits are not merged anywhere.
+   * @returns Returns the outcome.
+   */
+  public deleteBranch(name: string, force: boolean): Promise<MutationResult> {
+    return this.mutate(
+      (api: SourceControlClient): Promise<GitRunResult> => api.deleteBranch(this.root, name, force),
+    );
+  }
+
+  /**
+   * Renames a local branch, including the checked-out one.
+   * @param from The current branch name.
+   * @param to The new branch name.
+   * @returns Returns the outcome.
+   */
+  public renameBranch(from: string, to: string): Promise<MutationResult> {
+    return this.mutate(
+      (api: SourceControlClient): Promise<GitRunResult> => api.renameBranch(this.root, from, to),
+    );
+  }
+
+  /**
+   * Points a local branch's upstream at a remote-tracking branch, or clears it.
+   * @param branch The local branch.
+   * @param upstream The remote-tracking branch to track, or null to clear the upstream.
+   * @returns Returns the outcome.
+   */
+  public setUpstream(branch: string, upstream: string | null): Promise<MutationResult> {
+    return this.mutate(
+      (api: SourceControlClient): Promise<GitRunResult> =>
+        api.setUpstream(this.root, branch, upstream),
+    );
+  }
+
+  /**
    * Fetches one remote, rather than all of them.
    * @param remote The remote to fetch.
    * @returns Returns the outcome.
@@ -435,7 +472,7 @@ export class GitProvider implements SourceControlProvider {
       return { success: false, error: 'Source control is unavailable' };
     }
     const result: GitRunResult = await call(this.api);
-    return { success: result.success, error: result.error };
+    return { success: result.success, error: result.error, code: result.code };
   }
 
   /**

@@ -88,6 +88,24 @@ describe('SourceControl', () => {
     ]);
   });
 
+  it('branchMutations_whenInvoked_forwardTheirArguments', async () => {
+    stubBridge({ success: true });
+    const service: SourceControl = TestBed.inject(SourceControl);
+
+    await service.client?.deleteBranch('/r', 'develop', false);
+    await service.client?.renameBranch('/r', 'develop', 'renamed');
+    await service.client?.setUpstream('/r', 'develop', 'origin/develop');
+    await service.client?.setUpstream('/r', 'develop', null);
+
+    expect(calls).toEqual([
+      { channel: SourceControlChannel.DeleteBranch, args: ['/r', 'develop', false] },
+      { channel: SourceControlChannel.RenameBranch, args: ['/r', 'develop', 'renamed'] },
+      { channel: SourceControlChannel.SetUpstream, args: ['/r', 'develop', 'origin/develop'] },
+      // Null is the clear, and travels as itself rather than being dropped.
+      { channel: SourceControlChannel.SetUpstream, args: ['/r', 'develop', null] },
+    ]);
+  });
+
   it('remoteMutations_whenInvoked_forwardTheirArguments', async () => {
     stubBridge({ success: true });
     const service: SourceControl = TestBed.inject(SourceControl);

@@ -114,6 +114,118 @@
 </app-modal>
 
 <app-modal
+  [open]="renamingBranch() !== null"
+  [width]="26"
+  ariaLabel="Rename branch"
+  (dismiss)="cancelRenameBranch()"
+>
+  <ng-template appModalContent>
+    <h2 class="rail__dialog-title">Rename branch</h2>
+    <app-text-field
+      class="rail__dialog-input"
+      placeholder="Branch name"
+      ariaLabel="Branch name"
+      [value]="renameName()"
+      (valueChange)="onRenameNameValue($event)"
+      (enter)="confirmRenameBranch()"
+      (escape)="cancelRenameBranch()"
+    />
+    @if (renameNameError(); as error) {
+      <p class="rail__dialog-error" role="alert">{{ error }}</p>
+    }
+    <div class="rail__dialog-actions">
+      <app-button
+        variant="solid"
+        label="Rename"
+        [disabled]="!canRenameBranch()"
+        (click)="confirmRenameBranch()"
+      />
+      <app-button label="Cancel" (click)="cancelRenameBranch()" />
+    </div>
+  </ng-template>
+</app-modal>
+
+<app-modal
+  [open]="upstreamBranch() !== null"
+  [width]="30"
+  ariaLabel="Set upstream"
+  (dismiss)="cancelUpstream()"
+>
+  <ng-template appModalContent>
+    <h2 class="rail__dialog-title">Set upstream</h2>
+    <p class="rail__dialog-message">
+      Which remote-tracking branch “{{ upstreamBranch()?.name }}” follows, and so what its ahead and
+      behind counts are measured against.
+    </p>
+    @if (upstreamOptions().length === 0) {
+      <p class="rail__dialog-error" role="alert">
+        There are no remote-tracking branches to follow. Fetch a remote first.
+      </p>
+    } @else {
+      <app-dropdown
+        class="rail__dialog-input"
+        ariaLabel="Upstream branch"
+        [fullWidth]="true"
+        [options]="upstreamOptions()"
+        [value]="upstreamChoice()"
+        (valueChange)="onUpstreamChoice($event)"
+      />
+    }
+    <div class="rail__dialog-actions">
+      <app-button
+        variant="solid"
+        label="Set"
+        [disabled]="upstreamChoice().length === 0"
+        (click)="confirmUpstream()"
+      />
+      <app-button label="Cancel" (click)="cancelUpstream()" />
+    </div>
+  </ng-template>
+</app-modal>
+
+<!-- Asked before a branch goes. Its commits are only lost if they are nowhere else, which is the
+     second question below rather than this one. -->
+<app-modal
+  [open]="pendingDeleteBranch() !== null"
+  [width]="30"
+  ariaLabel="Delete branch"
+  (dismiss)="cancelDeleteBranch()"
+>
+  <ng-template appModalContent>
+    <h2 class="rail__dialog-title">Delete this branch?</h2>
+    <p class="rail__dialog-message">
+      “{{ pendingDeleteBranch()?.name }}” is deleted from this repository. A copy already pushed to
+      a remote stays there.
+    </p>
+    <div class="rail__dialog-actions">
+      <app-button variant="solid" label="Delete" (click)="confirmDeleteBranch()" />
+      <app-button label="Cancel" (click)="cancelDeleteBranch()" />
+    </div>
+  </ng-template>
+</app-modal>
+
+<!-- The second question, asked only when git refused the first: the branch holds commits that exist
+     nowhere else, and deleting it is the end of them. -->
+<app-modal
+  [open]="pendingForceDeleteBranch() !== null"
+  [width]="30"
+  ariaLabel="Delete unmerged branch"
+  (dismiss)="cancelForceDeleteBranch()"
+>
+  <ng-template appModalContent>
+    <h2 class="rail__dialog-title">Delete it anyway?</h2>
+    <p class="rail__dialog-message">
+      “{{ pendingForceDeleteBranch()?.name }}” has commits that are not merged into the branch you
+      are on, or into anything it tracks. Deleting it now loses them, and nothing brings them back.
+    </p>
+    <div class="rail__dialog-actions">
+      <app-button tone="danger" label="Delete anyway" (click)="confirmForceDeleteBranch()" />
+      <app-button variant="solid" label="Keep it" (click)="cancelForceDeleteBranch()" />
+    </div>
+  </ng-template>
+</app-modal>
+
+<app-modal
   [open]="remoteDialogOpen()"
   [width]="30"
   ariaLabel="Add remote"

@@ -1095,6 +1095,66 @@ export class Repository {
   }
 
   /**
+   * Deletes a local branch, then reloads. Destructive; the caller confirms first.
+   *
+   * An unforced delete git refuses because the branch still holds commits of its own comes back coded
+   * rather than merely failed, so the caller can offer to force it. That is a different conversation
+   * from any other failure, and the only one with a way past.
+   *
+   * @param name The branch name.
+   * @param force Whether to delete a branch whose commits are not merged anywhere.
+   * @returns Returns the outcome.
+   */
+  public deleteBranch(name: string, force: boolean = false): Promise<MutationResult> {
+    this.log.info('Repository', `Deleting branch '${name}'${force ? ' (forced)' : ''}`);
+    return this.mutate(
+      (provider: SourceControlProvider): Promise<MutationResult> =>
+        provider.deleteBranch(name, force),
+    );
+  }
+
+  /**
+   * Renames a local branch, then reloads.
+   * @param from The current branch name.
+   * @param to The new branch name.
+   * @returns Returns the outcome.
+   */
+  public renameBranch(from: string, to: string): Promise<MutationResult> {
+    this.log.info('Repository', `Renaming branch '${from}' to '${to}'`);
+    return this.mutate(
+      (provider: SourceControlProvider): Promise<MutationResult> => provider.renameBranch(from, to),
+    );
+  }
+
+  /**
+   * Points a local branch's upstream at a remote-tracking branch, then reloads so the row's
+   * ahead/behind counts reflect what it now tracks.
+   * @param branch The local branch.
+   * @param upstream The remote-tracking branch to track.
+   * @returns Returns the outcome.
+   */
+  public setUpstream(branch: string, upstream: string): Promise<MutationResult> {
+    this.log.info('Repository', `Setting the upstream of '${branch}' to '${upstream}'`);
+    return this.mutate(
+      (provider: SourceControlProvider): Promise<MutationResult> =>
+        provider.setUpstream(branch, upstream),
+    );
+  }
+
+  /**
+   * Clears a local branch's upstream, then reloads.
+   * @param branch The local branch.
+   * @returns Returns the outcome.
+   */
+  public clearUpstream(branch: string): Promise<MutationResult> {
+    this.log.info('Repository', `Clearing the upstream of '${branch}'`);
+    return this.mutate(
+      (provider: SourceControlProvider): Promise<MutationResult> =>
+        provider.setUpstream(branch, null),
+    );
+  }
+
+  /**
    * Fetches one remote, then reloads. The outcome raises a toast.
    * @param remote The remote to fetch.
    * @returns Returns the outcome.

@@ -282,6 +282,26 @@ class FakeProvider implements SourceControlProvider {
     return Promise.resolve({ success: true });
   }
 
+  /**
+   * Holds what an unforced {@link deleteBranch} resolves to, so the unmerged refusal can be driven.
+   */
+  public deleteBranchOutcome: Promise<MutationResult> | null = null;
+
+  public deleteBranch(name: string, force: boolean): Promise<MutationResult> {
+    this.calls.push(`deleteBranch:${name}:${force}`);
+    return this.deleteBranchOutcome ?? Promise.resolve({ success: true });
+  }
+
+  public renameBranch(from: string, to: string): Promise<MutationResult> {
+    this.calls.push(`renameBranch:${from}:${to}`);
+    return Promise.resolve({ success: true });
+  }
+
+  public setUpstream(branch: string, upstream: string | null): Promise<MutationResult> {
+    this.calls.push(`setUpstream:${branch}:${upstream ?? ''}`);
+    return Promise.resolve({ success: true });
+  }
+
   public close(): Promise<void> {
     return Promise.resolve();
   }
@@ -716,7 +736,7 @@ describe('SourceControlSidebar', () => {
         .contextMenuFor(row)
         .filter((item: MenuItem): boolean => item.separator !== true)
         .map((item: MenuItem): string => item.label),
-    ).toEqual(['Check Out', 'Push', 'Pull', 'Sync']);
+    ).toEqual(['Check Out', 'Push', 'Pull', 'Sync', 'Rename…', 'Set Upstream…', 'Delete…']);
 
     menu.onContextAction({ itemId: 'branch.checkout', row });
 
@@ -775,6 +795,178 @@ describe('SourceControlSidebar', () => {
       },
     };
   }
+
+  describe('branch housekeeping', () => {
+    /**
+     * Reveals the protected surface these tests drive.
+     * @returns Returns the internals.
+     */
+    function branchOps(): {
+      onContextAction(c: TreeMenuSelection): void;
+      pendingDeleteBranch(): GitBranch | null;
+      pendingForceDeleteBranch(): GitBranch | null;
+      confirmDeleteBranch(): Promise<void>;
+      cancelDeleteBranch(): void;
+      confirmForceDeleteBranch(): void;
+      cancelForceDeleteBranch(): void;
+      renamingBranch(): GitBranch | null;
+      renameName: WritableSignal<string>;
+      renameNameError(): string | null;
+      canRenameBranch(): boolean;
+      confirmRenameBranch(): void;
+      upstreamBranch(): GitBranch | null;
+      upstreamChoice: WritableSignal<string>;
+      upstreamOptions(): readonly { value: string; label: string; group?: string }[];
+      confirmUpstream(): void;
+    } {
+      return component as unknown as ReturnType<typeof branchOps>;
+    }
+
+    it('deleteIsOfferedOnEveryBranchButTheOneCheckedOut', () => {
+      // Git will not delete the branch it is standing on; a row whose only outcome is that refusal
+      // is not worth having.
+      const menu: { contextMenuFor(r: TreeRow): readonly MenuItem[] } = component;
+      const labels: (row: TreeRow) => readonly string[] = (row: TreeRow): readonly string[] =>
+        menu.contextMenuFor(row).map((item: MenuItem): string => item.label);
+
+      expect(labels(otherBranchRow())).toContain('Delete…');
+      expect(labels(currentBranchRow())).not.toContain('Delete…');
+    });
+
+    it('clearUpstreamIsOfferedOnlyToABranchThatHasOne', () => {
+      const menu: { contextMenuFor(r: TreeRow): readonly MenuItem[] } = component;
+
+      expect(
+        menu.contextMenuFor(otherBranchRow()).map((item: MenuItem): string => item.label),
+      ).toContain('Clear Upstream');
+      expect(
+        menu
+          .contextMenuFor(
+            currentBranchRow({ name: 'main', current: true, ahead: 0, behind: 0, tip: 'c2' }),
+          )
+          .map((item: MenuItem): string => item.label),
+      ).not.toContain('Clear Upstream');
+    });
+
+    it('deletingABranchAsksFirst_andDeletesWithoutForceOnceConfirmed', async () => {
+      branchOps().onContextAction({ itemId: 'branch.delete', row: otherBranchRow() });
+      expect(branchOps().pendingDeleteBranch()?.name).toBe('develop');
+
+      await branchOps().confirmDeleteBranch();
+
+      expect(provider.calls).toContain('deleteBranch:develop:false');
+    });
+
+    it('cancellingTheDelete_leavesTheBranchAlone', () => {
+      branchOps().onContextAction({ itemId: 'branch.delete', row: otherBranchRow() });
+      branchOps().cancelDeleteBranch();
+
+      expect(branchOps().pendingDeleteBranch()).toBeNull();
+      expect(provider.calls.some((call: string): boolean => call.startsWith('deleteBranch:'))).toBe(
+        false,
+      );
+    });
+
+    it('whenGitRefusesAnUnmergedBranch_asksAgainRatherThanReportingAFailure', async () => {
+      // The one refusal with a way past. It is a different question, so it gets its own dialog.
+      provider.deleteBranchOutcome = Promise.resolve({
+        success: false,
+        error: 'not fully merged',
+        code: 'branch-not-merged',
+      });
+      branchOps().onContextAction({ itemId: 'branch.delete', row: otherBranchRow() });
+
+      await branchOps().confirmDeleteBranch();
+
+      expect(branchOps().pendingForceDeleteBranch()?.name).toBe('develop');
+    });
+
+    it('confirmingTheSecondQuestion_forcesTheDelete', async () => {
+      provider.deleteBranchOutcome = Promise.resolve({
+        success: false,
+        error: 'not fully merged',
+        code: 'branch-not-merged',
+      });
+      branchOps().onContextAction({ itemId: 'branch.delete', row: otherBranchRow() });
+      await branchOps().confirmDeleteBranch();
+      provider.deleteBranchOutcome = null;
+
+      branchOps().confirmForceDeleteBranch();
+      await fixture.whenStable();
+
+      expect(provider.calls).toContain('deleteBranch:develop:true');
+    });
+
+    it('anyOtherDeleteFailure_doesNotOfferToForceIt', async () => {
+      provider.deleteBranchOutcome = Promise.resolve({ success: false, error: 'is checked out' });
+      branchOps().onContextAction({ itemId: 'branch.delete', row: otherBranchRow() });
+
+      await branchOps().confirmDeleteBranch();
+
+      expect(branchOps().pendingForceDeleteBranch()).toBeNull();
+    });
+
+    it('renamingSeedsTheDialogWithTheCurrentName_andRejectsADuplicate', () => {
+      branchOps().onContextAction({ itemId: 'branch.rename', row: otherBranchRow() });
+
+      expect(branchOps().renamingBranch()?.name).toBe('develop');
+      expect(branchOps().renameName()).toBe('develop');
+      // Unchanged is not an error, but there is nothing to do with it either.
+      expect(branchOps().renameNameError()).toBeNull();
+      expect(branchOps().canRenameBranch()).toBe(false);
+
+      branchOps().renameName.set('main');
+      expect(branchOps().renameNameError()).toBe('A branch with this name already exists.');
+      expect(branchOps().canRenameBranch()).toBe(false);
+    });
+
+    it('renamesABranch', async () => {
+      branchOps().onContextAction({ itemId: 'branch.rename', row: otherBranchRow() });
+      branchOps().renameName.set('  feature/renamed  ');
+
+      branchOps().confirmRenameBranch();
+      await fixture.whenStable();
+
+      expect(provider.calls).toContain('renameBranch:develop:feature/renamed');
+    });
+
+    it('theUpstreamDialogOffersEveryRemoteBranch_groupedByRemote', () => {
+      branchOps().onContextAction({ itemId: 'branch.setUpstream', row: otherBranchRow() });
+
+      expect(
+        branchOps()
+          .upstreamOptions()
+          .map((option): string => option.value),
+      ).toEqual(['origin/main', 'origin/develop']);
+      expect(branchOps().upstreamOptions()[0].group).toBe('origin');
+      // Seeded with what the branch already tracks.
+      expect(branchOps().upstreamChoice()).toBe('origin/develop');
+    });
+
+    it('theUpstreamDialog_seedsASameNamedBranch_whenThereIsNoUpstreamYet', () => {
+      branchOps().onContextAction({
+        itemId: 'branch.setUpstream',
+        row: currentBranchRow({ name: 'develop', current: true, ahead: 0, behind: 0, tip: 'c1' }),
+      });
+
+      // Nearly always what was meant by a branch that has never been published.
+      expect(branchOps().upstreamChoice()).toBe('origin/develop');
+    });
+
+    it('setsAndClearsTheUpstream', async () => {
+      branchOps().onContextAction({ itemId: 'branch.setUpstream', row: otherBranchRow() });
+      branchOps().upstreamChoice.set('origin/main');
+      branchOps().confirmUpstream();
+      await fixture.whenStable();
+
+      expect(provider.calls).toContain('setUpstream:develop:origin/main');
+
+      branchOps().onContextAction({ itemId: 'branch.clearUpstream', row: otherBranchRow() });
+      await fixture.whenStable();
+
+      expect(provider.calls).toContain('setUpstream:develop:');
+    });
+  });
 
   describe('the Remote section', () => {
     /**
@@ -1046,7 +1238,7 @@ describe('SourceControlSidebar', () => {
         .contextMenuFor(currentBranchRow())
         .filter((item: MenuItem): boolean => item.separator !== true)
         .map((item: MenuItem): string => item.label),
-    ).toEqual(['Commit…', 'Push', 'Pull', 'Sync']);
+    ).toEqual(['Commit…', 'Push', 'Pull', 'Sync', 'Rename…', 'Set Upstream…', 'Clear Upstream']);
   });
 
   it('theCheckedOutBranchDropsCommit_whenThereIsNothingToCommit', async () => {
@@ -1059,7 +1251,7 @@ describe('SourceControlSidebar', () => {
         .contextMenuFor(currentBranchRow())
         .filter((item: MenuItem): boolean => item.separator !== true)
         .map((item: MenuItem): string => item.label),
-    ).toEqual(['Push', 'Pull', 'Sync']);
+    ).toEqual(['Push', 'Pull', 'Sync', 'Rename…', 'Set Upstream…', 'Clear Upstream']);
   });
 
   it('commit_selectsTheWorkingTreeAndBringsTheCommitPanelForward', () => {
@@ -1082,7 +1274,16 @@ describe('SourceControlSidebar', () => {
         .contextMenuFor(otherBranchRow())
         .filter((item: MenuItem): boolean => item.separator !== true)
         .map((item: MenuItem): string => item.label),
-    ).toEqual(['Check Out', 'Push', 'Pull', 'Sync']);
+    ).toEqual([
+      'Check Out',
+      'Push',
+      'Pull',
+      'Sync',
+      'Rename…',
+      'Set Upstream…',
+      'Clear Upstream',
+      'Delete…',
+    ]);
   });
 
   it('aBranchThatIsNotCheckedOut_saysItsPullIsAFastForward', () => {

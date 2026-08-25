@@ -50,7 +50,9 @@ import {
   TreeView,
 } from '@shared/angular/components/tree-view/tree-view';
 import { MenuItem } from '@shared/angular/components/menu/menu';
+import { MutationResult } from '@shared/angular/services/source-control/source-control-provider';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
+import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { Log } from '@shared/angular/services/log/log';
 
 /**
@@ -215,6 +217,32 @@ const ACTION_OPEN_REMOTE_URL: string = 'remote.openUrl';
 const ACTION_ADD_REMOTE: string = 'repo.addRemote';
 
 /**
+ * Identifies the Rename command on a branch's context menu.
+ */
+const ACTION_RENAME_BRANCH: string = 'branch.rename';
+
+/**
+ * Identifies the Set Upstream command on a branch's context menu.
+ */
+const ACTION_SET_UPSTREAM: string = 'branch.setUpstream';
+
+/**
+ * Identifies the Clear Upstream command on a branch's context menu.
+ */
+const ACTION_CLEAR_UPSTREAM: string = 'branch.clearUpstream';
+
+/**
+ * Identifies the Delete command on a branch's context menu.
+ */
+const ACTION_DELETE_BRANCH: string = 'branch.delete';
+
+/**
+ * The failure code an unforced branch delete carries when git refused it because the branch still
+ * holds commits merged nowhere. The one refusal that is offered a way past.
+ */
+const BRANCH_NOT_MERGED: string = 'branch-not-merged';
+
+/**
  * Identifies the Commit command on the checked-out branch's context menu.
  */
 const ACTION_COMMIT_BRANCH: string = 'branch.commit';
@@ -370,6 +398,7 @@ interface SectionDef {
   imports: [
     TextField,
     Button,
+    Dropdown,
     AppIcon,
     Checkbox,
     Modal,
@@ -952,6 +981,215 @@ export class SourceControlSidebar implements OnDestroy {
   }
 
   /**
+   * Holds the branch awaiting delete confirmation, or null when none is.
+   */
+  protected readonly pendingDeleteBranch: WritableSignal<GitBranch | null> =
+    signal<GitBranch | null>(null);
+
+  /**
+   * Holds the branch whose delete git refused for holding unmerged commits, or null when none has
+   * been. Distinct from {@link pendingDeleteBranch} because it is a different question: the first
+   * asks whether to delete, this one asks whether to lose work.
+   */
+  protected readonly pendingForceDeleteBranch: WritableSignal<GitBranch | null> =
+    signal<GitBranch | null>(null);
+
+  /**
+   * Confirms the delete, attempting it without force first.
+   *
+   * A refusal for unmerged commits is not reported as a failure but asked about: git declined because
+   * the branch holds work that exists nowhere else, and whether to lose it is the user's call. Every
+   * other failure is left to the panel's error surface.
+   */
+  protected async confirmDeleteBranch(): Promise<void> {
+    const branch: GitBranch | null = this.pendingDeleteBranch();
+    this.pendingDeleteBranch.set(null);
+    if (branch === null) {
+      return;
+    }
+    this.log.info('SourceControlSidebar', `Deleting branch '${branch.name}'`);
+    const result: MutationResult = await this.repository.deleteBranch(branch.name);
+    if (!result.success && result.code === BRANCH_NOT_MERGED) {
+      this.pendingForceDeleteBranch.set(branch);
+    }
+  }
+
+  /**
+   * Dismisses the delete confirmation, leaving the branch alone.
+   */
+  protected cancelDeleteBranch(): void {
+    this.pendingDeleteBranch.set(null);
+  }
+
+  /**
+   * Confirms the forced delete, losing the branch's unmerged commits.
+   */
+  protected confirmForceDeleteBranch(): void {
+    const branch: GitBranch | null = this.pendingForceDeleteBranch();
+    this.pendingForceDeleteBranch.set(null);
+    if (branch !== null) {
+      this.log.warn('SourceControlSidebar', `Force-deleting branch '${branch.name}'`);
+      void this.repository.deleteBranch(branch.name, true);
+    }
+  }
+
+  /**
+   * Dismisses the forced-delete question, leaving the branch and its commits alone.
+   */
+  protected cancelForceDeleteBranch(): void {
+    this.pendingForceDeleteBranch.set(null);
+  }
+
+  /**
+   * Holds the branch being renamed, or null when the rename dialog is closed.
+   */
+  protected readonly renamingBranch: WritableSignal<GitBranch | null> = signal<GitBranch | null>(
+    null,
+  );
+
+  /**
+   * Holds the new name being entered in the rename dialog.
+   */
+  protected readonly renameName: WritableSignal<string> = signal<string>('');
+
+  /**
+   * Gets the reason the entered name cannot be used, or null when it can.
+   */
+  protected readonly renameNameError: Signal<string | null> = computed((): string | null => {
+    const name: string = this.renameName().trim();
+    if (name.length === 0 || name === this.renamingBranch()?.name) {
+      return null;
+    }
+    return this.repository.branches().some((branch: GitBranch): boolean => branch.name === name)
+      ? 'A branch with this name already exists.'
+      : null;
+  });
+
+  /**
+   * Gets whether the rename can be applied. A name unchanged from the branch's own is not an error to
+   * report, but there is nothing to do with it either.
+   */
+  protected readonly canRenameBranch: Signal<boolean> = computed((): boolean => {
+    const name: string = this.renameName().trim();
+    return (
+      name.length > 0 && name !== this.renamingBranch()?.name && this.renameNameError() === null
+    );
+  });
+
+  /**
+   * Opens the rename dialog for a branch, seeded with its current name.
+   * @param branch The branch to rename.
+   */
+  private openRenameDialog(branch: GitBranch): void {
+    this.renameName.set(branch.name);
+    this.renamingBranch.set(branch);
+  }
+
+  /**
+   * Confirms the rename.
+   */
+  protected confirmRenameBranch(): void {
+    const branch: GitBranch | null = this.renamingBranch();
+    if (branch === null || !this.canRenameBranch()) {
+      return;
+    }
+    const name: string = this.renameName().trim();
+    this.renamingBranch.set(null);
+    this.log.info('SourceControlSidebar', `Renaming '${branch.name}' to '${name}'`);
+    void this.repository.renameBranch(branch.name, name);
+  }
+
+  /**
+   * Dismisses the rename dialog without renaming anything.
+   */
+  protected cancelRenameBranch(): void {
+    this.renamingBranch.set(null);
+  }
+
+  /**
+   * Records the new branch name as it is typed.
+   * @param value The entered name.
+   */
+  protected onRenameNameValue(value: string): void {
+    this.renameName.set(value);
+  }
+
+  /**
+   * Holds the branch whose upstream is being set, or null when the dialog is closed.
+   */
+  protected readonly upstreamBranch: WritableSignal<GitBranch | null> = signal<GitBranch | null>(
+    null,
+  );
+
+  /**
+   * Holds the remote-tracking branch chosen in the upstream dialog.
+   */
+  protected readonly upstreamChoice: WritableSignal<string> = signal<string>('');
+
+  /**
+   * Gets the remote-tracking branches offered as upstreams, grouped by the remote they belong to.
+   * The dropdown groups consecutive runs, and the remotes already arrive grouped.
+   */
+  protected readonly upstreamOptions: Signal<readonly DropdownOption[]> = computed(
+    (): readonly DropdownOption[] =>
+      this.repository.remotes().flatMap((remote: GitRemote): readonly DropdownOption[] =>
+        remote.branches.map(
+          (branch: GitRemoteBranch): DropdownOption => ({
+            value: branch.name,
+            label: branch.name,
+            group: remote.name,
+          }),
+        ),
+      ),
+  );
+
+  /**
+   * Opens the upstream dialog for a branch.
+   *
+   * The choice is seeded with what the branch already tracks; failing that, with a remote-tracking
+   * branch of the same name if one exists, which is nearly always what was meant. Failing both, the
+   * first on offer.
+   *
+   * @param branch The branch whose upstream is being set.
+   */
+  private openUpstreamDialog(branch: GitBranch): void {
+    const options: readonly DropdownOption[] = this.upstreamOptions();
+    const sameName: DropdownOption | undefined = options.find((option: DropdownOption): boolean =>
+      option.value.endsWith(`/${branch.name}`),
+    );
+    this.upstreamChoice.set(branch.upstream ?? sameName?.value ?? options[0]?.value ?? '');
+    this.upstreamBranch.set(branch);
+  }
+
+  /**
+   * Confirms the upstream dialog.
+   */
+  protected confirmUpstream(): void {
+    const branch: GitBranch | null = this.upstreamBranch();
+    const upstream: string = this.upstreamChoice();
+    this.upstreamBranch.set(null);
+    if (branch !== null && upstream.length > 0) {
+      this.log.info('SourceControlSidebar', `Setting '${branch.name}' to track '${upstream}'`);
+      void this.repository.setUpstream(branch.name, upstream);
+    }
+  }
+
+  /**
+   * Dismisses the upstream dialog without changing anything.
+   */
+  protected cancelUpstream(): void {
+    this.upstreamBranch.set(null);
+  }
+
+  /**
+   * Records the upstream chosen from the dropdown.
+   * @param value The chosen remote-tracking branch.
+   */
+  protected onUpstreamChoice(value: string): void {
+    this.upstreamChoice.set(value);
+  }
+
+  /**
    * Opens a remote's web address in the browser.
    * @param remote The remote to open.
    */
@@ -1451,9 +1689,45 @@ export class SourceControlSidebar implements OnDestroy {
             },
           ]
       : [{ id: ACTION_CHECKOUT_BRANCH, label: 'Check Out', icon: Icon.TRAY_UP }];
-    return lead.length === 0
-      ? this.upstreamItems(branch)
-      : [...lead, { separator: true, id: 'branch.sep', label: '' }, ...this.upstreamItems(branch)];
+    return [
+      ...lead,
+      ...(lead.length === 0 ? [] : [{ separator: true, id: 'branch.sep.lead', label: '' }]),
+      ...this.upstreamItems(branch),
+      { separator: true, id: 'branch.sep.manage', label: '' },
+      ...this.branchManagementItems(branch),
+    ];
+  }
+
+  /**
+   * Builds a branch's own housekeeping commands — what to call it, what it tracks, and whether it
+   * stays.
+   *
+   * Clearing the upstream is offered only to a branch that has one, since it is a command with no
+   * effect otherwise. Deleting is offered to every branch but the checked-out one: git will not
+   * delete the branch it is standing on, and a command whose only outcome is that refusal is not
+   * worth a row.
+   *
+   * @param branch The branch the row carries.
+   * @returns Returns the menu items.
+   */
+  private branchManagementItems(branch: GitBranch): readonly MenuItem[] {
+    const items: MenuItem[] = [
+      { id: ACTION_RENAME_BRANCH, label: 'Rename…', icon: Icon.PENCIL },
+      {
+        id: ACTION_SET_UPSTREAM,
+        label: 'Set Upstream…',
+        icon: Icon.CLOUD,
+        ...(branch.upstream === undefined ? {} : { status: branch.upstream }),
+      },
+    ];
+    if (branch.upstream !== undefined) {
+      items.push({ id: ACTION_CLEAR_UPSTREAM, label: 'Clear Upstream', icon: Icon.CLOSE });
+    }
+    if (!branch.current) {
+      items.push({ separator: true, id: 'branch.sep.delete', label: '' });
+      items.push({ id: ACTION_DELETE_BRANCH, label: 'Delete…', icon: Icon.TRASH });
+    }
+    return items;
   }
 
   /**
@@ -1694,6 +1968,27 @@ export class SourceControlSidebar implements OnDestroy {
         break;
       case ACTION_COMMIT_BRANCH:
         this.commitOnBranch();
+        break;
+      case ACTION_RENAME_BRANCH:
+        if (node.branch !== undefined) {
+          this.openRenameDialog(node.branch);
+        }
+        break;
+      case ACTION_SET_UPSTREAM:
+        if (node.branch !== undefined) {
+          this.openUpstreamDialog(node.branch);
+        }
+        break;
+      case ACTION_CLEAR_UPSTREAM:
+        if (node.branch !== undefined) {
+          this.log.info('SourceControlSidebar', `Clearing the upstream of '${node.branch.name}'`);
+          void this.repository.clearUpstream(node.branch.name);
+        }
+        break;
+      case ACTION_DELETE_BRANCH:
+        if (node.branch !== undefined) {
+          this.pendingDeleteBranch.set(node.branch);
+        }
         break;
       case ACTION_CHECKOUT_REMOTE_BRANCH:
         if (node.remoteBranch !== undefined && node.remote !== undefined) {

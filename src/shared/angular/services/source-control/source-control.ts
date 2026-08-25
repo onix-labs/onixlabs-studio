@@ -71,6 +71,12 @@ function createClient(bridge: Bridge): SourceControlClient {
       setUpstream?: boolean,
     ): Promise<GitRunResult> =>
       bridge.invoke(SourceControlChannel.Push, root, remote, branch, setUpstream),
+    deleteBranch: (root: string, name: string, force: boolean): Promise<GitRunResult> =>
+      bridge.invoke(SourceControlChannel.DeleteBranch, root, name, force),
+    renameBranch: (root: string, from: string, to: string): Promise<GitRunResult> =>
+      bridge.invoke(SourceControlChannel.RenameBranch, root, from, to),
+    setUpstream: (root: string, branch: string, upstream: string | null): Promise<GitRunResult> =>
+      bridge.invoke(SourceControlChannel.SetUpstream, root, branch, upstream),
     fetchRemote: (root: string, remote: string): Promise<GitRunResult> =>
       bridge.invoke(SourceControlChannel.FetchRemote, root, remote),
     pruneRemote: (root: string, remote: string): Promise<GitRunResult> =>
