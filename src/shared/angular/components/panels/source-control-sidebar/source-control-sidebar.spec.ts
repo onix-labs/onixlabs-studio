@@ -228,7 +228,7 @@ function sectionRow(key: string, label: string): TreeRow {
 class FakeForgeRepository {
   public readonly section: WritableSignal<ForgeSection<ForgePullRequest>> = signal<
     ForgeSection<ForgePullRequest>
-  >({ state: 'no-repository', items: [], message: null });
+  >({ state: 'no-repository', items: [], message: null, stale: false });
 
   /**
    * Holds how many times the pull requests were loaded, so lazy loading can be asserted.
@@ -242,11 +242,11 @@ class FakeForgeRepository {
 
   public readonly issueSection: WritableSignal<ForgeSection<ForgeIssue>> = signal<
     ForgeSection<ForgeIssue>
-  >({ state: 'no-repository', items: [], message: null });
+  >({ state: 'no-repository', items: [], message: null, stale: false });
 
   public readonly runSection: WritableSignal<ForgeSection<ForgeWorkflowRun>> = signal<
     ForgeSection<ForgeWorkflowRun>
-  >({ state: 'no-repository', items: [], message: null });
+  >({ state: 'no-repository', items: [], message: null, stale: false });
 
   /**
    * Holds the run commands issued, in order.
@@ -284,6 +284,27 @@ class FakeForgeRepository {
     return Promise.resolve();
   }
 
+  /**
+   * Holds the section keys currently watched, so visibility-tied polling can be asserted.
+   */
+  public readonly watched: Set<string> = new Set<string>();
+
+  public watch(key: string): void {
+    // Mirrors the real service, which only watches the three forge-backed sections — the rest are
+    // git-backed and are loaded with the repository.
+    if (['pullRequests', 'issues', 'actions'].includes(key)) {
+      this.watched.add(key);
+    }
+  }
+
+  public unwatch(key: string): void {
+    this.watched.delete(key);
+  }
+
+  public unwatchAll(): void {
+    this.watched.clear();
+  }
+
   public rerun(entry: ForgeWorkflowRun): Promise<{ ok: boolean }> {
     this.commands.push(`rerun:${entry.id}`);
     return Promise.resolve({ ok: true });
@@ -300,7 +321,7 @@ class FakeForgeRepository {
   }
 
   public reset(): void {
-    this.section.set({ state: 'no-repository', items: [], message: null });
+    this.section.set({ state: 'no-repository', items: [], message: null, stale: false });
   }
 }
 
@@ -885,7 +906,7 @@ describe('SourceControlSidebar', () => {
     });
 
     it('showsTheRealPullRequests_notSampleData', () => {
-      forge.section.set({ state: 'ready', items: [pullRequest()], message: null });
+      forge.section.set({ state: 'ready', items: [pullRequest()], message: null, stale: false });
 
       expand();
 
@@ -900,6 +921,7 @@ describe('SourceControlSidebar', () => {
         state: 'ready',
         items: [pullRequest({ draft: true })],
         message: null,
+        stale: false,
       });
 
       expand();
@@ -908,7 +930,7 @@ describe('SourceControlSidebar', () => {
     });
 
     it('showsTheCheckBadge_butOmitsItWhenNothingHasReported', () => {
-      forge.section.set({ state: 'ready', items: [pullRequest()], message: null });
+      forge.section.set({ state: 'ready', items: [pullRequest()], message: null, stale: false });
       expand();
       expect(
         (fixture.nativeElement as HTMLElement).querySelector('.rail__status--succeeded'),
@@ -918,6 +940,7 @@ describe('SourceControlSidebar', () => {
         state: 'ready',
         items: [pullRequest({ checks: 'none' })],
         message: null,
+        stale: false,
       });
       fixture.detectChanges();
 
@@ -931,6 +954,7 @@ describe('SourceControlSidebar', () => {
         state: 'ready',
         items: [pullRequest({ checks: 'running' })],
         message: null,
+        stale: false,
       });
 
       expand();
@@ -949,6 +973,7 @@ describe('SourceControlSidebar', () => {
         state: 'ready',
         items: [pullRequest({ checks: 'failed' })],
         message: null,
+        stale: false,
       });
 
       expand();
@@ -962,10 +987,13 @@ describe('SourceControlSidebar', () => {
 
     it('distinguishesNoPullRequests_fromEveryFailedState', () => {
       const cases: readonly [ForgeSection<ForgePullRequest>, string][] = [
-        [{ state: 'ready', items: [], message: null }, 'No open pull requests'],
-        [{ state: 'no-forge', items: [], message: 'No forge here' }, 'No forge here'],
-        [{ state: 'unauthorized', items: [], message: 'Sign in first' }, 'Sign in first'],
-        [{ state: 'error', items: [], message: 'It broke' }, 'It broke'],
+        [{ state: 'ready', items: [], message: null, stale: false }, 'No open pull requests'],
+        [{ state: 'no-forge', items: [], message: 'No forge here', stale: false }, 'No forge here'],
+        [
+          { state: 'unauthorized', items: [], message: 'Sign in first', stale: false },
+          'Sign in first',
+        ],
+        [{ state: 'error', items: [], message: 'It broke', stale: false }, 'It broke'],
       ];
       expand();
 
@@ -977,7 +1005,7 @@ describe('SourceControlSidebar', () => {
     });
 
     it('fallsBackToAStateMessage_whenTheReadSuppliedNone', () => {
-      forge.section.set({ state: 'loading', items: [], message: null });
+      forge.section.set({ state: 'loading', items: [], message: null, stale: false });
 
       expand();
 
@@ -1072,8 +1100,9 @@ describe('SourceControlSidebar', () => {
           (data: { issue: ForgeIssue }): ForgeIssue => data.issue,
         ),
         message: null,
+        stale: false,
       });
-      forge.runSection.set({ state: 'ready', items: [workflowRun()], message: null });
+      forge.runSection.set({ state: 'ready', items: [workflowRun()], message: null, stale: false });
 
       component.onRowClick(sectionRow('issues', 'Issues'));
       component.onRowClick(sectionRow('actions', 'Actions'));
@@ -1162,6 +1191,7 @@ describe('SourceControlSidebar', () => {
         state: 'ready',
         items: [workflowRun({ status: 'queued' })],
         message: null,
+        stale: false,
       });
 
       component.onRowClick(sectionRow('actions', 'Actions'));
@@ -1379,6 +1409,86 @@ describe('SourceControlSidebar', () => {
 
       expect(menu().pendingDrop()?.index).toBe(0);
       expect(provider.calls).not.toContain('dropStash:0');
+    });
+  });
+
+  describe('stale data and watching', () => {
+    it('keepsShowingStaleItems_andSaysWhyOnTheHeading', () => {
+      // Blanking the section because the network blinked would tell the user less than leaving it up.
+      forge.section.set({
+        state: 'error',
+        items: [pullRequest()],
+        message: 'Offline',
+        stale: true,
+      });
+      component.onRowClick(sectionRow('pullRequests', 'Pull Requests'));
+      fixture.detectChanges();
+
+      const host: HTMLElement = fixture.nativeElement as HTMLElement;
+      expect(host.textContent).toContain('#7 Add the thing');
+      expect(host.querySelector('.rail__note')?.textContent?.trim()).toBe('offline');
+    });
+
+    it('namesTheRateLimitApart_sinceWaitingIsADifferentAnswerFromRetrying', () => {
+      forge.section.set({
+        state: 'rate-limited',
+        items: [pullRequest()],
+        message: 'Rate limited.',
+        stale: true,
+      });
+      component.onRowClick(sectionRow('pullRequests', 'Pull Requests'));
+      fixture.detectChanges();
+
+      expect(
+        (fixture.nativeElement as HTMLElement).querySelector('.rail__note')?.textContent?.trim(),
+      ).toBe('rate limited');
+    });
+
+    it('showsTheWholeReason_whenThereIsNothingLeftToShow', () => {
+      // With nothing on screen there is room for the sentence, so the placeholder carries it.
+      forge.section.set({
+        state: 'error',
+        items: [],
+        message: 'Could not reach GitHub.',
+        stale: false,
+      });
+      component.onRowClick(sectionRow('pullRequests', 'Pull Requests'));
+      fixture.detectChanges();
+
+      const host: HTMLElement = fixture.nativeElement as HTMLElement;
+      expect(host.textContent).toContain('Could not reach GitHub.');
+      expect(host.querySelector('.rail__note')).toBeNull();
+    });
+
+    it('watchesASectionWhileItIsOpen_andStopsWhenItCloses', () => {
+      component.onRowClick(sectionRow('pullRequests', 'Pull Requests'));
+      expect([...forge.watched]).toEqual(['pullRequests']);
+
+      component.onRowClick(sectionRow('pullRequests', 'Pull Requests'));
+      expect([...forge.watched]).toEqual([]);
+    });
+
+    it('stopsWatchingEverythingWhenThePanelGoesAway', () => {
+      // A tool panel is destroyed whenever another in its stack activates, so this is the common case.
+      component.onRowClick(sectionRow('issues', 'Issues'));
+      expect(forge.watched.size).toBe(1);
+
+      fixture.destroy();
+
+      expect(forge.watched.size).toBe(0);
+    });
+
+    it('collapseAll_stopsWatchingEverything', () => {
+      const internals: { collapseAll(): void; expandAll(): void } = component as unknown as {
+        collapseAll(): void;
+        expandAll(): void;
+      };
+      internals.expandAll();
+      expect(forge.watched.size).toBe(3);
+
+      internals.collapseAll();
+
+      expect(forge.watched.size).toBe(0);
     });
   });
 });

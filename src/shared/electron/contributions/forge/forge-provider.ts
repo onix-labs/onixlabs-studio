@@ -27,6 +27,18 @@ export interface ForgeResponse {
    * @returns Returns the parsed body.
    */
   json(): Promise<unknown>;
+
+  /**
+   * Reads a response header, case-insensitively.
+   *
+   * Present because the rate limit and the entity tag are only knowable from headers: a forge that
+   * answers 304 sends no body at all, and the budget that decides whether to ask again is not in one
+   * either.
+   *
+   * @param name The header name.
+   * @returns Returns the header value, or null when the response carries none.
+   */
+  header(name: string): string | null;
 }
 
 /**

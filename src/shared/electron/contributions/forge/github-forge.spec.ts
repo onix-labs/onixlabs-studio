@@ -37,6 +37,11 @@ interface Route {
    * Gets the JSON body to reply with.
    */
   readonly body: unknown;
+
+  /**
+   * Gets the response headers, keyed lower-case.
+   */
+  readonly headers?: Record<string, string>;
 }
 
 /**
@@ -57,14 +62,29 @@ class FakeHttp {
   /**
    * Holds the routes answered.
    */
-  private readonly routes: readonly Route[];
+  private readonly routes: Route[];
 
   /**
    * Initializes a new instance of the {@link FakeHttp} class.
    * @param routes The routes to answer.
    */
   public constructor(routes: readonly Route[]) {
-    this.routes = routes;
+    this.routes = [...routes];
+  }
+
+  /**
+   * Replaces the route matching a fragment, so a second call can answer differently.
+   * @param route The replacement route.
+   */
+  public setRoute(route: Route): void {
+    const index: number = this.routes.findIndex(
+      (candidate: Route): boolean => candidate.match === route.match,
+    );
+    if (index === -1) {
+      this.routes.push(route);
+    } else {
+      this.routes[index] = route;
+    }
   }
 
   /**
@@ -80,10 +100,12 @@ class FakeHttp {
       if (route === undefined) {
         return Promise.reject(new Error(`No route for ${url}`));
       }
+      const headers: Record<string, string> = route.headers ?? {};
       return Promise.resolve({
         ok: route.status >= 200 && route.status < 300,
         status: route.status,
         json: (): Promise<unknown> => Promise.resolve(route.body),
+        header: (name: string): string | null => headers[name.toLowerCase()] ?? null,
       });
     };
   }
@@ -550,5 +572,194 @@ describe('GitHubForge', () => {
 
       expect(result).toEqual({ ok: true, value: [] });
     });
+  });
+});
+
+describe('conditional requests and the rate limit', () => {
+  /**
+   * The identity route, which every test here reads through.
+   * @param overrides The route fields to vary.
+   * @returns Returns the route.
+   */
+  function userRoute(overrides: Partial<Route> = {}): Route {
+    return { match: '/user', status: 200, body: { login: 'matthew' }, ...overrides };
+  }
+
+  it('sendsNoEntityTagOnTheFirstRead_thenRevalidatesWithTheOneItWasGiven', async () => {
+    const http: FakeHttp = new FakeHttp([userRoute({ headers: { etag: 'W/"abc"' } })]);
+    const forge: GitHubForge = new GitHubForge(http.fetch, (): string => 'ghp_test');
+
+    await forge.identity();
+    await forge.identity();
+
+    expect(http.headers[0]['if-none-match']).toBeUndefined();
+    expect(http.headers[1]['if-none-match']).toBe('W/"abc"');
+  });
+
+  it('servesTheCachedBodyOnNotModified_ratherThanAnEmptyOne', async () => {
+    // A 304 carries no body at all; reading one would yield nothing and look like an emptied section.
+    const http: FakeHttp = new FakeHttp([userRoute({ headers: { etag: 'W/"abc"' } })]);
+    const forge: GitHubForge = new GitHubForge(http.fetch, (): string => 'ghp_test');
+    await forge.identity();
+
+    http.setRoute({ match: '/user', status: 304, body: undefined });
+    const result: ForgeResult<ForgeIdentity> = await forge.identity();
+
+    expect(result).toEqual({ ok: true, value: { login: 'matthew', name: null } });
+  });
+
+  it('doesNotCacheAResponseWithNoEntityTag_sinceItCouldNeverBeRevalidated', async () => {
+    const http: FakeHttp = new FakeHttp([userRoute()]);
+    const forge: GitHubForge = new GitHubForge(http.fetch, (): string => 'ghp_test');
+
+    await forge.identity();
+    await forge.identity();
+
+    expect(http.headers[1]['if-none-match']).toBeUndefined();
+  });
+
+  it('dropsTheCacheWhenTheCredentialChanges', async () => {
+    // Two accounts do not see the same things at the same URL; serving one's body to the other would
+    // be a leak rather than a stale read.
+    const http: FakeHttp = new FakeHttp([userRoute({ headers: { etag: 'W/"abc"' } })]);
+    let token: string = 'ghp_one';
+    const forge: GitHubForge = new GitHubForge(http.fetch, (): string => token);
+    await forge.identity();
+
+    token = 'ghp_two';
+    await forge.identity();
+
+    expect(http.headers[1]['if-none-match']).toBeUndefined();
+  });
+
+  it('stopsAskingOnceTheBudgetIsNearlySpent_andSaysWhenItResumes', async () => {
+    const reset: number = 4_000;
+    const http: FakeHttp = new FakeHttp([
+      userRoute({
+        headers: { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': String(reset) },
+      }),
+    ]);
+    const forge: GitHubForge = new GitHubForge(
+      http.fetch,
+      (): string => 'ghp_test',
+      (): number => 1_000_000,
+    );
+
+    await forge.identity();
+    const result: ForgeResult<ForgeIdentity> = await forge.identity();
+
+    expect(result.ok).toBe(false);
+    // Refused here, not sent: spending a request to be told the budget is gone cannot help.
+    expect(http.urls.length).toBe(1);
+    expect(result.ok === false && result.retryAt).toBe(reset * 1000);
+    // A budget failure is not an authentication one, and must not send the user to settings.
+    expect(result.ok === false && result.unauthorized).toBe(false);
+  });
+
+  it('holdsBackAReserve_ratherThanSpendingToTheLastRequest', async () => {
+    // Studio is rarely the only thing on a token; the last few belong to whatever the user does next.
+    const http: FakeHttp = new FakeHttp([
+      userRoute({
+        headers: { 'x-ratelimit-remaining': '5', 'x-ratelimit-reset': '4000' },
+      }),
+    ]);
+    const forge: GitHubForge = new GitHubForge(
+      http.fetch,
+      (): string => 'ghp_test',
+      (): number => 1_000_000,
+    );
+
+    await forge.identity();
+    const result: ForgeResult<ForgeIdentity> = await forge.identity();
+
+    expect(result.ok).toBe(false);
+    expect(result.ok === false && result.retryAt).toBe(4_000_000);
+  });
+
+  it('recoversOnItsOwn_onceTheWindowHasRolledOver', async () => {
+    const http: FakeHttp = new FakeHttp([
+      userRoute({
+        headers: { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': '4000' },
+      }),
+    ]);
+    let now: number = 1_000_000;
+    const forge: GitHubForge = new GitHubForge(
+      http.fetch,
+      (): string => 'ghp_test',
+      (): number => now,
+    );
+    await forge.identity();
+    expect((await forge.identity()).ok).toBe(false);
+
+    // Past the reset, without any response having proved it — which is what lets the panel recover
+    // rather than waiting for a request nobody will make.
+    now = 4_000_001;
+
+    expect((await forge.identity()).ok).toBe(true);
+  });
+
+  it('tellsAnExhaustedBudgetApartFromAMissingScope_bothOfWhichAre403', async () => {
+    const http: FakeHttp = new FakeHttp([
+      userRoute({
+        status: 403,
+        body: {},
+        headers: { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': '4000' },
+      }),
+    ]);
+    const forge: GitHubForge = new GitHubForge(
+      http.fetch,
+      (): string => 'ghp_test',
+      (): number => 1_000_000,
+    );
+
+    const limited: ForgeResult<ForgeIdentity> = await forge.identity();
+
+    expect(limited.ok === false && limited.retryAt).toBe(4_000_000);
+    expect(limited.ok === false && limited.unauthorized).toBe(false);
+
+    // The same status with no budget headers is a scope problem, and does send the user to settings.
+    const plain: FakeHttp = new FakeHttp([userRoute({ status: 403, body: {} })]);
+    const scoped: ForgeResult<ForgeIdentity> = await new GitHubForge(
+      plain.fetch,
+      (): string => 'ghp_test',
+    ).identity();
+
+    expect(scoped.ok === false && scoped.unauthorized).toBe(true);
+    expect(scoped.ok === false && scoped.retryAt).toBeUndefined();
+  });
+
+  it('honoursRetryAfter_theSecondaryLimitsOwnMechanism', async () => {
+    const http: FakeHttp = new FakeHttp([
+      userRoute({ status: 403, body: {}, headers: { 'retry-after': '60' } }),
+    ]);
+    const forge: GitHubForge = new GitHubForge(
+      http.fetch,
+      (): string => 'ghp_test',
+      (): number => 1_000_000,
+    );
+
+    const result: ForgeResult<ForgeIdentity> = await forge.identity();
+
+    expect(result.ok === false && result.retryAt).toBe(1_000_000 + 60_000);
+  });
+
+  it('leavesTheLedgerAloneWhenAResponseCarriesNoBudgetHeaders', async () => {
+    // An unrelated failure must not look like a budget that has recovered.
+    const http: FakeHttp = new FakeHttp([
+      userRoute({
+        headers: { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': '4000' },
+      }),
+    ]);
+    const forge: GitHubForge = new GitHubForge(
+      http.fetch,
+      (): string => 'ghp_test',
+      (): number => 1_000_000,
+    );
+    await forge.identity();
+
+    http.setRoute({ match: '/user', status: 500, body: {} });
+
+    expect((await forge.identity()).ok).toBe(false);
+    expect(http.urls.length).toBe(1);
   });
 });

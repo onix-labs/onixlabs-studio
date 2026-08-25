@@ -26,6 +26,7 @@ export type ForgeSectionState =
   | 'no-repository'
   | 'no-forge'
   | 'unauthorized'
+  | 'rate-limited'
   | 'loading'
   | 'error'
   | 'ready';
@@ -40,9 +41,17 @@ export interface ForgeSection<T> {
   readonly state: ForgeSectionState;
 
   /**
-   * Gets the items read, which is empty in every state but `ready`.
+   * Gets the items read. A transient failure keeps the last good ones rather than emptying the
+   * section — data that was true a minute ago is worth more than a blank list — so this can be
+   * populated in a state other than `ready`. {@link stale} is what says which.
    */
   readonly items: readonly T[];
+
+  /**
+   * Gets a value indicating whether {@link items} are left over from an earlier read that has since
+   * failed, so the panel can show them while saying they are not current.
+   */
+  readonly stale: boolean;
 
   /**
    * Gets the message explaining an unhappy state, or null when there is nothing to explain.
@@ -53,7 +62,20 @@ export interface ForgeSection<T> {
 /**
  * The empty section, before anything has been asked for.
  */
-const IDLE: ForgeSection<never> = { state: 'no-repository', items: [], message: null };
+const IDLE: ForgeSection<never> = {
+  state: 'no-repository',
+  items: [],
+  message: null,
+  stale: false,
+};
+
+/**
+ * How often a watched section is re-read. Long enough that an idle workspace is not chattering at the
+ * forge, short enough that a pull request opened elsewhere shows up without being asked for. The cost
+ * of a tick is near zero either way: the request is conditional, and GitHub does not charge a 304
+ * against the budget.
+ */
+const POLL_INTERVAL_MS: number = 60_000;
 
 /**
  * Holds this workspace's forge-backed view of its repository: which repository the remote names on a
@@ -84,6 +106,11 @@ export class ForgeRepository {
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Reads the current time, for describing how long a rate limit has left. Overridable in tests.
+   */
+  protected now: () => number = Date.now;
 
   /**
    * Holds the detected forge repository, or null when the remotes name none.
@@ -225,11 +252,15 @@ export class ForgeRepository {
         state: 'no-forge',
         items: [],
         message: 'This repository has no remote on a supported forge.',
+        stale: false,
       });
       return;
     }
-    section.set({ state: 'loading', items: [], message: null });
-    section.set(sectionFor(await read(reference)));
+    const previous: ForgeSection<T> = section();
+    // Loading keeps whatever is on screen rather than blanking it. A poll that emptied the section
+    // for the length of a request would make an idle panel flicker once a minute.
+    section.set({ ...previous, state: 'loading', message: null });
+    section.set(sectionFor(await read(reference), previous, this.now()));
   }
 
   /**
@@ -300,6 +331,108 @@ export class ForgeRepository {
   }
 
   /**
+   * Holds the section keys currently being watched — those a user has open in front of them.
+   */
+  private readonly watched: Set<string> = new Set<string>();
+
+  /**
+   * Holds the poll timer, or null while nothing is being watched.
+   */
+  private timer: ReturnType<typeof setInterval> | null = null;
+
+  /**
+   * Holds whether the view this belongs to is the one the user is looking at.
+   */
+  private viewActive: boolean = true;
+
+  /**
+   * Holds the reads a section key runs, so the poll can re-run whichever are watched.
+   */
+  private readonly readers: ReadonlyMap<string, () => Promise<void>> = new Map<
+    string,
+    () => Promise<void>
+  >([
+    ['pullRequests', (): Promise<void> => this.loadPullRequests()],
+    ['issues', (): Promise<void> => this.loadIssues()],
+    ['actions', (): Promise<void> => this.loadWorkflowRuns()],
+  ]);
+
+  /**
+   * Begins watching a section, so it is kept current while the user has it open.
+   * @param key The section key.
+   */
+  public watch(key: string): void {
+    if (!this.readers.has(key)) {
+      return;
+    }
+    this.watched.add(key);
+    this.syncPoll();
+  }
+
+  /**
+   * Stops watching a section.
+   * @param key The section key.
+   */
+  public unwatch(key: string): void {
+    this.watched.delete(key);
+    this.syncPoll();
+  }
+
+  /**
+   * Stops watching everything, for a panel going away.
+   */
+  public unwatchAll(): void {
+    this.watched.clear();
+    this.syncPoll();
+  }
+
+  /**
+   * Records whether the view this belongs to is the active tab. A workspace in the background keeps
+   * its panel mounted — the shell mounts every view and hides the inactive ones — so the panel being
+   * alive is not enough to mean anyone is looking at it.
+   * @param active Whether the view is active.
+   */
+  public setActive(active: boolean): void {
+    if (this.viewActive === active) {
+      return;
+    }
+    this.viewActive = active;
+    this.syncPoll();
+  }
+
+  /**
+   * Starts or stops the poll to match what is being watched. Nothing watched, or nobody looking,
+   * means no timer at all — an idle workspace must not talk to the forge.
+   */
+  private syncPoll(): void {
+    const wanted: boolean = this.viewActive && this.watched.size > 0;
+    if (wanted && this.timer === null) {
+      this.timer = setInterval((): void => this.poll(), POLL_INTERVAL_MS);
+    } else if (!wanted && this.timer !== null) {
+      clearInterval(this.timer);
+      this.timer = null;
+    }
+  }
+
+  /**
+   * Re-reads every watched section. Cheap by construction: each read is conditional, so an unchanged
+   * section costs no rate-limit budget, and a section whose budget *is* spent is refused in the main
+   * process without a request — which is also how it recovers, once the window rolls over.
+   */
+  private poll(): void {
+    for (const key of this.watched) {
+      void this.readers.get(key)?.();
+    }
+  }
+
+  /**
+   * Stops the poll and forgets what was being watched. Called when the view is destroyed.
+   */
+  public dispose(): void {
+    this.unwatchAll();
+  }
+
+  /**
    * Clears everything read, for a view whose repository has gone away.
    */
   public reset(): void {
@@ -328,18 +461,53 @@ function rank(name: string): number {
 }
 
 /**
- * Maps a forge read onto a section state. An authentication failure is kept distinct from any other
- * failure, because the two are answered differently: one by signing in, the other by trying again.
+ * Maps a forge read onto a section state.
+ *
+ * A failure keeps whatever the section last held, marked stale, rather than replacing it with an
+ * error: the pull requests read a minute ago are still the best answer available, and blanking them
+ * because the network blinked would lose more than it tells. The exception is an authentication
+ * failure, which clears — data the credential can no longer see should not stay on screen.
+ *
+ * The three failure kinds stay distinct because each is answered differently: sign in, wait, or retry.
+ *
  * @param result The read's outcome.
+ * @param previous The section as it was, whose items survive a transient failure.
+ * @param now The clock, for describing how long a rate limit has left to run.
  * @returns Returns the section.
  */
-function sectionFor<T>(result: ForgeResult<readonly T[]>): ForgeSection<T> {
+function sectionFor<T>(
+  result: ForgeResult<readonly T[]>,
+  previous: ForgeSection<T>,
+  now: number,
+): ForgeSection<T> {
   if (result.ok) {
-    return { state: 'ready', items: result.value, message: null };
+    return { state: 'ready', items: result.value, message: null, stale: false };
   }
-  return {
-    state: result.unauthorized ? 'unauthorized' : 'error',
-    items: [],
-    message: result.error,
-  };
+  if (result.unauthorized) {
+    return { state: 'unauthorized', items: [], message: result.error, stale: false };
+  }
+  const kept: readonly T[] = previous.items;
+  if (result.retryAt !== undefined) {
+    return {
+      state: 'rate-limited',
+      items: kept,
+      message: `${result.error} Trying again ${describeWait(result.retryAt, now)}.`,
+      stale: kept.length > 0,
+    };
+  }
+  return { state: 'error', items: kept, message: result.error, stale: kept.length > 0 };
+}
+
+/**
+ * Describes how long there is to wait, in the terms a person would use.
+ * @param retryAt The epoch milliseconds to wait until.
+ * @param now The current epoch milliseconds.
+ * @returns Returns the phrase.
+ */
+function describeWait(retryAt: number, now: number): string {
+  const minutes: number = Math.ceil((retryAt - now) / 60_000);
+  if (minutes <= 1) {
+    return 'in under a minute';
+  }
+  return minutes < 60 ? `in ${minutes} minutes` : 'in about an hour';
 }

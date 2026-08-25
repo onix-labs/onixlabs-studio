@@ -66,6 +66,16 @@
   font-size: 0.7rem;
   font-variant-numeric: tabular-nums;
 }
+
+// Why a section's contents are not current — "offline", "rate limited". Muted and italic beside the
+// heading, so the stale data underneath stays the thing being read rather than the apology for it.
+.rail__note {
+  margin-inline-start: 0.35rem;
+  color: var(--form-muted-foreground-color);
+  font-size: 0.7rem;
+  font-style: italic;
+}
+
 // The rail's dialogs (new branch, drop stash), rendered in the app's default modal card; these
 // classes style only their content.
 .rail__dialog-title {

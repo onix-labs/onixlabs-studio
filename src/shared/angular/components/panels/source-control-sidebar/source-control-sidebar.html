@@ -26,6 +26,12 @@
       {{ node.label }}
     </span>
 
+    @if (node.note; as note) {
+      <!-- Why what is beneath this heading is not current. Muted and beside the label rather than a
+           row of its own, so stale data stays readable instead of being pushed down by an apology. -->
+      <span class="rail__note">{{ note }}</span>
+    }
+
     @if (node.branch; as branch) {
       @if (branch.ahead > 0) {
         <span class="rail__delta"><app-icon [icon]="Icon.ARROW_UP" />{{ branch.ahead }}</span>
