@@ -11,7 +11,12 @@ import {
   parseStashes,
   parseStatus,
 } from './git-output';
-import { FileDiff, MutationResult, SourceControlProvider } from './source-control-provider';
+import {
+  FileDiff,
+  MutationResult,
+  PushTarget,
+  SourceControlProvider,
+} from './source-control-provider';
 
 /**
  * Holds the default number of commits the history loads.
@@ -279,18 +284,14 @@ export class GitProvider implements SourceControlProvider {
   }
 
   /**
-   * Pushes the current branch, setting the upstream on the push when one is given.
-   * @param setUpstream The remote and branch to set the upstream to, or undefined to use the existing
-   * upstream.
+   * Pushes a branch, or the checked-out one to its upstream when no target is given.
+   * @param target The branch to push and where.
    * @returns Returns the outcome.
    */
-  public push(setUpstream?: {
-    readonly remote: string;
-    readonly branch: string;
-  }): Promise<MutationResult> {
+  public push(target?: PushTarget): Promise<MutationResult> {
     return this.mutate(
       (api: SourceControlClient): Promise<GitRunResult> =>
-        api.push(this.root, setUpstream?.remote, setUpstream?.branch),
+        api.push(this.root, target?.remote, target?.branch, target?.setUpstream),
     );
   }
 

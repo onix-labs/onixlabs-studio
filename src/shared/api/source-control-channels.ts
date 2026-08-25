@@ -395,11 +395,19 @@ export interface SourceControlClient {
    * Pushes the current branch to its upstream. When a remote and branch are given, the upstream is
    * set on the push (used for a branch that has none yet); otherwise the configured upstream is used.
    * @param root The absolute repository root; must be an open root.
-   * @param remote The remote to set the upstream to, or undefined to push to the existing upstream.
-   * @param branch The branch to set the upstream to, or undefined to push to the existing upstream.
+   * @param remote The remote to push to, or undefined to push to the existing upstream.
+   * @param branch The branch to push, or undefined to push the checked-out one to its upstream.
+   * Naming it is what allows a branch that is not checked out to be pushed.
+   * @param setUpstream Whether to claim the upstream on the push. False for a branch that already has
+   * one, which must not be silently repointed.
    * @returns Returns the raw command result.
    */
-  push(root: string, remote?: string, branch?: string): Promise<GitRunResult>;
+  push(
+    root: string,
+    remote?: string,
+    branch?: string,
+    setUpstream?: boolean,
+  ): Promise<GitRunResult>;
 
   /**
    * Creates a tag at a commit. A message makes it annotated — which is what a release wants, since an

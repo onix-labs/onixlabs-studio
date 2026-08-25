@@ -168,7 +168,12 @@ const ACTION_OPEN_ISSUE: string = 'issue.open';
 const ACTION_CHECKOUT_BRANCH: string = 'branch.checkout';
 
 /**
- * Identifies the Push command on the checked-out branch's context menu.
+ * Identifies the Commit command on the checked-out branch's context menu.
+ */
+const ACTION_COMMIT_BRANCH: string = 'branch.commit';
+
+/**
+ * Identifies the Push command on a branch's context menu.
  */
 const ACTION_PUSH_BRANCH: string = 'branch.push';
 
@@ -722,6 +727,20 @@ export class SourceControlSidebar implements OnDestroy {
   }
 
   /**
+   * Selects the working tree and brings the Commit panel forward, so the composer is in front of the
+   * user rather than merely pointed at.
+   *
+   * Reached from the checked-out branch's menu, which is the one row that can have uncommitted
+   * changes. This does not commit: a commit needs a message, and the composer is where one is
+   * written — which is exactly what the ellipsis on the label promises.
+   */
+  private commitOnBranch(): void {
+    this.log.info('SourceControlSidebar', 'Revealing the Commit panel for the working tree');
+    this.selectWorking();
+    this.dockReveal.reveal('commit');
+  }
+
+  /**
    * Gets a value indicating whether the working tree is the current selection, so the changes badge
    * can show itself as active.
    */
@@ -1199,17 +1218,51 @@ export class SourceControlSidebar implements OnDestroy {
   }
 
   /**
-   * Builds the checked-out branch's exchange commands, each offered only where git could honour it.
+   * Builds a branch row's commands: what to do with the branch itself, then what to exchange with its
+   * upstream.
+   *
+   * The first command is whichever the row can offer. A branch that is not checked out offers to
+   * become so; the checked-out one cannot be checked out again, and instead offers to commit what is
+   * sitting in the working tree — but only when there is something sitting there, since a commit of
+   * nothing is not a command, it is an error message waiting to happen.
+   *
+   * @param branch The branch the row carries.
+   * @returns Returns the menu items.
+   */
+  private branchItems(branch: GitBranch): readonly MenuItem[] {
+    const lead: readonly MenuItem[] = branch.current
+      ? this.repository.changeCount() === 0
+        ? []
+        : [
+            {
+              id: ACTION_COMMIT_BRANCH,
+              label: 'Commit…',
+              icon: Icon.SOURCE_CONTROL,
+              status: `${this.repository.changeCount()} changed`,
+            },
+          ]
+      : [{ id: ACTION_CHECKOUT_BRANCH, label: 'Check Out', icon: Icon.CHECK }];
+    return lead.length === 0
+      ? this.upstreamItems(branch)
+      : [...lead, { separator: true, id: 'branch.sep', label: '' }, ...this.upstreamItems(branch)];
+  }
+
+  /**
+   * Builds a branch's exchange commands, each offered only where git could honour it.
    *
    * A repository with no remote has nowhere to send anything, so all three are inert. A branch with
    * no upstream can still be pushed — the push publishes it and sets the upstream, which is how a
    * freshly-created branch is meant to reach the remote — but there is nothing to pull from and so
    * nothing to sync with, and offering either would be offering a command git would only refuse.
    *
+   * A branch that is not checked out is fast-forwarded rather than merged, which the note says: a
+   * merge needs a working tree and git will not give one to a branch that does not have it. Saying so
+   * in the menu is cheaper than letting the refusal explain it afterwards.
+   *
    * The counts ride along as muted notes, because whether there is anything to send or receive is the
    * question the user opened the menu to answer.
    *
-   * @param branch The checked-out branch.
+   * @param branch The branch the row carries.
    * @returns Returns the menu items.
    */
   private upstreamItems(branch: GitBranch): readonly MenuItem[] {
@@ -1239,18 +1292,24 @@ export class SourceControlSidebar implements OnDestroy {
         label: 'Pull',
         icon: Icon.ARROW_DOWN,
         disabled: noRemote || noUpstream,
-        ...(reason !== undefined
-          ? { status: reason }
-          : branch.behind > 0
-            ? { status: `${branch.behind} behind` }
-            : {}),
+        status:
+          reason ??
+          // Off the working tree there is no merge to be had, so the note says which kind of update
+          // this is before it is chosen rather than after git refuses.
+          (branch.current
+            ? branch.behind > 0
+              ? `${branch.behind} behind`
+              : 'up to date'
+            : branch.behind > 0
+              ? `${branch.behind} behind, fast-forward`
+              : 'fast-forward'),
       },
       {
         id: ACTION_SYNC_BRANCH,
         label: 'Sync',
         icon: Icon.REFRESH,
         disabled: noRemote || noUpstream,
-        ...(reason !== undefined ? { status: reason } : { status: 'pull, then push' }),
+        status: reason ?? 'pull, then push',
       },
     ];
   }
@@ -1313,12 +1372,7 @@ export class SourceControlSidebar implements OnDestroy {
   ): readonly MenuItem[] => {
     const node: RepoNode = this.nodeOf(treeRow);
     if (node.branch !== undefined) {
-      // The checked-out branch cannot be checked out again; what it can do is exchange commits with
-      // its upstream, which is what git means by push, pull and sync — all three act on HEAD, so a
-      // branch that is not checked out has no honest version of them to offer.
-      return node.branch.current
-        ? this.upstreamItems(node.branch)
-        : [{ id: ACTION_CHECKOUT_BRANCH, label: 'Check Out', icon: Icon.CHECK }];
+      return this.branchItems(node.branch);
     }
     if (node.stash !== undefined) {
       // Apply and pop differ only in what becomes of the stash afterwards, which is exactly what the
@@ -1385,17 +1439,26 @@ export class SourceControlSidebar implements OnDestroy {
           this.checkout(node.branch);
         }
         break;
+      case ACTION_COMMIT_BRANCH:
+        this.commitOnBranch();
+        break;
       case ACTION_PUSH_BRANCH:
-        this.log.info('SourceControlSidebar', `Pushing '${node.branch?.name ?? 'HEAD'}'`);
-        void this.repository.push();
+        if (node.branch !== undefined) {
+          this.log.info('SourceControlSidebar', `Pushing '${node.branch.name}'`);
+          void this.repository.pushBranch(node.branch);
+        }
         break;
       case ACTION_PULL_BRANCH:
-        this.log.info('SourceControlSidebar', `Pulling '${node.branch?.name ?? 'HEAD'}'`);
-        void this.repository.pull();
+        if (node.branch !== undefined) {
+          this.log.info('SourceControlSidebar', `Pulling '${node.branch.name}'`);
+          void this.repository.pullBranch(node.branch);
+        }
         break;
       case ACTION_SYNC_BRANCH:
-        this.log.info('SourceControlSidebar', `Syncing '${node.branch?.name ?? 'HEAD'}'`);
-        void this.repository.sync();
+        if (node.branch !== undefined) {
+          this.log.info('SourceControlSidebar', `Syncing '${node.branch.name}'`);
+          void this.repository.syncBranch(node.branch);
+        }
         break;
       case ACTION_APPLY_STASH:
         if (node.stash !== undefined) {

@@ -64,8 +64,13 @@ function createClient(bridge: Bridge): SourceControlClient {
     ): Promise<GitRunResult> =>
       bridge.invoke(SourceControlChannel.FetchRef, root, remote, sourceRef, localBranch),
     pull: (root: string): Promise<GitRunResult> => bridge.invoke(SourceControlChannel.Pull, root),
-    push: (root: string, remote?: string, branch?: string): Promise<GitRunResult> =>
-      bridge.invoke(SourceControlChannel.Push, root, remote, branch),
+    push: (
+      root: string,
+      remote?: string,
+      branch?: string,
+      setUpstream?: boolean,
+    ): Promise<GitRunResult> =>
+      bridge.invoke(SourceControlChannel.Push, root, remote, branch, setUpstream),
     createTag: (
       root: string,
       name: string,

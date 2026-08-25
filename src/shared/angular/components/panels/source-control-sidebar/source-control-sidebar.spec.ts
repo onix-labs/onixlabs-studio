@@ -24,6 +24,7 @@ import { ParsedRefs, ParsedStatus } from '@shared/angular/services/source-contro
 import {
   FileDiff,
   MutationResult,
+  PushTarget,
   SourceControlProvider,
 } from '@shared/angular/services/source-control/source-control-provider';
 import { SourceControlProviders } from '@shared/angular/services/source-control/source-control-providers';
@@ -205,7 +206,8 @@ class FakeProvider implements SourceControlProvider {
     return Promise.resolve({ success: true });
   }
 
-  public fetchRef(): Promise<MutationResult> {
+  public fetchRef(remote: string, sourceRef: string, localBranch: string): Promise<MutationResult> {
+    this.calls.push(`fetchRef:${remote}:${sourceRef}:${localBranch}`);
     return Promise.resolve({ success: true });
   }
 
@@ -214,8 +216,12 @@ class FakeProvider implements SourceControlProvider {
     return Promise.resolve({ success: true });
   }
 
-  public push(): Promise<MutationResult> {
-    this.calls.push('push');
+  public push(target?: PushTarget): Promise<MutationResult> {
+    this.calls.push(
+      target === undefined
+        ? 'push'
+        : `push:${target.remote}/${target.branch}:${target.setUpstream}`,
+    );
     return Promise.resolve({ success: true });
   }
 
@@ -672,9 +678,13 @@ describe('SourceControlSidebar', () => {
       onContextAction(c: TreeMenuSelection): void;
     };
 
-    expect(menu.contextMenuFor(row).map((item: MenuItem): string => item.label)).toEqual([
-      'Check Out',
-    ]);
+    // Check Out leads a branch that is not checked out; its exchange commands follow the rule.
+    expect(
+      menu
+        .contextMenuFor(row)
+        .filter((item: MenuItem): boolean => item.separator !== true)
+        .map((item: MenuItem): string => item.label),
+    ).toEqual(['Check Out', 'Push', 'Pull', 'Sync']);
 
     menu.onContextAction({ itemId: 'branch.checkout', row });
 
@@ -708,14 +718,126 @@ describe('SourceControlSidebar', () => {
     };
   }
 
-  it('theCheckedOutBranchOffersItsExchangeCommands', () => {
-    // It cannot be checked out again. What it can do is exchange commits with its upstream.
+  /**
+   * Builds a row for a branch that is not checked out, tracking a remote so its pull is live.
+   * @returns Returns the row.
+   */
+  function otherBranchRow(): TreeRow {
+    return {
+      id: 'branch:develop',
+      depth: 1,
+      expandable: false,
+      expanded: false,
+      data: {
+        kind: 'branch',
+        icon: Icon.SOURCE_CONTROL,
+        label: 'develop',
+        branch: {
+          name: 'develop',
+          current: false,
+          upstream: 'origin/develop',
+          ahead: 0,
+          behind: 2,
+          tip: 'c1',
+        },
+      },
+    };
+  }
+
+  it('theCheckedOutBranchOffersCommitThenItsExchangeCommands', () => {
+    // It cannot be checked out again. What it can do is commit what is in the working tree — the
+    // fixture's is dirty — and exchange commits with its upstream.
     const menu: { contextMenuFor(r: TreeRow): readonly MenuItem[] } = component;
 
     expect(
-      menu.contextMenuFor(currentBranchRow()).map((item: MenuItem): string => item.label),
+      menu
+        .contextMenuFor(currentBranchRow())
+        .filter((item: MenuItem): boolean => item.separator !== true)
+        .map((item: MenuItem): string => item.label),
+    ).toEqual(['Commit…', 'Push', 'Pull', 'Sync']);
+  });
+
+  it('theCheckedOutBranchDropsCommit_whenThereIsNothingToCommit', async () => {
+    provider.working = { staged: [], unstaged: [] };
+    await repository.refreshStatus();
+    const menu: { contextMenuFor(r: TreeRow): readonly MenuItem[] } = component;
+
+    expect(
+      menu
+        .contextMenuFor(currentBranchRow())
+        .filter((item: MenuItem): boolean => item.separator !== true)
+        .map((item: MenuItem): string => item.label),
     ).toEqual(['Push', 'Pull', 'Sync']);
   });
+
+  it('commit_selectsTheWorkingTreeAndBringsTheCommitPanelForward', () => {
+    const menu: { onContextAction(c: TreeMenuSelection): void } = component as unknown as {
+      onContextAction(c: TreeMenuSelection): void;
+    };
+
+    menu.onContextAction({ itemId: 'branch.commit', row: currentBranchRow() });
+
+    // It does not commit — a commit needs a message, and the composer is where one is written.
+    expect(repository.selectedNodeId()).toBe(WORKING_NODE_ID);
+    expect(revealed).toContain('commit');
+  });
+
+  it('aBranchThatIsNotCheckedOut_offersCheckOutAndTheExchangeCommands', () => {
+    const menu: { contextMenuFor(r: TreeRow): readonly MenuItem[] } = component;
+
+    expect(
+      menu
+        .contextMenuFor(otherBranchRow())
+        .filter((item: MenuItem): boolean => item.separator !== true)
+        .map((item: MenuItem): string => item.label),
+    ).toEqual(['Check Out', 'Push', 'Pull', 'Sync']);
+  });
+
+  it('aBranchThatIsNotCheckedOut_saysItsPullIsAFastForward', () => {
+    // Off the working tree there is no merge to be had, and saying so beats letting git refuse.
+    const menu: { contextMenuFor(r: TreeRow): readonly MenuItem[] } = component;
+
+    const pull: MenuItem | undefined = menu
+      .contextMenuFor(otherBranchRow())
+      .find((item: MenuItem): boolean => item.label === 'Pull');
+
+    expect(pull?.status).toContain('fast-forward');
+    expect(pull?.disabled).toBe(false);
+  });
+
+  it('runsPushPullAndSync_againstTheBranchTheRowNamed', async () => {
+    const menu: { onContextAction(c: TreeMenuSelection): void } = component as unknown as {
+      onContextAction(c: TreeMenuSelection): void;
+    };
+    const row: TreeRow = otherBranchRow();
+
+    menu.onContextAction({ itemId: 'branch.push', row });
+    await fixture.whenStable();
+
+    // `develop` is not checked out, so it is named rather than left to HEAD.
+    expect(provider.calls).toContain('push:origin/develop:false');
+
+    menu.onContextAction({ itemId: 'branch.pull', row });
+    await fixture.whenStable();
+
+    expect(provider.calls).toContain('fetchRef:origin:develop:develop');
+  });
+
+  /**
+   * Finds a menu item by its label.
+   * @param items The menu items.
+   * @param label The label to find.
+   * @returns Returns the item.
+   */
+  function labelled(items: readonly MenuItem[], label: string): MenuItem {
+    const found: MenuItem | undefined = items.find(
+      (item: MenuItem): boolean => item.label === label,
+    );
+    if (found === undefined) {
+      throw new Error(`No menu item labelled '${label}'.`);
+    }
+    return found;
+  }
 
   it('theCheckedOutBranchCarriesItsCountsIntoTheMenu', () => {
     const menu: { contextMenuFor(r: TreeRow): readonly MenuItem[] } = component;
@@ -731,9 +853,13 @@ describe('SourceControlSidebar', () => {
       }),
     );
 
-    expect(items[0].status).toBe('2 ahead');
-    expect(items[1].status).toBe('3 behind');
-    expect(items.every((item: MenuItem): boolean => item.disabled !== true)).toBe(true);
+    expect(labelled(items, 'Push').status).toBe('2 ahead');
+    expect(labelled(items, 'Pull').status).toBe('3 behind');
+    expect(
+      items
+        .filter((item: MenuItem): boolean => item.separator !== true)
+        .every((item: MenuItem): boolean => item.disabled !== true),
+    ).toBe(true);
   });
 
   it('aBranchWithNoUpstream_canStillBePushed_butNotPulledOrSynced', () => {
@@ -744,10 +870,10 @@ describe('SourceControlSidebar', () => {
       currentBranchRow({ name: 'main', current: true, ahead: 0, behind: 0, tip: 'c2' }),
     );
 
-    expect(items[0].disabled).toBe(false);
-    expect(items[1].disabled).toBe(true);
-    expect(items[2].disabled).toBe(true);
-    expect(items[1].status).toBe('no upstream');
+    expect(labelled(items, 'Push').disabled).toBe(false);
+    expect(labelled(items, 'Pull').disabled).toBe(true);
+    expect(labelled(items, 'Sync').disabled).toBe(true);
+    expect(labelled(items, 'Pull').status).toBe('no upstream');
   });
 
   it('aRepositoryWithNoRemote_offersNoneOfThem', async () => {
@@ -757,8 +883,13 @@ describe('SourceControlSidebar', () => {
 
     const items: readonly MenuItem[] = menu.contextMenuFor(currentBranchRow());
 
-    expect(items.every((item: MenuItem): boolean => item.disabled === true)).toBe(true);
-    expect(items[0].status).toBe('no remotes');
+    // Commit is unaffected — it needs no remote — so only the exchange commands go inert.
+    expect(
+      ['Push', 'Pull', 'Sync'].every(
+        (label: string): boolean => labelled(items, label).disabled === true,
+      ),
+    ).toBe(true);
+    expect(labelled(items, 'Push').status).toBe('no remotes');
   });
 
   it('runsPushAndPull_fromTheCheckedOutBranchesMenu', async () => {
@@ -772,7 +903,8 @@ describe('SourceControlSidebar', () => {
     menu.onContextAction({ itemId: 'branch.pull', row });
     await fixture.whenStable();
 
-    expect(provider.calls).toContain('push');
+    // The branch is named even when it is the checked-out one, and its upstream is left alone.
+    expect(provider.calls).toContain('push:origin/main:false');
     expect(provider.calls).toContain('pull');
   });
 

@@ -79,12 +79,12 @@ describe('SourceControl', () => {
 
     await service.client?.stage('/r', ['a.ts', 'b.ts']);
     await service.client?.commit('/r', 'feat: message');
-    await service.client?.push('/r', 'origin', 'main');
+    await service.client?.push('/r', 'origin', 'main', true);
 
     expect(calls).toEqual([
       { channel: SourceControlChannel.Stage, args: ['/r', ['a.ts', 'b.ts']] },
       { channel: SourceControlChannel.Commit, args: ['/r', 'feat: message'] },
-      { channel: SourceControlChannel.Push, args: ['/r', 'origin', 'main'] },
+      { channel: SourceControlChannel.Push, args: ['/r', 'origin', 'main', true] },
     ]);
   });
 

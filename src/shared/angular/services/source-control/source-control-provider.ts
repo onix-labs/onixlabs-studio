@@ -2,6 +2,27 @@ import { GitCommit, GitFileChange, GitStash } from '../repository/repository-dat
 import { ParsedRefs, ParsedStatus } from './git-output';
 
 /**
+ * Describes a push: which branch goes where, and whether the push claims the upstream.
+ */
+export interface PushTarget {
+  /**
+   * Gets the remote to push to.
+   */
+  readonly remote: string;
+
+  /**
+   * Gets the branch to push. Naming it is what allows a branch that is not checked out to be pushed.
+   */
+  readonly branch: string;
+
+  /**
+   * Gets a value indicating whether the push claims the upstream. True publishes a branch that has
+   * none; false leaves an existing upstream alone, which must not be silently repointed.
+   */
+  readonly setUpstream: boolean;
+}
+
+/**
  * Describes the outcome of a mutating operation (stage, commit, …).
  */
 export interface MutationResult {
@@ -177,13 +198,13 @@ export interface SourceControlProvider {
   pull(): Promise<MutationResult>;
 
   /**
-   * Pushes the current branch to its upstream. When an upstream is given (a branch that has none yet)
-   * it is set on the push; otherwise the configured upstream is used.
-   * @param setUpstream The remote and branch to set the upstream to, or undefined to use the existing
-   * upstream.
+   * Pushes a branch. Naming one is what allows a branch that is not checked out to be pushed; with no
+   * target the checked-out branch goes to its configured upstream.
+   * @param target The branch to push and where, or undefined to push the checked-out branch to its
+   * existing upstream.
    * @returns Returns the outcome.
    */
-  push(setUpstream?: { readonly remote: string; readonly branch: string }): Promise<MutationResult>;
+  push(target?: PushTarget): Promise<MutationResult>;
 
   /**
    * Creates a tag at a commit, annotated when a message is given.

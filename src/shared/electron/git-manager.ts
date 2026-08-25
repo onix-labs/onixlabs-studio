@@ -230,7 +230,8 @@ export class GitManager {
         root: unknown,
         remote: unknown,
         branch: unknown,
-      ): Promise<GitRunResult> => this.push(root, remote, branch),
+        setUpstream: unknown,
+      ): Promise<GitRunResult> => this.push(root, remote, branch, setUpstream),
     );
     ipcMain.handle(
       SourceControlChannel.CreateTag,
@@ -726,13 +727,25 @@ export class GitManager {
    * @param branch The branch to set the upstream to, or undefined to push to the existing upstream.
    * @returns Returns the raw command result.
    */
-  private push(root: unknown, remote: unknown, branch: unknown): Promise<GitRunResult> {
+  private push(
+    root: unknown,
+    remote: unknown,
+    branch: unknown,
+    setUpstream: unknown,
+  ): Promise<GitRunResult> {
     if (remote === undefined && branch === undefined) {
       logger.trace('GitManager.push', 'Pushing to configured upstream');
       return this.runNetwork(root, ['push']);
     }
     if (!isSafeOperand(remote) || !isSafeOperand(branch)) {
       return Promise.resolve({ success: false, error: 'Invalid push upstream' });
+    }
+    // Naming the branch is what lets a branch that is not checked out be pushed at all; whether the
+    // upstream is claimed on the way is a separate question, and a branch that already has one must
+    // not have it silently repointed.
+    if (setUpstream === false) {
+      logger.trace('GitManager.push', `Pushing ${branch} to ${remote}`);
+      return this.runNetwork(root, ['push', remote, branch]);
     }
     logger.trace('GitManager.push', `Pushing and setting upstream ${remote}/${branch}`);
     return this.runNetwork(root, ['push', '--set-upstream', remote, branch]);

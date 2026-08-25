@@ -4,11 +4,12 @@ import { ParsedRefs, ParsedStatus } from '../source-control/git-output';
 import {
   FileDiff,
   MutationResult,
+  PushTarget,
   SourceControlProvider,
 } from '../source-control/source-control-provider';
 import { SourceControlProviders } from '../source-control/source-control-providers';
 import { Repository, WORKING_NODE_ID } from './repository';
-import { GitCommit, GitFileChange, GitStash, GraphNode } from './repository-data';
+import { GitBranch, GitCommit, GitFileChange, GitStash, GraphNode } from './repository-data';
 
 /**
  * Builds a file change with a working-tree target.
@@ -193,11 +194,10 @@ class FakeProvider implements SourceControlProvider {
    */
   public failNextPushWith: string | null = null;
 
-  public push(setUpstream?: {
-    readonly remote: string;
-    readonly branch: string;
-  }): Promise<MutationResult> {
-    this.calls.push(`push:${setUpstream?.remote ?? ''}/${setUpstream?.branch ?? ''}`);
+  public push(target?: PushTarget): Promise<MutationResult> {
+    this.calls.push(
+      `push:${target?.remote ?? ''}/${target?.branch ?? ''}:${String(target?.setUpstream ?? '')}`,
+    );
     if (this.failNextPushWith !== null) {
       const error: string = this.failNextPushWith;
       this.failNextPushWith = null;
@@ -408,7 +408,8 @@ describe('Repository', () => {
 
     await repository.push();
 
-    expect(provider.calls).toContain('push:/');
+    // The branch is named rather than left to HEAD, and its upstream is not re-claimed.
+    expect(provider.calls).toContain('push:origin/main:false');
   });
 
   it('push_whenCurrentBranchHasNoUpstream_setsUpstreamToTheFirstRemote', async () => {
@@ -418,7 +419,7 @@ describe('Repository', () => {
 
     await repository.push();
 
-    expect(provider.calls).toContain('push:upstream/main');
+    expect(provider.calls).toContain('push:upstream/main:true');
   });
 
   it('push_whenNoUpstreamAndNoRemotes_defaultsTheUpstreamToOrigin', async () => {
@@ -428,7 +429,7 @@ describe('Repository', () => {
 
     await repository.push();
 
-    expect(provider.calls).toContain('push:origin/main');
+    expect(provider.calls).toContain('push:origin/main:true');
   });
 
   it('commitFiles_resetsTheIndexStagesExactlyTheGivenFilesAndCommits', async () => {
@@ -613,13 +614,119 @@ describe('Repository', () => {
     expect(provider.calls).toContain('createBranch:feature/two:false');
   });
 
+  describe('branch-named push, pull and sync', () => {
+    /**
+     * Builds a branch that is not the checked-out one.
+     * @param upstream The branch's upstream, or undefined for none.
+     * @returns Returns the branch.
+     */
+    function otherBranch(upstream: string | undefined): GitBranch {
+      return { name: 'develop', current: false, upstream, ahead: 0, behind: 2, tip: 'c1' };
+    }
+
+    it('pushBranch_namesTheBranch_soOneThatIsNotCheckedOutCanBePushed', async () => {
+      provider.remoteNames = ['origin'];
+      await repository.refresh();
+
+      await repository.pushBranch(otherBranch('origin/develop'));
+
+      expect(provider.calls).toContain('push:origin/develop:false');
+    });
+
+    it('pushBranch_whenTheBranchHasNoUpstream_claimsOne', async () => {
+      provider.remoteNames = ['origin'];
+      await repository.refresh();
+
+      await repository.pushBranch(otherBranch(undefined));
+
+      expect(provider.calls).toContain('push:origin/develop:true');
+    });
+
+    it('pushBranch_namesTheBranchInItsToast_notWhicheverIsCheckedOut', async () => {
+      await repository.pushBranch(otherBranch('origin/develop'));
+
+      expect(notifications.toasts()[0].title).toBe('Pushed develop');
+    });
+
+    it('pullBranch_offTheWorkingTree_fastForwardsFromTheUpstreamInsteadOfMerging', async () => {
+      provider.remoteNames = ['origin'];
+      await repository.refresh();
+
+      await repository.pullBranch(otherBranch('origin/develop'));
+
+      // A merge needs a working tree, which a branch that is not checked out does not have.
+      expect(provider.calls).toContain('fetchRef:origin:develop:develop');
+      expect(provider.calls).not.toContain('pull');
+    });
+
+    it('pullBranch_forTheCheckedOutBranch_pullsProperly', async () => {
+      await repository.pullBranch({
+        name: 'main',
+        current: true,
+        upstream: 'origin/main',
+        ahead: 0,
+        behind: 1,
+        tip: 'c2',
+      });
+
+      expect(provider.calls).toContain('pull');
+    });
+
+    it('pullBranch_whenTheBranchHasNoUpstream_saysSoRatherThanGuessing', async () => {
+      const result: MutationResult = await repository.pullBranch(otherBranch(undefined));
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('no upstream');
+    });
+
+    it('splitsAnUpstreamOnItsRemote_notOnItsFirstSlash', async () => {
+      // Branch names contain slashes; only knowing the remotes tells the two apart.
+      provider.remoteNames = ['origin'];
+      await repository.refresh();
+
+      await repository.pullBranch({
+        name: 'feature/thing',
+        current: false,
+        upstream: 'origin/feature/thing',
+        ahead: 0,
+        behind: 1,
+        tip: 'c1',
+      });
+
+      expect(provider.calls).toContain('fetchRef:origin:feature/thing:feature/thing');
+    });
+
+    it('syncBranch_fastForwardsThenPushes', async () => {
+      provider.remoteNames = ['origin'];
+      await repository.refresh();
+
+      await repository.syncBranch(otherBranch('origin/develop'));
+
+      expect(provider.calls.filter((call: string): boolean => call.includes('develop'))).toEqual([
+        'fetchRef:origin:develop:develop',
+        'push:origin/develop:false',
+      ]);
+    });
+
+    it('syncBranch_whenTheFastForwardFails_doesNotPush', async () => {
+      provider.remoteNames = ['origin'];
+      provider.fetchRefResult = { success: false, error: 'Not a fast-forward.' };
+      await repository.refresh();
+
+      const result: MutationResult = await repository.syncBranch(otherBranch('origin/develop'));
+
+      expect(result.success).toBe(false);
+      expect(provider.calls.some((call: string): boolean => call.startsWith('push:'))).toBe(false);
+    });
+  });
+
   describe('sync', () => {
     it('pullsBeforePushing_soThePushIsNotRefusedForBeingBehind', async () => {
       await repository.sync();
 
       expect(provider.calls.filter((call: string): boolean => call.startsWith('p'))).toEqual([
         'pull',
-        'push:origin/main',
+        'push:origin/main:true',
       ]);
     });
 
