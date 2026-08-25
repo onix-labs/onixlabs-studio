@@ -1,12 +1,24 @@
 // Fills the well panel with the diff's tool strip above the comparison itself. A column, so the
 // strip keeps its height and the diff takes the rest — the Monaco editor lays itself out to whatever
 // box it is given.
+//
+// The panel surface, not the body background. `app-panel-toolbar` draws no fill of its own so that a
+// strip reads as part of its panel's frame, which means the panel decides what colour it is: sitting
+// this one on the body background made it darker than every other strip in the application, and
+// darker than the Solution Explorer's, which is the one they are all meant to match.
 :host {
   display: flex;
   flex-direction: column;
   block-size: 100%;
   min-block-size: 0;
-  background: var(--body-background-color);
+  background: var(--dock-tab-background-color--active);
+}
+
+// The rule the departed header used to draw. A tool strip elsewhere floats over the panel it belongs
+// to, but this one sits directly on a wall of code, and without a line the buttons look like they
+// are standing in the diff rather than above it.
+app-panel-toolbar {
+  border-block-end: 0.0625rem solid var(--dock-border-color);
 }
 
 // Wide enough for "Side by side" without the control resizing between the two choices, which would
