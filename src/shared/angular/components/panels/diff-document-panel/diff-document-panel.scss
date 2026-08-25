@@ -20,3 +20,38 @@ app-diff-view {
   flex: 1 1 auto;
   min-block-size: 0;
 }
+
+// How the file changed, colour-keyed to the change-margin palette so the badge agrees with the
+// gutter marks beside the lines it is describing. Sits at the trailing end of the strip, after the
+// commands — it is the strip's one piece of read-only information, so it stands apart from them.
+.diff__badge {
+  flex: 0 0 auto;
+  margin-inline-start: 0.35rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: calc(0.35rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+
+  &--added {
+    color: var(--change-margin-saved);
+    background: color-mix(in srgb, var(--change-margin-saved) 18%, transparent);
+  }
+
+  &--modified {
+    color: var(--change-margin-unsaved);
+    background: color-mix(in srgb, var(--change-margin-unsaved) 18%, transparent);
+  }
+
+  &--deleted {
+    color: var(--change-margin-deleted);
+    background: color-mix(in srgb, var(--change-margin-deleted) 18%, transparent);
+  }
+
+  &--renamed {
+    color: var(--accent-color);
+    background: var(--accent-surface-background-color);
+  }
+}

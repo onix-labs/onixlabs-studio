@@ -7,16 +7,17 @@ import {
   viewChild,
 } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
-import { GitChangeStatus } from '@shared/angular/services/repository/repository-data';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { DiffEditor } from '@shared/angular/components/diff-editor/diff-editor';
 
 /**
- * Hosts the source-control diff surface: a header showing the compared file's path and change-status
- * badge, an empty state when nothing is selected, and the shared {@link DiffEditor} pane comparing the
- * file's before/after content. It owns the source-control chrome the bare pane does not — the file
- * header, the git change-status badge, and the empty state — forwarding the compared content to the
- * shared pane, which owns the Monaco diff editor.
+ * Hosts the source-control diff surface: the shared {@link DiffEditor} pane comparing a file's
+ * before/after content, with an empty state over it when nothing is selected, and the navigation the
+ * pane's owner drives through {@link goToDiff}.
+ *
+ * It used to draw a header carrying the file's path and its change-status badge. The path was the tab
+ * title said a second time, and the badge belongs on the tool strip beside the commands — between
+ * them they cost a whole row of vertical space to say nothing new.
  */
 @Component({
   selector: 'app-diff-view',
@@ -32,15 +33,10 @@ export class DiffView {
   protected readonly Icon: typeof Icon = Icon;
 
   /**
-   * Gets the path of the compared file, shown in the header and used as the empty-state trigger (a
-   * blank path means no file is selected).
+   * Gets the path of the compared file, which triggers the empty state: a blank path means no file is
+   * selected. Not drawn — the tab already carries the name.
    */
   public readonly fileName: InputSignal<string> = input<string>('');
-
-  /**
-   * Gets how the compared file changed, shown as a badge in the header.
-   */
-  public readonly status: InputSignal<GitChangeStatus | null> = input<GitChangeStatus | null>(null);
 
   /**
    * Gets the file's content before the change (the diff's original side).

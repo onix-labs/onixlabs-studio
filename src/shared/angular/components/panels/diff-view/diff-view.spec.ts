@@ -60,39 +60,27 @@ describe('DiffView', () => {
     fixture.detectChanges();
     await fixture.whenStable();
 
-    expect(host.querySelector('.diff__header-path--muted')?.textContent).toContain(
-      'No file selected',
-    );
     expect(host.querySelector('.diff__empty')).not.toBeNull();
   });
 
-  it('render_whenFileNameSet_showsThePathAndHidesTheEmptyState', async () => {
+  it('render_whenFileNameSet_hidesTheEmptyState', async () => {
     fixture.componentRef.setInput('fileName', 'src/app/main.ts');
     fixture.detectChanges();
     await fixture.whenStable();
 
-    expect(host.querySelector('.diff__header-path')?.textContent).toContain('src/app/main.ts');
     expect(host.querySelector('.diff__empty')).toBeNull();
   });
 
-  it('render_whenStatusSet_showsTheChangeBadge', async () => {
-    fixture.componentRef.setInput('fileName', 'src/app/main.ts');
-    fixture.componentRef.setInput('status', 'modified');
-    fixture.detectChanges();
-    await fixture.whenStable();
-
-    const badge: HTMLElement | null = host.querySelector<HTMLElement>('.diff__badge');
-    expect(badge).not.toBeNull();
-    expect(badge!.textContent).toContain('modified');
-    expect(badge!.classList).toContain('diff__badge--modified');
-  });
-
-  it('render_whenStatusUnknown_omitsTheBadge', async () => {
+  it('render_drawsNoHeaderOfItsOwn', async () => {
+    // The path was the tab title said twice, and the change badge belongs on the tool strip beside
+    // the commands. Between them they cost a whole row to say nothing new.
     fixture.componentRef.setInput('fileName', 'src/app/main.ts');
     fixture.detectChanges();
     await fixture.whenStable();
 
+    expect(host.querySelector('.diff__header')).toBeNull();
     expect(host.querySelector('.diff__badge')).toBeNull();
+    expect(host.textContent).not.toContain('src/app/main.ts');
   });
 
   it('render_alwaysMountsTheSharedDiffEditorPane', async () => {

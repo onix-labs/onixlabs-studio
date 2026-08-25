@@ -118,8 +118,35 @@ describe('DiffDocumentPanel', () => {
     await fixture.whenStable();
 
     expect(host.querySelector('app-diff-view')).not.toBeNull();
-    expect(host.querySelector('.diff__header-path')?.textContent).toContain('src/app/main.ts');
-    expect(host.querySelector('.diff__badge')?.classList).toContain('diff__badge--modified');
+    // The path is not drawn anywhere: the tab carries it, and saying it again cost a whole row.
+    expect(host.textContent).not.toContain('src/app/main.ts');
+  });
+
+  it('theChangeBadgeSitsOnTheStrip_afterTheCommands', async () => {
+    diffs.put('diff:src/app/main.ts', makeFile('src/app/main.ts', 'modified'));
+    fixture.componentRef.setInput('panel', makePanel('diff:src/app/main.ts'));
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const badge: HTMLElement | null = host.querySelector<HTMLElement>(
+      'app-panel-toolbar .diff__badge',
+    );
+    expect(badge).not.toBeNull();
+    expect(badge!.textContent).toContain('modified');
+    expect(badge!.classList).toContain('diff__badge--modified');
+
+    // After the arrows, not before them: it is the strip's one read-only thing.
+    const strip: HTMLElement = host.querySelector<HTMLElement>('app-panel-toolbar')!;
+    const next: HTMLElement = strip.querySelector<HTMLElement>('[aria-label="Next Change"]')!;
+    expect(next.compareDocumentPosition(badge!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('theBadgeIsAbsent_whenNothingIsBeingCompared', async () => {
+    fixture.componentRef.setInput('panel', makePanel('diff:src/app/main.ts'));
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(host.querySelector('.diff__badge')).toBeNull();
   });
 
   describe('the tool strip', () => {

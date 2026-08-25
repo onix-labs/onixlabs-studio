@@ -6,64 +6,6 @@
   background: var(--body-background-color);
 }
 
-.diff__header {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 0.75rem;
-  border-block-end: 0.0625rem solid var(--dock-border-color);
-  color: var(--body-foreground-color);
-  font-size: 0.8rem;
-}
-
-.diff__header-icon {
-  color: var(--accent-color);
-}
-
-.diff__header-path {
-  font-family: 'JetBrains Mono', monospace;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-
-  &--muted {
-    color: var(--form-muted-foreground-color);
-    font-family: inherit;
-  }
-}
-
-// Status badge, colour-keyed to the change kind using the change-margin palette.
-.diff__badge {
-  margin-inline-start: auto;
-  padding: 0.05rem 0.4rem;
-  border-radius: calc(0.35rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-  font-size: 0.65rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-
-  &--added {
-    color: var(--change-margin-saved);
-    background: color-mix(in srgb, var(--change-margin-saved) 18%, transparent);
-  }
-
-  &--modified {
-    color: var(--change-margin-unsaved);
-    background: color-mix(in srgb, var(--change-margin-unsaved) 18%, transparent);
-  }
-
-  &--deleted {
-    color: var(--change-margin-deleted);
-    background: color-mix(in srgb, var(--change-margin-deleted) 18%, transparent);
-  }
-
-  &--renamed {
-    color: var(--accent-color);
-    background: var(--accent-surface-background-color);
-  }
-}
-
 .diff__body {
   position: relative;
   flex: 1 1 auto;
