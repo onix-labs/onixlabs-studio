@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { Notification, Notifications } from '@shared/angular/services/notifications/notifications';
+import { GitOperationState } from '@shared/api/source-control-channels';
 import { ParsedRefs, ParsedStatus } from '../source-control/git-output';
 import {
   FileDiff,
@@ -35,6 +36,17 @@ function workingFile(path: string): GitFileChange {
 class FakeProvider implements SourceControlProvider {
   public constructor(public readonly root: string) {}
 
+  /**
+   * Holds the conflicted paths reported by {@link getStatus}, so a spec can put the working tree in
+   * the middle of a merge and take it out again.
+   */
+  public conflicted: readonly GitFileChange[] = [];
+
+  /**
+   * Holds the operation state reported by {@link getOperationState}.
+   */
+  public operation: GitOperationState = { kind: null };
+
   public getStatus(): Promise<ParsedStatus> {
     return Promise.resolve({
       branch: 'main',
@@ -43,7 +55,12 @@ class FakeProvider implements SourceControlProvider {
       behind: 0,
       staged: [workingFile('staged.ts')],
       unstaged: [workingFile('unstaged.ts')],
+      conflicted: [...this.conflicted],
     });
+  }
+
+  public getOperationState(): Promise<GitOperationState> {
+    return Promise.resolve(this.operation);
   }
 
   public getCommits(): Promise<GitCommit[]> {
@@ -363,6 +380,61 @@ describe('Repository', () => {
     expect(repository.commits().length).toBe(2);
     expect(repository.currentBranch()?.name).toBe('main');
     expect(repository.changeCount()).toBe(2);
+  });
+
+  it('refresh_whenTheWorkingTreeIsMidMerge_surfacesTheOperationAndItsConflicts', async () => {
+    provider.conflicted = [workingFile('both.ts')];
+    provider.operation = { kind: 'merge', target: 'topic' };
+
+    await repository.refresh();
+
+    expect(repository.operationInFlight()).toBe(true);
+    expect(repository.operation().target).toBe('topic');
+    expect(repository.conflicted().map((file: GitFileChange): string => file.path)).toEqual([
+      'both.ts',
+    ]);
+    // A conflicted path is a change the working tree is carrying, so it counts among them.
+    expect(repository.changeCount()).toBe(3);
+  });
+
+  it('canContinueOperation_onlyOnceTheLastConflictIsResolved', async () => {
+    provider.conflicted = [workingFile('both.ts')];
+    provider.operation = { kind: 'rebase', branch: 'topic', target: 'main', step: 2, total: 5 };
+    await repository.refresh();
+
+    expect(repository.canContinueOperation()).toBe(false);
+
+    provider.conflicted = [];
+    await repository.refresh();
+
+    expect(repository.canContinueOperation()).toBe(true);
+  });
+
+  it('refreshStatus_readsTheOperationTooSoAResolvedConflictIsNoticed', async () => {
+    // Resolving a conflict means editing a file, which is working-tree churn and takes the cheap
+    // refresh. If that pass did not read the operation state, the panel would go on reporting the
+    // merge as stuck on a conflict that had already been settled.
+    provider.conflicted = [workingFile('both.ts')];
+    provider.operation = { kind: 'merge', target: 'topic' };
+    await repository.refresh();
+
+    provider.conflicted = [];
+    provider.operation = { kind: null };
+    await repository.refreshStatus();
+
+    expect(repository.conflicted()).toEqual([]);
+    expect(repository.operationInFlight()).toBe(false);
+  });
+
+  it('close_clearsAnOperationInFlight', async () => {
+    provider.conflicted = [workingFile('both.ts')];
+    provider.operation = { kind: 'merge' };
+    await repository.refresh();
+
+    await repository.close();
+
+    expect(repository.operationInFlight()).toBe(false);
+    expect(repository.conflicted()).toEqual([]);
   });
 
   it('selectedFiles_whenWorkingSelected_areStagedThenUnstaged', () => {

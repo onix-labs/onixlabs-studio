@@ -1,3 +1,4 @@
+import { GitOperationState } from '@shared/api/source-control-channels';
 import { GitCommit, GitFileChange, GitStash } from '../repository/repository-data';
 import { ParsedRefs, ParsedStatus } from './git-output';
 
@@ -76,6 +77,13 @@ export interface SourceControlProvider {
    * @returns Returns the parsed status.
    */
   getStatus(): Promise<ParsedStatus>;
+
+  /**
+   * Reads the multi-step operation the working tree is in the middle of, if any. A backend that has
+   * no such notion reports a null kind, and the surfaces show nothing.
+   * @returns Returns the operation state.
+   */
+  getOperationState(): Promise<GitOperationState>;
 
   /**
    * Reads the commit history (newest first) with parents and ref decorations.

@@ -30,6 +30,12 @@ export enum SourceControlChannel {
   Status = 'source-control:status',
 
   /**
+   * Reads the multi-step operation a repository is in the middle of, if any (a merge, rebase,
+   * cherry-pick or revert git started and could not finish on its own).
+   */
+  OperationState = 'source-control:operation-state',
+
+  /**
    * Reads the commit history of a repository, with parent hashes and ref decorations.
    */
   Log = 'source-control:log',
@@ -216,6 +222,52 @@ export interface RepositoryInfo {
 }
 
 /**
+ * Names a multi-step operation a working tree can be left in the middle of.
+ *
+ * Each is an operation git starts, abandons part-way when it cannot apply a change by itself, and
+ * then expects to be told how to end. Until it is told, the repository is in a state that is neither
+ * the commit it started from nor the one it was heading for — which is precisely the state a panel
+ * offering these commands has to be able to name.
+ *
+ * `squash-merge` is spelled apart from `merge` because git does not treat the two alike: a squash
+ * merge records no `MERGE_HEAD`, so `git merge --abort` does not know about it and `git merge
+ * --continue` cannot finish it. A caller that conflated them would offer commands git refuses.
+ */
+export type GitOperationKind = 'merge' | 'squash-merge' | 'rebase' | 'cherry-pick' | 'revert';
+
+/**
+ * Describes the multi-step operation a repository is in the middle of.
+ */
+export interface GitOperationState {
+  /**
+   * Gets the operation in flight, or null when the working tree is in no such state.
+   */
+  readonly kind: GitOperationKind | null;
+
+  /**
+   * Gets what the operation is working towards, as a human reads it: the ref being merged in, or the
+   * one a rebase is replaying onto. Absent when git left nothing to name it by.
+   */
+  readonly target?: string;
+
+  /**
+   * Gets the branch being replayed, for a rebase. Absent for the other operations, which act on the
+   * checked-out branch itself.
+   */
+  readonly branch?: string;
+
+  /**
+   * Gets the number of the commit being applied, for an operation that replays several.
+   */
+  readonly step?: number;
+
+  /**
+   * Gets the total number of commits to apply, for an operation that replays several.
+   */
+  readonly total?: number;
+}
+
+/**
  * Describes the outcome of a single git invocation. The command's standard output is returned raw for
  * the renderer-side provider to parse; failures carry the error (and any standard error) instead.
  */
@@ -278,6 +330,18 @@ export interface SourceControlClient {
    * @returns Returns the raw command result.
    */
   status(root: string): Promise<GitRunResult>;
+
+  /**
+   * Reads the multi-step operation the repository is in the middle of, if any.
+   *
+   * Structured rather than raw, unlike the reads around it: this is not one git command's output but
+   * a set of state files git leaves in the repository's git directory, so there is no format for a
+   * renderer-side parser to own.
+   *
+   * @param root The absolute repository root; must be an open root.
+   * @returns Returns the operation state, whose kind is null when nothing is in flight.
+   */
+  operationState(root: string): Promise<GitOperationState>;
 
   /**
    * Reads the commit history of a repository, with parent hashes and ref decorations.

@@ -1,6 +1,6 @@
 import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { DirectoryChangeEvent } from '@shared/api/file-channels';
-import { RepositoryInfo } from '@shared/api/source-control-channels';
+import { GitOperationState, RepositoryInfo } from '@shared/api/source-control-channels';
 import { DirectoryWatch } from '@shared/angular/services/directory-watch/directory-watch';
 import { Log } from '@shared/angular/services/log/log';
 import {
@@ -208,6 +208,20 @@ export class Repository {
   >([]);
 
   /**
+   * Holds the paths left conflicted by an unfinished merge or rebase.
+   */
+  private readonly conflictedSignal: WritableSignal<readonly GitFileChange[]> = signal<
+    readonly GitFileChange[]
+  >([]);
+
+  /**
+   * Holds the multi-step operation the working tree is in the middle of.
+   */
+  private readonly operationSignal: WritableSignal<GitOperationState> = signal<GitOperationState>({
+    kind: null,
+  });
+
+  /**
    * Holds the lazily-loaded files of each commit, keyed by commit hash.
    */
   private readonly commitFilesSignal: WritableSignal<
@@ -297,6 +311,34 @@ export class Repository {
   public readonly unstaged: Signal<readonly GitFileChange[]> = this.unstagedSignal.asReadonly();
 
   /**
+   * Gets the paths left conflicted by an unfinished merge or rebase.
+   */
+  public readonly conflicted: Signal<readonly GitFileChange[]> = this.conflictedSignal.asReadonly();
+
+  /**
+   * Gets the multi-step operation the working tree is in the middle of, whose kind is null when it is
+   * in none.
+   */
+  public readonly operation: Signal<GitOperationState> = this.operationSignal.asReadonly();
+
+  /**
+   * Gets a value indicating whether an operation is in flight — whether, in other words, the working
+   * tree is somewhere git expects to be told how to leave.
+   */
+  public readonly operationInFlight: Signal<boolean> = computed(
+    (): boolean => this.operationSignal().kind !== null,
+  );
+
+  /**
+   * Gets a value indicating whether the operation in flight can be carried on from here: every
+   * conflict it raised has been resolved. Continuing with one outstanding is a refusal waiting to
+   * happen, so the surfaces offer it only when this holds.
+   */
+  public readonly canContinueOperation: Signal<boolean> = computed(
+    (): boolean => this.operationSignal().kind !== null && this.conflictedSignal().length === 0,
+  );
+
+  /**
    * Gets the identifier of the selected graph node, or null when nothing is selected.
    */
   public readonly selectedNodeId: Signal<string | null> = this.selectedNodeSignal.asReadonly();
@@ -310,10 +352,14 @@ export class Repository {
   );
 
   /**
-   * Gets the total number of changed files in the working tree (staged and unstaged).
+   * Gets the total number of changed files in the working tree (staged, unstaged, and conflicted).
+   * A conflicted path counts: it is a file the working tree is carrying that the last commit does not
+   * have, which is what the tally means, and leaving it out would report a repository mid-merge as
+   * having nothing going on.
    */
   public readonly changeCount: Signal<number> = computed(
-    (): number => this.stagedSignal().length + this.unstagedSignal().length,
+    (): number =>
+      this.stagedSignal().length + this.unstagedSignal().length + this.conflictedSignal().length,
   );
 
   /**
@@ -491,12 +537,21 @@ export class Repository {
     if (provider === null) {
       return;
     }
-    const status: ParsedStatus = await provider.getStatus();
+    // The operation state is read on the cheap pass as well as the full one, and deliberately.
+    // Resolving a conflict means editing a file, which is pure working-tree churn — so if this pass
+    // did not look, the last conflict could be settled and the panel would go on saying the merge was
+    // stuck on it until something happened to touch `.git`.
+    const [status, operation]: [ParsedStatus, GitOperationState] = await Promise.all([
+      provider.getStatus(),
+      provider.getOperationState(),
+    ]);
     if (this.provider !== provider) {
       return;
     }
     this.stagedSignal.set(status.staged);
     this.unstagedSignal.set(status.unstaged);
+    this.conflictedSignal.set(status.conflicted);
+    this.operationSignal.set(operation);
   }
 
   /**
@@ -523,6 +578,8 @@ export class Repository {
     this.commitsSignal.set([]);
     this.stagedSignal.set([]);
     this.unstagedSignal.set([]);
+    this.conflictedSignal.set([]);
+    this.operationSignal.set({ kind: null });
     this.commitFilesSignal.set(new Map<string, readonly GitFileChange[]>());
     this.commitMessageSignal.set('');
     await (provider?.close() ?? Promise.resolve());
@@ -540,16 +597,18 @@ export class Repository {
     this.loadingSignal.set(true);
     this.log.trace('Repository', 'Refreshing repository data', this.infoSignal()?.root);
     try {
-      const [status, commits, refs, stashes]: [
+      const [status, commits, refs, stashes, operation]: [
         ParsedStatus,
         readonly GitCommit[],
         ParsedRefs,
         readonly GitStash[],
+        GitOperationState,
       ] = await Promise.all([
         provider.getStatus(),
         provider.getCommits(LOG_LIMIT),
         provider.getRefs(),
         provider.getStashes(),
+        provider.getOperationState(),
       ]);
       // Ignore a response that arrived after the repository was closed or rebound.
       if (this.provider !== provider) {
@@ -557,6 +616,8 @@ export class Repository {
       }
       this.stagedSignal.set(status.staged);
       this.unstagedSignal.set(status.unstaged);
+      this.conflictedSignal.set(status.conflicted);
+      this.operationSignal.set(operation);
       this.commitsSignal.set(commits);
       this.branchesSignal.set(refs.branches);
       this.remotesSignal.set(refs.remotes);

@@ -1,4 +1,8 @@
-import { GitRunResult, SourceControlClient } from '@shared/api/source-control-channels';
+import {
+  GitOperationState,
+  GitRunResult,
+  SourceControlClient,
+} from '@shared/api/source-control-channels';
 import { GitCommit, GitFileChange, GitStash } from '../repository/repository-data';
 import {
   ParsedRefs,
@@ -41,6 +45,13 @@ const WORKTREE_REVISION: string = '';
 const HEAD_REVISION: string = 'HEAD';
 
 /**
+ * The revision naming stage 2 of the index — "ours", the side the working tree was already on when a
+ * merge or rebase hit a conflict. An unmerged path holds three stages at once, so it is addressed by
+ * number: `:2:path`.
+ */
+const OURS_STAGE_REVISION: string = ':2';
+
+/**
  * The git implementation of {@link SourceControlProvider}. It calls the safe git client (the
  * {@link SourceControlClient} over `window.bridge`) for a single opened repository root and maps the
  * raw output through the {@link import('./git-output')} parsers into the application's source-control
@@ -76,6 +87,14 @@ export class GitProvider implements SourceControlProvider {
     return parseStatus(
       await this.read((api: SourceControlClient): Promise<GitRunResult> => api.status(this.root)),
     );
+  }
+
+  /**
+   * Reads the multi-step operation the repository is in the middle of, if any.
+   * @returns Returns the operation state, whose kind is null when nothing is in flight.
+   */
+  public async getOperationState(): Promise<GitOperationState> {
+    return (await this.api?.operationState(this.root)) ?? { kind: null };
   }
 
   /**
@@ -149,6 +168,17 @@ export class GitProvider implements SourceControlProvider {
       const modified: string =
         file.status === 'deleted' ? '' : await this.blob(file.target.hash, newPath);
       return { original, modified };
+    }
+
+    // A conflicted path has no single indexed content to compare against — the index holds all three
+    // sides at once, and `:path` is ambiguous there, which is why the ordinary staged/unstaged pair
+    // would come back empty and read as a wholly-added file. Compare our side of the merge with what
+    // is on disk instead, so the diff shows what resolving it has to settle.
+    if (file.status === 'conflicted') {
+      return {
+        original: await this.blob(OURS_STAGE_REVISION, newPath),
+        modified: await this.blob(WORKTREE_REVISION, newPath),
+      };
     }
 
     // Working tree: staged compares HEAD with the index; unstaged compares the index with the worktree.

@@ -8,6 +8,7 @@ import {
   ForgeRepositoryRef,
   ForgeWorkflowRun,
 } from '@shared/api/forge-types';
+import { GitOperationState } from '@shared/api/source-control-channels';
 import { Shell } from '@shared/angular/services/shell/shell';
 import { Agent } from '@shared/angular/services/agent/agent';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
@@ -98,10 +99,21 @@ class FakeProvider implements SourceControlProvider {
    * Holds the working-tree changes reported by {@link getStatus}, so a spec can empty the tree and
    * re-read it.
    */
-  public working: { staged: readonly GitFileChange[]; unstaged: readonly GitFileChange[] } = {
+  public working: {
+    staged: readonly GitFileChange[];
+    unstaged: readonly GitFileChange[];
+    conflicted: readonly GitFileChange[];
+  } = {
     staged: [workingFile('staged.ts')],
     unstaged: [workingFile('unstaged.ts')],
+    conflicted: [],
   };
+
+  /**
+   * Holds the operation state reported by {@link getOperationState}, so a spec can put the working
+   * tree mid-merge.
+   */
+  public operation: GitOperationState = { kind: null };
 
   /**
    * Holds the stash entries reported by {@link getStashes}.
@@ -136,7 +148,12 @@ class FakeProvider implements SourceControlProvider {
       behind: 0,
       staged: [...this.working.staged],
       unstaged: [...this.working.unstaged],
+      conflicted: [...this.working.conflicted],
     });
+  }
+
+  public getOperationState(): Promise<GitOperationState> {
+    return Promise.resolve(this.operation);
   }
 
   public getCommits(): Promise<GitCommit[]> {
@@ -764,7 +781,7 @@ describe('SourceControlSidebar', () => {
   it('changesBadge_readsZeroWhenTheTreeIsClean_ratherThanVanishing', async () => {
     // It reads as a delta now, beside two others that show their zeros. A count that disappears when
     // it reaches nothing makes the row twitch on every commit, and says nothing where it stood.
-    provider.working = { staged: [], unstaged: [] };
+    provider.working = { staged: [], unstaged: [], conflicted: [] };
     await repository.refresh();
     fixture.detectChanges();
 
@@ -1308,7 +1325,7 @@ describe('SourceControlSidebar', () => {
   });
 
   it('theCheckedOutBranchDropsCommit_whenThereIsNothingToCommit', async () => {
-    provider.working = { staged: [], unstaged: [] };
+    provider.working = { staged: [], unstaged: [], conflicted: [] };
     await repository.refreshStatus();
     const menu: { contextMenuFor(r: TreeRow): readonly MenuItem[] } = component;
 

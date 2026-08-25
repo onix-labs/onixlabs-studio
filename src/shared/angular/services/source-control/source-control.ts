@@ -1,6 +1,7 @@
 import { inject, Service } from '@angular/core';
 import { Bridge } from '@shared/api/bridge';
 import {
+  GitOperationState,
   GitRunResult,
   RepositoryInfo,
   SourceControlChannel,
@@ -25,6 +26,8 @@ function createClient(bridge: Bridge): SourceControlClient {
       bridge.invoke(SourceControlChannel.CloseRepository, root),
     status: (root: string): Promise<GitRunResult> =>
       bridge.invoke(SourceControlChannel.Status, root),
+    operationState: (root: string): Promise<GitOperationState> =>
+      bridge.invoke(SourceControlChannel.OperationState, root),
     log: (root: string, limit: number): Promise<GitRunResult> =>
       bridge.invoke(SourceControlChannel.Log, root, limit),
     refs: (root: string): Promise<GitRunResult> => bridge.invoke(SourceControlChannel.Refs, root),

@@ -50,6 +50,45 @@ describe('git-output', () => {
       expect(status.staged[0].untracked).toBeUndefined();
     });
 
+    it('parseStatus_withUnmergedEntries_collectsThemAsConflicted', () => {
+      // An unmerged entry carries ten metadata fields before the path: the XY code, the submodule
+      // field, three stage modes plus the worktree mode, and the three stage object names.
+      const output: string = [
+        '# branch.head main',
+        '1 M. N... 100644 100644 100644 1111111 2222222 src/staged.ts',
+        'u UU N... 100644 100644 100644 100644 1111111 2222222 3333333 src/both-modified.ts',
+        'u AA N... 100644 100644 100644 100644 1111111 2222222 3333333 src/both added.ts',
+        '? src/untracked.ts',
+      ].join(NUL);
+
+      const status: ParsedStatus = parseStatus(output);
+
+      expect(status.conflicted.map((file: GitFileChange): string => file.path)).toEqual([
+        'src/both-modified.ts',
+        // A path with a space survives: the metadata fields are fixed in number, so everything from
+        // the eleventh onwards is the path.
+        'src/both added.ts',
+      ]);
+      expect(status.conflicted[0].status).toBe('conflicted');
+      expect(status.conflicted[0].target).toEqual({ kind: 'working', staged: false });
+      // Git reports a conflicted path as an unmerged entry INSTEAD of an ordinary one, so it must not
+      // also be counted among the changes waiting to be staged or committed.
+      expect(status.staged.map((file: GitFileChange): string => file.path)).toEqual([
+        'src/staged.ts',
+      ]);
+      expect(status.unstaged.map((file: GitFileChange): string => file.path)).toEqual([
+        'src/untracked.ts',
+      ]);
+    });
+
+    it('parseStatus_withNoUnmergedEntries_reportsNoConflicts', () => {
+      const status: ParsedStatus = parseStatus(
+        ['# branch.head main', '1 M. N... 100644 100644 100644 a b src/staged.ts'].join(NUL),
+      );
+
+      expect(status.conflicted).toEqual([]);
+    });
+
     it('parseStatus_withRenameEntry_consumesTheSecondPathToken', () => {
       const output: string = ['1 .M N... 100644 100644 100644 a b after.ts'].join(NUL);
       // Build a rename entry whose pre-rename path is a separate NUL token.

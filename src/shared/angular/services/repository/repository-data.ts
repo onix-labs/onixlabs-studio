@@ -21,11 +21,15 @@ export interface GitRef {
 
 /**
  * Specifies how a file changed relative to its parent.
+ *
+ * `conflicted` is not a way of changing so much as a way of being unfinished: git could not decide
+ * between two changes and left both in the file for a person to settle. It is a status of its own
+ * because it is the one that cannot be committed as it stands.
  */
-export type GitChangeStatus = 'added' | 'modified' | 'deleted' | 'renamed';
+export type GitChangeStatus = 'added' | 'modified' | 'deleted' | 'renamed' | 'conflicted';
 
 /**
- * Maps a change status to its single-letter badge (A, M, D, R).
+ * Maps a change status to its single-letter badge (A, M, D, R, U).
  * @param status The change status.
  * @returns Returns the status letter.
  */
@@ -37,6 +41,8 @@ export function statusLetter(status: GitChangeStatus): string {
       return 'D';
     case 'renamed':
       return 'R';
+    case 'conflicted':
+      return 'U';
     default:
       return 'M';
   }

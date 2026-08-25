@@ -2,6 +2,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Icon } from '@shared/angular/icons/icon';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { ParsedRefs, ParsedStatus } from '@shared/angular/services/source-control/git-output';
+import { GitOperationState } from '@shared/api/source-control-channels';
 import {
   FileDiff,
   MutationResult,
@@ -71,7 +72,12 @@ class FakeProvider implements SourceControlProvider {
       behind: 0,
       staged: [workingFile('staged.ts')],
       unstaged: [workingFile('unstaged.ts')],
+      conflicted: [],
     });
+  }
+
+  public getOperationState(): Promise<GitOperationState> {
+    return Promise.resolve({ kind: null });
   }
 
   public getCommits(): Promise<GitCommit[]> {
