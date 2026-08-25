@@ -21,14 +21,14 @@ import {
   ForgeCheckStatus,
   ForgeIssue,
   ForgePullRequest,
-  ForgeRepositoryRef,
   ForgeRunStatus,
   ForgeWorkflowRun,
 } from '@shared/api/forge-types';
 import { Shell } from '@shared/angular/services/shell/shell';
-import { Agent } from '@shared/angular/services/agent/agent';
-import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
 import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
+import { IssueAgentConfirm } from '@shared/angular/components/panels/issue-agent-confirm/issue-agent-confirm';
+import { IssueAgent } from '@shared/angular/services/issues/issue-agent';
+import { IssueOpener } from '@shared/angular/services/issues/issue-opener';
 import {
   GitBranch,
   GitCommit,
@@ -406,6 +406,7 @@ interface SectionDef {
     ExplorerToolbar,
     PulseDot,
     TreeView,
+    IssueAgentConfirm,
   ],
   templateUrl: './source-control-sidebar.html',
   styleUrl: './source-control-sidebar.scss',
@@ -449,20 +450,21 @@ export class SourceControlSidebar implements OnDestroy {
   private readonly shell: Shell = inject(Shell);
 
   /**
-   * Holds this view's agent, whose transcript Open in Agent replaces.
+   * Holds the seam that starts a conversation about an issue, shared with the issue's own document
+   * so both offers of Open in Agent ask the same thing and warn at the same moment.
    */
-  private readonly agent: Agent = inject(Agent);
-
-  /**
-   * Holds this view's conversation, which owns starting a fresh one.
-   */
-  private readonly conversation: AgentConversation = inject(AgentConversation);
+  private readonly issueAgent: IssueAgent = inject(IssueAgent);
 
   /**
    * Holds this view's dock reveal helper, used to bring the agent panel forward once a conversation
    * has been started from here — starting one the user cannot see would be a strange thing to do.
    */
   private readonly dockReveal: DockReveal = inject(DockReveal);
+
+  /**
+   * Holds the opener that surfaces an issue as a document in the well.
+   */
+  private readonly issueOpener: IssueOpener = inject(IssueOpener);
 
   /**
    * Holds the keys of the currently expanded sections. Only the local branches start open; the rest
@@ -770,6 +772,21 @@ export class SourceControlSidebar implements OnDestroy {
         break;
       default:
         break;
+    }
+  }
+
+  /**
+   * Opens what a row stands for, when a double click asks for more than the row itself can show.
+   *
+   * Only issues answer this today. A single click still selects, which is why this is a second event
+   * rather than a replacement: the first click is a choice, the second is a request to read.
+   *
+   * @param row The row that was double-clicked.
+   */
+  public onRowDoubleClick(row: TreeRow): void {
+    const node: RepoNode = this.nodeOf(row);
+    if (node.issue !== undefined) {
+      this.issueOpener.open(node.issue);
     }
   }
 
@@ -2099,7 +2116,7 @@ export class SourceControlSidebar implements OnDestroy {
         break;
       case ACTION_ISSUE_IN_AGENT:
         if (node.issue !== undefined) {
-          this.openIssueInAgent(node.issue);
+          this.issueAgent.open(node.issue);
         }
         break;
       case ACTION_OPEN_RUN:
@@ -2243,62 +2260,6 @@ export class SourceControlSidebar implements OnDestroy {
   }
 
   /**
-   * Holds the issue awaiting the user's confirmation to replace the current conversation, or null
-   * when none is.
-   */
-  protected readonly pendingAgentIssue: WritableSignal<ForgeIssue | null> =
-    signal<ForgeIssue | null>(null);
-
-  /**
-   * Opens an issue in this workspace's agent, starting a fresh conversation about it.
-   *
-   * A conversation that already holds anything is not replaced silently: starting a new one discards
-   * the transcript, and doing that from a menu click the user may have half-aimed would lose work.
-   * The check is on the transcript rather than on a run being in flight — a settled conversation is
-   * every bit as much a thing to lose.
-   *
-   * @param issue The issue to open.
-   */
-  private openIssueInAgent(issue: ForgeIssue): void {
-    if (this.agent.hasMessages()) {
-      this.pendingAgentIssue.set(issue);
-      return;
-    }
-    this.startAgentConversation(issue);
-  }
-
-  /**
-   * Confirms replacing the current conversation with one about the pending issue.
-   */
-  protected confirmOpenInAgent(): void {
-    const issue: ForgeIssue | null = this.pendingAgentIssue();
-    this.pendingAgentIssue.set(null);
-    if (issue !== null) {
-      this.startAgentConversation(issue);
-    }
-  }
-
-  /**
-   * Dismisses the prompt, leaving the current conversation alone.
-   */
-  protected dismissOpenInAgent(): void {
-    this.pendingAgentIssue.set(null);
-  }
-
-  /**
-   * Starts a fresh conversation about an issue and brings the agent panel forward.
-   * @param issue The issue to open.
-   */
-  private startAgentConversation(issue: ForgeIssue): void {
-    this.log.info('forge', `Opening issue #${issue.number} in the agent`);
-    this.conversation.newChat();
-    this.agent.send(agentPromptFor(issue, this.forge.repositoryRef()));
-    // The agent panel is in both built-in layout presets; a user who has closed it can bring it back
-    // from View → Panels, and the conversation is waiting when they do.
-    this.dockReveal.reveal('agent');
-  }
-
-  /**
    * Holds the run awaiting the user's re-run confirmation, or null when none is. Re-running spends
    * CI minutes and can redeploy, so it is never done from a bare menu click.
    */
@@ -2411,26 +2372,4 @@ export function browsableRemoteUrl(url: string): string | null {
     return `https://${scp[1]}/${withoutSuffix(scp[2])}`;
   }
   return null;
-}
-
-/**
- * Builds the message a conversation about an issue opens with.
- *
- * It names the issue, quotes its title, and gives the URL — the agent has the tools to read the body
- * itself, and fetching it here would be a request per issue for text nobody may ask about. The
- * closing instruction is deliberate: a conversation started by one click on a menu should arrive at
- * an understanding of the issue, not at a working tree full of edits nobody asked for.
- *
- * @param issue The issue the conversation is about.
- * @param repository The repository it belongs to, or null when the forge is not known.
- * @returns Returns the opening message.
- */
-function agentPromptFor(issue: ForgeIssue, repository: ForgeRepositoryRef | null): string {
-  const where: string = repository === null ? '' : ` in ${repository.owner}/${repository.name}`;
-  const link: string = issue.url.length === 0 ? '' : `\n${issue.url}`;
-  return (
-    `Read GitHub issue #${issue.number}${where} — "${issue.title}".${link}\n\n` +
-    'Summarise what it asks for, then tell me how you would approach it in this codebase. ' +
-    "Don't make any changes yet."
-  );
 }

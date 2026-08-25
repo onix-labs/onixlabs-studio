@@ -9,6 +9,7 @@
 import {
   ForgeAuthStatus,
   ForgeIssue,
+  ForgeIssueComment,
   ForgePullRequest,
   ForgeRepositoryRef,
   ForgeResult,
@@ -51,6 +52,11 @@ export enum ForgeChannel {
    * Lists a repository's open issues (invoke).
    */
   Issues = 'forge:issues',
+
+  /**
+   * Lists one issue's comments (invoke).
+   */
+  IssueComments = 'forge:issue-comments',
 
   /**
    * Lists a repository's recent CI/CD workflow runs (invoke).
@@ -111,6 +117,17 @@ export interface ForgeClient {
    * @returns Returns the issues, or the reason they could not be read.
    */
   issues(repository: ForgeRepositoryRef): Promise<ForgeResult<readonly ForgeIssue[]>>;
+
+  /**
+   * Lists an issue's comments, oldest first.
+   * @param repository The repository to read.
+   * @param issueNumber The issue whose comments to read.
+   * @returns Returns the comments, or the reason they could not be read.
+   */
+  issueComments(
+    repository: ForgeRepositoryRef,
+    issueNumber: number,
+  ): Promise<ForgeResult<readonly ForgeIssueComment[]>>;
 
   /**
    * Lists a repository's recent CI/CD workflow runs.

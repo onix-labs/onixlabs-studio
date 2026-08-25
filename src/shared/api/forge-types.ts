@@ -178,6 +178,76 @@ export interface ForgeIssue {
    * Gets the logins of the accounts the issue is assigned to.
    */
   readonly assignees: readonly string[];
+
+  /**
+   * Gets whether the issue is open or closed.
+   */
+  readonly state: 'open' | 'closed';
+
+  /**
+   * Gets the issue's body as the author wrote it — Markdown, unrendered.
+   *
+   * Carried on the list entry rather than fetched per issue, because GitHub's issues endpoint
+   * returns it already: asking again for what has been read and thrown away would spend a request to
+   * learn nothing.
+   */
+  readonly body: string;
+
+  /**
+   * Gets when the issue was opened, as an ISO 8601 timestamp.
+   */
+  readonly createdAt: string;
+
+  /**
+   * Gets when the issue was last touched, as an ISO 8601 timestamp.
+   */
+  readonly updatedAt: string;
+
+  /**
+   * Gets when the issue was closed, as an ISO 8601 timestamp, or undefined while it is open.
+   */
+  readonly closedAt?: string;
+
+  /**
+   * Gets how many comments the issue has, so a reader knows whether there is a conversation before
+   * the request to fetch one is made.
+   */
+  readonly commentCount: number;
+
+  /**
+   * Gets the title of the milestone the issue belongs to, or undefined when it belongs to none.
+   */
+  readonly milestone?: string;
+}
+
+/**
+ * Describes one comment on an issue.
+ */
+export interface ForgeIssueComment {
+  /**
+   * Gets the comment's identifier, stable enough to track a rendered list by.
+   */
+  readonly id: number;
+
+  /**
+   * Gets the login of the account that wrote it.
+   */
+  readonly author: string;
+
+  /**
+   * Gets the comment's body as written — Markdown, unrendered.
+   */
+  readonly body: string;
+
+  /**
+   * Gets when the comment was posted, as an ISO 8601 timestamp.
+   */
+  readonly createdAt: string;
+
+  /**
+   * Gets the web URL of the comment, for opening it in a browser.
+   */
+  readonly url: string;
 }
 
 /**

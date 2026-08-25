@@ -1,6 +1,7 @@
 import {
   ForgeIdentity,
   ForgeIssue,
+  ForgeIssueComment,
   ForgePullRequest,
   ForgeRepositoryRef,
   ForgeResult,
@@ -466,6 +467,12 @@ describe('GitHubForge', () => {
               user: { login: 'matthew' },
               labels: [{ name: 'bug' }, { name: 'area:git' }],
               assignees: [{ login: 'matthew' }],
+              state: 'open',
+              body: 'Steps to reproduce are in the log.',
+              created_at: '2026-08-01T10:00:00Z',
+              updated_at: '2026-08-02T11:30:00Z',
+              comments: 3,
+              milestone: { title: 'v0.13' },
             },
           ],
         },
@@ -481,6 +488,76 @@ describe('GitHubForge', () => {
           url: 'https://github.com/onix-labs/onixlabs-studio/issues/12',
           labels: ['bug', 'area:git'],
           assignees: ['matthew'],
+          // Everything below already rides on the list response; asking for it again per issue would
+          // spend a request to learn what has been read and thrown away.
+          state: 'open',
+          body: 'Steps to reproduce are in the log.',
+          createdAt: '2026-08-01T10:00:00Z',
+          updatedAt: '2026-08-02T11:30:00Z',
+          commentCount: 3,
+          milestone: 'v0.13',
+        },
+      ]);
+    });
+
+    it('mapsAnIssueThatIsClosed_andCarriesNoMilestone', async () => {
+      const { forge } = setup([
+        {
+          match: '/issues',
+          status: 200,
+          body: [
+            {
+              number: 9,
+              title: 'Done',
+              html_url: 'https://example.com/9',
+              user: { login: 'matthew' },
+              state: 'closed',
+              closed_at: '2026-08-03T09:00:00Z',
+              milestone: null,
+            },
+          ],
+        },
+      ]);
+
+      const result: ForgeResult<readonly ForgeIssue[]> = await forge.listIssues(REPOSITORY);
+      const issue: ForgeIssue | undefined = result.ok === true ? result.value[0] : undefined;
+
+      expect(issue?.state).toBe('closed');
+      expect(issue?.closedAt).toBe('2026-08-03T09:00:00Z');
+      // Absent rather than empty: there is no milestone, which is not the same as one called "".
+      expect(issue?.milestone).toBeUndefined();
+      expect(issue?.commentCount).toBe(0);
+    });
+
+    it('listIssueComments_readsTheConversationOldestFirst', async () => {
+      const { forge } = setup([
+        {
+          match: '/issues/12/comments',
+          status: 200,
+          body: [
+            {
+              id: 5001,
+              user: { login: 'matthew' },
+              body: 'Reproduced on main.',
+              created_at: '2026-08-02T09:00:00Z',
+              html_url: 'https://example.com/9#issuecomment-5001',
+            },
+          ],
+        },
+      ]);
+
+      const result: ForgeResult<readonly ForgeIssueComment[]> = await forge.listIssueComments(
+        REPOSITORY,
+        12,
+      );
+
+      expect(result.ok === true && result.value).toEqual([
+        {
+          id: 5001,
+          author: 'matthew',
+          body: 'Reproduced on main.',
+          createdAt: '2026-08-02T09:00:00Z',
+          url: 'https://example.com/9#issuecomment-5001',
         },
       ]);
     });

@@ -1,0 +1,22 @@
+<!-- Asked before an issue replaces a conversation that already holds something: starting a new one
+     discards the transcript, and a click the user half-aimed should not lose it. -->
+<app-modal
+  [open]="issueAgent.pending() !== null"
+  [width]="26"
+  ariaLabel="Open issue in agent"
+  (dismiss)="issueAgent.dismiss()"
+>
+  <ng-template appModalContent>
+    <h2 class="confirm__title">Start a new conversation?</h2>
+    <p class="confirm__message">
+      Your current conversation ends, and a new one starts about “#{{
+        issueAgent.pending()?.number
+      }}
+      {{ issueAgent.pending()?.title }}”.
+    </p>
+    <div class="confirm__actions">
+      <app-button variant="solid" label="Yes" (click)="issueAgent.confirm()" />
+      <app-button label="No" (click)="issueAgent.dismiss()" />
+    </div>
+  </ng-template>
+</app-modal>

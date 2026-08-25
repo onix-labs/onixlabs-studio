@@ -152,6 +152,15 @@ export class TreeView {
   public readonly rowClick: OutputEmitterRef<TreeRow> = output<TreeRow>();
 
   /**
+   * Emits the row that was double-clicked.
+   *
+   * A separate event rather than a count kept here, because the two mean different things and a
+   * consumer wants both: the first click still selects, and the second asks for the row to be opened
+   * properly. A tree with nothing to open simply does not listen.
+   */
+  public readonly rowDoubleClick: OutputEmitterRef<TreeRow> = output<TreeRow>();
+
+  /**
    * Gets the factory that builds a row's context-menu items, or null for a tree without one.
    *
    * A function rather than a list, because the items depend on the row: a project offers different

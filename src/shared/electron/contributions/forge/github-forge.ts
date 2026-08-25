@@ -2,6 +2,7 @@ import {
   ForgeCheckStatus,
   ForgeIdentity,
   ForgeIssue,
+  ForgeIssueComment,
   ForgePullRequest,
   ForgeRepositoryRef,
   ForgeResult,
@@ -60,6 +61,24 @@ interface RawIssue {
   readonly pull_request?: unknown;
   readonly labels?: readonly { readonly name?: unknown }[];
   readonly assignees?: readonly RawUser[];
+  readonly state?: unknown;
+  readonly body?: unknown;
+  readonly created_at?: unknown;
+  readonly updated_at?: unknown;
+  readonly closed_at?: unknown;
+  readonly comments?: unknown;
+  readonly milestone?: { readonly title?: unknown } | null;
+}
+
+/**
+ * The comment fields read from GitHub's issue-comments endpoint.
+ */
+interface RawIssueComment {
+  readonly id?: unknown;
+  readonly user?: RawUser;
+  readonly body?: unknown;
+  readonly created_at?: unknown;
+  readonly html_url?: unknown;
 }
 
 /**
@@ -327,8 +346,56 @@ export class GitHubForge implements ForgeProvider {
             assignees: (issue.assignees ?? [])
               .map((user: RawUser): string => asString(user.login))
               .filter((login: string): boolean => login.length > 0),
+            state: asString(issue.state) === 'closed' ? 'closed' : 'open',
+            body: asString(issue.body),
+            createdAt: asString(issue.created_at),
+            updatedAt: asString(issue.updated_at),
+            ...(asString(issue.closed_at).length === 0
+              ? {}
+              : { closedAt: asString(issue.closed_at) }),
+            commentCount: asNumber(issue.comments),
+            ...(asString(issue.milestone?.title).length === 0
+              ? {}
+              : { milestone: asString(issue.milestone?.title) }),
           }),
         ),
+    };
+  }
+
+  /**
+   * Lists an issue's comments, oldest first.
+   *
+   * Its own request, because the issues endpoint carries only how many there are. That count is on
+   * the list entry precisely so this is asked for only where a conversation exists, and the ETag
+   * cache means re-opening an issue nobody has replied to since costs nothing.
+   *
+   * @param repository The repository to read.
+   * @param issueNumber The issue whose comments to read.
+   * @returns Returns the comments, or the reason they could not be read.
+   */
+  public async listIssueComments(
+    repository: ForgeRepositoryRef,
+    issueNumber: number,
+  ): Promise<ForgeResult<readonly ForgeIssueComment[]>> {
+    const path: string = `/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/issues/${encodeURIComponent(String(issueNumber))}/comments?per_page=${PAGE_SIZE}`;
+    const result: ForgeResult<unknown> = await this.get(repository.host, path);
+    if (!result.ok) {
+      return result;
+    }
+    const raw: readonly RawIssueComment[] = Array.isArray(result.value)
+      ? (result.value as readonly RawIssueComment[])
+      : [];
+    return {
+      ok: true,
+      value: raw.map(
+        (comment: RawIssueComment): ForgeIssueComment => ({
+          id: asNumber(comment.id),
+          author: asString(comment.user?.login, 'unknown'),
+          body: asString(comment.body),
+          createdAt: asString(comment.created_at),
+          url: asString(comment.html_url),
+        }),
+      ),
     };
   }
 

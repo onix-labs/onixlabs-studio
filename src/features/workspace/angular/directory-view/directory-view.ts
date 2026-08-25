@@ -37,6 +37,9 @@ import { EditorTerminals } from '@shared/angular/services/editor-terminals/edito
 import { Diagnostics } from '@shared/angular/services/diagnostics/diagnostics';
 import { DiffOpener } from '@shared/angular/services/diffs/diff-opener';
 import { Diffs } from '@shared/angular/services/diffs/diffs';
+import { IssueAgent } from '@shared/angular/services/issues/issue-agent';
+import { IssueOpener } from '@shared/angular/services/issues/issue-opener';
+import { IssueStore } from '@shared/angular/services/issues/issue-store';
 import { DockAutoHide } from '@shared/angular/services/dock-layout/dock-auto-hide';
 import { DockDrag } from '@shared/angular/services/dock-layout/dock-drag';
 import { DockFloating, FloatWindow } from '@shared/angular/services/dock-layout/dock-floating';
@@ -213,6 +216,12 @@ const PANEL_ANCHORS: Readonly<Record<string, readonly string[]>> = {
     ForgeRepository,
     Diffs,
     DiffOpener,
+    // The issue pair belongs beside the diff pair, and for the same reason: an opener reaches for
+    // this tab's dock. Left to the root injector it would register its panel with, and tab it into,
+    // a DockState no view renders — the tab opens somewhere nobody can see.
+    IssueStore,
+    IssueOpener,
+    IssueAgent,
     DockTabContext,
     DockState,
     DockGeometry,
@@ -571,6 +580,11 @@ export class DirectoryView implements OnInit, OnDestroy {
    * Holds this tab's scoped diff store, swept of diffs whose dock panels have been closed.
    */
   private readonly diffs: Diffs = inject(Diffs);
+
+  /**
+   * Holds the issue store, whose records are dropped with their dock tabs.
+   */
+  private readonly issues: IssueStore = inject(IssueStore);
 
   /**
    * Holds the root source-control command seam this tab registers its handler with while active, so
@@ -1001,13 +1015,15 @@ export class DirectoryView implements OnInit, OnDestroy {
       }
     });
 
-    // Drop diff records once their dock tab is gone, so closed diffs (opened from the commit panel)
-    // are not retained.
+    // Drop diff and issue records once their dock tab is gone, so what was closed is not retained.
+    // Both stores hold content keyed by panel id, and both are filled by opening something from the
+    // source-control surface; neither is told when its tab is closed.
     effect((): void => {
       const present: ReadonlySet<string> = new Set<string>(
         collectPanelIds(this.dockState.layout()),
       );
       this.diffs.removeMissing(present);
+      this.issues.removeMissing(present);
     });
 
     // Refresh the explorers' git decorations whenever the tab is shown, catching changes made while

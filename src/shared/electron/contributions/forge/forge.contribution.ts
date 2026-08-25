@@ -8,6 +8,7 @@ import {
   ForgeAuthStatus,
   ForgeIdentity,
   ForgeIssue,
+  ForgeIssueComment,
   ForgePullRequest,
   ForgeRepositoryRef,
   ForgeResult,
@@ -140,6 +141,17 @@ export class ForgeContribution implements MainContribution {
       ): Promise<ForgeResult<readonly ForgeIssue[]>> =>
         this.list(repository, (provider: ForgeProvider, target: ForgeRepositoryRef) =>
           provider.listIssues(target),
+        ),
+    );
+    context.handle(
+      ForgeChannel.IssueComments,
+      (
+        _event: IpcMainInvokeEvent,
+        repository: unknown,
+        issueNumber: unknown,
+      ): Promise<ForgeResult<readonly ForgeIssueComment[]>> =>
+        this.list(repository, (provider: ForgeProvider, target: ForgeRepositoryRef) =>
+          provider.listIssueComments(target, asIssueNumber(issueNumber)),
         ),
     );
     context.handle(
@@ -290,6 +302,20 @@ export class ForgeContribution implements MainContribution {
     }
     return read(provider, target);
   }
+}
+
+/**
+ * Validates a renderer-supplied issue number.
+ *
+ * It reaches the request path, so it is checked rather than trusted: anything that is not a positive
+ * whole number becomes zero, which GitHub answers with a plain 404 rather than with whatever a
+ * smuggled path segment might have addressed.
+ *
+ * @param value The value the renderer sent.
+ * @returns Returns the number, or zero when it is not one.
+ */
+export function asIssueNumber(value: unknown): number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : 0;
 }
 
 /**

@@ -5,6 +5,7 @@ import { ForgeChannel, ForgeClient } from '@shared/api/forge-channels';
 import {
   ForgeAuthStatus,
   ForgeIssue,
+  ForgeIssueComment,
   ForgePullRequest,
   ForgeRepositoryRef,
   ForgeResult,
@@ -131,6 +132,25 @@ export class Forge implements ForgeClient {
     return (
       this.bridge?.invoke<ForgeResult<readonly ForgeIssue[]>>(ForgeChannel.Issues, repository) ??
       Promise.resolve(UNAVAILABLE_RESULT)
+    );
+  }
+
+  /**
+   * Lists an issue's comments, oldest first.
+   * @param repository The repository to read.
+   * @param issueNumber The issue whose comments to read.
+   * @returns Returns the comments, or the reason they could not be read.
+   */
+  public issueComments(
+    repository: ForgeRepositoryRef,
+    issueNumber: number,
+  ): Promise<ForgeResult<readonly ForgeIssueComment[]>> {
+    return (
+      this.bridge?.invoke<ForgeResult<readonly ForgeIssueComment[]>>(
+        ForgeChannel.IssueComments,
+        repository,
+        issueNumber,
+      ) ?? Promise.resolve(UNAVAILABLE_RESULT)
     );
   }
 
