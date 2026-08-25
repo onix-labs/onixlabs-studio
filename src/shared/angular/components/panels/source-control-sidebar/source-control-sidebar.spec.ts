@@ -38,7 +38,7 @@ import {
   GitTag,
 } from '@shared/angular/services/repository/repository-data';
 
-import { SourceControlSidebar } from './source-control-sidebar';
+import { browsableRemoteUrl, SourceControlSidebar } from './source-control-sidebar';
 
 /**
  * Builds a file change targeting the working tree.
@@ -829,12 +829,64 @@ describe('SourceControlSidebar', () => {
       return internals.rows();
     }
 
-    it('showsEachRemotesUrl_whichWasReadAndNeverDrawn', () => {
+    it('keepsTheUrlOffTheRow_whereItWouldCrowdATreeOfNames', () => {
       const row: TreeRow | undefined = remoteRows().find(
         (candidate: TreeRow): boolean => candidate.id === 'remote:origin',
       );
 
-      expect((row?.data as { note?: string }).note).toBe('https://example.com/onix/studio.git');
+      expect(row).toBeDefined();
+      expect((row?.data as { note?: string }).note).toBeUndefined();
+    });
+
+    it('copiesTheUrlExactlyAsGitHasIt_notTheBrowsableRewrite', async () => {
+      const written: string[] = [];
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: {
+          writeText: (text: string): Promise<void> => {
+            written.push(text);
+            return Promise.resolve();
+          },
+        },
+      });
+      const menu: { onContextAction(c: TreeMenuSelection): void } = component as unknown as {
+        onContextAction(c: TreeMenuSelection): void;
+      };
+
+      menu.onContextAction({ itemId: 'remote.copyUrl', row: remoteRow() });
+      await fixture.whenStable();
+
+      // This is the string that would be pasted into a clone.
+      expect(written).toEqual(['https://example.com/onix/studio.git']);
+    });
+
+    it('opensTheUrlInTheBrowser', async () => {
+      const menu: { onContextAction(c: TreeMenuSelection): void } = component as unknown as {
+        onContextAction(c: TreeMenuSelection): void;
+      };
+
+      menu.onContextAction({ itemId: 'remote.openUrl', row: remoteRow() });
+      await fixture.whenStable();
+
+      expect(opened).toContain('https://example.com/onix/studio');
+    });
+
+    it('leavesOpenInert_whenTheRemoteHasNoWebAddress', async () => {
+      provider.remoteEntries = [{ name: 'origin', url: '/srv/git/repo.git', branches: [] }];
+      await repository.refresh();
+      fixture.detectChanges();
+      const menu: { contextMenuFor(r: TreeRow): readonly MenuItem[] } = component;
+
+      const items: readonly MenuItem[] = menu.contextMenuFor(remoteRow());
+      const open: MenuItem | undefined = items.find(
+        (item: MenuItem): boolean => item.label === 'Open Remote URL',
+      );
+
+      // A path-shaped remote has no web address; a browser opened onto nothing helps no one.
+      expect(open?.disabled).toBe(true);
+      expect(
+        items.find((item: MenuItem): boolean => item.label === 'Copy Remote URL')?.disabled,
+      ).toBe(false);
     });
 
     it('aRemoteBranchRowNavigatesToItsTip', () => {
@@ -890,7 +942,7 @@ describe('SourceControlSidebar', () => {
           .contextMenuFor(remoteRow())
           .filter((item: MenuItem): boolean => item.separator !== true)
           .map((item: MenuItem): string => item.label),
-      ).toEqual(['Fetch', 'Prune', 'Remove…']);
+      ).toEqual(['Fetch', 'Prune', 'Copy Remote URL', 'Open Remote URL', 'Remove…']);
     });
 
     it('fetchesAndPrunesOneRemote_ratherThanAllOfThem', async () => {
@@ -2255,5 +2307,47 @@ describe('SourceControlSidebar', () => {
 
       expect(forge.watched.size).toBe(0);
     });
+  });
+});
+
+describe('browsableRemoteUrl', () => {
+  it('passesAnHttpsRemoteThrough_droppingTheFetchPathSuffix', () => {
+    expect(browsableRemoteUrl('https://github.com/onix-labs/onixlabs-studio.git')).toBe(
+      'https://github.com/onix-labs/onixlabs-studio',
+    );
+    expect(browsableRemoteUrl('http://example.com/owner/repo')).toBe(
+      'http://example.com/owner/repo',
+    );
+  });
+
+  it('rewritesTheScpLikeSshForm_whichIsTheCommonOne', () => {
+    // `git@host:owner/repo.git` — the colon separates host from path rather than naming a port.
+    expect(browsableRemoteUrl('git@github.com:onix-labs/onixlabs-studio.git')).toBe(
+      'https://github.com/onix-labs/onixlabs-studio',
+    );
+  });
+
+  it('rewritesTheSshAndGitSchemes_droppingAnyCredential', () => {
+    expect(browsableRemoteUrl('ssh://git@github.com/owner/repo.git')).toBe(
+      'https://github.com/owner/repo',
+    );
+    expect(browsableRemoteUrl('git://github.com/owner/repo.git')).toBe(
+      'https://github.com/owner/repo',
+    );
+  });
+
+  it('yieldsNothingForARemoteWithNoWebAddress', () => {
+    // A path or a file URL has none, and a guess would open a browser onto nothing.
+    expect(browsableRemoteUrl('/srv/git/repo.git')).toBeNull();
+    expect(browsableRemoteUrl('../sibling/repo')).toBeNull();
+    expect(browsableRemoteUrl('')).toBeNull();
+    expect(browsableRemoteUrl('   ')).toBeNull();
+  });
+
+  it('yieldsNothingForASchemeItDoesNotUnderstand', () => {
+    // A scheme decides the answer by itself. Falling through to the scp-like branch would read
+    // `file` as a host and build an address to nowhere.
+    expect(browsableRemoteUrl('file:///srv/git/repo.git')).toBeNull();
+    expect(browsableRemoteUrl('ftp://example.com/repo.git')).toBeNull();
   });
 });

@@ -200,6 +200,16 @@ const ACTION_PRUNE_REMOTE: string = 'remote.prune';
 const ACTION_REMOVE_REMOTE: string = 'remote.remove';
 
 /**
+ * Identifies the Copy Remote URL command on a remote's context menu.
+ */
+const ACTION_COPY_REMOTE_URL: string = 'remote.copyUrl';
+
+/**
+ * Identifies the Open Remote URL command on a remote's context menu.
+ */
+const ACTION_OPEN_REMOTE_URL: string = 'remote.openUrl';
+
+/**
  * Identifies the Add Remote command on the tool strip's more-actions menu.
  */
 const ACTION_ADD_REMOTE: string = 'repo.addRemote';
@@ -942,6 +952,19 @@ export class SourceControlSidebar implements OnDestroy {
   }
 
   /**
+   * Opens a remote's web address in the browser.
+   * @param remote The remote to open.
+   */
+  private openRemoteUrl(remote: GitRemote): void {
+    const url: string | null = browsableRemoteUrl(remote.url);
+    if (url === null) {
+      return;
+    }
+    this.log.info('SourceControlSidebar', `Opening remote '${remote.name}' at ${url}`);
+    void this.shell.openExternal(url);
+  }
+
+  /**
    * Holds the remote awaiting removal confirmation, or null when none is.
    */
   protected readonly pendingRemoveRemote: WritableSignal<GitRemote | null> =
@@ -1301,15 +1324,10 @@ export class SourceControlSidebar implements OnDestroy {
         depth: 1,
         expandable: false,
         expanded: false,
-        // The URL rides as the row's note. It was read and never shown, which made two remotes
-        // pointing at different repositories indistinguishable by anything the panel drew.
-        data: {
-          kind: 'remote',
-          icon: Icon.CLOUD,
-          label: remote.name,
-          remote,
-          ...(remote.url.length === 0 ? {} : { note: remote.url }),
-        },
+        // The URL stays off the row: it is long, it is the same for most of a repository's life, and
+        // a tree of names reads worse with an address after each one. It lives on the menu, where it
+        // can be copied or opened rather than merely looked at.
+        data: { kind: 'remote', icon: Icon.CLOUD, label: remote.name, remote },
       });
       for (const branch of remote.branches) {
         out.push({
@@ -1586,6 +1604,7 @@ export class SourceControlSidebar implements OnDestroy {
       ];
     }
     if (node.remote !== undefined) {
+      const url: string = node.remote.url;
       return [
         { id: ACTION_FETCH_REMOTE, label: 'Fetch', icon: Icon.CLOUD },
         {
@@ -1594,7 +1613,26 @@ export class SourceControlSidebar implements OnDestroy {
           icon: Icon.REFRESH,
           status: 'drop deleted branches',
         },
-        { separator: true, id: 'remote.sep', label: '' },
+        { separator: true, id: 'remote.sep.url', label: '' },
+        {
+          id: ACTION_COPY_REMOTE_URL,
+          label: 'Copy Remote URL',
+          icon: Icon.COPY,
+          // Copied exactly as git has it configured: this is the string that would be pasted into a
+          // clone, so rewriting it to something browsable would hand back the wrong thing.
+          disabled: url.length === 0,
+          ...(url.length === 0 ? { status: 'no URL' } : {}),
+        },
+        {
+          id: ACTION_OPEN_REMOTE_URL,
+          label: 'Open Remote URL',
+          icon: Icon.OPEN_EXTERNAL,
+          // An SSH remote is rewritten to its web address; a path-shaped one has none at all, and
+          // saying so beats opening a browser onto nothing.
+          disabled: browsableRemoteUrl(url) === null,
+          ...(browsableRemoteUrl(url) === null ? { status: 'not a web address' } : {}),
+        },
+        { separator: true, id: 'remote.sep.remove', label: '' },
         { id: ACTION_REMOVE_REMOTE, label: 'Remove…', icon: Icon.TRASH },
       ];
     }
@@ -1670,6 +1708,17 @@ export class SourceControlSidebar implements OnDestroy {
       case ACTION_PRUNE_REMOTE:
         if (node.remote !== undefined) {
           void this.repository.pruneRemote(node.remote.name);
+        }
+        break;
+      case ACTION_COPY_REMOTE_URL:
+        if (node.remote !== undefined && node.remote.url.length > 0) {
+          this.log.info('SourceControlSidebar', `Copying the URL of remote '${node.remote.name}'`);
+          void navigator.clipboard.writeText(node.remote.url).catch((): void => undefined);
+        }
+        break;
+      case ACTION_OPEN_REMOTE_URL:
+        if (node.remote !== undefined) {
+          this.openRemoteUrl(node.remote);
         }
         break;
       case ACTION_REMOVE_REMOTE:
@@ -1993,6 +2042,52 @@ export class SourceControlSidebar implements OnDestroy {
       data: { kind: 'empty', icon, label, muted: true },
     };
   }
+}
+
+/**
+ * Resolves the address a remote can be opened at in a browser, or null when it has none.
+ *
+ * Most remotes are SSH, which no browser can open, so the two common SSH spellings are rewritten to
+ * `https` on the same host: `git@host:owner/repo.git` and `ssh://git@host/owner/repo.git` both become
+ * `https://host/owner/repo`. That holds for every forge Studio talks to, where the SSH and web paths
+ * agree. It does not hold for a bare path or a `file://` remote, which have no web address at all and
+ * yield null rather than a guess.
+ *
+ * The trailing `.git` is dropped because it is a fetch-path convention rather than part of the page's
+ * address; forges redirect it, but showing the user the address they would have typed is better than
+ * relying on that.
+ *
+ * @param url The remote's URL as git has it configured.
+ * @returns Returns the browsable address, or null when the remote has none.
+ */
+export function browsableRemoteUrl(url: string): string | null {
+  const trimmed: string = url.trim();
+  if (trimmed.length === 0) {
+    return null;
+  }
+  const withoutSuffix: (value: string) => string = (value: string): string =>
+    value.endsWith('.git') ? value.slice(0, -'.git'.length) : value;
+  // Anything carrying a scheme is decided by it, and by nothing else. Reaching the scp-like branch
+  // below with a `file://` remote would read `file` as a host and produce an address to nowhere.
+  const scheme: RegExpMatchArray | null = /^([a-z][a-z0-9+.-]*):\/\/(.*)$/i.exec(trimmed);
+  if (scheme !== null) {
+    const protocol: string = scheme[1].toLowerCase();
+    if (protocol === 'https' || protocol === 'http') {
+      return withoutSuffix(trimmed);
+    }
+    if (protocol === 'ssh' || protocol === 'git') {
+      // The scheme is swapped and any credential before the host dropped, having no use in a browser.
+      return `https://${withoutSuffix(scheme[2].replace(/^[^@/]+@/, ''))}`;
+    }
+    return null;
+  }
+  // The scp-like form, `git@host:owner/repo.git`. The colon separates host from path rather than
+  // naming a port, which is what makes this its own case rather than a URL.
+  const scp: RegExpMatchArray | null = /^(?:[^@/\s]+@)?([^:/\s]+):(.+)$/.exec(trimmed);
+  if (scp !== null) {
+    return `https://${scp[1]}/${withoutSuffix(scp[2])}`;
+  }
+  return null;
 }
 
 /**
