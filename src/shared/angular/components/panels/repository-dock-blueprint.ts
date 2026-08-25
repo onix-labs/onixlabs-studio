@@ -11,8 +11,8 @@ import { SourceControlSidebar } from './source-control-sidebar/source-control-si
  * The blueprint specialising a dock instance as a source-control (repository) surface.
  *
  * Repository and Commit share the left column as tabs — the two halves of deciding what to commit,
- * one at a time. The History graph fills the centre, with a collapsed terminal along the bottom of
- * it. An agent conversation holds the right column.
+ * one at a time. History and Terminal share the centre the same way, the graph in front. An agent
+ * conversation holds the right column.
  *
  * There is deliberately no document well in the layout. History is what this surface is for, and a
  * well standing empty above it would be a permanent gap waiting for a diff that may never be opened.
@@ -27,16 +27,11 @@ export const REPOSITORY_DOCK_BLUEPRINT: DockBlueprint = {
       'row',
       [
         mkStack('tool', ['branches', 'commit']),
-        mkSplit(
-          'col',
-          [
-            mkStack('tool', ['history'], true),
-            // Present but shut: a terminal is wanted often enough to keep its strip along the bottom,
-            // and seldom enough that it should not take a third of the column to say so.
-            { ...mkStack('tool', ['terminal']), collapsed: true, side: 'bottom' },
-          ],
-          [5, 1],
-        ),
+        // History and Terminal share the centre as tabs, History in front. Both want the whole of it
+        // — a graph is read across its width and a terminal is read down its length — and neither is
+        // wanted at the same moment as the other: what the terminal is for here is the command the
+        // history just made you want to run.
+        mkStack('tool', ['history', 'terminal'], true),
         mkStack('tool', ['agent']),
       ],
       [1.2, 3.4, 1.6],

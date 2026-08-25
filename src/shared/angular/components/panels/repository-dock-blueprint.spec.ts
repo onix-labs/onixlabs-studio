@@ -45,21 +45,23 @@ describe('REPOSITORY_DOCK_BLUEPRINT', () => {
     expect(left?.active).toBe('branches');
   });
 
-  it('givesHistoryTheCentre', () => {
+  it('tabsHistoryAndTerminalTogether_asTheCentre', () => {
     const centre: StackNode | null = stackOf(layout, 'history');
 
-    expect(centre?.panels).toEqual(['history']);
+    // Both want the whole of the centre, and neither is wanted at the same moment as the other.
+    expect(centre?.panels).toEqual(['history', 'terminal']);
     expect(centre?.primary).toBe(true);
+    // History leads: the graph is what this surface is for, and the terminal is what it sends you to.
+    expect(centre?.active).toBe('history');
   });
 
-  it('opensTheTerminalCollapsed_alongTheBottomOfTheCentre', () => {
+  it('opensTheTerminalUncollapsed_becauseItSharesTheCentreRatherThanEdgingIt', () => {
     const terminal: StackNode | null = stackOf(layout, 'terminal');
 
-    // Present but shut: wanted often enough to keep its strip, seldom enough not to take a third of
-    // the column to say so.
-    expect(terminal?.panels).toEqual(['terminal']);
-    expect(terminal?.collapsed).toBe(true);
-    expect(terminal?.side).toBe('bottom');
+    // A tab in a stack has nothing to be collapsed against; the shut bottom strip it used to be is
+    // what the tab replaced.
+    expect(terminal?.collapsed).toBeUndefined();
+    expect(terminal?.side).toBeUndefined();
   });
 
   it('givesTheAgentItsOwnColumn', () => {
