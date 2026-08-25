@@ -13,6 +13,16 @@ import {
 } from '@angular/core';
 
 /**
+ * Names how a multi-line field is drawn.
+ *
+ * - `boxed` — the field draws its own background, border and radius, the same chrome the single-line
+ *   field wears. The default, and right wherever the field sits on a plain surface.
+ * - `seamless` — the field draws no chrome at all, for a composer card that has already drawn the box
+ *   and lit its own border on focus. Drawn chrome here would box the field twice.
+ */
+export type TextareaVariant = 'boxed' | 'seamless';
+
+/**
  * Represents a multi-line text input: the sibling of {@link import('../text-field/text-field').TextField},
  * and the only way a multi-line box is drawn in the application.
  *
@@ -20,6 +30,10 @@ import {
  * to typing beyond the value itself — a composer that grows with its content, or one that accepts
  * pasted images — take the underlying element through {@link element} rather than reaching for a raw
  * `<textarea>` of their own.
+ *
+ * A composer card that draws its own box asks for {@link variant} `seamless` rather than unpicking
+ * this chrome from the outside: how the field is drawn is the atom's business, and a call site that
+ * overrode it through the cascade would be a second opinion waiting to drift.
  */
 @Component({
   selector: 'app-textarea',
@@ -48,6 +62,21 @@ export class Textarea {
    * Gets the number of visible text lines the field opens at.
    */
   public readonly rows: InputSignal<number> = input<number>(4);
+
+  /**
+   * Gets how the field is drawn.
+   */
+  public readonly variant: InputSignal<TextareaVariant> = input<TextareaVariant>('boxed');
+
+  /**
+   * Gets a value indicating whether the field is held to exactly {@link rows} lines, scrolling
+   * internally past them, with no resize grip.
+   *
+   * Off by default, because an ordinary field should give as much room as it is dragged to. On for a
+   * composer whose height must not move: a box that grows with what has been typed into it disturbs
+   * everything laid out around it, and reads wrong beside a neighbour that has been typed into less.
+   */
+  public readonly fixedHeight: InputSignal<boolean> = input<boolean>(false);
 
   /**
    * Gets a value indicating whether the field is disabled.

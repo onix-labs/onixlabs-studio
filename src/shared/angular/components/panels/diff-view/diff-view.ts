@@ -1,15 +1,23 @@
-import { ChangeDetectionStrategy, Component, input, InputSignal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  input,
+  InputSignal,
+  Signal,
+  viewChild,
+} from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
-import { GitChangeStatus } from '@shared/angular/services/repository/repository-data';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
-import { DiffEditor } from '@shared/angular/components/diff-editor/diff-editor';
+import { DiffEditor, DiffSummary } from '@shared/angular/components/diff-editor/diff-editor';
 
 /**
- * Hosts the source-control diff surface: a header showing the compared file's path and change-status
- * badge, an empty state when nothing is selected, and the shared {@link DiffEditor} pane comparing the
- * file's before/after content. It owns the source-control chrome the bare pane does not — the file
- * header, the git change-status badge, and the empty state — forwarding the compared content to the
- * shared pane, which owns the Monaco diff editor.
+ * Hosts the source-control diff surface: the shared {@link DiffEditor} pane comparing a file's
+ * before/after content, with an empty state over it when nothing is selected, and the navigation the
+ * pane's owner drives through {@link goToDiff}.
+ *
+ * It used to draw a header carrying the file's path and its change-status badge. The path was the tab
+ * title said a second time, and the badge belongs on the tool strip beside the commands — between
+ * them they cost a whole row of vertical space to say nothing new.
  */
 @Component({
   selector: 'app-diff-view',
@@ -25,15 +33,10 @@ export class DiffView {
   protected readonly Icon: typeof Icon = Icon;
 
   /**
-   * Gets the path of the compared file, shown in the header and used as the empty-state trigger (a
-   * blank path means no file is selected).
+   * Gets the path of the compared file, which triggers the empty state: a blank path means no file is
+   * selected. Not drawn — the tab already carries the name.
    */
   public readonly fileName: InputSignal<string> = input<string>('');
-
-  /**
-   * Gets how the compared file changed, shown as a badge in the header.
-   */
-  public readonly status: InputSignal<GitChangeStatus | null> = input<GitChangeStatus | null>(null);
 
   /**
    * Gets the file's content before the change (the diff's original side).
@@ -54,4 +57,46 @@ export class DiffView {
    * Gets a value indicating whether the diff renders inline (unified) rather than side by side.
    */
   public readonly inline: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Holds the shared pane that owns the Monaco diff editor.
+   */
+  private readonly pane: Signal<DiffEditor | undefined> = viewChild<DiffEditor>(DiffEditor);
+
+  /**
+   * Moves the diff to the next or previous change.
+   *
+   * Forwarded to Monaco, which owns what "the next change" means: it knows where the hunks are, wraps
+   * at the end, and scrolls both sides together. Re-deriving any of that here from the line changes
+   * would be a second opinion about a diff Monaco has already computed.
+   *
+   * @param target Which way to go.
+   */
+  public goToDiff(target: 'next' | 'previous'): void {
+    this.pane()?.getDiffEditor()?.goToDiff(target);
+  }
+
+  /**
+   * Gets a summary of the computed comparison, for chrome that reports it.
+   * @returns Returns the summary, empty before the pane has computed one.
+   */
+  public getDiffSummary(): DiffSummary {
+    return (
+      this.pane()?.getDiffSummary() ?? {
+        changes: 0,
+        linesAdded: 0,
+        linesRemoved: 0,
+        currentChange: undefined,
+      }
+    );
+  }
+
+  /**
+   * Registers a listener called whenever the computed diff or the caret moves.
+   * @param listener The listener to call.
+   * @returns Returns a disposer that unregisters the listener.
+   */
+  public onDiffChanged(listener: () => void): () => void {
+    return this.pane()?.onDiffChanged(listener) ?? ((): void => undefined);
+  }
 }

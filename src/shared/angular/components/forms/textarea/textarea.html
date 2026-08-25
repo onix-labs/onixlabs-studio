@@ -1,6 +1,9 @@
 <textarea
   #control
   class="textarea"
+  [class.textarea--seamless]="variant() === 'seamless'"
+  [class.textarea--fixed]="fixedHeight()"
+  [style.block-size]="fixedHeight() ? rows() + 'lh' : null"
   [rows]="rows()"
   [value]="value()"
   [placeholder]="placeholder()"

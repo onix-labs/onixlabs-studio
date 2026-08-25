@@ -24,6 +24,23 @@ import {
 const DEFAULT_LOG_LIMIT: number = 500;
 
 /**
+ * The revision naming the staged content. Not a revision *name* but git's way of writing a blob with
+ * no revision in front of it, which is why the main process cannot join it to a path the way it joins
+ * a real one — see `blobSpec` there.
+ */
+const INDEX_REVISION: string = ':';
+
+/**
+ * The revision naming the working tree, read from disk rather than from the object store.
+ */
+const WORKTREE_REVISION: string = '';
+
+/**
+ * The revision naming the tip of the current branch.
+ */
+const HEAD_REVISION: string = 'HEAD';
+
+/**
  * The git implementation of {@link SourceControlProvider}. It calls the safe git client (the
  * {@link SourceControlClient} over `window.bridge`) for a single opened repository root and maps the
  * raw output through the {@link import('./git-output')} parsers into the application's source-control
@@ -137,11 +154,14 @@ export class GitProvider implements SourceControlProvider {
     // Working tree: staged compares HEAD with the index; unstaged compares the index with the worktree.
     if (file.target.staged) {
       return {
-        original: await this.blob('HEAD', newPath),
-        modified: await this.blob(':', newPath),
+        original: await this.blob(HEAD_REVISION, newPath),
+        modified: await this.blob(INDEX_REVISION, newPath),
       };
     }
-    return { original: await this.blob(':', newPath), modified: await this.blob('', newPath) };
+    return {
+      original: await this.blob(INDEX_REVISION, newPath),
+      modified: await this.blob(WORKTREE_REVISION, newPath),
+    };
   }
 
   /**

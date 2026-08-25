@@ -14,7 +14,6 @@ import { Icon } from '@shared/angular/icons/icon';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { FileSystem } from '@shared/angular/services/file-system/file-system';
 import { DiffOpener } from '@shared/angular/services/diffs/diff-opener';
-import { Diffs } from '@shared/angular/services/diffs/diffs';
 import { CommitMessageGenerator } from '@shared/angular/services/repository/commit-message-generator';
 import { Repository } from '@shared/angular/services/repository/repository';
 import {
@@ -64,11 +63,17 @@ type WorkingRowData =
  * Commit / Commit and Push actions. Selecting a file drives the repository's file selection, which
  * the Monaco diff surface follows.
  *
- * The panel owns its tool strip, per the ribbon-versus-panel rule: the diff-layout toggle (a view
- * setting for the diffs this panel opens), Discard All, and Refresh live here rather than on the
- * ribbon. Discard All deliberately acts on the WHOLE working tree, not the checked files — the
- * checkboxes pick what to commit, and destroying only part of the user's changes because of a
- * commit-scoped selection would be a trap — and it goes through the shared destructive confirmation.
+ * The panel owns its tool strip, per the ribbon-versus-panel rule: Refresh, Discard All, Show Diff
+ * and Stash act on what the panel holds, and Expand All / Collapse All act on its tree — the same
+ * pair, on the same glyphs, that the Solution Explorer wears.
+ *
+ * Discard All deliberately acts on the WHOLE working tree, not the checked files — the checkboxes
+ * pick what to commit, and destroying only part of the user's changes because of a commit-scoped
+ * selection would be a trap — and it goes through the shared destructive confirmation.
+ *
+ * The diff-layout toggle used to live here and now sits on the diff panel itself. A diff's layout is
+ * a property of the diff, and reaching for it meant finding a git panel that had nothing else to do
+ * with it.
  */
 @Component({
   selector: 'app-commit-detail',
@@ -449,28 +454,46 @@ export class CommitDetail {
   }
 
   /**
-   * Holds the shared diff store backing the inline/side-by-side toggle.
-   */
-  private readonly diffs: Diffs = inject(Diffs);
-
-  /**
-   * Gets whether diffs currently render inline (unified) rather than side by side, so the tool strip
-   * can show the toggle's state.
-   */
-  protected readonly inlineDiff: Signal<boolean> = this.diffs.inlineDiff;
-
-  /**
-   * Toggles every open diff between inline and side-by-side rendering.
-   */
-  protected toggleDiffLayout(): void {
-    this.diffs.toggleInline();
-  }
-
-  /**
    * Re-reads the repository state.
    */
   protected refresh(): void {
     void this.repository.refresh();
+  }
+
+  /**
+   * Opens the selected file's diff in the document well.
+   *
+   * Clicking a row already does this; the button is for the file that is selected but whose diff has
+   * since been closed, where there is otherwise nothing to click but the row that is already current.
+   */
+  protected showDiff(): void {
+    const file: GitFileChange | null = this.repository.selectedFile();
+    if (file !== null) {
+      this.diffOpener.open(file);
+    }
+  }
+
+  /**
+   * Stashes the uncommitted changes, putting them on the stack the Repository panel lists.
+   */
+  protected stash(): void {
+    void this.repository.stash();
+  }
+
+  /**
+   * Opens both file groups.
+   */
+  protected expandAll(): void {
+    this.trackedExpanded.set(true);
+    this.untrackedExpanded.set(true);
+  }
+
+  /**
+   * Closes both file groups.
+   */
+  protected collapseAll(): void {
+    this.trackedExpanded.set(false);
+    this.untrackedExpanded.set(false);
   }
 
   /**

@@ -47,6 +47,18 @@ describe('Diffs', () => {
     expect(diffs.inlineDiff()).toBe(true);
   });
 
+  it('setInline_asksForALayoutRatherThanForTheOtherOne', () => {
+    // What a two-choice control needs: picking the same layout twice must leave it there.
+    diffs.setInline(true);
+    expect(diffs.inlineDiff()).toBe(true);
+
+    diffs.setInline(true);
+    expect(diffs.inlineDiff()).toBe(true);
+
+    diffs.setInline(false);
+    expect(diffs.inlineDiff()).toBe(false);
+  });
+
   it('removeMissing_dropsRecordsNotInTheLayout', () => {
     const kept: string = diffs.idForPath('src/a.ts');
     const gone: string = diffs.idForPath('src/b.ts');

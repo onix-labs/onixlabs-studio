@@ -86,11 +86,6 @@
   letter-spacing: 0.05em;
 }
 
-.detail__files-count {
-  padding: 0.05rem 0.4rem;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--form-muted-foreground-color) 18%, transparent);
-}
 // Group header rows (Tracked Files / Untracked Files): chevron, tri-state checkbox, name, count.
 .detail__group-check {
   flex: 0 0 auto;
@@ -122,7 +117,9 @@
   display: flex;
   flex-direction: column;
   gap: 0.65rem;
-  margin: 0.75rem;
+  // The same inset the agent composer sits at, so the two cards read as the same control in
+  // different panels rather than as near-misses.
+  margin: 0.5rem;
   padding: 0.5rem;
   background: var(--agent-view-surface-color);
   border: 0.0625rem solid var(--agent-view-border-color);
@@ -152,9 +149,11 @@
 }
 .detail__composer-actions {
   display: flex;
+  justify-content: flex-end;
   gap: 0.5rem;
 }
-// Layout only: how the field is DRAWN belongs to the atom, and a border here would box it twice.
+// Layout only: how the field is DRAWN belongs to the atom, which is asked for its seamless variant
+// in the template rather than having this chrome unpicked from out here.
 .detail__message {
   inline-size: 100%;
 }

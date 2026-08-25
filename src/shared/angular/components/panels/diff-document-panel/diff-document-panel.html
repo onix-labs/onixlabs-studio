@@ -1,7 +1,42 @@
+<app-panel-toolbar>
+  <app-dropdown
+    class="diff-panel__layout"
+    ariaLabel="Diff layout"
+    [options]="layoutOptions"
+    [value]="inline() ? 'inline' : 'side-by-side'"
+    (valueChange)="onLayoutChange($event)"
+  />
+  <span class="panel-toolbar__spacer"></span>
+  <!-- Monaco owns what "the next change" is: where the hunks are, how they wrap, and scrolling both
+       sides to them together. These only ask. -->
+  <app-button
+    variant="none"
+    [icon]="Icon.ARROW_UP"
+    ariaLabel="Previous Change"
+    tooltip="Previous change"
+    [disabled]="!hasFile()"
+    (click)="previousChange()"
+  />
+  <app-button
+    variant="none"
+    [icon]="Icon.ARROW_DOWN"
+    ariaLabel="Next Change"
+    tooltip="Next change"
+    [disabled]="!hasFile()"
+    (click)="nextChange()"
+  />
+
+  <!-- How the file changed, at the trailing end of the strip. It used to head a row of its own
+       alongside the file's path — which the tab already carries — so the row went and the badge
+       came here. -->
+  @if (file(); as change) {
+    <span class="diff__badge" [class]="'diff__badge--' + change.status">{{ change.status }}</span>
+  }
+</app-panel-toolbar>
+
 @if (file(); as change) {
   <app-diff-view
     [fileName]="change.path"
-    [status]="change.status"
     [original]="change.original"
     [modified]="change.modified"
     [language]="change.language"

@@ -18,14 +18,12 @@
     @for (dot of dots(); track dot.id) {
       <circle
         class="graph__dot"
-        [class.graph__dot--working]="dot.working"
         [attr.cx]="dot.cx"
         [attr.cy]="dot.cy"
         [attr.r]="dotRadius"
-        [attr.fill]="dot.working ? null : dot.color"
+        [attr.fill]="dot.color"
         [attr.stroke]="dot.color"
         stroke-width="2"
-        [attr.stroke-dasharray]="dot.working ? '3 2' : null"
       />
     }
   </svg>
@@ -40,32 +38,25 @@
       [style.inset-inline-start.px]="gutterWidth()"
       (click)="select(node)"
     >
-      @if (node.kind === 'working') {
-        <span class="graph__working">
-          <app-icon [icon]="Icon.PENCIL" />
-          Uncommitted changes
-        </span>
-        <span class="graph__count">{{ repository.changeCount() }}</span>
-      } @else if (node.commit; as commit) {
-        <span class="graph__refs">
-          @for (ref of node.refs; track ref.name) {
-            <span class="graph__ref" [class]="'graph__ref--' + refKind(ref)">
-              @if (ref.kind === 'tag') {
-                <app-icon [icon]="Icon.TAG" />
-              } @else {
-                <app-icon [icon]="Icon.SOURCE_CONTROL" />
-              }
-              {{ ref.name }}
-            </span>
-          }
-        </span>
-        <span class="graph__summary">{{ commit.summary }}</span>
-        <span class="graph__meta">
-          <span class="graph__author">{{ commit.author }}</span>
-          <span class="graph__date">{{ commit.relativeDate }}</span>
-          <span class="graph__hash">{{ commit.shortHash }}</span>
-        </span>
-      }
+      @let commit = node.commit;
+      <span class="graph__refs">
+        @for (ref of node.refs; track ref.name) {
+          <span class="graph__ref" [class]="'graph__ref--' + refKind(ref)">
+            @if (ref.kind === 'tag') {
+              <app-icon [icon]="Icon.TAG" />
+            } @else {
+              <app-icon [icon]="Icon.SOURCE_CONTROL" />
+            }
+            {{ ref.name }}
+          </span>
+        }
+      </span>
+      <span class="graph__summary">{{ commit.summary }}</span>
+      <span class="graph__meta">
+        <span class="graph__author">{{ commit.author }}</span>
+        <span class="graph__date">{{ commit.relativeDate }}</span>
+        <span class="graph__hash">{{ commit.shortHash }}</span>
+      </span>
     </button>
   }
 </div>

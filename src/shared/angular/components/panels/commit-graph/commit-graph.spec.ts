@@ -254,23 +254,23 @@ describe('CommitGraph', () => {
     fixture.detectChanges();
   });
 
-  it('render_whenRepositoryLoaded_drawsARowPerGraphNode', () => {
+  it('render_whenRepositoryLoaded_drawsARowPerCommit', () => {
     const element: HTMLElement = fixture.nativeElement as HTMLElement;
     const rows: NodeListOf<HTMLButtonElement> = element.querySelectorAll('.graph__row');
 
-    expect(rows.length).toBe(3);
-    expect(element.textContent).toContain('Uncommitted changes');
+    expect(rows.length).toBe(2);
     expect(element.textContent).toContain('Commit c2');
     expect(element.textContent).toContain('Commit c1');
   });
 
-  it('render_whenWorkingTreeDirty_drawsAHollowWorkingDotFirst', () => {
+  it('render_whenWorkingTreeDirty_addsNoRowOfItsOwn', () => {
+    // The uncommitted changes belong to the branch they sit on, and are shown there. The history is
+    // history.
     const element: HTMLElement = fixture.nativeElement as HTMLElement;
-    const dots: NodeListOf<SVGCircleElement> = element.querySelectorAll('.graph__dot');
 
-    expect(dots.length).toBe(3);
-    expect(dots[0].classList.contains('graph__dot--working')).toBe(true);
-    expect(dots[1].classList.contains('graph__dot--working')).toBe(false);
+    expect(repository.changeCount()).toBeGreaterThan(0);
+    expect(element.querySelectorAll('.graph__dot').length).toBe(2);
+    expect(element.textContent).not.toContain('Uncommitted changes');
   });
 
   it('render_whenGraphHasParentEdges_drawsAnSvgPathPerEdge', () => {
@@ -287,19 +287,20 @@ describe('CommitGraph', () => {
     const element: HTMLElement = fixture.nativeElement as HTMLElement;
     const svg: SVGSVGElement | null = element.querySelector('.graph__lanes');
 
-    expect(svg?.getAttribute('height')).toBe('168');
+    expect(svg?.getAttribute('height')).toBe('112');
   });
 
   it('select_whenCommitRowClicked_drivesTheRepositorySelection', () => {
     const element: HTMLElement = fixture.nativeElement as HTMLElement;
     const rows: NodeListOf<HTMLButtonElement> = element.querySelectorAll('.graph__row');
 
+    // The working tree is still the default selection; it simply has no row here any more.
     expect(repository.selectedNodeId()).toBe(WORKING_NODE_ID);
 
-    rows[1].click();
+    rows[0].click();
     fixture.detectChanges();
 
     expect(repository.selectedNodeId()).toBe('c2');
-    expect(rows[1].classList.contains('graph__row--selected')).toBe(true);
+    expect(rows[0].classList.contains('graph__row--selected')).toBe(true);
   });
 });

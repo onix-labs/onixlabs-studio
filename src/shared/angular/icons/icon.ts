@@ -543,6 +543,16 @@ export class Icon {
   public static readonly CLOUD: Icon = new Icon('ph-duotone ph-cloud');
 
   /**
+   * Gets the lines-added icon, for a tally of what a change adds.
+   */
+  public static readonly PLUS_CIRCLE: Icon = new Icon('ph-duotone ph-plus-circle');
+
+  /**
+   * Gets the lines-removed icon, for a tally of what a change removes.
+   */
+  public static readonly MINUS_CIRCLE: Icon = new Icon('ph-duotone ph-minus-circle');
+
+  /**
    * Gets the push (cloud with an up arrow) icon. The cloud is what distinguishes sending commits to a
    * remote from the bare arrows that count them.
    */

@@ -30,6 +30,29 @@ export interface DocumentStatusInfo {
   readonly readMinutes?: number;
 
   /**
+   * Gets the number of changed regions in a comparison, for a diff document. Zero is meaningful and
+   * is shown — "no changes" is the answer to the question the strip is being asked, and is quite
+   * different from a document that is not a comparison at all.
+   */
+  readonly changes?: number;
+
+  /**
+   * Gets the one-based index of the changed region the caret is in or has last passed, for a diff
+   * document. Undefined while the caret sits above the first change, which is where it starts.
+   */
+  readonly currentChange?: number;
+
+  /**
+   * Gets the number of lines the comparison adds, for a diff document.
+   */
+  readonly linesAdded?: number;
+
+  /**
+   * Gets the number of lines the comparison removes, for a diff document.
+   */
+  readonly linesRemoved?: number;
+
+  /**
    * Gets the document's language identifier (for example "csharp").
    */
   readonly language: string;

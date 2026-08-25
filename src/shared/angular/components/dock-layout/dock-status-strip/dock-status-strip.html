@@ -1,13 +1,30 @@
-<div class="dock-status-strip__group">
-  <button type="button" class="dock-status-strip__segment" title="Errors and warnings">
-    <app-icon [icon]="Icon.ERROR" />
-    {{ errors() }}
-    <app-icon [icon]="Icon.WARNING" />
-    {{ warnings() }}
-  </button>
-</div>
+<!-- Workspace diagnostics, which belong beside a file being edited and not beside a comparison: the
+     counts are the same on every tab and say nothing about the two versions on screen. A diff has its
+     own things to report, and they are on the right. -->
+@if (!isComparison()) {
+  <div class="dock-status-strip__group">
+    <button type="button" class="dock-status-strip__segment" title="Errors and warnings">
+      <app-icon [icon]="Icon.ERROR" />
+      {{ errors() }}
+      <app-icon [icon]="Icon.WARNING" />
+      {{ warnings() }}
+    </button>
+  </div>
+}
 @if (status(); as document) {
   <div class="dock-status-strip__group">
+    @if (document.changes !== undefined) {
+      <!-- A comparison answers a different question from a document: how much changed, and where in
+           it you are. Zero is an answer worth giving, so the segment stays at nothing to see. -->
+      <button type="button" class="dock-status-strip__segment" title="Changed regions">
+        {{ document.changes }} {{ document.changes === 1 ? 'change' : 'changes' }}
+      </button>
+      @if (document.currentChange !== undefined) {
+        <button type="button" class="dock-status-strip__segment" title="Position in the comparison">
+          Viewing {{ document.currentChange }} of {{ document.changes }}
+        </button>
+      }
+    }
     @if (document.line !== undefined && document.column !== undefined) {
       <button type="button" class="dock-status-strip__segment" title="Go to line and column">
         Ln {{ document.line }}, Col {{ document.column }}
@@ -49,6 +66,21 @@
       </button>
     }
   </div>
+}
+
+@if (status(); as document) {
+  @if (document.linesAdded || document.linesRemoved) {
+    <!-- The line tally, held to the trailing edge. It is the one segment that is a measurement rather
+         than a setting, and the only one nothing happens when you press. -->
+    <div class="dock-status-strip__group dock-status-strip__group--end">
+      <span class="dock-status-strip__segment" title="Lines added and removed">
+        <app-icon class="dock-status-strip__added" [icon]="Icon.PLUS_CIRCLE" />
+        <span class="dock-status-strip__added">{{ document.linesAdded }}</span>
+        <app-icon class="dock-status-strip__removed" [icon]="Icon.MINUS_CIRCLE" />
+        <span class="dock-status-strip__removed">{{ document.linesRemoved }}</span>
+      </span>
+    </div>
+  }
 }
 
 <app-menu #zoomMenu [items]="zoomItems()" placement="up-end" (selected)="setZoom($event)" />
