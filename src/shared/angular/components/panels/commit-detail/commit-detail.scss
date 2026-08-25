@@ -137,6 +137,17 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+
+  // The agent composer's header is two lines of small text and stands about that tall. This one holds
+  // a button, and a button is a control height — which made the whole card taller than its twin for
+  // the sake of one glyph.
+  //
+  // The button keeps its full height and hit area, and gives back the difference as negative margin,
+  // so it overhangs into the card's own gap instead of pushing the row open. The gap below is wider
+  // than the overhang, so nothing is crowded.
+  app-button {
+    margin-block: calc((var(--control-height-small) - 0.875rem) / -2);
+  }
 }
 
 .detail__composer-title {

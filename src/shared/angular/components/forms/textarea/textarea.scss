@@ -32,6 +32,12 @@
     opacity: 0.4;
     cursor: default;
   }
+
+  // Stated, not left to the browser. A user agent's default placeholder is a fixed grey chosen for a
+  // white page; over a dark surface it reads as washed out and belongs to no palette here.
+  &::placeholder {
+    color: var(--form-muted-foreground-color);
+  }
 }
 
 // A field inside a composer card that has already drawn the box, lit its own border on focus, and

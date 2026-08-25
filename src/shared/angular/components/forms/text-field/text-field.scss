@@ -31,6 +31,12 @@
     border-color: var(--accent-color);
   }
 
+  // Stated, not left to the browser — see the multi-line sibling, which wears the same chrome and so
+  // must wear the same placeholder.
+  &::placeholder {
+    color: var(--form-muted-foreground-color);
+  }
+
   &:disabled {
     opacity: 0.4;
     cursor: default;
