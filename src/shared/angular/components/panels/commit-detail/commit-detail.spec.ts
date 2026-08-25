@@ -11,6 +11,7 @@ import {
   GitFileChange,
 } from '@shared/angular/services/repository/repository-data';
 import { MutationResult } from '@shared/angular/services/source-control/source-control-provider';
+import { GitOperationState } from '@shared/api/source-control-channels';
 import { FileSystem } from '@shared/angular/services/file-system/file-system';
 import { CommitDetail } from './commit-detail';
 
@@ -104,9 +105,42 @@ class StubRepository {
   public readonly unstaged: WritableSignal<readonly GitFileChange[]> = signal<
     readonly GitFileChange[]
   >([]);
+  public readonly conflicted: WritableSignal<readonly GitFileChange[]> = signal<
+    readonly GitFileChange[]
+  >([]);
   public readonly changeCount: Signal<number> = computed(
-    (): number => this.staged().length + this.unstaged().length,
+    (): number => this.staged().length + this.unstaged().length + this.conflicted().length,
   );
+
+  /**
+   * Mirrors the real repository's operation state, so the pane's mid-operation banner can be driven.
+   */
+  public readonly operation: WritableSignal<GitOperationState> = signal<GitOperationState>({
+    kind: null,
+  });
+
+  public readonly operationInFlight: Signal<boolean> = computed(
+    (): boolean => this.operation().kind !== null,
+  );
+
+  public readonly canContinueOperation: Signal<boolean> = computed(
+    (): boolean => this.operation().kind !== null && this.conflicted().length === 0,
+  );
+
+  public continueOperation(): Promise<MutationResult> {
+    this.calls.push('continueOperation');
+    return Promise.resolve({ success: true });
+  }
+
+  public skipOperation(): Promise<MutationResult> {
+    this.calls.push('skipOperation');
+    return Promise.resolve({ success: true });
+  }
+
+  public abortOperation(): Promise<MutationResult> {
+    this.calls.push('abortOperation');
+    return Promise.resolve({ success: true });
+  }
 
   /**
    * Records the repository calls the pane makes, in order.
@@ -125,6 +159,11 @@ class StubRepository {
    * Mirrors the real repository's bound state, gating the tool strip's Refresh.
    */
   public readonly isBound: WritableSignal<boolean> = signal<boolean>(true);
+
+  public stage(file: GitFileChange): Promise<MutationResult> {
+    this.calls.push(`stage:${file.path}`);
+    return Promise.resolve({ success: true });
+  }
 
   public discard(file: GitFileChange): Promise<MutationResult> {
     this.calls.push(`discard:${file.path}`);
@@ -252,6 +291,119 @@ describe('CommitDetail', () => {
     expect(repository.calls).toContain('selectFile:src/app/main.ts');
     expect(opened.length).toBe(1);
     expect(opened[0].path).toBe('src/app/main.ts');
+  });
+
+  describe('mid-operation', () => {
+    /**
+     * Puts the working tree in the middle of an operation with the given conflicts.
+     * @param operation The operation in flight.
+     * @param conflicts The conflicted paths.
+     */
+    function midOperation(operation: GitOperationState, conflicts: readonly string[]): void {
+      repository.isWorkingSelected.set(true);
+      repository.operation.set(operation);
+      repository.conflicted.set(
+        conflicts.map((path: string): GitFileChange => makeFile(path, 'conflicted')),
+      );
+      fixture.detectChanges();
+    }
+
+    it('banner_namesTheOperationItsTargetAndItsProgress', () => {
+      midOperation({ kind: 'rebase', branch: 'topic', target: 'main', step: 2, total: 5 }, [
+        'both.ts',
+      ]);
+
+      const banner: HTMLElement = host.querySelector('.detail__operation')!;
+      expect(banner.textContent).toContain('Rebasing “main”');
+      expect(banner.textContent).toContain('2 of 5');
+      expect(banner.textContent).toContain('1 file could not be merged automatically');
+    });
+
+    it('banner_isShownEvenWhenACommitIsSelected', () => {
+      // A repository mid-merge is mid-merge whichever commit the graph happens to be showing.
+      midOperation({ kind: 'merge', target: 'topic' }, ['both.ts']);
+      repository.isWorkingSelected.set(false);
+      repository.selectedCommit.set(makeCommit('c1', []));
+      fixture.detectChanges();
+
+      expect(host.querySelector('.detail__operation')).not.toBeNull();
+    });
+
+    it('continue_isInertWhileAnythingIsStillConflicted', () => {
+      midOperation({ kind: 'merge', target: 'topic' }, ['both.ts']);
+
+      expect(namedButton(host, 'Continue').disabled).toBe(true);
+
+      repository.conflicted.set([]);
+      fixture.detectChanges();
+
+      expect(namedButton(host, 'Continue').disabled).toBe(false);
+      expect(host.querySelector('.detail__operation-message')?.textContent).toContain(
+        'Continue to finish',
+      );
+    });
+
+    it('skip_isOfferedOnlyByAnOperationThatReplaysASequence', () => {
+      // A merge applies one change, so there is no next commit to move on to.
+      midOperation({ kind: 'merge', target: 'topic' }, ['both.ts']);
+      expect(namedButton(host, 'Skip')).toBeUndefined();
+
+      midOperation({ kind: 'rebase', branch: 'topic', target: 'main' }, ['both.ts']);
+      expect(namedButton(host, 'Skip')).toBeDefined();
+    });
+
+    it('squashMerge_saysToCommitRatherThanContinue', () => {
+      // Git recorded no merge to resume, so what is staged is committed like any other change.
+      midOperation({ kind: 'squash-merge', target: 'topic' }, []);
+
+      expect(host.querySelector('.detail__operation-message')?.textContent).toContain(
+        'commit it below to finish',
+      );
+    });
+
+    it('theThreeCommands_reachTheRepository', () => {
+      midOperation({ kind: 'rebase', branch: 'topic', target: 'main' }, []);
+
+      namedButton(host, 'Continue').click();
+      namedButton(host, 'Skip').click();
+      namedButton(host, 'Abort').click();
+
+      expect(repository.calls).toContain('continueOperation');
+      expect(repository.calls).toContain('skipOperation');
+      expect(repository.calls).toContain('abortOperation');
+    });
+
+    it('conflictedFiles_leadTheTree_withNoCheckboxAndAWayToResolve', () => {
+      repository.staged.set([makeFile('a.ts', 'modified')]);
+      midOperation({ kind: 'merge', target: 'topic' }, ['both.ts']);
+
+      const groups: string[] = Array.from(host.querySelectorAll('.detail__group-name')).map(
+        (element: Element): string => element.textContent?.trim() ?? '',
+      );
+      expect(groups[0]).toBe('Conflicted Files');
+
+      // One checkbox, for the tracked file — a conflicted path cannot be committed as it stands, so
+      // it is not offered for inclusion in a commit.
+      expect(
+        host.querySelectorAll<HTMLInputElement>('.detail__file-check input[type="checkbox"]'),
+      ).toHaveLength(1);
+
+      namedButton(host, 'Mark resolved').click();
+
+      // Staging a conflicted path is what tells git it is settled.
+      expect(repository.calls).toContain('stage:both.ts');
+    });
+
+    it('theTreeHasNoConflictedGroup_whenNothingIsConflicted', () => {
+      repository.isWorkingSelected.set(true);
+      repository.staged.set([makeFile('a.ts', 'modified')]);
+      fixture.detectChanges();
+
+      const groups: string[] = Array.from(host.querySelectorAll('.detail__group-name')).map(
+        (element: Element): string => element.textContent?.trim() ?? '',
+      );
+      expect(groups).not.toContain('Conflicted Files');
+    });
   });
 
   it('render_whenWorkingTreeSelected_groupsTrackedAndUntrackedWithDefaultChecks', () => {

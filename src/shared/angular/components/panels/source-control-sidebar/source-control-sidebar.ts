@@ -24,6 +24,7 @@ import {
   ForgeRunStatus,
   ForgeWorkflowRun,
 } from '@shared/api/forge-types';
+import { GitMergeMode } from '@shared/api/source-control-channels';
 import { Shell } from '@shared/angular/services/shell/shell';
 import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
 import { IssueAgentConfirm } from '@shared/angular/components/panels/issue-agent-confirm/issue-agent-confirm';
@@ -241,6 +242,41 @@ const ACTION_DELETE_BRANCH: string = 'branch.delete';
  * holds commits merged nowhere. The one refusal that is offered a way past.
  */
 const BRANCH_NOT_MERGED: string = 'branch-not-merged';
+
+/**
+ * Identifies the Merge command on a branch's context menu, which merges that branch into the
+ * checked-out one.
+ */
+const ACTION_MERGE_BRANCH: string = 'branch.merge';
+
+/**
+ * Identifies the Merge Without Fast-Forward command, which records a merge commit even where the
+ * history would have allowed the branch pointer simply to move.
+ */
+const ACTION_MERGE_BRANCH_NO_FF: string = 'branch.merge.noFastForward';
+
+/**
+ * Identifies the Squash Merge command, which stages the branch's changes as one without recording a
+ * merge at all.
+ */
+const ACTION_SQUASH_MERGE_BRANCH: string = 'branch.merge.squash';
+
+/**
+ * Identifies the Rebase Onto command on a branch's context menu, which replays the checked-out branch
+ * onto the branch the row carries.
+ */
+const ACTION_REBASE_ONTO_BRANCH: string = 'branch.rebaseOnto';
+
+/**
+ * Why the integration commands are inert when the working tree has changes in it. Git refuses a merge
+ * or rebase that would overwrite them, and saying so in the menu is cheaper than the refusal.
+ */
+const REASON_UNCOMMITTED: string = 'uncommitted changes';
+
+/**
+ * Why the integration commands are inert while an operation is already unfinished.
+ */
+const REASON_IN_PROGRESS: string = 'finish the current operation first';
 
 /**
  * Identifies the Commit command on the checked-out branch's context menu.
@@ -1086,6 +1122,65 @@ export class SourceControlSidebar implements OnDestroy {
   }
 
   /**
+   * Merges a branch into the checked-out one.
+   *
+   * No confirmation: a merge adds to the history rather than rewriting it, and one that goes wrong is
+   * undone by the abort the panel now offers. A conflict is not reported here at all — it comes back
+   * coded, the working tree reloads, and the state it left is what the user sees.
+   *
+   * @param branch The branch to merge in.
+   * @param mode How the merge records its result.
+   */
+  private merge(branch: GitBranch, mode: GitMergeMode): void {
+    this.log.info('SourceControlSidebar', `Merging '${branch.name}' (${mode})`);
+    void this.repository.merge(branch.name, mode);
+  }
+
+  /**
+   * Holds the branch the checked-out one is to be rebased onto, or null when the confirmation is
+   * closed. Unlike a merge, a rebase is asked about first: it rewrites the commits of the branch the
+   * user is standing on, and a branch already pushed cannot take the result without a force.
+   */
+  protected readonly pendingRebaseOnto: WritableSignal<GitBranch | null> = signal<GitBranch | null>(
+    null,
+  );
+
+  /**
+   * Gets the name of the branch a confirmed rebase would rewrite — the checked-out one, which the
+   * dialog names rather than leaving the user to remember.
+   */
+  protected readonly rebaseSubject: Signal<string> = computed(
+    (): string => this.repository.currentBranch()?.name ?? '',
+  );
+
+  /**
+   * Gets a value indicating whether the branch a rebase would rewrite has already been pushed, which
+   * is what turns a tidy-up into something that needs a force-push and a word to anyone else on it.
+   */
+  protected readonly rebaseRewritesPublished: Signal<boolean> = computed(
+    (): boolean => this.repository.currentBranch()?.upstream !== undefined,
+  );
+
+  /**
+   * Confirms the rebase, replaying the checked-out branch onto the chosen one.
+   */
+  protected confirmRebase(): void {
+    const branch: GitBranch | null = this.pendingRebaseOnto();
+    this.pendingRebaseOnto.set(null);
+    if (branch !== null) {
+      this.log.info('SourceControlSidebar', `Rebasing onto '${branch.name}'`);
+      void this.repository.rebase(branch.name);
+    }
+  }
+
+  /**
+   * Dismisses the rebase confirmation, leaving the history alone.
+   */
+  protected cancelRebase(): void {
+    this.pendingRebaseOnto.set(null);
+  }
+
+  /**
    * Holds the branch being renamed, or null when the rename dialog is closed.
    */
   protected readonly renamingBranch: WritableSignal<GitBranch | null> = signal<GitBranch | null>(
@@ -1734,12 +1829,78 @@ export class SourceControlSidebar implements OnDestroy {
             },
           ]
       : [{ id: ACTION_CHECKOUT_BRANCH, label: 'Check Out', icon: Icon.TRAY_UP }];
+    const integration: readonly MenuItem[] = this.integrationItems(branch);
     return [
       ...lead,
       ...(lead.length === 0 ? [] : [{ separator: true, id: 'branch.sep.lead', label: '' }]),
       ...this.upstreamItems(branch),
+      ...(integration.length === 0
+        ? []
+        : [{ separator: true, id: 'branch.sep.integrate', label: '' }, ...integration]),
       { separator: true, id: 'branch.sep.manage', label: '' },
       ...this.branchManagementItems(branch),
+    ];
+  }
+
+  /**
+   * Builds a branch's integration commands: bringing it into the checked-out branch, or replaying the
+   * checked-out branch on top of it.
+   *
+   * Neither is offered on the checked-out branch itself — a branch cannot be merged into itself, nor
+   * rebased onto itself — so the row that carries them is always the other one. Both are inert while
+   * the working tree has changes git would have to overwrite, or while an earlier operation is still
+   * unfinished, and each says which it is rather than leaving the user to find out from a refusal.
+   *
+   * The three merges sit behind one submenu rather than three rows. They answer the same question and
+   * differ only in what they record, and a menu that spends three of its rows on one command reads as
+   * though it were three.
+   *
+   * @param branch The branch the row carries.
+   * @returns Returns the menu items, or none for the checked-out branch.
+   */
+  private integrationItems(branch: GitBranch): readonly MenuItem[] {
+    const current: GitBranch | undefined = this.repository.currentBranch();
+    if (branch.current || current === undefined) {
+      return [];
+    }
+    const reason: string | undefined = this.repository.operationInFlight()
+      ? REASON_IN_PROGRESS
+      : this.repository.changeCount() > 0
+        ? REASON_UNCOMMITTED
+        : undefined;
+    const blocked: boolean = reason !== undefined;
+    return [
+      {
+        id: ACTION_MERGE_BRANCH,
+        label: `Merge Into “${current.name}”`,
+        icon: Icon.GIT_MERGE,
+        disabled: blocked,
+        ...(reason === undefined ? {} : { status: reason }),
+        children: [
+          { id: ACTION_MERGE_BRANCH, label: 'Merge', icon: Icon.GIT_MERGE, disabled: blocked },
+          {
+            id: ACTION_MERGE_BRANCH_NO_FF,
+            label: 'Merge Without Fast-Forward',
+            icon: Icon.GIT_MERGE,
+            disabled: blocked,
+            status: 'always records a merge commit',
+          },
+          {
+            id: ACTION_SQUASH_MERGE_BRANCH,
+            label: 'Squash Merge',
+            icon: Icon.GIT_MERGE,
+            disabled: blocked,
+            status: 'stages the changes as one, uncommitted',
+          },
+        ],
+      },
+      {
+        id: ACTION_REBASE_ONTO_BRANCH,
+        label: `Rebase “${current.name}” Onto This…`,
+        icon: Icon.BRANCH,
+        disabled: blocked,
+        ...(reason === undefined ? {} : { status: reason }),
+      },
     ];
   }
 
@@ -2033,6 +2194,26 @@ export class SourceControlSidebar implements OnDestroy {
       case ACTION_DELETE_BRANCH:
         if (node.branch !== undefined) {
           this.pendingDeleteBranch.set(node.branch);
+        }
+        break;
+      case ACTION_MERGE_BRANCH:
+        if (node.branch !== undefined) {
+          this.merge(node.branch, 'default');
+        }
+        break;
+      case ACTION_MERGE_BRANCH_NO_FF:
+        if (node.branch !== undefined) {
+          this.merge(node.branch, 'no-ff');
+        }
+        break;
+      case ACTION_SQUASH_MERGE_BRANCH:
+        if (node.branch !== undefined) {
+          this.merge(node.branch, 'squash');
+        }
+        break;
+      case ACTION_REBASE_ONTO_BRANCH:
+        if (node.branch !== undefined) {
+          this.pendingRebaseOnto.set(node.branch);
         }
         break;
       case ACTION_CHECKOUT_REMOTE_BRANCH:

@@ -230,6 +230,12 @@
   &--renamed {
     color: var(--accent-color);
   }
+
+  // The one status that is a problem rather than a description of a change, so it wears the warning
+  // colour the mid-operation banner is edged in rather than a change-margin colour.
+  &--conflicted {
+    color: #e5484d;
+  }
 }
 
 .detail__file-name {
@@ -287,4 +293,51 @@
   flex: 1;
   min-inline-size: 0;
   overflow-wrap: anywhere;
+}
+
+// The mid-operation banner. Edged like the error notice because it demands the same attention, but
+// it is not an error: it is a state with three ways out, and it carries them.
+.detail__operation {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--form-control-border-color);
+  border-left: 3px solid #f5a524;
+  border-radius: calc(4px * var(--border-radius-multiplier, 1));
+  background: var(--form-control-background-color);
+  font-size: 12px;
+}
+
+.detail__operation-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.detail__operation-icon {
+  flex: 0 0 auto;
+  color: #f5a524;
+}
+
+.detail__operation-title {
+  font-weight: 600;
+}
+
+.detail__operation-progress {
+  color: var(--form-muted-foreground-color);
+  font-variant-numeric: tabular-nums;
+}
+
+.detail__operation-message {
+  margin: 0;
+  color: var(--form-muted-foreground-color);
+  overflow-wrap: anywhere;
+}
+
+.detail__operation-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
 }
