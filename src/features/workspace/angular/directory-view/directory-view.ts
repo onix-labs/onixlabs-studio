@@ -37,6 +37,7 @@ import { EditorTerminals } from '@shared/angular/services/editor-terminals/edito
 import { Diagnostics } from '@shared/angular/services/diagnostics/diagnostics';
 import { DiffOpener } from '@shared/angular/services/diffs/diff-opener';
 import { Diffs } from '@shared/angular/services/diffs/diffs';
+import { IssueOpener } from '@shared/angular/services/issues/issue-opener';
 import { IssueStore } from '@shared/angular/services/issues/issue-store';
 import { DockAutoHide } from '@shared/angular/services/dock-layout/dock-auto-hide';
 import { DockDrag } from '@shared/angular/services/dock-layout/dock-drag';
@@ -214,6 +215,11 @@ const PANEL_ANCHORS: Readonly<Record<string, readonly string[]>> = {
     ForgeRepository,
     Diffs,
     DiffOpener,
+    // The issue pair belongs beside the diff pair, and for the same reason: an opener reaches for
+    // this tab's dock. Left to the root injector it would register its panel with, and tab it into,
+    // a DockState no view renders — the tab opens somewhere nobody can see.
+    IssueStore,
+    IssueOpener,
     DockTabContext,
     DockState,
     DockGeometry,
