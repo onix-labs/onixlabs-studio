@@ -154,22 +154,37 @@
   </ng-template>
 </app-modal>
 
-<!-- Asked before a tag is deleted: a tag that has been pushed stays on the remote, so the local
-     delete is not the whole story and the message says so. -->
+<!-- Asked before a tag is deleted, and the two answers are genuinely different acts: deleting here
+     is undone by fetching, deleting on the remote is undone by nobody. -->
 <app-modal
   [open]="pendingDeleteTag() !== null"
-  [width]="26"
+  [width]="30"
   ariaLabel="Delete tag"
   (dismiss)="cancelDeleteTag()"
 >
   <ng-template appModalContent>
     <h2 class="rail__dialog-title">Delete this tag?</h2>
-    <p class="rail__dialog-message">
-      “{{ pendingDeleteTag()?.name }}” is deleted from this repository. A copy already pushed to a
-      remote stays there.
-    </p>
+    @if (deleteTagRemote(); as remote) {
+      <p class="rail__dialog-message">
+        “{{ pendingDeleteTag()?.name }}” is deleted from this repository. Deleting it on
+        {{ remote }} as well removes it for everyone, and cannot be undone.
+      </p>
+    } @else {
+      <p class="rail__dialog-message">
+        “{{ pendingDeleteTag()?.name }}” is deleted from this repository.
+      </p>
+    }
+    <!-- The local delete stays the solid one. It is the answer that is nearly always meant, and the
+         far more destructive of the two should not be the button the eye lands on first. -->
     <div class="rail__dialog-actions">
       <app-button label="Cancel" (click)="cancelDeleteTag()" />
+      @if (deleteTagRemote(); as remote) {
+        <app-button
+          tone="danger"
+          [label]="'Delete on ' + remote + ' too'"
+          (click)="confirmDeleteTagEverywhere()"
+        />
+      }
       <app-button variant="solid" label="Delete" (click)="confirmDeleteTag()" />
     </div>
   </ng-template>

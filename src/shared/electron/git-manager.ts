@@ -248,6 +248,15 @@ export class GitManager {
         this.deleteTag(root, name),
     );
     ipcMain.handle(
+      SourceControlChannel.DeleteRemoteTag,
+      (
+        _event: IpcMainInvokeEvent,
+        root: unknown,
+        remote: unknown,
+        name: unknown,
+      ): Promise<GitRunResult> => this.deleteRemoteTag(root, remote, name),
+    );
+    ipcMain.handle(
       SourceControlChannel.PushTag,
       (
         _event: IpcMainInvokeEvent,
@@ -776,6 +785,30 @@ export class GitManager {
     }
     logger.trace('GitManager.deleteTag', `Deleting tag ${name}`);
     return this.runInRoot(root, ['tag', '-d', name]);
+  }
+
+  /**
+   * Deletes a tag on a remote.
+   *
+   * The ref is spelled out in full as `refs/tags/<name>` rather than left to git to resolve: a bare
+   * name would match a branch of the same name just as readily, and deleting the wrong one on a
+   * remote is not a mistake the user can quietly undo. `--delete` takes a plain target ref, so the
+   * colon guard holds the operand to one ref rather than a source-and-destination pair.
+   *
+   * @param root The repository root.
+   * @param remote The remote to delete on.
+   * @param name The tag name.
+   * @returns Returns the raw command result.
+   */
+  private deleteRemoteTag(root: unknown, remote: unknown, name: unknown): Promise<GitRunResult> {
+    if (!isSafeOperand(remote) || !isSafeOperand(name)) {
+      return Promise.resolve({ success: false, error: 'Invalid remote or tag name' });
+    }
+    if (remote.includes(':') || name.includes(':')) {
+      return Promise.resolve({ success: false, error: 'Invalid remote or tag name' });
+    }
+    logger.trace('GitManager.deleteRemoteTag', `Deleting tag ${name} on ${remote}`);
+    return this.runNetwork(root, ['push', remote, '--delete', `refs/tags/${name}`]);
   }
 
   /**

@@ -981,6 +981,32 @@ export class SourceControlSidebar implements OnDestroy {
   }
 
   /**
+   * Gets the remote a tag delete would also reach, or null when the repository has none — which is
+   * what decides whether the confirmation offers the remote at all. Named in the button rather than
+   * left implicit: with more than one remote configured this is the first, and deleting a tag on the
+   * wrong one is not something the user can quietly undo.
+   */
+  protected readonly deleteTagRemote: Signal<string | null> = computed(
+    (): string | null => this.repository.remotes()[0]?.name ?? null,
+  );
+
+  /**
+   * Confirms the delete, removing the tag locally and on its remote.
+   */
+  protected confirmDeleteTagEverywhere(): void {
+    const tag: GitTag | null = this.pendingDeleteTag();
+    const remote: string | null = this.deleteTagRemote();
+    this.pendingDeleteTag.set(null);
+    if (tag !== null && remote !== null) {
+      this.log.info(
+        'SourceControlSidebar',
+        `Deleting tag '${tag.name}' on '${remote}' and locally`,
+      );
+      void this.repository.deleteTagEverywhere(tag.name, remote);
+    }
+  }
+
+  /**
    * Dismisses the delete confirmation, leaving the tag alone.
    */
   protected cancelDeleteTag(): void {

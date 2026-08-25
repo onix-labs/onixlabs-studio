@@ -226,6 +226,11 @@ class FakeProvider implements SourceControlProvider {
     return Promise.resolve({ success: true });
   }
 
+  public deleteRemoteTag(remote: string, name: string): Promise<MutationResult> {
+    this.calls.push(`deleteRemoteTag:${remote}:${name}`);
+    return Promise.resolve({ success: true });
+  }
+
   public pushTag(remote: string, name: string): Promise<MutationResult> {
     this.calls.push(`pushTag:${remote}:${name}`);
     return Promise.resolve({ success: true });
@@ -1276,6 +1281,39 @@ describe('SourceControlSidebar', () => {
       await fixture.whenStable();
 
       expect(provider.calls).toContain('deleteTag:v1.0.0');
+    });
+
+    it('deletingATagOnTheRemoteToo_namesTheRemoteAndDeletesInBothPlaces', async () => {
+      const internals: {
+        onContextAction(choice: TreeMenuSelection): void;
+        deleteTagRemote(): string | null;
+        confirmDeleteTagEverywhere(): void;
+      } = component as unknown as {
+        onContextAction(choice: TreeMenuSelection): void;
+        deleteTagRemote(): string | null;
+        confirmDeleteTagEverywhere(): void;
+      };
+
+      internals.onContextAction({ itemId: 'tag.delete', row: tagRow() });
+      expect(internals.deleteTagRemote()).toBe('origin');
+
+      internals.confirmDeleteTagEverywhere();
+      await fixture.whenStable();
+
+      expect(provider.calls).toContain('deleteRemoteTag:origin:v1.0.0');
+      expect(provider.calls).toContain('deleteTag:v1.0.0');
+    });
+
+    it('offersNoRemoteDelete_whenTheRepositoryHasNoRemote', async () => {
+      provider.remoteEntries = [];
+      await repository.refresh();
+      fixture.detectChanges();
+      const internals: { deleteTagRemote(): string | null } = component as unknown as {
+        deleteTagRemote(): string | null;
+      };
+
+      // The button is bound to this being non-null, so there is nothing to press.
+      expect(internals.deleteTagRemote()).toBeNull();
     });
 
     it('checksOutAPullRequest_andOpensItInTheBrowser_fromTheMenu', () => {

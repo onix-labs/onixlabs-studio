@@ -211,6 +211,21 @@ class FakeProvider implements SourceControlProvider {
     return Promise.resolve({ success: true });
   }
 
+  /**
+   * Makes the next remote tag delete fail with this message, so the abort path can be exercised.
+   */
+  public failNextRemoteTagDeleteWith: string | null = null;
+
+  public deleteRemoteTag(remote: string, name: string): Promise<MutationResult> {
+    this.calls.push(`deleteRemoteTag:${remote}:${name}`);
+    if (this.failNextRemoteTagDeleteWith !== null) {
+      const error: string = this.failNextRemoteTagDeleteWith;
+      this.failNextRemoteTagDeleteWith = null;
+      return Promise.resolve({ success: false, error });
+    }
+    return Promise.resolve({ success: true });
+  }
+
   public pushTag(remote: string, name: string): Promise<MutationResult> {
     this.calls.push(`pushTag:${remote}:${name}`);
     return this.tagPushOutcome();
@@ -605,6 +620,51 @@ describe('Repository', () => {
       await repository.deleteTag('v0.9.0');
 
       expect(provider.calls).toContain('deleteTag:v0.9.0');
+    });
+
+    it('deleteTagEverywhere_deletesOnTheRemoteBeforeDeletingLocally', async () => {
+      await repository.deleteTagEverywhere('v0.9.0', 'origin');
+
+      // The order is the point: the remote is the step that can fail.
+      expect(provider.calls.filter((call: string): boolean => call.includes('Tag'))).toEqual([
+        'deleteRemoteTag:origin:v0.9.0',
+        'deleteTag:v0.9.0',
+      ]);
+    });
+
+    it('deleteTagEverywhere_whenTheRemoteRefuses_leavesTheLocalTagAlone', async () => {
+      provider.failNextRemoteTagDeleteWith = 'Authentication required.';
+
+      const result: MutationResult = await repository.deleteTagEverywhere('v0.9.0', 'origin');
+
+      // Nothing was lost, so the tag is still there to try again with.
+      expect(result.success).toBe(false);
+      expect(provider.calls).not.toContain('deleteTag:v0.9.0');
+    });
+
+    it('deleteTagEverywhere_whenTheRemoteRefuses_raisesAnErrorToast', async () => {
+      provider.failNextRemoteTagDeleteWith = 'Authentication required.';
+
+      await repository.deleteTagEverywhere('v0.9.0', 'origin');
+
+      const toast: Notification = notifications.toasts()[0];
+      expect(toast.severity).toBe('error');
+      expect(toast.detail).toBe('Authentication required.');
+    });
+
+    it('deleteTagEverywhere_whenItSucceeds_namesTheTagAndRemoteInItsToast', async () => {
+      await repository.deleteTagEverywhere('v0.9.0', 'origin');
+
+      expect(notifications.toasts()[0].title).toBe('Deleted tag v0.9.0 on origin');
+    });
+
+    it('deleteTagEverywhere_whenNoRemoteIsNamed_usesTheFirstConfiguredOne', async () => {
+      provider.remoteNames = ['upstream', 'origin'];
+      await repository.refresh();
+
+      await repository.deleteTagEverywhere('v0.9.0');
+
+      expect(provider.calls).toContain('deleteRemoteTag:upstream:v0.9.0');
     });
 
     it('pushTag_whenNoRemoteIsNamed_usesTheFirstConfiguredOne', async () => {

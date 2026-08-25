@@ -320,6 +320,19 @@ export class GitProvider implements SourceControlProvider {
   }
 
   /**
+   * Deletes a tag on a remote. Destructive for everyone who has fetched it, not just the caller.
+   * @param remote The remote to delete on.
+   * @param name The tag name.
+   * @returns Returns the outcome.
+   */
+  public deleteRemoteTag(remote: string, name: string): Promise<MutationResult> {
+    return this.mutate(
+      (api: SourceControlClient): Promise<GitRunResult> =>
+        api.deleteRemoteTag(this.root, remote, name),
+    );
+  }
+
+  /**
    * Pushes one tag to a remote.
    * @param remote The remote to push to.
    * @param name The tag name.

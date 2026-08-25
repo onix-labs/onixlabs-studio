@@ -44,7 +44,7 @@ const EXTERNAL_REFRESH_DEBOUNCE_MS: number = 500;
 /**
  * Specifies the network operations whose outcomes raise a notification toast.
  */
-type NetworkOperation = 'fetch' | 'pull' | 'push' | 'push-tags';
+type NetworkOperation = 'fetch' | 'pull' | 'push' | 'push-tags' | 'delete-remote-tag';
 
 /**
  * The display labels of the network operations, used in their failure toasts.
@@ -54,6 +54,7 @@ const NETWORK_OPERATION_LABELS: Readonly<Record<NetworkOperation, string>> = {
   pull: 'Pull',
   push: 'Push',
   'push-tags': 'Push tags',
+  'delete-remote-tag': 'Remote tag delete',
 };
 
 /**
@@ -969,6 +970,33 @@ export class Repository {
   }
 
   /**
+   * Deletes a tag on a remote and then locally, so the tag is gone everywhere rather than in one
+   * place and not the other.
+   *
+   * The remote goes first deliberately. A remote delete is the step that can fail — the network, the
+   * credential, a protected ref — and doing it first means a failure leaves the local tag exactly
+   * where it was, with nothing lost and the retry obvious. The other order would delete the tag from
+   * under the user, leave it standing on the remote, and show a panel that disagrees with the forge.
+   *
+   * @param name The tag name.
+   * @param remote The remote to delete on; defaults to the first configured remote.
+   * @returns Returns the outcome — the remote failure when there was one, otherwise the local delete.
+   */
+  public async deleteTagEverywhere(name: string, remote?: string): Promise<MutationResult> {
+    const target: string = remote ?? this.defaultRemote();
+    this.log.info('Repository', `Deleting tag '${name}' on '${target}' and locally`);
+    const remoteResult: MutationResult = await this.mutate(
+      (provider: SourceControlProvider): Promise<MutationResult> =>
+        provider.deleteRemoteTag(target, name),
+    );
+    this.notifyNetworkOutcome('delete-remote-tag', remoteResult, `tag ${name} on ${target}`);
+    if (!remoteResult.success) {
+      return remoteResult;
+    }
+    return this.deleteTag(name);
+  }
+
+  /**
    * Pushes one tag to a remote. The outcome raises a toast — a tag push can fail on authentication
    * as readily as any other network operation, and must not do so silently.
    * @param name The tag name.
@@ -1063,6 +1091,7 @@ export class Repository {
       pull: `Pulled ${branch}`,
       push: `Pushed ${branch}`,
       'push-tags': `Pushed ${subject ?? 'tags'}`,
+      'delete-remote-tag': `Deleted ${subject ?? 'the tag'}`,
     };
     this.notifications.notify({
       severity: operation === 'fetch' ? 'info' : 'success',

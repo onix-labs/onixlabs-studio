@@ -95,6 +95,7 @@ describe('SourceControl', () => {
     await service.client?.createTag('/r', 'v1.0.0', 'abc123');
     await service.client?.createTag('/r', 'v1.1.0', 'abc123', 'Release');
     await service.client?.deleteTag('/r', 'v1.0.0');
+    await service.client?.deleteRemoteTag('/r', 'origin', 'v1.0.0');
     await service.client?.pushTag('/r', 'origin', 'v1.1.0');
     await service.client?.pushAllTags('/r', 'origin');
 
@@ -103,6 +104,7 @@ describe('SourceControl', () => {
       { channel: SourceControlChannel.CreateTag, args: ['/r', 'v1.0.0', 'abc123', undefined] },
       { channel: SourceControlChannel.CreateTag, args: ['/r', 'v1.1.0', 'abc123', 'Release'] },
       { channel: SourceControlChannel.DeleteTag, args: ['/r', 'v1.0.0'] },
+      { channel: SourceControlChannel.DeleteRemoteTag, args: ['/r', 'origin', 'v1.0.0'] },
       { channel: SourceControlChannel.PushTag, args: ['/r', 'origin', 'v1.1.0'] },
       { channel: SourceControlChannel.PushAllTags, args: ['/r', 'origin'] },
     ]);

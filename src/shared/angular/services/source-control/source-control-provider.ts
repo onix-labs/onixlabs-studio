@@ -202,6 +202,14 @@ export interface SourceControlProvider {
   deleteTag(name: string): Promise<MutationResult>;
 
   /**
+   * Deletes a tag on a remote. Destructive for everyone who has fetched it, not just the caller.
+   * @param remote The remote to delete on.
+   * @param name The tag name.
+   * @returns Returns the outcome.
+   */
+  deleteRemoteTag(remote: string, name: string): Promise<MutationResult>;
+
+  /**
    * Pushes one tag to a remote.
    * @param remote The remote to push to.
    * @param name The tag name.

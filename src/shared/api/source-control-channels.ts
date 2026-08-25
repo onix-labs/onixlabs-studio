@@ -145,6 +145,11 @@ export enum SourceControlChannel {
   DeleteTag = 'source-control:delete-tag',
 
   /**
+   * Deletes a tag on a remote. Destructive for everyone who has fetched it, not just the caller.
+   */
+  DeleteRemoteTag = 'source-control:delete-remote-tag',
+
+  /**
    * Pushes one tag to a remote.
    */
   PushTag = 'source-control:push-tag',
@@ -414,6 +419,15 @@ export interface SourceControlClient {
    * @returns Returns the raw command result.
    */
   deleteTag(root: string, name: string): Promise<GitRunResult>;
+
+  /**
+   * Deletes a tag on a remote. Destructive for everyone who has fetched it, not just the caller.
+   * @param root The absolute repository root; must be an open root.
+   * @param remote The remote to delete on.
+   * @param name The tag name.
+   * @returns Returns the raw command result.
+   */
+  deleteRemoteTag(root: string, remote: string, name: string): Promise<GitRunResult>;
 
   /**
    * Pushes one tag to a remote.
