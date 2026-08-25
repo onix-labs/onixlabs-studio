@@ -18,6 +18,12 @@
   gap: 0.25rem;
 }
 
+// Held to the trailing edge whatever else is on the strip, rather than relying on being the second of
+// exactly two groups.
+.dock-status-strip__group--end {
+  margin-inline-start: auto;
+}
+
 .dock-status-strip__segment {
   display: inline-flex;
   align-items: center;
@@ -43,16 +49,28 @@
   }
 }
 
-// The line tally of a comparison, colour-keyed to the change-margin palette so the two numbers agree
-// with the gutter marks and the diff's own shading rather than being a third opinion about what
-// added and removed look like.
+// The line tally of a comparison, colour-keyed to the change-margin palette so the numbers agree with
+// the gutter marks and the diff's own shading rather than being a third opinion about what added and
+// removed look like. Tabular figures so the pair does not jitter as the counts change under a caret
+// walking the diff.
+//
+// The segment is a span, not a button: nothing happens when it is pressed, so it neither hovers nor
+// takes focus.
 .dock-status-strip__added {
   color: var(--change-margin-saved);
   font-variant-numeric: tabular-nums;
 }
 
 .dock-status-strip__removed {
-  margin-inline-start: 0.35rem;
   color: var(--change-margin-deleted);
   font-variant-numeric: tabular-nums;
+}
+
+.dock-status-strip__segment:not(button) {
+  cursor: default;
+
+  &:hover {
+    color: inherit;
+    background: transparent;
+  }
 }

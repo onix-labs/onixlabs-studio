@@ -121,11 +121,44 @@ describe('DockStatusStrip', () => {
     const text: string = host.textContent ?? '';
     expect(text).toContain('12 changes');
     expect(text).toContain('Viewing 3 of 12');
-    expect(text).toContain('+40');
-    expect(text).toContain('−7');
+    // The signs are glyphs now, so the tally is read off its own segments.
+    expect(host.querySelector('.dock-status-strip__added')?.textContent).toBeDefined();
+    expect(
+      Array.from(host.querySelectorAll('.dock-status-strip__added')).map(
+        (element: Element): string => element.textContent ?? '',
+      ),
+    ).toContain('40');
+    expect(
+      Array.from(host.querySelectorAll('.dock-status-strip__removed')).map(
+        (element: Element): string => element.textContent ?? '',
+      ),
+    ).toContain('7');
     // A comparison has no caret segment and no zoom: neither is published, so neither is drawn.
     expect(text).not.toContain('Ln ');
     expect(text).not.toContain('100%');
+  });
+
+  it('render_whenAComparisonPublishes_dropsTheDiagnosticsSegment', () => {
+    // Workspace counts, identical on every tab, saying nothing about the two versions on screen.
+    documentStatus.set('owner', { language: 'markdown', changes: 12, linesAdded: 1 });
+    fixture.detectChanges();
+
+    expect(host.querySelector('[title="Errors and warnings"]')).toBeNull();
+  });
+
+  it('render_whenAnOrdinaryDocumentPublishes_keepsTheDiagnosticsSegment', () => {
+    documentStatus.set('owner', info);
+    fixture.detectChanges();
+
+    expect(host.querySelector('[title="Errors and warnings"]')).not.toBeNull();
+  });
+
+  it('render_theLineTallyIsHeldToTheTrailingEdge', () => {
+    documentStatus.set('owner', { language: 'markdown', changes: 12, linesAdded: 40 });
+    fixture.detectChanges();
+
+    const groups: NodeListOf<Element> = host.querySelectorAll('.dock-status-strip__group');
+    expect(groups[groups.length - 1].classList).toContain('dock-status-strip__group--end');
   });
 
   it('render_whenTheCaretIsAboveTheFirstChange_omitsThePosition', () => {
@@ -153,10 +186,9 @@ describe('DockStatusStrip', () => {
     });
     fixture.detectChanges();
 
-    const text: string = host.textContent ?? '';
-    expect(text).toContain('0 changes');
+    expect(host.textContent).toContain('0 changes');
     // Nothing added and nothing removed, so the tally has nothing to tally.
-    expect(text).not.toContain('+0');
+    expect(host.querySelector('.dock-status-strip__group--end')).toBeNull();
   });
 
   it('render_whenOneRegionChanged_saysChangeRatherThanChanges', () => {

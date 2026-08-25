@@ -63,6 +63,17 @@ export class DockStatusStrip {
   protected readonly warnings: Signal<number> = this.diagnostics.warningCount;
 
   /**
+   * Gets whether the active document is a comparison, which is what a published change count means.
+   *
+   * A comparison drops the diagnostics segment. Those counts are the workspace's, identical on every
+   * tab, and say nothing about the two versions being read — beside a file being edited they are
+   * worth the room, beside a diff they are just the thing that is always there.
+   */
+  protected readonly isComparison: Signal<boolean> = computed(
+    (): boolean => this.status()?.changes !== undefined,
+  );
+
+  /**
    * Gets the current editor zoom level, as a percentage.
    */
   protected readonly zoom: Signal<number> = this.editorZoom.percent;
