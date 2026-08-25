@@ -168,11 +168,15 @@
         (click)="generateMessage()"
       />
     </header>
+    <!-- Seamless and fixed, matching the agent composer: the card is the box, and its height does not
+         move with what has been typed into it. -->
     <app-textarea
       class="detail__message"
+      variant="seamless"
       placeholder="Commit message"
       ariaLabel="Commit message"
       [rows]="4"
+      [fixedHeight]="true"
       [value]="repository.commitMessage()"
       (valueChange)="onMessageValue($event)"
     />

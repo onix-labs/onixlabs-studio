@@ -33,3 +33,30 @@
     cursor: default;
   }
 }
+
+// A field inside a composer card that has already drawn the box, lit its own border on focus, and
+// padded itself. Everything the boxed field draws is given back, so the card is the only box and the
+// caret sits flush with the card's own padding rather than inside a second inset.
+.textarea--seamless {
+  padding: 0;
+  font-size: inherit;
+  line-height: 1.55;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+
+  &:hover,
+  &:focus-visible {
+    border-color: transparent;
+  }
+}
+
+// Held to exactly its row count, scrolling internally past it, with no grip to drag. The height
+// itself is bound from `rows` in the template, in `lh` units, so the two cannot drift apart.
+//
+// Stating a height keeps it out of JavaScript: measuring `scrollHeight` per keystroke forces a
+// synchronous layout of the whole document, which is what made typing in a wall of composers crawl.
+.textarea--fixed {
+  resize: none;
+  overflow-y: auto;
+}

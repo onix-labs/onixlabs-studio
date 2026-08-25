@@ -17,6 +17,7 @@
   background: var(--agent-view-surface-color);
   border: 0.0625rem solid var(--agent-view-border-color);
   border-radius: calc(1.1rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
   box-shadow: 0 0.0625rem 0.125rem -0.0625rem rgba(0, 0, 0, 0.5);
   transition: border-color 150ms ease-in-out;
 
