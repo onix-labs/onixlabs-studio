@@ -213,7 +213,7 @@ describe('ForgeRepository', () => {
     it('skipsARemoteWithNoUrl', async () => {
       // A stale refs/remotes entry for a removed remote carries no URL.
       repository.remotes.set([
-        { name: 'gone', url: '', branches: ['gone/old'] },
+        { name: 'gone', url: '', branches: [{ name: 'gone/old', commit: 'c1' }] },
         { name: 'origin', url: 'https://github.com/onix-labs/onixlabs-studio.git', branches: [] },
       ]);
 

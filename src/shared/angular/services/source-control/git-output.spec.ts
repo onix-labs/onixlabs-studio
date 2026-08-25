@@ -140,8 +140,11 @@ describe('git-output', () => {
       });
       expect(refs.branches[1].current).toBe(false);
       expect(refs.branches[1].upstream).toBeUndefined();
-      // `for-each-ref` carries no remote URL at all; mergeRemoteUrls is what fills it in.
-      expect(refs.remotes).toEqual([{ name: 'origin', url: '', branches: ['origin/main'] }]);
+      // `for-each-ref` carries no remote URL at all; mergeRemoteUrls is what fills it in. The tip is
+      // kept, which is what lets a remote-branch row navigate to a commit (#437).
+      expect(refs.remotes).toEqual([
+        { name: 'origin', url: '', branches: [{ name: 'origin/main', commit: 'AAA' }] },
+      ]);
       expect(refs.tags).toEqual([{ name: 'v1.0', commit: 'CCC' }]);
     });
   });
@@ -192,12 +195,18 @@ describe('git-output', () => {
   describe('mergeRemoteUrls', () => {
     it('fillsInTheUrlOfARemoteThatHasTrackingBranches', () => {
       const remotes: readonly GitRemote[] = [
-        { name: 'origin', url: '', branches: ['origin/main'] },
+        { name: 'origin', url: '', branches: [{ name: 'origin/main', commit: 'aaa' }] },
       ];
 
       expect(
         mergeRemoteUrls(remotes, new Map<string, string>([['origin', 'https://x/y.git']])),
-      ).toEqual([{ name: 'origin', url: 'https://x/y.git', branches: ['origin/main'] }]);
+      ).toEqual([
+        {
+          name: 'origin',
+          url: 'https://x/y.git',
+          branches: [{ name: 'origin/main', commit: 'aaa' }],
+        },
+      ]);
     });
 
     it('addsAConfiguredRemoteThatHasNoTrackingBranchesYet', () => {
@@ -211,17 +220,19 @@ describe('git-output', () => {
     it('keepsARemoteThatHasBranchesButNoConfiguredUrl', () => {
       // A stale refs/remotes entry for a removed remote. Its branches are still checkoutable refs, so
       // dropping it would lose them from the panel.
-      const remotes: readonly GitRemote[] = [{ name: 'gone', url: '', branches: ['gone/old'] }];
+      const remotes: readonly GitRemote[] = [
+        { name: 'gone', url: '', branches: [{ name: 'gone/old', commit: 'bbb' }] },
+      ];
 
       expect(mergeRemoteUrls(remotes, new Map<string, string>())).toEqual([
-        { name: 'gone', url: '', branches: ['gone/old'] },
+        { name: 'gone', url: '', branches: [{ name: 'gone/old', commit: 'bbb' }] },
       ]);
     });
 
     it('ordersConfiguredRemotesFirst_withRefOnlyOnesAppended', () => {
       const remotes: readonly GitRemote[] = [
-        { name: 'gone', url: '', branches: ['gone/old'] },
-        { name: 'origin', url: '', branches: ['origin/main'] },
+        { name: 'gone', url: '', branches: [{ name: 'gone/old', commit: 'bbb' }] },
+        { name: 'origin', url: '', branches: [{ name: 'origin/main', commit: 'aaa' }] },
       ];
 
       expect(

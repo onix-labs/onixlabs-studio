@@ -543,6 +543,27 @@ export class Icon {
   public static readonly CLOUD: Icon = new Icon('ph-duotone ph-cloud');
 
   /**
+   * Gets the push (cloud with an up arrow) icon. The cloud is what distinguishes sending commits to a
+   * remote from the bare arrows that count them.
+   */
+  public static readonly CLOUD_UP: Icon = new Icon('ph-duotone ph-cloud-arrow-up');
+
+  /**
+   * Gets the pull (cloud with a down arrow) icon.
+   */
+  public static readonly CLOUD_DOWN: Icon = new Icon('ph-duotone ph-cloud-arrow-down');
+
+  /**
+   * Gets the sync (cloud with a tick) icon: the state a pull and a push together leave a branch in.
+   */
+  public static readonly CLOUD_CHECK: Icon = new Icon('ph-duotone ph-cloud-check');
+
+  /**
+   * Gets the check-out (tray with an up arrow) icon.
+   */
+  public static readonly TRAY_UP: Icon = new Icon('ph-duotone ph-tray-arrow-up');
+
+  /**
    * Gets the working-changes (pencil) icon shown on the source-control uncommitted-changes node.
    */
   public static readonly PENCIL: Icon = new Icon('ph-duotone ph-pencil-simple');

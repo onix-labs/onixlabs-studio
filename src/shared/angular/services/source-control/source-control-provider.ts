@@ -207,6 +207,43 @@ export interface SourceControlProvider {
   push(target?: PushTarget): Promise<MutationResult>;
 
   /**
+   * Fetches one remote, rather than all of them.
+   * @param remote The remote to fetch.
+   * @returns Returns the outcome.
+   */
+  fetchRemote(remote: string): Promise<MutationResult>;
+
+  /**
+   * Prunes one remote's tracking branches that no longer exist on it.
+   * @param remote The remote to prune.
+   * @returns Returns the outcome.
+   */
+  pruneRemote(remote: string): Promise<MutationResult>;
+
+  /**
+   * Adds a remote.
+   * @param name The remote name.
+   * @param url The remote URL.
+   * @returns Returns the outcome.
+   */
+  addRemote(name: string, url: string): Promise<MutationResult>;
+
+  /**
+   * Removes a remote, along with its tracking branches. Destructive; the caller confirms first.
+   * @param name The remote name.
+   * @returns Returns the outcome.
+   */
+  removeRemote(name: string): Promise<MutationResult>;
+
+  /**
+   * Creates a local branch tracking a remote-tracking branch, and checks it out.
+   * @param remoteBranch The remote-tracking branch, as `origin/main`.
+   * @param localBranch The local branch to create.
+   * @returns Returns the outcome.
+   */
+  checkoutTracking(remoteBranch: string, localBranch: string): Promise<MutationResult>;
+
+  /**
    * Creates a tag at a commit, annotated when a message is given.
    * @param name The tag name.
    * @param commit The commit to tag.

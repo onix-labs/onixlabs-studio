@@ -33,6 +33,7 @@ import {
   GitBranch,
   GitCommit,
   GitRemote,
+  GitRemoteBranch,
   GitStash,
   GitTag,
 } from '@shared/angular/services/repository/repository-data';
@@ -116,6 +117,17 @@ interface RepoNode {
   readonly tag?: GitTag;
 
   /**
+   * Gets the remote, for a remote row and for the remote-branch rows beneath it (drives the fetch,
+   * prune and remove actions, and tells a branch row which remote to track from).
+   */
+  readonly remote?: GitRemote;
+
+  /**
+   * Gets the remote-tracking branch, for a remote-branch row (drives the check-out action).
+   */
+  readonly remoteBranch?: GitRemoteBranch;
+
+  /**
    * Gets the commit a row navigates to when selected (a branch tip or a tag's commit).
    */
   readonly commit?: string;
@@ -166,6 +178,41 @@ const ACTION_OPEN_ISSUE: string = 'issue.open';
  * Identifies the Check Out command on a branch's context menu.
  */
 const ACTION_CHECKOUT_BRANCH: string = 'branch.checkout';
+
+/**
+ * Identifies the Check Out command on a remote-tracking branch's context menu.
+ */
+const ACTION_CHECKOUT_REMOTE_BRANCH: string = 'remoteBranch.checkout';
+
+/**
+ * Identifies the Fetch command on a remote's context menu.
+ */
+const ACTION_FETCH_REMOTE: string = 'remote.fetch';
+
+/**
+ * Identifies the Prune command on a remote's context menu.
+ */
+const ACTION_PRUNE_REMOTE: string = 'remote.prune';
+
+/**
+ * Identifies the Remove command on a remote's context menu.
+ */
+const ACTION_REMOVE_REMOTE: string = 'remote.remove';
+
+/**
+ * Identifies the Copy Remote URL command on a remote's context menu.
+ */
+const ACTION_COPY_REMOTE_URL: string = 'remote.copyUrl';
+
+/**
+ * Identifies the Open Remote URL command on a remote's context menu.
+ */
+const ACTION_OPEN_REMOTE_URL: string = 'remote.openUrl';
+
+/**
+ * Identifies the Add Remote command on the tool strip's more-actions menu.
+ */
+const ACTION_ADD_REMOTE: string = 'repo.addRemote';
 
 /**
  * Identifies the Commit command on the checked-out branch's context menu.
@@ -532,6 +579,12 @@ export class SourceControlSidebar implements OnDestroy {
       disabled: !this.repository.isBound(),
     },
     {
+      id: ACTION_ADD_REMOTE,
+      label: 'Add Remote…',
+      icon: Icon.CLOUD,
+      disabled: !this.repository.isBound(),
+    },
+    {
       id: ACTION_STASH,
       label: 'Stash Changes',
       icon: Icon.STASH,
@@ -572,6 +625,9 @@ export class SourceControlSidebar implements OnDestroy {
         break;
       case ACTION_NEW_TAG:
         this.openTagDialog();
+        break;
+      case ACTION_ADD_REMOTE:
+        this.openRemoteDialog();
         break;
       case ACTION_STASH:
         this.stash();
@@ -674,8 +730,11 @@ export class SourceControlSidebar implements OnDestroy {
           this.toggleSection(node.sectionKey);
         }
         break;
+      // A remote-tracking branch navigates like any other ref now that it knows its tip; it was only
+      // ever inert because the hash was dropped at parse time.
       case 'branch':
       case 'tag':
+      case 'remote-branch':
         if (node.commit !== undefined) {
           this.repository.selectNode(node.commit);
         }
@@ -873,6 +932,146 @@ export class SourceControlSidebar implements OnDestroy {
    */
   protected onBranchNameValue(value: string): void {
     this.branchName.set(value);
+  }
+
+  /**
+   * Checks out a remote-tracking branch as a local branch that tracks it.
+   *
+   * The local name is the branch's own, with the remote stripped: `origin/main` becomes `main`, which
+   * is what the row said and what the user is asking for.
+   *
+   * @param remote The remote the branch belongs to.
+   * @param branch The remote-tracking branch.
+   */
+  private checkoutTracking(remote: GitRemote, branch: GitRemoteBranch): void {
+    const local: string = branch.name.startsWith(`${remote.name}/`)
+      ? branch.name.slice(remote.name.length + 1)
+      : branch.name;
+    this.log.info('SourceControlSidebar', `Checking out '${local}' tracking '${branch.name}'`);
+    void this.repository.checkoutTracking(branch.name, local);
+  }
+
+  /**
+   * Opens a remote's web address in the browser.
+   * @param remote The remote to open.
+   */
+  private openRemoteUrl(remote: GitRemote): void {
+    const url: string | null = browsableRemoteUrl(remote.url);
+    if (url === null) {
+      return;
+    }
+    this.log.info('SourceControlSidebar', `Opening remote '${remote.name}' at ${url}`);
+    void this.shell.openExternal(url);
+  }
+
+  /**
+   * Holds the remote awaiting removal confirmation, or null when none is.
+   */
+  protected readonly pendingRemoveRemote: WritableSignal<GitRemote | null> =
+    signal<GitRemote | null>(null);
+
+  /**
+   * Confirms the removal, dropping the remote and its tracking branches.
+   */
+  protected confirmRemoveRemote(): void {
+    const remote: GitRemote | null = this.pendingRemoveRemote();
+    this.pendingRemoveRemote.set(null);
+    if (remote !== null) {
+      this.log.info('SourceControlSidebar', `Removing remote '${remote.name}'`);
+      void this.repository.removeRemote(remote.name);
+    }
+  }
+
+  /**
+   * Dismisses the removal confirmation, leaving the remote alone.
+   */
+  protected cancelRemoveRemote(): void {
+    this.pendingRemoveRemote.set(null);
+  }
+
+  /**
+   * Holds whether the add-remote dialog is open.
+   */
+  protected readonly remoteDialogOpen: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds the name being entered in the add-remote dialog.
+   */
+  protected readonly remoteName: WritableSignal<string> = signal<string>('');
+
+  /**
+   * Holds the URL being entered in the add-remote dialog.
+   */
+  protected readonly remoteUrl: WritableSignal<string> = signal<string>('');
+
+  /**
+   * Gets the reason the entered remote name cannot be used, or null when it can.
+   */
+  protected readonly remoteNameError: Signal<string | null> = computed((): string | null => {
+    const name: string = this.remoteName().trim();
+    if (name.length === 0) {
+      return null;
+    }
+    return this.repository.remotes().some((remote: GitRemote): boolean => remote.name === name)
+      ? 'A remote with that name already exists.'
+      : null;
+  });
+
+  /**
+   * Gets whether the entered remote can be added. Both fields are required: a remote without a URL is
+   * not a remote, and git would reject it anyway.
+   */
+  protected readonly canAddRemote: Signal<boolean> = computed(
+    (): boolean =>
+      this.remoteName().trim().length > 0 &&
+      this.remoteUrl().trim().length > 0 &&
+      this.remoteNameError() === null,
+  );
+
+  /**
+   * Opens the add-remote dialog.
+   */
+  protected openRemoteDialog(): void {
+    this.remoteName.set('');
+    this.remoteUrl.set('');
+    this.remoteDialogOpen.set(true);
+  }
+
+  /**
+   * Confirms the add-remote dialog.
+   */
+  protected confirmRemote(): void {
+    if (!this.canAddRemote()) {
+      return;
+    }
+    const name: string = this.remoteName().trim();
+    const url: string = this.remoteUrl().trim();
+    this.remoteDialogOpen.set(false);
+    this.log.info('SourceControlSidebar', `Adding remote '${name}'`);
+    void this.repository.addRemote(name, url);
+  }
+
+  /**
+   * Dismisses the add-remote dialog without adding anything.
+   */
+  protected cancelRemote(): void {
+    this.remoteDialogOpen.set(false);
+  }
+
+  /**
+   * Records the remote name as it is typed.
+   * @param value The entered name.
+   */
+  protected onRemoteNameValue(value: string): void {
+    this.remoteName.set(value);
+  }
+
+  /**
+   * Records the remote URL as it is typed.
+   * @param value The entered URL.
+   */
+  protected onRemoteUrlValue(value: string): void {
+    this.remoteUrl.set(value);
   }
 
   /**
@@ -1125,15 +1324,25 @@ export class SourceControlSidebar implements OnDestroy {
         depth: 1,
         expandable: false,
         expanded: false,
-        data: { kind: 'remote', icon: Icon.CLOUD, label: remote.name },
+        // The URL stays off the row: it is long, it is the same for most of a repository's life, and
+        // a tree of names reads worse with an address after each one. It lives on the menu, where it
+        // can be copied or opened rather than merely looked at.
+        data: { kind: 'remote', icon: Icon.CLOUD, label: remote.name, remote },
       });
       for (const branch of remote.branches) {
         out.push({
-          id: `remote:${remote.name}/${branch}`,
+          id: `remote:${branch.name}`,
           depth: 2,
           expandable: false,
           expanded: false,
-          data: { kind: 'remote-branch', icon: Icon.SOURCE_CONTROL, label: branch },
+          data: {
+            kind: 'remote-branch',
+            icon: Icon.SOURCE_CONTROL,
+            label: branch.name,
+            commit: branch.commit,
+            remote,
+            remoteBranch: branch,
+          },
         });
       }
     }
@@ -1237,11 +1446,11 @@ export class SourceControlSidebar implements OnDestroy {
             {
               id: ACTION_COMMIT_BRANCH,
               label: 'Commit…',
-              icon: Icon.SOURCE_CONTROL,
+              icon: Icon.GIT_COMMIT,
               status: `${this.repository.changeCount()} changed`,
             },
           ]
-      : [{ id: ACTION_CHECKOUT_BRANCH, label: 'Check Out', icon: Icon.CHECK }];
+      : [{ id: ACTION_CHECKOUT_BRANCH, label: 'Check Out', icon: Icon.TRAY_UP }];
     return lead.length === 0
       ? this.upstreamItems(branch)
       : [...lead, { separator: true, id: 'branch.sep', label: '' }, ...this.upstreamItems(branch)];
@@ -1277,7 +1486,7 @@ export class SourceControlSidebar implements OnDestroy {
       {
         id: ACTION_PUSH_BRANCH,
         label: 'Push',
-        icon: Icon.ARROW_UP,
+        icon: Icon.CLOUD_UP,
         disabled: noRemote,
         // A branch with no upstream is published by the push, so the count is what it is sending, not
         // a comparison with something that does not exist yet.
@@ -1290,7 +1499,7 @@ export class SourceControlSidebar implements OnDestroy {
       {
         id: ACTION_PULL_BRANCH,
         label: 'Pull',
-        icon: Icon.ARROW_DOWN,
+        icon: Icon.CLOUD_DOWN,
         disabled: noRemote || noUpstream,
         status:
           reason ??
@@ -1307,7 +1516,7 @@ export class SourceControlSidebar implements OnDestroy {
       {
         id: ACTION_SYNC_BRANCH,
         label: 'Sync',
-        icon: Icon.REFRESH,
+        icon: Icon.CLOUD_CHECK,
         disabled: noRemote || noUpstream,
         status: reason ?? 'pull, then push',
       },
@@ -1383,6 +1592,50 @@ export class SourceControlSidebar implements OnDestroy {
         { id: ACTION_DROP_STASH, label: 'Drop…', icon: Icon.TRASH },
       ];
     }
+    if (node.remoteBranch !== undefined) {
+      // Checking one out as a local tracking branch is the thing people come to this section for.
+      return [
+        {
+          id: ACTION_CHECKOUT_REMOTE_BRANCH,
+          label: 'Check Out',
+          icon: Icon.TRAY_UP,
+          status: 'as a local branch',
+        },
+      ];
+    }
+    if (node.remote !== undefined) {
+      const url: string = node.remote.url;
+      return [
+        { id: ACTION_FETCH_REMOTE, label: 'Fetch', icon: Icon.CLOUD },
+        {
+          id: ACTION_PRUNE_REMOTE,
+          label: 'Prune',
+          icon: Icon.REFRESH,
+          status: 'drop deleted branches',
+        },
+        { separator: true, id: 'remote.sep.url', label: '' },
+        {
+          id: ACTION_COPY_REMOTE_URL,
+          label: 'Copy Remote URL',
+          icon: Icon.COPY,
+          // Copied exactly as git has it configured: this is the string that would be pasted into a
+          // clone, so rewriting it to something browsable would hand back the wrong thing.
+          disabled: url.length === 0,
+          ...(url.length === 0 ? { status: 'no URL' } : {}),
+        },
+        {
+          id: ACTION_OPEN_REMOTE_URL,
+          label: 'Open Remote URL',
+          icon: Icon.OPEN_EXTERNAL,
+          // An SSH remote is rewritten to its web address; a path-shaped one has none at all, and
+          // saying so beats opening a browser onto nothing.
+          disabled: browsableRemoteUrl(url) === null,
+          ...(browsableRemoteUrl(url) === null ? { status: 'not a web address' } : {}),
+        },
+        { separator: true, id: 'remote.sep.remove', label: '' },
+        { id: ACTION_REMOVE_REMOTE, label: 'Remove…', icon: Icon.TRASH },
+      ];
+    }
     if (node.tag !== undefined) {
       return [
         this.pushToRemoteItem(ACTION_PUSH_TAG, 'Push'),
@@ -1391,7 +1644,7 @@ export class SourceControlSidebar implements OnDestroy {
     }
     if (node.pullRequest !== undefined) {
       return [
-        { id: ACTION_CHECKOUT_PULL_REQUEST, label: 'Check Out', icon: Icon.CHECK },
+        { id: ACTION_CHECKOUT_PULL_REQUEST, label: 'Check Out', icon: Icon.TRAY_UP },
         { id: ACTION_OPEN_PULL_REQUEST, label: 'Open on GitHub', icon: Icon.OPEN_EXTERNAL },
       ];
     }
@@ -1441,6 +1694,37 @@ export class SourceControlSidebar implements OnDestroy {
         break;
       case ACTION_COMMIT_BRANCH:
         this.commitOnBranch();
+        break;
+      case ACTION_CHECKOUT_REMOTE_BRANCH:
+        if (node.remoteBranch !== undefined && node.remote !== undefined) {
+          this.checkoutTracking(node.remote, node.remoteBranch);
+        }
+        break;
+      case ACTION_FETCH_REMOTE:
+        if (node.remote !== undefined) {
+          void this.repository.fetchRemote(node.remote.name);
+        }
+        break;
+      case ACTION_PRUNE_REMOTE:
+        if (node.remote !== undefined) {
+          void this.repository.pruneRemote(node.remote.name);
+        }
+        break;
+      case ACTION_COPY_REMOTE_URL:
+        if (node.remote !== undefined && node.remote.url.length > 0) {
+          this.log.info('SourceControlSidebar', `Copying the URL of remote '${node.remote.name}'`);
+          void navigator.clipboard.writeText(node.remote.url).catch((): void => undefined);
+        }
+        break;
+      case ACTION_OPEN_REMOTE_URL:
+        if (node.remote !== undefined) {
+          this.openRemoteUrl(node.remote);
+        }
+        break;
+      case ACTION_REMOVE_REMOTE:
+        if (node.remote !== undefined) {
+          this.pendingRemoveRemote.set(node.remote);
+        }
         break;
       case ACTION_PUSH_BRANCH:
         if (node.branch !== undefined) {
@@ -1758,6 +2042,52 @@ export class SourceControlSidebar implements OnDestroy {
       data: { kind: 'empty', icon, label, muted: true },
     };
   }
+}
+
+/**
+ * Resolves the address a remote can be opened at in a browser, or null when it has none.
+ *
+ * Most remotes are SSH, which no browser can open, so the two common SSH spellings are rewritten to
+ * `https` on the same host: `git@host:owner/repo.git` and `ssh://git@host/owner/repo.git` both become
+ * `https://host/owner/repo`. That holds for every forge Studio talks to, where the SSH and web paths
+ * agree. It does not hold for a bare path or a `file://` remote, which have no web address at all and
+ * yield null rather than a guess.
+ *
+ * The trailing `.git` is dropped because it is a fetch-path convention rather than part of the page's
+ * address; forges redirect it, but showing the user the address they would have typed is better than
+ * relying on that.
+ *
+ * @param url The remote's URL as git has it configured.
+ * @returns Returns the browsable address, or null when the remote has none.
+ */
+export function browsableRemoteUrl(url: string): string | null {
+  const trimmed: string = url.trim();
+  if (trimmed.length === 0) {
+    return null;
+  }
+  const withoutSuffix: (value: string) => string = (value: string): string =>
+    value.endsWith('.git') ? value.slice(0, -'.git'.length) : value;
+  // Anything carrying a scheme is decided by it, and by nothing else. Reaching the scp-like branch
+  // below with a `file://` remote would read `file` as a host and produce an address to nowhere.
+  const scheme: RegExpMatchArray | null = /^([a-z][a-z0-9+.-]*):\/\/(.*)$/i.exec(trimmed);
+  if (scheme !== null) {
+    const protocol: string = scheme[1].toLowerCase();
+    if (protocol === 'https' || protocol === 'http') {
+      return withoutSuffix(trimmed);
+    }
+    if (protocol === 'ssh' || protocol === 'git') {
+      // The scheme is swapped and any credential before the host dropped, having no use in a browser.
+      return `https://${withoutSuffix(scheme[2].replace(/^[^@/]+@/, ''))}`;
+    }
+    return null;
+  }
+  // The scp-like form, `git@host:owner/repo.git`. The colon separates host from path rather than
+  // naming a port, which is what makes this its own case rather than a URL.
+  const scp: RegExpMatchArray | null = /^(?:[^@/\s]+@)?([^:/\s]+):(.+)$/.exec(trimmed);
+  if (scp !== null) {
+    return `https://${scp[1]}/${withoutSuffix(scp[2])}`;
+  }
+  return null;
 }
 
 /**

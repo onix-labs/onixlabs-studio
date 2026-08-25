@@ -88,6 +88,28 @@ describe('SourceControl', () => {
     ]);
   });
 
+  it('remoteMutations_whenInvoked_forwardTheirArguments', async () => {
+    stubBridge({ success: true });
+    const service: SourceControl = TestBed.inject(SourceControl);
+
+    await service.client?.fetchRemote('/r', 'origin');
+    await service.client?.pruneRemote('/r', 'origin');
+    await service.client?.addRemote('/r', 'upstream', 'https://example.com/u.git');
+    await service.client?.removeRemote('/r', 'upstream');
+    await service.client?.checkoutTracking('/r', 'origin/release', 'release');
+
+    expect(calls).toEqual([
+      { channel: SourceControlChannel.FetchRemote, args: ['/r', 'origin'] },
+      { channel: SourceControlChannel.PruneRemote, args: ['/r', 'origin'] },
+      {
+        channel: SourceControlChannel.AddRemote,
+        args: ['/r', 'upstream', 'https://example.com/u.git'],
+      },
+      { channel: SourceControlChannel.RemoveRemote, args: ['/r', 'upstream'] },
+      { channel: SourceControlChannel.CheckoutTracking, args: ['/r', 'origin/release', 'release'] },
+    ]);
+  });
+
   it('tagMutations_whenInvoked_forwardTheirArguments', async () => {
     stubBridge({ success: true });
     const service: SourceControl = TestBed.inject(SourceControl);

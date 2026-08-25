@@ -234,6 +234,39 @@ export class GitManager {
       ): Promise<GitRunResult> => this.push(root, remote, branch, setUpstream),
     );
     ipcMain.handle(
+      SourceControlChannel.FetchRemote,
+      (_event: IpcMainInvokeEvent, root: unknown, remote: unknown): Promise<GitRunResult> =>
+        this.fetchRemote(root, remote),
+    );
+    ipcMain.handle(
+      SourceControlChannel.PruneRemote,
+      (_event: IpcMainInvokeEvent, root: unknown, remote: unknown): Promise<GitRunResult> =>
+        this.pruneRemote(root, remote),
+    );
+    ipcMain.handle(
+      SourceControlChannel.AddRemote,
+      (
+        _event: IpcMainInvokeEvent,
+        root: unknown,
+        name: unknown,
+        url: unknown,
+      ): Promise<GitRunResult> => this.addRemote(root, name, url),
+    );
+    ipcMain.handle(
+      SourceControlChannel.RemoveRemote,
+      (_event: IpcMainInvokeEvent, root: unknown, name: unknown): Promise<GitRunResult> =>
+        this.removeRemote(root, name),
+    );
+    ipcMain.handle(
+      SourceControlChannel.CheckoutTracking,
+      (
+        _event: IpcMainInvokeEvent,
+        root: unknown,
+        remoteBranch: unknown,
+        localBranch: unknown,
+      ): Promise<GitRunResult> => this.checkoutTracking(root, remoteBranch, localBranch),
+    );
+    ipcMain.handle(
       SourceControlChannel.CreateTag,
       (
         _event: IpcMainInvokeEvent,
@@ -677,6 +710,101 @@ export class GitManager {
   private fetch(root: unknown): Promise<GitRunResult> {
     logger.trace('GitManager.fetch', 'Fetching all remotes with prune');
     return this.runNetwork(root, ['fetch', '--all', '--prune']);
+  }
+
+  /**
+   * Fetches one remote, rather than all of them.
+   * @param root The repository root.
+   * @param remote The remote to fetch.
+   * @returns Returns the raw command result.
+   */
+  private fetchRemote(root: unknown, remote: unknown): Promise<GitRunResult> {
+    if (!isSafeOperand(remote)) {
+      return Promise.resolve({ success: false, error: 'Invalid remote' });
+    }
+    logger.trace('GitManager.fetchRemote', `Fetching remote ${remote}`);
+    return this.runNetwork(root, ['fetch', remote]);
+  }
+
+  /**
+   * Prunes one remote's tracking branches that no longer exist on it.
+   *
+   * `remote prune` rather than `fetch --prune`, because pruning and fetching are separate answers to
+   * separate questions: one asks what has been deleted upstream, the other asks what is new. Offering
+   * them as one command would mean a user who wanted to tidy their branch list had to pull down
+   * whatever else had landed to get it.
+   *
+   * @param root The repository root.
+   * @param remote The remote to prune.
+   * @returns Returns the raw command result.
+   */
+  private pruneRemote(root: unknown, remote: unknown): Promise<GitRunResult> {
+    if (!isSafeOperand(remote)) {
+      return Promise.resolve({ success: false, error: 'Invalid remote' });
+    }
+    logger.trace('GitManager.pruneRemote', `Pruning remote ${remote}`);
+    return this.runNetwork(root, ['remote', 'prune', remote]);
+  }
+
+  /**
+   * Adds a remote.
+   *
+   * The URL is held to {@link isSafeOperand} like any other operand, which also rejects the one shape
+   * that would matter here: a URL beginning with a dash would be read by git as an option rather than
+   * an address.
+   *
+   * @param root The repository root.
+   * @param name The remote name.
+   * @param url The remote URL.
+   * @returns Returns the raw command result.
+   */
+  private addRemote(root: unknown, name: unknown, url: unknown): Promise<GitRunResult> {
+    if (!isSafeOperand(name) || !isSafeOperand(url)) {
+      return Promise.resolve({ success: false, error: 'Invalid remote name or URL' });
+    }
+    logger.trace('GitManager.addRemote', `Adding remote ${name}`);
+    return this.runInRoot(root, ['remote', 'add', name, url]);
+  }
+
+  /**
+   * Removes a remote, along with its tracking branches. Destructive; the caller confirms first.
+   * @param root The repository root.
+   * @param name The remote name.
+   * @returns Returns the raw command result.
+   */
+  private removeRemote(root: unknown, name: unknown): Promise<GitRunResult> {
+    if (!isSafeOperand(name)) {
+      return Promise.resolve({ success: false, error: 'Invalid remote name' });
+    }
+    logger.trace('GitManager.removeRemote', `Removing remote ${name}`);
+    return this.runInRoot(root, ['remote', 'remove', name]);
+  }
+
+  /**
+   * Creates a local branch tracking a remote-tracking branch, and checks it out.
+   *
+   * Both operands are named rather than letting `--track` derive the local name, because what git
+   * derives depends on configuration the panel cannot see, and a row that says it will check out
+   * `main` should not produce something else.
+   *
+   * @param root The repository root.
+   * @param remoteBranch The remote-tracking branch, as `origin/main`.
+   * @param localBranch The local branch to create.
+   * @returns Returns the raw command result.
+   */
+  private checkoutTracking(
+    root: unknown,
+    remoteBranch: unknown,
+    localBranch: unknown,
+  ): Promise<GitRunResult> {
+    if (!isSafeOperand(remoteBranch) || !isSafeOperand(localBranch)) {
+      return Promise.resolve({ success: false, error: 'Invalid branch name' });
+    }
+    logger.trace(
+      'GitManager.checkoutTracking',
+      `Checking out ${localBranch} tracking ${remoteBranch}`,
+    );
+    return this.runInRoot(root, ['checkout', '-b', localBranch, '--track', remoteBranch]);
   }
 
   /**

@@ -135,6 +135,31 @@ export enum SourceControlChannel {
   Push = 'source-control:push',
 
   /**
+   * Fetches one remote, rather than all of them.
+   */
+  FetchRemote = 'source-control:fetch-remote',
+
+  /**
+   * Prunes one remote's tracking branches that no longer exist on it.
+   */
+  PruneRemote = 'source-control:prune-remote',
+
+  /**
+   * Adds a remote.
+   */
+  AddRemote = 'source-control:add-remote',
+
+  /**
+   * Removes a remote, along with its tracking branches.
+   */
+  RemoveRemote = 'source-control:remove-remote',
+
+  /**
+   * Creates a local branch tracking a remote-tracking branch, and checks it out.
+   */
+  CheckoutTracking = 'source-control:checkout-tracking',
+
+  /**
    * Creates a tag at a commit, annotated when a message is given.
    */
   CreateTag = 'source-control:create-tag',
@@ -408,6 +433,48 @@ export interface SourceControlClient {
     branch?: string,
     setUpstream?: boolean,
   ): Promise<GitRunResult>;
+
+  /**
+   * Fetches one remote, rather than all of them.
+   * @param root The absolute repository root; must be an open root.
+   * @param remote The remote to fetch.
+   * @returns Returns the raw command result.
+   */
+  fetchRemote(root: string, remote: string): Promise<GitRunResult>;
+
+  /**
+   * Prunes one remote's tracking branches that no longer exist on it.
+   * @param root The absolute repository root; must be an open root.
+   * @param remote The remote to prune.
+   * @returns Returns the raw command result.
+   */
+  pruneRemote(root: string, remote: string): Promise<GitRunResult>;
+
+  /**
+   * Adds a remote.
+   * @param root The absolute repository root; must be an open root.
+   * @param name The remote name.
+   * @param url The remote URL.
+   * @returns Returns the raw command result.
+   */
+  addRemote(root: string, name: string, url: string): Promise<GitRunResult>;
+
+  /**
+   * Removes a remote, along with its tracking branches. Destructive; the caller confirms first.
+   * @param root The absolute repository root; must be an open root.
+   * @param name The remote name.
+   * @returns Returns the raw command result.
+   */
+  removeRemote(root: string, name: string): Promise<GitRunResult>;
+
+  /**
+   * Creates a local branch tracking a remote-tracking branch, and checks it out.
+   * @param root The absolute repository root; must be an open root.
+   * @param remoteBranch The remote-tracking branch, as `origin/main`.
+   * @param localBranch The local branch to create.
+   * @returns Returns the raw command result.
+   */
+  checkoutTracking(root: string, remoteBranch: string, localBranch: string): Promise<GitRunResult>;
 
   /**
    * Creates a tag at a commit. A message makes it annotated — which is what a release wants, since an

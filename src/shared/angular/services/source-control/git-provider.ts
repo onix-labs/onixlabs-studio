@@ -296,6 +296,64 @@ export class GitProvider implements SourceControlProvider {
   }
 
   /**
+   * Fetches one remote, rather than all of them.
+   * @param remote The remote to fetch.
+   * @returns Returns the outcome.
+   */
+  public fetchRemote(remote: string): Promise<MutationResult> {
+    return this.mutate(
+      (api: SourceControlClient): Promise<GitRunResult> => api.fetchRemote(this.root, remote),
+    );
+  }
+
+  /**
+   * Prunes one remote's tracking branches that no longer exist on it.
+   * @param remote The remote to prune.
+   * @returns Returns the outcome.
+   */
+  public pruneRemote(remote: string): Promise<MutationResult> {
+    return this.mutate(
+      (api: SourceControlClient): Promise<GitRunResult> => api.pruneRemote(this.root, remote),
+    );
+  }
+
+  /**
+   * Adds a remote.
+   * @param name The remote name.
+   * @param url The remote URL.
+   * @returns Returns the outcome.
+   */
+  public addRemote(name: string, url: string): Promise<MutationResult> {
+    return this.mutate(
+      (api: SourceControlClient): Promise<GitRunResult> => api.addRemote(this.root, name, url),
+    );
+  }
+
+  /**
+   * Removes a remote, along with its tracking branches.
+   * @param name The remote name.
+   * @returns Returns the outcome.
+   */
+  public removeRemote(name: string): Promise<MutationResult> {
+    return this.mutate(
+      (api: SourceControlClient): Promise<GitRunResult> => api.removeRemote(this.root, name),
+    );
+  }
+
+  /**
+   * Creates a local branch tracking a remote-tracking branch, and checks it out.
+   * @param remoteBranch The remote-tracking branch, as `origin/main`.
+   * @param localBranch The local branch to create.
+   * @returns Returns the outcome.
+   */
+  public checkoutTracking(remoteBranch: string, localBranch: string): Promise<MutationResult> {
+    return this.mutate(
+      (api: SourceControlClient): Promise<GitRunResult> =>
+        api.checkoutTracking(this.root, remoteBranch, localBranch),
+    );
+  }
+
+  /**
    * Creates a tag at a commit, annotated when a message is given.
    * @param name The tag name.
    * @param commit The commit to tag.
