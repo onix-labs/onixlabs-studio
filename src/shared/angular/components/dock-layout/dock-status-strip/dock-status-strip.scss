@@ -42,3 +42,17 @@
     outline-offset: -0.125rem;
   }
 }
+
+// The line tally of a comparison, colour-keyed to the change-margin palette so the two numbers agree
+// with the gutter marks and the diff's own shading rather than being a third opinion about what
+// added and removed look like.
+.dock-status-strip__added {
+  color: var(--change-margin-saved);
+  font-variant-numeric: tabular-nums;
+}
+
+.dock-status-strip__removed {
+  margin-inline-start: 0.35rem;
+  color: var(--change-margin-deleted);
+  font-variant-numeric: tabular-nums;
+}

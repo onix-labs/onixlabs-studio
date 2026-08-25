@@ -2,6 +2,13 @@ import { DebugElement, signal, Signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Icon } from '@shared/angular/icons/icon';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
+import { DockState } from '@shared/angular/services/dock-layout/dock-state';
+import { StackNode } from '@shared/angular/services/dock-layout/dock-node';
+import { firstStackOfRole } from '@shared/angular/services/dock-layout/dock-tree';
+import {
+  DocumentStatus,
+  DocumentStatusInfo,
+} from '@shared/angular/services/document-status/document-status';
 import { Diffs } from '@shared/angular/services/diffs/diffs';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 import {
@@ -93,6 +100,9 @@ describe('DiffDocumentPanel', () => {
             globalTextEditor: signal<TextEditorSettings>(TEXT_EDITOR_SETTINGS),
             // The tool strip's button names itself through a tooltip, which reads this.
             value: (): Signal<boolean> => signal<boolean>(true),
+            // The panel asks the real DockState whether it is the active tab, and DockState bounds
+            // its undo history from here.
+            undoStackSize: signal<number>(50),
           },
         },
       ],
@@ -147,6 +157,37 @@ describe('DiffDocumentPanel', () => {
     await fixture.whenStable();
 
     expect(host.querySelector('.diff__badge')).toBeNull();
+  });
+
+  describe('the well status strip', () => {
+    it('publishesNothing_whileThisTabIsNotTheActiveOne', async () => {
+      // Every tab in a well stays mounted, so an inactive diff that published would talk over the one
+      // actually being looked at.
+      diffs.put('diff:src/app/main.ts', makeFile('src/app/main.ts', 'modified'));
+      fixture.componentRef.setInput('panel', makePanel('diff:src/app/main.ts'));
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      expect(TestBed.inject(DocumentStatus).info()).toBeNull();
+    });
+
+    it('publishesTheComparison_onceThisTabIsTheActiveOne', async () => {
+      const dockState: DockState = TestBed.inject(DockState);
+      const well: StackNode | null = firstStackOfRole(dockState.layout(), 'document');
+      dockState.tabInto(well!.id, 'diff:src/app/main.ts');
+      diffs.put('diff:src/app/main.ts', makeFile('src/app/main.ts', 'modified'));
+      fixture.componentRef.setInput('panel', makePanel('diff:src/app/main.ts'));
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      const info: DocumentStatusInfo | null = TestBed.inject(DocumentStatus).info();
+      expect(info).not.toBeNull();
+      expect(info!.language).toBe('typescript');
+      // Monaco is unavailable in jsdom, so nothing has been diffed — the segments are still published,
+      // and answer zero rather than going missing.
+      expect(info!.changes).toBe(0);
+      expect(info!.currentChange).toBeUndefined();
+    });
   });
 
   describe('the tool strip', () => {

@@ -8,7 +8,7 @@ import {
 } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
-import { DiffEditor } from '@shared/angular/components/diff-editor/diff-editor';
+import { DiffEditor, DiffSummary } from '@shared/angular/components/diff-editor/diff-editor';
 
 /**
  * Hosts the source-control diff surface: the shared {@link DiffEditor} pane comparing a file's
@@ -74,5 +74,29 @@ export class DiffView {
    */
   public goToDiff(target: 'next' | 'previous'): void {
     this.pane()?.getDiffEditor()?.goToDiff(target);
+  }
+
+  /**
+   * Gets a summary of the computed comparison, for chrome that reports it.
+   * @returns Returns the summary, empty before the pane has computed one.
+   */
+  public getDiffSummary(): DiffSummary {
+    return (
+      this.pane()?.getDiffSummary() ?? {
+        changes: 0,
+        linesAdded: 0,
+        linesRemoved: 0,
+        currentChange: undefined,
+      }
+    );
+  }
+
+  /**
+   * Registers a listener called whenever the computed diff or the caret moves.
+   * @param listener The listener to call.
+   * @returns Returns a disposer that unregisters the listener.
+   */
+  public onDiffChanged(listener: () => void): () => void {
+    return this.pane()?.onDiffChanged(listener) ?? ((): void => undefined);
   }
 }

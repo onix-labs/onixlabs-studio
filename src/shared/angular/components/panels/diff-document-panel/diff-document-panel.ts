@@ -2,17 +2,26 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  DestroyRef,
+  effect,
+  EffectCleanupRegisterFn,
   inject,
   input,
   InputSignal,
+  signal,
   Signal,
   viewChild,
+  WritableSignal,
 } from '@angular/core';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
+import { DockState } from '@shared/angular/services/dock-layout/dock-state';
+import { findStackOfPanel } from '@shared/angular/services/dock-layout/dock-tree';
+import { DocumentStatus } from '@shared/angular/services/document-status/document-status';
 import { Diffs } from '@shared/angular/services/diffs/diffs';
 import { GitFileChange } from '@shared/angular/services/repository/repository-data';
 import { Icon } from '@shared/angular/icons/icon';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { DiffSummary } from '@shared/angular/components/diff-editor/diff-editor';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
 import { DiffView } from '../diff-view/diff-view';
@@ -45,6 +54,16 @@ export class DiffDocumentPanel {
    * Holds the diff content store the hosted diff is resolved from.
    */
   private readonly diffs: Diffs = inject(Diffs);
+
+  /**
+   * Holds the dock layout, which says whether this tab is the one being looked at.
+   */
+  private readonly dockState: DockState = inject(DockState);
+
+  /**
+   * Holds the well status strip this tab publishes its comparison summary to.
+   */
+  private readonly documentStatus: DocumentStatus = inject(DocumentStatus);
 
   /**
    * Gets the icon set, for the template.
@@ -81,6 +100,63 @@ export class DiffDocumentPanel {
    * Holds the projected diff view, which owns the Monaco editor the arrows drive.
    */
   private readonly view: Signal<DiffView | undefined> = viewChild<DiffView>(DiffView);
+
+  /**
+   * Gets whether this panel is the active tab of the stack it sits in.
+   *
+   * Asked of the layout rather than taken as an input, because the dock's outlet binds only the panel
+   * descriptor. It has to be asked at all: the well keeps every tab mounted, so several diffs are
+   * alive at once and each would otherwise publish over the last.
+   */
+  private readonly isActive: Signal<boolean> = computed((): boolean => {
+    const id: string = this.panel().id;
+    return findStackOfPanel(this.dockState.layout(), id)?.active === id;
+  });
+
+  /**
+   * Holds the summary Monaco last computed, republished whenever the diff or the caret moves.
+   */
+  private readonly summary: WritableSignal<DiffSummary | null> = signal<DiffSummary | null>(null);
+
+  /**
+   * Subscribes to the pane's diff, and publishes this tab's status to the well strip while it is the
+   * active one.
+   */
+  public constructor() {
+    const destroyRef: DestroyRef = inject(DestroyRef);
+
+    // The view arrives with the projected content, and only when there is a file to compare.
+    effect((onCleanup: EffectCleanupRegisterFn): void => {
+      const view: DiffView | undefined = this.view();
+      if (view === undefined) {
+        this.summary.set(null);
+        return;
+      }
+      const read: () => void = (): void => this.summary.set(view.getDiffSummary());
+      read();
+      onCleanup(view.onDiffChanged(read));
+    });
+
+    effect((): void => {
+      const file: GitFileChange | null = this.file();
+      const summary: DiffSummary | null = this.summary();
+      if (!this.isActive() || file === null) {
+        this.documentStatus.clear(this.panel().id);
+        return;
+      }
+      this.documentStatus.set(this.panel().id, {
+        language: file.language,
+        changes: summary?.changes ?? 0,
+        ...(summary?.currentChange === undefined ? {} : { currentChange: summary.currentChange }),
+        linesAdded: summary?.linesAdded ?? 0,
+        linesRemoved: summary?.linesRemoved ?? 0,
+      });
+    });
+
+    destroyRef.onDestroy((): void => {
+      this.documentStatus.clear(this.panel().id);
+    });
+  }
 
   /**
    * Applies the layout chosen from the dropdown, for every open diff.
