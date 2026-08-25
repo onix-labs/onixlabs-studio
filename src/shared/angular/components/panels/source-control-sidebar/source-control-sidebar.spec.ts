@@ -12,6 +12,7 @@ import { Shell } from '@shared/angular/services/shell/shell';
 import { Agent } from '@shared/angular/services/agent/agent';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
 import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
+import { IssueAgent } from '@shared/angular/services/issues/issue-agent';
 import { ApplicationRef, signal, Signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ModalWindows } from '@shared/angular/services/modal-windows/modal-windows';
@@ -589,6 +590,9 @@ describe('SourceControlSidebar', () => {
       imports: [SourceControlSidebar],
       providers: [
         Repository,
+        // The real seam over the fakes below: what Open in Agent does is its behaviour now, and the
+        // rail's job is only to ask it.
+        IssueAgent,
         { provide: ModalWindows, useValue: windows },
         { provide: ForgeRepository, useValue: forge },
         { provide: Agent, useValue: agent },
@@ -2279,11 +2283,16 @@ describe('SourceControlSidebar', () => {
     function internals(): {
       contextMenuFor(row: TreeRow): readonly MenuItem[];
       onContextAction(choice: TreeMenuSelection): void;
-      pendingAgentIssue(): ForgeIssue | null;
-      confirmOpenInAgent(): void;
-      dismissOpenInAgent(): void;
     } {
       return component as unknown as ReturnType<typeof internals>;
+    }
+
+    /**
+     * Gets the seam the rail asks through, which owns the question and the conversation.
+     * @returns Returns this view's issue-agent seam.
+     */
+    function issueAgent(): IssueAgent {
+      return TestBed.inject(IssueAgent);
     }
 
     it('isOfferedOnAnIssue', () => {
@@ -2297,7 +2306,7 @@ describe('SourceControlSidebar', () => {
     it('startsImmediately_whenThereIsNoConversationToLose', () => {
       internals().onContextAction({ itemId: 'issue.agent', row: issueRow() });
 
-      expect(internals().pendingAgentIssue()).toBeNull();
+      expect(issueAgent().pending()).toBeNull();
       expect(conversation.newChats).toBe(1);
       expect(agent.sent.length).toBe(1);
     });
@@ -2310,7 +2319,7 @@ describe('SourceControlSidebar', () => {
       expect(message).toContain('Something is broken');
       expect(message).toContain('onix-labs/onixlabs-studio');
       expect(message).toContain('https://github.com/onix-labs/onixlabs-studio/issues/12');
-      // A conversation started by one menu click should arrive at an understanding, not at edits.
+      // A conversation started by one click should arrive at an understanding, not at edits.
       expect(message).toContain("Don't make any changes yet");
     });
 
@@ -2326,7 +2335,7 @@ describe('SourceControlSidebar', () => {
 
       internals().onContextAction({ itemId: 'issue.agent', row: issueRow() });
 
-      expect(internals().pendingAgentIssue()?.number).toBe(12);
+      expect(issueAgent().pending()?.number).toBe(12);
       expect(conversation.newChats).toBe(0);
       expect(agent.sent).toEqual([]);
     });
@@ -2335,9 +2344,9 @@ describe('SourceControlSidebar', () => {
       agent.messages.set(true);
       internals().onContextAction({ itemId: 'issue.agent', row: issueRow() });
 
-      internals().confirmOpenInAgent();
+      issueAgent().confirm();
 
-      expect(internals().pendingAgentIssue()).toBeNull();
+      expect(issueAgent().pending()).toBeNull();
       expect(conversation.newChats).toBe(1);
       expect(agent.sent.length).toBe(1);
       expect(revealed).toEqual(['agent']);
@@ -2347,9 +2356,9 @@ describe('SourceControlSidebar', () => {
       agent.messages.set(true);
       internals().onContextAction({ itemId: 'issue.agent', row: issueRow() });
 
-      internals().dismissOpenInAgent();
+      issueAgent().dismiss();
 
-      expect(internals().pendingAgentIssue()).toBeNull();
+      expect(issueAgent().pending()).toBeNull();
       expect(conversation.newChats).toBe(0);
       expect(agent.sent).toEqual([]);
       expect(revealed).toEqual([]);

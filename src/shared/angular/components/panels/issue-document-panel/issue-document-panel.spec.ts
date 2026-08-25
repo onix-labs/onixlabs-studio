@@ -1,7 +1,13 @@
+import { signal, Signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { ForgeIssue } from '@shared/api/forge-types';
+import { ForgeIssue, ForgeRepositoryRef } from '@shared/api/forge-types';
 import { Icon } from '@shared/angular/icons/icon';
+import { Agent } from '@shared/angular/services/agent/agent';
+import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
+import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
+import { ForgeRepository } from '@shared/angular/services/forge-repository/forge-repository';
+import { IssueAgent } from '@shared/angular/services/issues/issue-agent';
 import { IssueStore } from '@shared/angular/services/issues/issue-store';
 import { Shell } from '@shared/angular/services/shell/shell';
 
@@ -38,17 +44,75 @@ function makePanel(id: string): DockPanel {
   return { id, title: '#12', icon: Icon.INFO, role: 'document', component: IssueDocumentPanel };
 }
 
+/**
+ * A recording stand-in for this view's agent.
+ */
+class FakeAgent {
+  public readonly messages: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds the messages sent, in order.
+   */
+  public readonly sent: string[] = [];
+
+  public readonly hasMessages: Signal<boolean> = this.messages.asReadonly();
+
+  public send(text: string): void {
+    this.sent.push(text);
+  }
+}
+
+/**
+ * A recording stand-in for the conversation, which owns starting a fresh one.
+ */
+class FakeConversation {
+  public newChats: number = 0;
+
+  public newChat(): void {
+    this.newChats += 1;
+  }
+}
+
 describe('IssueDocumentPanel', () => {
   let fixture: ComponentFixture<IssueDocumentPanel>;
   let issues: IssueStore;
   let host: HTMLElement;
   let opened: string[];
+  let agent: FakeAgent;
+  let conversation: FakeConversation;
+  let revealed: string[];
 
   beforeEach(async () => {
     opened = [];
+    agent = new FakeAgent();
+    conversation = new FakeConversation();
+    revealed = [];
     await TestBed.configureTestingModule({
       imports: [IssueDocumentPanel],
       providers: [
+        // The real seam over fakes, as the rail's tests drive it: the strip's job is only to ask it.
+        IssueAgent,
+        { provide: Agent, useValue: agent },
+        { provide: AgentConversation, useValue: conversation },
+        {
+          provide: ForgeRepository,
+          useValue: {
+            repositoryRef: signal<ForgeRepositoryRef | null>({
+              kind: 'github',
+              host: 'github.com',
+              owner: 'onix-labs',
+              name: 'onixlabs-studio',
+            }),
+          },
+        },
+        {
+          provide: DockReveal,
+          useValue: {
+            reveal: (panelId: string): void => {
+              revealed.push(panelId);
+            },
+          },
+        },
         {
           provide: Shell,
           useValue: {
@@ -148,6 +212,33 @@ describe('IssueDocumentPanel', () => {
     const text: string = host.textContent ?? '';
     expect(text).toContain('Rate limited.');
     expect(text).toContain('Something is broken');
+  });
+
+  it('openInAgent_startsAConversationAboutTheIssueAndBringsTheAgentForward', () => {
+    // The same two offers the issue's row makes, so what an issue can do does not depend on where it
+    // is being read.
+    issues.put('issue:12', makeIssue());
+    fixture.componentRef.setInput('panel', makePanel('issue:12'));
+    fixture.detectChanges();
+
+    host.querySelector<HTMLButtonElement>('[aria-label="Open in Agent"]')!.click();
+
+    expect(conversation.newChats).toBe(1);
+    expect(agent.sent[0]).toContain('#12');
+    expect(agent.sent[0]).toContain('Something is broken');
+    expect(revealed).toEqual(['agent']);
+  });
+
+  it('openInAgent_whenAConversationAlreadyHoldsSomething_asksBeforeReplacingIt', () => {
+    agent.messages.set(true);
+    issues.put('issue:12', makeIssue());
+    fixture.componentRef.setInput('panel', makePanel('issue:12'));
+    fixture.detectChanges();
+
+    host.querySelector<HTMLButtonElement>('[aria-label="Open in Agent"]')!.click();
+
+    expect(conversation.newChats).toBe(0);
+    expect(TestBed.inject(IssueAgent).pending()?.number).toBe(12);
   });
 
   it('openExternally_opensTheIssueOnTheForge', () => {

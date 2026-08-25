@@ -5,6 +5,15 @@
       {{ issue.state }}
     </span>
     <span class="panel-toolbar__spacer"></span>
+    <!-- The issue row's context menu offers these two, in this order; the document the row opens
+         offers the same two, so what an issue can do does not depend on where it is being read. -->
+    <app-button
+      variant="none"
+      [icon]="Icon.AGENT"
+      ariaLabel="Open in Agent"
+      tooltip="Open in Agent"
+      (click)="openInAgent()"
+    />
     <app-button
       variant="none"
       [icon]="Icon.OPEN_EXTERNAL"
@@ -13,6 +22,8 @@
       (click)="openExternally()"
     />
   </app-panel-toolbar>
+
+  <app-issue-agent-confirm />
 
   <div class="issue__scroll">
     <header class="issue__header">

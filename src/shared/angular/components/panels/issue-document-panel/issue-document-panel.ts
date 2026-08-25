@@ -13,7 +13,9 @@ import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { MarkdownView } from '@shared/angular/components/markdown-view/markdown-view';
 import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
+import { IssueAgentConfirm } from '@shared/angular/components/panels/issue-agent-confirm/issue-agent-confirm';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
+import { IssueAgent } from '@shared/angular/services/issues/issue-agent';
 import { IssueStore, OpenIssue } from '@shared/angular/services/issues/issue-store';
 import { Shell } from '@shared/angular/services/shell/shell';
 
@@ -30,7 +32,7 @@ import { Shell } from '@shared/angular/services/shell/shell';
  */
 @Component({
   selector: 'app-issue-document-panel',
-  imports: [AppIcon, Button, MarkdownView, PanelToolbar],
+  imports: [AppIcon, Button, MarkdownView, PanelToolbar, IssueAgentConfirm],
   templateUrl: './issue-document-panel.html',
   styleUrl: './issue-document-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -50,6 +52,11 @@ export class IssueDocumentPanel {
    * Holds the shell seam the issue is opened in a browser through.
    */
   private readonly shell: Shell = inject(Shell);
+
+  /**
+   * Holds the seam that starts a conversation about this issue, shared with the rail's row menu.
+   */
+  private readonly issueAgent: IssueAgent = inject(IssueAgent);
 
   /**
    * Gets the icon set, exposed for the template.
@@ -83,6 +90,19 @@ export class IssueDocumentPanel {
   protected readonly hasBody: Signal<boolean> = computed(
     (): boolean => (this.issue()?.body ?? '').trim().length > 0,
   );
+
+  /**
+   * Starts a conversation about this issue in the view's agent.
+   *
+   * The same seam the issue's row in the rail asks through, so the opening message and the warning
+   * about discarding a transcript are one behaviour offered from two places.
+   */
+  protected openInAgent(): void {
+    const issue: ForgeIssue | null = this.issue();
+    if (issue !== null) {
+      this.issueAgent.open(issue);
+    }
+  }
 
   /**
    * Opens the issue on the forge.
