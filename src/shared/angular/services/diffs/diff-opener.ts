@@ -5,7 +5,7 @@ import { DockFocus } from '@shared/angular/services/dock-layout/dock-focus';
 import { DockPanelRegistry } from '@shared/angular/services/dock-layout/dock-panel-registry';
 import { DockState } from '@shared/angular/services/dock-layout/dock-state';
 import { StackNode } from '@shared/angular/services/dock-layout/dock-node';
-import { firstStackOfRole } from '@shared/angular/services/dock-layout/dock-tree';
+import { findPrimaryStack, firstStackOfRole } from '@shared/angular/services/dock-layout/dock-tree';
 import { Log } from '@shared/angular/services/log/log';
 import { GitFileChange } from '@shared/angular/services/repository/repository-data';
 import { Repository } from '@shared/angular/services/repository/repository';
@@ -57,18 +57,11 @@ export class DiffOpener {
    * @param file The file to compare.
    */
   public open(file: GitFileChange): void {
-    const well: StackNode | null = firstStackOfRole(this.dockState.layout(), 'document');
-    if (well === null) {
-      return;
-    }
     const id: string = this.diffs.idForPath(file.path);
-    this.log.info('DiffOpener', `Opened diff for '${file.path}'`);
-    // Store the file first (so a panel projected synchronously by tabInto resolves it), then fill in
-    // its diff contents once the provider has loaded them.
+    // The content is stored and the panel registered before the layout is touched, because a well
+    // that has to be made is made holding this panel — by then it must resolve to something.
     this.diffs.put(id, file);
-    if (this.registry.has(id)) {
-      this.dockState.setActive(well.id, id);
-    } else {
+    if (!this.registry.has(id)) {
       this.registry.register({
         id,
         title: this.fileName(file.path),
@@ -80,12 +73,47 @@ export class DiffOpener {
         // it can.
         ownsToolStrip: true,
       });
+    }
+
+    const well: StackNode | null =
+      firstStackOfRole(this.dockState.layout(), 'document') ?? this.makeWell(id);
+    if (well === null) {
+      this.log.warn('DiffOpener', `Nowhere to open the diff for '${file.path}'`);
+      return;
+    }
+    this.log.info('DiffOpener', `Opened diff for '${file.path}'`);
+    if (well.panels.includes(id)) {
+      this.dockState.setActive(well.id, id);
+    } else {
       this.dockState.tabInto(well.id, id);
     }
     this.dockFocus.focus(well.id);
     void this.repository.loadDiff(file).then((diff: FileDiff): void => {
       this.diffs.put(id, { ...file, original: diff.original, modified: diff.modified });
     });
+  }
+
+  /**
+   * Makes a document well above the layout's centre slot, holding the given panel.
+   *
+   * A surface may reasonably have no well at all — the Git layout has none, since History is what it
+   * is for and an empty well above it would be a permanent gap kept for a diff that may never be
+   * asked for. The well is made the first time one is, so the space is spent only once it is earned.
+   *
+   * Above the centre rather than beside it: a diff is read against the history that produced it, and
+   * a column keeps both full width.
+   *
+   * @param panelId The panel the new well opens holding.
+   * @returns Returns the new well, or null when there is no centre slot to split.
+   */
+  private makeWell(panelId: string): StackNode | null {
+    const centre: StackNode | null = findPrimaryStack(this.dockState.layout());
+    if (centre === null) {
+      return null;
+    }
+    this.log.info('DiffOpener', 'No document well in this layout; making one');
+    this.dockState.splitStack(centre.id, panelId, 'top', 'document');
+    return firstStackOfRole(this.dockState.layout(), 'document');
   }
 
   /**
