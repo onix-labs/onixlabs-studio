@@ -236,7 +236,7 @@ describe('CommitDetail', () => {
 
     expect(host.querySelector('.detail__summary')?.textContent).toContain('Summary abc1234def');
     expect(host.querySelector('.detail__hash')?.textContent).toContain('abc1234def');
-    expect(host.querySelector('.detail__files-count')?.textContent).toContain('1');
+    expect(host.querySelector('.tree-count')?.textContent).toContain('1');
     expect(host.querySelector('.detail__file-name')?.textContent).toContain('main.ts');
     expect(host.querySelector('.detail__file-dir')?.textContent).toContain('src/app');
     expect(host.querySelector('.detail__status')?.textContent?.trim()).toBe('M');

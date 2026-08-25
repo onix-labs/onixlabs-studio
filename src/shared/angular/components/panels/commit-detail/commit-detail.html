@@ -94,7 +94,7 @@
   <div class="detail__files">
     <header class="detail__files-header">
       <span>Changed files</span>
-      <span class="detail__files-count">{{ repository.selectedFiles().length }}</span>
+      <span class="tree-count">{{ repository.selectedFiles().length }}</span>
     </header>
     @if (repository.selectedFiles().length > 0) {
       <app-tree-view
@@ -143,7 +143,7 @@
           <span class="tree-name detail__group-name">
             {{ entry.group === 'tracked' ? 'Tracked Files' : 'Untracked Files' }}
           </span>
-          <span class="detail__files-count">
+          <span class="tree-count">
             {{ entry.group === 'tracked' ? trackedFiles().length : untrackedFiles().length }}
           </span>
         } @else {

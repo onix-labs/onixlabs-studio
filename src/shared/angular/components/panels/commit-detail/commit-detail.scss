@@ -86,11 +86,6 @@
   letter-spacing: 0.05em;
 }
 
-.detail__files-count {
-  padding: 0.05rem 0.4rem;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--form-muted-foreground-color) 18%, transparent);
-}
 // Group header rows (Tracked Files / Untracked Files): chevron, tri-state checkbox, name, count.
 .detail__group-check {
   flex: 0 0 auto;

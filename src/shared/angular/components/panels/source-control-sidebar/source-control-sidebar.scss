@@ -18,20 +18,10 @@
 // The uncommitted-change count on the checked-out branch: a bare pill, since the number is the whole
 // of what there is to say. It is a button because it selects the working tree, but it is styled as the
 // badge it reads as rather than as a control with a badge inside it.
+// The pill itself is `.tree-count`, shared with the Commit panel's group counts. What is left here
+// is only what makes this one a button.
 .rail__changes {
-  flex: 0 0 auto;
-  min-inline-size: 1.25rem;
-  margin-inline-start: 0.35rem;
-  padding: 0.05rem 0.35rem;
   border: 0;
-  border-radius: 999px;
-  background: var(--accent-color);
-  color: var(--form-on-accent-color);
-  font-family: inherit;
-  font-size: 0.65rem;
-  font-weight: 600;
-  line-height: 1.5;
-  text-align: center;
   cursor: default;
   // Not hover-revealed like the row's other controls: a count nobody can see until they hover is a
   // count that may as well not be there.
