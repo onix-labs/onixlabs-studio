@@ -133,6 +133,26 @@ export enum SourceControlChannel {
    * Pushes the current branch, optionally setting the upstream on the push.
    */
   Push = 'source-control:push',
+
+  /**
+   * Creates a tag at a commit, annotated when a message is given.
+   */
+  CreateTag = 'source-control:create-tag',
+
+  /**
+   * Deletes a local tag. Destructive; the caller confirms first.
+   */
+  DeleteTag = 'source-control:delete-tag',
+
+  /**
+   * Pushes one tag to a remote.
+   */
+  PushTag = 'source-control:push-tag',
+
+  /**
+   * Pushes every local tag to a remote.
+   */
+  PushAllTags = 'source-control:push-all-tags',
 }
 
 /**
@@ -375,4 +395,40 @@ export interface SourceControlClient {
    * @returns Returns the raw command result.
    */
   push(root: string, remote?: string, branch?: string): Promise<GitRunResult>;
+
+  /**
+   * Creates a tag at a commit. A message makes it annotated — which is what a release wants, since an
+   * annotated tag is an object in its own right carrying its author, date and message.
+   * @param root The absolute repository root; must be an open root.
+   * @param name The tag name.
+   * @param commit The commit to tag.
+   * @param message The annotation message, or undefined for a lightweight tag.
+   * @returns Returns the raw command result.
+   */
+  createTag(root: string, name: string, commit: string, message?: string): Promise<GitRunResult>;
+
+  /**
+   * Deletes a local tag. Destructive; the caller confirms first.
+   * @param root The absolute repository root; must be an open root.
+   * @param name The tag name.
+   * @returns Returns the raw command result.
+   */
+  deleteTag(root: string, name: string): Promise<GitRunResult>;
+
+  /**
+   * Pushes one tag to a remote.
+   * @param root The absolute repository root; must be an open root.
+   * @param remote The remote to push to.
+   * @param name The tag name.
+   * @returns Returns the raw command result.
+   */
+  pushTag(root: string, remote: string, name: string): Promise<GitRunResult>;
+
+  /**
+   * Pushes every local tag to a remote.
+   * @param root The absolute repository root; must be an open root.
+   * @param remote The remote to push to.
+   * @returns Returns the raw command result.
+   */
+  pushAllTags(root: string, remote: string): Promise<GitRunResult>;
 }

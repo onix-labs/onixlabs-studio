@@ -295,6 +295,54 @@ export class GitProvider implements SourceControlProvider {
   }
 
   /**
+   * Creates a tag at a commit, annotated when a message is given.
+   * @param name The tag name.
+   * @param commit The commit to tag.
+   * @param message The annotation message, or undefined for a lightweight tag.
+   * @returns Returns the outcome.
+   */
+  public createTag(name: string, commit: string, message?: string): Promise<MutationResult> {
+    return this.mutate(
+      (api: SourceControlClient): Promise<GitRunResult> =>
+        api.createTag(this.root, name, commit, message),
+    );
+  }
+
+  /**
+   * Deletes a local tag. Destructive; the caller confirms first.
+   * @param name The tag name.
+   * @returns Returns the outcome.
+   */
+  public deleteTag(name: string): Promise<MutationResult> {
+    return this.mutate(
+      (api: SourceControlClient): Promise<GitRunResult> => api.deleteTag(this.root, name),
+    );
+  }
+
+  /**
+   * Pushes one tag to a remote.
+   * @param remote The remote to push to.
+   * @param name The tag name.
+   * @returns Returns the outcome.
+   */
+  public pushTag(remote: string, name: string): Promise<MutationResult> {
+    return this.mutate(
+      (api: SourceControlClient): Promise<GitRunResult> => api.pushTag(this.root, remote, name),
+    );
+  }
+
+  /**
+   * Pushes every local tag to a remote.
+   * @param remote The remote to push to.
+   * @returns Returns the outcome.
+   */
+  public pushAllTags(remote: string): Promise<MutationResult> {
+    return this.mutate(
+      (api: SourceControlClient): Promise<GitRunResult> => api.pushAllTags(this.root, remote),
+    );
+  }
+
+  /**
    * Releases the repository in the main process.
    * @returns Returns a promise that resolves once the repository has been released.
    */

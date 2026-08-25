@@ -66,6 +66,19 @@ function createClient(bridge: Bridge): SourceControlClient {
     pull: (root: string): Promise<GitRunResult> => bridge.invoke(SourceControlChannel.Pull, root),
     push: (root: string, remote?: string, branch?: string): Promise<GitRunResult> =>
       bridge.invoke(SourceControlChannel.Push, root, remote, branch),
+    createTag: (
+      root: string,
+      name: string,
+      commit: string,
+      message?: string,
+    ): Promise<GitRunResult> =>
+      bridge.invoke(SourceControlChannel.CreateTag, root, name, commit, message),
+    deleteTag: (root: string, name: string): Promise<GitRunResult> =>
+      bridge.invoke(SourceControlChannel.DeleteTag, root, name),
+    pushTag: (root: string, remote: string, name: string): Promise<GitRunResult> =>
+      bridge.invoke(SourceControlChannel.PushTag, root, remote, name),
+    pushAllTags: (root: string, remote: string): Promise<GitRunResult> =>
+      bridge.invoke(SourceControlChannel.PushAllTags, root, remote),
   };
 }
 

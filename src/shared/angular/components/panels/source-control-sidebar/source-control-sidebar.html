@@ -113,6 +113,68 @@
   </ng-template>
 </app-modal>
 
+<app-modal [open]="tagDialogOpen()" [width]="26" ariaLabel="New tag" (dismiss)="cancelTag()">
+  <ng-template appModalContent>
+    <h2 class="rail__dialog-title">New tag</h2>
+    <!-- Which commit is being tagged, spelled out: the dialog is opened from a menu rather than from
+         the commit itself, so the target is otherwise something the user has to remember. -->
+    <p class="rail__dialog-message">Tagging {{ tagTargetLabel() }}.</p>
+    <app-text-field
+      class="rail__dialog-input"
+      placeholder="Tag name"
+      ariaLabel="Tag name"
+      [value]="tagName()"
+      (valueChange)="onTagNameValue($event)"
+      (enter)="confirmTag()"
+      (escape)="cancelTag()"
+    />
+    @if (tagNameError(); as error) {
+      <p class="rail__dialog-error" role="alert">{{ error }}</p>
+    }
+    <!-- A message is what makes the tag annotated; leaving it empty makes a lightweight one. That is
+         why this is a field rather than a switch beside one. -->
+    <app-text-field
+      class="rail__dialog-input"
+      placeholder="Message (optional — annotates the tag)"
+      ariaLabel="Tag message"
+      [value]="tagMessage()"
+      (valueChange)="onTagMessageValue($event)"
+      (enter)="confirmTag()"
+      (escape)="cancelTag()"
+    />
+    <div class="rail__dialog-actions">
+      <app-button label="Cancel" (click)="cancelTag()" />
+      <app-button
+        variant="solid"
+        label="Create"
+        [disabled]="!canCreateTag()"
+        (click)="confirmTag()"
+      />
+    </div>
+  </ng-template>
+</app-modal>
+
+<!-- Asked before a tag is deleted: a tag that has been pushed stays on the remote, so the local
+     delete is not the whole story and the message says so. -->
+<app-modal
+  [open]="pendingDeleteTag() !== null"
+  [width]="26"
+  ariaLabel="Delete tag"
+  (dismiss)="cancelDeleteTag()"
+>
+  <ng-template appModalContent>
+    <h2 class="rail__dialog-title">Delete this tag?</h2>
+    <p class="rail__dialog-message">
+      “{{ pendingDeleteTag()?.name }}” is deleted from this repository. A copy already pushed to a
+      remote stays there.
+    </p>
+    <div class="rail__dialog-actions">
+      <app-button label="Cancel" (click)="cancelDeleteTag()" />
+      <app-button variant="solid" label="Delete" (click)="confirmDeleteTag()" />
+    </div>
+  </ng-template>
+</app-modal>
+
 <!-- Asked before a stash is dropped: dropping discards the stashed work with no way back. -->
 <app-modal
   [open]="pendingDrop() !== null"

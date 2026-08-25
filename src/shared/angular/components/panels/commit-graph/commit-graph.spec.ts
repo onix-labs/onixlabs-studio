@@ -161,6 +161,22 @@ class FakeProvider implements SourceControlProvider {
     return Promise.resolve({ success: true });
   }
 
+  public createTag(): Promise<MutationResult> {
+    return Promise.resolve({ success: true });
+  }
+
+  public deleteTag(): Promise<MutationResult> {
+    return Promise.resolve({ success: true });
+  }
+
+  public pushTag(): Promise<MutationResult> {
+    return Promise.resolve({ success: true });
+  }
+
+  public pushAllTags(): Promise<MutationResult> {
+    return Promise.resolve({ success: true });
+  }
+
   public close(): Promise<void> {
     return Promise.resolve();
   }

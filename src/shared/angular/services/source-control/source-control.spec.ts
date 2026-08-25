@@ -88,6 +88,26 @@ describe('SourceControl', () => {
     ]);
   });
 
+  it('tagMutations_whenInvoked_forwardTheirArguments', async () => {
+    stubBridge({ success: true });
+    const service: SourceControl = TestBed.inject(SourceControl);
+
+    await service.client?.createTag('/r', 'v1.0.0', 'abc123');
+    await service.client?.createTag('/r', 'v1.1.0', 'abc123', 'Release');
+    await service.client?.deleteTag('/r', 'v1.0.0');
+    await service.client?.pushTag('/r', 'origin', 'v1.1.0');
+    await service.client?.pushAllTags('/r', 'origin');
+
+    expect(calls).toEqual([
+      // A tag with no message stays lightweight, and the undefined travels rather than being dropped.
+      { channel: SourceControlChannel.CreateTag, args: ['/r', 'v1.0.0', 'abc123', undefined] },
+      { channel: SourceControlChannel.CreateTag, args: ['/r', 'v1.1.0', 'abc123', 'Release'] },
+      { channel: SourceControlChannel.DeleteTag, args: ['/r', 'v1.0.0'] },
+      { channel: SourceControlChannel.PushTag, args: ['/r', 'origin', 'v1.1.0'] },
+      { channel: SourceControlChannel.PushAllTags, args: ['/r', 'origin'] },
+    ]);
+  });
+
   it('operations_whenTheBridgeResolves_passTheResultThroughUnchanged', async () => {
     const outcome: GitRunResult = { success: false, error: 'not a repository' };
     stubBridge(outcome);

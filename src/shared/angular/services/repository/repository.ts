@@ -44,7 +44,7 @@ const EXTERNAL_REFRESH_DEBOUNCE_MS: number = 500;
 /**
  * Specifies the network operations whose outcomes raise a notification toast.
  */
-type NetworkOperation = 'fetch' | 'pull' | 'push';
+type NetworkOperation = 'fetch' | 'pull' | 'push' | 'push-tags';
 
 /**
  * The display labels of the network operations, used in their failure toasts.
@@ -53,6 +53,7 @@ const NETWORK_OPERATION_LABELS: Readonly<Record<NetworkOperation, string>> = {
   fetch: 'Fetch',
   pull: 'Pull',
   push: 'Push',
+  'push-tags': 'Push tags',
 };
 
 /**
@@ -932,6 +933,84 @@ export class Repository {
   }
 
   /**
+   * Creates a tag at a commit, then reloads so the Tags section shows it.
+   * @param name The tag name.
+   * @param commit The commit to tag; defaults to the current head.
+   * @param message The annotation message, or undefined for a lightweight tag. An annotated tag is
+   * what a release wants — it is an object in its own right, carrying its author, date and message.
+   * @returns Returns the outcome.
+   */
+  public createTag(
+    name: string,
+    commit: string = 'HEAD',
+    message?: string,
+  ): Promise<MutationResult> {
+    this.log.info(
+      'Repository',
+      `Creating ${message === undefined ? 'lightweight' : 'annotated'} tag '${name}' at ${commit}`,
+    );
+    return this.mutate(
+      (provider: SourceControlProvider): Promise<MutationResult> =>
+        provider.createTag(name, commit, message),
+    );
+  }
+
+  /**
+   * Deletes a local tag, then reloads. Destructive; the caller confirms first. Deleting a tag that
+   * has been pushed does not delete it on the remote, so this is local-only.
+   * @param name The tag name.
+   * @returns Returns the outcome.
+   */
+  public deleteTag(name: string): Promise<MutationResult> {
+    this.log.info('Repository', `Deleting tag '${name}'`);
+    return this.mutate(
+      (provider: SourceControlProvider): Promise<MutationResult> => provider.deleteTag(name),
+    );
+  }
+
+  /**
+   * Pushes one tag to a remote. The outcome raises a toast — a tag push can fail on authentication
+   * as readily as any other network operation, and must not do so silently.
+   * @param name The tag name.
+   * @param remote The remote to push to; defaults to the first configured remote.
+   * @returns Returns the outcome.
+   */
+  public async pushTag(name: string, remote?: string): Promise<MutationResult> {
+    const target: string = remote ?? this.defaultRemote();
+    this.log.info('Repository', `Pushing tag '${name}' to '${target}'`);
+    const result: MutationResult = await this.mutate(
+      (provider: SourceControlProvider): Promise<MutationResult> => provider.pushTag(target, name),
+    );
+    this.notifyNetworkOutcome('push-tags', result, `tag ${name}`);
+    return result;
+  }
+
+  /**
+   * Pushes every local tag to a remote. The outcome raises a toast.
+   * @param remote The remote to push to; defaults to the first configured remote.
+   * @returns Returns the outcome.
+   */
+  public async pushAllTags(remote?: string): Promise<MutationResult> {
+    const target: string = remote ?? this.defaultRemote();
+    this.log.info('Repository', `Pushing all tags to '${target}'`);
+    const result: MutationResult = await this.mutate(
+      (provider: SourceControlProvider): Promise<MutationResult> => provider.pushAllTags(target),
+    );
+    this.notifyNetworkOutcome('push-tags', result, 'all tags');
+    return result;
+  }
+
+  /**
+   * Gets the remote to act on when the caller names none: the first configured one, or `origin` for a
+   * repository that has no remotes at all — where the push will fail and say so, which is a better
+   * answer than refusing locally for a repository that may well have just been given one.
+   * @returns Returns the remote name.
+   */
+  private defaultRemote(): string {
+    return this.remotesSignal()[0]?.name ?? 'origin';
+  }
+
+  /**
    * Runs a mutating operation against the provider and reloads the repository on success.
    * @param op Invokes the desired provider mutation.
    * @returns Returns the outcome (a failure when no repository is bound).
@@ -959,9 +1038,13 @@ export class Repository {
    * @param operation The finished operation.
    * @param result The operation's outcome.
    */
-  private notifyNetworkOutcome(operation: NetworkOperation, result: MutationResult): void {
+  private notifyNetworkOutcome(
+    operation: NetworkOperation,
+    result: MutationResult,
+    subject?: string,
+  ): void {
     if (result.success) {
-      this.notifyNetworkSuccess(operation);
+      this.notifyNetworkSuccess(operation, subject);
     } else {
       this.notifyNetworkFailure(operation, result.error);
     }
@@ -970,13 +1053,16 @@ export class Repository {
   /**
    * Raises the transient toast reporting a successful network operation.
    * @param operation The finished operation.
+   * @param subject What was pushed, for an operation whose object varies from call to call — one
+   * named tag or all of them. The branch-shaped operations name the branch themselves.
    */
-  private notifyNetworkSuccess(operation: NetworkOperation): void {
+  private notifyNetworkSuccess(operation: NetworkOperation, subject?: string): void {
     const branch: string = this.currentBranch()?.name ?? 'HEAD';
     const titles: Readonly<Record<NetworkOperation, string>> = {
       fetch: 'Fetched all remotes',
       pull: `Pulled ${branch}`,
       push: `Pushed ${branch}`,
+      'push-tags': `Pushed ${subject ?? 'tags'}`,
     };
     this.notifications.notify({
       severity: operation === 'fetch' ? 'info' : 'success',

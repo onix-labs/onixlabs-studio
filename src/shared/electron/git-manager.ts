@@ -232,6 +232,35 @@ export class GitManager {
         branch: unknown,
       ): Promise<GitRunResult> => this.push(root, remote, branch),
     );
+    ipcMain.handle(
+      SourceControlChannel.CreateTag,
+      (
+        _event: IpcMainInvokeEvent,
+        root: unknown,
+        name: unknown,
+        commit: unknown,
+        message: unknown,
+      ): Promise<GitRunResult> => this.createTag(root, name, commit, message),
+    );
+    ipcMain.handle(
+      SourceControlChannel.DeleteTag,
+      (_event: IpcMainInvokeEvent, root: unknown, name: unknown): Promise<GitRunResult> =>
+        this.deleteTag(root, name),
+    );
+    ipcMain.handle(
+      SourceControlChannel.PushTag,
+      (
+        _event: IpcMainInvokeEvent,
+        root: unknown,
+        remote: unknown,
+        name: unknown,
+      ): Promise<GitRunResult> => this.pushTag(root, remote, name),
+    );
+    ipcMain.handle(
+      SourceControlChannel.PushAllTags,
+      (_event: IpcMainInvokeEvent, root: unknown, remote: unknown): Promise<GitRunResult> =>
+        this.pushAllTags(root, remote),
+    );
   }
 
   /**
@@ -698,6 +727,89 @@ export class GitManager {
     }
     logger.trace('GitManager.push', `Pushing and setting upstream ${remote}/${branch}`);
     return this.runNetwork(root, ['push', '--set-upstream', remote, branch]);
+  }
+
+  /**
+   * Creates a tag at a commit, annotated when a message is given.
+   *
+   * The message is the one argument not held to {@link isSafeOperand}: it is bound positionally to
+   * `-m`, so git reads it as that option's value however it begins, and refusing a message that
+   * happens to start with a dash would reject a legitimate one for no gain. It is still its own argv
+   * element, never a shell string.
+   *
+   * @param root The repository root.
+   * @param name The tag name.
+   * @param commit The commit to tag.
+   * @param message The annotation message, or undefined for a lightweight tag.
+   * @returns Returns the raw command result.
+   */
+  private createTag(
+    root: unknown,
+    name: unknown,
+    commit: unknown,
+    message: unknown,
+  ): Promise<GitRunResult> {
+    if (!isSafeOperand(name) || !isSafeOperand(commit)) {
+      return Promise.resolve({ success: false, error: 'Invalid tag name or commit' });
+    }
+    if (message !== undefined && (typeof message !== 'string' || message.length === 0)) {
+      return Promise.resolve({ success: false, error: 'Invalid tag message' });
+    }
+    logger.trace(
+      'GitManager.createTag',
+      `Creating ${message === undefined ? 'lightweight' : 'annotated'} tag ${name} at ${commit}`,
+    );
+    return message === undefined
+      ? this.runInRoot(root, ['tag', name, commit])
+      : this.runInRoot(root, ['tag', '-a', name, '-m', message, commit]);
+  }
+
+  /**
+   * Deletes a local tag. Destructive; the caller confirms first.
+   * @param root The repository root.
+   * @param name The tag name.
+   * @returns Returns the raw command result.
+   */
+  private deleteTag(root: unknown, name: unknown): Promise<GitRunResult> {
+    if (!isSafeOperand(name)) {
+      return Promise.resolve({ success: false, error: 'Invalid tag name' });
+    }
+    logger.trace('GitManager.deleteTag', `Deleting tag ${name}`);
+    return this.runInRoot(root, ['tag', '-d', name]);
+  }
+
+  /**
+   * Pushes one tag to a remote.
+   *
+   * Sent as `git push <remote> tag <name>` rather than as a `refs/tags/…` refspec: git's explicit
+   * `tag` form names the tag unambiguously without a refspec being built from renderer input at all,
+   * so a name carrying a colon cannot become a source-and-destination pair.
+   *
+   * @param root The repository root.
+   * @param remote The remote to push to.
+   * @param name The tag name.
+   * @returns Returns the raw command result.
+   */
+  private pushTag(root: unknown, remote: unknown, name: unknown): Promise<GitRunResult> {
+    if (!isSafeOperand(remote) || !isSafeOperand(name)) {
+      return Promise.resolve({ success: false, error: 'Invalid remote or tag name' });
+    }
+    logger.trace('GitManager.pushTag', `Pushing tag ${name} to ${remote}`);
+    return this.runNetwork(root, ['push', remote, 'tag', name]);
+  }
+
+  /**
+   * Pushes every local tag to a remote.
+   * @param root The repository root.
+   * @param remote The remote to push to.
+   * @returns Returns the raw command result.
+   */
+  private pushAllTags(root: unknown, remote: unknown): Promise<GitRunResult> {
+    if (!isSafeOperand(remote)) {
+      return Promise.resolve({ success: false, error: 'Invalid remote' });
+    }
+    logger.trace('GitManager.pushAllTags', `Pushing all tags to ${remote}`);
+    return this.runNetwork(root, ['push', remote, '--tags']);
   }
 
   /**

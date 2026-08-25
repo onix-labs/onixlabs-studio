@@ -186,6 +186,37 @@ export interface SourceControlProvider {
   push(setUpstream?: { readonly remote: string; readonly branch: string }): Promise<MutationResult>;
 
   /**
+   * Creates a tag at a commit, annotated when a message is given.
+   * @param name The tag name.
+   * @param commit The commit to tag.
+   * @param message The annotation message, or undefined for a lightweight tag.
+   * @returns Returns the outcome.
+   */
+  createTag(name: string, commit: string, message?: string): Promise<MutationResult>;
+
+  /**
+   * Deletes a local tag. Destructive; the caller confirms first.
+   * @param name The tag name.
+   * @returns Returns the outcome.
+   */
+  deleteTag(name: string): Promise<MutationResult>;
+
+  /**
+   * Pushes one tag to a remote.
+   * @param remote The remote to push to.
+   * @param name The tag name.
+   * @returns Returns the outcome.
+   */
+  pushTag(remote: string, name: string): Promise<MutationResult>;
+
+  /**
+   * Pushes every local tag to a remote.
+   * @param remote The remote to push to.
+   * @returns Returns the outcome.
+   */
+  pushAllTags(remote: string): Promise<MutationResult>;
+
+  /**
    * Releases the repository, freeing any backend resources.
    * @returns Returns a promise that resolves once the repository has been released.
    */

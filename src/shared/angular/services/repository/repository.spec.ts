@@ -196,6 +196,44 @@ class FakeProvider implements SourceControlProvider {
     return Promise.resolve({ success: true });
   }
 
+  /**
+   * Makes the next tag push fail with this message, so failure toasts can be exercised.
+   */
+  public failNextTagPushWith: string | null = null;
+
+  public createTag(name: string, commit: string, message?: string): Promise<MutationResult> {
+    this.calls.push(`createTag:${name}@${commit}:${message ?? ''}`);
+    return Promise.resolve({ success: true });
+  }
+
+  public deleteTag(name: string): Promise<MutationResult> {
+    this.calls.push(`deleteTag:${name}`);
+    return Promise.resolve({ success: true });
+  }
+
+  public pushTag(remote: string, name: string): Promise<MutationResult> {
+    this.calls.push(`pushTag:${remote}:${name}`);
+    return this.tagPushOutcome();
+  }
+
+  public pushAllTags(remote: string): Promise<MutationResult> {
+    this.calls.push(`pushAllTags:${remote}`);
+    return this.tagPushOutcome();
+  }
+
+  /**
+   * Resolves a tag push, consuming a queued failure when one is set.
+   * @returns Returns the outcome.
+   */
+  private tagPushOutcome(): Promise<MutationResult> {
+    if (this.failNextTagPushWith !== null) {
+      const error: string = this.failNextTagPushWith;
+      this.failNextTagPushWith = null;
+      return Promise.resolve({ success: false, error });
+    }
+    return Promise.resolve({ success: true });
+  }
+
   public close(): Promise<void> {
     return Promise.resolve();
   }
@@ -548,6 +586,74 @@ describe('Repository', () => {
 
     await repository.createBranch('feature/two', false);
     expect(provider.calls).toContain('createBranch:feature/two:false');
+  });
+
+  describe('tags', () => {
+    it('createTag_withNoMessage_createsALightweightTagAtTheCurrentHead', async () => {
+      await repository.createTag('v1.0.0');
+
+      expect(provider.calls).toContain('createTag:v1.0.0@HEAD:');
+    });
+
+    it('createTag_withAMessage_annotatesItAtTheGivenCommit', async () => {
+      await repository.createTag('v1.0.0', 'c2', 'First release');
+
+      expect(provider.calls).toContain('createTag:v1.0.0@c2:First release');
+    });
+
+    it('deleteTag_removesItLocally', async () => {
+      await repository.deleteTag('v0.9.0');
+
+      expect(provider.calls).toContain('deleteTag:v0.9.0');
+    });
+
+    it('pushTag_whenNoRemoteIsNamed_usesTheFirstConfiguredOne', async () => {
+      provider.remoteNames = ['upstream', 'origin'];
+      await repository.refresh();
+
+      await repository.pushTag('v1.0.0');
+
+      expect(provider.calls).toContain('pushTag:upstream:v1.0.0');
+    });
+
+    it('pushTag_whenARemoteIsNamed_pushesToThatOne', async () => {
+      provider.remoteNames = ['upstream', 'origin'];
+      await repository.refresh();
+
+      await repository.pushTag('v1.0.0', 'origin');
+
+      expect(provider.calls).toContain('pushTag:origin:v1.0.0');
+    });
+
+    it('pushTag_whenTheRepositoryHasNoRemotes_fallsBackToOrigin', async () => {
+      await repository.pushTag('v1.0.0');
+
+      expect(provider.calls).toContain('pushTag:origin:v1.0.0');
+    });
+
+    it('pushTag_whenItSucceeds_namesTheTagInItsToast', async () => {
+      await repository.pushTag('v1.0.0');
+
+      const toast: Notification = notifications.toasts()[0];
+      expect(toast.severity).toBe('success');
+      expect(toast.title).toBe('Pushed tag v1.0.0');
+    });
+
+    it('pushAllTags_whenItSucceeds_saysSoInItsToast', async () => {
+      await repository.pushAllTags();
+
+      expect(notifications.toasts()[0].title).toBe('Pushed all tags');
+    });
+
+    it('pushTag_whenItFails_raisesAnErrorToastRatherThanFailingSilently', async () => {
+      provider.failNextTagPushWith = 'Authentication required.';
+
+      await repository.pushTag('v1.0.0');
+
+      const toast: Notification = notifications.toasts()[0];
+      expect(toast.severity).toBe('error');
+      expect(toast.detail).toBe('Authentication required.');
+    });
   });
 
   describe('checkoutRef', () => {
