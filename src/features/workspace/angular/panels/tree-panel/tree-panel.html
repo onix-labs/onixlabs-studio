@@ -11,7 +11,9 @@
     [rows]="rows()"
     [selectedId]="workspace.selectedPath()"
     [virtual]="true"
+    [contextMenuFor]="contextMenuFor"
     (rowClick)="onRowClick($event)"
+    (contextMenuSelect)="onContextAction($event)"
   >
     <ng-template let-row>
       @let node = nodeOf(row);
@@ -41,3 +43,55 @@
     <app-button [icon]="Icon.FOLDER_OPEN" label="Open Folder…" (click)="workspace.openFolder()" />
   </div>
 }
+
+<!-- Names a new file or folder, or a rename. One dialog for all three: they differ only in their
+     heading and in what the name is applied to. -->
+<app-modal
+  [open]="prompt() !== null"
+  [width]="24"
+  [ariaLabel]="prompt()?.title ?? ''"
+  (dismiss)="cancelPrompt()"
+>
+  <ng-template appModalContent>
+    <h2 class="tree-panel__dialog-title">{{ prompt()?.title }}</h2>
+    <app-text-field
+      class="tree-panel__dialog-input"
+      placeholder="Name"
+      ariaLabel="Name"
+      [value]="promptName()"
+      (valueChange)="promptName.set($event)"
+      (enter)="submitPrompt()"
+      (escape)="cancelPrompt()"
+    />
+    <div class="tree-panel__dialog-actions">
+      <app-button label="Cancel" (click)="cancelPrompt()" />
+      <app-button
+        variant="solid"
+        label="Save"
+        [disabled]="!canSubmitPrompt()"
+        (click)="submitPrompt()"
+      />
+    </div>
+  </ng-template>
+</app-modal>
+
+<!-- Asked before anything is deleted: a delete is always explicit, never silent. The copy promises
+     the Trash because that is what the main process reaches for; the rare location with no Trash is
+     reported afterwards rather than hedged about here. -->
+<app-modal
+  [open]="deleteTarget() !== null"
+  [width]="26"
+  ariaLabel="Delete"
+  (dismiss)="cancelDelete()"
+>
+  <ng-template appModalContent>
+    <h2 class="tree-panel__dialog-title">Delete “{{ deleteLabel() }}”?</h2>
+    <p class="tree-panel__dialog-message">
+      It moves to the Trash, so you can put it back from there if you need it.
+    </p>
+    <div class="tree-panel__dialog-actions">
+      <app-button label="Cancel" (click)="cancelDelete()" />
+      <app-button variant="solid" tone="danger" label="Delete" (click)="confirmDelete()" />
+    </div>
+  </ng-template>
+</app-modal>
