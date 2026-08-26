@@ -492,4 +492,102 @@ describe('ApiWorkspace', () => {
       activeEnvironmentId: null,
     };
   }
+
+  describe('duplicating and renaming', () => {
+    it('duplicateRequest_placesTheCopyDirectlyBeneathItsOriginal', () => {
+      const collection: ApiFolder = workspace.addCollection('Orders');
+      const first: ApiRequest = workspace.addRequest(collection.id, { name: 'Get order' });
+      const second: ApiRequest = workspace.addRequest(collection.id, { name: 'List orders' });
+
+      workspace.duplicateRequest(first.id);
+
+      // A duplicate is made in order to vary the original; sending the copy to the end of a long
+      // collection separates the two things the user is about to compare.
+      const held: readonly ApiRequest[] = workspace
+        .requests()
+        .filter((request: ApiRequest): boolean => request.parentId === collection.id);
+      expect(held.map((request: ApiRequest): string => request.name)).toEqual([
+        'Get order',
+        'Get order copy',
+        'List orders',
+      ]);
+      expect(held[2].id).toBe(second.id);
+    });
+
+    it('duplicateRequest_copiesEverythingButTheIdentity', () => {
+      const collection: ApiFolder = workspace.addCollection('Orders');
+      const original: ApiRequest = workspace.addRequest(collection.id, {
+        name: 'Get order',
+        method: 'POST',
+        url: 'https://example.test/orders',
+      });
+
+      const copy: ApiRequest | null = workspace.duplicateRequest(original.id);
+
+      expect(copy?.id).not.toBe(original.id);
+      expect(copy?.method).toBe('POST');
+      expect(copy?.url).toBe('https://example.test/orders');
+      expect(copy?.parentId).toBe(collection.id);
+    });
+
+    it('duplicateRequest_repeatedly_keepsEachCopyDistinguishable', () => {
+      // Two rows reading the same name teach nothing about which is which.
+      const collection: ApiFolder = workspace.addCollection('Orders');
+      const original: ApiRequest = workspace.addRequest(collection.id, { name: 'Get order' });
+
+      workspace.duplicateRequest(original.id);
+      workspace.duplicateRequest(original.id);
+
+      const names: readonly string[] = workspace
+        .requests()
+        .filter((request: ApiRequest): boolean => request.parentId === collection.id)
+        .map((request: ApiRequest): string => request.name);
+      expect(names).toContain('Get order copy');
+      expect(names).toContain('Get order copy 2');
+    });
+
+    it('duplicateRequest_anUnknownId_returnsNull', () => {
+      expect(workspace.duplicateRequest('nope')).toBeNull();
+    });
+
+    it('duplicateEnvironment_copiesTheVariables_butNeverBecomesTheActiveOne', () => {
+      // Activating the copy would silently redirect every subsequent send to variables the user has
+      // not yet edited, which is the opposite of why a duplicate is made.
+      const original: ApiEnvironment = workspace.addEnvironment('Staging', [
+        newField('base_url', 'https://staging.test'),
+      ]);
+      workspace.activateEnvironment(original.id);
+
+      const copy: ApiEnvironment | null = workspace.duplicateEnvironment(original.id);
+
+      expect(copy?.name).toBe('Staging copy');
+      expect(copy?.variables).toEqual(original.variables);
+      expect(workspace.activeEnvironmentId()).toBe(original.id);
+    });
+
+    it('duplicateEnvironment_anUnknownId_returnsNull', () => {
+      expect(workspace.duplicateEnvironment('nope')).toBeNull();
+    });
+
+    it('renameFolder_renamesTheCollectionAndLeavesItsRequestsWhereTheyAre', () => {
+      const collection: ApiFolder = workspace.addCollection('Orders');
+      const request: ApiRequest = workspace.addRequest(collection.id, { name: 'Get order' });
+
+      workspace.renameFolder(collection.id, 'Fulfilment');
+
+      expect(
+        workspace.folders().find((folder: ApiFolder): boolean => folder.id === collection.id)?.name,
+      ).toBe('Fulfilment');
+      expect(
+        workspace.requests().find((candidate: ApiRequest): boolean => candidate.id === request.id)
+          ?.parentId,
+      ).toBe(collection.id);
+    });
+
+    it('renameFolder_anUnknownId_changesNothing', () => {
+      const before: readonly ApiFolder[] = workspace.folders();
+      workspace.renameFolder('nope', 'Whatever');
+      expect(workspace.folders()).toEqual(before);
+    });
+  });
 });

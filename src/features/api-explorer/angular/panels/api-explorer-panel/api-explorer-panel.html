@@ -12,7 +12,9 @@
   [rows]="rows()"
   [selectedId]="selectedId()"
   [virtual]="true"
+  [contextMenuFor]="contextMenuFor"
   (rowClick)="onRowClick($event)"
+  (contextMenuSelect)="onContextAction($event)"
 >
   <ng-template let-row>
     @let data = row.data;
@@ -41,3 +43,52 @@
     }
   </ng-template>
 </app-tree-view>
+
+<!-- Renames whichever row the menu was opened on. Kept here rather than in the shared `ApiPrompts`
+     because those dialogs create things and carry no subject; a rename needs to know which row. -->
+<app-modal
+  [open]="renameTarget() !== null"
+  [width]="24"
+  ariaLabel="Rename"
+  (dismiss)="cancelRename()"
+>
+  <ng-template appModalContent>
+    <h2 class="api-explorer__dialog-title">Rename “{{ renameTarget()?.label }}”</h2>
+    <app-text-field
+      class="api-explorer__dialog-input"
+      placeholder="Name"
+      ariaLabel="Name"
+      [value]="renameName()"
+      (valueChange)="renameName.set($event)"
+      (enter)="confirmRename()"
+      (escape)="cancelRename()"
+    />
+    <div class="api-explorer__dialog-actions">
+      <app-button label="Cancel" (click)="cancelRename()" />
+      <app-button
+        variant="solid"
+        label="Rename"
+        [disabled]="!canRename()"
+        (click)="confirmRename()"
+      />
+    </div>
+  </ng-template>
+</app-modal>
+
+<!-- Asked before anything is removed. This is workspace data rather than a file on disk, so there is
+     no Trash to recover from and the copy must not imply one. -->
+<app-modal
+  [open]="deleteTarget() !== null"
+  [width]="26"
+  ariaLabel="Delete"
+  (dismiss)="cancelDelete()"
+>
+  <ng-template appModalContent>
+    <h2 class="api-explorer__dialog-title">Delete “{{ deleteTarget()?.label }}”?</h2>
+    <p class="api-explorer__dialog-message">{{ deleteConsequence() }}</p>
+    <div class="api-explorer__dialog-actions">
+      <app-button label="Cancel" (click)="cancelDelete()" />
+      <app-button variant="solid" tone="danger" label="Delete" (click)="confirmDelete()" />
+    </div>
+  </ng-template>
+</app-modal>

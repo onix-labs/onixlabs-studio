@@ -3,7 +3,13 @@ import { MenuItem } from '@shared/angular/components/menu/menu';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { TreeRow } from '@shared/angular/components/tree-view/tree-view';
 import { Icon } from '@shared/angular/icons/icon';
-import { ApiFolder, HttpOutcome, ResolvedHttpRequest } from '@shared/api/api-client-types';
+import {
+  ApiEnvironment,
+  ApiFolder,
+  ApiRequest,
+  HttpOutcome,
+  ResolvedHttpRequest,
+} from '@shared/api/api-client-types';
 import { ApiHttp } from '../../api-http/api-http';
 import { ApiPrompts } from '../../api-prompts/api-prompts';
 import { ApiWorkspace } from '../../api-workspace/api-workspace';
@@ -218,5 +224,241 @@ describe('ApiExplorerPanel', () => {
     fixture.detectChanges();
 
     expect(labels()).toEqual([]);
+  });
+
+  describe('row context menu', () => {
+    /**
+     * Gets the row standing for a given label.
+     * @param label The row's label.
+     * @returns Returns the tree row.
+     */
+    function rowFor(label: string): TreeRow {
+      const row: TreeRow | undefined = panel()
+        .rows()
+        .find(
+          (candidate: TreeRow): boolean => (candidate.data as { label: string }).label === label,
+        );
+      if (row === undefined) {
+        throw new Error(`No row labelled ${label}`);
+      }
+      return row;
+    }
+
+    /**
+     * Gets the ids the menu offers for a row, dropping the separators.
+     * @param row The row to open a menu on.
+     * @returns Returns the item ids.
+     */
+    function itemIds(row: TreeRow): readonly string[] {
+      return component
+        .contextMenuFor(row)
+        .filter((item: MenuItem): boolean => item.separator !== true)
+        .map((item: MenuItem): string => item.id);
+    }
+
+    it('contextMenuFor_theEnvironmentsHeader_offersNothingSoNoMenuOpens', () => {
+      // The header is synthetic — it stands for nothing that can be renamed or removed — and an empty
+      // panel on it would read as a bug rather than as an answer.
+      panel().expandAll();
+      fixture.detectChanges();
+
+      expect(component.contextMenuFor(rowFor('Environments'))).toEqual([]);
+    });
+
+    it('contextMenuFor_aCollection_offersNewRequestRenameAndDelete', () => {
+      const collection: ApiFolder = workspace.addCollection('Orders');
+      fixture.detectChanges();
+
+      expect(itemIds(rowFor(collection.name))).toEqual(['new-request', 'rename', 'delete']);
+    });
+
+    it('contextMenuFor_aRequest_offersRenameDuplicateAndDelete', () => {
+      const collection: ApiFolder = workspace.addCollection('Orders');
+      workspace.addRequest(collection.id, { name: 'Get order' });
+      panel().expandAll();
+      fixture.detectChanges();
+
+      expect(itemIds(rowFor('Get order'))).toEqual(['rename', 'duplicate', 'delete']);
+    });
+
+    it('contextMenuFor_theActiveEnvironment_omitsSetAsActive', () => {
+      // Activating what is already active is not a command, and a permanently greyed row on the one
+      // environment the user reaches for most reads as something broken.
+      const environment: ApiEnvironment = workspace.addEnvironment('Staging');
+      workspace.activateEnvironment(environment.id);
+      panel().expandAll();
+      fixture.detectChanges();
+
+      expect(itemIds(rowFor('Staging'))).not.toContain('activate');
+    });
+
+    it('contextMenuFor_anInactiveEnvironment_offersSetAsActive', () => {
+      const active: ApiEnvironment = workspace.addEnvironment('Staging');
+      workspace.addEnvironment('Production');
+      workspace.activateEnvironment(active.id);
+      panel().expandAll();
+      fixture.detectChanges();
+
+      expect(itemIds(rowFor('Production'))).toContain('activate');
+    });
+
+    it('contextMenuFor_delete_wearsTheDangerTone', () => {
+      const collection: ApiFolder = workspace.addCollection('Orders');
+      fixture.detectChanges();
+
+      const remove: MenuItem | undefined = component
+        .contextMenuFor(rowFor(collection.name))
+        .find((item: MenuItem): boolean => item.id === 'delete');
+      expect(remove?.tone).toBe('danger');
+    });
+
+    it('onContextAction_newRequest_addsItToTheRightClickedCollection', () => {
+      // The toolbar has to guess which collection was meant; a row menu already knows.
+      workspace.addCollection('First');
+      const second: ApiFolder = workspace.addCollection('Second');
+      fixture.detectChanges();
+
+      component.onContextAction({ itemId: 'new-request', row: rowFor('Second') });
+
+      expect(
+        workspace
+          .requests()
+          .filter((request: ApiRequest): boolean => request.parentId === second.id),
+      ).toHaveLength(1);
+    });
+
+    it('onContextAction_setAsActive_activatesThatEnvironment', () => {
+      workspace.addEnvironment('Staging');
+      const production: ApiEnvironment = workspace.addEnvironment('Production');
+      panel().expandAll();
+      fixture.detectChanges();
+
+      component.onContextAction({ itemId: 'activate', row: rowFor('Production') });
+
+      expect(workspace.activeEnvironmentId()).toBe(production.id);
+    });
+
+    it('onContextAction_rename_opensTheDialogStartedFromTheCurrentName', () => {
+      const collection: ApiFolder = workspace.addCollection('Orders');
+      fixture.detectChanges();
+
+      component.onContextAction({ itemId: 'rename', row: rowFor(collection.name) });
+
+      expect(component.renameTarget()?.id).toBe(collection.id);
+      expect(component.renameName()).toBe('Orders');
+    });
+
+    it('confirmRename_aCollection_renamesIt', () => {
+      const collection: ApiFolder = workspace.addCollection('Orders');
+      fixture.detectChanges();
+      component.onContextAction({ itemId: 'rename', row: rowFor(collection.name) });
+      component.renameName.set('  Fulfilment  ');
+
+      component.confirmRename();
+
+      expect(
+        workspace.folders().find((folder: ApiFolder): boolean => folder.id === collection.id)?.name,
+      ).toBe('Fulfilment');
+      expect(component.renameTarget()).toBeNull();
+    });
+
+    it('confirmRename_aRequest_renamesIt', () => {
+      const collection: ApiFolder = workspace.addCollection('Orders');
+      const request: ApiRequest = workspace.addRequest(collection.id, { name: 'Get order' });
+      panel().expandAll();
+      fixture.detectChanges();
+      component.onContextAction({ itemId: 'rename', row: rowFor('Get order') });
+      component.renameName.set('Fetch order');
+
+      component.confirmRename();
+
+      expect(
+        workspace.requests().find((candidate: ApiRequest): boolean => candidate.id === request.id)
+          ?.name,
+      ).toBe('Fetch order');
+    });
+
+    it('confirmRename_aBlankName_changesNothing', () => {
+      const collection: ApiFolder = workspace.addCollection('Orders');
+      fixture.detectChanges();
+      component.onContextAction({ itemId: 'rename', row: rowFor(collection.name) });
+      component.renameName.set('   ');
+
+      component.confirmRename();
+
+      expect(
+        workspace.folders().find((folder: ApiFolder): boolean => folder.id === collection.id)?.name,
+      ).toBe('Orders');
+    });
+
+    it('onContextAction_duplicate_copiesTheRequestAndSelectsTheCopy', () => {
+      const collection: ApiFolder = workspace.addCollection('Orders');
+      workspace.addRequest(collection.id, { name: 'Get order' });
+      panel().expandAll();
+      fixture.detectChanges();
+
+      component.onContextAction({ itemId: 'duplicate', row: rowFor('Get order') });
+
+      const names: readonly string[] = workspace
+        .requests()
+        .filter((request: ApiRequest): boolean => request.parentId === collection.id)
+        .map((request: ApiRequest): string => request.name);
+      expect(names).toContain('Get order copy');
+    });
+
+    it('onContextAction_delete_asksBeforeRemovingAnything', () => {
+      const collection: ApiFolder = workspace.addCollection('Orders');
+      fixture.detectChanges();
+
+      component.onContextAction({ itemId: 'delete', row: rowFor(collection.name) });
+
+      expect(component.deleteTarget()?.id).toBe(collection.id);
+      expect(
+        workspace.folders().some((folder: ApiFolder): boolean => folder.id === collection.id),
+      ).toBe(true);
+    });
+
+    it('confirmDelete_aCollection_removesItAndItsRequests', () => {
+      const collection: ApiFolder = workspace.addCollection('Orders');
+      workspace.addRequest(collection.id, { name: 'Get order' });
+      fixture.detectChanges();
+      component.onContextAction({ itemId: 'delete', row: rowFor(collection.name) });
+
+      component.confirmDelete();
+
+      expect(
+        workspace.folders().some((folder: ApiFolder): boolean => folder.id === collection.id),
+      ).toBe(false);
+      expect(
+        workspace
+          .requests()
+          .some((request: ApiRequest): boolean => request.parentId === collection.id),
+      ).toBe(false);
+    });
+
+    it('confirmDelete_theActiveEnvironment_leavesNoDanglingActiveId', () => {
+      const environment: ApiEnvironment = workspace.addEnvironment('Staging');
+      workspace.activateEnvironment(environment.id);
+      panel().expandAll();
+      fixture.detectChanges();
+      component.onContextAction({ itemId: 'delete', row: rowFor('Staging') });
+
+      component.confirmDelete();
+
+      expect(workspace.activeEnvironmentId()).not.toBe(environment.id);
+    });
+
+    it('cancelDelete_removesNothing', () => {
+      const collection: ApiFolder = workspace.addCollection('Orders');
+      fixture.detectChanges();
+      component.onContextAction({ itemId: 'delete', row: rowFor(collection.name) });
+
+      component.cancelDelete();
+      component.confirmDelete();
+
+      expect(
+        workspace.folders().some((folder: ApiFolder): boolean => folder.id === collection.id),
+      ).toBe(true);
+    });
   });
 });
