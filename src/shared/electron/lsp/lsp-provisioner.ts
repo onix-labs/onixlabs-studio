@@ -9,7 +9,8 @@ import { pipeline } from 'node:stream/promises';
 import { promisify } from 'node:util';
 import { createGunzip } from 'node:zlib';
 import { logger } from '../logger';
-import { ArchiveDownload, ArchiveProvision, platformKey } from '../provisioning/archive-provision';
+import { ArchiveProvision } from '../provisioning/archive-provision';
+import { ArchiveProvisioner, isComplete, markComplete } from '../provisioning/archive-provisioner';
 
 /**
  * Runs a child process and resolves with its standard output and error, used for the lightweight
@@ -200,13 +201,20 @@ export class LspProvisioner {
   >();
 
   /**
-   * Caches each archive install, so a component is downloaded at most once per session even if several
-   * callers race.
+   * Holds the shared archive provisioner, created on first use. Deliberately not a field initializer:
+   * that would resolve the user-data directory when this class is constructed, which can be before the
+   * `STUDIO_USER_DATA_DIR` seam has repointed it, and every install would land in the wrong place.
    */
-  private readonly archiveInstalls: Map<string, Promise<string | null>> = new Map<
-    string,
-    Promise<string | null>
-  >();
+  private archiveProvisioner: ArchiveProvisioner | null = null;
+
+  /**
+   * Gets the shared archive provisioner, rooted at the servers directory. Shared with the debug side,
+   * so there is one implementation of fetching and running code from the internet rather than two.
+   */
+  private get archives(): ArchiveProvisioner {
+    this.archiveProvisioner ??= new ArchiveProvisioner(this.serversRoot(), 'LspProvisioner');
+    return this.archiveProvisioner;
+  }
 
   /**
    * Detects a usable Java executable: the user's override when given, then the one under `JAVA_HOME`,
@@ -360,143 +368,51 @@ export class LspProvisioner {
   }
 
   /**
-   * Installs a component from a pinned, checksum-verified archive, or reuses the cached copy. This is
-   * the generic install path every downloadable language server now takes: the recipe is plain data, so
-   * adding a server is a catalogue entry rather than a method here.
+   * Installs a language server from a pinned, checksum-verified archive, or reuses the cached copy.
    * @param provision The provisioning recipe.
-   * @returns Returns the executable or entry point path, or null when the platform is unsupported or
-   * the download or verification fails.
+   * @returns Returns the entry point path, or null when the platform is unsupported or the download or
+   * verification fails.
    */
   public ensureArchive(provision: ArchiveProvision): Promise<string | null> {
-    const key: string = `${provision.id} ${provision.version} ${platformKey()}`;
-    let install: Promise<string | null> | undefined = this.archiveInstalls.get(key);
-    if (install === undefined) {
-      install = this.installArchive(provision);
-      this.archiveInstalls.set(key, install);
-    }
-    return install;
+    return this.archives.ensure(provision);
   }
 
   /**
-   * Gets whether a component's archive is already installed for this platform, **without downloading
-   * anything** — the question the Plugin Manager asks, where {@link ensureArchive} would provision on
-   * demand and turn merely looking at the plugin list into a download.
+   * Gets whether a server's archive is installed, without downloading anything.
    * @param provision The provisioning recipe.
-   * @returns Returns true when the executable is already present.
+   * @returns Returns true when it is installed.
    */
   public isArchiveInstalled(provision: ArchiveProvision): boolean {
-    const target: string | null = this.archiveTarget(provision);
-    return target !== null && existsSync(target);
+    return this.archives.isInstalled(provision);
   }
 
   /**
-   * Gets the path a component's archive install produces, whether or not it is installed yet, so the
-   * server registry can spawn what the Plugin Manager installed.
+   * Gets the path an archive install produces, whether or not it is installed yet.
    * @param provision The provisioning recipe.
-   * @returns Returns the executable path, or null when the platform is unsupported.
+   * @returns Returns the entry point path, or null when the platform is unsupported.
    */
   public archiveTarget(provision: ArchiveProvision): string | null {
-    const download: ArchiveDownload | undefined = provision.downloads[platformKey()];
-    if (download === undefined) {
-      return null;
-    }
-    return path.join(
-      this.serversRoot(),
-      provision.id,
-      provision.version,
-      platformKey(),
-      download.executablePath,
-    );
+    return this.archives.targetOf(provision);
   }
 
   /**
-   * Removes a component's version-scoped install directory, for uninstalling it.
+   * Removes an archive install.
    * @param provision The provisioning recipe.
    * @returns Returns a promise that resolves once the install is gone.
    */
-  public async removeArchive(provision: ArchiveProvision): Promise<void> {
-    const directory: string = path.join(
-      this.serversRoot(),
-      provision.id,
-      provision.version,
-      platformKey(),
-    );
-    logger.info('LspProvisioner', `Removing provisioned directory ${directory}`);
-    await fs.rm(directory, { recursive: true, force: true });
-    this.archiveInstalls.delete(`${provision.id} ${provision.version} ${platformKey()}`);
+  public removeArchive(provision: ArchiveProvision): Promise<void> {
+    return this.archives.remove(provision);
   }
 
   /**
-   * Downloads, verifies, and extracts a component's archive, or reuses a cached copy. Returns null
-   * rather than throwing on any failure, so a missing component degrades to "unavailable".
-   * @param provision The provisioning recipe.
-   * @returns Returns the executable path, or null on failure.
-   */
-  private async installArchive(provision: ArchiveProvision): Promise<string | null> {
-    const download: ArchiveDownload | undefined = provision.downloads[platformKey()];
-    const executable: string | null = this.archiveTarget(provision);
-    if (download === undefined || executable === null) {
-      logger.warn(
-        'LspProvisioner',
-        `Cannot provision ${provision.id}: unsupported platform ${platformKey()}`,
-      );
-      return null;
-    }
-    const installDir: string = path.join(
-      this.serversRoot(),
-      provision.id,
-      provision.version,
-      platformKey(),
-    );
-    try {
-      if (existsSync(executable)) {
-        return executable;
-      }
-      logger.info('LspProvisioner', `Downloading ${provision.id} ${provision.version}`);
-      await fs.mkdir(installDir, { recursive: true });
-      const archive: string = path.join(installDir, `archive.${download.archive}`);
-      await this.download(download.url, archive);
-      const digest: string = await this.sha256(archive);
-      if (digest !== download.sha256) {
-        logger.error(
-          'LspProvisioner',
-          `Checksum mismatch for ${provision.id}: expected ${download.sha256}, got ${digest}`,
-        );
-        await fs.rm(archive, { force: true });
-        return null;
-      }
-      if (download.archive === 'zip') {
-        await this.extractZip(archive, installDir);
-      } else {
-        await execFileAsync('tar', ['-xzf', archive, '-C', installDir]);
-      }
-      await fs.rm(archive, { force: true });
-      if (!existsSync(executable)) {
-        logger.warn('LspProvisioner', `Extracted ${provision.id} but its entry point is missing`);
-        return null;
-      }
-      if (process.platform !== 'win32') {
-        // The archive does not carry the executable bit through every extractor.
-        await fs.chmod(executable, 0o755);
-      }
-      logger.info('LspProvisioner', `Installed ${provision.id} at ${executable}`);
-      return executable;
-    } catch (error: unknown) {
-      logger.error('LspProvisioner', `Failed to provision ${provision.id}`, error);
-      return null;
-    }
-  }
-
-  /**
-   * Gets whether a version-scoped install directory is already present under the managed servers root,
-   * **without downloading anything**. This is how the Plugin Manager reports what is installed: the
-   * `ensure*` methods would provision on demand, which would turn merely looking at the plugin list
-   * into an unasked-for download.
+   * Gets whether a version-scoped install directory holds a *completed* install, without downloading
+   * anything. The marker matters: an interrupted download leaves the directory behind, and a directory
+   * on its own would report a half-installed server as ready and fail at the point of use.
    * @param segments The path segments of the install directory, relative to the servers root.
-   * @returns Returns true when the directory exists.
+   * @returns Returns true when the install completed.
    */
   public isProvisioned(...segments: readonly string[]): boolean {
-    return existsSync(path.join(this.serversRoot(), ...segments));
+    return isComplete(path.join(this.serversRoot(), ...segments));
   }
 
   /**
@@ -683,7 +599,9 @@ export class LspProvisioner {
       logger.warn('LspProvisioner', 'Cannot provision Roslyn: unsupported platform');
       return null;
     }
-    const installDir: string = path.join(this.serversRoot(), 'roslyn', ROSLYN_VERSION, rid);
+    // As with rust-analyzer, the marker goes on the version directory the probe and the uninstall use.
+    const versionDir: string = path.join(this.serversRoot(), 'roslyn', ROSLYN_VERSION);
+    const installDir: string = path.join(versionDir, rid);
     const executable: string =
       process.platform === 'win32'
         ? 'Microsoft.CodeAnalysis.LanguageServer.exe'
@@ -691,6 +609,9 @@ export class LspProvisioner {
     const binary: string = path.join(installDir, 'content', 'LanguageServer', rid, executable);
     try {
       if (existsSync(binary)) {
+        // Mark an install that predates the completion marker, so an existing, working server is not
+        // reported as missing forever.
+        await markComplete(versionDir);
         logger.debug('LspProvisioner', `Reusing cached Roslyn server at ${binary}`);
         return binary;
       }
@@ -710,6 +631,7 @@ export class LspProvisioner {
       if (process.platform !== 'win32') {
         await fs.chmod(binary, 0o755);
       }
+      await markComplete(versionDir);
       logger.info('LspProvisioner', `Installed Roslyn server at ${binary}`);
       return binary;
     } catch (error: unknown) {
@@ -762,6 +684,9 @@ export class LspProvisioner {
     try {
       const existing: JdtlsInstall | null = await this.readInstall(installDir);
       if (existing !== null) {
+        // Mark an install that predates the completion marker, so an existing, working server is not
+        // reported as missing forever.
+        await markComplete(installDir);
         logger.debug('LspProvisioner', `Reusing cached JDT.LS at ${installDir}`);
         return existing;
       }
@@ -780,6 +705,7 @@ export class LspProvisioner {
       }
       await execFileAsync('tar', ['-xzf', archive, '-C', installDir]);
       await fs.rm(archive, { force: true });
+      await markComplete(installDir);
       logger.info('LspProvisioner', `Installed JDT.LS into ${installDir}`);
       return await this.readInstall(installDir);
     } catch (error: unknown) {
@@ -809,6 +735,9 @@ export class LspProvisioner {
     );
     try {
       if (existsSync(launcher)) {
+        // Mark an install that predates the completion marker, so an existing, working server is not
+        // reported as missing forever.
+        await markComplete(installDir);
         logger.debug('LspProvisioner', `Reusing cached Kotlin server at ${launcher}`);
         return launcher;
       }
@@ -835,6 +764,7 @@ export class LspProvisioner {
       if (process.platform !== 'win32') {
         await fs.chmod(launcher, 0o755);
       }
+      await markComplete(installDir);
       logger.info('LspProvisioner', `Installed Kotlin server at ${launcher}`);
       return launcher;
     } catch (error: unknown) {
@@ -855,18 +785,23 @@ export class LspProvisioner {
       logger.warn('LspProvisioner', 'Cannot provision rust-analyzer: unsupported platform');
       return null;
     }
-    const installDir: string = path.join(
+    // The install is scoped by triple, but the *version* directory is what the plugin probe checks and
+    // what an uninstall removes, so the completion marker belongs there rather than beside the binary.
+    const versionDir: string = path.join(
       this.serversRoot(),
       'rust-analyzer',
       RUST_ANALYZER_VERSION,
-      target.triple,
     );
+    const installDir: string = path.join(versionDir, target.triple);
     const binary: string = path.join(
       installDir,
       process.platform === 'win32' ? 'rust-analyzer.exe' : 'rust-analyzer',
     );
     try {
       if (existsSync(binary)) {
+        // Mark an install that predates the completion marker, so an existing, working server is not
+        // reported as missing forever.
+        await markComplete(versionDir);
         logger.debug('LspProvisioner', `Reusing cached rust-analyzer at ${binary}`);
         return binary;
       }
@@ -891,6 +826,7 @@ export class LspProvisioner {
       if (process.platform !== 'win32') {
         await fs.chmod(binary, 0o755);
       }
+      await markComplete(versionDir);
       logger.info('LspProvisioner', `Installed rust-analyzer at ${binary}`);
       return binary;
     } catch (error: unknown) {
@@ -982,6 +918,9 @@ export class LspProvisioner {
     );
     try {
       if (existsSync(binary)) {
+        // Mark an install that predates the completion marker, so an existing, working server is not
+        // reported as missing forever.
+        await markComplete(installDir);
         logger.debug('LspProvisioner', `Reusing cached gopls at ${binary}`);
         return binary;
       }
@@ -997,8 +936,13 @@ export class LspProvisioner {
         },
         maxBuffer: GO_BUILD_BUFFER,
       });
+      if (!existsSync(binary)) {
+        logger.warn('LspProvisioner', 'The gopls build reported success but produced no binary');
+        return null;
+      }
+      await markComplete(installDir);
       logger.info('LspProvisioner', `Built gopls at ${binary}`);
-      return existsSync(binary) ? binary : null;
+      return binary;
     } catch (error: unknown) {
       logger.error('LspProvisioner', 'Failed to build the Go language server (gopls)', error);
       return null;
