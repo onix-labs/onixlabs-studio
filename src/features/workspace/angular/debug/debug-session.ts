@@ -805,6 +805,9 @@ export class DebugSession implements DebugHandler, OnDestroy {
     target: DebugLaunchTarget,
   ): Record<string, unknown> {
     return {
+      // The provider's adapter-specific keys go first, so the resolved program, working directory and
+      // environment below still win: extras add to the launch, they do not rewrite it.
+      ...(target.launchExtras ?? {}),
       request: 'launch',
       name: configuration.name,
       type: configuration.providerKind,

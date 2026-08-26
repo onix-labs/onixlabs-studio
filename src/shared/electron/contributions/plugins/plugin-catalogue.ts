@@ -5,6 +5,12 @@ import {
 } from '../../debug/debug-adapter-registry';
 import { DebugAdapterProvision, DebugProvisioner } from '../../debug/debug-provisioner';
 import {
+  DEBUGPY_VERSION,
+  installDebugpy,
+  isDebugpyInstalled,
+  uninstallDebugpy,
+} from '../../debug/debugpy-install';
+import {
   CLANGD_PROVISION,
   PYRIGHT_PROVISION,
   TY_PROVISION,
@@ -324,6 +330,25 @@ export function pluginCatalogue(): readonly PluginDescriptor[] {
       },
       uninstall: (context: PluginContext): Promise<void> =>
         context.provisioner.removeProvisioned('gopls', GOPLS_VERSION),
+    },
+    {
+      id: 'debugpy',
+      name: 'Python Debugger (debugpy)',
+      description: 'Debug Python projects.',
+      version: DEBUGPY_VERSION,
+      contributions: [
+        {
+          slot: 'debug-adapter',
+          id: 'debugpy',
+          displayName: 'Python (debugpy)',
+          languages: ['python'],
+          priority: 100,
+        },
+      ],
+      detail: 'Installed into its own environment, so it needs Python 3.8+ to install.',
+      detect: (): Promise<boolean> => Promise.resolve(isDebugpyInstalled()),
+      install: (): Promise<string | null> => installDebugpy(),
+      uninstall: (): Promise<void> => uninstallDebugpy(),
     },
     adapterPlugin('netcoredbg', '.NET Debugger (netcoredbg)', 'Debug .NET projects.', ['csharp']),
     adapterPlugin(

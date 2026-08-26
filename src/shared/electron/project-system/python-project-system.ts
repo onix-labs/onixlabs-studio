@@ -9,6 +9,9 @@ import {
   ProjectModel,
   ProjectNode,
 } from '@shared/api/project-system';
+import { DebugResolveResult } from '@shared/api/debug-channels';
+import { RunConfiguration } from '@shared/api/studio';
+import { projectInterpreter } from '../provisioning/python-environment';
 import { ProjectSystem } from './project-system';
 import { logger } from '../logger';
 
@@ -18,15 +21,21 @@ import { logger } from '../logger';
  * gated controls simply disappear rather than grey out, taking the whole Solution group with them.
  * Deliberately empty, and not derived per root as Node's are: Python has no conventional build or
  * clean step to run (packaging a distribution is a release action, not a build), so there is nothing
- * for a Build button to dispatch. Debugging is absent until a Python DAP adapter (debugpy) is
- * provisioned, at which point `debug` is declared.
+ * for a Build button to dispatch. Debugging is declared: the debugpy adapter is a plugin, so the
+ * capability says which adapter debugs Python and the Plugin Manager decides whether it is installed —
+ * a capability is what the ecosystem supports, not what happens to be on the machine.
  */
 const PYTHON_CAPABILITIES: ProjectCapabilities = {
   actions: [],
   buildConfigurations: [],
   target: null,
-  debug: null,
+  debug: { adapter: 'debugpy' },
 };
+
+/**
+ * The entry points tried, in order, when a run configuration names no program of its own.
+ */
+const DEFAULT_ENTRIES: readonly string[] = ['main.py', '__main__.py', 'app.py'];
 
 /**
  * The manifest files that mark a Python project (any of PEP 621 / Poetry, setuptools, or a bare
@@ -209,6 +218,72 @@ export class PythonProjectSystem implements ProjectSystem {
    * @param projectPath The absolute path of the project manifest.
    * @returns Returns the contents, or null when the directory cannot be read.
    */
+  /**
+   * Resolves a run configuration into a Python launch target: the script to run, and the interpreter to
+   * run it under.
+   *
+   * The interpreter matters as much as the script. debugpy runs from Studio's own environment, so
+   * without being told otherwise it would run the debuggee there too and none of the project's
+   * dependencies would import. The project's own virtual environment wins, falling back to a detected
+   * system interpreter.
+   * @param configuration The run configuration to debug.
+   * @param root The workspace root.
+   * @returns Returns the launch target, or a reason it could not be resolved.
+   */
+  public async resolveDebugTarget(
+    configuration: RunConfiguration,
+    root: string,
+  ): Promise<DebugResolveResult> {
+    const named: string | undefined =
+      configuration.program !== undefined && configuration.program.length > 0
+        ? configuration.program
+        : undefined;
+    const program: string | null =
+      named !== undefined ? path.resolve(root, named) : await this.defaultEntry(root);
+    if (program === null) {
+      return {
+        target: null,
+        error: `No Python entry point found. Set one on the run configuration, or add ${DEFAULT_ENTRIES.join(', ')}.`,
+      };
+    }
+    // Confine the launch to the open workspace: the program originates from renderer-supplied
+    // configuration, so a hostile one must not point the debugger outside the root.
+    if (program !== root && !program.startsWith(path.resolve(root) + path.sep)) {
+      logger.warn(
+        'PythonProjectSystem',
+        `Refused a debug program outside the workspace: '${program}' not under '${root}'.`,
+      );
+      return { target: null, error: 'The program to debug must be inside the workspace.' };
+    }
+    const interpreter: string | null = await projectInterpreter(root);
+    if (interpreter === null) {
+      return { target: null, error: 'No Python interpreter found to run the program.' };
+    }
+    logger.debug('PythonProjectSystem', `Debugging ${program} with ${interpreter}`);
+    return {
+      target: { program, cwd: root, launchExtras: { python: interpreter } },
+      error: null,
+    };
+  }
+
+  /**
+   * Finds a conventional entry point in the project root.
+   * @param root The workspace root.
+   * @returns Returns the absolute path of the entry point, or null when none is present.
+   */
+  private async defaultEntry(root: string): Promise<string | null> {
+    for (const name of DEFAULT_ENTRIES) {
+      const candidate: string = path.join(root, name);
+      try {
+        await fs.access(candidate);
+        return candidate;
+      } catch {
+        // Not this one; try the next.
+      }
+    }
+    return null;
+  }
+
   public async loadProjectItems(projectPath: string): Promise<ProjectItems | null> {
     const directory: string = path.dirname(projectPath);
     const budget: { remaining: number } = { remaining: MAX_ITEMS };

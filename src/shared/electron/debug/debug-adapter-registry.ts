@@ -1,4 +1,5 @@
 import { DebugAdapterId, DebugAdapterSummary } from '@shared/api/debug-channels';
+import { debugpyInterpreter } from './debugpy-install';
 import { logger } from '../logger';
 import { DebugAdapterDownload, DebugAdapterProvision, DebugProvisioner } from './debug-provisioner';
 
@@ -172,9 +173,17 @@ export interface DebugAdapterCatalogueEntry {
 
   /**
    * Gets the provisioning recipe for an adapter that ships as a downloadable binary, or undefined for an
-   * adapter expected to be found on the PATH or via an override.
+   * adapter that is not obtained that way.
    */
   readonly provision?: DebugAdapterProvision;
+
+  /**
+   * Locates an adapter that is neither on the PATH nor a downloadable archive — debugpy lives in a
+   * managed virtual environment, so it knows where to look for itself. Tried before the PATH search, so
+   * the copy the Plugin Manager installed wins over whatever else is on the machine.
+   * @returns Returns the executable path, or null when the adapter is not installed.
+   */
+  readonly locate?: () => Promise<string | null>;
 
   /**
    * Builds the spawn specification from the located executable path.
@@ -207,6 +216,21 @@ export function debugAdapterCatalogue(): readonly DebugAdapterCatalogueEntry[] {
       buildSpec: (binaryPath: string): DebugAdapterSpec => ({
         command: binaryPath,
         args: ['--interpreter=vscode'],
+      }),
+    },
+    {
+      id: 'debugpy',
+      displayName: 'Python (debugpy)',
+      binary: 'debugpy',
+      languages: ['python'],
+      priority: DEFAULT_PRIORITY,
+      // debugpy is a Python package rather than a binary, so it ships no archive recipe: the Plugin
+      // Manager installs it into a managed virtual environment and this finds it there. Verified to
+      // speak DAP over stdio from `python -m debugpy.adapter`, which is how VS Code drives it too.
+      locate: (): Promise<string | null> => Promise.resolve(debugpyInterpreter()),
+      buildSpec: (interpreter: string): DebugAdapterSpec => ({
+        command: interpreter,
+        args: ['-m', 'debugpy.adapter'],
       }),
     },
     {
@@ -322,7 +346,8 @@ export class DebugAdapterRegistry {
     logger.trace('DebugAdapterRegistry', `Resolving adapter ${adapterId}`);
     // Prefer an already-present executable (override, project-local, or PATH); otherwise download the
     // pinned binary if the adapter ships one.
-    const located: string | null = await this.provisioner.locate(entry.binary, rootPath);
+    const located: string | null =
+      (await entry.locate?.()) ?? (await this.provisioner.locate(entry.binary, rootPath));
     logger.debug(
       'DebugAdapterRegistry',
       `Located ${entry.binary}: ${located ?? 'not found, will provision if available'}`,
