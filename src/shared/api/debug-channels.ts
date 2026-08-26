@@ -128,6 +128,14 @@ export interface DebugLaunchTarget {
    * Gets environment variables overlaid on the debuggee's environment, or undefined for none.
    */
   readonly env?: Readonly<Record<string, string>>;
+
+  /**
+   * Gets extra keys folded into the DAP `launch` request body, for the launch settings only a specific
+   * adapter understands — debugpy's `python`, naming the interpreter the debuggee runs under, which is
+   * the project's rather than the one the adapter itself runs from. Kept generic so a provider can
+   * supply what its adapter needs without this contract learning every adapter's vocabulary.
+   */
+  readonly launchExtras?: Readonly<Record<string, unknown>>;
 }
 
 /**

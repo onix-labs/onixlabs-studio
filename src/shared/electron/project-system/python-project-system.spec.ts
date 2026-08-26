@@ -1,3 +1,5 @@
+import { DebugResolveResult } from '@shared/api/debug-channels';
+import { RunConfiguration } from '@shared/api/studio';
 import {
   parsePyprojectName,
   parseSetupCfgName,
@@ -58,14 +60,19 @@ describe('parseSetupCfgName', () => {
 describe('PythonProjectSystem', () => {
   const provider: PythonProjectSystem = new PythonProjectSystem();
 
-  it('declaresThePythonKindAndNoGatedControls', () => {
+  it('declaresThePythonKindAndNoGatedBuildControls', () => {
     expect(provider.kind).toBe('python');
-    // The whole point of the interpreted case: no build/clean actions, no build-config or target axis,
-    // and no debug adapter yet — so the ribbon's gated controls disappear entirely.
+    // The whole point of the interpreted case: no build/clean actions, and no build-config or target
+    // axis — so the ribbon's Solution group disappears entirely.
     expect(provider.capabilities.actions).toEqual([]);
     expect(provider.capabilities.buildConfigurations).toEqual([]);
     expect(provider.capabilities.target).toBeNull();
-    expect(provider.capabilities.debug).toBeNull();
+  });
+
+  it('declaresDebugpyAsItsDebugger', () => {
+    // The capability says what the ecosystem supports; whether debugpy is *installed* is the Plugin
+    // Manager's business, and the renderer resolves the declared adapter against what is installed.
+    expect(provider.capabilities.debug).toEqual({ adapter: 'debugpy' });
   });
 
   it('ownsPythonManifestsOnly', () => {
@@ -76,5 +83,29 @@ describe('PythonProjectSystem', () => {
     expect(provider.ownsProject('/w/Pipfile')).toBe(true);
     expect(provider.ownsProject('/w/package.json')).toBe(false);
     expect(provider.ownsProject('/w/app.csproj')).toBe(false);
+  });
+
+  describe('resolveDebugTarget', () => {
+    it('refusesAProgramOutsideTheWorkspace', async () => {
+      // The program comes from renderer-supplied configuration, so a hostile one must not point the
+      // debugger at a file the user never opened.
+      const result: DebugResolveResult = await provider.resolveDebugTarget(
+        { name: 'run', providerKind: 'python', program: '../../../etc/passwd' } as RunConfiguration,
+        '/w/project',
+      );
+
+      expect(result.target).toBeNull();
+      expect(result.error).toContain('inside the workspace');
+    });
+
+    it('reportsWhenNoEntryPointCanBeFound', async () => {
+      const result: DebugResolveResult = await provider.resolveDebugTarget(
+        { name: 'run', providerKind: 'python' } as RunConfiguration,
+        '/w/empty-project-that-does-not-exist',
+      );
+
+      expect(result.target).toBeNull();
+      expect(result.error).toContain('entry point');
+    });
   });
 });
