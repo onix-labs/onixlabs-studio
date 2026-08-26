@@ -117,12 +117,14 @@ export class PluginManagerView {
   protected readonly error: Signal<string | null> = this.plugins.error;
 
   /**
-   * Narrows a table row back to a plugin, since the table passes rows as `unknown`.
-   * @param row The row value.
-   * @returns Returns the plugin.
+   * Reads a table row's plugin payload. The table hands its templates the {@link TableRow} wrapper, not
+   * the payload, so the cast has to go through `data` — casting the wrapper itself compiles and yields
+   * an object whose every field is undefined, which renders as a row of empty cells.
+   * @param row The table row.
+   * @returns Returns the row's plugin.
    */
-  protected plugin(row: unknown): PluginSummary {
-    return row as PluginSummary;
+  protected plugin(row: TableRow): PluginSummary {
+    return row.data as PluginSummary;
   }
 
   /**

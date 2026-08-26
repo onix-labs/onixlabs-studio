@@ -54,11 +54,14 @@
   min-block-size: 0;
 }
 
-// The name cell stacks the plugin's name, what it is for, and any note about obtaining it.
+// The name cell stacks the plugin's name, what it is for, and any note about obtaining it. The table's
+// cells are single-line with an ellipsis by default, which truncates a description mid-sentence — and
+// the note about how to install an external tool is the one thing that must be readable in full.
 .plugin-manager__name {
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
+  white-space: normal;
 }
 
 .plugin-manager__plugin-name {
