@@ -5,9 +5,11 @@ import {
   inject,
   input,
   InputSignal,
+  signal,
   Signal,
+  WritableSignal,
 } from '@angular/core';
-import { ProjectModel } from '@shared/api/project-system';
+import { ProjectAction, ProjectEntry, ProjectModel } from '@shared/api/project-system';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { SolutionModel, SolutionRow } from '@features/workspace/angular/project/solution-model';
@@ -18,8 +20,12 @@ import { Icon } from '@shared/angular/icons/icon';
 import { ExplorerToolbar } from '@shared/angular/components/explorer-toolbar/explorer-toolbar';
 import { HighlightedText } from '@shared/angular/components/highlighted-text/highlighted-text';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { Button } from '@shared/angular/components/forms/button/button';
 import { MenuItem } from '@shared/angular/components/menu/menu';
+import { Modal } from '@shared/angular/components/modal/modal';
+import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { Shell } from '@shared/angular/services/shell/shell';
+import { BuildRunner } from '@shared/angular/services/tasks/build-runner';
 import {
   TreeMenuSelection,
   TreeRow,
@@ -39,6 +45,54 @@ const ACTION_FOLLOW: string = 'follow-active';
 const ACTION_GIT_STATUS: string = 'git-status';
 const ACTION_RELOAD: string = 'reload';
 const ACTION_OPEN_ROOT: string = 'open-root';
+
+/**
+ * Prefixes the context-menu id of a capability action run against a single project, so the handler can
+ * tell a project verb from the panel's own commands and recover which verb it was.
+ */
+const PROJECT_ACTION_PREFIX: string = 'project-action:';
+
+/**
+ * The capability actions a project row offers, in the order they are shown, each with the label it is
+ * shown under.
+ *
+ * The order is the ribbon's: the compile-time verbs first, then the ones that do something with what
+ * was compiled. A project offers whichever of these its project system declares *and* its toolchain
+ * can express against one project — the rest are omitted, never disabled, so the menu never promises a
+ * narrowing it cannot perform.
+ */
+const PROJECT_ACTIONS: readonly {
+  readonly action: ProjectAction;
+  readonly label: string;
+  readonly icon: Icon;
+}[] = [
+  { action: 'build', label: 'Build', icon: Icon.BUILD },
+  { action: 'rebuild', label: 'Rebuild', icon: Icon.REBUILD },
+  { action: 'clean', label: 'Clean', icon: Icon.CLEAN },
+  { action: 'test', label: 'Test', icon: Icon.TEST },
+  { action: 'publish', label: 'Publish', icon: Icon.PUBLISH },
+  { action: 'restore', label: 'Restore', icon: Icon.RESTORE },
+];
+
+/**
+ * A capability action awaiting the user's confirmation to stop a busy Build terminal and take it over.
+ */
+interface PendingProjectAction {
+  /**
+   * Gets the action the user chose.
+   */
+  readonly action: ProjectAction;
+
+  /**
+   * Gets the label the action was chosen under, used to name it in the prompt.
+   */
+  readonly label: string;
+
+  /**
+   * Gets the project the action runs against.
+   */
+  readonly project: ProjectEntry;
+}
 
 /**
  * The label for revealing a path in the operating system's file manager, named for the platform so it
@@ -72,7 +126,7 @@ const OPEN_ROOT_LABEL: string = navigator.userAgent.includes('Mac')
  */
 @Component({
   selector: 'app-solution-panel',
-  imports: [AppIcon, TreeView, ExplorerToolbar, HighlightedText],
+  imports: [AppIcon, TreeView, ExplorerToolbar, HighlightedText, Modal, ModalContent, Button],
   templateUrl: './solution-panel.html',
   styleUrl: './solution-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -113,6 +167,23 @@ export class SolutionPanel {
    * Holds the shell service used to reveal a path in the operating system's file manager.
    */
   private readonly shell: Shell = inject(Shell);
+
+  /**
+   * Holds this workspace's build runner, which the row's capability actions dispatch into.
+   *
+   * Injected directly rather than through the {@link import('@shared/angular/services/tasks/builds').Builds}
+   * seam: that seam routes to whichever workspace is *active*, whereas this panel belongs to one
+   * directory view and must act on its own workspace — the same one whose projects it is showing.
+   */
+  private readonly buildRunner: BuildRunner = inject(BuildRunner);
+
+  /**
+   * Holds the project action awaiting the user's stop-and-restart confirmation, or null when none is.
+   * Set when a verb is chosen while the Build terminal is busy; the modal it opens either dispatches
+   * with restart granted or discards the request. A busy build is never stopped silently.
+   */
+  protected readonly pendingAction: WritableSignal<PendingProjectAction | null> =
+    signal<PendingProjectAction | null>(null);
 
   /**
    * Gets the toolbar's overflow items: the actions that belong to the panel as a whole rather than to
@@ -166,6 +237,7 @@ export class SolutionPanel {
     }
     if (row.kind === 'project') {
       items.push({ id: ACTION_EDIT_PROJECT, label: 'Edit Project File', icon: Icon.PROJECT });
+      items.push(...this.projectActionItems(row));
     }
     if (path !== null) {
       items.push(
@@ -176,6 +248,61 @@ export class SolutionPanel {
     }
     return items;
   };
+
+  /**
+   * Builds the capability-action items for a project row: the verbs its project system declares,
+   * narrowed to those its toolchain can actually aim at one project, under a separator that keeps them
+   * apart from the row's file commands.
+   *
+   * Two independent gates, and both must pass. `ProjectCapabilities.actions` says what the ecosystem
+   * *has* — a Node package with no `test` script has no Test. {@link BuildRunner.supportsProjectAction}
+   * says what it can *narrow* — Go has Build, but models one project per root, so a per-project Build
+   * would be the workspace build wearing a project's name. Failing either gate omits the verb, which
+   * is the whole point: the menu never offers a project build it would have to widen.
+   * @param row The project row.
+   * @returns Returns the action items, or an empty list when the row offers none.
+   */
+  private projectActionItems(row: SolutionRow): readonly MenuItem[] {
+    const declared: readonly ProjectAction[] = this.model()?.capabilities.actions ?? [];
+    if (this.projectFor(row) === null) {
+      return [];
+    }
+    const verbs: readonly MenuItem[] = PROJECT_ACTIONS.filter(
+      (candidate: { action: ProjectAction }): boolean =>
+        declared.includes(candidate.action) &&
+        this.buildRunner.supportsProjectAction(candidate.action),
+    ).map(
+      (candidate: { action: ProjectAction; label: string; icon: Icon }): MenuItem => ({
+        id: `${PROJECT_ACTION_PREFIX}${candidate.action}`,
+        label: candidate.label,
+        icon: candidate.icon,
+      }),
+    );
+    if (verbs.length === 0) {
+      return [];
+    }
+    // A separator is a rule in its own right, not a flag on the item below it — so it is only pushed
+    // once there is something for it to divide.
+    return [{ id: 'project-action.sep', label: '', separator: true }, ...verbs];
+  }
+
+  /**
+   * Resolves the project a row stands for, by matching the row's path against the model's projects.
+   *
+   * Matched rather than synthesised from the row, because the families that address a project by name
+   * (Cargo's `-p`) need the project system's own name for it — a crate's package name, which need not
+   * be its directory's — and the row carries only what it displays.
+   * @param row The row to resolve.
+   * @returns Returns the project, or null when the row stands for none.
+   */
+  private projectFor(row: SolutionRow): ProjectEntry | null {
+    if (row.kind !== 'project' || row.path === null) {
+      return null;
+    }
+    return (
+      this.model()?.projects.find((entry: ProjectEntry): boolean => entry.path === row.path) ?? null
+    );
+  }
 
   /**
    * Resolves the path a row's commands act on.
@@ -310,6 +437,10 @@ export class SolutionPanel {
    */
   public onContextAction(selection: TreeMenuSelection): void {
     const row: SolutionRow = this.rowOf(selection.row);
+    if (selection.itemId.startsWith(PROJECT_ACTION_PREFIX)) {
+      this.requestProjectAction(selection.itemId.slice(PROJECT_ACTION_PREFIX.length), row);
+      return;
+    }
     const path: string | null = this.pathFor(row);
     if (path === null) {
       return;
@@ -334,6 +465,70 @@ export class SolutionPanel {
       default:
         return;
     }
+  }
+
+  /**
+   * Runs a capability action against the row's project, or — when the Build terminal is busy — asks
+   * whether to stop the running build and start this one instead.
+   *
+   * The verb arrives as the tail of a menu id, so it is checked against the offered actions rather
+   * than trusted: an id that names no offered verb, or a row that resolves to no project, does
+   * nothing.
+   * @param verb The action's name, taken from the chosen menu id.
+   * @param row The row the action was chosen for.
+   */
+  private requestProjectAction(verb: string, row: SolutionRow): void {
+    const candidate: { action: ProjectAction; label: string; icon: Icon } | undefined =
+      PROJECT_ACTIONS.find((entry: { action: ProjectAction }): boolean => entry.action === verb);
+    const project: ProjectEntry | null = this.projectFor(row);
+    if (candidate === undefined || project === null) {
+      return;
+    }
+    this.solution.select(row.key);
+    const pending: PendingProjectAction = {
+      action: candidate.action,
+      label: candidate.label,
+      project,
+    };
+    if (this.buildRunner.buildBusy()) {
+      this.pendingAction.set(pending);
+      return;
+    }
+    this.dispatchProjectAction(pending, false);
+  }
+
+  /**
+   * Confirms the stop-and-restart prompt: the running build is stopped and the pending action starts
+   * against its project in its place.
+   */
+  public confirmProjectActionRestart(): void {
+    const pending: PendingProjectAction | null = this.pendingAction();
+    this.pendingAction.set(null);
+    if (pending !== null) {
+      this.dispatchProjectAction(pending, true);
+    }
+  }
+
+  /**
+   * Dismisses the stop-and-restart prompt, leaving the running build untouched.
+   */
+  public cancelProjectActionRestart(): void {
+    this.pendingAction.set(null);
+  }
+
+  /**
+   * Sends a capability action to this workspace's build runner, aimed at one project.
+   * @param pending The action and the project it runs against.
+   * @param restart Whether a busy build may be stopped and replaced.
+   */
+  private dispatchProjectAction(pending: PendingProjectAction, restart: boolean): void {
+    this.log.info(
+      'workspace.solution',
+      `Project action '${pending.action}'`,
+      pending.project.path,
+      { restart },
+    );
+    this.buildRunner.runAction(pending.action, { project: pending.project, restart });
   }
 
   /**

@@ -1,6 +1,8 @@
 import { signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { ProjectModel } from '@shared/api/project-system';
+import { ProjectAction, ProjectEntry, ProjectModel } from '@shared/api/project-system';
+import { BuildRunner } from '@shared/angular/services/tasks/build-runner';
+import { ProjectActionOptions } from '@shared/angular/services/tasks/builds';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { SolutionModel, SolutionRow } from '@features/workspace/angular/project/solution-model';
@@ -80,6 +82,24 @@ class FakeShell {
 }
 
 /**
+ * A fake build runner recording the capability actions the panel dispatches, with controllable
+ * per-project support and a controllable busy Build terminal.
+ */
+class FakeBuildRunner {
+  public readonly buildBusy: WritableSignal<boolean> = signal<boolean>(false);
+  public readonly supported: Set<ProjectAction> = new Set<ProjectAction>();
+  public readonly actions: { action: ProjectAction; options?: ProjectActionOptions }[] = [];
+
+  public supportsProjectAction(action: ProjectAction): boolean {
+    return this.supported.has(action);
+  }
+
+  public runAction(action: ProjectAction, options?: ProjectActionOptions): void {
+    this.actions.push({ action, options });
+  }
+}
+
+/**
  * A fake opener that records opened paths.
  */
 class FakeOpener {
@@ -116,6 +136,7 @@ describe('SolutionPanel', () => {
   let solution: FakeSolutionModel;
   let opener: FakeOpener;
   let shell: FakeShell;
+  let builds: FakeBuildRunner;
   let copied: string[];
 
   const panel: DockPanel = {
@@ -139,6 +160,7 @@ describe('SolutionPanel', () => {
     solution = new FakeSolutionModel();
     opener = new FakeOpener();
     shell = new FakeShell();
+    builds = new FakeBuildRunner();
     copied = [];
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
@@ -155,6 +177,7 @@ describe('SolutionPanel', () => {
         { provide: SolutionModel, useValue: solution },
         { provide: FileOpener, useValue: opener },
         { provide: Shell, useValue: shell },
+        { provide: BuildRunner, useValue: builds },
       ],
     }).compileComponents();
 
@@ -292,6 +315,157 @@ describe('SolutionPanel', () => {
 
       expect(opener.opened).toEqual(['/root/A/g.cs']);
       expect(solution.selectedKey()).toBe('k');
+    });
+
+    /**
+     * The project the capability-action tests act on, and a model that holds it.
+     */
+    const project: ProjectEntry = { name: 'A', path: '/root/A/A.csproj' };
+
+    /**
+     * Builds a model declaring the given actions and holding the fixture project.
+     * @param actions The actions the project system declares.
+     * @returns Returns the model.
+     */
+    function modelDeclaring(...actions: readonly ProjectAction[]): ProjectModel {
+      return {
+        ...model,
+        projects: [project],
+        capabilities: { ...model.capabilities, actions },
+      };
+    }
+
+    it('contextMenuFor_aProject_offersOnlyTheVerbsDeclaredAndNarrowable', () => {
+      // Two independent gates: the project system declares build/test/publish, but the toolchain can
+      // only aim build and test at one project — so publish is omitted rather than shown and widened.
+      solution.model.set(modelDeclaring('build', 'test', 'publish'));
+      builds.supported.add('build');
+      builds.supported.add('test');
+
+      expect(menuIds(makeRow({ kind: 'project', path: project.path }))).toEqual([
+        'edit-project',
+        'project-action.sep',
+        'project-action:build',
+        'project-action:test',
+        'copy-path',
+        'copy-relative-path',
+        'reveal',
+      ]);
+    });
+
+    it('contextMenuFor_aProject_offersNoVerbsWhenTheToolchainCannotNarrowAny', () => {
+      // Go declares Build, but models one project per root — a per-project Build would be the
+      // workspace build wearing a project's name, so the menu offers none at all.
+      solution.model.set(modelDeclaring('build'));
+
+      expect(menuIds(makeRow({ kind: 'project', path: project.path }))).toEqual([
+        'edit-project',
+        'copy-path',
+        'copy-relative-path',
+        'reveal',
+      ]);
+    });
+
+    it('contextMenuFor_aFile_offersNoVerbsHoweverCapableTheToolchainIs', () => {
+      solution.model.set(modelDeclaring('build'));
+      builds.supported.add('build');
+
+      expect(menuIds(makeRow({ kind: 'file', path: '/root/A/g.cs' }))).toEqual([
+        'open',
+        'copy-path',
+        'copy-relative-path',
+        'reveal',
+      ]);
+    });
+
+    it('contextMenuFor_aProjectMissingFromTheModel_offersNoVerbs', () => {
+      // The verbs address the model's own project entry, so a row that resolves to none has nothing
+      // to aim at — a stale row after a reload, rather than a project the menu can act on.
+      solution.model.set(modelDeclaring('build'));
+      builds.supported.add('build');
+
+      expect(menuIds(makeRow({ kind: 'project', path: '/root/Gone/Gone.csproj' }))).toEqual([
+        'edit-project',
+        'copy-path',
+        'copy-relative-path',
+        'reveal',
+      ]);
+    });
+
+    it('contextMenuFor_aProject_rulesOffTheVerbsFromTheFileCommands', () => {
+      solution.model.set(modelDeclaring('build', 'clean'));
+      builds.supported.add('build');
+      builds.supported.add('clean');
+      const items: readonly MenuItem[] = component.contextMenuFor(
+        treeRow(makeRow({ kind: 'project', path: project.path })),
+      );
+      const separators: readonly MenuItem[] = items.filter(
+        (item: MenuItem): boolean => item.separator === true,
+      );
+
+      // One rule, standing on its own between Edit Project File and the verbs — a separator replaces
+      // the item it is on rather than decorating it, so a flagged Build would be a rule and no Build.
+      expect(separators).toHaveLength(1);
+      expect(items[1]).toBe(separators[0]);
+      expect(items[2].id).toBe('project-action:build');
+    });
+
+    it('contextMenuFor_aProjectWithNoOfferableVerbs_addsNoStrandedSeparator', () => {
+      solution.model.set(modelDeclaring('build'));
+
+      expect(
+        component
+          .contextMenuFor(treeRow(makeRow({ kind: 'project', path: project.path })))
+          .filter((item: MenuItem): boolean => item.separator === true),
+      ).toEqual([]);
+    });
+
+    it('onContextAction_aVerb_runsItAgainstThatProjectAloneAndSelectsTheRow', () => {
+      solution.model.set(modelDeclaring('build'));
+      builds.supported.add('build');
+      const row: SolutionRow = makeRow({ key: 'k', kind: 'project', path: project.path });
+      component.onContextAction({ itemId: 'project-action:build', row: treeRow(row) });
+
+      expect(builds.actions).toEqual([{ action: 'build', options: { project, restart: false } }]);
+      expect(solution.selectedKey()).toBe('k');
+    });
+
+    it('onContextAction_aVerb_asksBeforeTakingOverABusyBuildTerminal', () => {
+      solution.model.set(modelDeclaring('build'));
+      builds.supported.add('build');
+      builds.buildBusy.set(true);
+      const row: SolutionRow = makeRow({ kind: 'project', path: project.path });
+      component.onContextAction({ itemId: 'project-action:build', row: treeRow(row) });
+
+      // Nothing dispatched: a running build is never stopped without the user saying so.
+      expect(builds.actions).toEqual([]);
+
+      component.confirmProjectActionRestart();
+      expect(builds.actions).toEqual([{ action: 'build', options: { project, restart: true } }]);
+    });
+
+    it('cancelProjectActionRestart_leavesTheRunningBuildAlone', () => {
+      solution.model.set(modelDeclaring('build'));
+      builds.supported.add('build');
+      builds.buildBusy.set(true);
+      const row: SolutionRow = makeRow({ kind: 'project', path: project.path });
+      component.onContextAction({ itemId: 'project-action:build', row: treeRow(row) });
+      component.cancelProjectActionRestart();
+
+      expect(builds.actions).toEqual([]);
+
+      // The prompt is spent: confirming afterwards must not resurrect the discarded request.
+      component.confirmProjectActionRestart();
+      expect(builds.actions).toEqual([]);
+    });
+
+    it('onContextAction_averbThatIsNotOffered_doesNothing', () => {
+      solution.model.set(modelDeclaring('build'));
+      builds.supported.add('build');
+      const row: SolutionRow = makeRow({ kind: 'project', path: project.path });
+      component.onContextAction({ itemId: 'project-action:nonsense', row: treeRow(row) });
+
+      expect(builds.actions).toEqual([]);
     });
 
     it('onContextAction_editProject_opensTheProjectFileItself', () => {
