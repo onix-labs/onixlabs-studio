@@ -1,9 +1,15 @@
-import { PluginContribution, PluginInstallKind } from '@shared/api/plugin-channels';
+import { PluginContribution } from '@shared/api/plugin-channels';
 import {
   DebugAdapterCatalogueEntry,
   debugAdapterCatalogue,
 } from '../../debug/debug-adapter-registry';
 import { DebugAdapterProvision, DebugProvisioner } from '../../debug/debug-provisioner';
+import {
+  CLANGD_PROVISION,
+  PYRIGHT_PROVISION,
+  TY_PROVISION,
+  TYPESCRIPT_SERVER_PROVISION,
+} from '../../lsp/language-server-downloads';
 import {
   GOPLS_VERSION,
   JDTLS_VERSION,
@@ -12,41 +18,39 @@ import {
   ROSLYN_VERSION,
   RUST_ANALYZER_VERSION,
 } from '../../lsp/lsp-provisioner';
+import { ArchiveProvision } from '../../provisioning/archive-provision';
 
 /**
- * The surface a {@link PluginDescriptor} reaches the application through when it detects or installs
- * itself. Everything a descriptor needs is handed to it, so the catalogue is plain data plus closures
- * and never constructs a provisioner of its own.
+ * The surface a {@link PluginDescriptor} reaches the application through when it detects, installs, or
+ * removes itself. Everything a descriptor needs is handed to it, so the catalogue is plain data plus
+ * closures and never constructs a provisioner of its own.
  */
 export interface PluginContext {
   /**
-   * Gets the provisioner that downloads language servers and detects their runtimes.
+   * Gets the provisioner that downloads language servers and detects the runtimes some of them need.
    */
   readonly provisioner: LspProvisioner;
 
   /**
-   * Gets the provisioner that locates and downloads debug adapters.
+   * Gets the provisioner that downloads debug adapters.
    */
   readonly debugProvisioner: DebugProvisioner;
-
-  /**
-   * Resolves a bundled npm package's CLI entry point, for detecting plugins that ship inside the
-   * application.
-   * @param packageName The package whose entry point is resolved.
-   * @param binName The named `bin` entry, defaulting to the package name.
-   * @returns Returns the absolute path, or null when the package is not present.
-   */
-  packageBin(packageName: string, binName?: string): string | null;
 }
 
 /**
- * Describes one plugin the application knows about: what it is, what it contributes, and how it gets
- * onto the machine.
+ * Describes one plugin the application knows about: what it is, what it contributes, and how it is
+ * installed and removed.
  *
- * Deliberately **data plus optional closures**. Everything the Plugin Manager shows — identity, the
- * contributions, the install kind — is plain data a declarative manifest could carry. `detect` and
- * `install` are the first-party escape hatch for provisioning a manifest cannot express, which is the
- * boundary a third-party manifest format (#294) will have to draw.
+ * **Every plugin is installable and removable.** Nothing is bundled into the application and nothing is
+ * borrowed from whatever happens to be on the machine — that is the point of a plugin, and it is why
+ * there is no "built-in" or "external" kind here. A plugin the user has not installed contributes
+ * nothing, and every plugin can be removed again.
+ *
+ * Deliberately **data plus closures**. Everything the Plugin Manager shows — identity, contributions,
+ * version — is plain data a declarative manifest could carry, and most plugins are installed by a plain
+ * {@link ArchiveProvision} recipe a manifest could carry too. The closures are the first-party escape
+ * hatch for the few that cannot be expressed that way (gopls is *built* with the user's Go toolchain),
+ * which is the line a third-party manifest format (#294) will have to draw.
  */
 export interface PluginDescriptor {
   /**
@@ -65,14 +69,9 @@ export interface PluginDescriptor {
   readonly description: string;
 
   /**
-   * Gets how the plugin gets onto the machine.
+   * Gets the pinned version Studio installs.
    */
-  readonly installKind: PluginInstallKind;
-
-  /**
-   * Gets the pinned version Studio installs, or null when Studio does not control the version.
-   */
-  readonly version: string | null;
+  readonly version: string;
 
   /**
    * Gets the implementations this plugin contributes.
@@ -80,33 +79,31 @@ export interface PluginDescriptor {
   readonly contributions: readonly PluginContribution[];
 
   /**
-   * Gets a note shown alongside the plugin — typically how to obtain an external tool — or undefined.
+   * Gets a note shown alongside the plugin — typically a runtime it needs once installed — or undefined.
    */
   readonly detail?: string;
 
   /**
-   * Detects whether the plugin is present, **without installing anything**. A detection that could
+   * Detects whether the plugin is installed, **without installing anything**. A detection that could
    * trigger a download would turn opening the Plugin Manager into an unasked-for install.
    * @param context The surface the descriptor reaches the application through.
-   * @returns Returns true when the plugin is present and usable.
+   * @returns Returns true when the plugin is installed.
    */
   detect(context: PluginContext): Promise<boolean>;
 
   /**
-   * Installs the plugin, returning the path its installation produced. Absent for a plugin Studio
-   * cannot install (a built-in, which is already there, or an external tool the user owns).
+   * Installs the plugin, returning the path its installation produced.
    * @param context The surface the descriptor reaches the application through.
    * @returns Returns the installed path, or null when the install failed.
    */
-  install?(context: PluginContext): Promise<string | null>;
+  install(context: PluginContext): Promise<string | null>;
 
   /**
-   * Removes what {@link install} put on disk. Absent for a plugin Studio did not install, so the
-   * Plugin Manager never offers to remove something it does not own.
+   * Removes what {@link install} put on disk.
    * @param context The surface the descriptor reaches the application through.
    * @returns Returns a promise that resolves once the plugin is gone.
    */
-  uninstall?(context: PluginContext): Promise<void>;
+  uninstall(context: PluginContext): Promise<void>;
 }
 
 /**
@@ -127,20 +124,38 @@ function languageServer(
 }
 
 /**
- * Builds a debug-adapter contribution.
- * @param id The adapter identifier the debug registry knows it by.
- * @param displayName The display name.
- * @param languages The languages the adapter debugs.
- * @param priority The priority used to pick a default among installed implementations.
- * @returns Returns the contribution.
+ * Builds the descriptor for a plugin installed from a pinned, checksum-verified archive — the common
+ * case, and the one a declarative manifest could describe end to end.
+ * @param id The plugin identifier.
+ * @param name The display name.
+ * @param description The one-line description.
+ * @param provision The pinned provisioning recipe.
+ * @param contributions The implementations the plugin contributes.
+ * @param detail An optional note about runtimes the plugin needs once installed.
+ * @returns Returns the descriptor.
  */
-function debugAdapter(
+function archivePlugin(
   id: string,
-  displayName: string,
-  languages: readonly string[],
-  priority: number,
-): PluginContribution {
-  return { slot: 'debug-adapter', id, displayName, languages, priority };
+  name: string,
+  description: string,
+  provision: ArchiveProvision,
+  contributions: readonly PluginContribution[],
+  detail?: string,
+): PluginDescriptor {
+  return {
+    id,
+    name,
+    description,
+    version: provision.version,
+    contributions,
+    detail,
+    detect: (context: PluginContext): Promise<boolean> =>
+      Promise.resolve(context.provisioner.isArchiveInstalled(provision)),
+    install: (context: PluginContext): Promise<string | null> =>
+      context.provisioner.ensureArchive(provision),
+    uninstall: (context: PluginContext): Promise<void> =>
+      context.provisioner.removeArchive(provision),
+  };
 }
 
 /**
@@ -157,15 +172,14 @@ function adapterProvision(adapterId: string): DebugAdapterProvision | undefined 
 }
 
 /**
- * Builds the descriptor for a debug adapter Studio downloads, wiring its detection and install to the
- * adapter's own pinned recipe.
+ * Builds the descriptor for a debug adapter Studio downloads, wiring it to the adapter's own recipe.
  * @param id The plugin (and adapter) identifier.
  * @param name The display name.
  * @param description The one-line description.
  * @param languages The languages the adapter debugs.
  * @returns Returns the descriptor.
  */
-function managedAdapter(
+function adapterPlugin(
   id: string,
   name: string,
   description: string,
@@ -176,9 +190,8 @@ function managedAdapter(
     id,
     name,
     description,
-    installKind: 'managed',
-    version: provision?.version ?? null,
-    contributions: [debugAdapter(id, name, languages, 100)],
+    version: provision?.version ?? 'unknown',
+    contributions: [{ slot: 'debug-adapter', id, displayName: name, languages, priority: 100 }],
     detect: (context: PluginContext): Promise<boolean> =>
       provision === undefined
         ? Promise.resolve(false)
@@ -197,43 +210,34 @@ function managedAdapter(
  *
  * Being in this list means the Plugin Manager offers the plugin; it says nothing about whether it is
  * present. What is *installed* is decided per machine by each descriptor's `detect`, and only installed
- * plugins have their contributions registered into a slot. That separation is the whole point: a user
- * who has not installed `ty` is never offered it as a choice of Python language server.
+ * plugins have their contributions registered into a slot. That separation is the whole point: a fresh
+ * installation ships no language servers at all, and someone who writes only Python never carries a C++
+ * toolchain they did not ask for.
  *
  * @returns Returns the catalogue descriptors.
  */
 export function pluginCatalogue(): readonly PluginDescriptor[] {
   return [
-    {
-      id: 'pyright',
-      name: 'Pyright',
-      description: "Microsoft's Python type checker and language server. Ships with Studio.",
-      installKind: 'built-in',
-      version: null,
-      contributions: [languageServer('pyright', 'Pyright', ['python'], 100)],
-      detect: (context: PluginContext): Promise<boolean> =>
-        Promise.resolve(context.packageBin('pyright', 'pyright-langserver') !== null),
-    },
-    {
-      id: 'ty',
-      name: 'ty',
-      description:
-        "Astral's Rust-built Python type checker and language server. An alternative to Pyright.",
-      installKind: 'external',
-      version: null,
-      contributions: [languageServer('ty', 'ty (Astral)', ['python'], 50)],
-      detail:
-        'Install it yourself — for example `uv tool install ty` — then Studio will detect it.',
-      detect: async (context: PluginContext): Promise<boolean> =>
-        (await context.provisioner.detectExecutable('ty')) !== null,
-    },
-    {
-      id: 'typescript-language-server',
-      name: 'TypeScript Language Server',
-      description: 'TypeScript and JavaScript language support. Ships with Studio.',
-      installKind: 'built-in',
-      version: null,
-      contributions: [
+    archivePlugin(
+      'pyright',
+      'Pyright',
+      "Microsoft's Python type checker and language server.",
+      PYRIGHT_PROVISION,
+      [languageServer('pyright', 'Pyright', ['python'], 100)],
+    ),
+    archivePlugin(
+      'ty',
+      'ty',
+      "Astral's Rust-built Python type checker and language server. An alternative to Pyright.",
+      TY_PROVISION,
+      [languageServer('ty', 'ty (Astral)', ['python'], 50)],
+    ),
+    archivePlugin(
+      'typescript-language-server',
+      'TypeScript Language Server',
+      'TypeScript and JavaScript language support.',
+      TYPESCRIPT_SERVER_PROVISION,
+      [
         languageServer(
           'typescript',
           'TypeScript Language Server',
@@ -241,25 +245,19 @@ export function pluginCatalogue(): readonly PluginDescriptor[] {
           100,
         ),
       ],
-      detect: (context: PluginContext): Promise<boolean> =>
-        Promise.resolve(context.packageBin('typescript-language-server') !== null),
-    },
-    {
-      id: 'clangd',
-      name: 'clangd',
-      description: 'C and C++ language support. Part of LLVM, which you install yourself.',
-      installKind: 'external',
-      version: null,
-      contributions: [languageServer('clangd', 'clangd', ['cpp', 'c'], 100)],
-      detail: 'Install LLVM or the Xcode Command Line Tools, or set its path in Settings.',
-      detect: async (context: PluginContext): Promise<boolean> =>
-        (await context.provisioner.detectClangd(null)) !== null,
-    },
+    ),
+    archivePlugin(
+      'clangd',
+      'clangd',
+      'C and C++ language support, from the LLVM project.',
+      CLANGD_PROVISION,
+      [languageServer('clangd', 'clangd', ['cpp', 'c'], 100)],
+      'A large download — it carries the Clang toolchain headers.',
+    ),
     {
       id: 'rust-analyzer',
       name: 'rust-analyzer',
-      description: 'Rust language support. Downloaded and checksum-verified by Studio.',
-      installKind: 'managed',
+      description: 'Rust language support.',
       version: RUST_ANALYZER_VERSION,
       contributions: [languageServer('rust', 'rust-analyzer', ['rust'], 100)],
       detect: (context: PluginContext): Promise<boolean> =>
@@ -272,10 +270,10 @@ export function pluginCatalogue(): readonly PluginDescriptor[] {
     {
       id: 'jdtls',
       name: 'Eclipse JDT Language Server',
-      description: 'Java language support. Downloaded by Studio; needs a Java 21+ runtime to run.',
-      installKind: 'managed',
+      description: 'Java language support.',
       version: JDTLS_VERSION,
       contributions: [languageServer('java', 'Eclipse JDT Language Server', ['java'], 100)],
+      detail: 'Needs a Java 21+ runtime to run once installed.',
       detect: (context: PluginContext): Promise<boolean> =>
         Promise.resolve(context.provisioner.isProvisioned('jdtls', JDTLS_VERSION)),
       install: async (context: PluginContext): Promise<string | null> =>
@@ -286,11 +284,10 @@ export function pluginCatalogue(): readonly PluginDescriptor[] {
     {
       id: 'kotlin-language-server',
       name: 'Kotlin Language Server',
-      description:
-        'Kotlin language support. Downloaded by Studio; needs a Java 21+ runtime to run.',
-      installKind: 'managed',
+      description: 'Kotlin language support.',
       version: KOTLIN_LS_VERSION,
       contributions: [languageServer('kotlin', 'Kotlin Language Server', ['kotlin'], 100)],
+      detail: 'Needs a Java 21+ runtime to run once installed.',
       detect: (context: PluginContext): Promise<boolean> =>
         Promise.resolve(context.provisioner.isProvisioned('kotlin', KOTLIN_LS_VERSION)),
       install: (context: PluginContext): Promise<string | null> =>
@@ -301,10 +298,10 @@ export function pluginCatalogue(): readonly PluginDescriptor[] {
     {
       id: 'roslyn',
       name: 'Roslyn Language Server',
-      description: 'C# language support. Downloaded by Studio; needs the .NET 10+ SDK to run.',
-      installKind: 'managed',
+      description: 'C# language support.',
       version: ROSLYN_VERSION,
       contributions: [languageServer('csharp', 'Roslyn Language Server', ['csharp'], 100)],
+      detail: 'Needs the .NET 10+ SDK to run once installed.',
       detect: (context: PluginContext): Promise<boolean> =>
         Promise.resolve(context.provisioner.isProvisioned('roslyn', ROSLYN_VERSION)),
       install: (context: PluginContext): Promise<string | null> =>
@@ -315,11 +312,10 @@ export function pluginCatalogue(): readonly PluginDescriptor[] {
     {
       id: 'gopls',
       name: 'gopls',
-      description: 'Go language support. Built by Studio using your Go toolchain.',
-      installKind: 'managed',
+      description: 'Go language support.',
       version: GOPLS_VERSION,
       contributions: [languageServer('go', 'gopls', ['go'], 100)],
-      detail: 'Needs the Go toolchain installed, since gopls is built with it.',
+      detail: 'Built with your Go toolchain, so Go must be installed to install this.',
       detect: (context: PluginContext): Promise<boolean> =>
         Promise.resolve(context.provisioner.isProvisioned('gopls', GOPLS_VERSION)),
       install: async (context: PluginContext): Promise<string | null> => {
@@ -329,16 +325,11 @@ export function pluginCatalogue(): readonly PluginDescriptor[] {
       uninstall: (context: PluginContext): Promise<void> =>
         context.provisioner.removeProvisioned('gopls', GOPLS_VERSION),
     },
-    managedAdapter(
-      'netcoredbg',
-      '.NET Debugger (netcoredbg)',
-      'Debug .NET projects. Downloaded and checksum-verified by Studio.',
-      ['csharp'],
-    ),
-    managedAdapter(
+    adapterPlugin('netcoredbg', '.NET Debugger (netcoredbg)', 'Debug .NET projects.', ['csharp']),
+    adapterPlugin(
       'js-debug',
       'Node Debugger (js-debug)',
-      "Debug Node projects with Microsoft's js-debug. Downloaded and checksum-verified by Studio.",
+      "Debug Node projects with Microsoft's js-debug.",
       ['typescript', 'javascript'],
     ),
   ];

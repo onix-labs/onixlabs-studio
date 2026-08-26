@@ -75,16 +75,6 @@ export class PluginManager {
     if (descriptor === undefined) {
       return { success: false, state: 'unavailable', error: `Unknown plugin: ${id}` };
     }
-    if (descriptor.install === undefined) {
-      return {
-        success: false,
-        state: await this.stateOf(descriptor),
-        error:
-          descriptor.installKind === 'external'
-            ? `${descriptor.name} is installed outside Studio.`
-            : `${descriptor.name} ships with Studio and is always installed.`,
-      };
-    }
     if (this.busy.has(id)) {
       return { success: false, state: 'busy', error: `${descriptor.name} is already installing.` };
     }
@@ -121,16 +111,6 @@ export class PluginManager {
     if (descriptor === undefined) {
       return { success: false, state: 'unavailable', error: `Unknown plugin: ${id}` };
     }
-    if (descriptor.uninstall === undefined) {
-      return {
-        success: false,
-        state: await this.stateOf(descriptor),
-        error:
-          descriptor.installKind === 'external'
-            ? `${descriptor.name} is managed outside Studio, so Studio will not remove it.`
-            : `${descriptor.name} ships with Studio and cannot be removed.`,
-      };
-    }
     if (this.busy.has(id)) {
       return { success: false, state: 'busy', error: `${descriptor.name} is busy.` };
     }
@@ -163,7 +143,6 @@ export class PluginManager {
       id: descriptor.id,
       name: descriptor.name,
       description: descriptor.description,
-      installKind: descriptor.installKind,
       state,
       contributions: descriptor.contributions,
       version: descriptor.version,
@@ -172,13 +151,9 @@ export class PluginManager {
   }
 
   /**
-   * Resolves a plugin's state.
-   *
-   * A built-in is installed by definition, and reports `unavailable` only if what should ship with the
-   * application is somehow missing. An external tool is installed when it is detected and `unavailable`
-   * otherwise — never `available`, because Studio cannot install it and a button that cannot work is
-   * worse than none. A managed plugin is installed when its files are present or Studio recorded
-   * installing it, and `available` otherwise.
+   * Resolves a plugin's state. A plugin is installed when its files are present or Studio recorded
+   * installing it, and available otherwise — every plugin can be installed, so there is no third case
+   * for something the user must go and fetch themselves.
    * @param descriptor The plugin to resolve.
    * @returns Returns the state.
    */
@@ -186,10 +161,9 @@ export class PluginManager {
     if (this.busy.has(descriptor.id)) {
       return 'busy';
     }
-    const detected: boolean = await descriptor.detect(this.context);
-    if (descriptor.installKind === 'managed') {
-      return detected || this.store.isInstalled(descriptor.id) ? 'installed' : 'available';
+    if (await descriptor.detect(this.context)) {
+      return 'installed';
     }
-    return detected ? 'installed' : 'unavailable';
+    return this.store.isInstalled(descriptor.id) ? 'installed' : 'available';
   }
 }

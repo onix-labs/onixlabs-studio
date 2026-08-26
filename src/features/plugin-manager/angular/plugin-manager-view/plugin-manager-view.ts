@@ -20,19 +20,10 @@ import { Plugins } from '../plugins/plugins';
 const COLUMNS: readonly TableColumn[] = [
   { id: 'name', header: 'Plugin' },
   { id: 'provides', header: 'Provides', width: '30%' },
-  { id: 'source', header: 'Source', width: '8rem' },
+  { id: 'version', header: 'Version', width: '10rem' },
   { id: 'state', header: 'Status', width: '11rem' },
   { id: 'actions', header: '', width: '9rem', align: 'end' },
 ];
-
-/**
- * How each install kind is described in the Source column.
- */
-const SOURCE_LABELS: Readonly<Record<string, string>> = {
-  'built-in': 'Built in',
-  managed: 'Studio',
-  external: 'Your machine',
-};
 
 /**
  * How each slot is described where a plugin's contributions are listed.
@@ -149,31 +140,22 @@ export class PluginManagerView {
   }
 
   /**
-   * Describes where a plugin comes from.
-   * @param plugin The plugin.
-   * @returns Returns the source label.
-   */
-  protected source(plugin: PluginSummary): string {
-    return SOURCE_LABELS[plugin.installKind] ?? plugin.installKind;
-  }
-
-  /**
    * Gets whether the plugin can be installed from here.
    * @param plugin The plugin.
    * @returns Returns true when an Install action applies.
    */
   protected canInstall(plugin: PluginSummary): boolean {
-    return plugin.installKind === 'managed' && plugin.state === 'available';
+    return plugin.state === 'available';
   }
 
   /**
-   * Gets whether the plugin can be removed from here. Only what Studio installed can be removed: a
-   * built-in ships with the application, and an external tool belongs to the user's own package manager.
+   * Gets whether the plugin can be removed from here. Every installed plugin can — that is what makes
+   * it a plugin rather than part of the application.
    * @param plugin The plugin.
    * @returns Returns true when a Remove action applies.
    */
   protected canUninstall(plugin: PluginSummary): boolean {
-    return plugin.installKind === 'managed' && plugin.state === 'installed';
+    return plugin.state === 'installed';
   }
 
   /**

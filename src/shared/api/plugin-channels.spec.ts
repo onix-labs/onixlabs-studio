@@ -22,10 +22,9 @@ function plugin(
     id,
     name: id,
     description: '',
-    installKind: 'managed',
     state,
     contributions,
-    version: null,
+    version: '1.0.0',
     detail: null,
   };
 }

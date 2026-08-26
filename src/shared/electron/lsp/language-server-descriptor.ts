@@ -1,4 +1,5 @@
 import { LspServerId } from '@shared/api/lsp-channels';
+import { ArchiveProvision } from '../provisioning/archive-provision';
 import { logger } from '../logger';
 import { LspProvisioner } from './lsp-provisioner';
 import { LspSettingsManager } from './lsp-settings';
@@ -128,12 +129,13 @@ export interface LanguageServerContext {
   nodePackageServer(packageBinPath: string): LspServerSpec;
 
   /**
-   * Resolves an installed npm package's CLI entry point from its `bin` field, cached for the session.
-   * @param packageName The package whose CLI entry point is resolved.
-   * @param binName The named `bin` entry to resolve, defaulting to the package name.
-   * @returns Returns the absolute path of the entry point, or null when it cannot be resolved.
+   * Gets the path a provisioned component was installed to, or null when it is not installed. Never
+   * installs: a server resolves to "not installed" and the user installs it in the Plugin Manager,
+   * rather than opening a file silently triggering a large download.
+   * @param provision The provisioning recipe.
+   * @returns Returns the installed path, or null when it is not installed.
    */
-  packageBin(packageName: string, binName?: string): string | null;
+  installedPath(provision: ArchiveProvision): string | null;
 }
 
 /**

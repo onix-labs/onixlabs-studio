@@ -53,16 +53,6 @@ export interface PluginContribution extends LanguageSlotEntry {
 }
 
 /**
- * Describes how a plugin gets onto the machine, which decides what the Plugin Manager can do about it.
- *
- * `built-in` ships inside the application and is always present. `managed` is downloaded and verified
- * by Studio, so it can be installed and uninstalled here. `external` is software the user installs
- * themselves (a toolchain binary on the PATH); Studio can detect it and use it, but never install it —
- * claiming otherwise would be a button that cannot work.
- */
-export type PluginInstallKind = 'built-in' | 'managed' | 'external';
-
-/**
  * Describes a plugin's current state on this machine.
  */
 export type PluginState =
@@ -79,8 +69,7 @@ export type PluginState =
    */
   | 'busy'
   /**
-   * Known, but cannot be used until something outside Studio changes (an external tool that is not on
-   * the PATH, or a managed plugin whose runtime prerequisite is missing).
+   * Known, but not installable on this machine — the plugin publishes no build for this platform.
    */
   | 'unavailable';
 
@@ -105,11 +94,6 @@ export interface PluginSummary {
   readonly description: string;
 
   /**
-   * Gets how the plugin gets onto the machine.
-   */
-  readonly installKind: PluginInstallKind;
-
-  /**
    * Gets the plugin's state on this machine.
    */
   readonly state: PluginState;
@@ -120,10 +104,9 @@ export interface PluginSummary {
   readonly contributions: readonly PluginContribution[];
 
   /**
-   * Gets the pinned version Studio installs, or null when the plugin has no version Studio controls
-   * (a built-in, or an external tool whose version is the user's business).
+   * Gets the pinned version Studio installs.
    */
-  readonly version: string | null;
+  readonly version: string;
 
   /**
    * Gets a human-readable note explaining the state — how to install an external tool, or why a plugin

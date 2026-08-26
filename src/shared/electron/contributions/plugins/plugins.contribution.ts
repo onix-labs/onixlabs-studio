@@ -1,5 +1,4 @@
 import { app } from 'electron';
-import { createRequire } from 'node:module';
 import * as path from 'node:path';
 import { PluginActionResult, PluginChannel, PluginSummary } from '@shared/api/plugin-channels';
 import { DebugProvisioner } from '../../debug/debug-provisioner';
@@ -8,35 +7,6 @@ import { ContributionContext, MainContribution } from '../main-contribution';
 import { PluginContext, pluginCatalogue } from './plugin-catalogue';
 import { PluginManager } from './plugin-manager';
 import { PluginStore } from './plugin-store';
-
-/**
- * Provides a `require` rooted at this module, used to resolve bundled plugin packages from
- * `node_modules` (the main process is compiled, not bundled, so the dependency tree is on disk).
- */
-const requireFrom: NodeRequire = createRequire(__filename);
-
-/**
- * Resolves an installed npm package's CLI entry point from its `bin` field, used to detect the plugins
- * that ship inside the application.
- * @param packageName The package whose CLI entry point is resolved.
- * @param binName The named `bin` entry, defaulting to the package name.
- * @returns Returns the absolute path, or null when the package is not present.
- */
-function packageBin(packageName: string, binName: string = packageName): string | null {
-  try {
-    const manifestPath: string = requireFrom.resolve(`${packageName}/package.json`);
-    const manifest: { bin?: string | Record<string, string> } = requireFrom(manifestPath) as {
-      bin?: string | Record<string, string>;
-    };
-    const bin: string | Record<string, string> | undefined = manifest.bin;
-    const relative: string | undefined =
-      typeof bin === 'string' ? bin : (bin?.[binName] ?? Object.values(bin ?? {})[0]);
-    return relative === undefined ? null : path.join(path.dirname(manifestPath), relative);
-  } catch {
-    // A package that will not resolve is simply not present, which is what the caller asked.
-    return null;
-  }
-}
 
 /**
  * The Plugin Manager's backend: the catalogue of available plugins, what is installed on this machine,
@@ -72,7 +42,6 @@ export class PluginsContribution implements MainContribution {
         new Map<string, string>(),
         path.join(userData, 'debug-adapters'),
       ),
-      packageBin,
     };
     this.manager = new PluginManager(pluginCatalogue(), pluginContext, new PluginStore(userData));
     context.handle(PluginChannel.List, (): Promise<readonly PluginSummary[]> => this.list());

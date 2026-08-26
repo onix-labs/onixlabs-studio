@@ -11,6 +11,7 @@ import {
   NO_SERVER,
 } from './language-server-descriptor';
 import { LspProvisioner } from './lsp-provisioner';
+import { ArchiveProvision } from '../provisioning/archive-provision';
 import { LspSettingsManager } from './lsp-settings';
 
 export type {
@@ -151,8 +152,10 @@ export class LspServerRegistry {
       provisioner: this.provisioner,
       nodePackageServer: (packageBinPath: string): LspServerSpec =>
         this.nodePackageServer(packageBinPath),
-      packageBin: (packageName: string, binName?: string): string | null =>
-        this.cachedBin(packageName, binName ?? packageName),
+      installedPath: (provision: ArchiveProvision): string | null =>
+        this.provisioner.isArchiveInstalled(provision)
+          ? this.provisioner.archiveTarget(provision)
+          : null,
     };
   }
 

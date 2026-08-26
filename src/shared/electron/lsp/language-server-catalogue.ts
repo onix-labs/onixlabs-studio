@@ -13,6 +13,12 @@ import {
   unavailable,
 } from './language-server-descriptor';
 import { JdtlsInstall } from './lsp-provisioner';
+import {
+  CLANGD_PROVISION,
+  PYRIGHT_PROVISION,
+  TY_PROVISION,
+  TYPESCRIPT_SERVER_PROVISION,
+} from './language-server-downloads';
 
 /**
  * Holds the JVM arguments passed to the Eclipse JDT Language Server's Equinox launcher, before the
@@ -73,7 +79,7 @@ export function csharpOpenPlan(
 }
 
 /**
- * The TypeScript and JavaScript server, bundled as an npm package and honouring a custom server path.
+ * The TypeScript and JavaScript server, downloaded as its npm tarball and honouring a custom path.
  */
 const TYPESCRIPT: LanguageServerDescriptor = {
   id: 'typescript',
@@ -88,16 +94,16 @@ const TYPESCRIPT: LanguageServerDescriptor = {
       }
       return resolved(context.nodePackageServer(override));
     }
-    const binPath: string | null = context.packageBin('typescript-language-server');
-    return binPath === null
-      ? unavailable('The TypeScript language server is not available.')
-      : resolved(context.nodePackageServer(binPath));
+    const entry: string | null = context.installedPath(TYPESCRIPT_SERVER_PROVISION);
+    return entry === null
+      ? unavailable('The TypeScript language server is not installed — install it in Plugins.')
+      : resolved(context.nodePackageServer(entry));
   },
 };
 
 /**
- * Pyright, the Python default: bundled as an npm package and run through the Electron binary in Node
- * mode, so it needs neither a `node` executable nor a Python interpreter to start.
+ * Pyright, the Python default: downloaded as its zero-dependency npm tarball and run through the
+ * Electron binary in Node mode, so it needs neither a `node` executable nor a Python interpreter.
  */
 const PYRIGHT: LanguageServerDescriptor = {
   id: 'pyright',
@@ -105,28 +111,27 @@ const PYRIGHT: LanguageServerDescriptor = {
   languages: ['python'],
   priority: DEFAULT_PRIORITY,
   resolve: (context: LanguageServerContext): LspResolution => {
-    const binPath: string | null = context.packageBin('pyright', 'pyright-langserver');
-    return binPath === null
-      ? unavailable('The Pyright language server is not available.')
-      : resolved(context.nodePackageServer(binPath));
+    const entry: string | null = context.installedPath(PYRIGHT_PROVISION);
+    return entry === null
+      ? unavailable('Pyright is not installed — install it in Plugins.')
+      : resolved(context.nodePackageServer(entry));
   },
 };
 
 /**
  * `ty` (Astral), the alternative Python implementation — and the proof that the Python slot takes more
- * than one. Deliberately detected on the PATH rather than downloaded: it is not bundled, so a user who
- * has not installed it simply sees it offered and unavailable, and the catalogue ships no pinned
- * release asset for a tool still in preview.
+ * than one. Installed exactly like Pyright, so choosing between them is a choice between two things the
+ * user installed rather than between the bundled one and an afterthought.
  */
 const TY: LanguageServerDescriptor = {
   id: 'ty',
   displayName: 'ty (Astral)',
   languages: ['python'],
   priority: ALTERNATIVE_PRIORITY,
-  resolve: async (context: LanguageServerContext): Promise<LspResolution> => {
-    const binary: string | null = await context.provisioner.detectExecutable('ty');
+  resolve: (context: LanguageServerContext): LspResolution => {
+    const binary: string | null = context.installedPath(TY_PROVISION);
     return binary === null
-      ? unavailable('ty was not found — install it (for example `uv tool install ty`) to use it.')
+      ? unavailable('ty is not installed — install it in Plugins.')
       : resolved({ command: binary, args: ['server'] });
   },
 };
@@ -296,24 +301,25 @@ const CSHARP: LanguageServerDescriptor = {
 };
 
 /**
- * clangd, detected on the system rather than downloaded (it ships with LLVM/Xcode). It discovers its
- * compile flags from a `compile_commands.json` relative to the workspace root.
+ * clangd, downloaded from its own release rather than borrowed from an LLVM or Xcode install. It
+ * discovers its compile flags from a `compile_commands.json` relative to the workspace root.
  */
 const CLANGD: LanguageServerDescriptor = {
   id: 'clangd',
   displayName: 'clangd',
   languages: ['cpp', 'c'],
   priority: DEFAULT_PRIORITY,
-  resolve: async (context: LanguageServerContext): Promise<LspResolution> => {
-    const clangd: string | null = await context.provisioner.detectClangd(
-      context.settings.get().clangdPath,
-    );
-    if (clangd === null) {
-      return unavailable(
-        'clangd not found — install LLVM or Xcode Command Line Tools, or set its path in Settings.',
-      );
+  resolve: (context: LanguageServerContext): LspResolution => {
+    // A configured path still wins, so a user with their own LLVM keeps using it rather than carrying
+    // a second copy; otherwise clangd is the one the Plugin Manager installed.
+    const override: string | null = context.settings.get().clangdPath;
+    if (override !== null && existsSync(override)) {
+      return resolved({ command: override, args: ['--log=error'] });
     }
-    return resolved({ command: clangd, args: ['--log=error'] });
+    const clangd: string | null = context.installedPath(CLANGD_PROVISION);
+    return clangd === null
+      ? unavailable('clangd is not installed — install it in Plugins, or set its path in Settings.')
+      : resolved({ command: clangd, args: ['--log=error'] });
   },
 };
 

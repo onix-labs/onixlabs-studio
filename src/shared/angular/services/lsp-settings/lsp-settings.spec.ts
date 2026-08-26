@@ -31,10 +31,9 @@ function plugin(id: string, languages: readonly string[], installed: boolean): P
     id,
     name: id,
     description: '',
-    installKind: 'managed',
     state: installed ? 'installed' : 'available',
     contributions: [{ slot: 'language-server', id, displayName: id, languages, priority: 100 }],
-    version: null,
+    version: '1.0.0',
     detail: null,
   };
 }

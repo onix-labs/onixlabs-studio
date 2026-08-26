@@ -40,12 +40,7 @@
         }
       </td>
       <td class="plugin-manager__provides">{{ provides(plugin(row)) }}</td>
-      <td>
-        {{ source(plugin(row)) }}
-        @if (plugin(row).version; as version) {
-          <span class="plugin-manager__version">{{ version }}</span>
-        }
-      </td>
+      <td class="plugin-manager__version">{{ plugin(row).version }}</td>
       <td>
         <span
           class="plugin-manager__state"
@@ -64,7 +59,7 @@
               Working…
             }
             @default {
-              Not found
+              Not supported here
             }
           }
         </span>

@@ -14,7 +14,6 @@ function plugin(id: string, state: PluginSummary['state']): PluginSummary {
     id,
     name: id,
     description: '',
-    installKind: 'managed',
     state,
     contributions: [
       { slot: 'language-server', id, displayName: id, languages: ['python'], priority: 100 },

@@ -9,6 +9,7 @@ import { pipeline } from 'node:stream/promises';
 import { promisify } from 'node:util';
 import { createGunzip } from 'node:zlib';
 import { logger } from '../logger';
+import { ArchiveDownload, ArchiveProvision, platformKey } from '../provisioning/archive-provision';
 
 /**
  * Runs a child process and resolves with its standard output and error, used for the lightweight
@@ -199,6 +200,15 @@ export class LspProvisioner {
   >();
 
   /**
+   * Caches each archive install, so a component is downloaded at most once per session even if several
+   * callers race.
+   */
+  private readonly archiveInstalls: Map<string, Promise<string | null>> = new Map<
+    string,
+    Promise<string | null>
+  >();
+
+  /**
    * Detects a usable Java executable: the user's override when given, then the one under `JAVA_HOME`,
    * then `java` on the PATH, provided it reports a high enough version. The result is cached for the
    * session (the override is stable per launch).
@@ -347,6 +357,134 @@ export class LspProvisioner {
     }
     logger.debug('LspProvisioner', `Did not find ${binary} on the PATH`);
     return null;
+  }
+
+  /**
+   * Installs a component from a pinned, checksum-verified archive, or reuses the cached copy. This is
+   * the generic install path every downloadable language server now takes: the recipe is plain data, so
+   * adding a server is a catalogue entry rather than a method here.
+   * @param provision The provisioning recipe.
+   * @returns Returns the executable or entry point path, or null when the platform is unsupported or
+   * the download or verification fails.
+   */
+  public ensureArchive(provision: ArchiveProvision): Promise<string | null> {
+    const key: string = `${provision.id} ${provision.version} ${platformKey()}`;
+    let install: Promise<string | null> | undefined = this.archiveInstalls.get(key);
+    if (install === undefined) {
+      install = this.installArchive(provision);
+      this.archiveInstalls.set(key, install);
+    }
+    return install;
+  }
+
+  /**
+   * Gets whether a component's archive is already installed for this platform, **without downloading
+   * anything** — the question the Plugin Manager asks, where {@link ensureArchive} would provision on
+   * demand and turn merely looking at the plugin list into a download.
+   * @param provision The provisioning recipe.
+   * @returns Returns true when the executable is already present.
+   */
+  public isArchiveInstalled(provision: ArchiveProvision): boolean {
+    const target: string | null = this.archiveTarget(provision);
+    return target !== null && existsSync(target);
+  }
+
+  /**
+   * Gets the path a component's archive install produces, whether or not it is installed yet, so the
+   * server registry can spawn what the Plugin Manager installed.
+   * @param provision The provisioning recipe.
+   * @returns Returns the executable path, or null when the platform is unsupported.
+   */
+  public archiveTarget(provision: ArchiveProvision): string | null {
+    const download: ArchiveDownload | undefined = provision.downloads[platformKey()];
+    if (download === undefined) {
+      return null;
+    }
+    return path.join(
+      this.serversRoot(),
+      provision.id,
+      provision.version,
+      platformKey(),
+      download.executablePath,
+    );
+  }
+
+  /**
+   * Removes a component's version-scoped install directory, for uninstalling it.
+   * @param provision The provisioning recipe.
+   * @returns Returns a promise that resolves once the install is gone.
+   */
+  public async removeArchive(provision: ArchiveProvision): Promise<void> {
+    const directory: string = path.join(
+      this.serversRoot(),
+      provision.id,
+      provision.version,
+      platformKey(),
+    );
+    logger.info('LspProvisioner', `Removing provisioned directory ${directory}`);
+    await fs.rm(directory, { recursive: true, force: true });
+    this.archiveInstalls.delete(`${provision.id} ${provision.version} ${platformKey()}`);
+  }
+
+  /**
+   * Downloads, verifies, and extracts a component's archive, or reuses a cached copy. Returns null
+   * rather than throwing on any failure, so a missing component degrades to "unavailable".
+   * @param provision The provisioning recipe.
+   * @returns Returns the executable path, or null on failure.
+   */
+  private async installArchive(provision: ArchiveProvision): Promise<string | null> {
+    const download: ArchiveDownload | undefined = provision.downloads[platformKey()];
+    const executable: string | null = this.archiveTarget(provision);
+    if (download === undefined || executable === null) {
+      logger.warn(
+        'LspProvisioner',
+        `Cannot provision ${provision.id}: unsupported platform ${platformKey()}`,
+      );
+      return null;
+    }
+    const installDir: string = path.join(
+      this.serversRoot(),
+      provision.id,
+      provision.version,
+      platformKey(),
+    );
+    try {
+      if (existsSync(executable)) {
+        return executable;
+      }
+      logger.info('LspProvisioner', `Downloading ${provision.id} ${provision.version}`);
+      await fs.mkdir(installDir, { recursive: true });
+      const archive: string = path.join(installDir, `archive.${download.archive}`);
+      await this.download(download.url, archive);
+      const digest: string = await this.sha256(archive);
+      if (digest !== download.sha256) {
+        logger.error(
+          'LspProvisioner',
+          `Checksum mismatch for ${provision.id}: expected ${download.sha256}, got ${digest}`,
+        );
+        await fs.rm(archive, { force: true });
+        return null;
+      }
+      if (download.archive === 'zip') {
+        await this.extractZip(archive, installDir);
+      } else {
+        await execFileAsync('tar', ['-xzf', archive, '-C', installDir]);
+      }
+      await fs.rm(archive, { force: true });
+      if (!existsSync(executable)) {
+        logger.warn('LspProvisioner', `Extracted ${provision.id} but its entry point is missing`);
+        return null;
+      }
+      if (process.platform !== 'win32') {
+        // The archive does not carry the executable bit through every extractor.
+        await fs.chmod(executable, 0o755);
+      }
+      logger.info('LspProvisioner', `Installed ${provision.id} at ${executable}`);
+      return executable;
+    } catch (error: unknown) {
+      logger.error('LspProvisioner', `Failed to provision ${provision.id}`, error);
+      return null;
+    }
   }
 
   /**

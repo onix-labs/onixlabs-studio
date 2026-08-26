@@ -76,12 +76,10 @@
     "monaco-editor": "^0.55.1",
     "node-pty": "^1.1.0",
     "prosemirror-search": "^1.1.1",
-    "pyright": "^1.1.410",
     "remark-gemoji": "^8.0.0",
     "rxjs": "~7.8.0",
     "systeminformation": "^5.33.1",
     "tslib": "^2.3.0",
-    "typescript-language-server": "^4.4.1",
     "vscode-jsonrpc": "^8.2.1",
     "vscode-languageserver-protocol": "^3.18.0",
     "zod": "^4.4.3"
