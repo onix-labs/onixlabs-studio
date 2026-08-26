@@ -2,6 +2,7 @@ import { inject, Service } from '@angular/core';
 import { PluginContribution, PluginSlot, PluginSummary } from '@shared/api/plugin-channels';
 import { Log } from '@shared/angular/services/log/log';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
+import { languageDisplayName } from './language-names';
 import { Plugins } from './plugins';
 
 /**
@@ -60,9 +61,13 @@ export class LanguageSupportPrompt {
     this.log.info('LanguageSupportPrompt', `Offering ${plugin.id} for '${language}'`);
     this.notifications.notify({
       severity: 'info',
-      title: `${this.languageName(language)} support isn't installed`,
+      title: `${languageDisplayName(language)} support isn't installed`,
       detail: `${plugin.name} provides it. Install it now, or find it later under Plugins.`,
       key: `language-support:${language}`,
+      // Sticky, because this asks the user to decide something. Toasts are transient by default and
+      // last five seconds, which is long enough to read an outcome and far too short to reach for a
+      // button — the offer would expire while the pointer was on its way to it.
+      sticky: true,
       actions: [
         {
           label: `Install ${plugin.name}`,
@@ -98,26 +103,5 @@ export class LanguageSupportPrompt {
     return all.filter(
       (plugin: PluginSummary): boolean => plugin.state === 'available' && serves(plugin),
     );
-  }
-
-  /**
-   * Turns a Monaco language identifier into something worth showing a person.
-   * @param language The language identifier.
-   * @returns Returns the display name.
-   */
-  private languageName(language: string): string {
-    const names: Readonly<Record<string, string>> = {
-      typescript: 'TypeScript',
-      javascript: 'JavaScript',
-      python: 'Python',
-      csharp: 'C#',
-      cpp: 'C++',
-      c: 'C',
-      java: 'Java',
-      kotlin: 'Kotlin',
-      rust: 'Rust',
-      go: 'Go',
-    };
-    return names[language] ?? language;
   }
 }

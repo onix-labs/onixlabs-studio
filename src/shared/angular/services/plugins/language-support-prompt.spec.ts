@@ -141,4 +141,12 @@ describe('LanguageSupportPrompt', () => {
 
     expect(raised).toEqual([]);
   });
+
+  it('offerFor_staysUntilAnswered', () => {
+    // A transient toast lasts five seconds; an offer carrying a button the user must reach for cannot
+    // expire on a timer, or the action is unclickable in practice.
+    build().offerFor('python');
+
+    expect(raised[0]?.sticky).toBe(true);
+  });
 });
