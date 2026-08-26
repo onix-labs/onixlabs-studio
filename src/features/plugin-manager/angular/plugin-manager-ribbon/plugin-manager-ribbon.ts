@@ -6,7 +6,7 @@ import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/rib
 import { Icon } from '@shared/angular/icons/icon';
 import { contributeFeatureMenu } from '@shared/angular/services/app-menu/contribute-feature-menu';
 import { MenuContribution } from '@shared/angular/services/app-menu/app-menu-model';
-import { Plugins } from '../plugins/plugins';
+import { Plugins } from '@shared/angular/services/plugins/plugins';
 
 /**
  * The contextual ribbon shown while a Plugin Manager tab is active. There is one action — reload what

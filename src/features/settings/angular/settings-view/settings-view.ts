@@ -13,11 +13,14 @@ import {
 } from '@angular/core';
 import { SettingsNavigation } from '@shared/angular/services/settings-navigation/settings-navigation';
 import { Log } from '@shared/angular/services/log/log';
+import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
+import { languageDisplayName } from '@shared/angular/services/plugins/language-names';
 import { AiSettingsSection } from './sections/ai-settings/ai-settings';
 import { KeyboardSettingsSection } from './sections/keyboard-settings/keyboard-settings';
 import { SourceControlSettingsSection } from './sections/source-control-settings/source-control-settings';
 import { TerminalSettingsSection } from './sections/terminal-settings/terminal-settings';
 import { EditorProfiles } from './editor-profiles/editor-profiles';
+import { LanguageServerSettings } from './language-server-settings/language-server-settings';
 import { SettingsSection } from './settings-section/settings-section';
 import { SettingsRestart } from '@features/settings/angular/settings-restart';
 import { Icon } from '@shared/angular/icons/icon';
@@ -81,6 +84,12 @@ interface SettingsNavNode {
   readonly sectionId?: SettingsSectionId;
 
   /**
+   * Gets the language a leaf configures, for the Language Servers branch whose leaves all share one
+   * section and differ only by the language they are about. Absent everywhere else.
+   */
+  readonly language?: string;
+
+  /**
    * Gets the node's children, for a branch; absent for a leaf.
    */
   readonly children?: readonly SettingsNavNode[];
@@ -110,6 +119,11 @@ interface SettingsTreeData {
    * Gets the section content a leaf row selects; absent for a branch row.
    */
   readonly sectionId?: SettingsSectionId;
+
+  /**
+   * Gets the language the row configures, for a Language Servers leaf.
+   */
+  readonly language?: string;
 }
 
 /**
@@ -120,6 +134,7 @@ interface SettingsTreeData {
   imports: [
     Button,
     EditorProfiles,
+    LanguageServerSettings,
     AiSettingsSection,
     KeyboardSettingsSection,
     SourceControlSettingsSection,
@@ -155,10 +170,34 @@ export class SettingsView {
   private readonly log: Log = inject(Log);
 
   /**
+   * Holds the language-server settings, which decide the languages the tree offers.
+   */
+  private readonly lspSettings: LspSettings = inject(LspSettings);
+
+  /**
    * Holds the identifier of the section currently shown in the content pane.
    */
   private readonly section: WritableSignal<SettingsSectionId> =
     signal<SettingsSectionId>('appearance');
+
+  /**
+   * Holds the language whose server settings are on show. Every Language Servers leaf shares one
+   * section, differing only in the language it is about, so the selected language is tracked here
+   * rather than encoded in a section id per language.
+   */
+  private readonly selectedLanguage: WritableSignal<string> = signal<string>('');
+
+  /**
+   * Gets the language whose server settings are on show, for the content pane.
+   */
+  protected readonly activeLanguage: Signal<string> = this.selectedLanguage.asReadonly();
+
+  /**
+   * Gets the display name of the language whose server settings are on show.
+   */
+  protected readonly activeLanguageName: Signal<string> = computed((): string =>
+    languageDisplayName(this.selectedLanguage()),
+  );
 
   /**
    * Holds the ids of the navigation nodes currently expanded in the tree. The root containing the
@@ -190,7 +229,7 @@ export class SettingsView {
    * leaf; Application and Artificial Intelligence group several, and the latter nests a Providers branch
    * with a leaf per company.
    */
-  protected readonly sections: readonly SettingsNavNode[] = [
+  private readonly staticSections: readonly SettingsNavNode[] = [
     {
       id: 'application',
       label: 'Application',
@@ -257,15 +296,40 @@ export class SettingsView {
       icon: Icon.TERMINAL,
       children: [{ id: 'terminal-general', label: 'General', sectionId: 'terminal' }],
     },
-    {
-      id: 'language-servers',
-      label: 'Language Servers',
-      icon: Icon.CODE_INLINE,
-      children: [
-        { id: 'language-servers-general', label: 'General', sectionId: 'language-servers' },
-      ],
-    },
   ];
+
+  /**
+   * Gets the navigation tree, with the Language Servers branch built from what is installed.
+   *
+   * The branch carries a leaf per language that has an installed server, rather than one page listing
+   * every server Studio knows about. A language nobody has installed support for is not a setting with
+   * nothing to say — it is a plugin to install, which is the Plugin Manager's business — so it does not
+   * appear here at all, and the branch itself disappears when nothing is installed.
+   */
+  protected readonly sections: Signal<readonly SettingsNavNode[]> = computed(
+    (): readonly SettingsNavNode[] => {
+      const languages: readonly string[] = this.lspSettings.installedLanguages();
+      if (languages.length === 0) {
+        return this.staticSections;
+      }
+      return [
+        ...this.staticSections,
+        {
+          id: 'language-servers',
+          label: 'Language Servers',
+          icon: Icon.CODE_INLINE,
+          children: languages.map(
+            (language: string): SettingsNavNode => ({
+              id: `language-servers-${language}`,
+              label: languageDisplayName(language),
+              sectionId: 'language-servers',
+              language,
+            }),
+          ),
+        },
+      ];
+    },
+  );
 
   /**
    * Consumes a pending deep-link request (see {@link SettingsNavigation}): when another surface asks to
@@ -304,7 +368,7 @@ export class SettingsView {
   protected readonly rows: Signal<readonly TreeRow[]> = computed((): readonly TreeRow[] => {
     const expanded: ReadonlySet<string> = this.expandedNodes();
     const rows: TreeRow[] = [];
-    this.appendRows(this.sections, 0, expanded, rows);
+    this.appendRows(this.sections(), 0, expanded, rows);
     return rows;
   });
 
@@ -312,6 +376,12 @@ export class SettingsView {
    * Gets the id of the selected navigation row: the leaf whose content is on show, or null when none.
    */
   protected readonly selectedRowId: Signal<string | null> = computed((): string | null => {
+    // The Language Servers leaves all show the same section and differ only by language, so the
+    // selected row is the one whose language matches rather than simply the first leaf found.
+    const language: string = this.selectedLanguage();
+    if (this.section() === 'language-servers' && language !== '') {
+      return `language-servers-${language}`;
+    }
     const path: readonly SettingsNavNode[] | null = this.pathToSection(this.section());
     return path === null ? null : path[path.length - 1].id;
   });
@@ -336,6 +406,9 @@ export class SettingsView {
       this.toggleNode(row.id);
     } else if (data.sectionId !== undefined) {
       this.log.debug('settings', 'Section selected', data.sectionId);
+      if (data.language !== undefined) {
+        this.selectedLanguage.set(data.language);
+      }
       this.section.set(data.sectionId);
     }
   }
@@ -366,6 +439,7 @@ export class SettingsView {
           icon: node.icon,
           expandable: isBranch,
           sectionId: node.sectionId,
+          language: node.language,
         } satisfies SettingsTreeData,
       });
       if (isBranch && isExpanded && node.children !== undefined) {
@@ -407,7 +481,7 @@ export class SettingsView {
    */
   private pathToSection(
     id: SettingsSectionId,
-    nodes: readonly SettingsNavNode[] = this.sections,
+    nodes: readonly SettingsNavNode[] = this.sections(),
     trail: readonly SettingsNavNode[] = [],
   ): readonly SettingsNavNode[] | null {
     for (const node of nodes) {

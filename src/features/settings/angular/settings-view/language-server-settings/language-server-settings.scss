@@ -1,0 +1,21 @@
+// One language's server settings. The header names what actually serves the language, since with
+// plugins that is no longer a fixed answer.
+:host {
+  display: block;
+}
+
+.language-server-settings__header {
+  margin-block-end: 0.75rem;
+}
+
+.language-server-settings__title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.language-server-settings__subtitle {
+  margin: 0.25rem 0 0;
+  font-size: 0.8rem;
+  color: var(--form-muted-foreground-color);
+}

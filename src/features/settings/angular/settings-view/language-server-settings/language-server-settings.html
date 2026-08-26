@@ -1,0 +1,61 @@
+<section class="language-server-settings">
+  <header class="language-server-settings__header">
+    <h3 class="language-server-settings__title">{{ languageName() }}</h3>
+    @if (activeServer()) {
+      <p class="language-server-settings__subtitle">
+        Served by {{ activeServerName() }}.
+        @if (!hasChoice()) {
+          Install another provider under Plugins to choose between them.
+        }
+      </p>
+    }
+  </header>
+
+  @if (hasChoice()) {
+    <app-setting-row
+      label="Language server"
+      description="Which of the installed servers serves this language."
+    >
+      <app-dropdown
+        [options]="options()"
+        [value]="activeServer()"
+        [ariaLabel]="'Language server for ' + languageName()"
+        (valueChange)="choose($event)"
+      />
+    </app-setting-row>
+  }
+
+  <app-setting-row
+    label="Enabled"
+    [description]="'Run ' + activeServerName() + ' for ' + languageName() + ' files.'"
+  >
+    <app-toggle
+      [checked]="enabled()"
+      [ariaLabel]="'Enable ' + activeServerName()"
+      (checkedChange)="setEnabled($event)"
+    />
+  </app-setting-row>
+
+  <app-setting-row
+    label="Arguments"
+    description="Extra command-line arguments appended when the server starts. Separate arguments with spaces."
+  >
+    <app-text-field
+      [value]="args()"
+      [ariaLabel]="activeServerName() + ' arguments'"
+      placeholder="None"
+      (valueChange)="setArgs($event)"
+    />
+  </app-setting-row>
+
+  @if (pathOverride()) {
+    <app-setting-row [label]="pathLabel()" [description]="pathDescription()">
+      <app-text-field
+        [value]="pathValue()"
+        [ariaLabel]="pathLabel()"
+        placeholder="Detect automatically"
+        (valueChange)="setPath($event)"
+      />
+    </app-setting-row>
+  }
+</section>

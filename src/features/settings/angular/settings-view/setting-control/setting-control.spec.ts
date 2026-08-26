@@ -55,9 +55,9 @@ describe('SettingControl', () => {
   });
 
   it('render_whenTextControl_rendersATextFieldWithTheRegistryPlaceholder', async () => {
-    const element: HTMLElement = await render('lsp.path.typescriptServer');
+    const element: HTMLElement = await render('ai.claudeExecutablePath');
     const input: HTMLInputElement = element.querySelector<HTMLInputElement>('input[type="text"]')!;
-    expect(input.placeholder).toBe('Bundled');
+    expect(input.placeholder).toBe('/usr/local/bin/claude');
   });
 
   it('render_whenCustomControl_rendersNoGenericControl', async () => {
@@ -73,8 +73,11 @@ describe('SettingControl', () => {
     expect(element.querySelectorAll('option').length).toBe(3);
   });
 
-  it('render_whenLspOwnedToggle_reflectsTheEnabledState', async () => {
-    const element: HTMLElement = await render('lsp.server.typescript.enabled');
+  it('render_whenDisplayOwnedToggle_reflectsTheEnabledState', async () => {
+    // A setting whose value lives outside the Settings store, resolved through the owner adapter. The
+    // language-server settings used to be the example here; they are now rendered by their own
+    // per-language page, so Display stands in as the foreign owner.
+    const element: HTMLElement = await render('display.hardwareAcceleration');
     const checkbox: HTMLInputElement =
       element.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
     expect(checkbox.checked).toBe(true);

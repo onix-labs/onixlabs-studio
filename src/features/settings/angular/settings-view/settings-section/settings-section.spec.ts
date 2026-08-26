@@ -62,8 +62,10 @@ describe('SettingsSection', () => {
   });
 
   it('render_whenForeignOwnedSection_rendersItsRows', async () => {
-    const element: HTMLElement = await render('language-servers');
-    expect(element.querySelectorAll('app-setting-row').length).toBe(14);
+    // Security is owned by its own service rather than the Settings store, so this covers the
+    // owner-adapter path the language-server section used to before it became a per-language page.
+    const element: HTMLElement = await render('security');
+    expect(element.querySelectorAll('app-setting-row').length).toBe(1);
   });
 
   it('render_whenSectionHasFooter_rendersTheHint', async () => {

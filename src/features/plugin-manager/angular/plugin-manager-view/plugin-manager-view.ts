@@ -12,7 +12,7 @@ import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { Table, TableColumn, TableRow, TableRowDef } from '@shared/angular/components/table/table';
-import { Plugins } from '../plugins/plugins';
+import { Plugins } from '@shared/angular/services/plugins/plugins';
 
 /**
  * The plugin table's columns.
