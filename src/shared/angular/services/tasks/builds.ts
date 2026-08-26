@@ -1,5 +1,5 @@
 import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
-import { ProjectAction } from '@shared/api/project-system';
+import { ProjectAction, ProjectEntry } from '@shared/api/project-system';
 import { RunConfiguration, RunPresentation } from '@shared/api/studio';
 import { Log } from '@shared/angular/services/log/log';
 
@@ -98,6 +98,21 @@ export interface BuildActionOptions {
 }
 
 /**
+ * The options accompanying a capability action, which may name the single project it acts on.
+ *
+ * The target is a whole {@link ProjectEntry} rather than a bare path because ecosystems address a
+ * project differently: .NET names the project *file*, Cargo and npm the package *name*, Gradle and
+ * Maven a directory-derived module path. Carrying both halves lets each family's compiler take the
+ * one it needs, from the same value the Solution Explorer's rows already hold.
+ */
+export interface ProjectActionOptions extends BuildActionOptions {
+  /**
+   * Gets the project the action runs against, or undefined to run against the whole workspace.
+   */
+  readonly project?: ProjectEntry;
+}
+
+/**
  * The contract a workspace's build runner exposes to the {@link Builds} seam so the root ribbon can
  * drive it.
  */
@@ -140,11 +155,20 @@ export interface BuildHandler {
   /**
    * Runs a capability action (Build/Clean/Rebuild…), compiling it to a command for the workspace's
    * ecosystem and executing it. Distinct from the discovered tasks, so these never appear in the Run
-   * dropdown.
+   * dropdown. Naming a {@link ProjectActionOptions.project} narrows the action to that project alone.
    * @param action The action to run.
    * @param options The action options.
    */
-  runAction(action: ProjectAction, options?: BuildActionOptions): void;
+  runAction(action: ProjectAction, options?: ProjectActionOptions): void;
+
+  /**
+   * Determines whether the workspace's ecosystem can express an action against a single project, so a
+   * surface offering per-project verbs can omit the ones it would not be able to honour rather than
+   * silently widening them to the whole workspace.
+   * @param action The action to test.
+   * @returns Returns true when a per-project form exists.
+   */
+  supportsProjectAction(action: ProjectAction): boolean;
 
   /**
    * Cancels one in-flight run.
@@ -246,13 +270,24 @@ export class Builds {
   }
 
   /**
-   * Runs a capability action (Build/Clean/Rebuild…) on the active workspace.
+   * Runs a capability action (Build/Clean/Rebuild…) on the active workspace, against the whole
+   * workspace or — when {@link ProjectActionOptions.project} is given — that project alone.
    * @param action The action to run.
    * @param options The action options.
    */
-  public runAction(action: ProjectAction, options?: BuildActionOptions): void {
-    this.log.info('Builds', `Run action '${action}'`);
+  public runAction(action: ProjectAction, options?: ProjectActionOptions): void {
+    this.log.info('Builds', `Run action '${action}'`, options?.project?.name);
     this.handler()?.runAction(action, options);
+  }
+
+  /**
+   * Determines whether the active workspace's ecosystem can express an action against a single
+   * project. False when no workspace is active.
+   * @param action The action to test.
+   * @returns Returns true when a per-project form exists.
+   */
+  public supportsProjectAction(action: ProjectAction): boolean {
+    return this.handler()?.supportsProjectAction(action) ?? false;
   }
 
   /**

@@ -26,7 +26,30 @@ import {
   TerminalSessions,
 } from '@shared/angular/services/terminal-sessions/terminal-sessions';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
-import { ActiveRun, BuildActionOptions, BuildGroup, BuildHandler, BuildTask } from './builds';
+import {
+  ActiveRun,
+  BuildActionOptions,
+  BuildGroup,
+  BuildHandler,
+  BuildTask,
+  ProjectActionOptions,
+} from './builds';
+import {
+  BuildFamily,
+  commandForAction,
+  commandForProjectAction,
+  detectBuildFamily,
+  gradleCommand,
+  hasCargoProject,
+  hasCmakeProject,
+  hasDotnetProject,
+  hasGoProject,
+  hasGradleProject,
+  hasMakeProject,
+  hasMavenProject,
+  mavenCommand,
+  supportsProjectAction,
+} from './action-commands';
 import { MatchedProblem, parseProblems } from './problem-matcher';
 import { RUN_PROJECT_MODEL } from './run-project-model';
 
@@ -36,15 +59,17 @@ import { RUN_PROJECT_MODEL } from './run-project-model';
 const PROVIDER_ID: string = 'tasks';
 
 /**
- * Matches a .NET solution or project file by extension, used to detect a .NET workspace root.
+ * The human-readable name of each capability action, used to label a per-project run. A workspace-wide
+ * action still labels itself with its command line, which is what the ribbon has always shown.
  */
-const DOTNET_PROJECT_PATTERN: RegExp = /\.(sln|slnx|csproj|fsproj|vbproj)$/i;
-
-/**
- * Matches a Gradle build or settings script (Groovy or Kotlin DSL), used to detect a Gradle workspace
- * root.
- */
-const GRADLE_SCRIPT_PATTERN: RegExp = /^(build|settings)\.gradle(\.kts)?$/;
+const ACTION_LABELS: Readonly<Record<ProjectAction, string>> = {
+  build: 'Build',
+  clean: 'Clean',
+  rebuild: 'Rebuild',
+  test: 'Test',
+  publish: 'Publish',
+  restore: 'Restore',
+};
 
 /**
  * Determines whether a path is absolute (a POSIX root or a Windows drive).
@@ -519,19 +544,81 @@ export class BuildRunner implements BuildHandler, OnDestroy {
    * be compiled for the ecosystem.
    * @param action The action to run.
    */
-  public runAction(action: ProjectAction, options?: BuildActionOptions): void {
+  public runAction(action: ProjectAction, options?: ProjectActionOptions): void {
     const root: DirectoryListing | null = this.workspace.root();
     if (root === null) {
       return;
     }
-    const command: string | null = this.commandForAction(action, root);
+    const family: BuildFamily | null = detectBuildFamily(root);
+    if (family === null) {
+      return;
+    }
+    const project: ProjectEntry | undefined = options?.project;
+    if (project === undefined) {
+      const command: string | null = commandForAction(action, family, root);
+      if (command === null) {
+        return;
+      }
+      this.dispatchBuild(
+        { id: `action:${action}`, label: command, group: 'other', command, cwd: root.path },
+        options,
+      );
+      return;
+    }
+    const command: string | null = commandForProjectAction(action, family, root, project);
     if (command === null) {
+      // Never a silent widening: the request named one project, so failing to express it is reported
+      // rather than quietly run against the whole workspace.
+      this.announceUnavailableProjectAction(action, project);
       return;
     }
     this.dispatchBuild(
-      { id: `action:${action}`, label: command, group: 'other', command, cwd: root.path },
+      {
+        // Keyed by project as well as action, so building one project replaces only its own problems
+        // in the Error List and leaves every other project's standing.
+        id: `action:${action}:${project.path}`,
+        label: `${ACTION_LABELS[action]} — ${project.name}`,
+        group: 'other',
+        command,
+        cwd: root.path,
+      },
       options,
     );
+  }
+
+  /**
+   * Determines whether this workspace's ecosystem can express an action against a single project.
+   * @param action The action to test.
+   * @returns Returns true when a per-project form exists.
+   */
+  public supportsProjectAction(action: ProjectAction): boolean {
+    const root: DirectoryListing | null = this.workspace.root();
+    if (root === null) {
+      return false;
+    }
+    const family: BuildFamily | null = detectBuildFamily(root);
+    return family !== null && supportsProjectAction(action, family);
+  }
+
+  /**
+   * Reports that a per-project action could not be expressed for this workspace's ecosystem. Surfaces
+   * as a warning rather than running anything, so the user learns the action did not happen instead of
+   * watching the whole workspace build under a menu item that named one project.
+   * @param action The action that was requested.
+   * @param project The project it was requested for.
+   */
+  private announceUnavailableProjectAction(action: ProjectAction, project: ProjectEntry): void {
+    this.log.warn(
+      'BuildRunner',
+      `No per-project '${action}' command for this workspace`,
+      project.path,
+    );
+    this.notifications.notify({
+      severity: 'warning',
+      title: `Cannot ${ACTION_LABELS[action].toLowerCase()} this project on its own`,
+      detail: `This workspace's toolchain has no command that targets '${project.name}' alone, so nothing was run.`,
+      key: `action:${action}:${project.path}`,
+    });
   }
 
   /**
@@ -616,318 +703,6 @@ export class BuildRunner implements BuildHandler, OnDestroy {
       ],
       key: `build:${this.buildSessionId}`,
     });
-  }
-
-  /**
-   * Compiles a capability action into a shell command for the workspace's ecosystem, or null when the
-   * ecosystem has no command for it. .NET, and the JVM (Gradle or Maven), are compiled here; other
-   * ecosystems gain their action commands with their project-system providers.
-   * @param action The action.
-   * @param root The workspace root listing.
-   * @returns Returns the command, or null.
-   */
-  private commandForAction(action: ProjectAction, root: DirectoryListing): string | null {
-    if (this.hasDotnetProject(root)) {
-      return this.dotnetAction(action);
-    }
-    if (this.hasGradleProject(root)) {
-      return this.gradleAction(action, this.gradleCommand(root));
-    }
-    if (this.hasMavenProject(root)) {
-      return this.mavenAction(action, this.mavenCommand(root));
-    }
-    if (this.hasCmakeProject(root)) {
-      return this.cmakeAction(action);
-    }
-    if (this.hasMakeProject(root)) {
-      return this.makeAction(action);
-    }
-    if (this.hasCargoProject(root)) {
-      return this.cargoAction(action);
-    }
-    if (this.hasGoProject(root)) {
-      return this.goAction(action);
-    }
-    // Last: a compiled ecosystem's root often also carries a package.json for its tooling, and the
-    // toolchain that compiles the sources owns the action.
-    if (this.hasNodeProject(root)) {
-      return this.nodeAction(action);
-    }
-    return null;
-  }
-
-  /**
-   * Compiles a capability action into a `dotnet` command, or null when .NET has none for it.
-   * @param action The action.
-   * @returns Returns the command, or null.
-   */
-  private dotnetAction(action: ProjectAction): string | null {
-    switch (action) {
-      case 'build':
-        return 'dotnet build';
-      case 'clean':
-        return 'dotnet clean';
-      case 'rebuild':
-        return 'dotnet build --no-incremental';
-      case 'test':
-        return 'dotnet test';
-      case 'publish':
-        return 'dotnet publish';
-      case 'restore':
-        return 'dotnet restore';
-    }
-  }
-
-  /**
-   * Compiles a capability action into a Gradle command, or null when Gradle has none for it. Gradle
-   * declares only Build/Clean/Test (see the JVM project system's capabilities).
-   * @param action The action.
-   * @param gradle The Gradle invocation (the wrapper when present, else `gradle`).
-   * @returns Returns the command, or null.
-   */
-  private gradleAction(action: ProjectAction, gradle: string): string | null {
-    switch (action) {
-      case 'build':
-        return `${gradle} build`;
-      case 'clean':
-        return `${gradle} clean`;
-      case 'test':
-        return `${gradle} test`;
-      default:
-        return null;
-    }
-  }
-
-  /**
-   * Compiles a capability action into a Maven command, or null when Maven has none for it. Maven
-   * declares only Build/Clean/Test (see the JVM project system's capabilities).
-   * @param action The action.
-   * @param mvn The Maven invocation (the wrapper when present, else `mvn`).
-   * @returns Returns the command, or null.
-   */
-  private mavenAction(action: ProjectAction, mvn: string): string | null {
-    switch (action) {
-      case 'build':
-        return `${mvn} package`;
-      case 'clean':
-        return `${mvn} clean`;
-      case 'test':
-        return `${mvn} test`;
-      default:
-        return null;
-    }
-  }
-
-  /**
-   * Compiles a capability action into a CMake command, or null when CMake has none for it. The build
-   * configures into a `build/` directory first (idempotent), so Build works from a fresh checkout;
-   * Clean and Rebuild act on that configured tree. CMake declares Build/Clean/Rebuild (see the C/C++
-   * project system's capabilities).
-   * @param action The action.
-   * @returns Returns the command, or null.
-   */
-  private cmakeAction(action: ProjectAction): string | null {
-    switch (action) {
-      case 'build':
-        return 'cmake -S . -B build && cmake --build build';
-      case 'clean':
-        return 'cmake --build build --target clean';
-      case 'rebuild':
-        return 'cmake -S . -B build && cmake --build build --clean-first';
-      default:
-        return null;
-    }
-  }
-
-  /**
-   * Compiles a capability action into a Make command, or null when Make has none for it.
-   * @param action The action.
-   * @returns Returns the command, or null.
-   */
-  private makeAction(action: ProjectAction): string | null {
-    switch (action) {
-      case 'build':
-        return 'make';
-      case 'clean':
-        return 'make clean';
-      case 'rebuild':
-        return 'make clean && make';
-      default:
-        return null;
-    }
-  }
-
-  /**
-   * Compiles a capability action into a Cargo command, or null when Cargo has none for it. Cargo
-   * declares Build/Clean/Rebuild (see the Rust project system's capabilities).
-   * @param action The action.
-   * @returns Returns the command, or null.
-   */
-  private cargoAction(action: ProjectAction): string | null {
-    switch (action) {
-      case 'build':
-        return 'cargo build';
-      case 'clean':
-        return 'cargo clean';
-      case 'rebuild':
-        return 'cargo clean && cargo build';
-      default:
-        return null;
-    }
-  }
-
-  /**
-   * Compiles a capability action into a Go command, or null when Go has none for it. Go declares
-   * Build/Clean/Rebuild (see the Go project system's capabilities); rebuild forces a full recompile
-   * with `-a`.
-   * @param action The action.
-   * @returns Returns the command, or null.
-   */
-  private goAction(action: ProjectAction): string | null {
-    switch (action) {
-      case 'build':
-        return 'go build ./...';
-      case 'clean':
-        return 'go clean';
-      case 'rebuild':
-        return 'go build -a ./...';
-      default:
-        return null;
-    }
-  }
-
-  /**
-   * Compiles a capability action into an npm command, or null when npm has none for it. Each action
-   * runs the conventional script of the same name — the scripts the Node project system declares its
-   * actions from, so a declared action always has a script behind it. Rebuild is never declared: npm
-   * scripts have no incremental/from-clean distinction to honour.
-   * @param action The action.
-   * @returns Returns the command, or null.
-   */
-  private nodeAction(action: ProjectAction): string | null {
-    switch (action) {
-      case 'build':
-      case 'clean':
-      case 'test':
-        return `npm run ${action}`;
-      default:
-        return null;
-    }
-  }
-
-  /**
-   * Determines whether the workspace root holds a Node package manifest.
-   * @param root The workspace root listing.
-   * @returns Returns true when a `package.json` is present.
-   */
-  private hasNodeProject(root: DirectoryListing): boolean {
-    return root.entries.some(
-      (entry: DirectoryEntry): boolean => entry.type === 'file' && entry.name === 'package.json',
-    );
-  }
-
-  /**
-   * Determines whether the workspace root holds a .NET solution or project file.
-   * @param root The workspace root listing.
-   * @returns Returns true when a .NET project is present.
-   */
-  private hasDotnetProject(root: DirectoryListing): boolean {
-    return root.entries.some(
-      (entry: DirectoryEntry): boolean =>
-        entry.type === 'file' && DOTNET_PROJECT_PATTERN.test(entry.name),
-    );
-  }
-
-  /**
-   * Determines whether the workspace root holds a Gradle build (a build or settings script).
-   * @param root The workspace root listing.
-   * @returns Returns true when a Gradle script is present.
-   */
-  private hasGradleProject(root: DirectoryListing): boolean {
-    return root.entries.some(
-      (entry: DirectoryEntry): boolean =>
-        entry.type === 'file' && GRADLE_SCRIPT_PATTERN.test(entry.name),
-    );
-  }
-
-  /**
-   * Determines whether the workspace root holds a Maven project (a `pom.xml`).
-   * @param root The workspace root listing.
-   * @returns Returns true when a pom is present.
-   */
-  private hasMavenProject(root: DirectoryListing): boolean {
-    return root.entries.some(
-      (entry: DirectoryEntry): boolean => entry.type === 'file' && entry.name === 'pom.xml',
-    );
-  }
-
-  /**
-   * Determines whether the workspace root holds a CMake project (a `CMakeLists.txt`).
-   * @param root The workspace root listing.
-   * @returns Returns true when a `CMakeLists.txt` is present.
-   */
-  private hasCmakeProject(root: DirectoryListing): boolean {
-    return this.hasEntry(root, 'CMakeLists.txt');
-  }
-
-  /**
-   * Determines whether the workspace root holds a Make project (a GNU or POSIX makefile).
-   * @param root The workspace root listing.
-   * @returns Returns true when a makefile is present.
-   */
-  private hasMakeProject(root: DirectoryListing): boolean {
-    return root.entries.some(
-      (entry: DirectoryEntry): boolean =>
-        entry.type === 'file' && /^(GNUmakefile|[Mm]akefile)$/.test(entry.name),
-    );
-  }
-
-  /**
-   * Determines whether the workspace root holds a Cargo project (a `Cargo.toml`).
-   * @param root The workspace root listing.
-   * @returns Returns true when a Cargo manifest is present.
-   */
-  private hasCargoProject(root: DirectoryListing): boolean {
-    return this.hasEntry(root, 'Cargo.toml');
-  }
-
-  /**
-   * Determines whether the workspace root holds a Go module (a `go.mod`).
-   * @param root The workspace root listing.
-   * @returns Returns true when a Go module manifest is present.
-   */
-  private hasGoProject(root: DirectoryListing): boolean {
-    return this.hasEntry(root, 'go.mod');
-  }
-
-  /**
-   * Resolves the Gradle invocation for a root, preferring the checked-in wrapper over a system Gradle.
-   * @param root The workspace root listing.
-   * @returns Returns `./gradlew` when the wrapper is present, else `gradle`.
-   */
-  private gradleCommand(root: DirectoryListing): string {
-    return this.hasEntry(root, 'gradlew') ? './gradlew' : 'gradle';
-  }
-
-  /**
-   * Resolves the Maven invocation for a root, preferring the checked-in wrapper over a system Maven.
-   * @param root The workspace root listing.
-   * @returns Returns `./mvnw` when the wrapper is present, else `mvn`.
-   */
-  private mavenCommand(root: DirectoryListing): string {
-    return this.hasEntry(root, 'mvnw') ? './mvnw' : 'mvn';
-  }
-
-  /**
-   * Determines whether the workspace root holds a file with the given name.
-   * @param root The workspace root listing.
-   * @param name The file name.
-   * @returns Returns true when the file is present.
-   */
-  private hasEntry(root: DirectoryListing, name: string): boolean {
-    return root.entries.some(
-      (entry: DirectoryEntry): boolean => entry.type === 'file' && entry.name === name,
-    );
   }
 
   /**
@@ -1040,11 +815,11 @@ export class BuildRunner implements BuildHandler, OnDestroy {
     if (root === null) {
       return null;
     }
-    if (this.hasGradleProject(root)) {
-      return `${this.gradleCommand(root)} run`;
+    if (hasGradleProject(root)) {
+      return `${gradleCommand(root)} run`;
     }
-    if (this.hasMavenProject(root)) {
-      return `${this.mavenCommand(root)} exec:java`;
+    if (hasMavenProject(root)) {
+      return `${mavenCommand(root)} exec:java`;
     }
     return null;
   }
@@ -1154,10 +929,10 @@ export class BuildRunner implements BuildHandler, OnDestroy {
    * @returns Returns the Gradle tasks, or an empty list.
    */
   private discoverGradle(root: DirectoryListing): BuildTask[] {
-    if (!this.hasGradleProject(root)) {
+    if (!hasGradleProject(root)) {
       return [];
     }
-    const gradle: string = this.gradleCommand(root);
+    const gradle: string = gradleCommand(root);
     return [
       {
         id: 'gradle:build',
@@ -1182,10 +957,10 @@ export class BuildRunner implements BuildHandler, OnDestroy {
    * @returns Returns the Maven tasks, or an empty list.
    */
   private discoverMaven(root: DirectoryListing): BuildTask[] {
-    if (!this.hasMavenProject(root)) {
+    if (!hasMavenProject(root)) {
       return [];
     }
-    const mvn: string = this.mavenCommand(root);
+    const mvn: string = mavenCommand(root);
     return [
       {
         id: 'maven:build',
@@ -1212,7 +987,7 @@ export class BuildRunner implements BuildHandler, OnDestroy {
    * @returns Returns the CMake task, or an empty list.
    */
   private discoverCmake(root: DirectoryListing): BuildTask[] {
-    if (!this.hasCmakeProject(root)) {
+    if (!hasCmakeProject(root)) {
       return [];
     }
     return [
@@ -1232,11 +1007,7 @@ export class BuildRunner implements BuildHandler, OnDestroy {
    * @returns Returns the Make task, or an empty list.
    */
   private discoverMake(root: DirectoryListing): BuildTask[] {
-    const hasMakefile: boolean = root.entries.some(
-      (entry: DirectoryEntry): boolean =>
-        entry.type === 'file' && /^(GNUmakefile|[Mm]akefile)$/.test(entry.name),
-    );
-    if (!hasMakefile) {
+    if (!hasMakeProject(root)) {
       return [];
     }
     return [{ id: 'make:build', label: 'make', group: 'build', command: 'make', cwd: root.path }];
@@ -1248,7 +1019,7 @@ export class BuildRunner implements BuildHandler, OnDestroy {
    * @returns Returns the Cargo tasks, or an empty list.
    */
   private discoverCargo(root: DirectoryListing): BuildTask[] {
-    if (!this.hasCargoProject(root)) {
+    if (!hasCargoProject(root)) {
       return [];
     }
     return [
@@ -1276,7 +1047,7 @@ export class BuildRunner implements BuildHandler, OnDestroy {
    * @returns Returns the Go tasks, or an empty list.
    */
   private discoverGo(root: DirectoryListing): BuildTask[] {
-    if (!this.hasGoProject(root)) {
+    if (!hasGoProject(root)) {
       return [];
     }
     return [
@@ -1304,7 +1075,7 @@ export class BuildRunner implements BuildHandler, OnDestroy {
    * @returns Returns the .NET tasks, or an empty list.
    */
   private discoverDotnet(root: DirectoryListing): BuildTask[] {
-    if (!this.hasDotnetProject(root)) {
+    if (!hasDotnetProject(root)) {
       return [];
     }
     return [
