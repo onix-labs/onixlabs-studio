@@ -22,6 +22,7 @@ import { toDiagnostic, toMarkerData } from './lsp-diagnostic-mapper';
 import { LspContentEdit, minimalReplaceEdit } from './lsp-text-sync';
 import { semanticLegendOf, supportsPullDiagnostics } from './lsp-capabilities';
 import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
+import { LanguageSupportPrompt } from '@shared/angular/services/plugins/language-support-prompt';
 import { LspStatus } from './lsp-status';
 
 /**
@@ -312,6 +313,11 @@ export class LspClient implements OnDestroy {
    * Holds the user's language-server settings, used to skip a server the user has disabled.
    */
   private readonly lspSettings: LspSettings = inject(LspSettings);
+
+  /**
+   * Holds the prompt that offers to install language support when a document finds none.
+   */
+  private readonly languageSupport: LanguageSupportPrompt = inject(LanguageSupportPrompt);
 
   /**
    * Holds the structured logger.
@@ -781,6 +787,10 @@ export class LspClient implements OnDestroy {
     }
     const serverId: string | null = this.lspSettings.serverForLanguage(state.languageId);
     if (serverId === null) {
+      // No server serves this language. That may be because none exists, or because the plugin that
+      // would provide one has not been installed — the prompt tells those apart and only speaks up for
+      // the second.
+      this.languageSupport.offerFor(state.languageId);
       // The catalogue is loaded asynchronously from the main process, so a document opened before it
       // arrives would otherwise be read as "this language has no server" and left unserved for the
       // life of the tab. Retry once the catalogue lands; if the language genuinely has no server the

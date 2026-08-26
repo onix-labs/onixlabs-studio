@@ -938,7 +938,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         owner: 'lsp',
         title: 'Java',
         description:
-          'Eclipse JDT Language Server. Requires a Java 21+ runtime; downloaded on first use.',
+          'Eclipse JDT Language Server. Install it under Plugins; it needs a Java 21+ runtime to run.',
         control: { kind: 'toggle' },
       },
       {
@@ -950,16 +950,16 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         control: { kind: 'text', placeholder: 'None' },
       },
       {
-        key: 'lsp.server.python.enabled',
+        key: 'lsp.server.pyright.enabled',
         owner: 'lsp',
-        title: 'Python',
+        title: 'Pyright (Python)',
         description: 'Pyright. Diagnostics, completion, hover, and go-to-definition for Python.',
         control: { kind: 'toggle' },
       },
       {
-        key: 'lsp.server.python.args',
+        key: 'lsp.server.pyright.args',
         owner: 'lsp',
-        title: 'Python arguments',
+        title: 'Pyright arguments',
         description:
           'Extra command-line arguments appended when the server starts. Separate arguments with spaces.',
         control: { kind: 'text', placeholder: 'None' },
@@ -969,7 +969,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         owner: 'lsp',
         title: 'C#',
         description:
-          'Roslyn language server. Requires the .NET 10+ SDK; downloaded on first use. Build the project for full results.',
+          'Roslyn language server. Install it under Plugins; it needs the .NET 10+ SDK. Build the project for full results.',
         control: { kind: 'toggle' },
       },
       {
@@ -985,7 +985,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         owner: 'lsp',
         title: 'C / C++',
         description:
-          'clangd. Requires LLVM or Xcode Command Line Tools. A compile_commands.json gives full results.',
+          'clangd. Install it under Plugins. A compile_commands.json gives full results.',
         control: { kind: 'toggle' },
       },
       {
@@ -1001,7 +1001,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         owner: 'lsp',
         title: 'TypeScript server path',
         description:
-          'Path to a custom typescript-language-server CLI module (its JavaScript entry point). Leave empty to use the server bundled with Studio.',
+          'Path to a custom typescript-language-server CLI module (its JavaScript entry point). Leave empty to use the copy installed under Plugins.',
         control: { kind: 'text', placeholder: 'Bundled' },
       },
       {

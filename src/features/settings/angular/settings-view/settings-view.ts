@@ -18,6 +18,7 @@ import { KeyboardSettingsSection } from './sections/keyboard-settings/keyboard-s
 import { SourceControlSettingsSection } from './sections/source-control-settings/source-control-settings';
 import { TerminalSettingsSection } from './sections/terminal-settings/terminal-settings';
 import { EditorProfiles } from './editor-profiles/editor-profiles';
+import { LanguageServerPicker } from './language-server-picker/language-server-picker';
 import { SettingsSection } from './settings-section/settings-section';
 import { SettingsRestart } from '@features/settings/angular/settings-restart';
 import { Icon } from '@shared/angular/icons/icon';
@@ -120,6 +121,7 @@ interface SettingsTreeData {
   imports: [
     Button,
     EditorProfiles,
+    LanguageServerPicker,
     AiSettingsSection,
     KeyboardSettingsSection,
     SourceControlSettingsSection,

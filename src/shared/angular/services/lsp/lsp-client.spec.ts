@@ -18,6 +18,7 @@ import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { LspClient } from './lsp-client';
 import { LspFeatures } from './lsp-features';
 import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
+import { LanguageSupportPrompt } from '@shared/angular/services/plugins/language-support-prompt';
 import { LspServer, LspStatus } from './lsp-status';
 
 /**
@@ -206,6 +207,7 @@ describe('LspClient', () => {
   let monaco: FakeMonaco;
   let root: WritableSignal<DirectoryListing | null>;
   let disabledServers: Set<string>;
+  let offeredLanguages: string[];
 
   /**
    * Builds the client under test with the fakes wired in.
@@ -218,6 +220,14 @@ describe('LspClient', () => {
         { provide: Diagnostics, useValue: diagnostics },
         { provide: Monaco, useValue: monaco },
         { provide: Workspace, useValue: { root } },
+        {
+          provide: LanguageSupportPrompt,
+          useValue: {
+            offerFor: (language: string): void => {
+              offeredLanguages.push(language);
+            },
+          },
+        },
         {
           provide: LspSettings,
           useValue: {
@@ -245,6 +255,7 @@ describe('LspClient', () => {
     diagnostics = new FakeDiagnostics();
     monaco = new FakeMonaco();
     disabledServers = new Set<string>();
+    offeredLanguages = [];
     root = signal<DirectoryListing | null>({ path: '/root', name: 'root', entries: [] });
     (window as unknown as { bridge: Bridge }).bridge = lsp;
   });
@@ -881,5 +892,34 @@ describe('LspClient', () => {
     } finally {
       vi.restoreAllMocks();
     }
+  });
+
+  it('syncDocument_languageWithNoServer_offersToInstallSupport', async () => {
+    // The first-run path: no plugin installed for this language, so the client asks the prompt to
+    // offer one rather than silently doing nothing.
+    const client: LspClient = build();
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/root/main.rb',
+      languageId: 'ruby',
+      content: 'puts 1',
+    });
+    await flush();
+
+    expect(offeredLanguages).toEqual(['ruby']);
+    expect(lsp.starts).toEqual([]);
+  });
+
+  it('syncDocument_languageWithAServer_doesNotOffer', async () => {
+    const client: LspClient = build();
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/root/a.ts',
+      languageId: 'typescript',
+      content: 'const a = 1;',
+    });
+    await flush();
+
+    expect(offeredLanguages).toEqual([]);
   });
 });

@@ -1,0 +1,30 @@
+<section class="language-server-picker">
+  <header class="language-server-picker__header">
+    <h3 class="language-server-picker__title">Language servers</h3>
+    <p class="language-server-picker__description">
+      Which server serves each language. A language appears here once you have installed more than
+      one plugin that provides a server for it — install them under Plugins.
+    </p>
+  </header>
+
+  @if (hasChoices()) {
+    <div class="language-server-picker__choices">
+      @for (choice of choices(); track choice.language) {
+        <div class="language-server-picker__choice">
+          <span class="language-server-picker__label">{{ choice.name }}</span>
+          <app-dropdown
+            [options]="choice.options"
+            [value]="choice.selected"
+            [ariaLabel]="'Language server for ' + choice.name"
+            (valueChange)="choose(choice.language, $event)"
+          />
+        </div>
+      }
+    </div>
+  } @else {
+    <p class="language-server-picker__empty">
+      Nothing to choose yet. Every language you have installed support for is served by the only
+      plugin that provides it.
+    </p>
+  }
+</section>

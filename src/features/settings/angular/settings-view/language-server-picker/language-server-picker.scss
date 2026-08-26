@@ -1,0 +1,40 @@
+// The language-server choice list: one row per language that has more than one installed
+// implementation. Usually empty, and deliberately so — it grows only as the user installs
+// alternatives.
+:host {
+  display: block;
+}
+
+.language-server-picker__header {
+  margin-block-end: 0.75rem;
+}
+
+.language-server-picker__title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.language-server-picker__description,
+.language-server-picker__empty {
+  margin: 0.25rem 0 0;
+  font-size: 0.8rem;
+  color: var(--form-muted-foreground-color);
+}
+
+.language-server-picker__choices {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.language-server-picker__choice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.language-server-picker__label {
+  font-size: 0.9rem;
+}
