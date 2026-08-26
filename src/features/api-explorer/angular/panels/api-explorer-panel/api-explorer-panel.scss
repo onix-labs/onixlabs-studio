@@ -77,3 +77,32 @@
   letter-spacing: 0.08em;
   color: var(--accent-color);
 }
+
+// The row commands' two dialogs — rename and delete confirmation. Matches the shape the workspace
+// panels use for a destructive prompt in a dock panel.
+.api-explorer__dialog-title {
+  margin: 0 0 0.6rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--body-foreground-color);
+}
+
+.api-explorer__dialog-message {
+  margin: 0 0 1.3rem;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--form-muted-foreground-color);
+}
+
+.api-explorer__dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+}
+
+// Layout only: how the field is DRAWN belongs to the atom, and a border here would box it twice.
+.api-explorer__dialog-input {
+  display: block;
+  inline-size: 100%;
+  margin-block: 0 1rem;
+}

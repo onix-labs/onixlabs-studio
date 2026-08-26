@@ -448,6 +448,56 @@ export class ApiWorkspace {
   }
 
   /**
+   * Duplicates a request, placing the copy directly beneath its original.
+   *
+   * Beneath rather than appended to the end of the collection, because a duplicate is made in order to
+   * vary something about the original: sending the copy to the bottom of a long collection separates
+   * the two things the user is about to compare. The copy takes a disambiguated name for the same
+   * reason — two rows reading `Get user` teach nothing about which is which.
+   * @param id The identifier of the request to duplicate.
+   * @returns Returns the copy, or null when there is no such request.
+   */
+  public duplicateRequest(id: string): ApiRequest | null {
+    const original: ApiRequest | undefined = this.requestsSignal().find(
+      (request: ApiRequest): boolean => request.id === id,
+    );
+    if (original === undefined) {
+      return null;
+    }
+    const copy: ApiRequest = {
+      ...original,
+      id: newId(),
+      name: this.copyName(
+        original.name,
+        this.requestsSignal()
+          .filter((request: ApiRequest): boolean => request.parentId === original.parentId)
+          .map((request: ApiRequest): string => request.name),
+      ),
+    };
+    this.requestsSignal.update((requests: readonly ApiRequest[]): readonly ApiRequest[] => {
+      const at: number = requests.findIndex((request: ApiRequest): boolean => request.id === id);
+      return [...requests.slice(0, at + 1), copy, ...requests.slice(at + 1)];
+    });
+    this.persist();
+    this.log.info('api-explorer.workspace', 'Duplicated request', { id, copy: copy.id });
+    return copy;
+  }
+
+  /**
+   * Renames a collection or folder.
+   * @param id The folder identifier.
+   * @param name The new name.
+   */
+  public renameFolder(id: string, name: string): void {
+    this.foldersSignal.update((folders: readonly ApiFolder[]): readonly ApiFolder[] =>
+      folders.map(
+        (folder: ApiFolder): ApiFolder => (folder.id === id ? { ...folder, name } : folder),
+      ),
+    );
+    this.persist();
+  }
+
+  /**
    * Removes a request.
    * @param id The request identifier.
    */
@@ -534,6 +584,66 @@ export class ApiWorkspace {
         ),
     );
     this.persist();
+  }
+
+  /**
+   * Duplicates an environment, placing the copy directly beneath its original.
+   *
+   * The copy is never made active: activating it would silently redirect every subsequent send to a
+   * set of variables the user has not yet edited, which is the opposite of why a duplicate is made.
+   * @param id The identifier of the environment to duplicate.
+   * @returns Returns the copy, or null when there is no such environment.
+   */
+  public duplicateEnvironment(id: string): ApiEnvironment | null {
+    const environments: readonly ApiEnvironment[] = this.environmentsSignal();
+    const original: ApiEnvironment | undefined = environments.find(
+      (environment: ApiEnvironment): boolean => environment.id === id,
+    );
+    if (original === undefined) {
+      return null;
+    }
+    const copy: ApiEnvironment = {
+      ...original,
+      id: newId(),
+      name: this.copyName(
+        original.name,
+        environments.map((environment: ApiEnvironment): string => environment.name),
+      ),
+    };
+    this.environmentsSignal.update(
+      (current: readonly ApiEnvironment[]): readonly ApiEnvironment[] => {
+        const at: number = current.findIndex(
+          (environment: ApiEnvironment): boolean => environment.id === id,
+        );
+        return [...current.slice(0, at + 1), copy, ...current.slice(at + 1)];
+      },
+    );
+    this.persist();
+    return copy;
+  }
+
+  /**
+   * Names a duplicate so it is distinguishable from its original and from any earlier copy.
+   *
+   * `Get user` becomes `Get user copy`, then `Get user copy 2`, and so on — a suffix the user can read
+   * rather than an id fragment. Only names in the same container are considered, since that is where
+   * the ambiguity would actually be seen.
+   * @param name The original's name.
+   * @param taken The names already in use alongside it.
+   * @returns Returns a name not already in use.
+   */
+  private copyName(name: string, taken: readonly string[]): string {
+    const used: ReadonlySet<string> = new Set<string>(taken);
+    const base: string = `${name} copy`;
+    if (!used.has(base)) {
+      return base;
+    }
+    for (let index: number = 2; ; index++) {
+      const candidate: string = `${base} ${index}`;
+      if (!used.has(candidate)) {
+        return candidate;
+      }
+    }
   }
 
   /**
