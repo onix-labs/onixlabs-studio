@@ -8,6 +8,7 @@ import {
   DirectoryEntry,
   DirectoryEntryType,
   DirectoryListing,
+  FileOperationResult,
   OpenSelection,
   WorkspaceChannel,
 } from '@shared/api/workspace-channels';
@@ -561,6 +562,97 @@ export class Workspace {
         children,
       }),
     );
+  }
+
+  /**
+   * Creates an empty file inside a workspace directory.
+   * @param directory The absolute path of the parent directory.
+   * @param name The new file's name (a single path segment).
+   * @returns Returns the result describing success and the created path, or the failure's message.
+   */
+  public createFile(directory: string, name: string): Promise<FileOperationResult> {
+    return this.mutate(WorkspaceChannel.CreateFile, directory, [directory, name]);
+  }
+
+  /**
+   * Creates an empty folder inside a workspace directory.
+   * @param directory The absolute path of the parent directory.
+   * @param name The new folder's name (a single path segment).
+   * @returns Returns the result describing success and the created path, or the failure's message.
+   */
+  public createFolder(directory: string, name: string): Promise<FileOperationResult> {
+    return this.mutate(WorkspaceChannel.CreateFolder, directory, [directory, name]);
+  }
+
+  /**
+   * Renames a file or folder within the workspace, keeping it in the same directory.
+   * @param path The absolute path of the entry to rename.
+   * @param name The new name (a single path segment).
+   * @returns Returns the result describing success and the new path, or the failure's message.
+   */
+  public rename(path: string, name: string): Promise<FileOperationResult> {
+    return this.mutate(WorkspaceChannel.Rename, this.parentDirectory(path), [path, name]);
+  }
+
+  /**
+   * Deletes a file or folder within the workspace, to the operating system's trash where the platform
+   * and filesystem allow it. The result's `trashed` flag says which happened, so a caller can report
+   * an unrecoverable removal honestly rather than promising a Trash the entry never reached.
+   * @param path The absolute path of the entry to delete.
+   * @returns Returns the result describing success and how the entry went, or the failure's message.
+   */
+  public delete(path: string): Promise<FileOperationResult> {
+    return this.mutate(WorkspaceChannel.Delete, this.parentDirectory(path), [path]);
+  }
+
+  /**
+   * Runs a workspace mutation and reconciles the directory it changed.
+   *
+   * The refresh is explicit rather than left to the directory watcher, which also sees the change: a
+   * caller that awaits one of these methods should find the tree already showing the result, and the
+   * watcher's arrival is debounced and — on filesystems and container mounts where watching degrades —
+   * not guaranteed at all. Reconciling twice is harmless, since {@link refresh} preserves the node of
+   * every entry that survives.
+   *
+   * A failure leaves the tree alone: nothing changed on disk, so there is nothing to reconcile, and
+   * re-reading would only cost a round trip to prove it.
+   * @param channel The mutation channel to invoke.
+   * @param directory The directory whose listing the mutation changes.
+   * @param args The channel's arguments.
+   * @returns Returns the mutation's result.
+   */
+  private async mutate(
+    channel: WorkspaceChannel,
+    directory: string,
+    args: readonly unknown[],
+  ): Promise<FileOperationResult> {
+    const result: FileOperationResult = await (this.bridge?.invoke<FileOperationResult>(
+      channel,
+      ...args,
+    ) ?? Promise.resolve({ success: false, error: 'Unavailable outside Electron' }));
+    if (!result.success) {
+      this.log.warn('Workspace', `${channel} failed`, result.error);
+      return result;
+    }
+    this.log.info('Workspace', `${channel} succeeded`, result.path);
+    if (this.isLoadedDirectory(directory) || this.rootListing()?.path === directory) {
+      await this.refresh(directory);
+    }
+    return result;
+  }
+
+  /**
+   * Resolves the directory a path sits in, by trimming its last segment.
+   *
+   * Written here rather than taken from `node:path`, which the renderer has no access to, and tolerant
+   * of both separators because a Windows workspace's paths arrive back-slashed while much of the app's
+   * own path handling normalises to forward slashes.
+   * @param path The absolute path of an entry.
+   * @returns Returns the parent directory's path, or the path itself when it has no separator.
+   */
+  private parentDirectory(path: string): string {
+    const cut: number = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
+    return cut <= 0 ? path : path.slice(0, cut);
   }
 
   /**

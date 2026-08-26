@@ -150,6 +150,17 @@ export interface FileOperationResult {
    * Gets the error message, when the operation failed.
    */
   readonly error?: string;
+
+  /**
+   * Gets whether a successful delete moved the entry to the operating system's trash, rather than
+   * removing it permanently.
+   *
+   * Reported rather than assumed, because trashing is the recoverable path and the caller's copy has
+   * to be honest about which one happened: a confirmation that promises the Trash, in front of an
+   * operation that fell back to a permanent removal, is a lie the user only discovers afterwards.
+   * Undefined for operations that delete nothing.
+   */
+  readonly trashed?: boolean;
 }
 
 /**

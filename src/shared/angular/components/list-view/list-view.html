@@ -20,6 +20,9 @@
       cdkDragPreviewContainer="parent"
       [cdkDragDisabled]="!reorderable()"
       (cdkDragStarted)="onDragStarted()"
+      [cdkContextMenuTriggerFor]="hasContextMenu() ? (contextMenu.panel() ?? null) : null"
+      [cdkContextMenuTriggerData]="{ $implicit: row }"
+      [cdkContextMenuDisabled]="!rowHasMenu(row)"
       [attr.data-list-id]="row.id"
       [class.active]="selectedId() !== null && row.id === selectedId()"
       [attr.aria-selected]="selectedId() !== null ? row.id === selectedId() : null"
@@ -48,3 +51,7 @@
     }
   }
 </div>
+
+<!-- One menu shared by every row: the row it was opened on travels with the trigger's data, so the
+     items and their subject are resolved together when it opens. -->
+<app-menu #contextMenu [itemsFor]="menuItemsFor" (chosen)="onContextChoice($event)" />

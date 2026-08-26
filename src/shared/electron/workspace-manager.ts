@@ -3,6 +3,7 @@ import {
   ipcMain,
   IpcMainInvokeEvent,
   OpenDialogReturnValue,
+  shell,
   WebContents,
 } from 'electron';
 import { showOpenDialog } from './dialog-parent';
@@ -36,6 +37,7 @@ import { ProjectSystem } from './project-system/project-system';
 import { packageManagers } from './package-management/default-package-managers';
 import { HttpFetch, PackageManager } from './package-management/package-manager';
 import { TrustedPaths } from './trusted-paths';
+import { trashOrRemove } from './trash-or-remove';
 import { WorkspaceContext } from './workspace-context';
 
 /**
@@ -804,9 +806,16 @@ export class WorkspaceManager {
   }
 
   /**
-   * Deletes a file or folder within the workspace. Folders are removed recursively.
+   * Deletes a file or folder within the workspace, to the operating system's trash where it can.
+   *
+   * Trashing rather than unlinking is the whole recovery story for deletes made from the app: there is
+   * no in-app undo stack, so an unrecoverable recursive folder removal one pixel from Rename is not a
+   * command worth offering. `shell.trashItem` fails on filesystems and platforms that have no trash
+   * (network volumes, some containers), and a delete the user asked for should still happen — so the
+   * fallback removes permanently and says so in the result, letting the caller word its confirmation
+   * for what actually occurred rather than for what it hoped would.
    * @param targetPath The absolute path of the entry to delete.
-   * @returns Returns the result describing success or failure.
+   * @returns Returns the result describing success or failure, and whether the entry was trashed.
    */
   private async delete(targetPath: unknown): Promise<FileOperationResult> {
     if (!this.workspace.isWithin(targetPath)) {
@@ -818,14 +827,17 @@ export class WorkspaceManager {
       logger.warn('WorkspaceManager.delete', 'Rejected delete of the workspace root');
       return { success: false, error: 'Cannot delete the workspace root' };
     }
-    try {
-      await fs.rm(resolved, { recursive: true, force: false });
-      logger.info('WorkspaceManager', `Deleted ${resolved}`);
-      return { success: true, path: resolved };
-    } catch (error: unknown) {
-      logger.error('WorkspaceManager', `Failed to delete ${resolved}`, error);
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    const result: FileOperationResult = await trashOrRemove(
+      resolved,
+      (target: string): Promise<void> => shell.trashItem(target),
+      (target: string): Promise<void> => fs.rm(target, { recursive: true, force: false }),
+    );
+    if (!result.success) {
+      logger.error('WorkspaceManager', `Failed to delete ${resolved}`, result.error);
+    } else {
+      logger.info('WorkspaceManager', `${result.trashed ? 'Trashed' : 'Deleted'} ${resolved}`);
     }
+    return result;
   }
 
   /**
