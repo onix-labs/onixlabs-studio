@@ -1,3 +1,5 @@
+import { LanguageSlotEntry } from './language-slot';
+
 // Shared Debug Adapter Protocol contract used between the Electron main process and the renderer.
 // Keep this module platform-neutral (no Node or DOM dependencies) so both compilation targets can
 // import it. The renderer's debug client and the main-process debug manager name their channels from
@@ -53,6 +55,11 @@ export enum DebugChannel {
    * Carries the renderer's answer to a relayed `runInTerminal` request back to the adapter (invoke).
    */
   RespondRunInTerminal = 'debug:respond-run-in-terminal',
+
+  /**
+   * Gets the registered debug adapters and the languages each debugs (invoke).
+   */
+  GetCatalogue = 'debug:get-catalogue',
 }
 
 /**
@@ -62,6 +69,18 @@ export enum DebugChannel {
  * {@link import('./project-system').DebugCapability}.
  */
 export type DebugAdapterId = string;
+
+/**
+ * Describes one registered debug adapter as plain data — the debug slot's implementation descriptor —
+ * for the renderer to resolve which adapter debugs a language and to offer the user the choice when a
+ * language has more than one.
+ */
+export interface DebugAdapterSummary extends LanguageSlotEntry {
+  /**
+   * Gets the stable identifier the renderer names this adapter by.
+   */
+  readonly id: DebugAdapterId;
+}
 
 /**
  * Describes a request to start a debug session.

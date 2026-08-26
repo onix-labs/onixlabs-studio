@@ -61,6 +61,7 @@ const TAB_CATEGORY_LABELS: Readonly<Record<TabType, string>> = {
   agent: 'Agents',
   containers: 'Tools',
   'model-manager': 'Tools',
+  'plugin-manager': 'Tools',
   'system-monitor': 'Tools',
   'mission-control': 'Tools',
   settings: 'Tools',

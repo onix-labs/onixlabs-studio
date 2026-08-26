@@ -22,6 +22,7 @@ import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { DebugHandler, DebugLocation, DebugState } from '@shared/angular/services/debug/debugger';
 import { Breakpoint, Breakpoints } from '@shared/angular/services/debug/breakpoints';
 import { SolutionModel } from '@features/workspace/angular/project/solution-model';
+import { DebugAdapters } from '@shared/angular/services/debug-adapters/debug-adapters';
 
 /**
  * The thread id execution-control requests fall back to before the adapter has reported a stopped
@@ -172,6 +173,12 @@ export class DebugSession implements DebugHandler, OnDestroy {
    * Holds this workspace's project model, read for the declared debug adapter.
    */
   private readonly solutionModel: SolutionModel = inject(SolutionModel);
+
+  /**
+   * Holds the debug-adapter catalogue and the user's per-language choice, used to resolve the declared
+   * adapter into the implementation actually started.
+   */
+  private readonly debugAdapters: DebugAdapters = inject(DebugAdapters);
 
   /**
    * Holds the workspace's breakpoints, synchronised to the adapter and updated with its verification.
@@ -434,12 +441,16 @@ export class DebugSession implements DebugHandler, OnDestroy {
    * @param configuration The run configuration to debug.
    */
   private async launchSession(configuration: RunConfiguration): Promise<void> {
+    // The project system declares the adapter that ships as this language's debugger; the user may have
+    // chosen a different implementation for that language, which is resolved through the catalogue.
+    const declared: string | undefined = this.solutionModel.capabilities()?.debug?.adapter;
+    const adapter: string | undefined =
+      declared === undefined ? undefined : this.debugAdapters.resolveAdapter(declared);
     this.activeConfigurationName = configuration.name;
-    this.activeAdapterId = this.solutionModel.capabilities()?.debug?.adapter ?? '';
+    this.activeAdapterId = adapter ?? '';
     if (this.bridge === undefined || this.stateSignal() !== 'idle') {
       return;
     }
-    const adapter: string | undefined = this.solutionModel.capabilities()?.debug?.adapter;
     const root: string | undefined = this.workspace.root()?.path;
     if (adapter === undefined) {
       this.debugChannel.appendLine('No debug adapter is available for this workspace.');

@@ -14,7 +14,26 @@ const DEFAULT_SETTINGS: LspSettings = {
   clangdPath: null,
   typescriptServerPath: null,
   serverArgs: {},
+  languageServers: {},
 };
+
+/**
+ * Renames server identifiers that have changed meaning, applied to every persisted id as it is read.
+ * The Python server used to be identified by its *language* (`python`), which stopped working once a
+ * language could be served by more than one implementation: the id now names the implementation
+ * (`pyright`), so a settings file written before the change would otherwise silently disable, or pass
+ * arguments to, a server that no longer exists.
+ */
+const LEGACY_SERVER_IDS: Readonly<Record<string, string>> = { python: 'pyright' };
+
+/**
+ * Applies {@link LEGACY_SERVER_IDS} to a persisted server identifier.
+ * @param serverId The identifier as persisted.
+ * @returns Returns the current identifier for that server.
+ */
+function migrateServerId(serverId: string): string {
+  return LEGACY_SERVER_IDS[serverId] ?? serverId;
+}
 
 /**
  * Owns the user's language-server settings in the main process: which servers are disabled and the
@@ -120,6 +139,7 @@ export class LspSettingsManager {
       clangdPath?: unknown;
       typescriptServerPath?: unknown;
       serverArgs?: unknown;
+      languageServers?: unknown;
     } = value;
     const disabledServers: unknown = candidate.disabledServers;
     if (
@@ -152,14 +172,45 @@ export class LspSettingsManager {
     if (serverArgs === null) {
       return null;
     }
+    const languageServers: Record<string, string> | null = this.parseLanguageServers(
+      candidate.languageServers,
+    );
+    if (languageServers === null) {
+      return null;
+    }
     return {
-      disabledServers: disabledServers as readonly string[],
+      disabledServers: (disabledServers as readonly string[]).map(migrateServerId),
       javaPath,
       dotnetPath,
       clangdPath,
       typescriptServerPath,
       serverArgs,
+      languageServers,
     };
+  }
+
+  /**
+   * Validates and normalises the user's per-language server choices, dropping empty entries.
+   * @param value The candidate map of language identifier to server identifier.
+   * @returns Returns the normalised map, or null when the value is malformed.
+   */
+  private parseLanguageServers(value: unknown): Record<string, string> | null {
+    if (value === undefined) {
+      return {};
+    }
+    if (typeof value !== 'object' || value === null) {
+      return null;
+    }
+    const result: Record<string, string> = {};
+    for (const [language, serverId] of Object.entries(value)) {
+      if (typeof serverId !== 'string') {
+        return null;
+      }
+      if (serverId.length > 0) {
+        result[language] = migrateServerId(serverId);
+      }
+    }
+    return result;
   }
 
   /**
@@ -195,7 +246,7 @@ export class LspSettingsManager {
         return null;
       }
       if (args.length > 0) {
-        result[serverId] = args as readonly string[];
+        result[migrateServerId(serverId)] = args as readonly string[];
       }
     }
     return result;

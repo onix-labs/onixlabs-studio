@@ -1,4 +1,4 @@
-import { DebugAdapterId } from '@shared/api/debug-channels';
+import { DebugAdapterId, DebugAdapterSummary } from '@shared/api/debug-channels';
 import { logger } from '../logger';
 import { DebugAdapterDownload, DebugAdapterProvision, DebugProvisioner } from './debug-provisioner';
 
@@ -84,6 +84,12 @@ const JS_DEBUG_PROVISION: DebugAdapterProvision = {
 };
 
 /**
+ * The priority given to the adapter shipped as a language's default, chosen when the user has
+ * expressed no preference.
+ */
+const DEFAULT_PRIORITY: number = 100;
+
+/**
  * Describes how to spawn a debug adapter. The command and arguments are decided entirely by the main
  * process; the renderer only ever names an adapter by its {@link DebugAdapterId}. Mirrors the LSP
  * layer's `LspServerSpec`.
@@ -152,6 +158,19 @@ export interface DebugAdapterCatalogueEntry {
   readonly binary: string;
 
   /**
+   * Gets the languages this adapter debugs. A language with more than one adapter is a slot the user
+   * chooses an implementation for; a project system's declared adapter is the default for its
+   * language, not the only possibility.
+   */
+  readonly languages: readonly string[];
+
+  /**
+   * Gets the priority used to pick a default when the user has expressed no preference, higher first.
+   * Ties break on catalogue order, so a deterministic default always exists.
+   */
+  readonly priority: number;
+
+  /**
    * Gets the provisioning recipe for an adapter that ships as a downloadable binary, or undefined for an
    * adapter expected to be found on the PATH or via an override.
    */
@@ -179,6 +198,8 @@ export function debugAdapterCatalogue(): readonly DebugAdapterCatalogueEntry[] {
       id: 'netcoredbg',
       displayName: '.NET (netcoredbg)',
       binary: 'netcoredbg',
+      languages: ['csharp'],
+      priority: DEFAULT_PRIORITY,
       provision: NETCOREDBG_PROVISION,
       // netcoredbg speaks DAP over stdio in its VS Code interpreter mode. Microsoft's `vsdbg` is
       // deliberately not offered: it is licensed only for use within the Visual Studio family, whereas
@@ -192,6 +213,8 @@ export function debugAdapterCatalogue(): readonly DebugAdapterCatalogueEntry[] {
       id: 'js-debug',
       displayName: 'Node (js-debug)',
       binary: 'js-debug-dap',
+      languages: ['typescript', 'javascript'],
+      priority: DEFAULT_PRIORITY,
       provision: JS_DEBUG_PROVISION,
       // js-debug is a DAP *server*: run its bundled server script under the current Node runtime (Electron
       // as Node), let it pick a free port (`0`), and connect over TCP. It hosts a parent session plus a
@@ -220,30 +243,60 @@ export class DebugAdapterRegistry {
   private readonly provisioner: DebugProvisioner;
 
   /**
-   * Indexes the catalogue entries by adapter id.
+   * Indexes the registered adapters by id, in registration order (the first-party catalogue first), so
+   * ties on priority break deterministically.
    */
-  private readonly entries: ReadonlyMap<DebugAdapterId, DebugAdapterCatalogueEntry>;
+  private readonly entries: Map<DebugAdapterId, DebugAdapterCatalogueEntry> = new Map<
+    DebugAdapterId,
+    DebugAdapterCatalogueEntry
+  >();
 
   /**
-   * Initializes a new instance of the {@link DebugAdapterRegistry} class.
+   * Initializes a new instance of the {@link DebugAdapterRegistry} class, seeded with the first-party
+   * catalogue.
    * @param provisioner The provisioner used to locate adapter executables.
    */
   public constructor(provisioner: DebugProvisioner) {
     this.provisioner = provisioner;
-    this.entries = new Map<DebugAdapterId, DebugAdapterCatalogueEntry>(
-      debugAdapterCatalogue().map(
-        (entry: DebugAdapterCatalogueEntry): [DebugAdapterId, DebugAdapterCatalogueEntry] => [
-          entry.id,
-          entry,
-        ],
-      ),
+    for (const entry of debugAdapterCatalogue()) {
+      this.register(entry);
+    }
+  }
+
+  /**
+   * Registers a debug adapter, replacing any registered under the same id. This is the seam a
+   * contributed adapter arrives through; the first-party catalogue uses it too, so there is exactly one
+   * registration path.
+   * @param entry The catalogue entry to register.
+   */
+  public register(entry: DebugAdapterCatalogueEntry): void {
+    if (this.entries.has(entry.id)) {
+      logger.info('DebugAdapterRegistry', `Replacing registered adapter ${entry.id}`);
+    }
+    this.entries.set(entry.id, entry);
+  }
+
+  /**
+   * Gets the registered adapters as plain data, for the renderer to offer the user a choice of
+   * implementation per language. Deliberately excludes the spec builder: the renderer never needs to
+   * know how an adapter is provisioned, only that it exists and what it debugs.
+   * @returns Returns the summaries, in registration order.
+   */
+  public catalogue(): readonly DebugAdapterSummary[] {
+    return [...this.entries.values()].map(
+      (entry: DebugAdapterCatalogueEntry): DebugAdapterSummary => ({
+        id: entry.id,
+        displayName: entry.displayName,
+        languages: entry.languages,
+        priority: entry.priority,
+      }),
     );
   }
 
   /**
-   * Gets whether an adapter id names a built-in adapter.
+   * Gets whether an adapter id names a registered adapter.
    * @param adapterId The adapter id to test.
-   * @returns Returns true when the id is in the catalogue.
+   * @returns Returns true when the id is registered.
    */
   public has(adapterId: DebugAdapterId): boolean {
     return this.entries.has(adapterId);

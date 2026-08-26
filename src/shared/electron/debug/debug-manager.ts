@@ -3,6 +3,7 @@ import type { DebugProtocol } from '@vscode/debugprotocol';
 import { logger } from '../logger';
 import {
   DebugAdapterExit,
+  DebugAdapterSummary,
   DebugChannel,
   DebugEventMessage,
   DebugRunInTerminalRequest,
@@ -106,6 +107,9 @@ export class DebugManager {
         command: unknown,
         args: unknown,
       ): Promise<unknown> => this.request(id, command, args),
+    );
+    ipcMain.handle(DebugChannel.GetCatalogue, (): readonly DebugAdapterSummary[] =>
+      this.registry.catalogue(),
     );
     logger.info('DebugManager', 'Registered debug IPC handlers');
   }

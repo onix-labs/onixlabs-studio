@@ -13,6 +13,7 @@ export type TabType =
   | 'containers'
   | 'api-explorer'
   | 'model-manager'
+  | 'plugin-manager'
   | 'system-monitor'
   | 'mission-control'
   | 'settings';
@@ -101,6 +102,7 @@ export const TAB_TYPE_METADATA: Readonly<Record<TabType, TabTypeMetadata>> = {
   containers: { label: 'Containers', icon: Icon.CONTAINERS },
   'api-explorer': { label: 'API Explorer', icon: Icon.API_EXPLORER },
   'model-manager': { label: 'AI Models', icon: Icon.AI_MODELS },
+  'plugin-manager': { label: 'Plugins', icon: Icon.WELCOME_PLUGINS },
   'system-monitor': { label: 'System Monitor', icon: Icon.SYSTEM_MONITOR },
   'mission-control': { label: 'Mission Control', icon: Icon.ROCKET_LAUNCH },
   settings: { label: 'Settings', icon: Icon.SETTINGS, iconRotation: 30 },

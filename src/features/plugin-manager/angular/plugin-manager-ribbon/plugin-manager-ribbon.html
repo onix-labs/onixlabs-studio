@@ -1,0 +1,10 @@
+<app-ribbon-overflow>
+  <app-ribbon-strip-group title="Plugins">
+    <app-ribbon-strip-button
+      [icon]="Icon.REFRESH"
+      label="Refresh"
+      [disabled]="busy()"
+      (action)="onRefresh()"
+    />
+  </app-ribbon-strip-group>
+</app-ribbon-overflow>

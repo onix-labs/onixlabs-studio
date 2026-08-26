@@ -1,3 +1,5 @@
+import { LanguageSlotEntry } from './language-slot';
+
 // Shared Language Server Protocol contract used between the Electron main process and the renderer.
 // Keep this module platform-neutral (no Node or DOM dependencies) so both compilation targets can
 // import it. The renderer's LSP clients and the main-process LSP manager name their channels from
@@ -47,6 +49,11 @@ export enum LspChannel {
    * Stores the user's language-server settings (invoke).
    */
   SetSettings = 'lsp:set-settings',
+
+  /**
+   * Gets the registered language servers and the languages each serves (invoke).
+   */
+  GetCatalogue = 'lsp:get-catalogue',
 }
 
 /**
@@ -55,6 +62,18 @@ export enum LspChannel {
  * hostile renderer cannot spawn an arbitrary process.
  */
 export type LspServerId = string;
+
+/**
+ * Describes one registered language server as plain data — the language-server slot's implementation
+ * descriptor — for the renderer to resolve which server serves a language and to offer the user the
+ * choice when a language has more than one.
+ */
+export interface LspServerSummary extends LanguageSlotEntry {
+  /**
+   * Gets the stable identifier the renderer names this server by.
+   */
+  readonly id: LspServerId;
+}
 
 /**
  * The standard Language Server Protocol semantic token types the client understands. Advertised to
@@ -270,4 +289,11 @@ export interface LspSettings {
    * A server with no entry (or an empty array) starts with its default arguments only.
    */
   readonly serverArgs: Readonly<Record<string, readonly string[]>>;
+
+  /**
+   * Gets the server the user has chosen to serve each language, keyed by Monaco language identifier.
+   * A language with no entry uses the highest-priority registered server, so the map holds only
+   * genuine preferences and a language served by exactly one server never needs an entry.
+   */
+  readonly languageServers: Readonly<Record<string, LspServerId>>;
 }

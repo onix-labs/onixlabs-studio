@@ -3,6 +3,7 @@ import { apiClientContribution } from './api-client/api-client.contribution';
 import { dockerContribution } from './docker/docker.contribution';
 import { forgeContribution } from './forge/forge.contribution';
 import { modelRuntimeContribution } from './model-runtime/model-runtime.contribution';
+import { pluginsContribution } from './plugins/plugins.contribution';
 import { systemMonitorContribution } from './system-monitor/system-monitor.contribution';
 
 /**
@@ -19,5 +20,6 @@ export const mainContributions: readonly MainContribution[] = [
   dockerContribution,
   forgeContribution,
   modelRuntimeContribution,
+  pluginsContribution,
   systemMonitorContribution,
 ];
