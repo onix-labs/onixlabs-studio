@@ -3,7 +3,9 @@
     class="worktrees__list"
     [rows]="listRows()"
     [selectedId]="activeId()"
+    [contextMenuFor]="contextMenuFor"
     (rowClick)="onRowClick($event)"
+    (contextMenuSelect)="onContextAction($event)"
   >
     <ng-template let-row>
       @if (row.id === ORCHESTRATOR_ID) {
@@ -39,18 +41,10 @@
               <app-icon [icon]="Icon.AGENT" [size]="0.85" />
             </span>
           }
+          <!-- Removal lives in the row's context menu rather than on an inline button: the panels do
+               not put buttons on tree or list rows, and two affordances for one destructive command
+               is one more than the command deserves. -->
           <span class="worktrees__meta">{{ statusOf(row.id) }}</span>
-          @if (canRemove()) {
-            <app-button
-              variant="none"
-              size="small"
-              [icon]="Icon.TRASH"
-              [disabled]="busy()"
-              ariaLabel="Remove worktree"
-              tooltip="Remove worktree"
-              (click)="onRemove(row.id, $event)"
-            />
-          }
         </div>
       }
     </ng-template>

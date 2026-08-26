@@ -11,7 +11,14 @@ import {
 } from '@angular/core';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
-import { ListRow, ListView } from '@shared/angular/components/list-view/list-view';
+import {
+  ListMenuSelection,
+  ListRow,
+  ListView,
+} from '@shared/angular/components/list-view/list-view';
+import { MenuItem } from '@shared/angular/components/menu/menu';
+import { Shell } from '@shared/angular/services/shell/shell';
+import { REVEAL_LABEL } from '@shared/angular/services/shell/shell-labels';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { Button } from '@shared/angular/components/forms/button/button';
@@ -25,6 +32,13 @@ import {
 import { WorktreeSession } from '@features/workspace/angular/worktree/worktree-session';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { Log } from '@shared/angular/services/log/log';
+
+/**
+ * Identifies the row context-menu actions the panel offers.
+ */
+const ACTION_REVEAL: string = 'reveal';
+const ACTION_COPY_PATH: string = 'copy-path';
+const ACTION_REMOVE: string = 'remove';
 
 /**
  * The Worktrees panel: the container tab's overview and switcher. One row per checkout — labelled by
@@ -72,6 +86,11 @@ export class WorktreesPanel {
    * Holds the structured logger for worktrees panel actions.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds the shell service used to reveal a checkout in the operating system's file manager.
+   */
+  private readonly shell: Shell = inject(Shell);
 
   /**
    * Gets the registered checkouts in registration order.
@@ -153,7 +172,7 @@ export class WorktreesPanel {
   /**
    * Holds the checkout id awaiting removal confirmation, or null when the confirm is closed.
    */
-  protected readonly removeTarget: WritableSignal<string | null> = signal<string | null>(null);
+  public readonly removeTarget: WritableSignal<string | null> = signal<string | null>(null);
 
   /**
    * Gets the removal target's display label, for the confirm prompt.
@@ -328,12 +347,66 @@ export class WorktreesPanel {
   }
 
   /**
+   * Builds a row's context-menu items.
+   *
+   * Bound as a value rather than a method, because the list calls it as its item factory when a menu
+   * opens — `this` must stay this component. The Orchestrator row stands for a coordinating agent that
+   * does not exist yet: it has no directory to reveal and nothing to remove, so it returns no items
+   * and opens no menu at all.
+   */
+  public readonly contextMenuFor: (row: ListRow) => readonly MenuItem[] = (
+    row: ListRow,
+  ): readonly MenuItem[] => {
+    const checkout: WorktreeCheckoutInfo | null = (row.data ?? null) as WorktreeCheckoutInfo | null;
+    if (checkout === null) {
+      return [];
+    }
+    const items: MenuItem[] = [
+      { id: ACTION_REVEAL, label: REVEAL_LABEL, icon: Icon.DIRECTORY },
+      { id: ACTION_COPY_PATH, label: 'Copy Path', icon: Icon.COPY },
+    ];
+    // Removal is omitted rather than disabled while a mutation is in flight or on the last remaining
+    // checkout: the first is momentary, and the second is a rule about the container rather than a
+    // state the user can clear, so a greyed row would only invite them to keep trying.
+    if (this.canRemove() && !this.busy()) {
+      items.push(
+        { id: 'worktrees.sep', label: '', separator: true },
+        { id: ACTION_REMOVE, label: 'Remove Worktree…', icon: Icon.TRASH, tone: 'danger' },
+      );
+    }
+    return items;
+  };
+
+  /**
+   * Runs the command chosen from a row's context menu.
+   * @param selection The chosen item and the row it was chosen for.
+   */
+  public onContextAction(selection: ListMenuSelection): void {
+    const checkout: WorktreeCheckoutInfo | null = (selection.row.data ??
+      null) as WorktreeCheckoutInfo | null;
+    if (checkout === null) {
+      return;
+    }
+    switch (selection.itemId) {
+      case ACTION_REVEAL:
+        void this.shell.revealPath(checkout.path);
+        return;
+      case ACTION_COPY_PATH:
+        void navigator.clipboard.writeText(checkout.path).catch((): void => undefined);
+        return;
+      case ACTION_REMOVE:
+        this.onRemove(checkout.id);
+        return;
+      default:
+        return;
+    }
+  }
+
+  /**
    * Opens the removal confirm for a checkout.
    * @param id The checkout id.
-   * @param event The click event, stopped so the row does not also activate.
    */
-  protected onRemove(id: string, event: Event): void {
-    event.stopPropagation();
+  public onRemove(id: string): void {
     this.log.debug('workspace.worktrees', 'Open remove confirm', this.session.labelFor(id));
     this.lastError.set(null);
     this.removeTarget.set(id);
