@@ -164,4 +164,6 @@ vite.config.ts.timestamp-*
 /test-results
 /playwright-report
 /e2e/out-tsc
+# Studio workspace settings — run configurations and the like are per-developer, not per-repo
 .studio/*.user.json
+.studio/workspace.json
