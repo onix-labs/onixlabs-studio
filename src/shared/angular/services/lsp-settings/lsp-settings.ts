@@ -108,6 +108,22 @@ export class LspSettings {
   }
 
   /**
+   * Gets the languages that have at least one installed server, in a stable order. This is what the
+   * settings tree offers a page for: a language nobody has installed support for has nothing to
+   * configure, and belongs in the Plugin Manager rather than in Settings.
+   * @returns Returns the languages, alphabetically by identifier.
+   */
+  public installedLanguages(): readonly string[] {
+    const languages: Set<string> = new Set<string>();
+    for (const server of this.registered()) {
+      for (const language of server.languages) {
+        languages.add(language);
+      }
+    }
+    return [...languages].sort();
+  }
+
+  /**
    * Gets every registered server that can serve a language, for offering the user the choice. A
    * language with more than one is a slot the user picks an implementation for.
    * @param language The Monaco language identifier.
