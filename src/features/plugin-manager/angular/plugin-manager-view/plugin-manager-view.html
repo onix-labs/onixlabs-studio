@@ -1,0 +1,96 @@
+<div class="plugin-manager">
+  <!-- What the view is for, and where the *choice* between two installed implementations happens —
+       stated here because that second surface is the reason to install a second implementation. -->
+  <header class="plugin-manager__header">
+    <div class="plugin-manager__heading">
+      <h2 class="plugin-manager__title">Plugins</h2>
+      <p class="plugin-manager__subtitle">
+        {{ installedCount() }} of {{ total() }} installed. Where two installed plugins provide the
+        same thing, choose between them in Settings.
+      </p>
+    </div>
+    <app-button
+      variant="outline"
+      [icon]="Icon.REFRESH"
+      label="Refresh"
+      [disabled]="busy()"
+      (click)="refresh()"
+    />
+  </header>
+
+  @if (error(); as message) {
+    <p class="plugin-manager__error" role="alert">
+      <app-icon [icon]="Icon.WARNING" />
+      {{ message }}
+    </p>
+  }
+
+  <app-table
+    class="plugin-manager__table"
+    [columns]="columns"
+    [rows]="rows()"
+    emptyText="No plugins are available."
+  >
+    <ng-template appTableRow let-row>
+      <td class="plugin-manager__name">
+        <span class="plugin-manager__plugin-name">{{ plugin(row).name }}</span>
+        <span class="plugin-manager__description">{{ plugin(row).description }}</span>
+        @if (plugin(row).detail; as detail) {
+          <span class="plugin-manager__detail">{{ detail }}</span>
+        }
+      </td>
+      <td class="plugin-manager__provides">{{ provides(plugin(row)) }}</td>
+      <td>
+        {{ source(plugin(row)) }}
+        @if (plugin(row).version; as version) {
+          <span class="plugin-manager__version">{{ version }}</span>
+        }
+      </td>
+      <td>
+        <span
+          class="plugin-manager__state"
+          [class.plugin-manager__state--installed]="plugin(row).state === 'installed'"
+          [class.plugin-manager__state--busy]="plugin(row).state === 'busy'"
+          [class.plugin-manager__state--unavailable]="plugin(row).state === 'unavailable'"
+        >
+          @switch (plugin(row).state) {
+            @case ('installed') {
+              Installed
+            }
+            @case ('available') {
+              Not installed
+            }
+            @case ('busy') {
+              Working…
+            }
+            @default {
+              Not found
+            }
+          }
+        </span>
+      </td>
+      <td class="plugin-manager__row-actions">
+        @if (canInstall(plugin(row))) {
+          <app-button
+            variant="solid"
+            size="small"
+            [icon]="Icon.DOWNLOAD"
+            label="Install"
+            [disabled]="busy()"
+            (click)="install(plugin(row))"
+          />
+        } @else if (canUninstall(plugin(row))) {
+          <app-button
+            variant="none"
+            size="small"
+            tone="danger"
+            [icon]="Icon.TRASH"
+            label="Remove"
+            [disabled]="busy()"
+            (click)="uninstall(plugin(row))"
+          />
+        }
+      </td>
+    </ng-template>
+  </app-table>
+</div>

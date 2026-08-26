@@ -7,6 +7,12 @@ import {
   LspSettings as LspSettingsData,
 } from '@shared/api/lsp-channels';
 import { entriesForLanguage, resolveForLanguage } from '@shared/api/language-slot';
+import {
+  installedContributions,
+  PluginChannel,
+  PluginContribution,
+  PluginSummary,
+} from '@shared/api/plugin-channels';
 import { Log } from '@shared/angular/services/log/log';
 
 /**
@@ -57,7 +63,14 @@ export class LspSettings {
   public readonly isAvailable: boolean = this.bridge !== undefined;
 
   /**
-   * Holds the registered servers as published by the main process, empty until the catalogue loads.
+   * Holds every server the main process has registered, before narrowing to what is installed. Kept so
+   * a plugin becoming installed can be reflected without re-fetching the whole catalogue.
+   */
+  private registeredServers: readonly LspServerSummary[] = [];
+
+  /**
+   * Holds the installed servers — the catalogue narrowed to what installed plugins contribute — empty
+   * until both have loaded.
    */
   private readonly registered: WritableSignal<readonly LspServerSummary[]> = signal<
     readonly LspServerSummary[]
@@ -123,15 +136,45 @@ export class LspSettings {
   }
 
   /**
-   * Loads the registered servers from the main process. Outside Electron the bridge is absent and the
-   * catalogue stays empty, which correctly reports that no language has a server.
+   * Loads the servers that **installed** plugins contribute, and follows changes as plugins are
+   * installed or removed. The catalogue is intersected with the installed set rather than taken whole:
+   * a server whose plugin is not installed must never be offered as a choice, which is the join
+   * between the Plugin Manager and this slot.
+   *
+   * Outside Electron both channels are absent and the catalogue stays empty, which correctly reports
+   * that no language has a server.
    * @returns Returns a promise that resolves once the catalogue has been loaded.
    */
   private async loadCatalogue(): Promise<void> {
-    const catalogue: readonly LspServerSummary[] =
+    const registered: readonly LspServerSummary[] =
       (await this.bridge?.invoke<readonly LspServerSummary[]>(LspChannel.GetCatalogue)) ?? [];
-    this.registered.set(catalogue);
-    this.log.debug('LspSettings', `Loaded catalogue; ${catalogue.length} registered server(s)`);
+    this.registeredServers = registered;
+    const plugins: readonly PluginSummary[] =
+      (await this.bridge?.invoke<readonly PluginSummary[]>(PluginChannel.List)) ?? [];
+    this.applyInstalled(plugins);
+    this.bridge?.on(PluginChannel.Changed, (...args: unknown[]): void => {
+      this.applyInstalled((args[0] as readonly PluginSummary[] | undefined) ?? []);
+    });
+  }
+
+  /**
+   * Narrows the registered servers to those contributed by installed plugins.
+   * @param plugins The plugins with their current state.
+   */
+  private applyInstalled(plugins: readonly PluginSummary[]): void {
+    const installed: ReadonlySet<string> = new Set<string>(
+      installedContributions(plugins, 'language-server').map(
+        (contribution: PluginContribution): string => contribution.id,
+      ),
+    );
+    const available: readonly LspServerSummary[] = this.registeredServers.filter(
+      (server: LspServerSummary): boolean => installed.has(server.id),
+    );
+    this.registered.set(available);
+    this.log.debug(
+      'LspSettings',
+      `${available.length} of ${this.registeredServers.length} servers are installed`,
+    );
   }
 
   /**

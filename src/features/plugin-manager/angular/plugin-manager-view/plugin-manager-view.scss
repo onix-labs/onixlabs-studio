@@ -1,0 +1,110 @@
+// The Plugin Manager view fills its tab: a header explaining what is installed and where the choice
+// between implementations lives, then one table of every known plugin.
+:host {
+  display: block;
+  block-size: 100%;
+}
+
+.plugin-manager {
+  display: flex;
+  flex-direction: column;
+  block-size: 100%;
+  overflow: auto;
+}
+
+.plugin-manager__header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.85rem 1.25rem;
+  border-block-end: 1px solid var(--form-border-color);
+}
+
+.plugin-manager__heading {
+  min-inline-size: 0;
+}
+
+.plugin-manager__title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.plugin-manager__subtitle {
+  margin: 0.2rem 0 0;
+  font-size: 0.8rem;
+  color: var(--form-muted-foreground-color);
+}
+
+.plugin-manager__error {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0.6rem 1.25rem;
+  font-size: 0.85rem;
+  color: var(--danger-color);
+}
+
+.plugin-manager__table {
+  flex: 1 1 auto;
+  min-block-size: 0;
+}
+
+// The name cell stacks the plugin's name, what it is for, and any note about obtaining it.
+.plugin-manager__name {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.plugin-manager__plugin-name {
+  font-weight: 600;
+}
+
+.plugin-manager__description,
+.plugin-manager__detail {
+  font-size: 0.8rem;
+  color: var(--form-muted-foreground-color);
+}
+
+.plugin-manager__detail {
+  font-style: italic;
+}
+
+.plugin-manager__provides {
+  font-size: 0.85rem;
+  color: var(--form-muted-foreground-color);
+}
+
+.plugin-manager__version {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--form-muted-foreground-color);
+}
+
+// The status word carries the state's colour; the default (not installed) stays neutral so a list of
+// mostly-uninstalled plugins does not read as a list of problems.
+.plugin-manager__state {
+  font-size: 0.85rem;
+  color: var(--form-muted-foreground-color);
+
+  &--installed {
+    color: var(--success-color);
+  }
+
+  &--busy {
+    color: var(--accent-color);
+  }
+
+  &--unavailable {
+    color: var(--warning-color);
+  }
+}
+
+.plugin-manager__row-actions {
+  white-space: nowrap;
+}

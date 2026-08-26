@@ -210,6 +210,63 @@ export class DebugProvisioner {
   }
 
   /**
+   * Gets whether an adapter's pinned download is already installed for this platform, **without
+   * downloading anything**. This is how the Plugin Manager reports install state: {@link ensure} would
+   * provision on demand, which would turn merely opening the plugin list into an unasked-for download.
+   * @param provision The adapter's provisioning recipe.
+   * @returns Returns true when the adapter's executable is already present.
+   */
+  public isProvisioned(provision: DebugAdapterProvision): Promise<boolean> {
+    const target: string | null = this.installTarget(provision);
+    return Promise.resolve(target !== null && existsSync(target));
+  }
+
+  /**
+   * Removes an adapter's version-scoped install directory, for uninstalling a plugin Studio
+   * downloaded. A directory that is not there is not an error.
+   * @param provision The adapter's provisioning recipe.
+   * @returns Returns a promise that resolves once the install is gone.
+   */
+  public async removeProvisioned(provision: DebugAdapterProvision): Promise<void> {
+    if (this.installRoot === null) {
+      return;
+    }
+    const platformKey: string = `${process.platform}-${process.arch}`;
+    const directory: string = path.join(
+      this.installRoot,
+      provision.id,
+      provision.version,
+      platformKey,
+    );
+    logger.info('DebugProvisioner', `Removing provisioned directory ${directory}`);
+    await fs.rm(directory, { recursive: true, force: true });
+    this.installs.delete(`${provision.id} ${provision.version} ${platformKey}`);
+  }
+
+  /**
+   * Computes the executable path an install would produce for this platform, which is the same path
+   * {@link install} writes to — so a presence check and an install can never disagree about where the
+   * adapter lives.
+   * @param provision The adapter's provisioning recipe.
+   * @returns Returns the executable path, or null when provisioning is disabled or the platform is
+   * unsupported.
+   */
+  private installTarget(provision: DebugAdapterProvision): string | null {
+    const platformKey: string = `${process.platform}-${process.arch}`;
+    const download: DebugAdapterDownload | undefined = provision.downloads[platformKey];
+    if (this.installRoot === null || download === undefined) {
+      return null;
+    }
+    return path.join(
+      this.installRoot,
+      provision.id,
+      provision.version,
+      platformKey,
+      download.executablePath,
+    );
+  }
+
+  /**
    * Downloads, verifies, and extracts an adapter's archive into a version-scoped install directory, or
    * reuses a cached copy. Returns null (rather than throwing) on any failure so a launch degrades to
    * "adapter unavailable" rather than crashing.

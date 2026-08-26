@@ -25,7 +25,7 @@ const execFileAsync: (
  * moving snapshot) so every machine provisions the same, verified server; bumping it re-downloads
  * into a fresh version-scoped directory.
  */
-const JDTLS_VERSION: string = '1.58.0';
+export const JDTLS_VERSION: string = '1.58.0';
 
 /**
  * Holds the URL of the pinned Eclipse JDT Language Server distribution.
@@ -51,7 +51,7 @@ const MINIMUM_JAVA_VERSION: number = 21;
  * This build is the newest published to the public feed below — newer vscode-csharp builds depend on
  * private feeds and are not publicly downloadable.
  */
-const ROSLYN_VERSION: string = '5.4.0-2.26179.14';
+export const ROSLYN_VERSION: string = '5.4.0-2.26179.14';
 
 /**
  * Holds the NuGet flat-container base URL of the public Azure DevOps feed the Roslyn server is
@@ -66,7 +66,7 @@ const ROSLYN_FEED: string =
  * distribution is pinned so every machine provisions the same, verified server; bumping it downloads
  * into a fresh, version-scoped directory.
  */
-const KOTLIN_LS_VERSION: string = '1.3.13';
+export const KOTLIN_LS_VERSION: string = '1.3.13';
 
 /**
  * Holds the URL of the pinned Kotlin language server distribution (its GitHub release `server.zip`).
@@ -86,7 +86,7 @@ const KOTLIN_LS_SHA256: string = '4fe7d71d087b307c7869036171bd9d8c6a4284cd7c25b8
  * fresh, version-scoped directory. Like Roslyn, the download is platform-specific (a per-triple binary),
  * so it is fetched over HTTPS from the official release without a per-platform hash to pin.
  */
-const RUST_ANALYZER_VERSION: string = '2026-07-13';
+export const RUST_ANALYZER_VERSION: string = '2026-07-13';
 
 /**
  * Holds the base URL of the pinned rust-analyzer release. A platform asset is fetched from
@@ -100,7 +100,7 @@ const RUST_ANALYZER_BASE: string =
  * it is built from source with the detected Go toolchain (`go install`) — pinned so every machine
  * provisions the same server.
  */
-const GOPLS_VERSION: string = 'v0.23.0';
+export const GOPLS_VERSION: string = 'v0.23.0';
 
 /**
  * Bounds the buffered output of the `go install` and version probes, generous so a verbose build is not
@@ -347,6 +347,31 @@ export class LspProvisioner {
     }
     logger.debug('LspProvisioner', `Did not find ${binary} on the PATH`);
     return null;
+  }
+
+  /**
+   * Gets whether a version-scoped install directory is already present under the managed servers root,
+   * **without downloading anything**. This is how the Plugin Manager reports what is installed: the
+   * `ensure*` methods would provision on demand, which would turn merely looking at the plugin list
+   * into an unasked-for download.
+   * @param segments The path segments of the install directory, relative to the servers root.
+   * @returns Returns true when the directory exists.
+   */
+  public isProvisioned(...segments: readonly string[]): boolean {
+    return existsSync(path.join(this.serversRoot(), ...segments));
+  }
+
+  /**
+   * Removes a version-scoped install directory from the managed servers root, for uninstalling a
+   * plugin Studio downloaded. A directory that is not there is not an error — the end state is the
+   * same either way.
+   * @param segments The path segments of the install directory, relative to the servers root.
+   * @returns Returns a promise that resolves once the directory is gone.
+   */
+  public async removeProvisioned(...segments: readonly string[]): Promise<void> {
+    const directory: string = path.join(this.serversRoot(), ...segments);
+    logger.info('LspProvisioner', `Removing provisioned directory ${directory}`);
+    await fs.rm(directory, { recursive: true, force: true });
   }
 
   /**
