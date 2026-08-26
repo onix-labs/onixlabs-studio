@@ -2,7 +2,15 @@ import { signal, WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { ProjectAction } from '@shared/api/project-system';
 import { RunConfiguration } from '@shared/api/studio';
-import { ActiveRun, BuildActionOptions, Builds, BuildHandler, BuildTask } from './builds';
+import {
+  ActiveRun,
+  BuildActionOptions,
+  Builds,
+  BuildHandler,
+  BuildTask,
+  ProjectActionOptions,
+} from './builds';
+import { ProjectEntry } from '@shared/api/project-system';
 
 /**
  * A controllable fake build handler.
@@ -31,7 +39,8 @@ class FakeHandler implements BuildHandler {
   public readonly busySignal: WritableSignal<boolean> = signal<boolean>(false);
   public readonly runOptions: (BuildActionOptions | undefined)[] = [];
   public readonly configurationOptions: (BuildActionOptions | undefined)[] = [];
-  public readonly actionOptions: (BuildActionOptions | undefined)[] = [];
+  public readonly actionOptions: (ProjectActionOptions | undefined)[] = [];
+  public readonly supportedProjectActions: Set<ProjectAction> = new Set<ProjectAction>();
 
   public get buildBusy(): WritableSignal<boolean> {
     return this.busySignal;
@@ -51,9 +60,13 @@ class FakeHandler implements BuildHandler {
     this.configurationOptions.push(options);
   }
 
-  public runAction(action: ProjectAction, options?: BuildActionOptions): void {
+  public runAction(action: ProjectAction, options?: ProjectActionOptions): void {
     this.actionCalls.push(action);
     this.actionOptions.push(options);
+  }
+
+  public supportsProjectAction(action: ProjectAction): boolean {
+    return this.supportedProjectActions.has(action);
   }
 
   public cancel(runId: string): void {
@@ -197,5 +210,28 @@ describe('Builds', () => {
     builds.runAction('rebuild', { restart: true });
     expect(handler.actionCalls).toEqual(['clean', 'rebuild']);
     expect(handler.actionOptions[1]).toEqual({ restart: true });
+  });
+
+  it('runAction_forwardsTheTargetedProjectToTheActiveHandler', () => {
+    const builds: Builds = TestBed.inject(Builds);
+    const handler: FakeHandler = new FakeHandler();
+    builds.register(handler);
+    const project: ProjectEntry = { name: 'Api', path: '/work/repo/src/Api/Api.csproj' };
+    builds.runAction('build', { project });
+
+    expect(handler.actionCalls).toEqual(['build']);
+    expect(handler.actionOptions[0]).toEqual({ project });
+  });
+
+  it('supportsProjectAction_asksTheActiveHandlerAndIsFalseWithoutOne', () => {
+    const builds: Builds = TestBed.inject(Builds);
+    expect(builds.supportsProjectAction('build')).toBe(false);
+
+    const handler: FakeHandler = new FakeHandler();
+    handler.supportedProjectActions.add('build');
+    builds.register(handler);
+
+    expect(builds.supportsProjectAction('build')).toBe(true);
+    expect(builds.supportsProjectAction('publish')).toBe(false);
   });
 });

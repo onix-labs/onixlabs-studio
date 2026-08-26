@@ -44,3 +44,25 @@
     <p>No solution or projects detected in this folder.</p>
   </div>
 }
+
+<!-- Asked when a project's Build/Clean/Test targets a busy Build terminal: the workspace has one, and
+     the running build is only ever stopped after explicit confirmation, never silently. -->
+<app-modal
+  [open]="pendingAction() !== null"
+  [width]="26"
+  ariaLabel="A build is already running"
+  (dismiss)="cancelProjectActionRestart()"
+>
+  <ng-template appModalContent>
+    <h2 class="solution-panel__confirm-title">A build is already running</h2>
+    <p class="solution-panel__confirm-message">
+      Stop the running build and {{ pendingAction()?.label?.toLowerCase() }} “{{
+        pendingAction()?.project?.name
+      }}” instead? Its output stays in the Build terminal until the new build replaces it.
+    </p>
+    <div class="solution-panel__confirm-actions">
+      <app-button label="Cancel" (click)="cancelProjectActionRestart()" />
+      <app-button variant="solid" label="Stop & Restart" (click)="confirmProjectActionRestart()" />
+    </div>
+  </ng-template>
+</app-modal>

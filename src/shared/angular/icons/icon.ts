@@ -497,6 +497,21 @@ export class Icon {
   public static readonly CLEAN: Icon = new Icon('ph-duotone ph-broom');
 
   /**
+   * Gets the test icon.
+   */
+  public static readonly TEST: Icon = new Icon('ph-duotone ph-flask');
+
+  /**
+   * Gets the publish icon.
+   */
+  public static readonly PUBLISH: Icon = new Icon('ph-duotone ph-package');
+
+  /**
+   * Gets the restore icon.
+   */
+  public static readonly RESTORE: Icon = new Icon('ph-duotone ph-arrow-counter-clockwise');
+
+  /**
    * Gets the git-commit icon.
    */
   public static readonly GIT_COMMIT: Icon = new Icon('ph-duotone ph-git-commit');
