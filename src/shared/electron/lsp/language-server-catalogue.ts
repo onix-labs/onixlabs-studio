@@ -15,7 +15,10 @@ import {
 import { JdtlsInstall } from './lsp-provisioner';
 import {
   CLANGD_PROVISION,
+  LUA_PROVISION,
+  PERLNAVIGATOR_PROVISION,
   PYRIGHT_PROVISION,
+  SQLS_PROVISION,
   TY_PROVISION,
   TYPESCRIPT_SERVER_PROVISION,
 } from './language-server-downloads';
@@ -324,6 +327,55 @@ const CLANGD: LanguageServerDescriptor = {
 };
 
 /**
+ * The Lua language server (sumneko), a standalone binary that speaks LSP over stdio with no arguments.
+ */
+const LUA: LanguageServerDescriptor = {
+  id: 'lua-language-server',
+  displayName: 'Lua Language Server',
+  languages: ['lua'],
+  priority: DEFAULT_PRIORITY,
+  resolve: (context: LanguageServerContext): LspResolution => {
+    const binary: string | null = context.installedPath(LUA_PROVISION);
+    return binary === null
+      ? unavailable('The Lua language server is not installed — install it in Plugins.')
+      : resolved({ command: binary, args: [] });
+  },
+};
+
+/**
+ * sqls, the SQL language server. It reports "no database connection" until one is configured, which is
+ * a warning rather than a failure: completion from the query text still works.
+ */
+const SQLS: LanguageServerDescriptor = {
+  id: 'sqls',
+  displayName: 'sqls',
+  languages: ['sql'],
+  priority: DEFAULT_PRIORITY,
+  resolve: (context: LanguageServerContext): LspResolution => {
+    const binary: string | null = context.installedPath(SQLS_PROVISION);
+    return binary === null
+      ? unavailable('The SQL language server is not installed — install it in Plugins.')
+      : resolved({ command: binary, args: [] });
+  },
+};
+
+/**
+ * Perl Navigator. Unlike the others it needs `--stdio` to be told which transport to use.
+ */
+const PERLNAVIGATOR: LanguageServerDescriptor = {
+  id: 'perlnavigator',
+  displayName: 'Perl Navigator',
+  languages: ['perl'],
+  priority: DEFAULT_PRIORITY,
+  resolve: (context: LanguageServerContext): LspResolution => {
+    const binary: string | null = context.installedPath(PERLNAVIGATOR_PROVISION);
+    return binary === null
+      ? unavailable('The Perl language server is not installed — install it in Plugins.')
+      : resolved({ command: binary, args: ['--stdio'] });
+  },
+};
+
+/**
  * The first-party language servers the application ships, as data. This is the *contents* of the slots,
  * not the slot mechanism: {@link import('./lsp-server-registry').LspServerRegistry} indexes these and
  * accepts further descriptors at runtime, so a plugin-contributed server is a peer of every entry here
@@ -332,5 +384,18 @@ const CLANGD: LanguageServerDescriptor = {
  * @returns Returns the catalogue descriptors.
  */
 export function languageServerCatalogue(): readonly LanguageServerDescriptor[] {
-  return [TYPESCRIPT, PYRIGHT, TY, JAVA, KOTLIN, RUST, GO, CSHARP, CLANGD];
+  return [
+    TYPESCRIPT,
+    PYRIGHT,
+    TY,
+    JAVA,
+    KOTLIN,
+    RUST,
+    GO,
+    CSHARP,
+    CLANGD,
+    LUA,
+    SQLS,
+    PERLNAVIGATOR,
+  ];
 }

@@ -101,4 +101,14 @@ describe('installedContributions', (): void => {
   it('returns nothing when nothing is installed', (): void => {
     expect(installedContributions([], 'language-server')).toEqual([]);
   });
+
+  it('excludesAPluginUnsupportedOnThisPlatform', () => {
+    // A publisher that ships no build for this machine is not "not installed yet"; its contribution
+    // must never reach a slot, or a language would offer a server that cannot exist here.
+    const unsupported: readonly PluginSummary[] = [
+      plugin('sqls', 'unavailable', [server('sqls', ['sql'])]),
+    ];
+
+    expect(installedContributions(unsupported, 'language-server')).toEqual([]);
+  });
 });

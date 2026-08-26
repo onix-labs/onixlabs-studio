@@ -1,4 +1,8 @@
-import { ArchiveProvision, everyPlatform } from '../provisioning/archive-provision';
+import {
+  ArchiveDownload,
+  ArchiveProvision,
+  everyPlatform,
+} from '../provisioning/archive-provision';
 
 // The pinned, checksum-verified downloads for the language servers Studio installs. Every server is a
 // download: nothing is bundled into the application and nothing is expected to be already on the
@@ -140,6 +144,145 @@ export const TY_PROVISION: ArchiveProvision = {
       sha256: '45dbce4b3fa2f65e4672d3756c12448a9ec9a69732655dc4429c70af1fe02d37',
       archive: 'zip',
       executablePath: 'ty-x86_64-pc-windows-msvc/ty.exe',
+    },
+  },
+};
+
+/**
+ * Holds the pinned lua-language-server version. Publishes an archive per platform and architecture, so
+ * every platform Studio supports is covered.
+ */
+export const LUA_VERSION: string = '3.19.1';
+
+/**
+ * Holds the base URL of the pinned lua-language-server release.
+ */
+const LUA_BASE: string = 'https://github.com/LuaLS/lua-language-server/releases/download/3.19.1';
+
+/**
+ * Builds one lua-language-server download. The archive extracts to its own root rather than a
+ * versioned directory, so the entry point is simply `bin/`.
+ * @param asset The asset file name.
+ * @param sha256 The asset's SHA-256.
+ * @param windows Whether this is the Windows build, which is a zip with a `.exe`.
+ * @returns Returns the download.
+ */
+function luaDownload(asset: string, sha256: string, windows: boolean = false): ArchiveDownload {
+  return {
+    url: `${LUA_BASE}/${asset}`,
+    sha256,
+    archive: windows ? 'zip' : 'tar.gz',
+    executablePath: windows ? 'bin/lua-language-server.exe' : 'bin/lua-language-server',
+  };
+}
+
+/**
+ * The lua-language-server provisioning recipe.
+ */
+export const LUA_PROVISION: ArchiveProvision = {
+  id: 'lua-language-server',
+  version: LUA_VERSION,
+  downloads: {
+    'darwin-arm64': luaDownload(
+      `lua-language-server-${LUA_VERSION}-darwin-arm64.tar.gz`,
+      '0bc077f4447f076b4c92c14e9fd303f5b569eda2ec74b4dca2b55f75fae2e90c',
+    ),
+    'darwin-x64': luaDownload(
+      `lua-language-server-${LUA_VERSION}-darwin-x64.tar.gz`,
+      'eb373c159cbe556711d7cd316315de2dce969bfd54b31edb7eb9cab2937f2cca',
+    ),
+    'linux-x64': luaDownload(
+      `lua-language-server-${LUA_VERSION}-linux-x64.tar.gz`,
+      'e9235d2d72ef55bc41cf8c99cda2ed64777682024b4bb81f5dea425060c5cbb8',
+    ),
+    'linux-arm64': luaDownload(
+      `lua-language-server-${LUA_VERSION}-linux-arm64.tar.gz`,
+      'abd2572e8fc929dc838a81ffb8473c5bce0bf39bfe8edb4b120b3b623176ce83',
+    ),
+    'win32-x64': luaDownload(
+      `lua-language-server-${LUA_VERSION}-win32-x64.zip`,
+      'fdb9a59108cf62517813c97fa5549b0e16d1ef0688306bac728b08434db7e4cd',
+      true,
+    ),
+  },
+};
+
+/**
+ * Holds the pinned sqls version. Upstream publishes x86-64 builds only, so Apple Silicon and 64-bit
+ * ARM Linux have no entry and the Plugin Manager reports it unsupported there rather than offering an
+ * install that could only fail.
+ */
+export const SQLS_VERSION: string = '0.2.48';
+
+/**
+ * Holds the base URL of the pinned sqls release.
+ */
+const SQLS_BASE: string = 'https://github.com/sqls-server/sqls/releases/download/v0.2.48';
+
+/**
+ * The sqls provisioning recipe. Each archive holds the bare executable at its root.
+ */
+export const SQLS_PROVISION: ArchiveProvision = {
+  id: 'sqls',
+  version: SQLS_VERSION,
+  downloads: {
+    'darwin-x64': {
+      url: `${SQLS_BASE}/sqls-darwin-${SQLS_VERSION}.zip`,
+      sha256: 'b44165ca597a4b4298d56657bc911aa3ca8a591befefde4e29566923c6229f3d',
+      archive: 'zip',
+      executablePath: 'sqls',
+    },
+    'linux-x64': {
+      url: `${SQLS_BASE}/sqls-linux-${SQLS_VERSION}.zip`,
+      sha256: '30047b92c41658c821b7803d2c2a3a1ce4e17ee769ceff6f24bb9e3daaf5d4dc',
+      archive: 'zip',
+      executablePath: 'sqls',
+    },
+    'win32-x64': {
+      url: `${SQLS_BASE}/sqls-windows-${SQLS_VERSION}.zip`,
+      sha256: 'df6453b2ddcb4e748547d0288b826251a24af099749dc7a9ddea587aac3d4365',
+      archive: 'zip',
+      executablePath: 'sqls.exe',
+    },
+  },
+};
+
+/**
+ * Holds the pinned Perl Navigator version. Also x86-64 only.
+ */
+export const PERLNAVIGATOR_VERSION: string = '0.8.20';
+
+/**
+ * Holds the base URL of the pinned Perl Navigator release.
+ */
+const PERLNAVIGATOR_BASE: string =
+  'https://github.com/bscan/perlnavigator/releases/download/v0.8.20';
+
+/**
+ * The Perl Navigator provisioning recipe. Each archive extracts to a directory named after the asset,
+ * so the entry point carries that prefix.
+ */
+export const PERLNAVIGATOR_PROVISION: ArchiveProvision = {
+  id: 'perlnavigator',
+  version: PERLNAVIGATOR_VERSION,
+  downloads: {
+    'darwin-x64': {
+      url: `${PERLNAVIGATOR_BASE}/perlnavigator-macos-x86_64.zip`,
+      sha256: '064700f91923b076fe77542311b22465be9fb1acd72102d5b558d5e4d90d46a9',
+      archive: 'zip',
+      executablePath: 'perlnavigator-macos-x86_64/perlnavigator',
+    },
+    'linux-x64': {
+      url: `${PERLNAVIGATOR_BASE}/perlnavigator-linux-x86_64.zip`,
+      sha256: '5a29c8a6919c32c6b47f05ab1ed38f62fffa56ec1752b8e9d6245e177ba32cd2',
+      archive: 'zip',
+      executablePath: 'perlnavigator-linux-x86_64/perlnavigator',
+    },
+    'win32-x64': {
+      url: `${PERLNAVIGATOR_BASE}/perlnavigator-win-x86_64.zip`,
+      sha256: '3a521c936b01046ed79cc6f3e3ac31a71c5368641aeeb28fea11b21577380ee2',
+      archive: 'zip',
+      executablePath: 'perlnavigator-win-x86_64/perlnavigator.exe',
     },
   },
 };
