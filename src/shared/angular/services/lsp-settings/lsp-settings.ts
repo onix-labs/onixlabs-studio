@@ -1,6 +1,12 @@
 import { inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { Bridge } from '@shared/api/bridge';
-import { LspChannel, LspSettings as LspSettingsData } from '@shared/api/lsp-channels';
+import {
+  LspChannel,
+  LspServerId,
+  LspServerSummary,
+  LspSettings as LspSettingsData,
+} from '@shared/api/lsp-channels';
+import { entriesForLanguage, resolveForLanguage } from '@shared/api/language-slot';
 import { Log } from '@shared/angular/services/log/log';
 
 /**
@@ -13,6 +19,7 @@ const DEFAULT_SETTINGS: LspSettingsData = {
   clangdPath: null,
   typescriptServerPath: null,
   serverArgs: {},
+  languageServers: {},
 };
 
 /**
@@ -50,10 +57,81 @@ export class LspSettings {
   public readonly isAvailable: boolean = this.bridge !== undefined;
 
   /**
-   * Initializes the service, loading the settings from the main process.
+   * Holds the registered servers as published by the main process, empty until the catalogue loads.
+   */
+  private readonly registered: WritableSignal<readonly LspServerSummary[]> = signal<
+    readonly LspServerSummary[]
+  >([]);
+
+  /**
+   * Gets the registered language servers, for choosing which one serves a language.
+   */
+  public readonly catalogue: Signal<readonly LspServerSummary[]> = this.registered.asReadonly();
+
+  /**
+   * Gets a promise that resolves once the catalogue has been loaded from the main process. The
+   * catalogue arrives asynchronously, so a caller that must resolve a language *now* — a document
+   * opened during startup — awaits this rather than concluding the language has no server.
+   */
+  public readonly ready: Promise<void>;
+
+  /**
+   * Initializes the service, loading the settings and the server catalogue from the main process.
    */
   public constructor() {
     void this.refresh();
+    this.ready = this.loadCatalogue();
+  }
+
+  /**
+   * Resolves which server serves a language: the user's choice when they have made one, otherwise the
+   * highest-priority registered server. Returns null when the catalogue has not loaded yet or no
+   * registered server serves the language.
+   * @param language The Monaco language identifier.
+   * @returns Returns the server identifier, or null when none serves the language.
+   */
+  public serverForLanguage(language: string): LspServerId | null {
+    return resolveForLanguage(language, this.registered(), this.current().languageServers);
+  }
+
+  /**
+   * Gets every registered server that can serve a language, for offering the user the choice. A
+   * language with more than one is a slot the user picks an implementation for.
+   * @param language The Monaco language identifier.
+   * @returns Returns the servers serving the language, in catalogue order.
+   */
+  public serversForLanguage(language: string): readonly LspServerSummary[] {
+    return entriesForLanguage(language, this.registered());
+  }
+
+  /**
+   * Chooses which server serves a language, persisting the change through the main process. Passing
+   * null clears the choice, returning the language to its default server.
+   * @param language The Monaco language identifier.
+   * @param serverId The chosen server, or null to use the default.
+   * @returns Returns a promise that resolves once the change is stored.
+   */
+  public async setServerForLanguage(language: string, serverId: LspServerId | null): Promise<void> {
+    const languageServers: Record<string, LspServerId> = { ...this.current().languageServers };
+    if (serverId === null) {
+      delete languageServers[language];
+    } else {
+      languageServers[language] = serverId;
+    }
+    this.log.info('LspSettings', `Language '${language}' served by '${serverId ?? 'default'}'`);
+    await this.store({ ...this.current(), languageServers });
+  }
+
+  /**
+   * Loads the registered servers from the main process. Outside Electron the bridge is absent and the
+   * catalogue stays empty, which correctly reports that no language has a server.
+   * @returns Returns a promise that resolves once the catalogue has been loaded.
+   */
+  private async loadCatalogue(): Promise<void> {
+    const catalogue: readonly LspServerSummary[] =
+      (await this.bridge?.invoke<readonly LspServerSummary[]>(LspChannel.GetCatalogue)) ?? [];
+    this.registered.set(catalogue);
+    this.log.debug('LspSettings', `Loaded catalogue; ${catalogue.length} registered server(s)`);
   }
 
   /**

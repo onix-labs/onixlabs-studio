@@ -4,10 +4,12 @@ import { vi } from 'vitest';
 import { Bridge } from '@shared/api/bridge';
 import {
   LspChannel,
+  LspServerSummary,
   LspSettings as LspSettingsData,
   LspStartRequest,
   LspStartResult,
 } from '@shared/api/lsp-channels';
+
 import { DirectoryListing } from '@shared/api/workspace-channels';
 import { Diagnostic, Diagnostics, DiagnosticsProvider } from '../diagnostics/diagnostics';
 import { Output, OutputChannelInfo } from '../output/output';
@@ -17,6 +19,22 @@ import { LspClient } from './lsp-client';
 import { LspFeatures } from './lsp-features';
 import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
 import { LspServer, LspStatus } from './lsp-status';
+
+/**
+ * The registered servers these tests run against, standing in for the catalogue the real settings
+ * service loads from the main process.
+ */
+const CATALOGUE: readonly LspServerSummary[] = [
+  {
+    id: 'typescript',
+    displayName: 'TypeScript',
+    languages: ['typescript', 'javascript'],
+    priority: 100,
+  },
+  { id: 'csharp', displayName: 'Roslyn', languages: ['csharp'], priority: 100 },
+  { id: 'java', displayName: 'Eclipse JDT', languages: ['java'], priority: 100 },
+  { id: 'pyright', displayName: 'Pyright', languages: ['python'], priority: 100 },
+];
 
 /**
  * A fake transport that records what the client sends over the LSP channels and lets the test push
@@ -51,6 +69,7 @@ class FakeLsp implements Bridge {
           clangdPath: null,
           typescriptServerPath: null,
           serverArgs: {},
+          languageServers: {},
         } as LspSettingsData as T);
       case LspChannel.SetSettings as string:
         return Promise.resolve(args[0] as T);
@@ -201,7 +220,17 @@ describe('LspClient', () => {
         { provide: Workspace, useValue: { root } },
         {
           provide: LspSettings,
-          useValue: { isDisabled: (serverId: string): boolean => disabledServers.has(serverId) },
+          useValue: {
+            isDisabled: (serverId: string): boolean => disabledServers.has(serverId),
+            // The catalogue the real service loads from the main process, stubbed to the servers these
+            // tests exercise: the client asks which server serves a language rather than knowing.
+            serverForLanguage: (language: string): string | null =>
+              CATALOGUE.find((server: LspServerSummary): boolean =>
+                server.languages.includes(language),
+              )?.id ?? null,
+            catalogue: (): readonly LspServerSummary[] => CATALOGUE,
+            ready: Promise.resolve(),
+          },
         },
         ...(features === undefined
           ? []

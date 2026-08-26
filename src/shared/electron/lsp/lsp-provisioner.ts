@@ -190,6 +190,15 @@ export class LspProvisioner {
   private clangdProbe: Promise<string | null> | null = null;
 
   /**
+   * Caches generic PATH executable lookups by binary and override, so each detection runs once per
+   * session. Keyed rather than a single field because it serves every PATH-detected server.
+   */
+  private readonly executableProbes: Map<string, Promise<string | null>> = new Map<
+    string,
+    Promise<string | null>
+  >();
+
+  /**
    * Detects a usable Java executable: the user's override when given, then the one under `JAVA_HOME`,
    * then `java` on the PATH, provided it reports a high enough version. The result is cached for the
    * session (the override is stable per launch).
@@ -293,6 +302,51 @@ export class LspProvisioner {
   public detectClangd(override: string | null): Promise<string | null> {
     this.clangdProbe ??= this.probeClangd(override);
     return this.clangdProbe;
+  }
+
+  /**
+   * Detects an executable that is expected to be on the PATH (or at an explicit override), by running
+   * it with `--version` and accepting it when it runs. This is the provisioning story for a server that
+   * ships no pinned release asset the application can verify — it is offered, and is unavailable until
+   * the user installs it — as opposed to the download-and-verify path the bundled servers take. The
+   * result is cached per binary for the session.
+   * @param binary The executable name to detect.
+   * @param override The user's configured executable, tried first when given.
+   * @returns Returns the executable to launch, or null when it is not installed.
+   */
+  public detectExecutable(binary: string, override: string | null = null): Promise<string | null> {
+    const key: string = `${binary}::${override ?? ''}`;
+    let probe: Promise<string | null> | undefined = this.executableProbes.get(key);
+    if (probe === undefined) {
+      probe = this.probeExecutable(binary, override);
+      this.executableProbes.set(key, probe);
+    }
+    return probe;
+  }
+
+  /**
+   * Probes for an executable without consulting the cache.
+   * @param binary The executable name to detect.
+   * @param override The user's configured executable, tried first when given.
+   * @returns Returns the executable, or null when none runs.
+   */
+  private async probeExecutable(binary: string, override: string | null): Promise<string | null> {
+    const candidates: string[] = [];
+    if (override !== null && override.length > 0) {
+      candidates.push(override);
+    }
+    candidates.push(process.platform === 'win32' ? `${binary}.exe` : binary);
+    for (const candidate of candidates) {
+      try {
+        await execFileAsync(candidate, ['--version']);
+        logger.debug('LspProvisioner', `Detected ${binary} at ${candidate}`);
+        return candidate;
+      } catch {
+        // Not this candidate; fall through to the next.
+      }
+    }
+    logger.debug('LspProvisioner', `Did not find ${binary} on the PATH`);
+    return null;
   }
 
   /**

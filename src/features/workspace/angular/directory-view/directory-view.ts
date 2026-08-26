@@ -81,6 +81,7 @@ import { Documents } from '@shared/angular/services/documents/documents';
 import { UnsavedWorkRegistry } from '@shared/angular/services/unsaved-work/unsaved-work-registry';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { LspClient } from '@shared/angular/services/lsp/lsp-client';
+import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
 import { SolutionModel } from '@features/workspace/angular/project/solution-model';
 import { PackageModel } from '@features/workspace/angular/project/package-model';
 import { PackageExplorer } from '@features/workspace/angular/project/package-explorer';
@@ -120,18 +121,18 @@ import {
 } from '@shared/angular/services/view-injectors/view-injector-registration';
 
 /**
- * Maps a project model's kind to the language server prestarted when its workspace opens, so the
- * structure-aware server begins loading the workspace up front rather than on the first file: Roslyn
- * for .NET, the TypeScript server for Node, jdtls for a Gradle/Maven JVM build, Pyright for Python,
- * clangd for a CMake/Make C/C++ project, rust-analyzer for a Cargo project, gopls for a Go module. A
- * kind with no entry prestarts nothing.
+ * Maps a project model's kind to the *language* whose server is prestarted when its workspace opens,
+ * so the structure-aware server begins loading the workspace up front rather than on the first file.
+ * Deliberately a language rather than a server: which server serves a language is the user's choice,
+ * resolved through the catalogue, so prestart cannot start a different server from the one the first
+ * opened file would. A kind with no entry prestarts nothing.
  */
-const PRESTART_SERVERS: Readonly<Record<string, string>> = {
+const PRESTART_LANGUAGES: Readonly<Record<string, string>> = {
   dotnet: 'csharp',
   node: 'typescript',
   jvm: 'java',
   python: 'python',
-  cpp: 'clangd',
+  cpp: 'cpp',
   rust: 'rust',
   go: 'go',
 };
@@ -453,6 +454,11 @@ export class DirectoryView implements OnInit, OnDestroy {
    * Holds this tab's scoped language-server client, started eagerly for a .NET solution.
    */
   private readonly lspClient: LspClient = inject(LspClient);
+
+  /**
+   * Holds the language-server settings, used to resolve which server serves a prestarted language.
+   */
+  private readonly lspSettings: LspSettings = inject(LspSettings);
 
   /**
    * Holds this tab's scoped document model.
@@ -1114,8 +1120,12 @@ export class DirectoryView implements OnInit, OnDestroy {
     // once. A hidden view prestarts when it becomes active (this effect re-runs on activation).
     effect((): void => {
       const model: ProjectModel | null = this.solutionModel.model();
+      const language: string | null =
+        model === null ? null : (PRESTART_LANGUAGES[model.kind] ?? null);
+      // Read the catalogue signal so the effect re-runs once it loads: a workspace restored at startup
+      // resolves its model before the catalogue arrives, and would otherwise never prestart.
       const serverId: string | null =
-        model === null ? null : (PRESTART_SERVERS[model.kind] ?? null);
+        language === null ? null : this.lspSettings.serverForLanguage(language);
       if (model !== null && serverId !== null && this.isActive()) {
         untracked((): void => this.lspClient.prestartServer(serverId, model.root));
       }

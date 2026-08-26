@@ -181,23 +181,6 @@ interface TrackedDocument {
 }
 
 /**
- * Maps a Monaco language identifier to the registered server that handles it. A language without an
- * entry has no language server and is left to Monaco's built-in diagnostics.
- */
-const LANGUAGE_SERVERS: Readonly<Record<string, string>> = {
-  typescript: 'typescript',
-  javascript: 'typescript',
-  java: 'java',
-  kotlin: 'kotlin',
-  python: 'python',
-  csharp: 'csharp',
-  cpp: 'clangd',
-  c: 'clangd',
-  rust: 'rust',
-  go: 'go',
-};
-
-/**
  * Identifies this provider's contribution within the {@link Diagnostics} aggregate.
  */
 const PROVIDER_ID: string = 'lsp';
@@ -796,8 +779,18 @@ export class LspClient implements OnDestroy {
     if (this.bridge === undefined || state.path === null) {
       return;
     }
-    const serverId: string | undefined = LANGUAGE_SERVERS[state.languageId];
-    if (serverId === undefined || this.lspSettings.isDisabled(serverId)) {
+    const serverId: string | null = this.lspSettings.serverForLanguage(state.languageId);
+    if (serverId === null) {
+      // The catalogue is loaded asynchronously from the main process, so a document opened before it
+      // arrives would otherwise be read as "this language has no server" and left unserved for the
+      // life of the tab. Retry once the catalogue lands; if the language genuinely has no server the
+      // retry resolves to null again and stops there.
+      if (this.lspSettings.catalogue().length === 0) {
+        void this.lspSettings.ready.then((): void => this.syncDocument(state));
+      }
+      return;
+    }
+    if (this.lspSettings.isDisabled(serverId)) {
       return;
     }
     const resolved: { root: string; standalone: boolean } | null = this.documentRoot(state.path);

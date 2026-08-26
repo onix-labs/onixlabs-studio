@@ -19,6 +19,7 @@ import {
   LspChannel,
   LspExit,
   LspMessage,
+  LspServerSummary,
   LspStartRequest,
   LspStartResult,
   SEMANTIC_TOKEN_MODIFIERS,
@@ -166,6 +167,9 @@ export class LspManager {
       LspChannel.Notify,
       (_event: IpcMainEvent, id: unknown, method: unknown, params: unknown): void =>
         this.notify(id, method, params),
+    );
+    ipcMain.handle(LspChannel.GetCatalogue, (): readonly LspServerSummary[] =>
+      this.registry.catalogue(),
     );
     logger.info('LspManager', 'Registered language-server IPC handlers');
   }
