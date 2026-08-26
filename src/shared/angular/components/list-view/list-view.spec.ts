@@ -2,7 +2,8 @@ import { CdkDragDrop, CdkDragSortEvent } from '@angular/cdk/drag-drop';
 import { ApplicationRef, Component, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { ListReorder, ListRow, ListView } from './list-view';
+import { MenuItem } from '@shared/angular/components/menu/menu';
+import { ListMenuSelection, ListReorder, ListRow, ListView } from './list-view';
 
 /**
  * Builds a list row carrying its id as the payload the projected template renders.
@@ -265,5 +266,181 @@ describe('ListView (reorderable)', () => {
     drag(list).onDrop({ previousIndex: 0, currentIndex: 0 } as CdkDragDrop<readonly ListRow[]>);
     fixture.detectChanges();
     expect(labels()).toEqual(['three', 'one', 'two']);
+  });
+});
+
+/**
+ * Hosts the list with a row context menu, offering items that depend on the row so a test can tell
+ * which row the menu was opened on.
+ */
+@Component({
+  imports: [ListView],
+  template: `
+    <app-list-view
+      [rows]="rows()"
+      [contextMenuFor]="menuFor"
+      (contextMenuSelect)="onChoice($event)"
+    >
+      <ng-template let-row
+        ><span class="probe-label">{{ row.data }}</span></ng-template
+      >
+    </app-list-view>
+  `,
+})
+class MenuHost {
+  public readonly rows: WritableSignal<readonly ListRow[]> = signal<readonly ListRow[]>([
+    makeRow('alpha'),
+    makeRow('beta'),
+  ]);
+  public readonly chosen: ListMenuSelection[] = [];
+
+  public readonly menuFor: (row: ListRow) => readonly MenuItem[] = (
+    row: ListRow,
+  ): readonly MenuItem[] => [{ id: `act:${row.id}`, label: `Act on ${row.id}` }];
+
+  public onChoice(selection: ListMenuSelection): void {
+    this.chosen.push(selection);
+  }
+}
+
+describe('ListView context menu', () => {
+  let fixture: ComponentFixture<MenuHost>;
+  let component: MenuHost;
+
+  beforeEach(() => {
+    fixture = TestBed.createComponent(MenuHost);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+  });
+
+  /**
+   * Gets the rendered row elements.
+   * @returns Returns the rows.
+   */
+  function rows(): HTMLElement[] {
+    return Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.list-row'),
+    );
+  }
+
+  /**
+   * Gets the items of the open context menu, which the CDK renders into an overlay outside the host.
+   * @returns Returns the item buttons.
+   */
+  function menuItems(): HTMLButtonElement[] {
+    return Array.from(document.querySelectorAll<HTMLButtonElement>('.app-menu-panel__item'));
+  }
+
+  /**
+   * Right-clicks a row and settles the resulting render.
+   * @param index The row to right-click.
+   */
+  function rightClick(index: number): void {
+    rows()[index].dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    fixture.detectChanges();
+  }
+
+  it('contextMenu_onRightClick_showsTheItemsBuiltForThatRow', () => {
+    rightClick(0);
+    expect(menuItems().map((b: HTMLButtonElement): string => b.textContent?.trim() ?? '')).toEqual([
+      'Act on alpha',
+    ]);
+  });
+
+  it('contextMenu_onADifferentRow_showsThatRowsItems', () => {
+    // The row travels with the trigger's data rather than through a signal set by a separate
+    // listener, so the items can never belong to a previously right-clicked row.
+    rightClick(1);
+    expect(menuItems().map((b: HTMLButtonElement): string => b.textContent?.trim() ?? '')).toEqual([
+      'Act on beta',
+    ]);
+  });
+
+  it('contextMenuSelect_whenAnItemIsChosen_emitsItWithItsRow', () => {
+    rightClick(1);
+    menuItems()[0].click();
+    fixture.detectChanges();
+
+    expect(component.chosen).toHaveLength(1);
+    expect(component.chosen[0].itemId).toBe('act:beta');
+    expect(component.chosen[0].row.id).toBe('beta');
+  });
+
+  it('contextMenu_isAPopupRatherThanAnInlineMenu', () => {
+    rightClick(0);
+
+    // The tell for a menu whose `cdkMenu` could not reach its trigger's injector: CDK falls back to
+    // treating it as an inline menu, which builds its own menu stack. The panel then cannot be
+    // dismissed by its trigger and lays out as a stretched strip instead of a popup.
+    const panel: Element | null = document.querySelector('.app-menu-panel');
+    expect(panel).not.toBeNull();
+    expect(panel?.classList.contains('cdk-menu-inline')).toBe(false);
+  });
+
+  it('contextMenu_whenClickingAway_dismissesIt', () => {
+    rightClick(0);
+    expect(menuItems()).toHaveLength(1);
+
+    document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    fixture.detectChanges();
+
+    expect(menuItems()).toHaveLength(0);
+  });
+});
+
+/**
+ * Hosts the list with a context menu that only some rows have items for, so the suppression of empty
+ * menus can be observed.
+ */
+@Component({
+  imports: [ListView],
+  template: `
+    <app-list-view [rows]="rows()" [contextMenuFor]="menuFor">
+      <ng-template let-row
+        ><span class="probe-label">{{ row.data }}</span></ng-template
+      >
+    </app-list-view>
+  `,
+})
+class SparseMenuHost {
+  public readonly rows: WritableSignal<readonly ListRow[]> = signal<readonly ListRow[]>([
+    makeRow('actionable'),
+    makeRow('inert'),
+  ]);
+
+  public readonly menuFor: (row: ListRow) => readonly MenuItem[] = (
+    row: ListRow,
+  ): readonly MenuItem[] => (row.id === 'actionable' ? [{ id: 'act', label: 'Act' }] : []);
+}
+
+describe('ListView context menu suppression', () => {
+  let fixture: ComponentFixture<SparseMenuHost>;
+
+  beforeEach(() => {
+    fixture = TestBed.createComponent(SparseMenuHost);
+    fixture.detectChanges();
+  });
+
+  /**
+   * Right-clicks the row at the given index.
+   * @param index The row index.
+   */
+  function rightClick(index: number): void {
+    Array.from((fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.list-row'))[
+      index
+    ].dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    fixture.detectChanges();
+  }
+
+  it('contextMenu_onARowWithItems_opens', () => {
+    rightClick(0);
+    expect(document.querySelectorAll('.app-menu-panel__item')).toHaveLength(1);
+  });
+
+  it('contextMenu_onARowWithNoItems_doesNotOpenAnEmptyPanel', () => {
+    // An empty panel on a row nothing can be done to reads as a bug rather than as an answer.
+    rightClick(1);
+    expect(document.querySelectorAll('.app-menu-panel')).toHaveLength(0);
   });
 });
