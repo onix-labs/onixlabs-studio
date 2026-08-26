@@ -405,6 +405,36 @@ export class LspProvisioner {
   }
 
   /**
+   * Gets the private GOPATH gopls is built in. Kept out of the user's own GOPATH — building a tool
+   * should not write into the caches their projects use — which also means it is Studio's to clean up.
+   * @returns Returns the build-cache directory.
+   */
+  private goBuildCache(): string {
+    return path.join(this.serversRoot(), 'go');
+  }
+
+  /**
+   * Removes the private GOPATH gopls was built in. Uninstalling gopls removed the binary but left its
+   * build cache behind — hundreds of megabytes of module downloads and compiled objects that nothing
+   * would ever look at again.
+   * @returns Returns a promise that resolves once the cache is gone.
+   */
+  public async removeGoBuildCache(): Promise<void> {
+    const cache: string = this.goBuildCache();
+    if (!existsSync(cache)) {
+      return;
+    }
+    logger.info('LspProvisioner', `Removing the gopls build cache at ${cache}`);
+    // Go writes its module cache read-only, directories included, and on POSIX unlinking needs write
+    // permission on the *parent* directory — so a plain recursive remove fails partway through and
+    // leaves most of the cache behind. Restore write permission across the tree first.
+    if (process.platform !== 'win32') {
+      await execFileAsync('chmod', ['-R', 'u+w', cache]).catch((): void => undefined);
+    }
+    await fs.rm(cache, { recursive: true, force: true });
+  }
+
+  /**
    * Gets whether a version-scoped install directory holds a *completed* install, without downloading
    * anything. The marker matters: an interrupted download leaves the directory behind, and a directory
    * on its own would report a half-installed server as ready and fail at the point of use.
@@ -926,7 +956,7 @@ export class LspProvisioner {
       }
       logger.info('LspProvisioner', `Building gopls ${GOPLS_VERSION} with ${go}`);
       await fs.mkdir(installDir, { recursive: true });
-      const goPath: string = path.join(this.serversRoot(), 'go');
+      const goPath: string = this.goBuildCache();
       await execFileAsync(go, ['install', `golang.org/x/tools/gopls@${GOPLS_VERSION}`], {
         env: {
           ...process.env,

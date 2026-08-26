@@ -328,8 +328,12 @@ export function pluginCatalogue(): readonly PluginDescriptor[] {
         const go: string | null = await context.provisioner.detectGo(null);
         return go === null ? null : context.provisioner.ensureGopls(go);
       },
-      uninstall: (context: PluginContext): Promise<void> =>
-        context.provisioner.removeProvisioned('gopls', GOPLS_VERSION),
+      uninstall: async (context: PluginContext): Promise<void> => {
+        await context.provisioner.removeProvisioned('gopls', GOPLS_VERSION);
+        // gopls is built rather than downloaded, so removing the binary leaves the module cache and
+        // compiled objects it was built from behind.
+        await context.provisioner.removeGoBuildCache();
+      },
     },
     {
       id: 'debugpy',

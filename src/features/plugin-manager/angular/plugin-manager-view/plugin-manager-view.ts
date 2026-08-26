@@ -12,6 +12,7 @@ import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { Table, TableColumn, TableRow, TableRowDef } from '@shared/angular/components/table/table';
+import { languageDisplayName } from '@shared/angular/services/plugins/language-names';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
 
 /**
@@ -19,7 +20,8 @@ import { Plugins } from '@shared/angular/services/plugins/plugins';
  */
 const COLUMNS: readonly TableColumn[] = [
   { id: 'name', header: 'Plugin' },
-  { id: 'provides', header: 'Provides', width: '30%' },
+  { id: 'provides', header: 'Provides', width: '11rem' },
+  { id: 'languages', header: 'Languages', width: '20%' },
   { id: 'version', header: 'Version', width: '10rem' },
   { id: 'state', header: 'Status', width: '11rem' },
   { id: 'actions', header: '', width: '9rem', align: 'end' },
@@ -126,17 +128,36 @@ export class PluginManagerView {
   }
 
   /**
-   * Describes what a plugin contributes, in the user's terms rather than slot identifiers.
+   * Describes what kind of thing a plugin contributes, without repeating the languages beside it.
    * @param plugin The plugin.
-   * @returns Returns a human-readable summary of its contributions.
+   * @returns Returns the distinct slot labels it fills.
    */
   protected provides(plugin: PluginSummary): string {
-    return plugin.contributions
-      .map(
-        (contribution: PluginContribution): string =>
-          `${SLOT_LABELS[contribution.slot]} for ${contribution.languages.join(', ')}`,
-      )
-      .join(' · ');
+    const kinds: readonly string[] = [
+      ...new Set(
+        plugin.contributions.map(
+          (contribution: PluginContribution): string => SLOT_LABELS[contribution.slot],
+        ),
+      ),
+    ];
+    return kinds.join(', ');
+  }
+
+  /**
+   * Names the languages a plugin serves, in the words a person uses for them rather than the
+   * identifiers Monaco does.
+   * @param plugin The plugin.
+   * @returns Returns the language names.
+   */
+  protected languages(plugin: PluginSummary): string {
+    const languages: readonly string[] = [
+      ...new Set(
+        plugin.contributions.flatMap(
+          (contribution: PluginContribution): readonly string[] => contribution.languages,
+        ),
+      ),
+    ];
+    return languages.map(languageDisplayName).join(', ');
   }
 
   /**
@@ -172,12 +193,5 @@ export class PluginManagerView {
    */
   protected uninstall(plugin: PluginSummary): void {
     void this.plugins.uninstall(plugin.id);
-  }
-
-  /**
-   * Reloads the plugin list.
-   */
-  protected refresh(): void {
-    void this.plugins.refresh();
   }
 }

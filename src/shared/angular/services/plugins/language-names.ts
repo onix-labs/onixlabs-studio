@@ -8,7 +8,7 @@ const LANGUAGE_NAMES: Readonly<Record<string, string>> = {
   javascript: 'JavaScript',
   python: 'Python',
   csharp: 'C#',
-  cpp: 'C / C++',
+  cpp: 'C++',
   c: 'C',
   java: 'Java',
   kotlin: 'Kotlin',
