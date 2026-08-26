@@ -1,4 +1,9 @@
-import { GitRunResult, SourceControlClient } from '@shared/api/source-control-channels';
+import {
+  GitMergeMode,
+  GitOperationState,
+  GitRunResult,
+  SourceControlClient,
+} from '@shared/api/source-control-channels';
 import { GitCommit, GitFileChange, GitStash } from '../repository/repository-data';
 import {
   ParsedRefs,
@@ -41,6 +46,13 @@ const WORKTREE_REVISION: string = '';
 const HEAD_REVISION: string = 'HEAD';
 
 /**
+ * The revision naming stage 2 of the index — "ours", the side the working tree was already on when a
+ * merge or rebase hit a conflict. An unmerged path holds three stages at once, so it is addressed by
+ * number: `:2:path`.
+ */
+const OURS_STAGE_REVISION: string = ':2';
+
+/**
  * The git implementation of {@link SourceControlProvider}. It calls the safe git client (the
  * {@link SourceControlClient} over `window.bridge`) for a single opened repository root and maps the
  * raw output through the {@link import('./git-output')} parsers into the application's source-control
@@ -76,6 +88,14 @@ export class GitProvider implements SourceControlProvider {
     return parseStatus(
       await this.read((api: SourceControlClient): Promise<GitRunResult> => api.status(this.root)),
     );
+  }
+
+  /**
+   * Reads the multi-step operation the repository is in the middle of, if any.
+   * @returns Returns the operation state, whose kind is null when nothing is in flight.
+   */
+  public async getOperationState(): Promise<GitOperationState> {
+    return (await this.api?.operationState(this.root)) ?? { kind: null };
   }
 
   /**
@@ -149,6 +169,17 @@ export class GitProvider implements SourceControlProvider {
       const modified: string =
         file.status === 'deleted' ? '' : await this.blob(file.target.hash, newPath);
       return { original, modified };
+    }
+
+    // A conflicted path has no single indexed content to compare against — the index holds all three
+    // sides at once, and `:path` is ambiguous there, which is why the ordinary staged/unstaged pair
+    // would come back empty and read as a wholly-added file. Compare our side of the merge with what
+    // is on disk instead, so the diff shows what resolving it has to settle.
+    if (file.status === 'conflicted') {
+      return {
+        original: await this.blob(OURS_STAGE_REVISION, newPath),
+        modified: await this.blob(WORKTREE_REVISION, newPath),
+      };
     }
 
     // Working tree: staged compares HEAD with the index; unstaged compares the index with the worktree.
@@ -407,6 +438,59 @@ export class GitProvider implements SourceControlProvider {
     return this.mutate(
       (api: SourceControlClient): Promise<GitRunResult> =>
         api.checkoutTracking(this.root, remoteBranch, localBranch),
+    );
+  }
+
+  /**
+   * Merges a branch into the checked-out one.
+   * @param branch The branch to merge in.
+   * @param mode How the merge records its result.
+   * @returns Returns the outcome.
+   */
+  public merge(branch: string, mode: GitMergeMode): Promise<MutationResult> {
+    return this.mutate(
+      (api: SourceControlClient): Promise<GitRunResult> => api.merge(this.root, branch, mode),
+    );
+  }
+
+  /**
+   * Replays the checked-out branch onto another.
+   * @param onto The branch to replay onto.
+   * @returns Returns the outcome.
+   */
+  public rebase(onto: string): Promise<MutationResult> {
+    return this.mutate(
+      (api: SourceControlClient): Promise<GitRunResult> => api.rebase(this.root, onto),
+    );
+  }
+
+  /**
+   * Carries on the operation in flight, once its conflicts have been resolved.
+   * @returns Returns the outcome.
+   */
+  public continueOperation(): Promise<MutationResult> {
+    return this.mutate(
+      (api: SourceControlClient): Promise<GitRunResult> => api.continueOperation(this.root),
+    );
+  }
+
+  /**
+   * Skips the commit the operation in flight is stuck on.
+   * @returns Returns the outcome.
+   */
+  public skipOperation(): Promise<MutationResult> {
+    return this.mutate(
+      (api: SourceControlClient): Promise<GitRunResult> => api.skipOperation(this.root),
+    );
+  }
+
+  /**
+   * Abandons the operation in flight, returning the working tree to where it started.
+   * @returns Returns the outcome.
+   */
+  public abortOperation(): Promise<MutationResult> {
+    return this.mutate(
+      (api: SourceControlClient): Promise<GitRunResult> => api.abortOperation(this.root),
     );
   }
 

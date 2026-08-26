@@ -93,6 +93,7 @@ describe('WorkspaceGit', () => {
       behind: 0,
       staged: [change('src/app/main.ts', 'modified')],
       unstaged: [change('README.md', 'added')],
+      conflicted: [],
     };
 
     const client: Pick<SourceControlClient, 'resolveRepository' | 'closeRepository'> = {

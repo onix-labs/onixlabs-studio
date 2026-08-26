@@ -63,6 +63,46 @@
   </div>
 }
 
+<!-- What the working tree is in the middle of, and the three ways out of it. Shown whatever the graph
+     has selected: a repository mid-merge is mid-merge whichever commit is being looked at. -->
+@if (repository.operationInFlight()) {
+  <div class="detail__operation" role="status">
+    <div class="detail__operation-summary">
+      <app-icon class="detail__operation-icon" [icon]="Icon.GIT_MERGE" />
+      <span class="detail__operation-title">{{ operationTitle() }}</span>
+      @if (operationProgress(); as progress) {
+        <span class="detail__operation-progress">{{ progress }}</span>
+      }
+    </div>
+    <p class="detail__operation-message">{{ operationMessage() }}</p>
+    <div class="detail__operation-actions">
+      @if (canSkip()) {
+        <app-button
+          size="small"
+          label="Skip"
+          tooltip="Drop the commit this is stuck on and move to the next"
+          (click)="skipOperation()"
+        />
+      }
+      <app-button
+        size="small"
+        variant="solid"
+        label="Continue"
+        [disabled]="!repository.canContinueOperation()"
+        tooltip="Carry on, now that the conflicts are resolved"
+        (click)="continueOperation()"
+      />
+      <app-button
+        size="small"
+        tone="danger"
+        label="Abort"
+        tooltip="Abandon this and put the working tree back where it started"
+        (click)="abortOperation()"
+      />
+    </div>
+  </div>
+}
+
 @if (repository.selectedCommit(); as commit) {
   <header class="detail__header">
     <h2 class="detail__summary">{{ commit.summary }}</h2>
@@ -129,23 +169,45 @@
       <ng-template let-row>
         @let entry = workingRowOf(row);
         @if (entry.kind === 'group') {
-          <app-checkbox
-            class="detail__group-check"
-            [checked]="entry.group === 'tracked' ? trackedState().all : untrackedState().all"
-            [indeterminate]="
-              entry.group === 'tracked' ? trackedState().mixed : untrackedState().mixed
-            "
-            (checkedChange)="
-              setGroupChecked(entry.group === 'tracked' ? trackedFiles() : untrackedFiles(), $event)
-            "
-            (click)="$event.stopPropagation()"
+          <!-- A conflicted file cannot be committed as it stands, so its group has no checkbox to
+               include it with: what it wants is resolving, not choosing. -->
+          @if (entry.group !== 'conflicted') {
+            <app-checkbox
+              class="detail__group-check"
+              [checked]="entry.group === 'tracked' ? trackedState().all : untrackedState().all"
+              [indeterminate]="
+                entry.group === 'tracked' ? trackedState().mixed : untrackedState().mixed
+              "
+              (checkedChange)="
+                setGroupChecked(
+                  entry.group === 'tracked' ? trackedFiles() : untrackedFiles(),
+                  $event
+                )
+              "
+              (click)="$event.stopPropagation()"
+            />
+          }
+          <span class="tree-name detail__group-name">{{ groupLabel(entry.group) }}</span>
+          <span class="tree-count">{{ groupFiles(entry.group).length }}</span>
+        } @else if (entry.file.status === 'conflicted') {
+          <span class="detail__status detail__status--conflicted">
+            {{ statusLetter(entry.file.status) }}
+          </span>
+          <span class="tree-name detail__file-name">
+            {{ fileName(entry.file.path) }}
+            @if (fileDir(entry.file.path); as dir) {
+              <span class="detail__file-dir">{{ dir }}</span>
+            }
+          </span>
+          <app-button
+            class="tree-row-action"
+            variant="none"
+            size="small"
+            [icon]="Icon.CHECK"
+            ariaLabel="Mark resolved"
+            tooltip="Mark resolved — stages the file as it now stands"
+            (click)="$event.stopPropagation(); markResolved(entry.file)"
           />
-          <span class="tree-name detail__group-name">
-            {{ entry.group === 'tracked' ? 'Tracked Files' : 'Untracked Files' }}
-          </span>
-          <span class="tree-count">
-            {{ entry.group === 'tracked' ? trackedFiles().length : untrackedFiles().length }}
-          </span>
         } @else {
           <app-checkbox
             class="detail__file-check"

@@ -189,6 +189,33 @@
   </ng-template>
 </app-modal>
 
+<!-- Asked before a rebase, and not before a merge: a merge adds to the history, while this rewrites
+     the commits of the branch the user is standing on. -->
+<app-modal
+  [open]="pendingRebaseOnto() !== null"
+  [width]="32"
+  ariaLabel="Rebase branch"
+  (dismiss)="cancelRebase()"
+>
+  <ng-template appModalContent>
+    <h2 class="rail__dialog-title">Rebase “{{ rebaseSubject() }}”?</h2>
+    <p class="rail__dialog-message">
+      Every commit on “{{ rebaseSubject() }}” is replayed on top of “{{
+        pendingRebaseOnto()?.name
+      }}” as a new commit. The old ones are left behind, so this is a rewrite rather than an
+      addition.
+      @if (rebaseRewritesPublished()) {
+        This branch has already been pushed: the remote will not take the result without a force
+        push, and anyone else working on it will have to recover their own copy.
+      }
+    </p>
+    <div class="rail__dialog-actions">
+      <app-button variant="solid" label="Rebase" (click)="confirmRebase()" />
+      <app-button label="Cancel" (click)="cancelRebase()" />
+    </div>
+  </ng-template>
+</app-modal>
+
 <!-- Asked before a branch goes. Its commits are only lost if they are nowhere else, which is the
      second question below rather than this one. -->
 <app-modal

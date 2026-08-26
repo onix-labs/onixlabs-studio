@@ -1,6 +1,11 @@
 import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { DirectoryChangeEvent } from '@shared/api/file-channels';
-import { RepositoryInfo } from '@shared/api/source-control-channels';
+import {
+  GitMergeMode,
+  GitOperationState,
+  RepositoryInfo,
+  SourceControlCode,
+} from '@shared/api/source-control-channels';
 import { DirectoryWatch } from '@shared/angular/services/directory-watch/directory-watch';
 import { Log } from '@shared/angular/services/log/log';
 import {
@@ -208,6 +213,20 @@ export class Repository {
   >([]);
 
   /**
+   * Holds the paths left conflicted by an unfinished merge or rebase.
+   */
+  private readonly conflictedSignal: WritableSignal<readonly GitFileChange[]> = signal<
+    readonly GitFileChange[]
+  >([]);
+
+  /**
+   * Holds the multi-step operation the working tree is in the middle of.
+   */
+  private readonly operationSignal: WritableSignal<GitOperationState> = signal<GitOperationState>({
+    kind: null,
+  });
+
+  /**
    * Holds the lazily-loaded files of each commit, keyed by commit hash.
    */
   private readonly commitFilesSignal: WritableSignal<
@@ -297,6 +316,34 @@ export class Repository {
   public readonly unstaged: Signal<readonly GitFileChange[]> = this.unstagedSignal.asReadonly();
 
   /**
+   * Gets the paths left conflicted by an unfinished merge or rebase.
+   */
+  public readonly conflicted: Signal<readonly GitFileChange[]> = this.conflictedSignal.asReadonly();
+
+  /**
+   * Gets the multi-step operation the working tree is in the middle of, whose kind is null when it is
+   * in none.
+   */
+  public readonly operation: Signal<GitOperationState> = this.operationSignal.asReadonly();
+
+  /**
+   * Gets a value indicating whether an operation is in flight — whether, in other words, the working
+   * tree is somewhere git expects to be told how to leave.
+   */
+  public readonly operationInFlight: Signal<boolean> = computed(
+    (): boolean => this.operationSignal().kind !== null,
+  );
+
+  /**
+   * Gets a value indicating whether the operation in flight can be carried on from here: every
+   * conflict it raised has been resolved. Continuing with one outstanding is a refusal waiting to
+   * happen, so the surfaces offer it only when this holds.
+   */
+  public readonly canContinueOperation: Signal<boolean> = computed(
+    (): boolean => this.operationSignal().kind !== null && this.conflictedSignal().length === 0,
+  );
+
+  /**
    * Gets the identifier of the selected graph node, or null when nothing is selected.
    */
   public readonly selectedNodeId: Signal<string | null> = this.selectedNodeSignal.asReadonly();
@@ -310,10 +357,14 @@ export class Repository {
   );
 
   /**
-   * Gets the total number of changed files in the working tree (staged and unstaged).
+   * Gets the total number of changed files in the working tree (staged, unstaged, and conflicted).
+   * A conflicted path counts: it is a file the working tree is carrying that the last commit does not
+   * have, which is what the tally means, and leaving it out would report a repository mid-merge as
+   * having nothing going on.
    */
   public readonly changeCount: Signal<number> = computed(
-    (): number => this.stagedSignal().length + this.unstagedSignal().length,
+    (): number =>
+      this.stagedSignal().length + this.unstagedSignal().length + this.conflictedSignal().length,
   );
 
   /**
@@ -491,12 +542,21 @@ export class Repository {
     if (provider === null) {
       return;
     }
-    const status: ParsedStatus = await provider.getStatus();
+    // The operation state is read on the cheap pass as well as the full one, and deliberately.
+    // Resolving a conflict means editing a file, which is pure working-tree churn — so if this pass
+    // did not look, the last conflict could be settled and the panel would go on saying the merge was
+    // stuck on it until something happened to touch `.git`.
+    const [status, operation]: [ParsedStatus, GitOperationState] = await Promise.all([
+      provider.getStatus(),
+      provider.getOperationState(),
+    ]);
     if (this.provider !== provider) {
       return;
     }
     this.stagedSignal.set(status.staged);
     this.unstagedSignal.set(status.unstaged);
+    this.conflictedSignal.set(status.conflicted);
+    this.operationSignal.set(operation);
   }
 
   /**
@@ -523,6 +583,8 @@ export class Repository {
     this.commitsSignal.set([]);
     this.stagedSignal.set([]);
     this.unstagedSignal.set([]);
+    this.conflictedSignal.set([]);
+    this.operationSignal.set({ kind: null });
     this.commitFilesSignal.set(new Map<string, readonly GitFileChange[]>());
     this.commitMessageSignal.set('');
     await (provider?.close() ?? Promise.resolve());
@@ -540,16 +602,18 @@ export class Repository {
     this.loadingSignal.set(true);
     this.log.trace('Repository', 'Refreshing repository data', this.infoSignal()?.root);
     try {
-      const [status, commits, refs, stashes]: [
+      const [status, commits, refs, stashes, operation]: [
         ParsedStatus,
         readonly GitCommit[],
         ParsedRefs,
         readonly GitStash[],
+        GitOperationState,
       ] = await Promise.all([
         provider.getStatus(),
         provider.getCommits(LOG_LIMIT),
         provider.getRefs(),
         provider.getStashes(),
+        provider.getOperationState(),
       ]);
       // Ignore a response that arrived after the repository was closed or rebound.
       if (this.provider !== provider) {
@@ -557,6 +621,8 @@ export class Repository {
       }
       this.stagedSignal.set(status.staged);
       this.unstagedSignal.set(status.unstaged);
+      this.conflictedSignal.set(status.conflicted);
+      this.operationSignal.set(operation);
       this.commitsSignal.set(commits);
       this.branchesSignal.set(refs.branches);
       this.remotesSignal.set(refs.remotes);
@@ -1156,6 +1222,100 @@ export class Repository {
       (provider: SourceControlProvider): Promise<MutationResult> =>
         provider.setUpstream(branch, null),
     );
+  }
+
+  /**
+   * Merges a branch into the checked-out one, then reloads.
+   * @param branch The branch to merge in.
+   * @param mode How the merge records its result.
+   * @returns Returns the outcome, coded {@link SourceControlCode.Conflicted} when it stopped on
+   * conflicts.
+   */
+  public merge(branch: string, mode: GitMergeMode = 'default'): Promise<MutationResult> {
+    this.log.info('Repository', `Merging '${branch}' (${mode})`);
+    return this.integrate(
+      (provider: SourceControlProvider): Promise<MutationResult> => provider.merge(branch, mode),
+    );
+  }
+
+  /**
+   * Replays the checked-out branch onto another, then reloads. Rewrites history; the caller confirms
+   * first.
+   * @param onto The branch to replay onto.
+   * @returns Returns the outcome, coded {@link SourceControlCode.Conflicted} when it stopped on
+   * conflicts.
+   */
+  public rebase(onto: string): Promise<MutationResult> {
+    this.log.info('Repository', `Rebasing onto '${onto}'`);
+    return this.integrate(
+      (provider: SourceControlProvider): Promise<MutationResult> => provider.rebase(onto),
+    );
+  }
+
+  /**
+   * Carries on the operation in flight, then reloads.
+   * @returns Returns the outcome.
+   */
+  public continueOperation(): Promise<MutationResult> {
+    this.log.info('Repository', `Continuing ${this.operationSignal().kind ?? 'nothing'}`);
+    return this.integrate(
+      (provider: SourceControlProvider): Promise<MutationResult> => provider.continueOperation(),
+    );
+  }
+
+  /**
+   * Skips the commit the operation in flight is stuck on, then reloads.
+   * @returns Returns the outcome.
+   */
+  public skipOperation(): Promise<MutationResult> {
+    this.log.warn('Repository', `Skipping a commit of ${this.operationSignal().kind ?? 'nothing'}`);
+    return this.integrate(
+      (provider: SourceControlProvider): Promise<MutationResult> => provider.skipOperation(),
+    );
+  }
+
+  /**
+   * Abandons the operation in flight, then reloads.
+   * @returns Returns the outcome.
+   */
+  public abortOperation(): Promise<MutationResult> {
+    this.log.info('Repository', `Aborting ${this.operationSignal().kind ?? 'nothing'}`);
+    return this.integrate(
+      (provider: SourceControlProvider): Promise<MutationResult> => provider.abortOperation(),
+    );
+  }
+
+  /**
+   * Runs a merge, rebase, or one of the commands that finishes one, and reloads — whatever the
+   * outcome.
+   *
+   * Two things separate this from {@link Repository.mutate}. It reloads on failure as well as
+   * success, because an operation that stopped part-way has still changed the working tree, and a
+   * panel showing the state before it ran would be showing a repository that no longer exists. And a
+   * stop on conflicts is not reported as an error: git did what it was asked as far as it could and
+   * is waiting to be told how to finish, which the panel says for itself. Every other failure still
+   * reaches the error surface.
+   *
+   * @param op Invokes the desired provider operation.
+   * @returns Returns the outcome.
+   */
+  private async integrate(
+    op: (provider: SourceControlProvider) => Promise<MutationResult>,
+  ): Promise<MutationResult> {
+    const provider: SourceControlProvider | null = this.provider;
+    if (provider === null) {
+      return { success: false, error: 'No repository open' };
+    }
+    const result: MutationResult = await op(provider);
+    const conflicted: boolean = result.code === SourceControlCode.Conflicted;
+    if (result.success || conflicted) {
+      this.lastErrorSignal.set(null);
+    } else {
+      this.lastErrorSignal.set(result.error ?? 'The operation failed.');
+      this.log.error('Repository', 'Operation failed', result.error ?? 'The operation failed.');
+    }
+    await this.refresh();
+    return result;
   }
 
   /**

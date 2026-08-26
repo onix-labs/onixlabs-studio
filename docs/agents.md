@@ -879,9 +879,28 @@ Real VCS behind a **provider adapter** so other backends are a later, out-of-sco
 - **Main** (`src/shared/electron/git-manager.ts`): runs the git CLI via `execFile` with array args,
   every operand validated and confined to an opened root; refcounted opened-roots map; network ops go
   through a non-interactive env + 120s timeout. Channels/types in `src/shared/api/source-control-channels.ts`.
-- **UI** lives in `features/repository` (the `source-control-view` + `commit-graph` / `commit-detail`
-  / `source-control-sidebar` panels + `REPOSITORY_DOCK_BLUEPRINT`); the generic diff panels
-  (`diff-view`, `diff-document-panel`) are shared.
+- **UI** lives in `shared/angular/components/panels/` (the `source-control-view` + `commit-graph` /
+  `commit-detail` / `source-control-sidebar` panels + `REPOSITORY_DOCK_BLUEPRINT`); the generic diff
+  panels (`diff-view`, `diff-document-panel`) are shared.
+
+**Unfinished operations** (merge/rebase/cherry-pick/revert) are state the panel can name, not just
+failures. Three rules hold here, each of which has already cost a bug or would have:
+
+- The state is read from `git rev-parse --absolute-git-dir`, never `<root>/.git` — a linked
+  worktree's merge state lives elsewhere, and the naive join reports every worktree as idle.
+  `classifyOperation` (pure, tested) decides the kind; rebase is tested **before** cherry-pick,
+  since replaying a commit leaves the same markers.
+- Merge, rebase, and the commands that finish them run through `runIntegration`, which sets
+  `GIT_EDITOR`/`GIT_SEQUENCE_EDITOR`/`GIT_MERGE_AUTOEDIT`. **Without it git blocks on an editor that
+  cannot open, and the timeout's kill lands mid-operation.** A non-zero exit is then re-probed:
+  still in flight means `SourceControlCode.Conflicted`, which reloads without reporting an error.
+- Continue/skip/abort read the operation git is _actually_ in rather than trusting the renderer, and
+  a **squash merge is not a merge**: it records no `MERGE_HEAD`, so it aborts via `reset --merge` and
+  cannot be continued at all.
+
+Conflicted paths come from status v2's `u` entries into `ParsedStatus.conflicted`, kept out of
+staged/unstaged: staging one is what marks it resolved. Their diff is `:2:path` (ours) against the
+worktree, because `:path` is ambiguous for an unmerged path.
 
 The source-control tab **opens a repository**; the directory tab gets **lightweight** git (status
 decorations + a few ops). `Tab.resourceKey` + `Tabs.findByResource` keep a resource single-instance

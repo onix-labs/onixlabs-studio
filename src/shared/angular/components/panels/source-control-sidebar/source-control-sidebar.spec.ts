@@ -8,6 +8,7 @@ import {
   ForgeRepositoryRef,
   ForgeWorkflowRun,
 } from '@shared/api/forge-types';
+import { GitMergeMode, GitOperationState } from '@shared/api/source-control-channels';
 import { Shell } from '@shared/angular/services/shell/shell';
 import { Agent } from '@shared/angular/services/agent/agent';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
@@ -98,10 +99,21 @@ class FakeProvider implements SourceControlProvider {
    * Holds the working-tree changes reported by {@link getStatus}, so a spec can empty the tree and
    * re-read it.
    */
-  public working: { staged: readonly GitFileChange[]; unstaged: readonly GitFileChange[] } = {
+  public working: {
+    staged: readonly GitFileChange[];
+    unstaged: readonly GitFileChange[];
+    conflicted: readonly GitFileChange[];
+  } = {
     staged: [workingFile('staged.ts')],
     unstaged: [workingFile('unstaged.ts')],
+    conflicted: [],
   };
+
+  /**
+   * Holds the operation state reported by {@link getOperationState}, so a spec can put the working
+   * tree mid-merge.
+   */
+  public operation: GitOperationState = { kind: null };
 
   /**
    * Holds the stash entries reported by {@link getStashes}.
@@ -136,7 +148,12 @@ class FakeProvider implements SourceControlProvider {
       behind: 0,
       staged: [...this.working.staged],
       unstaged: [...this.working.unstaged],
+      conflicted: [...this.working.conflicted],
     });
+  }
+
+  public getOperationState(): Promise<GitOperationState> {
+    return Promise.resolve(this.operation);
   }
 
   public getCommits(): Promise<GitCommit[]> {
@@ -288,11 +305,42 @@ class FakeProvider implements SourceControlProvider {
   /**
    * Holds what an unforced {@link deleteBranch} resolves to, so the unmerged refusal can be driven.
    */
+  /**
+   * Holds the outcome the merge, rebase, and operation commands report, so a spec can make one stop
+   * on conflicts instead of succeeding.
+   */
+  public integrationOutcome: Promise<MutationResult> | null = null;
+
   public deleteBranchOutcome: Promise<MutationResult> | null = null;
 
   public deleteBranch(name: string, force: boolean): Promise<MutationResult> {
     this.calls.push(`deleteBranch:${name}:${force}`);
     return this.deleteBranchOutcome ?? Promise.resolve({ success: true });
+  }
+
+  public merge(branch: string, mode: GitMergeMode): Promise<MutationResult> {
+    this.calls.push(`merge:${branch}:${mode}`);
+    return this.integrationOutcome ?? Promise.resolve({ success: true });
+  }
+
+  public rebase(onto: string): Promise<MutationResult> {
+    this.calls.push(`rebase:${onto}`);
+    return this.integrationOutcome ?? Promise.resolve({ success: true });
+  }
+
+  public continueOperation(): Promise<MutationResult> {
+    this.calls.push('continueOperation');
+    return this.integrationOutcome ?? Promise.resolve({ success: true });
+  }
+
+  public skipOperation(): Promise<MutationResult> {
+    this.calls.push('skipOperation');
+    return this.integrationOutcome ?? Promise.resolve({ success: true });
+  }
+
+  public abortOperation(): Promise<MutationResult> {
+    this.calls.push('abortOperation');
+    return this.integrationOutcome ?? Promise.resolve({ success: true });
   }
 
   public renameBranch(from: string, to: string): Promise<MutationResult> {
@@ -764,7 +812,7 @@ describe('SourceControlSidebar', () => {
   it('changesBadge_readsZeroWhenTheTreeIsClean_ratherThanVanishing', async () => {
     // It reads as a delta now, beside two others that show their zeros. A count that disappears when
     // it reaches nothing makes the row twitch on every commit, and says nothing where it stood.
-    provider.working = { staged: [], unstaged: [] };
+    provider.working = { staged: [], unstaged: [], conflicted: [] };
     await repository.refresh();
     fixture.detectChanges();
 
@@ -802,7 +850,17 @@ describe('SourceControlSidebar', () => {
         .contextMenuFor(row)
         .filter((item: MenuItem): boolean => item.separator !== true)
         .map((item: MenuItem): string => item.label),
-    ).toEqual(['Check Out', 'Push', 'Pull', 'Sync', 'Rename…', 'Set Upstream…', 'Delete…']);
+    ).toEqual([
+      'Check Out',
+      'Push',
+      'Pull',
+      'Sync',
+      'Merge Into “main”',
+      'Rebase “main” Onto This…',
+      'Rename…',
+      'Set Upstream…',
+      'Delete…',
+    ]);
 
     menu.onContextAction({ itemId: 'branch.checkout', row });
 
@@ -1308,7 +1366,7 @@ describe('SourceControlSidebar', () => {
   });
 
   it('theCheckedOutBranchDropsCommit_whenThereIsNothingToCommit', async () => {
-    provider.working = { staged: [], unstaged: [] };
+    provider.working = { staged: [], unstaged: [], conflicted: [] };
     await repository.refreshStatus();
     const menu: { contextMenuFor(r: TreeRow): readonly MenuItem[] } = component;
 
@@ -1345,11 +1403,116 @@ describe('SourceControlSidebar', () => {
       'Push',
       'Pull',
       'Sync',
+      'Merge Into “main”',
+      'Rebase “main” Onto This…',
       'Rename…',
       'Set Upstream…',
       'Clear Upstream',
       'Delete…',
     ]);
+  });
+
+  it('theCheckedOutBranch_offersNeitherMergeNorRebase', () => {
+    // A branch cannot be merged into itself, nor rebased onto itself, so the row that carries them is
+    // always the other one.
+    const labels: readonly string[] = (
+      component as { contextMenuFor(r: TreeRow): readonly MenuItem[] }
+    )
+      .contextMenuFor(currentBranchRow())
+      .map((item: MenuItem): string => item.label);
+
+    expect(labels.some((label: string): boolean => label.startsWith('Merge Into'))).toBe(false);
+    expect(labels.some((label: string): boolean => label.startsWith('Rebase'))).toBe(false);
+  });
+
+  it('mergeAndRebase_areInertWithUncommittedChanges_andSayWhy', () => {
+    // The fixture's working tree is dirty. Git would refuse both, and saying so in the menu is
+    // cheaper than letting the refusal explain it afterwards.
+    const items: readonly MenuItem[] = (
+      component as { contextMenuFor(r: TreeRow): readonly MenuItem[] }
+    ).contextMenuFor(otherBranchRow());
+    const merge: MenuItem | undefined = items.find((item: MenuItem): boolean =>
+      item.label.startsWith('Merge Into'),
+    );
+    const rebase: MenuItem | undefined = items.find((item: MenuItem): boolean =>
+      item.label.startsWith('Rebase'),
+    );
+
+    expect(merge?.disabled).toBe(true);
+    expect(merge?.status).toBe('uncommitted changes');
+    expect(rebase?.disabled).toBe(true);
+    // Every merge variant behind the submenu is inert too, not just the row that opens it.
+    expect(merge?.children?.every((child: MenuItem): boolean => child.disabled === true)).toBe(
+      true,
+    );
+  });
+
+  it('mergeAndRebase_areInertWhileAnOperationIsUnfinished_andSayWhy', async () => {
+    provider.working = { staged: [], unstaged: [], conflicted: [workingFile('both.ts')] };
+    provider.operation = { kind: 'merge', target: 'develop' };
+    await repository.refresh();
+
+    const merge: MenuItem | undefined = (
+      component as { contextMenuFor(r: TreeRow): readonly MenuItem[] }
+    )
+      .contextMenuFor(otherBranchRow())
+      .find((item: MenuItem): boolean => item.label.startsWith('Merge Into'));
+
+    expect(merge?.disabled).toBe(true);
+    expect(merge?.status).toBe('finish the current operation first');
+  });
+
+  it('everyMergeVariant_reachesTheProviderWithItsOwnMode', async () => {
+    provider.working = { staged: [], unstaged: [], conflicted: [] };
+    await repository.refresh();
+    const menu: { onContextAction(c: TreeMenuSelection): void } = component as unknown as {
+      onContextAction(c: TreeMenuSelection): void;
+    };
+    const row: TreeRow = otherBranchRow();
+
+    menu.onContextAction({ itemId: 'branch.merge', row });
+    menu.onContextAction({ itemId: 'branch.merge.noFastForward', row });
+    menu.onContextAction({ itemId: 'branch.merge.squash', row });
+    await fixture.whenStable();
+
+    expect(provider.calls).toContain('merge:develop:default');
+    expect(provider.calls).toContain('merge:develop:no-ff');
+    expect(provider.calls).toContain('merge:develop:squash');
+  });
+
+  it('rebase_asksFirst_andOnlyRunsWhenConfirmed', async () => {
+    provider.working = { staged: [], unstaged: [], conflicted: [] };
+    await repository.refresh();
+    const internals: {
+      onContextAction(c: TreeMenuSelection): void;
+      pendingRebaseOnto: WritableSignal<GitBranch | null>;
+      rebaseSubject(): string;
+      confirmRebase(): void;
+      cancelRebase(): void;
+    } = component as unknown as {
+      onContextAction(c: TreeMenuSelection): void;
+      pendingRebaseOnto: WritableSignal<GitBranch | null>;
+      rebaseSubject(): string;
+      confirmRebase(): void;
+      cancelRebase(): void;
+    };
+
+    internals.onContextAction({ itemId: 'branch.rebaseOnto', row: otherBranchRow() });
+
+    // Asked, not done: a rebase rewrites the commits of the branch the user is standing on.
+    expect(internals.pendingRebaseOnto()?.name).toBe('develop');
+    expect(internals.rebaseSubject()).toBe('main');
+    expect(provider.calls.some((call: string): boolean => call.startsWith('rebase:'))).toBe(false);
+
+    internals.cancelRebase();
+    await fixture.whenStable();
+    expect(provider.calls.some((call: string): boolean => call.startsWith('rebase:'))).toBe(false);
+
+    internals.onContextAction({ itemId: 'branch.rebaseOnto', row: otherBranchRow() });
+    internals.confirmRebase();
+    await fixture.whenStable();
+
+    expect(provider.calls).toContain('rebase:develop');
   });
 
   it('aBranchThatIsNotCheckedOut_saysItsPullIsAFastForward', () => {

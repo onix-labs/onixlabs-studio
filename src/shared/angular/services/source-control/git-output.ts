@@ -58,6 +58,15 @@ export interface ParsedStatus {
    * Gets the unstaged changes (working tree versus index), including untracked files.
    */
   readonly unstaged: readonly GitFileChange[];
+
+  /**
+   * Gets the paths left conflicted by an unfinished merge or rebase.
+   *
+   * Kept apart from the other two rather than folded into them, because a conflicted path is not a
+   * change waiting to be staged: git reports it instead of a staged or unstaged entry, it cannot be
+   * committed as it stands, and staging it is what marks it resolved.
+   */
+  readonly conflicted: readonly GitFileChange[];
 }
 
 /**
@@ -126,6 +135,7 @@ export function parseStatus(output: string): ParsedStatus {
   let behind: number = 0;
   const staged: GitFileChange[] = [];
   const unstaged: GitFileChange[] = [];
+  const conflicted: GitFileChange[] = [];
 
   for (let index: number = 0; index < tokens.length; index++) {
     const token: string = tokens[index];
@@ -170,13 +180,23 @@ export function parseStatus(output: string): ParsedStatus {
       continue;
     }
 
+    if (token.startsWith('u ')) {
+      // Unmerged entries carry 10 metadata fields before the path: the XY code, the submodule field,
+      // three stage modes plus the worktree mode, and the three stage object names. Git reports a
+      // conflicted path as one of these INSTEAD of an ordinary or rename entry, so nothing here can
+      // also appear as staged or unstaged.
+      const parts: string[] = token.split(' ');
+      conflicted.push(workingChange(parts.slice(10).join(' '), 'conflicted', false));
+      continue;
+    }
+
     if (token.startsWith('? ')) {
       unstaged.push(workingChange(token.slice(2), 'added', false, undefined, true));
     }
-    // '! ' (ignored) and 'u ' (unmerged) entries are skipped in this read-only slice.
+    // '! ' (ignored) entries are skipped: the panel shows what git is tracking, not what it is not.
   }
 
-  return { branch, upstream, ahead, behind, staged, unstaged };
+  return { branch, upstream, ahead, behind, staged, unstaged, conflicted };
 }
 
 /**

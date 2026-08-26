@@ -10,6 +10,7 @@ import {
   signal,
   WritableSignal,
 } from '@angular/core';
+import { GitOperationKind, GitOperationState } from '@shared/api/source-control-channels';
 import { Icon } from '@shared/angular/icons/icon';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { FileSystem } from '@shared/angular/services/file-system/file-system';
@@ -43,9 +44,21 @@ interface GroupCheckState {
 }
 
 /**
- * Identifies the two working-tree groups.
+ * Identifies the working-tree groups. `conflicted` leads, when there is one: it is the group that
+ * has to be dealt with before anything else in the tree can be committed at all.
  */
-type WorkingGroup = 'tracked' | 'untracked';
+type WorkingGroup = 'conflicted' | 'tracked' | 'untracked';
+
+/**
+ * How each operation reads in the mid-operation banner's title.
+ */
+const OPERATION_TITLES: Readonly<Record<GitOperationKind, string>> = {
+  merge: 'Merging',
+  'squash-merge': 'Squash merging',
+  rebase: 'Rebasing',
+  'cherry-pick': 'Cherry-picking',
+  revert: 'Reverting',
+};
 
 /**
  * The payload a working-tree row carries: a group header, or one changed file.
@@ -125,6 +138,11 @@ export class CommitDetail {
   protected readonly untrackedExpanded: WritableSignal<boolean> = signal<boolean>(true);
 
   /**
+   * Gets or sets whether the Conflicted Files group is expanded.
+   */
+  protected readonly conflictedExpanded: WritableSignal<boolean> = signal<boolean>(true);
+
+  /**
    * Holds the paths currently checked for inclusion in the next commit.
    */
   private readonly checkedSignal: WritableSignal<ReadonlySet<string>> = signal<ReadonlySet<string>>(
@@ -163,6 +181,61 @@ export class CommitDetail {
     (): readonly GitFileChange[] =>
       this.repository.unstaged().filter((file: GitFileChange): boolean => file.untracked === true),
   );
+
+  /**
+   * Gets the paths left conflicted by an unfinished merge or rebase.
+   */
+  protected readonly conflictedFiles: Signal<readonly GitFileChange[]> = this.repository.conflicted;
+
+  /**
+   * Gets how the operation in flight is named, with what it is working towards.
+   */
+  protected readonly operationTitle: Signal<string> = computed((): string => {
+    const state: GitOperationState = this.repository.operation();
+    if (state.kind === null) {
+      return '';
+    }
+    const verb: string = OPERATION_TITLES[state.kind];
+    return state.target === undefined ? verb : `${verb} “${state.target}”`;
+  });
+
+  /**
+   * Gets how far through a replayed operation this is, or null when it applies a single change and
+   * has no progress to report.
+   */
+  protected readonly operationProgress: Signal<string | null> = computed((): string | null => {
+    const state: GitOperationState = this.repository.operation();
+    return state.step === undefined || state.total === undefined
+      ? null
+      : `${state.step} of ${state.total}`;
+  });
+
+  /**
+   * Gets what the banner says to do next: resolve what is conflicted, or carry on now that nothing is.
+   *
+   * A squash merge is told apart, because it ends differently from everything else here: git recorded
+   * no merge to resume, so the resolved result is committed from the composer below like any other
+   * change, and a Continue that git would refuse is not what the user needs to be told about.
+   */
+  protected readonly operationMessage: Signal<string> = computed((): string => {
+    const count: number = this.conflictedFiles().length;
+    if (count > 0) {
+      const files: string = count === 1 ? '1 file' : `${count} files`;
+      return `${files} could not be merged automatically. Resolve each one, mark it resolved, then continue.`;
+    }
+    return this.repository.operation().kind === 'squash-merge'
+      ? 'Nothing is left conflicted. The result is staged: commit it below to finish.'
+      : 'Nothing is left conflicted. Continue to finish, or abort to put everything back.';
+  });
+
+  /**
+   * Gets a value indicating whether skipping is on offer: only an operation that replays a sequence
+   * of commits has a next one to move on to.
+   */
+  protected readonly canSkip: Signal<boolean> = computed((): boolean => {
+    const kind: GitOperationKind | null = this.repository.operation().kind;
+    return kind === 'rebase' || kind === 'cherry-pick';
+  });
 
   /**
    * Gets the Tracked Files group's checkbox state.
@@ -214,6 +287,28 @@ export class CommitDetail {
    */
   protected readonly workingRows: Signal<readonly TreeRow[]> = computed((): readonly TreeRow[] => {
     const rows: TreeRow[] = [];
+    // The conflicted group appears only while there is something in it, and leads when it does:
+    // nothing else in the working tree can be committed until it is empty.
+    if (this.conflictedFiles().length > 0) {
+      rows.push({
+        id: 'group:conflicted',
+        depth: 0,
+        expandable: true,
+        expanded: this.conflictedExpanded(),
+        data: { kind: 'group', group: 'conflicted' } satisfies WorkingRowData,
+      });
+      if (this.conflictedExpanded()) {
+        for (const file of this.conflictedFiles()) {
+          rows.push({
+            id: file.path,
+            depth: 1,
+            expandable: false,
+            expanded: false,
+            data: { kind: 'file', file } satisfies WorkingRowData,
+          });
+        }
+      }
+    }
     rows.push({
       id: 'group:tracked',
       depth: 0,
@@ -366,14 +461,88 @@ export class CommitDetail {
    * the file and opens its diff.
    * @param row The clicked tree row.
    */
+  /**
+   * Resolves a group to the signal holding whether it is expanded.
+   * @param group The group.
+   * @returns Returns the group's expansion state.
+   */
+  private groupExpansion(group: WorkingGroup): WritableSignal<boolean> {
+    switch (group) {
+      case 'conflicted':
+        return this.conflictedExpanded;
+      case 'untracked':
+        return this.untrackedExpanded;
+      default:
+        return this.trackedExpanded;
+    }
+  }
+
+  /**
+   * Gets a group's heading.
+   * @param group The group.
+   * @returns Returns the label.
+   */
+  protected groupLabel(group: WorkingGroup): string {
+    switch (group) {
+      case 'conflicted':
+        return 'Conflicted Files';
+      case 'untracked':
+        return 'Untracked Files';
+      default:
+        return 'Tracked Files';
+    }
+  }
+
+  /**
+   * Gets a group's files.
+   * @param group The group.
+   * @returns Returns the files.
+   */
+  protected groupFiles(group: WorkingGroup): readonly GitFileChange[] {
+    switch (group) {
+      case 'conflicted':
+        return this.conflictedFiles();
+      case 'untracked':
+        return this.untrackedFiles();
+      default:
+        return this.trackedFiles();
+    }
+  }
+
+  /**
+   * Marks a conflicted file resolved, which is what staging it means to git: the version now on disk
+   * becomes the one it carries, and the path stops being unmerged.
+   * @param file The conflicted file.
+   */
+  protected markResolved(file: GitFileChange): void {
+    void this.repository.stage(file);
+  }
+
+  /**
+   * Carries on the operation in flight.
+   */
+  protected continueOperation(): void {
+    void this.repository.continueOperation();
+  }
+
+  /**
+   * Skips the commit the operation in flight is stuck on.
+   */
+  protected skipOperation(): void {
+    void this.repository.skipOperation();
+  }
+
+  /**
+   * Abandons the operation in flight, putting the working tree back where it started.
+   */
+  protected abortOperation(): void {
+    void this.repository.abortOperation();
+  }
+
   protected onWorkingRowClick(row: TreeRow): void {
     const entry: WorkingRowData = this.workingRowOf(row);
     if (entry.kind === 'group') {
-      if (entry.group === 'tracked') {
-        this.trackedExpanded.set(!this.trackedExpanded());
-      } else {
-        this.untrackedExpanded.set(!this.untrackedExpanded());
-      }
+      this.groupExpansion(entry.group).update((open: boolean): boolean => !open);
       return;
     }
     this.selectFile(entry.file);
@@ -486,6 +655,7 @@ export class CommitDetail {
   protected expandAll(): void {
     this.trackedExpanded.set(true);
     this.untrackedExpanded.set(true);
+    this.conflictedExpanded.set(true);
   }
 
   /**
@@ -494,6 +664,7 @@ export class CommitDetail {
   protected collapseAll(): void {
     this.trackedExpanded.set(false);
     this.untrackedExpanded.set(false);
+    this.conflictedExpanded.set(false);
   }
 
   /**

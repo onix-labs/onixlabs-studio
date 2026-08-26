@@ -1,6 +1,8 @@
 import { inject, Service } from '@angular/core';
 import { Bridge } from '@shared/api/bridge';
 import {
+  GitMergeMode,
+  GitOperationState,
   GitRunResult,
   RepositoryInfo,
   SourceControlChannel,
@@ -25,6 +27,8 @@ function createClient(bridge: Bridge): SourceControlClient {
       bridge.invoke(SourceControlChannel.CloseRepository, root),
     status: (root: string): Promise<GitRunResult> =>
       bridge.invoke(SourceControlChannel.Status, root),
+    operationState: (root: string): Promise<GitOperationState> =>
+      bridge.invoke(SourceControlChannel.OperationState, root),
     log: (root: string, limit: number): Promise<GitRunResult> =>
       bridge.invoke(SourceControlChannel.Log, root, limit),
     refs: (root: string): Promise<GitRunResult> => bridge.invoke(SourceControlChannel.Refs, root),
@@ -91,6 +95,16 @@ function createClient(bridge: Bridge): SourceControlClient {
       localBranch: string,
     ): Promise<GitRunResult> =>
       bridge.invoke(SourceControlChannel.CheckoutTracking, root, remoteBranch, localBranch),
+    merge: (root: string, branch: string, mode: GitMergeMode): Promise<GitRunResult> =>
+      bridge.invoke(SourceControlChannel.Merge, root, branch, mode),
+    rebase: (root: string, onto: string): Promise<GitRunResult> =>
+      bridge.invoke(SourceControlChannel.Rebase, root, onto),
+    continueOperation: (root: string): Promise<GitRunResult> =>
+      bridge.invoke(SourceControlChannel.OperationContinue, root),
+    skipOperation: (root: string): Promise<GitRunResult> =>
+      bridge.invoke(SourceControlChannel.OperationSkip, root),
+    abortOperation: (root: string): Promise<GitRunResult> =>
+      bridge.invoke(SourceControlChannel.OperationAbort, root),
     createTag: (
       root: string,
       name: string,

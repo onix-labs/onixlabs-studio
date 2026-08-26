@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { readFile, rm } from 'node:fs/promises';
+import { readFile, rm, stat } from 'node:fs/promises';
 import * as path from 'node:path';
 import {
   BrowserWindow,
@@ -10,7 +10,13 @@ import {
 } from 'electron';
 import { showOpenDialog } from './dialog-parent';
 import { logger } from './logger';
-import { GitRunResult, RepositoryInfo, SourceControlChannel } from '../api/source-control-channels';
+import {
+  GitOperationState,
+  GitRunResult,
+  RepositoryInfo,
+  SourceControlChannel,
+  SourceControlCode,
+} from '../api/source-control-channels';
 
 /**
  * Holds the maximum time, in milliseconds, a single git invocation may run before being killed.
@@ -43,6 +49,34 @@ const GIT_NETWORK_TIMEOUT_MS: number = 120000;
 const GIT_NETWORK_ENV: NodeJS.ProcessEnv = {
   GIT_TERMINAL_PROMPT: '0',
   GIT_SSH_COMMAND: 'ssh -o BatchMode=yes -o ConnectTimeout=10',
+};
+
+/**
+ * Holds the maximum time, in milliseconds, a merge or rebase may run. Local work, but not necessarily
+ * quick work: a merge across a large tree, or a rebase replaying dozens of commits, does real work per
+ * file and per commit, and being killed part-way through would leave exactly the half-finished state
+ * these operations are hard enough to reason about without.
+ */
+const GIT_INTEGRATION_TIMEOUT_MS: number = 120000;
+
+/**
+ * What a continue, skip, or abort says when the working tree is in the middle of nothing at all.
+ */
+const NO_OPERATION_ERROR: string = 'There is no operation in progress.';
+
+/**
+ * Holds the environment overlay applied to merges, rebases, and the commands that finish them.
+ *
+ * Every one of these opens an editor by default — `merge` for the merge message, `rebase --continue`
+ * for the commit it is finishing, `rebase -i` for its todo list. Under `execFile` there is no terminal
+ * for an editor to run in, so git would block until the timeout killed it, and the kill would land
+ * mid-operation. Pointing all three editor hooks at `true` (the command that exits successfully
+ * having done nothing) makes git accept the message it prepared and carry on.
+ */
+const GIT_NO_EDITOR_ENV: NodeJS.ProcessEnv = {
+  GIT_EDITOR: 'true',
+  GIT_SEQUENCE_EDITOR: 'true',
+  GIT_MERGE_AUTOEDIT: 'no',
 };
 
 /**
@@ -79,6 +113,162 @@ export const INDEX_REVISION: string = ':';
  */
 export function blobSpec(revision: string, filePath: string): string {
   return revision === INDEX_REVISION ? `${INDEX_REVISION}${filePath}` : `${revision}:${filePath}`;
+}
+
+/**
+ * Holds the state files git writes into a repository's git directory while a multi-step operation is
+ * unfinished, read together so one look says which operation is in flight and how far through it is.
+ *
+ * Presence is what matters for the first six; the rest carry the detail, and are null when git wrote
+ * no such file. Kept as plain data so {@link classifyOperation} can be a pure function with a test —
+ * the reading is trivial, the *rules* are not.
+ */
+export interface OperationProbe {
+  /**
+   * Gets a value indicating whether the `rebase-merge` directory exists (the rebase backend used for
+   * interactive rebases and, since git 2.26, ordinary ones).
+   */
+  readonly rebaseMerge: boolean;
+
+  /**
+   * Gets a value indicating whether the `rebase-apply` directory exists (the older patch-applying
+   * rebase backend, and the one `git am` uses).
+   */
+  readonly rebaseApply: boolean;
+
+  /**
+   * Gets a value indicating whether `MERGE_HEAD` exists — the commit being merged in.
+   */
+  readonly mergeHead: boolean;
+
+  /**
+   * Gets a value indicating whether `CHERRY_PICK_HEAD` exists.
+   */
+  readonly cherryPickHead: boolean;
+
+  /**
+   * Gets a value indicating whether `REVERT_HEAD` exists.
+   */
+  readonly revertHead: boolean;
+
+  /**
+   * Gets a value indicating whether `SQUASH_MSG` exists — written by a squash merge, which records no
+   * `MERGE_HEAD` and so cannot be recognised any other way.
+   */
+  readonly squashMessage: boolean;
+
+  /**
+   * Gets the contents of the rebase's `head-name` (the full ref of the branch being replayed).
+   */
+  readonly headName: string | null;
+
+  /**
+   * Gets the contents of the rebase's `onto_name` (the ref the replay is onto, as the user named it).
+   * Frequently absent: git writes it on some rebase paths and not others, which is why a rebase with
+   * no name here has the commit it recorded resolved into one instead.
+   */
+  readonly ontoName: string | null;
+
+  /**
+   * Gets the contents of the rebase's `msgnum`/`next` (the commit being applied).
+   */
+  readonly step: string | null;
+
+  /**
+   * Gets the contents of the rebase's `end`/`last` (how many commits are to be applied).
+   */
+  readonly total: string | null;
+
+  /**
+   * Gets the first line of `MERGE_MSG`, which names what is being merged in the way a human would.
+   */
+  readonly mergeMessage: string | null;
+}
+
+/**
+ * Strips the `refs/heads/` prefix from a ref, leaving a branch name as a user reads it.
+ * @param ref The ref, or null.
+ * @returns Returns the short name, or undefined when there was no ref.
+ */
+function shortBranchName(ref: string | null): string | undefined {
+  if (ref === null || ref.length === 0) {
+    return undefined;
+  }
+  const prefix: string = 'refs/heads/';
+  return ref.startsWith(prefix) ? ref.slice(prefix.length) : ref;
+}
+
+/**
+ * Pulls the quoted ref out of a merge message's first line — `Merge branch 'topic'` yields `topic`.
+ *
+ * Git's own generated message is the only place a plain merge records what it is merging under a name
+ * rather than a hash, so it is worth reading; but it is prose, and prose is not a contract. A line
+ * that does not match simply yields nothing, and the caller shows the operation without a target.
+ *
+ * @param message The merge message's first line, or null.
+ * @returns Returns the quoted ref, or undefined when the line names none.
+ */
+function mergeTargetName(message: string | null): string | undefined {
+  if (message === null) {
+    return undefined;
+  }
+  const match: RegExpMatchArray | null = /'([^']+)'/.exec(message);
+  return match === null ? undefined : match[1];
+}
+
+/**
+ * Parses one of git's small counter files into a positive integer.
+ * @param value The file's contents, or null.
+ * @returns Returns the number, or undefined when there was none to read.
+ */
+function counter(value: string | null): number | undefined {
+  if (value === null) {
+    return undefined;
+  }
+  const parsed: number = Number.parseInt(value.trim(), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+/**
+ * Decides which multi-step operation a repository is in the middle of from the state files git left.
+ *
+ * The order is the point. A rebase applying a commit that conflicts leaves `REBASE_HEAD` *and*, on
+ * some paths, the same marker files a cherry-pick would — because replaying a commit is what a rebase
+ * does — so the rebase directories are tested first and win. Squash is tested last, because it is
+ * recognised only by the absence of everything else plus a `SQUASH_MSG`, and a plain merge that has
+ * written its message would otherwise be mistaken for one.
+ *
+ * @param probe The state files read from the repository's git directory.
+ * @returns Returns the operation state, whose kind is null when nothing is in flight.
+ */
+export function classifyOperation(probe: OperationProbe): GitOperationState {
+  if (probe.rebaseMerge || probe.rebaseApply) {
+    return {
+      kind: 'rebase',
+      ...(shortBranchName(probe.headName) === undefined
+        ? {}
+        : { branch: shortBranchName(probe.headName) }),
+      ...(shortBranchName(probe.ontoName) === undefined
+        ? {}
+        : { target: shortBranchName(probe.ontoName) }),
+      ...(counter(probe.step) === undefined ? {} : { step: counter(probe.step) }),
+      ...(counter(probe.total) === undefined ? {} : { total: counter(probe.total) }),
+    };
+  }
+  if (probe.cherryPickHead) {
+    return { kind: 'cherry-pick' };
+  }
+  if (probe.revertHead) {
+    return { kind: 'revert' };
+  }
+  const target: string | undefined = mergeTargetName(probe.mergeMessage);
+  if (probe.mergeHead) {
+    return { kind: 'merge', ...(target === undefined ? {} : { target }) };
+  }
+  if (probe.squashMessage) {
+    return { kind: 'squash-merge', ...(target === undefined ? {} : { target }) };
+  }
+  return { kind: null };
 }
 
 /**
@@ -146,6 +336,11 @@ export class GitManager {
     ipcMain.handle(
       SourceControlChannel.Status,
       (_event: IpcMainInvokeEvent, root: unknown): Promise<GitRunResult> => this.status(root),
+    );
+    ipcMain.handle(
+      SourceControlChannel.OperationState,
+      (_event: IpcMainInvokeEvent, root: unknown): Promise<GitOperationState> =>
+        this.operationState(root),
     );
     ipcMain.handle(
       SourceControlChannel.Log,
@@ -320,6 +515,35 @@ export class GitManager {
       ): Promise<GitRunResult> => this.checkoutTracking(root, remoteBranch, localBranch),
     );
     ipcMain.handle(
+      SourceControlChannel.Merge,
+      (
+        _event: IpcMainInvokeEvent,
+        root: unknown,
+        branch: unknown,
+        mode: unknown,
+      ): Promise<GitRunResult> => this.merge(root, branch, mode),
+    );
+    ipcMain.handle(
+      SourceControlChannel.Rebase,
+      (_event: IpcMainInvokeEvent, root: unknown, onto: unknown): Promise<GitRunResult> =>
+        this.rebase(root, onto),
+    );
+    ipcMain.handle(
+      SourceControlChannel.OperationContinue,
+      (_event: IpcMainInvokeEvent, root: unknown): Promise<GitRunResult> =>
+        this.continueOperation(root),
+    );
+    ipcMain.handle(
+      SourceControlChannel.OperationSkip,
+      (_event: IpcMainInvokeEvent, root: unknown): Promise<GitRunResult> =>
+        this.skipOperation(root),
+    );
+    ipcMain.handle(
+      SourceControlChannel.OperationAbort,
+      (_event: IpcMainInvokeEvent, root: unknown): Promise<GitRunResult> =>
+        this.abortOperation(root),
+    );
+    ipcMain.handle(
       SourceControlChannel.CreateTag,
       (
         _event: IpcMainInvokeEvent,
@@ -437,6 +661,129 @@ export class GitManager {
    */
   private status(root: unknown): Promise<GitRunResult> {
     return this.runInRoot(root, ['status', '--porcelain=v2', '--branch', '-z']);
+  }
+
+  /**
+   * Reads the multi-step operation the repository is in the middle of, if any.
+   *
+   * The git directory is asked for rather than assumed: a linked worktree's `.git` is a *file*
+   * pointing elsewhere, and its merge and rebase state lives in that worktree's own directory under
+   * the main repository. Joining `.git` to the root would look in the wrong place for every worktree
+   * the unified-workspace work made possible, and quietly report that nothing is in flight.
+   *
+   * @param root The repository root.
+   * @returns Returns the operation state, whose kind is null when nothing is in flight.
+   */
+  private async operationState(root: unknown): Promise<GitOperationState> {
+    if (!this.isOpenRoot(root)) {
+      return { kind: null };
+    }
+    const located: GitRunResult = await this.runInRoot(root, ['rev-parse', '--absolute-git-dir']);
+    const directory: string = (located.stdout ?? '').trim();
+    if (!located.success || directory.length === 0) {
+      return { kind: null };
+    }
+    const state: GitOperationState = classifyOperation(await this.probeOperation(directory));
+    if (state.kind !== 'rebase' || state.target !== undefined) {
+      return state;
+    }
+    // A rebase usually records only the commit it is replaying onto, not the name the user gave it —
+    // `onto_name` is written by some paths and not others — so the commit is turned back into a
+    // branch name here rather than shown as a hash nobody asked about.
+    const target: string | undefined = await this.rebaseOntoName(root, directory);
+    return target === undefined ? state : { ...state, target };
+  }
+
+  /**
+   * Resolves the branch name a rebase in flight is replaying onto, from the commit it recorded.
+   * @param root The repository root.
+   * @param directory The absolute git directory.
+   * @returns Returns the branch name, the abbreviated commit when it belongs to no branch, or
+   * undefined when the rebase recorded nothing to resolve.
+   */
+  private async rebaseOntoName(root: unknown, directory: string): Promise<string | undefined> {
+    const onto: string | null = await firstFile([
+      path.join(directory, 'rebase-merge', 'onto'),
+      path.join(directory, 'rebase-apply', 'onto'),
+    ]);
+    if (onto === null || !isSafeOperand(onto)) {
+      return undefined;
+    }
+    const named: GitRunResult = await this.runInRoot(root, [
+      'name-rev',
+      '--name-only',
+      '--refs=refs/heads/*',
+      onto,
+    ]);
+    const name: string = (named.stdout ?? '').trim();
+    // `name-rev` answers `undefined` for a commit no branch reaches, which is a name for nothing.
+    return named.success && name.length > 0 && name !== 'undefined' ? name : onto.slice(0, 7);
+  }
+
+  /**
+   * Reads the state files a multi-step operation leaves in a repository's git directory. Every read
+   * is forgiving: a file that is not there is the ordinary case, and means the operation that writes
+   * it is not running.
+   * @param directory The absolute git directory.
+   * @returns Returns the probe.
+   */
+  private async probeOperation(directory: string): Promise<OperationProbe> {
+    const at: (...parts: readonly string[]) => string = (...parts: readonly string[]): string =>
+      path.join(directory, ...parts);
+    const [
+      rebaseMerge,
+      rebaseApply,
+      mergeHead,
+      cherryPickHead,
+      revertHead,
+      squashMessage,
+      headName,
+      ontoName,
+      step,
+      total,
+      mergeMessage,
+    ]: [
+      boolean,
+      boolean,
+      boolean,
+      boolean,
+      boolean,
+      boolean,
+      string | null,
+      string | null,
+      string | null,
+      string | null,
+      string | null,
+    ] = await Promise.all([
+      exists(at('rebase-merge')),
+      exists(at('rebase-apply')),
+      exists(at('MERGE_HEAD')),
+      exists(at('CHERRY_PICK_HEAD')),
+      exists(at('REVERT_HEAD')),
+      exists(at('SQUASH_MSG')),
+      // The two rebase backends name the same facts differently, so each is read from whichever
+      // directory is present; only one of the pair can exist at a time.
+      firstFile([at('rebase-merge', 'head-name'), at('rebase-apply', 'head-name')]),
+      // Only some rebases write a name here at all; {@link GitManager.rebaseOntoName} resolves the
+      // recorded commit when they do not.
+      firstFile([at('rebase-merge', 'onto_name')]),
+      firstFile([at('rebase-merge', 'msgnum'), at('rebase-apply', 'next')]),
+      firstFile([at('rebase-merge', 'end'), at('rebase-apply', 'last')]),
+      firstLine(at('MERGE_MSG')),
+    ]);
+    return {
+      rebaseMerge,
+      rebaseApply,
+      mergeHead,
+      cherryPickHead,
+      revertHead,
+      squashMessage,
+      headName,
+      ontoName,
+      step,
+      total,
+      mergeMessage,
+    };
   }
 
   /**
@@ -819,7 +1166,7 @@ export class GitManager {
       name,
       'HEAD',
     ]);
-    return merged.success ? result : { ...result, code: 'branch-not-merged' };
+    return merged.success ? result : { ...result, code: SourceControlCode.BranchNotMerged };
   }
 
   /**
@@ -1031,6 +1378,135 @@ export class GitManager {
   }
 
   /**
+   * Merges a branch into the checked-out one.
+   *
+   * `--no-edit` is not decoration: without it git opens an editor for the merge message and, with no
+   * terminal to open one in, waits for an answer that cannot come.
+   *
+   * @param root The repository root.
+   * @param branch The branch to merge in.
+   * @param mode How the merge records its result.
+   * @returns Returns the raw command result.
+   */
+  private merge(root: unknown, branch: unknown, mode: unknown): Promise<GitRunResult> {
+    if (!isSafeOperand(branch)) {
+      return Promise.resolve({ success: false, error: 'Invalid branch name' });
+    }
+    // A squash neither commits nor records a merge, so it has no message to decline to edit.
+    const options: readonly string[] =
+      mode === 'squash'
+        ? ['--squash']
+        : mode === 'no-ff'
+          ? ['--no-ff', '--no-edit']
+          : ['--no-edit'];
+    logger.info('GitManager.merge', `Merging ${branch} (${String(mode)})`);
+    return this.runIntegration(root, ['merge', ...options, branch]);
+  }
+
+  /**
+   * Replays the checked-out branch onto another. Rewrites history; the caller confirms first.
+   * @param root The repository root.
+   * @param onto The branch to replay onto.
+   * @returns Returns the raw command result.
+   */
+  private rebase(root: unknown, onto: unknown): Promise<GitRunResult> {
+    if (!isSafeOperand(onto)) {
+      return Promise.resolve({ success: false, error: 'Invalid branch name' });
+    }
+    logger.info('GitManager.rebase', `Rebasing onto ${onto}`);
+    return this.runIntegration(root, ['rebase', onto]);
+  }
+
+  /**
+   * Carries on the operation in flight, once its conflicts have been resolved.
+   *
+   * Which command that is follows from the operation the repository is actually in, read here rather
+   * than taken from the caller: the renderer's idea of the state is a snapshot that anything — a
+   * terminal in the next tab, an abort a moment ago — may since have made false, and the cost of
+   * being wrong is running the wrong command against a half-finished operation.
+   *
+   * @param root The repository root.
+   * @returns Returns the raw command result.
+   */
+  private async continueOperation(root: unknown): Promise<GitRunResult> {
+    const state: GitOperationState = await this.operationState(root);
+    switch (state.kind) {
+      case 'rebase':
+        return this.runIntegration(root, ['rebase', '--continue']);
+      case 'merge':
+        return this.runIntegration(root, ['merge', '--continue']);
+      case 'cherry-pick':
+        return this.runIntegration(root, ['cherry-pick', '--continue']);
+      case 'revert':
+        return this.runIntegration(root, ['revert', '--continue']);
+      case 'squash-merge':
+        // There is nothing for git to carry on: a squash records no merge, so what is staged is
+        // committed like any other change, with a message of the user's own.
+        return {
+          success: false,
+          error: 'A squashed merge is finished by committing the staged result.',
+          code: SourceControlCode.SquashCommitRequired,
+        };
+      default:
+        return { success: false, error: NO_OPERATION_ERROR, code: SourceControlCode.NoOperation };
+    }
+  }
+
+  /**
+   * Skips the commit the operation in flight is stuck on, dropping its changes.
+   * @param root The repository root.
+   * @returns Returns the raw command result.
+   */
+  private async skipOperation(root: unknown): Promise<GitRunResult> {
+    const state: GitOperationState = await this.operationState(root);
+    switch (state.kind) {
+      case 'rebase':
+        return this.runIntegration(root, ['rebase', '--skip']);
+      case 'cherry-pick':
+        return this.runIntegration(root, ['cherry-pick', '--skip']);
+      case null:
+        return { success: false, error: NO_OPERATION_ERROR, code: SourceControlCode.NoOperation };
+      default:
+        // A merge applies one change rather than a sequence, so there is no next commit to move on to.
+        return {
+          success: false,
+          error: 'This operation applies a single change, so there is nothing to skip.',
+          code: SourceControlCode.SkipUnsupported,
+        };
+    }
+  }
+
+  /**
+   * Abandons the operation in flight, returning the working tree to where it started.
+   *
+   * A squash merge is the exception that makes reading the state worthwhile: it records no
+   * `MERGE_HEAD`, so `git merge --abort` refuses it outright with "there is no merge to abort". What
+   * undoes it is a reset back to the head it never left — `--merge` rather than `--hard`, so a change
+   * the merge did not touch is not destroyed along with it.
+   *
+   * @param root The repository root.
+   * @returns Returns the raw command result.
+   */
+  private async abortOperation(root: unknown): Promise<GitRunResult> {
+    const state: GitOperationState = await this.operationState(root);
+    logger.info('GitManager.abortOperation', `Aborting ${state.kind ?? 'nothing'}`);
+    switch (state.kind) {
+      case 'rebase':
+        return this.runIntegration(root, ['rebase', '--abort']);
+      case 'merge':
+        return this.runIntegration(root, ['merge', '--abort']);
+      case 'cherry-pick':
+        return this.runIntegration(root, ['cherry-pick', '--abort']);
+      case 'revert':
+        return this.runIntegration(root, ['revert', '--abort']);
+      case 'squash-merge':
+        return this.runIntegration(root, ['reset', '--merge']);
+      default:
+        return { success: false, error: NO_OPERATION_ERROR, code: SourceControlCode.NoOperation };
+    }
+  }
+
+  /**
    * Creates a tag at a commit, annotated when a message is given.
    *
    * The message is the one argument not held to {@link isSafeOperand}: it is bound positionally to
@@ -1176,6 +1652,32 @@ export class GitManager {
   }
 
   /**
+   * Runs a merge, a rebase, or one of the commands that finishes them: with no editor to block on, a
+   * budget that suits work measured in files and commits, and the outcome classified so the caller can
+   * tell a conflict from a failure.
+   * @param root The repository root, which must be open.
+   * @param args The fully-built git argument vector.
+   * @returns Returns the raw command result.
+   */
+  private async runIntegration(root: unknown, args: readonly string[]): Promise<GitRunResult> {
+    if (!this.isOpenRoot(root)) {
+      return { success: false, error: 'Repository is not open' };
+    }
+    const result: GitRunResult = await this.run(path.resolve(root), args, {
+      env: { ...process.env, ...GIT_NO_EDITOR_ENV },
+      timeoutMs: GIT_INTEGRATION_TIMEOUT_MS,
+    });
+    if (result.success) {
+      return result;
+    }
+    // Git exits non-zero on a conflict exactly as it does on a failure, and the difference is not in
+    // the message but in what it left behind: an operation still in flight means it stopped to ask,
+    // not that it could not proceed. Asking the repository beats reading the prose.
+    const state: GitOperationState = await this.operationState(root);
+    return state.kind === null ? result : { ...result, code: SourceControlCode.Conflicted };
+  }
+
+  /**
    * Runs a network git operation (fetch/pull/push) in an open root with a non-interactive environment
    * and a longer timeout, so it never blocks on a credential prompt and has time to reach the remote.
    * @param root The repository root, which must be open.
@@ -1317,6 +1819,51 @@ export class GitManager {
         },
       );
     });
+  }
+}
+
+/**
+ * Determines whether a path exists, treating any failure to look as absence — which is what it means
+ * here, since these are files git writes only while an operation is unfinished.
+ * @param target The absolute path to test.
+ * @returns Returns true when the path exists.
+ */
+async function exists(target: string): Promise<boolean> {
+  try {
+    await stat(target);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Reads the first of several candidate files that exists, trimmed.
+ * @param candidates The absolute paths to try, in order.
+ * @returns Returns the contents, or null when none of them could be read.
+ */
+async function firstFile(candidates: readonly string[]): Promise<string | null> {
+  for (const candidate of candidates) {
+    try {
+      return (await readFile(candidate, 'utf8')).trim();
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+/**
+ * Reads a file's first line, trimmed.
+ * @param target The absolute path to read.
+ * @returns Returns the first line, or null when the file could not be read.
+ */
+async function firstLine(target: string): Promise<string | null> {
+  try {
+    const content: string = await readFile(target, 'utf8');
+    return (content.split('\n')[0] ?? '').trim();
+  } catch {
+    return null;
   }
 }
 
