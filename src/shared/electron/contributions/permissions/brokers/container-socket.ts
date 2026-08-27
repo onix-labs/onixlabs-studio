@@ -1,7 +1,7 @@
 import * as net from 'node:net';
 import { logger } from '../../../logger';
-import { containerEngineCatalogue } from '../../docker/container-engine';
-import { selectedEngine } from '../../docker/engine-selection';
+import { containerEngineCatalogue } from '../../containers/container-engine';
+import { selectedEngine } from '../../containers/engine-selection';
 import { PermissionFactory } from '../permission-broker';
 import { PermissionId } from '../permission';
 

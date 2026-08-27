@@ -33,17 +33,17 @@ describe('sanitizePermissions', () => {
 describe('PermissionDeniedError', () => {
   it('carriesTheContributionPermissionAndReasonInMessageAndFields', () => {
     const error: PermissionDeniedError = new PermissionDeniedError(
-      'docker',
+      'containers',
       'container.socket',
       'undeclared',
     );
     expect(error).toBeInstanceOf(Error);
     expect(error.name).toBe('PermissionDeniedError');
-    expect(error.contributionId).toBe('docker');
+    expect(error.contributionId).toBe('containers');
     expect(error.permission).toBe('container.socket');
     expect(error.reason).toBe('undeclared');
     expect(error.message).toContain(
-      "contribution 'docker' denied permission 'container.socket' (undeclared)",
+      "contribution 'containers' denied permission 'container.socket' (undeclared)",
     );
   });
 });

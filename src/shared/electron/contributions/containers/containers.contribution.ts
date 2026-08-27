@@ -11,17 +11,20 @@ import { chooseEngine, describeEngines, selectedEngine } from './engine-selectio
 import { DockerStreamHandle } from './docker-transport';
 
 /**
- * The Docker Engine backend contribution — the first real {@link MainContribution}. It requests the
+ * The container engine backend contribution — the first real {@link MainContribution}. It requests the
  * `container.socket` permission through the P2 broker, exposes the container/image operations over the
  * {@link ContainerChannel} IPC channels, and pushes engine events to the renderer as they happen. It is
  * registered by appending it to the `mainContributions` manifest — no other `main.ts` change — which
  * is the north-star this whole seam exists to prove.
+ *
+ * It is named for the capability rather than for an engine because it serves whichever engine is in
+ * effect (#394); only the {@link DockerEngine} it drives is Docker-specific.
  */
-export class DockerContribution implements MainContribution {
+export class ContainersContribution implements MainContribution {
   /**
-   * The stable contribution id and IPC channel namespace.
+   * The stable contribution id and IPC channel namespace, matching the `container:*` channels.
    */
-  public readonly id: string = 'docker';
+  public readonly id: string = 'containers';
 
   /**
    * The privileged permissions this contribution declares — just the engine socket.
@@ -85,20 +88,20 @@ export class DockerContribution implements MainContribution {
     );
 
     this.watchHandle = engine.watch((event): void => context.send(ContainerChannel.Events, event));
-    context.log.info('docker contribution active; channels wired, event watch started');
+    context.log.info('containers contribution active; channels wired, event watch started');
   }
 
   /**
    * Closes the event stream. The IPC handlers are removed automatically by the registry's tracker.
    */
   public dispose(): void {
-    this.log?.info('disposing docker contribution; closing event stream');
+    this.log?.info('disposing containers contribution; closing event stream');
     this.watchHandle?.close();
     this.watchHandle = null;
   }
 }
 
 /**
- * The singleton Docker contribution appended to the `mainContributions` manifest.
+ * The singleton containers contribution appended to the `mainContributions` manifest.
  */
-export const dockerContribution: MainContribution = new DockerContribution();
+export const containersContribution: MainContribution = new ContainersContribution();

@@ -45,7 +45,7 @@ function request(
   declared: PermissionId[],
   origin: ContributionOrigin = 'first-party',
 ): PermissionRequest {
-  return { contributionId: 'docker', origin, declared: new Set<PermissionId>(declared) };
+  return { contributionId: 'containers', origin, declared: new Set<PermissionId>(declared) };
 }
 
 describe('PermissionBroker', () => {
@@ -59,7 +59,7 @@ describe('PermissionBroker', () => {
     expect(handle).toBe(HANDLE);
     expect(create).toHaveBeenCalledTimes(1);
     expect(audit).toHaveBeenCalledWith({
-      contributionId: 'docker',
+      contributionId: 'containers',
       permission: 'container.socket',
       decision: 'allow',
       source: 'policy',
@@ -74,7 +74,7 @@ describe('PermissionBroker', () => {
     expect(() => broker.resolve(request([]), 'container.socket')).toThrow(PermissionDeniedError);
     expect(create).not.toHaveBeenCalled();
     expect(audit).toHaveBeenCalledWith({
-      contributionId: 'docker',
+      contributionId: 'containers',
       permission: 'container.socket',
       decision: 'deny',
       source: 'undeclared',
@@ -97,7 +97,7 @@ describe('PermissionBroker', () => {
     expect(thrown?.reason).toBe('denied');
     expect(create).not.toHaveBeenCalled();
     expect(audit).toHaveBeenCalledWith({
-      contributionId: 'docker',
+      contributionId: 'containers',
       permission: 'container.socket',
       decision: 'deny',
       source: 'policy',
@@ -116,7 +116,7 @@ describe('PermissionBroker', () => {
       PermissionDeniedError,
     );
     expect(audit).toHaveBeenCalledWith({
-      contributionId: 'docker',
+      contributionId: 'containers',
       permission: 'container.socket',
       decision: 'deny',
       source: 'policy',
