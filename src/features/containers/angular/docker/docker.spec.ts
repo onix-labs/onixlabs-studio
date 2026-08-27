@@ -28,6 +28,18 @@ describe('Docker', () => {
     const bridge: Bridge = {
       invoke: <T>(channel: string, ...args: unknown[]): Promise<T> => {
         calls.push({ channel, args });
+        if (channel === (DockerChannel.ListEngines as string)) {
+          return Promise.resolve([
+            {
+              id: 'docker',
+              displayName: 'Docker',
+              available: false,
+              inEffect: false,
+              cli: 'docker',
+            },
+            { id: 'podman', displayName: 'Podman', available: true, inEffect: true, cli: 'podman' },
+          ] as T);
+        }
         return Promise.resolve(reply as T);
       },
       send: (): void => undefined,
@@ -45,6 +57,17 @@ describe('Docker', () => {
     delete (window as unknown as { bridge?: unknown }).bridge;
   });
 
+  /**
+   * Gets the recorded calls with the engine lookup removed. The client asks which container engines
+   * are present as soon as it is created, which is startup rather than an operation under test.
+   * @returns Returns the operation calls.
+   */
+  function operations(): RecordedCall[] {
+    return calls.filter(
+      (call: RecordedCall): boolean => call.channel !== (DockerChannel.ListEngines as string),
+    );
+  }
+
   it('forwardsEachOperationToItsChannel', async () => {
     stubBridge(true);
     const docker: Docker = TestBed.inject(Docker);
@@ -53,7 +76,7 @@ describe('Docker', () => {
     await docker.stop('def');
     await docker.remove('ghi');
 
-    expect(calls).toEqual([
+    expect(operations()).toEqual([
       { channel: DockerChannel.Start, args: ['abc'] },
       { channel: DockerChannel.Stop, args: ['def'] },
       { channel: DockerChannel.Remove, args: ['ghi'] },
@@ -79,7 +102,7 @@ describe('Docker', () => {
     const docker: Docker = TestBed.inject(Docker);
 
     expect(await docker.launchDesktop()).toBe(true);
-    expect(calls).toEqual([{ channel: DockerChannel.LaunchDesktop, args: [] }]);
+    expect(operations()).toEqual([{ channel: DockerChannel.LaunchDesktop, args: [] }]);
   });
 
   it('degradesToSafeDefaultsWithoutABridge', async () => {
@@ -92,5 +115,20 @@ describe('Docker', () => {
     expect(await docker.start('abc')).toBe(false);
     expect(await docker.launchDesktop()).toBe(false);
     expect(docker.onEvents((): void => undefined)).toBeTypeOf('function');
+  });
+
+  it('engineCli_reportsTheEngineInEffect', async () => {
+    stubBridge(true);
+    const docker: Docker = TestBed.inject(Docker);
+    await docker.refreshEngines();
+
+    expect(docker.engineCli()).toBe('podman');
+  });
+
+  it('engineCli_beforeTheEnginesAreKnown_fallsBackToDocker', () => {
+    delete (window as unknown as { bridge?: unknown }).bridge;
+    const docker: Docker = TestBed.inject(Docker);
+
+    expect(docker.engineCli()).toBe('docker');
   });
 });

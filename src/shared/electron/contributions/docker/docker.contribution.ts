@@ -1,10 +1,13 @@
 import type { IpcMainInvokeEvent } from 'electron';
 import { DockerChannel } from '@shared/api/docker-channels';
+import { ContainerEngineInfo } from '@shared/api/docker-types';
 import { ContributionContext, MainContribution } from '../main-contribution';
 import { PermissionId } from '../permissions/permission';
 import { DockerSocket } from '../permissions/brokers/docker-socket';
 import { launchDockerDesktop } from './docker-desktop';
+import { ContainerEngine, ContainerEngineDescriptor } from './container-engine';
 import { DockerEngine } from './docker-engine';
+import { chooseEngine, describeEngines, selectedEngine } from './engine-selection';
 import { DockerStreamHandle } from './docker-transport';
 
 /**
@@ -44,8 +47,13 @@ export class DockerContribution implements MainContribution {
     // simply does not activate) rather than letting it abort startup.
     this.log = context.log;
     const socket: DockerSocket = context.permission<DockerSocket>('docker.socket');
-    context.log.info(`activating; docker socket resolved at ${socket.path}`);
-    const engine: DockerEngine = new DockerEngine(socket);
+    const descriptor: ContainerEngineDescriptor = selectedEngine();
+    context.log.info(
+      `activating with the ${descriptor.displayName} engine; socket resolved at ${socket.path}`,
+    );
+    // Docker and Podman both serve the Docker Engine API, so one client speaks to either; the engine
+    // in effect decides only which socket was opened above and which CLI the surface drives.
+    const engine: ContainerEngine = new DockerEngine(socket);
 
     context.handle(DockerChannel.ListContainers, (): Promise<unknown> => engine.listContainers());
     context.handle(DockerChannel.ListImages, (): Promise<unknown> => engine.listImages());
@@ -63,6 +71,18 @@ export class DockerContribution implements MainContribution {
     );
     context.handle(DockerChannel.Status, (): Promise<unknown> => engine.status());
     context.handle(DockerChannel.LaunchDesktop, (): Promise<boolean> => launchDockerDesktop());
+    context.handle(DockerChannel.ListEngines, (): readonly ContainerEngineInfo[] =>
+      describeEngines(),
+    );
+    context.handle(
+      DockerChannel.ChooseEngine,
+      (_event: IpcMainInvokeEvent, id: unknown): readonly ContainerEngineInfo[] => {
+        chooseEngine(typeof id === 'string' && id.length > 0 ? id : null);
+        // The socket was opened at activation, so a different engine takes effect on the next launch;
+        // the refreshed list is what tells the renderer to say so.
+        return describeEngines();
+      },
+    );
 
     this.watchHandle = engine.watch((event): void => context.send(DockerChannel.Events, event));
     context.log.info('docker contribution active; channels wired, event watch started');

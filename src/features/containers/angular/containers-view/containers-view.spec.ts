@@ -37,6 +37,17 @@ describe('ContainersView', () => {
     const bridge: Bridge = {
       invoke: <T>(channel: string, ...args: unknown[]): Promise<T> => {
         calls.push({ channel, args });
+        if ((channel as DockerChannel) === DockerChannel.ListEngines) {
+          return Promise.resolve([
+            {
+              id: 'docker',
+              displayName: 'Docker',
+              available: true,
+              inEffect: true,
+              cli: 'docker',
+            },
+          ] as T);
+        }
         if ((channel as DockerChannel) === DockerChannel.Status) {
           return Promise.resolve(status as T);
         }

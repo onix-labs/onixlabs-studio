@@ -1,3 +1,5 @@
+import { resolveSlot, SlotEntry } from './slot';
+
 // The language-slot contract shared between the Electron main process and the renderer. Keep this
 // module platform-neutral (no Node or DOM dependencies) so both compilation targets can import it.
 //
@@ -12,28 +14,12 @@
  * detail — how an implementation is obtained is the main process's business alone — so this is exactly
  * what the renderer needs to resolve a slot and to offer the user the choice.
  */
-export interface LanguageSlotEntry {
-  /**
-   * Gets the stable identifier the implementation is named by.
-   */
-  readonly id: string;
-
-  /**
-   * Gets the display name shown when choosing which implementation fills a slot.
-   */
-  readonly displayName: string;
-
+export interface LanguageSlotEntry extends SlotEntry {
   /**
    * Gets the language identifiers this implementation serves. A language with more than one entry is a
    * slot the user chooses an implementation for.
    */
   readonly languages: readonly string[];
-
-  /**
-   * Gets the priority used to pick a default when the user has expressed no preference, higher first.
-   * Ties break on registration order, so a deterministic default always exists.
-   */
-  readonly priority: number;
 }
 
 /**
@@ -67,17 +53,5 @@ export function resolveForLanguage<T extends LanguageSlotEntry>(
   entries: readonly T[],
   selection: Readonly<Record<string, string>>,
 ): string | null {
-  const candidates: readonly T[] = entriesForLanguage(language, entries);
-  if (candidates.length === 0) {
-    return null;
-  }
-  const chosen: string | undefined = selection[language];
-  if (chosen !== undefined && candidates.some((entry: T): boolean => entry.id === chosen)) {
-    return chosen;
-  }
-  // Strictly-greater keeps the earliest candidate on equal priority, so the default follows
-  // registration order rather than which contributed implementation happened to register first.
-  return candidates.reduce(
-    (best: T, entry: T): T => (entry.priority > best.priority ? entry : best),
-  ).id;
+  return resolveSlot(entriesForLanguage(language, entries), selection[language]);
 }

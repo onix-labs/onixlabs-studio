@@ -89,3 +89,39 @@ export interface DockerStatus {
    */
   readonly version?: string;
 }
+
+/**
+ * Describes a container engine to the renderer: what it is, whether it is present on this machine, and
+ * whether it is the one in effect.
+ *
+ * The Containers surface is engine-agnostic — it always has been, only the implementation behind it was
+ * named after one engine. This is what lets the surface say which engine it is talking to, and offer a
+ * choice when more than one is there to choose between.
+ */
+export interface ContainerEngineInfo {
+  /**
+   * Gets the stable engine identifier.
+   */
+  readonly id: string;
+
+  /**
+   * Gets the display name.
+   */
+  readonly displayName: string;
+
+  /**
+   * Gets whether the engine is present on this machine.
+   */
+  readonly available: boolean;
+
+  /**
+   * Gets whether this is the engine currently in effect.
+   */
+  readonly inEffect: boolean;
+
+  /**
+   * Gets the command-line tool that drives this engine, used for the operations that are a terminal
+   * session rather than an API call — following logs, opening a shell in a container.
+   */
+  readonly cli: string;
+}

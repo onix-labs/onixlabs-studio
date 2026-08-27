@@ -1,5 +1,7 @@
 import * as net from 'node:net';
 import { logger } from '../../../logger';
+import { containerEngineCatalogue } from '../../docker/container-engine';
+import { selectedEngine } from '../../docker/engine-selection';
 import { PermissionFactory } from '../permission-broker';
 import { PermissionId } from '../permission';
 
@@ -22,13 +24,13 @@ export interface DockerSocket {
 }
 
 /**
- * Resolves the platform-default Docker Engine socket path: the Windows named pipe, or the Unix domain
- * socket everywhere else. A settings-driven override can replace this resolver later without touching
- * the factory or the broker.
- * @returns Returns the default socket path for the current platform.
+ * Resolves the socket path of the container engine in effect — the user's chosen engine when they have
+ * one and it is present, otherwise the highest-priority engine that is. Docker and Podman both serve
+ * the Docker Engine API, so the difference between them is entirely which socket this returns.
+ * @returns Returns the socket path for the engine in effect.
  */
 export function resolveDockerSocketPath(): string {
-  return process.platform === 'win32' ? '\\\\.\\pipe\\docker_engine' : '/var/run/docker.sock';
+  return selectedEngine().socketPath() ?? containerEngineCatalogue()[0].socketPath() ?? '';
 }
 
 /**
