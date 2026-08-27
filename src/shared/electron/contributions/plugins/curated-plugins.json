@@ -1,5 +1,5 @@
 {
-  "revision": 1,
+  "revision": 2,
   "plugins": [
     {
       "id": "pyright",
@@ -49,7 +49,9 @@
             "displayName": "Pyright",
             "languages": ["python"],
             "priority": 100,
-            "command": { "kind": "node" }
+            "command": {
+              "kind": "node"
+            }
           }
         ]
       }
@@ -102,7 +104,10 @@
             "displayName": "ty (Astral)",
             "languages": ["python"],
             "priority": 50,
-            "command": { "kind": "executable", "args": ["server"] }
+            "command": {
+              "kind": "executable",
+              "args": ["server"]
+            }
           }
         ]
       }
@@ -155,7 +160,9 @@
             "displayName": "Lua Language Server",
             "languages": ["lua"],
             "priority": 100,
-            "command": { "kind": "executable" }
+            "command": {
+              "kind": "executable"
+            }
           }
         ]
       }
@@ -197,7 +204,9 @@
             "displayName": "sqls",
             "languages": ["sql"],
             "priority": 100,
-            "command": { "kind": "executable" }
+            "command": {
+              "kind": "executable"
+            }
           }
         ]
       }
@@ -238,7 +247,36 @@
             "displayName": "Perl Navigator",
             "languages": ["perl"],
             "priority": 100,
-            "command": { "kind": "executable", "args": ["--stdio"] }
+            "command": {
+              "kind": "executable",
+              "args": ["--stdio"]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "dockerfile-language-server",
+      "name": "Dockerfile Language Server",
+      "description": "Rapid7's Dockerfile linting, completion and hover support.",
+      "version": "0.15.0",
+      "apiVersion": "1.2.0",
+      "provision": {
+        "kind": "npm",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/dockerfile-language-server.lock.json",
+        "sha256": "ce51bba16fd25abc8db7532a7b16acf0c0e683270ac8e94b2561276a4613d67f",
+        "executablePath": "node_modules/dockerfile-language-server-nodejs/bin/docker-langserver"
+      },
+      "contributes": {
+        "languageServers": [
+          {
+            "id": "dockerfile-language-server",
+            "displayName": "Dockerfile Language Server",
+            "languages": ["dockerfile"],
+            "priority": 100,
+            "command": {
+              "kind": "node"
+            }
           }
         ]
       }

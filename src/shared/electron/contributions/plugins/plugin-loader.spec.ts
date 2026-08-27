@@ -4,6 +4,7 @@ import * as path from 'node:path';
 import { PLUGIN_API_VERSION, PluginManifest } from '@shared/api/plugin-manifest';
 import { PluginContribution } from '@shared/api/plugin-channels';
 import { ArchiveProvision } from '../../provisioning/archive-provision';
+import { LspProvisioner } from '../../lsp/lsp-provisioner';
 import { LanguageServerDescriptor, LspResolution } from '../../lsp/language-server-descriptor';
 import { DebugAdapterCatalogueEntry, DebugAdapterSpec } from '../../debug/debug-adapter-registry';
 import {
@@ -59,6 +60,22 @@ function manifest(overrides: Record<string, unknown> = {}): Record<string, unkno
     },
     ...overrides,
   };
+}
+
+/**
+ * Builds a provisioner that reports one fixed install path, so resolution can be exercised without a
+ * real install. Answers for both provisioning kinds, because which one a manifest uses is exactly what
+ * the code under test is deciding.
+ * @param installedPath The path to report, or null for not installed.
+ * @returns Returns the stub.
+ */
+function stubProvisioner(installedPath: string | null): LspProvisioner {
+  return {
+    isArchiveInstalled: (): boolean => installedPath !== null,
+    archiveTarget: (): string | null => installedPath,
+    isTreeInstalled: (): boolean => installedPath !== null,
+    treeTarget: (): string | null => installedPath,
+  } as unknown as LspProvisioner;
 }
 
 describe('plugin loader', () => {
@@ -250,7 +267,7 @@ describe('plugin loader', () => {
       return {
         rootPath: '/w',
         settings: { get: (): never => ({}) as never } as never,
-        provisioner: {} as never,
+        provisioner: stubProvisioner(installedPath),
         nodePackageServer: (entry: string) => ({
           command: '/electron',
           args: [entry, '--stdio'],
@@ -326,9 +343,8 @@ describe('plugin loader', () => {
       installed: string | null = '/installed/dbg',
     ): readonly DebugAdapterCatalogueEntry[] {
       writePlugin('dbg', manifest({ id: 'dbg', contributes: { debugAdapters: [adapter] } }));
-      return toDebugAdapterEntries(
-        validManifests(discoverPlugins(root))[0],
-        (): string | null => installed,
+      return toDebugAdapterEntries(validManifests(discoverPlugins(root))[0], () =>
+        stubProvisioner(installed),
       );
     }
 
@@ -408,7 +424,9 @@ describe('plugin loader', () => {
       writePlugin('zls', manifest());
 
       expect(
-        toDebugAdapterEntries(validManifests(discoverPlugins(root))[0], (): null => null),
+        toDebugAdapterEntries(validManifests(discoverPlugins(root))[0], () =>
+          stubProvisioner(null),
+        ),
       ).toEqual([]);
     });
   });

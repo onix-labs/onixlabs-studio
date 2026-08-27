@@ -63,6 +63,33 @@ describe('Monaco', () => {
     expect(monaco.getLanguageForExtension('.unknown')).toBe('plaintext');
   });
 
+  it('getLanguageForFileName_whenTheNameIsTheType_returnsLanguage', () => {
+    // `Dockerfile` is the canonical spelling and carries no extension, so an extension-only lookup
+    // calls it plaintext — which would mean the editor never asks for a Dockerfile language server.
+    expect(monaco.getLanguageForFileName('Dockerfile')).toBe('dockerfile');
+    expect(monaco.getLanguageForFileName('dockerfile')).toBe('dockerfile');
+    expect(monaco.getLanguageForFileName('Containerfile')).toBe('dockerfile');
+  });
+
+  it('getLanguageForFileName_whenGivenAPath_readsTheFileNameFromIt', () => {
+    expect(monaco.getLanguageForFileName('/src/docker/Dockerfile')).toBe('dockerfile');
+    expect(monaco.getLanguageForFileName('C:\\build\\Dockerfile')).toBe('dockerfile');
+  });
+
+  it('getLanguageForFileName_whenNamedByExtension_stillResolves', () => {
+    expect(monaco.getLanguageForFileName('main.ts')).toBe('typescript');
+    expect(monaco.getLanguageForFileName('web.prod.dockerfile')).toBe('dockerfile');
+  });
+
+  it('getLanguageForFileName_whenADotfile_doesNotTreatTheNameAsAnExtension', () => {
+    // A leading dot is the whole name, not an extension: `.gitignore` is not a `gitignore` file.
+    expect(monaco.getLanguageForFileName('.gitignore')).toBe('plaintext');
+  });
+
+  it('getLanguageForFileName_whenUnknown_returnsPlaintext', () => {
+    expect(monaco.getLanguageForFileName('LICENSE')).toBe('plaintext');
+  });
+
   it('getSupportedLanguages_whenCalled_returnsSortedNonEmptyList', () => {
     const names: readonly string[] = monaco
       .getSupportedLanguages()
