@@ -4,7 +4,7 @@ import {
   DockerStatus,
   ImageSummary,
 } from '@shared/api/docker-types';
-import { DockerSocket } from '../permissions/brokers/docker-socket';
+import { ContainerSocket } from '../permissions/brokers/container-socket';
 import { ContainerEngine } from './container-engine';
 import { DockerStreamHandle, DockerTransport, HttpDockerTransport } from './docker-transport';
 
@@ -60,7 +60,7 @@ export class DockerEngine implements ContainerEngine {
    * @param socket The granted Docker socket handle (its path drives the default transport).
    * @param transport The transport to use; defaults to HTTP over the socket path.
    */
-  public constructor(socket: DockerSocket, transport?: DockerTransport) {
+  public constructor(socket: ContainerSocket, transport?: DockerTransport) {
     this.transport = transport ?? new HttpDockerTransport(socket.path);
   }
 

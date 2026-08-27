@@ -1,23 +1,23 @@
 import * as net from 'node:net';
 import { logger } from '../../../logger';
-import { containerEngineCatalogue } from '../../docker/container-engine';
-import { selectedEngine } from '../../docker/engine-selection';
+import { containerEngineCatalogue } from '../../containers/container-engine';
+import { selectedEngine } from '../../containers/engine-selection';
 import { PermissionFactory } from '../permission-broker';
 import { PermissionId } from '../permission';
 
 /**
- * The handle the `docker.socket` permission resolves to: the sole door to the Docker Engine's local
- * socket. P3's Docker backend (#391) speaks the Engine API over this and never sees the raw path,
- * so the path (and any future policy on it) stays owned here.
+ * The handle the `container.socket` permission resolves to: the sole door to the local socket of the
+ * container engine in effect. The containers backend (#391) speaks the Engine API over this and never
+ * sees the raw path, so the path (and any future policy on it) stays owned here.
  */
-export interface DockerSocket {
+export interface ContainerSocket {
   /**
    * Gets the resolved socket path (a Unix domain socket, or a Windows named pipe).
    */
   readonly path: string;
 
   /**
-   * Opens a fresh connection to the Docker Engine socket.
+   * Opens a fresh connection to the container engine socket.
    * @returns Returns a promise for the connected socket.
    */
   connect(): Promise<net.Socket>;
@@ -29,34 +29,34 @@ export interface DockerSocket {
  * the Docker Engine API, so the difference between them is entirely which socket this returns.
  * @returns Returns the socket path for the engine in effect.
  */
-export function resolveDockerSocketPath(): string {
+export function resolveContainerSocketPath(): string {
   return selectedEngine().socketPath() ?? containerEngineCatalogue()[0].socketPath() ?? '';
 }
 
 /**
- * Mints the {@link DockerSocket} handle for the `docker.socket` permission. The path is resolved
+ * Mints the {@link ContainerSocket} handle for the `container.socket` permission. The path is resolved
  * through an injected resolver (defaulting to the platform default), so the factory carries no
  * settings dependency and is unit-testable.
  */
-export class DockerSocketFactory implements PermissionFactory<DockerSocket> {
+export class ContainerSocketFactory implements PermissionFactory<ContainerSocket> {
   /**
    * Gets the permission this factory mints the handle for.
    */
-  public readonly id: PermissionId = 'docker.socket';
+  public readonly id: PermissionId = 'container.socket';
 
   /**
-   * Initializes a new instance of the {@link DockerSocketFactory} class.
-   * @param resolvePath Resolves the socket path; defaults to {@link resolveDockerSocketPath}.
+   * Initializes a new instance of the {@link ContainerSocketFactory} class.
+   * @param resolvePath Resolves the socket path; defaults to {@link resolveContainerSocketPath}.
    */
-  public constructor(private readonly resolvePath: () => string = resolveDockerSocketPath) {}
+  public constructor(private readonly resolvePath: () => string = resolveContainerSocketPath) {}
 
   /**
-   * Creates a {@link DockerSocket} bound to the resolved path.
+   * Creates a {@link ContainerSocket} bound to the resolved path.
    * @returns Returns the socket handle.
    */
-  public create(): DockerSocket {
+  public create(): ContainerSocket {
     const path: string = this.resolvePath();
-    logger.debug('DockerSocket', `Minted docker socket handle for ${path}`);
+    logger.debug('ContainerSocket', `Minted container engine socket handle for ${path}`);
     return {
       path,
       connect: (): Promise<net.Socket> =>

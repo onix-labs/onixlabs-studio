@@ -44,7 +44,7 @@ import {
   PermissionBroker,
   PermissionFactory,
 } from '@shared/electron/contributions/permissions/permission-broker';
-import { DockerSocketFactory } from '@shared/electron/contributions/permissions/brokers/docker-socket';
+import { ContainerSocketFactory } from '@shared/electron/contributions/permissions/brokers/container-socket';
 import { CodeRunner } from '@shared/electron/code-runner';
 import { BinaryDisassembler } from '@shared/electron/binary-disassembler';
 import { BinaryAssembler } from '@shared/electron/binary-assembler';
@@ -459,7 +459,7 @@ class Program {
    * as the sole handle P3's backend reaches the engine through.
    */
   private readonly permissionBroker: PermissionBroker = new PermissionBroker(
-    new Map<PermissionId, PermissionFactory>([['docker.socket', new DockerSocketFactory()]]),
+    new Map<PermissionId, PermissionFactory>([['container.socket', new ContainerSocketFactory()]]),
     new DefaultGrantPolicy(),
     (entry: PermissionAuditEntry): void => this.auditPermission(entry),
   );

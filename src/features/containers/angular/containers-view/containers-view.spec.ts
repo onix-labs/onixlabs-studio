@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Bridge } from '@shared/api/bridge';
-import { DockerChannel } from '@shared/api/docker-channels';
+import { ContainerChannel } from '@shared/api/container-channels';
 import { ContainerSummary, DockerStatus } from '@shared/api/docker-types';
 import { ContainerTerminals } from '../container-terminals/container-terminals';
 import { ContainersView } from './containers-view';
@@ -37,7 +37,7 @@ describe('ContainersView', () => {
     const bridge: Bridge = {
       invoke: <T>(channel: string, ...args: unknown[]): Promise<T> => {
         calls.push({ channel, args });
-        if ((channel as DockerChannel) === DockerChannel.ListEngines) {
+        if ((channel as ContainerChannel) === ContainerChannel.ListEngines) {
           return Promise.resolve([
             {
               id: 'docker',
@@ -48,13 +48,13 @@ describe('ContainersView', () => {
             },
           ] as T);
         }
-        if ((channel as DockerChannel) === DockerChannel.Status) {
+        if ((channel as ContainerChannel) === ContainerChannel.Status) {
           return Promise.resolve(status as T);
         }
-        if ((channel as DockerChannel) === DockerChannel.ListContainers) {
+        if ((channel as ContainerChannel) === ContainerChannel.ListContainers) {
           return Promise.resolve([CONTAINER] as T);
         }
-        if ((channel as DockerChannel) === DockerChannel.ListImages) {
+        if ((channel as ContainerChannel) === ContainerChannel.ListImages) {
           return Promise.resolve([] as T);
         }
         return Promise.resolve(true as T);
@@ -112,7 +112,8 @@ describe('ContainersView', () => {
 
     expect(
       calls.some(
-        (call: RecordedCall): boolean => (call.channel as DockerChannel) === DockerChannel.Start,
+        (call: RecordedCall): boolean =>
+          (call.channel as ContainerChannel) === ContainerChannel.Start,
       ),
     ).toBe(true);
   });

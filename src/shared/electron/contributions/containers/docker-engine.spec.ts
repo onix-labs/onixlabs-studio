@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DockerEvent } from '@shared/api/docker-types';
-import { DockerSocket } from '../permissions/brokers/docker-socket';
+import { ContainerSocket } from '../permissions/brokers/container-socket';
 import { DockerEngine, parseEvent } from './docker-engine';
 import { DockerResponse, DockerStreamHandle, DockerTransport } from './docker-transport';
 
@@ -50,7 +50,7 @@ class FakeTransport implements DockerTransport {
 /**
  * A socket handle whose path is irrelevant here because the transport is injected.
  */
-const SOCKET: DockerSocket = {
+const SOCKET: ContainerSocket = {
   path: '/unused.sock',
   connect: (): Promise<never> => Promise.reject(new Error('unused')),
 };

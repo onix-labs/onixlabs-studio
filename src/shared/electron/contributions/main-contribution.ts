@@ -99,7 +99,7 @@ export interface ContributionContext {
 export interface MainContribution {
   /**
    * Gets the stable identifier for the contribution. Also the recommended IPC channel namespace (for
-   * example `docker`, owning `docker:list`, `docker:events`).
+   * example `containers`, owning `container:list`, `container:events`).
    */
   readonly id: string;
 

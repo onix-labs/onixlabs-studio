@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { ApplicationRef } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Bridge } from '@shared/api/bridge';
-import { DockerChannel } from '@shared/api/docker-channels';
+import { ContainerChannel } from '@shared/api/container-channels';
 import { ContainerSummary, DockerStatus } from '@shared/api/docker-types';
 import { StatusBar } from '@shared/angular/services/status-bar/status-bar';
 import { Icon } from '@shared/angular/icons/icon';
@@ -23,10 +23,10 @@ const CONTAINERS: ContainerSummary[] = [
 function stubBridge(status: DockerStatus): void {
   const bridge: Bridge = {
     invoke: <T>(channel: string): Promise<T> => {
-      if ((channel as DockerChannel) === DockerChannel.Status) {
+      if ((channel as ContainerChannel) === ContainerChannel.Status) {
         return Promise.resolve(status as T);
       }
-      if ((channel as DockerChannel) === DockerChannel.ListContainers) {
+      if ((channel as ContainerChannel) === ContainerChannel.ListContainers) {
         return Promise.resolve(CONTAINERS as T);
       }
       return Promise.resolve([] as T);

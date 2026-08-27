@@ -1,9 +1,9 @@
 import type { IpcMainInvokeEvent } from 'electron';
-import { DockerChannel } from '@shared/api/docker-channels';
+import { ContainerChannel } from '@shared/api/container-channels';
 import { ContainerEngineInfo } from '@shared/api/docker-types';
 import { ContributionContext, MainContribution } from '../main-contribution';
 import { PermissionId } from '../permissions/permission';
-import { DockerSocket } from '../permissions/brokers/docker-socket';
+import { ContainerSocket } from '../permissions/brokers/container-socket';
 import { launchDockerDesktop } from './docker-desktop';
 import { ContainerEngine, ContainerEngineDescriptor } from './container-engine';
 import { DockerEngine } from './docker-engine';
@@ -11,22 +11,25 @@ import { chooseEngine, describeEngines, selectedEngine } from './engine-selectio
 import { DockerStreamHandle } from './docker-transport';
 
 /**
- * The Docker Engine backend contribution — the first real {@link MainContribution}. It requests the
- * `docker.socket` permission through the P2 broker, exposes the container/image operations over the
- * {@link DockerChannel} IPC channels, and pushes engine events to the renderer as they happen. It is
+ * The container engine backend contribution — the first real {@link MainContribution}. It requests the
+ * `container.socket` permission through the P2 broker, exposes the container/image operations over the
+ * {@link ContainerChannel} IPC channels, and pushes engine events to the renderer as they happen. It is
  * registered by appending it to the `mainContributions` manifest — no other `main.ts` change — which
  * is the north-star this whole seam exists to prove.
+ *
+ * It is named for the capability rather than for an engine because it serves whichever engine is in
+ * effect (#394); only the {@link DockerEngine} it drives is Docker-specific.
  */
-export class DockerContribution implements MainContribution {
+export class ContainersContribution implements MainContribution {
   /**
-   * The stable contribution id and IPC channel namespace.
+   * The stable contribution id and IPC channel namespace, matching the `container:*` channels.
    */
-  public readonly id: string = 'docker';
+  public readonly id: string = 'containers';
 
   /**
    * The privileged permissions this contribution declares — just the engine socket.
    */
-  public readonly permissions: readonly PermissionId[] = ['docker.socket'];
+  public readonly permissions: readonly PermissionId[] = ['container.socket'];
 
   /**
    * The open event stream, held so it can be closed on disposal. Null until activated.
@@ -46,7 +49,7 @@ export class DockerContribution implements MainContribution {
     // Throws PermissionDeniedError when the broker refuses; the registry isolates that (the feature
     // simply does not activate) rather than letting it abort startup.
     this.log = context.log;
-    const socket: DockerSocket = context.permission<DockerSocket>('docker.socket');
+    const socket: ContainerSocket = context.permission<ContainerSocket>('container.socket');
     const descriptor: ContainerEngineDescriptor = selectedEngine();
     context.log.info(
       `activating with the ${descriptor.displayName} engine; socket resolved at ${socket.path}`,
@@ -55,27 +58,30 @@ export class DockerContribution implements MainContribution {
     // in effect decides only which socket was opened above and which CLI the surface drives.
     const engine: ContainerEngine = new DockerEngine(socket);
 
-    context.handle(DockerChannel.ListContainers, (): Promise<unknown> => engine.listContainers());
-    context.handle(DockerChannel.ListImages, (): Promise<unknown> => engine.listImages());
     context.handle(
-      DockerChannel.Start,
+      ContainerChannel.ListContainers,
+      (): Promise<unknown> => engine.listContainers(),
+    );
+    context.handle(ContainerChannel.ListImages, (): Promise<unknown> => engine.listImages());
+    context.handle(
+      ContainerChannel.Start,
       (_event: IpcMainInvokeEvent, id: unknown): Promise<boolean> => engine.start(String(id)),
     );
     context.handle(
-      DockerChannel.Stop,
+      ContainerChannel.Stop,
       (_event: IpcMainInvokeEvent, id: unknown): Promise<boolean> => engine.stop(String(id)),
     );
     context.handle(
-      DockerChannel.Remove,
+      ContainerChannel.Remove,
       (_event: IpcMainInvokeEvent, id: unknown): Promise<boolean> => engine.remove(String(id)),
     );
-    context.handle(DockerChannel.Status, (): Promise<unknown> => engine.status());
-    context.handle(DockerChannel.LaunchDesktop, (): Promise<boolean> => launchDockerDesktop());
-    context.handle(DockerChannel.ListEngines, (): readonly ContainerEngineInfo[] =>
+    context.handle(ContainerChannel.Status, (): Promise<unknown> => engine.status());
+    context.handle(ContainerChannel.LaunchDesktop, (): Promise<boolean> => launchDockerDesktop());
+    context.handle(ContainerChannel.ListEngines, (): readonly ContainerEngineInfo[] =>
       describeEngines(),
     );
     context.handle(
-      DockerChannel.ChooseEngine,
+      ContainerChannel.ChooseEngine,
       (_event: IpcMainInvokeEvent, id: unknown): readonly ContainerEngineInfo[] => {
         chooseEngine(typeof id === 'string' && id.length > 0 ? id : null);
         // The socket was opened at activation, so a different engine takes effect on the next launch;
@@ -84,21 +90,21 @@ export class DockerContribution implements MainContribution {
       },
     );
 
-    this.watchHandle = engine.watch((event): void => context.send(DockerChannel.Events, event));
-    context.log.info('docker contribution active; channels wired, event watch started');
+    this.watchHandle = engine.watch((event): void => context.send(ContainerChannel.Events, event));
+    context.log.info('containers contribution active; channels wired, event watch started');
   }
 
   /**
    * Closes the event stream. The IPC handlers are removed automatically by the registry's tracker.
    */
   public dispose(): void {
-    this.log?.info('disposing docker contribution; closing event stream');
+    this.log?.info('disposing containers contribution; closing event stream');
     this.watchHandle?.close();
     this.watchHandle = null;
   }
 }
 
 /**
- * The singleton Docker contribution appended to the `mainContributions` manifest.
+ * The singleton containers contribution appended to the `mainContributions` manifest.
  */
-export const dockerContribution: MainContribution = new DockerContribution();
+export const containersContribution: MainContribution = new ContainersContribution();

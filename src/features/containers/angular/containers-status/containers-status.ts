@@ -3,7 +3,7 @@ import { Log } from '@shared/angular/services/log/log';
 import { StatusBar } from '@shared/angular/services/status-bar/status-bar';
 import { Icon } from '@shared/angular/icons/icon';
 import { ContainerSummary } from '@shared/api/docker-types';
-import { Docker } from '../docker/docker';
+import { ContainersClient } from '../client/containers-client';
 
 /**
  * The status-strip segment id and the owner/priority this feature contributes under.
@@ -13,10 +13,10 @@ const STATUS_OWNER: string = 'containers';
 const STATUS_PRIORITY: number = 15;
 
 /**
- * Contributes the running-container count to the status strip's ambient region. It watches the Docker
- * backend — seeded once on creation and refreshed on every engine event — and publishes a segment while
- * the daemon is reachable, clearing it when Docker is absent. Instantiated by the Containers view, it
- * is a singleton and keeps the count live for the rest of the session.
+ * Contributes the running-container count to the status strip's ambient region. It watches the
+ * containers backend — seeded once on creation and refreshed on every engine event — and publishes a
+ * segment while the engine is reachable, clearing it when no engine is. Instantiated by the Containers
+ * view, it is a singleton and keeps the count live for the rest of the session.
  *
  * Ambient is the right register here: how many containers are running is true of the machine, not of
  * whichever tab is in front, so the segment is meant to survive a tab switch. Contrast a view's own
@@ -30,9 +30,9 @@ export class ContainersStatus {
   private readonly statusBar: StatusBar = inject(StatusBar);
 
   /**
-   * Holds the Docker client the count is derived from.
+   * Holds the containers client the count is derived from.
    */
-  private readonly docker: Docker = inject(Docker);
+  private readonly client: ContainersClient = inject(ContainersClient);
 
   /**
    * Holds the structured logger.
@@ -70,7 +70,7 @@ export class ContainersStatus {
 
     this.log.info('containers.status', 'Running-container status contribution started');
     void this.refresh();
-    this.docker.onEvents((): void => {
+    this.client.onEvents((): void => {
       void this.refresh();
     });
   }
@@ -82,12 +82,12 @@ export class ContainersStatus {
    */
   private async refresh(): Promise<void> {
     this.log.trace('containers.status', 'Refreshing running-container count');
-    const available: boolean = (await this.docker.status()).available;
+    const available: boolean = (await this.client.status()).available;
     if (!available) {
       this.runningCount.set(null);
       return;
     }
-    const containers: ContainerSummary[] = await this.docker.listContainers();
+    const containers: ContainerSummary[] = await this.client.listContainers();
     this.runningCount.set(
       containers.filter((container: ContainerSummary): boolean => container.state === 'running')
         .length,
