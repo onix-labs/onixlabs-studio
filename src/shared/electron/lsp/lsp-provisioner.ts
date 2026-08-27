@@ -1024,7 +1024,14 @@ export class LspProvisioner {
     if (!response.ok || response.body === null) {
       throw new Error(`Download failed: ${response.status}`);
     }
-    await pipeline(Readable.fromWeb(response.body), createWriteStream(destination));
+    // The two compilations disagree about this type: under the main process's Node libs the cast is
+    // redundant, while under the renderer's DOM libs `ReadableStream` is the DOM one and the call will
+    // not typecheck without it. It is what lets anything importing this module be tested at all.
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+    const body: Parameters<typeof Readable.fromWeb>[0] = response.body as Parameters<
+      typeof Readable.fromWeb
+    >[0];
+    await pipeline(Readable.fromWeb(body), createWriteStream(destination));
   }
 
   /**

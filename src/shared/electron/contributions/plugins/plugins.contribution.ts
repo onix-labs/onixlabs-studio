@@ -7,6 +7,7 @@ import { ContributionContext, MainContribution } from '../main-contribution';
 import { PluginContext, pluginCatalogue } from './plugin-catalogue';
 import { PluginManager } from './plugin-manager';
 import { PluginStore } from './plugin-store';
+import { sideloadedPlugins } from './sideloaded';
 
 /**
  * The Plugin Manager's backend: the catalogue of available plugins, what is installed on this machine,
@@ -43,7 +44,13 @@ export class PluginsContribution implements MainContribution {
         path.join(userData, 'debug-adapters'),
       ),
     };
-    this.manager = new PluginManager(pluginCatalogue(), pluginContext, new PluginStore(userData));
+    // First-party plugins plus whatever was sideloaded. A dropped-in manifest is not a special case:
+    // it becomes a catalogue entry and installs down the same path as everything else.
+    this.manager = new PluginManager(
+      [...pluginCatalogue(), ...sideloadedPlugins()],
+      pluginContext,
+      new PluginStore(userData),
+    );
     context.handle(PluginChannel.List, (): Promise<readonly PluginSummary[]> => this.list());
     context.handle(
       PluginChannel.Install,

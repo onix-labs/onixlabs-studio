@@ -10,6 +10,7 @@ import {
   LspServerSpec,
   NO_SERVER,
 } from './language-server-descriptor';
+import { sideloadedLanguageServers } from '../contributions/plugins/sideloaded';
 import { LspProvisioner } from './lsp-provisioner';
 import { ArchiveProvision } from '../provisioning/archive-provision';
 import { LspSettingsManager } from './lsp-settings';
@@ -81,6 +82,11 @@ export class LspServerRegistry {
     this.executablePath = executablePath;
     this.settings = settings;
     for (const descriptor of languageServerCatalogue()) {
+      this.register(descriptor);
+    }
+    // Sideloaded plugins register through the same seam a contributed server always would, which is
+    // the point of the seam: the registry cannot tell them apart, and does not need to.
+    for (const descriptor of sideloadedLanguageServers()) {
       this.register(descriptor);
     }
   }
