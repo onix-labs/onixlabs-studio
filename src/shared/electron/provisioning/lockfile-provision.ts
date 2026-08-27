@@ -141,12 +141,29 @@ export function parseLockfile(
   platform: string = process.platform,
   architecture: string = process.arch,
 ): readonly LockfilePackage[] | null {
-  let document: unknown;
   try {
-    document = JSON.parse(text);
+    return parseLockfileDocument(JSON.parse(text), platform, architecture);
   } catch {
     return null;
   }
+}
+
+/**
+ * Reads an already-parsed lockfile into the list of packages to install.
+ *
+ * Separate from {@link parseLockfile} because a lockfile compiled into the application arrives as a
+ * value rather than as bytes, and round-tripping it through JSON only to parse it again would invent a
+ * difference between the two that does not exist.
+ * @param document The lockfile document.
+ * @param platform The running platform, defaulting to this process's.
+ * @param architecture The running architecture, defaulting to this process's.
+ * @returns Returns the packages to install, or null when the document cannot be honoured.
+ */
+export function parseLockfileDocument(
+  document: unknown,
+  platform: string = process.platform,
+  architecture: string = process.arch,
+): readonly LockfilePackage[] | null {
   if (typeof document !== 'object' || document === null || Array.isArray(document)) {
     return null;
   }

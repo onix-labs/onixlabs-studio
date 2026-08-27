@@ -13,6 +13,7 @@ import { ArchiveProvision } from '../provisioning/archive-provision';
 import { ArchiveProvisioner, isComplete, markComplete } from '../provisioning/archive-provisioner';
 import { LockfileProvision } from '../provisioning/lockfile-provision';
 import { LockfileProvisioner } from '../provisioning/lockfile-provisioner';
+import { bundledLockfile } from '../contributions/plugins/bundled-lockfiles';
 
 /**
  * Runs a child process and resolves with its standard output and error, used for the lightweight
@@ -227,7 +228,11 @@ export class LspProvisioner {
    * Gets the shared lockfile provisioner, rooted alongside the archive installs.
    */
   private get trees(): LockfileProvisioner {
-    this.lockfileProvisioner ??= new LockfileProvisioner(this.serversRoot(), 'LspProvisioner');
+    this.lockfileProvisioner ??= new LockfileProvisioner(
+      this.serversRoot(),
+      'LspProvisioner',
+      bundledLockfile,
+    );
     return this.lockfileProvisioner;
   }
 
