@@ -27,8 +27,11 @@
 /**
  * The contribution API version this build implements, as semver. A manifest declares the version it was
  * written against and Studio decides whether it can honour it — see {@link isApiCompatible}.
+ *
+ * `1.1.0` added the optional {@link PluginManifest.detail}. A minor bump rather than a major one because
+ * it only adds: every 1.0.0 manifest still validates and still means what it meant.
  */
-export const PLUGIN_API_VERSION: string = '1.0.0';
+export const PLUGIN_API_VERSION: string = '1.1.0';
 
 /**
  * Matches a plain three-part semver. Deliberately strict and deliberately local: the rule below is the
@@ -312,6 +315,18 @@ export interface PluginManifest {
   readonly apiVersion: string;
 
   /**
+   * Gets a note shown alongside the plugin before it is installed — what it will cost, or what it will
+   * need once it is there — or undefined when there is nothing to say.
+   *
+   * Present because the first-party catalogue had things to say that {@link requires} cannot: that
+   * clangd is a large download, that sqls does nothing useful until a database connection is configured.
+   * Those are facts about the plugin, so they belong to the plugin rather than to the code that lists
+   * it. Studio derives a note from {@link requires} when this is absent, so a manifest that says nothing
+   * still reads sensibly.
+   */
+  readonly detail?: string;
+
+  /**
    * Gets how the plugin's payload is obtained.
    */
   readonly provision: ManifestProvision;
@@ -397,6 +412,33 @@ function readString(
   if (typeof value !== 'string' || value.length === 0) {
     errors.add(`${path}${key}`, 'must be a non-empty string');
     return '';
+  }
+  return value;
+}
+
+/**
+ * Reads an optional string, recording a failure when it is present but not a non-empty string. Absent
+ * and empty are deliberately not the same thing: omitting a field says nothing, while writing `""` says
+ * something empty, which is a mistake worth reporting rather than quietly treating as silence.
+ * @param source The object to read from.
+ * @param key The property name.
+ * @param path The dotted path for failures.
+ * @param errors The failure collector.
+ * @returns Returns the string, or undefined when absent or invalid.
+ */
+function readOptionalString(
+  source: Record<string, unknown>,
+  key: string,
+  path: string,
+  errors: Errors,
+): string | undefined {
+  const value: unknown = source[key];
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value !== 'string' || value.length === 0) {
+    errors.add(`${path}${key}`, 'must be a non-empty string when present');
+    return undefined;
   }
   return value;
 }
@@ -756,6 +798,7 @@ export function parsePluginManifest(value: unknown): ManifestResult {
   const id: string = readId(source, 'id', '', errors);
   const name: string = readString(source, 'name', '', errors);
   const description: string = readString(source, 'description', '', errors);
+  const detail: string | undefined = readOptionalString(source, 'detail', '', errors);
   const version: string = readString(source, 'version', '', errors);
   const contributes: ManifestContributions = readContributions(source['contributes'], errors);
   const requires: readonly ManifestRequirement[] = readRequirements(source['requires'], errors);
@@ -770,6 +813,7 @@ export function parsePluginManifest(value: unknown): ManifestResult {
       description,
       version,
       apiVersion: apiVersion as string,
+      detail,
       provision,
       contributes,
       requires,

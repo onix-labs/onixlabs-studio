@@ -75,6 +75,25 @@ describe('parsePluginManifest', () => {
       expect(result.manifest?.contributes.languageServers?.[0]?.command.args).toEqual(['server']);
     });
 
+    it('aManifestWithNoDetail', () => {
+      // Saying nothing is the common case, and must not be mistaken for saying something empty.
+      const result: ManifestResult = parsePluginManifest(manifest());
+
+      expect(result.errors).toEqual([]);
+      expect(result.manifest?.detail).toBeUndefined();
+    });
+
+    it('aManifestCarryingItsOwnDetail', () => {
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ detail: 'A large download — it carries the Clang toolchain headers.' }),
+      );
+
+      expect(result.errors).toEqual([]);
+      expect(result.manifest?.detail).toBe(
+        'A large download — it carries the Clang toolchain headers.',
+      );
+    });
+
     it('aDebugAdapterWithATransport', () => {
       const result: ManifestResult = parsePluginManifest(
         manifest({
@@ -123,6 +142,14 @@ describe('parsePluginManifest', () => {
 
       expect(result.manifest).toBeNull();
       expect(paths(result)).toEqual(['apiVersion']);
+    });
+
+    it('aDetailThatIsPresentButSaysNothing', () => {
+      // An empty string is not silence — it is a field someone meant to fill in and did not.
+      const result: ManifestResult = parsePluginManifest(manifest({ detail: '' }));
+
+      expect(result.manifest).toBeNull();
+      expect(paths(result)).toEqual(['detail']);
     });
 
     it('aNonHttpsDownload', () => {
