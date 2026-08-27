@@ -16,15 +16,15 @@ export type GrantDecision = 'allow' | 'ask' | 'deny';
 /**
  * A privileged permission a contribution can declare and the broker can grant. The catalogue is a
  * closed union — widened as brokers are added — so a manifest can only ever name a permission the host
- * actually knows how to broker. v0 is the single Docker engine socket.
+ * actually knows how to broker. v0 is the single container engine socket.
  */
-export type PermissionId = 'docker.socket';
+export type PermissionId = 'container.socket';
 
 /**
  * Every known {@link PermissionId}, for validating declared permissions from an (eventually untrusted)
  * manifest.
  */
-export const PERMISSION_IDS: readonly PermissionId[] = ['docker.socket'];
+export const PERMISSION_IDS: readonly PermissionId[] = ['container.socket'];
 
 /**
  * Why a permission was refused: the contribution never declared it in its manifest (the declared set

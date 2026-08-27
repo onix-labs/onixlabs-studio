@@ -3,24 +3,24 @@ import { PermissionDeniedError, PermissionId, sanitizePermissions } from './perm
 
 describe('sanitizePermissions', () => {
   it('keepsKnownPermissionIds', () => {
-    const result: ReadonlySet<PermissionId> = sanitizePermissions(['docker.socket']);
-    expect([...result]).toEqual(['docker.socket']);
+    const result: ReadonlySet<PermissionId> = sanitizePermissions(['container.socket']);
+    expect([...result]).toEqual(['container.socket']);
   });
 
   it('dropsUnknownOrMalformedIds', () => {
     const result: ReadonlySet<PermissionId> = sanitizePermissions([
-      'docker.socket',
+      'container.socket',
       'net.raw',
       '',
       'DOCKER.SOCKET',
     ]);
-    expect([...result]).toEqual(['docker.socket']);
+    expect([...result]).toEqual(['container.socket']);
   });
 
   it('deduplicatesRepeatedIds', () => {
     const result: ReadonlySet<PermissionId> = sanitizePermissions([
-      'docker.socket',
-      'docker.socket',
+      'container.socket',
+      'container.socket',
     ]);
     expect(result.size).toBe(1);
   });
@@ -34,16 +34,16 @@ describe('PermissionDeniedError', () => {
   it('carriesTheContributionPermissionAndReasonInMessageAndFields', () => {
     const error: PermissionDeniedError = new PermissionDeniedError(
       'docker',
-      'docker.socket',
+      'container.socket',
       'undeclared',
     );
     expect(error).toBeInstanceOf(Error);
     expect(error.name).toBe('PermissionDeniedError');
     expect(error.contributionId).toBe('docker');
-    expect(error.permission).toBe('docker.socket');
+    expect(error.permission).toBe('container.socket');
     expect(error.reason).toBe('undeclared');
     expect(error.message).toContain(
-      "contribution 'docker' denied permission 'docker.socket' (undeclared)",
+      "contribution 'docker' denied permission 'container.socket' (undeclared)",
     );
   });
 });

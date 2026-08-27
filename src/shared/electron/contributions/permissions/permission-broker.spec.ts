@@ -7,7 +7,7 @@ import {
   PermissionDeniedError,
   PermissionId,
 } from './permission';
-import { DockerSocket, DockerSocketFactory } from './brokers/docker-socket';
+import { ContainerSocket, ContainerSocketFactory } from './brokers/container-socket';
 
 /**
  * A sentinel handle a fake factory mints, so a test can assert the broker returned exactly what the
@@ -16,7 +16,7 @@ import { DockerSocket, DockerSocketFactory } from './brokers/docker-socket';
 const HANDLE: { readonly kind: string } = { kind: 'handle' };
 
 /**
- * Builds a factory map with a single fake factory for `docker.socket` minting {@link HANDLE}, plus a
+ * Builds a factory map with a single fake factory for `container.socket` minting {@link HANDLE}, plus a
  * spy on its `create` so a test can assert it was (or was not) called.
  */
 function fakeFactories(): {
@@ -24,9 +24,9 @@ function fakeFactories(): {
   create: Mock;
 } {
   const create: Mock = vi.fn((): { readonly kind: string } => HANDLE);
-  const factory: PermissionFactory = { id: 'docker.socket', create };
+  const factory: PermissionFactory = { id: 'container.socket', create };
   return {
-    factories: new Map<PermissionId, PermissionFactory>([['docker.socket', factory]]),
+    factories: new Map<PermissionId, PermissionFactory>([['container.socket', factory]]),
     create,
   };
 }
@@ -54,13 +54,13 @@ describe('PermissionBroker', () => {
     const audit: Mock = vi.fn();
     const broker: PermissionBroker = new PermissionBroker(factories, fixedPolicy('allow'), audit);
 
-    const handle: unknown = broker.resolve(request(['docker.socket']), 'docker.socket');
+    const handle: unknown = broker.resolve(request(['container.socket']), 'container.socket');
 
     expect(handle).toBe(HANDLE);
     expect(create).toHaveBeenCalledTimes(1);
     expect(audit).toHaveBeenCalledWith({
       contributionId: 'docker',
-      permission: 'docker.socket',
+      permission: 'container.socket',
       decision: 'allow',
       source: 'policy',
     });
@@ -71,11 +71,11 @@ describe('PermissionBroker', () => {
     const audit: Mock = vi.fn();
     const broker: PermissionBroker = new PermissionBroker(factories, fixedPolicy('allow'), audit);
 
-    expect(() => broker.resolve(request([]), 'docker.socket')).toThrow(PermissionDeniedError);
+    expect(() => broker.resolve(request([]), 'container.socket')).toThrow(PermissionDeniedError);
     expect(create).not.toHaveBeenCalled();
     expect(audit).toHaveBeenCalledWith({
       contributionId: 'docker',
-      permission: 'docker.socket',
+      permission: 'container.socket',
       decision: 'deny',
       source: 'undeclared',
     });
@@ -88,7 +88,7 @@ describe('PermissionBroker', () => {
 
     let thrown: PermissionDeniedError | null = null;
     try {
-      broker.resolve(request(['docker.socket']), 'docker.socket');
+      broker.resolve(request(['container.socket']), 'container.socket');
     } catch (error: unknown) {
       thrown = error as PermissionDeniedError;
     }
@@ -98,7 +98,7 @@ describe('PermissionBroker', () => {
     expect(create).not.toHaveBeenCalled();
     expect(audit).toHaveBeenCalledWith({
       contributionId: 'docker',
-      permission: 'docker.socket',
+      permission: 'container.socket',
       decision: 'deny',
       source: 'policy',
     });
@@ -112,35 +112,35 @@ describe('PermissionBroker', () => {
       audit,
     );
 
-    expect(() => broker.resolve(request(['docker.socket']), 'docker.socket')).toThrow(
+    expect(() => broker.resolve(request(['container.socket']), 'container.socket')).toThrow(
       PermissionDeniedError,
     );
     expect(audit).toHaveBeenCalledWith({
       contributionId: 'docker',
-      permission: 'docker.socket',
+      permission: 'container.socket',
       decision: 'deny',
       source: 'policy',
     });
   });
 
-  it('endToEnd_grantsAFirstPartyDockerSocketAndDeniesThirdParty', () => {
+  it('endToEnd_grantsAFirstPartyContainerSocketAndDeniesThirdParty', () => {
     const audit: Mock = vi.fn();
     const broker: PermissionBroker = new PermissionBroker(
       new Map<PermissionId, PermissionFactory>([
-        ['docker.socket', new DockerSocketFactory((): string => '/tmp/docker.sock')],
+        ['container.socket', new ContainerSocketFactory((): string => '/tmp/docker.sock')],
       ]),
       new DefaultGrantPolicy(),
       audit,
     );
 
-    const socket: DockerSocket = broker.resolve<DockerSocket>(
-      request(['docker.socket']),
-      'docker.socket',
+    const socket: ContainerSocket = broker.resolve<ContainerSocket>(
+      request(['container.socket']),
+      'container.socket',
     );
     expect(socket.path).toBe('/tmp/docker.sock');
 
     expect(() =>
-      broker.resolve(request(['docker.socket'], 'third-party'), 'docker.socket'),
+      broker.resolve(request(['container.socket'], 'third-party'), 'container.socket'),
     ).toThrow(PermissionDeniedError);
   });
 });

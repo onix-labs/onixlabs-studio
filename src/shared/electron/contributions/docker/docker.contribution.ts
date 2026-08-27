@@ -3,7 +3,7 @@ import { ContainerChannel } from '@shared/api/container-channels';
 import { ContainerEngineInfo } from '@shared/api/docker-types';
 import { ContributionContext, MainContribution } from '../main-contribution';
 import { PermissionId } from '../permissions/permission';
-import { DockerSocket } from '../permissions/brokers/docker-socket';
+import { ContainerSocket } from '../permissions/brokers/container-socket';
 import { launchDockerDesktop } from './docker-desktop';
 import { ContainerEngine, ContainerEngineDescriptor } from './container-engine';
 import { DockerEngine } from './docker-engine';
@@ -12,7 +12,7 @@ import { DockerStreamHandle } from './docker-transport';
 
 /**
  * The Docker Engine backend contribution — the first real {@link MainContribution}. It requests the
- * `docker.socket` permission through the P2 broker, exposes the container/image operations over the
+ * `container.socket` permission through the P2 broker, exposes the container/image operations over the
  * {@link ContainerChannel} IPC channels, and pushes engine events to the renderer as they happen. It is
  * registered by appending it to the `mainContributions` manifest — no other `main.ts` change — which
  * is the north-star this whole seam exists to prove.
@@ -26,7 +26,7 @@ export class DockerContribution implements MainContribution {
   /**
    * The privileged permissions this contribution declares — just the engine socket.
    */
-  public readonly permissions: readonly PermissionId[] = ['docker.socket'];
+  public readonly permissions: readonly PermissionId[] = ['container.socket'];
 
   /**
    * The open event stream, held so it can be closed on disposal. Null until activated.
@@ -46,7 +46,7 @@ export class DockerContribution implements MainContribution {
     // Throws PermissionDeniedError when the broker refuses; the registry isolates that (the feature
     // simply does not activate) rather than letting it abort startup.
     this.log = context.log;
-    const socket: DockerSocket = context.permission<DockerSocket>('docker.socket');
+    const socket: ContainerSocket = context.permission<ContainerSocket>('container.socket');
     const descriptor: ContainerEngineDescriptor = selectedEngine();
     context.log.info(
       `activating with the ${descriptor.displayName} engine; socket resolved at ${socket.path}`,
