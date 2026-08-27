@@ -30,6 +30,8 @@ const PYTHON_CAPABILITIES: ProjectCapabilities = {
   buildConfigurations: [],
   target: null,
   debug: { adapter: 'debugpy' },
+  // This ecosystem has no solution folders, so there is nothing to rename.
+  renamesSolutionFolders: false,
 };
 
 /**

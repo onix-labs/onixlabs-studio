@@ -27,6 +27,8 @@ const NODE_CAPABILITIES: ProjectCapabilities = {
   buildConfigurations: [],
   target: null,
   debug: { adapter: 'js-debug' },
+  // This ecosystem has no solution folders, so there is nothing to rename.
+  renamesSolutionFolders: false,
 };
 
 /**

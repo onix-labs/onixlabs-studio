@@ -1,6 +1,11 @@
 import { signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { ProjectAction, ProjectEntry, ProjectModel } from '@shared/api/project-system';
+import {
+  ProjectAction,
+  ProjectEntry,
+  ProjectModel,
+  ProjectOperationResult,
+} from '@shared/api/project-system';
 import { BuildRunner } from '@shared/angular/services/tasks/build-runner';
 import { ProjectActionOptions } from '@shared/angular/services/tasks/builds';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
@@ -8,6 +13,7 @@ import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { SolutionModel, SolutionRow } from '@features/workspace/angular/project/solution-model';
 import { Icon } from '@shared/angular/icons/icon';
 import { MenuItem } from '@shared/angular/components/menu/menu';
+import { Notifications } from '@shared/angular/services/notifications/notifications';
 import { Shell } from '@shared/angular/services/shell/shell';
 import { TreeRow } from '@shared/angular/components/tree-view/tree-view';
 import { SolutionPanel } from './solution-panel';
@@ -28,6 +34,8 @@ class FakeSolutionModel {
   public expandAllCount: number = 0;
   public collapseAllCount: number = 0;
   public refreshCount: number = 0;
+  public readonly renames: { key: string; name: string }[] = [];
+  public renameResult: ProjectOperationResult = { success: true };
 
   public toggle(row: SolutionRow): void {
     this.toggled.push(row);
@@ -60,6 +68,22 @@ class FakeSolutionModel {
 
   public collapseAll(): void {
     this.collapseAllCount++;
+  }
+
+  public renameSolutionFolder(row: SolutionRow, name: string): Promise<ProjectOperationResult> {
+    this.renames.push({ key: row.key, name });
+    return Promise.resolve(this.renameResult);
+  }
+}
+
+/**
+ * A fake notification sink that records what was reported.
+ */
+class FakeNotifications {
+  public readonly notified: { title: string; detail?: string }[] = [];
+
+  public notify(notification: { title: string; detail?: string }): void {
+    this.notified.push(notification);
   }
 }
 
@@ -137,6 +161,7 @@ describe('SolutionPanel', () => {
   let opener: FakeOpener;
   let shell: FakeShell;
   let builds: FakeBuildRunner;
+  let notifications: FakeNotifications;
   let copied: string[];
 
   const panel: DockPanel = {
@@ -153,14 +178,32 @@ describe('SolutionPanel', () => {
     solution: null,
     projects: [],
     tree: [],
-    capabilities: { actions: [], buildConfigurations: [], target: null, debug: null },
+    capabilities: {
+      actions: [],
+      buildConfigurations: [],
+      target: null,
+      debug: null,
+      renamesSolutionFolders: false,
+    },
   };
+
+  /**
+   * The same model, from a provider that declares its solution folders renameable.
+   * @returns Returns the model.
+   */
+  function renameableModel(): ProjectModel {
+    return {
+      ...model,
+      capabilities: { ...model.capabilities, renamesSolutionFolders: true },
+    };
+  }
 
   beforeEach(async () => {
     solution = new FakeSolutionModel();
     opener = new FakeOpener();
     shell = new FakeShell();
     builds = new FakeBuildRunner();
+    notifications = new FakeNotifications();
     copied = [];
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
@@ -178,6 +221,7 @@ describe('SolutionPanel', () => {
         { provide: FileOpener, useValue: opener },
         { provide: Shell, useValue: shell },
         { provide: BuildRunner, useValue: builds },
+        { provide: Notifications, useValue: notifications },
       ],
     }).compileComponents();
 
@@ -302,11 +346,34 @@ describe('SolutionPanel', () => {
       expect(shell.revealed).toEqual(['/root']);
     });
 
-    it('contextMenuFor_aSolutionFolder_offersNothing', () => {
-      // A solution folder is a grouping inside the .sln with no directory behind it, so a path
-      // command would have to invent one. The tree suppresses the menu rather than open it empty.
+    it('contextMenuFor_aSolutionFolder_offersNothingWhenItCannotBeRenamed', () => {
+      // A solution folder is a grouping inside the solution file with no directory behind it, so a
+      // path command would have to invent one. With no rename either, the tree suppresses the menu
+      // rather than open it empty.
       solution.model.set(model);
       expect(menuIds(makeRow({ kind: 'folder', path: null }))).toEqual([]);
+    });
+
+    it('contextMenuFor_aSolutionFolder_offersRenameWhenTheProviderCanWriteIt', () => {
+      solution.model.set(renameableModel());
+      expect(menuIds(makeRow({ kind: 'folder', path: null }))).toEqual(['rename-folder']);
+    });
+
+    it('contextMenuFor_aSolutionFolder_stillOffersNoPathCommands', () => {
+      // Rename is the only verb a folder with no directory can honestly carry.
+      solution.model.set(renameableModel());
+      const ids: string[] = menuIds(makeRow({ kind: 'folder', path: null }));
+
+      expect(ids).not.toContain('copy-path');
+      expect(ids).not.toContain('reveal');
+    });
+
+    it('contextMenuFor_aFolderInsideAProject_offersNoRename', () => {
+      // The capability is about the solution file's groupings, not a project's real directories.
+      solution.model.set(renameableModel());
+      expect(menuIds(makeRow({ kind: 'item-folder', path: '/root/A/Sub' }))).not.toContain(
+        'rename-folder',
+      );
     });
 
     it('contextMenuFor_aFolderInsideAProject_offersThePathActionsAndNotOpen', () => {
@@ -333,6 +400,78 @@ describe('SolutionPanel', () => {
       component.onContextAction({ itemId: 'reveal', row: treeRow(row) });
 
       expect(shell.revealed).toEqual(['/root/A/Sub']);
+    });
+
+    it('onContextAction_rename_opensThePromptSeededWithTheCurrentName', () => {
+      solution.model.set(renameableModel());
+      const row: SolutionRow = makeRow({ key: '/Core', kind: 'folder', label: 'Core', path: null });
+      component.onContextAction({ itemId: 'rename-folder', row: treeRow(row) });
+
+      // Seeded rather than blank: the common edit adjusts a word rather than replacing the name.
+      expect(component.renameTarget()?.key).toBe('/Core');
+      expect(component.renameName()).toBe('Core');
+    });
+
+    it('submitRename_renamesTheFolderAndClosesThePrompt', async () => {
+      solution.model.set(renameableModel());
+      const row: SolutionRow = makeRow({ key: '/Core', kind: 'folder', label: 'Core', path: null });
+      component.onContextAction({ itemId: 'rename-folder', row: treeRow(row) });
+      component.renameName.set('Kernel');
+      await component.submitRename();
+
+      expect(solution.renames).toEqual([{ key: '/Core', name: 'Kernel' }]);
+      expect(component.renameTarget()).toBeNull();
+    });
+
+    it('submitRename_trimsTheNameBeforeRenaming', async () => {
+      solution.model.set(renameableModel());
+      const row: SolutionRow = makeRow({ key: '/Core', kind: 'folder', label: 'Core', path: null });
+      component.onContextAction({ itemId: 'rename-folder', row: treeRow(row) });
+      component.renameName.set('  Kernel  ');
+      await component.submitRename();
+
+      expect(solution.renames).toEqual([{ key: '/Core', name: 'Kernel' }]);
+    });
+
+    it('submitRename_anEmptyName_doesNothingAndLeavesThePromptOpen', async () => {
+      solution.model.set(renameableModel());
+      const row: SolutionRow = makeRow({ key: '/Core', kind: 'folder', label: 'Core', path: null });
+      component.onContextAction({ itemId: 'rename-folder', row: treeRow(row) });
+      component.renameName.set('   ');
+      await component.submitRename();
+
+      expect(solution.renames).toEqual([]);
+      expect(component.renameTarget()).not.toBeNull();
+    });
+
+    it('submitRename_aRefusedRename_reportsTheReason', async () => {
+      // A refusal is the main process's answer, not something the dialog can pre-empt: it closes and
+      // says why, rather than holding the user over a box that does not name the objection.
+      solution.model.set(renameableModel());
+      solution.renameResult = { success: false, error: "A folder named 'Tests' is already here." };
+      const row: SolutionRow = makeRow({ key: '/Core', kind: 'folder', label: 'Core', path: null });
+      component.onContextAction({ itemId: 'rename-folder', row: treeRow(row) });
+      component.renameName.set('Tests');
+      await component.submitRename();
+
+      expect(notifications.notified).toEqual([
+        {
+          severity: 'error',
+          title: 'Could not rename folder',
+          detail: "A folder named 'Tests' is already here.",
+        },
+      ]);
+      expect(component.renameTarget()).toBeNull();
+    });
+
+    it('cancelRename_closesThePromptWithoutRenaming', () => {
+      solution.model.set(renameableModel());
+      const row: SolutionRow = makeRow({ key: '/Core', kind: 'folder', label: 'Core', path: null });
+      component.onContextAction({ itemId: 'rename-folder', row: treeRow(row) });
+      component.cancelRename();
+
+      expect(component.renameTarget()).toBeNull();
+      expect(solution.renames).toEqual([]);
     });
 
     it('onContextAction_open_opensThePathAndSelectsTheRow', () => {

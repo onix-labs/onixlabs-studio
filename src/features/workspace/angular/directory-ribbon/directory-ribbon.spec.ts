@@ -191,6 +191,7 @@ function dotnetCapabilities(): ProjectCapabilities {
       ],
     },
     debug: null,
+    renamesSolutionFolders: false,
   };
 }
 
@@ -200,7 +201,13 @@ function dotnetCapabilities(): ProjectCapabilities {
  * @returns Returns the capabilities.
  */
 function actionlessCapabilities(): ProjectCapabilities {
-  return { actions: [], buildConfigurations: [], target: null, debug: null };
+  return {
+    actions: [],
+    buildConfigurations: [],
+    target: null,
+    debug: null,
+    renamesSolutionFolders: false,
+  };
 }
 
 /**
@@ -208,7 +215,13 @@ function actionlessCapabilities(): ProjectCapabilities {
  * @returns Returns the capabilities.
  */
 function nodeBuildOnlyCapabilities(): ProjectCapabilities {
-  return { actions: ['build'], buildConfigurations: [], target: null, debug: null };
+  return {
+    actions: ['build'],
+    buildConfigurations: [],
+    target: null,
+    debug: null,
+    renamesSolutionFolders: false,
+  };
 }
 
 /**

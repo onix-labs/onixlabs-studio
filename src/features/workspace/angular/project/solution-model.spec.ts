@@ -4,7 +4,12 @@ import { Bridge } from '@shared/api/bridge';
 import { DirectoryChangeEvent } from '@shared/api/file-channels';
 import { ProjectChannel } from '@shared/api/project-channels';
 import { DirectoryListing } from '@shared/api/workspace-channels';
-import { ProjectCapabilities, ProjectItems, ProjectModel } from '@shared/api/project-system';
+import {
+  ProjectCapabilities,
+  ProjectItems,
+  ProjectModel,
+  ProjectOperationResult,
+} from '@shared/api/project-system';
 import { DirectoryWatch } from '@shared/angular/services/directory-watch/directory-watch';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { SolutionModel, SolutionRow } from './solution-model';
@@ -20,6 +25,8 @@ class FakeProject implements Bridge {
   public readonly itemRequests: string[] = [];
   public modelLoads: number = 0;
   public deferItems: boolean = false;
+  public readonly renames: { root: string; folderPath: string; name: string }[] = [];
+  public renameResult: ProjectOperationResult = { success: true };
   private resolvers: (() => void)[] = [];
 
   public invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
@@ -29,6 +36,14 @@ class FakeProject implements Bridge {
     }
     if (channel === (ProjectChannel.ItemsLoad as string)) {
       return this.loadItems(args[0] as string) as Promise<T>;
+    }
+    if (channel === (ProjectChannel.SolutionFolderRename as string)) {
+      this.renames.push({
+        root: args[0] as string,
+        folderPath: args[1] as string,
+        name: args[2] as string,
+      });
+      return Promise.resolve(this.renameResult as T);
     }
     return Promise.resolve(null as T);
   }
@@ -76,6 +91,7 @@ function sampleCapabilities(): ProjectCapabilities {
     ],
     target: { kind: 'platform', label: 'Platform', options: [{ id: 'any-cpu', name: 'Any CPU' }] },
     debug: null,
+    renamesSolutionFolders: false,
   };
 }
 
@@ -96,11 +112,31 @@ function sampleModel(): ProjectModel {
       {
         type: 'folder',
         name: 'Group',
+        logicalPath: '/Group',
         children: [{ type: 'project', name: 'A', path: '/root/A/A.csproj' }],
       },
       { type: 'project', name: 'B', path: '/root/B/B.csproj' },
     ],
     capabilities: sampleCapabilities(),
+  };
+}
+
+/**
+ * The sample model as it reads once its solution folder has been renamed to 'Cluster'.
+ * @returns Returns the model.
+ */
+function renamedModel(): ProjectModel {
+  return {
+    ...sampleModel(),
+    tree: [
+      {
+        type: 'folder',
+        name: 'Cluster',
+        logicalPath: '/Cluster',
+        children: [{ type: 'project', name: 'A', path: '/root/A/A.csproj' }],
+      },
+      { type: 'project', name: 'B', path: '/root/B/B.csproj' },
+    ],
   };
 }
 
@@ -459,6 +495,64 @@ describe('SolutionModel', () => {
 
     // The filtered tree rebuilds its rows from scratch, so the path has to be carried there too.
     expect(rowFor(model, 'Sub')!.path).toBe('/root/A/Sub');
+  });
+
+  it('renameSolutionFolder_addressesTheFolderByItsLogicalPath', async () => {
+    project.model = sampleModel();
+    const model: SolutionModel = build();
+    await open(model);
+
+    await model.renameSolutionFolder(rowFor(model, 'Group')!, 'Cluster');
+
+    // The folder's own logical path, which is how the solution file names it — not a display name.
+    expect(project.renames).toEqual([{ root: '/root', folderPath: '/Group', name: 'Cluster' }]);
+  });
+
+  it('renameSolutionFolder_keepsTheRenamedBranchExpanded', async () => {
+    project.model = sampleModel();
+    const model: SolutionModel = build();
+    await open(model);
+    model.toggle(rowFor(model, 'Group')!);
+    // The rename lands, and the reloaded model names the folder as the solution file now does.
+    project.model = renamedModel();
+
+    await model.renameSolutionFolder(rowFor(model, 'Group')!, 'Cluster');
+    await settle();
+
+    // A folder row's key is its logical path, so without a remap the branch the user just renamed
+    // would collapse under them — the one place they were certainly looking.
+    expect(labels(model)).toEqual(['root', 'Cluster', 'A', 'B']);
+  });
+
+  it('renameSolutionFolder_aRefusedRename_reportsItAndReloadsNothing', async () => {
+    project.model = sampleModel();
+    const model: SolutionModel = build();
+    await open(model);
+    const loadsBefore: number = project.modelLoads;
+    project.renameResult = { success: false, error: 'Nope.' };
+
+    const result: ProjectOperationResult = await model.renameSolutionFolder(
+      rowFor(model, 'Group')!,
+      'Cluster',
+    );
+
+    expect(result).toEqual({ success: false, error: 'Nope.' });
+    expect(project.modelLoads).toBe(loadsBefore);
+    expect(labels(model)).toEqual(['root', 'Group', 'B']);
+  });
+
+  it('renameSolutionFolder_aRowThatIsNotASolutionFolder_isRefusedWithoutCallingOut', async () => {
+    project.model = sampleModel();
+    const model: SolutionModel = build();
+    await open(model);
+
+    const result: ProjectOperationResult = await model.renameSolutionFolder(
+      rowFor(model, 'B')!,
+      'Anything',
+    );
+
+    expect(result.success).toBe(false);
+    expect(project.renames).toEqual([]);
   });
 
   it('toggle_collapsingTheRoot_hidesEverything', async () => {

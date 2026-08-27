@@ -9,6 +9,7 @@ import {
   ProjectItems,
   ProjectModel,
   ProjectNode,
+  ProjectOperationResult,
 } from '@shared/api/project-system';
 import { DirectoryWatch } from '@shared/angular/services/directory-watch/directory-watch';
 import { DockTabContext } from '@shared/angular/services/dock-layout/dock-tab-context';
@@ -532,6 +533,51 @@ export class SolutionModel {
   }
 
   /**
+   * Renames a solution folder, then rebuilds the model from the rewritten solution file.
+   *
+   * Expansion is carried across by hand: a solution folder's row key is its logical path, so renaming
+   * one invalidates its own key and every descendant folder's. Without the remap the branch the user
+   * just renamed would collapse under them — the one place they were certainly looking.
+   * @param row The solution-folder row to rename.
+   * @param name The folder's new display name.
+   * @returns Returns the outcome of the rename.
+   */
+  public async renameSolutionFolder(
+    row: SolutionRow,
+    name: string,
+  ): Promise<ProjectOperationResult> {
+    const root: string | null = this.workspace.root()?.path ?? null;
+    if (row.kind !== 'folder' || root === null || this.bridge === undefined) {
+      return { success: false, error: 'That folder cannot be renamed.' };
+    }
+    const result: ProjectOperationResult = (await this.bridge.invoke<ProjectOperationResult>(
+      ProjectChannel.SolutionFolderRename,
+      root,
+      row.key,
+      name,
+    )) ?? { success: false, error: 'The rename could not be completed.' };
+    if (!result.success) {
+      return result;
+    }
+    const renamed: string = `${row.key.slice(0, row.key.lastIndexOf('/'))}/${name.trim()}`;
+    this.expandedKeys.update((current: ReadonlySet<string>): ReadonlySet<string> => {
+      const next: Set<string> = new Set<string>();
+      for (const key of current) {
+        next.add(
+          key === row.key || key.startsWith(`${row.key}/`)
+            ? `${renamed}${key.slice(row.key.length)}`
+            : key,
+        );
+      }
+      return next;
+    });
+    // reload, not refresh: refresh resets expansion to the root, which would undo the remap above and
+    // collapse the whole tree over a one-word edit.
+    await this.reload(root, null);
+    return result;
+  }
+
+  /**
    * Loads the model for a root, clearing it (and all tree state) when there is no root or bridge, then
    * eagerly loading every project's contents. A stale response (the root changed again while the
    * request was in flight) is discarded.
@@ -857,7 +903,10 @@ export class SolutionModel {
   ): void {
     for (const node of this.ordered(nodes)) {
       if (node.type === 'folder') {
-        const key: string = `${parentKey}/${node.name}`;
+        // The node's own logical path, not a key assembled from display names: it is what addresses the
+        // folder in its solution file, so a rename acts on the folder that file declares. It reads the
+        // same either way, so expansion state survives the change.
+        const key: string = node.logicalPath;
         const expanded: boolean = this.expandedKeys().has(key);
         // The folder spins while any project beneath it is still loading.
         const loading: boolean = this.nodesLoading(node.children);
@@ -961,7 +1010,7 @@ export class SolutionModel {
     let matched: boolean = false;
     for (const node of this.ordered(nodes)) {
       if (node.type === 'folder') {
-        const key: string = `${parentKey}/${node.name}`;
+        const key: string = node.logicalPath;
         const childRows: SolutionRow[] = [];
         const childMatched: boolean = this.appendNodesFiltered(
           node.children,
