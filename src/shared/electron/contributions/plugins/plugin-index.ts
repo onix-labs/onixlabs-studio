@@ -17,11 +17,19 @@ import SEED_INDEX from './curated-plugins.json';
 // document is only ever read through the same validator a sideloaded `plugin.json` goes through.
 
 /**
- * Where the published index lives. `main` rather than a release tag on purpose: the point of fetching
- * is that the list can change between Studio releases, so pinning it to one would defeat it.
+ * Where the published index lives: the seed file itself, served from the default branch.
+ *
+ * One file rather than two. A published copy kept alongside the compiled-in copy is a published copy
+ * that drifts from it, and the failure that produces — Studio offering a version it will not install —
+ * is invisible until someone tries. The cost is that this path is now public API: moving the file
+ * breaks the fetch for every build already out there.
+ *
+ * `main` rather than a release tag on purpose. The point of fetching is that the list can change
+ * between Studio releases, so pinning it to one would defeat it.
  */
 const DEFAULT_INDEX_URL: string =
-  'https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/plugins/index.json';
+  'https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/' +
+  'src/shared/electron/contributions/plugins/curated-plugins.json';
 
 /**
  * The environment variable that repoints the index, for development and for testing against a local

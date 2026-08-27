@@ -1,4 +1,247 @@
 {
   "revision": 1,
-  "plugins": []
+  "plugins": [
+    {
+      "id": "pyright",
+      "name": "Pyright",
+      "description": "Microsoft's Python type checker and language server.",
+      "version": "1.1.410",
+      "apiVersion": "1.1.0",
+      "provision": {
+        "kind": "archive",
+        "downloads": {
+          "darwin-arm64": {
+            "url": "https://registry.npmjs.org/pyright/-/pyright-1.1.410.tgz",
+            "sha256": "4d6b7a25f9617ea8ff7b2e98cd87c146d132a95cbfb29bf58bd638018a76ac48",
+            "archive": "tar.gz",
+            "executablePath": "package/langserver.index.js"
+          },
+          "darwin-x64": {
+            "url": "https://registry.npmjs.org/pyright/-/pyright-1.1.410.tgz",
+            "sha256": "4d6b7a25f9617ea8ff7b2e98cd87c146d132a95cbfb29bf58bd638018a76ac48",
+            "archive": "tar.gz",
+            "executablePath": "package/langserver.index.js"
+          },
+          "linux-x64": {
+            "url": "https://registry.npmjs.org/pyright/-/pyright-1.1.410.tgz",
+            "sha256": "4d6b7a25f9617ea8ff7b2e98cd87c146d132a95cbfb29bf58bd638018a76ac48",
+            "archive": "tar.gz",
+            "executablePath": "package/langserver.index.js"
+          },
+          "linux-arm64": {
+            "url": "https://registry.npmjs.org/pyright/-/pyright-1.1.410.tgz",
+            "sha256": "4d6b7a25f9617ea8ff7b2e98cd87c146d132a95cbfb29bf58bd638018a76ac48",
+            "archive": "tar.gz",
+            "executablePath": "package/langserver.index.js"
+          },
+          "win32-x64": {
+            "url": "https://registry.npmjs.org/pyright/-/pyright-1.1.410.tgz",
+            "sha256": "4d6b7a25f9617ea8ff7b2e98cd87c146d132a95cbfb29bf58bd638018a76ac48",
+            "archive": "tar.gz",
+            "executablePath": "package/langserver.index.js"
+          }
+        }
+      },
+      "contributes": {
+        "languageServers": [
+          {
+            "id": "pyright",
+            "displayName": "Pyright",
+            "languages": ["python"],
+            "priority": 100,
+            "command": { "kind": "node" }
+          }
+        ]
+      }
+    },
+    {
+      "id": "ty",
+      "name": "ty",
+      "description": "Astral's Rust-built Python type checker and language server. An alternative to Pyright.",
+      "version": "0.0.74",
+      "apiVersion": "1.1.0",
+      "provision": {
+        "kind": "archive",
+        "downloads": {
+          "darwin-arm64": {
+            "url": "https://github.com/astral-sh/ty/releases/download/0.0.74/ty-aarch64-apple-darwin.tar.gz",
+            "sha256": "79b08069f29833383650515a31f260a60a81224b31fdb9fa21a56c1ead032a6e",
+            "archive": "tar.gz",
+            "executablePath": "ty-aarch64-apple-darwin/ty"
+          },
+          "darwin-x64": {
+            "url": "https://github.com/astral-sh/ty/releases/download/0.0.74/ty-x86_64-apple-darwin.tar.gz",
+            "sha256": "5f49f82e8f057de44a8e747fe0afa5573a3d324ce1c4e29bb9d97e6decbe7570",
+            "archive": "tar.gz",
+            "executablePath": "ty-x86_64-apple-darwin/ty"
+          },
+          "linux-x64": {
+            "url": "https://github.com/astral-sh/ty/releases/download/0.0.74/ty-x86_64-unknown-linux-gnu.tar.gz",
+            "sha256": "abe58455698503f180e0aaabdda54a8d0a084c4dec2e45effd902e414651f4bc",
+            "archive": "tar.gz",
+            "executablePath": "ty-x86_64-unknown-linux-gnu/ty"
+          },
+          "linux-arm64": {
+            "url": "https://github.com/astral-sh/ty/releases/download/0.0.74/ty-aarch64-unknown-linux-gnu.tar.gz",
+            "sha256": "c84046657424e03f890650c188988bd1552788cfbd88e4b536fc82099bcb7e61",
+            "archive": "tar.gz",
+            "executablePath": "ty-aarch64-unknown-linux-gnu/ty"
+          },
+          "win32-x64": {
+            "url": "https://github.com/astral-sh/ty/releases/download/0.0.74/ty-x86_64-pc-windows-msvc.zip",
+            "sha256": "45dbce4b3fa2f65e4672d3756c12448a9ec9a69732655dc4429c70af1fe02d37",
+            "archive": "zip",
+            "executablePath": "ty-x86_64-pc-windows-msvc/ty.exe"
+          }
+        }
+      },
+      "contributes": {
+        "languageServers": [
+          {
+            "id": "ty",
+            "displayName": "ty (Astral)",
+            "languages": ["python"],
+            "priority": 50,
+            "command": { "kind": "executable", "args": ["server"] }
+          }
+        ]
+      }
+    },
+    {
+      "id": "lua-language-server",
+      "name": "Lua Language Server",
+      "description": "Lua language support, from the sumneko project.",
+      "version": "3.19.1",
+      "apiVersion": "1.1.0",
+      "provision": {
+        "kind": "archive",
+        "downloads": {
+          "darwin-arm64": {
+            "url": "https://github.com/LuaLS/lua-language-server/releases/download/3.19.1/lua-language-server-3.19.1-darwin-arm64.tar.gz",
+            "sha256": "0bc077f4447f076b4c92c14e9fd303f5b569eda2ec74b4dca2b55f75fae2e90c",
+            "archive": "tar.gz",
+            "executablePath": "bin/lua-language-server"
+          },
+          "darwin-x64": {
+            "url": "https://github.com/LuaLS/lua-language-server/releases/download/3.19.1/lua-language-server-3.19.1-darwin-x64.tar.gz",
+            "sha256": "eb373c159cbe556711d7cd316315de2dce969bfd54b31edb7eb9cab2937f2cca",
+            "archive": "tar.gz",
+            "executablePath": "bin/lua-language-server"
+          },
+          "linux-x64": {
+            "url": "https://github.com/LuaLS/lua-language-server/releases/download/3.19.1/lua-language-server-3.19.1-linux-x64.tar.gz",
+            "sha256": "e9235d2d72ef55bc41cf8c99cda2ed64777682024b4bb81f5dea425060c5cbb8",
+            "archive": "tar.gz",
+            "executablePath": "bin/lua-language-server"
+          },
+          "linux-arm64": {
+            "url": "https://github.com/LuaLS/lua-language-server/releases/download/3.19.1/lua-language-server-3.19.1-linux-arm64.tar.gz",
+            "sha256": "abd2572e8fc929dc838a81ffb8473c5bce0bf39bfe8edb4b120b3b623176ce83",
+            "archive": "tar.gz",
+            "executablePath": "bin/lua-language-server"
+          },
+          "win32-x64": {
+            "url": "https://github.com/LuaLS/lua-language-server/releases/download/3.19.1/lua-language-server-3.19.1-win32-x64.zip",
+            "sha256": "fdb9a59108cf62517813c97fa5549b0e16d1ef0688306bac728b08434db7e4cd",
+            "archive": "zip",
+            "executablePath": "bin/lua-language-server.exe"
+          }
+        }
+      },
+      "contributes": {
+        "languageServers": [
+          {
+            "id": "lua-language-server",
+            "displayName": "Lua Language Server",
+            "languages": ["lua"],
+            "priority": 100,
+            "command": { "kind": "executable" }
+          }
+        ]
+      }
+    },
+    {
+      "id": "sqls",
+      "name": "sqls",
+      "description": "SQL language support: completion, formatting and query execution.",
+      "detail": "Configure a database connection to get schema-aware completion.",
+      "version": "0.2.48",
+      "apiVersion": "1.1.0",
+      "provision": {
+        "kind": "archive",
+        "downloads": {
+          "darwin-x64": {
+            "url": "https://github.com/sqls-server/sqls/releases/download/v0.2.48/sqls-darwin-0.2.48.zip",
+            "sha256": "b44165ca597a4b4298d56657bc911aa3ca8a591befefde4e29566923c6229f3d",
+            "archive": "zip",
+            "executablePath": "sqls"
+          },
+          "linux-x64": {
+            "url": "https://github.com/sqls-server/sqls/releases/download/v0.2.48/sqls-linux-0.2.48.zip",
+            "sha256": "30047b92c41658c821b7803d2c2a3a1ce4e17ee769ceff6f24bb9e3daaf5d4dc",
+            "archive": "zip",
+            "executablePath": "sqls"
+          },
+          "win32-x64": {
+            "url": "https://github.com/sqls-server/sqls/releases/download/v0.2.48/sqls-windows-0.2.48.zip",
+            "sha256": "df6453b2ddcb4e748547d0288b826251a24af099749dc7a9ddea587aac3d4365",
+            "archive": "zip",
+            "executablePath": "sqls.exe"
+          }
+        }
+      },
+      "contributes": {
+        "languageServers": [
+          {
+            "id": "sqls",
+            "displayName": "sqls",
+            "languages": ["sql"],
+            "priority": 100,
+            "command": { "kind": "executable" }
+          }
+        ]
+      }
+    },
+    {
+      "id": "perlnavigator",
+      "name": "Perl Navigator",
+      "description": "Perl language support: diagnostics, completion and navigation.",
+      "version": "0.8.20",
+      "apiVersion": "1.1.0",
+      "provision": {
+        "kind": "archive",
+        "downloads": {
+          "darwin-x64": {
+            "url": "https://github.com/bscan/perlnavigator/releases/download/v0.8.20/perlnavigator-macos-x86_64.zip",
+            "sha256": "064700f91923b076fe77542311b22465be9fb1acd72102d5b558d5e4d90d46a9",
+            "archive": "zip",
+            "executablePath": "perlnavigator-macos-x86_64/perlnavigator"
+          },
+          "linux-x64": {
+            "url": "https://github.com/bscan/perlnavigator/releases/download/v0.8.20/perlnavigator-linux-x86_64.zip",
+            "sha256": "5a29c8a6919c32c6b47f05ab1ed38f62fffa56ec1752b8e9d6245e177ba32cd2",
+            "archive": "zip",
+            "executablePath": "perlnavigator-linux-x86_64/perlnavigator"
+          },
+          "win32-x64": {
+            "url": "https://github.com/bscan/perlnavigator/releases/download/v0.8.20/perlnavigator-win-x86_64.zip",
+            "sha256": "3a521c936b01046ed79cc6f3e3ac31a71c5368641aeeb28fea11b21577380ee2",
+            "archive": "zip",
+            "executablePath": "perlnavigator-win-x86_64/perlnavigator"
+          }
+        }
+      },
+      "contributes": {
+        "languageServers": [
+          {
+            "id": "perlnavigator",
+            "displayName": "Perl Navigator",
+            "languages": ["perl"],
+            "priority": 100,
+            "command": { "kind": "executable", "args": ["--stdio"] }
+          }
+        ]
+      }
+    }
+  ]
 }

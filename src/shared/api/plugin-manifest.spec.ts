@@ -2,13 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { ArchiveProvision } from '@shared/electron/provisioning/archive-provision';
 import {
   CLANGD_PROVISION,
-  LUA_PROVISION,
-  PERLNAVIGATOR_PROVISION,
-  PYRIGHT_PROVISION,
-  SQLS_PROVISION,
-  TY_PROVISION,
   TYPESCRIPT_SERVER_PROVISION,
 } from '@shared/electron/lsp/language-server-downloads';
+import CURATED_PLUGINS from '@shared/electron/contributions/plugins/curated-plugins.json';
 import {
   isApiCompatible,
   ManifestError,
@@ -345,19 +341,15 @@ describe('parsePluginManifest', () => {
 
   describe('describes the real catalogue', () => {
     // The format is only worth having if it can describe plugins that actually exist. These are the
-    // live recipes the first-party catalogue installs from, not fixtures written to pass.
+    // live recipes Studio installs from, not fixtures written to pass: the two whose descriptors still
+    // need code to resolve, and every entry of the curated index Studio ships.
     const REAL: readonly {
       id: string;
       provision: ArchiveProvision;
       command: 'executable' | 'node';
     }[] = [
-      { id: 'pyright', provision: PYRIGHT_PROVISION, command: 'node' },
       { id: 'typescript-language-server', provision: TYPESCRIPT_SERVER_PROVISION, command: 'node' },
-      { id: 'ty', provision: TY_PROVISION, command: 'executable' },
       { id: 'clangd', provision: CLANGD_PROVISION, command: 'executable' },
-      { id: 'lua-language-server', provision: LUA_PROVISION, command: 'executable' },
-      { id: 'sqls', provision: SQLS_PROVISION, command: 'executable' },
-      { id: 'perlnavigator', provision: PERLNAVIGATOR_PROVISION, command: 'executable' },
     ];
 
     for (const entry of REAL) {
@@ -380,6 +372,17 @@ describe('parsePluginManifest', () => {
             ],
           },
         });
+
+        expect(result.errors).toEqual([]);
+        expect(result.manifest).not.toBeNull();
+      });
+    }
+
+    for (const entry of CURATED_PLUGINS.plugins) {
+      it(`acceptsTheShippedIndexEntryFor_${(entry as { id: string }).id}`, () => {
+        // The index Studio compiles in has to validate against the validator Studio reads it with.
+        // A typo here would otherwise be a plugin that silently disappears from the manager.
+        const result: ManifestResult = parsePluginManifest(entry);
 
         expect(result.errors).toEqual([]);
         expect(result.manifest).not.toBeNull();

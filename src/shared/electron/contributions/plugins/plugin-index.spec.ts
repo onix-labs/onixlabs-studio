@@ -168,6 +168,16 @@ describe('PluginIndex', () => {
     expect(index.revision()).toBeGreaterThan(0);
   });
 
+  it('offersTheServersThatMovedOutOfTheCodeCatalogue', () => {
+    // These stopped being TypeScript and became data. If the bundled document ever stops carrying
+    // them, a fresh installation quietly loses Python, Lua, SQL and Perl support with nothing failing.
+    const offered: readonly string[] = new PluginIndex(root, URL, answering(''))
+      .manifests()
+      .map((manifest): string => manifest.id);
+
+    expect(offered).toEqual(['pyright', 'ty', 'lua-language-server', 'sqls', 'perlnavigator']);
+  });
+
   it('prefersACacheThatSupersedesTheBundledIndex', () => {
     cache(9999, [entry()]);
 
@@ -183,7 +193,7 @@ describe('PluginIndex', () => {
 
     const index: PluginIndex = new PluginIndex(root, URL, answering(''));
 
-    expect(index.manifests()).toEqual([]);
+    expect(index.manifests().map((manifest): string => manifest.id)).not.toContain('zls');
   });
 
   it('ignoresACacheThatIsNotReadable', () => {
@@ -200,7 +210,7 @@ describe('PluginIndex', () => {
     expect(readFileSync(path.join(root, 'plugin-index.json'), 'utf8')).toBe(body);
     // Deliberately not applied to this launch: unregistering a server out from under a running
     // session is the problem the sideload directory already declined to solve.
-    expect(index.manifests()).toEqual([]);
+    expect(index.manifests().map((manifest): string => manifest.id)).not.toContain('zls');
   });
 
   it('doesNotCacheAnIndexThatIsNotNewer', async () => {

@@ -13,15 +13,7 @@ import {
   unavailable,
 } from './language-server-descriptor';
 import { JdtlsInstall } from './lsp-provisioner';
-import {
-  CLANGD_PROVISION,
-  LUA_PROVISION,
-  PERLNAVIGATOR_PROVISION,
-  PYRIGHT_PROVISION,
-  SQLS_PROVISION,
-  TY_PROVISION,
-  TYPESCRIPT_SERVER_PROVISION,
-} from './language-server-downloads';
+import { CLANGD_PROVISION, TYPESCRIPT_SERVER_PROVISION } from './language-server-downloads';
 
 /**
  * Holds the JVM arguments passed to the Eclipse JDT Language Server's Equinox launcher, before the
@@ -45,12 +37,6 @@ const JDTLS_JVM_ARGS: readonly string[] = [
  * expressed no preference.
  */
 const DEFAULT_PRIORITY: number = 100;
-
-/**
- * The priority given to an alternative implementation: offered in the picker, but never chosen unless
- * the user asks for it by name.
- */
-const ALTERNATIVE_PRIORITY: number = 50;
 
 /**
  * Translates a .NET project model into the notification that tells Roslyn what to open: the solution
@@ -101,41 +87,6 @@ const TYPESCRIPT: LanguageServerDescriptor = {
     return entry === null
       ? unavailable('The TypeScript language server is not installed — install it in Plugins.')
       : resolved(context.nodePackageServer(entry));
-  },
-};
-
-/**
- * Pyright, the Python default: downloaded as its zero-dependency npm tarball and run through the
- * Electron binary in Node mode, so it needs neither a `node` executable nor a Python interpreter.
- */
-const PYRIGHT: LanguageServerDescriptor = {
-  id: 'pyright',
-  displayName: 'Pyright',
-  languages: ['python'],
-  priority: DEFAULT_PRIORITY,
-  resolve: (context: LanguageServerContext): LspResolution => {
-    const entry: string | null = context.installedPath(PYRIGHT_PROVISION);
-    return entry === null
-      ? unavailable('Pyright is not installed — install it in Plugins.')
-      : resolved(context.nodePackageServer(entry));
-  },
-};
-
-/**
- * `ty` (Astral), the alternative Python implementation — and the proof that the Python slot takes more
- * than one. Installed exactly like Pyright, so choosing between them is a choice between two things the
- * user installed rather than between the bundled one and an afterthought.
- */
-const TY: LanguageServerDescriptor = {
-  id: 'ty',
-  displayName: 'ty (Astral)',
-  languages: ['python'],
-  priority: ALTERNATIVE_PRIORITY,
-  resolve: (context: LanguageServerContext): LspResolution => {
-    const binary: string | null = context.installedPath(TY_PROVISION);
-    return binary === null
-      ? unavailable('ty is not installed — install it in Plugins.')
-      : resolved({ command: binary, args: ['server'] });
   },
 };
 
@@ -327,75 +278,19 @@ const CLANGD: LanguageServerDescriptor = {
 };
 
 /**
- * The Lua language server (sumneko), a standalone binary that speaks LSP over stdio with no arguments.
- */
-const LUA: LanguageServerDescriptor = {
-  id: 'lua-language-server',
-  displayName: 'Lua Language Server',
-  languages: ['lua'],
-  priority: DEFAULT_PRIORITY,
-  resolve: (context: LanguageServerContext): LspResolution => {
-    const binary: string | null = context.installedPath(LUA_PROVISION);
-    return binary === null
-      ? unavailable('The Lua language server is not installed — install it in Plugins.')
-      : resolved({ command: binary, args: [] });
-  },
-};
-
-/**
- * sqls, the SQL language server. It reports "no database connection" until one is configured, which is
- * a warning rather than a failure: completion from the query text still works.
- */
-const SQLS: LanguageServerDescriptor = {
-  id: 'sqls',
-  displayName: 'sqls',
-  languages: ['sql'],
-  priority: DEFAULT_PRIORITY,
-  resolve: (context: LanguageServerContext): LspResolution => {
-    const binary: string | null = context.installedPath(SQLS_PROVISION);
-    return binary === null
-      ? unavailable('The SQL language server is not installed — install it in Plugins.')
-      : resolved({ command: binary, args: [] });
-  },
-};
-
-/**
- * Perl Navigator. Unlike the others it needs `--stdio` to be told which transport to use.
- */
-const PERLNAVIGATOR: LanguageServerDescriptor = {
-  id: 'perlnavigator',
-  displayName: 'Perl Navigator',
-  languages: ['perl'],
-  priority: DEFAULT_PRIORITY,
-  resolve: (context: LanguageServerContext): LspResolution => {
-    const binary: string | null = context.installedPath(PERLNAVIGATOR_PROVISION);
-    return binary === null
-      ? unavailable('The Perl language server is not installed — install it in Plugins.')
-      : resolved({ command: binary, args: ['--stdio'] });
-  },
-};
-
-/**
- * The first-party language servers the application ships, as data. This is the *contents* of the slots,
- * not the slot mechanism: {@link import('./lsp-server-registry').LspServerRegistry} indexes these and
- * accepts further descriptors at runtime, so a plugin-contributed server is a peer of every entry here
- * rather than a special case.
+ * The language servers that need code to resolve. This is the *contents* of the slots, not the slot
+ * mechanism: {@link import('./lsp-server-registry').LspServerRegistry} indexes these and accepts
+ * further descriptors at runtime, so a plugin-contributed server is a peer of every entry here rather
+ * than a special case.
+ *
+ * Every entry left is here because resolving it is a computation, not a description: detecting a Java
+ * runtime or a .NET SDK, building the server with the user's Go toolchain, deriving Roslyn's
+ * `solution/open` from the workspace, or honouring a path the user set in Settings. The servers that
+ * resolve to "the entry point of the archive we installed" moved into the curated index, where the
+ * facts about them are data.
  *
  * @returns Returns the catalogue descriptors.
  */
 export function languageServerCatalogue(): readonly LanguageServerDescriptor[] {
-  return [
-    TYPESCRIPT,
-    PYRIGHT,
-    TY,
-    JAVA,
-    KOTLIN,
-    RUST,
-    GO,
-    CSHARP,
-    CLANGD,
-    LUA,
-    SQLS,
-    PERLNAVIGATOR,
-  ];
+  return [TYPESCRIPT, JAVA, KOTLIN, RUST, GO, CSHARP, CLANGD];
 }
