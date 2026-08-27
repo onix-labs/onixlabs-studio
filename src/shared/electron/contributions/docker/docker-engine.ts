@@ -5,6 +5,7 @@ import {
   ImageSummary,
 } from '@shared/api/docker-types';
 import { DockerSocket } from '../permissions/brokers/docker-socket';
+import { ContainerEngine } from './container-engine';
 import { DockerStreamHandle, DockerTransport, HttpDockerTransport } from './docker-transport';
 
 /**
@@ -48,7 +49,7 @@ const MAX_BACKOFF_MS: number = 30_000;
  * to an empty result or an unavailable status rather than throwing to the renderer, and the event
  * watcher reconnects with capped backoff so the dashboard recovers when Docker starts.
  */
-export class DockerEngine {
+export class DockerEngine implements ContainerEngine {
   /**
    * The transport the Engine API is spoken over.
    */

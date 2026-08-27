@@ -46,4 +46,14 @@ export enum DockerChannel {
    * Pushes a normalised Docker engine event to the renderer as it happens (main→renderer).
    */
   Events = 'docker:events',
+
+  /**
+   * Lists the container engines, which are present, and which is in effect (invoke).
+   */
+  ListEngines = 'docker:list-engines',
+
+  /**
+   * Chooses which container engine to use, or clears the choice (invoke).
+   */
+  ChooseEngine = 'docker:choose-engine',
 }

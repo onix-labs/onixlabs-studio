@@ -1,8 +1,9 @@
-import { inject, Service } from '@angular/core';
+import { inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { Log } from '@shared/angular/services/log/log';
 import { Bridge } from '@shared/api/bridge';
 import { DockerChannel } from '@shared/api/docker-channels';
 import {
+  ContainerEngineInfo,
   ContainerSummary,
   DockerEvent,
   DockerStatus,
@@ -90,6 +91,64 @@ export class Docker {
    * Attempts to launch Docker Desktop through the operating system.
    * @returns Returns true when the launch was issued (a no-op returning false outside Electron).
    */
+  /**
+   * Initializes the client, loading which container engines are present.
+   */
+  public constructor() {
+    void this.refreshEngines();
+  }
+
+  /**
+   * Holds the engines the main process reports, refreshed on construction.
+   */
+  private readonly engines: WritableSignal<readonly ContainerEngineInfo[]> = signal<
+    readonly ContainerEngineInfo[]
+  >([]);
+
+  /**
+   * Gets the container engines: what exists, what is present on this machine, and which is in effect.
+   */
+  public readonly containerEngines: Signal<readonly ContainerEngineInfo[]> =
+    this.engines.asReadonly();
+
+  /**
+   * Gets the command-line tool of the engine in effect, for the operations that are a terminal session
+   * rather than an API call. Falls back to `docker` before the engines have been reported, which is
+   * both the default engine and the overwhelmingly likely answer.
+   * @returns Returns the CLI binary name.
+   */
+  public engineCli(): string {
+    return (
+      this.engines().find((engine: ContainerEngineInfo): boolean => engine.inEffect)?.cli ??
+      'docker'
+    );
+  }
+
+  /**
+   * Reloads the engine list from the main process.
+   * @returns Returns a promise that resolves once the list has been reloaded.
+   */
+  public async refreshEngines(): Promise<void> {
+    const engines: readonly ContainerEngineInfo[] =
+      (await this.bridge?.invoke<readonly ContainerEngineInfo[]>(DockerChannel.ListEngines)) ?? [];
+    this.engines.set(engines);
+  }
+
+  /**
+   * Chooses which container engine to use. The socket is opened at startup, so the change takes effect
+   * when Studio next starts.
+   * @param engineId The chosen engine, or null to let the highest-priority available one win.
+   * @returns Returns a promise that resolves once the choice is stored.
+   */
+  public async chooseEngine(engineId: string | null): Promise<void> {
+    const engines: readonly ContainerEngineInfo[] =
+      (await this.bridge?.invoke<readonly ContainerEngineInfo[]>(
+        DockerChannel.ChooseEngine,
+        engineId,
+      )) ?? [];
+    this.engines.set(engines);
+  }
+
   public launchDesktop(): Promise<boolean> {
     this.log.info('containers.docker', 'Launching Docker Desktop');
     return this.bridge?.invoke<boolean>(DockerChannel.LaunchDesktop) ?? Promise.resolve(false);

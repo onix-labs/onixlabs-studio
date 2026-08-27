@@ -269,23 +269,27 @@ export class ContainersView implements OnDestroy {
   }
 
   /**
-   * Streams a container's logs (`docker logs -f`) in a terminal in the bottom panel.
+   * Streams a container's logs (`<engine> logs -f`) in a terminal in the bottom panel. The engine's own
+   * CLI is used, so the command matches whatever engine the surface is actually talking to.
    * @param container The container to tail.
    */
   protected viewLogs(container: ContainerSummary): void {
     this.log.info('containers.view', 'View logs', this.displayName(container), container.id);
-    this.terminals.open(`Logs: ${this.displayName(container)}`, `docker logs -f ${container.id}`);
+    this.terminals.open(
+      `Logs: ${this.displayName(container)}`,
+      `${this.docker.engineCli()} logs -f ${container.id}`,
+    );
   }
 
   /**
-   * Opens an interactive shell in a running container (`docker exec`, bash when present, else sh).
+   * Opens an interactive shell in a running container (`<engine> exec`, bash when present, else sh).
    * @param container The container to open a shell in.
    */
   protected openShell(container: ContainerSummary): void {
     this.log.info('containers.view', 'Open shell', this.displayName(container), container.id);
     this.terminals.open(
       `${this.displayName(container)} — shell`,
-      `docker exec -it ${container.id} sh -c 'command -v bash >/dev/null && exec bash || exec sh'`,
+      `${this.docker.engineCli()} exec -it ${container.id} sh -c 'command -v bash >/dev/null && exec bash || exec sh'`,
     );
   }
 
