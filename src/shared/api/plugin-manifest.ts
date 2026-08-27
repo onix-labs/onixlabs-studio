@@ -5,8 +5,10 @@
 // The shape is not invented. It is what the fifteen first-party plugins turned out to need, and its
 // boundaries are where they turned out to need more:
 //
-//   - Provisioning is a pinned archive: a URL, a SHA-256, an archive kind and an entry path. That
-//     covers every plugin obtained by downloading something.
+//   - Provisioning is pinned, and pinned means hashed before anything is extracted. Two kinds: an
+//     archive (a URL, a SHA-256, an archive kind and an entry path), or an npm dependency tree named
+//     by a lockfile, which is the same promise one level down — the manifest pins a hash of the
+//     lockfile, and the lockfile pins one per tarball.
 //   - Starting the contributed thing is an executable plus arguments, or a JavaScript entry point run
 //     under the bundled Node runtime. Those are the only two shapes in the catalogue.
 //   - A contribution point does not assume a key. Language servers and debug adapters are chosen per
@@ -16,8 +18,7 @@
 // the guardrail this whole design exists to keep:
 //
 //   - Building from source with the user's toolchain (gopls).
-//   - Installing into a managed language environment (debugpy's pip install; npm packages that carry
-//     runtime dependencies, which is most of the JavaScript ecosystem's servers).
+//   - Installing into a managed language environment (debugpy's pip install).
 //   - Provisioning that needs a detected runtime to even start (the Java and .NET servers), or that
 //     computes its start-up traffic from the workspace (Roslyn's solution/open).
 //
@@ -30,8 +31,12 @@
  *
  * `1.1.0` added the optional {@link PluginManifest.detail}. A minor bump rather than a major one because
  * it only adds: every 1.0.0 manifest still validates and still means what it meant.
+ *
+ * `1.2.0` added the `npm` provisioning kind (#446). Also only adds — `kind` was already a discriminant
+ * with one value precisely so a second could arrive without reinterpreting what was already published,
+ * so every 1.1.0 manifest is still an archive manifest and still means what it meant.
  */
-export const PLUGIN_API_VERSION: string = '1.1.0';
+export const PLUGIN_API_VERSION: string = '1.2.0';
 
 /**
  * Matches a plain three-part semver. Deliberately strict and deliberately local: the rule below is the
@@ -135,10 +140,9 @@ export interface ManifestDownload {
 }
 
 /**
- * Describes how a plugin's payload is obtained. One kind today; the discriminant exists so a second can
- * be added without reinterpreting what is already published.
+ * Describes a plugin obtained by downloading one self-contained archive per platform.
  */
-export interface ManifestProvision {
+export interface ManifestArchiveProvision {
   /**
    * Gets the provisioning kind.
    */
@@ -150,6 +154,53 @@ export interface ManifestProvision {
    */
   readonly downloads: Readonly<Record<string, ManifestDownload>>;
 }
+
+/**
+ * Describes a plugin obtained by installing an npm dependency tree, for the many servers that ship
+ * only their own code and name the rest (#446).
+ *
+ * Deliberately **not** per-platform, unlike {@link ManifestArchiveProvision}: one lockfile describes
+ * the same tree everywhere, and what varies by platform varies inside it, in the `os` and `cpu` fields
+ * of individual entries. A `downloads` map here would invite publishing one lockfile per platform,
+ * which is four chances for them to disagree.
+ *
+ * The verification story is the archive one, one level down. A lockfile is a list of
+ * (destination path, tarball URL, integrity hash) triples, so pinning a hash of the lockfile pins a
+ * hash of every package it names — an unbroken chain from here to every installed byte, with nothing
+ * resolved and nothing executed at install time.
+ */
+export interface ManifestNpmProvision {
+  /**
+   * Gets the provisioning kind.
+   */
+  readonly kind: 'npm';
+
+  /**
+   * Gets the URL of the lockfile naming the tree. Must be HTTPS, for the same reason an archive URL
+   * must be: this document decides what code is fetched, so a channel that can be rewritten in flight
+   * would make {@link sha256} the only defence.
+   */
+  readonly lockfileUrl: string;
+
+  /**
+   * Gets the expected lower-case hex SHA-256 of the lockfile, verified before it is parsed. The
+   * lockfile is itself a downloaded artefact and gets no more trust than one.
+   */
+  readonly sha256: string;
+
+  /**
+   * Gets the entry point's path within the installed tree, such as
+   * `node_modules/some-server/bin/some-server`. Points at the package's own file rather than at a
+   * `node_modules/.bin` shim: no shims are created, and none are needed, because a `node` command runs
+   * the entry point as a path argument rather than executing it.
+   */
+  readonly executablePath: string;
+}
+
+/**
+ * Describes how a plugin's payload is obtained.
+ */
+export type ManifestProvision = ManifestArchiveProvision | ManifestNpmProvision;
 
 /**
  * Describes how to start what a plugin contributes.
@@ -582,6 +633,41 @@ function readDownload(value: unknown, path: string, errors: Errors): ManifestDow
 }
 
 /**
+ * Validates an npm provision: the pinned lockfile that names the tree, and the entry point within it.
+ *
+ * The rules are deliberately the archive rules — HTTPS, lower-case hex SHA-256, a relative entry path
+ * with no parent traversal — because the thing being described is the same thing: a pinned download
+ * whose hash is checked before anything is trusted.
+ * @param source The candidate provision, already known to be an object of kind `npm`.
+ * @param errors The failure collector.
+ * @returns Returns the provision, or null when invalid.
+ */
+function readNpmProvision(
+  source: Record<string, unknown>,
+  errors: Errors,
+): ManifestNpmProvision | null {
+  const before: number = errors.items.length;
+  const lockfileUrl: string = readString(source, 'lockfileUrl', 'provision.', errors);
+  if (lockfileUrl.length > 0 && !lockfileUrl.startsWith('https://')) {
+    errors.add('provision.lockfileUrl', 'must be an https URL');
+  }
+  const sha256: string = readString(source, 'sha256', 'provision.', errors);
+  if (sha256.length > 0 && !SHA256_PATTERN.test(sha256)) {
+    errors.add('provision.sha256', 'must be a lower-case hex SHA-256');
+  }
+  const executablePath: string = readString(source, 'executablePath', 'provision.', errors);
+  if (executablePath.startsWith('/') || executablePath.includes('..')) {
+    errors.add(
+      'provision.executablePath',
+      'must be a relative path inside the installed tree, with no parent traversal',
+    );
+  }
+  // Only this provision's own failures decide it, so a manifest that is already failing elsewhere
+  // still reports what is wrong here rather than reporting nothing.
+  return errors.items.length > before ? null : { kind: 'npm', lockfileUrl, sha256, executablePath };
+}
+
+/**
  * Validates how a plugin's payload is obtained.
  * @param value The candidate provision.
  * @param errors The failure collector.
@@ -592,8 +678,11 @@ function readProvision(value: unknown, errors: Errors): ManifestProvision | null
   if (source === null) {
     return null;
   }
+  if (source['kind'] === 'npm') {
+    return readNpmProvision(source, errors);
+  }
   if (source['kind'] !== 'archive') {
-    errors.add('provision.kind', "must be 'archive'");
+    errors.add('provision.kind', 'must be one of archive, npm');
     return null;
   }
   const downloads: Record<string, unknown> | null = readObject(
