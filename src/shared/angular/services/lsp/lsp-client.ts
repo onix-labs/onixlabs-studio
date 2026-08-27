@@ -1,4 +1,4 @@
-import { inject, OnDestroy, Service } from '@angular/core';
+import { effect, inject, OnDestroy, Service, untracked } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
 import { Bridge } from '@shared/api/bridge';
 import { Log } from '@shared/angular/services/log/log';
@@ -7,6 +7,7 @@ import {
   LspExit,
   LspMessage,
   LspSemanticTokensLegend,
+  LspServerSummary,
   LspStartResult,
 } from '@shared/api/lsp-channels';
 import { DirectoryListing } from '@shared/api/workspace-channels';
@@ -470,6 +471,15 @@ export class LspClient implements OnDestroy {
    * and subscribing to server notifications when the bridge is available.
    */
   public constructor() {
+    // Stop any session whose server has stopped being installed. Uninstalling a language server should
+    // stop it, not leave it serving until the window is next reopened — and a plugin removed from the
+    // sideload directory is the same situation arriving a different way.
+    effect((): void => {
+      const installed: ReadonlySet<string> = new Set<string>(
+        this.lspSettings.catalogue().map((server: LspServerSummary): string => server.id),
+      );
+      untracked((): void => this.stopUninstalledSessions(installed));
+    });
     if (this.bridge === undefined) {
       return;
     }
@@ -905,6 +915,43 @@ export class LspClient implements OnDestroy {
    * @param serverId The identifier of the server to start.
    * @param rootPath The root the server is rooted at.
    */
+  /**
+   * Stops the running sessions whose server is no longer installed, and forgets the documents that were
+   * being served by them so a later install starts cleanly.
+   *
+   * The catalogue is empty until it has loaded, which is not the same as everything having been
+   * uninstalled — tearing down on an empty set would kill every session at startup.
+   * @param installed The identifiers of the servers still installed.
+   */
+  private stopUninstalledSessions(installed: ReadonlySet<string>): void {
+    if (installed.size === 0) {
+      return;
+    }
+    for (const [sessionId, info] of [...this.sessionInfo.entries()]) {
+      if (installed.has(info.serverId)) {
+        continue;
+      }
+      this.log.info(
+        'LspClient',
+        `Stopping '${info.serverId}'; it is no longer installed`,
+        sessionId,
+      );
+      void this.bridge?.invoke(LspChannel.Stop, sessionId);
+      this.sessions.delete(sessionId);
+      this.sessionInfo.delete(sessionId);
+      this.status.remove(sessionId);
+      this.legends.delete(sessionId);
+      this.pullCapable.delete(sessionId);
+      this.settledSessions.delete(sessionId);
+      this.clearReassociateTimers(sessionId);
+    }
+    for (const [key, tracked] of [...this.tracked.entries()]) {
+      if (!installed.has(tracked.serverId)) {
+        this.tracked.delete(key);
+      }
+    }
+  }
+
   /**
    * Suspends this client's sessions: each is stopped (the main process tears the server down once no
    * other client shares it) and every tracked document is marked unopened, while the client itself
