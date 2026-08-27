@@ -26,6 +26,7 @@ function plugin(
     contributions,
     version: '1.0.0',
     detail: null,
+    origin: null,
   };
 }
 

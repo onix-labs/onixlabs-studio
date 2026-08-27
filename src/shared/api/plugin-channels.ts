@@ -74,6 +74,27 @@ export type PluginState =
   | 'unavailable';
 
 /**
+ * Describes where a plugin's payload actually comes from, for the consent step.
+ *
+ * Derived from the pinned URLs rather than declared, because a manifest's author could write anything
+ * in a `publisher` field and this is exactly the claim a user is being asked to weigh. What can be
+ * shown honestly is what will be fetched, and from where.
+ */
+export interface PluginOrigin {
+  /**
+   * Gets the distinct hosts the payload is fetched from, in first-seen order.
+   */
+  readonly hosts: readonly string[];
+
+  /**
+   * Gets how many separate packages arrive: one for an archive, and the whole tree for an npm
+   * provision — which is the number worth seeing, since a dependency tree is written by many more
+   * people than the one named on the entry.
+   */
+  readonly packageCount: number;
+}
+
+/**
  * Describes one plugin as the renderer sees it: what it is, what it contributes, and where it stands
  * on this machine.
  */
@@ -113,6 +134,13 @@ export interface PluginSummary {
    * is unavailable — or null when the state speaks for itself.
    */
   readonly detail: string | null;
+
+  /**
+   * Gets where the payload comes from, or null when Studio cannot say — a plugin built from source or
+   * provisioned by first-party code that fetches nothing pinned. Null is shown as "Studio cannot
+   * describe what this installs", never as an absence of risk.
+   */
+  readonly origin: PluginOrigin | null;
 }
 
 /**

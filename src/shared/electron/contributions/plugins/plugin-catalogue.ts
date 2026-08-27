@@ -1,4 +1,4 @@
-import { PluginContribution } from '@shared/api/plugin-channels';
+import { PluginContribution, PluginOrigin } from '@shared/api/plugin-channels';
 import {
   DebugAdapterCatalogueEntry,
   debugAdapterCatalogue,
@@ -83,6 +83,12 @@ export interface PluginDescriptor {
    * Gets a note shown alongside the plugin — typically a runtime it needs once installed — or undefined.
    */
   readonly detail?: string;
+
+  /**
+   * Gets where the payload is fetched from, or undefined when the descriptor cannot say. Shown at the
+   * consent step, so it is derived from pinned URLs rather than declared by whoever wrote the entry.
+   */
+  readonly origin?: PluginOrigin;
 
   /**
    * Gets whether the plugin can be installed on this machine at all. A plugin whose publisher ships no

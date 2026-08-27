@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { PLUGIN_API_VERSION, PluginManifest } from '@shared/api/plugin-manifest';
-import { PluginContribution } from '@shared/api/plugin-channels';
+import { PluginContribution, PluginOrigin } from '@shared/api/plugin-channels';
 import { ArchiveProvision } from '../../provisioning/archive-provision';
 import { LspProvisioner } from '../../lsp/lsp-provisioner';
 import { LanguageServerDescriptor, LspResolution } from '../../lsp/language-server-descriptor';
@@ -12,6 +12,7 @@ import {
   LoadedPlugin,
   MANIFEST_FILE,
   toDebugAdapterEntries,
+  toOrigin,
   toLanguageServerDescriptors,
   toPluginDescriptor,
   toProvision,
@@ -76,6 +77,40 @@ function stubProvisioner(installedPath: string | null): LspProvisioner {
     isTreeInstalled: (): boolean => installedPath !== null,
     treeTarget: (): string | null => installedPath,
   } as unknown as LspProvisioner;
+}
+
+/**
+ * A two-package lockfile, as a compiled-in document would arrive.
+ */
+const LOCKFILE: unknown = {
+  lockfileVersion: 3,
+  packages: {
+    '': { name: 'demo' },
+    'node_modules/a': {
+      resolved: 'https://registry.npmjs.org/a/-/a-1.0.0.tgz',
+      integrity: `sha512-${'a'.repeat(86)}==`,
+    },
+    'node_modules/b': {
+      resolved: 'https://registry.npmjs.org/b/-/b-1.0.0.tgz',
+      integrity: `sha512-${'b'.repeat(86)}==`,
+    },
+  },
+};
+
+/**
+ * Builds an npm-provisioned manifest.
+ * @returns Returns the manifest as it would be written to disk.
+ */
+function npmManifest(): Record<string, unknown> {
+  return manifest({
+    id: 'dockerfile',
+    provision: {
+      kind: 'npm',
+      lockfileUrl: 'https://example.com/dockerfile.lock.json',
+      sha256: 'd'.repeat(64),
+      executablePath: 'node_modules/a/bin/run',
+    },
+  });
 }
 
 describe('plugin loader', () => {
@@ -193,6 +228,35 @@ describe('plugin loader', () => {
       );
 
       expect(toProvision(validManifests(discoverPlugins(root))[0])).toBeNull();
+    });
+  });
+
+  describe('toOrigin', () => {
+    it('describesAnArchiveAsOnePackageFromItsHosts', () => {
+      writePlugin('zls', manifest());
+      const origin: PluginOrigin | undefined = toOrigin(validManifests(discoverPlugins(root))[0]);
+
+      expect(origin).toEqual({ hosts: ['example.com'], packageCount: 1 });
+    });
+
+    it('describesAnNpmTreeByItsWholeSize', () => {
+      // The entry names one publisher; the tree is written by everyone in it. The count is the honest
+      // answer to what is actually being accepted.
+      writePlugin('dockerfile', npmManifest());
+      const origin: PluginOrigin | undefined = toOrigin(
+        validManifests(discoverPlugins(root))[0],
+        (): unknown => LOCKFILE,
+      );
+
+      expect(origin).toEqual({ hosts: ['registry.npmjs.org'], packageCount: 2 });
+    });
+
+    it('describesNothingWhenTheLockfileIsNotCompiledIn', () => {
+      // Answered while listing plugins, so it must never trigger a download. No bundled lockfile means
+      // no count rather than a wrong one.
+      writePlugin('dockerfile', npmManifest());
+
+      expect(toOrigin(validManifests(discoverPlugins(root))[0])).toBeUndefined();
     });
   });
 
