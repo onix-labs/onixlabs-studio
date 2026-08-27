@@ -1,4 +1,7 @@
+import BASH_LANGUAGE_SERVER from './lockfiles/bash-language-server.lock.json';
 import DOCKERFILE_LANGUAGE_SERVER from './lockfiles/dockerfile-language-server.lock.json';
+import SVELTE_LANGUAGE_SERVER from './lockfiles/svelte-language-server.lock.json';
+import YAML_LANGUAGE_SERVER from './lockfiles/yaml-language-server.lock.json';
 
 // The lockfiles for the npm-provisioned plugins the curated index offers, compiled into the
 // application — the same two-copies arrangement `plugin-index.ts` uses for the index itself, and for
@@ -20,7 +23,10 @@ import DOCKERFILE_LANGUAGE_SERVER from './lockfiles/dockerfile-language-server.l
  * without silently orphaning the bundled copy and falling back to a fetch that cannot succeed.
  */
 const BUNDLED_LOCKFILES: Readonly<Record<string, unknown>> = {
+  'bash-language-server.lock.json': BASH_LANGUAGE_SERVER,
   'dockerfile-language-server.lock.json': DOCKERFILE_LANGUAGE_SERVER,
+  'svelte-language-server.lock.json': SVELTE_LANGUAGE_SERVER,
+  'yaml-language-server.lock.json': YAML_LANGUAGE_SERVER,
 };
 
 /**
