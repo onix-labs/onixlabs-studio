@@ -10,6 +10,7 @@ import {
   TYPESCRIPT_SERVER_PROVISION,
 } from '@shared/electron/lsp/language-server-downloads';
 import {
+  isApiCompatible,
   ManifestError,
   ManifestResult,
   PLUGIN_API_VERSION,
@@ -357,5 +358,91 @@ describe('parsePluginManifest', () => {
         expect(result.manifest).not.toBeNull();
       });
     }
+  });
+
+  describe('API compatibility', () => {
+    it('acceptsTheExactVersionTheBuildImplements', () => {
+      expect(isApiCompatible('1.2.3', '1.2.3')).toBe(true);
+    });
+
+    it('acceptsAnOlderMinorOrPatch', () => {
+      // Older minors are the whole point of a minor: a plugin written against less of the API still
+      // works against more of it.
+      expect(isApiCompatible('1.0.0', '1.4.2')).toBe(true);
+      expect(isApiCompatible('1.4.0', '1.4.2')).toBe(true);
+    });
+
+    it('refusesANewerMinorOrPatch', () => {
+      // The plugin may use contribution points this build has never heard of; dropping them silently
+      // would install something that half works.
+      expect(isApiCompatible('1.5.0', '1.4.2')).toBe(false);
+      expect(isApiCompatible('1.4.3', '1.4.2')).toBe(false);
+    });
+
+    it('refusesADifferentMajorInEitherDirection', () => {
+      // A major bump is how we say the same field means something new.
+      expect(isApiCompatible('2.0.0', '1.4.2')).toBe(false);
+      expect(isApiCompatible('1.9.9', '2.0.0')).toBe(false);
+    });
+
+    it('refusesAnythingThatIsNotAPlainSemver', () => {
+      expect(isApiCompatible('1', '1.0.0')).toBe(false);
+      expect(isApiCompatible('1.0', '1.0.0')).toBe(false);
+      expect(isApiCompatible(1, '1.0.0')).toBe(false);
+      expect(isApiCompatible('^1.0.0', '1.0.0')).toBe(false);
+      expect(isApiCompatible(undefined, '1.0.0')).toBe(false);
+    });
+
+    it('refusesAManifestBuiltForAFutureMajor', () => {
+      const result: ManifestResult = parsePluginManifest(manifest({ apiVersion: '2.0.0' }));
+
+      expect(result.manifest).toBeNull();
+      expect(paths(result)).toEqual(['apiVersion']);
+    });
+  });
+
+  describe('runtime prerequisites', () => {
+    it('acceptsARequirementFromTheKnownRuntimes', () => {
+      // This is what makes the Java-family servers describable: the manifest declares that a JDK is
+      // needed, without saying how to find one.
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ requires: [{ runtime: 'java', minimumVersion: '21' }] }),
+      );
+
+      expect(result.errors).toEqual([]);
+      expect(result.manifest?.requires).toEqual([{ runtime: 'java', minimumVersion: '21' }]);
+    });
+
+    it('acceptsARequirementWithNoMinimumVersion', () => {
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ requires: [{ runtime: 'go' }] }),
+      );
+
+      expect(result.errors).toEqual([]);
+      expect(result.manifest?.requires[0]?.minimumVersion).toBeUndefined();
+    });
+
+    it('defaultsToRequiringNothing', () => {
+      expect(parsePluginManifest(manifest()).manifest?.requires).toEqual([]);
+    });
+
+    it('refusesARuntimeStudioCannotDetect', () => {
+      // Detection is code. A manifest may declare a prerequisite from the known list; it may not invent
+      // one, because inventing one would mean shipping the code that finds it.
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ requires: [{ runtime: 'haskell' }] }),
+      );
+
+      expect(result.manifest).toBeNull();
+      expect(paths(result)).toContain('requires[0].runtime');
+    });
+
+    it('refusesAMalformedRequirement', () => {
+      expect(parsePluginManifest(manifest({ requires: 'java' })).manifest).toBeNull();
+      expect(
+        parsePluginManifest(manifest({ requires: [{ runtime: 'java', minimumVersion: 21 }] }))
+          .manifest,
+      ).toBeNull();
+    });
   });
 });

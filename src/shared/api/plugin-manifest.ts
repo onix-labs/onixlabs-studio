@@ -25,10 +25,57 @@
 // where description stops and execution begins.
 
 /**
- * The contribution API version this build understands. A manifest declares the version it was written
- * against, and one built for a version this does not know is refused rather than guessed at.
+ * The contribution API version this build implements, as semver. A manifest declares the version it was
+ * written against and Studio decides whether it can honour it — see {@link isApiCompatible}.
  */
-export const PLUGIN_API_VERSION: number = 1;
+export const PLUGIN_API_VERSION: string = '1.0.0';
+
+/**
+ * Matches a plain three-part semver. Deliberately strict and deliberately local: the rule below is the
+ * only version comparison this contract needs, and `shared/api` is imported by both compilations, so it
+ * stays free of dependencies rather than pulling one in for twenty lines.
+ */
+const VERSION_PATTERN: RegExp = /^(\d+)\.(\d+)\.(\d+)$/;
+
+/**
+ * Parses a semver string into its numeric parts.
+ * @param value The candidate version.
+ * @returns Returns the major, minor and patch, or null when the value is not a plain semver.
+ */
+function parseVersion(value: unknown): [number, number, number] | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const match: RegExpExecArray | null = VERSION_PATTERN.exec(value);
+  return match === null ? null : [Number(match[1]), Number(match[2]), Number(match[3])];
+}
+
+/**
+ * Determines whether this build can honour a manifest written against a given API version.
+ *
+ * The rule is the ordinary host/plugin one, in both directions. A **different major** is refused: a
+ * major bump is what we say when the same field means something new, so a plugin built for 1.x cannot
+ * be interpreted by 2.x. A **newer minor or patch** is also refused: a plugin written against 1.3 may
+ * use contribution points a build implementing 1.2 has never heard of, and silently dropping them
+ * would install a plugin that half works. Older minors are fine, which is the whole point of a minor.
+ * @param declared The API version the manifest declares.
+ * @param supported The API version this build implements, defaulting to {@link PLUGIN_API_VERSION}.
+ * @returns Returns true when the manifest can be honoured.
+ */
+export function isApiCompatible(
+  declared: unknown,
+  supported: string = PLUGIN_API_VERSION,
+): boolean {
+  const wanted: [number, number, number] | null = parseVersion(declared);
+  const have: [number, number, number] | null = parseVersion(supported);
+  if (wanted === null || have === null) {
+    return false;
+  }
+  if (wanted[0] !== have[0]) {
+    return false;
+  }
+  return wanted[1] < have[1] || (wanted[1] === have[1] && wanted[2] <= have[2]);
+}
 
 /**
  * Matches a lower-case hex SHA-256.
@@ -192,6 +239,34 @@ export interface ManifestDebugAdapter {
 }
 
 /**
+ * The runtimes Studio knows how to detect, and therefore the only ones a manifest may require.
+ *
+ * Closed on purpose. A manifest can *declare* that it needs a Java runtime; it cannot teach Studio how
+ * to find one, because detection is code. Keeping the list closed is what lets a prerequisite be pure
+ * data without smuggling execution in behind it.
+ */
+export const KNOWN_RUNTIMES: readonly string[] = ['java', 'dotnet', 'go', 'node', 'python'];
+
+/**
+ * Describes a runtime a plugin needs before what it contributes can start.
+ *
+ * Declaring one makes the servers that were previously inexpressible describable — the Java and Kotlin
+ * servers need a JDK, the C# server needs the .NET SDK — without the manifest having to say how to find
+ * it. Studio detects the runtime; installing one on the user's behalf is later work.
+ */
+export interface ManifestRequirement {
+  /**
+   * Gets the runtime required, from {@link KNOWN_RUNTIMES}.
+   */
+  readonly runtime: string;
+
+  /**
+   * Gets the lowest acceptable version, or undefined when any will do.
+   */
+  readonly minimumVersion?: string;
+}
+
+/**
  * What a plugin contributes. Every contribution point is optional, and a plugin contributing nothing is
  * refused — it would install something that could never be used.
  */
@@ -232,9 +307,9 @@ export interface PluginManifest {
   readonly version: string;
 
   /**
-   * Gets the contribution API version the manifest was written against.
+   * Gets the contribution API version the manifest was written against, as semver.
    */
-  readonly apiVersion: number;
+  readonly apiVersion: string;
 
   /**
    * Gets how the plugin's payload is obtained.
@@ -245,6 +320,12 @@ export interface PluginManifest {
    * Gets what the plugin contributes.
    */
   readonly contributes: ManifestContributions;
+
+  /**
+   * Gets the runtimes that must be present before the plugin's contributions can start, or an empty
+   * list when it needs none.
+   */
+  readonly requires: readonly ManifestRequirement[];
 }
 
 /**
@@ -614,6 +695,42 @@ function readContributionList(
 }
 
 /**
+ * Validates the runtime prerequisites.
+ * @param value The candidate list.
+ * @param errors The failure collector.
+ * @returns Returns the requirements, empty when none are declared.
+ */
+function readRequirements(value: unknown, errors: Errors): readonly ManifestRequirement[] {
+  if (value === undefined) {
+    return [];
+  }
+  if (!Array.isArray(value)) {
+    errors.add('requires', 'must be an array');
+    return [];
+  }
+  const parsed: ManifestRequirement[] = [];
+  value.forEach((entry: unknown, index: number): void => {
+    const path: string = `requires[${index}]`;
+    const source: Record<string, unknown> | null = readObject(entry, path, errors);
+    if (source === null) {
+      return;
+    }
+    const runtime: unknown = source['runtime'];
+    if (typeof runtime !== 'string' || !KNOWN_RUNTIMES.includes(runtime)) {
+      errors.add(`${path}.runtime`, `must be one of ${KNOWN_RUNTIMES.join(', ')}`);
+      return;
+    }
+    const minimumVersion: unknown = source['minimumVersion'];
+    if (minimumVersion !== undefined && typeof minimumVersion !== 'string') {
+      errors.add(`${path}.minimumVersion`, 'must be a version string');
+      return;
+    }
+    parsed.push({ runtime, minimumVersion });
+  });
+  return parsed;
+}
+
+/**
  * Validates an untrusted value as a plugin manifest.
  *
  * Refuses rather than repairs. A manifest describes code that will be downloaded and executed, so a
@@ -629,10 +746,10 @@ export function parsePluginManifest(value: unknown): ManifestResult {
     return { manifest: null, errors: errors.items };
   }
   const apiVersion: unknown = source['apiVersion'];
-  if (apiVersion !== PLUGIN_API_VERSION) {
+  if (!isApiCompatible(apiVersion)) {
     errors.add(
       'apiVersion',
-      `must be ${PLUGIN_API_VERSION}; this build cannot interpret other versions`,
+      `must be a semver this build can honour; it implements ${PLUGIN_API_VERSION}`,
     );
     return { manifest: null, errors: errors.items };
   }
@@ -641,6 +758,7 @@ export function parsePluginManifest(value: unknown): ManifestResult {
   const description: string = readString(source, 'description', '', errors);
   const version: string = readString(source, 'version', '', errors);
   const contributes: ManifestContributions = readContributions(source['contributes'], errors);
+  const requires: readonly ManifestRequirement[] = readRequirements(source['requires'], errors);
   const provision: ManifestProvision | null = readProvision(source['provision'], errors);
   if (errors.items.length > 0 || provision === null) {
     return { manifest: null, errors: errors.items };
@@ -651,9 +769,10 @@ export function parsePluginManifest(value: unknown): ManifestResult {
       name,
       description,
       version,
-      apiVersion: PLUGIN_API_VERSION,
+      apiVersion: apiVersion as string,
       provision,
       contributes,
+      requires,
     },
     errors: [],
   };
