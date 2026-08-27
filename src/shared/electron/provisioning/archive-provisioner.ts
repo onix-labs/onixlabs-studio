@@ -1,21 +1,9 @@
-import { execFile } from 'node:child_process';
-import { createHash } from 'node:crypto';
-import { createReadStream, createWriteStream, existsSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import { Readable } from 'node:stream';
-import { pipeline } from 'node:stream/promises';
-import { promisify } from 'node:util';
 import { logger } from '../logger';
 import { ArchiveDownload, ArchiveProvision, platformKey } from './archive-provision';
-
-/**
- * Runs a child process and resolves with its output, used to shell out to the platform's extractor.
- */
-const execFileAsync: (
-  file: string,
-  args: readonly string[],
-) => Promise<{ stdout: string; stderr: string }> = promisify(execFile);
+import { downloadTo, extractArchive, sha256Of } from './download';
 
 /**
  * The name of the file written into an install directory once its contents are complete.
@@ -181,8 +169,8 @@ export class ArchiveProvisioner {
       await fs.mkdir(directory, { recursive: true });
       logger.info(this.logName, `Downloading ${provision.id} ${provision.version}`);
       const archive: string = path.join(directory, `archive.${download.archive}`);
-      await this.download(download.url, archive);
-      const digest: string = await this.sha256(archive);
+      await downloadTo(download.url, archive);
+      const digest: string = await sha256Of(archive);
       if (digest !== download.sha256) {
         logger.error(
           this.logName,
@@ -191,7 +179,7 @@ export class ArchiveProvisioner {
         await fs.rm(directory, { recursive: true, force: true });
         return null;
       }
-      await this.extract(archive, directory, download.archive);
+      await extractArchive(archive, directory, download.archive);
       await fs.rm(archive, { force: true });
       if (!existsSync(target)) {
         logger.warn(this.logName, `Extracted ${provision.id} but its entry point is missing`);
@@ -210,62 +198,5 @@ export class ArchiveProvisioner {
       await fs.rm(directory, { recursive: true, force: true }).catch((): void => undefined);
       return null;
     }
-  }
-
-  /**
-   * Extracts an archive into a directory using the platform's available extractor.
-   * @param archive The archive path.
-   * @param destination The directory to extract into.
-   * @param kind The archive kind.
-   * @returns Returns a promise that resolves once extraction completes.
-   */
-  private async extract(
-    archive: string,
-    destination: string,
-    kind: ArchiveDownload['archive'],
-  ): Promise<void> {
-    if (kind === 'tar.gz') {
-      await execFileAsync('tar', ['-xzf', archive, '-C', destination]);
-      return;
-    }
-    // `tar` reads zips through libarchive on Windows and modern macOS; `unzip` is the fallback.
-    if (process.platform === 'win32') {
-      await execFileAsync('tar', ['-xf', archive, '-C', destination]);
-      return;
-    }
-    await execFileAsync('unzip', ['-q', '-o', archive, '-d', destination]);
-  }
-
-  /**
-   * Downloads a URL to a file.
-   * @param url The URL to download.
-   * @param destination The file to write.
-   * @returns Returns a promise that resolves once the download completes.
-   */
-  private async download(url: string, destination: string): Promise<void> {
-    const response: Response = await fetch(url);
-    if (!response.ok || response.body === null) {
-      throw new Error(`Download failed: ${response.status}`);
-    }
-    // The two compilations disagree about this type: under the main process's Node libs the cast is
-    // redundant, while under the renderer's DOM libs `ReadableStream` is the DOM one and the call will
-    // not typecheck without it. The cast keeps this module importable from a spec, which is what makes
-    // the code that runs downloaded executables testable at all.
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
-    const body: Parameters<typeof Readable.fromWeb>[0] = response.body as Parameters<
-      typeof Readable.fromWeb
-    >[0];
-    await pipeline(Readable.fromWeb(body), createWriteStream(destination));
-  }
-
-  /**
-   * Computes a file's SHA-256.
-   * @param file The file to hash.
-   * @returns Returns the lower-case hex digest.
-   */
-  private async sha256(file: string): Promise<string> {
-    const hash: ReturnType<typeof createHash> = createHash('sha256');
-    await pipeline(createReadStream(file), hash);
-    return hash.digest('hex');
   }
 }
