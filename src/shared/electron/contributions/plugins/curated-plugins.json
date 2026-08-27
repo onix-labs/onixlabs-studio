@@ -1,5 +1,5 @@
 {
-  "revision": 2,
+  "revision": 3,
   "plugins": [
     {
       "id": "pyright",
@@ -273,6 +273,85 @@
             "id": "dockerfile-language-server",
             "displayName": "Dockerfile Language Server",
             "languages": ["dockerfile"],
+            "priority": 100,
+            "command": {
+              "kind": "node"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "yaml-language-server",
+      "name": "YAML Language Server",
+      "description": "Red Hat's YAML validation, completion and schema support.",
+      "version": "1.24.0",
+      "apiVersion": "1.2.0",
+      "provision": {
+        "kind": "npm",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/yaml-language-server.lock.json",
+        "sha256": "c4c3136a019386738fc0ccc1ba91c69025fae4485a3d32936b01001c5d8431eb",
+        "executablePath": "node_modules/yaml-language-server/bin/yaml-language-server"
+      },
+      "contributes": {
+        "languageServers": [
+          {
+            "id": "yaml-language-server",
+            "displayName": "YAML Language Server",
+            "languages": ["yaml"],
+            "priority": 100,
+            "command": {
+              "kind": "node"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "bash-language-server",
+      "name": "Bash Language Server",
+      "description": "Shell script completion, linting and documentation on hover.",
+      "version": "5.6.0",
+      "apiVersion": "1.2.0",
+      "provision": {
+        "kind": "npm",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/bash-language-server.lock.json",
+        "sha256": "8c13cf54220250fd33cf79fb872fda5cca79fc204463b4e1645ece205ad8969f",
+        "executablePath": "node_modules/bash-language-server/out/cli.js"
+      },
+      "contributes": {
+        "languageServers": [
+          {
+            "id": "bash-language-server",
+            "displayName": "Bash Language Server",
+            "languages": ["shell"],
+            "priority": 100,
+            "command": {
+              "kind": "node",
+              "args": ["start"]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "svelte-language-server",
+      "name": "Svelte Language Server",
+      "description": "Svelte component diagnostics, completion and navigation.",
+      "version": "0.18.4",
+      "apiVersion": "1.2.0",
+      "provision": {
+        "kind": "npm",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/svelte-language-server.lock.json",
+        "sha256": "02dcbd8c721d2404e3a8b0e3d4c18ab8ee9fdcecfe0cf6dcd800d4ab22c7c40f",
+        "executablePath": "node_modules/svelte-language-server/bin/server.js"
+      },
+      "contributes": {
+        "languageServers": [
+          {
+            "id": "svelte-language-server",
+            "displayName": "Svelte Language Server",
+            "languages": ["svelte"],
             "priority": 100,
             "command": {
               "kind": "node"
