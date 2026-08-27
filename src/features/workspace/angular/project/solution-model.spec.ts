@@ -115,6 +115,7 @@ function sampleItems(): ProjectItems {
       {
         type: 'folder',
         name: 'Sub',
+        path: '/root/A/Sub',
         children: [{ type: 'file', name: 'f.cs', path: '/root/A/Sub/f.cs' }],
       },
       { type: 'file', name: 'g.cs', path: '/root/A/g.cs' },
@@ -425,6 +426,39 @@ describe('SolutionModel', () => {
     // A's contents appear with no further fetch; its sub-folder is collapsed so its file is hidden.
     expect(project.itemRequests.length).toBe(requestsAfterOpen);
     expect(labels(model)).toEqual(['root', 'Group', 'A', 'Sub', 'g.cs', 'B']);
+  });
+
+  it('rows_aFolderInsideAProject_carriesItsDirectoryWhileASolutionFolderCarriesNone', async () => {
+    project.model = sampleModel();
+    project.itemsByPath.set('/root/A/A.csproj', sampleItems());
+    const model: SolutionModel = build();
+    await open(model);
+    model.toggle(rowFor(model, 'Group')!);
+    model.toggle(rowFor(model, 'A')!);
+
+    // The two folder rows are indistinguishable on screen, and deliberately not in the model: only the
+    // one standing for a real directory has a path for the panel's path commands to act on.
+    expect(rowFor(model, 'Sub')!.path).toBe('/root/A/Sub');
+    expect(rowFor(model, 'Group')!.path).toBeNull();
+  });
+
+  it('search_aMatchingFolderInsideAProject_keepsItsDirectory', async () => {
+    project.model = sampleModel();
+    project.itemsByPath.set('/root/A/A.csproj', sampleItems());
+    const model: SolutionModel = build();
+    await open(model);
+    model.toggle(rowFor(model, 'Group')!);
+    model.toggle(rowFor(model, 'A')!);
+
+    model.setQuery('f.cs');
+    // setQuery is debounced, so the filtered rows are only rebuilt once the timer has run.
+    await new Promise<void>((resolve: () => void): void => {
+      setTimeout(resolve, 200);
+    });
+    await settle();
+
+    // The filtered tree rebuilds its rows from scratch, so the path has to be carried there too.
+    expect(rowFor(model, 'Sub')!.path).toBe('/root/A/Sub');
   });
 
   it('toggle_collapsingTheRoot_hidesEverything', async () => {

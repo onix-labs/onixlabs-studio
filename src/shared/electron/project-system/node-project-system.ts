@@ -306,7 +306,7 @@ export class NodeProjectSystem implements ProjectSystem {
         false,
       );
       if (children !== null && children.length > 0) {
-        nodes.push({ type: 'folder', name: child.name, children });
+        nodes.push({ type: 'folder', name: child.name, path: full, children });
       }
     }
     for (const file of files) {

@@ -214,12 +214,10 @@ export class CppProjectSystem implements ProjectSystem {
       .sort((a: Dirent, b: Dirent): number => a.name.localeCompare(b.name));
     const nodes: ProjectItemNode[] = [];
     for (const child of directories) {
-      const children: readonly ProjectItemNode[] | null = await this.listDirectory(
-        path.join(directory, child.name),
-        budget,
-      );
+      const full: string = path.join(directory, child.name);
+      const children: readonly ProjectItemNode[] | null = await this.listDirectory(full, budget);
       if (children !== null && children.length > 0) {
-        nodes.push({ type: 'folder', name: child.name, children });
+        nodes.push({ type: 'folder', name: child.name, path: full, children });
       }
     }
     for (const file of files) {
