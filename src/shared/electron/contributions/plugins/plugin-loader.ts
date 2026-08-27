@@ -19,6 +19,7 @@ import {
   resolved,
   unavailable,
 } from '../../lsp/language-server-descriptor';
+import { DebugAdapterCatalogueEntry, DebugAdapterSpec } from '../../debug/debug-adapter-registry';
 import { ArchiveDownload, ArchiveProvision } from '../../provisioning/archive-provision';
 import { PluginContext, PluginDescriptor } from './plugin-catalogue';
 
@@ -242,6 +243,49 @@ export function toLanguageServerDescriptors(
           ? unavailable(`${server.displayName} is not installed — install it in Plugins.`)
           : toSpec(server.command, entryPoint, context);
       },
+    }),
+  );
+}
+
+/**
+ * Turns a manifest's debug adapters into catalogue entries the debug registry can resolve.
+ *
+ * The adapter lives inside the same archive as everything else the plugin contributes — a plugin is one
+ * payload however many things it provides — so it is located by asking where that archive was installed
+ * rather than by searching the PATH.
+ * @param manifest The validated manifest.
+ * @param installedPath Reports where the plugin's archive was installed, or null when it is not.
+ * @returns Returns the catalogue entries.
+ */
+export function toDebugAdapterEntries(
+  manifest: PluginManifest,
+  installedPath: (provision: ArchiveProvision) => string | null,
+): readonly DebugAdapterCatalogueEntry[] {
+  const provision: ArchiveProvision = toProvision(manifest);
+  return (manifest.contributes.debugAdapters ?? []).map(
+    (adapter: ManifestDebugAdapter): DebugAdapterCatalogueEntry => ({
+      id: adapter.id,
+      displayName: adapter.displayName,
+      // Only used for the PATH search the registry falls back to; `locate` answers first, so this
+      // never decides anything for a contributed adapter.
+      binary: adapter.id,
+      languages: adapter.languages,
+      priority: adapter.priority,
+      locate: (): Promise<string | null> => Promise.resolve(installedPath(provision)),
+      buildSpec: (entryPoint: string): DebugAdapterSpec =>
+        adapter.command.kind === 'node'
+          ? {
+              command: process.execPath,
+              args: [entryPoint, ...(adapter.command.args ?? [])],
+              env: { ELECTRON_RUN_AS_NODE: '1', ...(adapter.command.env ?? {}) },
+              transport: adapter.transport,
+            }
+          : {
+              command: entryPoint,
+              args: adapter.command.args ?? [],
+              env: adapter.command.env,
+              transport: adapter.transport,
+            },
     }),
   );
 }

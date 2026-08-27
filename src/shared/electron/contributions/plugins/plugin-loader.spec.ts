@@ -5,10 +5,12 @@ import { PLUGIN_API_VERSION, PluginManifest } from '@shared/api/plugin-manifest'
 import { PluginContribution } from '@shared/api/plugin-channels';
 import { ArchiveProvision } from '../../provisioning/archive-provision';
 import { LanguageServerDescriptor, LspResolution } from '../../lsp/language-server-descriptor';
+import { DebugAdapterCatalogueEntry, DebugAdapterSpec } from '../../debug/debug-adapter-registry';
 import {
   discoverPlugins,
   LoadedPlugin,
   MANIFEST_FILE,
+  toDebugAdapterEntries,
   toLanguageServerDescriptors,
   toPluginDescriptor,
   toProvision,
@@ -271,6 +273,105 @@ describe('plugin loader', () => {
       const resolution: LspResolution = await descriptors[0].resolve(context(null));
       expect(resolution.spec).toBeNull();
       expect(resolution.error).toContain('not installed');
+    });
+  });
+
+  describe('toDebugAdapterEntries', () => {
+    /**
+     * Writes a plugin contributing one debug adapter and returns its catalogue entries.
+     * @param adapter The adapter contribution.
+     * @param installed The path the plugin's archive is installed at, or null.
+     * @returns Returns the entries.
+     */
+    function entriesFor(
+      adapter: Record<string, unknown>,
+      installed: string | null = '/installed/dbg',
+    ): readonly DebugAdapterCatalogueEntry[] {
+      writePlugin('dbg', manifest({ id: 'dbg', contributes: { debugAdapters: [adapter] } }));
+      return toDebugAdapterEntries(
+        validManifests(discoverPlugins(root))[0],
+        (): string | null => installed,
+      );
+    }
+
+    it('registersTheAdapterTheManifestAdvertises', () => {
+      // The manifest accepts `contributes.debugAdapters` and the Plugin Manager lists them, so they
+      // have to actually reach the registry — otherwise the format promises something that never works.
+      const entries: readonly DebugAdapterCatalogueEntry[] = entriesFor({
+        id: 'zdb',
+        displayName: 'Zig Debugger',
+        languages: ['zig'],
+        priority: 100,
+        command: { kind: 'executable', args: ['--dap'] },
+      });
+
+      expect(entries).toHaveLength(1);
+      expect(entries[0]?.id).toBe('zdb');
+      expect(entries[0]?.languages).toEqual(['zig']);
+    });
+
+    it('locatesTheAdapterInsideThePluginsOwnPayload', async () => {
+      // A plugin is one archive however many things it contributes, so the adapter is found where that
+      // archive was installed rather than by searching the PATH.
+      const entries: readonly DebugAdapterCatalogueEntry[] = entriesFor({
+        id: 'zdb',
+        displayName: 'Zig Debugger',
+        languages: ['zig'],
+        command: { kind: 'executable' },
+      });
+
+      await expect(entries[0]?.locate?.()).resolves.toBe('/installed/dbg');
+    });
+
+    it('reportsNotLocatedWhenThePluginIsNotInstalled', async () => {
+      const entries: readonly DebugAdapterCatalogueEntry[] = entriesFor(
+        {
+          id: 'zdb',
+          displayName: 'Zig Debugger',
+          languages: ['zig'],
+          command: { kind: 'executable' },
+        },
+        null,
+      );
+
+      await expect(entries[0]?.locate?.()).resolves.toBeNull();
+    });
+
+    it('spawnsAnExecutableAdapterDirectly', () => {
+      const entries: readonly DebugAdapterCatalogueEntry[] = entriesFor({
+        id: 'zdb',
+        displayName: 'Zig Debugger',
+        languages: ['zig'],
+        command: { kind: 'executable', args: ['--dap'] },
+      });
+      const spec: DebugAdapterSpec = entries[0].buildSpec('/installed/dbg');
+
+      expect(spec.command).toBe('/installed/dbg');
+      expect(spec.args).toEqual(['--dap']);
+    });
+
+    it('spawnsANodeAdapterUnderTheBundledRuntime', () => {
+      const entries: readonly DebugAdapterCatalogueEntry[] = entriesFor({
+        id: 'jsdbg',
+        displayName: 'JS Debugger',
+        languages: ['javascript'],
+        command: { kind: 'node', args: ['0', '127.0.0.1'] },
+        transport: 'tcp-server',
+      });
+      const spec: DebugAdapterSpec = entries[0].buildSpec('/installed/server.js');
+
+      expect(spec.command).toBe(process.execPath);
+      expect(spec.args).toEqual(['/installed/server.js', '0', '127.0.0.1']);
+      expect(spec.env?.['ELECTRON_RUN_AS_NODE']).toBe('1');
+      expect(spec.transport).toBe('tcp-server');
+    });
+
+    it('contributesNoAdaptersWhenTheManifestDeclaresNone', () => {
+      writePlugin('zls', manifest());
+
+      expect(
+        toDebugAdapterEntries(validManifests(discoverPlugins(root))[0], (): null => null),
+      ).toEqual([]);
     });
   });
 });

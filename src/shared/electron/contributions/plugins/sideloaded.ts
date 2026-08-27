@@ -1,9 +1,13 @@
 import { app } from 'electron';
 import * as path from 'node:path';
 import { PluginManifest } from '@shared/api/plugin-manifest';
+import { DebugAdapterCatalogueEntry } from '../../debug/debug-adapter-registry';
 import { LanguageServerDescriptor } from '../../lsp/language-server-descriptor';
+import { LspProvisioner } from '../../lsp/lsp-provisioner';
+import { ArchiveProvision } from '../../provisioning/archive-provision';
 import {
   discoverPlugins,
+  toDebugAdapterEntries,
   toLanguageServerDescriptors,
   toPluginDescriptor,
   validManifests,
@@ -51,4 +55,31 @@ export function sideloadedPlugins(): readonly PluginDescriptor[] {
  */
 export function sideloadedLanguageServers(): readonly LanguageServerDescriptor[] {
   return sideloadedManifests().flatMap(toLanguageServerDescriptors);
+}
+
+/**
+ * Holds a provisioner used only to answer where a sideloaded plugin's archive was installed. The same
+ * one the plugin's install went through, so the answer cannot disagree with where the payload actually
+ * landed.
+ */
+let payloads: LspProvisioner | null = null;
+
+/**
+ * Gets where a sideloaded plugin's archive was installed, or null when it is not installed.
+ * @param provision The plugin's provisioning recipe.
+ * @returns Returns the installed path, or null.
+ */
+function installedPayload(provision: ArchiveProvision): string | null {
+  payloads ??= new LspProvisioner();
+  return payloads.isArchiveInstalled(provision) ? payloads.archiveTarget(provision) : null;
+}
+
+/**
+ * Gets the debug adapters the sideloaded plugins contribute, for the debug registry to resolve.
+ * @returns Returns the catalogue entries.
+ */
+export function sideloadedDebugAdapters(): readonly DebugAdapterCatalogueEntry[] {
+  return sideloadedManifests().flatMap((manifest): readonly DebugAdapterCatalogueEntry[] =>
+    toDebugAdapterEntries(manifest, installedPayload),
+  );
 }
