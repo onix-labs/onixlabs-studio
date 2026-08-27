@@ -1,0 +1,779 @@
+// The plugin manifest: the declarative description a third-party plugin ships so Studio can install it
+// and register what it contributes, without running any of its code to find out. Keep this module
+// platform-neutral (no Node or DOM dependencies) so both compilation targets can import it.
+//
+// The shape is not invented. It is what the fifteen first-party plugins turned out to need, and its
+// boundaries are where they turned out to need more:
+//
+//   - Provisioning is a pinned archive: a URL, a SHA-256, an archive kind and an entry path. That
+//     covers every plugin obtained by downloading something.
+//   - Starting the contributed thing is an executable plus arguments, or a JavaScript entry point run
+//     under the bundled Node runtime. Those are the only two shapes in the catalogue.
+//   - A contribution point does not assume a key. Language servers and debug adapters are chosen per
+//     language; a container engine is chosen once. Keying is per contribution point, not universal.
+//
+// What it deliberately cannot express — because attempting it would mean running plugin code, which is
+// the guardrail this whole design exists to keep:
+//
+//   - Building from source with the user's toolchain (gopls).
+//   - Installing into a managed language environment (debugpy's pip install; npm packages that carry
+//     runtime dependencies, which is most of the JavaScript ecosystem's servers).
+//   - Provisioning that needs a detected runtime to even start (the Java and .NET servers), or that
+//     computes its start-up traffic from the workspace (Roslyn's solution/open).
+//
+// Those stay first-party. A manifest that cannot describe them is doing its job: the line is drawn
+// where description stops and execution begins.
+
+/**
+ * The contribution API version this build implements, as semver. A manifest declares the version it was
+ * written against and Studio decides whether it can honour it — see {@link isApiCompatible}.
+ */
+export const PLUGIN_API_VERSION: string = '1.0.0';
+
+/**
+ * Matches a plain three-part semver. Deliberately strict and deliberately local: the rule below is the
+ * only version comparison this contract needs, and `shared/api` is imported by both compilations, so it
+ * stays free of dependencies rather than pulling one in for twenty lines.
+ */
+const VERSION_PATTERN: RegExp = /^(\d+)\.(\d+)\.(\d+)$/;
+
+/**
+ * Parses a semver string into its numeric parts.
+ * @param value The candidate version.
+ * @returns Returns the major, minor and patch, or null when the value is not a plain semver.
+ */
+function parseVersion(value: unknown): [number, number, number] | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const match: RegExpExecArray | null = VERSION_PATTERN.exec(value);
+  return match === null ? null : [Number(match[1]), Number(match[2]), Number(match[3])];
+}
+
+/**
+ * Determines whether this build can honour a manifest written against a given API version.
+ *
+ * The rule is the ordinary host/plugin one, in both directions. A **different major** is refused: a
+ * major bump is what we say when the same field means something new, so a plugin built for 1.x cannot
+ * be interpreted by 2.x. A **newer minor or patch** is also refused: a plugin written against 1.3 may
+ * use contribution points a build implementing 1.2 has never heard of, and silently dropping them
+ * would install a plugin that half works. Older minors are fine, which is the whole point of a minor.
+ * @param declared The API version the manifest declares.
+ * @param supported The API version this build implements, defaulting to {@link PLUGIN_API_VERSION}.
+ * @returns Returns true when the manifest can be honoured.
+ */
+export function isApiCompatible(
+  declared: unknown,
+  supported: string = PLUGIN_API_VERSION,
+): boolean {
+  const wanted: [number, number, number] | null = parseVersion(declared);
+  const have: [number, number, number] | null = parseVersion(supported);
+  if (wanted === null || have === null) {
+    return false;
+  }
+  if (wanted[0] !== have[0]) {
+    return false;
+  }
+  return wanted[1] < have[1] || (wanted[1] === have[1] && wanted[2] <= have[2]);
+}
+
+/**
+ * Matches a lower-case hex SHA-256.
+ */
+const SHA256_PATTERN: RegExp = /^[0-9a-f]{64}$/;
+
+/**
+ * Matches the identifiers a plugin and its contributions may use: lower-case, digits, hyphens and
+ * dots. Deliberately narrow — an id reaches the file system as an install directory.
+ */
+const ID_PATTERN: RegExp = /^[a-z0-9][a-z0-9.-]*$/;
+
+/**
+ * The platform keys a manifest may publish downloads for, matching `${process.platform}-${arch}`.
+ */
+const PLATFORM_KEYS: readonly string[] = [
+  'darwin-arm64',
+  'darwin-x64',
+  'linux-x64',
+  'linux-arm64',
+  'win32-x64',
+];
+
+/**
+ * The archive kinds the provisioner can extract.
+ */
+const ARCHIVE_KINDS: readonly string[] = ['tar.gz', 'zip'];
+
+/**
+ * Describes one platform's download: where it comes from, what it must hash to, and what to run inside
+ * it once extracted.
+ */
+export interface ManifestDownload {
+  /**
+   * Gets the archive URL. Must be HTTPS: a plugin's payload is executable code, and fetching it over a
+   * channel that can be rewritten in flight would make the checksum the only defence.
+   */
+  readonly url: string;
+
+  /**
+   * Gets the expected lower-case hex SHA-256, verified before anything is extracted.
+   */
+  readonly sha256: string;
+
+  /**
+   * Gets the archive kind.
+   */
+  readonly archive: 'tar.gz' | 'zip';
+
+  /**
+   * Gets the executable or entry point's path within the extracted tree.
+   */
+  readonly executablePath: string;
+}
+
+/**
+ * Describes how a plugin's payload is obtained. One kind today; the discriminant exists so a second can
+ * be added without reinterpreting what is already published.
+ */
+export interface ManifestProvision {
+  /**
+   * Gets the provisioning kind.
+   */
+  readonly kind: 'archive';
+
+  /**
+   * Gets the per-platform downloads. A platform with no entry is one the plugin does not support, and
+   * the Plugin Manager reports it unsupported rather than offering an install that cannot work.
+   */
+  readonly downloads: Readonly<Record<string, ManifestDownload>>;
+}
+
+/**
+ * Describes how to start what a plugin contributes.
+ *
+ * `executable` runs the provisioned entry point directly. `node` runs it as JavaScript under the
+ * runtime Studio ships, so a plugin distributed as a JavaScript bundle needs no Node on the machine.
+ * Those are the only two shapes the first-party catalogue uses.
+ */
+export interface ManifestCommand {
+  /**
+   * Gets how the entry point is run.
+   */
+  readonly kind: 'executable' | 'node';
+
+  /**
+   * Gets the arguments passed to it, or undefined for none.
+   */
+  readonly args?: readonly string[];
+
+  /**
+   * Gets environment variables overlaid on the spawned process, or undefined for none.
+   */
+  readonly env?: Readonly<Record<string, string>>;
+}
+
+/**
+ * Describes a language server a plugin contributes. Keyed by language: a language served by more than
+ * one installed plugin is a choice the user makes.
+ */
+export interface ManifestLanguageServer {
+  /**
+   * Gets the identifier the server is registered under.
+   */
+  readonly id: string;
+
+  /**
+   * Gets the display name shown when choosing between servers.
+   */
+  readonly displayName: string;
+
+  /**
+   * Gets the language identifiers this server serves.
+   */
+  readonly languages: readonly string[];
+
+  /**
+   * Gets the priority used to pick a default among installed servers, higher first.
+   */
+  readonly priority: number;
+
+  /**
+   * Gets how to start the server.
+   */
+  readonly command: ManifestCommand;
+}
+
+/**
+ * Describes a debug adapter a plugin contributes. Keyed by language, like a language server.
+ */
+export interface ManifestDebugAdapter {
+  /**
+   * Gets the identifier the adapter is registered under.
+   */
+  readonly id: string;
+
+  /**
+   * Gets the display name shown when choosing between adapters.
+   */
+  readonly displayName: string;
+
+  /**
+   * Gets the languages this adapter debugs.
+   */
+  readonly languages: readonly string[];
+
+  /**
+   * Gets the priority used to pick a default among installed adapters, higher first.
+   */
+  readonly priority: number;
+
+  /**
+   * Gets how to start the adapter.
+   */
+  readonly command: ManifestCommand;
+
+  /**
+   * Gets how the adapter is spoken to, or undefined for the default of standard streams.
+   */
+  readonly transport?: 'stdio' | 'tcp-server';
+}
+
+/**
+ * The runtimes Studio knows how to detect, and therefore the only ones a manifest may require.
+ *
+ * Closed on purpose. A manifest can *declare* that it needs a Java runtime; it cannot teach Studio how
+ * to find one, because detection is code. Keeping the list closed is what lets a prerequisite be pure
+ * data without smuggling execution in behind it.
+ */
+export const KNOWN_RUNTIMES: readonly string[] = ['java', 'dotnet', 'go', 'node', 'python'];
+
+/**
+ * Describes a runtime a plugin needs before what it contributes can start.
+ *
+ * Declaring one makes the servers that were previously inexpressible describable — the Java and Kotlin
+ * servers need a JDK, the C# server needs the .NET SDK — without the manifest having to say how to find
+ * it. Studio detects the runtime; installing one on the user's behalf is later work.
+ */
+export interface ManifestRequirement {
+  /**
+   * Gets the runtime required, from {@link KNOWN_RUNTIMES}.
+   */
+  readonly runtime: string;
+
+  /**
+   * Gets the lowest acceptable version, or undefined when any will do.
+   */
+  readonly minimumVersion?: string;
+}
+
+/**
+ * What a plugin contributes. Every contribution point is optional, and a plugin contributing nothing is
+ * refused — it would install something that could never be used.
+ */
+export interface ManifestContributions {
+  /**
+   * Gets the language servers contributed.
+   */
+  readonly languageServers?: readonly ManifestLanguageServer[];
+
+  /**
+   * Gets the debug adapters contributed.
+   */
+  readonly debugAdapters?: readonly ManifestDebugAdapter[];
+}
+
+/**
+ * A validated plugin manifest.
+ */
+export interface PluginManifest {
+  /**
+   * Gets the plugin identifier, unique across installed plugins.
+   */
+  readonly id: string;
+
+  /**
+   * Gets the display name.
+   */
+  readonly name: string;
+
+  /**
+   * Gets the one-line description shown in the Plugin Manager.
+   */
+  readonly description: string;
+
+  /**
+   * Gets the plugin's own version, which scopes its install directory.
+   */
+  readonly version: string;
+
+  /**
+   * Gets the contribution API version the manifest was written against, as semver.
+   */
+  readonly apiVersion: string;
+
+  /**
+   * Gets how the plugin's payload is obtained.
+   */
+  readonly provision: ManifestProvision;
+
+  /**
+   * Gets what the plugin contributes.
+   */
+  readonly contributes: ManifestContributions;
+
+  /**
+   * Gets the runtimes that must be present before the plugin's contributions can start, or an empty
+   * list when it needs none.
+   */
+  readonly requires: readonly ManifestRequirement[];
+}
+
+/**
+ * Describes why a manifest was refused: which part of it, and what was wrong.
+ */
+export interface ManifestError {
+  /**
+   * Gets the dotted path of the offending field, for example `contributes.languageServers[0].id`.
+   */
+  readonly path: string;
+
+  /**
+   * Gets the human-readable reason.
+   */
+  readonly message: string;
+}
+
+/**
+ * The outcome of validating a manifest: the manifest when it is well-formed, otherwise every reason it
+ * is not. Every reason, rather than the first — a plugin author fixing one problem at a time through a
+ * loader that only reports one is a bad afternoon.
+ */
+export interface ManifestResult {
+  /**
+   * Gets the validated manifest, or null when it was refused.
+   */
+  readonly manifest: PluginManifest | null;
+
+  /**
+   * Gets the reasons it was refused, empty when it was accepted.
+   */
+  readonly errors: readonly ManifestError[];
+}
+
+/**
+ * Collects validation failures while walking an untrusted value.
+ */
+class Errors {
+  /**
+   * Holds the failures found so far.
+   */
+  public readonly items: ManifestError[] = [];
+
+  /**
+   * Records a failure.
+   * @param path The dotted path of the offending field.
+   * @param message The reason.
+   */
+  public add(path: string, message: string): void {
+    this.items.push({ path, message });
+  }
+}
+
+/**
+ * Reads a required string, recording a failure when it is absent or empty.
+ * @param source The object to read from.
+ * @param key The property name.
+ * @param path The dotted path for failures.
+ * @param errors The failure collector.
+ * @returns Returns the string, or an empty string when invalid.
+ */
+function readString(
+  source: Record<string, unknown>,
+  key: string,
+  path: string,
+  errors: Errors,
+): string {
+  const value: unknown = source[key];
+  if (typeof value !== 'string' || value.length === 0) {
+    errors.add(`${path}${key}`, 'must be a non-empty string');
+    return '';
+  }
+  return value;
+}
+
+/**
+ * Reads a required identifier, which must also be safe to use as a directory name.
+ * @param source The object to read from.
+ * @param key The property name.
+ * @param path The dotted path for failures.
+ * @param errors The failure collector.
+ * @returns Returns the identifier, or an empty string when invalid.
+ */
+function readId(
+  source: Record<string, unknown>,
+  key: string,
+  path: string,
+  errors: Errors,
+): string {
+  const value: string = readString(source, key, path, errors);
+  if (value.length > 0 && !ID_PATTERN.test(value)) {
+    errors.add(
+      `${path}${key}`,
+      'must be lower-case letters, digits, dots or hyphens, and start with a letter or digit',
+    );
+    return '';
+  }
+  return value;
+}
+
+/**
+ * Narrows an unknown value to a plain object, recording a failure when it is not one.
+ * @param value The value to narrow.
+ * @param path The dotted path for failures.
+ * @param errors The failure collector.
+ * @returns Returns the object, or null when the value is not one.
+ */
+function readObject(value: unknown, path: string, errors: Errors): Record<string, unknown> | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    errors.add(path, 'must be an object');
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+/**
+ * Validates a list of language identifiers.
+ * @param value The candidate list.
+ * @param path The dotted path for failures.
+ * @param errors The failure collector.
+ * @returns Returns the languages, or an empty list when invalid.
+ */
+function readLanguages(value: unknown, path: string, errors: Errors): readonly string[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    errors.add(path, 'must be a non-empty array of language identifiers');
+    return [];
+  }
+  if (!value.every((entry: unknown): boolean => typeof entry === 'string' && entry.length > 0)) {
+    errors.add(path, 'must contain only non-empty language identifiers');
+    return [];
+  }
+  return value as readonly string[];
+}
+
+/**
+ * Validates how something is started.
+ * @param value The candidate command.
+ * @param path The dotted path for failures.
+ * @param errors The failure collector.
+ * @returns Returns the command, or null when invalid.
+ */
+function readCommand(value: unknown, path: string, errors: Errors): ManifestCommand | null {
+  const source: Record<string, unknown> | null = readObject(value, path, errors);
+  if (source === null) {
+    return null;
+  }
+  const kind: unknown = source['kind'];
+  if (kind !== 'executable' && kind !== 'node') {
+    errors.add(`${path}.kind`, "must be 'executable' or 'node'");
+    return null;
+  }
+  const args: unknown = source['args'];
+  if (
+    args !== undefined &&
+    (!Array.isArray(args) || !args.every((a: unknown): boolean => typeof a === 'string'))
+  ) {
+    errors.add(`${path}.args`, 'must be an array of strings');
+    return null;
+  }
+  const env: unknown = source['env'];
+  if (env !== undefined) {
+    const table: Record<string, unknown> | null = readObject(env, `${path}.env`, errors);
+    if (table === null) {
+      return null;
+    }
+    if (!Object.values(table).every((v: unknown): boolean => typeof v === 'string')) {
+      errors.add(`${path}.env`, 'must map names to string values');
+      return null;
+    }
+  }
+  return {
+    kind,
+    args: args as readonly string[] | undefined,
+    env: env as Readonly<Record<string, string>> | undefined,
+  };
+}
+
+/**
+ * Validates one platform download.
+ * @param value The candidate download.
+ * @param path The dotted path for failures.
+ * @param errors The failure collector.
+ * @returns Returns the download, or null when invalid.
+ */
+function readDownload(value: unknown, path: string, errors: Errors): ManifestDownload | null {
+  const source: Record<string, unknown> | null = readObject(value, path, errors);
+  if (source === null) {
+    return null;
+  }
+  const url: string = readString(source, 'url', `${path}.`, errors);
+  if (url.length > 0 && !url.startsWith('https://')) {
+    errors.add(`${path}.url`, 'must be an https URL');
+  }
+  const sha256: string = readString(source, 'sha256', `${path}.`, errors);
+  if (sha256.length > 0 && !SHA256_PATTERN.test(sha256)) {
+    errors.add(`${path}.sha256`, 'must be a lower-case hex SHA-256');
+  }
+  const archive: unknown = source['archive'];
+  if (typeof archive !== 'string' || !ARCHIVE_KINDS.includes(archive)) {
+    errors.add(`${path}.archive`, `must be one of ${ARCHIVE_KINDS.join(', ')}`);
+  }
+  const executablePath: string = readString(source, 'executablePath', `${path}.`, errors);
+  if (executablePath.startsWith('/') || executablePath.includes('..')) {
+    errors.add(
+      `${path}.executablePath`,
+      'must be a relative path inside the archive, with no parent traversal',
+    );
+  }
+  return errors.items.length > 0
+    ? null
+    : { url, sha256, archive: archive as ManifestDownload['archive'], executablePath };
+}
+
+/**
+ * Validates how a plugin's payload is obtained.
+ * @param value The candidate provision.
+ * @param errors The failure collector.
+ * @returns Returns the provision, or null when invalid.
+ */
+function readProvision(value: unknown, errors: Errors): ManifestProvision | null {
+  const source: Record<string, unknown> | null = readObject(value, 'provision', errors);
+  if (source === null) {
+    return null;
+  }
+  if (source['kind'] !== 'archive') {
+    errors.add('provision.kind', "must be 'archive'");
+    return null;
+  }
+  const downloads: Record<string, unknown> | null = readObject(
+    source['downloads'],
+    'provision.downloads',
+    errors,
+  );
+  if (downloads === null) {
+    return null;
+  }
+  const entries: [string, unknown][] = Object.entries(downloads);
+  if (entries.length === 0) {
+    errors.add('provision.downloads', 'must publish at least one platform');
+    return null;
+  }
+  const parsed: Record<string, ManifestDownload> = {};
+  for (const [platform, download] of entries) {
+    if (!PLATFORM_KEYS.includes(platform)) {
+      errors.add(`provision.downloads.${platform}`, `is not a supported platform key`);
+      continue;
+    }
+    const result: ManifestDownload | null = readDownload(
+      download,
+      `provision.downloads.${platform}`,
+      errors,
+    );
+    if (result !== null) {
+      parsed[platform] = result;
+    }
+  }
+  return { kind: 'archive', downloads: parsed };
+}
+
+/**
+ * Validates the contributions, which must include at least one of something.
+ * @param value The candidate contributions.
+ * @param errors The failure collector.
+ * @returns Returns the contributions.
+ */
+function readContributions(value: unknown, errors: Errors): ManifestContributions {
+  const source: Record<string, unknown> | null = readObject(value, 'contributes', errors);
+  if (source === null) {
+    return {};
+  }
+  const languageServers: ManifestLanguageServer[] = [];
+  const debugAdapters: ManifestDebugAdapter[] = [];
+  readContributionList(
+    source['languageServers'],
+    'contributes.languageServers',
+    errors,
+    (entry: Record<string, unknown>, path: string): void => {
+      const command: ManifestCommand | null = readCommand(
+        entry['command'],
+        `${path}.command`,
+        errors,
+      );
+      languageServers.push({
+        id: readId(entry, 'id', `${path}.`, errors),
+        displayName: readString(entry, 'displayName', `${path}.`, errors),
+        languages: readLanguages(entry['languages'], `${path}.languages`, errors),
+        priority: readPriority(entry, path, errors),
+        command: command ?? { kind: 'executable' },
+      });
+    },
+  );
+  readContributionList(
+    source['debugAdapters'],
+    'contributes.debugAdapters',
+    errors,
+    (entry: Record<string, unknown>, path: string): void => {
+      const command: ManifestCommand | null = readCommand(
+        entry['command'],
+        `${path}.command`,
+        errors,
+      );
+      const transport: unknown = entry['transport'];
+      if (transport !== undefined && transport !== 'stdio' && transport !== 'tcp-server') {
+        errors.add(`${path}.transport`, "must be 'stdio' or 'tcp-server'");
+      }
+      debugAdapters.push({
+        id: readId(entry, 'id', `${path}.`, errors),
+        displayName: readString(entry, 'displayName', `${path}.`, errors),
+        languages: readLanguages(entry['languages'], `${path}.languages`, errors),
+        priority: readPriority(entry, path, errors),
+        command: command ?? { kind: 'executable' },
+        transport: transport as ManifestDebugAdapter['transport'],
+      });
+    },
+  );
+  if (languageServers.length === 0 && debugAdapters.length === 0) {
+    errors.add('contributes', 'must contribute at least one language server or debug adapter');
+  }
+  return { languageServers, debugAdapters };
+}
+
+/**
+ * Reads a contribution priority, which decides the default among installed implementations.
+ * @param entry The contribution object.
+ * @param path The dotted path for failures.
+ * @param errors The failure collector.
+ * @returns Returns the priority, defaulting to 100.
+ */
+function readPriority(entry: Record<string, unknown>, path: string, errors: Errors): number {
+  const value: unknown = entry['priority'];
+  if (value === undefined) {
+    return 100;
+  }
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    errors.add(`${path}.priority`, 'must be a number');
+    return 100;
+  }
+  return value;
+}
+
+/**
+ * Walks an optional list of contributions, validating each entry is an object before handing it on.
+ * @param value The candidate list.
+ * @param path The dotted path for failures.
+ * @param errors The failure collector.
+ * @param read Reads one validated entry.
+ */
+function readContributionList(
+  value: unknown,
+  path: string,
+  errors: Errors,
+  read: (entry: Record<string, unknown>, path: string) => void,
+): void {
+  if (value === undefined) {
+    return;
+  }
+  if (!Array.isArray(value)) {
+    errors.add(path, 'must be an array');
+    return;
+  }
+  value.forEach((entry: unknown, index: number): void => {
+    const source: Record<string, unknown> | null = readObject(entry, `${path}[${index}]`, errors);
+    if (source !== null) {
+      read(source, `${path}[${index}]`);
+    }
+  });
+}
+
+/**
+ * Validates the runtime prerequisites.
+ * @param value The candidate list.
+ * @param errors The failure collector.
+ * @returns Returns the requirements, empty when none are declared.
+ */
+function readRequirements(value: unknown, errors: Errors): readonly ManifestRequirement[] {
+  if (value === undefined) {
+    return [];
+  }
+  if (!Array.isArray(value)) {
+    errors.add('requires', 'must be an array');
+    return [];
+  }
+  const parsed: ManifestRequirement[] = [];
+  value.forEach((entry: unknown, index: number): void => {
+    const path: string = `requires[${index}]`;
+    const source: Record<string, unknown> | null = readObject(entry, path, errors);
+    if (source === null) {
+      return;
+    }
+    const runtime: unknown = source['runtime'];
+    if (typeof runtime !== 'string' || !KNOWN_RUNTIMES.includes(runtime)) {
+      errors.add(`${path}.runtime`, `must be one of ${KNOWN_RUNTIMES.join(', ')}`);
+      return;
+    }
+    const minimumVersion: unknown = source['minimumVersion'];
+    if (minimumVersion !== undefined && typeof minimumVersion !== 'string') {
+      errors.add(`${path}.minimumVersion`, 'must be a version string');
+      return;
+    }
+    parsed.push({ runtime, minimumVersion });
+  });
+  return parsed;
+}
+
+/**
+ * Validates an untrusted value as a plugin manifest.
+ *
+ * Refuses rather than repairs. A manifest describes code that will be downloaded and executed, so a
+ * field that is not exactly what it should be is a reason to stop, not to guess — and every reason is
+ * reported at once so an author can fix them in one pass.
+ * @param value The parsed JSON to validate.
+ * @returns Returns the manifest, or the reasons it was refused.
+ */
+export function parsePluginManifest(value: unknown): ManifestResult {
+  const errors: Errors = new Errors();
+  const source: Record<string, unknown> | null = readObject(value, 'manifest', errors);
+  if (source === null) {
+    return { manifest: null, errors: errors.items };
+  }
+  const apiVersion: unknown = source['apiVersion'];
+  if (!isApiCompatible(apiVersion)) {
+    errors.add(
+      'apiVersion',
+      `must be a semver this build can honour; it implements ${PLUGIN_API_VERSION}`,
+    );
+    return { manifest: null, errors: errors.items };
+  }
+  const id: string = readId(source, 'id', '', errors);
+  const name: string = readString(source, 'name', '', errors);
+  const description: string = readString(source, 'description', '', errors);
+  const version: string = readString(source, 'version', '', errors);
+  const contributes: ManifestContributions = readContributions(source['contributes'], errors);
+  const requires: readonly ManifestRequirement[] = readRequirements(source['requires'], errors);
+  const provision: ManifestProvision | null = readProvision(source['provision'], errors);
+  if (errors.items.length > 0 || provision === null) {
+    return { manifest: null, errors: errors.items };
+  }
+  return {
+    manifest: {
+      id,
+      name,
+      description,
+      version,
+      apiVersion: apiVersion as string,
+      provision,
+      contributes,
+      requires,
+    },
+    errors: [],
+  };
+}

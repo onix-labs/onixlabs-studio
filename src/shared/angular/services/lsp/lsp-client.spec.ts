@@ -208,6 +208,7 @@ describe('LspClient', () => {
   let root: WritableSignal<DirectoryListing | null>;
   let disabledServers: Set<string>;
   let offeredLanguages: string[];
+  let installedServers: WritableSignal<readonly LspServerSummary[]>;
 
   /**
    * Builds the client under test with the fakes wired in.
@@ -235,10 +236,10 @@ describe('LspClient', () => {
             // The catalogue the real service loads from the main process, stubbed to the servers these
             // tests exercise: the client asks which server serves a language rather than knowing.
             serverForLanguage: (language: string): string | null =>
-              CATALOGUE.find((server: LspServerSummary): boolean =>
+              installedServers().find((server: LspServerSummary): boolean =>
                 server.languages.includes(language),
               )?.id ?? null,
-            catalogue: (): readonly LspServerSummary[] => CATALOGUE,
+            catalogue: (): readonly LspServerSummary[] => installedServers(),
             ready: Promise.resolve(),
           },
         },
@@ -256,6 +257,7 @@ describe('LspClient', () => {
     monaco = new FakeMonaco();
     disabledServers = new Set<string>();
     offeredLanguages = [];
+    installedServers = signal<readonly LspServerSummary[]>(CATALOGUE);
     root = signal<DirectoryListing | null>({ path: '/root', name: 'root', entries: [] });
     (window as unknown as { bridge: Bridge }).bridge = lsp;
   });
@@ -921,5 +923,46 @@ describe('LspClient', () => {
     await flush();
 
     expect(offeredLanguages).toEqual([]);
+  });
+
+  it('uninstallingAServer_stopsTheSessionItWasServing', async () => {
+    // Uninstalling a language server should stop it, not leave it serving until the window is next
+    // reopened. A plugin removed from the sideload directory is the same situation arriving another way.
+    const client: LspClient = build();
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/root/a.ts',
+      languageId: 'typescript',
+      content: 'const a = 1;',
+    });
+    await flush();
+    expect(lsp.starts).toHaveLength(1);
+
+    installedServers.set(
+      CATALOGUE.filter((server: LspServerSummary): boolean => server.id !== 'typescript'),
+    );
+    TestBed.tick();
+    await flush();
+
+    expect(lsp.stops).toContain('/root::typescript');
+  });
+
+  it('anEmptyCatalogue_doesNotStopEverything', async () => {
+    // Empty means "not loaded yet", not "everything was uninstalled"; tearing down on it would kill
+    // every session at startup.
+    const client: LspClient = build();
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/root/a.ts',
+      languageId: 'typescript',
+      content: 'const a = 1;',
+    });
+    await flush();
+
+    installedServers.set([]);
+    TestBed.tick();
+    await flush();
+
+    expect(lsp.stops).toEqual([]);
   });
 });
