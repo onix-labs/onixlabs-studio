@@ -5,7 +5,9 @@ import {
   inject,
   input,
   InputSignal,
+  signal,
   Signal,
+  WritableSignal,
 } from '@angular/core';
 import { PluginContribution, PluginSlot, PluginSummary } from '@shared/api/plugin-channels';
 import { Icon } from '@shared/angular/icons/icon';
@@ -14,6 +16,7 @@ import { Button } from '@shared/angular/components/forms/button/button';
 import { Table, TableColumn, TableRow, TableRowDef } from '@shared/angular/components/table/table';
 import { languageDisplayName } from '@shared/angular/services/plugins/language-names';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
+import { PluginConsentModal } from '../plugin-consent-modal/plugin-consent-modal';
 
 /**
  * The plugin table's columns.
@@ -46,7 +49,7 @@ const SLOT_LABELS: Readonly<Record<PluginSlot, string>> = {
  */
 @Component({
   selector: 'app-plugin-manager-view',
-  imports: [Button, AppIcon, Table, TableRowDef],
+  imports: [Button, AppIcon, Table, TableRowDef, PluginConsentModal],
   templateUrl: './plugin-manager-view.html',
   styleUrl: './plugin-manager-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -180,10 +183,40 @@ export class PluginManagerView {
   }
 
   /**
-   * Installs a plugin.
+   * Holds the plugin awaiting the user's acceptance, or null when nothing is being asked.
+   */
+  protected readonly pendingConsent: WritableSignal<PluginSummary | null> =
+    signal<PluginSummary | null>(null);
+
+  /**
+   * Asks for consent before installing.
+   *
+   * Verification proves a payload has not been *tampered with*; it has never claimed the code is good,
+   * and for a dependency tree the code arrives from many more people than the one named on the entry.
+   * That residual risk is the user's to accept, so it is put in front of them rather than assumed.
    * @param plugin The plugin to install.
    */
   protected install(plugin: PluginSummary): void {
+    this.pendingConsent.set(plugin);
+  }
+
+  /**
+   * Abandons the install. Consent was not given, so nothing is fetched and nothing is written.
+   */
+  protected declineConsent(): void {
+    this.pendingConsent.set(null);
+  }
+
+  /**
+   * Accepts the terms and installs. The version installed is recorded, which is what a later update
+   * has to be measured against before it can arrive without being asked for.
+   */
+  protected acceptConsent(): void {
+    const plugin: PluginSummary | null = this.pendingConsent();
+    if (plugin === null) {
+      return;
+    }
+    this.pendingConsent.set(null);
     void this.plugins.install(plugin.id);
   }
 

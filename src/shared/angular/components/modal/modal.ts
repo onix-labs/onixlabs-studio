@@ -461,7 +461,10 @@ export class Modal implements OnDestroy {
       available * MAX_WINDOW_FRACTION,
     );
     const floor: number = minimum === undefined ? 0 : minimum * rem;
-    return Math.round(Math.max(floor, Math.min(value, ceiling)));
+    // Rounded up, not to nearest. A window is given whole pixels, and rounding a fractional content
+    // height *down* is how a dialog ends up one pixel short of what it holds — a scrollbar over a gap
+    // too small to see. Overshooting by a fraction of a pixel costs nothing and cannot scroll.
+    return Math.ceil(Math.max(floor, Math.min(value, ceiling)));
   }
 
   /**

@@ -24,6 +24,7 @@ function plugin(id: string, languages: readonly string[], state: PluginState): P
     contributions: [{ slot: 'language-server', id, displayName: id, languages, priority: 100 }],
     version: '1.0.0',
     detail: null,
+    origin: null,
   };
 }
 

@@ -11,7 +11,7 @@ import {
   parsePluginManifest,
   PluginManifest,
 } from '@shared/api/plugin-manifest';
-import { PluginContribution } from '@shared/api/plugin-channels';
+import { PluginContribution, PluginOrigin } from '@shared/api/plugin-channels';
 import { logger } from '../../logger';
 import {
   LanguageServerContext,
@@ -22,9 +22,14 @@ import {
 } from '../../lsp/language-server-descriptor';
 import { DebugAdapterCatalogueEntry, DebugAdapterSpec } from '../../debug/debug-adapter-registry';
 import { ArchiveDownload, ArchiveProvision } from '../../provisioning/archive-provision';
-import { LockfileProvision } from '../../provisioning/lockfile-provision';
+import {
+  LockfilePackage,
+  LockfileProvision,
+  parseLockfileDocument,
+} from '../../provisioning/lockfile-provision';
 import { LspProvisioner } from '../../lsp/lsp-provisioner';
 import { PluginContext, PluginDescriptor } from './plugin-catalogue';
+import { bundledLockfile } from './bundled-lockfiles';
 
 /**
  * The file a sideloaded plugin is described by, inside its own directory.
@@ -193,6 +198,63 @@ export interface PayloadOps {
 }
 
 /**
+ * Gets the host of a URL, or null when it cannot be read as one.
+ * @param url The URL.
+ * @returns Returns the host, or null.
+ */
+function hostOf(url: string): string | null {
+  try {
+    return new URL(url).host;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Describes where a manifest's payload is fetched from, for the consent step.
+ *
+ * Read off the pinned URLs rather than taken from anything the manifest asserts about itself. For an
+ * npm provision the package count is the whole tree, which is the number worth showing: the entry
+ * names one publisher, and a dependency tree is written by many more people than that.
+ *
+ * The count comes from the lockfile compiled into the application, because this is answered
+ * synchronously while listing plugins and must never trigger a download. A plugin whose lockfile is
+ * only published reports no count rather than a wrong one.
+ * @param manifest The validated manifest.
+ * @param bundled Resolves a compiled-in lockfile for a URL.
+ * @returns Returns the origin, or undefined when it cannot be described.
+ */
+export function toOrigin(
+  manifest: PluginManifest,
+  bundled: (url: string) => unknown = (): null => null,
+): PluginOrigin | undefined {
+  if (manifest.provision.kind === 'archive') {
+    const hosts: string[] = [];
+    for (const download of Object.values(manifest.provision.downloads)) {
+      const host: string | null = hostOf(download.url);
+      if (host !== null && !hosts.includes(host)) {
+        hosts.push(host);
+      }
+    }
+    return { hosts, packageCount: 1 };
+  }
+  const packages: readonly LockfilePackage[] | null = parseLockfileDocument(
+    bundled(manifest.provision.lockfileUrl),
+  );
+  if (packages === null) {
+    return undefined;
+  }
+  const hosts: string[] = [];
+  for (const entry of packages) {
+    const host: string | null = hostOf(entry.url);
+    if (host !== null && !hosts.includes(host)) {
+      hosts.push(host);
+    }
+  }
+  return { hosts, packageCount: packages.length };
+}
+
+/**
  * Binds a manifest's provisioning to the provisioner calls that serve it.
  * @param manifest The validated manifest.
  * @returns Returns the operations for the manifest's provisioning kind.
@@ -293,6 +355,7 @@ export function toPluginDescriptor(manifest: PluginManifest): PluginDescriptor {
     version: manifest.version,
     contributions: toContributions(manifest),
     detail: toDetail(manifest),
+    origin: toOrigin(manifest, bundledLockfile),
     supported: (context: PluginContext): boolean => ops.target(context.provisioner) !== null,
     detect: (context: PluginContext): Promise<boolean> =>
       Promise.resolve(ops.isInstalled(context.provisioner)),

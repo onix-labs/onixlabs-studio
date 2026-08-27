@@ -20,6 +20,7 @@ function plugin(id: string, state: PluginSummary['state']): PluginSummary {
     ],
     version: '1.0.0',
     detail: null,
+    origin: null,
   };
 }
 

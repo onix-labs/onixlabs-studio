@@ -154,6 +154,7 @@ export class PluginManager {
       contributions: descriptor.contributions,
       version: descriptor.version,
       detail: state === 'installed' ? null : (descriptor.detail ?? null),
+      origin: descriptor.origin ?? null,
     };
   }
 

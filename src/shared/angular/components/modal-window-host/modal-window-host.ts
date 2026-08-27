@@ -118,6 +118,12 @@ export class ModalWindowHost {
       style === null
         ? 0
         : Number.parseFloat(style.paddingBlockStart) + Number.parseFloat(style.paddingBlockEnd);
-    return Math.ceil(content.scrollHeight + (Number.isFinite(padding) ? padding : 0));
+    // `scrollHeight` is an integer, rounded from a layout height that rarely is one: a column of rem
+    // gaps and unrounded line heights lands on a fraction, and a measurement rounded *down* leaves the
+    // panel a sliver short and scrolling. The bounding rect keeps the fraction, so the ceiling below
+    // has something to round up. Both are consulted because they answer different questions — the rect
+    // is this box, `scrollHeight` also covers a child that overflows it — and the larger must fit.
+    const natural: number = Math.max(content.scrollHeight, content.getBoundingClientRect().height);
+    return Math.ceil(natural + (Number.isFinite(padding) ? padding : 0));
   }
 }
