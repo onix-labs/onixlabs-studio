@@ -53,6 +53,26 @@ function manifest(overrides: Record<string, unknown> = {}): Record<string, unkno
 }
 
 /**
+ * Builds a well-formed npm-provisioned manifest, modelled on the server the approach was proven
+ * against (#446), which tests then break in one place at a time.
+ * @param provision Fields to replace on the provision.
+ * @returns Returns the manifest as untrusted JSON would arrive.
+ */
+function npmManifest(provision: Record<string, unknown> = {}): Record<string, unknown> {
+  return manifest({
+    id: 'dockerfile-language-server',
+    name: 'Dockerfile Language Server',
+    provision: {
+      kind: 'npm',
+      lockfileUrl: 'https://example.com/dockerfile-language-server.lock.json',
+      sha256: 'b'.repeat(64),
+      executablePath: 'node_modules/dockerfile-language-server-nodejs/bin/docker-langserver',
+      ...provision,
+    },
+  });
+}
+
+/**
  * Gets the paths of the reported failures.
  * @param result The validation result.
  * @returns Returns the failure paths.
@@ -69,6 +89,21 @@ describe('parsePluginManifest', () => {
       expect(result.errors).toEqual([]);
       expect(result.manifest?.id).toBe('ty');
       expect(result.manifest?.contributes.languageServers?.[0]?.command.args).toEqual(['server']);
+    });
+
+    it('anNpmProvisionCarryingNoPlatformMap', () => {
+      // Unlike an archive, one lockfile describes the tree everywhere and platform variation lives
+      // inside it, so a `downloads` key here is not merely optional but meaningless — and must not be
+      // quietly required by validation copied from the archive path.
+      const result: ManifestResult = parsePluginManifest(npmManifest());
+
+      expect(result.errors).toEqual([]);
+      expect(result.manifest?.provision.kind).toBe('npm');
+      expect(result.manifest?.provision).toMatchObject({
+        lockfileUrl: 'https://example.com/dockerfile-language-server.lock.json',
+        sha256: 'b'.repeat(64),
+        executablePath: 'node_modules/dockerfile-language-server-nodejs/bin/docker-langserver',
+      });
     });
 
     it('aManifestWithNoDetail', () => {
@@ -277,13 +312,56 @@ describe('parsePluginManifest', () => {
     });
 
     it('anUnknownProvisioningKind', () => {
-      // The kinds Studio cannot express declaratively — a source build, a pip or npm install — are
-      // refused rather than half-understood.
+      // The kinds Studio cannot express declaratively — a source build, a pip install into a managed
+      // environment — are refused rather than half-understood.
       const result: ManifestResult = parsePluginManifest(
         manifest({ provision: { kind: 'pip', package: 'debugpy' } }),
       );
 
       expect(paths(result)).toEqual(['provision.kind']);
+    });
+
+    it('anNpmProvisionWithANonHttpsLockfileUrl', () => {
+      // The lockfile decides which tarballs are fetched, so a channel that can be rewritten in flight
+      // would make its checksum the only defence.
+      const result: ManifestResult = parsePluginManifest(
+        npmManifest({ lockfileUrl: 'http://example.com/server.lock.json' }),
+      );
+
+      expect(result.manifest).toBeNull();
+      expect(paths(result)).toContain('provision.lockfileUrl');
+    });
+
+    it('anNpmProvisionWithAMalformedLockfileChecksum', () => {
+      const result: ManifestResult = parsePluginManifest(npmManifest({ sha256: 'NOTAHASH' }));
+
+      expect(result.manifest).toBeNull();
+      expect(paths(result)).toContain('provision.sha256');
+    });
+
+    it('anNpmProvisionWithNoLockfileUrl', () => {
+      const result: ManifestResult = parsePluginManifest(npmManifest({ lockfileUrl: undefined }));
+
+      expect(result.manifest).toBeNull();
+      expect(paths(result)).toContain('provision.lockfileUrl');
+    });
+
+    it('anNpmProvisionWhoseEntryPointEscapesTheTree', () => {
+      const result: ManifestResult = parsePluginManifest(
+        npmManifest({ executablePath: '../../../etc/passwd' }),
+      );
+
+      expect(result.manifest).toBeNull();
+      expect(paths(result)).toContain('provision.executablePath');
+    });
+
+    it('anNpmProvisionWhoseEntryPointIsAbsolute', () => {
+      const result: ManifestResult = parsePluginManifest(
+        npmManifest({ executablePath: '/usr/local/bin/docker-langserver' }),
+      );
+
+      expect(result.manifest).toBeNull();
+      expect(paths(result)).toContain('provision.executablePath');
     });
 
     it('aCommandKindThatIsNotOneOfTheTwoShapes', () => {
@@ -393,6 +471,23 @@ describe('parsePluginManifest', () => {
   describe('API compatibility', () => {
     it('acceptsTheExactVersionTheBuildImplements', () => {
       expect(isApiCompatible('1.2.3', '1.2.3')).toBe(true);
+    });
+
+    it('theNpmKindArrivedIn_1_2_0', () => {
+      // The bump is the promise. A build implementing 1.1.0 has never heard of an npm provision, so it
+      // must decline the whole manifest rather than parse the parts it recognises and install a plugin
+      // that half works.
+      expect(isApiCompatible('1.2.0', '1.1.0')).toBe(false);
+      expect(isApiCompatible('1.2.0', PLUGIN_API_VERSION)).toBe(true);
+    });
+
+    it('everyArchiveManifestStillMeansWhatItMeant', () => {
+      // The evidence that 1.2.0 only adds: a 1.1.0 manifest, unchanged, still validates against the
+      // build that implements 1.2.0.
+      const result: ManifestResult = parsePluginManifest(manifest({ apiVersion: '1.1.0' }));
+
+      expect(result.errors).toEqual([]);
+      expect(result.manifest?.provision.kind).toBe('archive');
     });
 
     it('acceptsAnOlderMinorOrPatch', () => {

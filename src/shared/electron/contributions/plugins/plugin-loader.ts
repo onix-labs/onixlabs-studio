@@ -123,10 +123,18 @@ export function validManifests(plugins: readonly LoadedPlugin[]): readonly Plugi
  * Turns a manifest's provisioning into the recipe the archive provisioner installs from. The shapes
  * are deliberately the same: the manifest format was derived from this recipe, so a contributed plugin
  * installs through exactly the same path as a first-party one.
+ *
+ * Returns null for an `npm` provision, which names a dependency tree rather than an archive and is
+ * installed by the reifier in #450. Until that lands, such a plugin reports itself unsupported and not
+ * installed — the same degradation as a plugin whose platform is not published, rather than an install
+ * that half works.
  * @param manifest The validated manifest.
- * @returns Returns the provisioning recipe.
+ * @returns Returns the provisioning recipe, or null when the plugin is not archive-provisioned.
  */
-export function toProvision(manifest: PluginManifest): ArchiveProvision {
+export function toProvision(manifest: PluginManifest): ArchiveProvision | null {
+  if (manifest.provision.kind !== 'archive') {
+    return null;
+  }
   const downloads: Record<string, ArchiveDownload> = {};
   for (const [platform, download] of Object.entries(manifest.provision.downloads)) {
     const source: ManifestDownload = download;
@@ -199,7 +207,7 @@ export function toDetail(manifest: PluginManifest): string | undefined {
  * @returns Returns the descriptor.
  */
 export function toPluginDescriptor(manifest: PluginManifest): PluginDescriptor {
-  const provision: ArchiveProvision = toProvision(manifest);
+  const provision: ArchiveProvision | null = toProvision(manifest);
   return {
     id: manifest.id,
     name: manifest.name,
@@ -208,13 +216,13 @@ export function toPluginDescriptor(manifest: PluginManifest): PluginDescriptor {
     contributions: toContributions(manifest),
     detail: toDetail(manifest),
     supported: (context: PluginContext): boolean =>
-      context.provisioner.archiveTarget(provision) !== null,
+      provision !== null && context.provisioner.archiveTarget(provision) !== null,
     detect: (context: PluginContext): Promise<boolean> =>
-      Promise.resolve(context.provisioner.isArchiveInstalled(provision)),
+      Promise.resolve(provision !== null && context.provisioner.isArchiveInstalled(provision)),
     install: (context: PluginContext): Promise<string | null> =>
-      context.provisioner.ensureArchive(provision),
+      provision === null ? Promise.resolve(null) : context.provisioner.ensureArchive(provision),
     uninstall: (context: PluginContext): Promise<void> =>
-      context.provisioner.removeArchive(provision),
+      provision === null ? Promise.resolve() : context.provisioner.removeArchive(provision),
   };
 }
 
@@ -248,7 +256,7 @@ function toSpec(
 export function toLanguageServerDescriptors(
   manifest: PluginManifest,
 ): readonly LanguageServerDescriptor[] {
-  const provision: ArchiveProvision = toProvision(manifest);
+  const provision: ArchiveProvision | null = toProvision(manifest);
   return (manifest.contributes.languageServers ?? []).map(
     (server: ManifestLanguageServer): LanguageServerDescriptor => ({
       id: server.id,
@@ -256,7 +264,8 @@ export function toLanguageServerDescriptors(
       languages: server.languages,
       priority: server.priority,
       resolve: (context: LanguageServerContext): LspResolution => {
-        const entryPoint: string | null = context.installedPath(provision);
+        const entryPoint: string | null =
+          provision === null ? null : context.installedPath(provision);
         return entryPoint === null
           ? unavailable(`${server.displayName} is not installed — install it in Plugins.`)
           : toSpec(server.command, entryPoint, context);
@@ -279,7 +288,7 @@ export function toDebugAdapterEntries(
   manifest: PluginManifest,
   installedPath: (provision: ArchiveProvision) => string | null,
 ): readonly DebugAdapterCatalogueEntry[] {
-  const provision: ArchiveProvision = toProvision(manifest);
+  const provision: ArchiveProvision | null = toProvision(manifest);
   return (manifest.contributes.debugAdapters ?? []).map(
     (adapter: ManifestDebugAdapter): DebugAdapterCatalogueEntry => ({
       id: adapter.id,
@@ -289,7 +298,8 @@ export function toDebugAdapterEntries(
       binary: adapter.id,
       languages: adapter.languages,
       priority: adapter.priority,
-      locate: (): Promise<string | null> => Promise.resolve(installedPath(provision)),
+      locate: (): Promise<string | null> =>
+        Promise.resolve(provision === null ? null : installedPath(provision)),
       buildSpec: (entryPoint: string): DebugAdapterSpec =>
         adapter.command.kind === 'node'
           ? {

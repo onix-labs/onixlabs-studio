@@ -144,12 +144,38 @@ describe('plugin loader', () => {
   describe('toProvision', () => {
     it('carriesEveryPlatformThroughUnchanged', () => {
       writePlugin('zls', manifest());
-      const provision: ArchiveProvision = toProvision(validManifests(discoverPlugins(root))[0]);
+      const provision: ArchiveProvision | null = toProvision(
+        validManifests(discoverPlugins(root))[0],
+      );
 
-      expect(provision.id).toBe('zls');
-      expect(provision.version).toBe('0.14.0');
-      expect(Object.keys(provision.downloads).sort()).toEqual(['darwin-arm64', 'darwin-x64']);
-      expect(provision.downloads['darwin-arm64']?.executablePath).toBe('zls');
+      expect(provision).not.toBeNull();
+      expect(provision?.id).toBe('zls');
+      expect(provision?.version).toBe('0.14.0');
+      expect(Object.keys(provision?.downloads ?? {}).sort()).toEqual([
+        'darwin-arm64',
+        'darwin-x64',
+      ]);
+      expect(provision?.downloads['darwin-arm64']?.executablePath).toBe('zls');
+    });
+
+    it('hasNoArchiveRecipeForAnNpmProvision', () => {
+      // An npm provision names a dependency tree, which the reifier installs (#450); there is no
+      // archive to hand the archive provisioner. Until then the plugin degrades to unsupported and not
+      // installed, which is the same shape as a platform the plugin does not publish.
+      writePlugin(
+        'dockerfile',
+        manifest({
+          id: 'dockerfile',
+          provision: {
+            kind: 'npm',
+            lockfileUrl: 'https://example.com/dockerfile.lock.json',
+            sha256: 'd'.repeat(64),
+            executablePath: 'node_modules/dockerfile-language-server-nodejs/bin/docker-langserver',
+          },
+        }),
+      );
+
+      expect(toProvision(validManifests(discoverPlugins(root))[0])).toBeNull();
     });
   });
 
