@@ -136,7 +136,7 @@ describe('LanguageServerSettings', () => {
   it('languageWithAToolPath_showsIt', async () => {
     installed = { cpp: [server('clangd', ['cpp', 'c'])] };
     selection = { cpp: 'clangd' };
-    const element: HTMLElement = await render('cpp', 'C / C++');
+    const element: HTMLElement = await render('cpp', 'C++');
 
     expect(element.textContent).toContain('Custom clangd path');
     const fields: NodeListOf<HTMLInputElement> = element.querySelectorAll('app-text-field input');

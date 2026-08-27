@@ -75,6 +75,13 @@ export class PluginManager {
     if (descriptor === undefined) {
       return { success: false, state: 'unavailable', error: `Unknown plugin: ${id}` };
     }
+    if (descriptor.supported?.(this.context) === false) {
+      return {
+        success: false,
+        state: 'unavailable',
+        error: `${descriptor.name} publishes no build for this platform.`,
+      };
+    }
     if (this.busy.has(id)) {
       return { success: false, state: 'busy', error: `${descriptor.name} is already installing.` };
     }
@@ -160,6 +167,9 @@ export class PluginManager {
   private async stateOf(descriptor: PluginDescriptor): Promise<PluginState> {
     if (this.busy.has(descriptor.id)) {
       return 'busy';
+    }
+    if (descriptor.supported?.(this.context) === false) {
+      return 'unavailable';
     }
     if (await descriptor.detect(this.context)) {
       return 'installed';

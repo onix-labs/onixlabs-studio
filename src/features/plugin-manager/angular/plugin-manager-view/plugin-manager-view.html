@@ -9,13 +9,6 @@
         same thing, choose between them in Settings.
       </p>
     </div>
-    <app-button
-      variant="outline"
-      [icon]="Icon.REFRESH"
-      label="Refresh"
-      [disabled]="busy()"
-      (click)="refresh()"
-    />
   </header>
 
   @if (error(); as message) {
@@ -40,6 +33,7 @@
         }
       </td>
       <td class="plugin-manager__provides">{{ provides(plugin(row)) }}</td>
+      <td class="plugin-manager__provides">{{ languages(plugin(row)) }}</td>
       <td class="plugin-manager__version">{{ plugin(row).version }}</td>
       <td>
         <span

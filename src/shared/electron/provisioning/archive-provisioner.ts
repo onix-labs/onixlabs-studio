@@ -147,6 +147,11 @@ export class ArchiveProvisioner {
     }
     logger.info(this.logName, `Removing provisioned directory ${directory}`);
     await fs.rm(directory, { recursive: true, force: true });
+    // Prune the version and id directories the platform directory sat under, so uninstalling does not
+    // leave a skeleton of empty folders behind. `rmdir` refuses a non-empty directory, which is exactly
+    // the wanted behaviour when another platform or version is still installed.
+    await fs.rmdir(path.dirname(directory)).catch((): void => undefined);
+    await fs.rmdir(path.dirname(path.dirname(directory))).catch((): void => undefined);
     this.installs.delete(`${provision.id} ${provision.version} ${platformKey()}`);
   }
 

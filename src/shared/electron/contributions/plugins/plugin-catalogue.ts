@@ -12,7 +12,10 @@ import {
 } from '../../debug/debugpy-install';
 import {
   CLANGD_PROVISION,
+  LUA_PROVISION,
+  PERLNAVIGATOR_PROVISION,
   PYRIGHT_PROVISION,
+  SQLS_PROVISION,
   TY_PROVISION,
   TYPESCRIPT_SERVER_PROVISION,
 } from '../../lsp/language-server-downloads';
@@ -90,6 +93,15 @@ export interface PluginDescriptor {
   readonly detail?: string;
 
   /**
+   * Gets whether the plugin can be installed on this machine at all. A plugin whose publisher ships no
+   * build for this platform is not "not installed yet" — it is not on offer, and an Install button that
+   * could only ever fail is worse than none. Absent means always installable.
+   * @param context The surface the descriptor reaches the application through.
+   * @returns Returns true when this platform is supported.
+   */
+  supported?(context: PluginContext): boolean;
+
+  /**
    * Detects whether the plugin is installed, **without installing anything**. A detection that could
    * trigger a download would turn opening the Plugin Manager into an unasked-for install.
    * @param context The surface the descriptor reaches the application through.
@@ -155,6 +167,8 @@ function archivePlugin(
     version: provision.version,
     contributions,
     detail,
+    supported: (context: PluginContext): boolean =>
+      context.provisioner.archiveTarget(provision) !== null,
     detect: (context: PluginContext): Promise<boolean> =>
       Promise.resolve(context.provisioner.isArchiveInstalled(provision)),
     install: (context: PluginContext): Promise<string | null> =>
@@ -260,6 +274,28 @@ export function pluginCatalogue(): readonly PluginDescriptor[] {
       [languageServer('clangd', 'clangd', ['cpp', 'c'], 100)],
       'A large download — it carries the Clang toolchain headers.',
     ),
+    archivePlugin(
+      'lua-language-server',
+      'Lua Language Server',
+      'Lua language support, from the sumneko project.',
+      LUA_PROVISION,
+      [languageServer('lua-language-server', 'Lua Language Server', ['lua'], 100)],
+    ),
+    archivePlugin(
+      'sqls',
+      'sqls',
+      'SQL language support: completion, formatting and query execution.',
+      SQLS_PROVISION,
+      [languageServer('sqls', 'sqls', ['sql'], 100)],
+      'Configure a database connection to get schema-aware completion.',
+    ),
+    archivePlugin(
+      'perlnavigator',
+      'Perl Navigator',
+      'Perl language support: diagnostics, completion and navigation.',
+      PERLNAVIGATOR_PROVISION,
+      [languageServer('perlnavigator', 'Perl Navigator', ['perl'], 100)],
+    ),
     {
       id: 'rust-analyzer',
       name: 'rust-analyzer',
@@ -328,8 +364,12 @@ export function pluginCatalogue(): readonly PluginDescriptor[] {
         const go: string | null = await context.provisioner.detectGo(null);
         return go === null ? null : context.provisioner.ensureGopls(go);
       },
-      uninstall: (context: PluginContext): Promise<void> =>
-        context.provisioner.removeProvisioned('gopls', GOPLS_VERSION),
+      uninstall: async (context: PluginContext): Promise<void> => {
+        await context.provisioner.removeProvisioned('gopls', GOPLS_VERSION);
+        // gopls is built rather than downloaded, so removing the binary leaves the module cache and
+        // compiled objects it was built from behind.
+        await context.provisioner.removeGoBuildCache();
+      },
     },
     {
       id: 'debugpy',
