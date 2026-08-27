@@ -100,6 +100,19 @@ const LANGUAGE_NAMES: Readonly<Record<string, string>> = {
 };
 
 /**
+ * Maps whole file names to languages, for the files whose name *is* their type.
+ *
+ * An extension map cannot describe these: `Dockerfile` and `Makefile` carry no extension at all, and
+ * resolving them by extension yields plaintext — which would leave the editor uncoloured and, more
+ * importantly, mean no language server was ever asked for. Matched case-insensitively, and consulted
+ * before the extension so `Dockerfile.prod` still resolves through its prefix below.
+ */
+const FILENAME_TO_LANGUAGE: Readonly<Record<string, string>> = {
+  dockerfile: 'dockerfile',
+  containerfile: 'dockerfile',
+};
+
+/**
  * Holds the default language used when an extension is unknown.
  */
 const DEFAULT_LANGUAGE: string = 'plaintext';
@@ -113,6 +126,28 @@ export function languageForExtension(extension: string): string {
   const lower: string = extension.toLowerCase();
   const normalised: string = lower.startsWith('.') ? lower : `.${lower}`;
   return EXTENSION_TO_LANGUAGE[normalised] ?? DEFAULT_LANGUAGE;
+}
+
+/**
+ * Resolves the Monaco language identifier for a file name.
+ *
+ * Prefer this to {@link languageForExtension} wherever the name is in hand: some files carry no
+ * extension and are identified by their whole name, and an extension-only lookup calls those
+ * plaintext. `Dockerfile` is the case that forced this — it is the canonical spelling, it has no
+ * extension, and calling it plaintext means the editor never asks for a Dockerfile language server.
+ * @param fileName The file name, with or without a path.
+ * @returns Returns the Monaco language identifier, or `plaintext` when nothing matches.
+ */
+export function languageForFileName(fileName: string): string {
+  const base: string = fileName.split(/[\\/]/).pop() ?? '';
+  const named: string | undefined = FILENAME_TO_LANGUAGE[base.toLowerCase()];
+  if (named !== undefined) {
+    return named;
+  }
+  const dot: number = base.lastIndexOf('.');
+  // A leading dot is the whole name of a dotfile, not an extension, so `.gitignore` is not an
+  // extension of `gitignore`.
+  return dot > 0 ? languageForExtension(base.slice(dot)) : DEFAULT_LANGUAGE;
 }
 
 /**

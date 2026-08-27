@@ -271,4 +271,50 @@ describe('LockfileProvisioner', () => {
 
     expect(await disabled.ensure(await tree())).toBeNull();
   });
+
+  describe('with a lockfile compiled into the application', () => {
+    /**
+     * Builds a provisioner whose bundled lockfile is the served document, and a provision whose URL is
+     * unreachable — which is the real situation while this repository is private, since
+     * `raw.githubusercontent.com` does not serve one.
+     * @returns Returns the provisioner and the provision.
+     */
+    async function bundledSetup(): Promise<{
+      provisioner: LockfileProvisioner;
+      provision: LockfileProvision;
+    }> {
+      const provision: LockfileProvision = await tree();
+      const document: unknown = JSON.parse(served.get(provision.lockfileUrl)!.toString('utf8'));
+      served.delete(provision.lockfileUrl);
+      return {
+        provisioner: new LockfileProvisioner(root, 'Test', (): unknown => document),
+        provision,
+      };
+    }
+
+    it('installsWithoutFetchingTheLockfileAtAll', async () => {
+      const { provisioner: bundled, provision } = await bundledSetup();
+
+      expect(await bundled.ensure(provision)).not.toBeNull();
+      expect(bundled.isInstalled(provision)).toBe(true);
+    });
+
+    it('doesNotRequireThePinnedHashToMatch', async () => {
+      // The pinned SHA-256 verifies a *download*. A document compiled into the application arrived in
+      // the same bundle as the code reading it, so there is nothing for it to verify.
+      const { provisioner: bundled, provision } = await bundledSetup();
+
+      expect(await bundled.ensure({ ...provision, sha256: 'f'.repeat(64) })).not.toBeNull();
+    });
+
+    it('stillRefusesALockfileItCannotHonour', async () => {
+      const provision: LockfileProvision = await tree();
+      const bundled: LockfileProvisioner = new LockfileProvisioner(root, 'Test', (): unknown => ({
+        lockfileVersion: 1,
+      }));
+
+      expect(await bundled.ensure(provision)).toBeNull();
+      expect(existsSync(path.join(root, 'demo', '1.0.0', platformKey()))).toBe(false);
+    });
+  });
 });

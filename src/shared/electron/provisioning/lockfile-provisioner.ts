@@ -5,7 +5,12 @@ import { logger } from '../logger';
 import { platformKey } from './archive-provision';
 import { isComplete, markComplete } from './archive-provisioner';
 import { downloadTo, extractArchive, integrityOf, sha256Of } from './download';
-import { LockfilePackage, LockfileProvision, parseLockfile } from './lockfile-provision';
+import {
+  LockfilePackage,
+  LockfileProvision,
+  parseLockfile,
+  parseLockfileDocument,
+} from './lockfile-provision';
 
 /**
  * Installs an npm dependency tree from a pinned lockfile, for the many language servers that ship only
@@ -41,13 +46,24 @@ export class LockfileProvisioner {
   >();
 
   /**
+   * Resolves a lockfile compiled into the application for a URL, or null to fetch it.
+   */
+  private readonly bundled: (url: string) => unknown;
+
+  /**
    * Initializes a new instance of the {@link LockfileProvisioner} class.
    * @param root The directory installs are rooted at, or null to disable provisioning.
    * @param logName The name to log under.
+   * @param bundled Resolves a compiled-in lockfile for a URL, defaulting to none.
    */
-  public constructor(root: string | null, logName: string) {
+  public constructor(
+    root: string | null,
+    logName: string,
+    bundled: (url: string) => unknown = (): null => null,
+  ) {
     this.root = root;
     this.logName = logName;
+    this.bundled = bundled;
   }
 
   /**
@@ -193,6 +209,20 @@ export class LockfileProvisioner {
     provision: LockfileProvision,
     directory: string,
   ): Promise<readonly LockfilePackage[] | null> {
+    // A lockfile compiled into the application shipped with the code that reads it, so there is
+    // nothing to download and no digest to compare it against — the pinned hash verifies a *download*.
+    // This is also the only path that works at all while the repository is private, since
+    // `raw.githubusercontent.com` does not serve one.
+    const bundled: unknown = this.bundled(provision.lockfileUrl);
+    if (bundled !== null) {
+      const packages: readonly LockfilePackage[] | null = parseLockfileDocument(bundled);
+      if (packages === null) {
+        logger.error(this.logName, `Bundled lockfile for ${provision.id} cannot be honoured`);
+        return null;
+      }
+      logger.info(this.logName, `Using the lockfile compiled in for ${provision.id}`);
+      return packages;
+    }
     const file: string = path.join(directory, '.lockfile.json');
     await downloadTo(provision.lockfileUrl, file);
     const digest: string = await sha256Of(file);

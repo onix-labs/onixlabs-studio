@@ -11,6 +11,7 @@ import {
   extensionForLanguage,
   LanguageInfo,
   languageForExtension,
+  languageForFileName,
   supportedLanguages,
 } from './monaco-languages';
 import {
@@ -159,6 +160,16 @@ export class Monaco {
    */
   public getLanguageForExtension(extension: string): string {
     return languageForExtension(extension);
+  }
+
+  /**
+   * Resolves the Monaco language identifier for a file name, honouring the files whose whole name is
+   * their type (`Dockerfile`) as well as those identified by extension.
+   * @param fileName The file name, with or without a path.
+   * @returns Returns the Monaco language identifier, or `plaintext` when nothing matches.
+   */
+  public getLanguageForFileName(fileName: string): string {
+    return languageForFileName(fileName);
   }
 
   /**

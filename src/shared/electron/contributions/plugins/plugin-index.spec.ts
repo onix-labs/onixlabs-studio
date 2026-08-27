@@ -1,7 +1,9 @@
+import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { PLUGIN_API_VERSION } from '@shared/api/plugin-manifest';
+import CURATED_PLUGINS from './curated-plugins.json';
 import {
   IndexFetch,
   IndexResponse,
@@ -175,7 +177,11 @@ describe('PluginIndex', () => {
       .manifests()
       .map((manifest): string => manifest.id);
 
-    expect(offered).toEqual(['pyright', 'ty', 'lua-language-server', 'sqls', 'perlnavigator']);
+    // Containment rather than equality: the point is that these five are still carried, not that the
+    // catalogue never grows, and asserting the whole list would fail every time it does.
+    expect(offered).toEqual(
+      expect.arrayContaining(['pyright', 'ty', 'lua-language-server', 'sqls', 'perlnavigator']),
+    );
   });
 
   it('prefersACacheThatSupersedesTheBundledIndex', () => {
@@ -259,4 +265,45 @@ describe('PluginIndex', () => {
 
     expect(await new PluginIndex(root, URL, answering(body)).refresh()).toBe(false);
   });
+});
+
+describe('the shipped lockfiles', () => {
+  /**
+   * The npm-provisioned entries of the index Studio compiles in.
+   */
+  const npmEntries: readonly { id: string; provision: Record<string, string> }[] = (
+    CURATED_PLUGINS.plugins as readonly Record<string, unknown>[]
+  )
+    .map((plugin): { id: string; provision: Record<string, string> } => ({
+      id: plugin['id'] as string,
+      provision: plugin['provision'] as Record<string, string>,
+    }))
+    .filter((entry): boolean => entry.provision['kind'] === 'npm');
+
+  for (const entry of npmEntries) {
+    it(`matchTheHashPinnedFor_${entry.id}`, () => {
+      // The index pins a hash of the lockfile, and both are files in this repository — so anything
+      // that rewrites one without repinning the other (a formatter, a careless dependency bump)
+      // would ship an entry that fails to install, and would do it silently.
+      const name: string = entry.provision['lockfileUrl'].split('/').pop() ?? '';
+      // From the repository root: `import.meta.dirname` is the spec's directory when this file runs
+      // alone and the bundle's when it runs with the suite, which silently passes in one mode.
+      const file: string = path.join(
+        process.cwd(),
+        'src/shared/electron/contributions/plugins/lockfiles',
+        name,
+      );
+      const digest: string = createHash('sha256').update(readFileSync(file)).digest('hex');
+
+      expect(digest).toBe(entry.provision['sha256']);
+    });
+
+    it(`areServedFromThisRepositoryFor_${entry.id}`, () => {
+      // A lockfile decides which tarballs are fetched. Pointing one somewhere we do not control would
+      // hand that decision away.
+      expect(entry.provision['lockfileUrl']).toMatch(
+        /^https:\/\/raw\.githubusercontent\.com\/onix-labs\/onixlabs-studio\/main\//,
+      );
+    });
+  }
 });

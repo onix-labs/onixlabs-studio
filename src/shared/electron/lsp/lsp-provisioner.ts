@@ -11,6 +11,9 @@ import { createGunzip } from 'node:zlib';
 import { logger } from '../logger';
 import { ArchiveProvision } from '../provisioning/archive-provision';
 import { ArchiveProvisioner, isComplete, markComplete } from '../provisioning/archive-provisioner';
+import { LockfileProvision } from '../provisioning/lockfile-provision';
+import { LockfileProvisioner } from '../provisioning/lockfile-provisioner';
+import { bundledLockfile } from '../contributions/plugins/bundled-lockfiles';
 
 /**
  * Runs a child process and resolves with its standard output and error, used for the lightweight
@@ -217,6 +220,23 @@ export class LspProvisioner {
   }
 
   /**
+   * Holds the lockfile provisioner, constructed lazily for the same reason as the archive one.
+   */
+  private lockfileProvisioner: LockfileProvisioner | null = null;
+
+  /**
+   * Gets the shared lockfile provisioner, rooted alongside the archive installs.
+   */
+  private get trees(): LockfileProvisioner {
+    this.lockfileProvisioner ??= new LockfileProvisioner(
+      this.serversRoot(),
+      'LspProvisioner',
+      bundledLockfile,
+    );
+    return this.lockfileProvisioner;
+  }
+
+  /**
    * Detects a usable Java executable: the user's override when given, then the one under `JAVA_HOME`,
    * then `java` on the PATH, provided it reports a high enough version. The result is cached for the
    * session (the override is stable per launch).
@@ -402,6 +422,43 @@ export class LspProvisioner {
    */
   public removeArchive(provision: ArchiveProvision): Promise<void> {
     return this.archives.remove(provision);
+  }
+
+  /**
+   * Installs a language server from a pinned lockfile naming an npm dependency tree, or reuses the
+   * cached copy.
+   * @param provision The provisioning recipe.
+   * @returns Returns the entry point path, or null when the install failed.
+   */
+  public ensureTree(provision: LockfileProvision): Promise<string | null> {
+    return this.trees.ensure(provision);
+  }
+
+  /**
+   * Gets whether a server's tree is installed, without downloading anything.
+   * @param provision The provisioning recipe.
+   * @returns Returns true when it is installed.
+   */
+  public isTreeInstalled(provision: LockfileProvision): boolean {
+    return this.trees.isInstalled(provision);
+  }
+
+  /**
+   * Gets the path a tree install produces, whether or not it is installed yet.
+   * @param provision The provisioning recipe.
+   * @returns Returns the entry point path, or null when provisioning is disabled.
+   */
+  public treeTarget(provision: LockfileProvision): string | null {
+    return this.trees.targetOf(provision);
+  }
+
+  /**
+   * Removes a tree install.
+   * @param provision The provisioning recipe.
+   * @returns Returns a promise that resolves once the install is gone.
+   */
+  public removeTree(provision: LockfileProvision): Promise<void> {
+    return this.trees.remove(provision);
   }
 
   /**

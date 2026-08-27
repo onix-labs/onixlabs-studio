@@ -373,7 +373,7 @@ export class Documents implements UnsavedWorkSource {
     this.markEntriesChanged();
     entry.filePath.set(fileInfo.path);
     entry.fileName.set(fileInfo.name);
-    entry.language.set(this.monaco.getLanguageForExtension(fileInfo.extension));
+    entry.language.set(this.monaco.getLanguageForFileName(fileInfo.name));
     entry.content.set(fileInfo.content);
     entry.original.set(fileInfo.content);
     entry.encoding.set(fileInfo.encoding ?? DEFAULT_ENCODING);
@@ -403,7 +403,7 @@ export class Documents implements UnsavedWorkSource {
     this.markEntriesChanged();
     entry.filePath.set(fileInfo.path);
     entry.fileName.set(fileInfo.name);
-    entry.language.set(this.monaco.getLanguageForExtension(fileInfo.extension));
+    entry.language.set(this.monaco.getLanguageForFileName(fileInfo.name));
     entry.content.set(fileInfo.content);
     entry.original.set(fileInfo.content);
     entry.encoding.set(fileInfo.encoding ?? DEFAULT_ENCODING);
@@ -445,7 +445,7 @@ export class Documents implements UnsavedWorkSource {
     this.markEntriesChanged();
     entry.filePath.set(fileInfo.path);
     entry.fileName.set(fileInfo.name);
-    entry.language.set(this.monaco.getLanguageForExtension(fileInfo.extension));
+    entry.language.set(this.monaco.getLanguageForFileName(fileInfo.name));
     entry.content.set(fileInfo.content);
     entry.original.set(fileInfo.content);
     entry.encoding.set(fileInfo.encoding ?? DEFAULT_ENCODING);

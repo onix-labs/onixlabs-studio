@@ -4,7 +4,6 @@ import { logger } from '../../logger';
 import { DebugAdapterCatalogueEntry } from '../../debug/debug-adapter-registry';
 import { LanguageServerDescriptor } from '../../lsp/language-server-descriptor';
 import { LspProvisioner } from '../../lsp/lsp-provisioner';
-import { ArchiveProvision } from '../../provisioning/archive-provision';
 import { PluginDescriptor } from './plugin-catalogue';
 import { PluginIndex } from './plugin-index';
 import {
@@ -127,23 +126,22 @@ export function contributedLanguageServers(): readonly LanguageServerDescriptor[
  */
 export function contributedDebugAdapters(): readonly DebugAdapterCatalogueEntry[] {
   return contributedManifests().flatMap((manifest): readonly DebugAdapterCatalogueEntry[] =>
-    toDebugAdapterEntries(manifest, installedPayload),
+    toDebugAdapterEntries(manifest, payloadProvisioner),
   );
 }
 
 /**
- * Holds a provisioner used only to answer where a contributed plugin's archive was installed. The same
+ * Holds a provisioner used only to answer where a contributed plugin's payload was installed. The same
  * one the plugin's install went through, so the answer cannot disagree with where the payload actually
  * landed.
  */
 let payloads: LspProvisioner | null = null;
 
 /**
- * Gets where a contributed plugin's archive was installed, or null when it is not installed.
- * @param provision The plugin's provisioning recipe.
- * @returns Returns the installed path, or null.
+ * Gets the provisioner contributed plugins were installed through, constructed on first use.
+ * @returns Returns the provisioner.
  */
-function installedPayload(provision: ArchiveProvision): string | null {
+function payloadProvisioner(): LspProvisioner {
   payloads ??= new LspProvisioner();
-  return payloads.isArchiveInstalled(provision) ? payloads.archiveTarget(provision) : null;
+  return payloads;
 }

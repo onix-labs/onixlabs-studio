@@ -22,6 +22,8 @@ import {
 } from '../../lsp/language-server-descriptor';
 import { DebugAdapterCatalogueEntry, DebugAdapterSpec } from '../../debug/debug-adapter-registry';
 import { ArchiveDownload, ArchiveProvision } from '../../provisioning/archive-provision';
+import { LockfileProvision } from '../../provisioning/lockfile-provision';
+import { LspProvisioner } from '../../lsp/lsp-provisioner';
 import { PluginContext, PluginDescriptor } from './plugin-catalogue';
 
 /**
@@ -123,11 +125,6 @@ export function validManifests(plugins: readonly LoadedPlugin[]): readonly Plugi
  * Turns a manifest's provisioning into the recipe the archive provisioner installs from. The shapes
  * are deliberately the same: the manifest format was derived from this recipe, so a contributed plugin
  * installs through exactly the same path as a first-party one.
- *
- * Returns null for an `npm` provision, which names a dependency tree rather than an archive and is
- * installed by the reifier in #450. Until that lands, such a plugin reports itself unsupported and not
- * installed — the same degradation as a plugin whose platform is not published, rather than an install
- * that half works.
  * @param manifest The validated manifest.
  * @returns Returns the provisioning recipe, or null when the plugin is not archive-provisioned.
  */
@@ -146,6 +143,87 @@ export function toProvision(manifest: PluginManifest): ArchiveProvision | null {
     };
   }
   return { id: manifest.id, version: manifest.version, downloads };
+}
+
+/**
+ * Turns a manifest's provisioning into the recipe the lockfile provisioner installs from.
+ * @param manifest The validated manifest.
+ * @returns Returns the provisioning recipe, or null when the plugin is not npm-provisioned.
+ */
+export function toTreeProvision(manifest: PluginManifest): LockfileProvision | null {
+  if (manifest.provision.kind !== 'npm') {
+    return null;
+  }
+  return {
+    id: manifest.id,
+    version: manifest.version,
+    lockfileUrl: manifest.provision.lockfileUrl,
+    sha256: manifest.provision.sha256,
+    executablePath: manifest.provision.executablePath,
+  };
+}
+
+/**
+ * The four questions every consumer asks of a plugin's payload, whichever way it is provisioned.
+ *
+ * The two kinds answer them differently but nothing downstream should care: a descriptor asks whether
+ * its plugin is installed, not whether it is an archive. Resolving the kind once, here, is what keeps
+ * that branch out of the descriptors, the language servers and the debug adapters alike.
+ */
+export interface PayloadOps {
+  /**
+   * Gets the entry point the payload installs to, whether or not it is installed yet.
+   */
+  target(provisioner: LspProvisioner): string | null;
+
+  /**
+   * Gets whether the payload is installed, without downloading anything.
+   */
+  isInstalled(provisioner: LspProvisioner): boolean;
+
+  /**
+   * Installs the payload, or reuses the cached install.
+   */
+  ensure(provisioner: LspProvisioner): Promise<string | null>;
+
+  /**
+   * Removes the payload's install.
+   */
+  remove(provisioner: LspProvisioner): Promise<void>;
+}
+
+/**
+ * Binds a manifest's provisioning to the provisioner calls that serve it.
+ * @param manifest The validated manifest.
+ * @returns Returns the operations for the manifest's provisioning kind.
+ */
+export function payloadOps(manifest: PluginManifest): PayloadOps {
+  const tree: LockfileProvision | null = toTreeProvision(manifest);
+  if (tree !== null) {
+    return {
+      target: (p: LspProvisioner): string | null => p.treeTarget(tree),
+      isInstalled: (p: LspProvisioner): boolean => p.isTreeInstalled(tree),
+      ensure: (p: LspProvisioner): Promise<string | null> => p.ensureTree(tree),
+      remove: (p: LspProvisioner): Promise<void> => p.removeTree(tree),
+    };
+  }
+  const archive: ArchiveProvision | null = toProvision(manifest);
+  if (archive === null) {
+    // Unreachable while the manifest has two kinds and both are handled, but a third would otherwise
+    // arrive here as a plugin that silently claims to be installed.
+    return {
+      target: (): string | null => null,
+      isInstalled: (): boolean => false,
+      ensure: (): Promise<string | null> => Promise.resolve(null),
+      remove: (): Promise<void> => Promise.resolve(),
+    };
+  }
+  return {
+    target: (p: LspProvisioner): string | null => p.archiveTarget(archive),
+    isInstalled: (p: LspProvisioner): boolean => p.isArchiveInstalled(archive),
+    ensure: (p: LspProvisioner): Promise<string | null> => p.ensureArchive(archive),
+    remove: (p: LspProvisioner): Promise<void> => p.removeArchive(archive),
+  };
 }
 
 /**
@@ -207,7 +285,7 @@ export function toDetail(manifest: PluginManifest): string | undefined {
  * @returns Returns the descriptor.
  */
 export function toPluginDescriptor(manifest: PluginManifest): PluginDescriptor {
-  const provision: ArchiveProvision | null = toProvision(manifest);
+  const ops: PayloadOps = payloadOps(manifest);
   return {
     id: manifest.id,
     name: manifest.name,
@@ -215,14 +293,11 @@ export function toPluginDescriptor(manifest: PluginManifest): PluginDescriptor {
     version: manifest.version,
     contributions: toContributions(manifest),
     detail: toDetail(manifest),
-    supported: (context: PluginContext): boolean =>
-      provision !== null && context.provisioner.archiveTarget(provision) !== null,
+    supported: (context: PluginContext): boolean => ops.target(context.provisioner) !== null,
     detect: (context: PluginContext): Promise<boolean> =>
-      Promise.resolve(provision !== null && context.provisioner.isArchiveInstalled(provision)),
-    install: (context: PluginContext): Promise<string | null> =>
-      provision === null ? Promise.resolve(null) : context.provisioner.ensureArchive(provision),
-    uninstall: (context: PluginContext): Promise<void> =>
-      provision === null ? Promise.resolve() : context.provisioner.removeArchive(provision),
+      Promise.resolve(ops.isInstalled(context.provisioner)),
+    install: (context: PluginContext): Promise<string | null> => ops.ensure(context.provisioner),
+    uninstall: (context: PluginContext): Promise<void> => ops.remove(context.provisioner),
   };
 }
 
@@ -256,7 +331,7 @@ function toSpec(
 export function toLanguageServerDescriptors(
   manifest: PluginManifest,
 ): readonly LanguageServerDescriptor[] {
-  const provision: ArchiveProvision | null = toProvision(manifest);
+  const ops: PayloadOps = payloadOps(manifest);
   return (manifest.contributes.languageServers ?? []).map(
     (server: ManifestLanguageServer): LanguageServerDescriptor => ({
       id: server.id,
@@ -264,8 +339,11 @@ export function toLanguageServerDescriptors(
       languages: server.languages,
       priority: server.priority,
       resolve: (context: LanguageServerContext): LspResolution => {
-        const entryPoint: string | null =
-          provision === null ? null : context.installedPath(provision);
+        // Never installs: a server resolves to "not installed" and the user installs it in the Plugin
+        // Manager, rather than opening a file silently triggering a large download.
+        const entryPoint: string | null = ops.isInstalled(context.provisioner)
+          ? ops.target(context.provisioner)
+          : null;
         return entryPoint === null
           ? unavailable(`${server.displayName} is not installed — install it in Plugins.`)
           : toSpec(server.command, entryPoint, context);
@@ -277,18 +355,19 @@ export function toLanguageServerDescriptors(
 /**
  * Turns a manifest's debug adapters into catalogue entries the debug registry can resolve.
  *
- * The adapter lives inside the same archive as everything else the plugin contributes — a plugin is one
- * payload however many things it provides — so it is located by asking where that archive was installed
+ * The adapter lives inside the same payload as everything else the plugin contributes — a plugin is one
+ * payload however many things it provides — so it is located by asking where that payload was installed
  * rather than by searching the PATH.
  * @param manifest The validated manifest.
- * @param installedPath Reports where the plugin's archive was installed, or null when it is not.
+ * @param provisioner Gets the provisioner the plugin's install went through, so the answer cannot
+ * disagree with where the payload actually landed.
  * @returns Returns the catalogue entries.
  */
 export function toDebugAdapterEntries(
   manifest: PluginManifest,
-  installedPath: (provision: ArchiveProvision) => string | null,
+  provisioner: () => LspProvisioner,
 ): readonly DebugAdapterCatalogueEntry[] {
-  const provision: ArchiveProvision | null = toProvision(manifest);
+  const ops: PayloadOps = payloadOps(manifest);
   return (manifest.contributes.debugAdapters ?? []).map(
     (adapter: ManifestDebugAdapter): DebugAdapterCatalogueEntry => ({
       id: adapter.id,
@@ -299,7 +378,7 @@ export function toDebugAdapterEntries(
       languages: adapter.languages,
       priority: adapter.priority,
       locate: (): Promise<string | null> =>
-        Promise.resolve(provision === null ? null : installedPath(provision)),
+        Promise.resolve(ops.isInstalled(provisioner()) ? ops.target(provisioner()) : null),
       buildSpec: (entryPoint: string): DebugAdapterSpec =>
         adapter.command.kind === 'node'
           ? {
