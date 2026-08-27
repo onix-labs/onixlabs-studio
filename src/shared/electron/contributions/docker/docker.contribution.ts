@@ -1,5 +1,5 @@
 import type { IpcMainInvokeEvent } from 'electron';
-import { DockerChannel } from '@shared/api/docker-channels';
+import { ContainerChannel } from '@shared/api/container-channels';
 import { ContainerEngineInfo } from '@shared/api/docker-types';
 import { ContributionContext, MainContribution } from '../main-contribution';
 import { PermissionId } from '../permissions/permission';
@@ -13,7 +13,7 @@ import { DockerStreamHandle } from './docker-transport';
 /**
  * The Docker Engine backend contribution — the first real {@link MainContribution}. It requests the
  * `docker.socket` permission through the P2 broker, exposes the container/image operations over the
- * {@link DockerChannel} IPC channels, and pushes engine events to the renderer as they happen. It is
+ * {@link ContainerChannel} IPC channels, and pushes engine events to the renderer as they happen. It is
  * registered by appending it to the `mainContributions` manifest — no other `main.ts` change — which
  * is the north-star this whole seam exists to prove.
  */
@@ -55,27 +55,27 @@ export class DockerContribution implements MainContribution {
     // in effect decides only which socket was opened above and which CLI the surface drives.
     const engine: ContainerEngine = new DockerEngine(socket);
 
-    context.handle(DockerChannel.ListContainers, (): Promise<unknown> => engine.listContainers());
-    context.handle(DockerChannel.ListImages, (): Promise<unknown> => engine.listImages());
+    context.handle(ContainerChannel.ListContainers, (): Promise<unknown> => engine.listContainers());
+    context.handle(ContainerChannel.ListImages, (): Promise<unknown> => engine.listImages());
     context.handle(
-      DockerChannel.Start,
+      ContainerChannel.Start,
       (_event: IpcMainInvokeEvent, id: unknown): Promise<boolean> => engine.start(String(id)),
     );
     context.handle(
-      DockerChannel.Stop,
+      ContainerChannel.Stop,
       (_event: IpcMainInvokeEvent, id: unknown): Promise<boolean> => engine.stop(String(id)),
     );
     context.handle(
-      DockerChannel.Remove,
+      ContainerChannel.Remove,
       (_event: IpcMainInvokeEvent, id: unknown): Promise<boolean> => engine.remove(String(id)),
     );
-    context.handle(DockerChannel.Status, (): Promise<unknown> => engine.status());
-    context.handle(DockerChannel.LaunchDesktop, (): Promise<boolean> => launchDockerDesktop());
-    context.handle(DockerChannel.ListEngines, (): readonly ContainerEngineInfo[] =>
+    context.handle(ContainerChannel.Status, (): Promise<unknown> => engine.status());
+    context.handle(ContainerChannel.LaunchDesktop, (): Promise<boolean> => launchDockerDesktop());
+    context.handle(ContainerChannel.ListEngines, (): readonly ContainerEngineInfo[] =>
       describeEngines(),
     );
     context.handle(
-      DockerChannel.ChooseEngine,
+      ContainerChannel.ChooseEngine,
       (_event: IpcMainInvokeEvent, id: unknown): readonly ContainerEngineInfo[] => {
         chooseEngine(typeof id === 'string' && id.length > 0 ? id : null);
         // The socket was opened at activation, so a different engine takes effect on the next launch;
@@ -84,7 +84,7 @@ export class DockerContribution implements MainContribution {
       },
     );
 
-    this.watchHandle = engine.watch((event): void => context.send(DockerChannel.Events, event));
+    this.watchHandle = engine.watch((event): void => context.send(ContainerChannel.Events, event));
     context.log.info('docker contribution active; channels wired, event watch started');
   }
 

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { TestBed } from '@angular/core/testing';
 import { Bridge } from '@shared/api/bridge';
-import { DockerChannel } from '@shared/api/docker-channels';
+import { ContainerChannel } from '@shared/api/container-channels';
 import { DockerEvent } from '@shared/api/docker-types';
 import { Docker } from './docker';
 
@@ -28,7 +28,7 @@ describe('Docker', () => {
     const bridge: Bridge = {
       invoke: <T>(channel: string, ...args: unknown[]): Promise<T> => {
         calls.push({ channel, args });
-        if (channel === (DockerChannel.ListEngines as string)) {
+        if (channel === (ContainerChannel.ListEngines as string)) {
           return Promise.resolve([
             {
               id: 'docker',
@@ -64,7 +64,7 @@ describe('Docker', () => {
    */
   function operations(): RecordedCall[] {
     return calls.filter(
-      (call: RecordedCall): boolean => call.channel !== (DockerChannel.ListEngines as string),
+      (call: RecordedCall): boolean => call.channel !== (ContainerChannel.ListEngines as string),
     );
   }
 
@@ -77,9 +77,9 @@ describe('Docker', () => {
     await docker.remove('ghi');
 
     expect(operations()).toEqual([
-      { channel: DockerChannel.Start, args: ['abc'] },
-      { channel: DockerChannel.Stop, args: ['def'] },
-      { channel: DockerChannel.Remove, args: ['ghi'] },
+      { channel: ContainerChannel.Start, args: ['abc'] },
+      { channel: ContainerChannel.Stop, args: ['def'] },
+      { channel: ContainerChannel.Remove, args: ['ghi'] },
     ]);
   });
 
@@ -92,7 +92,7 @@ describe('Docker', () => {
     });
 
     const event: DockerEvent = { type: 'container', action: 'start', id: 'abc' };
-    listeners.get(DockerChannel.Events)?.(event);
+    listeners.get(ContainerChannel.Events)?.(event);
 
     expect(received).toEqual([event]);
   });
@@ -102,7 +102,7 @@ describe('Docker', () => {
     const docker: Docker = TestBed.inject(Docker);
 
     expect(await docker.launchDesktop()).toBe(true);
-    expect(operations()).toEqual([{ channel: DockerChannel.LaunchDesktop, args: [] }]);
+    expect(operations()).toEqual([{ channel: ContainerChannel.LaunchDesktop, args: [] }]);
   });
 
   it('degradesToSafeDefaultsWithoutABridge', async () => {
