@@ -6,6 +6,7 @@ import {
   ManifestDownload,
   ManifestError,
   ManifestLanguageServer,
+  ManifestRequirement,
   ManifestResult,
   parsePluginManifest,
   PluginManifest,
@@ -167,6 +168,30 @@ export function toContributions(manifest: PluginManifest): readonly PluginContri
 }
 
 /**
+ * Builds the note shown alongside a plugin before it is installed.
+ *
+ * What the manifest says wins, because a plugin author knows things about their plugin that no rule
+ * could derive — that a download is large, that a server needs configuring before it is useful. Failing
+ * that, the runtimes it declares are worth saying on their own: a plugin that needs a JDK is better
+ * described as needing one than described as nothing.
+ * @param manifest The validated manifest.
+ * @returns Returns the note, or undefined when there is nothing to say.
+ */
+export function toDetail(manifest: PluginManifest): string | undefined {
+  if (manifest.detail !== undefined) {
+    return manifest.detail;
+  }
+  const requires: string = manifest.requires
+    .map((requirement: ManifestRequirement): string =>
+      requirement.minimumVersion === undefined
+        ? requirement.runtime
+        : `${requirement.runtime} ${requirement.minimumVersion}+`,
+    )
+    .join(', ');
+  return requires.length === 0 ? undefined : `Needs ${requires} to run once installed.`;
+}
+
+/**
  * Turns a validated manifest into a plugin the Plugin Manager can install and remove, exactly like a
  * first-party one. A sideloaded plugin is not a special case: it is a catalogue entry that happened to
  * arrive as data rather than as code.
@@ -175,20 +200,13 @@ export function toContributions(manifest: PluginManifest): readonly PluginContri
  */
 export function toPluginDescriptor(manifest: PluginManifest): PluginDescriptor {
   const provision: ArchiveProvision = toProvision(manifest);
-  const requires: string = manifest.requires
-    .map((requirement): string =>
-      requirement.minimumVersion === undefined
-        ? requirement.runtime
-        : `${requirement.runtime} ${requirement.minimumVersion}+`,
-    )
-    .join(', ');
   return {
     id: manifest.id,
     name: manifest.name,
     description: manifest.description,
     version: manifest.version,
     contributions: toContributions(manifest),
-    detail: requires.length === 0 ? undefined : `Needs ${requires} to run once installed.`,
+    detail: toDetail(manifest),
     supported: (context: PluginContext): boolean =>
       context.provisioner.archiveTarget(provision) !== null,
     detect: (context: PluginContext): Promise<boolean> =>

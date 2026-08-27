@@ -7,7 +7,7 @@ import { ContributionContext, MainContribution } from '../main-contribution';
 import { PluginContext, pluginCatalogue } from './plugin-catalogue';
 import { PluginManager } from './plugin-manager';
 import { PluginStore } from './plugin-store';
-import { sideloadedPlugins } from './sideloaded';
+import { contributedPlugins, pluginIndex } from './contributed';
 
 /**
  * The Plugin Manager's backend: the catalogue of available plugins, what is installed on this machine,
@@ -44,10 +44,11 @@ export class PluginsContribution implements MainContribution {
         path.join(userData, 'debug-adapters'),
       ),
     };
-    // First-party plugins plus whatever was sideloaded. A dropped-in manifest is not a special case:
-    // it becomes a catalogue entry and installs down the same path as everything else.
+    // First-party plugins plus whatever was contributed — dropped into the sideload directory, or
+    // offered by the curated index. A manifest is not a special case: it becomes a catalogue entry
+    // and installs down the same path as everything else.
     this.manager = new PluginManager(
-      [...pluginCatalogue(), ...sideloadedPlugins()],
+      [...pluginCatalogue(), ...contributedPlugins()],
       pluginContext,
       new PluginStore(userData),
     );
@@ -60,7 +61,27 @@ export class PluginsContribution implements MainContribution {
       PluginChannel.Uninstall,
       (_event: unknown, id: unknown): Promise<PluginActionResult> => this.act(id, false, context),
     );
-    context.log.info(`Plugin catalogue ready (${pluginCatalogue().length} plugins)`);
+    context.log.info(
+      `Plugin catalogue ready (${pluginCatalogue().length} first-party, ` +
+        `${contributedPlugins().length} contributed)`,
+    );
+    this.refreshIndex(context);
+  }
+
+  /**
+   * Fetches the published index in the background, so a slow or unreachable one never delays start-up
+   * and a failure is a log line rather than anything the user has to deal with. What it retrieves takes
+   * effect on the next launch.
+   * @param context The contribution context, used to log the outcome.
+   */
+  private refreshIndex(context: ContributionContext): void {
+    void pluginIndex()
+      .refresh()
+      .then((updated: boolean): void => {
+        if (updated) {
+          context.log.info('A newer plugin index was fetched; it takes effect on the next launch');
+        }
+      });
   }
 
   /**

@@ -197,6 +197,18 @@ describe('plugin loader', () => {
     it('saysNothingAboutRuntimesWhenItNeedsNone', () => {
       expect(toPluginDescriptor(loaded()).detail).toBeUndefined();
     });
+
+    it('prefersWhatTheManifestSaysOverWhatCouldBeDerived', () => {
+      // The author knows things no rule could derive; a derived sentence is the fallback, not the truth.
+      const descriptor: ReturnType<typeof toPluginDescriptor> = toPluginDescriptor(
+        loaded({
+          detail: 'A large download.',
+          requires: [{ runtime: 'java', minimumVersion: '21' }],
+        }),
+      );
+
+      expect(descriptor.detail).toBe('A large download.');
+    });
   });
 
   describe('toLanguageServerDescriptors', () => {

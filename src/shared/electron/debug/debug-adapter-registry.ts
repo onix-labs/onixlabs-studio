@@ -1,7 +1,7 @@
 import { DebugAdapterId, DebugAdapterSummary } from '@shared/api/debug-channels';
 import { debugpyInterpreter } from './debugpy-install';
 import { logger } from '../logger';
-import { sideloadedDebugAdapters } from '../contributions/plugins/sideloaded';
+import { contributedDebugAdapters } from '../contributions/plugins/contributed';
 import { DebugAdapterDownload, DebugAdapterProvision, DebugProvisioner } from './debug-provisioner';
 
 /**
@@ -286,9 +286,10 @@ export class DebugAdapterRegistry {
     for (const entry of debugAdapterCatalogue()) {
       this.register(entry);
     }
-    // Sideloaded plugins register through the same seam a contributed adapter always would — the
-    // manifest advertises the contribution point, so it has to actually reach the registry.
-    for (const entry of sideloadedDebugAdapters()) {
+    // Contributed plugins — sideloaded or indexed — register through the same seam a contributed
+    // adapter always would: the manifest advertises the contribution point, so it has to actually
+    // reach the registry.
+    for (const entry of contributedDebugAdapters()) {
       this.register(entry);
     }
   }

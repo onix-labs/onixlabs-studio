@@ -10,15 +10,7 @@ import {
   isDebugpyInstalled,
   uninstallDebugpy,
 } from '../../debug/debugpy-install';
-import {
-  CLANGD_PROVISION,
-  LUA_PROVISION,
-  PERLNAVIGATOR_PROVISION,
-  PYRIGHT_PROVISION,
-  SQLS_PROVISION,
-  TY_PROVISION,
-  TYPESCRIPT_SERVER_PROVISION,
-} from '../../lsp/language-server-downloads';
+import { CLANGD_PROVISION, TYPESCRIPT_SERVER_PROVISION } from '../../lsp/language-server-downloads';
 import {
   GOPLS_VERSION,
   JDTLS_VERSION,
@@ -226,7 +218,16 @@ function adapterPlugin(
 }
 
 /**
- * The plugins the application knows about — the **available** layer of the plugin model.
+ * The plugins that need code to install — the part of the **available** layer a manifest cannot
+ * describe.
+ *
+ * It is deliberately short, and getting shorter. Everything a pinned archive and an entry point can
+ * express now lives in the curated index as data (`curated-plugins.json`), because a list of downloads
+ * expressed as TypeScript is a list of downloads that needs a release to change. What is left is what
+ * genuinely resists description: a server built from source with the user's toolchain, one installed
+ * into a managed language environment, one whose start-up traffic is computed from the workspace, and
+ * the two that honour a path the user configured in Settings. Those are not oversights in the manifest
+ * format — they are the line where description stops and execution begins.
  *
  * Being in this list means the Plugin Manager offers the plugin; it says nothing about whether it is
  * present. What is *installed* is decided per machine by each descriptor's `detect`, and only installed
@@ -238,20 +239,6 @@ function adapterPlugin(
  */
 export function pluginCatalogue(): readonly PluginDescriptor[] {
   return [
-    archivePlugin(
-      'pyright',
-      'Pyright',
-      "Microsoft's Python type checker and language server.",
-      PYRIGHT_PROVISION,
-      [languageServer('pyright', 'Pyright', ['python'], 100)],
-    ),
-    archivePlugin(
-      'ty',
-      'ty',
-      "Astral's Rust-built Python type checker and language server. An alternative to Pyright.",
-      TY_PROVISION,
-      [languageServer('ty', 'ty (Astral)', ['python'], 50)],
-    ),
     archivePlugin(
       'typescript-language-server',
       'TypeScript Language Server',
@@ -273,28 +260,6 @@ export function pluginCatalogue(): readonly PluginDescriptor[] {
       CLANGD_PROVISION,
       [languageServer('clangd', 'clangd', ['cpp', 'c'], 100)],
       'A large download — it carries the Clang toolchain headers.',
-    ),
-    archivePlugin(
-      'lua-language-server',
-      'Lua Language Server',
-      'Lua language support, from the sumneko project.',
-      LUA_PROVISION,
-      [languageServer('lua-language-server', 'Lua Language Server', ['lua'], 100)],
-    ),
-    archivePlugin(
-      'sqls',
-      'sqls',
-      'SQL language support: completion, formatting and query execution.',
-      SQLS_PROVISION,
-      [languageServer('sqls', 'sqls', ['sql'], 100)],
-      'Configure a database connection to get schema-aware completion.',
-    ),
-    archivePlugin(
-      'perlnavigator',
-      'Perl Navigator',
-      'Perl language support: diagnostics, completion and navigation.',
-      PERLNAVIGATOR_PROVISION,
-      [languageServer('perlnavigator', 'Perl Navigator', ['perl'], 100)],
     ),
     {
       id: 'rust-analyzer',
