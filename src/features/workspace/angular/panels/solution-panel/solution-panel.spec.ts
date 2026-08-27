@@ -309,6 +309,32 @@ describe('SolutionPanel', () => {
       expect(menuIds(makeRow({ kind: 'folder', path: null }))).toEqual([]);
     });
 
+    it('contextMenuFor_aFolderInsideAProject_offersThePathActionsAndNotOpen', () => {
+      // A project's folder is a real directory, so the path commands are truthful on it. Open is not:
+      // there is no document to open, and clicking the row expands it.
+      solution.model.set(model);
+      expect(menuIds(makeRow({ kind: 'item-folder', path: '/root/A/Sub' }))).toEqual([
+        'copy-path',
+        'copy-relative-path',
+        'reveal',
+      ]);
+    });
+
+    it('contextMenuFor_aLogicalFolderInsideAProject_offersNothing', () => {
+      // A folder that MSBuild Link metadata conjured stands for no directory, so it is as menu-less
+      // as a solution folder — the whole point of carrying the path rather than inferring one.
+      solution.model.set(model);
+      expect(menuIds(makeRow({ kind: 'item-folder', path: null }))).toEqual([]);
+    });
+
+    it('onContextAction_aFolderInsideAProject_revealsItsOwnDirectory', () => {
+      solution.model.set(model);
+      const row: SolutionRow = makeRow({ kind: 'item-folder', path: '/root/A/Sub' });
+      component.onContextAction({ itemId: 'reveal', row: treeRow(row) });
+
+      expect(shell.revealed).toEqual(['/root/A/Sub']);
+    });
+
     it('onContextAction_open_opensThePathAndSelectsTheRow', () => {
       const row: SolutionRow = makeRow({ key: 'k', kind: 'file', path: '/root/A/g.cs' });
       component.onContextAction({ itemId: 'open', row: treeRow(row) });

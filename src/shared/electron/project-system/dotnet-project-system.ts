@@ -6,13 +6,13 @@ import { promisify } from 'node:util';
 import {
   ProjectCapabilities,
   ProjectEntry,
-  ProjectItemNode,
   ProjectItems,
   ProjectModel,
   ProjectNode,
 } from '@shared/api/project-system';
 import { DebugResolveResult } from '@shared/api/debug-channels';
 import { RunConfiguration } from '@shared/api/studio';
+import { buildItemTree, EvaluatedItem } from './item-tree';
 import { ProjectSystem } from './project-system';
 import { logger } from '../logger';
 
@@ -108,22 +108,6 @@ const SKIPPED_DIRECTORIES: ReadonlySet<string> = new Set<string>(['node_modules'
  * the root itself).
  */
 const PROJECT_SCAN_DEPTH: number = 2;
-
-/**
- * A mutable folder used while assembling a project's contents tree: named sub-folders and named files
- * (mapped to their absolute paths), materialised into the immutable tree once all items are placed.
- */
-interface ItemFolder {
-  /**
-   * Holds the named sub-folders.
-   */
-  readonly folders: Map<string, ItemFolder>;
-
-  /**
-   * Holds the named files, mapped to their absolute paths.
-   */
-  readonly files: Map<string, string>;
-}
 
 /**
  * Models a .NET workspace: an `.slnx` or `.sln` solution when one is present (parsed into its solution
@@ -264,12 +248,12 @@ export class DotnetProjectSystem implements ProjectSystem {
     }
     const combined: {
       frameworks: { single: string; many: string };
-      items: { identity: string; link: string }[];
+      items: EvaluatedItem[];
     } | null = await this.queryProject(dotnet, projectPath);
     if (combined === null) {
       return null;
     }
-    let items: { identity: string; link: string }[] | null = combined.items;
+    let items: EvaluatedItem[] | null = combined.items;
     if (combined.frameworks.single.length === 0 && combined.frameworks.many.length > 0) {
       const framework: string = combined.frameworks.many.split(';')[0].trim();
       items = await this.queryItems(dotnet, projectPath, framework);
@@ -277,7 +261,7 @@ export class DotnetProjectSystem implements ProjectSystem {
         return null;
       }
     }
-    return { projectPath, tree: this.buildItemTree(projectPath, items) };
+    return { projectPath, tree: buildItemTree(projectPath, items) };
   }
 
   /**
@@ -458,7 +442,7 @@ export class DotnetProjectSystem implements ProjectSystem {
     projectPath: string,
   ): Promise<{
     frameworks: { single: string; many: string };
-    items: { identity: string; link: string }[];
+    items: EvaluatedItem[];
   } | null> {
     const args: string[] = [
       'build',
@@ -513,7 +497,7 @@ export class DotnetProjectSystem implements ProjectSystem {
     dotnet: string,
     projectPath: string,
     framework: string,
-  ): Promise<{ identity: string; link: string }[] | null> {
+  ): Promise<EvaluatedItem[] | null> {
     const args: string[] = ['build', projectPath, '--no-restore'];
     for (const type of ITEM_TYPES) {
       args.push(`--getItem:${type}`);
@@ -547,8 +531,8 @@ export class DotnetProjectSystem implements ProjectSystem {
    */
   private collectItems(
     parsed: Record<string, { Identity?: string; Link?: string }[]> | undefined,
-  ): { identity: string; link: string }[] {
-    const items: { identity: string; link: string }[] = [];
+  ): EvaluatedItem[] {
+    const items: EvaluatedItem[] = [];
     for (const type of ITEM_TYPES) {
       for (const item of parsed?.[type] ?? []) {
         if (item.Identity !== undefined && item.Identity.length > 0) {
@@ -557,93 +541,6 @@ export class DotnetProjectSystem implements ProjectSystem {
       }
     }
     return items;
-  }
-
-  /**
-   * Builds a project's logical contents tree from its items: each item is placed by its link (when set)
-   * or its identity, so linked files appear at their logical location while still opening their real
-   * file. Items that resolve outside the project directory are placed at the root by their file name.
-   * @param projectPath The absolute path of the project file.
-   * @param items The evaluated items.
-   * @returns Returns the contents tree.
-   */
-  private buildItemTree(
-    projectPath: string,
-    items: readonly { identity: string; link: string }[],
-  ): readonly ProjectItemNode[] {
-    const directory: string = path.dirname(projectPath);
-    const root: ItemFolder = {
-      folders: new Map<string, ItemFolder>(),
-      files: new Map<string, string>(),
-    };
-    const seen: Set<string> = new Set<string>();
-    for (const item of items) {
-      const logical: string = (item.link.length > 0 ? item.link : item.identity).replace(
-        /\\/g,
-        '/',
-      );
-      if (seen.has(logical)) {
-        continue;
-      }
-      seen.add(logical);
-      const segments: string[] = logical
-        .split('/')
-        .filter((segment: string): boolean => segment.length > 0);
-      // A path that climbs out of the project (a linked file with no Link metadata) is shown at the root.
-      const placement: string[] = logical.startsWith('../') ? segments.slice(-1) : segments;
-      const absolute: string = path.resolve(directory, item.identity.replace(/\\/g, '/'));
-      this.insertItem(root, placement, absolute);
-    }
-    return this.materialise(root);
-  }
-
-  /**
-   * Inserts a file into the mutable folder structure under its path segments, creating folders as
-   * needed.
-   * @param folder The folder to insert into.
-   * @param segments The file's path segments (the last is the file name).
-   * @param absolute The file's absolute path.
-   */
-  private insertItem(folder: ItemFolder, segments: readonly string[], absolute: string): void {
-    if (segments.length <= 1) {
-      folder.files.set(segments[0] ?? path.basename(absolute), absolute);
-      return;
-    }
-    const [head, ...rest]: readonly string[] = segments;
-    let child: ItemFolder | undefined = folder.folders.get(head);
-    if (child === undefined) {
-      child = { folders: new Map<string, ItemFolder>(), files: new Map<string, string>() };
-      folder.folders.set(head, child);
-    }
-    this.insertItem(child, rest, absolute);
-  }
-
-  /**
-   * Converts the mutable folder structure into a sorted contents tree, folders before files and each
-   * alphabetical.
-   * @param folder The folder to convert.
-   * @returns Returns the folder's children as tree nodes.
-   */
-  private materialise(folder: ItemFolder): readonly ProjectItemNode[] {
-    const folders: ProjectItemNode[] = [...folder.folders.entries()]
-      .sort((a: [string, ItemFolder], b: [string, ItemFolder]): number => a[0].localeCompare(b[0]))
-      .map(
-        ([name, child]: [string, ItemFolder]): ProjectItemNode => ({
-          type: 'folder',
-          name,
-          children: this.materialise(child),
-        }),
-      );
-    const files: ProjectItemNode[] = [...folder.files.entries()]
-      .sort((a: [string, string], b: [string, string]): number => a[0].localeCompare(b[0]))
-      .map(
-        ([name, filePath]: [string, string]): ProjectItemNode => ({
-          type: 'file',
-          name,
-          path: filePath,
-        }),
-      );
-    return [...folders, ...files];
   }
 
   /**

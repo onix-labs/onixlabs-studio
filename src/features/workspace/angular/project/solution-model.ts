@@ -928,7 +928,7 @@ export class SolutionModel {
       if (node.type === 'folder') {
         const key: string = `${parentKey}/${node.name}`;
         const expanded: boolean = this.expandedKeys().has(key);
-        rows.push(this.row(key, depth, node.name, 'item-folder', true, expanded, false, null));
+        rows.push(this.row(key, depth, node.name, 'item-folder', true, expanded, false, node.path));
         if (expanded) {
           this.appendItems(node.children, depth + 1, key, rows);
         }
@@ -1027,7 +1027,7 @@ export class SolutionModel {
         );
         if (this.matches(node.name, query) || childMatched) {
           rows.push(
-            this.row(key, depth, node.name, 'item-folder', true, childMatched, false, null),
+            this.row(key, depth, node.name, 'item-folder', true, childMatched, false, node.path),
           );
           rows.push(...childRows);
           matched = true;

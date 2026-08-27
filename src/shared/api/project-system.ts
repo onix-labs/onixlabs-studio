@@ -91,6 +91,18 @@ export type ProjectItemNode =
       readonly name: string;
 
       /**
+       * Gets the absolute path of the directory the folder stands for, or null when it stands for no
+       * directory at all.
+       *
+       * Nullable rather than optional, so every project system has to answer: most build their trees by
+       * walking directories, where the answer is simply the directory they walked. A project's folders
+       * are *logical* though, and need not exist on disk — MSBuild `Link` metadata places a file under a
+       * folder that was never a directory — so the honest answer is sometimes null. It is never inferred
+       * from a descendant file's path, which would invent a plausible-looking wrong directory.
+       */
+      readonly path: string | null;
+
+      /**
        * Gets the folder's children.
        */
       readonly children: readonly ProjectItemNode[];
