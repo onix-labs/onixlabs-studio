@@ -36,6 +36,8 @@ const RUST_CAPABILITIES: ProjectCapabilities = {
     ],
   },
   debug: null,
+  // This ecosystem has no solution folders, so there is nothing to rename.
+  renamesSolutionFolders: false,
 };
 
 /**

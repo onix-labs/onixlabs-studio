@@ -9,10 +9,12 @@ import {
   ProjectItems,
   ProjectModel,
   ProjectNode,
+  ProjectOperationResult,
 } from '@shared/api/project-system';
 import { DebugResolveResult } from '@shared/api/debug-channels';
 import { RunConfiguration } from '@shared/api/studio';
 import { buildItemTree, EvaluatedItem } from './item-tree';
+import { renameSolutionFolder, SolutionFolderRename } from './solution-folders';
 import { ProjectSystem } from './project-system';
 import { logger } from '../logger';
 
@@ -37,6 +39,9 @@ const DOTNET_CAPABILITIES: ProjectCapabilities = {
     ],
   },
   debug: { adapter: 'netcoredbg' },
+  // The baseline says no: whether folders can be renamed is decided by the root's solution format, and
+  // load() narrows it there. A root with no solution at all has no folders to rename.
+  renamesSolutionFolders: false,
 };
 
 /**
@@ -96,6 +101,12 @@ const ITEM_TYPES: readonly string[] = ['Compile', 'Content', 'None', 'EmbeddedRe
  * The project-file extensions the .NET project system recognises.
  */
 const PROJECT_EXTENSIONS: readonly string[] = ['.csproj', '.fsproj', '.vbproj'];
+
+/**
+ * The modern XML solution format's extension. The only format whose solution folders this provider both
+ * reconstructs and can edit.
+ */
+const SLNX_EXTENSION: string = '.slnx';
 
 /**
  * The directories skipped when scanning for loose projects: hidden, dependency, and build-output
@@ -182,7 +193,12 @@ export class DotnetProjectSystem implements ProjectSystem {
         solution,
         projects,
         tree,
-        capabilities: this.capabilities,
+        // Only the XML .slnx format is renameable: parseSln skips a classic .sln's folders rather than
+        // reconstructing their nesting, so there is nothing on screen to rename and nothing to write.
+        capabilities: {
+          ...this.capabilities,
+          renamesSolutionFolders: solution.path.endsWith(SLNX_EXTENSION),
+        },
       };
     }
     const files: string[] = await this.findProjects(root, PROJECT_SCAN_DEPTH);
@@ -206,6 +222,51 @@ export class DotnetProjectSystem implements ProjectSystem {
       tree,
       capabilities: this.capabilities,
     };
+  }
+
+  /**
+   * Renames a solution folder in the root's `.slnx` solution.
+   *
+   * Only the XML format is written: a classic `.sln` records folder nesting separately and this
+   * provider does not reconstruct it, so it declares no such folders and has none to rename.
+   * @param root The absolute workspace root.
+   * @param folderPath The slash-delimited path of the folder to rename.
+   * @param name The folder's new display name.
+   * @returns Returns the outcome of the rename.
+   */
+  public async renameSolutionFolder(
+    root: string,
+    folderPath: string,
+    name: string,
+  ): Promise<ProjectOperationResult> {
+    const solution: { name: string; path: string } | null = await this.solutionFile(root);
+    if (solution?.path.endsWith(SLNX_EXTENSION) !== true) {
+      logger.warn(
+        'DotnetProjectSystem',
+        `No .slnx solution to rename a folder in under '${root}'.`,
+      );
+      return { success: false, error: 'This solution format has no renameable folders.' };
+    }
+    let content: string;
+    try {
+      content = await fs.readFile(solution.path, 'utf8');
+    } catch (error: unknown) {
+      logger.error('DotnetProjectSystem', `Failed to read '${solution.path}'.`, error);
+      return { success: false, error: 'The solution file could not be read.' };
+    }
+    const result: SolutionFolderRename = renameSolutionFolder(content, folderPath, name);
+    if (!result.ok) {
+      logger.warn('DotnetProjectSystem', `Refused to rename '${folderPath}': ${result.error}`);
+      return { success: false, error: result.error };
+    }
+    try {
+      await fs.writeFile(solution.path, result.content, 'utf8');
+    } catch (error: unknown) {
+      logger.error('DotnetProjectSystem', `Failed to write '${solution.path}'.`, error);
+      return { success: false, error: 'The solution file could not be written.' };
+    }
+    logger.info('DotnetProjectSystem', `Renamed solution folder '${folderPath}' to '${name}'.`);
+    return { success: true };
   }
 
   /**
@@ -559,7 +620,7 @@ export class DotnetProjectSystem implements ProjectSystem {
       .filter((entry: Dirent): boolean => entry.isFile())
       .map((entry: Dirent): string => entry.name);
     const file: string | undefined =
-      names.find((name: string): boolean => name.endsWith('.slnx')) ??
+      names.find((name: string): boolean => name.endsWith(SLNX_EXTENSION)) ??
       names.find((name: string): boolean => name.endsWith('.sln'));
     if (file === undefined) {
       return null;
@@ -585,7 +646,7 @@ export class DotnetProjectSystem implements ProjectSystem {
       return [];
     }
     const directory: string = path.dirname(solutionPath);
-    return solutionPath.endsWith('.slnx')
+    return solutionPath.endsWith(SLNX_EXTENSION)
       ? this.parseSlnx(content, directory)
       : this.parseSln(content, directory);
   }
@@ -664,6 +725,7 @@ export class DotnetProjectSystem implements ProjectSystem {
         const folder: ProjectNode & { type: 'folder'; children: ProjectNode[] } = {
           type: 'folder',
           name: segment,
+          logicalPath: cumulative,
           children: [],
         };
         parent.children.push(folder);

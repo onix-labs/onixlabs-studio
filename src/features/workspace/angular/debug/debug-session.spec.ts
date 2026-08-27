@@ -146,6 +146,7 @@ function capabilities(adapter: string | null): ProjectCapabilities {
     buildConfigurations: [],
     target: null,
     debug: adapter === null ? null : { adapter },
+    renamesSolutionFolders: false,
   };
 }
 

@@ -23,6 +23,8 @@ const JVM_CAPABILITIES: ProjectCapabilities = {
   buildConfigurations: [],
   target: null,
   debug: null,
+  // This ecosystem has no solution folders, so there is nothing to rename.
+  renamesSolutionFolders: false,
 };
 
 /**

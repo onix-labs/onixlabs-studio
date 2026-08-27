@@ -9,7 +9,12 @@ import {
   Signal,
   WritableSignal,
 } from '@angular/core';
-import { ProjectAction, ProjectEntry, ProjectModel } from '@shared/api/project-system';
+import {
+  ProjectAction,
+  ProjectEntry,
+  ProjectModel,
+  ProjectOperationResult,
+} from '@shared/api/project-system';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { SolutionModel, SolutionRow } from '@features/workspace/angular/project/solution-model';
@@ -21,9 +26,11 @@ import { ExplorerToolbar } from '@shared/angular/components/explorer-toolbar/exp
 import { HighlightedText } from '@shared/angular/components/highlighted-text/highlighted-text';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { MenuItem } from '@shared/angular/components/menu/menu';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
+import { Notifications } from '@shared/angular/services/notifications/notifications';
 import { Shell } from '@shared/angular/services/shell/shell';
 import { OPEN_FOLDER_LABEL, REVEAL_LABEL } from '@shared/angular/services/shell/shell-labels';
 import { BuildRunner } from '@shared/angular/services/tasks/build-runner';
@@ -46,6 +53,7 @@ const ACTION_FOLLOW: string = 'follow-active';
 const ACTION_GIT_STATUS: string = 'git-status';
 const ACTION_RELOAD: string = 'reload';
 const ACTION_OPEN_ROOT: string = 'open-root';
+const ACTION_RENAME_FOLDER: string = 'rename-folder';
 
 /**
  * Prefixes the context-menu id of a capability action run against a single project, so the handler can
@@ -104,7 +112,16 @@ interface PendingProjectAction {
  */
 @Component({
   selector: 'app-solution-panel',
-  imports: [AppIcon, TreeView, ExplorerToolbar, HighlightedText, Modal, ModalContent, Button],
+  imports: [
+    AppIcon,
+    TreeView,
+    ExplorerToolbar,
+    HighlightedText,
+    Modal,
+    ModalContent,
+    Button,
+    TextField,
+  ],
   templateUrl: './solution-panel.html',
   styleUrl: './solution-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -154,6 +171,23 @@ export class SolutionPanel {
    * directory view and must act on its own workspace — the same one whose projects it is showing.
    */
   private readonly buildRunner: BuildRunner = inject(BuildRunner);
+
+  /**
+   * Holds the solution-folder row whose rename prompt is open, or null when none is.
+   */
+  public readonly renameTarget: WritableSignal<SolutionRow | null> = signal<SolutionRow | null>(
+    null,
+  );
+
+  /**
+   * Holds the name being typed into the rename prompt.
+   */
+  public readonly renameName: WritableSignal<string> = signal<string>('');
+
+  /**
+   * Holds the notification sink a refused rename is reported through.
+   */
+  private readonly notifications: Notifications = inject(Notifications);
 
   /**
    * Holds the project action awaiting the user's stop-and-restart confirmation, or null when none is.
@@ -217,6 +251,12 @@ export class SolutionPanel {
       items.push({ id: ACTION_EDIT_PROJECT, label: 'Edit Project File', icon: Icon.PROJECT });
       items.push(...this.projectActionItems(row));
     }
+    // A solution folder stands for no directory, so it gets none of the path commands — but the
+    // solution file names it, and providers that can rewrite that name say so through their
+    // capabilities. One that cannot leaves the row menu-less, exactly as before.
+    if (row.kind === 'folder' && this.model()?.capabilities.renamesSolutionFolders === true) {
+      items.push({ id: ACTION_RENAME_FOLDER, label: 'Rename…', icon: Icon.PENCIL });
+    }
     if (path !== null) {
       items.push(
         { id: ACTION_COPY_PATH, label: 'Copy Path', icon: Icon.COPY },
@@ -226,6 +266,58 @@ export class SolutionPanel {
     }
     return items;
   };
+
+  /**
+   * Opens the rename prompt for a solution folder, starting from its current name so the common edit
+   * (adjusting a word) does not begin with retyping the whole thing.
+   * @param row The solution-folder row to rename.
+   */
+  private openRenamePrompt(row: SolutionRow): void {
+    this.log.info('workspace.solution', 'Rename solution folder', row.key);
+    this.renameName.set(row.label);
+    this.renameTarget.set(row);
+  }
+
+  /**
+   * Closes the rename prompt without acting on it.
+   */
+  public cancelRename(): void {
+    this.renameTarget.set(null);
+  }
+
+  /**
+   * Renames the solution folder the prompt is open on, then closes it.
+   *
+   * The prompt closes whether or not the write took: a refusal is reported as a notification, and
+   * holding the dialog open over a name the main process has already rejected would leave the user
+   * retyping into a box that does not say which part it objected to.
+   * @returns Returns a promise that resolves once the rename has been attempted.
+   */
+  public async submitRename(): Promise<void> {
+    const row: SolutionRow | null = this.renameTarget();
+    const name: string = this.renameName().trim();
+    if (row === null || name.length === 0) {
+      return;
+    }
+    this.renameTarget.set(null);
+    const result: ProjectOperationResult = await this.solution.renameSolutionFolder(row, name);
+    if (!result.success) {
+      this.log.warn('workspace.solution', 'Could not rename folder', result.error);
+      this.notifications.notify({
+        severity: 'error',
+        title: 'Could not rename folder',
+        detail: result.error,
+      });
+    }
+  }
+
+  /**
+   * Gets a value indicating whether the rename prompt's name is submittable.
+   */
+  protected readonly canSubmitRename: Signal<boolean> = computed((): boolean => {
+    const name: string = this.renameName().trim();
+    return name.length > 0 && !/[/\\]/.test(name);
+  });
 
   /**
    * Builds the capability-action items for a project row: the verbs its project system declares,
@@ -417,6 +509,10 @@ export class SolutionPanel {
     const row: SolutionRow = this.rowOf(selection.row);
     if (selection.itemId.startsWith(PROJECT_ACTION_PREFIX)) {
       this.requestProjectAction(selection.itemId.slice(PROJECT_ACTION_PREFIX.length), row);
+      return;
+    }
+    if (selection.itemId === ACTION_RENAME_FOLDER) {
+      this.openRenamePrompt(row);
       return;
     }
     const path: string | null = this.pathFor(row);

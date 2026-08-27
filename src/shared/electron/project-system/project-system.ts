@@ -1,4 +1,9 @@
-import { ProjectCapabilities, ProjectItems, ProjectModel } from '@shared/api/project-system';
+import {
+  ProjectCapabilities,
+  ProjectItems,
+  ProjectModel,
+  ProjectOperationResult,
+} from '@shared/api/project-system';
 import { DebugResolveResult } from '@shared/api/debug-channels';
 import { RunConfiguration } from '@shared/api/studio';
 import { logger } from '../logger';
@@ -55,6 +60,22 @@ export interface ProjectSystem {
    * @returns Returns true when this provider owns the project file.
    */
   ownsProject?(projectPath: string): boolean;
+
+  /**
+   * Renames a solution folder within the root's solution file. Optional: a provider whose ecosystem has
+   * no solution folders, or whose solution format cannot express a rename, need not implement it — and
+   * declares so through {@link ProjectCapabilities.renamesSolutionFolders}, which is what the Solution
+   * Explorer gates the command on.
+   * @param root The absolute workspace root.
+   * @param folderPath The slash-delimited path of the folder to rename.
+   * @param name The folder's new display name.
+   * @returns Returns the outcome of the rename.
+   */
+  renameSolutionFolder?(
+    root: string,
+    folderPath: string,
+    name: string,
+  ): Promise<ProjectOperationResult>;
 
   /**
    * Resolves a run configuration into a concrete debug launch target, building the project first where

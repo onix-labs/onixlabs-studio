@@ -15,4 +15,9 @@ export enum ProjectChannel {
    * Loads a single project's logical contents, on demand when its node is expanded (invoke).
    */
   ItemsLoad = 'project:items-load',
+
+  /**
+   * Renames a solution folder within a root's solution file (invoke).
+   */
+  SolutionFolderRename = 'project:solution-folder-rename',
 }

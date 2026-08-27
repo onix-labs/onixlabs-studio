@@ -118,6 +118,7 @@ function dotnetCapabilities(): ProjectCapabilities {
       options: [{ id: 'any-cpu', name: 'Any CPU' }],
     },
     debug: null,
+    renamesSolutionFolders: false,
   };
 }
 

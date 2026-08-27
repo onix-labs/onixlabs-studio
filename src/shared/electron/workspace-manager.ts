@@ -11,7 +11,7 @@ import { logger } from './logger';
 import * as fs from 'node:fs/promises';
 import type { Dirent, Stats } from 'node:fs';
 import * as path from 'node:path';
-import { ProjectItems, ProjectModel } from '@shared/api/project-system';
+import { ProjectItems, ProjectModel, ProjectOperationResult } from '@shared/api/project-system';
 import {
   PackageManagerModel,
   PackageSearchOptions,
@@ -264,6 +264,18 @@ export class WorkspaceManager {
       },
     );
     ipcMain.handle(
+      ProjectChannel.SolutionFolderRename,
+      (
+        _event: IpcMainInvokeEvent,
+        root: unknown,
+        folderPath: unknown,
+        name: unknown,
+      ): Promise<ProjectOperationResult> => {
+        logger.trace('WorkspaceManager.register', `IPC ${ProjectChannel.SolutionFolderRename}`);
+        return this.renameSolutionFolder(root, folderPath, name);
+      },
+    );
+    ipcMain.handle(
       PackageChannel.ModelLoad,
       (_event: IpcMainInvokeEvent, root: unknown): Promise<PackageManagerModel | null> => {
         logger.trace('WorkspaceManager.register', `IPC ${PackageChannel.ModelLoad}`);
@@ -412,6 +424,40 @@ export class WorkspaceManager {
     }
     const system: ProjectSystem | null = projectSystems.matchProject(projectPath);
     return (await system?.loadProjectItems?.(projectPath)) ?? null;
+  }
+
+  /**
+   * Renames a solution folder in an open root's solution file.
+   *
+   * Confined the same way the model load is: the root must be one this session has open, so a renderer
+   * cannot aim the write at a solution elsewhere on disk.
+   * @param root The workspace root, unvalidated.
+   * @param folderPath The folder's slash-delimited path, unvalidated.
+   * @param name The new folder name, unvalidated.
+   * @returns Returns the outcome of the rename.
+   */
+  private async renameSolutionFolder(
+    root: unknown,
+    folderPath: unknown,
+    name: unknown,
+  ): Promise<ProjectOperationResult> {
+    if (typeof root !== 'string' || !this.workspace.isRoot(root)) {
+      logger.warn('WorkspaceManager.renameSolutionFolder', 'Rejected non-open root');
+      return { success: false, error: 'That workspace is not open.' };
+    }
+    if (typeof folderPath !== 'string' || typeof name !== 'string') {
+      logger.warn('WorkspaceManager.renameSolutionFolder', 'Rejected a non-string argument');
+      return { success: false, error: 'The folder could not be identified.' };
+    }
+    const system: ProjectSystem | null = await projectSystems.match(root);
+    const result: ProjectOperationResult | undefined = await system?.renameSolutionFolder?.(
+      root,
+      folderPath,
+      name,
+    );
+    return (
+      result ?? { success: false, error: 'This workspace has no renameable solution folders.' }
+    );
   }
 
   /**

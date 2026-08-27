@@ -22,6 +22,16 @@ export type ProjectNode =
       readonly name: string;
 
       /**
+       * Gets the slash-delimited path that addresses this folder within its solution file (for example
+       * `/Core/Abstractions`), which is how a folder is named there — not a filesystem path, since the
+       * folder stands for no directory.
+       *
+       * Carried explicitly rather than reassembled from the tree, so an edit addresses the folder the
+       * solution file actually declares rather than one inferred from display names.
+       */
+      readonly logicalPath: string;
+
+      /**
        * Gets the folder's children.
        */
       readonly children: readonly ProjectNode[];
@@ -243,6 +253,31 @@ export interface ProjectCapabilities {
    * Gets the debug capability, or null when the provider declares no DAP adapter yet.
    */
   readonly debug: DebugCapability | null;
+
+  /**
+   * Gets a value indicating whether this model's solution folders can be renamed.
+   *
+   * Narrowed by the root, not just the ecosystem: .NET can rename a folder in the XML `.slnx` format
+   * but not in the classic `.sln`, whose folder nesting it does not reconstruct. False leaves the
+   * folder with no context menu at all, which is what every provider without solution folders wants.
+   */
+  readonly renamesSolutionFolders: boolean;
+}
+
+/**
+ * The outcome of a project-system edit (renaming a solution folder, for example). Deliberately narrow:
+ * an edit either took or gives the reason it did not, which is what the caller reports.
+ */
+export interface ProjectOperationResult {
+  /**
+   * Gets a value indicating whether the edit succeeded.
+   */
+  readonly success: boolean;
+
+  /**
+   * Gets the reason the edit failed, when it did.
+   */
+  readonly error?: string;
 }
 
 /**
