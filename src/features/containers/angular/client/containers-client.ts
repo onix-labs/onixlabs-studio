@@ -11,13 +11,16 @@ import {
 } from '@shared/api/docker-types';
 
 /**
- * The renderer client for the Docker backend contribution (#391): a thin, typed wrapper over the
+ * The renderer client for the containers backend contribution (#391): a thin, typed wrapper over the
  * generic {@link Bridge} that names the {@link ContainerChannel} channels so the view never touches
  * `window.bridge` directly. Outside Electron (or before the backend answers) every call degrades to a
  * safe empty result, so callers need no environment checks.
+ *
+ * It speaks to whichever engine is in effect (#394), so nothing here is Docker-specific beyond
+ * {@link launchDesktop}, which really does launch Docker Desktop.
  */
 @Service()
-export class Docker {
+export class ContainersClient {
   /**
    * Holds the IPC transport, or undefined when running outside Electron.
    */
@@ -34,7 +37,8 @@ export class Docker {
    */
   public listContainers(): Promise<ContainerSummary[]> {
     return (
-      this.bridge?.invoke<ContainerSummary[]>(ContainerChannel.ListContainers) ?? Promise.resolve([])
+      this.bridge?.invoke<ContainerSummary[]>(ContainerChannel.ListContainers) ??
+      Promise.resolve([])
     );
   }
 
@@ -49,36 +53,36 @@ export class Docker {
   /**
    * Starts a container.
    * @param id The container id.
-   * @returns Returns true when the daemon accepted the request.
+   * @returns Returns true when the engine accepted the request.
    */
   public start(id: string): Promise<boolean> {
-    this.log.trace('containers.docker', 'IPC start container', id);
+    this.log.trace('containers.client', 'IPC start container', id);
     return this.bridge?.invoke<boolean>(ContainerChannel.Start, id) ?? Promise.resolve(false);
   }
 
   /**
    * Stops a container.
    * @param id The container id.
-   * @returns Returns true when the daemon accepted the request.
+   * @returns Returns true when the engine accepted the request.
    */
   public stop(id: string): Promise<boolean> {
-    this.log.trace('containers.docker', 'IPC stop container', id);
+    this.log.trace('containers.client', 'IPC stop container', id);
     return this.bridge?.invoke<boolean>(ContainerChannel.Stop, id) ?? Promise.resolve(false);
   }
 
   /**
    * Removes a container.
    * @param id The container id.
-   * @returns Returns true when the daemon accepted the request.
+   * @returns Returns true when the engine accepted the request.
    */
   public remove(id: string): Promise<boolean> {
-    this.log.trace('containers.docker', 'IPC remove container', id);
+    this.log.trace('containers.client', 'IPC remove container', id);
     return this.bridge?.invoke<boolean>(ContainerChannel.Remove, id) ?? Promise.resolve(false);
   }
 
   /**
-   * Reports whether the Docker daemon is reachable.
-   * @returns Returns the daemon status.
+   * Reports whether the container engine is reachable.
+   * @returns Returns the engine status.
    */
   public status(): Promise<DockerStatus> {
     return (
@@ -87,10 +91,6 @@ export class Docker {
     );
   }
 
-  /**
-   * Attempts to launch Docker Desktop through the operating system.
-   * @returns Returns true when the launch was issued (a no-op returning false outside Electron).
-   */
   /**
    * Initializes the client, loading which container engines are present.
    */
@@ -130,7 +130,8 @@ export class Docker {
    */
   public async refreshEngines(): Promise<void> {
     const engines: readonly ContainerEngineInfo[] =
-      (await this.bridge?.invoke<readonly ContainerEngineInfo[]>(ContainerChannel.ListEngines)) ?? [];
+      (await this.bridge?.invoke<readonly ContainerEngineInfo[]>(ContainerChannel.ListEngines)) ??
+      [];
     this.engines.set(engines);
   }
 
@@ -149,8 +150,12 @@ export class Docker {
     this.engines.set(engines);
   }
 
+  /**
+   * Attempts to launch Docker Desktop through the operating system.
+   * @returns Returns true when the launch was issued (a no-op returning false outside Electron).
+   */
   public launchDesktop(): Promise<boolean> {
-    this.log.info('containers.docker', 'Launching Docker Desktop');
+    this.log.info('containers.client', 'Launching Docker Desktop');
     return this.bridge?.invoke<boolean>(ContainerChannel.LaunchDesktop) ?? Promise.resolve(false);
   }
 

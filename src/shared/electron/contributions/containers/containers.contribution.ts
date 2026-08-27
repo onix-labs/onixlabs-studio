@@ -58,7 +58,10 @@ export class ContainersContribution implements MainContribution {
     // in effect decides only which socket was opened above and which CLI the surface drives.
     const engine: ContainerEngine = new DockerEngine(socket);
 
-    context.handle(ContainerChannel.ListContainers, (): Promise<unknown> => engine.listContainers());
+    context.handle(
+      ContainerChannel.ListContainers,
+      (): Promise<unknown> => engine.listContainers(),
+    );
     context.handle(ContainerChannel.ListImages, (): Promise<unknown> => engine.listImages());
     context.handle(
       ContainerChannel.Start,

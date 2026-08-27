@@ -112,7 +112,8 @@ describe('ContainersView', () => {
 
     expect(
       calls.some(
-        (call: RecordedCall): boolean => (call.channel as ContainerChannel) === ContainerChannel.Start,
+        (call: RecordedCall): boolean =>
+          (call.channel as ContainerChannel) === ContainerChannel.Start,
       ),
     ).toBe(true);
   });

@@ -27,13 +27,13 @@ import {
   ContainersCommands,
 } from '../containers-commands/containers-commands';
 import { ContainersStatus } from '../containers-status/containers-status';
-import { Docker } from '../docker/docker';
+import { ContainersClient } from '../client/containers-client';
 import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigger';
 
 /**
- * The Containers tab: a thin dashboard over the Docker backend contribution (#391). It lists
+ * The Containers tab: a thin dashboard over the containers backend contribution (#391). It lists
  * containers and images, starts/stops/removes a container, and stays live via the backend's event
- * push — so a `docker start` from the CLI reflects here without polling. When the daemon is
+ * push — so a `docker start` from the CLI reflects here without polling. When the engine is
  * unreachable it shows a "Docker isn't running" empty state rather than an error.
  */
 @Component({
@@ -68,9 +68,9 @@ export class ContainersView implements OnDestroy {
   public readonly isActive: InputSignal<boolean> = input<boolean>(false);
 
   /**
-   * Holds the Docker client the view reads and acts through.
+   * Holds the containers client the view reads and acts through.
    */
-  private readonly docker: Docker = inject(Docker);
+  private readonly client: ContainersClient = inject(ContainersClient);
 
   /**
    * Holds the structured logger.
@@ -180,7 +180,7 @@ export class ContainersView implements OnDestroy {
     this.log.info('containers.view', 'Containers view created');
     void this.load();
 
-    const unsubscribe: () => void = this.docker.onEvents((): void => {
+    const unsubscribe: () => void = this.client.onEvents((): void => {
       void this.load();
     });
     inject(DestroyRef).onDestroy(unsubscribe);
@@ -214,7 +214,7 @@ export class ContainersView implements OnDestroy {
     this.log.info('containers.view', 'Starting Docker and awaiting readiness');
     this.launching.set(true);
     try {
-      if (!(await this.docker.launchDesktop())) {
+      if (!(await this.client.launchDesktop())) {
         this.log.warn('containers.view', 'Docker Desktop launch was not issued');
         return;
       }
@@ -249,7 +249,7 @@ export class ContainersView implements OnDestroy {
    * @param id The container id.
    */
   protected start(id: string): void {
-    void this.actOn(id, (target: string): Promise<boolean> => this.docker.start(target));
+    void this.actOn(id, (target: string): Promise<boolean> => this.client.start(target));
   }
 
   /**
@@ -257,7 +257,7 @@ export class ContainersView implements OnDestroy {
    * @param id The container id.
    */
   protected stop(id: string): void {
-    void this.actOn(id, (target: string): Promise<boolean> => this.docker.stop(target));
+    void this.actOn(id, (target: string): Promise<boolean> => this.client.stop(target));
   }
 
   /**
@@ -265,7 +265,7 @@ export class ContainersView implements OnDestroy {
    * @param id The container id.
    */
   protected remove(id: string): void {
-    void this.actOn(id, (target: string): Promise<boolean> => this.docker.remove(target));
+    void this.actOn(id, (target: string): Promise<boolean> => this.client.remove(target));
   }
 
   /**
@@ -277,7 +277,7 @@ export class ContainersView implements OnDestroy {
     this.log.info('containers.view', 'View logs', this.displayName(container), container.id);
     this.terminals.open(
       `Logs: ${this.displayName(container)}`,
-      `${this.docker.engineCli()} logs -f ${container.id}`,
+      `${this.client.engineCli()} logs -f ${container.id}`,
     );
   }
 
@@ -289,7 +289,7 @@ export class ContainersView implements OnDestroy {
     this.log.info('containers.view', 'Open shell', this.displayName(container), container.id);
     this.terminals.open(
       `${this.displayName(container)} — shell`,
-      `${this.docker.engineCli()} exec -it ${container.id} sh -c 'command -v bash >/dev/null && exec bash || exec sh'`,
+      `${this.client.engineCli()} exec -it ${container.id} sh -c 'command -v bash >/dev/null && exec bash || exec sh'`,
     );
   }
 
@@ -444,7 +444,7 @@ export class ContainersView implements OnDestroy {
    */
   private async load(): Promise<void> {
     this.log.trace('containers.view', 'Loading daemon snapshot');
-    const available: boolean = (await this.docker.status()).available;
+    const available: boolean = (await this.client.status()).available;
     this.available.set(available);
     if (!available) {
       this.containers.set([]);
@@ -452,8 +452,8 @@ export class ContainersView implements OnDestroy {
       return;
     }
     const [containers, images]: [ContainerSummary[], ImageSummary[]] = await Promise.all([
-      this.docker.listContainers(),
-      this.docker.listImages(),
+      this.client.listContainers(),
+      this.client.listImages(),
     ]);
     this.log.debug('containers.view', 'Loaded snapshot', containers.length, images.length);
     this.containers.set(containers);

@@ -3,7 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { Bridge } from '@shared/api/bridge';
 import { ContainerChannel } from '@shared/api/container-channels';
 import { DockerEvent } from '@shared/api/docker-types';
-import { Docker } from './docker';
+import { ContainersClient } from './containers-client';
 
 /**
  * A recorded bridge invocation.
@@ -13,7 +13,7 @@ interface RecordedCall {
   readonly args: readonly unknown[];
 }
 
-describe('Docker', () => {
+describe('ContainersClient', () => {
   let calls: RecordedCall[];
   let listeners: Map<string, (...args: unknown[]) => void>;
 
@@ -70,11 +70,11 @@ describe('Docker', () => {
 
   it('forwardsEachOperationToItsChannel', async () => {
     stubBridge(true);
-    const docker: Docker = TestBed.inject(Docker);
+    const client: ContainersClient = TestBed.inject(ContainersClient);
 
-    await docker.start('abc');
-    await docker.stop('def');
-    await docker.remove('ghi');
+    await client.start('abc');
+    await client.stop('def');
+    await client.remove('ghi');
 
     expect(operations()).toEqual([
       { channel: ContainerChannel.Start, args: ['abc'] },
@@ -85,9 +85,9 @@ describe('Docker', () => {
 
   it('routesEventPushesToTheListener', () => {
     stubBridge(undefined);
-    const docker: Docker = TestBed.inject(Docker);
+    const client: ContainersClient = TestBed.inject(ContainersClient);
     const received: DockerEvent[] = [];
-    docker.onEvents((event: DockerEvent): void => {
+    client.onEvents((event: DockerEvent): void => {
       received.push(event);
     });
 
@@ -99,36 +99,36 @@ describe('Docker', () => {
 
   it('forwardsLaunchDesktopToItsChannel', async () => {
     stubBridge(true);
-    const docker: Docker = TestBed.inject(Docker);
+    const client: ContainersClient = TestBed.inject(ContainersClient);
 
-    expect(await docker.launchDesktop()).toBe(true);
+    expect(await client.launchDesktop()).toBe(true);
     expect(operations()).toEqual([{ channel: ContainerChannel.LaunchDesktop, args: [] }]);
   });
 
   it('degradesToSafeDefaultsWithoutABridge', async () => {
     delete (window as unknown as { bridge?: unknown }).bridge;
-    const docker: Docker = TestBed.inject(Docker);
+    const client: ContainersClient = TestBed.inject(ContainersClient);
 
-    expect(await docker.listContainers()).toEqual([]);
-    expect(await docker.listImages()).toEqual([]);
-    expect(await docker.status()).toEqual({ available: false });
-    expect(await docker.start('abc')).toBe(false);
-    expect(await docker.launchDesktop()).toBe(false);
-    expect(docker.onEvents((): void => undefined)).toBeTypeOf('function');
+    expect(await client.listContainers()).toEqual([]);
+    expect(await client.listImages()).toEqual([]);
+    expect(await client.status()).toEqual({ available: false });
+    expect(await client.start('abc')).toBe(false);
+    expect(await client.launchDesktop()).toBe(false);
+    expect(client.onEvents((): void => undefined)).toBeTypeOf('function');
   });
 
   it('engineCli_reportsTheEngineInEffect', async () => {
     stubBridge(true);
-    const docker: Docker = TestBed.inject(Docker);
-    await docker.refreshEngines();
+    const client: ContainersClient = TestBed.inject(ContainersClient);
+    await client.refreshEngines();
 
-    expect(docker.engineCli()).toBe('podman');
+    expect(client.engineCli()).toBe('podman');
   });
 
   it('engineCli_beforeTheEnginesAreKnown_fallsBackToDocker', () => {
     delete (window as unknown as { bridge?: unknown }).bridge;
-    const docker: Docker = TestBed.inject(Docker);
+    const client: ContainersClient = TestBed.inject(ContainersClient);
 
-    expect(docker.engineCli()).toBe('docker');
+    expect(client.engineCli()).toBe('docker');
   });
 });
