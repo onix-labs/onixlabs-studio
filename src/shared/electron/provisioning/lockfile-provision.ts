@@ -31,9 +31,10 @@ export interface LockfileProvision {
   readonly sha256: string;
 
   /**
-   * Gets the entry point's path within the installed tree.
+   * Gets the entry point's path within the installed tree, or undefined when the payload holds several
+   * programs and each contribution names its own (#454).
    */
-  readonly executablePath: string;
+  readonly executablePath?: string;
 }
 
 /**

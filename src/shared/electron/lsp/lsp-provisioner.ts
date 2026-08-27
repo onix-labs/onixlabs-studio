@@ -444,12 +444,13 @@ export class LspProvisioner {
   }
 
   /**
-   * Gets the path a tree install produces, whether or not it is installed yet.
+   * Gets an entry point within a tree install, whether or not it is installed yet.
    * @param provision The provisioning recipe.
-   * @returns Returns the entry point path, or null when provisioning is disabled.
+   * @param entryPoint The contribution's own entry point, or undefined to use the provision's.
+   * @returns Returns the entry point path, or null when provisioning is disabled or none is named.
    */
-  public treeTarget(provision: LockfileProvision): string | null {
-    return this.trees.targetOf(provision);
+  public treeTarget(provision: LockfileProvision, entryPoint?: string): string | null {
+    return this.trees.targetOf(provision, entryPoint);
   }
 
   /**

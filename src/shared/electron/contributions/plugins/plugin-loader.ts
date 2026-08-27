@@ -177,9 +177,12 @@ export function toTreeProvision(manifest: PluginManifest): LockfileProvision | n
  */
 export interface PayloadOps {
   /**
-   * Gets the entry point the payload installs to, whether or not it is installed yet.
+   * Gets an entry point within the payload, whether or not it is installed yet.
+   * @param provisioner The provisioner the payload installs through.
+   * @param entryPoint The contribution's own entry point, or undefined to use the provision's — a
+   * payload holding several programs has no single one (#454).
    */
-  target(provisioner: LspProvisioner): string | null;
+  target(provisioner: LspProvisioner, entryPoint?: string): string | null;
 
   /**
    * Gets whether the payload is installed, without downloading anything.
@@ -263,7 +266,8 @@ export function payloadOps(manifest: PluginManifest): PayloadOps {
   const tree: LockfileProvision | null = toTreeProvision(manifest);
   if (tree !== null) {
     return {
-      target: (p: LspProvisioner): string | null => p.treeTarget(tree),
+      target: (p: LspProvisioner, entryPoint?: string): string | null =>
+        p.treeTarget(tree, entryPoint),
       isInstalled: (p: LspProvisioner): boolean => p.isTreeInstalled(tree),
       ensure: (p: LspProvisioner): Promise<string | null> => p.ensureTree(tree),
       remove: (p: LspProvisioner): Promise<void> => p.removeTree(tree),
@@ -405,7 +409,7 @@ export function toLanguageServerDescriptors(
         // Never installs: a server resolves to "not installed" and the user installs it in the Plugin
         // Manager, rather than opening a file silently triggering a large download.
         const entryPoint: string | null = ops.isInstalled(context.provisioner)
-          ? ops.target(context.provisioner)
+          ? ops.target(context.provisioner, server.entryPoint)
           : null;
         return entryPoint === null
           ? unavailable(`${server.displayName} is not installed — install it in Plugins.`)
@@ -441,7 +445,9 @@ export function toDebugAdapterEntries(
       languages: adapter.languages,
       priority: adapter.priority,
       locate: (): Promise<string | null> =>
-        Promise.resolve(ops.isInstalled(provisioner()) ? ops.target(provisioner()) : null),
+        Promise.resolve(
+          ops.isInstalled(provisioner()) ? ops.target(provisioner(), adapter.entryPoint) : null,
+        ),
       buildSpec: (entryPoint: string): DebugAdapterSpec =>
         adapter.command.kind === 'node'
           ? {

@@ -75,7 +75,12 @@ function stubProvisioner(installedPath: string | null): LspProvisioner {
     isArchiveInstalled: (): boolean => installedPath !== null,
     archiveTarget: (): string | null => installedPath,
     isTreeInstalled: (): boolean => installedPath !== null,
-    treeTarget: (): string | null => installedPath,
+    // Mirrors the real provisioner: a contribution's own entry point is resolved within the installed
+    // tree. A stub that ignored the override would pass a test the application would fail.
+    treeTarget: (_provision: unknown, entryPoint?: string): string | null =>
+      installedPath === null || entryPoint === undefined
+        ? installedPath
+        : path.join(installedPath, entryPoint),
   } as unknown as LspProvisioner;
 }
 
@@ -257,6 +262,64 @@ describe('plugin loader', () => {
       writePlugin('dockerfile', npmManifest());
 
       expect(toOrigin(validManifests(discoverPlugins(root))[0])).toBeUndefined();
+    });
+  });
+
+  describe('per-contribution entry points', () => {
+    it('resolveEachServerToItsOwnBinaryFromOneTree', () => {
+      // The whole point of #454: one installed payload, several servers, each starting its own
+      // program. Sharing the provision's entry point would start the same binary three times.
+      writePlugin(
+        'web',
+        manifest({
+          id: 'web',
+          provision: {
+            kind: 'npm',
+            lockfileUrl: 'https://example.com/web.lock.json',
+            sha256: 'e'.repeat(64),
+          },
+          contributes: {
+            languageServers: [
+              {
+                id: 'html',
+                displayName: 'HTML',
+                languages: ['html'],
+                priority: 100,
+                entryPoint: 'node_modules/web/bin/html',
+                command: { kind: 'node' },
+              },
+              {
+                id: 'css',
+                displayName: 'CSS',
+                languages: ['css'],
+                priority: 100,
+                entryPoint: 'node_modules/web/bin/css',
+                command: { kind: 'node' },
+              },
+            ],
+          },
+        }),
+      );
+      const descriptors: readonly LanguageServerDescriptor[] = toLanguageServerDescriptors(
+        validManifests(discoverPlugins(root))[0],
+      );
+      const resolveContext: Parameters<LanguageServerDescriptor['resolve']>[0] = {
+        rootPath: '/w',
+        settings: { get: (): never => ({}) as never } as never,
+        provisioner: stubProvisioner('/tree'),
+        nodePackageServer: (entry: string) => ({
+          command: '/electron',
+          args: [entry, '--stdio'],
+          env: { ELECTRON_RUN_AS_NODE: '1' },
+        }),
+        installedPath: (): string | null => '/tree',
+      };
+      const resolved: readonly string[] = descriptors.map((descriptor): string =>
+        JSON.stringify(descriptor.resolve(resolveContext)),
+      );
+
+      expect(resolved[0]).toContain('node_modules/web/bin/html');
+      expect(resolved[1]).toContain('node_modules/web/bin/css');
     });
   });
 

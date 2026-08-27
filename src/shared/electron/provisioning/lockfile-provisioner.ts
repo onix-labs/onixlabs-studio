@@ -83,13 +83,16 @@ export class LockfileProvisioner {
   }
 
   /**
-   * Gets the entry point a provision installs, whether or not it is installed yet.
+   * Gets an entry point within a provision's tree, whether or not it is installed yet.
    * @param provision The provisioning recipe.
-   * @returns Returns the path, or null when provisioning is disabled.
+   * @param entryPoint The contribution's own entry point, or undefined to use the provision's. A tree
+   * holding several servers has no single entry point, so the caller names the one it wants.
+   * @returns Returns the path, or null when provisioning is disabled or no entry point is named.
    */
-  public targetOf(provision: LockfileProvision): string | null {
+  public targetOf(provision: LockfileProvision, entryPoint?: string): string | null {
     const directory: string | null = this.directoryOf(provision);
-    return directory === null ? null : path.join(directory, provision.executablePath);
+    const relative: string | undefined = entryPoint ?? provision.executablePath;
+    return directory === null || relative === undefined ? null : path.join(directory, relative);
   }
 
   /**
@@ -101,8 +104,14 @@ export class LockfileProvisioner {
    */
   public isInstalled(provision: LockfileProvision): boolean {
     const directory: string | null = this.directoryOf(provision);
+    if (directory === null || !isComplete(directory)) {
+      return false;
+    }
+    // The marker is written only after every package verified, so for a tree naming no single entry
+    // point it is the whole answer. Where there is one, it is checked too: a directory that lost a
+    // file since is not an install.
     const target: string | null = this.targetOf(provision);
-    return directory !== null && target !== null && isComplete(directory) && existsSync(target);
+    return target === null ? true : existsSync(target);
   }
 
   /**
@@ -151,13 +160,13 @@ export class LockfileProvisioner {
    */
   private async install(provision: LockfileProvision): Promise<string | null> {
     const directory: string | null = this.directoryOf(provision);
-    const target: string | null = this.targetOf(provision);
-    if (directory === null || target === null) {
+    if (directory === null) {
       logger.warn(this.logName, `Cannot provision ${provision.id}: provisioning disabled`);
       return null;
     }
+    const target: string | null = this.targetOf(provision);
     if (this.isInstalled(provision)) {
-      return target;
+      return target ?? directory;
     }
     try {
       // Start clean: a previous attempt may have left a partial tree behind.
@@ -181,14 +190,16 @@ export class LockfileProvisioner {
           return null;
         }
       }
-      if (!existsSync(target)) {
+      if (target !== null && !existsSync(target)) {
         logger.warn(this.logName, `Installed ${provision.id} but its entry point is missing`);
         await fs.rm(directory, { recursive: true, force: true });
         return null;
       }
       await markComplete(directory);
-      logger.info(this.logName, `Installed ${provision.id} at ${target}`);
-      return target;
+      logger.info(this.logName, `Installed ${provision.id} at ${target ?? directory}`);
+      // A tree naming no single entry point resolves to the tree itself; each contribution names the
+      // program it runs from within it.
+      return target ?? directory;
     } catch (error: unknown) {
       logger.error(this.logName, `Failed to provision ${provision.id}`, error);
       await fs.rm(directory, { recursive: true, force: true }).catch((): void => undefined);

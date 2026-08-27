@@ -58,17 +58,25 @@ function manifest(overrides: Record<string, unknown> = {}): Record<string, unkno
  * @param provision Fields to replace on the provision.
  * @returns Returns the manifest as untrusted JSON would arrive.
  */
-function npmManifest(provision: Record<string, unknown> = {}): Record<string, unknown> {
+function npmManifest(
+  provision: Record<string, unknown> = {},
+  languageServers?: readonly Record<string, unknown>[],
+): Record<string, unknown> {
+  const base: Record<string, unknown> = {
+    kind: 'npm',
+    lockfileUrl: 'https://example.com/dockerfile-language-server.lock.json',
+    sha256: 'b'.repeat(64),
+    executablePath: 'node_modules/dockerfile-language-server-nodejs/bin/docker-langserver',
+    ...provision,
+  };
+  if (base['executablePath'] === undefined) {
+    delete base['executablePath'];
+  }
   return manifest({
     id: 'dockerfile-language-server',
     name: 'Dockerfile Language Server',
-    provision: {
-      kind: 'npm',
-      lockfileUrl: 'https://example.com/dockerfile-language-server.lock.json',
-      sha256: 'b'.repeat(64),
-      executablePath: 'node_modules/dockerfile-language-server-nodejs/bin/docker-langserver',
-      ...provision,
-    },
+    provision: base,
+    ...(languageServers === undefined ? {} : { contributes: { languageServers } }),
   });
 }
 
@@ -104,6 +112,38 @@ describe('parsePluginManifest', () => {
         sha256: 'b'.repeat(64),
         executablePath: 'node_modules/dockerfile-language-server-nodejs/bin/docker-langserver',
       });
+    });
+
+    it('aPayloadWhoseContributionsNameTheirOwnEntryPoints', () => {
+      // One package, several servers: `vscode-langservers-extracted` ships five. They cannot share an
+      // entry point without every one of them starting the same binary, so the payload stays whole
+      // and each contribution says which part of it to run.
+      const result: ManifestResult = parsePluginManifest(
+        npmManifest({ executablePath: undefined }, [
+          {
+            id: 'html',
+            displayName: 'HTML',
+            languages: ['html'],
+            priority: 100,
+            entryPoint: 'node_modules/pkg/bin/html-server',
+            command: { kind: 'node' },
+          },
+          {
+            id: 'css',
+            displayName: 'CSS',
+            languages: ['css'],
+            priority: 100,
+            entryPoint: 'node_modules/pkg/bin/css-server',
+            command: { kind: 'node' },
+          },
+        ]),
+      );
+
+      expect(result.errors).toEqual([]);
+      expect(result.manifest?.provision).not.toHaveProperty('executablePath', expect.any(String));
+      expect(
+        result.manifest?.contributes.languageServers?.map((s): string | undefined => s.entryPoint),
+      ).toEqual(['node_modules/pkg/bin/html-server', 'node_modules/pkg/bin/css-server']);
     });
 
     it('aManifestWithNoDetail', () => {
@@ -319,6 +359,26 @@ describe('parsePluginManifest', () => {
       );
 
       expect(paths(result)).toEqual(['provision.kind']);
+    });
+
+    it('aContributionEntryPointThatEscapesThePayload', () => {
+      // The same boundary the provision's own entry point has: a contribution names a part of the
+      // installed tree, not a path anywhere on the machine.
+      const result: ManifestResult = parsePluginManifest(
+        npmManifest({}, [
+          {
+            id: 'html',
+            displayName: 'HTML',
+            languages: ['html'],
+            priority: 100,
+            entryPoint: '../../../etc/passwd',
+            command: { kind: 'node' },
+          },
+        ]),
+      );
+
+      expect(result.manifest).toBeNull();
+      expect(paths(result)).toContain('contributes.languageServers[0].entryPoint');
     });
 
     it('anNpmProvisionWithANonHttpsLockfileUrl', () => {
