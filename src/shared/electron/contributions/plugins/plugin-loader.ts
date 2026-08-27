@@ -185,6 +185,15 @@ export interface PayloadOps {
   target(provisioner: LspProvisioner, entryPoint?: string): string | null;
 
   /**
+   * Gets whether the payload can be installed on this machine at all.
+   *
+   * Deliberately not "does it have an entry point": a tree holding several servers names none at the
+   * provision, and asking for one would report the whole plugin unsupported. The question is whether
+   * this machine can have the payload — for an archive, whether its platform is published.
+   */
+  supported(provisioner: LspProvisioner): boolean;
+
+  /**
    * Gets whether the payload is installed, without downloading anything.
    */
   isInstalled(provisioner: LspProvisioner): boolean;
@@ -268,6 +277,9 @@ export function payloadOps(manifest: PluginManifest): PayloadOps {
     return {
       target: (p: LspProvisioner, entryPoint?: string): string | null =>
         p.treeTarget(tree, entryPoint),
+      // A tree installs anywhere provisioning is enabled; the lockfile's own `os`/`cpu` fields decide
+      // what goes into it, so there is no platform for the plugin as a whole to be unsupported on.
+      supported: (p: LspProvisioner): boolean => p.treeDirectory(tree) !== null,
       isInstalled: (p: LspProvisioner): boolean => p.isTreeInstalled(tree),
       ensure: (p: LspProvisioner): Promise<string | null> => p.ensureTree(tree),
       remove: (p: LspProvisioner): Promise<void> => p.removeTree(tree),
@@ -279,13 +291,17 @@ export function payloadOps(manifest: PluginManifest): PayloadOps {
     // arrive here as a plugin that silently claims to be installed.
     return {
       target: (): string | null => null,
+      supported: (): boolean => false,
       isInstalled: (): boolean => false,
       ensure: (): Promise<string | null> => Promise.resolve(null),
       remove: (): Promise<void> => Promise.resolve(),
     };
   }
   return {
+    // An archive names its entry point per platform, so a contribution's override does not apply.
     target: (p: LspProvisioner): string | null => p.archiveTarget(archive),
+    // An archive publishes per platform, so having no entry point here IS being unsupported.
+    supported: (p: LspProvisioner): boolean => p.archiveTarget(archive) !== null,
     isInstalled: (p: LspProvisioner): boolean => p.isArchiveInstalled(archive),
     ensure: (p: LspProvisioner): Promise<string | null> => p.ensureArchive(archive),
     remove: (p: LspProvisioner): Promise<void> => p.removeArchive(archive),
@@ -360,7 +376,7 @@ export function toPluginDescriptor(manifest: PluginManifest): PluginDescriptor {
     contributions: toContributions(manifest),
     detail: toDetail(manifest),
     origin: toOrigin(manifest, bundledLockfile),
-    supported: (context: PluginContext): boolean => ops.target(context.provisioner) !== null,
+    supported: (context: PluginContext): boolean => ops.supported(context.provisioner),
     detect: (context: PluginContext): Promise<boolean> =>
       Promise.resolve(ops.isInstalled(context.provisioner)),
     install: (context: PluginContext): Promise<string | null> => ops.ensure(context.provisioner),

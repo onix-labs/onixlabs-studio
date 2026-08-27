@@ -463,6 +463,17 @@ export class LspProvisioner {
   }
 
   /**
+   * Gets the directory a tree installs into, whether or not it is installed yet. Null only when
+   * provisioning is disabled — a tree has no unsupported platform, since the lockfile's own `os` and
+   * `cpu` fields decide per package what this machine gets.
+   * @param provision The provisioning recipe.
+   * @returns Returns the install directory, or null when provisioning is disabled.
+   */
+  public treeDirectory(provision: LockfileProvision): string | null {
+    return this.trees.directoryOf(provision);
+  }
+
+  /**
    * Gets the private GOPATH gopls is built in. Kept out of the user's own GOPATH — building a tool
    * should not write into the caches their projects use — which also means it is Studio's to clean up.
    * @returns Returns the build-cache directory.
