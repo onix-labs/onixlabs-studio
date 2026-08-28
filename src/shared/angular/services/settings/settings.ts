@@ -280,6 +280,11 @@ export interface ApplicationSettings {
    * Gets how the application menu's button lays its sections out when opened.
    */
   readonly menuAppearance: ApplicationMenuAppearance;
+
+  /**
+   * Gets a value indicating whether the title strip carries the window-lock switch.
+   */
+  readonly showWindowLock: boolean;
 }
 
 /**
@@ -503,6 +508,7 @@ export class Settings {
       printMargin: this.read('application.printMargin'),
       menuMode: this.read('application.menuMode'),
       menuAppearance: this.read('application.menuAppearance'),
+      showWindowLock: this.read('application.showWindowLock'),
     }),
   );
 
@@ -517,6 +523,13 @@ export class Settings {
    */
   public readonly applicationMenuAppearance: Signal<ApplicationMenuAppearance> = this.value(
     'application.menuAppearance',
+  );
+
+  /**
+   * Gets a value indicating whether the title strip carries the window-lock switch.
+   */
+  public readonly applicationShowWindowLock: Signal<boolean> = this.value(
+    'application.showWindowLock',
   );
 
   /**

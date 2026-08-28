@@ -1,5 +1,6 @@
-import { inject, Service, Signal, signal, WritableSignal } from '@angular/core';
+import { effect, inject, Service, Signal, signal, WritableSignal } from '@angular/core';
 import { Log } from '@shared/angular/services/log/log';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { Studio } from '@shared/angular/services/studio/studio';
 
 /**
@@ -27,6 +28,24 @@ export class WindowLock {
    * Gets a value indicating whether the window is locked in its current position.
    */
   public readonly locked: Signal<boolean> = this.lockedState.asReadonly();
+
+  /**
+   * Holds the settings store governing whether the lock's switch is carried at all.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Releases the lock whenever its switch is hidden.
+   *
+   * The switch in the title strip is the only place the lock can be released, so a window left locked
+   * without it could never be moved again. The setting therefore governs the lock itself and not
+   * merely whether the switch is drawn.
+   */
+  private readonly releaseWhenHidden: ReturnType<typeof effect> = effect((): void => {
+    if (!this.settings.applicationShowWindowLock() && this.lockedState()) {
+      this.setLocked(false);
+    }
+  });
 
   /**
    * Sets whether the window is locked in place, updating the underlying window movability.

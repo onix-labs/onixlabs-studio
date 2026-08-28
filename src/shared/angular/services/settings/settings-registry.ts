@@ -57,6 +57,7 @@ export interface SettingsValues {
   readonly 'application.printMargin': PrintMargin;
   readonly 'application.menuMode': ApplicationMenuMode;
   readonly 'application.menuAppearance': ApplicationMenuAppearance;
+  readonly 'application.showWindowLock': boolean;
 
   readonly 'accessibility.showTooltips': boolean;
 
@@ -256,6 +257,17 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         // bar already, so the choice would be inert in both.
         visibleWhen: { key: 'application.menuMode', equals: ['icon'] },
         default: 'vertical',
+      },
+      {
+        key: 'application.showWindowLock',
+        title: 'Window lock switch',
+        description:
+          'Carry the switch at the start of the title strip that pins the window in place, so ' +
+          'dragging the strip no longer moves it. Turning this off releases the lock as well as ' +
+          'hiding the switch: the strip is the only place the lock can be released, so a window ' +
+          'left locked without it could never be moved again.',
+        control: { kind: 'toggle' },
+        default: true,
       },
       {
         key: 'application.undoStackSize',

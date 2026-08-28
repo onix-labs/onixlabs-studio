@@ -1,21 +1,24 @@
 <!-- The window-lock is a switch whose sliding knob carries the lock glyph. The native checkbox
-     provides the semantics; the track and knob are drawn around it. -->
-<label
-  class="window-lock"
-  [class.window-lock--active]="windowLock.locked()"
-  [title]="windowLock.locked() ? 'Window locked in place' : 'Lock window in place'"
->
-  <input
-    type="checkbox"
-    role="switch"
-    class="window-lock__input"
-    [checked]="windowLock.locked()"
-    (change)="onLockChange($event)"
-    aria-label="Lock window in place"
-  />
-  <app-icon class="window-lock__icon" [icon]="windowLock.locked() ? Icon.LOCK : Icon.LOCK_OPEN" />
-  <span class="window-lock__knob"></span>
-</label>
+     provides the semantics; the track and knob are drawn around it. Whether the strip carries it at
+     all is the user's choice; hiding it releases the lock, so the strip is never left unmovable. -->
+@if (showWindowLock()) {
+  <label
+    class="window-lock"
+    [class.window-lock--active]="windowLock.locked()"
+    [title]="windowLock.locked() ? 'Window locked in place' : 'Lock window in place'"
+  >
+    <input
+      type="checkbox"
+      role="switch"
+      class="window-lock__input"
+      [checked]="windowLock.locked()"
+      (change)="onLockChange($event)"
+      aria-label="Lock window in place"
+    />
+    <app-icon class="window-lock__icon" [icon]="windowLock.locked() ? Icon.LOCK : Icon.LOCK_OPEN" />
+    <span class="window-lock__knob"></span>
+  </label>
+}
 
 <app-title-strip-button-list />
 <app-title-strip-tab-list />

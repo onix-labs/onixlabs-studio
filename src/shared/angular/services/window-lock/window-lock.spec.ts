@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 
+import { Settings } from '@shared/angular/services/settings/settings';
 import { Studio } from '@shared/angular/services/studio/studio';
 import { WindowLock } from './window-lock';
 
@@ -38,6 +39,21 @@ describe('WindowLock', () => {
 
     expect(windowLock.locked()).toBe(false);
     expect(movableCalls).toEqual([false, true]);
+  });
+
+  it('locked_whenTheSwitchIsHiddenWhileLocked_releasesTheWindow', () => {
+    const settings: Settings = TestBed.inject(Settings);
+    windowLock.setLocked(true);
+    TestBed.tick();
+
+    settings.set('application.showWindowLock', false);
+    TestBed.tick();
+
+    expect(windowLock.locked()).toBe(false);
+    expect(movableCalls).toEqual([false, true]);
+
+    // The store outlives the injector, so leaving the switch hidden would carry into the next test.
+    settings.set('application.showWindowLock', true);
   });
 
   it('toggle_whenCalledRepeatedly_flipsLockAndMovabilityTogether', () => {

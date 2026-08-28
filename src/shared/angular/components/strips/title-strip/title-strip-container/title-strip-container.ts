@@ -1,4 +1,5 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, Signal } from '@angular/core';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { WindowLock } from '@shared/angular/services/window-lock/window-lock';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
@@ -30,6 +31,16 @@ export class TitleStripContainer {
    * Holds the window-lock state controlling whether the window may be dragged.
    */
   protected readonly windowLock: WindowLock = inject(WindowLock);
+
+  /**
+   * Holds the settings store the switch's visibility comes from.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Gets a value indicating whether the strip carries the window-lock switch.
+   */
+  protected readonly showWindowLock: Signal<boolean> = this.settings.applicationShowWindowLock;
 
   /**
    * Sets whether the window is locked in its current position.
