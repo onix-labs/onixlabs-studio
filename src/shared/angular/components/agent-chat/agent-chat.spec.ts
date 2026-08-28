@@ -269,6 +269,40 @@ describe('AgentChat', () => {
     expect(first?.innerHTML).toContain('message 51');
   });
 
+  it('rows_whenTheChatIsNotVisible_rendersNothingAtAll', () => {
+    // A hidden view costs what a shown one costs, and every open tab stays mounted — so an agent tab
+    // behind Mission Control used to re-check every rendered row on every streamed token for nobody.
+    // This is a performance guard: if the gate regresses, the rows come back and so does the lag.
+    items.set(userMessages(200));
+    fixture.componentRef.setInput('visible', false);
+    fixture.detectChanges();
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+
+    expect(host.querySelectorAll('.agent__message--user').length).toBe(0);
+    expect(host.querySelector('.agent__earlier')).toBeNull();
+  });
+
+  it('rows_whenTheChatBecomesVisibleAgain_rendersTheTranscriptBack', () => {
+    items.set(userMessages(10));
+    fixture.componentRef.setInput('visible', false);
+    fixture.detectChanges();
+    fixture.componentRef.setInput('visible', true);
+    fixture.detectChanges();
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+
+    expect(host.querySelectorAll('.agent__message--user').length).toBe(10);
+  });
+
+  it('rows_whenVisibleIsNotSpecified_rendersTheTranscript', () => {
+    // The gate defaults to shown, so a caller that forgets it gets today's cost rather than a blank
+    // transcript — Mission Control's focus modal shows a chat whose tab is not the active one.
+    items.set(userMessages(10));
+    fixture.detectChanges();
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+
+    expect(host.querySelectorAll('.agent__message--user').length).toBe(10);
+  });
+
   it('rows_whenTranscriptWithinTheWindow_rendersEveryRowWithNoAffordance', () => {
     items.set(userMessages(10));
     fixture.detectChanges();

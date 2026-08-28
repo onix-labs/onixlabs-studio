@@ -350,6 +350,28 @@ export class AgentChat implements OnInit {
   public readonly isActive: InputSignal<boolean> = input<boolean>(false);
 
   /**
+   * Gets a value indicating whether this chat is actually on screen, which gates whether the transcript
+   * is rendered at all.
+   *
+   * A hidden view costs as much as a visible one. Every open tab stays mounted (hidden with a class,
+   * not destroyed), so an agent tab sitting behind Mission Control kept re-checking all of its rendered
+   * rows on every streamed token — measured at the same DOM size as the active view, for something
+   * nobody could see. Several conversations streaming into several views each is what saturates the
+   * main thread, and a saturated main thread is what makes typing crawl.
+   *
+   * Deliberately **not** {@link isActive}, and deliberately defaulting to true. The two part company
+   * where a chat is shown while its tab is not active — Mission Control's focus modal is a separate
+   * window over an inactive tab — and a gate that defaults to hidden would blank a transcript the
+   * moment a caller forgot to pass it. Defaulting to shown means the worst a forgetful caller gets is
+   * today's cost.
+   *
+   * The transcript is safe to drop and rebuild because it is pure derived state — unlike Monaco or a
+   * terminal, which is why those must stay mounted. The reader's distance from the tail is preserved
+   * across the gate, so returning to a tab lands where they left it.
+   */
+  public readonly visible: InputSignal<boolean> = input<boolean>(true);
+
+  /**
    * Gets what this conversation's runs act on, which selects the tool set the providers expose: the
    * open editor document (`editor`, the default) or the owning terminal (`terminal`).
    */
@@ -509,9 +531,17 @@ export class AgentChat implements OnInit {
    * timeline-rail connectivity and, for tool rows, a friendly label and technical name. The agent's
    * own activity (assistant text, reasoning, tool calls, and the working indicator) forms one
    * connected rail; the user's messages and permission prompts sit off it and break the line.
+   *
+   * Empty while the chat is not {@link visible}, which is the cheap half of the fix: a hidden view
+   * neither builds rows nor renders them, so a streamed token costs it nothing at all. The gate sits
+   * here rather than on the rendered rows so that the build itself is skipped too — `earlierCount`
+   * reads this, so gating only the rendering would leave the per-flush build running unseen.
    */
   protected readonly transcript: Signal<{ rows: readonly TranscriptRow[]; total: number }> =
     computed((): { rows: readonly TranscriptRow[]; total: number } => {
+      if (!this.visible()) {
+        return { rows: [], total: 0 };
+      }
       const items: readonly AgentItem[] = this.items();
       const showWorking: boolean = this.isRunning() && !this.awaitingDecision();
       const revealed: ReadonlySet<string> = this.revealedPayloads();
@@ -744,6 +774,25 @@ export class AgentChat implements OnInit {
     effect((): void => {
       this.pendingInput();
       untracked((): void => this.selectedChoice.set(null));
+    });
+
+    // Hiding the transcript drops its DOM, so remember how far the reader was from the tail and put
+    // them back there when it returns. Without this, coming back to a tab you had scrolled up in would
+    // land at the top of the window; the anchor is the same "distance from the bottom" the load-earlier
+    // restore uses, so returning to a tab behaves exactly as revealing older rows does.
+    effect((): void => {
+      const showing: boolean = this.visible();
+      untracked((): void => {
+        if (showing) {
+          return;
+        }
+        const element: HTMLElement | undefined = this.messagesRef()?.nativeElement;
+        // At the tail there is nothing to preserve — the follow-the-tail effect re-pins on return,
+        // which is both cheaper and more correct while the agent is still streaming.
+        if (element !== undefined && !this.atBottom()) {
+          this.pendingScrollAnchor = element.scrollHeight - element.scrollTop;
+        }
+      });
     });
 
     // Follow the tail: after each render that grows the transcript (streamed text, a new row, or the
