@@ -424,26 +424,21 @@
   gap: 0.75rem;
 }
 
-.agent__composer-hint {
-  display: flex;
-  flex: 0 1 auto;
-  align-items: center;
-  gap: 0.4rem;
-  min-inline-size: 0;
-  margin: 0;
-  overflow: hidden;
-  color: var(--form-muted-foreground-color);
-  font-family: 'JetBrains Mono', ui-monospace, monospace;
-  font-size: 0.6875rem;
-  white-space: nowrap;
-}
-
 .agent__composer-sep {
   opacity: 0.5;
 }
 
+// Groups the composer's two reference controls — the shortcut list and the quick responses — at the
+// footer's leading edge.
+.agent__composer-aids {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.2rem;
+}
+
 // Groups the markdown-composer trigger with the send/stop control so they sit together at the footer's
-// trailing edge, leaving the hint on the left.
+// trailing edge, leaving the reference controls on the left.
 .agent__composer-actions {
   display: flex;
   flex: 0 0 auto;

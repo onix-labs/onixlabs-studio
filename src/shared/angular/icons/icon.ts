@@ -938,6 +938,24 @@ export class Icon {
    */
   public static readonly SEND: Icon = new Icon('ph-fill ph-paper-plane-right');
 
+  /**
+   * Gets the keyboard-shortcuts icon, shown on the composer's shortcut menu. Duotone rather than the
+   * regular-weight {@link KEYBOARD} the settings navigation uses, so it carries its weight beside the
+   * composer's other footer controls.
+   */
+  public static readonly KEYBOARD_SHORTCUTS: Icon = new Icon('ph-duotone ph-keyboard');
+
+  /**
+   * Gets the quick-response icon, shown on the composer's saved-replies menu.
+   */
+  public static readonly QUICK_RESPONSE: Icon = new Icon('ph-duotone ph-quotes');
+
+  /**
+   * Gets the jump-to-the-latest-message icon, shown on the controls that scroll a transcript to its
+   * tail.
+   */
+  public static readonly SCROLL_TO_BOTTOM: Icon = new Icon('ph-duotone ph-arrow-fat-lines-down');
+
   // --- Settings ---
 
   /**

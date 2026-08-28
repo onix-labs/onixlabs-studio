@@ -1,0 +1,31 @@
+<!-- Standard size, not the dense `small`: it stands in a row with the Edit and Send buttons, so it
+     matches their height rather than reading as a lesser control beside them. -->
+<app-button
+  variant="none"
+  [icon]="Icon.KEYBOARD_SHORTCUTS"
+  ariaLabel="Keyboard shortcuts"
+  tooltip="Keyboard shortcuts"
+  [cdkMenuTriggerFor]="menu"
+  [cdkMenuPosition]="menuPosition"
+/>
+
+<!-- `cdkMenu` must be this template's root node: on an inner element the CDK silently falls back to
+     an inline menu, which never dismisses. The rows are plain markup rather than menu items — there
+     is nothing here to activate, so nothing to focus. -->
+<ng-template #menu>
+  <div class="agent-shortcuts__panel" cdkMenu>
+    @for (group of groups; track group.title) {
+      <p class="agent-shortcuts__heading">{{ group.title }}</p>
+      @for (shortcut of group.shortcuts; track shortcut.keys.join('') + shortcut.description) {
+        <div class="agent-shortcuts__item">
+          <span class="agent-shortcuts__keys">
+            @for (key of shortcut.keys; track key) {
+              <kbd class="agent-shortcuts__key">{{ key }}</kbd>
+            }
+          </span>
+          <span class="agent-shortcuts__label">{{ shortcut.description }}</span>
+        </div>
+      }
+    }
+  </div>
+</ng-template>

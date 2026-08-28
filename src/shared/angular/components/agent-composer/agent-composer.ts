@@ -36,6 +36,8 @@ import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
+import { AgentComposerShortcuts } from '@shared/angular/components/agent-composer-shortcuts/agent-composer-shortcuts';
+import { AgentQuickResponses } from '@shared/angular/components/agent-quick-responses/agent-quick-responses';
 import { AgentLoginModal } from '@shared/angular/components/agent-login-modal/agent-login-modal';
 import { MarkdownEditor } from '@shared/angular/components/markdown-editor/markdown-editor';
 import { AgentPerf } from '@shared/angular/services/agent-perf/agent-perf';
@@ -178,7 +180,16 @@ interface ContextChip {
  */
 @Component({
   selector: 'app-agent-composer',
-  imports: [Button, AppIcon, Modal, ModalContent, MarkdownEditor, AgentLoginModal],
+  imports: [
+    Button,
+    AppIcon,
+    Modal,
+    ModalContent,
+    MarkdownEditor,
+    AgentLoginModal,
+    AgentComposerShortcuts,
+    AgentQuickResponses,
+  ],
   templateUrl: './agent-composer.html',
   styleUrl: './agent-composer.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -691,6 +702,26 @@ export class AgentComposer {
     this.historyIndex = null;
     // A fresh turn re-pins to the bottom even if the reader had scrolled up to read back.
     this.sent.emit();
+  }
+
+  /**
+   * Answers with a saved quick response.
+   *
+   * An empty composer sends it as it stands — that is the whole point of a saved reply. A draft that
+   * is already being written is appended to instead, so the response becomes part of what is being
+   * said ("Yes, and check the tests too") rather than replacing it: text the user typed is theirs, and
+   * a menu pick must never throw it away.
+   * @param text The picked response.
+   */
+  public onQuickResponse(text: string): void {
+    const current: string = this.draftText();
+    if (current.trim().length === 0) {
+      this.draftText.set(text);
+      this.send();
+      return;
+    }
+    const separator: string = current.endsWith(' ') || current.endsWith('\n') ? '' : ' ';
+    this.replaceComposerRange(current.length, current.length, `${separator}${text}`);
   }
 
   /**
@@ -1257,7 +1288,15 @@ export class AgentComposer {
 
   /**
    * Handles composer key presses: sends on Enter (Shift+Enter inserts a newline), and recalls the
-   * sent-prompt history on ArrowUp/ArrowDown.
+   * sent-prompt history on Shift+ArrowUp/Shift+ArrowDown.
+   *
+   * The bare arrows are left to the text area. A prompt is often several lines long, and a key that
+   * usually moves the caret but sometimes replaces the whole draft is worse than either behaviour on
+   * its own — so recall is a chord, and moving through what you are writing never guesses.
+   *
+   * Every chord handled here is listed in the composer's shortcut menu (see
+   * {@link import('../agent-composer-shortcuts/agent-composer-shortcuts').COMPOSER_SHORTCUT_GROUPS}),
+   * which is where a change to them has to be reflected.
    * @param event The keyboard event.
    */
   public onKeydown(event: KeyboardEvent): void {
@@ -1288,7 +1327,7 @@ export class AgentComposer {
       this.cancelEdit();
       return;
     }
-    if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+    if (event.shiftKey && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
       this.onHistoryKey(event);
       return;
     }
@@ -1300,10 +1339,12 @@ export class AgentComposer {
   }
 
   /**
-   * Recalls previously sent prompts into the composer, shell-style: ArrowUp steps to older prompts,
-   * ArrowDown back to newer ones, and stepping past the most recent restores whatever draft was
-   * being written when navigation began. Only engages while the caret is on the first (Up) or last
-   * (Down) line, so the arrows still move the caret inside a multi-line draft.
+   * Recalls previously sent prompts into the composer, shell-style: Shift+ArrowUp steps to older
+   * prompts, Shift+ArrowDown back to newer ones, and stepping past the most recent restores whatever
+   * draft was being written when navigation began.
+   *
+   * The chord is asked for explicitly, so recall engages wherever the caret is; the caret's line only
+   * mattered while the bare arrows carried this.
    * @param event The keyboard event (its target is the composer text area).
    */
   private onHistoryKey(event: KeyboardEvent): void {
@@ -1315,12 +1356,7 @@ export class AgentComposer {
     if (history.length === 0) {
       return;
     }
-    const caretStart: number = area.selectionStart ?? 0;
-    const caretEnd: number = area.selectionEnd ?? caretStart;
     if (event.key === 'ArrowUp') {
-      if (area.value.slice(0, caretStart).includes('\n')) {
-        return;
-      }
       const next: number = this.historyIndex === null ? 0 : this.historyIndex + 1;
       if (next >= history.length) {
         return;
@@ -1332,7 +1368,7 @@ export class AgentComposer {
       event.preventDefault();
       this.recall(area, history[history.length - 1 - next]);
     } else {
-      if (this.historyIndex === null || area.value.slice(caretEnd).includes('\n')) {
+      if (this.historyIndex === null) {
         return;
       }
       event.preventDefault();

@@ -324,7 +324,23 @@ describe('AgentComposer', () => {
     expect(sent).toHaveLength(0);
   });
 
-  it('historyKeys_whenArrowUpAndDown_walkSentPromptsAndRestoreTheDraft', () => {
+  it('onQuickResponse_whenTheComposerIsEmpty_sendsItAsItStands', () => {
+    component.onQuickResponse('Looks good to me');
+
+    expect(sent).toEqual(['Looks good to me']);
+    expect(component.draft()).toBe('');
+  });
+
+  it('onQuickResponse_whenADraftIsBeingWritten_appendsInsteadOfSending', () => {
+    component.onInput('Yes');
+
+    component.onQuickResponse('and check the tests too');
+
+    expect(sent).toEqual([]);
+    expect(component.draft()).toBe('Yes and check the tests too');
+  });
+
+  it('historyKeys_whenShiftArrowUpAndDown_walkSentPromptsAndRestoreTheDraft', () => {
     items.set([
       { id: 'item-1', kind: 'user', text: 'first prompt' },
       { id: 'item-2', kind: 'assistant', text: 'reply' },
@@ -332,7 +348,7 @@ describe('AgentComposer', () => {
     ]);
     const area: HTMLTextAreaElement = document.createElement('textarea');
     const key: (name: string) => KeyboardEvent = (name: string): KeyboardEvent => {
-      const event: KeyboardEvent = new KeyboardEvent('keydown', { key: name });
+      const event: KeyboardEvent = new KeyboardEvent('keydown', { key: name, shiftKey: true });
       Object.defineProperty(event, 'target', { value: area });
       return event;
     };
@@ -356,7 +372,7 @@ describe('AgentComposer', () => {
     expect(component.draft()).toBe('a draft');
   });
 
-  it('historyKeys_whenCaretIsInsideAMultiLineDraft_leaveTheCaretAlone', () => {
+  it('historyKeys_whenTheArrowIsPressedAlone_leaveTheDraftToTheCaret', () => {
     items.set([{ id: 'item-1', kind: 'user', text: 'previous' }]);
     const area: HTMLTextAreaElement = document.createElement('textarea');
     area.value = 'line one\nline two';
@@ -367,8 +383,22 @@ describe('AgentComposer', () => {
 
     component.onKeydown(event);
 
-    // The caret sits on the second line, so ArrowUp is caret movement, not history recall.
+    // Recall is a chord now, so a bare ArrowUp is caret movement wherever the caret sits.
     expect(component.draft()).toBe('line one\nline two');
+  });
+
+  it('historyKeys_whenShiftArrowUpFromTheEndOfAMultiLineDraft_stillRecalls', () => {
+    items.set([{ id: 'item-1', kind: 'user', text: 'previous' }]);
+    const area: HTMLTextAreaElement = document.createElement('textarea');
+    area.value = 'line one\nline two';
+    area.setSelectionRange(area.value.length, area.value.length);
+    component.onInput(area.value);
+    const event: KeyboardEvent = new KeyboardEvent('keydown', { key: 'ArrowUp', shiftKey: true });
+    Object.defineProperty(event, 'target', { value: area });
+
+    component.onKeydown(event);
+
+    expect(component.draft()).toBe('previous');
   });
 
   it('contextMeter_whenASelectionIsAttached_showsTheEstimate', () => {

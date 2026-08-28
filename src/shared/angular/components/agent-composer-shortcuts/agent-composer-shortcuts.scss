@@ -1,0 +1,6 @@
+// The trigger is an ordinary icon button in the composer footer; the drop-up panel renders through
+// the CDK overlay (outside this component), so its styles live in the global _menu.scss.
+:host {
+  display: inline-flex;
+  flex: 0 0 auto;
+}

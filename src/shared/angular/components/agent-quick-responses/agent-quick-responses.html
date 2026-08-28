@@ -1,0 +1,55 @@
+<app-button
+  variant="none"
+  [icon]="Icon.QUICK_RESPONSE"
+  ariaLabel="Quick responses"
+  tooltip="Quick responses"
+  [cdkMenuTriggerFor]="menu"
+  [cdkMenuPosition]="menuPosition"
+/>
+
+<!-- `cdkMenu` must be this template's root node: on an inner element the CDK silently falls back to
+     an inline menu, which never dismisses. -->
+<ng-template #menu>
+  <div class="quick-responses__panel" cdkMenu>
+    @for (response of responses(); track response.id) {
+      <div class="quick-responses__item">
+        <button
+          type="button"
+          class="quick-responses__select"
+          cdkMenuItem
+          (cdkMenuItemTriggered)="choose(response)"
+        >
+          <span class="quick-responses__text">{{ response.text }}</span>
+        </button>
+        <!-- A plain icon button rather than a cdkMenuItem so deleting leaves the menu open, letting
+             several be cleared in a row; the stopPropagation keeps the click from reaching the menu. -->
+        <app-button
+          variant="none"
+          size="small"
+          [icon]="Icon.CLOSE"
+          [ariaLabel]="'Delete quick response: ' + response.text"
+          tooltip="Delete"
+          (pointerdown)="$event.preventDefault()"
+          (click)="remove(response); $event.stopPropagation()"
+        />
+      </div>
+    } @empty {
+      <p class="quick-responses__empty">
+        <app-icon [icon]="Icon.QUICK_RESPONSE" aria-hidden="true" />
+        <span>No quick responses yet</span>
+      </p>
+    }
+
+    <!-- The CDK menu runs type-ahead over its items on every printable key, so a field inside the
+         panel has to keep its keystrokes to itself or typing would move the menu's focus instead. -->
+    <div class="quick-responses__add">
+      <app-text-field
+        [(value)]="draft"
+        placeholder="Enter quick response…"
+        ariaLabel="Enter quick response"
+        (enter)="add()"
+        (keydown)="$event.stopPropagation()"
+      />
+    </div>
+  </div>
+</ng-template>

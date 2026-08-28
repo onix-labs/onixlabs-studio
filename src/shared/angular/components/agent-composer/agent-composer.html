@@ -184,11 +184,10 @@
   ></textarea>
 
   <div class="agent__composer-footer">
-    <p class="agent__composer-hint" aria-hidden="true">
-      <span>↵ to send</span>
-      <span class="agent__composer-sep">|</span>
-      <span>⇧↵ for new line</span>
-    </p>
+    <div class="agent__composer-aids">
+      <app-agent-composer-shortcuts />
+      <app-agent-quick-responses (chosen)="onQuickResponse($event)" />
+    </div>
 
     <div class="agent__composer-actions">
       <app-button
