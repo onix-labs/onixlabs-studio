@@ -4,6 +4,7 @@ import * as path from 'node:path';
 import { PLUGIN_API_VERSION, PluginManifest } from '@shared/api/plugin-manifest';
 import { PluginContribution, PluginOrigin } from '@shared/api/plugin-channels';
 import { ArchiveProvision } from '../../provisioning/archive-provision';
+import { LockfileProvision } from '../../provisioning/lockfile-provision';
 import { LspProvisioner } from '../../lsp/lsp-provisioner';
 import { LanguageServerDescriptor, LspResolution } from '../../lsp/language-server-descriptor';
 import { DebugAdapterCatalogueEntry, DebugAdapterSpec } from '../../debug/debug-adapter-registry';
@@ -74,8 +75,18 @@ function stubProvisioner(installedPath: string | null): LspProvisioner {
   return {
     isArchiveInstalled: (): boolean => installedPath !== null,
     archiveTarget: (): string | null => installedPath,
+    treeDirectory: (): string | null => installedPath,
     isTreeInstalled: (): boolean => installedPath !== null,
-    treeTarget: (): string | null => installedPath,
+    // Mirrors `LockfileProvisioner.targetOf` exactly, including returning null when neither the
+    // provision nor the contribution names an entry point. A stub looser than the thing it stands in
+    // for passes tests the application fails — which is how the "Not supported here" regression got
+    // out in the first place.
+    treeTarget: (provision: LockfileProvision, entryPoint?: string): string | null => {
+      const relative: string | undefined = entryPoint ?? provision.executablePath;
+      return installedPath === null || relative === undefined
+        ? null
+        : path.join(installedPath, relative);
+    },
   } as unknown as LspProvisioner;
 }
 
@@ -257,6 +268,116 @@ describe('plugin loader', () => {
       writePlugin('dockerfile', npmManifest());
 
       expect(toOrigin(validManifests(discoverPlugins(root))[0])).toBeUndefined();
+    });
+  });
+
+  describe('per-contribution entry points', () => {
+    it('resolveEachServerToItsOwnBinaryFromOneTree', () => {
+      // The whole point of #454: one installed payload, several servers, each starting its own
+      // program. Sharing the provision's entry point would start the same binary three times.
+      writePlugin(
+        'web',
+        manifest({
+          id: 'web',
+          provision: {
+            kind: 'npm',
+            lockfileUrl: 'https://example.com/web.lock.json',
+            sha256: 'e'.repeat(64),
+          },
+          contributes: {
+            languageServers: [
+              {
+                id: 'html',
+                displayName: 'HTML',
+                languages: ['html'],
+                priority: 100,
+                entryPoint: 'node_modules/web/bin/html',
+                command: { kind: 'node' },
+              },
+              {
+                id: 'css',
+                displayName: 'CSS',
+                languages: ['css'],
+                priority: 100,
+                entryPoint: 'node_modules/web/bin/css',
+                command: { kind: 'node' },
+              },
+            ],
+          },
+        }),
+      );
+      const descriptors: readonly LanguageServerDescriptor[] = toLanguageServerDescriptors(
+        validManifests(discoverPlugins(root))[0],
+      );
+      const resolveContext: Parameters<LanguageServerDescriptor['resolve']>[0] = {
+        rootPath: '/w',
+        settings: { get: (): never => ({}) as never } as never,
+        provisioner: stubProvisioner('/tree'),
+        nodePackageServer: (entry: string) => ({
+          command: '/electron',
+          args: [entry, '--stdio'],
+          env: { ELECTRON_RUN_AS_NODE: '1' },
+        }),
+        installedPath: (): string | null => '/tree',
+      };
+      const resolved: readonly string[] = descriptors.map((descriptor): string =>
+        JSON.stringify(descriptor.resolve(resolveContext)),
+      );
+
+      expect(resolved[0]).toContain('node_modules/web/bin/html');
+      expect(resolved[1]).toContain('node_modules/web/bin/css');
+    });
+  });
+
+  describe('a payload naming no single entry point', () => {
+    /**
+     * Loads a manifest whose servers each name their own entry point and whose provision names none.
+     * @returns Returns the manifest.
+     */
+    function multiServer(): PluginManifest {
+      writePlugin(
+        'web',
+        manifest({
+          id: 'web',
+          provision: {
+            kind: 'npm',
+            lockfileUrl: 'https://example.com/web.lock.json',
+            sha256: 'e'.repeat(64),
+          },
+          contributes: {
+            languageServers: [
+              {
+                id: 'html',
+                displayName: 'HTML',
+                languages: ['html'],
+                priority: 100,
+                entryPoint: 'node_modules/web/bin/html',
+                command: { kind: 'node' },
+              },
+            ],
+          },
+        }),
+      );
+      return validManifests(discoverPlugins(root))[0];
+    }
+
+    it('isOfferedRatherThanReportedUnsupported', () => {
+      // The regression: `supported` asked whether the payload had an entry point, and a tree that
+      // names none at the provision has exactly one correct answer to that — none. The Plugin Manager
+      // showed "Not supported here" for a plugin that installs perfectly well.
+      const descriptor: ReturnType<typeof toPluginDescriptor> = toPluginDescriptor(multiServer());
+
+      expect(descriptor.supported?.({ provisioner: stubProvisioner('/tree') } as never)).not.toBe(
+        false,
+      );
+    });
+
+    it('isNotReportedInstalledMerelyBecauseItHasNoEntryPoint', async () => {
+      const descriptor: ReturnType<typeof toPluginDescriptor> = toPluginDescriptor(multiServer());
+
+      expect(await descriptor.detect?.({ provisioner: stubProvisioner(null) } as never)).toBe(
+        false,
+      );
     });
   });
 

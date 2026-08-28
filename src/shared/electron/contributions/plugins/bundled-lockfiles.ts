@@ -1,6 +1,7 @@
 import BASH_LANGUAGE_SERVER from './lockfiles/bash-language-server.lock.json';
 import DOCKERFILE_LANGUAGE_SERVER from './lockfiles/dockerfile-language-server.lock.json';
 import SVELTE_LANGUAGE_SERVER from './lockfiles/svelte-language-server.lock.json';
+import VSCODE_LANGSERVERS_EXTRACTED from './lockfiles/vscode-langservers-extracted.lock.json';
 import YAML_LANGUAGE_SERVER from './lockfiles/yaml-language-server.lock.json';
 
 // The lockfiles for the npm-provisioned plugins the curated index offers, compiled into the
@@ -26,6 +27,7 @@ const BUNDLED_LOCKFILES: Readonly<Record<string, unknown>> = {
   'bash-language-server.lock.json': BASH_LANGUAGE_SERVER,
   'dockerfile-language-server.lock.json': DOCKERFILE_LANGUAGE_SERVER,
   'svelte-language-server.lock.json': SVELTE_LANGUAGE_SERVER,
+  'vscode-langservers-extracted.lock.json': VSCODE_LANGSERVERS_EXTRACTED,
   'yaml-language-server.lock.json': YAML_LANGUAGE_SERVER,
 };
 

@@ -177,9 +177,21 @@ export function toTreeProvision(manifest: PluginManifest): LockfileProvision | n
  */
 export interface PayloadOps {
   /**
-   * Gets the entry point the payload installs to, whether or not it is installed yet.
+   * Gets an entry point within the payload, whether or not it is installed yet.
+   * @param provisioner The provisioner the payload installs through.
+   * @param entryPoint The contribution's own entry point, or undefined to use the provision's — a
+   * payload holding several programs has no single one (#454).
    */
-  target(provisioner: LspProvisioner): string | null;
+  target(provisioner: LspProvisioner, entryPoint?: string): string | null;
+
+  /**
+   * Gets whether the payload can be installed on this machine at all.
+   *
+   * Deliberately not "does it have an entry point": a tree holding several servers names none at the
+   * provision, and asking for one would report the whole plugin unsupported. The question is whether
+   * this machine can have the payload — for an archive, whether its platform is published.
+   */
+  supported(provisioner: LspProvisioner): boolean;
 
   /**
    * Gets whether the payload is installed, without downloading anything.
@@ -263,7 +275,11 @@ export function payloadOps(manifest: PluginManifest): PayloadOps {
   const tree: LockfileProvision | null = toTreeProvision(manifest);
   if (tree !== null) {
     return {
-      target: (p: LspProvisioner): string | null => p.treeTarget(tree),
+      target: (p: LspProvisioner, entryPoint?: string): string | null =>
+        p.treeTarget(tree, entryPoint),
+      // A tree installs anywhere provisioning is enabled; the lockfile's own `os`/`cpu` fields decide
+      // what goes into it, so there is no platform for the plugin as a whole to be unsupported on.
+      supported: (p: LspProvisioner): boolean => p.treeDirectory(tree) !== null,
       isInstalled: (p: LspProvisioner): boolean => p.isTreeInstalled(tree),
       ensure: (p: LspProvisioner): Promise<string | null> => p.ensureTree(tree),
       remove: (p: LspProvisioner): Promise<void> => p.removeTree(tree),
@@ -275,13 +291,17 @@ export function payloadOps(manifest: PluginManifest): PayloadOps {
     // arrive here as a plugin that silently claims to be installed.
     return {
       target: (): string | null => null,
+      supported: (): boolean => false,
       isInstalled: (): boolean => false,
       ensure: (): Promise<string | null> => Promise.resolve(null),
       remove: (): Promise<void> => Promise.resolve(),
     };
   }
   return {
+    // An archive names its entry point per platform, so a contribution's override does not apply.
     target: (p: LspProvisioner): string | null => p.archiveTarget(archive),
+    // An archive publishes per platform, so having no entry point here IS being unsupported.
+    supported: (p: LspProvisioner): boolean => p.archiveTarget(archive) !== null,
     isInstalled: (p: LspProvisioner): boolean => p.isArchiveInstalled(archive),
     ensure: (p: LspProvisioner): Promise<string | null> => p.ensureArchive(archive),
     remove: (p: LspProvisioner): Promise<void> => p.removeArchive(archive),
@@ -356,7 +376,7 @@ export function toPluginDescriptor(manifest: PluginManifest): PluginDescriptor {
     contributions: toContributions(manifest),
     detail: toDetail(manifest),
     origin: toOrigin(manifest, bundledLockfile),
-    supported: (context: PluginContext): boolean => ops.target(context.provisioner) !== null,
+    supported: (context: PluginContext): boolean => ops.supported(context.provisioner),
     detect: (context: PluginContext): Promise<boolean> =>
       Promise.resolve(ops.isInstalled(context.provisioner)),
     install: (context: PluginContext): Promise<string | null> => ops.ensure(context.provisioner),
@@ -405,7 +425,7 @@ export function toLanguageServerDescriptors(
         // Never installs: a server resolves to "not installed" and the user installs it in the Plugin
         // Manager, rather than opening a file silently triggering a large download.
         const entryPoint: string | null = ops.isInstalled(context.provisioner)
-          ? ops.target(context.provisioner)
+          ? ops.target(context.provisioner, server.entryPoint)
           : null;
         return entryPoint === null
           ? unavailable(`${server.displayName} is not installed — install it in Plugins.`)
@@ -441,7 +461,9 @@ export function toDebugAdapterEntries(
       languages: adapter.languages,
       priority: adapter.priority,
       locate: (): Promise<string | null> =>
-        Promise.resolve(ops.isInstalled(provisioner()) ? ops.target(provisioner()) : null),
+        Promise.resolve(
+          ops.isInstalled(provisioner()) ? ops.target(provisioner(), adapter.entryPoint) : null,
+        ),
       buildSpec: (entryPoint: string): DebugAdapterSpec =>
         adapter.command.kind === 'node'
           ? {

@@ -35,8 +35,12 @@
  * `1.2.0` added the `npm` provisioning kind (#446). Also only adds — `kind` was already a discriminant
  * with one value precisely so a second could arrive without reinterpreting what was already published,
  * so every 1.1.0 manifest is still an archive manifest and still means what it meant.
+ *
+ * `1.3.0` added a per-contribution `entryPoint`, for a payload holding more than one program (#454),
+ * and made `provision.executablePath` optional for the manifests that use it. Adds again: a
+ * contribution that names none still resolves to the provision's entry point, exactly as before.
  */
-export const PLUGIN_API_VERSION: string = '1.2.0';
+export const PLUGIN_API_VERSION: string = '1.3.0';
 
 /**
  * Matches a plain three-part semver. Deliberately strict and deliberately local: the rule below is the
@@ -190,11 +194,16 @@ export interface ManifestNpmProvision {
 
   /**
    * Gets the entry point's path within the installed tree, such as
-   * `node_modules/some-server/bin/some-server`. Points at the package's own file rather than at a
-   * `node_modules/.bin` shim: no shims are created, and none are needed, because a `node` command runs
-   * the entry point as a path argument rather than executing it.
+   * `node_modules/some-server/bin/some-server`, or undefined when every contribution names its own.
+   *
+   * Points at the package's own file rather than at a `node_modules/.bin` shim: no shims are created,
+   * and none are needed, because a `node` command runs the entry point as a path argument rather than
+   * executing it.
+   *
+   * Optional because a tree holding several servers has no single entry point to name (#454). A
+   * manifest must still say how to start each thing it contributes — here, or on the contribution.
    */
-  readonly executablePath: string;
+  readonly executablePath?: string;
 }
 
 /**
@@ -255,6 +264,18 @@ export interface ManifestLanguageServer {
    * Gets how to start the server.
    */
   readonly command: ManifestCommand;
+
+  /**
+   * Gets this contribution's own entry point within the installed payload, or undefined to use the
+   * provision's.
+   *
+   * A payload usually holds one program, and `provision.executablePath` names it. Some hold several —
+   * `vscode-langservers-extracted` ships five servers from one tree — and those cannot share an entry
+   * point without every one of them starting the same binary. Splitting such a package into one plugin
+   * per server would install the same tree several times over, so the payload stays whole and each
+   * contribution says which part of it to run.
+   */
+  readonly entryPoint?: string;
 }
 
 /**
@@ -290,6 +311,12 @@ export interface ManifestDebugAdapter {
    * Gets how the adapter is spoken to, or undefined for the default of standard streams.
    */
   readonly transport?: 'stdio' | 'tcp-server';
+
+  /**
+   * Gets this contribution's own entry point within the installed payload, or undefined to use the
+   * provision's. See {@link ManifestLanguageServer.entryPoint}.
+   */
+  readonly entryPoint?: string;
 }
 
 /**
@@ -633,6 +660,38 @@ function readDownload(value: unknown, path: string, errors: Errors): ManifestDow
 }
 
 /**
+ * Validates an optional path into an installed payload: relative, and no escaping the tree it indexes.
+ * @param source The object carrying the field.
+ * @param key The field name.
+ * @param path The error path prefix.
+ * @param errors The failure collector.
+ * @returns Returns the path, or undefined when absent.
+ */
+function readEntryPoint(
+  source: Record<string, unknown>,
+  key: string,
+  path: string,
+  errors: Errors,
+): string | undefined {
+  const value: unknown = source[key];
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value !== 'string' || value.length === 0) {
+    errors.add(`${path}${key}`, 'must be a non-empty string');
+    return undefined;
+  }
+  if (value.startsWith('/') || value.includes('..')) {
+    errors.add(
+      `${path}${key}`,
+      'must be a relative path inside the installed payload, with no parent traversal',
+    );
+    return undefined;
+  }
+  return value;
+}
+
+/**
  * Validates an npm provision: the pinned lockfile that names the tree, and the entry point within it.
  *
  * The rules are deliberately the archive rules — HTTPS, lower-case hex SHA-256, a relative entry path
@@ -655,13 +714,12 @@ function readNpmProvision(
   if (sha256.length > 0 && !SHA256_PATTERN.test(sha256)) {
     errors.add('provision.sha256', 'must be a lower-case hex SHA-256');
   }
-  const executablePath: string = readString(source, 'executablePath', 'provision.', errors);
-  if (executablePath.startsWith('/') || executablePath.includes('..')) {
-    errors.add(
-      'provision.executablePath',
-      'must be a relative path inside the installed tree, with no parent traversal',
-    );
-  }
+  const executablePath: string | undefined = readEntryPoint(
+    source,
+    'executablePath',
+    'provision.',
+    errors,
+  );
   // Only this provision's own failures decide it, so a manifest that is already failing elsewhere
   // still reports what is wrong here rather than reporting nothing.
   return errors.items.length > before ? null : { kind: 'npm', lockfileUrl, sha256, executablePath };
@@ -745,6 +803,7 @@ function readContributions(value: unknown, errors: Errors): ManifestContribution
         languages: readLanguages(entry['languages'], `${path}.languages`, errors),
         priority: readPriority(entry, path, errors),
         command: command ?? { kind: 'executable' },
+        entryPoint: readEntryPoint(entry, 'entryPoint', `${path}.`, errors),
       });
     },
   );
@@ -769,6 +828,7 @@ function readContributions(value: unknown, errors: Errors): ManifestContribution
         priority: readPriority(entry, path, errors),
         command: command ?? { kind: 'executable' },
         transport: transport as ManifestDebugAdapter['transport'],
+        entryPoint: readEntryPoint(entry, 'entryPoint', `${path}.`, errors),
       });
     },
   );

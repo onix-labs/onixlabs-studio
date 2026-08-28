@@ -1,5 +1,5 @@
 {
-  "revision": 3,
+  "revision": 4,
   "plugins": [
     {
       "id": "pyright",
@@ -353,6 +353,52 @@
             "displayName": "Svelte Language Server",
             "languages": ["svelte"],
             "priority": 100,
+            "command": {
+              "kind": "node"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "vscode-langservers-extracted",
+      "name": "HTML, CSS & JSON Language Servers",
+      "description": "Microsoft's web language servers, extracted from VS Code.",
+      "version": "4.10.0",
+      "apiVersion": "1.3.0",
+      "provision": {
+        "kind": "npm",
+        "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/vscode-langservers-extracted.lock.json",
+        "sha256": "2e9cfac6ede4f8b4e5facd11f34f42cc875f0b5feb2984636709b4fb824a9739"
+      },
+      "contributes": {
+        "languageServers": [
+          {
+            "id": "vscode-html-language-server",
+            "displayName": "HTML Language Server",
+            "languages": ["html"],
+            "priority": 100,
+            "entryPoint": "node_modules/vscode-langservers-extracted/bin/vscode-html-language-server",
+            "command": {
+              "kind": "node"
+            }
+          },
+          {
+            "id": "vscode-css-language-server",
+            "displayName": "CSS Language Server",
+            "languages": ["css", "scss"],
+            "priority": 100,
+            "entryPoint": "node_modules/vscode-langservers-extracted/bin/vscode-css-language-server",
+            "command": {
+              "kind": "node"
+            }
+          },
+          {
+            "id": "vscode-json-language-server",
+            "displayName": "JSON Language Server",
+            "languages": ["json"],
+            "priority": 100,
+            "entryPoint": "node_modules/vscode-langservers-extracted/bin/vscode-json-language-server",
             "command": {
               "kind": "node"
             }
