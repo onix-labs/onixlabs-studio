@@ -61,18 +61,6 @@ export class PluginStore {
   }
 
   /**
-   * Gets whether Studio installed a plugin *and* what it installed is still on disk. Checking the path
-   * matters: a user-data directory can be cleaned, or an install removed by hand, and a record without
-   * its files would otherwise report a plugin as installed when nothing is there.
-   * @param id The plugin identifier.
-   * @returns Returns true when the plugin is installed and present.
-   */
-  public isInstalled(id: string): boolean {
-    const record: PluginInstallRecord | null = this.get(id);
-    return record !== null && existsSync(record.installedPath);
-  }
-
-  /**
    * Records a completed installation.
    * @param record The installation to record.
    */

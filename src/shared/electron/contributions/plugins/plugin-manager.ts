@@ -164,9 +164,17 @@ export class PluginManager {
   }
 
   /**
-   * Resolves a plugin's state. A plugin is installed when its files are present or Studio recorded
-   * installing it, and available otherwise — every plugin can be installed, so there is no third case
-   * for something the user must go and fetch themselves.
+   * Resolves a plugin's state. A plugin is installed exactly when its descriptor **detects** it — the
+   * same predicate the slot registries resolve against — and available otherwise; every plugin can be
+   * installed, so there is no third case for something the user must go and fetch themselves.
+   *
+   * The install record is deliberately *not* a second source of truth. It used to be a fallback
+   * ("Studio recorded installing it, and the recorded path still exists"), which let the Plugin Manager
+   * report a server installed while the registry refused to spawn it — an install that predated the
+   * completion marker, or lost a file since, read as "Installed" here and "not installed" there, and
+   * because this side said installed the Install button that would have repaired it was never offered.
+   * A record whose install no longer detects is stale: it is forgotten, and the plugin is offered
+   * again.
    * @param descriptor The plugin to resolve.
    * @returns Returns the state.
    */
@@ -180,6 +188,13 @@ export class PluginManager {
     if (await descriptor.detect(this.context)) {
       return 'installed';
     }
-    return this.store.isInstalled(descriptor.id) ? 'installed' : 'available';
+    if (this.store.get(descriptor.id) !== null) {
+      logger.warn(
+        'PluginManager',
+        `${descriptor.id} was recorded as installed but is not detected on disk; forgetting the record`,
+      );
+      this.store.remove(descriptor.id);
+    }
+    return 'available';
   }
 }
