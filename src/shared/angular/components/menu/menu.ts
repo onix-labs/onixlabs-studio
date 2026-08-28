@@ -15,6 +15,7 @@ import {
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { ButtonTone } from '@shared/angular/components/forms/button/button';
+import { MenuPointerGuard } from './menu-pointer-guard';
 import { MENU_POSITIONS, MenuPlacement } from './menu-position';
 
 /**
@@ -112,7 +113,7 @@ export interface MenuChoice {
  */
 @Component({
   selector: 'app-menu',
-  imports: [AppIcon, CdkMenu, CdkMenuItem, CdkMenuTrigger],
+  imports: [AppIcon, CdkMenu, CdkMenuItem, CdkMenuTrigger, MenuPointerGuard],
   templateUrl: './menu.html',
   styleUrl: './menu.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

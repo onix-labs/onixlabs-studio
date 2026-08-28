@@ -3,6 +3,7 @@ import { ConnectedPosition } from '@angular/cdk/overlay';
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Menu, MenuItem } from '@shared/angular/components/menu/menu';
+import { MenuPointerGuard } from '@shared/angular/components/menu/menu-pointer-guard';
 import { MENU_POSITIONS } from '@shared/angular/components/menu/menu-position';
 import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigger';
 import { AppMenu } from '@shared/angular/services/app-menu/app-menu';
@@ -33,7 +34,16 @@ import { Icon } from '@shared/angular/icons/icon';
  */
 @Component({
   selector: 'app-title-strip-menu',
-  imports: [AppIcon, Menu, CdkMenu, CdkMenuBar, CdkMenuItem, CdkMenuTrigger, TooltipTrigger],
+  imports: [
+    AppIcon,
+    Menu,
+    CdkMenu,
+    CdkMenuBar,
+    CdkMenuItem,
+    CdkMenuTrigger,
+    MenuPointerGuard,
+    TooltipTrigger,
+  ],
   templateUrl: './title-strip-menu.html',
   styleUrl: './title-strip-menu.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

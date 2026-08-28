@@ -23,6 +23,7 @@ import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
 import { HighlightedText } from '@shared/angular/components/highlighted-text/highlighted-text';
+import { MenuPointerGuard } from '@shared/angular/components/menu/menu-pointer-guard';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { TreeRow, TreeView } from '@shared/angular/components/tree-view/tree-view';
@@ -144,6 +145,7 @@ type HistoryRowData =
     CdkMenu,
     CdkMenuItem,
     CdkMenuTrigger,
+    MenuPointerGuard,
     TooltipTrigger,
   ],
   templateUrl: './agent-conversation-list.html',

@@ -16,7 +16,7 @@
   has none and resolves its rows from the data instead.
 -->
 <ng-template #surface let-data let-items="items">
-  <div class="app-menu-panel" cdkMenu>
+  <div class="app-menu-panel" cdkMenu appMenuPointerGuard>
     @for (item of items ?? rowsFor(data); track item.id) {
       @if (item.separator) {
         <hr class="app-menu-panel__separator" aria-hidden="true" />

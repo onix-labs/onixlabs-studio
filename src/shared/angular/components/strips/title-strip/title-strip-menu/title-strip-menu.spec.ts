@@ -67,6 +67,42 @@ const TWO_SECTIONS: readonly MenuContribution[] = [
   },
 ];
 
+/**
+ * A File section whose first entry opens a submenu, which is the shape #460 misbehaves on.
+ */
+const NESTED_SECTIONS: readonly MenuContribution[] = [
+  {
+    id: 'file',
+    label: 'File',
+    items: [
+      {
+        id: 'file.new',
+        label: 'New',
+        items: [{ id: 'file.new.code', label: 'Code File', run: (): void => undefined }],
+      },
+      { id: 'file.open', label: 'Open File…', run: (): void => undefined },
+    ],
+  },
+];
+
+/**
+ * Counts the menu panels currently on screen.
+ * @returns Returns the number of open panels.
+ */
+function panels(): number {
+  return document.querySelectorAll('.app-menu-panel').length;
+}
+
+/**
+ * Sends the pointer onto the first row of the innermost open panel, as the browser does when a panel
+ * materialises beneath a cursor that has not moved.
+ */
+function hoverFirstRow(): void {
+  document
+    .querySelector<HTMLElement>('.app-menu-panel__item')
+    ?.dispatchEvent(new MouseEvent('mouseenter'));
+}
+
 describe('TitleStripMenu', () => {
   it('sections_areOneSectionEach_withTheirCommandsAsASubmenu', () => {
     const { fixture } = mount([
@@ -208,6 +244,34 @@ describe('TitleStripMenu', () => {
     const host: HTMLElement = fixture.nativeElement as HTMLElement;
     expect(host.querySelector('.title-strip-menu__trigger')).not.toBeNull();
     expect(host.querySelector('.title-strip-menu__bar')).toBeNull();
+  });
+
+  it('open_aSectionOnTheBar_showsOnlyThatSectionsPanel', () => {
+    // #460: the panel drops under a cursor that has not moved, so the browser re-runs its hit-testing
+    // and the first row receives a `mouseenter` the user never performed. New carries a submenu, so
+    // the section and its first entry would both be open — two panels for one click.
+    const { fixture } = mount(NESTED_SECTIONS, 'full');
+
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    host.querySelector<HTMLElement>('.title-strip-menu__section')?.click();
+    fixture.detectChanges();
+    hoverFirstRow();
+    fixture.detectChanges();
+
+    expect(panels()).toBe(1);
+  });
+
+  it('open_theButtonsFlyout_showsOnlyTheSectionList', () => {
+    // The same on the burger, where the sections are the rows: File must not bring its commands with it.
+    const { fixture } = mount(NESTED_SECTIONS, 'icon', 'vertical');
+
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    host.querySelector<HTMLElement>('.title-strip-menu__trigger')?.click();
+    fixture.detectChanges();
+    hoverFirstRow();
+    fixture.detectChanges();
+
+    expect(panels()).toBe(1);
   });
 
   it('select_runsTheCommandThroughTheSharedDispatch', () => {

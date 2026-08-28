@@ -66,7 +66,12 @@
       panel's menu is wrapped instead.
     -->
     <ng-template #horizontalFlyout>
-      <div class="app-menu-panel title-strip-menu__flyout" cdkMenu aria-label="Application menu">
+      <div
+        class="app-menu-panel title-strip-menu__flyout"
+        cdkMenu
+        appMenuPointerGuard
+        aria-label="Application menu"
+      >
         @for (section of sections(); track section.id) {
           <button
             type="button"

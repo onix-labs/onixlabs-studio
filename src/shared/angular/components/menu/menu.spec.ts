@@ -51,6 +51,25 @@ describe('Menu', () => {
     return Array.from(document.querySelectorAll<HTMLElement>('.app-menu-panel__item'));
   }
 
+  /**
+   * Moves the pointer to the given client position.
+   * @param x The horizontal position.
+   * @param y The vertical position.
+   */
+  function move(x: number, y: number): void {
+    document.dispatchEvent(new MouseEvent('mousemove', { clientX: x, clientY: y }));
+    fixture.detectChanges();
+  }
+
+  /**
+   * Sends the pointer onto the given row, as the browser does when the pointer arrives over it.
+   * @param row The row to hover.
+   */
+  function hover(row: HTMLElement): void {
+    row.dispatchEvent(new MouseEvent('mouseenter'));
+    fixture.detectChanges();
+  }
+
   beforeEach(() => {
     fixture = TestBed.createComponent(HostComponent);
     host = fixture.componentInstance;
@@ -145,6 +164,58 @@ describe('Menu', () => {
       panels.forEach((panel: Element): void => {
         expect(panel.classList.contains('cdk-menu-inline')).toBe(false);
       });
+    });
+
+    it('hover_aRowWithChildren_beforeThePointerMoves_doesNotOpenIt', () => {
+      // #460: a panel that materialises under a stationary cursor makes the browser re-run its
+      // hit-testing, and the row it lands on receives a `mouseenter` the user never performed. If that
+      // row carries a submenu, clicking a section opens its first entry's submenu alongside it.
+      host.items = [
+        { id: 'options', label: 'Options', children: [{ id: 'nested', label: 'Nested' }] },
+      ];
+      fixture.detectChanges();
+      open();
+
+      hover(rows()[0]);
+
+      expect(document.querySelectorAll('.app-menu-panel').length).toBe(1);
+    });
+
+    it('hover_aRowWithChildren_afterAMoveThatDidNotMove_doesNotOpenIt', () => {
+      // The browser's own re-hit-test arrives as a `mousemove` at the position the cursor was already
+      // resting at. Reading that as movement would defeat the guard entirely, so identical coordinates
+      // are the baseline rather than a move.
+      host.items = [
+        { id: 'options', label: 'Options', children: [{ id: 'nested', label: 'Nested' }] },
+      ];
+      fixture.detectChanges();
+      open();
+
+      move(120, 80);
+      move(120, 80);
+      hover(rows()[0]);
+
+      expect(document.querySelectorAll('.app-menu-panel').length).toBe(1);
+    });
+
+    it('hover_aRowWithChildren_afterThePointerMoves_opensItsSubmenu', () => {
+      // Hover-opening is the wanted behaviour; only the phantom one is not. Once the user has moved,
+      // every hover goes straight through.
+      host.items = [
+        { id: 'options', label: 'Options', children: [{ id: 'nested', label: 'Nested' }] },
+      ];
+      fixture.detectChanges();
+      open();
+
+      move(120, 80);
+      move(140, 90);
+      hover(rows()[0]);
+
+      expect(document.querySelectorAll('.app-menu-panel').length).toBe(2);
+      expect(rows().map((row: HTMLElement): string => row.textContent?.trim() ?? '')).toEqual([
+        'Options',
+        'Nested',
+      ]);
     });
 
     it('select_aRowWithChildren_emitsNothing', () => {
