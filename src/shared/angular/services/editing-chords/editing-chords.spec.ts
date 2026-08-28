@@ -1,7 +1,21 @@
 import { TestBed } from '@angular/core/testing';
 
+import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { Studio } from '@shared/angular/services/studio/studio';
 import { EditingChords } from './editing-chords';
+
+/**
+ * The slice of a Monaco editor the chords touch.
+ */
+interface FakeEditor {
+  hasTextFocus(): boolean;
+  trigger(source: string, action: string): void;
+}
+
+/**
+ * The editors the fake Monaco reports.
+ */
+const monacoStub: { editors: readonly FakeEditor[] } = { editors: [] };
 
 describe('EditingChords', () => {
   let chords: EditingChords;
@@ -16,7 +30,17 @@ describe('EditingChords', () => {
     const studioStub: Pick<Studio, 'platform'> = { platform };
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({
-      providers: [{ provide: Studio, useValue: studioStub }],
+      providers: [
+        { provide: Studio, useValue: studioStub },
+        {
+          provide: Monaco,
+          useValue: {
+            getMonaco: (): unknown => ({
+              editor: { getEditors: (): readonly FakeEditor[] => monacoStub.editors },
+            }),
+          },
+        },
+      ],
     });
     return TestBed.inject(EditingChords);
   }
@@ -36,6 +60,7 @@ describe('EditingChords', () => {
   }
 
   beforeEach(() => {
+    monacoStub.editors = [];
     chords = build('darwin');
     box = document.createElement('textarea');
     document.body.appendChild(box);
@@ -70,6 +95,70 @@ describe('EditingChords', () => {
     document.body.focus();
 
     expect(chords.handleSelectAll(chord())).toBe(false);
+  });
+
+  /**
+   * Focuses an element inside a host carrying a class, standing in for an embedded editor.
+   * @param hostClass The host's class (`monaco-editor`, `xterm`).
+   * @returns Returns the host, for removal.
+   */
+  function focusInside(hostClass: string): HTMLElement {
+    box.blur();
+    const host: HTMLDivElement = document.createElement('div');
+    host.className = hostClass;
+    const input: HTMLDivElement = document.createElement('div');
+    input.tabIndex = 0;
+    host.appendChild(input);
+    document.body.appendChild(host);
+    input.focus();
+    return host;
+  }
+
+  it('routeEditingRole_inATextBox_goesNative', () => {
+    expect(chords.routeEditingRole('copy', document)).toBe('native');
+    expect(chords.routeEditingRole('undo', document)).toBe('native');
+  });
+
+  it('routeEditingRole_inTheCodeEditor_clipboardGoesNative_undoRedoAreServedByTheEditor', () => {
+    // ⌘C with the caret in the editor used to copy the explorer's selected file; the editor is where
+    // the user is typing, so the chord serves it. Monaco handles the platform's clipboard events, but
+    // the platform's undo cannot see its model, so undo/redo run as Monaco actions.
+    const triggered: string[] = [];
+    monacoStub.editors = [
+      {
+        hasTextFocus: (): boolean => true,
+        trigger: (_source: string, action: string): void => void triggered.push(action),
+      },
+    ];
+    const host: HTMLElement = focusInside('monaco-editor');
+
+    expect(chords.routeEditingRole('copy', document)).toBe('native');
+    expect(chords.routeEditingRole('paste', document)).toBe('native');
+    expect(chords.routeEditingRole('undo', document)).toBe('handled');
+    expect(chords.routeEditingRole('redo', document)).toBe('handled');
+    expect(triggered).toEqual(['undo', 'redo']);
+    host.remove();
+  });
+
+  it('routeEditingRole_inTheTerminal_clipboardGoesNative_undoRedoAreSwallowed', () => {
+    // xterm serves copy and paste from its own selection through the platform's events; undo means
+    // nothing there and must not fall through to the tab as an explorer undo.
+    const host: HTMLElement = focusInside('xterm');
+
+    expect(chords.routeEditingRole('copy', document)).toBe('native');
+    expect(chords.routeEditingRole('paste', document)).toBe('native');
+    expect(chords.routeEditingRole('undo', document)).toBe('handled');
+    host.remove();
+  });
+
+  it('routeEditingRole_whenFocusIsNotInAnEditingSurface_isUnclaimed', () => {
+    box.blur();
+    const button: HTMLButtonElement = document.createElement('button');
+    document.body.appendChild(button);
+    button.focus();
+
+    expect(chords.routeEditingRole('copy', document)).toBe('unclaimed');
+    button.remove();
   });
 
   it('handleSelectAll_whenTheChordCarriesAnotherModifier_doesNothing', () => {

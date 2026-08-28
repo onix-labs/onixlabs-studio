@@ -306,6 +306,80 @@ describe('AppMenu', () => {
     expect(ran).toBe(1);
   });
 
+  it('dispatch_whenAnEditingChordFiresWithTheCodeEditorFocused_leavesTheCommandUnrun', () => {
+    // The reported bug: on a workspace tab, ⌘C with the caret in the code editor copied the selected
+    // file. Monaco's focused element is neither a text box nor editable markup, so the text-box check
+    // could not see it — but it is where the user is typing.
+    let ran: number = 0;
+    const host: HTMLDivElement = document.createElement('div');
+    host.className = 'monaco-editor';
+    const input: HTMLDivElement = document.createElement('div');
+    input.tabIndex = 0;
+    host.appendChild(input);
+    document.body.appendChild(host);
+    input.focus();
+    menu.contribute(
+      'feature',
+      [
+        {
+          id: 'edit',
+          label: 'Edit',
+          items: [
+            {
+              id: 'directory.copy',
+              label: 'Copy',
+              accelerator: 'CmdOrCtrl+C',
+              editingRole: 'copy',
+              run: (): void => void (ran += 1),
+            },
+          ],
+        },
+      ],
+      FEATURE_PRIORITY,
+    );
+    TestBed.tick();
+
+    menu.dispatch('directory.copy');
+
+    expect(ran).toBe(0);
+    host.remove();
+  });
+
+  it('dispatch_whenAnEditingChordFiresWithTheTerminalFocused_leavesTheCommandUnrun', () => {
+    let ran: number = 0;
+    const host: HTMLDivElement = document.createElement('div');
+    host.className = 'xterm';
+    const input: HTMLTextAreaElement = document.createElement('textarea');
+    host.appendChild(input);
+    document.body.appendChild(host);
+    input.focus();
+    menu.contribute(
+      'feature',
+      [
+        {
+          id: 'edit',
+          label: 'Edit',
+          items: [
+            {
+              id: 'directory.paste',
+              label: 'Paste',
+              accelerator: 'CmdOrCtrl+V',
+              editingRole: 'paste',
+              run: (): void => void (ran += 1),
+            },
+          ],
+        },
+      ],
+      FEATURE_PRIORITY,
+    );
+    TestBed.tick();
+
+    menu.dispatch('directory.paste');
+
+    expect(ran).toBe(0);
+    host.remove();
+  });
+
   it('clearOwner_whenTheOwnerLeaves_dropsItsSections', () => {
     menu.contribute(
       'feature',

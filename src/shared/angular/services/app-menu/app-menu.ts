@@ -3,7 +3,10 @@ import { MenuChannel, MenuClient } from '@shared/api/menu-channels';
 import { AppMenuItem, AppMenuSection } from '@shared/api/menu-types';
 import { Bridge } from '@shared/api/bridge';
 import { Log } from '@shared/angular/services/log/log';
-import { focusedTextInput } from '@shared/angular/services/editing-chords/text-input-focus';
+import {
+  EditingChords,
+  EditingRoleRoute,
+} from '@shared/angular/services/editing-chords/editing-chords';
 import { MenuContribution, MenuEntry } from './app-menu-model';
 
 /**
@@ -44,6 +47,12 @@ export class AppMenu {
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds the editing-chord router, which decides whether a claimed chord belongs to the focused
+   * editing surface before the tab's own command may run.
+   */
+  private readonly editingChords: EditingChords = inject(EditingChords);
 
   /**
    * Holds the menu client, or undefined outside Electron (served as a plain web app, or under tests),
@@ -165,12 +174,24 @@ export class AppMenu {
     }
     this.log.debug('AppMenu', `Menu command '${commandId}'`);
     // An editing chord belongs to whatever the user is typing into. A tab that binds one to something
-    // of its own declares the role it stands for, and the platform's behaviour wins while a text box
-    // has focus — otherwise the tab's command would run wherever the caret happened to be.
-    if (entry.editingRole !== undefined && focusedTextInput(document) !== null) {
-      this.log.debug('AppMenu', `Deferring '${commandId}' to the focused text box`);
-      this.client?.runRole(entry.editingRole);
-      return;
+    // of its own declares the role it stands for, and the editing surface that has focus — a text
+    // box, the code editor, the terminal — is served first; the tab's command runs only when focus is
+    // in none of them. Otherwise ⌘C on a workspace tab copies the selected *file* while the caret sits
+    // in the editor.
+    if (entry.editingRole !== undefined) {
+      const route: EditingRoleRoute = this.editingChords.routeEditingRole(
+        entry.editingRole,
+        document,
+      );
+      if (route === 'native') {
+        this.log.debug('AppMenu', `Deferring '${commandId}' to the focused editing surface`);
+        this.client?.runRole(entry.editingRole);
+        return;
+      }
+      if (route === 'handled') {
+        this.log.debug('AppMenu', `'${commandId}' served by the focused editor`);
+        return;
+      }
     }
     if (entry.run !== undefined) {
       entry.run();
