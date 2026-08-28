@@ -7,6 +7,8 @@ import type {
 } from '@shared/api/ai-types';
 import { DEFAULT_CONNECTION_ID, SEED_CONNECTIONS } from '@shared/api/ai-types';
 import type {
+  ApplicationMenuAppearance,
+  ApplicationMenuMode,
   BraceStyle,
   CurrentLineHighlightStyle,
   CursorBlinkingStyle,
@@ -53,6 +55,8 @@ export interface SettingsValues {
 
   readonly 'application.undoStackSize': number;
   readonly 'application.printMargin': PrintMargin;
+  readonly 'application.menuMode': ApplicationMenuMode;
+  readonly 'application.menuAppearance': ApplicationMenuAppearance;
 
   readonly 'accessibility.showTooltips': boolean;
 
@@ -218,6 +222,41 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
     id: 'application',
     label: 'Application',
     settings: [
+      {
+        key: 'application.menuMode',
+        title: 'Application menu',
+        description:
+          'How much of the File, Edit and View menu the title strip carries. Hide it when the ' +
+          'system already draws the menu itself; the button takes the least room; the full menu ' +
+          'puts every section a single click away.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'hidden', label: 'Hide' },
+            { value: 'icon', label: 'Show Menu Icon' },
+            { value: 'full', label: 'Show Full Menu' },
+          ],
+        },
+        default: 'icon',
+      },
+      {
+        key: 'application.menuAppearance',
+        title: 'Application menu appearance',
+        description:
+          'How the menu button lays its sections out when opened: stacked as a list, or across a ' +
+          'strip with each section opening beneath it.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'vertical', label: 'Vertical' },
+            { value: 'horizontal', label: 'Horizontal' },
+          ],
+        },
+        // Only the button lays its sections out; hidden has none to lay out and the full menu is a
+        // bar already, so the choice would be inert in both.
+        visibleWhen: { key: 'application.menuMode', equals: ['icon'] },
+        default: 'vertical',
+      },
       {
         key: 'application.undoStackSize',
         title: 'Undo history',

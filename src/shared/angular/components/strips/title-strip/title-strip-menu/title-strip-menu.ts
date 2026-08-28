@@ -1,28 +1,39 @@
-import { CdkMenuTrigger } from '@angular/cdk/menu';
+import { CdkMenu, CdkMenuBar, CdkMenuItem, CdkMenuTrigger } from '@angular/cdk/menu';
+import { ConnectedPosition } from '@angular/cdk/overlay';
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Menu, MenuItem } from '@shared/angular/components/menu/menu';
+import { MENU_POSITIONS } from '@shared/angular/components/menu/menu-position';
+import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigger';
 import { AppMenu } from '@shared/angular/services/app-menu/app-menu';
 import { MenuContribution, MenuEntry } from '@shared/angular/services/app-menu/app-menu-model';
+import { Settings } from '@shared/angular/services/settings/settings';
+import type {
+  ApplicationMenuAppearance,
+  ApplicationMenuMode,
+} from '@shared/angular/services/settings/settings';
 import { Icon } from '@shared/angular/icons/icon';
-import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigger';
 
 /**
  * The application menu, in the window.
  *
- * A single button on the title strip opening the whole menu as a drop-down: each top-level section is a
- * row whose submenu holds its commands, nesting as deep as the model does. It is the same contextual
- * menu the native macOS bar renders — the same {@link AppMenu} model, the same command ids, the same
- * live enablement and checkboxes — drawn by the application instead of the platform.
+ * It is the same contextual menu the native macOS bar renders — the same {@link AppMenu} model, the
+ * same command ids, the same live enablement and checkboxes — drawn by the application instead of the
+ * platform. This exists because a native menu on Windows and Linux is drawn *inside* the window frame,
+ * above the application's own title strip, which looks wrong against custom chrome.
  *
- * This exists because a native menu on Windows and Linux is drawn *inside* the window frame, above the
- * application's own title strip, which looks wrong against custom chrome. Rather than a software menu
- * bar imitating one, the menu collapses to one button beside the other title-strip actions, where it
- * reads as part of the application rather than as a transplanted OS affordance.
+ * How much of it the strip carries is the user's choice, not the platform's: `hidden` for a system
+ * that already draws the menu itself, `icon` for a single button that costs almost no width, and
+ * `full` for a bar with every section a click away. A small screen and a large one want different
+ * answers, and which one a person has is not something the operating system reports — so nothing here
+ * detects a platform, and every option is offered everywhere.
+ *
+ * The sections never shrink or wrap: the title strip's tab list is the only thing that flexes, so a
+ * narrow window takes the space from the tabs rather than truncating the menu.
  */
 @Component({
   selector: 'app-title-strip-menu',
-  imports: [AppIcon, Menu, CdkMenuTrigger, TooltipTrigger],
+  imports: [AppIcon, Menu, CdkMenu, CdkMenuBar, CdkMenuItem, CdkMenuTrigger, TooltipTrigger],
   templateUrl: './title-strip-menu.html',
   styleUrl: './title-strip-menu.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -39,9 +50,31 @@ export class TitleStripMenu {
   private readonly appMenu: AppMenu = inject(AppMenu);
 
   /**
-   * Gets the menu as rows: one per top-level section, each carrying its commands as a submenu.
+   * Holds the settings store the menu's mode and appearance come from.
    */
-  protected readonly rows: Signal<readonly MenuItem[]> = computed((): readonly MenuItem[] =>
+  private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Gets how much of the menu the strip carries.
+   */
+  protected readonly mode: Signal<ApplicationMenuMode> = this.settings.applicationMenuMode;
+
+  /**
+   * Gets how the button lays its sections out when opened.
+   */
+  protected readonly appearance: Signal<ApplicationMenuAppearance> =
+    this.settings.applicationMenuAppearance;
+
+  /**
+   * Gets the position the button's flyout opens at: below the button, their leading edges aligned.
+   */
+  protected readonly flyoutPosition: readonly ConnectedPosition[] = MENU_POSITIONS['down-start'];
+
+  /**
+   * Gets the bar's sections: one per top-level section, each carrying its commands as the rows of the
+   * drop-down its button opens.
+   */
+  protected readonly sections: Signal<readonly MenuItem[]> = computed((): readonly MenuItem[] =>
     this.appMenu
       .sections()
       .map(
@@ -52,8 +85,8 @@ export class TitleStripMenu {
         }),
       )
       // A section whose every entry belongs to a feature that is no longer active can empty out; an
-      // empty submenu would open onto nothing, so the section goes rather than misleading.
-      .filter((row: MenuItem): boolean => (row.children?.length ?? 0) > 0),
+      // empty button would open onto nothing, so the section goes rather than misleading.
+      .filter((section: MenuItem): boolean => (section.children?.length ?? 0) > 0),
   );
 
   /**

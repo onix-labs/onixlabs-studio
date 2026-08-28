@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { findSection } from '@shared/angular/services/settings/settings-registry';
+import { Settings } from '@shared/angular/services/settings/settings';
 import { ACCENT_PRESETS } from '@shared/angular/services/theme/theme';
 import { SettingsSection } from './settings-section';
 
@@ -32,10 +33,31 @@ describe('SettingsSection', () => {
   });
 
   it('render_whenSectionHasSettings_rendersARowAndControlPerSetting', async () => {
+    // Every setting in this section is visible under the registry's defaults, so the count matches
+    // it outright; a conditional setting's own behaviour is covered below.
     const expected: number = findSection('application')?.settings.length ?? 0;
     const element: HTMLElement = await render('application');
     expect(element.querySelectorAll('app-setting-row').length).toBe(expected);
     expect(element.querySelectorAll('app-setting-control').length).toBe(expected);
+  });
+
+  it('render_whenASettingsConditionFails_leavesItOut', async () => {
+    // The menu appearance qualifies the menu button; with the full menu shown there is no button for
+    // it to qualify, so the row goes rather than sitting there doing nothing.
+    TestBed.inject(Settings).set('application.menuMode', 'full');
+
+    const element: HTMLElement = await render('application');
+
+    expect(element.textContent).toContain('Application menu');
+    expect(element.textContent).not.toContain('Application menu appearance');
+  });
+
+  it('render_whenASettingsConditionHolds_showsIt', async () => {
+    TestBed.inject(Settings).set('application.menuMode', 'icon');
+
+    const element: HTMLElement = await render('application');
+
+    expect(element.textContent).toContain('Application menu appearance');
   });
 
   it('render_whenSectionHasSettings_labelsEachRowFromTheRegistry', async () => {

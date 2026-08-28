@@ -11,7 +11,8 @@ import { SettingControl } from '../setting-control/setting-control';
 import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
 import { SettingDescriptions } from '@features/settings/angular/setting-descriptions';
 import { findSection } from '@shared/angular/services/settings/settings-registry';
-import { SettingDef } from '@shared/angular/services/settings/settings-schema';
+import { SettingDef, VisibilityDef } from '@shared/angular/services/settings/settings-schema';
+import { Settings } from '@shared/angular/services/settings/settings';
 
 /**
  * Renders a settings section entirely from the registry: every setting in the section becomes a
@@ -35,20 +36,40 @@ export class SettingsSection {
   private readonly descriptions: SettingDescriptions = inject(SettingDescriptions);
 
   /**
+   * Holds the settings store, read to resolve a setting's visibility condition.
+   */
+  private readonly settingsStore: Settings = inject(Settings);
+
+  /**
    * Gets the identifier of the section to render.
    */
   public readonly sectionId: InputSignal<string> = input.required<string>();
 
   /**
    * Gets the settings in the section that this component renders, in display order (excluding custom
-   * controls).
+   * controls, and those whose condition is not currently met).
    */
   protected readonly settings: Signal<readonly SettingDef[]> = computed(
     (): readonly SettingDef[] =>
       findSection(this.sectionId())?.settings.filter(
-        (setting: SettingDef): boolean => setting.control.kind !== 'custom',
+        (setting: SettingDef): boolean =>
+          setting.control.kind !== 'custom' && this.isVisible(setting),
       ) ?? [],
   );
+
+  /**
+   * Determines whether a setting's condition is met, so a setting that qualifies another appears only
+   * while it has something to qualify. Reads the depended-on value through the settings store, so the
+   * row appears and disappears as that setting changes.
+   * @param setting The setting definition.
+   * @returns Returns true when the setting should be rendered.
+   */
+  private isVisible(setting: SettingDef): boolean {
+    const condition: VisibilityDef | undefined = setting.visibleWhen;
+    return (
+      condition === undefined || condition.equals.includes(this.settingsStore.get(condition.key))
+    );
+  }
 
   /**
    * Gets the optional hint shown beneath the section's settings.
