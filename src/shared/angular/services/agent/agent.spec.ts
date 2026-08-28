@@ -16,7 +16,7 @@ import { Notification, Notifications } from '@shared/angular/services/notificati
 import { Settings } from '@shared/angular/services/settings/settings';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
-import { Agent, AgentItem } from './agent';
+import { Agent, AgentItem, STREAM_FLUSH_MS } from './agent';
 
 /**
  * The providers the stub runtime reports.
@@ -76,11 +76,16 @@ describe('Agent', () => {
    * Waits past the stream-flush window, so buffered text deltas have folded into the transcript.
    * Only needed when a test asserts directly after pure text deltas; any non-delta event (a tool
    * start, a status change) flushes synchronously.
+   *
+   * Derived from {@link STREAM_FLUSH_MS} rather than written as a number: this used to wait a flat
+   * 25ms, which silently became *shorter* than the flush window the moment the window was widened, and
+   * four tests failed for a reason that had nothing to do with what they were testing.
+   *
    * @returns Returns a promise that resolves once buffered text has landed.
    */
   function settleStream(): Promise<void> {
     return new Promise<void>((resolve: () => void): void => {
-      setTimeout(resolve, 25);
+      setTimeout(resolve, STREAM_FLUSH_MS + 10);
     });
   }
 

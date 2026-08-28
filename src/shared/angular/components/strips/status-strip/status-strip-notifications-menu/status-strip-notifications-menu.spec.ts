@@ -46,6 +46,36 @@ describe('StatusStripNotificationsMenu', () => {
     ).toBe('2');
   });
 
+  it('render_whenMoreAreUnseenThanTheBadgeSpellsOut_showsNinetyNinePlus', () => {
+    // The history caps itself, so the count pins rather than climbing; the badge must say "more
+    // than 99" instead of reading out the cap as though it were the real figure.
+    for (let raised: number = 0; raised < 120; raised += 1) {
+      notifications.notify({ severity: 'info', title: `N${raised}` });
+    }
+    fixture.detectChanges();
+
+    const trigger: HTMLElement | null = (fixture.nativeElement as HTMLElement).querySelector(
+      '.notifications-menu__trigger',
+    );
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('.notifications-menu__count')
+        ?.textContent,
+    ).toBe('99+');
+    expect(trigger?.getAttribute('title')).toBe('More than 99 new notifications');
+  });
+
+  it('render_whenExactlyTheBadgeLimitIsUnseen_stillSpellsItOut', () => {
+    for (let raised: number = 0; raised < 99; raised += 1) {
+      notifications.notify({ severity: 'info', title: `N${raised}` });
+    }
+    fixture.detectChanges();
+
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('.notifications-menu__count')
+        ?.textContent,
+    ).toBe('99');
+  });
+
   it('render_titlesTheTriggerWithTheUnseenCount', () => {
     notifications.notify({ severity: 'info', title: 'A' });
     fixture.detectChanges();

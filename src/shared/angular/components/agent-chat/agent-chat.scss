@@ -26,6 +26,38 @@
   overflow: auto;
 }
 
+// Off-screen rows are skipped for layout and paint.
+//
+// The window holds 200 rows and you can see about five of them, so the browser was laying out and
+// painting a whole conversation to show a screenful — and doing it again on every streamed token,
+// because a token changes the last row's height and that reflows everything in flow after it. It also
+// made the follow-the-tail effect's `scrollHeight` read (a forced synchronous layout, once per flush
+// per view) cost the whole transcript rather than the visible part.
+//
+// `auto` rather than `hidden`: skipped content stays selectable, findable by the browser's find, and
+// present in the accessibility tree, so nothing about the transcript's behaviour changes — only when
+// the work happens. Chromium alone matters here, and it has supported this for years.
+//
+// `contain-intrinsic-size: auto <fallback>` asks the browser to remember each row's real measured
+// height once it has been rendered, falling back to the estimate only for rows never yet on screen.
+// That fits an append-only transcript, where rows are laid out as they stream in and so are already
+// measured by the time you scroll back through them. The estimate is only load-bearing for rows
+// revealed by "load earlier"; if scrolling up through those ever feels jumpy, this is the number to
+// revisit — a too-small estimate is what makes a scrollbar shift as real heights replace guesses.
+//
+// Applied to the direct children of the scroller, which is one element per transcript row: the rail
+// rows and the off-rail ones (messages, prompts, errors). Safe against the connector rail, because
+// each row draws its own segments within its own bounds — nothing spans rows for the containment that
+// `content-visibility` implies to break.
+.agent__messages > .agent__row,
+.agent__messages > .agent__message,
+.agent__messages > .agent__ask,
+.agent__messages > .agent__error,
+.agent__messages > .agent__permission {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 5rem;
+}
+
 // The "load earlier" affordance shown at the top of the list when older rows are held out of the DOM
 // (see CONVERSATION_WINDOW). Centred, and it does not stretch to the full row width.
 .agent__earlier {

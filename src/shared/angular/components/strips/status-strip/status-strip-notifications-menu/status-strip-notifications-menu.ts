@@ -13,6 +13,14 @@ import {
 } from '@shared/angular/services/notifications/notifications';
 
 /**
+ * The largest unseen count the badge spells out. Beyond it the badge reads `99+`, which keeps the
+ * bell to two digits on a strip that has no room to grow — and is the honest reading anyway, since
+ * the history's own cap evicts the oldest entries once it is full, and the exact figure stops being
+ * knowable at that point. Saying "more than 99" stays true however many were dropped.
+ */
+const MAX_SHOWN_COUNT: number = 99;
+
+/**
  * The status strip's notification centre: a bell on the strip's trailing side carrying the unseen
  * count, opening a drop-up flyout of the recent notifications — newest first, each with its
  * severity, detail, age, and a remove control, plus a Clear all. Opening the flyout marks
@@ -48,12 +56,25 @@ export class StatusStripNotificationsMenu {
   protected readonly unseenCount: Signal<number> = this.notifications.unseenCount;
 
   /**
-   * Gets the trigger's tooltip and accessible label, naming the unseen count when there is one.
+   * Gets the badge's text: the unseen count, or `99+` once there are more than the badge spells out.
+   */
+  protected readonly countLabel: Signal<string> = computed((): string => {
+    const unseen: number = this.unseenCount();
+    return unseen > MAX_SHOWN_COUNT ? `${MAX_SHOWN_COUNT}+` : `${unseen}`;
+  });
+
+  /**
+   * Gets the trigger's tooltip and accessible label, naming the unseen count when there is one. Past
+   * the badge's limit it says so in words rather than reading out a number the badge is no longer
+   * showing.
    */
   protected readonly triggerTitle: Signal<string> = computed((): string => {
     const unseen: number = this.unseenCount();
     if (unseen === 0) {
       return 'Notifications';
+    }
+    if (unseen > MAX_SHOWN_COUNT) {
+      return `More than ${MAX_SHOWN_COUNT} new notifications`;
     }
     return unseen === 1 ? '1 new notification' : `${unseen} new notifications`;
   });

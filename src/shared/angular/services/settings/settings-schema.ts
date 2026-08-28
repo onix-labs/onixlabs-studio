@@ -68,9 +68,35 @@ export type SettingOwner = 'settings' | 'theme' | 'display' | 'lsp' | 'security'
 export type ForeignOwner = Exclude<SettingOwner, 'settings'>;
 
 /**
+ * Describes when a setting is shown: the section renders it only while another setting holds one of
+ * the given values.
+ *
+ * For a setting that qualifies another — an appearance that applies to one mode, a path that applies
+ * to one executable choice — showing it always is worse than hiding it, because a control that does
+ * nothing reads as broken rather than as inapplicable. Disabling instead would keep it on screen,
+ * which is the same problem more quietly.
+ */
+export interface VisibilityDef {
+  /**
+   * Gets the key of the setting this one depends on.
+   */
+  readonly key: SettingsKey;
+
+  /**
+   * Gets the values of that setting for which this setting is shown.
+   */
+  readonly equals: readonly unknown[];
+}
+
+/**
  * Holds the display and control fields shared by every setting definition.
  */
 interface BaseSettingDef {
+  /**
+   * Gets the condition under which the setting is shown, or undefined for a setting that always is.
+   */
+  readonly visibleWhen?: VisibilityDef;
+
   /**
    * Gets the label shown for the setting.
    */

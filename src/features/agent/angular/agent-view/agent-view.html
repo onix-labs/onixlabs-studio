@@ -1,5 +1,11 @@
 <app-panel-layout layoutKey="agent">
-  <app-agent-chat main [tabId]="tabId()" [isActive]="isActive()" surface="project" />
+  <app-agent-chat
+    main
+    [tabId]="tabId()"
+    [isActive]="isActive()"
+    [visible]="isActive()"
+    surface="project"
+  />
 
   @if (conversation.historyOpen()) {
     <app-panel

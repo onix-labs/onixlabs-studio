@@ -1,13 +1,30 @@
-// The application-menu trigger, sitting with the title strip's other action buttons. The drop-down
-// panel renders through the CDK overlay (outside this component), so its styles are the shared menu's
-// in the global _menu.scss — this menu deliberately looks like every other menu in the application
-// rather than like a transplanted OS menu bar.
+// The application menu, sitting with the title strip's other action buttons. A section's drop-down
+// renders through the CDK overlay (outside this component), so its styles are the shared menu's in the
+// global _menu.scss — these menus deliberately look like every other menu in the application rather
+// than like a transplanted OS menu bar.
 :host {
-  // Never shrink: only the tab list flexes, so the menu button stays reachable at any window width.
+  // Never shrink: only the tab list flexes, so the menu stays reachable at any window width.
   flex: none;
   display: inline-flex;
   align-items: center;
   -webkit-app-region: no-drag;
+}
+
+// The two surfaces that carry labelled sections: the inline bar and the button's horizontal flyout.
+// They differ in what encloses them, not in how a section reads.
+.title-strip-menu__bar,
+.title-strip-menu__flyout {
+  display: flex;
+  align-items: center;
+  gap: 0.1rem;
+}
+
+// The flyout is a panel rather than part of the strip, so it wears the shared `app-menu-panel`
+// surface from `_menu.scss` (which owns the menu tokens) and only overrides the direction: a row of
+// sections instead of a column of rows, sized to them rather than to a menu's minimum width.
+.title-strip-menu__flyout {
+  flex-direction: row;
+  min-inline-size: 0;
 }
 
 .title-strip-menu__trigger {
@@ -36,5 +53,51 @@
   &:focus-visible {
     outline: var(--focus-ring-width) solid var(--focus-ring-color);
     outline-offset: 0.0625rem;
+  }
+}
+
+.title-strip-menu__section {
+  display: flex;
+  align-items: center;
+  block-size: 1.75rem;
+  // Room for the label to breathe without the bar eating the tab list's width. The labels are single
+  // words, so they never wrap and never need a minimum.
+  padding-inline: 0.5rem;
+  background: transparent;
+  color: var(--title-strip-button-foreground-color);
+  border: 0.0625rem solid transparent;
+  border-radius: calc(0.5rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  font-family: inherit;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  cursor: default;
+  transition:
+    var(--hover-transition),
+    border-color 150ms ease-in-out;
+
+  // Inside the flyout the section sits on the menu's surface, not the title strip's, so it takes the
+  // menu's foreground to stay legible against it.
+  &.title-strip-menu__section--flyout {
+    color: var(--menu-foreground-color);
+  }
+
+  &:hover {
+    background: var(--accent-surface-background-color);
+    border-color: var(--accent-surface-border-color);
+    color: var(--accent-surface-foreground-color);
+  }
+
+  &:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: 0.0625rem;
+  }
+
+  // While a section's drop-down is open its button stays lit, so the bar shows which menu is down —
+  // the pointer has moved off the button and onto the panel by then.
+  &[aria-expanded='true'] {
+    background: var(--accent-surface-background-color);
+    border-color: var(--accent-surface-border-color);
+    color: var(--accent-surface-foreground-color);
   }
 }

@@ -45,9 +45,16 @@ import { isNotLoggedInReply, looksLikeAuthFailure } from './auth-failure';
 
 /**
  * How long, in milliseconds, streamed text deltas are buffered before they are folded into the
- * transcript — roughly one frame, so a stream repaints at display cadence instead of once per token.
+ * transcript.
+ *
+ * Every flush costs a row rebuild and a render in each view showing the conversation, so this is the
+ * multiplier on the whole transcript pipeline. It used to be one frame (16ms), which repaints at
+ * display cadence — but text is not animation: nobody reads at 60Hz, and the difference between 30 and
+ * 60 updates a second is invisible in prose while the work behind it is exactly double. Halving the
+ * rate halves the streaming cost of every mounted view at once, which is what leaves the main thread
+ * free enough to keep up with typing.
  */
-const STREAM_FLUSH_MS: number = 16;
+export const STREAM_FLUSH_MS: number = 33;
 
 /**
  * Identifies the kind of transcript item.

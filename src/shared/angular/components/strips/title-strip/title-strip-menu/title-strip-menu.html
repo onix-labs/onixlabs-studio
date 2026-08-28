@@ -1,13 +1,91 @@
-<button
-  type="button"
-  class="title-strip-menu__trigger"
-  title="Menu"
-  aria-label="Menu"
-  [appTooltip]="'Menu'"
-  [cdkMenuTriggerFor]="appMenuPanel.panel() ?? null"
-  [cdkMenuPosition]="appMenuPanel.position()"
->
-  <app-icon [icon]="Icon.LIST" />
-</button>
+<!--
+  Three renderings of one model, chosen by `application.menuMode`.
 
-<app-menu #appMenuPanel placement="down-start" [items]="rows()" (selected)="onSelect($event)" />
+  ⚠️ The bar and the flyout repeat their section loop rather than sharing one through an
+  `ngTemplateOutlet`. CDK finds a menu's items with a *content* query, and a content query is scoped to
+  where a node is DECLARED, not where it is inserted — so sections declared in a shared template and
+  outletted in would never be found, and both surfaces would silently lose their keyboard navigation
+  and their menu stack. The duplication is the price of the query working.
+-->
+@switch (mode()) {
+  @case ('full') {
+    <!--
+      A menu bar rather than a row of independent buttons: `cdkMenuBar` makes the sections one keyboard
+      stop with arrow keys between them, and — because they share a menu stack — moving the pointer
+      onto a sibling while one section is open switches to it instead of requiring a second click,
+      which is what makes a bar feel like a bar.
+    -->
+    <div class="title-strip-menu__bar" cdkMenuBar aria-label="Application menu">
+      @for (section of sections(); track section.id) {
+        <button
+          type="button"
+          class="title-strip-menu__section"
+          cdkMenuItem
+          [cdkMenuTriggerFor]="barPanel.panel() ?? null"
+          [cdkMenuPosition]="barPanel.position()"
+        >
+          {{ section.label }}
+        </button>
+
+        <app-menu
+          #barPanel
+          placement="down-start"
+          [items]="section.children ?? []"
+          (selected)="onSelect($event)"
+        />
+      }
+    </div>
+  }
+
+  @case ('icon') {
+    <button
+      type="button"
+      class="title-strip-menu__trigger"
+      title="Menu"
+      aria-label="Menu"
+      [appTooltip]="'Menu'"
+      [cdkMenuTriggerFor]="
+        appearance() === 'horizontal' ? horizontalFlyout : (verticalFlyout.panel() ?? null)
+      "
+      [cdkMenuPosition]="flyoutPosition"
+    >
+      <app-icon [icon]="Icon.LIST" />
+    </button>
+
+    <!-- Vertical: the sections are rows of one menu, each opening its commands as a submenu. -->
+    <app-menu
+      #verticalFlyout
+      placement="down-start"
+      [items]="sections()"
+      (selected)="onSelect($event)"
+    />
+
+    <!--
+      Horizontal: the same sections laid across a strip, each opening its commands beneath it.
+      ⚠️ The `cdkMenu` must stay this template's ROOT node — see menu.html for what CDK does when a
+      panel's menu is wrapped instead.
+    -->
+    <ng-template #horizontalFlyout>
+      <div class="app-menu-panel title-strip-menu__flyout" cdkMenu aria-label="Application menu">
+        @for (section of sections(); track section.id) {
+          <button
+            type="button"
+            class="title-strip-menu__section title-strip-menu__section--flyout"
+            cdkMenuItem
+            [cdkMenuTriggerFor]="flyoutPanel.panel() ?? null"
+            [cdkMenuPosition]="flyoutPanel.position()"
+          >
+            {{ section.label }}
+          </button>
+
+          <app-menu
+            #flyoutPanel
+            placement="down-start"
+            [items]="section.children ?? []"
+            (selected)="onSelect($event)"
+          />
+        }
+      </div>
+    </ng-template>
+  }
+}

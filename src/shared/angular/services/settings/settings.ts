@@ -89,6 +89,23 @@ export type PrintMargin = 'narrow' | 'regular' | 'wide';
 export type RibbonAlignment = 'left' | 'center' | 'right';
 
 /**
+ * Identifies how much of the application menu the title strip carries: not at all (`hidden`), as a
+ * single button opening the whole menu (`icon`), or as a bar of its top-level sections (`full`).
+ *
+ * The choice is the user's on every platform rather than derived from one. Hiding suits a system that
+ * draws the menu itself, the button suits a small screen, and the bar suits a large one — but which
+ * of those is true is about the screen and the person, not about the operating system.
+ */
+export type ApplicationMenuMode = 'hidden' | 'icon' | 'full';
+
+/**
+ * Identifies how the application menu's button lays its sections out when opened: stacked as rows
+ * (`vertical`) or across a strip (`horizontal`). Applies only to the button — the full menu is a bar
+ * already.
+ */
+export type ApplicationMenuAppearance = 'vertical' | 'horizontal';
+
+/**
  * Identifies whether the modern UI features (GPU-rasterized squircle corners and the heavier
  * decorative effects) are used. `auto` follows the GPU-derived recommendation resolved at startup;
  * `on` and `off` are explicit user overrides.
@@ -253,6 +270,16 @@ export interface ApplicationSettings {
    * Gets the page margin applied when printing or exporting a document.
    */
   readonly printMargin: PrintMargin;
+
+  /**
+   * Gets how much of the application menu the title strip carries.
+   */
+  readonly menuMode: ApplicationMenuMode;
+
+  /**
+   * Gets how the application menu's button lays its sections out when opened.
+   */
+  readonly menuAppearance: ApplicationMenuAppearance;
 }
 
 /**
@@ -474,7 +501,22 @@ export class Settings {
     (): ApplicationSettings => ({
       undoStackSize: this.read('application.undoStackSize'),
       printMargin: this.read('application.printMargin'),
+      menuMode: this.read('application.menuMode'),
+      menuAppearance: this.read('application.menuAppearance'),
     }),
+  );
+
+  /**
+   * Gets how much of the application menu the title strip carries.
+   */
+  public readonly applicationMenuMode: Signal<ApplicationMenuMode> =
+    this.value('application.menuMode');
+
+  /**
+   * Gets how the application menu's button lays its sections out when opened.
+   */
+  public readonly applicationMenuAppearance: Signal<ApplicationMenuAppearance> = this.value(
+    'application.menuAppearance',
   );
 
   /**
