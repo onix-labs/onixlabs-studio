@@ -23,4 +23,21 @@ describe('AgentConversationPanel', () => {
 
     expect(fixture.componentInstance).toBeTruthy();
   });
+
+  // ...and that dropping it in is genuinely all there is to it. Providing the pair but no inputs used
+  // to buy a panel whose composer worked and whose transcript stayed empty for good, because the
+  // panel forwarded an activity input that defaults to false into the chat's transcript gate. Whether
+  // a chat is on screen is the chat's own business now, so every host gets its conversation.
+  it('render_whenTheHostPassesNoInputs_showsTheConversation', () => {
+    const fixture: ReturnType<typeof TestBed.createComponent<AgentConversationPanel>> =
+      TestBed.createComponent(AgentConversationPanel);
+    fixture.detectChanges();
+    TestBed.inject(Agent).send('Hello');
+    fixture.detectChanges();
+    const message: Element | null = (fixture.nativeElement as HTMLElement).querySelector(
+      '.agent__message--user',
+    );
+
+    expect(message?.textContent).toContain('Hello');
+  });
 });

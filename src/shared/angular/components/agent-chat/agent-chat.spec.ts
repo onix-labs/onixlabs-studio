@@ -16,6 +16,7 @@ import { Agent, AgentItem, AgentQueuedMessage } from '@shared/angular/services/a
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
 import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine';
 import { Search } from '@shared/angular/services/search/search';
+import { FakeIntersectionObserver } from '@shared/angular/testing/fake-intersection-observer';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { AgentChat } from './agent-chat';
 
@@ -50,9 +51,13 @@ describe('AgentChat', () => {
   let attachedContext: AgentContextRef[];
   let conversationDraft: WritableSignal<string>;
   let tailRequest: WritableSignal<number>;
+  // The chat decides for itself whether it is on screen by watching its own host element, which jsdom
+  // cannot answer; this puts those observations under the test's control.
+  let observers: FakeIntersectionObserver;
 
   beforeEach(async () => {
     localStorage.clear();
+    observers = FakeIntersectionObserver.install();
     conversationDraft = signal<string>('');
     tailRequest = signal<number>(0);
     compacted = 0;
@@ -192,6 +197,10 @@ describe('AgentChat', () => {
     await fixture.whenStable();
   });
 
+  afterEach(() => {
+    observers.uninstall();
+  });
+
   it('should create', () => {
     expect(component).toBeTruthy();
   });
@@ -274,12 +283,25 @@ describe('AgentChat', () => {
     expect(first?.innerHTML).toContain('message 51');
   });
 
-  it('rows_whenTheChatIsNotVisible_rendersNothingAtAll', () => {
+  it('rows_whenNobodyHasReportedItOffScreen_rendersTheTranscript', () => {
+    // The regression this guards: the gate used to be an input a host had to pass, and the hosts that
+    // passed nothing — the docked agent panel among them — rendered an empty transcript while the same
+    // conversation showed up fine in Mission Control. A chat that has been told nothing shows its
+    // conversation. It is only ever an observation of its own host element that quietens it.
+    items.set(userMessages(10));
+    fixture.detectChanges();
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+
+    expect(host.querySelectorAll('.agent__message--user').length).toBe(10);
+  });
+
+  it('rows_whenTheChatGoesOffScreen_rendersNothingAtAll', () => {
     // A hidden view costs what a shown one costs, and every open tab stays mounted — so an agent tab
     // behind Mission Control used to re-check every rendered row on every streamed token for nobody.
     // This is a performance guard: if the gate regresses, the rows come back and so does the lag.
     items.set(userMessages(200));
-    fixture.componentRef.setInput('visible', false);
+    fixture.detectChanges();
+    observers.report(fixture.nativeElement as HTMLElement, false);
     fixture.detectChanges();
     const host: HTMLElement = fixture.nativeElement as HTMLElement;
 
@@ -287,25 +309,29 @@ describe('AgentChat', () => {
     expect(host.querySelector('.agent__earlier')).toBeNull();
   });
 
-  it('rows_whenTheChatBecomesVisibleAgain_rendersTheTranscriptBack', () => {
+  it('rows_whenTheChatComesBackOnScreen_rendersTheTranscriptBack', () => {
     items.set(userMessages(10));
-    fixture.componentRef.setInput('visible', false);
     fixture.detectChanges();
-    fixture.componentRef.setInput('visible', true);
+    observers.report(fixture.nativeElement as HTMLElement, false);
+    fixture.detectChanges();
+    observers.report(fixture.nativeElement as HTMLElement, true);
     fixture.detectChanges();
     const host: HTMLElement = fixture.nativeElement as HTMLElement;
 
     expect(host.querySelectorAll('.agent__message--user').length).toBe(10);
   });
 
-  it('rows_whenVisibleIsNotSpecified_rendersTheTranscript', () => {
-    // The gate defaults to shown, so a caller that forgets it gets today's cost rather than a blank
-    // transcript — Mission Control's focus modal shows a chat whose tab is not the active one.
-    items.set(userMessages(10));
-    fixture.detectChanges();
-    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+  it('create_whenTheChatIsMounted_watchesItsOwnHostElement', () => {
+    // The chat works its visibility out for itself: whatever surface shows it — the agent tab, the
+    // docked panel, a Mission Control tile — the thing observed is its own host element, so no host
+    // has to know or pass anything.
+    expect(observers.observed()).toContain(fixture.nativeElement as HTMLElement);
+  });
 
-    expect(host.querySelectorAll('.agent__message--user').length).toBe(10);
+  it('destroy_whenTheChatIsTornDown_stopsWatching', () => {
+    fixture.destroy();
+
+    expect(observers.disconnected()).toBe(observers.count());
   });
 
   it('rows_whenTranscriptWithinTheWindow_rendersEveryRowWithNoAffordance', () => {

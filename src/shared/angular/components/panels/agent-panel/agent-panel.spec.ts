@@ -43,4 +43,18 @@ describe('AgentPanel', () => {
     );
     expect(composer).not.toBeNull();
   });
+
+  it('render_whenAMessageIsSent_showsItInTheTranscript', () => {
+    // The regression this guards, in the shape it was reported: a message typed into the workspace's
+    // docked agent panel appeared in Mission Control and nowhere else, because this panel passes no
+    // inputs to the chat and the transcript was gated on one that defaulted to hidden. The chat works
+    // its own visibility out now, so a panel that says nothing still shows the conversation.
+    TestBed.inject(Agent).send('Hello');
+    fixture.detectChanges();
+    const message: Element | null = (fixture.nativeElement as HTMLElement).querySelector(
+      '.agent__message--user',
+    );
+
+    expect(message?.textContent).toContain('Hello');
+  });
 });

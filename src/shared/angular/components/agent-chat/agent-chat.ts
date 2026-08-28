@@ -339,6 +339,40 @@ export class AgentChat implements OnInit {
   private readonly perf: AgentPerf = inject(AgentPerf);
 
   /**
+   * Holds this component's own host element, whose place on screen decides whether the transcript is
+   * rendered at all (see {@link onScreen}).
+   */
+  private readonly host: ElementRef<HTMLElement> = inject(ElementRef) as ElementRef<HTMLElement>;
+
+  /**
+   * Holds whether this chat is actually on screen, which gates whether the transcript is built and
+   * rendered at all.
+   *
+   * A hidden view costs what a shown one costs. Every open tab stays mounted — hidden with
+   * `display: none`, not destroyed — so an agent tab sitting behind Mission Control kept rebuilding its
+   * rows and patching its DOM on every streamed token for something nobody could see. Several
+   * conversations streaming into several views each is what saturates the main thread, and a saturated
+   * main thread is what makes typing crawl.
+   *
+   * The component works this out for itself, by watching its own host element, rather than being told
+   * by an input. One conversation is shown by several surfaces at once — the agent tab, the docked
+   * panel in the workspace, a Mission Control tile, a popped-out window — and each knows only its own
+   * corner of the layout. Wiring the gate through the hosts meant every one of them had to pass the
+   * right thing, and the ones that passed nothing rendered nothing: the docked agent panel showed an
+   * empty transcript while the same conversation appeared in Mission Control. Nothing to forget is the
+   * only way that stays fixed.
+   *
+   * It starts true and is only ever lowered by an observation, so a chat renders on its first frame and
+   * in any environment without an {@link IntersectionObserver} (jsdom, chiefly) — the worst case is
+   * that it costs what it did before, never that it goes blank.
+   *
+   * The transcript is safe to drop and rebuild because it is pure derived state — unlike Monaco or a
+   * terminal, which is why those must stay mounted. The reader's distance from the tail is preserved
+   * across the gate, so returning to a view lands where they left it.
+   */
+  private readonly onScreen: WritableSignal<boolean> = signal<boolean>(true);
+
+  /**
    * Gets the identifier of the tab hosting this conversation, or undefined when not hosted by a tab
    * (e.g. the dockable agent panel).
    */
@@ -348,28 +382,6 @@ export class AgentChat implements OnInit {
    * Gets a value indicating whether the hosting tab is the active tab.
    */
   public readonly isActive: InputSignal<boolean> = input<boolean>(false);
-
-  /**
-   * Gets a value indicating whether this chat is actually on screen, which gates whether the transcript
-   * is rendered at all.
-   *
-   * A hidden view costs as much as a visible one. Every open tab stays mounted (hidden with a class,
-   * not destroyed), so an agent tab sitting behind Mission Control kept re-checking all of its rendered
-   * rows on every streamed token — measured at the same DOM size as the active view, for something
-   * nobody could see. Several conversations streaming into several views each is what saturates the
-   * main thread, and a saturated main thread is what makes typing crawl.
-   *
-   * Deliberately **not** {@link isActive}, and deliberately defaulting to true. The two part company
-   * where a chat is shown while its tab is not active — Mission Control's focus modal is a separate
-   * window over an inactive tab — and a gate that defaults to hidden would blank a transcript the
-   * moment a caller forgot to pass it. Defaulting to shown means the worst a forgetful caller gets is
-   * today's cost.
-   *
-   * The transcript is safe to drop and rebuild because it is pure derived state — unlike Monaco or a
-   * terminal, which is why those must stay mounted. The reader's distance from the tail is preserved
-   * across the gate, so returning to a tab lands where they left it.
-   */
-  public readonly visible: InputSignal<boolean> = input<boolean>(true);
 
   /**
    * Gets what this conversation's runs act on, which selects the tool set the providers expose: the
@@ -554,14 +566,14 @@ export class AgentChat implements OnInit {
    * own activity (assistant text, reasoning, tool calls, and the working indicator) forms one
    * connected rail; the user's messages and permission prompts sit off it and break the line.
    *
-   * Empty while the chat is not {@link visible}, which is the cheap half of the fix: a hidden view
+   * Empty while the chat is not {@link onScreen}, which is the cheap half of the fix: a hidden view
    * neither builds rows nor renders them, so a streamed token costs it nothing at all. The gate sits
    * here rather than on the rendered rows so that the build itself is skipped too — `earlierCount`
    * reads this, so gating only the rendering would leave the per-flush build running unseen.
    */
   protected readonly transcript: Signal<{ rows: readonly TranscriptRow[]; total: number }> =
     computed((): { rows: readonly TranscriptRow[]; total: number } => {
-      if (!this.visible()) {
+      if (!this.onScreen()) {
         return { rows: [], total: 0 };
       }
       const items: readonly AgentItem[] = this.items();
@@ -779,6 +791,8 @@ export class AgentChat implements OnInit {
     this.perf.transcriptMounted();
     this.destroyRef.onDestroy((): void => this.perf.transcriptUnmounted());
 
+    this.watchOnScreen();
+
     effect((): void => {
       const id: string | undefined = this.tabId();
       const waiting: boolean = this.awaitingDecision();
@@ -803,7 +817,7 @@ export class AgentChat implements OnInit {
     // land at the top of the window; the anchor is the same "distance from the bottom" the load-earlier
     // restore uses, so returning to a tab behaves exactly as revealing older rows does.
     effect((): void => {
-      const showing: boolean = this.visible();
+      const showing: boolean = this.onScreen();
       untracked((): void => {
         if (showing) {
           return;
@@ -914,6 +928,31 @@ export class AgentChat implements OnInit {
       });
       this.destroyRef.onDestroy(unregisterHost);
     }
+  }
+
+  /**
+   * Watches this chat's own host element and records whether it is on screen, which is what gates the
+   * transcript (see {@link onScreen}).
+   *
+   * An {@link IntersectionObserver} is the whole mechanism: a view in a hidden tab is `display: none`,
+   * a panel in an inactive dock stack is not laid out, and a tile scrolled out of Mission Control is
+   * off the viewport — all three report the same way, and none of them needs a host to know it or say
+   * so. Where there is no observer the chat simply stays shown.
+   */
+  private watchOnScreen(): void {
+    if (typeof IntersectionObserver === 'undefined') {
+      return;
+    }
+    const observer: IntersectionObserver = new IntersectionObserver(
+      (entries: readonly IntersectionObserverEntry[]): void => {
+        const latest: IntersectionObserverEntry | undefined = entries[entries.length - 1];
+        if (latest !== undefined) {
+          this.onScreen.set(latest.isIntersecting);
+        }
+      },
+    );
+    observer.observe(this.host.nativeElement);
+    this.destroyRef.onDestroy((): void => observer.disconnect());
   }
 
   /**
