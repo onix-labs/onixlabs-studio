@@ -10,7 +10,11 @@ import {
   isDebugpyInstalled,
   uninstallDebugpy,
 } from '../../debug/debugpy-install';
-import { CLANGD_PROVISION, TYPESCRIPT_SERVER_PROVISION } from '../../lsp/language-server-downloads';
+import {
+  CLANGD_PROVISION,
+  TYPESCRIPT_PROVISION,
+  TYPESCRIPT_SERVER_PROVISION,
+} from '../../lsp/language-server-downloads';
 import {
   GOPLS_VERSION,
   JDTLS_VERSION,
@@ -252,21 +256,41 @@ function adapterPlugin(
  * @returns Returns the catalogue descriptors.
  */
 export function pluginCatalogue(): readonly PluginDescriptor[] {
+  const typescriptServer: PluginDescriptor = archivePlugin(
+    'typescript-language-server',
+    'TypeScript Language Server',
+    'TypeScript and JavaScript language support.',
+    TYPESCRIPT_SERVER_PROVISION,
+    [languageServer('typescript', 'TypeScript Language Server', ['typescript', 'javascript'], 100)],
+  );
   return [
-    archivePlugin(
-      'typescript-language-server',
-      'TypeScript Language Server',
-      'TypeScript and JavaScript language support.',
-      TYPESCRIPT_SERVER_PROVISION,
-      [
-        languageServer(
-          'typescript',
-          'TypeScript Language Server',
-          ['typescript', 'javascript'],
-          100,
+    {
+      // The server ships without a compiler and borrows the workspace's; the plugin therefore
+      // installs a pinned TypeScript beside it as the fallback for workspaces that have none. Both
+      // archives are one plugin: installed together, detected together, removed together.
+      ...typescriptServer,
+      detail: `Bundles TypeScript ${TYPESCRIPT_PROVISION.version} for projects without their own.`,
+      supported: (context: PluginContext): boolean =>
+        context.provisioner.archiveTarget(TYPESCRIPT_SERVER_PROVISION) !== null &&
+        context.provisioner.archiveTarget(TYPESCRIPT_PROVISION) !== null,
+      detect: (context: PluginContext): Promise<boolean> =>
+        Promise.resolve(
+          context.provisioner.isArchiveInstalled(TYPESCRIPT_SERVER_PROVISION) &&
+            context.provisioner.isArchiveInstalled(TYPESCRIPT_PROVISION),
         ),
-      ],
-    ),
+      install: async (context: PluginContext): Promise<string | null> => {
+        const server: string | null = await context.provisioner.ensureArchive(
+          TYPESCRIPT_SERVER_PROVISION,
+        );
+        const compiler: string | null =
+          await context.provisioner.ensureArchive(TYPESCRIPT_PROVISION);
+        return server === null || compiler === null ? null : server;
+      },
+      uninstall: async (context: PluginContext): Promise<void> => {
+        await context.provisioner.removeArchive(TYPESCRIPT_SERVER_PROVISION);
+        await context.provisioner.removeArchive(TYPESCRIPT_PROVISION);
+      },
+    },
     archivePlugin(
       'clangd',
       'clangd',

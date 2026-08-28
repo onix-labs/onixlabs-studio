@@ -33,6 +33,29 @@ export const TYPESCRIPT_SERVER_PROVISION: ArchiveProvision = everyPlatform(
 );
 
 /**
+ * Holds the pinned TypeScript compiler version the language server falls back to. The server carries
+ * no compiler of its own — it borrows the workspace's `node_modules/typescript` — so a plain-JavaScript
+ * project, or a checkout before `npm install`, had nothing for it to run. Pinned to the newest 5.x:
+ * the 7.x line is the native port, whose server the 4.x language server does not drive.
+ */
+export const TYPESCRIPT_VERSION: string = '5.9.3';
+
+/**
+ * The bundled TypeScript compiler recipe, installed alongside the language server as its fallback
+ * `tsserver` (`package/lib/tsserver.js`). A workspace with its own TypeScript still uses that.
+ */
+export const TYPESCRIPT_PROVISION: ArchiveProvision = everyPlatform(
+  'typescript',
+  TYPESCRIPT_VERSION,
+  {
+    url: `https://registry.npmjs.org/typescript/-/typescript-${TYPESCRIPT_VERSION}.tgz`,
+    sha256: '10e108c9cf7d5f2879053dff18515fb405abf2ccef63eaaf017d9c571687a1d3',
+    archive: 'tar.gz',
+    executablePath: 'package/lib/tsserver.js',
+  },
+);
+
+/**
  * Holds the pinned clangd version. Upstream publishes one archive per operating system rather than per
  * architecture (the macOS build is universal), so both architectures of a platform share a download.
  */

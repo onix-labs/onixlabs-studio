@@ -13,7 +13,11 @@ import {
   unavailable,
 } from './language-server-descriptor';
 import { JdtlsInstall } from './lsp-provisioner';
-import { CLANGD_PROVISION, TYPESCRIPT_SERVER_PROVISION } from './language-server-downloads';
+import {
+  CLANGD_PROVISION,
+  TYPESCRIPT_PROVISION,
+  TYPESCRIPT_SERVER_PROVISION,
+} from './language-server-downloads';
 
 /**
  * Holds the JVM arguments passed to the Eclipse JDT Language Server's Equinox launcher, before the
@@ -68,7 +72,40 @@ export function csharpOpenPlan(
 }
 
 /**
+ * Decides which `tsserver` the TypeScript language server should drive for a workspace: the
+ * workspace's own TypeScript when it has one (version-accurate diagnostics for that project), else
+ * the bundled compiler installed alongside the server, else nothing — in which case the server is
+ * left to its own search and a workspace without TypeScript gets no service.
+ * @param rootPath The workspace root.
+ * @param bundled The bundled compiler's `tsserver.js`, or null when it is not installed.
+ * @returns Returns the `initializationOptions` to pass, or undefined to pass none.
+ */
+export function typescriptInitializationOptions(
+  rootPath: string,
+  bundled: string | null,
+): { tsserver: { path: string } } | undefined {
+  const local: string = path.join(rootPath, 'node_modules', 'typescript', 'lib', 'tsserver.js');
+  if (existsSync(local)) {
+    return undefined;
+  }
+  if (bundled === null) {
+    logger.warn(
+      'LanguageServerCatalogue',
+      `${rootPath} has no TypeScript and the bundled compiler is not installed; the server has nothing to run`,
+    );
+    return undefined;
+  }
+  logger.debug(
+    'LanguageServerCatalogue',
+    `Using the bundled TypeScript ${TYPESCRIPT_PROVISION.version} for ${rootPath}`,
+  );
+  return { tsserver: { path: bundled } };
+}
+
+/**
  * The TypeScript and JavaScript server, downloaded as its npm tarball and honouring a custom path.
+ * The server ships without a compiler; {@link typescriptInitializationOptions} points it at the
+ * bundled one when the workspace has none of its own.
  */
 const TYPESCRIPT: LanguageServerDescriptor = {
   id: 'typescript',
@@ -76,17 +113,20 @@ const TYPESCRIPT: LanguageServerDescriptor = {
   languages: ['typescript', 'javascript'],
   priority: DEFAULT_PRIORITY,
   resolve: (context: LanguageServerContext): LspResolution => {
+    const bundled: string | null = context.installedPath(TYPESCRIPT_PROVISION);
+    const initializationOptions: { tsserver: { path: string } } | undefined =
+      typescriptInitializationOptions(context.rootPath, bundled);
     const override: string | null = context.settings.get().typescriptServerPath;
     if (override !== null) {
       if (!existsSync(override)) {
         return unavailable(`The TypeScript language server was not found at ${override}.`);
       }
-      return resolved(context.nodePackageServer(override));
+      return resolved({ ...context.nodePackageServer(override), initializationOptions });
     }
     const entry: string | null = context.installedPath(TYPESCRIPT_SERVER_PROVISION);
     return entry === null
       ? unavailable('The TypeScript language server is not installed — install it in Plugins.')
-      : resolved(context.nodePackageServer(entry));
+      : resolved({ ...context.nodePackageServer(entry), initializationOptions });
   },
 };
 
