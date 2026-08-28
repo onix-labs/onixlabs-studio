@@ -22,6 +22,10 @@
           <span class="lsp-status-menu__item-name">{{ server.name }}</span>
           <span class="lsp-status-menu__item-status">{{ statusText(server) }}</span>
         </span>
+        <!-- A plain button rather than a cdkMenuItem, and the pointer-down kept from moving focus,
+             so the flyout stays open: the point of pressing Restart is to watch the row go
+             Starting… → Ready, which it cannot do from a closed menu. Same pattern as the tasks and
+             notifications flyouts. -->
         <app-button
           variant="none"
           size="small"
@@ -29,7 +33,8 @@
           ariaLabel="Restart language server"
           tooltip="Restart"
           [disabled]="server.state === 'starting' && !server.stalled"
-          (click)="restart(server)"
+          (pointerdown)="$event.preventDefault()"
+          (click)="restart(server); $event.stopPropagation()"
         />
       </div>
     }
