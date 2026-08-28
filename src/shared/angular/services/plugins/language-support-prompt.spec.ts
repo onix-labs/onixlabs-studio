@@ -117,6 +117,28 @@ describe('LanguageSupportPrompt', () => {
     expect(raised).toHaveLength(1);
   });
 
+  it('offerFor_afterTheOfferedPluginWasInstalledThenRemoved_asksAgain', () => {
+    // "Once per session" must not mean "never again": support that was installed and then
+    // uninstalled is a new gap, and the user needs the offer back to close it.
+    const prompt: LanguageSupportPrompt = build();
+    prompt.offerFor('python');
+    expect(raised).toHaveLength(1);
+
+    plugins.set([
+      plugin('pyright', ['python'], 'installed'),
+      plugin('ty', ['python'], 'available'),
+    ]);
+    TestBed.tick();
+    plugins.set([
+      plugin('pyright', ['python'], 'available'),
+      plugin('ty', ['python'], 'available'),
+    ]);
+    TestBed.tick();
+    prompt.offerFor('python');
+
+    expect(raised).toHaveLength(2);
+  });
+
   it('offerFor_differentLanguages_asksForEach', () => {
     plugins.set([
       plugin('pyright', ['python'], 'available'),

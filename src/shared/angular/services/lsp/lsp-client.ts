@@ -499,6 +499,11 @@ export class LspClient implements OnDestroy {
       const installed: ReadonlySet<string> = new Set<string>(
         this.lspSettings.catalogue().map((server: LspServerSummary): string => server.id),
       );
+      // Loaded is the gate, not non-empty: uninstalling the only installed server leaves the set
+      // legitimately empty, and that is exactly when its session must be stopped.
+      if (!this.lspSettings.catalogueLoaded()) {
+        return;
+      }
       untracked((): void => this.stopUninstalledSessions(installed));
     });
     if (this.bridge === undefined) {
@@ -1002,14 +1007,11 @@ export class LspClient implements OnDestroy {
    * Stops the running sessions whose server is no longer installed, and forgets the documents that were
    * being served by them so a later install starts cleanly.
    *
-   * The catalogue is empty until it has loaded, which is not the same as everything having been
-   * uninstalled — tearing down on an empty set would kill every session at startup.
+   * Only called once the catalogue has loaded: before that an empty set means "not known yet", not
+   * "everything was uninstalled", and tearing down on it would kill every session at startup.
    * @param installed The identifiers of the servers still installed.
    */
   private stopUninstalledSessions(installed: ReadonlySet<string>): void {
-    if (installed.size === 0) {
-      return;
-    }
     for (const [sessionId, info] of [...this.sessionInfo.entries()]) {
       if (installed.has(info.serverId)) {
         continue;
@@ -1028,10 +1030,17 @@ export class LspClient implements OnDestroy {
       this.settledSessions.delete(sessionId);
       this.clearReassociateTimers(sessionId);
     }
+    const orphaned: Set<string> = new Set<string>();
     for (const [key, tracked] of [...this.tracked.entries()]) {
       if (!installed.has(tracked.serverId)) {
         this.tracked.delete(key);
+        orphaned.add(tracked.languageId);
       }
+    }
+    // The documents just left unserved would otherwise sit silent until their next edit; offer the
+    // support back right away, the way a fresh open would.
+    for (const language of orphaned) {
+      this.languageSupport.offerFor(language);
     }
   }
 

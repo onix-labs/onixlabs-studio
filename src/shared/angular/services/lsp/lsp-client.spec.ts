@@ -1125,9 +1125,9 @@ describe('LspClient', () => {
     expect(lsp.stops).toContain('/root::typescript');
   });
 
-  it('anEmptyCatalogue_doesNotStopEverything', async () => {
-    // Empty means "not loaded yet", not "everything was uninstalled"; tearing down on it would kill
-    // every session at startup.
+  it('anUnloadedCatalogue_doesNotStopEverything', async () => {
+    // Before the catalogue has loaded, an empty set means "not known yet", not "everything was
+    // uninstalled"; tearing down on it would kill every session at startup.
     const client: LspClient = build();
     client.syncDocument({
       documentId: 'doc-1',
@@ -1137,10 +1137,33 @@ describe('LspClient', () => {
     });
     await flush();
 
+    catalogueLoaded.set(false);
     installedServers.set([]);
     TestBed.tick();
     await flush();
 
     expect(lsp.stops).toEqual([]);
+  });
+
+  it('uninstallingTheOnlyServer_stopsItsSessionAndReOffersSupport', async () => {
+    // The teardown used to gate on "the installed set is non-empty" as its loaded check, so
+    // uninstalling the only installed server — which leaves the set legitimately empty — skipped the
+    // teardown and the old process kept serving, with no offer to reinstall.
+    const client: LspClient = build();
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/root/a.ts',
+      languageId: 'typescript',
+      content: 'const a = 1;',
+    });
+    await flush();
+    expect(offeredLanguages).toEqual([]);
+
+    installedServers.set([]);
+    TestBed.tick();
+    await flush();
+
+    expect(lsp.stops).toEqual(['/root::typescript']);
+    expect(offeredLanguages).toEqual(['typescript']);
   });
 });

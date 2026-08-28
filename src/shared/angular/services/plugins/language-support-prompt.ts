@@ -1,4 +1,4 @@
-import { inject, Service } from '@angular/core';
+import { effect, inject, Service } from '@angular/core';
 import { PluginContribution, PluginSlot, PluginSummary } from '@shared/api/plugin-channels';
 import { Log } from '@shared/angular/services/log/log';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
@@ -36,9 +36,34 @@ export class LanguageSupportPrompt {
 
   /**
    * Holds the languages already offered this session, so a workspace full of one language raises a
-   * single offer rather than one per file opened.
+   * single offer rather than one per file opened. A language is forgotten again once support for it
+   * is installed, so a later uninstall can offer it afresh.
    */
   private readonly offered: Set<string> = new Set<string>();
+
+  /**
+   * Initializes the prompt, forgetting an offered language the moment a plugin serving it becomes
+   * installed — the offer did its job, and the next time the language is unserved is a new event.
+   */
+  public constructor() {
+    effect((): void => {
+      const all: readonly PluginSummary[] = this.plugins.plugins();
+      for (const language of [...this.offered]) {
+        const served: boolean = all.some(
+          (plugin: PluginSummary): boolean =>
+            plugin.state === 'installed' &&
+            plugin.contributions.some(
+              (contribution: PluginContribution): boolean =>
+                contribution.slot === 'language-server' &&
+                contribution.languages.includes(language),
+            ),
+        );
+        if (served) {
+          this.offered.delete(language);
+        }
+      }
+    });
+  }
 
   /**
    * Offers to install language support for a language, when a plugin provides it and none is installed.
