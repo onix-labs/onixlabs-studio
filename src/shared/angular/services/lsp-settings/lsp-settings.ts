@@ -124,6 +124,19 @@ export class LspSettings {
   }
 
   /**
+   * Gets a server's display name from the catalogue — every registered server, installed or not, so
+   * a session started before an uninstall still reads by name — or null when the server is unknown.
+   * @param serverId The server identifier.
+   * @returns Returns the display name, or null.
+   */
+  public displayNameOf(serverId: LspServerId): string | null {
+    return (
+      this.registeredServers.find((server: LspServerSummary): boolean => server.id === serverId)
+        ?.displayName ?? null
+    );
+  }
+
+  /**
    * Gets the languages that have at least one installed server, in a stable order. This is what the
    * settings tree offers a page for: a language nobody has installed support for has nothing to
    * configure, and belongs in the Plugin Manager rather than in Settings.

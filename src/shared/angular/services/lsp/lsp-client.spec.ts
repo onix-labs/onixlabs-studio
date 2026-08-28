@@ -269,6 +269,7 @@ describe('LspClient', () => {
               )?.id ?? null,
             catalogue: (): readonly LspServerSummary[] => installedServers(),
             catalogueLoaded: (): boolean => catalogueLoaded(),
+            displayNameOf: (): string | null => null,
             ready: Promise.resolve(),
           },
         },

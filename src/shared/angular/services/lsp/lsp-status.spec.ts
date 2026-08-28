@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { afterEach, vi } from 'vitest';
+import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
 import { LspServer, LspStatus } from './lsp-status';
 
 /**
@@ -77,6 +78,20 @@ describe('LspStatus', () => {
     status.setState('/root::java', 'ready');
 
     expect(status.servers()).toEqual([]);
+  });
+
+  it('register_namesAContributedServerFromTheCatalogue', () => {
+    // Anything outside the first-party map used to show its raw identifier in the menu.
+    vi.spyOn(TestBed.inject(LspSettings), 'displayNameOf').mockImplementation(
+      (id: string): string | null => (id === 'dockerfile-language-server' ? 'Dockerfile' : null),
+    );
+    register('/root::dockerfile-language-server', 'dockerfile-language-server', '/root');
+    register('/root::mystery', 'mystery', '/root');
+
+    expect(status.servers().map((server: LspServer): string => server.name)).toEqual([
+      'Dockerfile',
+      'mystery',
+    ]);
   });
 
   it('servers_areSortedByName', () => {

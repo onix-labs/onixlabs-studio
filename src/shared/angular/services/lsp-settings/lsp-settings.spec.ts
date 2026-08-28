@@ -198,6 +198,22 @@ describe('LspSettings', () => {
     expect(service.catalogue()).toEqual([]);
   });
 
+  it('displayNameOf_answersForEveryRegisteredServer_installedOrNot', async () => {
+    plugins = [plugin('pyright', ['python'], true)];
+    const service: LspSettings = TestBed.inject(LspSettings);
+    await service.ready;
+
+    expect(service.displayNameOf('pyright')).toBe(
+      CATALOGUE.find((server: LspServerSummary): boolean => server.id === 'pyright')?.displayName ??
+        null,
+    );
+    expect(service.displayNameOf('ty')).toBe(
+      CATALOGUE.find((server: LspServerSummary): boolean => server.id === 'ty')?.displayName ??
+        null,
+    );
+    expect(service.displayNameOf('nope')).toBeNull();
+  });
+
   it('serverForLanguage_noChoice_picksTheHighestPriorityServer', async () => {
     const service: LspSettings = TestBed.inject(LspSettings);
     await service.ready;

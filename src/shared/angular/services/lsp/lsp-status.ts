@@ -1,5 +1,6 @@
 import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { Log } from '@shared/angular/services/log/log';
+import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
 
 /**
  * Identifies the lifecycle state of a language server, as surfaced in the status strip.
@@ -113,7 +114,10 @@ export interface LspServer {
 }
 
 /**
- * Maps a server identifier to the language name shown to the user.
+ * Maps the first-party server identifiers to the short language names the menu has always shown for
+ * them. Every other server — contributed or curated — takes its name from the catalogue, which every
+ * descriptor already carries; before that, anything outside this map showed its raw identifier
+ * (`dockerfile-language-server`, `kotlin`, `rust`).
  */
 const DISPLAY_NAMES: Readonly<Record<string, string>> = {
   typescript: 'TypeScript',
@@ -153,6 +157,11 @@ export class LspStatus {
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds the language-server settings, whose catalogue names the servers.
+   */
+  private readonly lspSettings: LspSettings = inject(LspSettings);
 
   /**
    * Gets every running server, ordered by language name then root, for the drop-up menu.
@@ -313,11 +322,13 @@ export class LspStatus {
   }
 
   /**
-   * Resolves a server identifier to its display name.
+   * Resolves a server identifier to its display name: the short language name for the first-party
+   * servers, the catalogue's display name for everything else, and the identifier only when the
+   * catalogue does not know the server either.
    * @param serverId The server identifier.
-   * @returns Returns the language name, or the identifier when unknown.
+   * @returns Returns the display name.
    */
   private name(serverId: string): string {
-    return DISPLAY_NAMES[serverId] ?? serverId;
+    return DISPLAY_NAMES[serverId] ?? this.lspSettings.displayNameOf(serverId) ?? serverId;
   }
 }
