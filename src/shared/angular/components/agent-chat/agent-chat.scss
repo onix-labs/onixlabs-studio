@@ -24,6 +24,12 @@
   min-block-size: 0;
   padding: 1.5rem;
   overflow: auto;
+  // This list anchors itself, in two places that both need to know exactly where they put the reader:
+  // the follow-the-tail pin, and the restore that absorbs a prepend of earlier rows. The browser's own
+  // scroll anchoring is a third opinion on the same question — it shifts `scrollTop` on its own
+  // whenever a row above the viewport settles from its estimated height to its real one, which is
+  // constant here because that is precisely what `content-visibility` defers.
+  overflow-anchor: none;
 }
 
 // Off-screen rows are skipped for layout and paint.
@@ -60,13 +66,24 @@
 
 // The last row is never skipped, whatever the rule above says.
 //
-// It is the row being streamed into, and it is the one the follow-the-tail pin measures against: a row
-// appended below the fold is skipped, so it stands at its estimate rather than its real height, and
-// `scrollHeight` under-reports by the difference. The pin then lands short of the true bottom — which
-// is what stopped the transcript following its own output. The saving here was never this row's
-// anyway: it is on screen whenever anyone is watching.
-.agent__messages > *:last-child {
+// It is the row being streamed into, and it is the one nearest the tail marker: a row appended below
+// the fold is skipped, so it stands at its estimate rather than its real height. The saving here was
+// never this row's anyway — it is on screen whenever anyone is watching.
+//
+// ⚠️ `nth-last-child(2)`, not `last-child`: the tail marker is always the list's final child, so the
+// last *row* is the one before it. This exemption is an optimisation and no longer load-bearing — the
+// pin re-runs until the marker is actually in view, so an under-measured row costs an extra pass
+// rather than leaving the transcript short — but it keeps the common case to a single pass.
+.agent__messages > *:nth-last-child(2) {
   content-visibility: visible;
+}
+
+// The tail marker (see agent-chat.html). It occupies a pixel rather than nothing, because a zero-area
+// target is not reliably reported as intersecting, and carries no `content-visibility` of its own —
+// a marker that could be skipped for layout could not say where the bottom is.
+.agent__tail {
+  flex: none;
+  block-size: 1px;
 }
 
 // The "load earlier" affordance shown at the top of the list when older rows are held out of the DOM

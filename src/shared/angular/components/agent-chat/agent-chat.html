@@ -1,10 +1,20 @@
 <div class="agent">
+  <!--
+    The reader's own gestures are listened for separately from `scroll`, because they are the only
+    thing that can tell the reader moving apart from this component pinning to the tail: a programmatic
+    scroll raises a `scroll` event indistinguishable from a real one, but never a wheel, a touch, a key
+    or a pointer press. Only a gesture is allowed to stop the transcript following its output.
+  -->
   <div
     #messages
     class="agent__messages"
     role="log"
     aria-label="Conversation"
     (scroll)="onScroll(messages)"
+    (wheel)="onReaderGesture()"
+    (touchmove)="onReaderGesture()"
+    (keydown)="onReaderGesture()"
+    (pointerdown)="onReaderGesture()"
   >
     @if (items().length === 0) {
       <div class="agent__empty">
@@ -232,6 +242,18 @@
         }
       }
     }
+
+    <!--
+      The tail marker: whether this is on screen is what "the reader is at the bottom" means, and it is
+      watched rather than calculated. The arithmetic it replaces (`scrollHeight - scrollTop -
+      clientHeight`) cannot be trusted while rows below the fold stand at an estimated height, and it
+      had to guess which scroll events were its own. This is measured by the browser, after layout, and
+      answers both questions at once: whether to keep following, and whether a pin actually landed.
+
+      Always rendered, so it is always the list's last child — which is what the neighbouring
+      `content-visibility` rule counts back from.
+    -->
+    <div #tail class="agent__tail" aria-hidden="true"></div>
   </div>
 
   <!-- The agent-activity timeline row: assistant text, reasoning, tool calls, and the live working

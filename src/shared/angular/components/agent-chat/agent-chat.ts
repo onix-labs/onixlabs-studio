@@ -1,5 +1,6 @@
 import { NgTemplateOutlet } from '@angular/common';
 import {
+  afterNextRender,
   afterRenderEffect,
   ChangeDetectionStrategy,
   Component,
@@ -41,8 +42,30 @@ import { friendlyToolLabel, technicalToolName } from './tool-summary';
 /**
  * How close (px) to the bottom of the message list still counts as "at the bottom" for follow-the-tail
  * scrolling, absorbing sub-pixel rounding and the last line's leading so streaming stays pinned.
+ * Expressed as the margin grown below the list when watching for the tail marker.
  */
 const BOTTOM_THRESHOLD_PX: number = 24;
+
+/**
+ * How long (ms) after one of the reader's own scroll gestures a departure from the tail is still
+ * attributed to them.
+ *
+ * A gesture is not one event: a wheel flick or a trackpad swipe arrives as a stream of them, and on
+ * macOS the momentum carries on producing them after the fingers have lifted. The window spans that,
+ * so a reader who flicks up and coasts away from the tail is understood as one movement rather than as
+ * a movement followed by the transcript deciding they had finished.
+ */
+const READER_GESTURE_WINDOW_MS: number = 1000;
+
+/**
+ * How many times a single render may re-pin before the transcript gives up on reaching the tail.
+ *
+ * Each pin lays out more of what was below the fold, so the next one measures further and lands
+ * closer; a handful of passes covers any real transcript. The cap exists only so that content growing
+ * faster than it can be chased — or a marker that can never be reached — costs a bounded number of
+ * passes instead of spinning.
+ */
+const MAX_PIN_PASSES: number = 8;
 
 /**
  * How many of the most-recent top-level transcript rows the conversation renders by default. Older
@@ -403,11 +426,54 @@ export class AgentChat implements OnInit {
     viewChild<ElementRef<HTMLElement>>('messages');
 
   /**
-   * Holds whether the reader is at (or within {@link BOTTOM_THRESHOLD_PX} of) the bottom of the
-   * message list. Follow-the-tail scrolling only pins while this is true, so scrolling up to read back
-   * pauses it and scrolling back down resumes it. Reset to true on send so a new turn re-pins.
+   * References the tail marker at the end of the message list, whose place on screen is what "at the
+   * bottom" means here.
    */
-  private readonly atBottom: WritableSignal<boolean> = signal<boolean>(true);
+  private readonly tailRef: Signal<ElementRef<HTMLElement> | undefined> =
+    viewChild<ElementRef<HTMLElement>>('tail');
+
+  /**
+   * Holds whether the tail marker is on screen — whether the list is really showing its bottom.
+   *
+   * Observed rather than calculated. `scrollHeight - scrollTop - clientHeight` is only as good as the
+   * heights it sums, and rows below the fold are deliberately left at an estimate by
+   * `content-visibility` (see agent-chat.scss), so the arithmetic reports a bottom that is not where
+   * the bottom is. The browser is the only thing that knows, and this is it answering after layout.
+   *
+   * It is also what makes the pin self-correcting: a pin that lands short leaves this false, which
+   * re-runs the pin against heights that have since been measured.
+   */
+  private readonly atTail: WritableSignal<boolean> = signal<boolean>(true);
+
+  /**
+   * Holds whether the transcript should follow its own output — the reader's intent, as distinct from
+   * {@link atTail}, which is where the list happens to be sitting.
+   *
+   * Conflating the two is what kept ending the follow for the rest of a conversation. Anything that
+   * moves the list away from the tail momentarily — a pin landing short of an under-measured bottom,
+   * the browser settling a row's height, the transcript being dropped and rebuilt when its panel is
+   * hidden — reads as "not at the bottom", and if that alone stopped the follow then the transcript
+   * gave up on the first such event and never resumed. Only the reader can end the follow, and only by
+   * scrolling away from the tail themselves.
+   */
+  private readonly following: WritableSignal<boolean> = signal<boolean>(true);
+
+  /**
+   * Holds when the reader last drove the list with a gesture of their own, which is what tells their
+   * scrolling apart from this component's (see the listeners in agent-chat.html).
+   */
+  private lastGestureAt: number = 0;
+
+  /**
+   * Holds how many times the tail has been pinned for the current render, so chasing a bottom that
+   * keeps moving stops at {@link MAX_PIN_PASSES} rather than spinning.
+   */
+  private pinPasses: number = 0;
+
+  /**
+   * Holds the rows the current pin budget belongs to, so that new content restarts it.
+   */
+  private pinnedRows: readonly TranscriptRow[] | null = null;
 
   /**
    * Holds how many of the most-recent top-level rows the list renders (see {@link CONVERSATION_WINDOW}).
@@ -433,17 +499,6 @@ export class AgentChat implements OnInit {
    * Holds the request count the pin effect has already served.
    */
   private appliedPinRequest: number = 0;
-
-  /**
-   * Holds whether the next scroll event is the one this component just caused by pinning to the tail.
-   *
-   * A pin's landing must not be read as the reader scrolling away from the tail. It can genuinely land
-   * short of the true bottom — rows below the fold are laid out lazily, so their real heights only
-   * arrive once they are scrolled into view — and reading that as "the reader has scrolled up" would
-   * switch the follow off for good, on the first message that grew after the pin. Swallowing our own
-   * event leaves the follow on, and the next render pins again against the now-measured height.
-   */
-  private selfScrolled: boolean = false;
 
   /**
    * Holds each item's rendered word count, keyed by the item's identity. Items are immutable — a
@@ -792,6 +847,9 @@ export class AgentChat implements OnInit {
     this.destroyRef.onDestroy((): void => this.perf.transcriptUnmounted());
 
     this.watchOnScreen();
+    // The tail marker is in this component's own view, so it exists only once that view has been
+    // rendered — unlike the host element, which is there from construction.
+    afterNextRender((): void => this.watchTail());
 
     effect((): void => {
       const id: string | undefined = this.tabId();
@@ -823,9 +881,9 @@ export class AgentChat implements OnInit {
           return;
         }
         const element: HTMLElement | undefined = this.messagesRef()?.nativeElement;
-        // At the tail there is nothing to preserve — the follow-the-tail effect re-pins on return,
-        // which is both cheaper and more correct while the agent is still streaming.
-        if (element !== undefined && !this.atBottom()) {
+        // Following the tail there is nothing to preserve — the follow-the-tail effect re-pins on
+        // return, which is both cheaper and more correct while the agent is still streaming.
+        if (element !== undefined && !this.following()) {
           this.pendingScrollAnchor = element.scrollHeight - element.scrollTop;
         }
       });
@@ -843,30 +901,60 @@ export class AgentChat implements OnInit {
     });
 
     // Follow the tail: after each render that grows the transcript (streamed text, a new row, or the
-    // working indicator), pin the list to the bottom while the preference is on and the reader is
-    // already there. Reading the rendered rows re-runs this as the transcript streams.
+    // working indicator), pin the list to the bottom while the preference is on and the reader has not
+    // scrolled away. Reading the rendered rows re-runs this as the transcript streams.
     //
-    // An explicit jump overrides both conditions: it was asked for, so the preference (which governs
-    // the automatic follow) and where the reader had scrolled to are beside the point.
+    // It also reads {@link atTail}, which is what makes it converge rather than fire once and hope. A
+    // pin measures against `scrollHeight`, and `scrollHeight` under-reports while rows below the fold
+    // stand at their estimated height — so a pin routinely lands short of the true bottom. Landing
+    // short lays those rows out, which lowers `atTail`, which re-runs this against the heights the
+    // browser has now measured. Each pass gets closer and the loop ends when the marker is in view.
+    //
+    // An explicit jump overrides the preference and the reader's position: it was asked for.
     afterRenderEffect((): void => {
-      this.windowedRows();
+      // Every dependency is read up front, unconditionally: an effect tracks only what it actually
+      // reads, so a signal left unread behind an early return stops being able to re-run this at all.
+      const rows: readonly TranscriptRow[] = this.windowedRows();
       const requested: number = this.pinRequests();
+      const settled: boolean = this.atTail();
+      const showing: boolean = this.onScreen();
+      const wanted: boolean = this.settings.aiAutoScroll() && this.following();
+      const element: HTMLElement | undefined = this.messagesRef()?.nativeElement;
+
+      // Each render of new content gets a fresh budget: the passes are for converging on one bottom,
+      // not a running total across a whole conversation.
+      const grew: boolean = rows !== this.pinnedRows;
+      if (grew) {
+        this.pinnedRows = rows;
+        this.pinPasses = 0;
+      }
+
+      // A surface with nothing rendered cannot answer a request — it has no bottom to jump to. Leaving
+      // the request unapplied lets it be honoured for real when the surface comes back on screen,
+      // rather than being consumed here and silently dropped.
+      if (element === undefined || !showing) {
+        return;
+      }
+
       const explicit: boolean = requested !== this.appliedPinRequest;
       this.appliedPinRequest = requested;
-      if (!explicit && (!this.settings.aiAutoScroll() || !this.atBottom())) {
+      if (explicit) {
+        // An explicit jump restores the follow: the reader has asked to be back at the tail, and a
+        // transcript that jumped there and then refused to keep up would answer half the ask.
+        this.following.set(true);
+        this.pinPasses = 0;
+      } else if (!wanted || this.pinPasses >= MAX_PIN_PASSES) {
+        return;
+      } else if (settled && !grew) {
+        // The marker is in view and nothing has been added: the list is showing its bottom, so this is
+        // where the converging loop stops. New content still pins even while the marker reads as in
+        // view, because it was appended below it — waiting to be told what is already known would put
+        // every streamed flush a frame behind.
         return;
       }
-      const element: HTMLElement | undefined = this.messagesRef()?.nativeElement;
-      if (element === undefined) {
-        return;
-      }
-      const before: number = element.scrollTop;
+
+      this.pinPasses += 1;
       element.scrollTop = element.scrollHeight;
-      // Only claim the scroll event when the position actually moved: an assignment that changes
-      // nothing raises no event, and a flag left standing would swallow the reader's next scroll.
-      if (element.scrollTop !== before) {
-        this.selfScrolled = true;
-      }
     });
 
     // After earlier rows are prepended, restore the reader's distance from the bottom so the content
@@ -878,6 +966,13 @@ export class AgentChat implements OnInit {
         return;
       }
       this.pendingScrollAnchor = null;
+      // This effect is registered after the pin and so runs after it, which means it would otherwise
+      // undo one. They should never both apply — an anchor is only taken while the reader is away from
+      // the tail — but "should never" is how the two of them come to disagree, and the pin is the one
+      // that answers a request the reader made just now.
+      if (this.following()) {
+        return;
+      }
       const element: HTMLElement | undefined = this.messagesRef()?.nativeElement;
       if (element !== undefined) {
         element.scrollTop = element.scrollHeight - anchor;
@@ -956,19 +1051,60 @@ export class AgentChat implements OnInit {
   }
 
   /**
-   * Records whether the reader is at the bottom of the message list as they scroll, which gates
-   * follow-the-tail pinning. A programmatic pin lands at the bottom and keeps this true; scrolling up
-   * clears it and pauses the follow until the reader returns to the bottom.
+   * Watches the tail marker, which is what decides whether the list is showing its bottom and whether
+   * the transcript should still be following it (see {@link atTail} and {@link following}).
+   *
+   * Arriving at the tail always resumes the follow: being at the bottom of a conversation is the whole
+   * of what "follow it" asks for, however the reader got there. Leaving the tail only ends the follow
+   * when the reader's own hands did it — a pin landing short, a row settling to its real height or a
+   * hidden panel rebuilding its rows all leave the tail too, and treating those as the reader walking
+   * away is what stopped the transcript following its output.
+   */
+  private watchTail(): void {
+    const element: HTMLElement | undefined = this.tailRef()?.nativeElement;
+    const root: HTMLElement | undefined = this.messagesRef()?.nativeElement;
+    if (typeof IntersectionObserver === 'undefined' || element === undefined) {
+      return;
+    }
+    const observer: IntersectionObserver = new IntersectionObserver(
+      (entries: readonly IntersectionObserverEntry[]): void => {
+        const latest: IntersectionObserverEntry | undefined = entries[entries.length - 1];
+        if (latest === undefined) {
+          return;
+        }
+        this.atTail.set(latest.isIntersecting);
+        if (latest.isIntersecting) {
+          this.following.set(true);
+        } else if (performance.now() - this.lastGestureAt < READER_GESTURE_WINDOW_MS) {
+          this.following.set(false);
+        }
+      },
+      // The list itself is the viewport the marker is judged against, grown at the bottom by the same
+      // tolerance the old arithmetic allowed, so "as good as at the bottom" still counts as there.
+      { root: root ?? null, rootMargin: `0px 0px ${BOTTOM_THRESHOLD_PX}px 0px` },
+    );
+    observer.observe(element);
+    this.destroyRef.onDestroy((): void => observer.disconnect());
+  }
+
+  /**
+   * Records that the reader has just driven the list themselves, which is what allows a departure from
+   * the tail to end the follow (see {@link watchTail}).
+   *
+   * A gesture is the only honest signal available. A programmatic scroll raises a `scroll` event that
+   * is indistinguishable from the reader's, which is why guessing from scroll events kept mistaking
+   * the transcript's own pin for the reader leaving — but nothing this component does produces a
+   * wheel, a touch, a key or a pointer press.
+   */
+  public onReaderGesture(): void {
+    this.lastGestureAt = performance.now();
+  }
+
+  /**
+   * Reveals earlier history when the reader reaches the top of the message list.
    * @param element The scrolling message list.
    */
   public onScroll(element: HTMLElement): void {
-    // Our own pin's landing is not the reader moving; see `selfScrolled`.
-    if (this.selfScrolled) {
-      this.selfScrolled = false;
-      return;
-    }
-    const distance: number = element.scrollHeight - element.scrollTop - element.clientHeight;
-    this.atBottom.set(distance <= BOTTOM_THRESHOLD_PX);
     // Reaching the top pulls the next batch of older rows into view, keeping the scroll position
     // stable (see the anchor-restore effect). Guarded so the restore's landing does not re-trigger.
     if (
@@ -997,7 +1133,7 @@ export class AgentChat implements OnInit {
    * or the tool strip's Scroll to Bottom.
    */
   public scrollToBottom(): void {
-    this.atBottom.set(true);
+    this.following.set(true);
     this.pinRequests.update((count: number): number => count + 1);
   }
 
@@ -1006,7 +1142,7 @@ export class AgentChat implements OnInit {
    * scrolled up to read back.
    */
   public onSent(): void {
-    this.atBottom.set(true);
+    this.following.set(true);
   }
 
   /**
@@ -1082,7 +1218,7 @@ export class AgentChat implements OnInit {
     const target: { assistantId: string; user: AgentItem } | null = this.retryTarget();
     if (target !== null) {
       this.agent.rewind(target.user, target.user.text, this.tabId(), this.surface());
-      this.atBottom.set(true);
+      this.following.set(true);
     }
   }
 
@@ -1093,7 +1229,7 @@ export class AgentChat implements OnInit {
   public retry(item: AgentItem): void {
     this.agent.retry(item, this.tabId(), this.surface());
     // A fresh turn re-pins to the bottom even if the reader had scrolled up to read back.
-    this.atBottom.set(true);
+    this.following.set(true);
   }
 
   /**

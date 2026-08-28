@@ -654,6 +654,116 @@ describe('AgentChat', () => {
     expect(rewinds).toEqual([{ id: 'item-1', text: 'question' }]);
   });
 
+  /**
+   * Gives the message list the layout jsdom does not have, so the pin's arithmetic can be asserted
+   * rather than stubbed out. `scrollHeight` is fixed and `clientHeight` is zero, so a pin that reaches
+   * the bottom leaves `scrollTop` at the full height.
+   * @param height The list's scrollable height.
+   * @returns Returns the scrolling message list.
+   */
+  function layOutMessages(height: number = 1000): HTMLElement {
+    const list: HTMLElement = (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>(
+      '.agent__messages',
+    )!;
+    Object.defineProperty(list, 'scrollHeight', { value: height, configurable: true });
+    Object.defineProperty(list, 'clientHeight', { value: 0, configurable: true });
+    list.scrollTop = 0;
+    return list;
+  }
+
+  /**
+   * Reports the tail marker as in or out of view, as the browser would once the list has been laid out.
+   * @param reached Whether the list is showing its bottom.
+   */
+  function reportTail(reached: boolean): void {
+    const marker: Element = (fixture.nativeElement as HTMLElement).querySelector('.agent__tail')!;
+    observers.report(marker, reached);
+    fixture.detectChanges();
+  }
+
+  it('follow_whenAPinLandsShortOfTheBottom_pinsAgainInsteadOfGivingUp', () => {
+    // The bug this exists for: `scrollHeight` under-reports while rows below the fold stand at their
+    // estimated height, so the pin lands short. Landing short must be a reason to try again, not a
+    // reason to stop — the transcript used to read its own short landing as the reader walking away
+    // and never followed its output again.
+    items.set(userMessages(3));
+    fixture.detectChanges();
+    const list: HTMLElement = layOutMessages(1000);
+
+    reportTail(false);
+
+    expect(list.scrollTop).toBe(1000);
+  });
+
+  it('follow_whenTheReaderScrollsAway_stopsFollowing', () => {
+    items.set(userMessages(3));
+    fixture.detectChanges();
+    const list: HTMLElement = layOutMessages(1000);
+    reportTail(true);
+
+    // A gesture is what tells the reader's scrolling apart from the transcript's own pinning.
+    list.dispatchEvent(new Event('wheel'));
+    reportTail(false);
+    list.scrollTop = 0;
+
+    items.set(userMessages(4));
+    fixture.detectChanges();
+
+    expect(list.scrollTop).toBe(0);
+  });
+
+  it('follow_whenTheReaderReturnsToTheTail_resumesFollowing', () => {
+    items.set(userMessages(3));
+    fixture.detectChanges();
+    const list: HTMLElement = layOutMessages(1000);
+    list.dispatchEvent(new Event('wheel'));
+    reportTail(false);
+
+    // Being at the bottom is the whole of what following asks for, however the reader got back there.
+    reportTail(true);
+    list.scrollTop = 0;
+    items.set(userMessages(4));
+    fixture.detectChanges();
+
+    expect(list.scrollTop).toBe(1000);
+  });
+
+  it('follow_whenTheListSettlesWithoutAGesture_keepsFollowing', () => {
+    // A row settling from its estimated height to its real one moves the list off the tail without the
+    // reader touching anything. That must not be mistaken for them scrolling away.
+    items.set(userMessages(3));
+    fixture.detectChanges();
+    const list: HTMLElement = layOutMessages(1000);
+    reportTail(true);
+
+    reportTail(false);
+    list.scrollTop = 0;
+    items.set(userMessages(4));
+    fixture.detectChanges();
+
+    expect(list.scrollTop).toBe(1000);
+  });
+
+  it('tailRequest_whileTheSurfaceIsOffScreen_isHonouredWhenItComesBack', () => {
+    // Every surface showing the conversation answers the request, including ones that are off screen
+    // with nothing rendered. Such a surface has no bottom to jump to, so it must leave the request for
+    // when it has one rather than consuming it and scrolling nowhere.
+    items.set(userMessages(3));
+    fixture.detectChanges();
+    const list: HTMLElement = layOutMessages(1000);
+    observers.report(fixture.nativeElement as HTMLElement, false);
+    fixture.detectChanges();
+
+    tailRequest.set(1);
+    TestBed.tick();
+    fixture.detectChanges();
+
+    observers.report(fixture.nativeElement as HTMLElement, true);
+    fixture.detectChanges();
+
+    expect(list.scrollTop).toBe(1000);
+  });
+
   it('tailRequest_whenASurfaceAsksForTheTail_pinsThisTranscript', () => {
     let pins: number = 0;
     // The pin itself moves a scroller, which jsdom has no layout for; what this asserts is the bridge
