@@ -1,4 +1,4 @@
-import { BrowserWindow, ipcMain, IpcMainEvent, IpcMainInvokeEvent } from 'electron';
+import { BrowserWindow, ipcMain, IpcMainEvent, IpcMainInvokeEvent, WebContents } from 'electron';
 import { ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
 import { statSync } from 'node:fs';
 import { logger } from '../logger';
@@ -83,12 +83,15 @@ interface LspSession {
   readonly rootPath: string;
 
   /**
-   * Holds how many renderer clients are using this session. Several surfaces can open the same root
-   * (two tabs on one folder, a docked and a standalone editor): each Start increments, each Stop
-   * decrements, and the server is only torn down when the count reaches zero — one surface closing
-   * must not kill the server another is still using.
+   * Holds how many renderer clients are using this session, per renderer. Several surfaces can open
+   * the same root (two tabs on one folder, a docked and a standalone editor, a pop-out window): each
+   * Start increments its sender's count, each Stop decrements it, and the server is only torn down
+   * when every count reaches zero — one surface closing must not kill the server another is still
+   * using. Keyed by the renderer so that (a) the server's notifications reach every window that
+   * holds the session, not only the main one, and (b) a window destroyed without stopping its
+   * sessions (a crash, a force-close) releases them rather than pinning the server forever.
    */
-  refCount: number;
+  readonly clients: Map<WebContents, number>;
 
   /**
    * Holds the outcome of the session's initialize handshake, shared with every client that starts
@@ -149,13 +152,13 @@ export class LspManager {
   public register(): void {
     ipcMain.handle(
       LspChannel.Start,
-      (_event: IpcMainInvokeEvent, request: unknown): Promise<LspStartResult> =>
-        this.start(request),
+      (event: IpcMainInvokeEvent, request: unknown): Promise<LspStartResult> =>
+        this.start(request, event.sender),
     );
     ipcMain.handle(
       LspChannel.Stop,
-      (_event: IpcMainInvokeEvent, id: unknown): Promise<void> =>
-        typeof id === 'string' ? this.stop(id) : Promise.resolve(),
+      (event: IpcMainInvokeEvent, id: unknown): Promise<void> =>
+        typeof id === 'string' ? this.stop(id, event.sender) : Promise.resolve(),
     );
     ipcMain.handle(
       LspChannel.Request,
@@ -191,9 +194,10 @@ export class LspManager {
    * Starts a session: validates the request, resolves and spawns the server, and runs the
    * `initialize`/`initialized` handshake.
    * @param request The start request from the renderer.
+   * @param sender The renderer that asked, which the session's notifications are then delivered to.
    * @returns Returns the start outcome, including server capabilities on success.
    */
-  private async start(request: unknown): Promise<LspStartResult> {
+  private async start(request: unknown, sender: WebContents): Promise<LspStartResult> {
     const parsed: LspStartRequest | null = this.parseStartRequest(request);
     if (parsed === null) {
       logger.warn('LspManager', 'Rejected an invalid LSP start request');
@@ -205,10 +209,10 @@ export class LspManager {
     );
     const existing: LspSession | undefined = this.sessions.get(parsed.sessionId);
     if (existing !== undefined) {
-      existing.refCount += 1;
+      this.attach(existing, parsed.sessionId, sender);
       logger.debug(
         'LspManager',
-        `Reusing LSP session ${parsed.sessionId} (refCount now ${existing.refCount})`,
+        `Reusing LSP session ${parsed.sessionId} (refCount now ${this.refCount(existing)})`,
       );
       return existing.ready;
     }
@@ -269,10 +273,11 @@ export class LspManager {
       connection,
       child,
       rootPath: parsed.rootPath,
-      refCount: 1,
+      clients: new Map<WebContents, number>(),
       ready: Promise.resolve({ success: false, error: 'Initialize pending' }),
     };
     this.sessions.set(parsed.sessionId, session);
+    this.attach(session, parsed.sessionId, sender);
 
     // The handshake outcome (capabilities included) is retained on the session, so a concurrent or
     // later Start for the same session shares the real result instead of a capability-less success.
@@ -369,25 +374,77 @@ export class LspManager {
   }
 
   /**
-   * Stops a session on behalf of one client: the reference count decrements, and only when the last
-   * client stops is the server asked to shut down and torn down — other surfaces sharing the session
-   * keep their working server.
+   * Attaches a renderer to a session (or counts one more reference from a renderer already attached),
+   * and arranges for a renderer that is destroyed without stopping its sessions to release them.
+   * @param session The session being attached to.
    * @param id The session identifier.
+   * @param sender The renderer attaching.
+   */
+  private attach(session: LspSession, id: string, sender: WebContents): void {
+    const count: number = session.clients.get(sender) ?? 0;
+    session.clients.set(sender, count + 1);
+    if (count === 0) {
+      sender.once('destroyed', (): void => {
+        const current: LspSession | undefined = this.sessions.get(id);
+        if (current !== session || !current.clients.has(sender)) {
+          return;
+        }
+        current.clients.delete(sender);
+        logger.debug('LspManager', `A renderer holding session ${id} was destroyed`);
+        if (this.refCount(current) === 0) {
+          void this.shutDown(id, current);
+        }
+      });
+    }
+  }
+
+  /**
+   * Sums a session's references across every renderer attached to it.
+   * @param session The session.
+   * @returns Returns the total reference count.
+   */
+  private refCount(session: LspSession): number {
+    let total: number = 0;
+    for (const count of session.clients.values()) {
+      total += count;
+    }
+    return total;
+  }
+
+  /**
+   * Stops a session on behalf of one client: its renderer's reference count decrements, and only
+   * when the last reference across every renderer is gone is the server asked to shut down and torn
+   * down — other surfaces sharing the session keep their working server.
+   * @param id The session identifier.
+   * @param sender The renderer stopping.
    * @returns Returns a promise that resolves once the stop has been applied.
    */
-  private async stop(id: string): Promise<void> {
+  private async stop(id: string, sender: WebContents): Promise<void> {
     const session: LspSession | undefined = this.sessions.get(id);
     if (session === undefined) {
       return;
     }
-    session.refCount -= 1;
-    if (session.refCount > 0) {
-      logger.debug(
-        'LspManager',
-        `Stop for session ${id} (refCount now ${session.refCount}); kept alive`,
-      );
+    const count: number = session.clients.get(sender) ?? 0;
+    if (count <= 1) {
+      session.clients.delete(sender);
+    } else {
+      session.clients.set(sender, count - 1);
+    }
+    const remaining: number = this.refCount(session);
+    if (remaining > 0) {
+      logger.debug('LspManager', `Stop for session ${id} (refCount now ${remaining}); kept alive`);
       return;
     }
+    await this.shutDown(id, session);
+  }
+
+  /**
+   * Asks a session's server to shut down gracefully, then tears it down regardless.
+   * @param id The session identifier.
+   * @param session The session.
+   * @returns Returns a promise that resolves once the session is gone.
+   */
+  private async shutDown(id: string, session: LspSession): Promise<void> {
     logger.debug('LspManager', `Last client stopped session ${id}; shutting server down`);
     try {
       await this.withTimeout(session.connection.sendRequest('shutdown'), SHUTDOWN_TIMEOUT_MS);
@@ -414,7 +471,7 @@ export class LspManager {
       `LSP server for session ${id} exited (code=${code}, signal=${signal})`,
     );
     const exit: LspExit = { sessionId: id, code, signal: signal ?? null };
-    this.send(LspChannel.ServerExit, exit);
+    this.send(id, LspChannel.ServerExit, exit);
     this.tearDown(id);
   }
 
@@ -484,7 +541,7 @@ export class LspManager {
       return;
     }
     const message: LspMessage = { sessionId, method, params };
-    this.send(LspChannel.Notification, message);
+    this.send(sessionId, LspChannel.Notification, message);
   }
 
   /**
@@ -617,14 +674,28 @@ export class LspManager {
   }
 
   /**
-   * Sends a message to the renderer window, if one is available and not destroyed.
+   * Sends a session's message to every renderer attached to it. Delivery used to go to the main
+   * window alone, so a client in a pop-out window never received its diagnostics — or the exit
+   * notification that would have told it its server had died. A session with no attached renderer
+   * (its exit racing its last stop) falls back to the main window, whose clients ignore sessions they
+   * do not own.
+   * @param sessionId The session the message belongs to.
    * @param channel The IPC channel to send on.
    * @param payload The payload to send.
    */
-  private send(channel: LspChannel, payload: unknown): void {
-    const window: BrowserWindow | null = this.windowGetter();
-    if (window !== null && !window.isDestroyed()) {
-      window.webContents.send(channel, payload);
+  private send(sessionId: string, channel: LspChannel, payload: unknown): void {
+    const session: LspSession | undefined = this.sessions.get(sessionId);
+    const targets: WebContents[] = [...(session?.clients.keys() ?? [])].filter(
+      (contents: WebContents): boolean => !contents.isDestroyed(),
+    );
+    if (targets.length === 0) {
+      const window: BrowserWindow | null = this.windowGetter();
+      if (window !== null && !window.isDestroyed()) {
+        targets.push(window.webContents);
+      }
+    }
+    for (const contents of targets) {
+      contents.send(channel, payload);
     }
   }
 }
