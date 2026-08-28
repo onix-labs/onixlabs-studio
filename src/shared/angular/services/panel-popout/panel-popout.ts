@@ -34,6 +34,7 @@ import {
   findStackOfPanel,
   firstStackOfRole,
 } from '@shared/angular/services/dock-layout/dock-tree';
+import { EditingChords } from '@shared/angular/services/editing-chords/editing-chords';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { PopoutPanels } from '@shared/angular/services/dock-layout/popout-panels';
 
@@ -155,6 +156,12 @@ export class PanelPopout implements OnDestroy {
    * Holds the keyboard accelerator router pop-out windows forward their key presses to.
    */
   private readonly keybindings: Keybindings = inject(Keybindings);
+
+  /**
+   * Holds the editing chords the application menu cannot carry, which serve the focused text box in
+   * this window exactly as they do in the main one.
+   */
+  private readonly editingChords: EditingChords = inject(EditingChords);
 
   /**
    * Holds this view's injector, the parent of every pop-out dock's injector, so popped panels
@@ -285,7 +292,10 @@ export class PanelPopout implements OnDestroy {
     // window. Bubble phase, like the shell's: an embedded editor or terminal consumes the keys it
     // owns before they reach the router. The listener dies with the window's document.
     document.defaultView?.addEventListener('keydown', (event: KeyboardEvent): void => {
-      if (this.keybindings.dispatch(event, this.context.tabId())) {
+      if (
+        this.editingChords.handleSelectAll(event) ||
+        this.keybindings.dispatch(event, this.context.tabId())
+      ) {
         event.preventDefault();
       }
     });

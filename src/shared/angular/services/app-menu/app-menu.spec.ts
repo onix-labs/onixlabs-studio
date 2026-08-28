@@ -243,6 +243,69 @@ describe('AppMenu', () => {
     expect(ran).toBe(1);
   });
 
+  it('dispatch_whenAnEditingChordFiresWithATextBoxFocused_leavesTheCommandUnrun', () => {
+    // The explorer binds ⌘V to "paste the copied files", but the chord belongs to whatever the user is
+    // typing into — so with a composer focused the platform's own Paste must serve it instead.
+    let ran: number = 0;
+    const box: HTMLTextAreaElement = document.createElement('textarea');
+    document.body.appendChild(box);
+    box.focus();
+    menu.contribute(
+      'feature',
+      [
+        {
+          id: 'edit',
+          label: 'Edit',
+          items: [
+            {
+              id: 'directory.paste',
+              label: 'Paste',
+              accelerator: 'CmdOrCtrl+V',
+              editingRole: 'paste',
+              run: (): void => void (ran += 1),
+            },
+          ],
+        },
+      ],
+      FEATURE_PRIORITY,
+    );
+    TestBed.tick();
+
+    menu.dispatch('directory.paste');
+
+    expect(ran).toBe(0);
+    box.remove();
+  });
+
+  it('dispatch_whenAnEditingChordFiresWithNoTextBoxFocused_runsTheCommand', () => {
+    let ran: number = 0;
+    document.body.focus();
+    menu.contribute(
+      'feature',
+      [
+        {
+          id: 'edit',
+          label: 'Edit',
+          items: [
+            {
+              id: 'directory.paste',
+              label: 'Paste',
+              accelerator: 'CmdOrCtrl+V',
+              editingRole: 'paste',
+              run: (): void => void (ran += 1),
+            },
+          ],
+        },
+      ],
+      FEATURE_PRIORITY,
+    );
+    TestBed.tick();
+
+    menu.dispatch('directory.paste');
+
+    expect(ran).toBe(1);
+  });
+
   it('clearOwner_whenTheOwnerLeaves_dropsItsSections', () => {
     menu.contribute(
       'feature',

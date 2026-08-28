@@ -6,6 +6,7 @@ import {
   inject,
   Signal,
 } from '@angular/core';
+import { EditingChords } from '@shared/angular/services/editing-chords/editing-chords';
 import { FeatureChrome, FeatureRegistry } from '@shared/angular/services/feature-registry';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { ScrollReveal } from '@shared/angular/services/scroll-reveal/scroll-reveal';
@@ -59,6 +60,11 @@ export class Root {
   private readonly keybindings: Keybindings = inject(Keybindings);
 
   /**
+   * Holds the editing chords the application menu cannot carry, which serve the focused text box.
+   */
+  private readonly editingChords: EditingChords = inject(EditingChords);
+
+  /**
    * Holds the main window's presence, which hides the window while no tabs are open and the welcome
    * screen stands in for it. Injected for its effect; the shell never calls it.
    */
@@ -103,11 +109,16 @@ export class Root {
    * Routes a window-level key press to the active view's keyboard accelerators, suppressing the
    * browser default when one handles it. Listening at the window (bubble phase) lets an embedded
    * editor consume the keys it owns first — only chords it leaves unhandled reach the router.
+   *
+   * Select All is offered the event first, because it is not an accelerator any view registers: it
+   * serves the focused text box, which the application menu cannot do without taking ⌘A from the
+   * editors that bind it to their own selection model.
+   *
    * @param event The keyboard event raised by the window.
    */
   @HostListener('window:keydown', ['$event'])
   protected onWindowKeydown(event: KeyboardEvent): void {
-    if (this.keybindings.dispatch(event)) {
+    if (this.editingChords.handleSelectAll(event) || this.keybindings.dispatch(event)) {
       event.preventDefault();
     }
   }

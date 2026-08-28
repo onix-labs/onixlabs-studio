@@ -221,6 +221,17 @@ router, and the allowlist never intercepts incidental typing. Chords use the pla
 modifier (⌘ on macOS, Ctrl elsewhere). **In the terminal, bind only `Mod+Shift` chords** — a bare
 `Mod` is Ctrl on Windows/Linux and collides with the shell's own control codes.
 
+**The editing chords do not come from here.** On macOS the application menu is the only thing binding
+Undo/Redo/Cut/Copy/Paste into the window at all, so `CoreMenu` carries them as native roles and a
+menu accelerator fires **before** the renderer sees the key. A tab that binds one of those chords to
+something of its own — files in the explorer, the shell in a terminal, an editor's model-level undo —
+therefore takes it from every text box on the tab unless it also declares `editingRole` on the menu
+entry, which defers to the platform's behaviour while `focusedTextInput` finds a focused text box
+(`shared/angular/services/editing-chords`). Such an entry must never be `enabled: false`: a disabled
+entry's accelerator is dead. Select All is the exception — it is served by `EditingChords` from the
+window listener rather than the menu, because a Select All entry would own ⌘A and take it from the
+editors that bind it to their own selection model.
+
 ### 4.6 Project systems, capabilities & `.studio`
 
 The directory workspace is **language-agnostic**: it never hard-codes an ecosystem. A `ProjectSystem`

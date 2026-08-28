@@ -45,6 +45,20 @@ export interface MenuEntry {
   readonly role?: string;
 
   /**
+   * Gets the native editing role to perform in place of {@link run} while a text box has focus.
+   *
+   * This is how a tab keeps an editing chord of its own without taking it from whatever the user is
+   * actually typing into. A menu accelerator fires before the renderer sees the key at all, so an
+   * explorer binding ⌘V to "paste the copied files" would otherwise swallow ⌘V for a composer or a
+   * settings field docked beside it. Declaring the role the chord stands for lets the command run
+   * only when focus is somewhere the platform's own behaviour would be wrong.
+   *
+   * An entry carrying one must not also be disabled through {@link enabled}: a disabled entry's
+   * accelerator is dead, which would take the chord from every text box on the tab.
+   */
+  readonly editingRole?: string;
+
+  /**
    * Gets a submenu's entries.
    */
   readonly items?: readonly MenuEntry[];

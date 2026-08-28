@@ -52,8 +52,11 @@ const TOOL_TAB_TYPES: readonly { readonly type: TabType; readonly label: string 
  * menu replaced Electron's default one. Roles are routed by focus rather than by tab, so the same entry
  * serves a composer's textarea, a code editor and a markdown pane without knowing which is in front.
  *
- * Select All is deliberately absent: the editors bind Cmd+A to their own selection model, and a core
- * entry claiming it would take the chord away from them. That one waits for focus-scoped keybindings.
+ * Select All is deliberately absent, and stays absent: the editors bind Cmd+A to their own selection
+ * model, and a menu entry always owns its accelerator, so a core entry claiming it would take the
+ * chord away from them. Unlike the clipboard, selecting text is something the renderer can do for
+ * itself, so `EditingChords` serves Cmd+A for the focused text box from the window's key listener
+ * instead — which costs the menu a Select All row and keeps every editor's own.
  *
  * Instantiated once by the shell.
  */
