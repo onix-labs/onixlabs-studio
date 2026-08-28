@@ -45,6 +45,13 @@ class FakeLsp implements Bridge {
   public readonly starts: LspStartRequest[] = [];
   public readonly notifications: { sessionId: string; method: string; params: unknown }[] = [];
   public readonly stops: string[] = [];
+  public readonly restarts: string[] = [];
+  /**
+   * The sessions the (fake) main process currently has running: a successful Start adds one, a stop
+   * or an exit removes it, and a Restart of anything else answers "No such session" as the real one
+   * does.
+   */
+  public readonly running: Set<string> = new Set<string>();
   public startResult: LspStartResult = { success: true };
   public diagnosticReport: unknown = null;
   private notificationListener: ((...args: unknown[]) => void) | null = null;
@@ -54,13 +61,28 @@ class FakeLsp implements Bridge {
     switch (channel) {
       case LspChannel.Start as string:
         this.starts.push(args[0] as LspStartRequest);
+        if (this.startResult.success) {
+          this.running.add((args[0] as LspStartRequest).sessionId);
+        }
         return Promise.resolve(this.startResult as T);
+      case LspChannel.Restart as string: {
+        const sessionId: string = args[0] as string;
+        this.restarts.push(sessionId);
+        if (!this.running.has(sessionId)) {
+          return Promise.resolve({ success: false, error: 'No such session' } as T);
+        }
+        // The real main process respawns under the same id and tells every holder through a
+        // restarted exit; the holders re-attach as they re-open.
+        this.exitListener?.({ sessionId, code: null, signal: null, restarted: true });
+        return Promise.resolve(this.startResult as T);
+      }
       case LspChannel.Request as string:
         return Promise.resolve(
           (args[1] === 'textDocument/diagnostic' ? this.diagnosticReport : null) as T,
         );
       case LspChannel.Stop as string:
         this.stops.push(args[0] as string);
+        this.running.delete(args[0] as string);
         return Promise.resolve(undefined as T);
       case LspChannel.GetSettings as string:
         return Promise.resolve({
@@ -126,6 +148,7 @@ class FakeLsp implements Bridge {
   }
 
   public exit(sessionId: string): void {
+    this.running.delete(sessionId);
     this.exitListener?.({ sessionId, code: 1, signal: null });
   }
 
@@ -638,7 +661,10 @@ describe('LspClient', () => {
     await client.restart('/root::typescript');
     await flush();
 
-    expect(lsp.stops).toEqual(['/root::typescript']);
+    // The main process owns the restart (a Stop would only decrement a shared refcount); the
+    // client re-attaches by starting against the respawned session and re-opening its document.
+    expect(lsp.restarts).toEqual(['/root::typescript']);
+    expect(lsp.stops).toEqual([]);
     expect(lsp.starts).toHaveLength(2);
     expect(lsp.notificationsTo('didOpen')).toHaveLength(2);
     expect(status.servers().map((server: LspServer): string => server.sessionId)).toContain(
@@ -665,7 +691,7 @@ describe('LspClient', () => {
     await client.restart('/root::typescript');
     await flush();
 
-    expect(lsp.stops).toEqual(['/root::typescript']);
+    expect(lsp.restarts).toEqual(['/root::typescript']);
     expect(lsp.starts).toHaveLength(2);
     const server: LspServer | undefined = status
       .servers()

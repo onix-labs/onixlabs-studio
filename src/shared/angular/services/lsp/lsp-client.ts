@@ -874,13 +874,15 @@ export class LspClient implements OnDestroy {
   }
 
   /**
-   * Restarts a running server: tears its session down and re-opens every document it was serving
-   * against a fresh one. An explicit stop is silent to the renderer (the main process forgets the
-   * session before the process exit fires, so no exit notification is sent), so once stop resolves the
-   * session is gone and can be started anew. The status indicator is held in its starting state for
-   * the whole cycle, so the menu shows a spinner from the click until the new server reports ready.
+   * Restarts a server. The main process owns the restart: it tears the server down whatever its
+   * reference count, respawns it under the same session id, and tells every client holding it — this
+   * one included — through an exit flagged `restarted`, on which {@link onExit} re-opens the client's
+   * documents against the new server. When the main process has no such session (the last start
+   * failed, or the server crashed and was torn down), the client simply starts afresh itself. The
+   * status indicator is held in its starting state for the whole cycle.
    * @param sessionId The session to restart.
-   * @returns Returns a promise that resolves once the documents have been queued against the new server.
+   * @returns Returns a promise that resolves once the restart has been requested (and, when the client
+   * starts afresh itself, once its documents have been queued against the new server).
    */
   public async restart(sessionId: string): Promise<void> {
     const info: { serverId: string; rootPath: string; standaloneFile?: string } | undefined =
@@ -894,9 +896,39 @@ export class LspClient implements OnDestroy {
     this.startFailures.delete(sessionId);
     this.status.setState(sessionId, 'starting');
     this.log.info('LspClient', `Restarting server '${info.serverId}'`, sessionId);
-    await this.bridge.invoke(LspChannel.Stop, sessionId);
+    let result: LspStartResult;
+    try {
+      result = await this.bridge.invoke<LspStartResult>(LspChannel.Restart, sessionId);
+    } catch (error: unknown) {
+      result = {
+        success: false,
+        error: error instanceof Error ? error.message : 'The language server failed to restart.',
+      };
+    }
+    if (result.success || result.error !== 'No such session') {
+      // The main process restarted (or failed to restart) a running session; its `restarted` exit
+      // drives the re-open, and a failure surfaces through the ordinary start path when it does.
+      return;
+    }
+    // Nothing was running to restart: start afresh from here.
     this.sessions.delete(sessionId);
     this.legends.delete(sessionId);
+    await this.reattach(sessionId);
+  }
+
+  /**
+   * Re-opens every document a session was serving against its (fresh) server, starting the bare
+   * server when the session serves none so it stays listed rather than vanishing.
+   * @param sessionId The session to re-attach to.
+   * @returns Returns a promise that resolves once the documents have been queued (or the bare server
+   * has started).
+   */
+  private async reattach(sessionId: string): Promise<void> {
+    const info: { serverId: string; rootPath: string; standaloneFile?: string } | undefined =
+      this.sessionInfo.get(sessionId);
+    if (info === undefined) {
+      return;
+    }
     const documents: TrackedDocument[] = [...this.tracked.values()].filter(
       (tracked: TrackedDocument): boolean =>
         `${tracked.rootPath}::${tracked.serverId}` === sessionId,
@@ -1528,6 +1560,24 @@ export class LspClient implements OnDestroy {
    */
   private onExit(exit: LspExit): void {
     if (!this.sessions.delete(exit.sessionId)) {
+      return;
+    }
+    if (exit.restarted === true) {
+      // A deliberate restart, with a fresh server already running under the same id: not a crash, so
+      // no backoff bookkeeping — just forget the old session's negotiated state and re-open every
+      // document against the new one (which re-attaches this client to it).
+      this.log.info('LspClient', 'Server restarted; re-opening its documents', exit.sessionId);
+      this.legends.delete(exit.sessionId);
+      this.pullCapable.delete(exit.sessionId);
+      this.settledSessions.delete(exit.sessionId);
+      this.clearReassociateTimers(exit.sessionId);
+      this.status.setState(exit.sessionId, 'starting');
+      for (const tracked of this.tracked.values()) {
+        if (`${tracked.rootPath}::${tracked.serverId}` === exit.sessionId) {
+          tracked.opened = false;
+        }
+      }
+      void this.reattach(exit.sessionId);
       return;
     }
     // Remember the crash (cumulatively — no rolling window a slow crash cycle could slip through),

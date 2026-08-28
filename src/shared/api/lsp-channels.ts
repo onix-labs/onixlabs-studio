@@ -21,6 +21,13 @@ export enum LspChannel {
   Stop = 'lsp:stop',
 
   /**
+   * Restarts a language-server session in place: the main process tears the server down regardless
+   * of how many clients hold the session, respawns it under the same id, and tells every holder
+   * through a {@link LspExit} flagged `restarted` so each re-syncs its documents (invoke).
+   */
+  Restart = 'lsp:restart',
+
+  /**
    * Sends an LSP notification to a session's server (renderer→main, send).
    */
   Notify = 'lsp:notify',
@@ -249,6 +256,13 @@ export interface LspExit {
    * Gets the terminating signal, or null when the process exited normally.
    */
   readonly signal: string | null;
+
+  /**
+   * Gets whether the exit was a deliberate restart: a fresh server is already running under the same
+   * session id, and the client should re-open its documents against it rather than treat the exit as
+   * a crash. Absent or false for a real exit.
+   */
+  readonly restarted?: boolean;
 }
 
 /**

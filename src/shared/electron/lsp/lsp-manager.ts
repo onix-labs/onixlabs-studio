@@ -83,6 +83,11 @@ interface LspSession {
   readonly rootPath: string;
 
   /**
+   * Holds the request the session was started from, so a restart can respawn it exactly.
+   */
+  readonly request: LspStartRequest;
+
+  /**
    * Holds how many renderer clients are using this session, per renderer. Several surfaces can open
    * the same root (two tabs on one folder, a docked and a standalone editor, a pop-out window): each
    * Start increments its sender's count, each Stop decrements it, and the server is only torn down
@@ -161,6 +166,13 @@ export class LspManager {
         typeof id === 'string' ? this.stop(id, event.sender) : Promise.resolve(),
     );
     ipcMain.handle(
+      LspChannel.Restart,
+      (_event: IpcMainInvokeEvent, id: unknown): Promise<LspStartResult> =>
+        typeof id === 'string'
+          ? this.restart(id)
+          : Promise.resolve({ success: false, error: 'Invalid restart request' }),
+    );
+    ipcMain.handle(
       LspChannel.Request,
       (
         _event: IpcMainInvokeEvent,
@@ -216,6 +228,51 @@ export class LspManager {
       );
       return existing.ready;
     }
+    return this.launch(parsed, sender);
+  }
+
+  /**
+   * Restarts a running session in place: the server is torn down whatever its reference count, a
+   * fresh one is spawned under the same session id, and every renderer that held the old session is
+   * told (through an exit flagged `restarted`) so it re-opens its documents against the new server.
+   * Holders re-attach themselves as they re-open, so the new session starts with no references and
+   * the counts come back exactly as each client re-syncs.
+   *
+   * A restart used to be the renderer's own Stop followed by Start. Stop only decrements a reference
+   * count, so with the session shared by another surface the old process survived and the "restarted"
+   * client silently reattached to it — the spinner and the cleared crash counters were theatre.
+   * @param id The session identifier.
+   * @returns Returns the new session's start outcome, or a failure when no such session is running.
+   */
+  private async restart(id: string): Promise<LspStartResult> {
+    const session: LspSession | undefined = this.sessions.get(id);
+    if (session === undefined) {
+      return { success: false, error: 'No such session' };
+    }
+    logger.info('LspManager', `Restarting LSP session ${id} on request`);
+    const holders: WebContents[] = [...session.clients.keys()];
+    await this.shutDown(id, session);
+    const ready: Promise<LspStartResult> = this.launch(session.request, null);
+    const exit: LspExit = { sessionId: id, code: null, signal: null, restarted: true };
+    for (const contents of holders) {
+      if (!contents.isDestroyed()) {
+        contents.send(LspChannel.ServerExit, exit);
+      }
+    }
+    return ready;
+  }
+
+  /**
+   * Spawns a server for a validated start request, runs its handshake, and records the session.
+   * @param parsed The validated start request.
+   * @param sender The renderer to attach as the session's first holder, or null to attach none (a
+   * restart, whose holders re-attach as they re-open their documents).
+   * @returns Returns the start outcome, including server capabilities on success.
+   */
+  private async launch(
+    parsed: LspStartRequest,
+    sender: WebContents | null,
+  ): Promise<LspStartResult> {
     if (!this.isAllowedRoot(parsed)) {
       logger.warn('LspManager', `LSP start denied for non-open root ${parsed.rootPath}`);
       return { success: false, error: 'Workspace root is not open' };
@@ -265,7 +322,7 @@ export class LspManager {
       this.forwardNotification(parsed.sessionId, method, params),
     );
     child.on('exit', (code: number | null, signal: NodeJS.Signals | null): void =>
-      this.handleExit(parsed.sessionId, code, signal),
+      this.handleExit(parsed.sessionId, child, code, signal),
     );
     connection.listen();
 
@@ -273,11 +330,14 @@ export class LspManager {
       connection,
       child,
       rootPath: parsed.rootPath,
+      request: parsed,
       clients: new Map<WebContents, number>(),
       ready: Promise.resolve({ success: false, error: 'Initialize pending' }),
     };
     this.sessions.set(parsed.sessionId, session);
-    this.attach(session, parsed.sessionId, sender);
+    if (sender !== null) {
+      this.attach(session, parsed.sessionId, sender);
+    }
 
     // The handshake outcome (capabilities included) is retained on the session, so a concurrent or
     // later Start for the same session shares the real result instead of a capability-less success.
@@ -457,13 +517,23 @@ export class LspManager {
   }
 
   /**
-   * Handles a server process exiting: notifies the renderer and tears the session down.
+   * Handles a server process exiting: notifies the renderer and tears the session down. Only the
+   * process the session currently owns counts: a torn-down server's exit lands asynchronously, and by
+   * then a fresh server may be running under the same session id (a restart, or a stop followed by an
+   * immediate start) — treating that late exit as the new session's would tear the new server down
+   * and report a crash that never happened.
    * @param id The session identifier.
+   * @param child The process that exited.
    * @param code The process exit code, or null when terminated by a signal.
    * @param signal The terminating signal, or null when exited normally.
    */
-  private handleExit(id: string, code: number | null, signal: NodeJS.Signals | null): void {
-    if (!this.sessions.has(id)) {
+  private handleExit(
+    id: string,
+    child: ChildProcessWithoutNullStreams,
+    code: number | null,
+    signal: NodeJS.Signals | null,
+  ): void {
+    if (this.sessions.get(id)?.child !== child) {
       return;
     }
     logger.info(
