@@ -412,6 +412,28 @@ export class AgentChat implements OnInit {
   private pendingScrollAnchor: number | null = null;
 
   /**
+   * Holds how many times the tail has been asked for explicitly, so a jump can be told apart from the
+   * ordinary follow and honoured even with the follow preference off.
+   */
+  private readonly pinRequests: WritableSignal<number> = signal<number>(0);
+
+  /**
+   * Holds the request count the pin effect has already served.
+   */
+  private appliedPinRequest: number = 0;
+
+  /**
+   * Holds whether the next scroll event is the one this component just caused by pinning to the tail.
+   *
+   * A pin's landing must not be read as the reader scrolling away from the tail. It can genuinely land
+   * short of the true bottom — rows below the fold are laid out lazily, so their real heights only
+   * arrive once they are scrolled into view — and reading that as "the reader has scrolled up" would
+   * switch the follow off for good, on the first message that grew after the pin. Swallowing our own
+   * event leaves the follow on, and the next render pins again against the now-measured height.
+   */
+  private selfScrolled: boolean = false;
+
+  /**
    * Holds each item's rendered word count, keyed by the item's identity. Items are immutable — a
    * text update replaces the object — so the cache self-invalidates, and unchanged thinking rows
    * stop re-splitting their whole text on every transcript rebuild.
@@ -795,17 +817,41 @@ export class AgentChat implements OnInit {
       });
     });
 
+    // A surface asking for the tail — the ribbon's or the tool strip's Scroll to Bottom — pins this
+    // transcript. Every surface showing the conversation answers, since they all show the same one.
+    effect((): void => {
+      const requested: number = this.conversation?.tailRequest() ?? 0;
+      untracked((): void => {
+        if (requested > 0) {
+          this.scrollToBottom();
+        }
+      });
+    });
+
     // Follow the tail: after each render that grows the transcript (streamed text, a new row, or the
     // working indicator), pin the list to the bottom while the preference is on and the reader is
     // already there. Reading the rendered rows re-runs this as the transcript streams.
+    //
+    // An explicit jump overrides both conditions: it was asked for, so the preference (which governs
+    // the automatic follow) and where the reader had scrolled to are beside the point.
     afterRenderEffect((): void => {
       this.windowedRows();
-      if (!this.settings.aiAutoScroll() || !this.atBottom()) {
+      const requested: number = this.pinRequests();
+      const explicit: boolean = requested !== this.appliedPinRequest;
+      this.appliedPinRequest = requested;
+      if (!explicit && (!this.settings.aiAutoScroll() || !this.atBottom())) {
         return;
       }
       const element: HTMLElement | undefined = this.messagesRef()?.nativeElement;
-      if (element !== undefined) {
-        element.scrollTop = element.scrollHeight;
+      if (element === undefined) {
+        return;
+      }
+      const before: number = element.scrollTop;
+      element.scrollTop = element.scrollHeight;
+      // Only claim the scroll event when the position actually moved: an assignment that changes
+      // nothing raises no event, and a flag left standing would swallow the reader's next scroll.
+      if (element.scrollTop !== before) {
+        this.selfScrolled = true;
       }
     });
 
@@ -877,6 +923,11 @@ export class AgentChat implements OnInit {
    * @param element The scrolling message list.
    */
   public onScroll(element: HTMLElement): void {
+    // Our own pin's landing is not the reader moving; see `selfScrolled`.
+    if (this.selfScrolled) {
+      this.selfScrolled = false;
+      return;
+    }
     const distance: number = element.scrollHeight - element.scrollTop - element.clientHeight;
     this.atBottom.set(distance <= BOTTOM_THRESHOLD_PX);
     // Reaching the top pulls the next batch of older rows into view, keeping the scroll position
@@ -899,6 +950,16 @@ export class AgentChat implements OnInit {
     const list: HTMLElement | undefined = element ?? this.messagesRef()?.nativeElement;
     this.pendingScrollAnchor = list !== undefined ? list.scrollHeight - list.scrollTop : null;
     this.windowSize.update((size: number): number => size + CONVERSATION_WINDOW_CHUNK);
+  }
+
+  /**
+   * Jumps the transcript to its latest message and resumes following the tail, whatever the reader's
+   * scroll position and whatever the follow preference — this is asked for explicitly, by the ribbon's
+   * or the tool strip's Scroll to Bottom.
+   */
+  public scrollToBottom(): void {
+    this.atBottom.set(true);
+    this.pinRequests.update((count: number): number => count + 1);
   }
 
   /**

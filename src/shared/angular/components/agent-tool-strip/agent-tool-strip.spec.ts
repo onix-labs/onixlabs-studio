@@ -17,6 +17,7 @@ describe('AgentToolStrip', () => {
   let host: HTMLElement;
   let newChats: number;
   let historyToggles: number;
+  let tailRequests: number;
   let running: WritableSignal<boolean>;
   let historyOpen: WritableSignal<boolean>;
   let hasMessages: WritableSignal<boolean>;
@@ -81,6 +82,7 @@ describe('AgentToolStrip', () => {
   beforeEach(async () => {
     newChats = 0;
     historyToggles = 0;
+    tailRequests = 0;
     running = signal<boolean>(false);
     historyOpen = signal<boolean>(false);
     hasMessages = signal<boolean>(true);
@@ -92,6 +94,7 @@ describe('AgentToolStrip', () => {
       stop: (): void => undefined,
       compact: (): void => undefined,
       toggleHistory: (): void => void (historyToggles += 1),
+      scrollToBottom: (): void => void (tailRequests += 1),
     };
     providerChoices = [];
     modelChoices = [];
@@ -153,6 +156,12 @@ describe('AgentToolStrip', () => {
     button('Conversation history').click();
 
     expect(historyToggles).toBe(1);
+  });
+
+  it('scrollToBottom_whenClicked_asksTheTranscriptForItsLatestMessage', () => {
+    button('Scroll to bottom').click();
+
+    expect(tailRequests).toBe(1);
   });
 
   it('engine_whenProvidersLoad_offersOneFieldGroupingModelsByProvider', () => {

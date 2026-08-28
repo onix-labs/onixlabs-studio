@@ -89,6 +89,11 @@ export interface AgentSessionHandle {
   toggleHistory(): void;
 
   /**
+   * Scrolls the conversation's transcript to its latest message.
+   */
+  scrollToBottom(): void;
+
+  /**
    * Sets how much autonomy the conversation's runs use.
    * @param mode The new mode: `agent` (full tools) or `chat` (read-only).
    */
@@ -283,6 +288,13 @@ export class AgentSessions {
    */
   public toggleHistory(): void {
     this.activeSession()?.toggleHistory();
+  }
+
+  /**
+   * Scrolls the active agent tab's transcript to its latest message.
+   */
+  public scrollToBottom(): void {
+    this.activeSession()?.scrollToBottom();
   }
 
   /**

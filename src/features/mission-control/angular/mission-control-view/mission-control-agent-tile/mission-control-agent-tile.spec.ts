@@ -104,7 +104,11 @@ function setUp(
     agent: agentStub,
     conversation: {},
   };
-  const conversationStub: Partial<AgentConversation> = { currentId: signal<string | null>(null) };
+  const conversationStub: Partial<AgentConversation> = {
+    currentId: signal<string | null>(null),
+    // Read by the chat the tile mounts, which follows the tail whenever a surface asks for it.
+    tailRequest: signal<number>(0),
+  };
   const missionControlStub: Partial<MissionControl> = {
     hideEmpty: hideEmpty.asReadonly(),
     hideIdle: hideIdle.asReadonly(),

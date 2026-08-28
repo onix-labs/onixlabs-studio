@@ -74,6 +74,13 @@
   />
 
   <app-button
+    variant="none"
+    [icon]="Icon.SCROLL_TO_BOTTOM"
+    ariaLabel="Scroll to bottom"
+    tooltip="Scroll to bottom"
+    (click)="conversation.scrollToBottom()"
+  />
+  <app-button
     class="strip__history"
     variant="none"
     [icon]="Icon.RECENT"

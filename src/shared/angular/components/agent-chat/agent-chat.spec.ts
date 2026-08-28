@@ -49,10 +49,12 @@ describe('AgentChat', () => {
   let effortChanges: (AiEffort | null)[];
   let attachedContext: AgentContextRef[];
   let conversationDraft: WritableSignal<string>;
+  let tailRequest: WritableSignal<number>;
 
   beforeEach(async () => {
     localStorage.clear();
     conversationDraft = signal<string>('');
+    tailRequest = signal<number>(0);
     compacted = 0;
     clearedChats = 0;
     modeChanges = [];
@@ -173,7 +175,10 @@ describe('AgentChat', () => {
         // it exactly as it is in the app (the source of the survives-remount behaviour below).
         {
           provide: AgentConversation,
-          useValue: { draft: conversationDraft } as unknown as AgentConversation,
+          useValue: {
+            draft: conversationDraft,
+            tailRequest: tailRequest.asReadonly(),
+          } as unknown as AgentConversation,
         },
       ],
     })
@@ -621,6 +626,24 @@ describe('AgentChat', () => {
     retryButton!.click();
 
     expect(rewinds).toEqual([{ id: 'item-1', text: 'question' }]);
+  });
+
+  it('tailRequest_whenASurfaceAsksForTheTail_pinsThisTranscript', () => {
+    let pins: number = 0;
+    // The pin itself moves a scroller, which jsdom has no layout for; what this asserts is the bridge
+    // from the conversation (which the ribbon and the tool strip drive) to this transcript.
+    (component as unknown as { scrollToBottom: () => void }).scrollToBottom = (): void => {
+      pins += 1;
+    };
+
+    tailRequest.set(1);
+    TestBed.tick();
+    expect(pins).toBe(1);
+
+    tailRequest.set(2);
+    TestBed.tick();
+    // Asking twice scrolls twice: the request is an event, not a state.
+    expect(pins).toBe(2);
   });
 
   it('retryLast_whileRunningOrWithoutAReply_offersNoRetry', () => {

@@ -49,6 +49,14 @@
     </app-ribbon-strip-column>
   </app-ribbon-strip-group>
 
+  <app-ribbon-strip-group title="View">
+    <app-ribbon-strip-button
+      [icon]="Icon.SCROLL_TO_BOTTOM"
+      label="Bottom"
+      (action)="scrollToBottom()"
+    />
+  </app-ribbon-strip-group>
+
   <app-ribbon-strip-group title="Engine">
     <app-ribbon-strip-column [spread]="true">
       <!-- One field for the pair: the models of every connection, grouped under their provider's

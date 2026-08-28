@@ -65,6 +65,7 @@ describe('AgentRibbon', () => {
   let cleared: number;
   let stopped: number;
   let historyToggles: number;
+  let tailRequests: number;
   let providerChoices: AiProviderId[];
   let modelChoices: string[];
   let remoteControlChoices: boolean[];
@@ -117,6 +118,7 @@ describe('AgentRibbon', () => {
     cleared = 0;
     stopped = 0;
     historyToggles = 0;
+    tailRequests = 0;
     providerChoices = [];
     modelChoices = [];
     remoteControlChoices = [];
@@ -155,6 +157,7 @@ describe('AgentRibbon', () => {
       newChat: (): void => void (cleared += 1),
       stop: (): void => void (stopped += 1),
       toggleHistory: (): void => void (historyToggles += 1),
+      scrollToBottom: (): void => void (tailRequests += 1),
       setMode: (value: AgentMode): void => void modeChoices.push(value),
       compact: (): void => void (compacted += 1),
       attachFile: (): void => void (attachedFiles += 1),
@@ -293,6 +296,12 @@ describe('AgentRibbon', () => {
     expect(historyToggles).toBe(1);
   });
 
+  it('bottom_whenClicked_scrollsTheActiveTranscriptToItsLatestMessage', () => {
+    button('Bottom').click();
+
+    expect(tailRequests).toBe(1);
+  });
+
   it('mode_whenChanged_setsTheChosenMode', () => {
     const select: HTMLSelectElement = field('Mode');
     expect(select.value).toBe('Full agent');
@@ -349,13 +358,13 @@ describe('AgentRibbon', () => {
     expect(button('Selection').disabled).toBe(true);
   });
 
-  it('groups_whenRendered_areSessionEngineAndAttachmentsOnly', () => {
+  it('groups_whenRendered_areSessionViewEngineAndAttachmentsOnly', () => {
     // Permissions is gone: its Mode field moved into Engine and its Remote toggle into Session.
     const titles: string[] = Array.from(
       host.querySelectorAll<HTMLElement>('.ribbon-group__title'),
       (title: HTMLElement): string => title.textContent?.trim() ?? '',
     );
-    expect(titles).toEqual(['Session', 'Engine', 'Attachments']);
+    expect(titles).toEqual(['Session', 'View', 'Engine', 'Attachments']);
     expect(field('Mode').closest('.ribbon-group')?.textContent).toContain('Engine');
     expect(button('Remote').closest('.ribbon-group')?.textContent).toContain('Session');
   });

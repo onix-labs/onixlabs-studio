@@ -75,6 +75,9 @@ function createSession(): FakeSession {
     toggleHistory: (): void => {
       calls.push('toggleHistory');
     },
+    scrollToBottom: (): void => {
+      calls.push('scrollToBottom');
+    },
     setMode: (mode: AgentMode): void => {
       calls.push(`setMode:${mode}`);
     },
@@ -135,6 +138,7 @@ describe('AgentSessions', () => {
     service.newChat();
     service.stop();
     service.toggleHistory();
+    service.scrollToBottom();
     service.setMode('agent');
     service.attachFile();
     service.attachFolder();
@@ -145,6 +149,7 @@ describe('AgentSessions', () => {
       'newChat',
       'stop',
       'toggleHistory',
+      'scrollToBottom',
       'setMode:agent',
       'attachFile',
       'attachFolder',

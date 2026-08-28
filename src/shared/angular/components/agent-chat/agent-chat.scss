@@ -58,6 +58,17 @@
   contain-intrinsic-size: auto 5rem;
 }
 
+// The last row is never skipped, whatever the rule above says.
+//
+// It is the row being streamed into, and it is the one the follow-the-tail pin measures against: a row
+// appended below the fold is skipped, so it stands at its estimate rather than its real height, and
+// `scrollHeight` under-reports by the difference. The pin then lands short of the true bottom — which
+// is what stopped the transcript following its own output. The saving here was never this row's
+// anyway: it is on screen whenever anyone is watching.
+.agent__messages > *:last-child {
+  content-visibility: visible;
+}
+
 // The "load earlier" affordance shown at the top of the list when older rows are held out of the DOM
 // (see CONVERSATION_WINDOW). Centred, and it does not stretch to the full row width.
 .agent__earlier {

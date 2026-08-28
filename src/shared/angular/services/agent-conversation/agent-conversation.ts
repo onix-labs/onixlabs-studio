@@ -221,6 +221,22 @@ export class AgentConversation implements AgentSessionHandle {
   public readonly historyOpen: Signal<boolean> = this.historyOpenState.asReadonly();
 
   /**
+   * Holds how many times a surface has asked this conversation's transcript to jump to its tail.
+   */
+  private readonly tailRequestState: WritableSignal<number> = signal<number>(0);
+
+  /**
+   * Gets the running count of jump-to-the-tail requests, which every transcript showing this
+   * conversation follows.
+   *
+   * A counter rather than a flag, because the request is an event and not a state: asking twice in a
+   * row must scroll twice, and there is nothing to reset afterwards. It lives on the conversation
+   * rather than the chat component so the ribbon and the tool strip — neither of which can reach into
+   * the component tree — can ask, and so that every surface showing this conversation answers.
+   */
+  public readonly tailRequest: Signal<number> = this.tailRequestState.asReadonly();
+
+  /**
    * Holds the id of the conversation currently open, or null for an unsaved/new conversation.
    */
   private readonly currentIdState: WritableSignal<string | null> = signal<string | null>(null);
@@ -367,6 +383,14 @@ export class AgentConversation implements AgentSessionHandle {
    */
   public toggleHistory(): void {
     this.historyOpenState.update((open: boolean): boolean => !open);
+  }
+
+  /**
+   * Scrolls this conversation's transcript to its latest message (part of
+   * {@link AgentSessionHandle}), and resumes following the tail as it streams.
+   */
+  public scrollToBottom(): void {
+    this.tailRequestState.update((count: number): number => count + 1);
   }
 
   /**

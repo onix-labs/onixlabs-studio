@@ -170,6 +170,17 @@ describe('AgentConversation', () => {
     expect(conversation.historyOpen()).toBe(false);
   });
 
+  it('scrollToBottom_whenCalled_countsTheRequest_soEverySurfaceFollows', () => {
+    const conversation: AgentConversation = build();
+    expect(conversation.tailRequest()).toBe(0);
+
+    conversation.scrollToBottom();
+    conversation.scrollToBottom();
+
+    // A count rather than a flag: asking twice must scroll twice.
+    expect(conversation.tailRequest()).toBe(2);
+  });
+
   it('attachSelection_whenAnEditorHasASelection_attachesItsTextAsInlineContext', () => {
     const conversation: AgentConversation = build();
     const editors: EditorCommands = TestBed.inject(EditorCommands);

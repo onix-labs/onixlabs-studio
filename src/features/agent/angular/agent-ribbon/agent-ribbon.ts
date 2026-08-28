@@ -239,6 +239,14 @@ export class AgentRibbon {
   }
 
   /**
+   * Scrolls the active tab's transcript to its latest message.
+   */
+  protected scrollToBottom(): void {
+    this.log.trace('agent.ribbon', 'Scroll to bottom requested');
+    this.sessions.scrollToBottom();
+  }
+
+  /**
    * Compacts the active tab's conversation into a summary.
    */
   protected compact(): void {
