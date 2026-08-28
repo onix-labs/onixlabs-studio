@@ -1043,6 +1043,52 @@ describe('LspClient', () => {
     expect(lsp.starts).toHaveLength(1);
   });
 
+  it('notifySaved_firstReportIsABaseline_laterChangeSendsDidSave', async () => {
+    // `didSave` was advertised and never sent; servers that recompute on save waited forever. The
+    // first saved-text report is the baseline (the document's text on open), not a save.
+    const client: LspClient = build();
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/root/a.ts',
+      languageId: 'typescript',
+      content: 'const a = 1;',
+    });
+    await flush();
+    client.notifySaved('doc-1', 'const a = 1;');
+    await flush();
+    expect(lsp.notificationsTo('didSave')).toHaveLength(0);
+
+    client.notifySaved('doc-1', 'const a = 2;');
+    await flush();
+
+    const saves: { sessionId: string; params: unknown }[] = lsp.notificationsTo('didSave');
+    expect(saves).toHaveLength(1);
+    expect(saves[0].params).toEqual({ textDocument: { uri: 'file:///root/a.ts' } });
+  });
+
+  it('notifySaved_whenTheServerAskedForText_includesIt', async () => {
+    lsp.startResult = {
+      success: true,
+      capabilities: { textDocumentSync: { save: { includeText: true } } },
+    };
+    const client: LspClient = build();
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/root/a.ts',
+      languageId: 'typescript',
+      content: 'const a = 1;',
+    });
+    await flush();
+    client.notifySaved('doc-1', 'const a = 1;');
+    client.notifySaved('doc-1', 'const a = 2;');
+    await flush();
+
+    expect(lsp.notificationsTo('didSave')[0].params).toEqual({
+      textDocument: { uri: 'file:///root/a.ts' },
+      text: 'const a = 2;',
+    });
+  });
+
   it('syncDocument_languageWithAServer_doesNotOffer', async () => {
     const client: LspClient = build();
     client.syncDocument({

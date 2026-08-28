@@ -9,6 +9,7 @@ import {
   InputSignal,
   signal,
   Signal,
+  untracked,
   viewChild,
   WritableSignal,
 } from '@angular/core';
@@ -200,6 +201,16 @@ export class CodeDocumentPanel {
         languageId: document.language(),
         content: document.content(),
       });
+    });
+
+    // Tell the language server when the document is saved: the saved text changing is the save.
+    effect((): void => {
+      const document: CodeDocument | undefined = this.document();
+      if (document === undefined) {
+        return;
+      }
+      const savedContent: string = document.savedContent();
+      untracked((): void => this.lsp.notifySaved(this.documentId(), savedContent));
     });
 
     // Register this editor's model against its document, so language-server diagnostics resolve to a

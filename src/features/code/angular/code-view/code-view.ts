@@ -9,6 +9,7 @@ import {
   OnInit,
   signal,
   Signal,
+  untracked,
   viewChild,
   WritableSignal,
 } from '@angular/core';
@@ -353,6 +354,16 @@ export class CodeView implements OnInit, OnDestroy {
       if (this.removeOnDestroy()) {
         this.activeWorkspace.setRoot(this.tabId(), this.lsp.rootForDocument(this.tabId()));
       }
+    });
+
+    // Tell the language server when the document is saved: the saved text changing is the save.
+    effect((): void => {
+      const document: CodeDocument | null = this.doc();
+      if (document === null) {
+        return;
+      }
+      const savedContent: string = document.savedContent();
+      untracked((): void => this.lsp.notifySaved(this.tabId(), savedContent));
     });
 
     // Honour reveal requests aimed at this view's document, jumping the editor to the line.

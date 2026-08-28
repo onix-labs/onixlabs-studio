@@ -29,6 +29,8 @@ import { pidJournal } from '../pid-journal';
 import { detachedSpawnOptions, killProcessTree } from '../process-tree';
 import { WorkspaceContext } from '../workspace-context';
 import { LspResolution, LspServerRegistry, LspServerSpec } from './lsp-server-registry';
+import { FileEvent, LspFileWatcher } from './lsp-file-watcher';
+import { globToRegExp } from './lsp-watch-glob';
 
 /**
  * Specifies how long, in milliseconds, to wait for a server's `initialize` response before giving up
@@ -86,6 +88,11 @@ interface LspSession {
    * Holds the request the session was started from, so a restart can respawn it exactly.
    */
   readonly request: LspStartRequest;
+
+  /**
+   * Holds the watcher that tells the server about files changing under its root.
+   */
+  readonly watcher: LspFileWatcher;
 
   /**
    * Holds how many renderer clients are using this session, per renderer. Several surfaces can open
@@ -317,7 +324,6 @@ export class LspManager {
       new StreamMessageReader(child.stdout),
       new StreamMessageWriter(child.stdin),
     );
-    this.answerServerRequests(connection, parsed.sessionId);
     connection.onNotification((method: string, params: unknown): void =>
       this.forwardNotification(parsed.sessionId, method, params),
     );
@@ -326,14 +332,28 @@ export class LspManager {
     );
     connection.listen();
 
+    // The server learns about files changing under its root — a dependency install, a branch
+    // switch, a file another tool wrote — through `workspace/didChangeWatchedFiles`. Without it a
+    // server's picture of the workspace is a snapshot from spawn time: a package that landed a
+    // minute later stays "missing" until the server is restarted.
+    const watcher: LspFileWatcher = new LspFileWatcher(
+      parsed.rootPath,
+      (events: readonly FileEvent[]): void => {
+        if (this.sessions.get(parsed.sessionId)?.child === child) {
+          void connection.sendNotification('workspace/didChangeWatchedFiles', { changes: events });
+        }
+      },
+    );
     const session: LspSession = {
       connection,
       child,
       rootPath: parsed.rootPath,
       request: parsed,
+      watcher,
       clients: new Map<WebContents, number>(),
       ready: Promise.resolve({ success: false, error: 'Initialize pending' }),
     };
+    this.answerServerRequests(connection, parsed.sessionId, session);
     this.sessions.set(parsed.sessionId, session);
     if (sender !== null) {
       this.attach(session, parsed.sessionId, sender);
@@ -556,6 +576,7 @@ export class LspManager {
     }
     logger.info('LspManager', `Stopping LSP server for session ${id} (pid ${session.child.pid})`);
     this.sessions.delete(id);
+    session.watcher.close();
     try {
       session.connection.dispose();
     } catch (error: unknown) {
@@ -574,9 +595,39 @@ export class LspManager {
    * @param connection The server connection to answer requests on.
    * @param sessionId The session the connection belongs to, for requests forwarded to the renderer.
    */
-  private answerServerRequests(connection: MessageConnection, sessionId: string): void {
-    connection.onRequest('client/registerCapability', (): null => null);
-    connection.onRequest('client/unregisterCapability', (): null => null);
+  private answerServerRequests(
+    connection: MessageConnection,
+    sessionId: string,
+    session: LspSession,
+  ): void {
+    // Dynamic registrations are honoured for the one capability the main process implements — file
+    // watching — and acknowledged for the rest, since the client advertises them and a server that
+    // registers, say, `textDocument/didSave` is served by the renderer regardless. They used to be
+    // acknowledged and discarded wholesale, so a server that asked to watch `**/Cargo.toml` believed
+    // it was being told about changes that never came.
+    connection.onRequest(
+      'client/registerCapability',
+      (params: { registrations?: readonly unknown[] }): null => {
+        for (const registration of params.registrations ?? []) {
+          this.applyRegistration(session, registration);
+        }
+        return null;
+      },
+    );
+    connection.onRequest(
+      'client/unregisterCapability',
+      (params: { unregisterations?: readonly { method?: unknown }[] }): null => {
+        if (
+          (params.unregisterations ?? []).some(
+            (entry: { method?: unknown }): boolean =>
+              entry.method === 'workspace/didChangeWatchedFiles',
+          )
+        ) {
+          session.watcher.setPatterns(null);
+        }
+        return null;
+      },
+    );
     connection.onRequest('window/workDoneProgress/create', (): null => null);
     // A server sends this when its semantic classification has improved (a project finished loading)
     // and cached tokens are stale. Forwarded to the renderer, which re-pulls and repaints.
@@ -595,6 +646,47 @@ export class LspManager {
     // Any other server-to-client request is acknowledged with null so the server is never left
     // waiting on a response it requires to make progress.
     connection.onRequest((): null => null);
+  }
+
+  /**
+   * Applies one dynamic registration: a `workspace/didChangeWatchedFiles` registration narrows the
+   * session's file watcher to the server's globs (a relative pattern is taken relative to the
+   * session root; an absolute or `file:` base is honoured when it is the root, and otherwise treated
+   * as "anything", since the watcher only covers the root). Other methods need nothing here.
+   * @param session The session the registration belongs to.
+   * @param registration The registration entry, untrusted.
+   */
+  private applyRegistration(session: LspSession, registration: unknown): void {
+    const entry: {
+      method?: unknown;
+      registerOptions?: { watchers?: readonly { globPattern?: unknown }[] };
+    } | null = (registration as typeof entry) ?? null;
+    if (entry?.method !== 'workspace/didChangeWatchedFiles') {
+      return;
+    }
+    const patterns: RegExp[] = [];
+    let unbounded: boolean = false;
+    for (const watcher of entry.registerOptions?.watchers ?? []) {
+      const glob: unknown = watcher.globPattern;
+      if (typeof glob === 'string') {
+        if (path.isAbsolute(glob) || glob.startsWith('file:')) {
+          // An absolute glob outside our root cannot be narrowed safely; report everything.
+          unbounded = true;
+        } else {
+          patterns.push(globToRegExp(glob));
+        }
+      } else if (typeof glob === 'object' && glob !== null) {
+        const relative: { baseUri?: unknown; pattern?: unknown } = glob;
+        if (typeof relative.pattern === 'string') {
+          patterns.push(globToRegExp(relative.pattern));
+        }
+      }
+    }
+    session.watcher.setPatterns(unbounded || patterns.length === 0 ? null : patterns);
+    logger.debug(
+      'LspManager',
+      `Server registered ${patterns.length} watch pattern(s) for ${session.rootPath}`,
+    );
   }
 
   /**
@@ -714,6 +806,9 @@ export class LspManager {
         workspaceFolders: true,
         configuration: true,
         semanticTokens: { refreshSupport: true },
+        // The main process watches the session root and sends `didChangeWatchedFiles`; a server
+        // narrows that to its own globs through a dynamic registration.
+        didChangeWatchedFiles: { dynamicRegistration: true, relativePatternSupport: true },
       },
       window: { workDoneProgress: true },
     };

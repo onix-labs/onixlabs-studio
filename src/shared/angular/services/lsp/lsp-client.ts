@@ -21,7 +21,7 @@ import { LSP_MARKER_OWNER } from './lsp-marker-owner';
 import { isWithin, normalise, parentDir, pathToUri, uriToPath } from './lsp-paths';
 import { toDiagnostic, toMarkerData } from './lsp-diagnostic-mapper';
 import { LspContentEdit, minimalReplaceEdit } from './lsp-text-sync';
-import { semanticLegendOf, supportsPullDiagnostics } from './lsp-capabilities';
+import { saveIncludesText, semanticLegendOf, supportsPullDiagnostics } from './lsp-capabilities';
 import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
 import { LanguageSupportPrompt } from '@shared/angular/services/plugins/language-support-prompt';
 import { LspStatus } from './lsp-status';
@@ -166,6 +166,13 @@ interface TrackedDocument {
    * Holds whether `textDocument/didOpen` has been sent for the document.
    */
   opened: boolean;
+
+  /**
+   * Holds the text the document last had on disk as far as this client has been told, so a save is
+   * recognised as the saved text changing rather than re-announced on every re-render. Null until the
+   * first saved text is reported.
+   */
+  savedText: string | null;
 
   /**
    * Holds the text last synchronised to the server. A change is sent as a single edit replacing this
@@ -369,6 +376,11 @@ export class LspClient implements OnDestroy {
    * `textDocument/diagnostic` (Roslyn and other pull-based servers) rather than relying on push.
    */
   private readonly pullCapable: Set<string> = new Set<string>();
+
+  /**
+   * Holds the sessions whose server asked for the document text to accompany `didSave`.
+   */
+  private readonly saveWithText: Set<string> = new Set<string>();
 
   /**
    * Holds the pending debounced diagnostic-pull timers, keyed by document id.
@@ -844,6 +856,7 @@ export class LspClient implements OnDestroy {
         languageId: state.languageId,
         version: 1,
         opened: false,
+        savedText: null,
         text: '',
         queue: Promise.resolve(),
       };
@@ -853,6 +866,29 @@ export class LspClient implements OnDestroy {
       existing.languageId = state.languageId;
       this.enqueue(existing, (): Promise<void> => this.change(existing, state.content));
     }
+  }
+
+  /**
+   * Reports a document's current saved text. The first report only records the baseline; a later
+   * report with different text is a save, and the server is told through `textDocument/didSave`
+   * (carrying the text when it asked for it). Servers that recompute on save — gopls, jdtls, the
+   * eslint family — otherwise wait forever for a notification the client advertised but never sent.
+   * @param documentId The identifier of the document.
+   * @param savedText The document's text as last written to disk.
+   */
+  public notifySaved(documentId: string, savedText: string): void {
+    const tracked: TrackedDocument | undefined = [...this.tracked.values()].find(
+      (candidate: TrackedDocument): boolean => candidate.documentId === documentId,
+    );
+    if (tracked === undefined) {
+      return;
+    }
+    const previous: string | null = tracked.savedText;
+    tracked.savedText = savedText;
+    if (previous === null || previous === savedText) {
+      return;
+    }
+    this.enqueue(tracked, (): Promise<void> => this.save(tracked, savedText));
   }
 
   /**
@@ -1214,6 +1250,26 @@ export class LspClient implements OnDestroy {
   }
 
   /**
+   * Sends `textDocument/didSave` for an open document, with the text when the server asked for it.
+   * @param tracked The document that was saved.
+   * @param savedText The text written to disk.
+   * @returns Returns a promise that resolves once the notification has been sent.
+   */
+  private async save(tracked: TrackedDocument, savedText: string): Promise<void> {
+    if (!tracked.opened || this.bridge === undefined) {
+      return;
+    }
+    const sessionId: string | null = await this.ensureSession(tracked);
+    if (sessionId === null) {
+      return;
+    }
+    this.bridge.send(LspChannel.Notify, sessionId, 'textDocument/didSave', {
+      textDocument: { uri: tracked.uri },
+      ...(this.saveWithText.has(sessionId) ? { text: savedText } : {}),
+    });
+  }
+
+  /**
    * Sends `textDocument/didClose` for a document that has been opened.
    * @param tracked The document to close.
    * @returns Returns a promise that resolves once the close notification has been sent.
@@ -1323,6 +1379,11 @@ export class LspClient implements OnDestroy {
           const pull: boolean = supportsPullDiagnostics(result.capabilities);
           if (pull) {
             this.pullCapable.add(sessionId);
+          }
+          if (saveIncludesText(result.capabilities)) {
+            this.saveWithText.add(sessionId);
+          } else {
+            this.saveWithText.delete(sessionId);
           }
           this.log.info(
             'LspClient',

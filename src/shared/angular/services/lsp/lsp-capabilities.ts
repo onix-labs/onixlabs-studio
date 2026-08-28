@@ -33,6 +33,19 @@ export function semanticLegendOf(capabilities: unknown): LspSemanticTokensLegend
  * @param capabilities The server's advertised capabilities (an LSP `ServerCapabilities`).
  * @returns Returns true when the server supports pull diagnostics.
  */
+/**
+ * Determines whether a server asked for the document's text to accompany `textDocument/didSave`
+ * (`textDocumentSync.save.includeText`). The protocol allows the text only when the server asked.
+ * @param capabilities The server's advertised capabilities (an LSP `ServerCapabilities`).
+ * @returns Returns true when saves should carry the full text.
+ */
+export function saveIncludesText(capabilities: unknown): boolean {
+  const sync: unknown = (capabilities as { textDocumentSync?: unknown } | undefined)
+    ?.textDocumentSync;
+  const save: unknown = (sync as { save?: unknown } | undefined)?.save;
+  return (save as { includeText?: unknown } | undefined)?.includeText === true;
+}
+
 export function supportsPullDiagnostics(capabilities: unknown): boolean {
   const provider: unknown = (capabilities as { diagnosticProvider?: unknown } | undefined)
     ?.diagnosticProvider;
