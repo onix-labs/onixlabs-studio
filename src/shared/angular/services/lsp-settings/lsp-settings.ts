@@ -89,11 +89,27 @@ export class LspSettings {
   public readonly ready: Promise<void>;
 
   /**
+   * Holds whether the catalogue has been loaded from the main process at least once. Distinct from the
+   * catalogue being empty: an empty catalogue after loading is a real answer ("no plugin contributes a
+   * server"), whereas an empty catalogue before loading is merely "not known yet".
+   */
+  private readonly loaded: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Gets whether the catalogue has loaded. A caller deciding whether to wait for {@link ready} must
+   * read this rather than test the catalogue for emptiness — a loaded-and-empty catalogue is final,
+   * and waiting on it again would wait on a promise that has already settled.
+   */
+  public readonly catalogueLoaded: Signal<boolean> = this.loaded.asReadonly();
+
+  /**
    * Initializes the service, loading the settings and the server catalogue from the main process.
    */
   public constructor() {
     void this.refresh();
-    this.ready = this.loadCatalogue();
+    this.ready = this.loadCatalogue().then((): void => {
+      this.loaded.set(true);
+    });
   }
 
   /**

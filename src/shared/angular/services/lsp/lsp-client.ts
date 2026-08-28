@@ -805,7 +805,13 @@ export class LspClient implements OnDestroy {
       // arrives would otherwise be read as "this language has no server" and left unserved for the
       // life of the tab. Retry once the catalogue lands; if the language genuinely has no server the
       // retry resolves to null again and stops there.
-      if (this.lspSettings.catalogue().length === 0) {
+      //
+      // Gated on the catalogue having LOADED, not on it being empty. An empty catalogue is also the
+      // legitimate answer once no plugin contributes a server — and then `ready` has long since
+      // settled, so retrying on emptiness re-enters this branch on the very next microtask, forever,
+      // in a chain that never yields to the event loop. That froze the renderer the moment the last
+      // language server was uninstalled with a document of its language open.
+      if (!this.lspSettings.catalogueLoaded()) {
         void this.lspSettings.ready.then((): void => this.syncDocument(state));
       }
       return;

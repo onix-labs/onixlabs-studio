@@ -209,6 +209,7 @@ describe('LspClient', () => {
   let disabledServers: Set<string>;
   let offeredLanguages: string[];
   let installedServers: WritableSignal<readonly LspServerSummary[]>;
+  let catalogueLoaded: WritableSignal<boolean>;
 
   /**
    * Builds the client under test with the fakes wired in.
@@ -240,6 +241,7 @@ describe('LspClient', () => {
                 server.languages.includes(language),
               )?.id ?? null,
             catalogue: (): readonly LspServerSummary[] => installedServers(),
+            catalogueLoaded: (): boolean => catalogueLoaded(),
             ready: Promise.resolve(),
           },
         },
@@ -258,6 +260,7 @@ describe('LspClient', () => {
     disabledServers = new Set<string>();
     offeredLanguages = [];
     installedServers = signal<readonly LspServerSummary[]>(CATALOGUE);
+    catalogueLoaded = signal<boolean>(true);
     root = signal<DirectoryListing | null>({ path: '/root', name: 'root', entries: [] });
     (window as unknown as { bridge: Bridge }).bridge = lsp;
   });
@@ -910,6 +913,48 @@ describe('LspClient', () => {
 
     expect(offeredLanguages).toEqual(['ruby']);
     expect(lsp.starts).toEqual([]);
+  });
+
+  it('syncDocument_catalogueLoadedAndEmpty_doesNotRetry', async () => {
+    // Uninstalling the last language server (or a fresh profile with none) leaves the catalogue
+    // legitimately empty, with `ready` long since settled. Retrying on emptiness re-entered this path
+    // on every microtask in an unyielding chain that froze the renderer. The client must treat a loaded
+    // empty catalogue as final: one offer, no retry.
+    installedServers.set([]);
+    catalogueLoaded.set(true);
+    const client: LspClient = build();
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/root/a.ts',
+      languageId: 'typescript',
+      content: 'const a = 1;',
+    });
+    await flush();
+    await flush();
+
+    // The fake prompt records every offer; the real one dedupes per language, which would mask a
+    // retry loop here. Exactly one call proves the client did not re-enter.
+    expect(offeredLanguages).toEqual(['typescript']);
+    expect(lsp.starts).toEqual([]);
+  });
+
+  it('syncDocument_catalogueNotYetLoaded_retriesOnceItLands', async () => {
+    // A document opened during startup, before the catalogue arrives, must be served once it does —
+    // this is the case the retry exists for.
+    installedServers.set([]);
+    catalogueLoaded.set(false);
+    const client: LspClient = build();
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/root/a.ts',
+      languageId: 'typescript',
+      content: 'const a = 1;',
+    });
+    installedServers.set(CATALOGUE);
+    catalogueLoaded.set(true);
+    await flush();
+
+    expect(lsp.starts).toHaveLength(1);
   });
 
   it('syncDocument_languageWithAServer_doesNotOffer', async () => {

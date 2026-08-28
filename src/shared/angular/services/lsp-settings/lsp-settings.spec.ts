@@ -185,6 +185,19 @@ describe('LspSettings', () => {
     expect(service.serverArgsText('typescript')).toBe('');
   });
 
+  it('catalogueLoaded_isFalseUntilTheCatalogueLands_thenTrueEvenWhenEmpty', async () => {
+    // "Loaded" and "non-empty" are different facts: with no plugin installed the catalogue is empty
+    // and final, and a caller must be able to tell that apart from "not known yet".
+    plugins = [];
+    const service: LspSettings = TestBed.inject(LspSettings);
+
+    expect(service.catalogueLoaded()).toBe(false);
+    await service.ready;
+
+    expect(service.catalogueLoaded()).toBe(true);
+    expect(service.catalogue()).toEqual([]);
+  });
+
   it('serverForLanguage_noChoice_picksTheHighestPriorityServer', async () => {
     const service: LspSettings = TestBed.inject(LspSettings);
     await service.ready;
