@@ -28,7 +28,7 @@
           [icon]="Icon.RESTART"
           ariaLabel="Restart language server"
           tooltip="Restart"
-          [disabled]="server.state === 'starting'"
+          [disabled]="server.state === 'starting' && !server.stalled"
           (click)="restart(server)"
         />
       </div>

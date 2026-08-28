@@ -7,15 +7,21 @@ import { Log } from '@shared/angular/services/log/log';
 export type LspServerState = 'starting' | 'ready' | 'unavailable';
 
 /**
- * How long a server may sit in its starting state before the watchdog gives up on it and marks it
- * unavailable. Readiness is inferred from behavioural signals (first diagnostics, an answered feature
- * request, an initialization notification); a server that starts but never delivers one of those would
- * otherwise spin in the status strip forever. This backstop bounds that wait, leaving the session with
- * its restart affordance rather than an endless spinner. It sits comfortably above the main process's
- * 60-second `initialize` timeout — a genuine handshake failure resolves as unavailable well before the
- * watchdog fires — so this only catches the case where a started server never proves itself ready.
+ * How long a server may sit in its starting state before the watchdog flags it as stalled. Readiness
+ * is inferred from behavioural signals (first diagnostics, an answered feature request, an
+ * initialization notification); a server that starts but never delivers one of those would otherwise
+ * spin in the status strip with no way to act on it. The watchdog does **not** declare the server
+ * failed — it has no evidence of that, and a heavy server can legitimately take longer — it keeps the
+ * row starting, says how long it has been, and unlocks the restart affordance so a genuinely stuck
+ * server can be recovered by hand. It sits comfortably above the main process's 60-second `initialize`
+ * timeout, so a real handshake failure resolves as unavailable (with its reason) well before this.
  */
 const READINESS_WATCHDOG_MS: number = 120_000;
+
+/**
+ * The detail shown once the watchdog has fired for a session still starting.
+ */
+const STALLED_DETAIL: string = 'Still starting after two minutes — restart if it seems stuck.';
 
 /**
  * Holds a tracked server's identity, current state, and the callback that restarts it. One entry
@@ -42,6 +48,16 @@ interface ServerEntry {
    * Gets a reason for the state (for example why the server is unavailable), or undefined.
    */
   readonly detail?: string;
+
+  /**
+   * Gets what the server last reported it was doing through work-done progress, or undefined.
+   */
+  readonly progress?: string;
+
+  /**
+   * Gets whether the server has been starting for longer than the watchdog allows.
+   */
+  readonly stalled: boolean;
 
   /**
    * Restarts the server: tears the running session down and re-opens its documents against a new one.
@@ -82,6 +98,18 @@ export interface LspServer {
    * Gets a reason for the state (for example why the server is unavailable), or undefined.
    */
   readonly detail?: string;
+
+  /**
+   * Gets what the server last reported it was doing (its work-done progress), or undefined. Only
+   * meaningful while starting: a loading server names what it is loading.
+   */
+  readonly progress?: string;
+
+  /**
+   * Gets whether the server has been starting for longer than the readiness watchdog allows, so the
+   * menu can offer a restart for a server that may be stuck without declaring it failed.
+   */
+  readonly stalled: boolean;
 }
 
 /**
@@ -139,6 +167,8 @@ export class LspStatus {
           rootPath: entry.rootPath,
           state: entry.state,
           detail: entry.detail,
+          progress: entry.progress,
+          stalled: entry.stalled,
         }),
       )
       .sort(
@@ -163,10 +193,27 @@ export class LspStatus {
       serverId: server.serverId,
       rootPath: server.rootPath,
       state: 'starting',
+      stalled: false,
       restart: server.restart,
     });
     this.entries.set(next);
     this.armWatchdog(sessionId);
+  }
+
+  /**
+   * Records what a starting server last reported it was doing, or clears it. Ignored when the session
+   * is not tracked.
+   * @param sessionId The session reporting progress.
+   * @param progress The progress text, or null once every progress token has ended.
+   */
+  public setProgress(sessionId: string, progress: string | null): void {
+    const current: ServerEntry | undefined = this.entries().get(sessionId);
+    if (current === undefined || (current.progress ?? null) === progress) {
+      return;
+    }
+    const next: Map<string, ServerEntry> = new Map<string, ServerEntry>(this.entries());
+    next.set(sessionId, { ...current, progress: progress ?? undefined });
+    this.entries.set(next);
   }
 
   /**
@@ -181,7 +228,9 @@ export class LspStatus {
       return;
     }
     const next: Map<string, ServerEntry> = new Map<string, ServerEntry>(this.entries());
-    next.set(sessionId, { ...current, state, detail });
+    // A settled state ends the server's loading story: its progress and any stall flag are cleared.
+    // A move into starting clears them too — a restart begins a fresh load.
+    next.set(sessionId, { ...current, state, detail, progress: undefined, stalled: false });
     this.entries.set(next);
     this.log.debug('LspStatus', `Server '${current.serverId}' -> ${state}`, sessionId);
     // A move back into starting (a restart) re-arms the watchdog; settling to ready or unavailable
@@ -227,10 +276,10 @@ export class LspStatus {
 
   /**
    * Arms (or re-arms) the readiness watchdog for a session that has just entered its starting state.
-   * When it fires, a session still stuck in starting is marked unavailable so it reads as recoverable
-   * (with its restart affordance) rather than spinning forever; a later readiness signal that beats the
-   * watchdog clears it via {@link setState}, and a genuinely ready server that answers slowly afterwards
-   * still flips itself back to ready.
+   * When it fires, a session still starting is flagged stalled: it stays starting (the watchdog has no
+   * evidence the server failed, only that it is slow), gains a detail saying so, and its restart
+   * affordance unlocks so a genuinely stuck server can be recovered by hand. A readiness signal
+   * arriving later still flips it to ready as normal.
    * @param sessionId The session to watch.
    */
   private armWatchdog(sessionId: string): void {
@@ -239,18 +288,14 @@ export class LspStatus {
       sessionId,
       setTimeout((): void => {
         this.watchdogs.delete(sessionId);
-        if (this.entries().get(sessionId)?.state === 'starting') {
-          this.log.warn(
-            'LspStatus',
-            'Server readiness watchdog fired; marking unavailable',
-            sessionId,
-          );
-          this.setState(
-            sessionId,
-            'unavailable',
-            'The server did not report ready in time. Restart it to try again.',
-          );
+        const current: ServerEntry | undefined = this.entries().get(sessionId);
+        if (current?.state !== 'starting') {
+          return;
         }
+        this.log.warn('LspStatus', 'Server readiness watchdog fired; flagging stalled', sessionId);
+        const next: Map<string, ServerEntry> = new Map<string, ServerEntry>(this.entries());
+        next.set(sessionId, { ...current, stalled: true, detail: STALLED_DETAIL });
+        this.entries.set(next);
       }, READINESS_WATCHDOG_MS),
     );
   }

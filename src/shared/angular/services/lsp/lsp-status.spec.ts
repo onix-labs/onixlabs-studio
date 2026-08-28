@@ -117,14 +117,46 @@ describe('LspStatus', () => {
     expect(status.servers()).toEqual([]);
   });
 
-  it('watchdog_whenStartingTooLong_marksServerUnavailable', () => {
+  it('watchdog_whenStartingTooLong_flagsTheServerStalledButNotFailed', () => {
+    // The watchdog has no evidence of failure, only of slowness: the row stays starting, says how
+    // long it has been, and unlocks the restart affordance. It used to declare the server failed,
+    // which fabricated "did not report ready" verdicts for servers that were merely quiet or slow.
     register('/root::java', 'java', '/root');
 
     vi.advanceTimersByTime(WATCHDOG_MS);
 
     const server: LspServer = status.servers()[0];
-    expect(server.state).toBe('unavailable');
-    expect(server.detail).toContain('Restart it');
+    expect(server.state).toBe('starting');
+    expect(server.stalled).toBe(true);
+    expect(server.detail).toContain('restart');
+  });
+
+  it('watchdog_stalledServerThatBecomesReady_isReadyAndNoLongerStalled', () => {
+    register('/root::java', 'java', '/root');
+    vi.advanceTimersByTime(WATCHDOG_MS);
+    status.setState('/root::java', 'ready');
+
+    const server: LspServer = status.servers()[0];
+    expect(server.state).toBe('ready');
+    expect(server.stalled).toBe(false);
+    expect(server.detail).toBeUndefined();
+  });
+
+  it('setProgress_showsWhatAStartingServerIsDoing_andClearsOnSettle', () => {
+    register('/root::csharp', 'csharp', '/root');
+    status.setProgress('/root::csharp', 'Loading solution — 40%');
+
+    expect(status.servers()[0].progress).toBe('Loading solution — 40%');
+
+    status.setState('/root::csharp', 'ready');
+
+    expect(status.servers()[0].progress).toBeUndefined();
+  });
+
+  it('setProgress_whenSessionUnknown_isIgnored', () => {
+    status.setProgress('/root::csharp', 'x');
+
+    expect(status.servers()).toEqual([]);
   });
 
   it('watchdog_whenServerBecomesReadyFirst_leavesItReady', () => {
@@ -153,6 +185,6 @@ describe('LspStatus', () => {
 
     vi.advanceTimersByTime(WATCHDOG_MS);
 
-    expect(status.servers()[0].state).toBe('unavailable');
+    expect(status.servers()[0].stalled).toBe(true);
   });
 });

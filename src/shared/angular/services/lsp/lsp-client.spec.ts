@@ -113,6 +113,10 @@ class FakeLsp implements Bridge {
     });
   }
 
+  public notify(sessionId: string, method: string, params: unknown): void {
+    this.notificationListener?.({ sessionId, method, params });
+  }
+
   public logMessage(sessionId: string, message: string): void {
     this.notificationListener?.({
       sessionId,
@@ -843,6 +847,62 @@ describe('LspClient', () => {
     } finally {
       vi.restoreAllMocks();
     }
+  });
+
+  it('failedStart_syncingDuringTheCooldown_leavesTheRealReasonInPlace', async () => {
+    // Every document sync during the cooldown used to re-register the row as "starting" (re-arming
+    // the readiness watchdog) and then bail — a spinner for a server nothing was starting, followed,
+    // once typing paused, by a fabricated "did not report ready in time". The failure's own reason
+    // must stay on the row until a real attempt replaces it.
+    lsp.startResult = {
+      success: false,
+      error: 'The TypeScript language server is not installed — install it in Plugins.',
+    };
+    const client: LspClient = build();
+    const status: LspStatus = TestBed.inject(LspStatus);
+    const base: { documentId: string; path: string; languageId: string; content: string } = {
+      documentId: 'doc-1',
+      path: '/root/a.ts',
+      languageId: 'typescript',
+      content: '',
+    };
+    client.syncDocument(base);
+    await flush();
+    expect(status.stateOf('/root::typescript')).toBe('unavailable');
+
+    client.syncDocument({ ...base, content: 'x' });
+    await flush();
+
+    expect(lsp.starts).toHaveLength(1);
+    expect(status.stateOf('/root::typescript')).toBe('unavailable');
+    expect(status.servers()[0].detail).toContain('not installed');
+  });
+
+  it('progress_whileStarting_isShownOnTheStatusRow_andClearsWhenEveryTokenEnds', async () => {
+    const client: LspClient = build();
+    const status: LspStatus = TestBed.inject(LspStatus);
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/root/Program.cs',
+      languageId: 'csharp',
+      content: '',
+    });
+    await flush();
+
+    lsp.notify('/root::csharp', '$/progress', {
+      token: 'load',
+      value: { kind: 'begin', title: 'Loading solution' },
+    });
+    expect(status.servers()[0].progress).toBe('Loading solution');
+
+    lsp.notify('/root::csharp', '$/progress', {
+      token: 'load',
+      value: { kind: 'report', message: 'Restoring packages', percentage: 40 },
+    });
+    expect(status.servers()[0].progress).toBe('Loading solution — Restoring packages — 40%');
+
+    lsp.notify('/root::csharp', '$/progress', { token: 'load', value: { kind: 'end' } });
+    expect(status.servers()[0].progress).toBeUndefined();
   });
 
   it('failedStart_blocksImmediateRetry_untilTheCooldownPasses', async () => {

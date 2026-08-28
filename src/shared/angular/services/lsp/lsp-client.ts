@@ -432,6 +432,15 @@ export class LspClient implements OnDestroy {
   >();
 
   /**
+   * Holds, per session, the title of every work-done progress token the server has begun and not yet
+   * ended, keyed by token, so a `report` carrying only a message still reads under its title.
+   */
+  private readonly progressTitles: Map<string, Map<string, string>> = new Map<
+    string,
+    Map<string, string>
+  >();
+
+  /**
    * Holds whether this client's sessions are currently suspended (its view hidden long enough to
    * release its servers), so {@link resume} knows there is something to bring back.
    */
@@ -1236,31 +1245,34 @@ export class LspClient implements OnDestroy {
       return Promise.resolve(false);
     }
     this.sessionInfo.set(sessionId, { serverId, rootPath, standaloneFile });
+    const entry: { serverId: string; rootPath: string; restart: () => void } = {
+      serverId,
+      rootPath,
+      restart: (): void => void this.restart(sessionId),
+    };
     // A crash-looping or repeatedly-failing server is left unavailable (with its restart affordance)
     // rather than re-spawned: without this, a server that dies on startup would spin in a
     // spawn/crash cycle driven by every document sync.
     const blockReason: string | null = this.startBlockReason(sessionId);
     if (blockReason !== null) {
-      this.status.register(sessionId, {
-        serverId,
-        rootPath,
-        restart: (): void => void this.restart(sessionId),
-      });
+      if (this.status.stateOf(sessionId) === null) {
+        this.status.register(sessionId, entry);
+      }
       this.status.setState(sessionId, 'unavailable', blockReason);
       const blocked: Promise<boolean> = Promise.resolve(false);
       this.sessions.set(sessionId, blocked);
       return blocked;
     }
     // A recent failed start blocks another attempt for a cooldown, without caching the failure, so a
-    // later document sync retries once the cooldown has passed.
+    // later document sync retries once the cooldown has passed. The status row is left exactly as
+    // the failure set it — unavailable, with the real reason. Registering here would flip it back to
+    // "starting" (and re-arm the readiness watchdog) on every keystroke for a server nothing is
+    // starting, which is how a failed resolution used to read as a spinner and then, once typing
+    // paused, as a fabricated "did not report ready in time".
     if (this.inStartCooldown(sessionId)) {
       return Promise.resolve(false);
     }
-    this.status.register(sessionId, {
-      serverId,
-      rootPath,
-      restart: (): void => void this.restart(sessionId),
-    });
+    this.status.register(sessionId, entry);
     this.log.info('LspClient', `Starting server '${serverId}'`, rootPath);
     const pending: Promise<boolean> = this.bridge
       .invoke<LspStartResult>(LspChannel.Start, { sessionId, serverId, rootPath, standaloneFile })
@@ -1390,6 +1402,13 @@ export class LspClient implements OnDestroy {
       this.scheduleRecolor(message.sessionId);
       return;
     }
+    // A loading server (Roslyn restoring a solution, jdtls importing a build) reports what it is doing
+    // through work-done progress. Surfacing it is what makes a long start read as "loading X" rather
+    // than an inert spinner that might as well be a hang.
+    if (message.method === '$/progress') {
+      this.onProgress(message.sessionId, message.params);
+      return;
+    }
     // Route the server's own logs into a per-server Output channel (created lazily on first log, so a
     // silent server adds no channel). Not revealed — logs must not steal the panel from a running build.
     if (message.method === 'window/logMessage' || message.method === 'window/showMessage') {
@@ -1411,6 +1430,57 @@ export class LspClient implements OnDestroy {
     // on the transition. A loading server (Roslyn analysing a solution) streams diagnostics for many
     // files; refreshing on every push would fan token requests out continuously.
     this.markReady(message.sessionId);
+  }
+
+  /**
+   * Folds a `$/progress` notification into the session's status row. Each work-done token keeps its
+   * `begin` title so later `report`s (which carry only a message or percentage) still read as "what";
+   * the row shows the most recently reported token, and clears once every token has ended.
+   * @param sessionId The session the progress belongs to.
+   * @param params The notification parameters (`token` and `value`).
+   */
+  private onProgress(sessionId: string, params: unknown): void {
+    const candidate: {
+      token?: unknown;
+      value?: { kind?: unknown; title?: unknown; message?: unknown; percentage?: unknown };
+    } | null = (params as typeof candidate) ?? null;
+    if (
+      candidate === null ||
+      (typeof candidate.token !== 'string' && typeof candidate.token !== 'number') ||
+      typeof candidate.value !== 'object' ||
+      candidate.value === null
+    ) {
+      return;
+    }
+    const tokens: Map<string, string> =
+      this.progressTitles.get(sessionId) ?? new Map<string, string>();
+    this.progressTitles.set(sessionId, tokens);
+    const token: string = String(candidate.token);
+    const value: { kind?: unknown; title?: unknown; message?: unknown; percentage?: unknown } =
+      candidate.value;
+    if (value.kind === 'end') {
+      tokens.delete(token);
+      this.status.setProgress(
+        sessionId,
+        tokens.size === 0 ? null : [...tokens.values()][tokens.size - 1],
+      );
+      return;
+    }
+    if (value.kind === 'begin' && typeof value.title === 'string') {
+      tokens.set(token, value.title);
+    }
+    const title: string | undefined = tokens.get(token);
+    if (title === undefined) {
+      return;
+    }
+    const parts: string[] = [title];
+    if (typeof value.message === 'string' && value.message.length > 0) {
+      parts.push(value.message);
+    }
+    if (typeof value.percentage === 'number') {
+      parts.push(`${Math.round(value.percentage)}%`);
+    }
+    this.status.setProgress(sessionId, parts.join(' — '));
   }
 
   /**

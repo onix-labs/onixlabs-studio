@@ -53,6 +53,9 @@ const SHUTDOWN_TIMEOUT_MS: number = 3000;
  * costs an IPC hop.
  */
 const FORWARDED_NOTIFICATIONS: ReadonlySet<string> = new Set<string>([
+  // Work-done progress is what a loading server says about itself; it is forwarded so a long start
+  // shows what is loading rather than an inert spinner. (Telemetry and log chatter stay dropped.)
+  '$/progress',
   'textDocument/publishDiagnostics',
   'workspace/projectInitializationComplete',
   'workspace/semanticTokens/refresh',

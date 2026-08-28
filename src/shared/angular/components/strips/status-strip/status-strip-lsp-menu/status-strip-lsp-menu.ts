@@ -97,7 +97,9 @@ export class StatusStripLspMenu {
   protected statusText(server: LspServer): string {
     switch (server.state) {
       case 'starting':
-        return 'Starting…';
+        // What the server says it is doing beats a generic label; a stall is worth saying; only then
+        // the bare "Starting…".
+        return server.progress ?? server.detail ?? 'Starting…';
       case 'ready':
         return 'Ready';
       default:
