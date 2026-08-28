@@ -10,7 +10,7 @@
 >
   <app-icon [icon]="Icon.BELL" />
   @if (unseenCount() > 0) {
-    <span class="notifications-menu__count">{{ unseenCount() }}</span>
+    <span class="notifications-menu__count">{{ countLabel() }}</span>
   }
 </button>
 
