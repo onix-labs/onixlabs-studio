@@ -30,19 +30,21 @@ import { Button } from '@shared/angular/components/forms/button/button';
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (plugin(); as pending) {
-      <app-modal
-        [open]="true"
-        [width]="32"
-        [ariaLabel]="'Install ' + pending.name"
-        (dismiss)="declined.emit()"
-      >
+      <app-modal [open]="true" [width]="32" [ariaLabel]="title()" (dismiss)="declined.emit()">
         <ng-template appModalContent>
           <div class="consent">
-            <h2 class="consent__title">Install {{ pending.name }}?</h2>
+            <h2 class="consent__title">{{ title() }}?</h2>
 
             <dl class="consent__facts">
-              <dt>Version</dt>
-              <dd>{{ pending.version }}</dd>
+              @if (pending.installedVersion; as installed) {
+                <dt>Installed</dt>
+                <dd>{{ installed }}</dd>
+                <dt>Updating to</dt>
+                <dd>{{ pending.version }}</dd>
+              } @else {
+                <dt>Version</dt>
+                <dd>{{ pending.version }}</dd>
+              }
               @if (origin(); as summary) {
                 <dt>Downloads</dt>
                 <dd>{{ summary }}</dd>
@@ -61,7 +63,7 @@ import { Button } from '@shared/angular/components/forms/button/button';
 
             <div class="consent__actions">
               <app-button label="Cancel" (click)="declined.emit()" />
-              <app-button variant="solid" label="Accept and install" (click)="accepted.emit()" />
+              <app-button variant="solid" [label]="confirmLabel()" (click)="accepted.emit()" />
             </div>
           </div>
         </ng-template>
@@ -128,6 +130,28 @@ export class PluginConsentModal {
    * written, so declining and closing mean the same thing and are deliberately the same outcome.
    */
   public readonly declined: OutputEmitterRef<void> = output<void>();
+
+  /**
+   * Gets whether this is a new install or a replacement of one already accepted.
+   */
+  private readonly updating: Signal<boolean> = computed((): boolean => {
+    const pending: PluginSummary | null = this.plugin();
+    return pending !== null && pending.installedVersion !== null;
+  });
+
+  /**
+   * Gets the heading, which names what is about to happen rather than assuming an install.
+   */
+  protected readonly title: Signal<string> = computed(
+    (): string => `${this.updating() ? 'Update' : 'Install'} ${this.plugin()?.name ?? ''}`,
+  );
+
+  /**
+   * Gets the confirming action's label.
+   */
+  protected readonly confirmLabel: Signal<string> = computed((): string =>
+    this.updating() ? 'Accept and update' : 'Accept and install',
+  );
 
   /**
    * Gets what actually arrives, in the terms the user is being asked to accept, or null when Studio

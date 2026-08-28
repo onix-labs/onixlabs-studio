@@ -136,6 +136,15 @@ export interface PluginSummary {
   readonly detail: string | null;
 
   /**
+   * Gets the version actually on disk, or null when the plugin is not installed.
+   *
+   * Not the same as {@link version}, which is the version the catalogue currently offers. They differ
+   * exactly when an update is waiting: the user consented to what is installed, and a newer entry does
+   * not get to arrive without being asked for.
+   */
+  readonly installedVersion: string | null;
+
+  /**
    * Gets where the payload comes from, or null when Studio cannot say — a plugin built from source or
    * provisioned by first-party code that fetches nothing pinned. Null is shown as "Studio cannot
    * describe what this installs", never as an absence of risk.

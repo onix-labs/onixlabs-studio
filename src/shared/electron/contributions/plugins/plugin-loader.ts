@@ -381,6 +381,8 @@ export function toPluginDescriptor(manifest: PluginManifest): PluginDescriptor {
       Promise.resolve(ops.isInstalled(context.provisioner)),
     install: (context: PluginContext): Promise<string | null> => ops.ensure(context.provisioner),
     uninstall: (context: PluginContext): Promise<void> => ops.remove(context.provisioner),
+    pruneOtherVersions: (context: PluginContext): Promise<void> =>
+      context.provisioner.pruneOtherVersions(manifest.id, manifest.version),
   };
 }
 

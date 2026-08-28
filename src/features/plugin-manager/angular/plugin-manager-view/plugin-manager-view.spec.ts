@@ -31,6 +31,7 @@ function summary(overrides: Partial<PluginSummary> = {}): PluginSummary {
     version: '0.15.0',
     detail: null,
     origin: { hosts: ['registry.npmjs.org'], packageCount: 11 },
+    installedVersion: null,
     ...overrides,
   };
 }
@@ -212,6 +213,46 @@ describe('PluginManagerView', () => {
 
     expect(stub.installed).toEqual(['dockerfile-language-server']);
     expect(windows.openWindows).toBe(0);
+  });
+
+  it('anOutdatedInstall_offersAnUpdateRatherThanTakingOne', () => {
+    // The user consented to a version. A catalogue that has moved on is an offer, not something that
+    // arrives on its own — and the row says so rather than reading "Installed" while running old code.
+    render([summary({ state: 'installed', version: '2.0.0', installedVersion: '1.0.0' })]);
+
+    const text: string = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(text).toContain('Update available');
+    expect(text).toContain('1.0.0');
+    expect(text).toContain('2.0.0');
+    expect(stub.installed).toEqual([]);
+  });
+
+  it('update_asksAgainBeforeReplacingWhatWasAccepted', () => {
+    render([summary({ state: 'installed', version: '2.0.0', installedVersion: '1.0.0' })]);
+
+    click('Update');
+
+    expect(stub.installed).toEqual([]);
+    expect(windows.openWindows).toBe(1);
+    expect(modalText()).toContain('Update Dockerfile Language Server?');
+    expect(modalText()).toContain('Accept and update');
+  });
+
+  it('update_acceptedInstallsTheOfferedVersion', () => {
+    render([summary({ state: 'installed', version: '2.0.0', installedVersion: '1.0.0' })]);
+    click('Update');
+
+    clickIn(windows.contentHost, 'Accept and update');
+
+    expect(stub.installed).toEqual(['dockerfile-language-server']);
+  });
+
+  it('anUpToDateInstall_offersNoUpdate', () => {
+    render([summary({ state: 'installed', version: '1.0.0', installedVersion: '1.0.0' })]);
+    const text: string = (fixture.nativeElement as HTMLElement).textContent ?? '';
+
+    expect(text).toContain('Installed');
+    expect(text).not.toContain('Update available');
   });
 
   it('uninstall_isNotGatedByTheTerms', () => {

@@ -97,6 +97,10 @@ export class PluginManager {
           error: descriptor.detail ?? `${descriptor.name} could not be installed.`,
         };
       }
+      // Installs are version-scoped, so installing a newer entry leaves the version it replaced beside
+      // it. Pruning here is what makes an update a replacement rather than an accumulation — and it
+      // happens only after the new one verified, so a failed update leaves the working install alone.
+      await descriptor.pruneOtherVersions?.(this.context);
       this.store.add({ id, version: descriptor.version ?? 'unknown', installedPath });
       logger.info('PluginManager', `Installed ${id} at ${installedPath}`);
       return { success: true, state: 'installed', error: null };
@@ -155,6 +159,7 @@ export class PluginManager {
       version: descriptor.version,
       detail: state === 'installed' ? null : (descriptor.detail ?? null),
       origin: descriptor.origin ?? null,
+      installedVersion: this.store.get(descriptor.id)?.version ?? null,
     };
   }
 

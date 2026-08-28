@@ -91,6 +91,14 @@ export interface PluginDescriptor {
   readonly origin?: PluginOrigin;
 
   /**
+   * Removes any of this plugin's installs other than the version it currently offers, after that
+   * version has installed successfully. Absent for a descriptor whose installs are not version-scoped.
+   * @param context The surface the descriptor reaches the application through.
+   * @returns Returns a promise that resolves once older installs are gone.
+   */
+  pruneOtherVersions?(context: PluginContext): Promise<void>;
+
+  /**
    * Gets whether the plugin can be installed on this machine at all. A plugin whose publisher ships no
    * build for this platform is not "not installed yet" — it is not on offer, and an Install button that
    * could only ever fail is worse than none. Absent means always installable.

@@ -10,7 +10,12 @@ import { promisify } from 'node:util';
 import { createGunzip } from 'node:zlib';
 import { logger } from '../logger';
 import { ArchiveProvision } from '../provisioning/archive-provision';
-import { ArchiveProvisioner, isComplete, markComplete } from '../provisioning/archive-provisioner';
+import {
+  ArchiveProvisioner,
+  isComplete,
+  markComplete,
+  pruneVersions,
+} from '../provisioning/archive-provisioner';
 import { LockfileProvision } from '../provisioning/lockfile-provision';
 import { LockfileProvisioner } from '../provisioning/lockfile-provisioner';
 import { bundledLockfile } from '../contributions/plugins/bundled-lockfiles';
@@ -471,6 +476,17 @@ export class LspProvisioner {
    */
   public treeDirectory(provision: LockfileProvision): string | null {
     return this.trees.directoryOf(provision);
+  }
+
+  /**
+   * Removes every install of a component except the version named. Called after that version has
+   * installed and verified, so an update replaces the one it supersedes instead of piling up beside it.
+   * @param id The component identifier.
+   * @param keep The version to keep.
+   * @returns Returns a promise that resolves once older versions are gone.
+   */
+  public pruneOtherVersions(id: string, keep: string): Promise<void> {
+    return pruneVersions(this.serversRoot(), id, keep, 'LspProvisioner');
   }
 
   /**

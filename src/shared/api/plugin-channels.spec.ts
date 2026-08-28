@@ -27,6 +27,7 @@ function plugin(
     version: '1.0.0',
     detail: null,
     origin: null,
+    installedVersion: null,
   };
 }
 
