@@ -101,6 +101,28 @@ function computeChange(
 }
 
 /**
+ * Decides whether a fence in the given element may take its input through Monaco's newer EditContext,
+ * or must fall back to the text area.
+ *
+ * The EditContext path deliberately does not trust a focus event: it confirms focus by comparing its
+ * element against the active element of the *active document*, which Monaco resolves to the document
+ * it was loaded into — the main window's — unless another window has been registered with it, and the
+ * standalone API exposes no way to register one. So for a fence in another window (a modal, which is
+ * how the agent composer's markdown editor is presented, or a popped-out panel) that comparison can
+ * never match: the editor is held to be unfocused, and an unfocused editor hides its caret. The
+ * element really is focused and typing really does work — the caret alone goes missing.
+ *
+ * The text-area path takes focus from the element's own focus event, so it is right in any document.
+ * It is the older of the two and marginally worse for IME, which is why it is used only where the
+ * newer one cannot tell whether it has focus.
+ * @param element An element of the fence, once it is in the document that will show it.
+ * @returns Returns true when the fence is in Monaco's own document.
+ */
+export function usesEditContext(element: HTMLElement): boolean {
+  return element.ownerDocument === document;
+}
+
+/**
  * Escapes the HTML-significant characters in text, for the placeholder shown before Monaco has
  * colorized the fence.
  * @param text The raw text.
@@ -405,6 +427,14 @@ class MonacoCodeBlockView implements NodeView {
     host.className = 'milkdown-monaco-code-block__editor';
     this.body.appendChild(host);
 
+    const options: MonacoApi.editor.IStandaloneEditorConstructionOptions =
+      this.deps.monaco.getEditorOptions(this.resolvedLanguageId());
+    // The chosen blinking style is published on the host so a window Monaco cannot see the focus of
+    // can blink the caret itself, following the same setting (see `_milkdown.scss`). Read at mount,
+    // which is when the editor takes the rest of its options, and a fence is mounted only for as long
+    // as it is being typed in.
+    host.dataset['caretBlink'] = options.cursorBlinking ?? 'blink';
+
     const model: MonacoApi.editor.ITextModel = monaco.editor.createModel(
       this.node.textContent,
       this.resolvedLanguageId(),
@@ -412,12 +442,13 @@ class MonacoCodeBlockView implements NodeView {
     this.editor = monaco.editor.create(host, {
       // The font (family and size) comes from the code-editor settings, exactly as the placeholder is
       // styled, so entering a fence does not resize its text.
-      ...this.deps.monaco.getEditorOptions(this.resolvedLanguageId()),
+      ...options,
       model,
       // Colour with the syntactic (Monarch) tokenizer only — the same colours `colorize` gives the
       // static placeholder and the agent bubbles — not the semantic tokens the code-editor tabs add,
       // so the fence looks identical entered and idle, and stays cheap on long documents.
       'semanticHighlighting.enabled': false,
+      editContext: usesEditContext(this.dom),
       // A value in (0, 8) is a multiplier of the font size; match the placeholder's line height.
       lineHeight: FENCE_LINE_HEIGHT,
       // A fence is a compact, chromeless surface, not a full page: no line numbers, gutter, minimap,

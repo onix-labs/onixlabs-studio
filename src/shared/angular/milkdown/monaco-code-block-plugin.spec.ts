@@ -1,5 +1,9 @@
 import { Crepe } from '@milkdown/crepe';
-import { createMonacoCodeBlockPlugin, MonacoCodeBlockDeps } from './monaco-code-block-plugin';
+import {
+  createMonacoCodeBlockPlugin,
+  MonacoCodeBlockDeps,
+  usesEditContext,
+} from './monaco-code-block-plugin';
 
 /**
  * Builds fake Monaco services for the node view: Monaco never "loads", so the view stays on its
@@ -63,5 +67,18 @@ describe('MonacoCodeBlock plugin', () => {
 
     await crepe.destroy();
     root.remove();
+  });
+
+  it('takesInputThroughTheTextArea_whenTheFenceIsInAnotherWindowsDocument', () => {
+    // Monaco confirms focus against the active element of the document it was loaded into, so a fence
+    // in another window (a modal — how the agent composer's markdown editor is presented) is held to
+    // be unfocused and hides its caret. The text-area path reads focus from the element itself.
+    const here: HTMLElement = document.createElement('div');
+    const elsewhere: HTMLElement = document.implementation
+      .createHTMLDocument('modal')
+      .createElement('div');
+
+    expect(usesEditContext(here)).toBe(true);
+    expect(usesEditContext(elsewhere)).toBe(false);
   });
 });

@@ -1178,6 +1178,74 @@ app-markdown-editor .milkdown {
   app-markdown-editor .milkdown .ProseMirror.virtual-cursor-enabled {
     caret-color: var(--crepe-color-on-surface);
   }
+
+  // A code fence in one of those windows has the same fault one layer down, in Monaco. It draws its
+  // own caret rather than using the platform's, and paints it from a theme rule it writes into the
+  // document it was loaded into — the opener's — and hides it (inline `visibility: hidden`) whenever
+  // it believes the editor is unfocused, which it settles by comparing against the active element of
+  // that same opener document. A child window is neither, so in one the caret is hidden, uncoloured,
+  // or both.
+  //
+  // Stating it here covers all of that: shown, and painted in the fence's own text colour. A fence's
+  // editor exists only while it is focused — it is torn down to a static placeholder on blur — so a
+  // caret that is always shown while the editor is mounted is exactly right. It does not blink, which
+  // is what Monaco itself does for a read-only editor, and is worth a great deal more than no caret.
+  .milkdown-monaco-code-block__editor .monaco-editor .cursors-layer > .cursor {
+    visibility: visible !important;
+    background-color: var(--crepe-color-on-surface);
+  }
+
+  // Monaco starts no blink animation for an editor it holds to be unfocused, so a caret shown by the
+  // rule above would sit there solid. The blink is driven from here instead, following the same
+  // Text Editor > Cursor blinking setting the mounted editor was given (published by the node view as
+  // `data-caret-blink`), so a fence in a child window blinks as a code tab does.
+  //
+  // Monaco's own keyframes are reused rather than restated — they are its animation, and they are in
+  // the stylesheets every window carries. Its own rules run them 20 times and restart them on
+  // activity; here they simply repeat, since nothing restarts them. `solid` names no animation, which
+  // is the standing caret it asks for.
+  .milkdown-monaco-code-block__editor[data-caret-blink='blink']
+    .monaco-editor
+    .cursors-layer
+    > .cursor {
+    animation: milkdown-fence-caret-blink 1s step-end infinite;
+  }
+
+  .milkdown-monaco-code-block__editor[data-caret-blink='smooth']
+    .monaco-editor
+    .cursors-layer
+    > .cursor {
+    animation: monaco-cursor-smooth 0.5s ease-in-out 0s infinite alternate;
+  }
+
+  .milkdown-monaco-code-block__editor[data-caret-blink='phase']
+    .monaco-editor
+    .cursors-layer
+    > .cursor {
+    animation: monaco-cursor-phase 0.5s ease-in-out 0s infinite alternate;
+  }
+
+  .milkdown-monaco-code-block__editor[data-caret-blink='expand']
+    .monaco-editor
+    .cursors-layer
+    > .cursor {
+    animation: monaco-cursor-expand 0.5s ease-in-out 0s infinite alternate;
+  }
+}
+
+// The flat blink is the one style Monaco runs from JavaScript rather than a keyframe (it toggles the
+// caret's visibility on a timer), so it is the one that has to be stated here: fully on, then fully
+// off, on Monaco's own half-second beat.
+@keyframes milkdown-fence-caret-blink {
+  0%,
+  49.9% {
+    opacity: 1;
+  }
+
+  50%,
+  100% {
+    opacity: 0;
+  }
 }
 
 @keyframes crepe-virtual-cursor-blink {
