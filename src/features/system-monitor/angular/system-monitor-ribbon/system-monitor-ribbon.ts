@@ -47,11 +47,14 @@ export class SystemMonitorRibbon {
         id: 'edit',
         label: 'Edit',
         items: [
+          // Never disabled, unlike the ribbon's Copy button: this entry also carries ⌘C for a text
+          // box focused anywhere on the tab, and a disabled entry's accelerator is dead. Copying an
+          // empty audit is a no-op rather than an error, so nothing is lost by leaving it enabled.
           {
             id: 'monitor.copy',
             label: 'Copy',
             accelerator: 'CmdOrCtrl+C',
-            enabled: this.hasRecords(),
+            editingRole: 'copy',
             run: (): void => this.onCopy(),
           },
         ],

@@ -3,6 +3,7 @@ import { MenuChannel, MenuClient } from '@shared/api/menu-channels';
 import { AppMenuItem, AppMenuSection } from '@shared/api/menu-types';
 import { Bridge } from '@shared/api/bridge';
 import { Log } from '@shared/angular/services/log/log';
+import { focusedTextInput } from '@shared/angular/services/editing-chords/text-input-focus';
 import { MenuContribution, MenuEntry } from './app-menu-model';
 
 /**
@@ -29,6 +30,8 @@ interface ContributionEntry {
  * a feature adds *to* File rather than creating a second one. Where the two want the same keyboard
  * chord the later contributor wins it outright: the core's Edit section carries the platform's editing
  * commands for every tab that has none of its own, and a feature takes back only the chords it declares.
+ * A feature that takes back an *editing* chord declares the role it stands for as well, so the chord
+ * still reaches whatever text box has focus and runs the feature's own command only when none has.
  *
  * Handlers never leave the renderer. The published model carries command ids; a chosen command comes
  * back by id and is routed to the handler registered under it. That indirection is what lets the menu be
@@ -161,6 +164,14 @@ export class AppMenu {
       return;
     }
     this.log.debug('AppMenu', `Menu command '${commandId}'`);
+    // An editing chord belongs to whatever the user is typing into. A tab that binds one to something
+    // of its own declares the role it stands for, and the platform's behaviour wins while a text box
+    // has focus — otherwise the tab's command would run wherever the caret happened to be.
+    if (entry.editingRole !== undefined && focusedTextInput(document) !== null) {
+      this.log.debug('AppMenu', `Deferring '${commandId}' to the focused text box`);
+      this.client?.runRole(entry.editingRole);
+      return;
+    }
     if (entry.run !== undefined) {
       entry.run();
       return;

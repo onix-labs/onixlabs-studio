@@ -231,19 +231,23 @@ export class CodeRibbon {
           id: 'code.undo',
           label: 'Undo',
           accelerator: 'CmdOrCtrl+Z',
+          editingRole: 'undo',
           run: (): void => this.onUndo(),
         },
         {
           id: 'code.redo',
           label: 'Redo',
           accelerator: 'CmdOrCtrl+Shift+Z',
+          editingRole: 'redo',
           run: (): void => this.onRedo(),
         },
         // Cut, Copy and Paste are deliberately not here. The core contributes them as native roles,
         // which go to whatever holds focus — so the chord reaches a docked panel's text box rather than
-        // being taken by this editor whenever a code tab happens to be in front. Undo and Redo stay:
-        // those are this editor's own model-level history, not the focused element's. The ribbon's
-        // clipboard buttons remain, since pressing one is an explicit instruction to act on the editor.
+        // being taken by this editor whenever a code tab happens to be in front. Undo and Redo stay,
+        // because those are this editor's own model-level history rather than the focused element's —
+        // but they defer the same way, so ⌘Z in a composer beside the editor undoes the composer. The
+        // ribbon's clipboard buttons remain, since pressing one is an explicit instruction to act on
+        // the editor.
         MENU_SEPARATOR,
         {
           id: 'code.find',

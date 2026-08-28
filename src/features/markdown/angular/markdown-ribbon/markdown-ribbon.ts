@@ -265,21 +265,25 @@ export class MarkdownRibbon {
             id: 'markdown.undo',
             label: 'Undo',
             accelerator: 'CmdOrCtrl+Z',
-            enabled: this.canUndo(),
+            editingRole: 'undo',
             run: (): void => this.onUndo(),
           },
           {
             id: 'markdown.redo',
             label: 'Redo',
             accelerator: 'CmdOrCtrl+Shift+Z',
-            enabled: this.canRedo(),
+            editingRole: 'redo',
             run: (): void => this.onRedo(),
           },
           // Cut, Copy and Paste are deliberately not here. The core contributes them as native roles,
           // which go to whatever holds focus — this pane's own handlers force focus into the editor
           // first, so as a chord they took the clipboard from every other text box on the tab. Undo and
-          // Redo stay: those are the document's history, not the focused element's. The ribbon's
-          // clipboard buttons remain, since pressing one is an explicit instruction to act on the pane.
+          // Redo stay, because those are the document's history rather than the focused element's — but
+          // they defer the same way, so ⌘Z in a composer beside the pane undoes the composer. Neither is
+          // gated on `canUndo`/`canRedo` any more: a disabled entry's accelerator is dead, which would
+          // take ⌘Z from every text box on the tab whenever the document's own history was empty. The
+          // ribbon's clipboard buttons remain, since pressing one is an explicit instruction to act on
+          // the pane.
           MENU_SEPARATOR,
           {
             id: 'markdown.find',
