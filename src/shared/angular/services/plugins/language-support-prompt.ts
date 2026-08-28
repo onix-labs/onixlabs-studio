@@ -97,7 +97,9 @@ export class LanguageSupportPrompt {
         {
           label: `Install ${plugin.name}`,
           run: (): void => {
-            void this.plugins.install(plugin.id);
+            // Through the same terms as the Plugin Manager: a notification is another entry point
+            // to an install, not a shortcut past the question.
+            void this.plugins.installWithConsent(plugin.id);
           },
         },
       ],

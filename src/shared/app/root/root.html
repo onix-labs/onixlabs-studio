@@ -17,6 +17,10 @@
 <!-- The run-configuration Configure dialog stays mounted; the directory ribbon toggles its state. -->
 <app-configure-dialog />
 
+<!-- The plugin consent terms, mounted once here so every surface that installs a plugin asks the
+     same question in the same window. -->
+<app-plugin-consent-host />
+
 <!-- The backdrop dims and blocks the main window while a modal window is open over it. -->
 <app-modal-backdrop />
 

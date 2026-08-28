@@ -15,6 +15,7 @@ import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { WorkbenchAgentCapabilities } from '@shared/angular/services/workbench-agent-capabilities/workbench-agent-capabilities';
 import { ContentHost } from '@shared/angular/components/content-host/content-host';
 import { ModalBackdropView } from '@shared/angular/components/modal-backdrop/modal-backdrop-view';
+import { PluginConsentHost } from '@shared/angular/components/plugin-consent-modal/plugin-consent-host';
 import { ToastHost } from '@shared/angular/components/toast-host/toast-host';
 import { RibbonStripContainer } from '@shared/angular/components/strips/ribbon-strip/ribbon-strip-container/ribbon-strip-container';
 import { StatusStripContainer } from '@shared/angular/components/strips/status-strip/status-strip-container/status-strip-container';
@@ -34,6 +35,7 @@ import { ConfigureDialogPanel } from '@features/workspace/angular/configure-dial
     TitleStripContainer,
     ContentHost,
     ModalBackdropView,
+    PluginConsentHost,
     WelcomeScreen,
     ConfigureDialogPanel,
     ToastHost,

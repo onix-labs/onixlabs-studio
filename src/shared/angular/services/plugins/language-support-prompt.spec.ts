@@ -46,7 +46,7 @@ describe('LanguageSupportPrompt', () => {
           provide: Plugins,
           useValue: {
             plugins,
-            install: (id: string): Promise<void> => {
+            installWithConsent: (id: string): Promise<void> => {
               installed.push(id);
               return Promise.resolve();
             },
@@ -89,7 +89,9 @@ describe('LanguageSupportPrompt', () => {
     expect(raised[0]?.actions).toHaveLength(1);
   });
 
-  it('offerFor_actionInstallsTheOfferedPlugin', () => {
+  it('offerFor_actionInstallsTheOfferedPlugin_throughConsent', () => {
+    // The notification is another entry point to an install, not a shortcut past the terms: it goes
+    // through the consent-gated path, never the raw install.
     build().offerFor('python');
     raised[0]?.actions?.[0]?.run();
 

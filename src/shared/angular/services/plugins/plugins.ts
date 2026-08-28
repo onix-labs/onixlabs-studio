@@ -2,6 +2,7 @@ import { inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { Bridge } from '@shared/api/bridge';
 import { PluginActionResult, PluginChannel, PluginSummary } from '@shared/api/plugin-channels';
 import { Log } from '@shared/angular/services/log/log';
+import { PluginConsent } from './plugin-consent';
 
 /**
  * Renderer-side view of the plugins the main process knows about, and the actions that change what is
@@ -79,7 +80,37 @@ export class Plugins {
   }
 
   /**
-   * Installs a plugin.
+   * Holds the consent seam every install is asked through.
+   */
+  private readonly consent: PluginConsent = inject(PluginConsent);
+
+  /**
+   * Installs a plugin **after** its terms have been accepted. This is the path every user-facing
+   * entry point takes: verification proves a payload was not tampered with, it has never claimed the
+   * code is good, and that residual risk is the user's to accept — from whichever surface they
+   * happen to be on. Declining (or dismissing the window) installs nothing.
+   * @param id The plugin identifier.
+   * @returns Returns a promise that resolves once the install has finished, or immediately when the
+   * plugin is unknown or the terms were not accepted.
+   */
+  public async installWithConsent(id: string): Promise<void> {
+    const plugin: PluginSummary | undefined = this.known().find(
+      (candidate: PluginSummary): boolean => candidate.id === id,
+    );
+    if (plugin === undefined) {
+      this.log.warn('Plugins', `Cannot ask consent for unknown plugin '${id}'`);
+      return;
+    }
+    if (!(await this.consent.request(plugin))) {
+      this.log.info('Plugins', `Install of '${id}' declined`);
+      return;
+    }
+    await this.install(id);
+  }
+
+  /**
+   * Installs a plugin without asking. For callers that have already obtained consent through
+   * {@link installWithConsent}; a user-facing surface must not call this directly.
    * @param id The plugin identifier.
    * @returns Returns a promise that resolves once the install has finished.
    */

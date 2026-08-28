@@ -4,7 +4,9 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { PluginSummary } from '@shared/api/plugin-channels';
 import { ModalWindows } from '@shared/angular/services/modal-windows/modal-windows';
 import { FakeModalWindows } from '@shared/angular/services/modal-windows/modal-windows.fake';
+import { PluginConsent } from '@shared/angular/services/plugins/plugin-consent';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
+import { PluginConsentHost } from '@shared/angular/components/plugin-consent-modal/plugin-consent-host';
 import { PluginManagerView } from './plugin-manager-view';
 
 /**
@@ -40,11 +42,14 @@ describe('PluginManagerView', () => {
   let stub: StubPlugins;
   let windows: FakeModalWindows;
   let fixture: ComponentFixture<PluginManagerView>;
+  let host: ComponentFixture<PluginConsentHost>;
 
   /**
-   * Renders the view over a stub plugin client and a fake window opener. Every modal is presented in
-   * its own window, so the consent terms are asserted through that window's content host rather than
-   * anywhere in the page that declared them.
+   * Renders the view over a stub plugin client and a fake window opener, alongside the consent host
+   * the application root mounts. The terms are no longer the view's own: the view asks through the
+   * shared consent seam (as every other entry point to an install does), and the host renders the
+   * question in its own window, so the terms are asserted through that window's content host rather
+   * than anywhere in the view.
    * @param plugins The plugins the client reports.
    */
   function render(plugins: readonly PluginSummary[]): void {
@@ -55,9 +60,15 @@ describe('PluginManagerView', () => {
       plugins: known.asReadonly(),
       busy: signal(false).asReadonly(),
       error: signal<string | null>(null).asReadonly(),
-      install: (id: string): Promise<void> => {
-        stub.installed.push(id);
-        return Promise.resolve();
+      // The real client's consent-gated install, reduced to its shape: ask the shared seam, and
+      // install only on acceptance.
+      installWithConsent: async (id: string): Promise<void> => {
+        const plugin: PluginSummary | undefined = known().find(
+          (candidate: PluginSummary): boolean => candidate.id === id,
+        );
+        if (plugin !== undefined && (await TestBed.inject(PluginConsent).request(plugin))) {
+          stub.installed.push(id);
+        }
       },
       uninstall: (id: string): Promise<void> => {
         stub.uninstalled.push(id);
@@ -65,7 +76,7 @@ describe('PluginManagerView', () => {
       },
     };
     TestBed.configureTestingModule({
-      imports: [PluginManagerView],
+      imports: [PluginManagerView, PluginConsentHost],
       providers: [
         { provide: Plugins, useValue: client },
         { provide: ModalWindows, useValue: windows },
@@ -75,14 +86,28 @@ describe('PluginManagerView', () => {
     fixture.componentRef.setInput('tabId', 'tab');
     fixture.componentRef.setInput('isActive', true);
     fixture.detectChanges();
+    host = TestBed.createComponent(PluginConsentHost);
+    host.detectChanges();
   }
 
   /**
-   * Flushes change detection through the modal window's attached view.
+   * Flushes change detection through the view, the consent host, and the modal window's attached
+   * view, then drains the microtasks a consent answer resolves through.
    */
   function flush(): void {
     fixture.detectChanges();
+    host.detectChanges();
     TestBed.inject(ApplicationRef).tick();
+  }
+
+  /**
+   * Waits for the consent answer to reach the stub client (a promise hop) and re-renders.
+   * @returns Returns a promise that resolves once the install decision has been applied.
+   */
+  async function settle(): Promise<void> {
+    await Promise.resolve();
+    await Promise.resolve();
+    flush();
   }
 
   /**
@@ -183,33 +208,36 @@ describe('PluginManagerView', () => {
     expect(modalText()).not.toContain('Downloads');
   });
 
-  it('decline_installsNothingAndClosesTheWindow', () => {
+  it('decline_installsNothingAndClosesTheWindow', async () => {
     render([summary()]);
     click('Install');
 
     clickIn(windows.contentHost, 'Cancel');
+    await settle();
 
     expect(stub.installed).toEqual([]);
     expect(windows.openWindows).toBe(0);
   });
 
-  it('dismissingTheWindow_isTheSameAsDeclining', () => {
+  it('dismissingTheWindow_isTheSameAsDeclining', async () => {
     // Closing through the window's own chrome must not be a quiet acceptance.
     render([summary()]);
     click('Install');
 
     windows.notifyClosed();
     flush();
+    await settle();
 
     expect(stub.installed).toEqual([]);
     expect(windows.openWindows).toBe(0);
   });
 
-  it('accept_installsOnceAndClosesTheWindow', () => {
+  it('accept_installsOnceAndClosesTheWindow', async () => {
     render([summary()]);
     click('Install');
 
     clickIn(windows.contentHost, 'Accept and install');
+    await settle();
 
     expect(stub.installed).toEqual(['dockerfile-language-server']);
     expect(windows.openWindows).toBe(0);
@@ -238,11 +266,12 @@ describe('PluginManagerView', () => {
     expect(modalText()).toContain('Accept and update');
   });
 
-  it('update_acceptedInstallsTheOfferedVersion', () => {
+  it('update_acceptedInstallsTheOfferedVersion', async () => {
     render([summary({ state: 'installed', version: '2.0.0', installedVersion: '1.0.0' })]);
     click('Update');
 
     clickIn(windows.contentHost, 'Accept and update');
+    await settle();
 
     expect(stub.installed).toEqual(['dockerfile-language-server']);
   });

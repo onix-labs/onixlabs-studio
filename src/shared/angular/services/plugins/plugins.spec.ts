@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { Bridge } from '@shared/api/bridge';
 import { PluginActionResult, PluginChannel, PluginSummary } from '@shared/api/plugin-channels';
+import { PluginConsent } from './plugin-consent';
 import { Plugins } from './plugins';
 
 /**
@@ -78,6 +79,46 @@ describe('Plugins', () => {
     await service.uninstall('rust-analyzer');
 
     expect(invoked).toContainEqual({ channel: PluginChannel.Uninstall, id: 'rust-analyzer' });
+  });
+
+  it('installWithConsent_accepted_installs', async () => {
+    const service: Plugins = TestBed.inject(Plugins);
+    await service.refresh();
+    const consent: PluginConsent = TestBed.inject(PluginConsent);
+
+    const done: Promise<void> = service.installWithConsent('rust-analyzer');
+    expect(consent.pending()?.id).toBe('rust-analyzer');
+    consent.accept();
+    await done;
+
+    expect(invoked).toContainEqual({ channel: PluginChannel.Install, id: 'rust-analyzer' });
+  });
+
+  it('installWithConsent_declined_installsNothing', async () => {
+    // Consent that any entry point could skip would not be consent; the answer gates the install.
+    const service: Plugins = TestBed.inject(Plugins);
+    await service.refresh();
+    const consent: PluginConsent = TestBed.inject(PluginConsent);
+
+    const done: Promise<void> = service.installWithConsent('rust-analyzer');
+    consent.decline();
+    await done;
+
+    expect(
+      invoked.some((call): boolean => call.channel === (PluginChannel.Install as string)),
+    ).toBe(false);
+  });
+
+  it('installWithConsent_unknownPlugin_asksNothingAndInstallsNothing', async () => {
+    const service: Plugins = TestBed.inject(Plugins);
+    await service.refresh();
+
+    await service.installWithConsent('nope');
+
+    expect(TestBed.inject(PluginConsent).pending()).toBeNull();
+    expect(
+      invoked.some((call): boolean => call.channel === (PluginChannel.Install as string)),
+    ).toBe(false);
   });
 
   it('install_failure_surfacesTheReason', async () => {

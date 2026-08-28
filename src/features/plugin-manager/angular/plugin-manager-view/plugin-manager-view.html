@@ -102,10 +102,3 @@
     </ng-template>
   </app-table>
 </div>
-
-<!-- The terms, presented in their own window like every other modal. -->
-<app-plugin-consent-modal
-  [plugin]="pendingConsent()"
-  (accepted)="acceptConsent()"
-  (declined)="declineConsent()"
-/>
