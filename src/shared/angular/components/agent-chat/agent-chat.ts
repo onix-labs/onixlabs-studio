@@ -490,6 +490,31 @@ export class AgentChat implements OnInit {
   private pendingScrollAnchor: number | null = null;
 
   /**
+   * Holds the ids of the rows the browser has laid out at their real height at least once. A row not
+   * in this set is rendered in full for a frame (see `agent__unmeasured` in agent-chat.scss) before it
+   * is allowed to be skipped, so that `contain-intrinsic-size: auto` has a real size to remember for
+   * it — a row that has never been laid out stands at a flat estimate instead, and every one of those
+   * expanding to its real height as the reader scrolls back through it is a jump.
+   */
+  private readonly measured: WritableSignal<ReadonlySet<string>> = signal<ReadonlySet<string>>(
+    new Set<string>(),
+  );
+
+  /**
+   * Holds whether a measuring frame is already scheduled, so a burst of renders schedules one.
+   */
+  private measuringScheduled: boolean = false;
+
+  /**
+   * Gets whether a row has been laid out at its real height at least once, for the template.
+   * @param id The row identifier.
+   * @returns Returns true when the row may be skipped for layout.
+   */
+  protected isMeasured(id: string): boolean {
+    return this.measured().has(id);
+  }
+
+  /**
    * Holds how many times the tail has been asked for explicitly, so a jump can be told apart from the
    * ordinary follow and honoured even with the follow preference off.
    */
@@ -977,6 +1002,41 @@ export class AgentChat implements OnInit {
       if (element !== undefined) {
         element.scrollTop = element.scrollHeight - anchor;
       }
+    });
+
+    // Let every new row be laid out for real once before it may be skipped. Rows arrive unmeasured
+    // (a freshly opened conversation, a batch of earlier history, a burst streamed in below the fold)
+    // and render in full for a frame; two frames later they are marked measured, the class comes off,
+    // and `content-visibility: auto` skips them from then on — now with a remembered real height
+    // rather than the flat estimate. The cost is one layout of the new rows, once; the win is that
+    // scrolling back through them no longer expands each one from a guess.
+    afterRenderEffect((): void => {
+      const rows: readonly TranscriptRow[] = this.windowedRows();
+      const known: ReadonlySet<string> = untracked((): ReadonlySet<string> => this.measured());
+      if (rows.every((row: TranscriptRow): boolean => known.has(row.id))) {
+        return;
+      }
+      if (this.measuringScheduled || typeof requestAnimationFrame === 'undefined') {
+        return;
+      }
+      this.measuringScheduled = true;
+      // Two frames: the first lets the rows lay out and paint at their real size (which is when the
+      // browser records the size it will remember), the second is when the class may safely come off.
+      requestAnimationFrame((): void => {
+        requestAnimationFrame((): void => {
+          this.measuringScheduled = false;
+          const current: readonly TranscriptRow[] = untracked((): readonly TranscriptRow[] =>
+            this.windowedRows(),
+          );
+          this.measured.update((set: ReadonlySet<string>): ReadonlySet<string> => {
+            const next: Set<string> = new Set<string>(set);
+            for (const row of current) {
+              next.add(row.id);
+            }
+            return next;
+          });
+        });
+      });
     });
   }
 

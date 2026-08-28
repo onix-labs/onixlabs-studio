@@ -681,6 +681,40 @@ describe('AgentChat', () => {
     fixture.detectChanges();
   }
 
+  it('rows_renderInFullOnce_thenMayBeSkipped', async () => {
+    // A row the browser has never laid out stands at a flat estimate under `content-visibility`, and
+    // expanding to its real height as the reader scrolls back through it is a jump. New rows carry
+    // `agent__unmeasured` (kept in layout) for two frames, then lose it — by which time the browser
+    // has a real size to remember for them.
+    items.set(userMessages(3));
+    fixture.detectChanges();
+    const rows: () => HTMLElement[] = (): HTMLElement[] => [
+      ...(fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.agent__message'),
+    ];
+    expect(
+      rows().every((row: HTMLElement): boolean => row.classList.contains('agent__unmeasured')),
+    ).toBe(true);
+
+    await new Promise<void>((resolve: () => void): void => {
+      requestAnimationFrame((): void => {
+        requestAnimationFrame((): void => resolve());
+      });
+    });
+    fixture.detectChanges();
+
+    expect(
+      rows().some((row: HTMLElement): boolean => row.classList.contains('agent__unmeasured')),
+    ).toBe(false);
+
+    // A row added later is measured on its own; the ones already measured stay skippable.
+    items.set(userMessages(4));
+    fixture.detectChanges();
+    const flags: boolean[] = rows().map((row: HTMLElement): boolean =>
+      row.classList.contains('agent__unmeasured'),
+    );
+    expect(flags).toEqual([false, false, false, true]);
+  });
+
   it('follow_whenAPinLandsShortOfTheBottom_pinsAgainInsteadOfGivingUp', () => {
     // The bug this exists for: `scrollHeight` under-reports while rows below the fold stand at their
     // estimated height, so the pin lands short. Landing short must be a reason to try again, not a

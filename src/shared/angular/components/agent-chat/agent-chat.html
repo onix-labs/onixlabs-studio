@@ -39,7 +39,10 @@
     @for (row of windowedRows(); track row.id) {
       @switch (row.kind) {
         @case ('user') {
-          <div class="agent__message agent__message--user">
+          <div
+            class="agent__message agent__message--user"
+            [class.agent__unmeasured]="!isMeasured(row.id)"
+          >
             <span class="agent__avatar" aria-hidden="true"><app-icon [icon]="Icon.USER" /></span>
             <div class="agent__message-body">
               @if (row.item!.images?.length) {
@@ -78,7 +81,11 @@
           </div>
         }
         @case ('input-request') {
-          <div class="agent__ask" [class.agent__ask--pending]="row.item!.inputState === 'pending'">
+          <div
+            class="agent__ask"
+            [class.agent__ask--pending]="row.item!.inputState === 'pending'"
+            [class.agent__unmeasured]="!isMeasured(row.id)"
+          >
             <p class="agent__ask-question">{{ row.item!.inputQuestion }}</p>
             @if (row.item!.inputState === 'pending') {
               @if (row.item!.inputChoices?.length) {
@@ -139,6 +146,7 @@
           <div
             class="agent__ask"
             [class.agent__ask--pending]="row.item!.decisionState === 'pending'"
+            [class.agent__unmeasured]="!isMeasured(row.id)"
           >
             <p class="agent__ask-question">
               Apply this edit to <strong>{{ row.item!.decisionName }}</strong
@@ -172,7 +180,7 @@
         @case ('error') {
           <!-- A failed run: the cause over the provider it went through, expandable diagnostics,
                and a one-click retry of the failed turn. -->
-          <div class="agent__error">
+          <div class="agent__error" [class.agent__unmeasured]="!isMeasured(row.id)">
             <p class="agent__error-text">
               <app-icon class="agent__error-icon" [icon]="Icon.ERROR" aria-hidden="true" />
               <span>{{ row.item!.text }}</span>
@@ -208,7 +216,7 @@
           </div>
         }
         @case ('permission') {
-          <div class="agent__permission">
+          <div class="agent__permission" [class.agent__unmeasured]="!isMeasured(row.id)">
             <p class="agent__permission-text">
               Allow <strong>{{ row.item!.permissionName }}</strong
               >?
@@ -266,6 +274,7 @@
       [class.agent__row--up]="row.connectsUp"
       [class.agent__row--down]="row.connectsDown"
       [class.agent__row--working]="row.kind === 'working'"
+      [class.agent__unmeasured]="!isMeasured(row.id)"
     >
       <div class="agent__node" aria-hidden="true">
         <span

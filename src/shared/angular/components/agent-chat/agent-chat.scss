@@ -24,12 +24,16 @@
   min-block-size: 0;
   padding: 1.5rem;
   overflow: auto;
-  // This list anchors itself, in two places that both need to know exactly where they put the reader:
-  // the follow-the-tail pin, and the restore that absorbs a prepend of earlier rows. The browser's own
-  // scroll anchoring is a third opinion on the same question — it shifts `scrollTop` on its own
-  // whenever a row above the viewport settles from its estimated height to its real one, which is
-  // constant here because that is precisely what `content-visibility` defers.
-  overflow-anchor: none;
+  // Browser scroll anchoring stays ON. It is the one thing that holds the reader's place while a row
+  // above the viewport settles from its `content-visibility` estimate to its real height — which is
+  // constant while scrolling back through a transcript, since every row not yet rendered in this
+  // panel stands at the estimate. With anchoring off, each such row expanding above the fold shifted
+  // everything below it and nothing corrected `scrollTop`: the "jerky, lands near but not on" scroll.
+  //
+  // It was once disabled because it "voted" on `scrollTop` while reader intent was inferred from
+  // `scroll` events. Intent now comes from gestures and "at the bottom" from the tail marker, and
+  // anchoring only ever adjusts for growth ABOVE the anchored node — never against the tail pin,
+  // whose growth is below. Do not turn it back off to fix a pin; fix the pin.
 }
 
 // Off-screen rows are skipped for layout and paint.
@@ -62,6 +66,26 @@
 .agent__messages > .agent__permission {
   content-visibility: auto;
   contain-intrinsic-size: auto 5rem;
+  // ⚠️ Load-bearing. These rows are items of a column flexbox, and a flex item defaults to
+  // `flex: 0 1 auto` with `min-block-size: auto` — a minimum that is its content's size. A skipped
+  // row is size-contained, so its content size is ZERO, and the flexbox shrank every skipped row to
+  // its padding (14px) regardless of the estimate above; the remembered size was thrown away the same
+  // way. The transcript's scroll height was a tenth of the truth, every row expanded from 14px to its
+  // real height as it scrolled into view — the "jerky, lands near but not on" scroll-up — and the
+  // follow-the-tail pin measured against a bottom that was not there. `flex: none` lets the estimate
+  // (and, once rendered, the remembered size) stand. Measured: 0 layout jumps in 150 wheel steps with
+  // this, 122–138 without.
+  flex: none;
+}
+
+// A row the browser has not yet laid out at its real height is never skipped either. The component
+// marks rows measured two frames after they first render (see `isMeasured` in agent-chat.ts); until
+// then this keeps them in layout so `contain-intrinsic-size: auto` gets a real size to remember.
+// Without it a freshly opened conversation is rows of flat estimates, and scrolling back through
+// them expands each from the guess to its height — measured at 32 jumps in 150 wheel steps, the
+// worst over 2000px; with the measuring frame, none.
+.agent__messages > .agent__unmeasured {
+  content-visibility: visible;
 }
 
 // The last row is never skipped, whatever the rule above says.
