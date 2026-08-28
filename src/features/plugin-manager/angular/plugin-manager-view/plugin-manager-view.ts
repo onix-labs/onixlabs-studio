@@ -183,6 +183,22 @@ export class PluginManagerView {
   }
 
   /**
+   * Gets whether a newer version is waiting.
+   *
+   * The installed version is what the user accepted; a catalogue that has moved on does not get to
+   * arrive without being asked. So this is an offer, not a state the plugin drifts into.
+   * @param plugin The plugin.
+   * @returns Returns true when what is installed is not what the catalogue now offers.
+   */
+  protected canUpdate(plugin: PluginSummary): boolean {
+    return (
+      plugin.state === 'installed' &&
+      plugin.installedVersion !== null &&
+      plugin.installedVersion !== plugin.version
+    );
+  }
+
+  /**
    * Holds the plugin awaiting the user's acceptance, or null when nothing is being asked.
    */
   protected readonly pendingConsent: WritableSignal<PluginSummary | null> =
@@ -197,6 +213,15 @@ export class PluginManagerView {
    * @param plugin The plugin to install.
    */
   protected install(plugin: PluginSummary): void {
+    this.pendingConsent.set(plugin);
+  }
+
+  /**
+   * Asks for consent before updating. An update is new code from the same publisher, which is the same
+   * thing being accepted as at install — so it is asked the same way rather than waved through.
+   * @param plugin The plugin to update.
+   */
+  protected update(plugin: PluginSummary): void {
     this.pendingConsent.set(plugin);
   }
 

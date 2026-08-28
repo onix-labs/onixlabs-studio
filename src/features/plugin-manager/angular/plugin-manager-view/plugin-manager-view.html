@@ -34,7 +34,13 @@
       </td>
       <td class="plugin-manager__provides">{{ provides(plugin(row)) }}</td>
       <td class="plugin-manager__provides">{{ languages(plugin(row)) }}</td>
-      <td class="plugin-manager__version">{{ plugin(row).version }}</td>
+      <td class="plugin-manager__version">
+        @if (canUpdate(plugin(row))) {
+          {{ plugin(row).installedVersion }} → {{ plugin(row).version }}
+        } @else {
+          {{ plugin(row).version }}
+        }
+      </td>
       <td>
         <span
           class="plugin-manager__state"
@@ -44,7 +50,11 @@
         >
           @switch (plugin(row).state) {
             @case ('installed') {
-              Installed
+              @if (canUpdate(plugin(row))) {
+                Update available
+              } @else {
+                Installed
+              }
             }
             @case ('available') {
               Not installed
@@ -59,7 +69,16 @@
         </span>
       </td>
       <td class="plugin-manager__row-actions">
-        @if (canInstall(plugin(row))) {
+        @if (canUpdate(plugin(row))) {
+          <app-button
+            variant="solid"
+            size="small"
+            [icon]="Icon.DOWNLOAD"
+            label="Update"
+            [disabled]="busy()"
+            (click)="update(plugin(row))"
+          />
+        } @else if (canInstall(plugin(row))) {
           <app-button
             variant="solid"
             size="small"

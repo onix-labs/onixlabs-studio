@@ -25,6 +25,7 @@ function plugin(id: string, languages: readonly string[], state: PluginState): P
     version: '1.0.0',
     detail: null,
     origin: null,
+    installedVersion: null,
   };
 }
 

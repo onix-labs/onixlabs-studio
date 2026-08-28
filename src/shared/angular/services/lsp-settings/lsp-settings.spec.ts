@@ -36,6 +36,7 @@ function plugin(id: string, languages: readonly string[], installed: boolean): P
     version: '1.0.0',
     detail: null,
     origin: null,
+    installedVersion: null,
   };
 }
 

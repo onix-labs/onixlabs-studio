@@ -33,6 +33,46 @@ export function isComplete(directory: string): boolean {
 }
 
 /**
+ * Removes every install of a component except the version named, so an update replaces rather than
+ * accumulates.
+ *
+ * Both provisioners lay installs out as `<root>/<id>/<version>/<platform>`, so pruning is the same
+ * operation for either and lives here once. Called only after the kept version has installed and
+ * verified: a failed update must leave the working install exactly where it was.
+ * @param root The directory installs are rooted at, or null when provisioning is disabled.
+ * @param id The component identifier.
+ * @param keep The version to keep.
+ * @param logName The name to log under.
+ * @returns Returns a promise that resolves once older versions are gone.
+ */
+export async function pruneVersions(
+  root: string | null,
+  id: string,
+  keep: string,
+  logName: string,
+): Promise<void> {
+  if (root === null) {
+    return;
+  }
+  const directory: string = path.join(root, id);
+  let versions: string[];
+  try {
+    versions = await fs.readdir(directory);
+  } catch {
+    return;
+  }
+  for (const version of versions) {
+    if (version === keep) {
+      continue;
+    }
+    logger.info(logName, `Removing superseded install ${id} ${version}`);
+    await fs
+      .rm(path.join(directory, version), { recursive: true, force: true })
+      .catch((): void => undefined);
+  }
+}
+
+/**
  * Downloads, verifies, extracts and removes the pinned archives Studio installs — language servers,
  * debug adapters, anything that arrives as a checksummed file from a publisher.
  *

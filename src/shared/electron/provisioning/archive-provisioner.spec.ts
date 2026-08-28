@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { ArchiveProvision, everyPlatform, platformKey } from './archive-provision';
-import { ArchiveProvisioner, isComplete, markComplete } from './archive-provisioner';
+import { ArchiveProvisioner, isComplete, markComplete, pruneVersions } from './archive-provisioner';
 
 /**
  * Builds a provision whose single archive serves every platform, so the tests do not depend on which
@@ -143,5 +143,46 @@ describe('ArchiveProvisioner', () => {
     expect(isComplete(directory)).toBe(false);
     await markComplete(directory);
     expect(isComplete(directory)).toBe(true);
+  });
+
+  describe('pruneVersions', () => {
+    /**
+     * Creates an install directory for a version.
+     * @param version The version to create.
+     * @returns Returns the directory path.
+     */
+    function versionDirectory(version: string): string {
+      const directory: string = path.join(root, 'demo', version, platformKey());
+      mkdirSync(directory, { recursive: true });
+      writeFileSync(path.join(directory, 'file'), 'x');
+      return directory;
+    }
+
+    it('removesTheVersionsAnUpdateSupersedes', async () => {
+      // What makes an update a replacement rather than an accumulation.
+      versionDirectory('1.0.0');
+      versionDirectory('2.0.0');
+
+      await pruneVersions(root, 'demo', '2.0.0', 'Test');
+
+      expect(existsSync(path.join(root, 'demo', '1.0.0'))).toBe(false);
+      expect(existsSync(path.join(root, 'demo', '2.0.0'))).toBe(true);
+    });
+
+    it('keepsEverythingWhenTheKeptVersionIsTheOnlyOne', async () => {
+      versionDirectory('1.0.0');
+
+      await pruneVersions(root, 'demo', '1.0.0', 'Test');
+
+      expect(existsSync(path.join(root, 'demo', '1.0.0'))).toBe(true);
+    });
+
+    it('doesNothingForAComponentThatWasNeverInstalled', async () => {
+      await expect(pruneVersions(root, 'absent', '1.0.0', 'Test')).resolves.toBeUndefined();
+    });
+
+    it('doesNothingWhenProvisioningIsDisabled', async () => {
+      await expect(pruneVersions(null, 'demo', '1.0.0', 'Test')).resolves.toBeUndefined();
+    });
   });
 });
