@@ -159,7 +159,12 @@ describe('RemoteControlBridge.requestPermission', () => {
       {
         type: 'control_request',
         request_id: id,
-        request: { subtype: 'can_use_tool', tool_name: 'Bash', input: { command: 'ls' } },
+        request: {
+          subtype: 'can_use_tool',
+          tool_name: 'Bash',
+          input: { command: 'ls' },
+          tool_use_id: id,
+        },
       },
     ]);
     // The session is marked requires_action so claude.ai shows it needs attention (and pushes).
@@ -215,7 +220,12 @@ describe('RemoteControlBridge.requestQuestions', () => {
       {
         type: 'control_request',
         request_id: id,
-        request: { subtype: 'can_use_tool', tool_name: 'AskUserQuestion', input },
+        request: {
+          subtype: 'can_use_tool',
+          tool_name: 'AskUserQuestion',
+          input,
+          tool_use_id: id,
+        },
       },
     ]);
     // The question is surfaced as the waiting-state detail (visible + pushed on claude.ai).
