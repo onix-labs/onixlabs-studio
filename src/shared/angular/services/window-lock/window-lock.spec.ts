@@ -9,6 +9,9 @@ describe('WindowLock', () => {
   let movableCalls: boolean[];
 
   beforeEach(() => {
+    // Settings persist in localStorage, which outlives every TestBed injector; start each test from
+    // the defaults rather than from whatever the previous test left behind.
+    localStorage.clear();
     movableCalls = [];
     const studioStub: Pick<Studio, 'setWindowMovable'> = {
       setWindowMovable: (movable: boolean): void => {
@@ -51,9 +54,10 @@ describe('WindowLock', () => {
 
     expect(windowLock.locked()).toBe(false);
     expect(movableCalls).toEqual([false, true]);
+  });
 
-    // The store outlives the injector, so leaving the switch hidden would carry into the next test.
-    settings.set('application.showWindowLock', true);
+  afterEach(() => {
+    localStorage.clear();
   });
 
   it('toggle_whenCalledRepeatedly_flipsLockAndMovabilityTogether', () => {
