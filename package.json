@@ -94,7 +94,7 @@
     "@types/diff": "^7.0.2",
     "@types/dompurify": "^3.0.5",
     "@types/katex": "^0.16.8",
-    "@types/node": "^24.13.1",
+    "@types/node": "^26.3.0",
     "@vitest/coverage-v8": "^4.1.8",
     "@vscode/debugprotocol": "^1.68.0",
     "angular-eslint": "^22.0.0",
