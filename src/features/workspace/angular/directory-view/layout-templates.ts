@@ -34,10 +34,11 @@ export const LAYOUT_TEMPLATES: readonly LayoutTemplate[] = [
     id: DEFAULT_TEMPLATE_ID,
     name: 'Default',
     // The everyday IDE: the two explorers tabbed on the left, the agent full-height on the right, and
-    // the document well over a bottom strip of the things a build produces. The Solution Explorer
-    // starts in FRONT of the File Explorer while keeping the second tab: a recognised project is the
-    // more useful way in, and on a folder with no project system it is passed over and the File
-    // Explorer shows anyway.
+    // the document well over a bottom strip of the things a build produces.
+    //
+    // The Solution Explorer starts in FRONT of the File Explorer while keeping the second tab: a
+    // recognised project is the more useful way in, and on a folder with no project system it is
+    // passed over and the File Explorer shows anyway.
     createLayout: (): DockNode =>
       mkSplit(
         'row',
@@ -47,7 +48,10 @@ export const LAYOUT_TEMPLATES: readonly LayoutTemplate[] = [
             'col',
             [
               mkStack('document', [], true),
-              mkStack('tool', ['packages', 'terminal', 'errors', 'output']),
+              // The Error List leads and starts in front: it is what you look down at after a build,
+              // and the one of the four you want without having asked for it. Packages and Logs are
+              // both errands you go looking for, so they sit behind the Terminal.
+              mkStack('tool', ['errors', 'terminal', 'packages', 'output']),
             ],
             [4, 1.5],
           ),
