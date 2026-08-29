@@ -281,40 +281,32 @@ export class AgentEditorCapabilities {
    * capabilities.
    */
   public constructor() {
-    this.runtime.registerCapability(
-      READ_ACTIVE_DOCUMENT,
-      (input: unknown): ReadResult => this.readActive(input),
+    this.runtime.registerCapability(READ_ACTIVE_DOCUMENT, (input: unknown): ReadResult =>
+      this.readActive(input),
     );
-    this.runtime.registerCapability(
-      REPLACE_ACTIVE_DOCUMENT,
-      (input: unknown): ReplaceResult => this.replaceActive(input),
+    this.runtime.registerCapability(REPLACE_ACTIVE_DOCUMENT, (input: unknown): ReplaceResult =>
+      this.replaceActive(input),
     );
-    this.runtime.registerCapability(
-      EDIT_ACTIVE_DOCUMENT,
-      (input: unknown): EditResult => this.editActive(input),
+    this.runtime.registerCapability(EDIT_ACTIVE_DOCUMENT, (input: unknown): EditResult =>
+      this.editActive(input),
     );
-    this.runtime.registerCapability(
-      INSERT_ACTIVE_DOCUMENT,
-      (input: unknown): EditResult => this.insertActive(input),
+    this.runtime.registerCapability(INSERT_ACTIVE_DOCUMENT, (input: unknown): EditResult =>
+      this.insertActive(input),
     );
-    this.runtime.registerCapability(
-      PREVIEW_ACTIVE_DOCUMENT_EDIT,
-      (input: unknown): PreviewResult => this.previewEdit(input),
+    this.runtime.registerCapability(PREVIEW_ACTIVE_DOCUMENT_EDIT, (input: unknown): PreviewResult =>
+      this.previewEdit(input),
     );
-    this.runtime.registerCapability(
-      COMMIT_EDIT_PREVIEW,
-      (input: unknown): EditResult => this.commitPreview(input),
+    this.runtime.registerCapability(COMMIT_EDIT_PREVIEW, (input: unknown): EditResult =>
+      this.commitPreview(input),
     );
     this.runtime.registerCapability(CANCEL_EDIT_PREVIEW, (input: unknown): void => {
       this.cancelPreview(input);
     });
-    this.runtime.registerCapability(
-      SET_ACTIVE_DOCUMENT_LANGUAGE,
-      (input: unknown): EditResult => this.setActiveLanguage(input),
+    this.runtime.registerCapability(SET_ACTIVE_DOCUMENT_LANGUAGE, (input: unknown): EditResult =>
+      this.setActiveLanguage(input),
     );
-    this.runtime.registerCapability(
-      RUN_ACTIVE_DOCUMENT,
-      (input: unknown): Promise<RunResult> => this.runActiveDocument(input),
+    this.runtime.registerCapability(RUN_ACTIVE_DOCUMENT, (input: unknown): Promise<RunResult> =>
+      this.runActiveDocument(input),
     );
     this.log.info('agent.editor-capabilities', 'Registered agent editor capabilities');
   }
@@ -641,9 +633,8 @@ export class AgentEditorCapabilities {
       return { ok: false, detail: 'The edit input was malformed.' };
     }
     const replaceAll: boolean = this.extractBoolean(input, 'replaceAll');
-    return this.applyToTarget(
-      input,
-      (source: string): EditOutcome => resolveEdit(source, oldString, newString, replaceAll),
+    return this.applyToTarget(input, (source: string): EditOutcome =>
+      resolveEdit(source, oldString, newString, replaceAll),
     );
   }
 
@@ -660,9 +651,8 @@ export class AgentEditorCapabilities {
       return { ok: false, detail: 'The insert input was malformed.' };
     }
     const anchor: string | null = this.extractString(input, 'anchor');
-    return this.applyToTarget(
-      input,
-      (source: string): EditOutcome => resolveInsert(source, text, placement, anchor ?? undefined),
+    return this.applyToTarget(input, (source: string): EditOutcome =>
+      resolveInsert(source, text, placement, anchor ?? undefined),
     );
   }
 

@@ -135,16 +135,13 @@ export class ModelRuntimeContribution implements MainContribution {
       (_event: IpcMainInvokeEvent, name: unknown): Promise<boolean> => runtime.remove(String(name)),
     );
 
-    context.handle(
-      ModelRuntimeChannel.Installation,
-      (): Promise<unknown> => runtime.installation(),
+    context.handle(ModelRuntimeChannel.Installation, (): Promise<unknown> =>
+      runtime.installation(),
     );
-    context.handle(
-      ModelRuntimeChannel.Install,
-      (): Promise<unknown> =>
-        runtime.install((progress: RuntimeInstallProgress): void =>
-          context.send(ModelRuntimeChannel.InstallProgress, progress),
-        ),
+    context.handle(ModelRuntimeChannel.Install, (): Promise<unknown> =>
+      runtime.install((progress: RuntimeInstallProgress): void =>
+        context.send(ModelRuntimeChannel.InstallProgress, progress),
+      ),
     );
     context.handle(ModelRuntimeChannel.Start, (): Promise<boolean> => runtime.start());
     context.handle(ModelRuntimeChannel.Stop, (): Promise<boolean> => runtime.stop());

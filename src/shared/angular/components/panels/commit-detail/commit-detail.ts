@@ -240,15 +240,15 @@ export class CommitDetail {
   /**
    * Gets the Tracked Files group's checkbox state.
    */
-  protected readonly trackedState: Signal<GroupCheckState> = computed(
-    (): GroupCheckState => this.groupState(this.trackedFiles()),
+  protected readonly trackedState: Signal<GroupCheckState> = computed((): GroupCheckState =>
+    this.groupState(this.trackedFiles()),
   );
 
   /**
    * Gets the Untracked Files group's checkbox state.
    */
-  protected readonly untrackedState: Signal<GroupCheckState> = computed(
-    (): GroupCheckState => this.groupState(this.untrackedFiles()),
+  protected readonly untrackedState: Signal<GroupCheckState> = computed((): GroupCheckState =>
+    this.groupState(this.untrackedFiles()),
   );
 
   /**
@@ -352,15 +352,13 @@ export class CommitDetail {
    * Gets the selected commit's changed files as flat rows for the shared tree view.
    */
   protected readonly commitRows: Signal<readonly TreeRow[]> = computed((): readonly TreeRow[] =>
-    this.repository.selectedFiles().map(
-      (file: GitFileChange): TreeRow => ({
-        id: file.path,
-        depth: 0,
-        expandable: false,
-        expanded: false,
-        data: file,
-      }),
-    ),
+    this.repository.selectedFiles().map((file: GitFileChange): TreeRow => ({
+      id: file.path,
+      depth: 0,
+      expandable: false,
+      expanded: false,
+      data: file,
+    })),
   );
 
   /**

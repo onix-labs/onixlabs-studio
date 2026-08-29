@@ -19,13 +19,7 @@ export type CatalogSource = 'curated' | 'huggingface';
  * classified — the Hub's tags do not map onto this cleanly enough to be worth guessing.
  */
 export type CatalogCategory =
-  | 'general'
-  | 'coding'
-  | 'reasoning'
-  | 'vision'
-  | 'embedding'
-  | 'small'
-  | 'other';
+  'general' | 'coding' | 'reasoning' | 'vision' | 'embedding' | 'small' | 'other';
 
 /**
  * One model the user could install.

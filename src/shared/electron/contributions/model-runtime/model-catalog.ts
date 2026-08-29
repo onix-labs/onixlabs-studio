@@ -58,9 +58,8 @@ export class ModelCatalog {
   public async search(query: CatalogQuery, signal?: AbortSignal): Promise<CatalogResult> {
     const limit: number = query.limit ?? DEFAULT_LIMIT;
     const settled: PromiseSettledResult<CatalogModel[]>[] = await Promise.allSettled(
-      this.sources.map(
-        (source: ModelCatalogSource): Promise<CatalogModel[]> =>
-          source.search({ ...query, limit }, signal),
+      this.sources.map((source: ModelCatalogSource): Promise<CatalogModel[]> =>
+        source.search({ ...query, limit }, signal),
       ),
     );
 

@@ -11,8 +11,7 @@ export function semanticLegendOf(capabilities: unknown): LspSemanticTokensLegend
     ?.semanticTokensProvider;
   const legend: unknown = (provider as { legend?: unknown } | undefined)?.legend;
   const candidate: { tokenTypes?: unknown; tokenModifiers?: unknown } | undefined = legend as
-    | { tokenTypes?: unknown; tokenModifiers?: unknown }
-    | undefined;
+    { tokenTypes?: unknown; tokenModifiers?: unknown } | undefined;
   if (
     candidate === undefined ||
     !Array.isArray(candidate.tokenTypes) ||

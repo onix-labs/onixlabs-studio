@@ -30,8 +30,8 @@ describe('Review', () => {
   beforeEach(() => {
     localStorage.clear();
     review = TestBed.inject(Review);
-    review.setDictionaryLoader(
-      (): Promise<readonly string[]> => Promise.resolve(['hello', 'world', 'the', 'cat', 'sat']),
+    review.setDictionaryLoader((): Promise<readonly string[]> =>
+      Promise.resolve(['hello', 'world', 'the', 'cat', 'sat']),
     );
   });
 

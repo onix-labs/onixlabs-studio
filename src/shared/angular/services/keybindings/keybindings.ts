@@ -151,8 +151,8 @@ export class Keybindings {
   public readonly resolvedCatalogue: Signal<readonly ResolvedBinding[]> = computed(
     (): readonly ResolvedBinding[] =>
       this.catalogueEntries.flatMap((entry: KeybindingCatalogueEntry): readonly ResolvedBinding[] =>
-        entry.bindings.map(
-          (binding: CatalogueBinding): ResolvedBinding => this.resolve(binding, entry),
+        entry.bindings.map((binding: CatalogueBinding): ResolvedBinding =>
+          this.resolve(binding, entry),
         ),
       ),
   );
@@ -196,8 +196,8 @@ export class Keybindings {
         (this.scopes.get(scope) ?? []).flatMap(
           (registration: Keybinding): readonly ResolvedBinding[] => {
             const catalogued:
-              | { entry: KeybindingCatalogueEntry; binding: CatalogueBinding }
-              | undefined = this.catalogueById.get(registration.id);
+              { entry: KeybindingCatalogueEntry; binding: CatalogueBinding } | undefined =
+              this.catalogueById.get(registration.id);
             return catalogued === undefined
               ? []
               : [this.resolve(catalogued.binding, catalogued.entry)];

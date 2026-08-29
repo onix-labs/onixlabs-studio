@@ -153,18 +153,15 @@ export class WorkbenchAgentCapabilities {
    * Registers the capabilities. Deliberately never released — see the class remarks.
    */
   public constructor() {
-    this.runtime.registerCapability(
-      OPEN_DOCUMENT,
-      (input: unknown): OpenDocumentResult => this.openDocument(input),
+    this.runtime.registerCapability(OPEN_DOCUMENT, (input: unknown): OpenDocumentResult =>
+      this.openDocument(input),
     );
-    this.runtime.registerCapability(
-      SAVE_DOCUMENT,
-      (input: unknown): Promise<SaveDocumentResult> => this.saveDocument(input),
+    this.runtime.registerCapability(SAVE_DOCUMENT, (input: unknown): Promise<SaveDocumentResult> =>
+      this.saveDocument(input),
     );
     this.runtime.registerCapability(OPEN_TERMINAL, (): OpenTerminalResult => this.openTerminal());
-    this.runtime.registerCapability(
-      OPEN_FILE,
-      (input: unknown): Promise<OpenFileResult> => this.openFile(input),
+    this.runtime.registerCapability(OPEN_FILE, (input: unknown): Promise<OpenFileResult> =>
+      this.openFile(input),
     );
     this.log.info('workbench.agent', 'Workbench agent capabilities registered');
   }

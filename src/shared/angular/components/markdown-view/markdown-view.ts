@@ -63,11 +63,10 @@ export class MarkdownView {
    */
   protected readonly blocks: Signal<readonly RenderedBlock[]> = computed(
     (): readonly RenderedBlock[] =>
-      renderMarkdownBlocks(this.text() ?? '').map(
-        (block): RenderedBlock =>
-          block.kind === 'html'
-            ? { kind: 'html', safe: this.sanitizer.bypassSecurityTrustHtml(block.html) }
-            : block,
+      renderMarkdownBlocks(this.text() ?? '').map((block): RenderedBlock =>
+        block.kind === 'html'
+          ? { kind: 'html', safe: this.sanitizer.bypassSecurityTrustHtml(block.html) }
+          : block,
       ),
   );
 

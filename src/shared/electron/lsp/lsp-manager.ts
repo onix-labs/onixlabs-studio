@@ -167,10 +167,8 @@ export class LspManager {
       (event: IpcMainInvokeEvent, request: unknown): Promise<LspStartResult> =>
         this.start(request, event.sender),
     );
-    ipcMain.handle(
-      LspChannel.Stop,
-      (event: IpcMainInvokeEvent, id: unknown): Promise<void> =>
-        typeof id === 'string' ? this.stop(id, event.sender) : Promise.resolve(),
+    ipcMain.handle(LspChannel.Stop, (event: IpcMainInvokeEvent, id: unknown): Promise<void> =>
+      typeof id === 'string' ? this.stop(id, event.sender) : Promise.resolve(),
     );
     ipcMain.handle(
       LspChannel.Restart,
@@ -362,13 +360,11 @@ export class LspManager {
     // The handshake outcome (capabilities included) is retained on the session, so a concurrent or
     // later Start for the same session shares the real result instead of a capability-less success.
     session.ready = this.initialize(connection, parsed.rootPath, spec)
-      .then(
-        (result: InitializeResult): LspStartResult => ({
-          success: true,
-          serverInfo: result.serverInfo,
-          capabilities: result.capabilities,
-        }),
-      )
+      .then((result: InitializeResult): LspStartResult => ({
+        success: true,
+        serverInfo: result.serverInfo,
+        capabilities: result.capabilities,
+      }))
       .catch((error: unknown): LspStartResult => {
         logger.warn('LspManager', `LSP server ${spec.command} failed to initialize`, error);
         this.tearDown(parsed.sessionId);

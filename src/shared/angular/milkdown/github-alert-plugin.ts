@@ -205,89 +205,86 @@ export const remarkGithubAlert: $Remark<'remarkGithubAlert', undefined> = $remar
 /**
  * ProseMirror node schema for alert blocks.
  */
-export const alertBlockNode: $Node = $node(
-  'alert_block',
-  (): NodeSchema => ({
-    group: 'block',
-    content: 'block+',
-    defining: true,
-    attrs: {
-      alertType: { default: 'note' },
+export const alertBlockNode: $Node = $node('alert_block', (): NodeSchema => ({
+  group: 'block',
+  content: 'block+',
+  defining: true,
+  attrs: {
+    alertType: { default: 'note' },
+  },
+  parseDOM: [
+    {
+      tag: 'div.github-alert',
+      getAttrs: (dom: HTMLElement): { alertType: string } => ({
+        alertType: dom.getAttribute('data-alert-type') ?? 'note',
+      }),
     },
-    parseDOM: [
-      {
-        tag: 'div.github-alert',
-        getAttrs: (dom: HTMLElement): { alertType: string } => ({
-          alertType: dom.getAttribute('data-alert-type') ?? 'note',
-        }),
-      },
-    ],
-    toDOM: (node: ProseMirrorNode): DOMOutputSpec => {
-      const alertType: AlertType = (node.attrs['alertType'] as AlertType) || 'note';
-      const iconClass: string = (ALERT_ICONS[alertType] || ALERT_ICONS.note).classList;
+  ],
+  toDOM: (node: ProseMirrorNode): DOMOutputSpec => {
+    const alertType: AlertType = (node.attrs['alertType'] as AlertType) || 'note';
+    const iconClass: string = (ALERT_ICONS[alertType] || ALERT_ICONS.note).classList;
 
-      // Create the alert container
-      const wrapper: HTMLDivElement = document.createElement('div');
-      wrapper.className = `github-alert github-alert-${alertType}`;
-      wrapper.setAttribute('data-alert-type', alertType);
+    // Create the alert container
+    const wrapper: HTMLDivElement = document.createElement('div');
+    wrapper.className = `github-alert github-alert-${alertType}`;
+    wrapper.setAttribute('data-alert-type', alertType);
 
-      // Create the icon
-      const icon: HTMLSpanElement = document.createElement('span');
-      icon.className = `alert-icon ${iconClass}`;
-      icon.setAttribute('aria-hidden', 'true');
-      wrapper.appendChild(icon);
+    // Create the icon
+    const icon: HTMLSpanElement = document.createElement('span');
+    icon.className = `alert-icon ${iconClass}`;
+    icon.setAttribute('aria-hidden', 'true');
+    wrapper.appendChild(icon);
 
-      // Create the content wrapper (ProseMirror will fill this with content)
-      const contentWrapper: HTMLDivElement = document.createElement('div');
-      contentWrapper.className = 'alert-content';
-      wrapper.appendChild(contentWrapper);
+    // Create the content wrapper (ProseMirror will fill this with content)
+    const contentWrapper: HTMLDivElement = document.createElement('div');
+    contentWrapper.className = 'alert-content';
+    wrapper.appendChild(contentWrapper);
 
-      // Return DOM structure with contentDOM for ProseMirror to insert child content
-      return { dom: wrapper, contentDOM: contentWrapper };
-    },
-    parseMarkdown: {
-      match: (node: MarkdownNode): boolean => node.type === 'alertBlock',
-      runner: (state: ParserState, node: MarkdownNode, type: NodeType): void => {
-        const alertNode: AlertBlockNode = node as unknown as AlertBlockNode;
-        state.openNode(type, { alertType: alertNode.alertType });
+    // Return DOM structure with contentDOM for ProseMirror to insert child content
+    return { dom: wrapper, contentDOM: contentWrapper };
+  },
+  parseMarkdown: {
+    match: (node: MarkdownNode): boolean => node.type === 'alertBlock',
+    runner: (state: ParserState, node: MarkdownNode, type: NodeType): void => {
+      const alertNode: AlertBlockNode = node as unknown as AlertBlockNode;
+      state.openNode(type, { alertType: alertNode.alertType });
 
-        // Process children
-        if (alertNode.children && alertNode.children.length > FIRST_INDEX) {
-          for (const child of alertNode.children) {
-            // Cast to MarkdownNode since we know these are valid mdast nodes
-            state.next(child as unknown as MarkdownNode);
-          }
-        } else {
-          // If no content, add an empty paragraph
-          state.addNode(state.schema.nodes['paragraph']);
+      // Process children
+      if (alertNode.children && alertNode.children.length > FIRST_INDEX) {
+        for (const child of alertNode.children) {
+          // Cast to MarkdownNode since we know these are valid mdast nodes
+          state.next(child as unknown as MarkdownNode);
         }
+      } else {
+        // If no content, add an empty paragraph
+        state.addNode(state.schema.nodes['paragraph']);
+      }
 
-        state.closeNode();
-      },
+      state.closeNode();
     },
-    toMarkdown: {
-      match: (node: ProseMirrorNode): boolean => node.type.name === 'alert_block',
-      runner: (state: SerializerState, node: ProseMirrorNode): void => {
-        const alertType: string = (node.attrs['alertType'] as string).toUpperCase();
+  },
+  toMarkdown: {
+    match: (node: ProseMirrorNode): boolean => node.type.name === 'alert_block',
+    runner: (state: SerializerState, node: ProseMirrorNode): void => {
+      const alertType: string = (node.attrs['alertType'] as string).toUpperCase();
 
-        // Open a blockquote
-        state.openNode('blockquote');
+      // Open a blockquote
+      state.openNode('blockquote');
 
-        // Add the alert marker as the first paragraph
-        state.openNode('paragraph');
-        state.addNode('text', undefined, `[!${alertType}]`);
-        state.closeNode();
+      // Add the alert marker as the first paragraph
+      state.openNode('paragraph');
+      state.addNode('text', undefined, `[!${alertType}]`);
+      state.closeNode();
 
-        // Add the content
-        node.content.forEach((child: ProseMirrorNode): void => {
-          state.next(child);
-        });
+      // Add the content
+      node.content.forEach((child: ProseMirrorNode): void => {
+        state.next(child);
+      });
 
-        state.closeNode();
-      },
+      state.closeNode();
     },
-  }),
-);
+  },
+}));
 
 /**
  * Creates a command that wraps the current block in an alert of the specified type.

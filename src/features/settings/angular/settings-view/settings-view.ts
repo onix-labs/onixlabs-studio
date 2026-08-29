@@ -318,14 +318,12 @@ export class SettingsView {
           id: 'language-servers',
           label: 'Language Servers',
           icon: Icon.CODE_INLINE,
-          children: languages.map(
-            (language: string): SettingsNavNode => ({
-              id: `language-servers-${language}`,
-              label: languageDisplayName(language),
-              sectionId: 'language-servers',
-              language,
-            }),
-          ),
+          children: languages.map((language: string): SettingsNavNode => ({
+            id: `language-servers-${language}`,
+            label: languageDisplayName(language),
+            sectionId: 'language-servers',
+            language,
+          })),
         },
       ];
     },

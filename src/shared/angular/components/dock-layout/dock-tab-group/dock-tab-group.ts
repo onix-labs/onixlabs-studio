@@ -180,11 +180,10 @@ export class DockTabGroup {
   /**
    * Gets the collapse button's icon, chosen by the docked edge's axis.
    */
-  protected readonly collapseIcon: Signal<Icon> = computed(
-    (): Icon =>
-      this.side() === 'top' || this.side() === 'bottom'
-        ? Icon.COLLAPSE_VERTICAL
-        : Icon.COLLAPSE_HORIZONTAL,
+  protected readonly collapseIcon: Signal<Icon> = computed((): Icon =>
+    this.side() === 'top' || this.side() === 'bottom'
+      ? Icon.COLLAPSE_VERTICAL
+      : Icon.COLLAPSE_HORIZONTAL,
   );
 
   /**
@@ -199,9 +198,11 @@ export class DockTabGroup {
    */
   protected readonly documentItems: Signal<readonly MenuItem[]> = computed(
     (): readonly MenuItem[] =>
-      this.panels().map(
-        (panel: DockPanel): MenuItem => ({ id: panel.id, label: panel.title, icon: panel.icon }),
-      ),
+      this.panels().map((panel: DockPanel): MenuItem => ({
+        id: panel.id,
+        label: panel.title,
+        icon: panel.icon,
+      })),
   );
 
   /**

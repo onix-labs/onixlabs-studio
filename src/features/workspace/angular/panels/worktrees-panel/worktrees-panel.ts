@@ -110,9 +110,10 @@ export class WorktreesPanel {
    */
   protected readonly listRows: Signal<readonly ListRow[]> = computed((): readonly ListRow[] => [
     { id: this.ORCHESTRATOR_ID, data: null },
-    ...this.checkouts().map(
-      (checkout: WorktreeCheckoutInfo): ListRow => ({ id: checkout.id, data: checkout }),
-    ),
+    ...this.checkouts().map((checkout: WorktreeCheckoutInfo): ListRow => ({
+      id: checkout.id,
+      data: checkout,
+    })),
   ]);
 
   /**

@@ -207,69 +207,63 @@ export const remarkSubSup: $Remark<'remarkSubSup', undefined> = $remark(
  * Subscript mark schema.
  * Handles <sub> tags for pasting, markdown parsing, and serialization.
  */
-export const subscriptMark: $Mark = $mark(
-  'subscript',
-  (): MarkSchema => ({
-    parseDOM: [{ tag: 'sub' }],
-    toDOM: (): DOMOutputSpec => ['sub', DOM_CONTENT_HOLE],
-    parseMarkdown: {
-      match: (node: MarkdownNode): boolean => node.type === 'subscript',
-      runner: (state: ParserState, node: MarkdownNode, markType: MarkType): void => {
-        state.openMark(markType);
-        const children: PhrasingContent[] = (node as unknown as SubSupNode).children;
-        if (children && children.length > EMPTY_LENGTH) {
-          const textChild: PhrasingContent = children[0];
-          if (textChild.type === 'text') {
-            state.addText(textChild.value);
-          }
+export const subscriptMark: $Mark = $mark('subscript', (): MarkSchema => ({
+  parseDOM: [{ tag: 'sub' }],
+  toDOM: (): DOMOutputSpec => ['sub', DOM_CONTENT_HOLE],
+  parseMarkdown: {
+    match: (node: MarkdownNode): boolean => node.type === 'subscript',
+    runner: (state: ParserState, node: MarkdownNode, markType: MarkType): void => {
+      state.openMark(markType);
+      const children: PhrasingContent[] = (node as unknown as SubSupNode).children;
+      if (children && children.length > EMPTY_LENGTH) {
+        const textChild: PhrasingContent = children[0];
+        if (textChild.type === 'text') {
+          state.addText(textChild.value);
         }
-        state.closeMark(markType);
-      },
+      }
+      state.closeMark(markType);
     },
-    toMarkdown: {
-      match: (mark: Mark): boolean => mark.type.name === 'subscript',
-      runner: (state: SerializerState, mark: Mark, node: ProseMirrorNode): void => {
-        state.withMark(mark, 'text', undefined, {
-          value: `<sub>${node.text ?? ''}</sub>`,
-        });
-      },
+  },
+  toMarkdown: {
+    match: (mark: Mark): boolean => mark.type.name === 'subscript',
+    runner: (state: SerializerState, mark: Mark, node: ProseMirrorNode): void => {
+      state.withMark(mark, 'text', undefined, {
+        value: `<sub>${node.text ?? ''}</sub>`,
+      });
     },
-  }),
-);
+  },
+}));
 
 /**
  * Superscript mark schema.
  * Handles <sup> tags for pasting, markdown parsing, and serialization.
  */
-export const superscriptMark: $Mark = $mark(
-  'superscript',
-  (): MarkSchema => ({
-    parseDOM: [{ tag: 'sup' }],
-    toDOM: (): DOMOutputSpec => ['sup', DOM_CONTENT_HOLE],
-    parseMarkdown: {
-      match: (node: MarkdownNode): boolean => node.type === 'superscript',
-      runner: (state: ParserState, node: MarkdownNode, markType: MarkType): void => {
-        state.openMark(markType);
-        const children: PhrasingContent[] = (node as unknown as SubSupNode).children;
-        if (children && children.length > EMPTY_LENGTH) {
-          const textChild: PhrasingContent = children[0];
-          if (textChild.type === 'text') {
-            state.addText(textChild.value);
-          }
+export const superscriptMark: $Mark = $mark('superscript', (): MarkSchema => ({
+  parseDOM: [{ tag: 'sup' }],
+  toDOM: (): DOMOutputSpec => ['sup', DOM_CONTENT_HOLE],
+  parseMarkdown: {
+    match: (node: MarkdownNode): boolean => node.type === 'superscript',
+    runner: (state: ParserState, node: MarkdownNode, markType: MarkType): void => {
+      state.openMark(markType);
+      const children: PhrasingContent[] = (node as unknown as SubSupNode).children;
+      if (children && children.length > EMPTY_LENGTH) {
+        const textChild: PhrasingContent = children[0];
+        if (textChild.type === 'text') {
+          state.addText(textChild.value);
         }
-        state.closeMark(markType);
-      },
+      }
+      state.closeMark(markType);
     },
-    toMarkdown: {
-      match: (mark: Mark): boolean => mark.type.name === 'superscript',
-      runner: (state: SerializerState, mark: Mark, node: ProseMirrorNode): void => {
-        state.withMark(mark, 'text', undefined, {
-          value: `<sup>${node.text ?? ''}</sup>`,
-        });
-      },
+  },
+  toMarkdown: {
+    match: (mark: Mark): boolean => mark.type.name === 'superscript',
+    runner: (state: SerializerState, mark: Mark, node: ProseMirrorNode): void => {
+      state.withMark(mark, 'text', undefined, {
+        value: `<sup>${node.text ?? ''}</sup>`,
+      });
     },
-  }),
-);
+  },
+}));
 
 /**
  * Plugin key for the subscript/superscript text input handler.

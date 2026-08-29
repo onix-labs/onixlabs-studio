@@ -666,13 +666,11 @@ export class Reader {
         voice.name.toLowerCase().includes(ENHANCED_VOICE),
       );
     this.voicesState.set(
-      voices.map(
-        (voice: SpeechSynthesisVoice): VoiceOption => ({
-          uri: voice.voiceURI,
-          name: voice.name,
-          lang: voice.lang,
-        }),
-      ),
+      voices.map((voice: SpeechSynthesisVoice): VoiceOption => ({
+        uri: voice.voiceURI,
+        name: voice.name,
+        lang: voice.lang,
+      })),
     );
     if (this.selectedVoiceState() === null && voices.length > ZERO) {
       this.selectedVoiceState.set(voices[ZERO].voiceURI);

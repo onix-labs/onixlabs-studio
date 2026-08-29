@@ -24,13 +24,7 @@ const PREFERRED_REMOTES: readonly string[] = ['origin', 'upstream'];
  * genuinely different situations rather than collapsing them all into an empty list.
  */
 export type ForgeSectionState =
-  | 'no-repository'
-  | 'no-forge'
-  | 'unauthorized'
-  | 'rate-limited'
-  | 'loading'
-  | 'error'
-  | 'ready';
+  'no-repository' | 'no-forge' | 'unauthorized' | 'rate-limited' | 'loading' | 'error' | 'ready';
 
 /**
  * Holds one forge-backed section's data and the state it is in.

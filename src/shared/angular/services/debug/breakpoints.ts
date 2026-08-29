@@ -230,9 +230,8 @@ export class Breakpoints {
     for (const [path, list] of this.state()) {
       next.set(
         path,
-        list.map(
-          (breakpoint: Breakpoint): Breakpoint =>
-            breakpoint.verified ? { ...breakpoint, verified: false } : breakpoint,
+        list.map((breakpoint: Breakpoint): Breakpoint =>
+          breakpoint.verified ? { ...breakpoint, verified: false } : breakpoint,
         ),
       );
     }
@@ -292,14 +291,12 @@ export class Breakpoints {
   private persist(): void {
     const persisted: Record<string, readonly PersistedBreakpoint[]> = {};
     for (const [path, list] of this.state()) {
-      persisted[path] = list.map(
-        (breakpoint: Breakpoint): PersistedBreakpoint => ({
-          line: breakpoint.line,
-          condition: breakpoint.condition,
-          logMessage: breakpoint.logMessage,
-          enabled: breakpoint.enabled,
-        }),
-      );
+      persisted[path] = list.map((breakpoint: Breakpoint): PersistedBreakpoint => ({
+        line: breakpoint.line,
+        condition: breakpoint.condition,
+        logMessage: breakpoint.logMessage,
+        enabled: breakpoint.enabled,
+      }));
     }
     this.store.set<PersistedBreakpoints>(BREAKPOINTS_KEY, persisted);
   }

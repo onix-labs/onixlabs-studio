@@ -499,14 +499,12 @@ export class AgentComposer {
         return [];
       }
       if (token.trigger === '@') {
-        return this.filterFiles(token.query).map(
-          (path: string): ComposerSuggestion => ({
-            kind: 'mention',
-            label: path,
-            hint: 'Attach file',
-            value: path,
-          }),
-        );
+        return this.filterFiles(token.query).map((path: string): ComposerSuggestion => ({
+          kind: 'mention',
+          label: path,
+          hint: 'Attach file',
+          value: path,
+        }));
       }
       const query: string = token.query.toLowerCase();
       const builtins: readonly ComposerSuggestion[] = [
@@ -527,14 +525,12 @@ export class AgentComposer {
       const prompts: ComposerSuggestion[] = this.promptLibrary
         .prompts()
         .filter((prompt: AgentPrompt): boolean => prompt.name.includes(query))
-        .map(
-          (prompt: AgentPrompt): ComposerSuggestion => ({
-            kind: 'prompt',
-            label: `/${prompt.name}`,
-            hint: prompt.text.length > 60 ? `${prompt.text.slice(0, 57)}…` : prompt.text,
-            value: prompt.id,
-          }),
-        );
+        .map((prompt: AgentPrompt): ComposerSuggestion => ({
+          kind: 'prompt',
+          label: `/${prompt.name}`,
+          hint: prompt.text.length > 60 ? `${prompt.text.slice(0, 57)}…` : prompt.text,
+          value: prompt.id,
+        }));
       return [
         ...commands,
         ...this.discoveredSuggestions(query),
@@ -606,13 +602,11 @@ export class AgentComposer {
    */
   public readonly attachments: Signal<readonly ContextChip[]> = computed(
     (): readonly ContextChip[] =>
-      this.agent.contextPaths().map(
-        (ref: AgentContextRef): ContextChip => ({
-          path: ref.path,
-          name: this.baseName(ref.path),
-          kind: ref.kind,
-        }),
-      ),
+      this.agent.contextPaths().map((ref: AgentContextRef): ContextChip => ({
+        path: ref.path,
+        name: this.baseName(ref.path),
+        kind: ref.kind,
+      })),
   );
 
   /**
@@ -960,14 +954,12 @@ export class AgentComposer {
           (query.length === 0 || command.name.toLowerCase().startsWith(query)),
       )
       .slice(0, MAX_SUGGESTIONS)
-      .map(
-        (command: AiSlashCommand): ComposerSuggestion => ({
-          kind: 'discovered',
-          label: `/${command.name}`,
-          hint: command.description.length > 0 ? command.description : 'Provider command',
-          value: command.name,
-        }),
-      );
+      .map((command: AiSlashCommand): ComposerSuggestion => ({
+        kind: 'discovered',
+        label: `/${command.name}`,
+        hint: command.description.length > 0 ? command.description : 'Provider command',
+        value: command.name,
+      }));
   }
 
   /**
@@ -982,14 +974,12 @@ export class AgentComposer {
       return [];
     }
     const current: AiEffort | null = this.agent.effort();
-    const entries: ComposerSuggestion[] = levels.map(
-      (level: AiEffort): ComposerSuggestion => ({
-        kind: 'command',
-        label: `/effort ${level}`,
-        hint: level === current ? 'Reasoning effort (current)' : 'Set reasoning effort',
-        value: `effort:${level}`,
-      }),
-    );
+    const entries: ComposerSuggestion[] = levels.map((level: AiEffort): ComposerSuggestion => ({
+      kind: 'command',
+      label: `/effort ${level}`,
+      hint: level === current ? 'Reasoning effort (current)' : 'Set reasoning effort',
+      value: `effort:${level}`,
+    }));
     entries.push({
       kind: 'command',
       label: '/effort default',

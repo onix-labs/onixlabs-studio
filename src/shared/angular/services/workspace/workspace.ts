@@ -528,23 +528,23 @@ export class Workspace {
       return;
     }
     if (node.expanded) {
-      this.update(
-        path,
-        (current: WorkspaceTreeNode): WorkspaceTreeNode => ({ ...current, expanded: false }),
-      );
+      this.update(path, (current: WorkspaceTreeNode): WorkspaceTreeNode => ({
+        ...current,
+        expanded: false,
+      }));
       return;
     }
     if (node.children !== null) {
-      this.update(
-        path,
-        (current: WorkspaceTreeNode): WorkspaceTreeNode => ({ ...current, expanded: true }),
-      );
+      this.update(path, (current: WorkspaceTreeNode): WorkspaceTreeNode => ({
+        ...current,
+        expanded: true,
+      }));
       return;
     }
-    this.update(
-      path,
-      (current: WorkspaceTreeNode): WorkspaceTreeNode => ({ ...current, loading: true }),
-    );
+    this.update(path, (current: WorkspaceTreeNode): WorkspaceTreeNode => ({
+      ...current,
+      loading: true,
+    }));
     const listing: DirectoryListing | null = await (this.bridge?.invoke<DirectoryListing | null>(
       WorkspaceChannel.ReadDirectory,
       path,
@@ -553,15 +553,12 @@ export class Workspace {
       listing === null
         ? []
         : listing.entries.map((entry: DirectoryEntry): WorkspaceTreeNode => this.toNode(entry));
-    this.update(
-      path,
-      (current: WorkspaceTreeNode): WorkspaceTreeNode => ({
-        ...current,
-        loading: false,
-        expanded: true,
-        children,
-      }),
-    );
+    this.update(path, (current: WorkspaceTreeNode): WorkspaceTreeNode => ({
+      ...current,
+      loading: false,
+      expanded: true,
+      children,
+    }));
   }
 
   /**
@@ -735,10 +732,8 @@ export class Workspace {
               (directory: string): boolean =>
                 directory === root || this.isLoadedDirectory(directory),
             );
-      await runBounded(
-        targets,
-        TREE_REFRESH_CONCURRENCY,
-        (directory: string): Promise<void> => this.refresh(directory),
+      await runBounded(targets, TREE_REFRESH_CONCURRENCY, (directory: string): Promise<void> =>
+        this.refresh(directory),
       );
     } finally {
       this.treeRefreshRunning = false;
@@ -803,12 +798,10 @@ export class Workspace {
       );
       return;
     }
-    this.update(
-      path,
-      (current: WorkspaceTreeNode): WorkspaceTreeNode =>
-        current.children === null
-          ? current
-          : { ...current, children: this.reconcile(current.children, listing.entries) },
+    this.update(path, (current: WorkspaceTreeNode): WorkspaceTreeNode =>
+      current.children === null
+        ? current
+        : { ...current, children: this.reconcile(current.children, listing.entries) },
     );
   }
 
@@ -960,11 +953,10 @@ export class Workspace {
    * @returns Returns the new node list with loaded directories expanded.
    */
   private expandLoaded(nodes: readonly WorkspaceTreeNode[]): readonly WorkspaceTreeNode[] {
-    return nodes.map(
-      (node: WorkspaceTreeNode): WorkspaceTreeNode =>
-        node.type === 'directory' && node.children !== null
-          ? { ...node, expanded: true, children: this.expandLoaded(node.children) }
-          : node,
+    return nodes.map((node: WorkspaceTreeNode): WorkspaceTreeNode =>
+      node.type === 'directory' && node.children !== null
+        ? { ...node, expanded: true, children: this.expandLoaded(node.children) }
+        : node,
     );
   }
 
@@ -975,15 +967,14 @@ export class Workspace {
    * @returns Returns the new node list with every directory collapsed.
    */
   private collapse(nodes: readonly WorkspaceTreeNode[]): readonly WorkspaceTreeNode[] {
-    return nodes.map(
-      (node: WorkspaceTreeNode): WorkspaceTreeNode =>
-        node.type === 'directory'
-          ? {
-              ...node,
-              expanded: false,
-              children: node.children !== null ? this.collapse(node.children) : null,
-            }
-          : node,
+    return nodes.map((node: WorkspaceTreeNode): WorkspaceTreeNode =>
+      node.type === 'directory'
+        ? {
+            ...node,
+            expanded: false,
+            children: node.children !== null ? this.collapse(node.children) : null,
+          }
+        : node,
     );
   }
 
@@ -1041,8 +1032,8 @@ export class Workspace {
           children =
             listing === null
               ? []
-              : listing.entries.map(
-                  (entry: DirectoryEntry): WorkspaceTreeNode => this.toNode(entry),
+              : listing.entries.map((entry: DirectoryEntry): WorkspaceTreeNode =>
+                  this.toNode(entry),
                 );
         } finally {
           release();

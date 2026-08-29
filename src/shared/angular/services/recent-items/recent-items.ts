@@ -153,9 +153,8 @@ export class RecentItems {
    */
   public togglePin(path: string): void {
     this.commit(
-      this.itemsState().map(
-        (item: RecentItem): RecentItem =>
-          item.path === path ? { ...item, pinned: !item.pinned } : item,
+      this.itemsState().map((item: RecentItem): RecentItem =>
+        item.path === path ? { ...item, pinned: !item.pinned } : item,
       ),
     );
   }

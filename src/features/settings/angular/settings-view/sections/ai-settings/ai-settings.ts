@@ -196,9 +196,8 @@ export class AiSettingsSection {
     }
     const connection: AiConnection = this.connectionsService.add(page.createKind, method);
     this.log.info('settings.ai', 'Configuration added', connection.id, connection.auth);
-    this.expandedIds.update(
-      (current: ReadonlySet<string>): ReadonlySet<string> =>
-        new Set<string>(current).add(connection.id),
+    this.expandedIds.update((current: ReadonlySet<string>): ReadonlySet<string> =>
+      new Set<string>(current).add(connection.id),
     );
   }
 

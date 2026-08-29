@@ -87,13 +87,11 @@ export class TitleStripMenu {
   protected readonly sections: Signal<readonly MenuItem[]> = computed((): readonly MenuItem[] =>
     this.appMenu
       .sections()
-      .map(
-        (section: MenuContribution): MenuItem => ({
-          id: `section:${section.id}`,
-          label: section.label,
-          children: TitleStripMenu.toRows(section.items),
-        }),
-      )
+      .map((section: MenuContribution): MenuItem => ({
+        id: `section:${section.id}`,
+        label: section.label,
+        children: TitleStripMenu.toRows(section.items),
+      }))
       // A section whose every entry belongs to a feature that is no longer active can empty out; an
       // empty button would open onto nothing, so the section goes rather than misleading.
       .filter((section: MenuItem): boolean => (section.children?.length ?? 0) > 0),

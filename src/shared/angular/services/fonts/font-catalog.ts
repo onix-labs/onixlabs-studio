@@ -127,9 +127,10 @@ export class FontCatalog {
   ): Signal<readonly ChoiceOption[]> {
     return computed((): readonly ChoiceOption[] => {
       const installed: ReadonlySet<string> = this.installed();
-      const options: ChoiceOption[] = always.map(
-        (family: string): ChoiceOption => ({ value: family, label: family }),
-      );
+      const options: ChoiceOption[] = always.map((family: string): ChoiceOption => ({
+        value: family,
+        label: family,
+      }));
       for (const candidate of candidates) {
         if (!always.includes(candidate.family) && installed.has(candidate.family)) {
           options.push({ value: candidate.family, label: candidate.label });

@@ -855,9 +855,8 @@ export class Agent {
    * posture here (rather than latching it when the toggle is pressed) means changing it in Settings
    * re-aims every exposed agent, without each having to be toggled off and on again.
    */
-  public readonly remoteControl: Signal<AiRemoteControlMode> = computed(
-    (): AiRemoteControlMode =>
-      this.remoteControlState() ? this.settings.aiRemoteControlPosture() : 'off',
+  public readonly remoteControl: Signal<AiRemoteControlMode> = computed((): AiRemoteControlMode =>
+    this.remoteControlState() ? this.settings.aiRemoteControlPosture() : 'off',
   );
 
   /**
@@ -1134,13 +1133,11 @@ export class Agent {
       return;
     }
     const kept: readonly AgentItem[] = items.slice(0, index);
-    this.branchState.update(
-      (branch: AgentBranchPoint): AgentBranchPoint => ({
-        epoch: branch.epoch + 1,
-        origin: items,
-        originSessionId: this.sessionIdState(),
-      }),
-    );
+    this.branchState.update((branch: AgentBranchPoint): AgentBranchPoint => ({
+      epoch: branch.epoch + 1,
+      origin: items,
+      originSessionId: this.sessionIdState(),
+    }));
     const anchor: string | undefined = [...kept]
       .reverse()
       .find(
@@ -1471,14 +1468,11 @@ export class Agent {
     }
     const scope: AiPermissionRemember | undefined = granted ? remember : undefined;
     this.runtime.respondPermission(item.permissionId, granted, scope);
-    this.update(
-      item.id,
-      (existing: AgentItem): AgentItem => ({
-        ...existing,
-        permissionState: granted ? 'allowed' : 'denied',
-        ...(scope === undefined ? {} : { permissionRemember: scope }),
-      }),
-    );
+    this.update(item.id, (existing: AgentItem): AgentItem => ({
+      ...existing,
+      permissionState: granted ? 'allowed' : 'denied',
+      ...(scope === undefined ? {} : { permissionRemember: scope }),
+    }));
   }
 
   /**
@@ -1496,10 +1490,10 @@ export class Agent {
     if (item === undefined) {
       return;
     }
-    this.update(
-      item.id,
-      (existing: AgentItem): AgentItem => ({ ...existing, permissionState: 'dismissed' }),
-    );
+    this.update(item.id, (existing: AgentItem): AgentItem => ({
+      ...existing,
+      permissionState: 'dismissed',
+    }));
   }
 
   /**
@@ -1516,10 +1510,10 @@ export class Agent {
     if (item === undefined) {
       return;
     }
-    this.update(
-      item.id,
-      (existing: AgentItem): AgentItem => ({ ...existing, inputState: 'dismissed' }),
-    );
+    this.update(item.id, (existing: AgentItem): AgentItem => ({
+      ...existing,
+      inputState: 'dismissed',
+    }));
   }
 
   /**
@@ -1532,14 +1526,11 @@ export class Agent {
       return;
     }
     this.runtime.respondEditDecision(item.decisionId, choice);
-    this.update(
-      item.id,
-      (existing: AgentItem): AgentItem => ({
-        ...existing,
-        decisionState: choice === 'no' ? 'rejected' : 'applied',
-        ...(choice === 'yes-auto' ? { decisionAuto: true } : {}),
-      }),
-    );
+    this.update(item.id, (existing: AgentItem): AgentItem => ({
+      ...existing,
+      decisionState: choice === 'no' ? 'rejected' : 'applied',
+      ...(choice === 'yes-auto' ? { decisionAuto: true } : {}),
+    }));
   }
 
   /**
@@ -1553,12 +1544,10 @@ export class Agent {
       return;
     }
     this.runtime.respondInput(item.inputId, answer);
-    this.update(
-      item.id,
-      (existing: AgentItem): AgentItem =>
-        answer === null
-          ? { ...existing, inputState: 'dismissed' }
-          : { ...existing, inputState: 'answered', inputAnswer: answer },
+    this.update(item.id, (existing: AgentItem): AgentItem =>
+      answer === null
+        ? { ...existing, inputState: 'dismissed' }
+        : { ...existing, inputState: 'answered', inputAnswer: answer },
     );
   }
 
@@ -2016,8 +2005,8 @@ export class Agent {
                 ? { status: event.status }
                 : {}),
             };
-      return tasks.map(
-        (task: AgentTask): AgentTask => (task.taskId === event.taskId ? merged : task),
+      return tasks.map((task: AgentTask): AgentTask =>
+        task.taskId === event.taskId ? merged : task,
       );
     });
     // A terminal patch settles the task even when no `background-task` follows — a task that ends in
@@ -2055,11 +2044,10 @@ export class Agent {
     }
     const ok: boolean = status === 'completed';
     this.log.update((items: readonly AgentItem[]): readonly AgentItem[] =>
-      items.map(
-        (item: AgentItem): AgentItem =>
-          item.kind === 'tool' && item.toolId === card && item.toolState === 'backgrounded'
-            ? { ...item, toolState: ok ? 'ok' : 'error' }
-            : item,
+      items.map((item: AgentItem): AgentItem =>
+        item.kind === 'tool' && item.toolId === card && item.toolState === 'backgrounded'
+          ? { ...item, toolState: ok ? 'ok' : 'error' }
+          : item,
       ),
     );
   }
@@ -2363,13 +2351,11 @@ export class Agent {
     ) {
       // The matched item is the trailing one, so fold the chunk into the tail directly rather than
       // scanning the whole transcript for it (the hot streaming path).
-      this.updateLast(
-        (existing: AgentItem): AgentItem => ({
-          ...existing,
-          text: existing.text + pending.text,
-          ...(pending.messageUuid === undefined ? {} : { providerMessageId: pending.messageUuid }),
-        }),
-      );
+      this.updateLast((existing: AgentItem): AgentItem => ({
+        ...existing,
+        text: existing.text + pending.text,
+        ...(pending.messageUuid === undefined ? {} : { providerMessageId: pending.messageUuid }),
+      }));
     } else {
       this.appendItem({
         kind: pending.kind,
@@ -2401,9 +2387,8 @@ export class Agent {
    */
   private setAgentTokens(toolId: string, tokens: number): void {
     this.log.update((items: readonly AgentItem[]): readonly AgentItem[] =>
-      items.map(
-        (item: AgentItem): AgentItem =>
-          item.kind === 'tool' && item.toolId === toolId ? { ...item, agentTokens: tokens } : item,
+      items.map((item: AgentItem): AgentItem =>
+        item.kind === 'tool' && item.toolId === toolId ? { ...item, agentTokens: tokens } : item,
       ),
     );
   }
@@ -2448,15 +2433,14 @@ export class Agent {
         .join(', ')}]`,
     );
     this.log.update((items: readonly AgentItem[]): readonly AgentItem[] =>
-      items.map(
-        (item: AgentItem): AgentItem =>
-          item.kind === 'tool' && item.toolId === toolId
-            ? {
-                ...item,
-                toolState: backgrounded ? 'backgrounded' : ok ? 'ok' : 'error',
-                ...(output === undefined ? {} : { toolOutput: output }),
-              }
-            : item,
+      items.map((item: AgentItem): AgentItem =>
+        item.kind === 'tool' && item.toolId === toolId
+          ? {
+              ...item,
+              toolState: backgrounded ? 'backgrounded' : ok ? 'ok' : 'error',
+              ...(output === undefined ? {} : { toolOutput: output }),
+            }
+          : item,
       ),
     );
   }

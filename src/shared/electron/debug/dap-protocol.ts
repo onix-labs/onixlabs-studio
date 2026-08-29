@@ -62,7 +62,7 @@ export class DapMessageDecoder {
   public append(chunk: Uint8Array): DebugProtocol.ProtocolMessage[] {
     this.buffer = concat(this.buffer, chunk);
     const messages: DebugProtocol.ProtocolMessage[] = [];
-    for (let message: DebugProtocol.ProtocolMessage | null = this.take(); message !== null; ) {
+    for (let message: DebugProtocol.ProtocolMessage | null = this.take(); message !== null;) {
       messages.push(message);
       message = this.take();
     }

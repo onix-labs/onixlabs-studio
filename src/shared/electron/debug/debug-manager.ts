@@ -94,10 +94,8 @@ export class DebugManager {
       (_event: IpcMainInvokeEvent, request: unknown): Promise<DebugStartResult> =>
         this.start(request),
     );
-    ipcMain.handle(
-      DebugChannel.Stop,
-      (_event: IpcMainInvokeEvent, id: unknown): Promise<void> =>
-        typeof id === 'string' ? this.stop(id) : Promise.resolve(),
+    ipcMain.handle(DebugChannel.Stop, (_event: IpcMainInvokeEvent, id: unknown): Promise<void> =>
+      typeof id === 'string' ? this.stop(id) : Promise.resolve(),
     );
     ipcMain.handle(
       DebugChannel.Request,

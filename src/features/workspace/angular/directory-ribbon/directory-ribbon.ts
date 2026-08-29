@@ -177,16 +177,14 @@ export class DirectoryRibbon {
                 {
                   id: 'directory.panels',
                   label: 'Panels',
-                  items: this.panels().map(
-                    (panel: DockPanelState): MenuEntry => ({
-                      id: `directory.panels.${panel.id}`,
-                      label: panel.title,
-                      kind: 'checkbox',
-                      checked: panel.docked,
-                      enabled: panel.enabled,
-                      run: (): void => this.dockPanels.toggle(panel.id),
-                    }),
-                  ),
+                  items: this.panels().map((panel: DockPanelState): MenuEntry => ({
+                    id: `directory.panels.${panel.id}`,
+                    label: panel.title,
+                    kind: 'checkbox',
+                    checked: panel.docked,
+                    enabled: panel.enabled,
+                    run: (): void => this.dockPanels.toggle(panel.id),
+                  })),
                 },
               ]),
           MENU_SEPARATOR,
@@ -440,12 +438,10 @@ export class DirectoryRibbon {
    */
   protected readonly runOptions: Signal<readonly DropdownOption[]> = computed(
     (): readonly DropdownOption[] =>
-      this.studio.runConfigurations().map(
-        (configuration: RunConfiguration): DropdownOption => ({
-          value: configuration.id,
-          label: configuration.name,
-        }),
-      ),
+      this.studio.runConfigurations().map((configuration: RunConfiguration): DropdownOption => ({
+        value: configuration.id,
+        label: configuration.name,
+      })),
   );
 
   /**
@@ -975,9 +971,10 @@ export class DirectoryRibbon {
   protected readonly templateOptions: Signal<readonly DropdownOption[]> = computed(
     (): readonly DropdownOption[] => [
       { value: '', label: 'Templates' },
-      ...this.templates().map(
-        (template: LayoutInfo): DropdownOption => ({ value: template.id, label: template.name }),
-      ),
+      ...this.templates().map((template: LayoutInfo): DropdownOption => ({
+        value: template.id,
+        label: template.name,
+      })),
     ],
   );
 
@@ -988,13 +985,11 @@ export class DirectoryRibbon {
    */
   protected readonly layoutMenuItems: Signal<readonly RibbonMenuItem[]> = computed(
     (): readonly RibbonMenuItem[] =>
-      this.layouts().map(
-        (layout: LayoutInfo): RibbonMenuItem => ({
-          id: layout.id,
-          label: layout.name,
-          active: layout.id === this.activeLayoutId(),
-        }),
-      ),
+      this.layouts().map((layout: LayoutInfo): RibbonMenuItem => ({
+        id: layout.id,
+        label: layout.name,
+        active: layout.id === this.activeLayoutId(),
+      })),
   );
 
   /**

@@ -138,8 +138,7 @@ describe('ChangeMargins', () => {
     service.attach(harness.editor, '', false);
 
     const ruler: { color: string } | undefined = harness.decorations()[0].options.overviewRuler as
-      | { color: string }
-      | undefined;
+      { color: string } | undefined;
     expect(ruler?.color).toBe(service.resolveColors().unsaved);
   });
 

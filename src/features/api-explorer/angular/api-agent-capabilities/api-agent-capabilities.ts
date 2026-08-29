@@ -167,21 +167,17 @@ export class ApiAgentCapabilities {
   public constructor() {
     const releases: readonly (() => void)[] = [
       this.runtime.registerCapability(LIST_API_REQUESTS, (): ListResult => this.list()),
-      this.runtime.registerCapability(
-        CREATE_API_REQUEST,
-        (input: unknown): WriteResult => this.create(input),
+      this.runtime.registerCapability(CREATE_API_REQUEST, (input: unknown): WriteResult =>
+        this.create(input),
       ),
-      this.runtime.registerCapability(
-        UPDATE_API_REQUEST,
-        (input: unknown): WriteResult => this.update(input),
+      this.runtime.registerCapability(UPDATE_API_REQUEST, (input: unknown): WriteResult =>
+        this.update(input),
       ),
-      this.runtime.registerCapability(
-        SEND_API_REQUEST,
-        (input: unknown): Promise<SendResult> => this.send(input),
+      this.runtime.registerCapability(SEND_API_REQUEST, (input: unknown): Promise<SendResult> =>
+        this.send(input),
       ),
-      this.runtime.registerCapability(
-        SET_API_VARIABLE,
-        (input: unknown): WriteResult => this.setVariable(input),
+      this.runtime.registerCapability(SET_API_VARIABLE, (input: unknown): WriteResult =>
+        this.setVariable(input),
       ),
     ];
     inject(DestroyRef).onDestroy((): void => {
@@ -347,9 +343,8 @@ export class ApiAgentCapabilities {
     const existing: readonly HttpField[] = active.variables;
     const has: boolean = existing.some((variable: HttpField): boolean => variable.name === name);
     const variables: readonly HttpField[] = has
-      ? existing.map(
-          (variable: HttpField): HttpField =>
-            variable.name === name ? { ...variable, value } : variable,
+      ? existing.map((variable: HttpField): HttpField =>
+          variable.name === name ? { ...variable, value } : variable,
         )
       : [...existing, newField(name, value)];
     this.workspace.setVariables(active.id, variables);

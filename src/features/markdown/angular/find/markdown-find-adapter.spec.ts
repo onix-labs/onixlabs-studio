@@ -42,9 +42,8 @@ function createView(paragraphs: readonly string[]): ViewHarness {
   const doc: ProseNode = SCHEMA.node(
     'doc',
     null,
-    paragraphs.map(
-      (text: string): ProseNode =>
-        SCHEMA.node('paragraph', null, text.length === 0 ? [] : [SCHEMA.text(text)]),
+    paragraphs.map((text: string): ProseNode =>
+      SCHEMA.node('paragraph', null, text.length === 0 ? [] : [SCHEMA.text(text)]),
     ),
   );
   let state: EditorState = EditorState.create({

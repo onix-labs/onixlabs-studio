@@ -72,13 +72,11 @@ function isBlank(line: string): boolean {
  * @returns Returns the normalised hunks.
  */
 function slideChangesUpward(input: ArrayChange<string>[]): DiffHunk[] {
-  const hunks: DiffHunk[] = input.map(
-    (hunk: ArrayChange<string>): DiffHunk => ({
-      value: [...hunk.value],
-      added: hunk.added === true,
-      removed: hunk.removed === true,
-    }),
-  );
+  const hunks: DiffHunk[] = input.map((hunk: ArrayChange<string>): DiffHunk => ({
+    value: [...hunk.value],
+    added: hunk.added === true,
+    removed: hunk.removed === true,
+  }));
 
   for (let index: number = 0; index < hunks.length; index += 1) {
     const hunk: DiffHunk = hunks[index];

@@ -22,9 +22,11 @@ function listing(...names: readonly string[]): DirectoryListing {
   return {
     path: ROOT,
     name: 'repo',
-    entries: names.map(
-      (name: string): DirectoryEntry => ({ name, path: `${ROOT}/${name}`, type: 'file' }),
-    ),
+    entries: names.map((name: string): DirectoryEntry => ({
+      name,
+      path: `${ROOT}/${name}`,
+      type: 'file',
+    })),
   };
 }
 

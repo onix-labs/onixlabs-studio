@@ -233,16 +233,14 @@ export class CodeFindAdapter implements FindAdapter {
     this.ranges = found.map((match: MonacoApi.editor.FindMatch): MonacoApi.IRange => match.range);
     this.decorations ??= editor.createDecorationsCollection([]);
     this.decorations.set(
-      this.ranges.map(
-        (range: MonacoApi.IRange): MonacoApi.editor.IModelDeltaDecoration => ({
-          range,
-          options: { className: 'findMatch' },
-        }),
-      ),
+      this.ranges.map((range: MonacoApi.IRange): MonacoApi.editor.IModelDeltaDecoration => ({
+        range,
+        options: { className: 'findMatch' },
+      })),
     );
     this.matchesState.set(
-      this.ranges.map(
-        (range: MonacoApi.IRange): FindResultItem => this.itemFromRange(model, range),
+      this.ranges.map((range: MonacoApi.IRange): FindResultItem =>
+        this.itemFromRange(model, range),
       ),
     );
   }

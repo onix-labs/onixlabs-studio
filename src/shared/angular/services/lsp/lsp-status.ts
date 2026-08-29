@@ -168,18 +168,16 @@ export class LspStatus {
    */
   public readonly servers: Signal<readonly LspServer[]> = computed((): readonly LspServer[] =>
     [...this.entries()]
-      .map(
-        ([sessionId, entry]: [string, ServerEntry]): LspServer => ({
-          sessionId,
-          serverId: entry.serverId,
-          name: this.name(entry.serverId),
-          rootPath: entry.rootPath,
-          state: entry.state,
-          detail: entry.detail,
-          progress: entry.progress,
-          stalled: entry.stalled,
-        }),
-      )
+      .map(([sessionId, entry]: [string, ServerEntry]): LspServer => ({
+        sessionId,
+        serverId: entry.serverId,
+        name: this.name(entry.serverId),
+        rootPath: entry.rootPath,
+        state: entry.state,
+        detail: entry.detail,
+        progress: entry.progress,
+        stalled: entry.stalled,
+      }))
       .sort(
         (first: LspServer, second: LspServer): number =>
           first.name.localeCompare(second.name) || first.rootPath.localeCompare(second.rootPath),

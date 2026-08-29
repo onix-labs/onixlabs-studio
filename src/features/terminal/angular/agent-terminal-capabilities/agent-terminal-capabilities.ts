@@ -93,13 +93,11 @@ export class AgentTerminalCapabilities {
    */
   public constructor() {
     this.log.debug('terminal.agents', 'Registering terminal agent capabilities');
-    this.runtime.registerCapability(
-      READ_TERMINAL_OUTPUT,
-      (input: unknown): Promise<ReadResult> => this.readOutput(input),
+    this.runtime.registerCapability(READ_TERMINAL_OUTPUT, (input: unknown): Promise<ReadResult> =>
+      this.readOutput(input),
     );
-    this.runtime.registerCapability(
-      WRITE_TERMINAL_INPUT,
-      (input: unknown): Promise<WriteResult> => this.writeInput(input),
+    this.runtime.registerCapability(WRITE_TERMINAL_INPUT, (input: unknown): Promise<WriteResult> =>
+      this.writeInput(input),
     );
   }
 

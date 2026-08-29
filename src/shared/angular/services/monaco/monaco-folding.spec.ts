@@ -50,11 +50,9 @@ function fakeMonaco(tokens: readonly LineTokens[]): typeof MonacoApi {
  * @returns Returns the per-line tokens.
  */
 function defaultTokens(lines: readonly string[]): LineTokens[] {
-  return lines.map(
-    (line: string): LineTokens => [
-      { offset: 0, type: /^\s*(?:\/\/|\/\*|\*)/.test(line) ? 'comment.cs' : 'source.cs' },
-    ],
-  );
+  return lines.map((line: string): LineTokens => [
+    { offset: 0, type: /^\s*(?:\/\/|\/\*|\*)/.test(line) ? 'comment.cs' : 'source.cs' },
+  ]);
 }
 
 /**

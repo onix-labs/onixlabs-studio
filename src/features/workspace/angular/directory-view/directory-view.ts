@@ -1363,9 +1363,8 @@ export class DirectoryView implements OnInit, OnDestroy {
     // Publish this workspace's document well, so something outside the tab's injector — the agent's
     // workbench tools — can open a file into it. The opener is provided per workspace tab, so this
     // published closure is the only way to reach it from the root.
-    this.activeWorkspace.setWell(
-      this.tabId(),
-      (path: string): Promise<boolean> => this.fileOpener.openPath(path),
+    this.activeWorkspace.setWell(this.tabId(), (path: string): Promise<boolean> =>
+      this.fileOpener.openPath(path),
     );
     // Surface this workspace's well documents to the app-wide close flows for the tab's lifetime.
     this.destroyRef.onDestroy(this.unsavedWork.register(this.documents));

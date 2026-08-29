@@ -533,8 +533,7 @@ export class DebugSession implements DebugHandler, OnDestroy {
         break;
       case 'stopped': {
         const body: DebugProtocol.StoppedEvent['body'] | undefined = message.body as
-          | DebugProtocol.StoppedEvent['body']
-          | undefined;
+          DebugProtocol.StoppedEvent['body'] | undefined;
         this.threadId = body?.threadId ?? this.threadId;
         this.stateSignal.set('stopped');
         void this.refreshCallStack();
@@ -546,8 +545,7 @@ export class DebugSession implements DebugHandler, OnDestroy {
         break;
       case 'exited': {
         const body: DebugProtocol.ExitedEvent['body'] | undefined = message.body as
-          | DebugProtocol.ExitedEvent['body']
-          | undefined;
+          DebugProtocol.ExitedEvent['body'] | undefined;
         this.debugChannel.appendLine(`Debuggee exited with code ${body?.exitCode ?? 0}.`);
         break;
       }
@@ -609,13 +607,11 @@ export class DebugSession implements DebugHandler, OnDestroy {
     }
     const args: DebugProtocol.SetBreakpointsArguments = {
       source: { path },
-      breakpoints: enabled.map(
-        (breakpoint: Breakpoint): DebugProtocol.SourceBreakpoint => ({
-          line: breakpoint.line,
-          condition: breakpoint.condition,
-          logMessage: breakpoint.logMessage,
-        }),
-      ),
+      breakpoints: enabled.map((breakpoint: Breakpoint): DebugProtocol.SourceBreakpoint => ({
+        line: breakpoint.line,
+        condition: breakpoint.condition,
+        logMessage: breakpoint.logMessage,
+      })),
     };
     try {
       const body: DebugProtocol.SetBreakpointsResponse['body'] = await this.request<
@@ -708,13 +704,11 @@ export class DebugSession implements DebugHandler, OnDestroy {
         DebugProtocol.ScopesResponse['body']
       >('scopes', { frameId });
       this.scopesSignal.set(
-        (body?.scopes ?? []).map(
-          (scope: DebugProtocol.Scope): DebugScope => ({
-            name: scope.name,
-            variablesReference: scope.variablesReference,
-            expensive: scope.expensive,
-          }),
-        ),
+        (body?.scopes ?? []).map((scope: DebugProtocol.Scope): DebugScope => ({
+          name: scope.name,
+          variablesReference: scope.variablesReference,
+          expensive: scope.expensive,
+        })),
       );
     } catch {
       this.scopesSignal.set([]);

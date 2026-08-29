@@ -87,12 +87,10 @@ function createHarness(): EditorHarness {
       } as unknown as MonacoApi.editor.IEditorMouseEvent);
     },
     glyphs: (): CapturedGlyph[] =>
-      written.map(
-        (decoration: MonacoApi.editor.IModelDeltaDecoration): CapturedGlyph => ({
-          className: decoration.options.glyphMarginClassName,
-          line: (decoration.range as unknown as { startLineNumber: number }).startLineNumber,
-        }),
-      ),
+      written.map((decoration: MonacoApi.editor.IModelDeltaDecoration): CapturedGlyph => ({
+        className: decoration.options.glyphMarginClassName,
+        line: (decoration.range as unknown as { startLineNumber: number }).startLineNumber,
+      })),
   };
 }
 
