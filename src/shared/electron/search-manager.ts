@@ -222,13 +222,11 @@ export class SearchManager {
           return;
         }
         settled = true;
-        const results: SearchResultFile[] = order.map(
-          (relativePath: string): SearchResultFile => ({
-            path: nodePath.join(request.root, relativePath),
-            relativePath,
-            matches: files.get(relativePath) ?? [],
-          }),
-        );
+        const results: SearchResultFile[] = order.map((relativePath: string): SearchResultFile => ({
+          path: nodePath.join(request.root, relativePath),
+          relativePath,
+          matches: files.get(relativePath) ?? [],
+        }));
         logger.trace(
           'SearchManager.spawnSearch',
           `Search complete: ${total} matches in ${results.length} files${capped ? ' (capped)' : ''}`,

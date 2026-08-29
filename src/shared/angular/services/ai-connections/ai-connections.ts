@@ -99,8 +99,8 @@ export class AiConnections {
    */
   public async refreshAllAuth(): Promise<void> {
     await Promise.all(
-      this.connections().map(
-        (connection: AiConnection): Promise<void> => this.refreshAuth(connection),
+      this.connections().map((connection: AiConnection): Promise<void> =>
+        this.refreshAuth(connection),
       ),
     );
   }
@@ -349,14 +349,10 @@ export class AiConnections {
    * @param modelId The model id.
    */
   public togglePinned(connection: AiConnection, modelId: string): void {
-    this.mapModel(
-      connection,
-      modelId,
-      (model: AiModelInfo): AiModelInfo => ({
-        ...model,
-        pinned: model.pinned !== true,
-      }),
-    );
+    this.mapModel(connection, modelId, (model: AiModelInfo): AiModelInfo => ({
+      ...model,
+      pinned: model.pinned !== true,
+    }));
   }
 
   /**
@@ -365,14 +361,10 @@ export class AiConnections {
    * @param modelId The model id.
    */
   public toggleHidden(connection: AiConnection, modelId: string): void {
-    this.mapModel(
-      connection,
-      modelId,
-      (model: AiModelInfo): AiModelInfo => ({
-        ...model,
-        hidden: model.hidden !== true,
-      }),
-    );
+    this.mapModel(connection, modelId, (model: AiModelInfo): AiModelInfo => ({
+      ...model,
+      hidden: model.hidden !== true,
+    }));
   }
 
   /**
@@ -395,8 +387,8 @@ export class AiConnections {
     modelId: string,
     map: (model: AiModelInfo) => AiModelInfo,
   ): void {
-    const models: AiModelInfo[] = connection.models.map(
-      (model: AiModelInfo): AiModelInfo => (model.id === modelId ? map(model) : model),
+    const models: AiModelInfo[] = connection.models.map((model: AiModelInfo): AiModelInfo =>
+      model.id === modelId ? map(model) : model,
     );
     this.update(connection.id, { models });
   }

@@ -77,14 +77,13 @@ export class IssueStore {
    */
   public put(id: string, issue: ForgeIssue): void {
     const existing: OpenIssue | undefined = this.entries().get(id);
-    this.entries.update(
-      (current: ReadonlyMap<string, OpenIssue>): ReadonlyMap<string, OpenIssue> =>
-        new Map<string, OpenIssue>(current).set(id, {
-          issue,
-          comments: existing?.comments ?? null,
-          loading: existing?.loading ?? false,
-          error: existing?.error ?? null,
-        }),
+    this.entries.update((current: ReadonlyMap<string, OpenIssue>): ReadonlyMap<string, OpenIssue> =>
+      new Map<string, OpenIssue>(current).set(id, {
+        issue,
+        comments: existing?.comments ?? null,
+        loading: existing?.loading ?? false,
+        error: existing?.error ?? null,
+      }),
     );
   }
 
@@ -161,9 +160,8 @@ export class IssueStore {
     if (existing === undefined) {
       return;
     }
-    this.entries.update(
-      (current: ReadonlyMap<string, OpenIssue>): ReadonlyMap<string, OpenIssue> =>
-        new Map<string, OpenIssue>(current).set(id, { ...existing, ...patch }),
+    this.entries.update((current: ReadonlyMap<string, OpenIssue>): ReadonlyMap<string, OpenIssue> =>
+      new Map<string, OpenIssue>(current).set(id, { ...existing, ...patch }),
     );
   }
 }

@@ -1273,13 +1273,11 @@ export class SourceControlSidebar implements OnDestroy {
   protected readonly upstreamOptions: Signal<readonly DropdownOption[]> = computed(
     (): readonly DropdownOption[] =>
       this.repository.remotes().flatMap((remote: GitRemote): readonly DropdownOption[] =>
-        remote.branches.map(
-          (branch: GitRemoteBranch): DropdownOption => ({
-            value: branch.name,
-            label: branch.name,
-            group: remote.name,
-          }),
-        ),
+        remote.branches.map((branch: GitRemoteBranch): DropdownOption => ({
+          value: branch.name,
+          label: branch.name,
+          group: remote.name,
+        })),
       ),
   );
 
@@ -1669,21 +1667,19 @@ export class SourceControlSidebar implements OnDestroy {
     if (branches.length === 0) {
       return [this.emptyRow('local', Icon.SOURCE_CONTROL, 'No local branches')];
     }
-    return branches.map(
-      (branch: GitBranch): TreeRow => ({
-        id: `branch:${branch.name}`,
-        depth: 1,
-        expandable: false,
-        expanded: false,
-        data: {
-          kind: 'branch',
-          icon: Icon.SOURCE_CONTROL,
-          label: branch.name,
-          branch,
-          commit: branch.tip,
-        },
-      }),
-    );
+    return branches.map((branch: GitBranch): TreeRow => ({
+      id: `branch:${branch.name}`,
+      depth: 1,
+      expandable: false,
+      expanded: false,
+      data: {
+        kind: 'branch',
+        icon: Icon.SOURCE_CONTROL,
+        label: branch.name,
+        branch,
+        commit: branch.tip,
+      },
+    }));
   }
 
   /**
@@ -1736,15 +1732,13 @@ export class SourceControlSidebar implements OnDestroy {
     if (tags.length === 0) {
       return [this.emptyRow('tags', Icon.TAG, 'No tags')];
     }
-    return tags.map(
-      (tag: GitTag): TreeRow => ({
-        id: `tag:${tag.name}`,
-        depth: 1,
-        expandable: false,
-        expanded: false,
-        data: { kind: 'tag', icon: Icon.TAG, label: tag.name, commit: tag.commit, tag },
-      }),
-    );
+    return tags.map((tag: GitTag): TreeRow => ({
+      id: `tag:${tag.name}`,
+      depth: 1,
+      expandable: false,
+      expanded: false,
+      data: { kind: 'tag', icon: Icon.TAG, label: tag.name, commit: tag.commit, tag },
+    }));
   }
 
   /**
@@ -1756,15 +1750,13 @@ export class SourceControlSidebar implements OnDestroy {
     if (stashes.length === 0) {
       return [this.emptyRow('stashes', Icon.STASH, 'No stashes')];
     }
-    return stashes.map(
-      (stash: GitStash): TreeRow => ({
-        id: `stash:${stash.index}`,
-        depth: 1,
-        expandable: false,
-        expanded: false,
-        data: { kind: 'stash', icon: Icon.STASH, label: stash.message, stash },
-      }),
-    );
+    return stashes.map((stash: GitStash): TreeRow => ({
+      id: `stash:${stash.index}`,
+      depth: 1,
+      expandable: false,
+      expanded: false,
+      data: { kind: 'stash', icon: Icon.STASH, label: stash.message, stash },
+    }));
   }
 
   /**
@@ -1785,23 +1777,21 @@ export class SourceControlSidebar implements OnDestroy {
     if (section.items.length === 0) {
       return [this.emptyRow('pullRequests', Icon.GIT_PULL_REQUEST, 'No open pull requests')];
     }
-    return section.items.map(
-      (pull: ForgePullRequest): TreeRow => ({
-        id: `pr:${pull.number}`,
-        depth: 1,
-        expandable: false,
-        expanded: false,
-        data: {
-          kind: 'pr',
-          icon: Icon.GIT_PULL_REQUEST,
-          label: `#${pull.number} ${pull.title}${pull.draft ? ' (draft)' : ''}`,
-          pullRequest: pull,
-          // A pull request whose checks have not reported gets no badge at all, rather than one
-          // implying work is in flight.
-          ...(pull.checks === 'none' ? {} : { status: pull.checks }),
-        },
-      }),
-    );
+    return section.items.map((pull: ForgePullRequest): TreeRow => ({
+      id: `pr:${pull.number}`,
+      depth: 1,
+      expandable: false,
+      expanded: false,
+      data: {
+        kind: 'pr',
+        icon: Icon.GIT_PULL_REQUEST,
+        label: `#${pull.number} ${pull.title}${pull.draft ? ' (draft)' : ''}`,
+        pullRequest: pull,
+        // A pull request whose checks have not reported gets no badge at all, rather than one
+        // implying work is in flight.
+        ...(pull.checks === 'none' ? {} : { status: pull.checks }),
+      },
+    }));
   }
 
   /**
@@ -2028,13 +2018,11 @@ export class SourceControlSidebar implements OnDestroy {
       id: action,
       label: `${label} to`,
       icon: Icon.CLOUD,
-      children: remotes.map(
-        (remote: GitRemote): MenuItem => ({
-          id: `${action}:${remote.name}`,
-          label: remote.name,
-          icon: Icon.CLOUD,
-        }),
-      ),
+      children: remotes.map((remote: GitRemote): MenuItem => ({
+        id: `${action}:${remote.name}`,
+        label: remote.name,
+        icon: Icon.CLOUD,
+      })),
     };
   }
 
@@ -2368,20 +2356,18 @@ export class SourceControlSidebar implements OnDestroy {
     if (section.items.length === 0) {
       return [this.emptyRow('issues', Icon.INFO, 'No open issues')];
     }
-    return section.items.map(
-      (issue: ForgeIssue): TreeRow => ({
-        id: `issue:${issue.number}`,
-        depth: 1,
-        expandable: false,
-        expanded: false,
-        data: {
-          kind: 'issue',
-          icon: Icon.INFO,
-          label: `#${issue.number} ${issue.title}`,
-          issue,
-        },
-      }),
-    );
+    return section.items.map((issue: ForgeIssue): TreeRow => ({
+      id: `issue:${issue.number}`,
+      depth: 1,
+      expandable: false,
+      expanded: false,
+      data: {
+        kind: 'issue',
+        icon: Icon.INFO,
+        label: `#${issue.number} ${issue.title}`,
+        issue,
+      },
+    }));
   }
 
   /**
@@ -2410,22 +2396,20 @@ export class SourceControlSidebar implements OnDestroy {
     if (section.items.length === 0) {
       return [this.emptyRow('actions', Icon.PLAY, 'No recent workflow runs')];
     }
-    return section.items.map(
-      (run: ForgeWorkflowRun): TreeRow => ({
-        id: `action:${run.id}`,
-        depth: 1,
-        expandable: false,
-        expanded: false,
-        data: {
-          kind: 'action',
-          icon: Icon.PLAY,
-          // The branch is what tells two runs of the same workflow apart, which is the common case.
-          label: run.branch.length > 0 ? `${run.name} — ${run.branch}` : run.name,
-          run,
-          status: run.status,
-        },
-      }),
-    );
+    return section.items.map((run: ForgeWorkflowRun): TreeRow => ({
+      id: `action:${run.id}`,
+      depth: 1,
+      expandable: false,
+      expanded: false,
+      data: {
+        kind: 'action',
+        icon: Icon.PLAY,
+        // The branch is what tells two runs of the same workflow apart, which is the common case.
+        label: run.branch.length > 0 ? `${run.name} — ${run.branch}` : run.name,
+        run,
+        status: run.status,
+      },
+    }));
   }
 
   /**

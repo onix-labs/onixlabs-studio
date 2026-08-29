@@ -336,8 +336,7 @@ export const blockReorderPlugin: $Prose = $prose((): Plugin<ReorderState> => {
       init: (): ReorderState => ({ active: false, source: NO_INDEX, insertBefore: NO_INDEX }),
       apply(tr: Transaction, value: ReorderState): ReorderState {
         const meta: Partial<ReorderState> | undefined = tr.getMeta(reorderKey) as
-          | Partial<ReorderState>
-          | undefined;
+          Partial<ReorderState> | undefined;
         return meta ? { ...value, ...meta } : value;
       },
     },

@@ -191,9 +191,10 @@ export class Layouts {
    * Gets the registered templates, for the layout manager's template picker.
    */
   public readonly templates: Signal<readonly LayoutInfo[]> = computed((): readonly LayoutInfo[] =>
-    this.registered().map(
-      (template: LayoutTemplate): LayoutInfo => ({ id: template.id, name: template.name }),
-    ),
+    this.registered().map((template: LayoutTemplate): LayoutInfo => ({
+      id: template.id,
+      name: template.name,
+    })),
   );
 
   /**
@@ -302,14 +303,12 @@ export class Layouts {
       return;
     }
     this.saved.set(
-      templates.map(
-        (template: LayoutTemplate): StoredLayout => ({
-          id: crypto.randomUUID(),
-          name: template.name,
-          layout: template.createLayout(),
-          templateId: template.id,
-        }),
-      ),
+      templates.map((template: LayoutTemplate): StoredLayout => ({
+        id: crypto.randomUUID(),
+        name: template.name,
+        layout: template.createLayout(),
+        templateId: template.id,
+      })),
     );
     this.persist();
     this.log.info('Layouts', `Seeded ${templates.length} layouts from templates`);
@@ -521,9 +520,8 @@ export class Layouts {
     const id: string = existing?.id ?? crypto.randomUUID();
     if (existing !== null) {
       this.saved.update((current: readonly StoredLayout[]): readonly StoredLayout[] =>
-        current.map(
-          (layout: StoredLayout): StoredLayout =>
-            layout.id === id ? { ...layout, name: trimmed, layout: tree } : layout,
+        current.map((layout: StoredLayout): StoredLayout =>
+          layout.id === id ? { ...layout, name: trimmed, layout: tree } : layout,
         ),
       );
     } else {
@@ -591,9 +589,8 @@ export class Layouts {
       return false;
     }
     this.saved.update((current: readonly StoredLayout[]): readonly StoredLayout[] =>
-      current.map(
-        (layout: StoredLayout): StoredLayout =>
-          layout.id === id ? { ...layout, name: trimmed } : layout,
+      current.map((layout: StoredLayout): StoredLayout =>
+        layout.id === id ? { ...layout, name: trimmed } : layout,
       ),
     );
     this.persist();

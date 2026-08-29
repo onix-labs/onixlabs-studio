@@ -329,9 +329,8 @@ export class NuGetPackageManager implements PackageManager {
       }
     };
     await Promise.all(
-      Array.from(
-        { length: Math.min(REGISTRY_CONCURRENCY, queue.length) },
-        (): Promise<void> => worker(),
+      Array.from({ length: Math.min(REGISTRY_CONCURRENCY, queue.length) }, (): Promise<void> =>
+        worker(),
       ),
     );
     return latest;

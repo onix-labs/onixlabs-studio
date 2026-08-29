@@ -112,12 +112,10 @@ export class LanguageServerSettings {
    */
   protected readonly options: Signal<readonly DropdownOption[]> = computed(
     (): readonly DropdownOption[] =>
-      this.servers().map(
-        (server: LspServerSummary): DropdownOption => ({
-          value: server.id,
-          label: server.displayName,
-        }),
-      ),
+      this.servers().map((server: LspServerSummary): DropdownOption => ({
+        value: server.id,
+        label: server.displayName,
+      })),
   );
 
   /**

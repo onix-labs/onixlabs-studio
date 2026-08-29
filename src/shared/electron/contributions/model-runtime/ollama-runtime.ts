@@ -235,17 +235,15 @@ export class OllamaRuntime implements ModelRuntime {
       models?: readonly RawTagsModel[];
     }>('GET', '/api/tags');
 
-    return (raw?.models ?? []).map(
-      (model: RawTagsModel): LocalModel => ({
-        name: model.name ?? model.model ?? '',
-        size: model.size ?? 0,
-        digest: model.digest ?? '',
-        modifiedAt: model.modified_at ?? '',
-        family: model.details?.family ?? '',
-        parameterSize: model.details?.parameter_size ?? '',
-        quantization: model.details?.quantization_level ?? '',
-      }),
-    );
+    return (raw?.models ?? []).map((model: RawTagsModel): LocalModel => ({
+      name: model.name ?? model.model ?? '',
+      size: model.size ?? 0,
+      digest: model.digest ?? '',
+      modifiedAt: model.modified_at ?? '',
+      family: model.details?.family ?? '',
+      parameterSize: model.details?.parameter_size ?? '',
+      quantization: model.details?.quantization_level ?? '',
+    }));
   }
 
   /**
@@ -258,14 +256,12 @@ export class OllamaRuntime implements ModelRuntime {
       models?: readonly RawPsModel[];
     }>('GET', '/api/ps');
 
-    return (raw?.models ?? []).map(
-      (model: RawPsModel): RunningModel => ({
-        name: model.name ?? model.model ?? '',
-        size: model.size ?? 0,
-        sizeVram: model.size_vram ?? 0,
-        expiresAt: model.expires_at ?? '',
-      }),
-    );
+    return (raw?.models ?? []).map((model: RawPsModel): RunningModel => ({
+      name: model.name ?? model.model ?? '',
+      size: model.size ?? 0,
+      sizeVram: model.size_vram ?? 0,
+      expiresAt: model.expires_at ?? '',
+    }));
   }
 
   /**

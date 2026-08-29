@@ -100,13 +100,11 @@ export class AccentPicker {
    */
   protected readonly options: Signal<readonly DropdownOption[]> = computed(
     (): readonly DropdownOption[] => [
-      ...ACCENT_PRESETS.map(
-        (preset: AccentPreset): DropdownOption => ({
-          value: preset.id,
-          label: preset.label,
-          color: preset.hex,
-        }),
-      ),
+      ...ACCENT_PRESETS.map((preset: AccentPreset): DropdownOption => ({
+        value: preset.id,
+        label: preset.label,
+        color: preset.hex,
+      })),
       {
         value: CUSTOM_VALUE,
         label: 'Custom',

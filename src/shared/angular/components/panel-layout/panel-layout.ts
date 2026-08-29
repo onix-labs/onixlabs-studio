@@ -532,8 +532,8 @@ export class PanelLayout implements PanelLayoutContext {
     if (key !== null) {
       this.arrangements.move(key, panelId, edge);
     } else {
-      this.localArrangement.update(
-        (current: PanelArrangement): PanelArrangement => movePanel(current, panelId, edge),
+      this.localArrangement.update((current: PanelArrangement): PanelArrangement =>
+        movePanel(current, panelId, edge),
       );
     }
     this.stackShares.update(
@@ -555,8 +555,8 @@ export class PanelLayout implements PanelLayoutContext {
     if (key !== null) {
       this.arrangements.resizeEdge(key, edge, size);
     } else {
-      this.localArrangement.update(
-        (current: PanelArrangement): PanelArrangement => resizeEdgePanels(current, edge, size),
+      this.localArrangement.update((current: PanelArrangement): PanelArrangement =>
+        resizeEdgePanels(current, edge, size),
       );
     }
   }
@@ -571,8 +571,8 @@ export class PanelLayout implements PanelLayoutContext {
     if (key !== null) {
       this.arrangements.resizePanel(key, panelId, size);
     } else {
-      this.localArrangement.update(
-        (current: PanelArrangement): PanelArrangement => resizePanel(current, panelId, size),
+      this.localArrangement.update((current: PanelArrangement): PanelArrangement =>
+        resizePanel(current, panelId, size),
       );
     }
   }

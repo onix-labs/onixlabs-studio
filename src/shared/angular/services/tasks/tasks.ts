@@ -53,9 +53,8 @@ export class Tasks {
    */
   public async getTasks(context: TaskContext): Promise<Task[]> {
     const lists: Task[][] = await Promise.all(
-      [...this.providers.values()].map(
-        (provider: TaskProvider): Promise<Task[]> =>
-          Promise.resolve(provider.provideTasks(context)),
+      [...this.providers.values()].map((provider: TaskProvider): Promise<Task[]> =>
+        Promise.resolve(provider.provideTasks(context)),
       ),
     );
     return lists.flat();

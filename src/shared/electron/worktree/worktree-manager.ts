@@ -30,10 +30,8 @@ export class WorktreeManager {
    * @param trusted The trusted-paths store, used to gate kind resolution for not-yet-open folders.
    */
   public constructor(workspace: WorkspaceContext, trusted: TrustedPaths) {
-    this.operations = new WorktreeOperations(
-      workspace,
-      trusted,
-      (target: string): Promise<void> => shell.trashItem(target),
+    this.operations = new WorktreeOperations(workspace, trusted, (target: string): Promise<void> =>
+      shell.trashItem(target),
     );
   }
 

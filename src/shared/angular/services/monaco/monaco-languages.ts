@@ -191,8 +191,8 @@ export function resolveLanguageId(requested: string): string | null {
  */
 export function supportedLanguages(): readonly LanguageInfo[] {
   const ids: ReadonlySet<string> = new Set<string>(Object.values(EXTENSION_TO_LANGUAGE));
-  return Array.from(
-    ids,
-    (id: string): LanguageInfo => ({ id, name: LANGUAGE_NAMES[id] ?? id }),
-  ).sort((a: LanguageInfo, b: LanguageInfo): number => a.name.localeCompare(b.name));
+  return Array.from(ids, (id: string): LanguageInfo => ({
+    id,
+    name: LANGUAGE_NAMES[id] ?? id,
+  })).sort((a: LanguageInfo, b: LanguageInfo): number => a.name.localeCompare(b.name));
 }

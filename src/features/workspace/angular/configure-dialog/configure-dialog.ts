@@ -246,12 +246,12 @@ export class ConfigureDialogPanel {
    */
   protected readonly buildConfigOptions: Signal<readonly DropdownOption[]> = computed(
     (): readonly DropdownOption[] =>
-      this.workspaceCapabilities.capabilities()?.buildConfigurations.map(
-        (configuration): DropdownOption => ({
+      this.workspaceCapabilities
+        .capabilities()
+        ?.buildConfigurations.map((configuration): DropdownOption => ({
           value: configuration.id,
           label: configuration.name,
-        }),
-      ) ?? [],
+        })) ?? [],
   );
 
   /**
@@ -261,9 +261,10 @@ export class ConfigureDialogPanel {
     (): readonly DropdownOption[] =>
       this.workspaceCapabilities
         .capabilities()
-        ?.target?.options.map(
-          (option): DropdownOption => ({ value: option.id, label: option.name }),
-        ) ?? [],
+        ?.target?.options.map((option): DropdownOption => ({
+          value: option.id,
+          label: option.name,
+        })) ?? [],
   );
 
   /**
@@ -594,9 +595,8 @@ export class ConfigureDialogPanel {
       return;
     }
     this.draft.update((list: readonly RunConfiguration[]): readonly RunConfiguration[] =>
-      list.map(
-        (configuration: RunConfiguration): RunConfiguration =>
-          configuration.id === id ? { ...configuration, ...patch } : configuration,
+      list.map((configuration: RunConfiguration): RunConfiguration =>
+        configuration.id === id ? { ...configuration, ...patch } : configuration,
       ),
     );
   }

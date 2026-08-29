@@ -488,29 +488,25 @@ export class Settings {
   /**
    * Gets the complete settings, assembled from the registry-backed overrides.
    */
-  public readonly settings: Signal<AppSettings> = computed(
-    (): AppSettings => ({
-      application: this.application(),
-      appearance: this.appearance(),
-      textEditor: this.textEditor(),
-      markdownEditor: this.markdownEditor(),
-      ai: this.ai(),
-      workspaces: this.workspaces(),
-    }),
-  );
+  public readonly settings: Signal<AppSettings> = computed((): AppSettings => ({
+    application: this.application(),
+    appearance: this.appearance(),
+    textEditor: this.textEditor(),
+    markdownEditor: this.markdownEditor(),
+    ai: this.ai(),
+    workspaces: this.workspaces(),
+  }));
 
   /**
    * Gets the application-level settings.
    */
-  public readonly application: Signal<ApplicationSettings> = computed(
-    (): ApplicationSettings => ({
-      undoStackSize: this.read('application.undoStackSize'),
-      printMargin: this.read('application.printMargin'),
-      menuMode: this.read('application.menuMode'),
-      menuAppearance: this.read('application.menuAppearance'),
-      showWindowLock: this.read('application.showWindowLock'),
-    }),
-  );
+  public readonly application: Signal<ApplicationSettings> = computed((): ApplicationSettings => ({
+    undoStackSize: this.read('application.undoStackSize'),
+    printMargin: this.read('application.printMargin'),
+    menuMode: this.read('application.menuMode'),
+    menuAppearance: this.read('application.menuAppearance'),
+    showWindowLock: this.read('application.showWindowLock'),
+  }));
 
   /**
    * Gets how much of the application menu the title strip carries.
@@ -535,13 +531,11 @@ export class Settings {
   /**
    * Gets the appearance settings.
    */
-  public readonly appearance: Signal<AppearanceSettings> = computed(
-    (): AppearanceSettings => ({
-      ribbonAlignment: this.read('appearance.ribbonAlignment'),
-      modernUiFeatures: this.read('appearance.modernUiFeatures'),
-      workspaceTexture: this.read('appearance.workspaceTexture'),
-    }),
-  );
+  public readonly appearance: Signal<AppearanceSettings> = computed((): AppearanceSettings => ({
+    ribbonAlignment: this.read('appearance.ribbonAlignment'),
+    modernUiFeatures: this.read('appearance.modernUiFeatures'),
+    workspaceTexture: this.read('appearance.workspaceTexture'),
+  }));
 
   /**
    * Gets the alignment of the ribbon's controls within the ribbon strip.
@@ -633,11 +627,9 @@ export class Settings {
   /**
    * Gets the workspace settings.
    */
-  public readonly workspaces: Signal<WorkspacesSettings> = computed(
-    (): WorkspacesSettings => ({
-      fileExplorerExpandAll: this.read('workspaces.fileExplorerExpandAll'),
-    }),
-  );
+  public readonly workspaces: Signal<WorkspacesSettings> = computed((): WorkspacesSettings => ({
+    fileExplorerExpandAll: this.read('workspaces.fileExplorerExpandAll'),
+  }));
 
   /**
    * Gets how the File Explorer's "Expand All" behaves.
@@ -649,16 +641,14 @@ export class Settings {
   /**
    * Gets the AI agent settings.
    */
-  public readonly ai: Signal<AiSettings> = computed(
-    (): AiSettings => ({
-      connections: this.read('ai.connections'),
-      activeConnectionId: this.read('ai.activeConnectionId'),
-      connectionModels: this.read('ai.connectionModels'),
-      permissionPosture: this.read('ai.permissionPosture'),
-      tokenCap: this.read('ai.tokenCap'),
-      runTimeoutMinutes: this.read('ai.runTimeoutMinutes'),
-    }),
-  );
+  public readonly ai: Signal<AiSettings> = computed((): AiSettings => ({
+    connections: this.read('ai.connections'),
+    activeConnectionId: this.read('ai.activeConnectionId'),
+    connectionModels: this.read('ai.connectionModels'),
+    permissionPosture: this.read('ai.permissionPosture'),
+    tokenCap: this.read('ai.tokenCap'),
+    runTimeoutMinutes: this.read('ai.runTimeoutMinutes'),
+  }));
 
   /**
    * Gets the configured provider connections.
@@ -860,9 +850,10 @@ export class Settings {
    */
   public set<K extends SettingsKey>(key: K, value: SettingsValues[K]): void {
     const validated: unknown = this.validate(key, value);
-    this.overrides.update(
-      (current: SettingsOverrides): SettingsOverrides => ({ ...current, [key]: validated }),
-    );
+    this.overrides.update((current: SettingsOverrides): SettingsOverrides => ({
+      ...current,
+      [key]: validated,
+    }));
   }
 
   /**
@@ -1054,9 +1045,8 @@ export class Settings {
     const next: AiConnection[] =
       index === -1
         ? [...existing, connection]
-        : existing.map(
-            (candidate: AiConnection, i: number): AiConnection =>
-              i === index ? connection : candidate,
+        : existing.map((candidate: AiConnection, i: number): AiConnection =>
+            i === index ? connection : candidate,
           );
     this.set('ai.connections', next);
     this.log.info(

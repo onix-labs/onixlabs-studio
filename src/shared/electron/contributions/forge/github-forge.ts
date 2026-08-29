@@ -295,20 +295,18 @@ export class GitHubForge implements ForgeProvider {
     );
     return {
       ok: true,
-      value: raw.map(
-        (pull: RawPullRequest, index: number): ForgePullRequest => ({
-          number: asNumber(pull.number),
-          title: asString(pull.title, '(untitled)'),
-          author: asString(pull.user?.login, 'unknown'),
-          url: asString(pull.html_url),
-          draft: pull.draft === true,
-          headRef: asString(pull.head?.ref),
-          // GitHub publishes every pull request's head under this ref on the base repository, which
-          // is what makes a fork's pull request checkoutable at all.
-          headRefspec: `refs/pull/${asNumber(pull.number)}/head`,
-          checks: checks[index],
-        }),
-      ),
+      value: raw.map((pull: RawPullRequest, index: number): ForgePullRequest => ({
+        number: asNumber(pull.number),
+        title: asString(pull.title, '(untitled)'),
+        author: asString(pull.user?.login, 'unknown'),
+        url: asString(pull.html_url),
+        draft: pull.draft === true,
+        headRef: asString(pull.head?.ref),
+        // GitHub publishes every pull request's head under this ref on the base repository, which
+        // is what makes a fork's pull request checkoutable at all.
+        headRefspec: `refs/pull/${asNumber(pull.number)}/head`,
+        checks: checks[index],
+      })),
     };
   }
 
@@ -334,31 +332,29 @@ export class GitHubForge implements ForgeProvider {
         // GitHub's issues endpoint returns pull requests too, marked by a `pull_request` member. The
         // panel lists them in their own section, so including them here would double-count every one.
         .filter((issue: RawIssue): boolean => issue.pull_request === undefined)
-        .map(
-          (issue: RawIssue): ForgeIssue => ({
-            number: asNumber(issue.number),
-            title: asString(issue.title, '(untitled)'),
-            author: asString(issue.user?.login, 'unknown'),
-            url: asString(issue.html_url),
-            labels: (issue.labels ?? [])
-              .map((label: { readonly name?: unknown }): string => asString(label.name))
-              .filter((name: string): boolean => name.length > 0),
-            assignees: (issue.assignees ?? [])
-              .map((user: RawUser): string => asString(user.login))
-              .filter((login: string): boolean => login.length > 0),
-            state: asString(issue.state) === 'closed' ? 'closed' : 'open',
-            body: asString(issue.body),
-            createdAt: asString(issue.created_at),
-            updatedAt: asString(issue.updated_at),
-            ...(asString(issue.closed_at).length === 0
-              ? {}
-              : { closedAt: asString(issue.closed_at) }),
-            commentCount: asNumber(issue.comments),
-            ...(asString(issue.milestone?.title).length === 0
-              ? {}
-              : { milestone: asString(issue.milestone?.title) }),
-          }),
-        ),
+        .map((issue: RawIssue): ForgeIssue => ({
+          number: asNumber(issue.number),
+          title: asString(issue.title, '(untitled)'),
+          author: asString(issue.user?.login, 'unknown'),
+          url: asString(issue.html_url),
+          labels: (issue.labels ?? [])
+            .map((label: { readonly name?: unknown }): string => asString(label.name))
+            .filter((name: string): boolean => name.length > 0),
+          assignees: (issue.assignees ?? [])
+            .map((user: RawUser): string => asString(user.login))
+            .filter((login: string): boolean => login.length > 0),
+          state: asString(issue.state) === 'closed' ? 'closed' : 'open',
+          body: asString(issue.body),
+          createdAt: asString(issue.created_at),
+          updatedAt: asString(issue.updated_at),
+          ...(asString(issue.closed_at).length === 0
+            ? {}
+            : { closedAt: asString(issue.closed_at) }),
+          commentCount: asNumber(issue.comments),
+          ...(asString(issue.milestone?.title).length === 0
+            ? {}
+            : { milestone: asString(issue.milestone?.title) }),
+        })),
     };
   }
 
@@ -387,15 +383,13 @@ export class GitHubForge implements ForgeProvider {
       : [];
     return {
       ok: true,
-      value: raw.map(
-        (comment: RawIssueComment): ForgeIssueComment => ({
-          id: asNumber(comment.id),
-          author: asString(comment.user?.login, 'unknown'),
-          body: asString(comment.body),
-          createdAt: asString(comment.created_at),
-          url: asString(comment.html_url),
-        }),
-      ),
+      value: raw.map((comment: RawIssueComment): ForgeIssueComment => ({
+        id: asNumber(comment.id),
+        author: asString(comment.user?.login, 'unknown'),
+        body: asString(comment.body),
+        createdAt: asString(comment.created_at),
+        url: asString(comment.html_url),
+      })),
     };
   }
 
@@ -418,18 +412,16 @@ export class GitHubForge implements ForgeProvider {
       : [];
     return {
       ok: true,
-      value: raw.map(
-        (run: RawWorkflowRun): ForgeWorkflowRun => ({
-          id: asNumber(run.id),
-          name: asString(run.name, 'Workflow'),
-          status: mapRunStatus(asString(run.status), asString(run.conclusion)),
-          url: asString(run.html_url),
-          branch: asString(run.head_branch),
-          event: asString(run.event),
-          // A queued run has no start time yet; its creation time is the closest honest answer.
-          startedAt: asString(run.run_started_at, asString(run.created_at)),
-        }),
-      ),
+      value: raw.map((run: RawWorkflowRun): ForgeWorkflowRun => ({
+        id: asNumber(run.id),
+        name: asString(run.name, 'Workflow'),
+        status: mapRunStatus(asString(run.status), asString(run.conclusion)),
+        url: asString(run.html_url),
+        branch: asString(run.head_branch),
+        event: asString(run.event),
+        // A queued run has no start time yet; its creation time is the closest honest answer.
+        startedAt: asString(run.run_started_at, asString(run.created_at)),
+      })),
     };
   }
 

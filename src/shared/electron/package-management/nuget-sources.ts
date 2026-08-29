@@ -84,13 +84,11 @@ export function resolveSources(configs: readonly NuGetConfig[]): readonly NuGetS
       credentials.set(name, credential);
     }
   }
-  return [...urls.entries()].map(
-    ([name, url]: [string, string]): NuGetSource => ({
-      name,
-      url,
-      headers: authHeaders(credentials.get(normaliseSourceName(name))),
-    }),
-  );
+  return [...urls.entries()].map(([name, url]: [string, string]): NuGetSource => ({
+    name,
+    url,
+    headers: authHeaders(credentials.get(normaliseSourceName(name))),
+  }));
 }
 
 /**

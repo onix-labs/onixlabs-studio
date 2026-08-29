@@ -82,13 +82,11 @@ export class DockStatusStrip {
    * Gets the selectable zoom levels as menu items, the current level marked active.
    */
   protected readonly zoomItems: Signal<readonly MenuItem[]> = computed((): readonly MenuItem[] =>
-    this.editorZoom.levels.map(
-      (level: number): MenuItem => ({
-        id: String(level),
-        label: `${level}%`,
-        active: level === this.zoom(),
-      }),
-    ),
+    this.editorZoom.levels.map((level: number): MenuItem => ({
+      id: String(level),
+      label: `${level}%`,
+      active: level === this.zoom(),
+    })),
   );
 
   /**

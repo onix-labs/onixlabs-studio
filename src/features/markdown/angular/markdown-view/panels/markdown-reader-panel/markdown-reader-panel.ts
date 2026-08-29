@@ -74,12 +74,10 @@ export class MarkdownReaderPanel {
    */
   protected readonly speedOptions: Signal<readonly ButtonGroupOption[]> = computed(
     (): readonly ButtonGroupOption[] =>
-      this.speeds.map(
-        (speed: number): ButtonGroupOption => ({
-          value: String(speed),
-          label: this.speedLabel(speed),
-        }),
-      ),
+      this.speeds.map((speed: number): ButtonGroupOption => ({
+        value: String(speed),
+        label: this.speedLabel(speed),
+      })),
   );
 
   /**
@@ -155,12 +153,10 @@ export class MarkdownReaderPanel {
    */
   protected readonly voiceOptions: Signal<readonly DropdownOption[]> = computed(
     (): readonly DropdownOption[] =>
-      this.voices().map(
-        (voice: VoiceOption): DropdownOption => ({
-          value: voice.uri,
-          label: `${voice.name} · ${voice.lang}`,
-        }),
-      ),
+      this.voices().map((voice: VoiceOption): DropdownOption => ({
+        value: voice.uri,
+        label: `${voice.name} · ${voice.lang}`,
+      })),
   );
 
   /**

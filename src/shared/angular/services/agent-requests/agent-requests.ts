@@ -86,15 +86,13 @@ export class AgentRequests {
           source.agent
             .items()
             .filter((item: AgentItem): boolean => this.isPending(item))
-            .map(
-              (item: AgentItem): AgentRequestEntry => ({
-                key: `${index}:${item.id}`,
-                tabId: source.tabId(),
-                label: source.label(),
-                item,
-                agent: source.agent,
-              }),
-            ),
+            .map((item: AgentItem): AgentRequestEntry => ({
+              key: `${index}:${item.id}`,
+              tabId: source.tabId(),
+              label: source.label(),
+              item,
+              agent: source.agent,
+            })),
       ),
   );
 

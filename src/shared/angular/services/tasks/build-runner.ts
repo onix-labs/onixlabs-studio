@@ -1120,15 +1120,13 @@ export class BuildRunner implements BuildHandler, OnDestroy {
     if (selection?.kind !== 'file') {
       return [];
     }
-    return this.parseScripts(selection.file.content).map(
-      (name: string): BuildTask => ({
-        id: `npm:${name}`,
-        label: `npm run ${name}`,
-        group: groupOf(name),
-        command: `npm run ${name}`,
-        cwd: root.path,
-      }),
-    );
+    return this.parseScripts(selection.file.content).map((name: string): BuildTask => ({
+      id: `npm:${name}`,
+      label: `npm run ${name}`,
+      group: groupOf(name),
+      command: `npm run ${name}`,
+      cwd: root.path,
+    }));
   }
 
   /**

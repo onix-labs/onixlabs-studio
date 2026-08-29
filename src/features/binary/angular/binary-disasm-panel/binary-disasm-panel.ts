@@ -140,8 +140,8 @@ export class BinaryDisasmPanel implements OnDestroy {
    * Holds the built listing text and its line-to-instruction map, rebuilt whenever the decoded
    * instructions change (the viewport moved, or the format resolved). Bound to the editor's content.
    */
-  protected readonly content: Signal<DisasmContent> = computed(
-    (): DisasmContent => buildContent(this.document()?.instructions() ?? []),
+  protected readonly content: Signal<DisasmContent> = computed((): DisasmContent =>
+    buildContent(this.document()?.instructions() ?? []),
   );
 
   /**

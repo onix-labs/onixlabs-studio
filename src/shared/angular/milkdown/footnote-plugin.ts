@@ -85,49 +85,46 @@ export const remarkFootnotesCollector: $Remark<'remarkFootnotesCollector', undef
  * ProseMirror node schema for the footnotes section wrapper.
  * This renders an HR followed by the footnote definitions.
  */
-export const footnotesSectionNode: $Node = $node(
-  'footnotes_section',
-  (): NodeSchema => ({
-    group: 'block',
-    content: 'footnote_definition+',
-    defining: true,
-    isolating: true,
-    attrs: {},
-    parseDOM: [
-      {
-        tag: 'section.footnotes-section',
-      },
-    ],
-    toDOM: (): DOMOutputSpec => {
-      return [
-        'section',
-        { class: 'footnotes-section' },
-        ['hr', { class: 'footnotes-separator' }],
-        ['div', { class: 'footnotes-content' }, CONTENT_HOLE],
-      ] as const;
+export const footnotesSectionNode: $Node = $node('footnotes_section', (): NodeSchema => ({
+  group: 'block',
+  content: 'footnote_definition+',
+  defining: true,
+  isolating: true,
+  attrs: {},
+  parseDOM: [
+    {
+      tag: 'section.footnotes-section',
     },
-    parseMarkdown: {
-      match: (node: MarkdownNode): boolean => node.type === 'footnotesSection',
-      runner: (state: ParserState, node: MarkdownNode, type: NodeType): void => {
-        const section: FootnotesSection = node as unknown as FootnotesSection;
-        state.openNode(type);
-        // Process each footnote definition - cast children to expected type
-        state.next(section.children as unknown as Parameters<typeof state.next>[0]);
-        state.closeNode();
-      },
+  ],
+  toDOM: (): DOMOutputSpec => {
+    return [
+      'section',
+      { class: 'footnotes-section' },
+      ['hr', { class: 'footnotes-separator' }],
+      ['div', { class: 'footnotes-content' }, CONTENT_HOLE],
+    ] as const;
+  },
+  parseMarkdown: {
+    match: (node: MarkdownNode): boolean => node.type === 'footnotesSection',
+    runner: (state: ParserState, node: MarkdownNode, type: NodeType): void => {
+      const section: FootnotesSection = node as unknown as FootnotesSection;
+      state.openNode(type);
+      // Process each footnote definition - cast children to expected type
+      state.next(section.children as unknown as Parameters<typeof state.next>[0]);
+      state.closeNode();
     },
-    toMarkdown: {
-      match: (node: ProseMirrorNode): boolean => node.type.name === 'footnotes_section',
-      runner: (state: SerializerState, node: ProseMirrorNode): void => {
-        // Serialize each child footnote definition directly
-        // The footnote_definition nodes handle their own serialization
-        node.content.forEach((child: ProseMirrorNode): void => {
-          state.next(child);
-        });
-      },
+  },
+  toMarkdown: {
+    match: (node: ProseMirrorNode): boolean => node.type.name === 'footnotes_section',
+    runner: (state: SerializerState, node: ProseMirrorNode): void => {
+      // Serialize each child footnote definition directly
+      // The footnote_definition nodes handle their own serialization
+      node.content.forEach((child: ProseMirrorNode): void => {
+        state.next(child);
+      });
     },
-  }),
-);
+  },
+}));
 
 /**
  * All footnote plugins combined.

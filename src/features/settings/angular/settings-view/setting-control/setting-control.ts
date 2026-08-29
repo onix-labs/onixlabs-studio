@@ -82,8 +82,8 @@ export class SettingControl {
   /**
    * Gets the binding for the current setting, resolved from its owner.
    */
-  private readonly binding: Signal<SettingBinding> = computed(
-    (): SettingBinding => this.bindings.resolve(this.key(), this.definition()?.owner),
+  private readonly binding: Signal<SettingBinding> = computed((): SettingBinding =>
+    this.bindings.resolve(this.key(), this.definition()?.owner),
   );
 
   /**

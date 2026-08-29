@@ -432,14 +432,12 @@ export class SystemMonitorView {
    */
   protected readonly sessionOptions: Signal<readonly DropdownOption[]> = computed(
     (): readonly DropdownOption[] =>
-      this.sessions().map(
-        (session: LogSession): DropdownOption => ({
-          value: session.id,
-          label: session.current
-            ? `Current session — ${this.formatDate(session.startedAt)}`
-            : this.formatDate(session.startedAt),
-        }),
-      ),
+      this.sessions().map((session: LogSession): DropdownOption => ({
+        value: session.id,
+        label: session.current
+          ? `Current session — ${this.formatDate(session.startedAt)}`
+          : this.formatDate(session.startedAt),
+      })),
   );
 
   /**

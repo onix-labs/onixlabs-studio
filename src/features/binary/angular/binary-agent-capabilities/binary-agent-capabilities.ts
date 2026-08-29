@@ -92,37 +92,30 @@ export class BinaryAgentCapabilities {
    * capabilities.
    */
   public constructor() {
-    this.runtime.registerCapability(
-      READ_BINARY_OVERVIEW,
-      (input: unknown): Promise<ReadResult> => this.overview(input),
+    this.runtime.registerCapability(READ_BINARY_OVERVIEW, (input: unknown): Promise<ReadResult> =>
+      this.overview(input),
     );
-    this.runtime.registerCapability(
-      READ_BINARY_BYTES,
-      (input: unknown): Promise<ReadResult> => this.readBytes(input),
+    this.runtime.registerCapability(READ_BINARY_BYTES, (input: unknown): Promise<ReadResult> =>
+      this.readBytes(input),
     );
-    this.runtime.registerCapability(
-      READ_BINARY_SELECTION,
-      (input: unknown): Promise<ReadResult> => this.readSelection(input),
+    this.runtime.registerCapability(READ_BINARY_SELECTION, (input: unknown): Promise<ReadResult> =>
+      this.readSelection(input),
     );
     this.runtime.registerCapability(
       READ_BINARY_DISASSEMBLY,
       (input: unknown): Promise<ReadResult> => this.readDisassembly(input),
     );
-    this.runtime.registerCapability(
-      PATCH_BINARY_BYTES,
-      (input: unknown): Promise<PatchResult> => this.patch(input),
+    this.runtime.registerCapability(PATCH_BINARY_BYTES, (input: unknown): Promise<PatchResult> =>
+      this.patch(input),
     );
-    this.runtime.registerCapability(
-      INSERT_BINARY_BYTES,
-      (input: unknown): Promise<PatchResult> => this.insert(input),
+    this.runtime.registerCapability(INSERT_BINARY_BYTES, (input: unknown): Promise<PatchResult> =>
+      this.insert(input),
     );
-    this.runtime.registerCapability(
-      DELETE_BINARY_BYTES,
-      (input: unknown): Promise<PatchResult> => this.delete(input),
+    this.runtime.registerCapability(DELETE_BINARY_BYTES, (input: unknown): Promise<PatchResult> =>
+      this.delete(input),
     );
-    this.runtime.registerCapability(
-      WRITE_BINARY_ASSEMBLY,
-      (input: unknown): Promise<PatchResult> => this.writeAssembly(input),
+    this.runtime.registerCapability(WRITE_BINARY_ASSEMBLY, (input: unknown): Promise<PatchResult> =>
+      this.writeAssembly(input),
     );
   }
 

@@ -24,13 +24,11 @@ const TEST_PANEL_TITLES: Readonly<Record<string, string>> = {
 export const TEST_DOCK_BLUEPRINT: DockBlueprint = {
   key: 'test',
   createLayout: (): DockNode => defaultLayout(),
-  panels: Object.entries(TEST_PANEL_TITLES).map(
-    ([id, title]: [string, string]): DockPanel => ({
-      id,
-      title,
-      icon: Icon.CODE,
-      role: 'tool',
-      component: DockPanelPlaceholder,
-    }),
-  ),
+  panels: Object.entries(TEST_PANEL_TITLES).map(([id, title]: [string, string]): DockPanel => ({
+    id,
+    title,
+    icon: Icon.CODE,
+    role: 'tool',
+    component: DockPanelPlaceholder,
+  })),
 };

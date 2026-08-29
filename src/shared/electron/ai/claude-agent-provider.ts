@@ -1692,14 +1692,12 @@ export class ClaudeAgentProvider implements AgentProvider {
         'ClaudeAgentProvider.listSupportedModels',
         `SDK reported ${models.length} supported model(s)`,
       );
-      return models.map(
-        (model: ModelInfo): ClaudeSdkModel => ({
-          value: model.value,
-          displayName: model.displayName,
-          resolvedModel: (model as { readonly resolvedModel?: string }).resolvedModel,
-          description: model.description,
-        }),
-      );
+      return models.map((model: ModelInfo): ClaudeSdkModel => ({
+        value: model.value,
+        displayName: model.displayName,
+        resolvedModel: (model as { readonly resolvedModel?: string }).resolvedModel,
+        description: model.description,
+      }));
     } finally {
       release();
       try {

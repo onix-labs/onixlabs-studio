@@ -105,8 +105,8 @@ export class GitProvider implements SourceControlProvider {
    */
   public async getCommits(limit: number = DEFAULT_LOG_LIMIT): Promise<GitCommit[]> {
     return parseLog(
-      await this.read(
-        (api: SourceControlClient): Promise<GitRunResult> => api.log(this.root, limit),
+      await this.read((api: SourceControlClient): Promise<GitRunResult> =>
+        api.log(this.root, limit),
       ),
     );
   }
@@ -143,8 +143,8 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the changed files.
    */
   public async getCommitFiles(commit: GitCommit): Promise<GitFileChange[]> {
-    const output: string = await this.read(
-      (api: SourceControlClient): Promise<GitRunResult> => api.commitFiles(this.root, commit.hash),
+    const output: string = await this.read((api: SourceControlClient): Promise<GitRunResult> =>
+      api.commitFiles(this.root, commit.hash),
     );
     return parseCommitFiles(output, commit.hash, commit.parents[0] ?? null);
   }
@@ -201,8 +201,8 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public stage(paths: readonly string[]): Promise<MutationResult> {
-    return this.mutate(
-      (api: SourceControlClient): Promise<GitRunResult> => api.stage(this.root, paths),
+    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
+      api.stage(this.root, paths),
     );
   }
 
@@ -212,8 +212,8 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public discard(paths: readonly string[]): Promise<MutationResult> {
-    return this.mutate(
-      (api: SourceControlClient): Promise<GitRunResult> => api.discard(this.root, paths),
+    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
+      api.discard(this.root, paths),
     );
   }
 
@@ -223,8 +223,8 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public unstage(paths: readonly string[]): Promise<MutationResult> {
-    return this.mutate(
-      (api: SourceControlClient): Promise<GitRunResult> => api.unstage(this.root, paths),
+    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
+      api.unstage(this.root, paths),
     );
   }
 
@@ -234,8 +234,8 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public commit(message: string): Promise<MutationResult> {
-    return this.mutate(
-      (api: SourceControlClient): Promise<GitRunResult> => api.commit(this.root, message),
+    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
+      api.commit(this.root, message),
     );
   }
 
@@ -253,8 +253,8 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public applyStash(index: number): Promise<MutationResult> {
-    return this.mutate(
-      (api: SourceControlClient): Promise<GitRunResult> => api.stashApply(this.root, index),
+    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
+      api.stashApply(this.root, index),
     );
   }
 
@@ -264,8 +264,8 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public popStash(index: number): Promise<MutationResult> {
-    return this.mutate(
-      (api: SourceControlClient): Promise<GitRunResult> => api.stashPop(this.root, index),
+    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
+      api.stashPop(this.root, index),
     );
   }
 
@@ -275,8 +275,8 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public dropStash(index: number): Promise<MutationResult> {
-    return this.mutate(
-      (api: SourceControlClient): Promise<GitRunResult> => api.stashDrop(this.root, index),
+    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
+      api.stashDrop(this.root, index),
     );
   }
 
@@ -286,8 +286,8 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public checkout(branch: string): Promise<MutationResult> {
-    return this.mutate(
-      (api: SourceControlClient): Promise<GitRunResult> => api.checkout(this.root, branch),
+    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
+      api.checkout(this.root, branch),
     );
   }
 
@@ -298,9 +298,8 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public createBranch(name: string, checkout: boolean): Promise<MutationResult> {
-    return this.mutate(
-      (api: SourceControlClient): Promise<GitRunResult> =>
-        api.createBranch(this.root, name, checkout),
+    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
+      api.createBranch(this.root, name, checkout),
     );
   }
 
@@ -320,9 +319,8 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public fetchRef(remote: string, sourceRef: string, localBranch: string): Promise<MutationResult> {
-    return this.mutate(
-      (api: SourceControlClient): Promise<GitRunResult> =>
-        api.fetchRef(this.root, remote, sourceRef, localBranch),
+    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
+      api.fetchRef(this.root, remote, sourceRef, localBranch),
     );
   }
 
@@ -340,9 +338,8 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public push(target?: PushTarget): Promise<MutationResult> {
-    return this.mutate(
-      (api: SourceControlClient): Promise<GitRunResult> =>
-        api.push(this.root, target?.remote, target?.branch, target?.setUpstream),
+    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
+      api.push(this.root, target?.remote, target?.branch, target?.setUpstream),
     );
   }
 
@@ -353,8 +350,8 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public deleteBranch(name: string, force: boolean): Promise<MutationResult> {
-    return this.mutate(
-      (api: SourceControlClient): Promise<GitRunResult> => api.deleteBranch(this.root, name, force),
+    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
+      api.deleteBranch(this.root, name, force),
     );
   }
 
@@ -365,8 +362,8 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public renameBranch(from: string, to: string): Promise<MutationResult> {
-    return this.mutate(
-      (api: SourceControlClient): Promise<GitRunResult> => api.renameBranch(this.root, from, to),
+    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
+      api.renameBranch(this.root, from, to),
     );
   }
 
@@ -377,9 +374,8 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public setUpstream(branch: string, upstream: string | null): Promise<MutationResult> {
-    return this.mutate(
-      (api: SourceControlClient): Promise<GitRunResult> =>
-        api.setUpstream(this.root, branch, upstream),
+    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
+      api.setUpstream(this.root, branch, upstream),
     );
   }
 
@@ -389,8 +385,8 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public fetchRemote(remote: string): Promise<MutationResult> {
-    return this.mutate(
-      (api: SourceControlClient): Promise<GitRunResult> => api.fetchRemote(this.root, remote),
+    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
+      api.fetchRemote(this.root, remote),
     );
   }
 
@@ -400,8 +396,8 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public pruneRemote(remote: string): Promise<MutationResult> {
-    return this.mutate(
-      (api: SourceControlClient): Promise<GitRunResult> => api.pruneRemote(this.root, remote),
+    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
+      api.pruneRemote(this.root, remote),
     );
   }
 
@@ -412,8 +408,8 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public addRemote(name: string, url: string): Promise<MutationResult> {
-    return this.mutate(
-      (api: SourceControlClient): Promise<GitRunResult> => api.addRemote(this.root, name, url),
+    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
+      api.addRemote(this.root, name, url),
     );
   }
 
@@ -423,8 +419,8 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public removeRemote(name: string): Promise<MutationResult> {
-    return this.mutate(
-      (api: SourceControlClient): Promise<GitRunResult> => api.removeRemote(this.root, name),
+    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
+      api.removeRemote(this.root, name),
     );
   }
 
@@ -435,9 +431,8 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public checkoutTracking(remoteBranch: string, localBranch: string): Promise<MutationResult> {
-    return this.mutate(
-      (api: SourceControlClient): Promise<GitRunResult> =>
-        api.checkoutTracking(this.root, remoteBranch, localBranch),
+    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
+      api.checkoutTracking(this.root, remoteBranch, localBranch),
     );
   }
 
@@ -448,8 +443,8 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public merge(branch: string, mode: GitMergeMode): Promise<MutationResult> {
-    return this.mutate(
-      (api: SourceControlClient): Promise<GitRunResult> => api.merge(this.root, branch, mode),
+    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
+      api.merge(this.root, branch, mode),
     );
   }
 
@@ -459,8 +454,8 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public rebase(onto: string): Promise<MutationResult> {
-    return this.mutate(
-      (api: SourceControlClient): Promise<GitRunResult> => api.rebase(this.root, onto),
+    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
+      api.rebase(this.root, onto),
     );
   }
 
@@ -469,8 +464,8 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public continueOperation(): Promise<MutationResult> {
-    return this.mutate(
-      (api: SourceControlClient): Promise<GitRunResult> => api.continueOperation(this.root),
+    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
+      api.continueOperation(this.root),
     );
   }
 
@@ -479,8 +474,8 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public skipOperation(): Promise<MutationResult> {
-    return this.mutate(
-      (api: SourceControlClient): Promise<GitRunResult> => api.skipOperation(this.root),
+    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
+      api.skipOperation(this.root),
     );
   }
 
@@ -489,8 +484,8 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public abortOperation(): Promise<MutationResult> {
-    return this.mutate(
-      (api: SourceControlClient): Promise<GitRunResult> => api.abortOperation(this.root),
+    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
+      api.abortOperation(this.root),
     );
   }
 
@@ -502,9 +497,8 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public createTag(name: string, commit: string, message?: string): Promise<MutationResult> {
-    return this.mutate(
-      (api: SourceControlClient): Promise<GitRunResult> =>
-        api.createTag(this.root, name, commit, message),
+    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
+      api.createTag(this.root, name, commit, message),
     );
   }
 
@@ -514,8 +508,8 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public deleteTag(name: string): Promise<MutationResult> {
-    return this.mutate(
-      (api: SourceControlClient): Promise<GitRunResult> => api.deleteTag(this.root, name),
+    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
+      api.deleteTag(this.root, name),
     );
   }
 
@@ -526,9 +520,8 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public deleteRemoteTag(remote: string, name: string): Promise<MutationResult> {
-    return this.mutate(
-      (api: SourceControlClient): Promise<GitRunResult> =>
-        api.deleteRemoteTag(this.root, remote, name),
+    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
+      api.deleteRemoteTag(this.root, remote, name),
     );
   }
 
@@ -539,8 +532,8 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public pushTag(remote: string, name: string): Promise<MutationResult> {
-    return this.mutate(
-      (api: SourceControlClient): Promise<GitRunResult> => api.pushTag(this.root, remote, name),
+    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
+      api.pushTag(this.root, remote, name),
     );
   }
 
@@ -550,8 +543,8 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public pushAllTags(remote: string): Promise<MutationResult> {
-    return this.mutate(
-      (api: SourceControlClient): Promise<GitRunResult> => api.pushAllTags(this.root, remote),
+    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
+      api.pushAllTags(this.root, remote),
     );
   }
 

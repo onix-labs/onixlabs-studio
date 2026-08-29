@@ -705,8 +705,8 @@ export class Repository {
     }
     const paths: readonly string[] = files.map((file: GitFileChange): string => file.path);
     this.log.info('Repository', `Discarding ${paths.length} file(s)`, ...paths);
-    return this.mutate(
-      (provider: SourceControlProvider): Promise<MutationResult> => provider.discard(paths),
+    return this.mutate((provider: SourceControlProvider): Promise<MutationResult> =>
+      provider.discard(paths),
     );
   }
 
@@ -724,8 +724,8 @@ export class Repository {
    */
   public stage(file: GitFileChange): Promise<MutationResult> {
     this.log.trace('Repository', `Staging '${file.path}'`);
-    return this.mutate(
-      (provider: SourceControlProvider): Promise<MutationResult> => provider.stage([file.path]),
+    return this.mutate((provider: SourceControlProvider): Promise<MutationResult> =>
+      provider.stage([file.path]),
     );
   }
 
@@ -734,8 +734,8 @@ export class Repository {
    * @returns Returns the outcome.
    */
   public stageAll(): Promise<MutationResult> {
-    return this.mutate(
-      (provider: SourceControlProvider): Promise<MutationResult> => provider.stage([]),
+    return this.mutate((provider: SourceControlProvider): Promise<MutationResult> =>
+      provider.stage([]),
     );
   }
 
@@ -746,8 +746,8 @@ export class Repository {
    */
   public unstage(file: GitFileChange): Promise<MutationResult> {
     this.log.trace('Repository', `Unstaging '${file.path}'`);
-    return this.mutate(
-      (provider: SourceControlProvider): Promise<MutationResult> => provider.unstage([file.path]),
+    return this.mutate((provider: SourceControlProvider): Promise<MutationResult> =>
+      provider.unstage([file.path]),
     );
   }
 
@@ -756,8 +756,8 @@ export class Repository {
    * @returns Returns the outcome.
    */
   public unstageAll(): Promise<MutationResult> {
-    return this.mutate(
-      (provider: SourceControlProvider): Promise<MutationResult> => provider.unstage([]),
+    return this.mutate((provider: SourceControlProvider): Promise<MutationResult> =>
+      provider.unstage([]),
     );
   }
 
@@ -845,8 +845,8 @@ export class Repository {
    */
   public stash(): Promise<MutationResult> {
     this.log.info('Repository', 'Stashing working-tree changes', this.infoSignal()?.root);
-    return this.mutate(
-      (provider: SourceControlProvider): Promise<MutationResult> => provider.stash(),
+    return this.mutate((provider: SourceControlProvider): Promise<MutationResult> =>
+      provider.stash(),
     );
   }
 
@@ -902,8 +902,8 @@ export class Repository {
    * @returns Returns the outcome.
    */
   public applyStash(index: number): Promise<MutationResult> {
-    return this.restoreStash(
-      (provider: SourceControlProvider): Promise<MutationResult> => provider.applyStash(index),
+    return this.restoreStash((provider: SourceControlProvider): Promise<MutationResult> =>
+      provider.applyStash(index),
     );
   }
 
@@ -914,8 +914,8 @@ export class Repository {
    * @returns Returns the outcome.
    */
   public popStash(index: number): Promise<MutationResult> {
-    return this.restoreStash(
-      (provider: SourceControlProvider): Promise<MutationResult> => provider.popStash(index),
+    return this.restoreStash((provider: SourceControlProvider): Promise<MutationResult> =>
+      provider.popStash(index),
     );
   }
 
@@ -925,8 +925,8 @@ export class Repository {
    * @returns Returns the outcome.
    */
   public dropStash(index: number): Promise<MutationResult> {
-    return this.mutate(
-      (provider: SourceControlProvider): Promise<MutationResult> => provider.dropStash(index),
+    return this.mutate((provider: SourceControlProvider): Promise<MutationResult> =>
+      provider.dropStash(index),
     );
   }
 
@@ -956,9 +956,8 @@ export class Repository {
    */
   public createBranch(name: string, checkout: boolean = true): Promise<MutationResult> {
     this.log.info('Repository', `Creating branch '${name}' (checkout: ${checkout})`);
-    return this.mutate(
-      (provider: SourceControlProvider): Promise<MutationResult> =>
-        provider.createBranch(name, checkout),
+    return this.mutate((provider: SourceControlProvider): Promise<MutationResult> =>
+      provider.createBranch(name, checkout),
     );
   }
 
@@ -1076,8 +1075,8 @@ export class Repository {
     const target: GitBranch | undefined = branch ?? this.currentBranch();
     if (target === undefined || target.current) {
       this.log.info('Repository', `Pulling '${target?.name ?? 'HEAD'}'`);
-      return this.mutate(
-        (provider: SourceControlProvider): Promise<MutationResult> => provider.pull(),
+      return this.mutate((provider: SourceControlProvider): Promise<MutationResult> =>
+        provider.pull(),
       );
     }
     const upstream: { readonly remote: string; readonly branch: string } | null =
@@ -1089,9 +1088,8 @@ export class Repository {
       'Repository',
       `Fast-forwarding '${target.name}' from '${upstream.remote}/${upstream.branch}'`,
     );
-    return this.mutate(
-      (provider: SourceControlProvider): Promise<MutationResult> =>
-        provider.fetchRef(upstream.remote, upstream.branch, target.name),
+    return this.mutate((provider: SourceControlProvider): Promise<MutationResult> =>
+      provider.fetchRef(upstream.remote, upstream.branch, target.name),
     );
   }
 
@@ -1106,8 +1104,8 @@ export class Repository {
     if (target === undefined) {
       // Detached, with no branch to name. The bare push is the only thing left to mean.
       this.log.info('Repository', 'Pushing HEAD', this.infoSignal()?.root);
-      return this.mutate(
-        (provider: SourceControlProvider): Promise<MutationResult> => provider.push(),
+      return this.mutate((provider: SourceControlProvider): Promise<MutationResult> =>
+        provider.push(),
       );
     }
     const upstream: { readonly remote: string; readonly branch: string } | null =
@@ -1124,8 +1122,8 @@ export class Repository {
       setUpstream: upstream === null,
     };
     this.log.info('Repository', `Pushing '${target.name}'`, this.infoSignal()?.root);
-    return this.mutate(
-      (provider: SourceControlProvider): Promise<MutationResult> => provider.push(push),
+    return this.mutate((provider: SourceControlProvider): Promise<MutationResult> =>
+      provider.push(push),
     );
   }
 
@@ -1177,9 +1175,8 @@ export class Repository {
    */
   public deleteBranch(name: string, force: boolean = false): Promise<MutationResult> {
     this.log.info('Repository', `Deleting branch '${name}'${force ? ' (forced)' : ''}`);
-    return this.mutate(
-      (provider: SourceControlProvider): Promise<MutationResult> =>
-        provider.deleteBranch(name, force),
+    return this.mutate((provider: SourceControlProvider): Promise<MutationResult> =>
+      provider.deleteBranch(name, force),
     );
   }
 
@@ -1191,8 +1188,8 @@ export class Repository {
    */
   public renameBranch(from: string, to: string): Promise<MutationResult> {
     this.log.info('Repository', `Renaming branch '${from}' to '${to}'`);
-    return this.mutate(
-      (provider: SourceControlProvider): Promise<MutationResult> => provider.renameBranch(from, to),
+    return this.mutate((provider: SourceControlProvider): Promise<MutationResult> =>
+      provider.renameBranch(from, to),
     );
   }
 
@@ -1205,9 +1202,8 @@ export class Repository {
    */
   public setUpstream(branch: string, upstream: string): Promise<MutationResult> {
     this.log.info('Repository', `Setting the upstream of '${branch}' to '${upstream}'`);
-    return this.mutate(
-      (provider: SourceControlProvider): Promise<MutationResult> =>
-        provider.setUpstream(branch, upstream),
+    return this.mutate((provider: SourceControlProvider): Promise<MutationResult> =>
+      provider.setUpstream(branch, upstream),
     );
   }
 
@@ -1218,9 +1214,8 @@ export class Repository {
    */
   public clearUpstream(branch: string): Promise<MutationResult> {
     this.log.info('Repository', `Clearing the upstream of '${branch}'`);
-    return this.mutate(
-      (provider: SourceControlProvider): Promise<MutationResult> =>
-        provider.setUpstream(branch, null),
+    return this.mutate((provider: SourceControlProvider): Promise<MutationResult> =>
+      provider.setUpstream(branch, null),
     );
   }
 
@@ -1233,8 +1228,8 @@ export class Repository {
    */
   public merge(branch: string, mode: GitMergeMode = 'default'): Promise<MutationResult> {
     this.log.info('Repository', `Merging '${branch}' (${mode})`);
-    return this.integrate(
-      (provider: SourceControlProvider): Promise<MutationResult> => provider.merge(branch, mode),
+    return this.integrate((provider: SourceControlProvider): Promise<MutationResult> =>
+      provider.merge(branch, mode),
     );
   }
 
@@ -1247,8 +1242,8 @@ export class Repository {
    */
   public rebase(onto: string): Promise<MutationResult> {
     this.log.info('Repository', `Rebasing onto '${onto}'`);
-    return this.integrate(
-      (provider: SourceControlProvider): Promise<MutationResult> => provider.rebase(onto),
+    return this.integrate((provider: SourceControlProvider): Promise<MutationResult> =>
+      provider.rebase(onto),
     );
   }
 
@@ -1258,8 +1253,8 @@ export class Repository {
    */
   public continueOperation(): Promise<MutationResult> {
     this.log.info('Repository', `Continuing ${this.operationSignal().kind ?? 'nothing'}`);
-    return this.integrate(
-      (provider: SourceControlProvider): Promise<MutationResult> => provider.continueOperation(),
+    return this.integrate((provider: SourceControlProvider): Promise<MutationResult> =>
+      provider.continueOperation(),
     );
   }
 
@@ -1269,8 +1264,8 @@ export class Repository {
    */
   public skipOperation(): Promise<MutationResult> {
     this.log.warn('Repository', `Skipping a commit of ${this.operationSignal().kind ?? 'nothing'}`);
-    return this.integrate(
-      (provider: SourceControlProvider): Promise<MutationResult> => provider.skipOperation(),
+    return this.integrate((provider: SourceControlProvider): Promise<MutationResult> =>
+      provider.skipOperation(),
     );
   }
 
@@ -1280,8 +1275,8 @@ export class Repository {
    */
   public abortOperation(): Promise<MutationResult> {
     this.log.info('Repository', `Aborting ${this.operationSignal().kind ?? 'nothing'}`);
-    return this.integrate(
-      (provider: SourceControlProvider): Promise<MutationResult> => provider.abortOperation(),
+    return this.integrate((provider: SourceControlProvider): Promise<MutationResult> =>
+      provider.abortOperation(),
     );
   }
 
@@ -1355,8 +1350,8 @@ export class Repository {
    */
   public addRemote(name: string, url: string): Promise<MutationResult> {
     this.log.info('Repository', `Adding remote '${name}'`);
-    return this.mutate(
-      (provider: SourceControlProvider): Promise<MutationResult> => provider.addRemote(name, url),
+    return this.mutate((provider: SourceControlProvider): Promise<MutationResult> =>
+      provider.addRemote(name, url),
     );
   }
 
@@ -1367,8 +1362,8 @@ export class Repository {
    */
   public removeRemote(name: string): Promise<MutationResult> {
     this.log.info('Repository', `Removing remote '${name}'`);
-    return this.mutate(
-      (provider: SourceControlProvider): Promise<MutationResult> => provider.removeRemote(name),
+    return this.mutate((provider: SourceControlProvider): Promise<MutationResult> =>
+      provider.removeRemote(name),
     );
   }
 
@@ -1395,9 +1390,8 @@ export class Repository {
       return this.checkout(localBranch);
     }
     this.log.info('Repository', `Checking out '${localBranch}' tracking '${remoteBranch}'`);
-    return this.mutate(
-      (provider: SourceControlProvider): Promise<MutationResult> =>
-        provider.checkoutTracking(remoteBranch, localBranch),
+    return this.mutate((provider: SourceControlProvider): Promise<MutationResult> =>
+      provider.checkoutTracking(remoteBranch, localBranch),
     );
   }
 
@@ -1418,9 +1412,8 @@ export class Repository {
       'Repository',
       `Creating ${message === undefined ? 'lightweight' : 'annotated'} tag '${name}' at ${commit}`,
     );
-    return this.mutate(
-      (provider: SourceControlProvider): Promise<MutationResult> =>
-        provider.createTag(name, commit, message),
+    return this.mutate((provider: SourceControlProvider): Promise<MutationResult> =>
+      provider.createTag(name, commit, message),
     );
   }
 
@@ -1432,8 +1425,8 @@ export class Repository {
    */
   public deleteTag(name: string): Promise<MutationResult> {
     this.log.info('Repository', `Deleting tag '${name}'`);
-    return this.mutate(
-      (provider: SourceControlProvider): Promise<MutationResult> => provider.deleteTag(name),
+    return this.mutate((provider: SourceControlProvider): Promise<MutationResult> =>
+      provider.deleteTag(name),
     );
   }
 

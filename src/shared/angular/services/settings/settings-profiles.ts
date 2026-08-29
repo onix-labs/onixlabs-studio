@@ -50,9 +50,8 @@ export function updateProfileIn(
   id: string,
   updates: Partial<Omit<EditorProfile, 'id'>>,
 ): readonly EditorProfile[] {
-  return profiles.map(
-    (profile: EditorProfile): EditorProfile =>
-      profile.id === id ? { ...profile, ...updates } : profile,
+  return profiles.map((profile: EditorProfile): EditorProfile =>
+    profile.id === id ? { ...profile, ...updates } : profile,
   );
 }
 

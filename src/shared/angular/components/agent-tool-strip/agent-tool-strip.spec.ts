@@ -39,13 +39,11 @@ describe('AgentToolStrip', () => {
       label: `${id} label`,
       available: true,
       detail: '',
-      models: modelIds.map(
-        (modelId: string): AiModelInfo => ({
-          id: modelId,
-          label: `${modelId} label`,
-          contextWindow: 1_000,
-        }),
-      ),
+      models: modelIds.map((modelId: string): AiModelInfo => ({
+        id: modelId,
+        label: `${modelId} label`,
+        contextWindow: 1_000,
+      })),
       defaultModelId: modelIds[0] ?? '',
     };
   }

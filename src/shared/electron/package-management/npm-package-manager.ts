@@ -107,13 +107,11 @@ export class NpmPackageManager implements PackageManager {
       fetchFn,
     );
 
-    const projects: PackageProject[] = manifests.map(
-      (entry: ManifestEntry): PackageProject => ({
-        name: entry.name,
-        manifestPath: entry.manifestPath,
-        packages: this.readPackages(entry.manifest, installed, latest),
-      }),
-    );
+    const projects: PackageProject[] = manifests.map((entry: ManifestEntry): PackageProject => ({
+      name: entry.name,
+      manifestPath: entry.manifestPath,
+      packages: this.readPackages(entry.manifest, installed, latest),
+    }));
     logger.info(
       'NpmPackageManager',
       `Loaded npm package model for '${root}' (${projects.length} project(s)).`,
@@ -276,9 +274,8 @@ export class NpmPackageManager implements PackageManager {
       }
     };
     await Promise.all(
-      Array.from(
-        { length: Math.min(REGISTRY_CONCURRENCY, queue.length) },
-        (): Promise<void> => worker(),
+      Array.from({ length: Math.min(REGISTRY_CONCURRENCY, queue.length) }, (): Promise<void> =>
+        worker(),
       ),
     );
     return latest;

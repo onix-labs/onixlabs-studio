@@ -219,19 +219,17 @@ export class WorkspaceSearchAdapter implements FindAdapter {
       return;
     }
     const flat: FlatMatch[] = response.files.flatMap((file: SearchResultFile): FlatMatch[] =>
-      file.matches.map(
-        (match: SearchMatch): FlatMatch => ({
-          path: file.path,
-          item: {
-            line: match.line,
-            column: match.column,
-            before: match.before,
-            text: match.text,
-            after: match.after,
-            file: file.relativePath,
-          },
-        }),
-      ),
+      file.matches.map((match: SearchMatch): FlatMatch => ({
+        path: file.path,
+        item: {
+          line: match.line,
+          column: match.column,
+          before: match.before,
+          text: match.text,
+          after: match.after,
+          file: file.relativePath,
+        },
+      })),
     );
     this.flat = flat;
     this.matchesState.set(flat.map((entry: FlatMatch): FindResultItem => entry.item));

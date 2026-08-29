@@ -7,14 +7,7 @@ import { ProjectAction, ProjectEntry } from '@shared/api/project-system';
  * project differently and so compiles its own commands.
  */
 export type BuildFamily =
-  | 'dotnet'
-  | 'gradle'
-  | 'maven'
-  | 'cmake'
-  | 'make'
-  | 'cargo'
-  | 'go'
-  | 'node';
+  'dotnet' | 'gradle' | 'maven' | 'cmake' | 'make' | 'cargo' | 'go' | 'node';
 
 /**
  * Matches a .NET solution or project file by extension, used to detect a .NET workspace root.

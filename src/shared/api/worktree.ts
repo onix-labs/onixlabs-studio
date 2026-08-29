@@ -181,8 +181,7 @@ export interface WorktreeAddOptions {
  * source), so they travel as data rather than exceptions.
  */
 export type WorktreeOutcome<T> =
-  | { readonly ok: true; readonly value: T }
-  | { readonly ok: false; readonly error: string };
+  { readonly ok: true; readonly value: T } | { readonly ok: false; readonly error: string };
 
 /**
  * Builds a successful outcome.

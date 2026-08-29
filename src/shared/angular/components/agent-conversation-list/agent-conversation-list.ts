@@ -277,12 +277,10 @@ export class AgentConversationList {
    * Gets every stored conversation, resolved for display (agent type filled in), newest first.
    */
   private readonly items: Signal<readonly HistoryItem[]> = computed((): readonly HistoryItem[] =>
-    this.conversation.summaries().map(
-      (summary: AgentConversationSummary): HistoryItem => ({
-        summary,
-        agentType: this.resolveAgentType(summary),
-      }),
-    ),
+    this.conversation.summaries().map((summary: AgentConversationSummary): HistoryItem => ({
+      summary,
+      agentType: this.resolveAgentType(summary),
+    })),
   );
 
   /**

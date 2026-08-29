@@ -177,15 +177,13 @@ export class TreePanel {
    * Gets the workspace's visible rows mapped to tree rows for the shared {@link TreeView}.
    */
   protected readonly rows: Signal<readonly TreeRow[]> = computed((): readonly TreeRow[] =>
-    this.workspace.rows().map(
-      (row: WorkspaceTreeRow): TreeRow => ({
-        id: row.node.path,
-        depth: row.depth,
-        expandable: row.node.type === 'directory',
-        expanded: row.expanded,
-        data: row.node,
-      }),
-    ),
+    this.workspace.rows().map((row: WorkspaceTreeRow): TreeRow => ({
+      id: row.node.path,
+      depth: row.depth,
+      expandable: row.node.type === 'directory',
+      expanded: row.expanded,
+      data: row.node,
+    })),
   );
 
   /**

@@ -127,8 +127,8 @@ export class MenuManager {
     const template: MenuItemConstructorOptions[] = sections.map(
       (section: AppMenuSection): MenuItemConstructorOptions => ({
         label: section.label,
-        submenu: section.items.map(
-          (item: AppMenuItem): MenuItemConstructorOptions => this.buildItem(item),
+        submenu: section.items.map((item: AppMenuItem): MenuItemConstructorOptions =>
+          this.buildItem(item),
         ),
       }),
     );
@@ -155,8 +155,8 @@ export class MenuManager {
     if (item.items !== undefined) {
       return {
         label: item.label ?? '',
-        submenu: item.items.map(
-          (child: AppMenuItem): MenuItemConstructorOptions => this.buildItem(child),
+        submenu: item.items.map((child: AppMenuItem): MenuItemConstructorOptions =>
+          this.buildItem(child),
         ),
       };
     }

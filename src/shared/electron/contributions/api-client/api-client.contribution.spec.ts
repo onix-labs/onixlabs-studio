@@ -123,15 +123,14 @@ describe('ApiClientContribution', () => {
   it('send_whenTheServerResponds_reportsTheStatusHeadersBodyAndSize', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(
-        (): Promise<Response> =>
-          Promise.resolve(
-            new Response('{"ok":true}', {
-              status: 201,
-              statusText: 'Created',
-              headers: { 'content-type': 'application/json' },
-            }),
-          ),
+      vi.fn((): Promise<Response> =>
+        Promise.resolve(
+          new Response('{"ok":true}', {
+            status: 201,
+            statusText: 'Created',
+            headers: { 'content-type': 'application/json' },
+          }),
+        ),
       ),
     );
 

@@ -96,13 +96,11 @@ export class CoreMenu {
           {
             id: 'core.file.new',
             label: 'New',
-            items: NEW_TAB_TYPES.map(
-              (entry: { type: TabType; label: string }): MenuEntry => ({
-                id: `core.file.new.${entry.type}`,
-                label: entry.label,
-                run: (): void => void this.tabs.open(entry.type),
-              }),
-            ),
+            items: NEW_TAB_TYPES.map((entry: { type: TabType; label: string }): MenuEntry => ({
+              id: `core.file.new.${entry.type}`,
+              label: entry.label,
+              run: (): void => void this.tabs.open(entry.type),
+            })),
           },
           {
             id: 'core.file.open',
@@ -133,13 +131,11 @@ export class CoreMenu {
           {
             id: 'core.view.tools',
             label: 'Tools',
-            items: TOOL_TAB_TYPES.map(
-              (entry: { type: TabType; label: string }): MenuEntry => ({
-                id: `core.view.tools.${entry.type}`,
-                label: entry.label,
-                run: (): void => void this.tabs.open(entry.type),
-              }),
-            ),
+            items: TOOL_TAB_TYPES.map((entry: { type: TabType; label: string }): MenuEntry => ({
+              id: `core.view.tools.${entry.type}`,
+              label: entry.label,
+              run: (): void => void this.tabs.open(entry.type),
+            })),
           },
           MENU_SEPARATOR,
         ],

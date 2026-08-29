@@ -423,9 +423,10 @@ export class BinaryDocumentEntry {
    */
   private async saveInPlace(): Promise<boolean> {
     const runs: PieceRun[] = this.table.overwritePatches();
-    const patches: BinaryPatch[] = runs.map(
-      (run: PieceRun): BinaryPatch => ({ offset: run.offset, bytes: run.bytes }),
-    );
+    const patches: BinaryPatch[] = runs.map((run: PieceRun): BinaryPatch => ({
+      offset: run.offset,
+      bytes: run.bytes,
+    }));
     if (!(await this.workspace.writeBytes(this.path, patches))) {
       return false;
     }

@@ -75,9 +75,8 @@ export class AgentPrompts {
         (prompt: AgentPrompt): boolean => prompt.name === slug,
       );
       if (existing !== undefined) {
-        return prompts.map(
-          (prompt: AgentPrompt): AgentPrompt =>
-            prompt.name === slug ? { ...prompt, text: trimmed } : prompt,
+        return prompts.map((prompt: AgentPrompt): AgentPrompt =>
+          prompt.name === slug ? { ...prompt, text: trimmed } : prompt,
         );
       }
       return [...prompts, { id: crypto.randomUUID(), name: slug, text: trimmed }];

@@ -624,9 +624,8 @@ export class AiManager {
         connection.models,
         connection.defaultModelId,
       );
-      return runClaudeDiscovery(
-        connection,
-        (): Promise<readonly ClaudeSdkModel[]> => provider.listSupportedModels(choice),
+      return runClaudeDiscovery(connection, (): Promise<readonly ClaudeSdkModel[]> =>
+        provider.listSupportedModels(choice),
       );
     }
     const apiKey: string | null = this.auth.authFor(connection.id, connection.auth).apiKey;
@@ -1639,10 +1638,9 @@ export class AiManager {
           record['content'].length <= maxSelectionChars
         );
       })
-      .map(
-        (ref: AgentContextRef): AgentContextRef =>
-          // Content rides only on selections; strip any stray payload from path references.
-          ref.kind === 'selection' ? ref : { path: ref.path, kind: ref.kind },
+      .map((ref: AgentContextRef): AgentContextRef =>
+        // Content rides only on selections; strip any stray payload from path references.
+        ref.kind === 'selection' ? ref : { path: ref.path, kind: ref.kind },
       );
   }
 }

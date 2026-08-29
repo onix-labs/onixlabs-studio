@@ -120,15 +120,13 @@ export class DebugPanel {
    * Gets the call-stack rows for the tree.
    */
   protected readonly callStackRows: Signal<readonly TreeRow[]> = computed((): readonly TreeRow[] =>
-    this.session.callStack().map(
-      (frame: DebugFrame): TreeRow => ({
-        id: `frame:${frame.id}`,
-        depth: 0,
-        expandable: false,
-        expanded: false,
-        data: { frame } satisfies FrameRowData,
-      }),
-    ),
+    this.session.callStack().map((frame: DebugFrame): TreeRow => ({
+      id: `frame:${frame.id}`,
+      depth: 0,
+      expandable: false,
+      expanded: false,
+      data: { frame } satisfies FrameRowData,
+    })),
   );
 
   /**

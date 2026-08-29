@@ -56,7 +56,7 @@ export function resolveSlot<T extends SlotEntry>(
   }
   // Strictly-greater keeps the earliest candidate on equal priority, so the default follows
   // registration order rather than which implementation happened to register first.
-  return candidates.reduce(
-    (best: T, entry: T): T => (entry.priority > best.priority ? entry : best),
+  return candidates.reduce((best: T, entry: T): T =>
+    entry.priority > best.priority ? entry : best,
   ).id;
 }

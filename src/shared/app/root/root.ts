@@ -103,8 +103,8 @@ export class Root {
    * active. A full-bleed feature (such as settings) opts out of the ribbon and/or status strip
    * through its descriptor, so the shell hides them with no hard-coded knowledge of the feature.
    */
-  protected readonly activeChrome: Signal<FeatureChrome> = computed(
-    (): FeatureChrome => this.registry.chromeFor(this.tabsService.activeTab()?.type),
+  protected readonly activeChrome: Signal<FeatureChrome> = computed((): FeatureChrome =>
+    this.registry.chromeFor(this.tabsService.activeTab()?.type),
   );
 
   /**

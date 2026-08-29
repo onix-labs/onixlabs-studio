@@ -132,22 +132,18 @@ function insertItem(
 function materialise(folder: ItemFolder): readonly ProjectItemNode[] {
   const folders: ProjectItemNode[] = [...folder.folders.entries()]
     .sort((a: [string, ItemFolder], b: [string, ItemFolder]): number => a[0].localeCompare(b[0]))
-    .map(
-      ([name, child]: [string, ItemFolder]): ProjectItemNode => ({
-        type: 'folder',
-        name,
-        path: child.path,
-        children: materialise(child),
-      }),
-    );
+    .map(([name, child]: [string, ItemFolder]): ProjectItemNode => ({
+      type: 'folder',
+      name,
+      path: child.path,
+      children: materialise(child),
+    }));
   const files: ProjectItemNode[] = [...folder.files.entries()]
     .sort((a: [string, string], b: [string, string]): number => a[0].localeCompare(b[0]))
-    .map(
-      ([name, filePath]: [string, string]): ProjectItemNode => ({
-        type: 'file',
-        name,
-        path: filePath,
-      }),
-    );
+    .map(([name, filePath]: [string, string]): ProjectItemNode => ({
+      type: 'file',
+      name,
+      path: filePath,
+    }));
   return [...folders, ...files];
 }

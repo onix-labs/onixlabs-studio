@@ -69,9 +69,8 @@ export class RibbonStripField {
    */
   protected readonly dropdownOptions: Signal<readonly DropdownOption[]> = computed(
     (): readonly DropdownOption[] =>
-      this.options().map(
-        (option: RibbonFieldOption): DropdownOption =>
-          typeof option === 'string' ? { value: option, label: option } : option,
+      this.options().map((option: RibbonFieldOption): DropdownOption =>
+        typeof option === 'string' ? { value: option, label: option } : option,
       ),
   );
 
