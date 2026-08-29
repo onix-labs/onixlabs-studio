@@ -1,0 +1,154 @@
+# Release — builds every target from the `release` branch and, only when all of them succeeded, creates
+# the `v<version>` tag and a DRAFT GitHub Release holding the artifacts. The tag comes after the build
+# on purpose: a build that fails leaves nothing behind to delete or explain.
+#
+# The procedure (also on the wiki, Releases):
+#   1. PR to `main`: `chore(release): 2026.1.0` bumping package.json `version`.
+#   2. PR `main → release`. CI runs on it like any PR; merge it.
+#   3. This workflow runs on the push to `release`. When it is green there is a draft release —
+#      read the notes, then Publish.
+#
+# `RELEASE_TOKEN` is a fine-grained PAT of a repository admin (contents: read/write), because the
+# `v*` tag ruleset only lets admins create tags and the workflow's own token is not one.
+name: Release
+
+on:
+  push:
+    branches: [release]
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - name: macOS arm64 + x64
+            os: macos-latest
+            args: --mac --arm64 --x64
+          - name: Windows x64
+            os: windows-latest
+            args: --win --x64
+          - name: Linux x64
+            os: ubuntu-latest
+            args: --linux --x64
+    env:
+      # electron-builder downloads its own Electron dist per target; the npm ci binary is unused.
+      ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node (version from .nvmrc)
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build renderer (Angular)
+        run: npm run build
+
+      - name: Build Electron main + preload (typecheck + bundle)
+        run: npm run build:electron
+
+      - name: Package
+        run: npx electron-builder ${{ matrix.args }} --publish never
+
+      - name: Upload installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: installers-${{ runner.os }}
+          path: |
+            release/*.dmg
+            release/*.zip
+            release/*.exe
+            release/*.AppImage
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Tag and draft the release
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+      REPO: ${{ github.repository }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read the three version numbers
+        id: versions
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          api="$(sed -nE "s/^export const PLUGIN_API_VERSION: string = '([^']+)';/\1/p" src/shared/api/plugin-manifest.ts)"
+          revision="$(node -p "require('./src/shared/electron/contributions/plugins/curated-plugins.json').revision")"
+          test -n "$version" && test -n "$api" && test -n "$revision"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "api=$api" >> "$GITHUB_OUTPUT"
+          echo "revision=$revision" >> "$GITHUB_OUTPUT"
+          echo "Studio $version · Plugin API $api · Catalogue revision $revision"
+
+      - name: Refuse to overwrite an existing tag
+        env:
+          TAG: v${{ steps.versions.outputs.version }}
+        run: |
+          if gh api "repos/$REPO/git/ref/tags/$TAG" >/dev/null 2>&1; then
+            echo "::error::Tag $TAG already exists — bump package.json version before releasing again."
+            exit 1
+          fi
+
+      - name: Download installers
+        uses: actions/download-artifact@v4
+        with:
+          pattern: installers-*
+          merge-multiple: true
+          path: installers
+
+      - name: Create the tag
+        env:
+          TAG: v${{ steps.versions.outputs.version }}
+        run: gh api -X POST "repos/$REPO/git/refs" -f ref="refs/tags/$TAG" -f sha="$GITHUB_SHA" --jq '"tagged \(.ref) at \(.object.sha[0:8])"'
+
+      - name: Draft the release
+        env:
+          TAG: v${{ steps.versions.outputs.version }}
+          VERSION: ${{ steps.versions.outputs.version }}
+          API: ${{ steps.versions.outputs.api }}
+          REVISION: ${{ steps.versions.outputs.revision }}
+        run: |
+          cat > notes.md <<EOF
+          | | |
+          | --- | --- |
+          | Studio | \`$VERSION\` |
+          | Plugin API | \`$API\` |
+          | Curated catalogue revision | \`$REVISION\` |
+
+          > **These builds are not code-signed.** macOS will say the app "cannot be opened because the developer cannot be verified" — right-click → Open, or run \`xattr -d com.apple.quarantine\` on the app. Windows SmartScreen will warn on first run — More info → Run anyway.
+
+          EOF
+          prerelease=""
+          case "$VERSION" in *-*) prerelease="--prerelease" ;; esac
+          gh release create "$TAG" installers/* \
+            --repo "$REPO" \
+            --draft $prerelease \
+            --verify-tag \
+            --title "ONIXLabs Studio $VERSION" \
+            --generate-notes \
+            --notes-file notes.md
+          echo "Draft release $TAG created — review the notes, then publish."
