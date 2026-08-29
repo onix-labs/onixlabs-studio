@@ -169,6 +169,14 @@ export interface StackOptions {
    * Gets the edge a collapsed stack's strip hugs. Meaningful only alongside `collapsed`.
    */
   readonly side?: DockSide;
+
+  /**
+   * Gets the panel that starts in front, which need not be the first — tab ORDER and which tab is
+   * OPEN are separate choices, and an author may want the Solution Explorer showing while the File
+   * Explorer keeps the first tab. Ignored when it names a panel the stack does not hold, so the
+   * first panel stands in.
+   */
+  readonly active?: string;
 }
 
 /**
@@ -177,10 +185,11 @@ export interface StackOptions {
  * @param panels The ordered identifiers of the panels the stack should hold.
  * @param primary Whether this stack is the layout's primary (centre) slot; omitted for every stack
  * but the centre well.
- * @param options The optional authored state — whether the stack starts collapsed, and against
- * which edge. Document wells are never collapsed, so the flags are ignored for them.
- * @returns Returns a new {@link StackNode} whose active panel is the first supplied panel, or
- * `null` when no panels are supplied.
+ * @param options The optional authored state — which panel starts in front, whether the stack starts
+ * collapsed, and against which edge. Document wells are never collapsed, so those flags are ignored
+ * for them.
+ * @returns Returns a new {@link StackNode} whose active panel is the one named in the options, else
+ * the first supplied panel, or `null` when no panels are supplied.
  */
 export function mkStack(
   role: StackRole,
@@ -189,12 +198,16 @@ export function mkStack(
   options: StackOptions = {},
 ): StackNode {
   const collapsed: boolean = role !== 'document' && options.collapsed === true;
+  const active: string | null =
+    options.active !== undefined && panels.includes(options.active)
+      ? options.active
+      : (panels[0] ?? null);
   return {
     kind: 'stack',
     id: nextNodeId(),
     role,
     panels: [...panels],
-    active: panels[0] ?? null,
+    active,
     ...(primary ? { primary: true } : {}),
     ...(collapsed ? { collapsed: true } : {}),
     ...(collapsed && options.side !== undefined ? { side: options.side } : {}),

@@ -18,6 +18,38 @@ describe('dock-node', () => {
     expect(stack.active).toBe('doc1');
   });
 
+  it('mkStack_whenGivenAnActivePanel_putsThatOneInFront', () => {
+    // Tab ORDER and which tab is OPEN are separate choices: an authored layout may want the second
+    // panel showing without moving it to the first tab.
+    const stack: StackNode = mkStack('tool', ['files', 'solution'], false, { active: 'solution' });
+
+    expect(stack.panels).toEqual(['files', 'solution']);
+    expect(stack.active).toBe('solution');
+  });
+
+  it('mkStack_whenTheActivePanelIsNotHeld_fallsBackToTheFirst', () => {
+    const stack: StackNode = mkStack('tool', ['files', 'solution'], false, { active: 'missing' });
+
+    expect(stack.active).toBe('files');
+  });
+
+  it('mkStack_whenCollapsed_recordsTheStripAndItsEdge_andNeverForADocumentWell', () => {
+    const tool: StackNode = mkStack('tool', ['errors'], false, {
+      collapsed: true,
+      side: 'bottom',
+    });
+    expect(tool.collapsed).toBe(true);
+    expect(tool.side).toBe('bottom');
+
+    // Document wells are never collapsed, so the flags are dropped rather than honoured.
+    const well: StackNode = mkStack('document', ['doc1'], true, {
+      collapsed: true,
+      side: 'bottom',
+    });
+    expect(well.collapsed).toBeUndefined();
+    expect(well.side).toBeUndefined();
+  });
+
   it('mkStack_whenGivenNoPanels_leavesNoActivePanel', () => {
     const stack: StackNode = mkStack('document', []);
 
