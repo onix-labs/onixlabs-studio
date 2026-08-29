@@ -1,4 +1,4 @@
-import { focusedEditingSurface, focusedTextInput, selectAllWithin } from './text-input-focus';
+import { focusedTextInput, selectAllWithin } from './text-input-focus';
 
 describe('focusedTextInput', () => {
   /**
@@ -76,53 +76,6 @@ describe('focusedTextInput', () => {
     document.body.focus();
 
     expect(focusedTextInput(document)).toBeNull();
-  });
-
-  it('focusedEditingSurface_whenFocusIsInsideAMonacoEditor_saysMonaco', () => {
-    // Monaco on current Chromium focuses an EditContext element: not a text area, not editable
-    // markup. It is still where the user is typing, and the text-box check cannot see it.
-    const host: HTMLDivElement = document.createElement('div');
-    host.className = 'monaco-editor';
-    const input: HTMLDivElement = document.createElement('div');
-    input.className = 'native-edit-context';
-    input.tabIndex = 0;
-    host.appendChild(input);
-    document.body.appendChild(host);
-    input.focus();
-
-    expect(focusedTextInput(document)).toBeNull();
-    expect(focusedEditingSurface(document)).toBe('monaco');
-    host.remove();
-  });
-
-  it('focusedEditingSurface_whenFocusIsInsideTheTerminal_saysTerminal', () => {
-    const host: HTMLDivElement = document.createElement('div');
-    host.className = 'xterm';
-    const input: HTMLTextAreaElement = document.createElement('textarea');
-    host.appendChild(input);
-    document.body.appendChild(host);
-    input.focus();
-
-    expect(focusedEditingSurface(document)).toBe('terminal');
-    host.remove();
-  });
-
-  it('focusedEditingSurface_whenATextBoxHasFocus_saysTextBox', () => {
-    const box: HTMLTextAreaElement = document.createElement('textarea');
-    document.body.appendChild(box);
-    box.focus();
-
-    expect(focusedEditingSurface(document)).toBe('text-box');
-    box.remove();
-  });
-
-  it('focusedEditingSurface_whenNothingEditableHasFocus_isNull', () => {
-    const button: HTMLButtonElement = document.createElement('button');
-    document.body.appendChild(button);
-    button.focus();
-
-    expect(focusedEditingSurface(document)).toBeNull();
-    button.remove();
   });
 
   it('selectAllWithin_whenGivenATextArea_selectsItsWholeValue', () => {

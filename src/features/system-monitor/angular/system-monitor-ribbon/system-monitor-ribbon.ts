@@ -43,22 +43,9 @@ export class SystemMonitorRibbon {
   private readonly menu: void = contributeFeatureMenu(
     'system-monitor',
     (): readonly MenuContribution[] => [
-      {
-        id: 'edit',
-        label: 'Edit',
-        items: [
-          // Never disabled, unlike the ribbon's Copy button: this entry also carries ⌘C for a text
-          // box focused anywhere on the tab, and a disabled entry's accelerator is dead. Copying an
-          // empty audit is a no-op rather than an error, so nothing is lost by leaving it enabled.
-          {
-            id: 'monitor.copy',
-            label: 'Copy',
-            accelerator: 'CmdOrCtrl+C',
-            editingRole: 'copy',
-            run: (): void => this.onCopy(),
-          },
-        ],
-      },
+      // No Edit section. Copying the audit is offered by the ribbon's Copy button alone: an entry
+      // here would have to carry ⌘C, and a feature entry claiming that accelerator replaces the
+      // core's native role, taking the chord from every text box on the tab.
       {
         id: 'monitor',
         label: 'Monitor',

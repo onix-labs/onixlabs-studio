@@ -221,16 +221,27 @@ router, and the allowlist never intercepts incidental typing. Chords use the pla
 modifier (⌘ on macOS, Ctrl elsewhere). **In the terminal, bind only `Mod+Shift` chords** — a bare
 `Mod` is Ctrl on Windows/Linux and collides with the shell's own control codes.
 
-**The editing chords do not come from here.** On macOS the application menu is the only thing binding
-Undo/Redo/Cut/Copy/Paste into the window at all, so `CoreMenu` carries them as native roles and a
-menu accelerator fires **before** the renderer sees the key. A tab that binds one of those chords to
-something of its own — files in the explorer, the shell in a terminal, an editor's model-level undo —
-therefore takes it from every text box on the tab unless it also declares `editingRole` on the menu
-entry, which defers to the platform's behaviour while `focusedTextInput` finds a focused text box
-(`shared/angular/services/editing-chords`). Such an entry must never be `enabled: false`: a disabled
-entry's accelerator is dead. Select All is the exception — it is served by `EditingChords` from the
-window listener rather than the menu, because a Select All entry would own ⌘A and take it from the
-editors that bind it to their own selection model.
+**The editing chords do not come from here, and nothing may claim them.** ⛔ **No feature contributes
+a menu entry bound to ⌘Z, ⌘⇧Z, ⌘X, ⌘C, ⌘V or ⌘A. Ever.** `CoreMenu` carries Undo/Redo/Cut/Copy/Paste
+exactly once, as **native roles**, and Chromium routes a native role to whatever holds focus — so
+every control serves its own chord, which is how this behaved before there was a menu at all. A
+feature entry claiming one of those accelerators **replaces** the core's (`AppMenu.withoutClaimed`)
+and then runs the _tab's_ command wherever the caret happens to be. That is the whole bug, and it
+shipped three times.
+
+Two facts generate every failure mode here, and neither is negotiable: on macOS **the application
+menu is the only thing binding those chords into the window at all** (remove the Edit section and
+they are simply dead), and **a menu accelerator is consumed before the renderer sees the keydown**
+(so no renderer-side listener can win one back). A previous round tried to reconcile the two with a
+focus-routing layer on `dispatch`; it was deleted, because the chords are not the menu's to route.
+A feature wanting a clipboard or history command puts it on a **ribbon button** — pressing one is an
+explicit instruction to act on that view — and leaves the chord alone.
+
+`editing-chords.contract.spec.ts` enforces this by reading the feature sources, because a jsdom test
+cannot see the native-menu path and so every earlier round's unit tests passed while the app was
+broken. Select All is the one renderer-side exception: `EditingChords.handleSelectAll` serves ⌘A for
+a plain text box from the window listener and bails on `defaultPrevented`, so any editor that binds
+⌘A to its own selection model still wins. It is a fallback, not a claim.
 
 ### 4.6 Project systems, capabilities & `.studio`
 

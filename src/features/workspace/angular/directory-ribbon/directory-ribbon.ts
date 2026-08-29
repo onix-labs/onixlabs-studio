@@ -136,43 +136,13 @@ export class DirectoryRibbon {
         id: 'edit',
         label: 'Edit',
         items: [
-          {
-            id: 'directory.undo',
-            label: 'Undo',
-            accelerator: 'CmdOrCtrl+Z',
-            editingRole: 'undo',
-            run: (): void => this.onUndo(),
-          },
-          {
-            id: 'directory.redo',
-            label: 'Redo',
-            accelerator: 'CmdOrCtrl+Shift+Z',
-            editingRole: 'redo',
-            run: (): void => this.onRedo(),
-          },
-          MENU_SEPARATOR,
-          {
-            id: 'directory.cut',
-            label: 'Cut',
-            accelerator: 'CmdOrCtrl+X',
-            editingRole: 'cut',
-            run: (): void => this.onCut(),
-          },
-          {
-            id: 'directory.copy',
-            label: 'Copy',
-            accelerator: 'CmdOrCtrl+C',
-            editingRole: 'copy',
-            run: (): void => this.onCopy(),
-          },
-          {
-            id: 'directory.paste',
-            label: 'Paste',
-            accelerator: 'CmdOrCtrl+V',
-            editingRole: 'paste',
-            run: (): void => this.onPaste(),
-          },
-          MENU_SEPARATOR,
+          // Undo, Redo, Cut, Copy and Paste are deliberately absent here — and in every other
+          // feature's Edit section. The core contributes them ONCE, as native roles, and a native role
+          // is routed by Chromium to whatever holds focus, so every control serves its own chord. A
+          // feature entry claiming one of those accelerators REPLACES the core's (AppMenu.withoutClaimed)
+          // and then runs the TAB's command wherever the caret happens to be, which is what broke ⌘C/⌘V
+          // over and over. The ribbon's own clipboard and history buttons remain: pressing one is an
+          // explicit instruction to act on this view rather than on whatever has focus.
           {
             id: 'directory.find',
             label: 'Find…',

@@ -162,25 +162,10 @@ export class BinaryRibbon {
       id: 'edit',
       label: 'Edit',
       items: [
-        // Undo and Redo defer to the focused text box, so ⌘Z in a composer docked beside the editor
-        // undoes the composer rather than the file. Neither is gated on `canUndo`/`canRedo`: a
-        // disabled entry's accelerator is dead, which would take the chord from every text box on the
-        // tab whenever the file's own history was empty.
-        {
-          id: 'binary.undo',
-          label: 'Undo',
-          accelerator: 'CmdOrCtrl+Z',
-          editingRole: 'undo',
-          run: (): void => this.onUndo(),
-        },
-        {
-          id: 'binary.redo',
-          label: 'Redo',
-          accelerator: 'CmdOrCtrl+Shift+Z',
-          editingRole: 'redo',
-          run: (): void => this.onRedo(),
-        },
-        MENU_SEPARATOR,
+        // Undo and Redo are deliberately not here. The core contributes them once as native roles,
+        // which Chromium routes to whatever holds focus, so this editor serves its own history and a
+        // composer docked beside it serves its own. A feature entry claiming ⌘Z replaces the core's
+        // and takes it from every other control on the tab. The ribbon's history buttons remain.
         {
           id: 'binary.insertMode',
           label: 'Insert Mode',

@@ -206,19 +206,13 @@ describe('MarkdownRibbon', () => {
     menu.dispatch('markdown.taskList');
     menu.dispatch('markdown.table');
     menu.dispatch('markdown.divider');
-    menu.dispatch('markdown.undo');
-    menu.dispatch('markdown.redo');
+    // Undo and Redo are deliberately not on the menu: the core carries them as native roles, and a
+    // feature entry claiming ⌘Z takes the chord from every other control on the tab. The ribbon's own
+    // history buttons still reach the handler (see formattingButtons_...). Guarded by
+    // editing-chords.contract.spec.ts.
 
     expect(inserted).toEqual(
-      expect.arrayContaining([
-        'bullet-list',
-        'ordered-list',
-        'task-list',
-        'table',
-        'divider',
-        'undo',
-        'redo',
-      ]),
+      expect.arrayContaining(['bullet-list', 'ordered-list', 'task-list', 'table', 'divider']),
     );
   });
 

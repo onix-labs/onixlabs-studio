@@ -3,10 +3,6 @@ import { MenuChannel, MenuClient } from '@shared/api/menu-channels';
 import { AppMenuItem, AppMenuSection } from '@shared/api/menu-types';
 import { Bridge } from '@shared/api/bridge';
 import { Log } from '@shared/angular/services/log/log';
-import {
-  EditingChords,
-  EditingRoleRoute,
-} from '@shared/angular/services/editing-chords/editing-chords';
 import { MenuContribution, MenuEntry } from './app-menu-model';
 
 /**
@@ -32,9 +28,14 @@ interface ContributionEntry {
  * and the active feature contributes its own on top, folding into a core section where the ids match so
  * a feature adds *to* File rather than creating a second one. Where the two want the same keyboard
  * chord the later contributor wins it outright: the core's Edit section carries the platform's editing
- * commands for every tab that has none of its own, and a feature takes back only the chords it declares.
- * A feature that takes back an *editing* chord declares the role it stands for as well, so the chord
- * still reaches whatever text box has focus and runs the feature's own command only when none has.
+ * commands for every tab, and a feature takes back only the chords it declares.
+ *
+ * ⛔ **No feature may declare an editing chord** — ⌘Z/⌘⇧Z/⌘X/⌘C/⌘V. The core contributes those once as
+ * native roles, and a native role is routed by Chromium to whatever holds focus, so every control
+ * serves its own. A feature entry claiming one wins it outright by the rule above and then runs the
+ * TAB's command wherever the caret happens to be, which broke copy and paste three times over. The
+ * fix is not a smarter router — one was tried and deleted — it is that the chords are not the menu's
+ * to route.
  *
  * Handlers never leave the renderer. The published model carries command ids; a chosen command comes
  * back by id and is routed to the handler registered under it. That indirection is what lets the menu be
@@ -47,12 +48,6 @@ export class AppMenu {
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
-
-  /**
-   * Holds the editing-chord router, which decides whether a claimed chord belongs to the focused
-   * editing surface before the tab's own command may run.
-   */
-  private readonly editingChords: EditingChords = inject(EditingChords);
 
   /**
    * Holds the menu client, or undefined outside Electron (served as a plain web app, or under tests),
@@ -173,26 +168,6 @@ export class AppMenu {
       return;
     }
     this.log.debug('AppMenu', `Menu command '${commandId}'`);
-    // An editing chord belongs to whatever the user is typing into. A tab that binds one to something
-    // of its own declares the role it stands for, and the editing surface that has focus — a text
-    // box, the code editor, the terminal — is served first; the tab's command runs only when focus is
-    // in none of them. Otherwise ⌘C on a workspace tab copies the selected *file* while the caret sits
-    // in the editor.
-    if (entry.editingRole !== undefined) {
-      const route: EditingRoleRoute = this.editingChords.routeEditingRole(
-        entry.editingRole,
-        document,
-      );
-      if (route === 'native') {
-        this.log.debug('AppMenu', `Deferring '${commandId}' to the focused editing surface`);
-        this.client?.runRole(entry.editingRole);
-        return;
-      }
-      if (route === 'handled') {
-        this.log.debug('AppMenu', `'${commandId}' served by the focused editor`);
-        return;
-      }
-    }
     if (entry.run !== undefined) {
       entry.run();
       return;

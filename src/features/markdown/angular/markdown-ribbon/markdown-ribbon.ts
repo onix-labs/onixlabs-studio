@@ -261,30 +261,12 @@ export class MarkdownRibbon {
         id: 'edit',
         label: 'Edit',
         items: [
-          {
-            id: 'markdown.undo',
-            label: 'Undo',
-            accelerator: 'CmdOrCtrl+Z',
-            editingRole: 'undo',
-            run: (): void => this.onUndo(),
-          },
-          {
-            id: 'markdown.redo',
-            label: 'Redo',
-            accelerator: 'CmdOrCtrl+Shift+Z',
-            editingRole: 'redo',
-            run: (): void => this.onRedo(),
-          },
-          // Cut, Copy and Paste are deliberately not here. The core contributes them as native roles,
-          // which go to whatever holds focus — this pane's own handlers force focus into the editor
-          // first, so as a chord they took the clipboard from every other text box on the tab. Undo and
-          // Redo stay, because those are the document's history rather than the focused element's — but
-          // they defer the same way, so ⌘Z in a composer beside the pane undoes the composer. Neither is
-          // gated on `canUndo`/`canRedo` any more: a disabled entry's accelerator is dead, which would
-          // take ⌘Z from every text box on the tab whenever the document's own history was empty. The
-          // ribbon's clipboard buttons remain, since pressing one is an explicit instruction to act on
-          // the pane.
-          MENU_SEPARATOR,
+          // Undo, Redo, Cut, Copy and Paste are deliberately not here. The core contributes them once
+          // as native roles, which Chromium routes to whatever holds focus — so Milkdown serves its
+          // own history and clipboard, and a composer docked beside the pane serves its own. This
+          // pane's handlers force focus into the editor first, so as menu chords they took the
+          // clipboard from every other text box on the tab. The ribbon's clipboard and history buttons
+          // remain, since pressing one is an explicit instruction to act on the pane.
           {
             id: 'markdown.find',
             label: 'Find…',

@@ -151,12 +151,13 @@ describe('CodeRibbon', () => {
   });
 
   it('menu_whenAnEditCommandIsChosen_runsTheSameHandlerAsTheRibbon', () => {
-    menu.dispatch('code.undo');
-    menu.dispatch('code.redo');
+    // Undo, Redo, Cut, Copy and Paste are deliberately not on the menu: the core carries them as
+    // native roles, and a feature entry claiming one of those accelerators takes the chord from
+    // every other control on the tab. Guarded by editing-chords.contract.spec.ts.
     menu.dispatch('code.find');
     menu.dispatch('code.format');
 
-    expect(calls).toEqual(['undo', 'redo', 'find', 'format']);
+    expect(calls).toEqual(['find', 'format']);
   });
 
   it('menu_whenPrintOrExportIsChosen_reachesPrinting', () => {

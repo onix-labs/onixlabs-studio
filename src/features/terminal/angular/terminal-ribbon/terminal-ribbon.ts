@@ -103,28 +103,11 @@ export class TerminalRibbon {
         id: 'edit',
         label: 'Edit',
         items: [
-          {
-            id: 'terminal.cut',
-            label: 'Cut',
-            accelerator: 'CmdOrCtrl+X',
-            editingRole: 'cut',
-            run: (): void => this.onCut(),
-          },
-          {
-            id: 'terminal.copy',
-            label: 'Copy',
-            accelerator: 'CmdOrCtrl+C',
-            editingRole: 'copy',
-            run: (): void => this.onCopy(),
-          },
-          {
-            id: 'terminal.paste',
-            label: 'Paste',
-            accelerator: 'CmdOrCtrl+V',
-            editingRole: 'paste',
-            run: (): void => this.onPaste(),
-          },
-          MENU_SEPARATOR,
+          // Cut, Copy and Paste are deliberately absent: the core contributes them once as native
+          // roles, which Chromium routes to whatever holds focus, so xterm serves its own chord and a
+          // text box docked beside it serves that one. A feature entry claiming the accelerator would
+          // replace the core's and send every ⌘C on this tab to the terminal. The ribbon's clipboard
+          // buttons remain, since pressing one is an explicit instruction to act on the terminal.
           {
             id: 'terminal.find',
             label: 'Find…',

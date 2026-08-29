@@ -227,28 +227,12 @@ export class CodeRibbon {
       id: 'edit',
       label: 'Edit',
       items: [
-        {
-          id: 'code.undo',
-          label: 'Undo',
-          accelerator: 'CmdOrCtrl+Z',
-          editingRole: 'undo',
-          run: (): void => this.onUndo(),
-        },
-        {
-          id: 'code.redo',
-          label: 'Redo',
-          accelerator: 'CmdOrCtrl+Shift+Z',
-          editingRole: 'redo',
-          run: (): void => this.onRedo(),
-        },
-        // Cut, Copy and Paste are deliberately not here. The core contributes them as native roles,
-        // which go to whatever holds focus — so the chord reaches a docked panel's text box rather than
-        // being taken by this editor whenever a code tab happens to be in front. Undo and Redo stay,
-        // because those are this editor's own model-level history rather than the focused element's —
-        // but they defer the same way, so ⌘Z in a composer beside the editor undoes the composer. The
-        // ribbon's clipboard buttons remain, since pressing one is an explicit instruction to act on
-        // the editor.
-        MENU_SEPARATOR,
+        // Undo, Redo, Cut, Copy and Paste are deliberately not here. The core contributes them once
+        // as native roles, which Chromium routes to whatever holds focus — so Monaco serves its own
+        // history and clipboard, and a composer docked beside it serves its own. A feature entry
+        // claiming one of those accelerators replaces the core's and takes the chord from every other
+        // control on the tab. The ribbon's clipboard and history buttons remain, since pressing one is
+        // an explicit instruction to act on the editor.
         {
           id: 'code.find',
           label: 'Find…',

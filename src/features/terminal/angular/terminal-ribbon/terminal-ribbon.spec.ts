@@ -148,9 +148,8 @@ describe('TerminalRibbon', () => {
 
   it('menu_whenACommandIsChosen_runsTheSameHandlerAsTheRibbon', () => {
     menu.dispatch('terminal.new');
-    menu.dispatch('terminal.cut');
-    menu.dispatch('terminal.copy');
-    menu.dispatch('terminal.paste');
+    // Cut, Copy and Paste are deliberately not on the menu — the core's native roles carry those
+    // chords to whatever holds focus. Guarded by editing-chords.contract.spec.ts.
     menu.dispatch('terminal.find');
     menu.dispatch('terminal.clear');
     menu.dispatch('terminal.list');
@@ -162,9 +161,6 @@ describe('TerminalRibbon', () => {
 
     expect(calls).toEqual([
       'newSession:default',
-      'cut',
-      'copy',
-      'paste',
       'find',
       'clear',
       'list',

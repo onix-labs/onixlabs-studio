@@ -55,46 +55,6 @@ export function focusedTextInput(document: Document): HTMLElement | null {
 }
 
 /**
- * Matches a Monaco editor's host, so focus anywhere inside one — its hidden text area, or the
- * EditContext element newer builds focus instead, which is neither a text box nor editable markup —
- * resolves to the editor.
- */
-const MONACO_SELECTOR: string = '.monaco-editor';
-
-/**
- * The kinds of surface an editing chord can land in.
- */
-export type EditingSurface = 'text-box' | 'monaco' | 'terminal';
-
-/**
- * Resolves the editing surface that has focus, or null when focus is anywhere else.
- *
- * Broader than {@link focusedTextInput}, and asked by a different question: not "is there a text box
- * to act on" but "is the user editing *something*?" A tab that binds Cut, Copy or Paste to something
- * of its own (files in the explorer) must never run that command while the user is in an editor of
- * any kind — and the code editor and the terminal are not text boxes. Monaco focuses an EditContext
- * element on current Chromium, which is neither a text area nor editable markup; xterm focuses a
- * hidden text area the text-box check deliberately excludes. Both are places the user is typing.
- *
- * @param document The document to read focus from.
- * @returns Returns the kind of surface focused, or null when focus is not in one.
- */
-export function focusedEditingSurface(document: Document): EditingSurface | null {
-  const view: (Window & typeof globalThis) | null = document.defaultView;
-  const active: Element | null = document.activeElement;
-  if (view === null || active === null || !(active instanceof view.HTMLElement)) {
-    return null;
-  }
-  if (active.closest(MONACO_SELECTOR) !== null) {
-    return 'monaco';
-  }
-  if (active.closest(TERMINAL_SELECTOR) !== null) {
-    return 'terminal';
-  }
-  return focusedTextInput(document) === null ? null : 'text-box';
-}
-
-/**
  * Selects a text box's whole contents.
  *
  * Done in the renderer rather than through the platform's Select All role, because a role would need
