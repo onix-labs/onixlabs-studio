@@ -1,7 +1,9 @@
 import type { SDKControlResponse, SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import type {
   BridgeSessionHandle,
+  CreateSessionFailure,
   CredentialsFailure,
+  CredentialsRejection,
   RemoteCredentials,
   SessionState,
 } from '@anthropic-ai/claude-agent-sdk/bridge';
@@ -77,14 +79,20 @@ interface BridgeModule {
     gitContext?: undefined,
     cwd?: string,
     model?: string,
-  ): Promise<string | null>;
+  ): Promise<string | CreateSessionFailure | CredentialsRejection | null>;
   fetchRemoteCredentials(
     sessionId: string,
     baseUrl: string,
     accessToken: string,
     timeoutMs: number,
-  ): Promise<RemoteCredentials | CredentialsFailure | null>;
-  isCredentialsFailure(r: RemoteCredentials | CredentialsFailure | null): r is CredentialsFailure;
+  ): Promise<RemoteCredentials | CredentialsFailure | CredentialsRejection | null>;
+  isCredentialsFailure(
+    r: RemoteCredentials | CredentialsFailure | CredentialsRejection | null,
+  ): r is CredentialsFailure;
+  isCredentialsRejection(r: unknown): r is CredentialsRejection;
+  isCreateSessionFailure(
+    r: string | CreateSessionFailure | CredentialsRejection | null,
+  ): r is CreateSessionFailure;
   attachBridgeSession(opts: {
     sessionId: string;
     ingressToken: string;
@@ -205,23 +213,42 @@ export class RemoteControlBridge {
         return null;
       }
       const bridge: BridgeModule = await import('@anthropic-ai/claude-agent-sdk/bridge');
-      const sessionId: string | null = await bridge.createCodeSession(
-        BASE_URL,
-        token,
-        options.title,
-        CALL_TIMEOUT_MS,
-        ['onixlabs-studio'],
-        undefined,
-        options.cwd,
-        options.model,
-      );
-      if (sessionId === null) {
-        logger.warn('ClaudeRemoteControl', 'Could not create a claude.ai code session');
+      const created: string | CreateSessionFailure | CredentialsRejection | null =
+        await bridge.createCodeSession(
+          BASE_URL,
+          token,
+          options.title,
+          CALL_TIMEOUT_MS,
+          ['onixlabs-studio'],
+          undefined,
+          options.cwd,
+          options.model,
+        );
+      // The SDK classifies the failure so a caller can decide whether to retry; this one never
+      // retries (remote control is best-effort), so the classification only sharpens the log line.
+      if (created === null) {
+        logger.warn('ClaudeRemoteControl', 'Could not create a claude.ai code session (transient)');
         return null;
       }
-      const creds: RemoteCredentials | CredentialsFailure | null =
+      if (bridge.isCredentialsRejection(created)) {
+        logger.warn('ClaudeRemoteControl', 'The local Claude login was rejected; sign in again');
+        return null;
+      }
+      if (bridge.isCreateSessionFailure(created)) {
+        logger.warn(
+          'ClaudeRemoteControl',
+          `Could not create a claude.ai code session: ${created.reason} (HTTP ${created.status})`,
+        );
+        return null;
+      }
+      const sessionId: string = created;
+      const creds: RemoteCredentials | CredentialsFailure | CredentialsRejection | null =
         await bridge.fetchRemoteCredentials(sessionId, BASE_URL, token, CALL_TIMEOUT_MS);
-      if (creds === null || bridge.isCredentialsFailure(creds)) {
+      if (
+        creds === null ||
+        bridge.isCredentialsFailure(creds) ||
+        bridge.isCredentialsRejection(creds)
+      ) {
         const reason: string = creds === null ? 'transient failure' : creds.reason;
         logger.warn('ClaudeRemoteControl', `Could not mint worker credentials: ${reason}`);
         return null;
@@ -324,10 +351,17 @@ export class RemoteControlBridge {
       (resolve: (granted: boolean) => void): void => {
         this.pendingPermissions.set(id, resolve);
         try {
+          // The wire now requires a tool_use_id; the answer is correlated by request_id (the pending
+          // map), so when the caller has no tool-use id the request id stands in.
           this.handle.sendControlRequest({
             type: 'control_request',
             request_id: id,
-            request: { subtype: 'can_use_tool', tool_name: toolName, input },
+            request: {
+              subtype: 'can_use_tool',
+              tool_name: toolName,
+              input,
+              tool_use_id: action?.toolUseId ?? id,
+            },
           });
           // Mark the session "waiting on you" so claude.ai shows it needs attention and pushes a
           // notification (the runtime does not derive this from the control request itself).
@@ -395,7 +429,12 @@ export class RemoteControlBridge {
         this.handle.sendControlRequest({
           type: 'control_request',
           request_id: id,
-          request: { subtype: 'can_use_tool', tool_name: 'AskUserQuestion', input },
+          request: {
+            subtype: 'can_use_tool',
+            tool_name: 'AskUserQuestion',
+            input,
+            tool_use_id: id,
+          },
         });
         this.reportAction({
           tool_name: 'AskUserQuestion',

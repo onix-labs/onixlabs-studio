@@ -15,6 +15,7 @@ const MODELS: readonly AiModelInfo[] = [
 const ZERO_USAGE: Usage = {
   input_tokens: 0,
   cached_input_tokens: 0,
+  cache_write_input_tokens: 0,
   output_tokens: 0,
   reasoning_output_tokens: 0,
 };
@@ -261,6 +262,7 @@ describe('CodexAgentSession', () => {
         usage: {
           input_tokens: 100,
           cached_input_tokens: 20,
+          cache_write_input_tokens: 0,
           output_tokens: 30,
           reasoning_output_tokens: 5,
         },
@@ -339,6 +341,7 @@ describe('CodexAgentSession', () => {
         usage: {
           input_tokens: 1,
           cached_input_tokens: 0,
+          cache_write_input_tokens: 0,
           output_tokens: 1,
           reasoning_output_tokens: 0,
         },
@@ -351,6 +354,7 @@ describe('CodexAgentSession', () => {
         usage: {
           input_tokens: 2,
           cached_input_tokens: 0,
+          cache_write_input_tokens: 0,
           output_tokens: 2,
           reasoning_output_tokens: 0,
         },
