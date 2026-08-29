@@ -1,0 +1,30 @@
+# A squash merge uses the PR title as the commit subject and the release notes quote it, so the title
+# must follow the commit convention: `type(scope): subject`, lower-case type, optional scope, an optional
+# `!` for a breaking change, and a subject that starts lower-case and does not end in a full stop.
+name: PR title
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Conventional title
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check the title
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          pattern='^(feat|fix|perf|refactor|chore|docs|test|build|ci|spike|merge)(\([a-z0-9., -]+\))?!?: [a-z0-9].*[^.]$'
+          if [[ "$TITLE" =~ $pattern ]]; then
+            echo "ok: $TITLE"
+          else
+            echo "::error::PR title must look like 'type(scope): subject' — got: $TITLE"
+            echo "Types: feat fix perf refactor chore docs test build ci spike merge. Example: fix(dock): a collapsed gutter keeps its width"
+            exit 1
+          fi

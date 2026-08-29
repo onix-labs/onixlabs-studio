@@ -1,0 +1,19 @@
+# How GitHub groups pull requests when it generates a release's notes. A PR lands in the first category
+# whose label it carries, so give every PR its kind label (feature / bug / enhancement / documentation);
+# Dependabot labels its own.
+changelog:
+  exclude:
+    labels: [duplicate, invalid, wontfix]
+  categories:
+    - title: New features
+      labels: [feature, epic]
+    - title: Improvements
+      labels: [enhancement]
+    - title: Bug fixes
+      labels: [bug]
+    - title: Documentation
+      labels: [documentation]
+    - title: Dependencies
+      labels: [dependencies]
+    - title: Other changes
+      labels: ['*']
