@@ -27,46 +27,50 @@
     </app-ribbon-strip-column>
   </app-ribbon-strip-group>
 
-  <!-- Layout presets: which panels exist and where they dock. Session tweaks are ephemeral —
-       switching, resetting, or relaunching re-applies the selected preset's saved definition;
-       Save/Save As are the only writes. The big button names and applies the DEFAULT preset, and its
-       menu lists every preset; the default itself is set when saving one, or in Manage. Built-ins are
-       immutable, so Save (overwrite) enables only for user presets. -->
+  <!-- Layouts: which panels exist and where they dock. Session rearrangements are ephemeral —
+       switching, resetting, or relaunching re-applies the showing layout's saved definition, and Save
+       As is the only write. The big button's face applies the DEFAULT layout and reads "Default"
+       rather than its name, because a layout name has no length limit and a long one does not fit a
+       ribbon button; the name lives on the tooltip and in the status strip. Its menu lists every
+       layout. There is no separate Save: Save As over an existing name overwrites that layout in
+       place, which is the same thing with the name said out loud. -->
   <app-ribbon-strip-group title="View">
     <app-ribbon-strip-menu-button
       [icon]="Icon.LAYOUT_PRESET"
-      [label]="defaultPresetName()"
-      [items]="presetMenuItems()"
-      [disabled]="!canUsePresets()"
-      (action)="onApplyDefaultPreset()"
-      (selected)="onSelectPreset($event)"
+      label="Default"
+      [tooltip]="'Apply the default layout — showing: ' + activeLayoutName()"
+      [items]="layoutMenuItems()"
+      [disabled]="!canUseLayouts()"
+      (action)="onApplyDefaultLayout()"
+      (selected)="onSelectLayout($event)"
     />
     <app-ribbon-strip-column>
       <app-ribbon-strip-button-small
-        [icon]="Icon.SAVE"
-        label="Save"
-        [disabled]="!canModifyPreset()"
-        (action)="onUpdatePreset()"
+        [icon]="Icon.MANAGE"
+        label="Manage"
+        [disabled]="!canUseLayouts()"
+        (action)="onManageLayouts()"
+      />
+      <app-ribbon-strip-button-small
+        [icon]="Icon.UNDO"
+        label="Reset"
+        tooltip="Put the showing layout back the way it was saved"
+        [disabled]="!canUseLayouts()"
+        (action)="onResetLayout()"
       />
       <app-ribbon-strip-button-small
         [icon]="Icon.SAVE_AS"
         label="Save As"
-        [disabled]="!canUsePresets()"
-        (action)="onSavePresetAs()"
-      />
-      <app-ribbon-strip-button-small
-        [icon]="Icon.MANAGE"
-        label="Manage"
-        [disabled]="!canUsePresets()"
-        (action)="onManagePresets()"
+        [disabled]="!canUseLayouts()"
+        (action)="onSaveLayoutAs()"
       />
     </app-ribbon-strip-column>
-    @if (presetTransient()) {
+    @if (layoutTransient()) {
       <app-ribbon-strip-column>
         <app-ribbon-strip-button-small
           [icon]="Icon.UNDO"
           label="Return"
-          (action)="onReturnPreset()"
+          (action)="onReturnLayout()"
         />
       </app-ribbon-strip-column>
     }
@@ -166,21 +170,18 @@
   </ng-template>
 </app-modal>
 
-<!-- Saves the current arrangement as a new layout preset. The Default box makes it the preset the
-     View button applies, replacing whichever preset held that role. -->
-<app-modal
-  [open]="saveAsOpen()"
-  [width]="26"
-  ariaLabel="Save layout as preset"
-  (dismiss)="cancelSaveAs()"
->
+<!-- Saves the current arrangement. Layout names are unique, so entering one that is taken saves OVER
+     that layout — which is how a layout is updated, there being no separate Save — and the dialog
+     says so before the press rather than after it. The Default box makes it the layout the View
+     button applies, replacing whichever layout held that role. -->
+<app-modal [open]="saveAsOpen()" [width]="26" ariaLabel="Save layout" (dismiss)="cancelSaveAs()">
   <ng-template appModalContent>
-    <h2 class="directory-ribbon__confirm-title">Save layout as preset</h2>
+    <h2 class="directory-ribbon__confirm-title">Save layout</h2>
     <app-text-field
       #presetInput
       class="directory-ribbon__prompt-input"
-      placeholder="Preset name"
-      ariaLabel="Preset name"
+      placeholder="Layout name"
+      ariaLabel="Layout name"
       [value]="saveAsName()"
       (valueChange)="saveAsName.set($event)"
       (enter)="confirmSaveAs()"
@@ -193,11 +194,17 @@
       <app-checkbox [(checked)]="saveAsDefault" />
       <span>Make this the default view</span>
     </label>
+    @if (saveAsOverwrites(); as existing) {
+      <p class="directory-ribbon__prompt-warning" role="status">
+        <app-icon [icon]="Icon.WARNING" />
+        <span>Saving replaces the “{{ existing.name }}” layout with the current arrangement.</span>
+      </p>
+    }
     <div class="directory-ribbon__confirm-actions">
       <app-button label="Cancel" (click)="cancelSaveAs()" />
       <app-button
         variant="solid"
-        label="Save"
+        [label]="saveAsOverwrites() === null ? 'Save' : 'Replace'"
         [disabled]="saveAsName().trim().length === 0"
         (click)="confirmSaveAs()"
       />
@@ -205,58 +212,115 @@
   </ng-template>
 </app-modal>
 
-<!-- Manages the layout presets: which one is the default, what the user's presets are called, and
-     which of them to drop. Built-ins can be made the default but never renamed or deleted. Edits
-     apply as they are made, so the dialog only closes. -->
-<app-modal [open]="manageOpen()" [width]="32" ariaLabel="Manage layouts" (dismiss)="closeManage()">
+<!-- Manages the layouts: which one is the default, what they are called, which to drop, and which
+     template to start another from. Every layout listed is the user's own — there are no built-ins to
+     explain or work around. Edits apply as they are made, so the dialog only closes. -->
+<app-modal [open]="manageOpen()" [width]="34" ariaLabel="Manage layouts" (dismiss)="closeManage()">
   <ng-template appModalContent>
     <h2 class="directory-ribbon__confirm-title">Manage layouts</h2>
     <p class="directory-ribbon__confirm-message">
       The default is the layout the View button applies, and the one a workspace opens with until it
       is switched.
     </p>
+    <!-- Picking a template adds a layout copied from it. It is a menu of things to do, not a value
+         that stays chosen, so it returns to its prompt after each pick and the same template can be
+         taken twice. Adding does not apply: layouts are made here and chosen from the ribbon. -->
+    <div class="directory-ribbon__preset-templates">
+      <span>Pick from a template</span>
+      <app-dropdown
+        ariaLabel="Create a layout from a template"
+        [options]="templateOptions()"
+        [value]="''"
+        (valueChange)="onPickTemplate($event)"
+      />
+    </div>
     <ul class="directory-ribbon__preset-list">
-      @for (preset of presets(); track preset.id) {
+      @for (layout of layouts(); track layout.id) {
         <li class="directory-ribbon__preset-row">
           <!-- Exactly one layout is the default, so the choice is a radio group rather than a row of
                independent toggles: picking one here unpicks the rest, which is what the state means. -->
           <app-radio
-            name="default-preset"
-            [checked]="preset.id === defaultPresetId()"
-            [ariaLabel]="'Make ' + preset.name + ' the default layout'"
-            (checkedChange)="onSetDefaultPreset(preset.id)"
+            name="default-layout"
+            [checked]="layout.id === defaultLayoutId()"
+            [ariaLabel]="'Make ' + layout.name + ' the default layout'"
+            (checkedChange)="onSetDefaultLayout(layout.id)"
           />
-          @if (preset.builtIn) {
-            <span class="directory-ribbon__preset-name">{{ preset.name }}</span>
-            <span class="directory-ribbon__preset-tag">Built-in</span>
-          } @else {
+          @if (editingLayoutId() === layout.id) {
             <app-text-field
-              #presetName
               class="directory-ribbon__preset-input"
-              [value]="preset.name"
-              [ariaLabel]="'Rename ' + preset.name"
-              (blurred)="onRenamePreset(preset.id, presetName.value())"
-              (enter)="onRenamePreset(preset.id, presetName.value())"
+              [value]="editingName()"
+              [ariaLabel]="'Rename ' + layout.name"
+              (valueChange)="editingName.set($event)"
+              (enter)="onCommitRename()"
+              (escape)="onCancelRename()"
+            />
+            <app-button
+              variant="none"
+              size="small"
+              [icon]="Icon.CHECK"
+              [disabled]="!canCommitRename()"
+              [ariaLabel]="'Confirm renaming ' + layout.name"
+              [tooltip]="canCommitRename() ? 'Confirm' : 'That name is already taken'"
+              (click)="onCommitRename()"
+            />
+            <app-button
+              variant="none"
+              size="small"
+              [icon]="Icon.CLOSE"
+              [ariaLabel]="'Cancel renaming ' + layout.name"
+              tooltip="Cancel"
+              (click)="onCancelRename()"
+            />
+          } @else {
+            <span class="directory-ribbon__preset-name">{{ layout.name }}</span>
+            <app-button
+              variant="none"
+              size="small"
+              [icon]="Icon.PENCIL"
+              [ariaLabel]="'Rename ' + layout.name"
+              tooltip="Rename"
+              (click)="onBeginRename(layout)"
             />
             <app-button
               variant="none"
               size="small"
               [icon]="Icon.TRASH"
-              [ariaLabel]="'Delete ' + preset.name"
+              [ariaLabel]="'Delete ' + layout.name"
               tooltip="Delete"
-              (click)="onDeletePreset(preset.id)"
+              (click)="onDeleteLayout(layout)"
             />
           }
         </li>
+      } @empty {
+        <li class="directory-ribbon__preset-empty">
+          No layouts yet — pick a template above to make one. Until then the workspace opens on the
+          built-in default arrangement.
+        </li>
       }
     </ul>
-    <div class="directory-ribbon__confirm-actions directory-ribbon__confirm-actions--split">
-      <app-button
-        label="Reset Layout"
-        tooltip="Discard this session's layout tweaks and re-apply the showing preset"
-        (click)="onResetPreset()"
-      />
+    <div class="directory-ribbon__confirm-actions">
       <app-button variant="solid" label="Done" (click)="closeManage()" />
+    </div>
+  </ng-template>
+</app-modal>
+
+<!-- Asked before a layout is deleted. A layout is the user's own work and there is no undoing this,
+     so it is worth the one question. -->
+<app-modal
+  [open]="deletingLayout() !== null"
+  [width]="26"
+  ariaLabel="Delete layout"
+  (dismiss)="cancelDeleteLayout()"
+>
+  <ng-template appModalContent>
+    <h2 class="directory-ribbon__confirm-title">Delete layout?</h2>
+    <p class="directory-ribbon__confirm-message">
+      “{{ deletingLayout()?.name }}” is deleted for good. Workspaces showing it fall back to the
+      default layout.
+    </p>
+    <div class="directory-ribbon__confirm-actions">
+      <app-button label="Cancel" (click)="cancelDeleteLayout()" />
+      <app-button variant="solid" label="Delete" (click)="confirmDeleteLayout()" />
     </div>
   </ng-template>
 </app-modal>

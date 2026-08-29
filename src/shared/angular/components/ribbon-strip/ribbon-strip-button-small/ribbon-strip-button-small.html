@@ -3,7 +3,7 @@
   class="ribbon-button-small"
   [disabled]="disabled()"
   [attr.aria-label]="iconOnly() ? label() : null"
-  [appTooltip]="iconOnly() ? label() : undefined"
+  [appTooltip]="tooltip().length > 0 ? tooltip() : iconOnly() ? label() : undefined"
   [appTooltipDisabled]="disabled()"
   [attr.aria-pressed]="toggle() ? pressed() : null"
   (click)="onClick()"

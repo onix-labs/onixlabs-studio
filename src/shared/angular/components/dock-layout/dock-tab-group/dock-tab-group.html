@@ -81,8 +81,8 @@
         tabindex="0"
         cdkDrag
         [cdkDragData]="panel.id"
-        [class.dock-tab--active]="panel.id === stack().active"
-        [attr.aria-selected]="panel.id === stack().active"
+        [class.dock-tab--active]="panel.id === activePanel()?.id"
+        [attr.aria-selected]="panel.id === activePanel()?.id"
         (click)="activate(panel.id)"
         (keydown.enter)="activate(panel.id)"
         (keydown.space)="activate(panel.id)"
@@ -150,7 +150,7 @@
          preserves editor state; tool stacks render only their active panel. -->
     @if (isDocuments()) {
       @for (panel of panels(); track panel.id) {
-        <div class="dock-tab-group__pane" [hidden]="panel.id !== stack().active">
+        <div class="dock-tab-group__pane" [hidden]="panel.id !== activePanel()?.id">
           <app-dock-panel-outlet [panelId]="panel.id" />
         </div>
       }

@@ -44,6 +44,15 @@
   background: transparent;
 }
 
+// A pane whose slot renders nothing — every panel it holds is unregistered, or waiting on something
+// this workspace does not have — takes no room at all. It keeps its place (and its weight) in the
+// tree so the layout is unchanged and the slot fills out again the moment its panels can be shown;
+// the minimum sizes have to go with the width, or the empty slot would still hold a gutter open.
+.dock-node__pane--empty {
+  min-inline-size: 0;
+  min-block-size: 0;
+}
+
 // A collapsed pane shrinks to its strip's fixed size and lets the peek flyout escape its bounds to
 // overlay the neighbouring panes, sitting above them and the splitters while it is open.
 .dock-node__pane--collapsed {

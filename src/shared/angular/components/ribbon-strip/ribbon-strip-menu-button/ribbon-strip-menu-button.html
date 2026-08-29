@@ -9,6 +9,8 @@
     type="button"
     class="ribbon-menu-button__action"
     [disabled]="disabled()"
+    [appTooltip]="tooltip().length === 0 ? undefined : tooltip()"
+    [appTooltipDisabled]="disabled()"
     (click)="onAction()"
   >
     <app-icon [icon]="icon()" [size]="1.5" />

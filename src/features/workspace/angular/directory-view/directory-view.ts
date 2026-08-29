@@ -50,10 +50,8 @@ import { DOCK_BLUEPRINT, DockBlueprint } from '@shared/angular/services/dock-lay
 import { DockNode } from '@shared/angular/services/dock-layout/dock-node';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { restoreLayout } from '@shared/angular/services/dock-layout/dock-persistence';
-import {
-  LayoutPresets,
-  LayoutPresetSession,
-} from '@shared/angular/services/layout-presets/layout-presets';
+import { LayoutInfo, Layouts, LayoutSession } from '@shared/angular/services/layouts/layouts';
+import { DockPanelAvailability } from '@shared/angular/services/dock-layout/dock-panel-availability';
 import { DockPanelRegistry } from '@shared/angular/services/dock-layout/dock-panel-registry';
 import {
   DockPanelCommandHandler,
@@ -109,6 +107,7 @@ import { Workspaces } from '@shared/angular/services/workspaces/workspaces';
 import { CommitDetail } from '@shared/angular/components/panels/commit-detail/commit-detail';
 import { DockContainer } from '@shared/angular/components/dock-layout/dock-container/dock-container';
 import { WORKSPACE_DOCK_BLUEPRINT } from './workspace-dock-blueprint';
+import { LAYOUT_TEMPLATES, SOURCE_CONTROL_TEMPLATE_ID } from './layout-templates';
 import { REPOSITORY_DOCK_BLUEPRINT } from '@shared/angular/components/panels/repository-dock-blueprint';
 import {
   SourceControlCommandHandler,
@@ -228,6 +227,9 @@ const PANEL_ANCHORS: Readonly<Record<string, readonly string[]>> = {
     DockGeometry,
     DockFocus,
     DockPanelRegistry,
+    // Which of this tab's panels have something behind them, which the dock filters its stacks
+    // through. Scoped here beside DockState, since availability is a fact about THIS workspace.
+    DockPanelAvailability,
     DockFloating,
     DockAutoHide,
     DockDrag,
@@ -241,14 +243,24 @@ const PANEL_ANCHORS: Readonly<Record<string, readonly string[]>> = {
     PopoutPanels,
     PanelPopout,
     {
-      // The dock seeds from the root's ACTIVE LAYOUT PRESET rather than a persisted tree: the
-      // blueprint carries no key (session layout tweaks are ephemeral by ruling — every
-      // construction and reset re-applies the preset's saved definition), and createLayout reads
-      // the preset store at call time so DockState.reset() is exactly "apply the active preset".
+      // The dock seeds from the root's ACTIVE LAYOUT rather than a persisted tree: the blueprint
+      // carries no key (session rearrangements are ephemeral by ruling — every construction and
+      // reset re-applies the layout's saved definition), and createLayout reads the layout store at
+      // call time so DockState.reset() is exactly "apply the active layout".
       provide: DOCK_BLUEPRINT,
       useFactory: (): DockBlueprint => {
-        const presets: LayoutPresets = inject(LayoutPresets);
+        const layouts: Layouts = inject(Layouts);
         const context: DockTabContext = inject(DockTabContext);
+        // Templates are registered and seeded HERE, not in the component's constructor, because of
+        // ordering: this factory runs while DockState is being built, which is a field initializer
+        // and so runs BEFORE any constructor body. Seeding afterwards would leave the very first tab
+        // of a fresh install showing the fallback while its seeded Default layout sat unused —
+        // and the re-seed-on-root effect would not correct it, since the root's layout and the
+        // default are then the same layout. Both calls are idempotent.
+        for (const template of LAYOUT_TEMPLATES) {
+          layouts.registerTemplate(template);
+        }
+        layouts.seedFromTemplates();
         // The unified panel catalogue: the workspace panels plus the repository view's own
         // (branches rail, history graph, commit detail) — shared-id panels (terminal, agent) keep
         // the workspace definition. Any preset may arrange any of them.
@@ -267,7 +279,7 @@ const PANEL_ANCHORS: Readonly<Record<string, readonly string[]>> = {
         return {
           panels,
           createLayout: (): DockNode => {
-            const layout: DockNode | null = presets.layoutForRoot(context.presetRoot());
+            const layout: DockNode | null = layouts.layoutForRoot(context.presetRoot());
             return (
               (layout !== null ? restoreLayout(layout, known) : null) ??
               WORKSPACE_DOCK_BLUEPRINT.createLayout()
@@ -648,8 +660,11 @@ export class DirectoryView implements OnInit, OnDestroy {
   /**
    * Gets whether each panel that depends on something existing actually has it: a Solution Explorer
    * needs a recognised project system, Packages a recognised ecosystem, Debug a running session,
-   * Worktrees a container, and the source-control trio a repository. A panel absent from this map has
-   * nothing to depend on and is always available.
+   * Worktrees a container, Logs something that has actually logged, and the source-control trio a
+   * repository. A panel absent from this map has nothing to depend on and is always available.
+   *
+   * This drives two things at once: which panels the View → Panels menu offers, and which the dock
+   * renders. Both mean the same thing — the panel has nothing to show — so both read it from here.
    */
   private readonly panelAvailability: Signal<Readonly<Record<string, boolean>>> = computed(
     (): Readonly<Record<string, boolean>> => {
@@ -659,6 +674,10 @@ export class DirectoryView implements OnInit, OnDestroy {
         packages: this.packageModel.model() !== null,
         debug: this.debugSession.state() !== 'idle',
         worktrees: this.worktreeSession.isContainer(),
+        // The demoted Logs panel is reachable exactly when it has content, as it always was — the
+        // difference is that it is now passed over rather than cut out of the layout, so a layout
+        // that names it still names it once something logs.
+        output: this.outputService.channels().length > 0,
         branches: repository,
         history: repository,
         commit: repository,
@@ -796,7 +815,12 @@ export class DirectoryView implements OnInit, OnDestroy {
   /**
    * Holds the layout preset store this view registers its session with while active.
    */
-  private readonly layoutPresets: LayoutPresets = inject(LayoutPresets);
+  private readonly layoutStore: Layouts = inject(Layouts);
+
+  /**
+   * Holds this tab's panel availability, which the dock filters its stacks through.
+   */
+  private readonly dockPanelAvailability: DockPanelAvailability = inject(DockPanelAvailability);
 
   /**
    * Holds a value indicating whether the transient Git switch should return to the prior preset
@@ -823,11 +847,11 @@ export class DirectoryView implements OnInit, OnDestroy {
   private disposeLayoutSession: (() => void) | null = null;
 
   /**
-   * Holds the layout preset session: the preset commands capture this dock's current tree for
-   * Save as…/Update through it, and re-seed the dock when a preset is selected or reset. Applying
-   * first returns any popped-out panels — the incoming preset defines which panels exist.
+   * Holds the layout session: the layout commands capture this dock's current tree for Save As
+   * through it, and re-seed the dock when a layout is selected or reset. Applying first returns any
+   * popped-out panels — the incoming layout defines which panels exist.
    */
-  private readonly layoutSession: LayoutPresetSession = {
+  private readonly layoutSession: LayoutSession = {
     root: this.dockTabContext.presetRoot,
     capture: (): DockNode => this.dockState.layout(),
     apply: (): void => {
@@ -945,25 +969,20 @@ export class DirectoryView implements OnInit, OnDestroy {
       }
     });
 
-    // The built-ins: Coding is today's workspace default layout; Git is the repository view's
-    // arrangement (branches rail, diff well over history, commit + agent) over the same unified
-    // catalogue. Registration is idempotent, so every workspace tab may declare them.
-    this.layoutPresets.registerBuiltIn({
-      id: 'coding',
-      name: 'Coding',
-      createLayout: (): DockNode => WORKSPACE_DOCK_BLUEPRINT.createLayout(),
-    });
-    this.layoutPresets.registerBuiltIn({
-      id: 'git',
-      name: 'Git',
-      createLayout: (): DockNode => REPOSITORY_DOCK_BLUEPRINT.createLayout(),
+    // Publish which panels this tab can actually show, so the dock passes over the ones whose backing
+    // is absent instead of rendering an empty tab — and, crucially, without editing the layout tree
+    // to match. A layout names what the user wants at best; what a given folder supports is a
+    // rendering question, and answering it here means a layout saved from a plain folder still asks
+    // for the Solution Explorer when it is next opened on a solution.
+    effect((): void => {
+      this.dockPanelAvailability.set(this.panelAvailability());
     });
 
-    // Register this tab's layout-preset session while active, so the ribbon's VIEW group commands
-    // (select, save as, update, reset…) act on this dock.
+    // Register this tab's layout session while active, so the ribbon's VIEW group commands (select,
+    // save as, reset…) act on this dock.
     effect((): void => {
       if (this.isActive()) {
-        this.disposeLayoutSession = this.layoutPresets.register(this.layoutSession);
+        this.disposeLayoutSession = this.layoutStore.register(this.layoutSession);
       } else {
         this.disposeLayoutSession?.();
         this.disposeLayoutSession = null;
@@ -980,7 +999,7 @@ export class DirectoryView implements OnInit, OnDestroy {
       }
       this.appliedPresetRoot = root;
       untracked((): void => {
-        if (this.layoutPresets.activeFor(root) !== this.layoutPresets.activeFor(null)) {
+        if (this.layoutStore.activeFor(root) !== this.layoutStore.activeFor(null)) {
           this.layoutSession.apply();
         }
       });
@@ -999,12 +1018,12 @@ export class DirectoryView implements OnInit, OnDestroy {
     effect((): void => {
       if (
         this.returnWhenCommitted &&
-        this.layoutPresets.transientActive() &&
+        this.layoutStore.transientActive() &&
         this.repository.isBound() &&
         this.repository.changeCount() === 0
       ) {
         this.returnWhenCommitted = false;
-        untracked((): void => this.layoutPresets.returnFromTransient());
+        untracked((): void => this.layoutStore.returnFromTransient());
       }
     });
 
@@ -1237,8 +1256,13 @@ export class DirectoryView implements OnInit, OnDestroy {
   }
 
   /**
-   * Adds or removes the Solution Explorer panel to match whether a project model is present, tabbing it
-   * into the File Explorer's stack when shown.
+   * Adds the Solution Explorer panel beside the File Explorer once this tab has a project model,
+   * for a layout that does not already name it.
+   *
+   * Adding only, never removing: a layout that mentions the Solution Explorer keeps mentioning it,
+   * and the dock simply passes over it while there is no project model (see
+   * {@link DockPanelAvailability}). Cutting it out of the tree instead would mean a layout saved from
+   * a plain folder had quietly lost it.
    * @param hasModel Whether this tab currently has a project model.
    */
   private syncSolutionPanel(hasModel: boolean): void {
@@ -1251,16 +1275,15 @@ export class DirectoryView implements OnInit, OnDestroy {
       if (filesStack !== null) {
         this.dockState.tabInto(filesStack.id, 'solution');
       }
-    } else if (!hasModel && present) {
-      this.dockState.removeFromLayout('solution');
     }
   }
 
   /**
-   * Adds or removes the Package Management panel to match whether a package model is present, tabbing
-   * it into the bottom tool group alongside the Error List, Terminal, and Logs when shown (without
-   * stealing the active tab from the user). Mirrors {@link syncSolutionPanel}: presence is derived from
-   * the live layout so a tab's close/reopen does not accumulate duplicates.
+   * Adds the Package Management panel to the bottom tool group alongside the Error List, Terminal,
+   * and Logs once this tab has a package model, for a layout that does not already name it (without
+   * stealing the active tab from the user). Mirrors {@link syncSolutionPanel}: presence is derived
+   * from the live layout so a tab's close/reopen does not accumulate duplicates, and it adds only —
+   * the dock passes over the panel while there is no package model.
    * @param hasModel Whether this tab currently has a package model.
    */
   private syncPackagesPanel(hasModel: boolean): void {
@@ -1278,14 +1301,14 @@ export class DirectoryView implements OnInit, OnDestroy {
       if (previous !== null) {
         this.dockState.setActive(anchor.id, previous);
       }
-    } else if (!hasModel && present) {
-      this.dockState.removeFromLayout('packages');
     }
   }
 
   /**
-   * Adds or removes the Debug panel to match whether a debug session is running, tabbing it beside the
-   * Output panel (falling back to any tool stack) and activating it when shown.
+   * Adds the Debug panel beside the Error List (falling back to any tool stack) when a debug session
+   * starts, for a layout that does not already name it. No template names the Debug panel, so this is
+   * how it arrives; it is not taken away again when the session ends, because the dock already passes
+   * over it while nothing is running.
    * @param running Whether a debug session is currently running in this tab.
    */
   private syncDebugPanel(running: boolean): void {
@@ -1297,11 +1320,11 @@ export class DirectoryView implements OnInit, OnDestroy {
       if (anchor !== null) {
         this.dockState.tabInto(anchor.id, 'debug');
       }
+    }
+    if (running) {
       // Until runInTerminal lands, the debuggee's output arrives in the Logs channel: bring Logs
       // forward for the session's start, with the Debug panel a tab away for the first break.
       this.ensureLogsPanel(true);
-    } else if (!running && present) {
-      this.dockState.removeFromLayout('debug');
     }
   }
 
@@ -1434,13 +1457,23 @@ export class DirectoryView implements OnInit, OnDestroy {
   }
 
   /**
-   * Switches this tab to the Git layout preset — the unified view's source-control arrangement.
-   * The standalone repository view is retired (#360); "open in source control" now means "set the
-   * stage for source-control work" in place.
+   * Switches this tab to the user's source-control layout — the arrangement they made of the Source
+   * Control template. The standalone repository view is retired (#360); "open in source control" now
+   * means "set the stage for source-control work" in place.
+   *
+   * A user who deleted that layout (or renamed it out of all recognition — the link is the template
+   * it came from, so renaming is not that) gets the template staged transiently instead: the request
+   * still has somewhere to go, and it leaves without a trace, which is the right of the two for a
+   * stage-set the user never asked to keep.
    */
   private openInSourceControl(): void {
-    this.log.debug('source-control', 'Switching to Git layout preset');
-    this.layoutPresets.select('git');
+    this.log.debug('source-control', 'Switching to the source-control layout');
+    const own: LayoutInfo | null = this.layoutStore.layoutForTemplate(SOURCE_CONTROL_TEMPLATE_ID);
+    if (own !== null) {
+      this.layoutStore.select(own.id);
+      return;
+    }
+    this.layoutStore.switchTransient(SOURCE_CONTROL_TEMPLATE_ID);
   }
 
   /**
@@ -1453,11 +1486,12 @@ export class DirectoryView implements OnInit, OnDestroy {
       return;
     }
     this.log.info('source-control', 'Commit panel revealed');
-    // Ruling 6 of #351: the IDE sets the stage rather than injecting panels. Commit switches to
-    // the Git preset TRANSIENTLY — the persisted pick is untouched — and returns automatically
-    // once the changes it staged for reach zero (the commit landed). The panel-injection path
-    // below remains for the odd case where no Git preset exists.
-    if (this.layoutPresets.switchTransient('git')) {
+    // Ruling 6 of #351: the IDE sets the stage rather than injecting panels. Commit switches to the
+    // source-control layout TRANSIENTLY — the persisted pick is untouched — and returns automatically
+    // once the changes it staged for reach zero (the commit landed). It prefers the user's own layout
+    // for the template and falls back to the template itself, so it works whatever they have made of
+    // their layouts. The panel-injection path below remains for the odd case where neither exists.
+    if (this.layoutStore.switchTransientForTemplate(SOURCE_CONTROL_TEMPLATE_ID)) {
       if (this.repository.changeCount() > 0) {
         this.returnWhenCommitted = true;
       }

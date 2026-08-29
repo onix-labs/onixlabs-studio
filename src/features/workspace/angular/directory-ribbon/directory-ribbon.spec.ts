@@ -9,10 +9,7 @@ import { RunConfiguration } from '@shared/api/studio';
 import { DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { RibbonMenuItem } from '@shared/angular/components/ribbon-strip/ribbon-strip-menu-button/ribbon-strip-menu-button';
 import { DockNode, mkStack } from '@shared/angular/services/dock-layout/dock-node';
-import {
-  LayoutPresetInfo,
-  LayoutPresets,
-} from '@shared/angular/services/layout-presets/layout-presets';
+import { LayoutInfo, Layouts } from '@shared/angular/services/layouts/layouts';
 import { SourceControlCommands } from '@shared/angular/services/source-control-commands/source-control-commands';
 import { ModalWindows } from '@shared/angular/services/modal-windows/modal-windows';
 import { FakeModalWindows } from '@shared/angular/services/modal-windows/modal-windows.fake';
@@ -70,25 +67,36 @@ interface RibbonInternals {
   onSaveMenuItem(id: string): void;
   commitMenuItems(): readonly RibbonMenuItem[];
   onCommitMenuItem(id: string): void;
-  presets(): readonly LayoutPresetInfo[];
-  presetMenuItems(): readonly RibbonMenuItem[];
-  defaultPresetName(): string;
-  defaultPresetId(): string | null;
-  onApplyDefaultPreset(): void;
-  onSelectPreset(id: string): void;
-  onSavePresetAs(): void;
+  layouts(): readonly LayoutInfo[];
+  templateOptions(): readonly DropdownOption[];
+  layoutMenuItems(): readonly RibbonMenuItem[];
+  activeLayoutName(): string;
+  defaultLayoutId(): string | null;
+  onApplyDefaultLayout(): void;
+  onSelectLayout(id: string): void;
+  onResetLayout(): void;
+  onSaveLayoutAs(): void;
   saveAsOpen(): boolean;
   saveAsName: WritableSignal<string>;
   saveAsDefault: WritableSignal<boolean>;
+  saveAsOverwrites(): LayoutInfo | null;
   confirmSaveAs(): void;
   cancelSaveAs(): void;
   manageOpen(): boolean;
-  onManagePresets(): void;
+  onManageLayouts(): void;
   closeManage(): void;
-  onSetDefaultPreset(id: string): void;
-  onRenamePreset(id: string, name: string): void;
-  onDeletePreset(id: string): void;
-  onResetPreset(): void;
+  onPickTemplate(templateId: string): void;
+  onSetDefaultLayout(id: string): void;
+  editingLayoutId(): string | null;
+  editingName: WritableSignal<string>;
+  canCommitRename(): boolean;
+  onBeginRename(layout: LayoutInfo): void;
+  onCommitRename(): void;
+  onCancelRename(): void;
+  deletingLayout(): LayoutInfo | null;
+  onDeleteLayout(layout: LayoutInfo): void;
+  confirmDeleteLayout(): void;
+  cancelDeleteLayout(): void;
 }
 
 /**
@@ -354,7 +362,7 @@ describe('DirectoryRibbon', () => {
   let debuggerSeam: FakeDebugger;
   let documentHandler: FakeDocumentHandler;
   let repositoryCommands: FakeRepositoryCommands;
-  let presets: LayoutPresets;
+  let layoutStore: Layouts;
   let windows: FakeModalWindows;
   let menu: AppMenu;
   let dockPanels: DockPanelCommands;
@@ -369,8 +377,8 @@ describe('DirectoryRibbon', () => {
   }
 
   beforeEach(async () => {
-    // The preset store persists through localStorage; clear it so each test starts with no saved
-    // presets and no chosen default.
+    // The layout store persists through localStorage; clear it so each test starts on a first run —
+    // no saved layouts and no chosen default, exactly as a fresh install.
     localStorage.clear();
     builds = new FakeBuilds();
     studio = new FakeStudio();
@@ -391,20 +399,26 @@ describe('DirectoryRibbon', () => {
       ],
     }).compileComponents();
 
-    // The well, the dock and the preset store are what the File and View groups act through;
+    // The well, the dock and the layout store are what the File and View groups act through;
     // register the stand-ins exactly as an active directory view would.
     TestBed.inject(WorkspaceDocumentCommands).register(documentHandler);
     panelHandler = new FakePanelHandler();
     dockPanels = TestBed.inject(DockPanelCommands);
     dockPanels.register(panelHandler);
     menu = TestBed.inject(AppMenu);
-    presets = TestBed.inject(LayoutPresets);
-    presets.registerBuiltIn({
-      id: 'coding',
-      name: 'Coding',
+    layoutStore = TestBed.inject(Layouts);
+    layoutStore.registerTemplate({
+      id: 'default',
+      name: 'Default',
       createLayout: (): DockNode => mkStack('tool', ['files']),
     });
-    presets.register({
+    layoutStore.registerTemplate({
+      id: 'source-control',
+      name: 'Source Control',
+      createLayout: (): DockNode => mkStack('tool', ['branches']),
+    });
+    layoutStore.seedFromTemplates();
+    layoutStore.register({
       root: signal<string | null>('/repo'),
       capture: (): DockNode => mkStack('tool', ['errors']),
       apply: (): void => undefined,
@@ -989,164 +1003,278 @@ describe('DirectoryRibbon', () => {
 
   describe('the View group', () => {
     /**
-     * Saves the current layout as a user preset through the Save As dialog.
-     * @param name The preset name.
+     * Saves the current arrangement through the Save As dialog.
+     * @param name The layout name.
      * @param makeDefault Whether to tick the dialog's Default box.
-     * @returns Returns the new preset's identifier.
+     * @returns Returns the saved layout's identifier.
      */
     function saveAs(name: string, makeDefault: boolean): string {
-      internals().onSavePresetAs();
+      internals().onSaveLayoutAs();
       internals().saveAsName.set(name);
       internals().saveAsDefault.set(makeDefault);
       internals().confirmSaveAs();
+      return idOf(name);
+    }
+
+    /**
+     * Resolves a layout by name.
+     * @param name The layout name.
+     * @returns Returns its identifier, or the empty string when absent.
+     */
+    function idOf(name: string): string {
       return (
         internals()
-          .presets()
-          .find((preset: LayoutPresetInfo): boolean => preset.name === name)?.id ?? ''
+          .layouts()
+          .find((layout: LayoutInfo): boolean => layout.name === name)?.id ?? ''
       );
     }
 
-    it('theBigButtonNamesTheDefaultPreset_whichIsTheFirstOneUntilOneIsChosen', () => {
-      expect(internals().defaultPresetName()).toBe('Coding');
-      expect(internals().defaultPresetId()).toBe('coding');
-    });
-
-    it('theBigButtonAppliesTheDefaultPreset', () => {
-      const customId: string = saveAs('Custom', false);
-      // Saving made the custom preset this root's pick, so applying the default moves off it.
+    it('seedsALayoutPerTemplate_soAFirstRunHasNoBuiltInsToExplain', () => {
       expect(
         internals()
-          .presetMenuItems()
+          .layouts()
+          .map((layout: LayoutInfo): string => layout.name),
+      ).toEqual(['Default', 'Source Control']);
+      expect(internals().defaultLayoutId()).toBe(idOf('Default'));
+    });
+
+    it('theBigButtonAppliesTheDefaultLayout_whateverIsShowing', () => {
+      const customId: string = saveAs('Custom', false);
+      // Saving made the new layout this root's pick, so applying the default moves off it.
+      expect(
+        internals()
+          .layoutMenuItems()
           .find((item): boolean => item.active === true)?.id,
       ).toBe(customId);
 
-      internals().onApplyDefaultPreset();
+      internals().onApplyDefaultLayout();
 
       expect(
         internals()
-          .presetMenuItems()
+          .layoutMenuItems()
           .find((item): boolean => item.active === true)?.id,
-      ).toBe('coding');
+      ).toBe(idOf('Default'));
     });
 
-    it('theMenuListsEveryPreset_markingTheOneShowing', () => {
+    it('theMenuListsEveryLayout_markingTheOneShowing', () => {
       const customId: string = saveAs('Custom', false);
 
-      const items: readonly RibbonMenuItem[] = internals().presetMenuItems();
-      expect(items.map((item: RibbonMenuItem): string => item.label)).toEqual(['Coding', 'Custom']);
+      const items: readonly RibbonMenuItem[] = internals().layoutMenuItems();
+      expect(items.map((item: RibbonMenuItem): string => item.label)).toEqual([
+        'Default',
+        'Source Control',
+        'Custom',
+      ]);
       expect(items.find((item: RibbonMenuItem): boolean => item.id === customId)?.active).toBe(
         true,
       );
-      expect(items.find((item: RibbonMenuItem): boolean => item.id === 'coding')?.active).toBe(
-        false,
-      );
     });
 
-    it('choosingFromTheMenuApplies_butDoesNotChangeTheDefault', () => {
-      const customId: string = saveAs('Custom', false);
+    it('theStatusNameFollowsTheShowingLayout_whileTheButtonFaceStaysDefault', () => {
+      expect(internals().activeLayoutName()).toBe('Default');
 
-      internals().onSelectPreset(customId);
+      internals().onSelectLayout(idOf('Source Control'));
 
-      expect(internals().defaultPresetId()).toBe('coding');
-      expect(internals().defaultPresetName()).toBe('Coding');
+      expect(internals().activeLayoutName()).toBe('Source Control');
+      // The default is unmoved: switching to a layout is not choosing it as the default.
+      expect(internals().defaultLayoutId()).toBe(idOf('Default'));
     });
 
-    it('saveAs_withTheDefaultBoxTicked_makesTheNewPresetTheDefault', () => {
+    it('theTemplatePicker_addsALayoutPerPick_namedUniquely', () => {
+      internals().onPickTemplate('default');
+      internals().onPickTemplate('default');
+
+      expect(
+        internals()
+          .layouts()
+          .map((layout: LayoutInfo): string => layout.name),
+      ).toEqual(['Default', 'Source Control', 'Default 2', 'Default 3']);
+      // The prompt is not a template, so choosing it adds nothing.
+      internals().onPickTemplate('');
+      expect(internals().layouts().length).toBe(4);
+    });
+
+    it('theTemplatePickerOptions_areHeadedByAnInertPrompt', () => {
+      expect(internals().templateOptions()).toEqual([
+        { value: '', label: 'Templates' },
+        { value: 'default', label: 'Default' },
+        { value: 'source-control', label: 'Source Control' },
+      ]);
+    });
+
+    it('saveAs_offersTheShowingLayoutsName_soSavingOverItIsTheDefaultGesture', () => {
+      internals().onSelectLayout(idOf('Source Control'));
+
+      internals().onSaveLayoutAs();
+
+      expect(internals().saveAsName()).toBe('Source Control');
+      expect(internals().saveAsDefault()).toBe(false);
+      // The name is taken, so the dialog says what confirming will replace.
+      expect(internals().saveAsOverwrites()?.id).toBe(idOf('Source Control'));
+    });
+
+    it('saveAs_overAnExistingName_replacesThatLayoutRatherThanAddingOne', () => {
+      const id: string = idOf('Default');
+      internals().onSetDefaultLayout(id);
+
+      saveAs('default', false);
+
+      expect(internals().layouts().length).toBe(2);
+      expect(idOf('default')).toBe(id);
+      // The identity survived, so the default marker is still pointed at the same layout.
+      expect(internals().defaultLayoutId()).toBe(id);
+    });
+
+    it('saveAs_withAFreeName_reportsNothingToOverwrite', () => {
+      internals().onSaveLayoutAs();
+      internals().saveAsName.set('Brand New');
+
+      expect(internals().saveAsOverwrites()).toBeNull();
+    });
+
+    it('saveAs_withTheDefaultBoxTicked_makesTheNewLayoutTheDefault', () => {
       const customId: string = saveAs('Custom', true);
 
-      expect(internals().defaultPresetId()).toBe(customId);
-      expect(internals().defaultPresetName()).toBe('Custom');
+      expect(internals().defaultLayoutId()).toBe(customId);
+      expect(internals().activeLayoutName()).toBe('Custom');
       expect(internals().saveAsOpen()).toBe(false);
     });
 
-    it('presetModals_renderTheirContentOnlyWhileOpen', () => {
-      const customId: string = saveAs('Custom', false);
+    it('saveAs_withAnEmptyName_savesNothingAndStaysOpen', () => {
+      internals().onSaveLayoutAs();
+      internals().saveAsName.set('   ');
+
+      internals().confirmSaveAs();
+
+      expect(internals().layouts().length).toBe(2);
+      expect(internals().saveAsOpen()).toBe(true);
+    });
+
+    it('layoutModals_renderTheirContentOnlyWhileOpen', () => {
       const appRef: ApplicationRef = TestBed.inject(ApplicationRef);
 
       expect(windows.openWindows).toBe(0);
 
-      internals().onSavePresetAs();
+      internals().onSaveLayoutAs();
       fixture.detectChanges();
       appRef.tick();
       expect(windows.openWindows).toBe(1);
       expect(
         windows.contentHost?.querySelector('.directory-ribbon__confirm-title')?.textContent,
-      ).toContain('Save layout as preset');
+      ).toContain('Save layout');
 
       internals().cancelSaveAs();
-      internals().onManagePresets();
+      internals().onManageLayouts();
       fixture.detectChanges();
       appRef.tick();
       expect(windows.openWindows).toBe(1);
       const manage: string = windows.contentHost?.textContent ?? '';
       expect(manage).toContain('Manage layouts');
-      expect(manage).toContain('Coding');
+      expect(manage).toContain('Pick from a template');
+      expect(manage).toContain('Default');
 
-      internals().onDeletePreset(customId);
       internals().closeManage();
       fixture.detectChanges();
       appRef.tick();
       expect(windows.openWindows).toBe(0);
     });
 
-    it('saveAs_withAnEmptyName_savesNothingAndStaysOpen', () => {
-      internals().onSavePresetAs();
-      internals().saveAsName.set('   ');
+    it('manage_renamesALayoutThroughAnEditThatIsConfirmedOrAbandoned', () => {
+      const id: string = idOf('Default');
+      internals().onManageLayouts();
 
-      internals().confirmSaveAs();
+      internals().onBeginRename({ id, name: 'Default' });
+      expect(internals().editingLayoutId()).toBe(id);
+      expect(internals().editingName()).toBe('Default');
 
-      expect(internals().presets().length).toBe(1);
-      expect(internals().saveAsOpen()).toBe(true);
+      internals().editingName.set('Renamed');
+      internals().onCommitRename();
+
+      expect(idOf('Renamed')).toBe(id);
+      expect(internals().editingLayoutId()).toBeNull();
+
+      internals().onBeginRename({ id, name: 'Renamed' });
+      internals().editingName.set('Abandoned');
+      internals().onCancelRename();
+
+      expect(idOf('Renamed')).toBe(id);
+      expect(internals().editingLayoutId()).toBeNull();
     });
 
-    it('saveAs_reopening_startsFromACleanNameAndUntickedDefault', () => {
-      saveAs('Custom', true);
+    it('manage_refusesARenameOntoANameAnotherLayoutHolds', () => {
+      const id: string = idOf('Default');
+      internals().onBeginRename({ id, name: 'Default' });
 
-      internals().onSavePresetAs();
+      internals().editingName.set('  source CONTROL ');
+      expect(internals().canCommitRename()).toBe(false);
+      internals().onCommitRename();
 
-      expect(internals().saveAsName()).toBe('');
-      expect(internals().saveAsDefault()).toBe(false);
+      // Refused, so the row stays open on the name the user is still working on.
+      expect(idOf('Default')).toBe(id);
+      expect(internals().editingLayoutId()).toBe(id);
+
+      internals().editingName.set('  ');
+      expect(internals().canCommitRename()).toBe(false);
+
+      internals().editingName.set('Mine');
+      expect(internals().canCommitRename()).toBe(true);
     });
 
-    it('manage_renamesAndDeletesUserPresets_andSetsTheDefault', () => {
-      const customId: string = saveAs('Custom', false);
-      internals().onManagePresets();
-      expect(internals().manageOpen()).toBe(true);
+    it('manage_deletesOnlyAfterConfirmation_andTheDefaultFallsBack', () => {
+      const id: string = idOf('Default');
+      internals().onSetDefaultLayout(id);
 
-      internals().onSetDefaultPreset(customId);
-      expect(internals().defaultPresetId()).toBe(customId);
+      internals().onDeleteLayout({ id, name: 'Default' });
+      expect(internals().deletingLayout()?.id).toBe(id);
+      internals().cancelDeleteLayout();
+      expect(internals().layouts().length).toBe(2);
 
-      internals().onRenamePreset(customId, 'Renamed');
-      expect(internals().defaultPresetName()).toBe('Renamed');
+      internals().onDeleteLayout({ id, name: 'Default' });
+      internals().confirmDeleteLayout();
 
-      internals().onDeletePreset(customId);
       expect(
         internals()
-          .presets()
-          .map((preset): string => preset.name),
-      ).toEqual(['Coding']);
-      // The deleted preset held the default, so it falls back rather than stranding the choice.
-      expect(internals().defaultPresetId()).toBe('coding');
+          .layouts()
+          .map((layout: LayoutInfo): string => layout.name),
+      ).toEqual(['Source Control']);
+      // The deleted layout held the default, so it falls back rather than stranding the choice.
+      expect(internals().defaultLayoutId()).toBe(idOf('Source Control'));
+      expect(internals().deletingLayout()).toBeNull();
+    });
+
+    it('manage_setsTheDefault_whichAWorkspaceWithNoPickOfItsOwnFollows', () => {
+      const sourceControl: string = idOf('Source Control');
+      internals().onManageLayouts();
+
+      internals().onSetDefaultLayout(sourceControl);
+
+      expect(internals().defaultLayoutId()).toBe(sourceControl);
+      // This workspace has never chosen a layout, so it follows the default wherever it moves.
+      expect(internals().activeLayoutName()).toBe('Source Control');
 
       internals().closeManage();
       expect(internals().manageOpen()).toBe(false);
     });
 
-    it('manage_cannotRenameOrDeleteABuiltIn_butCanMakeItTheDefault', () => {
-      const customId: string = saveAs('Custom', true);
+    it('manage_settingTheDefault_leavesAWorkspaceThatHasChosenForItselfAlone', () => {
+      internals().onSelectLayout(idOf('Default'));
 
-      internals().onRenamePreset('coding', 'Hacked');
-      internals().onDeletePreset('coding');
+      internals().onSetDefaultLayout(idOf('Source Control'));
 
-      expect(
-        internals()
-          .presets()
-          .map((preset): string => preset.name),
-      ).toEqual(['Coding', 'Custom']);
-      expect(internals().defaultPresetId()).toBe(customId);
+      // A pick of its own outranks the default, so the showing layout does not move under the user.
+      expect(internals().activeLayoutName()).toBe('Default');
+    });
 
-      internals().onSetDefaultPreset('coding');
-      expect(internals().defaultPresetId()).toBe('coding');
+    it('closingManage_abandonsAnEditAndAPendingDelete', () => {
+      const id: string = idOf('Default');
+      internals().onManageLayouts();
+      internals().onBeginRename({ id, name: 'Default' });
+      internals().onDeleteLayout({ id, name: 'Default' });
+
+      internals().closeManage();
+
+      expect(internals().editingLayoutId()).toBeNull();
+      expect(internals().deletingLayout()).toBeNull();
     });
   });
 });

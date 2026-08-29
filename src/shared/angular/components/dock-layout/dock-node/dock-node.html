@@ -16,14 +16,15 @@
           [class.dock-node__pane--collapsed]="isCollapsed(child)"
           [class.dock-node__pane--peeking]="isPeeking(child)"
           [class.dock-node__pane--end]="isEndAnchored(node, i)"
-          [style.flex]="isCollapsed(child) ? collapsedFlex : paneFlex(node.sizes[i])"
+          [class.dock-node__pane--empty]="isEmptyPane(child)"
+          [style.flex]="slotFlex(child, node.sizes[i])"
         >
           <ng-container
             [ngTemplateOutlet]="render"
             [ngTemplateOutletContext]="{ $implicit: child, side: sideOf(child, node.dir, i) }"
           />
         </div>
-        @if (!last) {
+        @if (!last && hasSplitter(node, i)) {
           <app-dock-splitter
             [splitId]="node.id"
             [index]="i"

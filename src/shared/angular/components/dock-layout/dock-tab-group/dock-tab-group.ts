@@ -24,6 +24,7 @@ import { DockFocus } from '../../../services/dock-layout/dock-focus';
 import { DockGeometry } from '../../../services/dock-layout/dock-geometry';
 import { Rect } from '../../../services/dock-layout/dock-legality';
 import { DockPanel } from '../../../services/dock-layout/dock-panel';
+import { DockPanelAvailability } from '../../../services/dock-layout/dock-panel-availability';
 import { DockPanelRegistry } from '../../../services/dock-layout/dock-panel-registry';
 import { DockSide, StackNode } from '../../../services/dock-layout/dock-node';
 import { DockState } from '../../../services/dock-layout/dock-state';
@@ -96,6 +97,12 @@ export class DockTabGroup {
    * Holds the registry panel ids are resolved through.
    */
   private readonly registry: DockPanelRegistry = inject(DockPanelRegistry);
+
+  /**
+   * Holds the availability of the panels this view can show, so a stack passes over the ones whose
+   * backing is not there rather than rendering an empty tab.
+   */
+  private readonly availability: DockPanelAvailability = inject(DockPanelAvailability);
 
   /**
    * Holds the geometry registry this group registers its rectangle with.
@@ -216,11 +223,10 @@ export class DockTabGroup {
   );
 
   /**
-   * Gets a value indicating whether the stack holds no panels.
+   * Gets a value indicating whether the stack shows no panels — either because it holds none, or
+   * because none of the ones it holds can be shown here.
    */
-  protected readonly isEmpty: Signal<boolean> = computed(
-    (): boolean => this.stack().panels.length === 0,
-  );
+  protected readonly isEmpty: Signal<boolean> = computed((): boolean => this.panels().length === 0);
 
   /**
    * Gets a value indicating whether the active panel renders its own tool strip, in which case the
@@ -236,7 +242,7 @@ export class DockTabGroup {
    * group: only when the well holds more than one document, so dragging it out leaves the well behind.
    */
   protected readonly canDetachActive: Signal<boolean> = computed(
-    (): boolean => this.stack().panels.length > 1,
+    (): boolean => this.panels().length > 1,
   );
 
   /**
@@ -247,21 +253,33 @@ export class DockTabGroup {
   );
 
   /**
-   * Gets the resolved panels held by the stack, in tab order.
+   * Gets the resolved panels held by the stack, in tab order. A panel is passed over when it is
+   * unregistered, and equally when what it depends on is not there — a layout names the panels the
+   * user wants at best, and the dock shows the ones it can (see {@link DockPanelAvailability}).
    */
   protected readonly panels: Signal<readonly DockPanel[]> = computed((): readonly DockPanel[] =>
     this.stack()
-      .panels.map((id: string): DockPanel | undefined => this.registry.get(id))
+      .panels.filter((id: string): boolean => this.availability.isAvailable(id))
+      .map((id: string): DockPanel | undefined => this.registry.get(id))
       .filter((panel: DockPanel | undefined): panel is DockPanel => panel !== undefined),
   );
 
   /**
-   * Gets the active panel, or undefined when the stack is empty or its active panel is unregistered.
+   * Gets the active panel, or undefined when the stack shows nothing. The stack's own active id wins
+   * while it resolves to a showing panel; when it names one that is unregistered or unavailable the
+   * first showing panel stands in, so a stack whose active tab's backing went away falls to a sibling
+   * rather than rendering a headless body. The tree is not rewritten — the original active id is kept
+   * so it returns to the front when its backing does.
    */
   protected readonly activePanel: Signal<DockPanel | undefined> = computed(
     (): DockPanel | undefined => {
       const active: string | null = this.stack().active;
-      return active !== null ? this.registry.get(active) : undefined;
+      const showing: readonly DockPanel[] = this.panels();
+      const chosen: DockPanel | undefined =
+        active === null
+          ? undefined
+          : showing.find((panel: DockPanel): boolean => panel.id === active);
+      return chosen ?? showing[0];
     },
   );
 

@@ -47,6 +47,13 @@ export class RibbonStripButtonSmall {
   public readonly disabled: InputSignal<boolean> = input<boolean>(false);
 
   /**
+   * Gets the tooltip, or the empty string to fall back to the default — which is the label, and only
+   * for an icon-only button whose label is not otherwise readable. A caller states one to explain a
+   * command the label can only name.
+   */
+  public readonly tooltip: InputSignal<string> = input<string>('');
+
+  /**
    * Gets a value indicating whether only the icon is shown. The label is kept as the button's
    * accessible name and tooltip, but its text is hidden.
    */

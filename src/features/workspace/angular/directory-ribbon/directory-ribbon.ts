@@ -38,12 +38,10 @@ import {
   RunConfiguration,
 } from '@shared/api/studio';
 import { Icon } from '@shared/angular/icons/icon';
-import {
-  LayoutPresetInfo,
-  LayoutPresets,
-} from '@shared/angular/services/layout-presets/layout-presets';
+import { LayoutInfo, Layouts } from '@shared/angular/services/layouts/layouts';
 import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
-import { DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
+import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
+import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host';
@@ -97,6 +95,8 @@ const COMMIT_STASH: string = 'stash';
     Radio,
     TextField,
     Button,
+    AppIcon,
+    Dropdown,
     RibbonStripOverflow,
     RibbonStripGroup,
     RibbonStripColumn,
@@ -221,25 +221,20 @@ export class DirectoryRibbon {
               ]),
           MENU_SEPARATOR,
           {
-            id: 'directory.savePresetAs',
+            id: 'directory.saveLayoutAs',
             label: 'Save Layout As…',
-            run: (): void => this.onSavePresetAs(),
+            run: (): void => this.onSaveLayoutAs(),
           },
           {
-            id: 'directory.updatePreset',
-            label: 'Update Layout',
-            run: (): void => this.onUpdatePreset(),
-          },
-          {
-            id: 'directory.managePresets',
+            id: 'directory.manageLayouts',
             label: 'Manage Layouts…',
-            run: (): void => this.onManagePresets(),
+            run: (): void => this.onManageLayouts(),
           },
           MENU_SEPARATOR,
           {
             id: 'directory.resetLayout',
             label: 'Reset Layout',
-            run: (): void => this.onApplyDefaultPreset(),
+            run: (): void => this.onResetLayout(),
           },
         ],
       },
@@ -988,77 +983,90 @@ export class DirectoryRibbon {
   protected readonly panels: Signal<readonly DockPanelState[]> = this.dockPanels.panels;
 
   /**
-   * Holds the layout preset store the View group's commands dispatch through.
+   * Holds the layout store the View group's commands dispatch through.
    */
-  private readonly layoutPresets: LayoutPresets = inject(LayoutPresets);
+  private readonly layoutStore: Layouts = inject(Layouts);
 
   /**
-   * Gets every layout preset, for the View split button's menu and the Manage dialog's list.
+   * Gets every saved layout, for the View button's menu and the Manage dialog's list.
    */
-  protected readonly presets: Signal<readonly LayoutPresetInfo[]> = this.layoutPresets.presets;
+  protected readonly layouts: Signal<readonly LayoutInfo[]> = this.layoutStore.layouts;
 
   /**
-   * Gets the View split button's menu: every preset, with the one currently showing marked. Choosing
-   * one applies it to this workspace; which preset is the DEFAULT is set in the Manage dialog (or
-   * when saving one), not by merely switching to it.
+   * Gets the templates a new layout can be started from, for the Manage dialog's picker.
    */
-  protected readonly presetMenuItems: Signal<readonly RibbonMenuItem[]> = computed(
+  protected readonly templates: Signal<readonly LayoutInfo[]> = this.layoutStore.templates;
+
+  /**
+   * Gets the Manage dialog's template picker options, headed by a prompt that is not itself a
+   * choice — picking a template acts immediately, so the control must have something inert to sit on
+   * both before and after each pick.
+   */
+  protected readonly templateOptions: Signal<readonly DropdownOption[]> = computed(
+    (): readonly DropdownOption[] => [
+      { value: '', label: 'Templates' },
+      ...this.templates().map(
+        (template: LayoutInfo): DropdownOption => ({ value: template.id, label: template.name }),
+      ),
+    ],
+  );
+
+  /**
+   * Gets the View button's menu: every layout, with the one currently showing marked. Choosing one
+   * applies it to this workspace; which layout is the DEFAULT is set in the Manage dialog (or when
+   * saving one), not by merely switching to it.
+   */
+  protected readonly layoutMenuItems: Signal<readonly RibbonMenuItem[]> = computed(
     (): readonly RibbonMenuItem[] =>
-      this.presets().map(
-        (preset: LayoutPresetInfo): RibbonMenuItem => ({
-          id: preset.id,
-          label: preset.name,
-          active: preset.id === this.activePresetId(),
+      this.layouts().map(
+        (layout: LayoutInfo): RibbonMenuItem => ({
+          id: layout.id,
+          label: layout.name,
+          active: layout.id === this.activeLayoutId(),
         }),
       ),
   );
 
   /**
-   * Gets the default preset's display name, shown on the face of the View group's big button. A
-   * default always exists as long as any preset does, so the fallback covers only the moment before
-   * any view has registered its built-ins.
+   * Gets the default layout's identifier, so the Manage dialog can mark it.
    */
-  protected readonly defaultPresetName: Signal<string> = computed(
-    (): string => this.layoutPresets.defaultPreset()?.name ?? 'Layout',
+  protected readonly defaultLayoutId: Signal<string | null> = this.layoutStore.defaultId;
+
+  /**
+   * Gets the active layout's identifier, or the empty string while no workspace view is registered.
+   */
+  protected readonly activeLayoutId: Signal<string> = computed(
+    (): string => this.layoutStore.activeId() ?? '',
   );
 
   /**
-   * Gets the default preset's identifier, so the Manage dialog can mark it.
+   * Gets the showing layout's display name, for the View button's tooltip. The button's face reads
+   * "Default" whatever the default is called — a layout name has no length limit and would not fit —
+   * so the tooltip is where the name it applies is actually said.
    */
-  protected readonly defaultPresetId: Signal<string | null> = this.layoutPresets.defaultId;
-
-  /**
-   * Gets the active preset's identifier, or the empty string while no workspace view is registered.
-   */
-  protected readonly activePresetId: Signal<string> = computed(
-    (): string => this.layoutPresets.activeId() ?? '',
+  protected readonly activeLayoutName: Signal<string> = computed(
+    (): string => this.layoutStore.activeName() ?? 'Layout',
   );
 
   /**
-   * Gets a value indicating whether preset commands can act: a workspace view is registered with a
+   * Gets a value indicating whether layout commands can act: a workspace view is registered with a
    * root open.
    */
-  protected readonly canUsePresets: Signal<boolean> = computed(
-    (): boolean => this.layoutPresets.activeRoot() !== null,
+  protected readonly canUseLayouts: Signal<boolean> = computed(
+    (): boolean => this.layoutStore.activeRoot() !== null,
   );
 
   /**
-   * Gets a value indicating whether the active preset is a user preset, so Save (overwrite) applies
-   * to it (built-ins are immutable — forked with Save As).
-   */
-  protected readonly canModifyPreset: Signal<boolean> = this.layoutPresets.activeIsUserPreset;
-
-  /**
-   * Gets a value indicating whether a transient (contextual) preset switch is active, showing the
+   * Gets a value indicating whether a transient (contextual) layout switch is active, showing the
    * Return affordance.
    */
-  protected readonly presetTransient: Signal<boolean> = this.layoutPresets.transientActive;
+  protected readonly layoutTransient: Signal<boolean> = this.layoutStore.transientActive;
 
   /**
-   * Returns from the transient preset switch to the preset it left.
+   * Returns from the transient layout switch to the layout it left.
    */
-  protected onReturnPreset(): void {
-    this.layoutPresets.returnFromTransient();
+  protected onReturnLayout(): void {
+    this.layoutStore.returnFromTransient();
   }
 
   /**
@@ -1072,15 +1080,57 @@ export class DirectoryRibbon {
   protected readonly saveAsName: WritableSignal<string> = signal<string>('');
 
   /**
-   * Holds whether the Save As dialog's Default box is ticked, making the saved preset the new
+   * Holds whether the Save As dialog's Default box is ticked, making the saved layout the new
    * app-wide default and replacing the previous one.
    */
   protected readonly saveAsDefault: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
+   * Gets the layout the entered name would overwrite, or null when the name is free. Names are
+   * unique, so saving over one is how a layout is UPDATED — there is no separate Save. Saying so
+   * before the press is what keeps that from being a surprise.
+   */
+  protected readonly saveAsOverwrites: Signal<LayoutInfo | null> = computed(
+    (): LayoutInfo | null => {
+      const name: string = this.saveAsName().trim();
+      return name.length === 0 ? null : this.layoutStore.layoutNamed(name);
+    },
+  );
+
+  /**
    * Holds whether the Manage dialog is open.
    */
   protected readonly manageOpen: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds the identifier of the layout whose name is being edited in the Manage dialog, or null while
+   * none is. A row is a label until the user asks to change it, so a list of layouts reads as a list
+   * rather than as a form.
+   */
+  protected readonly editingLayoutId: WritableSignal<string | null> = signal<string | null>(null);
+
+  /**
+   * Holds the name being typed into the row under edit.
+   */
+  protected readonly editingName: WritableSignal<string> = signal<string>('');
+
+  /**
+   * Holds the layout the delete confirmation is asking about, or null while it is closed. Deleting a
+   * layout cannot be undone, and the layouts are now the user's own work rather than disposable
+   * built-ins, so it is worth one question.
+   */
+  protected readonly deletingLayout: WritableSignal<LayoutInfo | null> = signal<LayoutInfo | null>(
+    null,
+  );
+
+  /**
+   * Gets a value indicating whether the name being typed into the row under edit can be committed:
+   * non-empty, and not one another layout already holds.
+   */
+  protected readonly canCommitRename: Signal<boolean> = computed((): boolean => {
+    const name: string = this.editingName().trim();
+    return name.length > 0 && this.layoutStore.layoutNamed(name, this.editingLayoutId()) === null;
+  });
 
   /**
    * Holds the Save As dialog's name input, focused when the dialog opens (the `autofocus` attribute
@@ -1103,44 +1153,48 @@ export class DirectoryRibbon {
   }
 
   /**
-   * Applies the default layout preset — the View group's big button. Applying re-seeds the dock from
-   * the preset's saved definition, so this doubles as the way back from a session's layout tweaks.
+   * Applies the default layout — the View group's big button. Applying re-seeds the dock from the
+   * layout's saved definition, so this doubles as the way back to the default from anywhere.
    */
-  protected onApplyDefaultPreset(): void {
-    const id: string | null = this.defaultPresetId();
+  protected onApplyDefaultLayout(): void {
+    const id: string | null = this.defaultLayoutId();
     if (id !== null) {
-      this.layoutPresets.select(id);
+      this.layoutStore.select(id);
     }
   }
 
   /**
-   * Applies the chosen layout preset to the active workspace.
-   * @param id The chosen preset identifier.
+   * Applies the chosen layout to the active workspace.
+   * @param id The chosen layout identifier.
    */
-  protected onSelectPreset(id: string): void {
-    this.log.debug('workspace.ribbon', 'Layout preset selected', id);
-    this.layoutPresets.select(id);
+  protected onSelectLayout(id: string): void {
+    this.log.debug('workspace.ribbon', 'Layout selected', id);
+    this.layoutStore.select(id);
   }
 
   /**
-   * Writes the current layout into the active user preset.
+   * Re-applies the showing layout's saved definition, discarding the panels the user has moved,
+   * resized, or closed since — the layout put back the way it was saved.
    */
-  protected onUpdatePreset(): void {
-    this.layoutPresets.updateActive();
+  protected onResetLayout(): void {
+    this.log.debug('workspace.ribbon', 'Layout reset');
+    this.layoutStore.reset();
   }
 
   /**
-   * Opens the Save As dialog for a new preset capturing the current layout.
+   * Opens the Save As dialog, offering the showing layout's name — the common case is saving the
+   * rearrangement back over the layout being rearranged, so the name that does it is already there
+   * and the one that forks a new layout is a word away.
    */
-  protected onSavePresetAs(): void {
-    this.saveAsName.set('');
+  protected onSaveLayoutAs(): void {
+    this.saveAsName.set(this.activeLayoutName());
     this.saveAsDefault.set(false);
     this.saveAsOpen.set(true);
   }
 
   /**
-   * Confirms the Save As dialog, saving the current layout as a new preset and — when the box is
-   * ticked — making it the default.
+   * Confirms the Save As dialog, saving the current layout — over the layout of that name when there
+   * is one, else as a new layout — and, when the box is ticked, making it the default.
    */
   protected confirmSaveAs(): void {
     const name: string = this.saveAsName().trim();
@@ -1148,10 +1202,11 @@ export class DirectoryRibbon {
       return;
     }
     this.saveAsOpen.set(false);
-    this.log.info('workspace.ribbon', 'Layout preset saved as', name, {
+    this.log.info('workspace.ribbon', 'Layout saved as', name, {
       default: this.saveAsDefault(),
+      overwrote: this.saveAsOverwrites() !== null,
     });
-    this.layoutPresets.saveAs(name, this.saveAsDefault());
+    this.layoutStore.saveAs(name, this.saveAsDefault());
   }
 
   /**
@@ -1162,9 +1217,12 @@ export class DirectoryRibbon {
   }
 
   /**
-   * Opens the Manage dialog, where presets are renamed, deleted, and marked as the default.
+   * Opens the Manage dialog, where layouts are created from templates, renamed, deleted, and marked
+   * as the default.
    */
-  protected onManagePresets(): void {
+  protected onManageLayouts(): void {
+    this.editingLayoutId.set(null);
+    this.deletingLayout.set(null);
     this.manageOpen.set(true);
   }
 
@@ -1172,40 +1230,85 @@ export class DirectoryRibbon {
    * Closes the Manage dialog. Its edits apply as they are made, so there is nothing to confirm.
    */
   protected closeManage(): void {
+    this.editingLayoutId.set(null);
+    this.deletingLayout.set(null);
     this.manageOpen.set(false);
   }
 
   /**
-   * Makes a preset the default from the Manage dialog, replacing the previous one.
-   * @param id The preset identifier.
+   * Creates a layout from the chosen template, named after it. The picker returns to its prompt, so
+   * the same template can be chosen again — each pick is one new layout, not a selection that sticks.
+   * @param templateId The chosen template identifier, or the empty prompt.
    */
-  protected onSetDefaultPreset(id: string): void {
-    this.layoutPresets.setDefault(id);
+  protected onPickTemplate(templateId: string): void {
+    if (templateId.length === 0) {
+      return;
+    }
+    this.log.info('workspace.ribbon', 'Layout created from template', templateId);
+    this.layoutStore.createFromTemplate(templateId);
   }
 
   /**
-   * Renames a user preset from the Manage dialog. An empty name is ignored by the store, so clearing
-   * the field leaves the preset named as it was.
-   * @param id The preset identifier.
-   * @param name The new display name.
+   * Makes a layout the default from the Manage dialog, replacing the previous one.
+   * @param id The layout identifier.
    */
-  protected onRenamePreset(id: string, name: string): void {
-    this.layoutPresets.rename(id, name);
+  protected onSetDefaultLayout(id: string): void {
+    this.layoutStore.setDefault(id);
   }
 
   /**
-   * Deletes a user preset from the Manage dialog; workspaces showing it fall back to the default.
-   * @param id The preset identifier.
+   * Turns a layout's row into an editable name.
+   * @param layout The layout to rename.
    */
-  protected onDeletePreset(id: string): void {
-    this.layoutPresets.remove(id);
+  protected onBeginRename(layout: LayoutInfo): void {
+    this.editingName.set(layout.name);
+    this.editingLayoutId.set(layout.id);
   }
 
   /**
-   * Re-applies the showing preset's saved definition, discarding the session's layout tweaks. Offered
-   * from the Manage dialog, since the ribbon's own Reset button gave way to Manage.
+   * Commits the row under edit, unless the name is empty or already another layout's.
    */
-  protected onResetPreset(): void {
-    this.layoutPresets.reset();
+  protected onCommitRename(): void {
+    const id: string | null = this.editingLayoutId();
+    if (id === null || !this.canCommitRename()) {
+      return;
+    }
+    this.layoutStore.rename(id, this.editingName());
+    this.editingLayoutId.set(null);
+  }
+
+  /**
+   * Abandons the row under edit, leaving the layout named as it was.
+   */
+  protected onCancelRename(): void {
+    this.editingLayoutId.set(null);
+  }
+
+  /**
+   * Asks whether to delete a layout.
+   * @param layout The layout to delete.
+   */
+  protected onDeleteLayout(layout: LayoutInfo): void {
+    this.deletingLayout.set(layout);
+  }
+
+  /**
+   * Deletes the layout the confirmation was asking about; workspaces showing it fall back to the
+   * default.
+   */
+  protected confirmDeleteLayout(): void {
+    const layout: LayoutInfo | null = this.deletingLayout();
+    if (layout !== null) {
+      this.log.info('workspace.ribbon', 'Layout deleted', layout.id);
+      this.layoutStore.remove(layout.id);
+    }
+    this.deletingLayout.set(null);
+  }
+
+  /**
+   * Dismisses the delete confirmation, keeping the layout.
+   */
+  protected cancelDeleteLayout(): void {
+    this.deletingLayout.set(null);
   }
 }

@@ -10,6 +10,7 @@ import {
   SplitNode,
   StackNode,
 } from '../../../services/dock-layout/dock-node';
+import { DockPanelAvailability } from '../../../services/dock-layout/dock-panel-availability';
 import { DockCollapsedStrip } from '../dock-collapsed-strip/dock-collapsed-strip';
 import { DockSplitter } from '../dock-splitter/dock-splitter';
 import { DockTabGroup } from '../dock-tab-group/dock-tab-group';
@@ -39,6 +40,12 @@ export class DockNode {
    * strips instead of being overpainted by whichever of them renders later.
    */
   private readonly autoHide: DockAutoHide = inject(DockAutoHide);
+
+  /**
+   * Holds the availability of the panels this view can show, so a slot holding only panels whose
+   * backing is absent is known to render nothing.
+   */
+  private readonly availability: DockPanelAvailability = inject(DockPanelAvailability);
 
   /**
    * Gets the flex shorthand sizing a collapsed pane to a fixed thin strip.
@@ -148,5 +155,57 @@ export class DockNode {
    */
   protected paneFlex(grow: number): string {
     return `${grow} 1 0`;
+  }
+
+  /**
+   * Determines whether a slot is one this workspace cannot fill: a stack that holds panels but can
+   * show none of them, or a split whose every child is itself unfillable. Such a slot is given no
+   * width rather than being dropped from the split, so the surviving splitters keep their positional
+   * pairing with the weights they resize, and it fills out again the moment its panels can be shown.
+   *
+   * Deliberately availability alone, not registration. An unregistered id is a stale layout rather
+   * than a workspace without the thing behind a panel — {@link import('../../../services/dock-layout/dock-persistence').restoreLayout}
+   * sanitizes those out when a layout is applied — and an empty stack is a slot the user can drop
+   * into. Document wells never count either: the centre stands open as the home a document lands in,
+   * and as a target the compass can hover.
+   * @param node The node to test.
+   * @returns Returns true when the slot cannot be filled; otherwise, false.
+   */
+  protected isEmptyPane(node: DockTreeNode | undefined): boolean {
+    if (node === undefined) {
+      return true;
+    }
+    if (isStackNode(node)) {
+      if (node.role === 'document' || node.primary === true || node.panels.length === 0) {
+        return false;
+      }
+      return !node.panels.some((id: string): boolean => this.availability.isAvailable(id));
+    }
+    return node.children.every((child: DockTreeNode): boolean => this.isEmptyPane(child));
+  }
+
+  /**
+   * Builds the flex shorthand for a pane, which is zero for one that renders nothing.
+   * @param node The node the pane holds.
+   * @param grow The flex-grow weight of the pane.
+   * @returns Returns the `flex` shorthand value.
+   */
+  protected slotFlex(node: DockTreeNode, grow: number): string {
+    if (this.isEmptyPane(node)) {
+      return '0 0 0';
+    }
+    return this.isCollapsed(node) ? COLLAPSED_FLEX : this.paneFlex(grow);
+  }
+
+  /**
+   * Determines whether the splitter following a pane should be rendered. A splitter is dropped when
+   * either pane it sits between renders nothing: it would otherwise be a divider against a slot with
+   * no width, resizing something invisible.
+   * @param split The split being rendered.
+   * @param index The index of the child the splitter follows.
+   * @returns Returns true when the splitter should be rendered; otherwise, false.
+   */
+  protected hasSplitter(split: SplitNode, index: number): boolean {
+    return !this.isEmptyPane(split.children[index]) && !this.isEmptyPane(split.children[index + 1]);
   }
 }

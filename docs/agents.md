@@ -418,7 +418,7 @@ removal goes to the OS trash, never a hard delete), wrapped by `WorktreeManager`
   keybinding scopes, pop-out dispatch (`DockTabContext.tabId`), and status-bar owners, so
   a container's sub-views never collide on scope-keyed registries. Anything needing the REAL tab
   id (agent-host registration, document ownership, `ActiveWorkspace`) still uses the raw input.
-- **Presets key on the container**: a checkout's dock reads its layout pick from the container
+- **Layouts key on the container**: a checkout's dock reads its layout pick from the container
   path (`DockTabContext.presetRoot`), so all checkouts of one container share one pick. The
   Worktrees panel is catalogued for every workspace tab but synced into the layout only while the
   tab is a container; checkouts are labelled by alias or branch, **never by GUID**.
@@ -449,7 +449,7 @@ bell opens its bounded history flyout. Raise events with `Notifications.notify()
   active), and `AgentRequestToasts` (pending asks, behind `notifications.agentRequestToasts`; the
   title-strip inbox itself is gated by `notifications.agentRequestsInTabList`).
 
-### 4.11 Workspace ribbon (command seams + layout presets)
+### 4.11 Workspace ribbon (command seams + layouts)
 
 A contextual ribbon is rendered by the **shell**, not inside the view it acts on, so it resolves the
 _root_ injector. A workspace tab's state — its document well, its repository, its search — lives in
@@ -496,21 +496,44 @@ the registration they resolve no handler and are silent no-ops. The tidying pair
 behind Solution's Clean: it tidies a document, not a build, and Solution disappears entirely for an
 ecosystem with no build step.
 
-**Layout presets** (`shared/angular/services/layout-presets`) name _which panels exist and where they
-dock_. The persistence model is deliberately narrow — three things and nothing else:
+**Layouts** (`shared/angular/services/layouts`) name _which panels exist and where they dock_.
 
-- **Definitions are app-wide**, agnostic to the loaded workspace (`layout.presets`). Built-ins are
-  immutable: fork them with Save As rather than updating in place.
+**Every layout is the user's own — there are no built-in layouts.** What ships is a set of
+**templates** (`directory-view/layout-templates.ts`: Default, Source Control, Agentic Engineering),
+which are starting points only: they are listed nowhere but the layout manager's picker, are never
+applied directly, and are never the default. Choosing one copies its tree into a layout the user then
+renames, saves over and deletes like any other. On a **first run** every template is seeded as a real
+layout, so the list is never empty and nothing behaves specially; the seed is guarded on the
+definitions having never been written, so deleting every layout is respected rather than undone. With
+no layouts at all the dock falls back to the first template's tree — unlisted, uneditable, and
+unreachable the moment a layout exists.
+
+The persistence model is deliberately narrow — three things and nothing else:
+
+- **Definitions are app-wide**, agnostic to the loaded workspace (`layout.presets`).
 - **Each workspace root remembers its active pick** (`layout.active-presets`).
-- **One preset is the app-wide default** (`layout.default-preset`) — the View button's target, and
-  what a root falls back to before it has a pick. A default **always exists as long as any preset
-  does**: with none chosen the first preset stands in, so `defaultId()` never answers "none".
+- **One layout is the app-wide default** (`layout.default-preset`) — the View button's target, and
+  what a root falls back to before it has a pick. With none chosen the first layout stands in.
   Deleting the default clears the choice rather than stranding it.
 
+(The storage keys keep their original `preset` spelling: the concept was renamed, not re-homed, and
+an existing user's layouts must survive the rename rather than being seeded over.)
+
 Session layout is **ephemeral by ruling**: closing, moving, or resizing panels writes nowhere, and
-every launch, preset switch, and reset re-applies the active preset's saved definition. Save As and
-Update are the only writes. The active view registers a `LayoutPresetSession` (exactly as it registers
-its build runner) through which the ribbon captures the current layout and re-seeds the dock.
+every launch, layout switch, and reset re-applies the showing layout's saved definition. **Save As is
+the only write, and there is no separate Save** — layout names are unique, so saving over an existing
+name replaces that layout _in place_, keeping its identifier so the default marker and every root that
+picked it stay pointed at the same layout. The active view registers a `LayoutSession` (exactly as it
+registers its build runner) through which the ribbon captures the current layout and re-seeds the dock.
+
+**A layout is a best case, not a demand.** It names every panel the user wants when everything it
+mentions is there; `DockPanelAvailability` (view-scoped, beside `DockState`) says which of those the
+open folder can actually back, and the dock **passes over** the rest at render time — the tab is not
+drawn, and a slot that can show nothing takes no width (its splitter goes with it) until its panels
+return. The layout tree is never rewritten to match, which is the point: a layout applied to a plain
+folder still asks for the Solution Explorer, so saving from that session cannot quietly lose it. The
+view's panel syncing is therefore **additive only** — it adds a panel no layout named (Debug on a
+session start, Search on the find accelerator) and never takes one away.
 
 ### 4.12 Modal windows
 

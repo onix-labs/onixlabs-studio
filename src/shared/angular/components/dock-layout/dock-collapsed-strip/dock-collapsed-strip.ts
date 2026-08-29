@@ -16,6 +16,7 @@ import { DockFloating } from '../../../services/dock-layout/dock-floating';
 import { Rect } from '../../../services/dock-layout/dock-legality';
 import { DockSide, StackNode } from '../../../services/dock-layout/dock-node';
 import { DockPanel } from '../../../services/dock-layout/dock-panel';
+import { DockPanelAvailability } from '../../../services/dock-layout/dock-panel-availability';
 import { DockPanelRegistry } from '../../../services/dock-layout/dock-panel-registry';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
@@ -80,6 +81,12 @@ export class DockCollapsedStrip {
    * Holds the registry panel ids are resolved through.
    */
   private readonly registry: DockPanelRegistry = inject(DockPanelRegistry);
+
+  /**
+   * Holds the availability of the panels this view can show, so the strip lists only the panels whose
+   * backing is there.
+   */
+  private readonly availability: DockPanelAvailability = inject(DockPanelAvailability);
 
   /**
    * Holds the auto-hide store driving the peek.
@@ -149,28 +156,37 @@ export class DockCollapsedStrip {
   );
 
   /**
-   * Gets the resolved panels held by the stack, in tab order.
+   * Gets the resolved panels held by the stack, in tab order, passing over the ones whose backing is
+   * not there — a collapsed strip lists what the stack can show, exactly as its docked form does.
    */
   protected readonly panels: Signal<readonly DockPanel[]> = computed((): readonly DockPanel[] =>
     this.stack()
-      .panels.map((id: string): DockPanel | undefined => this.registry.get(id))
+      .panels.filter((id: string): boolean => this.availability.isAvailable(id))
+      .map((id: string): DockPanel | undefined => this.registry.get(id))
       .filter((panel: DockPanel | undefined): panel is DockPanel => panel !== undefined),
   );
 
   /**
-   * Gets the active panel id of the stack.
+   * Gets the active panel id of the stack, as the strip shows it: the stack's own while it names a
+   * panel the strip lists, else the first it does.
    */
   protected readonly activeId: Signal<string | null> = computed(
-    (): string | null => this.stack().active,
+    (): string | null => this.activePanel()?.id ?? null,
   );
 
   /**
-   * Gets the resolved active panel, or undefined when none is.
+   * Gets the resolved active panel, or undefined when the strip lists none. As in a docked stack, an
+   * active id naming an unregistered or unavailable panel falls to the first listed one.
    */
   protected readonly activePanel: Signal<DockPanel | undefined> = computed(
     (): DockPanel | undefined => {
       const active: string | null = this.stack().active;
-      return active !== null ? this.registry.get(active) : undefined;
+      const showing: readonly DockPanel[] = this.panels();
+      const chosen: DockPanel | undefined =
+        active === null
+          ? undefined
+          : showing.find((panel: DockPanel): boolean => panel.id === active);
+      return chosen ?? showing[0];
     },
   );
 

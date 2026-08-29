@@ -88,6 +88,13 @@ export class RibbonStripMenuButton {
   public readonly label: InputSignal<string> = input.required<string>();
 
   /**
+   * Gets the tooltip for the primary action, or the empty string for none. A ribbon face has room
+   * for a word or two, so a button whose label cannot say the whole thing — one naming a role rather
+   * than the thing currently filling it — says the rest here.
+   */
+  public readonly tooltip: InputSignal<string> = input<string>('');
+
+  /**
    * Gets the chevron's name: what its drop-down offers, stated in terms of the button it sits beside.
    * The chevron opens further actions for that button, so "Save" gives "More Save actions".
    */

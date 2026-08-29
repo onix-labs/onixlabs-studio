@@ -9,6 +9,8 @@ import {
   Type,
 } from '@angular/core';
 import { FeatureRegistry } from '@shared/angular/services/feature-registry';
+import { Icon } from '@shared/angular/icons/icon';
+import { Layouts } from '@shared/angular/services/layouts/layouts';
 import { StatusBar } from '@shared/angular/services/status-bar/status-bar';
 import { StatusSegment } from '@shared/angular/services/status-bar/status-segment';
 import { Tab } from '@shared/angular/services/tabs/tab';
@@ -69,6 +71,26 @@ export class StatusStripContainer {
    * the view whose state it reports.
    */
   private readonly viewInjectors: ViewInjectors = inject(ViewInjectors);
+
+  /**
+   * Holds the layout store, so the strip can name the layout the active workspace is showing.
+   */
+  private readonly layouts: Layouts = inject(Layouts);
+
+  /**
+   * Gets the segment naming the layout the active workspace is showing, or null when the active tab
+   * is not a workspace. The ribbon's View button reads "Default" whatever the default is called,
+   * because a layout name has no length limit and a ribbon face has no room; this is where the name
+   * it is actually showing is said. Purely a readout — there is nothing to press.
+   */
+  protected readonly layoutSegment: Signal<StatusSegment | null> = computed(
+    (): StatusSegment | null => {
+      const name: string | null = this.layouts.activeName();
+      return name === null
+        ? null
+        : { id: 'layout', text: name, icon: Icon.LAYOUT_PRESET, title: `Layout: ${name}` };
+    },
+  );
 
   /**
    * Gets the active feature's status component, or undefined when the feature contributes none.

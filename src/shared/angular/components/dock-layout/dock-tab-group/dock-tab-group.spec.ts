@@ -4,6 +4,7 @@ import { TEST_DOCK_BLUEPRINT } from '../../../services/dock-layout/dock-test-blu
 import { DockDrag } from '../../../services/dock-layout/dock-drag';
 import { DockFloating } from '../../../services/dock-layout/dock-floating';
 import { mkStack, StackNode } from '../../../services/dock-layout/dock-node';
+import { DockPanelAvailability } from '../../../services/dock-layout/dock-panel-availability';
 import { DockPanelRegistry } from '../../../services/dock-layout/dock-panel-registry';
 import { DockState } from '../../../services/dock-layout/dock-state';
 import { Icon } from '@shared/angular/icons/icon';
@@ -16,6 +17,7 @@ describe('DockTabGroup', () => {
   let fixture: ComponentFixture<DockTabGroup>;
   let floating: DockFloating;
   let drag: DockDrag;
+  let availability: DockPanelAvailability;
 
   /**
    * Renders the group for the given stack, registering it with the state so mutations resolve.
@@ -36,6 +38,7 @@ describe('DockTabGroup', () => {
     component = fixture.componentInstance;
     floating = TestBed.inject(DockFloating);
     drag = TestBed.inject(DockDrag);
+    availability = TestBed.inject(DockPanelAvailability);
   });
 
   it('should create', () => {
@@ -62,6 +65,41 @@ describe('DockTabGroup', () => {
 
     const element: HTMLElement = fixture.nativeElement as HTMLElement;
     expect(element.querySelector('.dock-tab-group__empty')).toBeNull();
+    expect(element.querySelector('.dock-tab-group__tabstrip')).toBeNull();
+    expect(element.querySelector('.dock-tab-group__body')).toBeNull();
+  });
+
+  it('render_passesOverAPanelWhoseBackingIsAbsent_withoutTouchingTheStack', () => {
+    // A layout names what the user wants at best. What this workspace can actually show is a
+    // rendering question, so the tab goes and the stack keeps naming it.
+    const stack: StackNode = mkStack('tool', ['output', 'errors']);
+    availability.set({ output: false });
+    render(stack);
+
+    const element: HTMLElement = fixture.nativeElement as HTMLElement;
+    const labels: readonly string[] = [...element.querySelectorAll('.dock-tab__label')].map(
+      (label: Element): string => label.textContent?.trim() ?? '',
+    );
+    expect(labels).toEqual(['Error List']);
+    expect(stack.panels).toEqual(['output', 'errors']);
+  });
+
+  it('render_whenTheActivePanelsBackingIsAbsent_fallsToTheFirstItCanShow', () => {
+    availability.set({ output: false });
+    render(mkStack('tool', ['output', 'errors']));
+
+    const element: HTMLElement = fixture.nativeElement as HTMLElement;
+    expect(element.querySelector('.dock-tab-group__title-text')?.textContent).toContain(
+      'Error List',
+    );
+    expect(element.querySelector('.dock-tab--active')?.textContent).toContain('Error List');
+  });
+
+  it('render_whenNoPanelCanBeShown_rendersNothing', () => {
+    availability.set({ output: false, errors: false });
+    render(mkStack('tool', ['output', 'errors']));
+
+    const element: HTMLElement = fixture.nativeElement as HTMLElement;
     expect(element.querySelector('.dock-tab-group__tabstrip')).toBeNull();
     expect(element.querySelector('.dock-tab-group__body')).toBeNull();
   });

@@ -21,6 +21,11 @@
     @for (segment of ambient(); track segment.id) {
       <app-status-strip-segment [segment]="segment" />
     }
+    <!-- The layout the active workspace is showing, named in full — the ribbon's View button has room
+         only for the role ("Default"), not for whatever the layout is actually called. -->
+    @if (layoutSegment(); as layout) {
+      <app-status-strip-segment [segment]="layout" />
+    }
     <!-- The drop-up triggers sit together as one cluster of controls, spaced far more tightly than
          the ambient segments beside them: a segment is a run of words that needs room to read as its
          own item, whereas these are icon buttons that read as a group. -->

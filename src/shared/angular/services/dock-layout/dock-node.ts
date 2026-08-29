@@ -156,11 +156,29 @@ function highestNodeNumber(node: DockNode): number {
 }
 
 /**
+ * Describes the optional state a stack may be authored in, so a hand-written layout (a template)
+ * can state what the user could otherwise only reach by collapsing the stack themselves.
+ */
+export interface StackOptions {
+  /**
+   * Gets whether the stack starts collapsed to a thin strip in its slot.
+   */
+  readonly collapsed?: boolean;
+
+  /**
+   * Gets the edge a collapsed stack's strip hugs. Meaningful only alongside `collapsed`.
+   */
+  readonly side?: DockSide;
+}
+
+/**
  * Creates a stack node with a fresh identifier, activating its first panel.
  * @param role The role of the stack, which governs docking legality.
  * @param panels The ordered identifiers of the panels the stack should hold.
  * @param primary Whether this stack is the layout's primary (centre) slot; omitted for every stack
  * but the centre well.
+ * @param options The optional authored state — whether the stack starts collapsed, and against
+ * which edge. Document wells are never collapsed, so the flags are ignored for them.
  * @returns Returns a new {@link StackNode} whose active panel is the first supplied panel, or
  * `null` when no panels are supplied.
  */
@@ -168,7 +186,9 @@ export function mkStack(
   role: StackRole,
   panels: readonly string[],
   primary: boolean = false,
+  options: StackOptions = {},
 ): StackNode {
+  const collapsed: boolean = role !== 'document' && options.collapsed === true;
   return {
     kind: 'stack',
     id: nextNodeId(),
@@ -176,6 +196,8 @@ export function mkStack(
     panels: [...panels],
     active: panels[0] ?? null,
     ...(primary ? { primary: true } : {}),
+    ...(collapsed ? { collapsed: true } : {}),
+    ...(collapsed && options.side !== undefined ? { side: options.side } : {}),
   };
 }
 
