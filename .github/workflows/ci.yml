@@ -1,5 +1,6 @@
 # Continuous integration — runs the green gate (format, lint, test, build) on every PR and on main.
-# Mirrors docs/agents.md §8: prettier --check, eslint, vitest, ng build, electron typecheck+bundle.
+# Mirrors the wiki's Build, test and tooling page: prettier --check, eslint, vitest, ng build,
+# electron typecheck+bundle.
 name: CI
 
 on:
