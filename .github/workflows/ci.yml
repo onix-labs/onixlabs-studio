@@ -5,7 +5,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, release]
 
 # One run per ref: a new push to the same PR cancels the previous, still-running check.
 concurrency:
