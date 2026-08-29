@@ -77,7 +77,9 @@
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  block-size: 3rem;
+  // Everything above the caption band. Held in a shared token with the plain button's, so the two
+  // centre their glyph and label over the same box.
+  block-size: var(--ribbon-button-content-block-size);
   inline-size: 4rem;
   font: inherit;
   font-size: 0.8rem;
@@ -93,11 +95,12 @@
   }
 }
 
+// The caption band, filled with the chevron. Its plain counterpart keeps the same band empty.
 .ribbon-menu-button__menu {
   display: flex;
   align-items: center;
   justify-content: center;
-  block-size: 1rem;
+  block-size: var(--ribbon-button-caption-block-size);
   font: inherit;
   color: inherit;
   background: transparent;

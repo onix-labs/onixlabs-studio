@@ -195,6 +195,17 @@
   // corner, scaled by the concave multiplier so the scoops can be tuned independently.
   --dock-panel-foot-radius: calc(0.5rem * var(--concave-border-radius-multiplier));
 
+  // The big ribbon button's geometry, shared by the plain button and the menu (split) button so the
+  // two cannot drift apart. A big button is an icon, a label, and a CAPTION BAND beneath them: a
+  // menu button puts its chevron in the band, and a plain button leaves it empty. Both therefore
+  // stand the same height AND centre their glyph and label over the same box, so a group holding one
+  // of each reads as a row rather than as two rows half a step apart.
+  --ribbon-button-block-size: 4rem;
+  --ribbon-button-caption-block-size: 1rem;
+  --ribbon-button-content-block-size: calc(
+    var(--ribbon-button-block-size) - var(--ribbon-button-caption-block-size)
+  );
+
   // Width of the Monaco change-margin bars (see _change-margin.scss); the colours are theme tokens.
   --change-margin-width: 4px;
   // Whitespace on each side of the change-margin bar: the line numbers sit this far to its left, and

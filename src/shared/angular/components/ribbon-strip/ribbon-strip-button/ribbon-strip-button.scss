@@ -14,8 +14,13 @@
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  block-size: 4rem;
+  block-size: var(--ribbon-button-block-size);
   inline-size: 4rem;
+  // The empty caption band. A plain button has no chevron to put there, but it keeps the space so
+  // its glyph and label centre over the same box a menu button's do — the button is the same height
+  // either way, and the band is transparent, so what changes is only that a row of big buttons lines
+  // up. Border-box sizing makes the padding eat into the height rather than add to it.
+  padding-block-end: var(--ribbon-button-caption-block-size);
   font: inherit;
   font-size: 0.8rem;
   color: inherit;
