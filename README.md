@@ -16,8 +16,8 @@ they double as the **shared substrate agents operate in**: agents read the same 
 the same terminals, edit through the same editor, and are watched and steered from one place. One
 window replaces an editor, a terminal, a git client, and several separate AI chats.
 
-> ⚠️ **Status: early / pre-release (`v0.0.1`).** The application is under active development and APIs,
-> layouts, and features move quickly.
+> ⚠️ **Status: early / pre-release.** The application is under active development and APIs, layouts,
+> and features move quickly. Releases are unsigned for now — see the notes on each release.
 
 ---
 
@@ -103,7 +103,7 @@ agents operate in.
 
 ### Prerequisites
 
-- **Node.js 20+** and npm.
+- **Node.js 24** (the exact version is in `.nvmrc`) and npm.
 - Platform build tools for native modules — `node-pty` is rebuilt against Electron on install (via
   `electron-rebuild`).
 
@@ -171,16 +171,19 @@ e2e/               Playwright end-to-end suite
 ```
 
 The renderer talks to the main process over a generic **Bridge** IPC transport; feature UI never
-touches Node directly. See **`docs/agents.md`** for the authoritative architecture guide and the
-conventions all contributions follow.
+touches Node directly. The **[wiki](https://github.com/onix-labs/onixlabs-studio/wiki)** holds the
+architecture guide, the conventions all contributions follow, and the project's decisions.
 
 ---
 
 ## Contributing
 
-Contributions follow the conventions documented in `docs/agents.md` (naming, documentation, signals,
-control atoms, testing, and the coverage ratchet). CI runs lint, unit tests with coverage, and the E2E
-suite; please keep them green.
+Bug reports, feature requests and pull requests are welcome — start with
+**[CONTRIBUTING.md](CONTRIBUTING.md)** for setup, the green gate every change must pass, and how a
+pull request reaches `main`. Questions go to
+[Discussions](https://github.com/onix-labs/onixlabs-studio/discussions); vulnerabilities are reported
+privately per [SECURITY.md](SECURITY.md). Everyone taking part is expected to follow the
+[Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## License
 
