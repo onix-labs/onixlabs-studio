@@ -166,7 +166,7 @@ src/
     electron/      Main-process code — managers, LSP, DAP, project systems, AI, security
     api/           Platform-neutral IPC contracts and shared types
     app/           App bootstrap (index.html, entry points)
-docs/              Architecture and design notes (start with docs/agents.md)
+docs/              agents.md — the invariants, and where the documentation (the wiki) lives
 e2e/               Playwright end-to-end suite
 ```
 

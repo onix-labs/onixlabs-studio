@@ -4,7 +4,7 @@ const eslint = require('@eslint/js');
 const tseslint = require('typescript-eslint');
 const angular = require('angular-eslint');
 
-// INV2 (docs/agents.md §2) — feature-isolation boundary. A feature may import only
+// INV2 (wiki: Architecture) — feature-isolation boundary. A feature may import only
 // @shared/* and its own @features/<self>/*, never a sibling feature; deleting a
 // feature folder must remove the feature cleanly. Promote any shared surface to
 // @shared rather than cross-importing. One flat-config block is generated per feature.
@@ -35,7 +35,7 @@ const featureBoundaries = FEATURES.map((self) => {
           patterns: [
             {
               group,
-              message: `Cross-feature import banned (INV2, docs/agents.md §2): feature '${self}' must import only @shared/* and its own @features/${self}/*, never a sibling feature. Promote the shared surface to @shared.`,
+              message: `Cross-feature import banned (INV2, wiki: Architecture): feature '${self}' must import only @shared/* and its own @features/${self}/*, never a sibling feature. Promote the shared surface to @shared.`,
             },
           ],
         },
