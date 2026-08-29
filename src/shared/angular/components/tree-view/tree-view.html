@@ -6,6 +6,7 @@
     tabindex="0"
     [attr.data-tree-id]="row.id"
     [class.active]="selectedId() !== null && row.id === selectedId()"
+    [class.tree-row--disabled]="row.disabled === true"
     [style.padding-left.px]="indentFor(row.depth)"
     [attr.aria-expanded]="row.expandable ? row.expanded : null"
     [attr.aria-selected]="selectedId() !== null ? row.id === selectedId() : null"

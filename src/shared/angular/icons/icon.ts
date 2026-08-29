@@ -125,12 +125,6 @@ export class Icon {
   public static readonly DIRECTORY: Icon = new Icon('ph-duotone ph-folder-simple');
 
   /**
-   * Gets the loading-folder (dashed) icon shown on a Solution Explorer folder while any project
-   * beneath it is still loading; it resolves to {@link Icon.DIRECTORY} once loaded.
-   */
-  public static readonly FOLDER_LOADING: Icon = new Icon('ph-duotone ph-folder-simple-dashed');
-
-  /**
    * Gets the code content icon.
    */
   public static readonly CODE: Icon = new Icon('ph-duotone ph-brackets-curly');

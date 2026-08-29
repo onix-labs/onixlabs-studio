@@ -76,6 +76,16 @@ export interface TreeRow {
   readonly expanded: boolean;
 
   /**
+   * Gets a value indicating whether the row reads as disabled — greyed out as a whole, chevron
+   * included, because what it stands for is not ready yet.
+   *
+   * Presentation only: the row still reports its clicks, so a consumer may keep an unready row
+   * expandable (expanding one is often how its contents get requested). A consumer that wants it
+   * inert as well ignores the click itself.
+   */
+  readonly disabled?: boolean;
+
+  /**
    * Gets the consumer's payload for the row, read by the projected row-content template.
    */
   readonly data: unknown;

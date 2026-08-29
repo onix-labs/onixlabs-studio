@@ -99,11 +99,15 @@ app-tree-view {
   &.tree-icon--project {
     opacity: 1;
   }
+}
 
-  // A project still loading its contents is dimmed further until it is ready.
-  &.tree-icon--loading {
-    opacity: 0.55;
-  }
+// A row whose subject is not ready yet reads as disabled: the whole row dims together — chevron,
+// glyph, label and any decoration — rather than the glyph alone changing shape. Dimming beats
+// swapping the icon for a "loading" variant, because a variant says the folder is a different KIND
+// of thing when all that is different is that it has not arrived. The row keeps its own hover and
+// selection chrome, since it is still something you can point at and expand.
+.tree-row--disabled {
+  opacity: 0.45;
 }
 
 .tree-name {

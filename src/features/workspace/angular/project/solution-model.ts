@@ -88,6 +88,18 @@ export interface SolutionRow {
   readonly loading: boolean;
 
   /**
+   * Holds whether the row is still waiting on what it stands for — a project whose contents have not
+   * arrived, and a folder or the solution root with any such project beneath it.
+   *
+   * Wider than {@link loading}, and the difference is the point: projects are fetched one after
+   * another, so at any moment only the one in flight is `loading` while the rest sit unfetched. A row
+   * that showed its finished state until its own turn came would flicker through the tree as each
+   * project resolved. `pending` stays true from the first render until the subtree is genuinely
+   * complete, so the tree greys out as a whole and comes back as a whole.
+   */
+  readonly pending: boolean;
+
+  /**
    * Holds the absolute path the row opens (a project or file), or null when it opens nothing.
    */
   readonly path: string | null;
@@ -264,13 +276,17 @@ export class SolutionModel {
     // The root shows its full structure immediately, and spins while any project anywhere beneath it is
     // still loading (each project and the folders above it carry the same aggregate spinner).
     const loading: boolean = this.loadingProjects().size > 0;
+    // Whether anything beneath the root has yet to arrive. Unlike `loading`, this is true from the
+    // first render rather than only while a fetch is in flight, so the tree reads as one unfinished
+    // thing instead of resolving folder by folder as each project's turn comes round.
+    const pending: boolean = this.nodesPending(model.tree);
     // The root row is the WORKSPACE — its display name (name plus branch), never a GUID path
     // segment; the raw folder name is only the pre-announcement fallback. The structure nests
     // directly beneath it: neither the solution file nor a lone root-level project gets a row of
     // its own — each would only repeat the repository's name.
     const rootLabel: string = this.context.displayName() ?? this.folderName(model.root);
     const rows: SolutionRow[] = [
-      this.row(ROOT_KEY, 0, rootLabel, 'solution', true, expanded, loading, null),
+      this.row(ROOT_KEY, 0, rootLabel, 'solution', true, expanded, loading, pending, null),
     ];
     const hoisted: string | null = this.hoistedProjectPath(model);
     if (expanded) {
@@ -910,7 +926,10 @@ export class SolutionModel {
         const expanded: boolean = this.expandedKeys().has(key);
         // The folder spins while any project beneath it is still loading.
         const loading: boolean = this.nodesLoading(node.children);
-        rows.push(this.row(key, depth, node.name, 'folder', true, expanded, loading, null));
+        const pending: boolean = this.nodesPending(node.children);
+        rows.push(
+          this.row(key, depth, node.name, 'folder', true, expanded, loading, pending, null),
+        );
         if (expanded) {
           this.appendNodes(node.children, depth + 1, key, rows);
         }
@@ -918,9 +937,12 @@ export class SolutionModel {
         const key: string = `project:${node.path}`;
         const expanded: boolean = this.expandedKeys().has(key);
         const loading: boolean = this.loadingProjects().has(node.path);
+        const pending: boolean = !this.itemsByProject().has(node.path);
         // A project is always expandable: expanding one whose contents have not arrived requests
         // them ahead of the background sweep, and its children appear when they do.
-        rows.push(this.row(key, depth, node.name, 'project', true, expanded, loading, node.path));
+        rows.push(
+          this.row(key, depth, node.name, 'project', true, expanded, loading, pending, node.path),
+        );
         const items: ProjectItems | undefined = this.itemsByProject().get(node.path);
         if (expanded && items !== undefined) {
           this.appendItems(items.tree, depth + 1, key, rows);
@@ -943,6 +965,20 @@ export class SolutionModel {
     const folders: ProjectNode[] = nodes.filter((node: ProjectNode) => node.type === 'folder');
     const projects: ProjectNode[] = nodes.filter((node: ProjectNode) => node.type === 'project');
     return [...folders.sort(byName), ...projects.sort(byName)];
+  }
+
+  /**
+   * Determines whether any project beneath a run of nodes is still loading, so a folder (and the root)
+   * can carry the aggregate spinner until all of its projects have finished.
+   * @param nodes The nodes to scan.
+   * @returns Returns true when at least one descendant project is still loading.
+   */
+  private nodesPending(nodes: readonly ProjectNode[]): boolean {
+    return nodes.some((node: ProjectNode): boolean =>
+      node.type === 'project'
+        ? !this.itemsByProject().has(node.path)
+        : this.nodesPending(node.children),
+    );
   }
 
   /**
@@ -977,13 +1013,25 @@ export class SolutionModel {
       if (node.type === 'folder') {
         const key: string = `${parentKey}/${node.name}`;
         const expanded: boolean = this.expandedKeys().has(key);
-        rows.push(this.row(key, depth, node.name, 'item-folder', true, expanded, false, node.path));
+        rows.push(
+          this.row(key, depth, node.name, 'item-folder', true, expanded, false, false, node.path),
+        );
         if (expanded) {
           this.appendItems(node.children, depth + 1, key, rows);
         }
       } else {
         rows.push(
-          this.row(`file:${node.path}`, depth, node.name, 'file', false, false, false, node.path),
+          this.row(
+            `file:${node.path}`,
+            depth,
+            node.name,
+            'file',
+            false,
+            false,
+            false,
+            false,
+            node.path,
+          ),
         );
       }
     }
@@ -1021,7 +1069,10 @@ export class SolutionModel {
         );
         if (this.matches(node.name, query) || childMatched) {
           const loading: boolean = this.nodesLoading(node.children);
-          rows.push(this.row(key, depth, node.name, 'folder', true, childMatched, loading, null));
+          const pending: boolean = this.nodesPending(node.children);
+          rows.push(
+            this.row(key, depth, node.name, 'folder', true, childMatched, loading, pending, null),
+          );
           rows.push(...childRows);
           matched = true;
         }
@@ -1029,13 +1080,24 @@ export class SolutionModel {
         const key: string = `project:${node.path}`;
         const loading: boolean = this.loadingProjects().has(node.path);
         const items: ProjectItems | undefined = this.itemsByProject().get(node.path);
+        const pending: boolean = items === undefined;
         const childRows: SolutionRow[] = [];
         const childMatched: boolean =
           items !== undefined &&
           this.appendItemsFiltered(items.tree, depth + 1, key, childRows, query);
         if (this.matches(node.name, query) || childMatched) {
           rows.push(
-            this.row(key, depth, node.name, 'project', true, childMatched, loading, node.path),
+            this.row(
+              key,
+              depth,
+              node.name,
+              'project',
+              true,
+              childMatched,
+              loading,
+              pending,
+              node.path,
+            ),
           );
           rows.push(...childRows);
           matched = true;
@@ -1076,14 +1138,34 @@ export class SolutionModel {
         );
         if (this.matches(node.name, query) || childMatched) {
           rows.push(
-            this.row(key, depth, node.name, 'item-folder', true, childMatched, false, node.path),
+            this.row(
+              key,
+              depth,
+              node.name,
+              'item-folder',
+              true,
+              childMatched,
+              false,
+              false,
+              node.path,
+            ),
           );
           rows.push(...childRows);
           matched = true;
         }
       } else if (this.matches(node.name, query)) {
         rows.push(
-          this.row(`file:${node.path}`, depth, node.name, 'file', false, false, false, node.path),
+          this.row(
+            `file:${node.path}`,
+            depth,
+            node.name,
+            'file',
+            false,
+            false,
+            false,
+            false,
+            node.path,
+          ),
         );
         matched = true;
       }
@@ -1164,8 +1246,9 @@ export class SolutionModel {
     expandable: boolean,
     expanded: boolean,
     loading: boolean,
+    pending: boolean,
     path: string | null,
   ): SolutionRow {
-    return { key, depth, label, kind, expandable, expanded, loading, path };
+    return { key, depth, label, kind, expandable, expanded, loading, pending, path };
   }
 }

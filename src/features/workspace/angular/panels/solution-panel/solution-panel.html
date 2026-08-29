@@ -23,7 +23,6 @@
         class="tree-icon"
         [class.tree-icon--folder]="r.kind === 'folder' || r.kind === 'item-folder'"
         [class.tree-icon--project]="r.kind === 'project' || r.kind === 'solution'"
-        [class.tree-icon--loading]="r.loading"
         [icon]="iconFor(r)"
       />
       <span class="tree-name" [class.bold]="r.kind === 'solution'">

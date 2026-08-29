@@ -149,6 +149,7 @@ function makeRow(overrides: Partial<SolutionRow>): SolutionRow {
     expandable: false,
     expanded: false,
     loading: false,
+    pending: false,
     path: null,
     ...overrides,
   };
@@ -783,6 +784,18 @@ describe('SolutionPanel', () => {
 
       expect((fixture.nativeElement as HTMLElement).querySelector('.tree-status')).toBeNull();
     });
+  });
+
+  it('iconFor_whileAFolderIsStillWaiting_isStillAPlainFolder', () => {
+    // A folder waiting on its projects used to read as a DASHED folder, which said the wrong thing —
+    // it is the same folder, it just has not arrived — and made the tree change shape twice per
+    // project as each one loaded in turn. Not-ready is carried by the row's disabled state now.
+    expect(component.iconFor(makeRow({ kind: 'folder', loading: true, pending: true }))).toBe(
+      Icon.DIRECTORY,
+    );
+    expect(
+      component.iconFor(makeRow({ kind: 'folder', expanded: true, loading: true, pending: true })),
+    ).toBe(Icon.FOLDER_OPEN);
   });
 
   it('iconFor_resolvesByKindAndExpansion', () => {

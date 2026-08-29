@@ -401,6 +401,45 @@ describe('SolutionModel', () => {
     expect(labels(model)).toEqual(['root', 'Group', 'B']);
   });
 
+  it('rootNode_staysPendingAcrossTheWholeSweep_notJustWhileEachFetchIsInFlight', async () => {
+    project.model = sampleModel();
+    project.deferItems = true;
+    // Both projects have contents to arrive with: `pending` clears on the items landing, not merely
+    // on the fetch settling, so a fetch that resolved with nothing would leave the row pending.
+    project.itemsByPath.set('/root/A/A.csproj', {
+      projectPath: '/root/A/A.csproj',
+      tree: [{ type: 'file', name: 'a.cs', path: '/root/A/a.cs' }],
+    });
+    project.itemsByPath.set('/root/B/B.csproj', {
+      projectPath: '/root/B/B.csproj',
+      tree: [{ type: 'file', name: 'b.cs', path: '/root/B/b.cs' }],
+    });
+    const model: SolutionModel = build();
+    await open(model);
+
+    // This is the difference between `pending` and `loading`, and the reason the tree used to flicker.
+    // Projects are fetched one at a time, so B is NOT loading while it waits its turn — but it has not
+    // arrived either, and a row that showed its finished state until its own turn came would resolve
+    // and re-grey as the sweep passed over it. Everything is pending from the first render.
+    expect(rowFor(model, 'root')?.pending).toBe(true);
+    expect(rowFor(model, 'Group')?.pending).toBe(true);
+    expect(rowFor(model, 'B')?.pending).toBe(true);
+    expect(rowFor(model, 'B')?.loading).toBe(false);
+
+    project.resolveAll();
+    await flush();
+    // A has arrived, so the root is still pending on B — which is now in flight as well as pending.
+    expect(rowFor(model, 'root')?.pending).toBe(true);
+    expect(rowFor(model, 'B')?.pending).toBe(true);
+
+    project.resolveAll();
+    await flush();
+    // Everything arrived: the tree comes back as a whole.
+    expect(rowFor(model, 'root')?.pending).toBe(false);
+    expect(rowFor(model, 'Group')?.pending).toBe(false);
+    expect(rowFor(model, 'B')?.pending).toBe(false);
+  });
+
   it('toggle_expandingAQueuedProject_fetchesItAheadOfTheBackgroundSweep', async () => {
     project.model = sampleModel();
     project.deferItems = true;

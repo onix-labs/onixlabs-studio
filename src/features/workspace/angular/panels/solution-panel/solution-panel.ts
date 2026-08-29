@@ -422,6 +422,9 @@ export class SolutionPanel {
         depth: row.depth,
         expandable: row.expandable,
         expanded: row.expanded,
+        // Greyed out until what it stands for has arrived. Presentation only: an unready project is
+        // still expandable, and expanding one is how its contents get requested ahead of the sweep.
+        disabled: row.pending,
         data: row,
       }),
     ),
@@ -632,9 +635,11 @@ export class SolutionPanel {
         return Icon.PROJECT;
       case 'folder':
       case 'item-folder':
-        // A folder reads as a dashed folder while any project beneath it is still loading, resolving to
-        // a plain (or open) folder once loaded.
-        return row.loading ? Icon.FOLDER_LOADING : row.expanded ? Icon.FOLDER_OPEN : Icon.DIRECTORY;
+        // Always a real folder, open or closed. A folder waiting on its projects used to read as a
+        // DASHED folder, which said the wrong thing — it is not a different kind of folder, it is the
+        // same folder that has not arrived — and it made the tree change shape twice per project as
+        // each one loaded in turn. Not-ready is carried by the row's disabled state instead.
+        return row.expanded ? Icon.FOLDER_OPEN : Icon.DIRECTORY;
       default:
         return this.fileIconFor(row.label);
     }
