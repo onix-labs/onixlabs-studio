@@ -259,12 +259,10 @@ export class ConfigureDialogPanel {
    */
   protected readonly targetOptions: Signal<readonly DropdownOption[]> = computed(
     (): readonly DropdownOption[] =>
-      this.workspaceCapabilities
-        .capabilities()
-        ?.target?.options.map((option): DropdownOption => ({
-          value: option.id,
-          label: option.name,
-        })) ?? [],
+      this.workspaceCapabilities.capabilities()?.target?.options.map((option): DropdownOption => ({
+        value: option.id,
+        label: option.name,
+      })) ?? [],
   );
 
   /**
