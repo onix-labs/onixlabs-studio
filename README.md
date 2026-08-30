@@ -117,7 +117,6 @@ searchable log of the session.
 Studio is a beta, and some of what it will be is still being built. Named here so you know what is
 coming rather than discovering it missing:
 
-- **Container logs and shells** — reading a container's output and opening a shell inside it.
 - **Cluster orchestration** — a view over deployed workloads, their health, and their logs.
 - **A database explorer** — connections, schema browsing, and queries with results in a grid.
 - **Installing packages** — the package panel lists dependencies, flags upgrades and searches
@@ -196,7 +195,7 @@ npm run dist:linux
 ### Test, Lint, and Format
 
 These are the same checks CI runs, so it is worth running them locally before opening a pull request.
-Unit tests cover the bulk of the codebase, the end-to-end suite drives the packaged app, and the lint
+Unit tests cover the bulk of the codebase, the end-to-end suite drives the built app, and the lint
 and format commands enforce the house style — `npm run format` rewrites files in place rather than
 just reporting on them.
 
@@ -220,11 +219,16 @@ self-contained feature under `src/features`, while anything used by more than on
 src/
   features/             Feature areas — each self-contained
     agent/              Standalone agent surface
+    api-explorer/       API request and response explorer
     binary/             Binary / hex editor
     code/               Code (Monaco) editing surface
+    containers/         Container management
     markdown/           Markdown editing surface
     mission-control/    Multi-agent overview
+    model-manager/      Local model management
+    plugin-manager/     Language server and debug adapter management
     settings/           Settings surface
+    system-monitor/     Resource use and session log
     terminal/           Terminal surface
     welcome/            Welcome / start page
     workspace/          Language-agnostic workspace (project systems, panels, debug, git)
