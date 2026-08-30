@@ -61,6 +61,11 @@ export class PluginsContribution implements MainContribution {
       PluginChannel.Uninstall,
       (_event: unknown, id: unknown): Promise<PluginActionResult> => this.act(id, false, context),
     );
+    // The revision in force this launch, not the one on disk: a fetched index takes effect at the next
+    // start, so this is what the running build's catalogue actually is — which is what a bug report needs.
+    context.handle(PluginChannel.CatalogueRevision, (): Promise<number> =>
+      Promise.resolve(pluginIndex().revision()),
+    );
     context.log.info(
       `Plugin catalogue ready (${pluginCatalogue().length} first-party, ` +
         `${contributedPlugins().length} contributed)`,

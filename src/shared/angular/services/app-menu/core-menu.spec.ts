@@ -2,6 +2,8 @@ import { signal, WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 
 import { Documents } from '@shared/angular/services/documents/documents';
+import { Help } from '@shared/angular/services/help/help';
+import { SettingsNavigation } from '@shared/angular/services/settings-navigation/settings-navigation';
 import { Icon } from '@shared/angular/icons/icon';
 import { Tab, TabType } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
@@ -15,6 +17,8 @@ describe('CoreMenu', () => {
   let opened: TabType[];
   let closed: string[];
   let openedFiles: number;
+  let helped: string[];
+  let settingsSections: string[];
 
   /**
    * Reads a merged section's entries by id.
@@ -47,10 +51,26 @@ describe('CoreMenu', () => {
         return Promise.resolve();
       },
     };
+    helped = [];
+    settingsSections = [];
+    const helpStub: Partial<Help> = {
+      openDocumentation: (): void => void helped.push('documentation'),
+      openIssueReport: (): void => void helped.push('issue'),
+      openReleaseNotes: (): void => void helped.push('releases'),
+      showAbout: (): Promise<void> => {
+        helped.push('about');
+        return Promise.resolve();
+      },
+    };
+    const settingsNavigationStub: Partial<SettingsNavigation> = {
+      open: (section: string): void => void settingsSections.push(section),
+    };
     TestBed.configureTestingModule({
       providers: [
         { provide: Tabs, useValue: tabsStub },
         { provide: Documents, useValue: documentsStub },
+        { provide: Help, useValue: helpStub },
+        { provide: SettingsNavigation, useValue: settingsNavigationStub },
       ],
     });
     menu = TestBed.inject(AppMenu);
@@ -105,6 +125,31 @@ describe('CoreMenu', () => {
     menu.dispatch('core.file.closeTab');
 
     expect(closed).toEqual(['tab-1']);
+  });
+
+  it('help_whenAnEntryIsChosen_runsIt', () => {
+    menu.dispatch('core.help.documentation');
+    menu.dispatch('core.help.issue');
+    menu.dispatch('core.help.releases');
+    menu.dispatch('core.help.about');
+
+    expect(helped).toEqual(['documentation', 'issue', 'releases', 'about']);
+  });
+
+  it('help_whenKeyboardShortcutsIsChosen_landsOnTheKeyboardSection', () => {
+    // Opening Settings alone would land wherever it was last left, which is not what the label says.
+    menu.dispatch('core.help.shortcuts');
+
+    expect(settingsSections).toEqual(['keyboard']);
+  });
+
+  it('sections_whenComposed_endWithHelp', () => {
+    // Help is last on every platform's menu bar, so it is contributed with the trailing sections.
+    const ids: readonly string[] = menu
+      .sections()
+      .map((section: MenuContribution): string => section.id);
+
+    expect(ids.at(-1)).toBe('help');
   });
 
   it('sections_whenComposed_putEditBetweenFileAndView', () => {

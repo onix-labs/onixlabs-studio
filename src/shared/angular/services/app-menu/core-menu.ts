@@ -1,5 +1,7 @@
 import { computed, effect, inject, Service, Signal } from '@angular/core';
 import { Documents } from '@shared/angular/services/documents/documents';
+import { Help } from '@shared/angular/services/help/help';
+import { SettingsNavigation } from '@shared/angular/services/settings-navigation/settings-navigation';
 import { Tab, TabType } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { AppMenu } from './app-menu';
@@ -76,6 +78,17 @@ export class CoreMenu {
    * Holds the document registry, for the file commands.
    */
   private readonly documents: Documents = inject(Documents);
+
+  /**
+   * Holds the help seam the Help section's entries run through.
+   */
+  private readonly help: Help = inject(Help);
+
+  /**
+   * Holds the Settings deep-link seam, so Keyboard Shortcuts lands on the keyboard section rather than
+   * wherever Settings was last left.
+   */
+  private readonly settingsNavigation: SettingsNavigation = inject(SettingsNavigation);
 
   /**
    * Gets the active tab, or undefined when none is open.
@@ -195,6 +208,39 @@ export class CoreMenu {
             { id: 'core.window.zoom', label: 'Zoom', role: 'zoom' },
             MENU_SEPARATOR,
             { id: 'core.window.close', label: 'Close Window', role: 'close' },
+          ],
+        },
+        {
+          id: 'help',
+          label: 'Help',
+          items: [
+            {
+              id: 'core.help.documentation',
+              label: 'Documentation',
+              run: (): void => this.help.openDocumentation(),
+            },
+            {
+              id: 'core.help.shortcuts',
+              label: 'Keyboard Shortcuts',
+              run: (): void => this.settingsNavigation.open('keyboard'),
+            },
+            MENU_SEPARATOR,
+            {
+              id: 'core.help.issue',
+              label: 'Report an Issue…',
+              run: (): void => this.help.openIssueReport(),
+            },
+            {
+              id: 'core.help.releases',
+              label: 'Release Notes',
+              run: (): void => this.help.openReleaseNotes(),
+            },
+            MENU_SEPARATOR,
+            {
+              id: 'core.help.about',
+              label: 'About ONIXLabs Studio',
+              run: (): void => void this.help.showAbout(),
+            },
           ],
         },
       ];

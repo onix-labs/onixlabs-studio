@@ -1,7 +1,7 @@
 import { contextBridge, IpcRendererEvent, ipcRenderer } from 'electron';
 import type { Bridge } from '@shared/api/bridge';
 import { AppChannel } from '@shared/api/app-channels';
-import type { DisplayStartup, HostEnv } from '@shared/api/host';
+import type { DisplayStartup, HostEnv, HostVersions } from '@shared/api/host';
 
 /**
  * Holds the display startup state read synchronously from the main process, before the first paint,
@@ -9,9 +9,9 @@ import type { DisplayStartup, HostEnv } from '@shared/api/host';
  * process resolved these from the active GPU and the persisted startup preferences by the time this
  * preload runs.
  */
-const startup: DisplayStartup & { homeDir: string } = ipcRenderer.sendSync(
+const startup: DisplayStartup & { homeDir: string; versions: HostVersions } = ipcRenderer.sendSync(
   AppChannel.GetDisplayStartup,
-) as DisplayStartup & { homeDir: string };
+) as DisplayStartup & { homeDir: string; versions: HostVersions };
 
 /**
  * Specifies the static host facts exposed to the renderer under `window.host`: values needed
@@ -19,6 +19,8 @@ const startup: DisplayStartup & { homeDir: string } = ipcRenderer.sendSync(
  */
 const host: HostEnv = {
   platform: process.platform,
+  arch: process.arch,
+  versions: startup.versions,
   homeDir: startup.homeDir,
   display: {
     gpuRendering: startup.gpuRendering,

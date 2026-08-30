@@ -28,6 +28,11 @@ export enum PluginChannel {
   Uninstall = 'plugins:uninstall',
 
   /**
+   * Reports the revision of the curated catalogue in force this launch (invoke).
+   */
+  CatalogueRevision = 'plugins:catalogue-revision',
+
+  /**
    * Notifies the renderer that a plugin's install state changed (main→renderer, send).
    */
   Changed = 'plugins:changed',
