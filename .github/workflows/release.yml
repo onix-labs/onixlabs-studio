@@ -30,16 +30,37 @@ jobs:
     timeout-minutes: 60
     strategy:
       fail-fast: true
+      # One entry per target, and every entry runs on a runner of that target's own architecture.
+      # Three runtime dependencies ship their executables as per-platform optional dependencies
+      # (@vscode/ripgrep, @anthropic-ai/claude-agent-sdk, @openai/codex): `npm ci` installs only the
+      # variant matching the *host*, so a cross-arch package silently omits it and the built app
+      # dies at startup on `import { rgPath }`. Building macOS x64 on `macos-latest` (arm64) is how
+      # 2026.1.0-beta.1 shipped a broken Intel dmg. Never merge two arches into one entry again.
       matrix:
         include:
-          - name: macOS arm64 + x64
+          - name: macOS arm64
+            id: macos-arm64
             os: macos-latest
-            args: --mac --arm64 --x64
+            platform: darwin
+            arch: arm64
+            args: --mac --arm64
+          - name: macOS x64
+            id: macos-x64
+            os: macos-15-intel
+            platform: darwin
+            arch: x64
+            args: --mac --x64
           - name: Windows x64
+            id: windows-x64
             os: windows-latest
+            platform: win32
+            arch: x64
             args: --win --x64
           - name: Linux x64
+            id: linux-x64
             os: ubuntu-latest
+            platform: linux
+            arch: x64
             args: --linux --x64
     env:
       # electron-builder downloads its own Electron dist per target; the npm ci binary is unused.
@@ -57,6 +78,25 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # `npm ci` resolves optionalDependencies against the host, so this is the one thing a
+      # cross-arch runner gets wrong — and it gets it wrong silently, with no install warning and no
+      # build failure. Assert the target's variants are on disk before anything is packaged.
+      - name: Verify the target's platform packages are installed
+        shell: bash
+        env:
+          SUFFIX: ${{ matrix.platform }}-${{ matrix.arch }}
+        run: |
+          missing=0
+          for pkg in "@vscode/ripgrep-$SUFFIX" "@anthropic-ai/claude-agent-sdk-$SUFFIX" "@openai/codex-$SUFFIX"; do
+            if [ -d "node_modules/$pkg" ]; then
+              echo "ok       $pkg"
+            else
+              echo "::error::$pkg is not installed — this runner's architecture does not match the build target ($SUFFIX)."
+              missing=1
+            fi
+          done
+          exit $missing
+
       - name: Build renderer (Angular)
         run: npm run build
 
@@ -69,7 +109,8 @@ jobs:
       - name: Upload installers
         uses: actions/upload-artifact@v7
         with:
-          name: installers-${{ runner.os }}
+          # Keyed on the target, not `runner.os`: the two macOS jobs would collide under one name.
+          name: installers-${{ matrix.id }}
           path: |
             release/*.dmg
             release/*.zip
