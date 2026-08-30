@@ -43,6 +43,36 @@ export interface DisplayStartup {
 }
 
 /**
+ * Describes the versions the running build is made of: Studio's own, and the runtimes underneath it.
+ *
+ * Carried with the startup facts rather than fetched, because the first thing that needs them is the
+ * About dialog and the second is a bug report — and a user who cannot say what they are running files
+ * a report nobody can act on. They are fixed for the life of the process, so a synchronous snapshot is
+ * the honest shape.
+ */
+export interface HostVersions {
+  /**
+   * Gets Studio's own version, as published (calendar versioning).
+   */
+  readonly studio: string;
+
+  /**
+   * Gets the Electron version the build runs on.
+   */
+  readonly electron: string;
+
+  /**
+   * Gets the Chromium version behind the renderer.
+   */
+  readonly chromium: string;
+
+  /**
+   * Gets the Node version the main process runs.
+   */
+  readonly node: string;
+}
+
+/**
  * Describes the static host facts exposed on `window.host`, or undefined-able per field when the
  * renderer runs outside Electron (where the whole object is absent).
  */
@@ -51,6 +81,16 @@ export interface HostEnv {
    * Gets the operating-system platform (the Node `process.platform` value, e.g. `darwin`/`win32`).
    */
   readonly platform: string;
+
+  /**
+   * Gets the processor architecture the build runs on (the Node `process.arch` value, e.g. `arm64`).
+   */
+  readonly arch: string;
+
+  /**
+   * Gets the versions the running build is made of.
+   */
+  readonly versions: HostVersions;
 
   /**
    * Gets the current user's home directory (absolute), used to abbreviate paths to a leading `~`.

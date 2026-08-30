@@ -694,6 +694,14 @@ class Program {
         gpuRendering: this.gpuRendering,
         hardwareAccelerationEnabled: this.hardwareAccelerationEnabled,
         homeDir: os.homedir(),
+        // The versions ride with the startup facts because only main can read the app's own version,
+        // and the About dialog needs all four together.
+        versions: {
+          studio: app.getVersion(),
+          electron: process.versions.electron ?? '',
+          chromium: process.versions.chrome ?? '',
+          node: process.versions.node,
+        },
       };
     });
 

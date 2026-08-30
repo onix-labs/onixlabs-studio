@@ -21,6 +21,10 @@
      same question in the same window. -->
 <app-plugin-consent-host />
 
+<!-- The About dialog, mounted once here because the Help menu entry that opens it lives in the
+     native menu bar and can only call back into the renderer. -->
+<app-about-host />
+
 <!-- The backdrop dims and blocks the main window while a modal window is open over it. -->
 <app-modal-backdrop />
 

@@ -64,6 +64,18 @@ export class Plugins {
   }
 
   /**
+   * Gets the revision of the curated catalogue in force this launch, or null before it has been read
+   * (and outside Electron, where there is no catalogue to report).
+   * @returns Returns the revision, or null when it is unknown.
+   */
+  public async catalogueRevision(): Promise<number | null> {
+    const revision: number | undefined = await this.bridge?.invoke<number>(
+      PluginChannel.CatalogueRevision,
+    );
+    return typeof revision === 'number' ? revision : null;
+  }
+
+  /**
    * Reloads the plugin list from the main process.
    * @returns Returns a promise that resolves once the list has been reloaded.
    */
