@@ -117,6 +117,7 @@ searchable log of the session.
 Studio is a beta, and some of what it will be is still being built. Named here so you know what is
 coming rather than discovering it missing:
 
+- **Container logs and shells** — reading a container's output and opening a shell inside it.
 - **Cluster orchestration** — a view over deployed workloads, their health, and their logs.
 - **A database explorer** — connections, schema browsing, and queries with results in a grid.
 - **Installing packages** — the package panel lists dependencies, flags upgrades and searches
