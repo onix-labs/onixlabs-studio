@@ -208,68 +208,65 @@ export async function renderMermaidDiagram(code: string, id: string): Promise<st
 /**
  * ProseMirror node schema for Mermaid diagram blocks.
  */
-export const mermaidNode: $Node = $node(
-  'mermaid_diagram',
-  (): NodeSchema => ({
-    group: 'block',
-    content: '',
-    marks: '',
-    defining: true,
-    isolating: true,
-    atom: true,
-    attrs: {
-      value: { default: '' },
+export const mermaidNode: $Node = $node('mermaid_diagram', (): NodeSchema => ({
+  group: 'block',
+  content: '',
+  marks: '',
+  defining: true,
+  isolating: true,
+  atom: true,
+  attrs: {
+    value: { default: '' },
+  },
+  parseDOM: [
+    {
+      tag: 'div[data-mermaid-diagram]',
+      getAttrs: (dom: HTMLElement): { value: string } => ({
+        value: dom.getAttribute('data-value') ?? '',
+      }),
     },
-    parseDOM: [
-      {
-        tag: 'div[data-mermaid-diagram]',
-        getAttrs: (dom: HTMLElement): { value: string } => ({
-          value: dom.getAttribute('data-value') ?? '',
-        }),
-      },
-    ],
-    toDOM: (node: ProseMirrorNode): HTMLElement => {
-      const value: string = node.attrs['value'] as string;
-      const diagramId: string = `mermaid-${++diagramIdCounter}`;
+  ],
+  toDOM: (node: ProseMirrorNode): HTMLElement => {
+    const value: string = node.attrs['value'] as string;
+    const diagramId: string = `mermaid-${++diagramIdCounter}`;
 
-      // Create wrapper element
-      const wrapper: HTMLDivElement = document.createElement('div');
-      wrapper.setAttribute('data-mermaid-diagram', 'true');
-      wrapper.setAttribute('data-value', value);
-      wrapper.className = 'mermaid-block rendered';
+    // Create wrapper element
+    const wrapper: HTMLDivElement = document.createElement('div');
+    wrapper.setAttribute('data-mermaid-diagram', 'true');
+    wrapper.setAttribute('data-value', value);
+    wrapper.className = 'mermaid-block rendered';
 
-      // Create a container for the rendered diagram
-      const content: HTMLDivElement = document.createElement('div');
-      content.className = 'mermaid-content';
-      content.innerHTML = '<div class="mermaid-loading">Loading diagram...</div>';
-      wrapper.appendChild(content);
+    // Create a container for the rendered diagram
+    const content: HTMLDivElement = document.createElement('div');
+    content.className = 'mermaid-content';
+    content.innerHTML = '<div class="mermaid-loading">Loading diagram...</div>';
+    wrapper.appendChild(content);
 
-      // Render the diagram asynchronously
-      void renderMermaidDiagram(value, diagramId).then((svg: string): void => {
-        content.innerHTML = svg;
-      });
+    // Render the diagram asynchronously
+    void renderMermaidDiagram(value, diagramId).then((svg: string): void => {
+      content.innerHTML = svg;
+    });
 
-      return wrapper;
+    return wrapper;
+  },
+  parseMarkdown: {
+    match: (node: MarkdownNode): boolean => {
+      // Match our custom mermaidDiagram nodes (transformed from code blocks by remark plugin)
+      return node.type === 'mermaidDiagram';
     },
-    parseMarkdown: {
-      match: (node: MarkdownNode): boolean => {
-        // Match our custom mermaidDiagram nodes (transformed from code blocks by remark plugin)
-        return node.type === 'mermaidDiagram';
-      },
-      runner: (state: ParserState, node: MarkdownNode, type: NodeType): void => {
-        const mermaidNode: MermaidDiagramNode = node as unknown as MermaidDiagramNode;
-        state.addNode(type, { value: mermaidNode.value });
-      },
+    runner: (state: ParserState, node: MarkdownNode, type: NodeType): void => {
+      const mermaidNode: MermaidDiagramNode = node as unknown as MermaidDiagramNode;
+      state.addNode(type, { value: mermaidNode.value });
     },
-    toMarkdown: {
-      match: (node: ProseMirrorNode): boolean => node.type.name === 'mermaid_diagram',
-      runner: (state: SerializerState, node: ProseMirrorNode): void => {
-        const code: string = node.attrs['value'] as string;
-        state.addNode('code', undefined, code, { lang: 'mermaid' });
-      },
+  },
+  toMarkdown: {
+    match: (node: ProseMirrorNode): boolean => node.type.name === 'mermaid_diagram',
+    runner: (state: SerializerState, node: ProseMirrorNode): void => {
+      const code: string = node.attrs['value'] as string;
+      state.addNode('code', undefined, code, { lang: 'mermaid' });
     },
-  }),
-);
+  },
+}));
 
 /**
  * All Mermaid diagram plugins combined.

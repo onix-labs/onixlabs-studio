@@ -206,8 +206,8 @@ export class DotnetProjectSystem implements ProjectSystem {
       logger.debug('DotnetProjectSystem', `No solution or loose projects found under '${root}'.`);
       return null;
     }
-    const tree: readonly ProjectNode[] = files.map(
-      (file: string): ProjectNode => this.toNode(file),
+    const tree: readonly ProjectNode[] = files.map((file: string): ProjectNode =>
+      this.toNode(file),
     );
     const projects: readonly ProjectEntry[] = this.flatten(tree);
     logger.info(

@@ -614,9 +614,8 @@ export class LspFeatures {
       endColumn: word.endColumn,
     };
     return {
-      suggestions: items.map(
-        (item: LspCompletionItem): MonacoApi.languages.CompletionItem =>
-          this.toCompletionItem(monaco, item, range),
+      suggestions: items.map((item: LspCompletionItem): MonacoApi.languages.CompletionItem =>
+        this.toCompletionItem(monaco, item, range),
       ),
     };
   }

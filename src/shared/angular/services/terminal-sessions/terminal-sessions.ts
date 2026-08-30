@@ -240,9 +240,8 @@ export class TerminalSessions implements OnDestroy {
         const effective: number = signal !== null ? 128 + signal : exitCode;
         this.log.info('TerminalSessions', 'Session process exited', id, effective);
         this.items.update((sessions: readonly TerminalSession[]): readonly TerminalSession[] =>
-          sessions.map(
-            (session: TerminalSession): TerminalSession =>
-              session.id === id ? { ...session, exitCode: effective } : session,
+          sessions.map((session: TerminalSession): TerminalSession =>
+            session.id === id ? { ...session, exitCode: effective } : session,
           ),
         );
         this.resolveWaiter(id, effective);
@@ -366,19 +365,18 @@ export class TerminalSessions implements OnDestroy {
       this.resolveWaiter(id, DISPOSED_EXIT_CODE);
       await this.bridge.dispose(id);
       this.items.update((sessions: readonly TerminalSession[]): readonly TerminalSession[] =>
-        sessions.map(
-          (session: TerminalSession): TerminalSession =>
-            session.id === id
-              ? {
-                  ...session,
-                  name: options.name,
-                  kind: options.kind,
-                  generation: session.generation + 1,
-                  exitCode: null,
-                  cwd,
-                  shell: undefined,
-                }
-              : session,
+        sessions.map((session: TerminalSession): TerminalSession =>
+          session.id === id
+            ? {
+                ...session,
+                name: options.name,
+                kind: options.kind,
+                generation: session.generation + 1,
+                exitCode: null,
+                cwd,
+                shell: undefined,
+              }
+            : session,
         ),
       );
     } else {
@@ -416,9 +414,8 @@ export class TerminalSessions implements OnDestroy {
       // The main process streamed the failure into the session's scrollback and emitted an exit for
       // it where possible; outside Electron (or on malformed options) resolve the completion here.
       this.items.update((sessions: readonly TerminalSession[]): readonly TerminalSession[] =>
-        sessions.map(
-          (session: TerminalSession): TerminalSession =>
-            session.id === id && session.exitCode === null ? { ...session, exitCode: 1 } : session,
+        sessions.map((session: TerminalSession): TerminalSession =>
+          session.id === id && session.exitCode === null ? { ...session, exitCode: 1 } : session,
         ),
       );
       this.resolveWaiter(id, 1);
@@ -526,9 +523,8 @@ export class TerminalSessions implements OnDestroy {
       return;
     }
     this.items.update((sessions: readonly TerminalSession[]): readonly TerminalSession[] =>
-      sessions.map(
-        (session: TerminalSession): TerminalSession =>
-          session.id === id ? { ...session, name: trimmed } : session,
+      sessions.map((session: TerminalSession): TerminalSession =>
+        session.id === id ? { ...session, name: trimmed } : session,
       ),
     );
   }
@@ -566,9 +562,8 @@ export class TerminalSessions implements OnDestroy {
   public setShell(id: string, shell: string): void {
     this.log.debug('TerminalSessions', 'Session shell resolved', id, shell);
     this.items.update((sessions: readonly TerminalSession[]): readonly TerminalSession[] =>
-      sessions.map(
-        (session: TerminalSession): TerminalSession =>
-          session.id === id ? { ...session, shell } : session,
+      sessions.map((session: TerminalSession): TerminalSession =>
+        session.id === id ? { ...session, shell } : session,
       ),
     );
   }

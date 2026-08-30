@@ -67,16 +67,15 @@ export class ApiEnvironmentPanel {
   protected updateVariable(edit: PropertyGridEdit): void {
     this.writeVariables((variables: readonly HttpField[]): readonly HttpField[] =>
       variables
-        .map(
-          (variable: HttpField): HttpField =>
-            variable.id === edit.id
-              ? {
-                  ...variable,
-                  ...(edit.name !== undefined ? { name: edit.name } : {}),
-                  ...(edit.value !== undefined ? { value: edit.value } : {}),
-                  ...(edit.enabled !== undefined ? { enabled: edit.enabled } : {}),
-                }
-              : variable,
+        .map((variable: HttpField): HttpField =>
+          variable.id === edit.id
+            ? {
+                ...variable,
+                ...(edit.name !== undefined ? { name: edit.name } : {}),
+                ...(edit.value !== undefined ? { value: edit.value } : {}),
+                ...(edit.enabled !== undefined ? { enabled: edit.enabled } : {}),
+              }
+            : variable,
         )
         .filter((variable: HttpField): boolean => variable.name !== '' || variable.value !== ''),
     );

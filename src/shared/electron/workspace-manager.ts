@@ -975,13 +975,11 @@ export class WorkspaceManager {
   private async readListing(directoryPath: string): Promise<DirectoryListing> {
     const dirents: Dirent[] = await fs.readdir(directoryPath, { withFileTypes: true });
     const entries: DirectoryEntry[] = dirents
-      .map(
-        (dirent: Dirent): DirectoryEntry => ({
-          name: dirent.name,
-          path: path.join(directoryPath, dirent.name),
-          type: dirent.isDirectory() ? 'directory' : 'file',
-        }),
-      )
+      .map((dirent: Dirent): DirectoryEntry => ({
+        name: dirent.name,
+        path: path.join(directoryPath, dirent.name),
+        type: dirent.isDirectory() ? 'directory' : 'file',
+      }))
       .sort((a: DirectoryEntry, b: DirectoryEntry): number => {
         const orderA: number = a.type === 'directory' ? DIRECTORY_ORDER : FILE_ORDER;
         const orderB: number = b.type === 'directory' ? DIRECTORY_ORDER : FILE_ORDER;

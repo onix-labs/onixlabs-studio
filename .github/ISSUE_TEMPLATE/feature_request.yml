@@ -1,0 +1,40 @@
+name: Feature request
+description: Something Studio should do, or do differently.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What you are trying to do and what gets in the way today. Lead with the problem, not the solution — the solution may turn out to be something else.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like to see
+      description: How you imagine it working. Mockups and examples from other tools are welcome.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered
+      description: Including how you work around it now, if you do.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Agent / AI
+        - Workbench (dock, ribbon, tabs, windows)
+        - Code editor / language servers
+        - Markdown or binary editor
+        - Workspace / project systems / build & run
+        - Debugging
+        - Terminal
+        - Source control
+        - Plugins
+        - Settings / theming
+        - Packaging / installation
+        - Something else

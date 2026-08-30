@@ -116,58 +116,55 @@ export const remarkHtmlImage: $Remark<'remarkHtmlImage', undefined> = $remark(
 /**
  * ProseMirror node schema for HTML image blocks.
  */
-export const htmlImageNode: $Node = $node(
-  'html_image',
-  (): NodeSchema => ({
-    group: 'block',
-    content: '',
-    marks: '',
-    defining: true,
-    isolating: true,
-    atom: true,
-    attrs: {
-      value: { default: '' },
+export const htmlImageNode: $Node = $node('html_image', (): NodeSchema => ({
+  group: 'block',
+  content: '',
+  marks: '',
+  defining: true,
+  isolating: true,
+  atom: true,
+  attrs: {
+    value: { default: '' },
+  },
+  parseDOM: [
+    {
+      tag: 'div[data-html-image]',
+      getAttrs: (dom: HTMLElement): { value: string } => ({
+        value: dom.getAttribute('data-value') ?? '',
+      }),
     },
-    parseDOM: [
-      {
-        tag: 'div[data-html-image]',
-        getAttrs: (dom: HTMLElement): { value: string } => ({
-          value: dom.getAttribute('data-value') ?? '',
-        }),
-      },
-    ],
-    toDOM: (node: ProseMirrorNode): HTMLElement => {
-      const value: string = node.attrs['value'] as string;
+  ],
+  toDOM: (node: ProseMirrorNode): HTMLElement => {
+    const value: string = node.attrs['value'] as string;
 
-      // Create wrapper element
-      const wrapper: HTMLDivElement = document.createElement('div');
-      wrapper.setAttribute('data-html-image', 'true');
-      wrapper.setAttribute('data-value', value);
-      wrapper.className = 'html-image-block rendered';
+    // Create wrapper element
+    const wrapper: HTMLDivElement = document.createElement('div');
+    wrapper.setAttribute('data-html-image', 'true');
+    wrapper.setAttribute('data-value', value);
+    wrapper.className = 'html-image-block rendered';
 
-      // Create a container for the rendered content
-      const content: HTMLDivElement = document.createElement('div');
-      content.className = 'html-image-content';
-      content.innerHTML = value;
-      wrapper.appendChild(content);
+    // Create a container for the rendered content
+    const content: HTMLDivElement = document.createElement('div');
+    content.className = 'html-image-content';
+    content.innerHTML = value;
+    wrapper.appendChild(content);
 
-      return wrapper;
+    return wrapper;
+  },
+  parseMarkdown: {
+    match: (node: MarkdownNode): boolean => node.type === 'htmlImageBlock',
+    runner: (state: ParserState, node: MarkdownNode, type: NodeType): void => {
+      const htmlNode: HtmlImageNode = node as unknown as HtmlImageNode;
+      state.addNode(type, { value: htmlNode.value });
     },
-    parseMarkdown: {
-      match: (node: MarkdownNode): boolean => node.type === 'htmlImageBlock',
-      runner: (state: ParserState, node: MarkdownNode, type: NodeType): void => {
-        const htmlNode: HtmlImageNode = node as unknown as HtmlImageNode;
-        state.addNode(type, { value: htmlNode.value });
-      },
+  },
+  toMarkdown: {
+    match: (node: ProseMirrorNode): boolean => node.type.name === 'html_image',
+    runner: (state: SerializerState, node: ProseMirrorNode): void => {
+      state.addNode('html', undefined, node.attrs['value'] as string);
     },
-    toMarkdown: {
-      match: (node: ProseMirrorNode): boolean => node.type.name === 'html_image',
-      runner: (state: SerializerState, node: ProseMirrorNode): void => {
-        state.addNode('html', undefined, node.attrs['value'] as string);
-      },
-    },
-  }),
-);
+  },
+}));
 
 /**
  * All HTML image plugins combined.

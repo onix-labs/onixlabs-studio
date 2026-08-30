@@ -139,17 +139,19 @@ describe('AgentConversation', () => {
   });
 
   it('context_whenResolverProvided_usesIt', () => {
-    const conversation: AgentConversation = build(
-      (): ConversationContext => ({ kind: 'workspace', key: '/repo' }),
-    );
+    const conversation: AgentConversation = build((): ConversationContext => ({
+      kind: 'workspace',
+      key: '/repo',
+    }));
 
     expect(conversation.context()).toEqual({ kind: 'workspace', key: '/repo' });
   });
 
   it('context_whenExplicitBound_winsOverResolver', () => {
-    const conversation: AgentConversation = build(
-      (): ConversationContext => ({ kind: 'workspace', key: '/repo' }),
-    );
+    const conversation: AgentConversation = build((): ConversationContext => ({
+      kind: 'workspace',
+      key: '/repo',
+    }));
     const explicit: Signal<ConversationContext | undefined> = signal<ConversationContext>({
       kind: 'file',
       key: '/repo/a.ts',

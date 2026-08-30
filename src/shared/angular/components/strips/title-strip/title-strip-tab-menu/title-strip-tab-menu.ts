@@ -135,14 +135,12 @@ export class TitleStripTabMenu {
    */
   protected readonly groups: Signal<readonly TabGroup[]> = computed((): readonly TabGroup[] => {
     const open: readonly Tab[] = this.tabsService.tabs();
-    return TAB_CATEGORY_ORDER.map(
-      (label: string): TabGroup => ({
-        label,
-        // Filtered from the open tabs rather than gathered per type, so tabs sharing a heading keep
-        // the order they have in the strip.
-        tabs: open.filter((tab: Tab): boolean => TAB_CATEGORY_LABELS[tab.type] === label),
-      }),
-    ).filter((group: TabGroup): boolean => group.tabs.length > 0);
+    return TAB_CATEGORY_ORDER.map((label: string): TabGroup => ({
+      label,
+      // Filtered from the open tabs rather than gathered per type, so tabs sharing a heading keep
+      // the order they have in the strip.
+      tabs: open.filter((tab: Tab): boolean => TAB_CATEGORY_LABELS[tab.type] === label),
+    })).filter((group: TabGroup): boolean => group.tabs.length > 0);
   });
 
   /**

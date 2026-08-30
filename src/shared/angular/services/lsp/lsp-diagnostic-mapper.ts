@@ -90,15 +90,13 @@ export function toMarkerData(
   monaco: typeof MonacoApi,
   diagnostics: readonly LspDiagnostic[],
 ): MonacoApi.editor.IMarkerData[] {
-  return diagnostics.map(
-    (diagnostic: LspDiagnostic): MonacoApi.editor.IMarkerData => ({
-      severity: markerSeverityOf(monaco, diagnostic.severity),
-      message: diagnostic.message,
-      source: diagnostic.source,
-      startLineNumber: diagnostic.range.start.line + 1,
-      startColumn: diagnostic.range.start.character + 1,
-      endLineNumber: diagnostic.range.end.line + 1,
-      endColumn: diagnostic.range.end.character + 1,
-    }),
-  );
+  return diagnostics.map((diagnostic: LspDiagnostic): MonacoApi.editor.IMarkerData => ({
+    severity: markerSeverityOf(monaco, diagnostic.severity),
+    message: diagnostic.message,
+    source: diagnostic.source,
+    startLineNumber: diagnostic.range.start.line + 1,
+    startColumn: diagnostic.range.start.character + 1,
+    endLineNumber: diagnostic.range.end.line + 1,
+    endColumn: diagnostic.range.end.character + 1,
+  }));
 }

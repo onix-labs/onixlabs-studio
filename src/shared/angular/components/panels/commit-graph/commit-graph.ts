@@ -178,14 +178,12 @@ export class CommitGraph {
    * Gets the positioned commit dots, drawn over the edges.
    */
   protected readonly dots: Signal<readonly DotViewModel[]> = computed((): readonly DotViewModel[] =>
-    this.nodes().map(
-      (node: GraphNode): DotViewModel => ({
-        id: node.id,
-        cx: this.laneX(node.lane),
-        cy: this.rowY(node.row),
-        color: node.color,
-      }),
-    ),
+    this.nodes().map((node: GraphNode): DotViewModel => ({
+      id: node.id,
+      cx: this.laneX(node.lane),
+      cy: this.rowY(node.row),
+      color: node.color,
+    })),
   );
 
   /**

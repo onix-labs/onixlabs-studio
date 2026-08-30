@@ -159,8 +159,8 @@ export class FindPanel implements OnDestroy {
   /**
    * Gets the effective view: the requested one, forced to find when replace is unsupported.
    */
-  protected readonly mode: Signal<FindMode> = computed(
-    (): FindMode => (this.supportsReplace() ? this.requestedMode() : 'find'),
+  protected readonly mode: Signal<FindMode> = computed((): FindMode =>
+    this.supportsReplace() ? this.requestedMode() : 'find',
   );
 
   /**

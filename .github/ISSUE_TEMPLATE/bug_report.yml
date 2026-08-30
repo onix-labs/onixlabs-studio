@@ -1,0 +1,58 @@
+name: Bug report
+description: Something in Studio does not behave as it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Search existing issues first; if one matches, add to it rather than opening another.
+  - type: input
+    id: version
+    attributes:
+      label: Studio version
+      description: >
+        From the release you installed (the download's file name carries it, e.g. `2026.1.0`), or `main`
+        at a commit if you built from source.
+      placeholder: 2026.1.0 or main @ 639f98bb
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - macOS (Apple Silicon)
+        - macOS (Intel)
+        - Windows
+        - Linux
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The smallest sequence that shows the problem. Say what kind of workspace was open if it matters (.NET, Node, JVM, …).
+      placeholder: |
+        1. Open a workspace containing …
+        2. Click …
+        3. …
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened instead
+      description: Screenshots or a recording help. For crashes or hangs, the session log is the most useful thing you can attach — the System Monitor tool shows it, and it is written as a JSONL file per session.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Anything else
+      description: Language servers or plugins installed, AI provider in use, whether it started after an update, …

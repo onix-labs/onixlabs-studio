@@ -96,9 +96,8 @@ export class FileManager {
       FileChannel.OpenFileDialog,
       (event: IpcMainInvokeEvent): Promise<readonly FileInfo[]> => this.openDialog(event.sender),
     );
-    ipcMain.handle(
-      FileChannel.PickImage,
-      (event: IpcMainInvokeEvent): Promise<string | null> => this.pickImage(event.sender),
+    ipcMain.handle(FileChannel.PickImage, (event: IpcMainInvokeEvent): Promise<string | null> =>
+      this.pickImage(event.sender),
     );
     ipcMain.handle(
       FileChannel.PickPath,

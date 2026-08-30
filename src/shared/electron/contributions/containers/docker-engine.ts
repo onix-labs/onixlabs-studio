@@ -70,15 +70,13 @@ export class DockerEngine implements ContainerEngine {
    */
   public async listContainers(): Promise<ContainerSummary[]> {
     const raw: RawContainer[] | null = await this.getJson<RawContainer[]>('/containers/json?all=1');
-    return (raw ?? []).map(
-      (container: RawContainer): ContainerSummary => ({
-        id: container.Id ?? '',
-        names: (container.Names ?? []).map((name: string): string => name.replace(/^\//, '')),
-        image: container.Image ?? '',
-        state: container.State ?? '',
-        status: container.Status ?? '',
-      }),
-    );
+    return (raw ?? []).map((container: RawContainer): ContainerSummary => ({
+      id: container.Id ?? '',
+      names: (container.Names ?? []).map((name: string): string => name.replace(/^\//, '')),
+      image: container.Image ?? '',
+      state: container.State ?? '',
+      status: container.Status ?? '',
+    }));
   }
 
   /**
@@ -87,13 +85,11 @@ export class DockerEngine implements ContainerEngine {
    */
   public async listImages(): Promise<ImageSummary[]> {
     const raw: RawImage[] | null = await this.getJson<RawImage[]>('/images/json');
-    return (raw ?? []).map(
-      (image: RawImage): ImageSummary => ({
-        id: image.Id ?? '',
-        tags: image.RepoTags ?? [],
-        size: image.Size ?? 0,
-      }),
-    );
+    return (raw ?? []).map((image: RawImage): ImageSummary => ({
+      id: image.Id ?? '',
+      tags: image.RepoTags ?? [],
+      size: image.Size ?? 0,
+    }));
   }
 
   /**

@@ -8,6 +8,9 @@ describe('TitleStripContainer', () => {
   let fixture: ComponentFixture<TitleStripContainer>;
 
   beforeEach(async () => {
+    // Settings persist in localStorage, which outlives every TestBed injector: a switch another spec
+    // left hidden would otherwise decide this file's default-state assertion.
+    localStorage.clear();
     await TestBed.configureTestingModule({
       imports: [TitleStripContainer],
     }).compileComponents();
@@ -41,8 +44,9 @@ describe('TitleStripContainer', () => {
     await fixture.whenStable();
 
     expect(windowLockSwitch()).toBeNull();
+  });
 
-    // The store outlives the injector, so leaving the switch hidden would carry into the next test.
-    settings.set('application.showWindowLock', true);
+  afterEach(() => {
+    localStorage.clear();
   });
 });

@@ -179,12 +179,11 @@ test.describe('welcome & tabs', () => {
 
     // And the window fits what it holds: its buttons are never scrolled out of reach.
     await expect
-      .poll(
-        (): Promise<boolean> =>
-          confirm.evaluate((): boolean => {
-            const panel: Element | null = document.querySelector('.modal-window-host__panel');
-            return panel !== null && panel.scrollHeight <= window.innerHeight;
-          }),
+      .poll((): Promise<boolean> =>
+        confirm.evaluate((): boolean => {
+          const panel: Element | null = document.querySelector('.modal-window-host__panel');
+          return panel !== null && panel.scrollHeight <= window.innerHeight;
+        }),
       )
       .toBe(true);
   });

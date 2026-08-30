@@ -97,12 +97,10 @@ function createHarness(initial: string): EditorHarness {
       value = next;
     },
     decorations: (): CapturedDecoration[] =>
-      written.map(
-        (decoration: MonacoApi.editor.IModelDeltaDecoration): CapturedDecoration => ({
-          className: decoration.options.linesDecorationsClassName,
-          line: (decoration.range as unknown as { startLineNumber: number }).startLineNumber,
-        }),
-      ),
+      written.map((decoration: MonacoApi.editor.IModelDeltaDecoration): CapturedDecoration => ({
+        className: decoration.options.linesDecorationsClassName,
+        line: (decoration.range as unknown as { startLineNumber: number }).startLineNumber,
+      })),
     clears: (): number => clearCount,
     contentDisposed: (): boolean => contentDisposed,
     modelDisposed: (): boolean => modelDisposed,

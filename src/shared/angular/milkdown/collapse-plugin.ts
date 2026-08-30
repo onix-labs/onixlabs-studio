@@ -200,111 +200,101 @@ export const remarkCollapse: $Remark<'remarkCollapse', undefined> = $remark(
 /**
  * ProseMirror node schema for the editable summary line of a collapsible section.
  */
-export const collapseSummaryNode: $Node = $node(
-  'collapse_summary',
-  (): NodeSchema => ({
-    content: 'text*',
-    marks: '',
-    defining: true,
-    isolating: true,
-    attrs: {},
-    parseDOM: [{ tag: 'div[data-collapse-summary]' }],
-    toDOM: (): DOMOutputSpec =>
-      [
-        'div',
-        { 'data-collapse-summary': 'true', class: 'collapse-summary' },
-        CONTENT_HOLE,
-      ] as const,
-    parseMarkdown: {
-      match: (node: MarkdownNode): boolean => node.type === 'collapseSummary',
-      runner: (state: ParserState, node: MarkdownNode, type: NodeType): void => {
-        const summary: CollapseSummaryNode = node as unknown as CollapseSummaryNode;
-        state.openNode(type);
-        state.next(summary.children as unknown as Parameters<typeof state.next>[0]);
-        state.closeNode();
-      },
+export const collapseSummaryNode: $Node = $node('collapse_summary', (): NodeSchema => ({
+  content: 'text*',
+  marks: '',
+  defining: true,
+  isolating: true,
+  attrs: {},
+  parseDOM: [{ tag: 'div[data-collapse-summary]' }],
+  toDOM: (): DOMOutputSpec =>
+    ['div', { 'data-collapse-summary': 'true', class: 'collapse-summary' }, CONTENT_HOLE] as const,
+  parseMarkdown: {
+    match: (node: MarkdownNode): boolean => node.type === 'collapseSummary',
+    runner: (state: ParserState, node: MarkdownNode, type: NodeType): void => {
+      const summary: CollapseSummaryNode = node as unknown as CollapseSummaryNode;
+      state.openNode(type);
+      state.next(summary.children as unknown as Parameters<typeof state.next>[0]);
+      state.closeNode();
     },
-    toMarkdown: {
-      // The parent collapse node serialises the summary into the opening HTML; nothing to do here,
-      // but a matcher must exist so the serializer never falls through to an unknown-node error.
-      match: (node: ProseMirrorNode): boolean => node.type.name === 'collapse_summary',
-      runner: (): void => undefined,
-    },
-  }),
-);
+  },
+  toMarkdown: {
+    // The parent collapse node serialises the summary into the opening HTML; nothing to do here,
+    // but a matcher must exist so the serializer never falls through to an unknown-node error.
+    match: (node: ProseMirrorNode): boolean => node.type.name === 'collapse_summary',
+    runner: (): void => undefined,
+  },
+}));
 
 /**
  * ProseMirror node schema for a collapsible section: the summary line followed by ordinary block
  * content, rendered with a toggle chevron that shows or hides the body.
  */
-export const collapseNode: $Node = $node(
-  'collapse',
-  (): NodeSchema => ({
-    group: 'block',
-    content: 'collapse_summary block*',
-    defining: true,
-    isolating: true,
-    attrs: {
-      open: { default: true },
+export const collapseNode: $Node = $node('collapse', (): NodeSchema => ({
+  group: 'block',
+  content: 'collapse_summary block*',
+  defining: true,
+  isolating: true,
+  attrs: {
+    open: { default: true },
+  },
+  parseDOM: [
+    {
+      tag: 'div[data-collapse]',
+      contentElement: 'div.collapse-inner',
+      getAttrs: (dom: HTMLElement): { open: boolean } => ({
+        open: dom.getAttribute('data-open') !== 'false',
+      }),
     },
-    parseDOM: [
+  ],
+  toDOM: (node: ProseMirrorNode): DOMOutputSpec =>
+    [
+      'div',
       {
-        tag: 'div[data-collapse]',
-        contentElement: 'div.collapse-inner',
-        getAttrs: (dom: HTMLElement): { open: boolean } => ({
-          open: dom.getAttribute('data-open') !== 'false',
-        }),
+        'data-collapse': 'true',
+        'data-open': String(node.attrs['open'] as boolean),
+        class: 'collapse-block',
       },
-    ],
-    toDOM: (node: ProseMirrorNode): DOMOutputSpec =>
       [
-        'div',
+        'button',
         {
-          'data-collapse': 'true',
-          'data-open': String(node.attrs['open'] as boolean),
-          class: 'collapse-block',
+          class: 'collapse-toggle',
+          type: 'button',
+          contenteditable: 'false',
+          'aria-label': 'Toggle section',
         },
-        [
-          'button',
-          {
-            class: 'collapse-toggle',
-            type: 'button',
-            contenteditable: 'false',
-            'aria-label': 'Toggle section',
-          },
-        ],
-        ['div', { class: 'collapse-inner' }, CONTENT_HOLE],
-      ] as const,
-    parseMarkdown: {
-      match: (node: MarkdownNode): boolean => node.type === 'collapse',
-      runner: (state: ParserState, node: MarkdownNode, type: NodeType): void => {
-        const collapse: CollapseNode = node as unknown as CollapseNode;
-        state.openNode(type, { open: true });
-        state.next(collapse.children as unknown as Parameters<typeof state.next>[0]);
-        state.closeNode();
-      },
+      ],
+      ['div', { class: 'collapse-inner' }, CONTENT_HOLE],
+    ] as const,
+  parseMarkdown: {
+    match: (node: MarkdownNode): boolean => node.type === 'collapse',
+    runner: (state: ParserState, node: MarkdownNode, type: NodeType): void => {
+      const collapse: CollapseNode = node as unknown as CollapseNode;
+      state.openNode(type, { open: true });
+      state.next(collapse.children as unknown as Parameters<typeof state.next>[0]);
+      state.closeNode();
     },
-    toMarkdown: {
-      match: (node: ProseMirrorNode): boolean => node.type.name === 'collapse',
-      runner: (state: SerializerState, node: ProseMirrorNode): void => {
-        const summary: ProseMirrorNode | null = node.maybeChild(0);
-        const summaryText: string =
-          summary !== null && summary.type.name === 'collapse_summary' ? summary.textContent : '';
-        state.addNode(
-          'html',
-          undefined,
-          `<details>\n<summary>${escapeHtmlText(summaryText)}</summary>`,
-        );
-        node.content.forEach((child: ProseMirrorNode, _offset: number, index: number): void => {
-          if (index > 0) {
-            state.next(child);
-          }
-        });
-        state.addNode('html', undefined, '</details>');
-      },
+  },
+  toMarkdown: {
+    match: (node: ProseMirrorNode): boolean => node.type.name === 'collapse',
+    runner: (state: SerializerState, node: ProseMirrorNode): void => {
+      const summary: ProseMirrorNode | null = node.maybeChild(0);
+      const summaryText: string =
+        summary !== null && summary.type.name === 'collapse_summary' ? summary.textContent : '';
+      state.addNode(
+        'html',
+        undefined,
+        `<details>\n<summary>${escapeHtmlText(summaryText)}</summary>`,
+      );
+      node.content.forEach((child: ProseMirrorNode, _offset: number, index: number): void => {
+        if (index > 0) {
+          state.next(child);
+        }
+      });
+      state.addNode('html', undefined, '</details>');
     },
-  }),
-);
+  },
+}));
 
 /**
  * ProseMirror plugin that expands or collapses a section when its header chevron is clicked. The

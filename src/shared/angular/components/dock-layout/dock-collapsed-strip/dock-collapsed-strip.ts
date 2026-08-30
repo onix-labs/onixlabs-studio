@@ -141,11 +141,10 @@ export class DockCollapsedStrip {
   /**
    * Gets the dock (re-dock) button's icon, matching the docked panel's collapse button for its edge.
    */
-  protected readonly collapseIcon: Signal<Icon> = computed(
-    (): Icon =>
-      this.side() === 'top' || this.side() === 'bottom'
-        ? Icon.COLLAPSE_VERTICAL
-        : Icon.COLLAPSE_HORIZONTAL,
+  protected readonly collapseIcon: Signal<Icon> = computed((): Icon =>
+    this.side() === 'top' || this.side() === 'bottom'
+      ? Icon.COLLAPSE_VERTICAL
+      : Icon.COLLAPSE_HORIZONTAL,
   );
 
   /**

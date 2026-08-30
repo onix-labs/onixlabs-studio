@@ -260,14 +260,11 @@ describe('AgentChat', () => {
    * @returns Returns the messages.
    */
   function userMessages(count: number): readonly AgentItem[] {
-    return Array.from(
-      { length: count },
-      (_: unknown, index: number): AgentItem => ({
-        id: `m-${index + 1}`,
-        kind: 'user',
-        text: `message ${index + 1}`,
-      }),
-    );
+    return Array.from({ length: count }, (_: unknown, index: number): AgentItem => ({
+      id: `m-${index + 1}`,
+      kind: 'user',
+      text: `message ${index + 1}`,
+    }));
   }
 
   it('rows_whenTranscriptExceedsTheWindow_rendersOnlyTheMostRecentAndOffersTheRest', () => {

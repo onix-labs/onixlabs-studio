@@ -111,15 +111,18 @@ export function defineThemes(monaco: typeof MonacoApi | undefined, accentSelecti
     const functions: readonly string[] = ['function', 'method', 'decorator'];
     const variables: readonly string[] = ['variable', 'parameter', 'property'];
     return [
-      ...types.map(
-        (token: string): MonacoApi.editor.ITokenThemeRule => ({ token, foreground: teal }),
-      ),
-      ...functions.map(
-        (token: string): MonacoApi.editor.ITokenThemeRule => ({ token, foreground: yellow }),
-      ),
-      ...variables.map(
-        (token: string): MonacoApi.editor.ITokenThemeRule => ({ token, foreground: blue }),
-      ),
+      ...types.map((token: string): MonacoApi.editor.ITokenThemeRule => ({
+        token,
+        foreground: teal,
+      })),
+      ...functions.map((token: string): MonacoApi.editor.ITokenThemeRule => ({
+        token,
+        foreground: yellow,
+      })),
+      ...variables.map((token: string): MonacoApi.editor.ITokenThemeRule => ({
+        token,
+        foreground: blue,
+      })),
       { token: 'enumMember', foreground: constant },
     ];
   };

@@ -99,12 +99,10 @@ export class AppMenu {
           };
         }
       }
-      return merged.map(
-        (section: MenuContribution): MenuContribution => ({
-          ...section,
-          items: AppMenu.tidySeparators(section.items),
-        }),
-      );
+      return merged.map((section: MenuContribution): MenuContribution => ({
+        ...section,
+        items: AppMenu.tidySeparators(section.items),
+      }));
     },
   );
 
@@ -286,13 +284,11 @@ export class AppMenu {
       ...(entry.role === undefined ? {} : { role: entry.role }),
       ...(entry.items === undefined ? {} : { items: entry.items.map(item) }),
     });
-    return sections.map(
-      (section: MenuContribution): AppMenuSection => ({
-        id: section.id,
-        label: section.label,
-        items: section.items.map(item),
-      }),
-    );
+    return sections.map((section: MenuContribution): AppMenuSection => ({
+      id: section.id,
+      label: section.label,
+      items: section.items.map(item),
+    }));
   }
 
   /**

@@ -262,16 +262,15 @@ export class ApiRequestPanel {
   protected updateField(list: FieldList, edit: PropertyGridEdit): void {
     this.writeFields(list, (fields: readonly HttpField[]): readonly HttpField[] =>
       fields
-        .map(
-          (field: HttpField): HttpField =>
-            field.id === edit.id
-              ? {
-                  ...field,
-                  ...(edit.name !== undefined ? { name: edit.name } : {}),
-                  ...(edit.value !== undefined ? { value: edit.value } : {}),
-                  ...(edit.enabled !== undefined ? { enabled: edit.enabled } : {}),
-                }
-              : field,
+        .map((field: HttpField): HttpField =>
+          field.id === edit.id
+            ? {
+                ...field,
+                ...(edit.name !== undefined ? { name: edit.name } : {}),
+                ...(edit.value !== undefined ? { value: edit.value } : {}),
+                ...(edit.enabled !== undefined ? { enabled: edit.enabled } : {}),
+              }
+            : field,
         )
         .filter((field: HttpField): boolean => field.name !== '' || field.value !== ''),
     );

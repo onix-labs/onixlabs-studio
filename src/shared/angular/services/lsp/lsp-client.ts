@@ -740,9 +740,8 @@ export class LspClient implements OnDestroy {
     );
     this.diagnosticsByDocument.set(
       tracked.documentId,
-      diagnostics.map(
-        (diagnostic: LspDiagnostic): Diagnostic =>
-          toDiagnostic(diagnostic, { uri: tracked.uri, documentId: tracked.documentId }),
+      diagnostics.map((diagnostic: LspDiagnostic): Diagnostic =>
+        toDiagnostic(diagnostic, { uri: tracked.uri, documentId: tracked.documentId }),
       ),
     );
     this.setMarkers(tracked, diagnostics);

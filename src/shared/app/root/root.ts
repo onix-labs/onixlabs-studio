@@ -15,6 +15,7 @@ import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { WorkbenchAgentCapabilities } from '@shared/angular/services/workbench-agent-capabilities/workbench-agent-capabilities';
 import { ContentHost } from '@shared/angular/components/content-host/content-host';
 import { ModalBackdropView } from '@shared/angular/components/modal-backdrop/modal-backdrop-view';
+import { AboutHost } from '@shared/angular/components/about-modal/about-host';
 import { PluginConsentHost } from '@shared/angular/components/plugin-consent-modal/plugin-consent-host';
 import { ToastHost } from '@shared/angular/components/toast-host/toast-host';
 import { RibbonStripContainer } from '@shared/angular/components/strips/ribbon-strip/ribbon-strip-container/ribbon-strip-container';
@@ -36,6 +37,7 @@ import { ConfigureDialogPanel } from '@features/workspace/angular/configure-dial
     ContentHost,
     ModalBackdropView,
     PluginConsentHost,
+    AboutHost,
     WelcomeScreen,
     ConfigureDialogPanel,
     ToastHost,
@@ -103,8 +105,8 @@ export class Root {
    * active. A full-bleed feature (such as settings) opts out of the ribbon and/or status strip
    * through its descriptor, so the shell hides them with no hard-coded knowledge of the feature.
    */
-  protected readonly activeChrome: Signal<FeatureChrome> = computed(
-    (): FeatureChrome => this.registry.chromeFor(this.tabsService.activeTab()?.type),
+  protected readonly activeChrome: Signal<FeatureChrome> = computed((): FeatureChrome =>
+    this.registry.chromeFor(this.tabsService.activeTab()?.type),
   );
 
   /**

@@ -1101,15 +1101,16 @@ describe('ClaudeAgentProvider.buildRunOptions (per-turn indirection)', () => {
     const { options, setCurrent } = await build(turnA);
     const gate: NonNullable<Options['canUseTool']> = options.canUseTool!;
 
-    const first: PermissionResult = await gate(
+    const first: PermissionResult | null = await gate(
       'Bash',
       { command: 'ls' },
       {
         signal: new AbortController().signal,
         toolUseID: 'tool-1',
+        requestId: 'req-1',
       },
     );
-    expect(first.behavior).toBe('allow');
+    expect(first?.behavior).toBe('allow');
     expect(grantsA).toEqual(['Bash']);
 
     // Swap to a later turn whose gate denies: the prompt must go to THIS turn's requestPermission.
@@ -1121,15 +1122,16 @@ describe('ClaudeAgentProvider.buildRunOptions (per-turn indirection)', () => {
         },
       }),
     );
-    const second: PermissionResult = await gate(
+    const second: PermissionResult | null = await gate(
       'Bash',
       { command: 'ls' },
       {
         signal: new AbortController().signal,
         toolUseID: 'tool-1',
+        requestId: 'req-1',
       },
     );
-    expect(second.behavior).toBe('deny');
+    expect(second?.behavior).toBe('deny');
     expect(grantsB).toEqual(['Bash']);
     // The first turn's gate was not consulted again.
     expect(grantsA).toEqual(['Bash']);
@@ -1160,13 +1162,14 @@ describe('ClaudeAgentProvider.buildRunOptions (per-turn indirection)', () => {
         },
       ],
     };
-    const result: PermissionResult = await gate('AskUserQuestion', input, {
+    const result: PermissionResult | null = await gate('AskUserQuestion', input, {
       signal: new AbortController().signal,
       toolUseID: 'tool-1',
+      requestId: 'req-1',
     });
 
     expect(asked).toEqual(['How should I format the output?']);
-    expect(result.behavior).toBe('allow');
+    expect(result?.behavior).toBe('allow');
     // The answer rides in updatedInput as {questions, answers}, per the AskUserQuestion contract.
     expect((result as { updatedInput: Record<string, unknown> }).updatedInput).toEqual({
       questions: input['questions'],
@@ -1182,12 +1185,12 @@ describe('ClaudeAgentProvider.buildRunOptions (per-turn indirection)', () => {
     );
     const gate: NonNullable<Options['canUseTool']> = options.canUseTool!;
 
-    const result: PermissionResult = await gate(
+    const result: PermissionResult | null = await gate(
       'AskUserQuestion',
       { questions: [{ question: 'Which?', options: [{ label: 'A' }] }] },
-      { signal: new AbortController().signal, toolUseID: 'tool-1' },
+      { signal: new AbortController().signal, toolUseID: 'tool-1', requestId: 'req-1' },
     );
-    expect(result.behavior).toBe('deny');
+    expect(result?.behavior).toBe('deny');
   });
 
   it('canUseTool_appliesTheCurrentTurnsPosture', async () => {
@@ -1205,15 +1208,16 @@ describe('ClaudeAgentProvider.buildRunOptions (per-turn indirection)', () => {
         },
       }),
     );
-    const result: PermissionResult = await gate(
+    const result: PermissionResult | null = await gate(
       'Bash',
       { command: 'ls' },
       {
         signal: new AbortController().signal,
         toolUseID: 'tool-1',
+        requestId: 'req-1',
       },
     );
-    expect(result.behavior).toBe('allow');
+    expect(result?.behavior).toBe('allow');
     expect(prompted).toBe(false);
   });
 

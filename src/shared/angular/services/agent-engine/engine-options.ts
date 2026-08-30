@@ -86,13 +86,11 @@ export function engineOptions(providers: readonly AiProviderInfo[]): readonly Dr
             disabled: true,
           },
         ]
-      : provider.models.map(
-          (model: AiModelInfo): DropdownOption => ({
-            value: engineOptionValue(provider.id, model.id),
-            label: model.label,
-            group: provider.label,
-          }),
-        ),
+      : provider.models.map((model: AiModelInfo): DropdownOption => ({
+          value: engineOptionValue(provider.id, model.id),
+          label: model.label,
+          group: provider.label,
+        })),
   );
 }
 

@@ -6,7 +6,7 @@ import { Directive } from '@angular/core';
  * not fit into a dropdown.
  *
  * Applied through `hostDirectives: [RibbonHost]` rather than a stylesheet: a relocated component's
- * `styleUrl` cannot resolve a path alias (see docs/agents.md §8), which is why this identical block
+ * `styleUrl` cannot resolve a path alias (see the wiki, Build, test and tooling), which is why this identical block
  * was previously copied into each feature ribbon's own `.scss`. Setting the layout via host style
  * bindings keeps it in one shared place with no `styleUrl` to resolve.
  */

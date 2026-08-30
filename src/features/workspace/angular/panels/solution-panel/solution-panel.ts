@@ -341,13 +341,11 @@ export class SolutionPanel {
       (candidate: { action: ProjectAction }): boolean =>
         declared.includes(candidate.action) &&
         this.buildRunner.supportsProjectAction(candidate.action),
-    ).map(
-      (candidate: { action: ProjectAction; label: string; icon: Icon }): MenuItem => ({
-        id: `${PROJECT_ACTION_PREFIX}${candidate.action}`,
-        label: candidate.label,
-        icon: candidate.icon,
-      }),
-    );
+    ).map((candidate: { action: ProjectAction; label: string; icon: Icon }): MenuItem => ({
+      id: `${PROJECT_ACTION_PREFIX}${candidate.action}`,
+      label: candidate.label,
+      icon: candidate.icon,
+    }));
     if (verbs.length === 0) {
       return [];
     }
@@ -416,18 +414,16 @@ export class SolutionPanel {
    * Gets the solution's visible rows mapped to tree rows for the shared {@link TreeView}.
    */
   protected readonly rows: Signal<readonly TreeRow[]> = computed((): readonly TreeRow[] =>
-    this.solution.rows().map(
-      (row: SolutionRow): TreeRow => ({
-        id: row.key,
-        depth: row.depth,
-        expandable: row.expandable,
-        expanded: row.expanded,
-        // Greyed out until what it stands for has arrived. Presentation only: an unready project is
-        // still expandable, and expanding one is how its contents get requested ahead of the sweep.
-        disabled: row.pending,
-        data: row,
-      }),
-    ),
+    this.solution.rows().map((row: SolutionRow): TreeRow => ({
+      id: row.key,
+      depth: row.depth,
+      expandable: row.expandable,
+      expanded: row.expanded,
+      // Greyed out until what it stands for has arrived. Presentation only: an unready project is
+      // still expandable, and expanding one is how its contents get requested ahead of the sweep.
+      disabled: row.pending,
+      data: row,
+    })),
   );
 
   /**

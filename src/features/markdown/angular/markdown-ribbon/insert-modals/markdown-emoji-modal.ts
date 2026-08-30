@@ -132,13 +132,11 @@ const CATEGORIES: readonly EmojiCategory[] = buildCategories();
 /**
  * Every emoji with its searchable text, built once for the search path.
  */
-const SEARCHABLE: readonly SearchableEmoji[] = gemoji.map(
-  (entry): SearchableEmoji => ({
-    emoji: entry.emoji,
-    name: entry.names[0],
-    search: `${entry.names.join(' ')} ${entry.tags.join(' ')} ${entry.description}`.toLowerCase(),
-  }),
-);
+const SEARCHABLE: readonly SearchableEmoji[] = gemoji.map((entry): SearchableEmoji => ({
+  emoji: entry.emoji,
+  name: entry.names[0],
+  search: `${entry.names.join(' ')} ${entry.tags.join(' ')} ${entry.description}`.toLowerCase(),
+}));
 
 /**
  * Looks up an emoji's primary name from its character, used to label recent emoji.
@@ -161,9 +159,10 @@ function buildCategories(): readonly EmojiCategory[] {
       groups.get(category)?.push({ emoji: entry.emoji, name: entry.names[0] });
     }
   }
-  return CATEGORY_ORDER.map(
-    (name: string): EmojiCategory => ({ name, emojis: groups.get(name) ?? [] }),
-  );
+  return CATEGORY_ORDER.map((name: string): EmojiCategory => ({
+    name,
+    emojis: groups.get(name) ?? [],
+  }));
 }
 
 /**
@@ -445,12 +444,10 @@ export class MarkdownEmojiModal {
    */
   protected readonly recentEntries: Signal<readonly EmojiEntry[]> = computed(
     (): readonly EmojiEntry[] =>
-      this.recent().map(
-        (emoji: string): EmojiEntry => ({
-          emoji,
-          name: NAME_BY_EMOJI.get(emoji) ?? emoji,
-        }),
-      ),
+      this.recent().map((emoji: string): EmojiEntry => ({
+        emoji,
+        name: NAME_BY_EMOJI.get(emoji) ?? emoji,
+      })),
   );
 
   /**

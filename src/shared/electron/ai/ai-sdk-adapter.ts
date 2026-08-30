@@ -275,13 +275,11 @@ export class AiSdkAdapter implements AgentProvider {
               {
                 role: 'user',
                 content: [
-                  ...context.images.map(
-                    (image: AiImageRef): ImagePart => ({
-                      type: 'image',
-                      image: image.data,
-                      mediaType: image.mediaType,
-                    }),
-                  ),
+                  ...context.images.map((image: AiImageRef): ImagePart => ({
+                    type: 'image',
+                    image: image.data,
+                    mediaType: image.mediaType,
+                  })),
                   { type: 'text', text: prompt },
                 ],
               },

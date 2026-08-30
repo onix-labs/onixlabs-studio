@@ -439,9 +439,8 @@ export class ApiWorkspace {
    */
   public updateRequest(id: string, changes: Partial<ApiRequest>): void {
     this.requestsSignal.update((requests: readonly ApiRequest[]): readonly ApiRequest[] =>
-      requests.map(
-        (request: ApiRequest): ApiRequest =>
-          request.id === id ? { ...request, ...changes } : request,
+      requests.map((request: ApiRequest): ApiRequest =>
+        request.id === id ? { ...request, ...changes } : request,
       ),
     );
     this.persist();
@@ -490,8 +489,8 @@ export class ApiWorkspace {
    */
   public renameFolder(id: string, name: string): void {
     this.foldersSignal.update((folders: readonly ApiFolder[]): readonly ApiFolder[] =>
-      folders.map(
-        (folder: ApiFolder): ApiFolder => (folder.id === id ? { ...folder, name } : folder),
+      folders.map((folder: ApiFolder): ApiFolder =>
+        folder.id === id ? { ...folder, name } : folder,
       ),
     );
     this.persist();
@@ -562,9 +561,8 @@ export class ApiWorkspace {
   public setVariables(id: string, variables: readonly HttpField[]): void {
     this.environmentsSignal.update(
       (environments: readonly ApiEnvironment[]): readonly ApiEnvironment[] =>
-        environments.map(
-          (environment: ApiEnvironment): ApiEnvironment =>
-            environment.id === id ? { ...environment, variables } : environment,
+        environments.map((environment: ApiEnvironment): ApiEnvironment =>
+          environment.id === id ? { ...environment, variables } : environment,
         ),
     );
     this.persist();
@@ -578,9 +576,8 @@ export class ApiWorkspace {
   public renameEnvironment(id: string, name: string): void {
     this.environmentsSignal.update(
       (environments: readonly ApiEnvironment[]): readonly ApiEnvironment[] =>
-        environments.map(
-          (environment: ApiEnvironment): ApiEnvironment =>
-            environment.id === id ? { ...environment, name } : environment,
+        environments.map((environment: ApiEnvironment): ApiEnvironment =>
+          environment.id === id ? { ...environment, name } : environment,
         ),
     );
     this.persist();

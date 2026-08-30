@@ -87,8 +87,8 @@ export class AiConnectionEditor {
   /**
    * Gets the connection's current auth status.
    */
-  protected readonly status: Signal<AiAuthStatus> = computed(
-    (): AiAuthStatus => this.connections.authStatus(this.connection().id),
+  protected readonly status: Signal<AiAuthStatus> = computed((): AiAuthStatus =>
+    this.connections.authStatus(this.connection().id),
   );
 
   /**

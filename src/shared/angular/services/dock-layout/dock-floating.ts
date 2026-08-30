@@ -242,9 +242,8 @@ export class DockFloating {
    */
   private patch(panelId: string, changes: Partial<FloatWindow>): void {
     this.windows.set(
-      this.windows().map(
-        (window: FloatWindow): FloatWindow =>
-          window.panelId === panelId ? { ...window, ...changes } : window,
+      this.windows().map((window: FloatWindow): FloatWindow =>
+        window.panelId === panelId ? { ...window, ...changes } : window,
       ),
     );
   }

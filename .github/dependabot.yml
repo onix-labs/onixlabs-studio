@@ -1,0 +1,36 @@
+# Dependency updates — weekly, grouped so a week's bumps arrive as a handful of PRs rather than dozens.
+# Security updates are separate (enabled in the repository settings) and arrive as soon as an advisory
+# lands. Every PR here is merged by hand after CI.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    labels: [dependencies]
+    groups:
+      angular:
+        patterns: ['@angular/*', 'angular-eslint']
+      ai-sdks:
+        patterns: ['ai', '@ai-sdk/*', '@anthropic-ai/*', '@openai/*']
+      dev-minor-patch:
+        dependency-type: development
+        update-types: [minor, patch]
+        exclude-patterns: ['electron', '@angular/*', 'angular-eslint']
+    ignore:
+      # Electron majors change the Node ABI node-pty is rebuilt against; they are taken deliberately,
+      # not on a Monday.
+      - dependency-name: electron
+        update-types: ['version-update:semver-major']
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    labels: [dependencies]
+    groups:
+      actions:
+        patterns: ['*']
