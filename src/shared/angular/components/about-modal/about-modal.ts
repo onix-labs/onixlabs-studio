@@ -32,23 +32,45 @@ import { AboutFacts, Help } from '@shared/angular/services/help/help';
     >
       <ng-template appModalContent>
         <div class="about">
-          <h2 class="about__title">ONIXLabs Studio</h2>
-          <p class="about__version">{{ facts().studio }}</p>
+          <header class="about__header">
+            <img class="about__logo" src="icon.svg" alt="" draggable="false" />
+            <h2 class="about__title">ONIXLabs Studio</h2>
+          </header>
+          <p class="about__blurb">
+            An Agentic Development Environment — a workbench where humans and AI agents develop
+            together.
+          </p>
           <dl class="about__facts">
-            <dt>Plugin API</dt>
-            <dd>{{ facts().pluginApi }}</dd>
-            <dt>Catalogue revision</dt>
-            <dd>{{ revision() }}</dd>
-            <dt>Electron</dt>
-            <dd>{{ facts().electron }}</dd>
-            <dt>Chromium</dt>
-            <dd>{{ facts().chromium }}</dd>
-            <dt>Node</dt>
-            <dd>{{ facts().node }}</dd>
-            <dt>Platform</dt>
-            <dd>{{ facts().platform }}</dd>
+            <div class="about__fact">
+              <dt>Studio</dt>
+              <dd>{{ facts().studio }}</dd>
+            </div>
+            <div class="about__fact">
+              <dt>Plugin API</dt>
+              <dd>{{ facts().pluginApi }}</dd>
+            </div>
+            <div class="about__fact">
+              <dt>Catalogue revision</dt>
+              <dd>{{ revision() }}</dd>
+            </div>
+            <div class="about__fact">
+              <dt>Electron</dt>
+              <dd>{{ facts().electron }}</dd>
+            </div>
+            <div class="about__fact">
+              <dt>Chromium</dt>
+              <dd>{{ facts().chromium }}</dd>
+            </div>
+            <div class="about__fact">
+              <dt>Node</dt>
+              <dd>{{ facts().node }}</dd>
+            </div>
+            <div class="about__fact">
+              <dt>Platform</dt>
+              <dd>{{ facts().platform }}</dd>
+            </div>
           </dl>
-          <p class="about__licence">MIT licensed. Copyright © 2026 ONIXLabs.</p>
+          <p class="about__licence">MIT licensed · Copyright © 2026 ONIXLabs</p>
           <div class="about__actions">
             <app-button
               [label]="copied() ? 'Copied' : 'Copy'"
@@ -66,41 +88,73 @@ import { AboutFacts, Help } from '@shared/angular/services/help/help';
       .about {
         display: flex;
         flex-direction: column;
-        gap: 0.75rem;
+        gap: 1rem;
+      }
+
+      // The identity block is the welcome screen's, scaled to a dialog: the same logo beside the same
+      // weight and letter-spacing, so the two surfaces that introduce the application agree.
+      .about__header {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.9rem;
+        user-select: none;
+      }
+
+      .about__logo {
+        flex: none;
+        inline-size: 3.5rem;
+        block-size: 3.5rem;
+        user-select: none;
       }
 
       .about__title {
         margin: 0;
-        font-size: 1.1rem;
+        font-size: 1.45rem;
+        font-weight: 500;
+        letter-spacing: -0.01em;
       }
 
-      .about__version {
+      .about__blurb {
         margin: 0;
-        font-family: var(--font-mono);
-        color: var(--accent-color);
+        text-align: center;
+        font-size: 0.85rem;
+        line-height: 1.5;
+        color: var(--muted-foreground-color, var(--body-foreground-color));
       }
 
+      // A table in everything but element: no borders, no separators — the label reads from the left
+      // and the version lands on the right, so the numbers line up as a column the eye can scan.
       .about__facts {
-        display: grid;
-        grid-template-columns: auto 1fr;
-        gap: 0.3rem 1rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.3rem;
         margin: 0;
         font-size: 0.85rem;
       }
 
-      .about__facts dt {
+      .about__fact {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 1.5rem;
+      }
+
+      .about__fact dt {
         color: var(--muted-foreground-color, var(--body-foreground-color));
       }
 
-      .about__facts dd {
+      .about__fact dd {
         margin: 0;
         font-family: var(--font-mono);
+        text-align: end;
         overflow-wrap: anywhere;
       }
 
       .about__licence {
         margin: 0;
-        font-size: 0.8rem;
+        text-align: center;
+        font-size: 0.78rem;
         color: var(--muted-foreground-color, var(--body-foreground-color));
       }
 
@@ -108,7 +162,6 @@ import { AboutFacts, Help } from '@shared/angular/services/help/help';
         display: flex;
         justify-content: flex-end;
         gap: 0.6rem;
-        margin-block-start: 0.2rem;
       }
     `,
   ],
