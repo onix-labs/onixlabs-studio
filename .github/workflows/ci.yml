@@ -124,13 +124,18 @@ jobs:
       - name: Pack unpackaged app directory
         run: npm run pack
 
-      # The main process loads node-pty's compiled binary and spawns the agent-sdk/ripgrep
-      # executables at runtime, so they must land outside the asar archive (see #141).
+      # The main process loads node-pty's compiled binary and spawns the agent-sdk/ripgrep/codex
+      # executables at runtime, so they must land outside the asar archive (see #141). The scoped
+      # directories are not enough to assert: ripgrep, the agent SDK and codex each ship their
+      # executable in a *per-platform* optional dependency, and a package built with the wrong one
+      # installed still has the parent directory. Check the binaries themselves — the missing
+      # `@vscode/ripgrep-darwin-x64` that killed 2026.1.0-beta.1 would have passed a directory test.
       - name: Verify native modules are asar-unpacked
         run: |
           UNPACKED="release/linux-unpacked/resources/app.asar.unpacked/node_modules"
           test -d "$UNPACKED/node-pty" || { echo "node-pty not unpacked"; exit 1; }
           find "$UNPACKED/node-pty" -name "*.node" | grep -q . || { echo "node-pty .node binary missing"; exit 1; }
-          test -d "$UNPACKED/@anthropic-ai" || { echo "claude-agent-sdk not unpacked"; exit 1; }
-          test -d "$UNPACKED/@vscode" || { echo "ripgrep not unpacked"; exit 1; }
-          echo "asar-unpack verified: node-pty (+.node), @anthropic-ai, @vscode present"
+          test -f "$UNPACKED/@vscode/ripgrep-linux-x64/bin/rg" || { echo "ripgrep binary missing"; exit 1; }
+          test -f "$UNPACKED/@anthropic-ai/claude-agent-sdk-linux-x64/claude" || { echo "claude executable missing"; exit 1; }
+          test -d "$UNPACKED/@openai/codex-linux-x64/vendor" || { echo "codex vendor binaries missing"; exit 1; }
+          echo "asar-unpack verified: node-pty (+.node), rg, claude, codex vendor all present"
