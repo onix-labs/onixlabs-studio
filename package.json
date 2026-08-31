@@ -61,7 +61,7 @@
     "@angular/router": "^22.1.4",
     "@anthropic-ai/claude-agent-sdk": "^0.3.251",
     "@defasm/core": "^2.4.5",
-    "@milkdown/crepe": "^7.21.2",
+    "@milkdown/crepe": "^7.22.1",
     "@openai/codex-sdk": "^0.150.1",
     "@phosphor-icons/web": "^2.1.2",
     "@vscode/ripgrep": "^1.18.0",
