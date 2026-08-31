@@ -34,16 +34,75 @@
   gap: 1.25rem;
 }
 
-// The agent list breaks out of the body's horizontal padding so its rows — and their full-width
-// hover fill — run edge to edge. Everything else in the body (empty state, orphan requests) stays
-// within the padding.
+// The agent list breaks out of the body's horizontal padding so its rows — and their full-width hover
+// fill — run wider than the text around them; everything else in the body (the empty state) stays
+// within that padding.
+//
+// The two insets are spent against each other: the negative margin carries the list out to the panel's
+// edges, and the padding then holds the rows 0.5rem back off them, so a row reads as a row rather than
+// as a band butted against the panel's sides. Change the body's padding and the margin has to follow it.
 app-list-view {
   margin-inline: -0.85rem;
+  padding-inline: 0.5rem;
 
   // The row's content inset lives on the projected `.rail__item` (1rem all around), so clear the
   // shared row padding for this list to keep the total inset at exactly 1rem.
+  //
+  // The transparent border is reserved space, not decoration: a waiting row outlines itself below, and
+  // a border that appears only then would add its own height and nudge every row beneath it the moment
+  // an agent asked a question. Holding the space on every row makes the outline a pure repaint.
+  //
+  // Every row is rounded, not just a marked one, so that the hover fill and the accent selection fill
+  // the shared list already paints take the same shape as the waiting outline. The radius goes through
+  // the app's two corner knobs rather than being stated flat: `--border-radius-multiplier` scales it,
+  // and `corner-shape` resolves to a squircle unless the Modern UI Features setting has fallen back to
+  // `round` (the Display service sets `data-corners` on <html>), on which GPUs the superellipse mask
+  // corrupts box edges. Authoring it any other way opts this list out of that gate.
   ::ng-deep .list-row {
     padding: 0;
+    border: 0.0625rem solid transparent;
+    border-radius: calc(0.5rem * var(--border-radius-multiplier));
+    corner-shape: var(--app-corner-shape, squircle);
+  }
+
+  // Rows are separated rather than stacked flush, so each reads as its own card — the same reason they
+  // are inset and rounded above.
+  //
+  // Spent as a margin between adjacent rows rather than as a `gap`, because the flex container a `gap`
+  // would need here is the shared list view's own scrolling drop list: switching it to flex from a
+  // consumer's stylesheet would also let its rows shrink below their content height (they declare no
+  // `flex`), and it would change the formatting context under a CDK drag. The adjacent-sibling form
+  // touches neither, and leaves no stray space above the first row or below the last.
+  ::ng-deep .list-row + .list-row {
+    margin-block-start: 0.5rem;
+  }
+
+  // A row whose agent is waiting on the user, marked in the warning colour.
+  //
+  // The mark sits on `.list-row` rather than on the projected `.rail__item` so it encloses the whole
+  // row — the hide toggle and the reorder grip are siblings of the item, appended by the list view, and
+  // an item-level fill stopped short of both and read as a band with two buttons floating off its end.
+  // Reaching the row from here needs `:has()`: the waiting state is known to the projected content,
+  // while the element that has to carry it belongs to the list view.
+  //
+  // Warning, not accent, throughout: the accent already means "this agent is running", and these are
+  // the rows where it has stopped and is waiting on a person.
+  ::ng-deep .list-row:has(.rail__item--waiting) {
+    background: rgba(var(--warning-color-rgb), 0.15);
+    border-color: rgba(var(--warning-color-rgb), 0.6);
+
+    // Every mark the row draws takes the colour, so the row reads as one object rather than as a tint
+    // with default-coloured content sitting on it. `.rail__hide` is reached through its inner button
+    // because a `variant="none"` button only spends its tone on hover; its `[tone]` binding in the
+    // template carries the same colour through that hover.
+    .rail__icon,
+    .rail__name,
+    .rail__branch,
+    .rail__status,
+    .list-row__grip,
+    .rail__hide .button {
+      color: var(--warning-color);
+    }
   }
 
   // The shared list keeps its reorder grip faint until the row is hovered, so it never competes with
@@ -57,7 +116,10 @@ app-list-view {
 
 // The agent rail renders through the shared ListView: each live agent is one row (the row chrome —
 // hover fill, focus ring — comes from the global `.list-row` styles), and this is the content
-// projected into it. The item fills the row and stacks the header over any inline request cards.
+// projected into it. The item fills the row and holds its head. It paints no surface of its own: the
+// waiting mark is carried by the enclosing `.list-row` above, so that it covers the trailing buttons
+// too. `--waiting` is set on the item all the same — it is the projected content that knows the state —
+// and the row selects on it.
 .rail__item {
   display: flex;
   flex: 1 1 auto;
@@ -65,15 +127,6 @@ app-list-view {
   flex-direction: column;
   gap: 0.5rem;
   padding: 1rem;
-  border-radius: calc(0.5rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-
-  // An agent awaiting a request is tinted and outlined so it stands out down the rail; it keeps the
-  // 1rem content padding above.
-  &--pending {
-    background: var(--accent-surface-background-color);
-    border: 0.0625rem solid var(--accent-surface-border-color);
-  }
 }
 
 // The head of a rail row: one centred flex row of two columns — the icon-and-text block (column 1,
@@ -150,8 +203,7 @@ app-list-view {
 // The block is right-anchored (the name column absorbs the slack), so its position is set by what sits
 // to its right: this row's 1rem trailing padding plus the list row's 0.5rem gap before the hide button.
 // The negative margin spends exactly that 1.5rem, carrying the status out of the padding to sit flush
-// beside the hide toggle. On a `--pending` row that puts it over the tinted card's right padding — the
-// price of the shift; cap this at -1rem to keep it inside the card instead.
+// beside the hide toggle.
 .rail__status {
   display: flex;
   align-items: center;
@@ -163,16 +215,9 @@ app-list-view {
   font-size: 0.72rem;
   color: var(--gray-500);
 
-  &--busy,
-  &--pending {
+  &--busy {
     color: var(--accent-color);
   }
-}
-
-.rail__requests {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
 }
 
 // The per-agent hide toggle sits at the row's trailing edge, paired with the list's reorder grip
@@ -181,20 +226,6 @@ app-list-view {
 .rail__hide {
   flex: none;
   align-self: center;
-}
-
-.panel__group {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.panel__group-label {
-  color: var(--gray-500);
-  font-size: 0.72rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 
 .panel__empty {

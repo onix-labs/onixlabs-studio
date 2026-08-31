@@ -125,22 +125,21 @@
       text-align: left;
     }
 
-    .tab-dirty {
+    // The tab's single state dot. Unsaved changes draw it in the title's own colour, so it reads as
+    // part of the tab rather than as an alert; anything actually waiting on the user — an agent's
+    // question, a document changed on disk — recolours that same dot to warning instead of adding a
+    // second one beside it. A tab therefore never shows more than one dot, and its colour is the
+    // most urgent thing the tab has to say.
+    .tab-dot {
       flex-shrink: 0;
       inline-size: 0.5rem;
       block-size: 0.5rem;
       border-radius: 50%;
       background: currentColor;
-    }
 
-    // An accent dot drawing the user to a tab that needs them (for example, a document changed on
-    // disk and needs a keep/reload decision).
-    .tab-attention {
-      flex-shrink: 0;
-      inline-size: 0.5rem;
-      block-size: 0.5rem;
-      border-radius: 50%;
-      background: var(--accent-color);
+      &--attention {
+        background: var(--warning-color);
+      }
     }
 
     button {

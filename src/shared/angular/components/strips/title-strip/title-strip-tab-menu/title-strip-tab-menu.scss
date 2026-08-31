@@ -1,6 +1,6 @@
-// The trigger sits between the title strip's action buttons and the first tab, doubling as the
-// agent-requests bell when requests are waiting. The drop-down panel itself renders through the CDK
-// overlay (outside this component), so its styles live in the global _menu.scss.
+// The trigger sits between the title strip's action buttons and the first tab. The drop-down panel
+// itself renders through the CDK overlay (outside this component), so its styles live in the global
+// _menu.scss.
 :host {
   // Never shrink: only the tab list flexes, so the tab menu's trigger stays visible at any width.
   flex: none;
@@ -35,10 +35,5 @@
   &:focus-visible {
     outline: var(--focus-ring-width) solid var(--focus-ring-color);
     outline-offset: 0.0625rem;
-  }
-
-  // Agent requests are waiting: the chevron becomes an accent bell.
-  &--alert {
-    color: var(--accent-color);
   }
 }

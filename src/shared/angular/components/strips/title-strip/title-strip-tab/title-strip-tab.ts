@@ -91,6 +91,21 @@ export class TitleStripTab {
   );
 
   /**
+   * Gets the accessible name of the tab's state dot, or an empty string when it draws none.
+   *
+   * The dot collapses two states into one mark, and colour is the only thing that separates them —
+   * which a screen reader cannot use. So where a sighted user sees one warning dot on an edited
+   * document, the label names both reasons rather than dropping the one the colour could not show.
+   */
+  protected readonly dotLabel: Signal<string> = computed((): string => {
+    const tab: Tab = this.tab();
+    if (tab.attention === true) {
+      return tab.dirty === true ? 'Waiting for you, unsaved changes' : 'Waiting for you';
+    }
+    return tab.dirty === true ? 'Unsaved changes' : '';
+  });
+
+  /**
    * Keeps the active tab within the scrolled tab strip's viewport: whenever this tab becomes active
    * — whether by a click, the keyboard, or a pick from the overflow menu — it is scrolled into view,
    * so a tab selected while off-screen is brought back into sight. `block: 'nearest'` leaves the

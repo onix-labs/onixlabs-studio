@@ -62,7 +62,6 @@ export interface SettingsValues {
   readonly 'accessibility.showTooltips': boolean;
 
   readonly 'notifications.toastDuration': number;
-  readonly 'notifications.agentRequestsInTabList': boolean;
   readonly 'notifications.agentRequestToasts': boolean;
 
   readonly 'workspaces.fileExplorerExpandAll': FileExplorerExpandAll;
@@ -115,7 +114,6 @@ export interface SettingsValues {
   readonly 'ai.claudeExecutable': ClaudeExecutableMode;
   readonly 'ai.claudeExecutablePath': string;
 
-  readonly 'missionControl.showPermissionsAtTop': boolean;
   readonly 'missionControl.tileScrollMode': TileScrollMode;
 }
 
@@ -344,21 +342,11 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         default: 5,
       },
       {
-        key: 'notifications.agentRequestsInTabList',
-        title: 'Agent requests in the tab list',
-        description:
-          'Ring the tab-list bell while an agent waits on a question or permission, listing the ' +
-          'pending requests with inline answers under their tabs.',
-        control: { kind: 'toggle' },
-        default: true,
-      },
-      {
         key: 'notifications.agentRequestToasts',
         title: 'Agent requests as toasts',
         description:
-          'Also raise a toast when an agent in a background tab asks a question or requests ' +
-          'permission. Answering stays in the tab-list bell and the conversation; the toast jumps ' +
-          'to the asking tab.',
+          'Raise a toast when an agent in a background tab asks a question or requests permission. ' +
+          'Answering stays in the conversation; the toast jumps to the asking tab.',
         control: { kind: 'toggle' },
         default: false,
       },
@@ -940,14 +928,6 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
     id: 'mission-control',
     label: 'Mission Control',
     settings: [
-      {
-        key: 'missionControl.showPermissionsAtTop',
-        title: 'Show agents awaiting permission at the top',
-        description:
-          'Reorder the Mission Control agent list so agents with a pending request float to the top. The agent columns themselves keep their order.',
-        control: { kind: 'toggle' },
-        default: false,
-      },
       {
         key: 'missionControl.tileScrollMode',
         title: 'Agent scroll behaviour',

@@ -1,6 +1,6 @@
 import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { Log } from '@shared/angular/services/log/log';
-import { Tab, TabType, TabTypeMetadata, TAB_TYPE_METADATA } from './tab';
+import { AttentionReason, Tab, TabType, TabTypeMetadata, TAB_TYPE_METADATA } from './tab';
 
 /**
  * Specifies the tab types that are singletons: opening one when an instance is already open activates
@@ -49,6 +49,15 @@ export class Tabs {
   private readonly activeId: WritableSignal<string | undefined> = signal<string | undefined>(
     undefined,
   );
+
+  /**
+   * Holds the live attention claims per tab, keyed by tab id. Plain state rather than a signal: it is
+   * only ever read to decide the tab's own `attention` flag, which is what the UI reads.
+   */
+  private readonly attentionClaims: Map<string, Set<AttentionReason>> = new Map<
+    string,
+    Set<AttentionReason>
+  >();
 
   /**
    * Tracks the running counter used to generate unique tab identifiers.
@@ -187,6 +196,9 @@ export class Tabs {
 
     const remaining: readonly Tab[] = current.filter((tab: Tab): boolean => tab.id !== id);
     this.tabList.set(remaining);
+    // Drop the closed tab's attention claims with it: ids are never reused, but the map would
+    // otherwise grow for the life of the window.
+    this.attentionClaims.delete(id);
     this.log.info('Tabs', 'Closed tab', id);
 
     if (this.activeId() === id) {
@@ -225,19 +237,44 @@ export class Tabs {
   }
 
   /**
-   * Sets the attention state of the tab with the given identifier (an accent dot drawing the user to
-   * a tab that needs them). Idempotent — a no-op when the state is unchanged — so it is safe to call
-   * from an effect. Unknown identifiers are ignored.
+   * Sets one reason's claim on the attention state of the tab with the given identifier (the dot
+   * drawing the user to a tab that needs them). A tab wants attention while **any** reason claims it.
+   *
+   * The claim is per reason rather than a bare boolean because the sources are independent and each
+   * one sweeps every tab it owns on every evaluation: the agent bridge marks the tabs with a pending
+   * ask and clears the rest, the conflict watcher does the same for tabs whose file changed on disk.
+   * Against a single flag those two sweeps overwrite each other — whichever effect ran last won — so a
+   * document tab with a waiting agent would light and then go dark again the next time anything moved.
+   * Keeping the claims apart and OR-ing them lets both sources sweep freely and say what they mean.
+   *
+   * Idempotent — a no-op when the resulting state is unchanged — so it is safe to call from an effect.
+   * Unknown identifiers are ignored.
    * @param id The identifier of the tab to update.
-   * @param attention Whether the tab needs the user's attention.
+   * @param reason What is asking for the user, so it can be cleared without disturbing the others.
+   * @param attention Whether that reason currently needs the user's attention.
    */
-  public setAttention(id: string, attention: boolean): void {
+  public setAttention(id: string, reason: AttentionReason, attention: boolean): void {
     const current: Tab | undefined = this.tabList().find((tab: Tab): boolean => tab.id === id);
-    if (current === undefined || (current.attention ?? false) === attention) {
+    if (current === undefined) {
+      return;
+    }
+    const claims: Set<AttentionReason> = this.attentionClaims.get(id) ?? new Set<AttentionReason>();
+    if (claims.has(reason) === attention) {
+      return;
+    }
+    if (attention) {
+      claims.add(reason);
+    } else {
+      claims.delete(reason);
+    }
+    this.attentionClaims.set(id, claims);
+
+    const wanted: boolean = claims.size > 0;
+    if ((current.attention ?? false) === wanted) {
       return;
     }
     this.tabList.update((tabs: readonly Tab[]): readonly Tab[] =>
-      tabs.map((tab: Tab): Tab => (tab.id === id ? { ...tab, attention } : tab)),
+      tabs.map((tab: Tab): Tab => (tab.id === id ? { ...tab, attention: wanted } : tab)),
     );
   }
 

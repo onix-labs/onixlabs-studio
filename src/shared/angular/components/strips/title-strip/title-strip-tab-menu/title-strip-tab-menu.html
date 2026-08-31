@@ -1,13 +1,12 @@
 <button
   type="button"
   class="title-strip-tab-menu__trigger"
-  [class.title-strip-tab-menu__trigger--alert]="requestCount() > 0"
-  [title]="triggerTitle()"
-  [attr.aria-label]="triggerTitle()"
+  title="Open tabs"
+  aria-label="Open tabs"
   [cdkMenuTriggerFor]="menu"
   [cdkMenuPosition]="menuPosition"
 >
-  <app-icon [icon]="requestCount() > 0 ? Icon.BELL : Icon.CARET_DOWN" />
+  <app-icon [icon]="Icon.CARET_DOWN" />
 </button>
 
 <ng-template #menu>
@@ -30,13 +29,6 @@
             @if (tab.dirty) {
               <span class="title-strip-tab-menu__item-dirty" aria-label="Unsaved changes"></span>
             }
-            @if (requestTabIds().has(tab.id)) {
-              <app-icon
-                class="title-strip-tab-menu__item-bell"
-                [icon]="Icon.BELL"
-                aria-label="Agent request waiting"
-              />
-            }
           </button>
           <!-- A plain button rather than a cdkMenuItem so closing a tab leaves the menu open, letting
                several be closed in a row; the stopPropagation keeps the click from reaching the menu. -->
@@ -50,139 +42,6 @@
           >
             <app-icon [icon]="Icon.CLOSE" />
           </button>
-        </div>
-        @for (entry of entriesFor(tab.id); track entry.key) {
-          <div class="title-strip-tab-menu__request title-strip-tab-menu__request--nested">
-            <p class="title-strip-tab-menu__request-heading">{{ requestHeading(entry) }}</p>
-            @if (entry.item.kind === 'permission' && entry.item.permissionDetail) {
-              <code class="title-strip-tab-menu__request-detail">{{
-                entry.item.permissionDetail
-              }}</code>
-            }
-            <!-- Plain buttons (not cdkMenuItems) so answering keeps the menu open; the menu
-                 dismisses itself once the last request settles. -->
-            <div class="title-strip-tab-menu__request-actions">
-              @switch (entry.item.kind) {
-                @case ('permission') {
-                  <app-button
-                    variant="solid"
-                    size="small"
-                    label="Allow"
-                    (pointerdown)="$event.preventDefault()"
-                    (click)="onPermission(entry, true); $event.stopPropagation()"
-                  />
-                  <app-button
-                    size="small"
-                    label="Deny"
-                    (pointerdown)="$event.preventDefault()"
-                    (click)="onPermission(entry, false); $event.stopPropagation()"
-                  />
-                }
-                @case ('edit-decision') {
-                  <app-button
-                    variant="solid"
-                    size="small"
-                    label="Yes"
-                    (pointerdown)="$event.preventDefault()"
-                    (click)="onEditDecision(entry, 'yes'); $event.stopPropagation()"
-                  />
-                  <app-button
-                    size="small"
-                    label="No"
-                    (pointerdown)="$event.preventDefault()"
-                    (click)="onEditDecision(entry, 'no'); $event.stopPropagation()"
-                  />
-                }
-                @default {
-                  @for (choice of entry.item.inputChoices ?? []; track choice.label) {
-                    <app-button
-                      variant="solid"
-                      size="small"
-                      [label]="choice.label"
-                      [tooltip]="choice.description ?? ''"
-                      (pointerdown)="$event.preventDefault()"
-                      (click)="onAnswer(entry, choice.label); $event.stopPropagation()"
-                    />
-                  }
-                  <app-button
-                    size="small"
-                    label="Skip"
-                    (pointerdown)="$event.preventDefault()"
-                    (click)="onAnswer(entry, null); $event.stopPropagation()"
-                  />
-                }
-              }
-            </div>
-          </div>
-        }
-      }
-    }
-    @if (unattributed().length > 0) {
-      <p class="title-strip-tab-menu__heading">Agent panels</p>
-      @for (entry of unattributed(); track entry.key) {
-        <div class="title-strip-tab-menu__request">
-          <span class="title-strip-tab-menu__request-source">
-            <app-icon [icon]="Icon.BELL" [size]="1.4" />
-            <span>{{ entry.label }}</span>
-          </span>
-          <p class="title-strip-tab-menu__request-heading">{{ requestHeading(entry) }}</p>
-          @if (entry.item.kind === 'permission' && entry.item.permissionDetail) {
-            <code class="title-strip-tab-menu__request-detail">{{
-              entry.item.permissionDetail
-            }}</code>
-          }
-          <div class="title-strip-tab-menu__request-actions">
-            @switch (entry.item.kind) {
-              @case ('permission') {
-                <app-button
-                  variant="solid"
-                  size="small"
-                  label="Allow"
-                  (pointerdown)="$event.preventDefault()"
-                  (click)="onPermission(entry, true); $event.stopPropagation()"
-                />
-                <app-button
-                  size="small"
-                  label="Deny"
-                  (pointerdown)="$event.preventDefault()"
-                  (click)="onPermission(entry, false); $event.stopPropagation()"
-                />
-              }
-              @case ('edit-decision') {
-                <app-button
-                  variant="solid"
-                  size="small"
-                  label="Yes"
-                  (pointerdown)="$event.preventDefault()"
-                  (click)="onEditDecision(entry, 'yes'); $event.stopPropagation()"
-                />
-                <app-button
-                  size="small"
-                  label="No"
-                  (pointerdown)="$event.preventDefault()"
-                  (click)="onEditDecision(entry, 'no'); $event.stopPropagation()"
-                />
-              }
-              @default {
-                @for (choice of entry.item.inputChoices ?? []; track choice.label) {
-                  <app-button
-                    variant="solid"
-                    size="small"
-                    [label]="choice.label"
-                    [tooltip]="choice.description ?? ''"
-                    (pointerdown)="$event.preventDefault()"
-                    (click)="onAnswer(entry, choice.label); $event.stopPropagation()"
-                  />
-                }
-                <app-button
-                  size="small"
-                  label="Skip"
-                  (pointerdown)="$event.preventDefault()"
-                  (click)="onAnswer(entry, null); $event.stopPropagation()"
-                />
-              }
-            }
-          </div>
         </div>
       }
     }
