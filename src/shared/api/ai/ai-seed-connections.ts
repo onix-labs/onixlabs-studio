@@ -26,8 +26,7 @@ const ANTHROPIC_SEED_MODELS: readonly AiModelInfo[] = [
  * user can retune once model discovery lands; Codex runs OpenAI models through the `codex` CLI.
  */
 const CODEX_SEED_MODELS: readonly AiModelInfo[] = [
-  { id: 'gpt-5-codex', label: 'GPT-5 Codex', contextWindow: 400_000 },
-  { id: 'gpt-5', label: 'GPT-5', contextWindow: 400_000 },
+  { id: 'gpt-5.6-sol', label: 'GPT-5.6-Sol', contextWindow: 1_050_000 },
 ];
 
 /**
@@ -84,7 +83,7 @@ export const SEED_CONNECTIONS: readonly AiConnection[] = [
     label: 'Codex',
     auth: 'codex-login',
     models: CODEX_SEED_MODELS,
-    defaultModelId: 'gpt-5-codex',
+    defaultModelId: 'gpt-5.6-sol',
   },
   {
     id: ANTHROPIC_KEY_CONNECTION_ID,

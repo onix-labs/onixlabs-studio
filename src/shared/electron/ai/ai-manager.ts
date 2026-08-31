@@ -52,6 +52,7 @@ import { ClaudeAgentProvider } from './claude-agent-provider';
 import { type ClaudeSdkModel, runClaudeDiscovery } from './claude-model-discovery';
 import { readRemoteNotificationsEnabled, writeRemoteNotificationsEnabled } from './claude-settings';
 import { CodexAgentProvider } from './codex-agent-provider';
+import { runCodexDiscovery } from './codex-model-discovery';
 import { ClaudeLoginDriver, readClaudeAuthStatus, runClaudeLogout } from './claude-login';
 import { sanitizeToolPolicies } from './tool-policy';
 import { sanitizeWritePaths } from './write-confinement';
@@ -605,8 +606,8 @@ export class AiManager {
   /**
    * Discovers a connection's models and returns the merged list (or the existing list unchanged when
    * discovery cannot run). A local-login Claude connection has no API key, so it discovers through the
-   * Claude Agent SDK (which reports the account's models over its control channel); every other
-   * connection queries its `/models` endpoint with its resolved credential.
+   * Claude Agent SDK (which reports the account's models over its control channel). A Codex-login
+   * connection reads the local Codex runtime catalogue; API-key connections query `/models`.
    * @param connection The connection to discover models for.
    * @returns Returns the discovery result.
    */
@@ -627,6 +628,9 @@ export class AiManager {
       return runClaudeDiscovery(connection, (): Promise<readonly ClaudeSdkModel[]> =>
         provider.listSupportedModels(choice),
       );
+    }
+    if (connection.auth === 'codex-login') {
+      return runCodexDiscovery(connection, process.env);
     }
     const apiKey: string | null = this.auth.authFor(connection.id, connection.auth).apiKey;
     return runDiscovery(connection, apiKey, process.env, this.httpFetch);
