@@ -769,14 +769,6 @@ export class Settings {
   public readonly aiClaudeExecutablePath: Signal<string> = this.value('ai.claudeExecutablePath');
 
   /**
-   * Gets whether Mission Control floats agents awaiting a permission request to the top of its agent
-   * list (the columns keep their order regardless).
-   */
-  public readonly missionControlShowPermissionsAtTop: Signal<boolean> = this.value(
-    'missionControl.showPermissionsAtTop',
-  );
-
-  /**
    * Gets how the Mission Control agent rail scrolls a clicked agent's column into view.
    */
   public readonly missionControlTileScrollMode: Signal<TileScrollMode> = this.value(

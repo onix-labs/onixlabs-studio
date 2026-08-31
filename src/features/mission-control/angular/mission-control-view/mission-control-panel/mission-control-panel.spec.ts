@@ -65,21 +65,36 @@ function makeHost(id: string, options: HostOptions = {}): AgentHost {
   return host as AgentHost;
 }
 
+/**
+ * Creates a pending request entry attributed to a host's agent. Only the agent is read by the rail —
+ * it marks the row and leaves the asking to the transcript — so the rest of the entry is a stub.
+ * @param host The host whose agent is waiting on the user.
+ * @returns Returns the request entry.
+ */
+function entryFor(host: AgentHost): AgentRequestEntry {
+  return {
+    key: `${host.id}:request`,
+    tabId: null,
+    label: host.id,
+    item: {} as AgentRequestEntry['item'],
+    agent: host.agent,
+  };
+}
+
 describe('MissionControlPanel', () => {
   let fixture: ComponentFixture<MissionControlPanel>;
   let host: HTMLElement;
   let hosts: WritableSignal<readonly AgentHost[]>;
+  let entries: WritableSignal<readonly AgentRequestEntry[]>;
   let revealed: string[];
 
   beforeEach(async () => {
     hosts = signal<readonly AgentHost[]>([]);
+    entries = signal<readonly AgentRequestEntry[]>([]);
     revealed = [];
 
     const agentHostsStub: Partial<AgentHosts> = { hosts };
-    const agentRequestsStub: Partial<AgentRequests> = {
-      entries: signal<readonly AgentRequestEntry[]>([]),
-      count: signal<number>(0),
-    };
+    const agentRequestsStub: Partial<AgentRequests> = { entries };
     const tabsStub: Partial<Tabs> = { get: () => undefined };
     const tilesStub: Partial<MissionControlTiles> = {
       reveal: (id: string): void => {
@@ -92,7 +107,6 @@ describe('MissionControlPanel', () => {
       // registry says that key defaults to.
       value: <K extends SettingsKey>(key: K): Signal<SettingsValues[K]> =>
         signal(SETTINGS_DEFAULTS[key]),
-      missionControlShowPermissionsAtTop: signal<boolean>(false),
     };
 
     await TestBed.configureTestingModule({
@@ -192,5 +206,73 @@ describe('MissionControlPanel', () => {
     // header deep-linking to the settings category.
     expect(host.querySelector('.panel__tabs')).toBeNull();
     expect(host.querySelector('.panel__header app-button')).toBeNull();
+  });
+
+  it('render_answersNoRequestInline_soTheRailOnlyPointsAtTheColumn', () => {
+    const waiting: AgentHost = makeHost('h1', { label: 'Alpha' });
+    hosts.set([waiting]);
+    entries.set([entryFor(waiting)]);
+    fixture.detectChanges();
+
+    // Requests were once mirrored here as inline answer cards, under an "Other requests" group for
+    // agents with no column. Both are gone even while one is pending: the rail marks the row, and the
+    // request is answered on the agent's own transcript.
+    expect(host.querySelector('app-agent-request-card')).toBeNull();
+    expect(host.querySelector('.rail__requests')).toBeNull();
+    expect(host.querySelector('.panel__group')).toBeNull();
+  });
+
+  it('render_marksOnlyTheRowsWhoseAgentIsWaitingOnTheUser', () => {
+    const waiting: AgentHost = makeHost('h1', { label: 'Alpha' });
+    const busy: AgentHost = makeHost('h2', { label: 'Beta', running: true });
+    hosts.set([waiting, busy]);
+    entries.set([entryFor(waiting)]);
+    fixture.detectChanges();
+
+    const rows: HTMLElement[] = Array.from(host.querySelectorAll<HTMLElement>('.list-row'));
+    // Matched on the agent, not the host: the marker has to follow the conversation a request belongs
+    // to, and a running agent is not the same thing as one that has stopped to ask.
+    expect(rows[0].querySelector('.rail__item--waiting')).not.toBeNull();
+    expect(rows[1].querySelector('.rail__item--waiting')).toBeNull();
+  });
+
+  it('statusLabel_whenTheAgentIsWaitingOnTheUser_readsWaitingRatherThanWorking', () => {
+    const waiting: AgentHost = makeHost('h1', { label: 'Alpha', running: true, hasMessages: true });
+    hosts.set([waiting]);
+    entries.set([entryFor(waiting)]);
+    fixture.detectChanges();
+
+    // The agent is still running as far as the session is concerned — it has merely stopped to ask —
+    // so Waiting has to outrank Working, or the row names the one state the user cannot act on.
+    expect(statusLabels()).toEqual(['Waiting']);
+  });
+
+  it('render_whenTheRequestSettles_dropsTheWaitingMark', () => {
+    const waiting: AgentHost = makeHost('h1', { label: 'Alpha' });
+    hosts.set([waiting]);
+    entries.set([entryFor(waiting)]);
+    fixture.detectChanges();
+    expect(host.querySelector('.rail__item--waiting')).not.toBeNull();
+
+    entries.set([]);
+    fixture.detectChanges();
+
+    expect(host.querySelector('.rail__item--waiting')).toBeNull();
+    expect(statusLabels()).toEqual(['Ready']);
+  });
+
+  it('render_marksTheWholeListRow_soTheTrailingButtonsAreInsideIt', () => {
+    const waiting: AgentHost = makeHost('h1', { label: 'Alpha' });
+    hosts.set([waiting]);
+    entries.set([entryFor(waiting)]);
+    fixture.detectChanges();
+
+    // The mark is painted on `.list-row` (selected via `:has`), not on the projected item, so the hide
+    // toggle and the reorder grip fall inside it. Asserting containment rather than colour: the styles
+    // are global and unresolvable here, and CI declines to compute them at all.
+    const row: HTMLElement | null = host.querySelector<HTMLElement>('.list-row');
+    expect(row?.querySelector('.rail__item--waiting')).not.toBeNull();
+    expect(row?.querySelector('.rail__hide')).not.toBeNull();
+    expect(row?.querySelector('.list-row__grip')).not.toBeNull();
   });
 });

@@ -147,32 +147,71 @@ describe('Tabs', () => {
     expect(service.isSettingsOpen()).toBe(true);
   });
 
+  /**
+   * Reads a tab's attention flag by id.
+   * @param id The tab identifier.
+   * @returns Returns the flag, or undefined when the tab carries none.
+   */
+  function attentionOf(id: string): boolean | undefined {
+    return service.tabs().find((candidate: Tab): boolean => candidate.id === id)?.attention;
+  }
+
   it('setAttention_whenTabExists_flagsTheTab', () => {
     const tab: Tab = service.open('code');
 
-    service.setAttention(tab.id, true);
+    service.setAttention(tab.id, 'agent', true);
 
-    expect(
-      service.tabs().find((candidate: Tab): boolean => candidate.id === tab.id)?.attention,
-    ).toBe(true);
+    expect(attentionOf(tab.id)).toBe(true);
   });
 
   it('setAttention_whenClearedAgain_unflagsTheTab', () => {
     const tab: Tab = service.open('code');
-    service.setAttention(tab.id, true);
+    service.setAttention(tab.id, 'agent', true);
 
-    service.setAttention(tab.id, false);
+    service.setAttention(tab.id, 'agent', false);
 
-    expect(
-      service.tabs().find((candidate: Tab): boolean => candidate.id === tab.id)?.attention,
-    ).toBe(false);
+    expect(attentionOf(tab.id)).toBe(false);
+  });
+
+  it('setAttention_whileAnotherReasonStillClaimsIt_staysFlagged', () => {
+    // The two sources sweep independently — the conflict watcher clears every tab without a conflict
+    // on each pass — so a cleared conflict must not put out a dot the agent is still asking for. This
+    // is the race that left a document tab's agent dot showing once and then never again.
+    const tab: Tab = service.open('markdown');
+    service.setAttention(tab.id, 'agent', true);
+    service.setAttention(tab.id, 'conflict', true);
+
+    service.setAttention(tab.id, 'conflict', false);
+
+    expect(attentionOf(tab.id)).toBe(true);
+  });
+
+  it('setAttention_whenTheLastReasonClears_unflagsTheTab', () => {
+    const tab: Tab = service.open('markdown');
+    service.setAttention(tab.id, 'agent', true);
+    service.setAttention(tab.id, 'conflict', true);
+
+    service.setAttention(tab.id, 'agent', false);
+    service.setAttention(tab.id, 'conflict', false);
+
+    expect(attentionOf(tab.id)).toBe(false);
   });
 
   it('setAttention_whenStateUnchanged_keepsTheSameTabReference', () => {
     const tab: Tab = service.open('code');
     const before: Tab | undefined = service.tabs().find((c: Tab): boolean => c.id === tab.id);
 
-    service.setAttention(tab.id, false);
+    service.setAttention(tab.id, 'agent', false);
+
+    expect(service.tabs().find((c: Tab): boolean => c.id === tab.id)).toBe(before);
+  });
+
+  it('setAttention_whenARaisedClaimIsRepeated_keepsTheSameTabReference', () => {
+    const tab: Tab = service.open('code');
+    service.setAttention(tab.id, 'agent', true);
+    const before: Tab | undefined = service.tabs().find((c: Tab): boolean => c.id === tab.id);
+
+    service.setAttention(tab.id, 'agent', true);
 
     expect(service.tabs().find((c: Tab): boolean => c.id === tab.id)).toBe(before);
   });
@@ -180,7 +219,20 @@ describe('Tabs', () => {
   it('setAttention_whenIdentifierUnknown_isIgnored', () => {
     service.open('code');
 
-    expect((): void => service.setAttention('does-not-exist', true)).not.toThrow();
+    expect((): void => service.setAttention('does-not-exist', 'agent', true)).not.toThrow();
+  });
+
+  it('setAttention_afterTheTabIsReopened_startsFromNoClaims', () => {
+    // Claims are dropped with the tab, so a stale one cannot outlive it and light a later tab.
+    const tab: Tab = service.open('code');
+    service.setAttention(tab.id, 'agent', true);
+    service.close(tab.id);
+
+    const reopened: Tab = service.open('code');
+    service.setAttention(reopened.id, 'agent', true);
+    service.setAttention(reopened.id, 'agent', false);
+
+    expect(attentionOf(reopened.id)).toBe(false);
   });
 
   it('open_withResourceKey_storesTheKeyOnTheTab', () => {

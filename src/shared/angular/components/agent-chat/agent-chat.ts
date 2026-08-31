@@ -876,17 +876,9 @@ export class AgentChat implements OnInit {
     // rendered — unlike the host element, which is there from construction.
     afterNextRender((): void => this.watchTail());
 
-    effect((): void => {
-      const id: string | undefined = this.tabId();
-      const waiting: boolean = this.awaitingDecision();
-      const active: boolean = this.isActive();
-      untracked((): void => {
-        // A mirror never lights the tab — the origin conversation already owns the attention dot.
-        if (id !== undefined && !this.mirror()) {
-          this.tabs.setAttention(id, waiting && !active);
-        }
-      });
-    });
+    // The hosting tab's attention dot is not lit from here. It is driven centrally by
+    // `AgentTabAttention` off the requests registry, which knows the owning tab for every live
+    // conversation — including the surfaces whose dock panel never passed one down to this chat.
 
     // A fresh question starts with nothing selected: reset the radio selection whenever the pending
     // question changes (including when it settles).

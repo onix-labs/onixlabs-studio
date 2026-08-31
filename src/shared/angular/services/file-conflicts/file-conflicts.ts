@@ -102,11 +102,10 @@ export class FileConflicts {
         this.conflictList().map((conflict: FileConflict): string => conflict.tabId),
       );
       untracked((): void => {
+        // Swept across every tab, and safely so: the claim is scoped to this service's own reason, so
+        // clearing a tab that has no conflict cannot put out a dot the agent bridge lit on it.
         for (const tab of this.tabs.tabs()) {
-          // This service owns attention only for document-bearing tabs; agent tabs drive their own.
-          if (tab.type !== 'agent') {
-            this.tabs.setAttention(tab.id, waiting.has(tab.id) && tab.id !== active);
-          }
+          this.tabs.setAttention(tab.id, 'conflict', waiting.has(tab.id) && tab.id !== active);
         }
       });
     });

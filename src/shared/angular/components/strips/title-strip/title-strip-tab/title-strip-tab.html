@@ -14,11 +14,14 @@
   <span class="tab-title"
     ><bdi>{{ tab().title }}</bdi></span
   >
-  @if (tab().dirty) {
-    <span class="tab-dirty" aria-label="Unsaved changes"></span>
-  }
-  @if (tab().attention) {
-    <span class="tab-attention" aria-label="Needs your attention"></span>
+  <!-- One dot, never two: an edited document whose agent is also waiting says the more urgent of the
+       two in colour and both of them in its label, rather than growing a second circle. -->
+  @if (tab().attention || tab().dirty) {
+    <span
+      class="tab-dot"
+      [class.tab-dot--attention]="tab().attention"
+      [attr.aria-label]="dotLabel()"
+    ></span>
   }
   <button
     type="button"
