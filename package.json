@@ -76,7 +76,7 @@
     "katex": "^0.16.47",
     "marked": "^18.0.5",
     "mermaid": "^11.16.1",
-    "monaco-editor": "^0.55.1",
+    "monaco-editor": "^0.56.0",
     "node-pty": "^1.1.0",
     "prosemirror-search": "^1.1.1",
     "remark-gemoji": "^8.0.0",
