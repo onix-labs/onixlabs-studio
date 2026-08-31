@@ -33,9 +33,7 @@ describe('parseCodexModelsCache', () => {
           },
         ],
       }),
-    ).toEqual([
-      { id: 'gpt-5.6-sol', label: 'GPT-5.6-Sol', contextWindow: 272_000 },
-    ]);
+    ).toEqual([{ id: 'gpt-5.6-sol', label: 'GPT-5.6-Sol', contextWindow: 272_000 }]);
   });
 
   it('ignoresMalformedAndDuplicateEntries', () => {

@@ -33,8 +33,12 @@ export function parseCodexModelsCache(json: unknown): AiModelInfo[] {
     if (typeof entry !== 'object' || entry === null) {
       continue;
     }
-    const candidate: { slug?: unknown; display_name?: unknown; context_window?: unknown; visibility?: unknown } =
-      entry;
+    const candidate: {
+      slug?: unknown;
+      display_name?: unknown;
+      context_window?: unknown;
+      visibility?: unknown;
+    } = entry;
     if (
       candidate.visibility !== 'list' ||
       typeof candidate.slug !== 'string' ||
@@ -111,7 +115,9 @@ export async function runCodexDiscovery(
     };
   }
 
-  const existingIds: Set<string> = new Set<string>(connection.models.map((model): string => model.id));
+  const existingIds: Set<string> = new Set<string>(
+    connection.models.map((model): string => model.id),
+  );
   const added: number = models.filter((model): boolean => !existingIds.has(model.id)).length;
   logger.info('codex-model-discovery', `Found ${models.length} model(s) in ${cachePath}`);
   return {
