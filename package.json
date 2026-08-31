@@ -84,7 +84,7 @@
     "systeminformation": "^5.33.4",
     "tslib": "^2.3.0",
     "vscode-jsonrpc": "^8.2.1",
-    "vscode-languageserver-protocol": "^3.18.0",
+    "vscode-languageserver-protocol": "^3.18.3",
     "zod": "^4.4.3"
   },
   "devDependencies": {
