@@ -56,13 +56,19 @@ export class PrintManager {
 
     logger.debug('PrintManager', `Rendering PDF to ${result.filePath}`);
     try {
-      // marginType 'none' removes the print system's own margins, leaving the CSS @page margin (driven
+      // Zero margins on every edge remove the print system's own, leaving the CSS @page margin (driven
       // by the user's "Print margins" setting) as the sole source — so an export matches a print.
+      //
+      // Stated edge by edge because Electron 42.10 replaced `Margins` (which took `marginType: 'none'`)
+      // with `PrintToPDFMargins`, which takes inches and nothing else. Note that OMITTING margins is
+      // not the same thing: each edge then defaults to ~0.4 inches, which would sit on top of the CSS
+      // margin and quietly indent every exported page against the printed one.
+      //
       // Export produces a fixed-size A4 document rather than following the OS print dialog's paper.
       // printBackground stays off (as a normal print does by default): with it on, the dark-theme page
       // canvas paints over the @page margin band and frames the document in black.
       const data: Buffer = await event.sender.printToPDF({
-        margins: { marginType: 'none' },
+        margins: { top: 0, bottom: 0, left: 0, right: 0 },
         pageSize: 'A4',
         printBackground: false,
       });
