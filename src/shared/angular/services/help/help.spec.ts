@@ -78,6 +78,17 @@ describe('Help', () => {
     withHost('darwin', 'arm64');
   });
 
+  // `window.host` is a global on the shared jsdom window, so it has to be taken away again: left in
+  // place it is not this suite's business any more, it is every later suite's. It said darwin, which
+  // any service reading the platform at construction takes as the truth — so a keybinding rendered
+  // itself with a Command symbol on a Linux CI runner and the keyboard-settings specs failed, three
+  // files away and with nothing to point back here. The whole file getting its own environment is
+  // what stops a lapse like this reaching anyone else (see `isolate` in angular.json); cleaning up
+  // after ourselves is what stops it being a lapse.
+  afterEach(() => {
+    delete (window as unknown as { host?: HostEnv }).host;
+  });
+
   it('facts_whenTheHostIsPresent_reportsEveryVersion', () => {
     const { help } = build();
 

@@ -114,6 +114,7 @@
         "test": {
           "builder": "@angular/build:unit-test",
           "options": {
+            "isolate": true,
             "coverageReporters": ["text-summary", "html", "lcovonly"],
             "coverageThresholds": {
               "statements": 69.0,
