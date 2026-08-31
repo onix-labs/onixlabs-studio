@@ -73,7 +73,7 @@
     "diff": "^9.0.0",
     "disassembler": "^0.3.0-beta",
     "dompurify": "^3.4.14",
-    "katex": "^0.16.47",
+    "katex": "^0.18.4",
     "marked": "^18.0.5",
     "mermaid": "^11.16.1",
     "monaco-editor": "^0.56.0",
