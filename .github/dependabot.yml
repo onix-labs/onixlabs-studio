@@ -15,6 +15,12 @@ updates:
         patterns: ['@angular/*', 'angular-eslint']
       ai-sdks:
         patterns: ['ai', '@ai-sdk/*', '@anthropic-ai/*', '@openai/*']
+      # The terminal and its addons are released together on the same day and peer-depend on each
+      # other, so they only resolve as a set: xterm 6 arrived as three separate PRs, and every one of
+      # them failed `npm ci` on its own — the addon PRs against the old core, the core PR against the
+      # old addons. Grouped, that upgrade is one PR that installs.
+      xterm:
+        patterns: ['@xterm/*']
       dev-minor-patch:
         dependency-type: development
         update-types: [minor, patch]
