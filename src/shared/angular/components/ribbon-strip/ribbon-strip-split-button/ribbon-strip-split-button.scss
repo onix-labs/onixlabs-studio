@@ -5,17 +5,26 @@
 .ribbon-split {
   display: flex;
   flex-direction: column;
+  // Square, like every other big button — see the menu button, whose geometry this mirrors.
+  inline-size: var(--ribbon-button-inline-size);
+  aspect-ratio: 1;
   background: transparent;
   border: 0.0625rem solid transparent;
   border-radius: calc(0.5rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
   overflow: hidden;
-  transition: border-color 150ms ease-in-out;
+  // Positioned so the hover lift can raise its stacking order above the buttons beside it.
+  position: relative;
+  transition:
+    border-color 150ms ease-in-out,
+    box-shadow 150ms ease-in-out;
 
   // Hovering either half lifts the whole control onto the accent surface, so the primary action and
   // its dropdown read as one button.
   &:hover {
     border-color: var(--accent-surface-border-color);
+    box-shadow: var(--ribbon-button-hover-shadow);
+    z-index: 1;
 
     .ribbon-split__action,
     .ribbon-split__menu {
@@ -28,23 +37,57 @@
       background: var(--accent-surface-background-color-strong);
     }
   }
+
+  // As on the menu button: the caret is hidden until the control is hovered or focused, so at rest it
+  // reads as a plain big button. Only the caret goes — this band also carries a text label naming
+  // what the dropdown does, and a label that vanished at rest would take real information with it.
+  &:hover,
+  &:focus-within {
+    .ribbon-split__menu app-icon {
+      opacity: 1;
+    }
+  }
 }
 
 .ribbon-split__action {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  block-size: 3rem;
-  inline-size: 4rem;
+  // Top-pinned, as every other big button is. See the layout note in _variables.scss.
+  justify-content: flex-start;
+  gap: var(--ribbon-button-gap);
+  // The shared tokens, not the same numbers written out again. This control stood the right height by
+  // copying the plain button's measurements rather than reading them, so it was one edit away from
+  // falling out of line with the row it is meant to match — which is exactly what happened. Sized and
+  // pinned as the menu button's action is, so neither is shrunk to fit its container.
+  flex: none;
+  block-size: var(--ribbon-button-action-block-size);
+  inline-size: var(--ribbon-button-inline-size);
+  padding-block-start: var(--ribbon-button-pad-block-start);
   font: inherit;
-  font-size: 0.8rem;
+  font-size: var(--ribbon-button-label-font-size);
+  line-height: var(--ribbon-button-label-line-height);
   color: inherit;
   background: transparent;
   border: none;
   cursor: default;
   transition: var(--hover-transition);
+
+  app-icon,
+  span {
+    flex: none;
+  }
+
+  // The two-line label box, as on the plain button.
+  span {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    block-size: var(--ribbon-button-label-block-size);
+    inline-size: 100%;
+    overflow: hidden;
+    text-align: center;
+  }
 
   &:focus-visible {
     outline: var(--focus-ring-width) solid var(--focus-ring-color);
@@ -57,14 +100,26 @@
   align-items: center;
   justify-content: center;
   gap: 0.25rem;
-  block-size: 1rem;
+  // Pinned, so the band keeps the whole of its height rather than being shrunk to fit.
+  flex: none;
+  block-size: var(--ribbon-button-caption-block-size);
   font: inherit;
   font-size: 0.65rem;
+  // Stated, because the band is sized to the caret glyph and the inherited 1.2 would give this text a
+  // taller line box than the band it sits in.
+  line-height: 1;
   color: inherit;
   background: transparent;
   border: none;
   cursor: default;
   transition: var(--hover-transition);
+
+  // Hidden at rest, revealed by the hover/focus rule on the control above; the band holds its height
+  // regardless, so nothing shifts as the pointer crosses it.
+  app-icon {
+    opacity: 0;
+    transition: opacity 150ms ease-in-out;
+  }
 
   &:focus-visible {
     outline: var(--focus-ring-width) solid var(--focus-ring-color);

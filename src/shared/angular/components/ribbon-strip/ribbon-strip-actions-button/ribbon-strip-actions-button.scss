@@ -7,25 +7,41 @@
 // A large button whose whole face is the dropdown trigger: icon over label over a caret that signals
 // the menu. Styled like the plain large command button (same size, hover, focus) so it sits amongst
 // its neighbours; the caret and the open state are what mark it as a dropdown.
+//
+// It took the shared height but not the shared LAYOUT: its caret sat in the flow, so its icon and
+// label centred over a different box from every other big button's and the row it sits in read as
+// uneven. The caret now goes in the caption band the others reserve, leaving the icon and label to
+// centre over the same content box.
 .ribbon-actions {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 0.2rem;
-  block-size: 4rem;
-  inline-size: 4rem;
+  // Top-pinned, as every other big button is. See the layout note in _variables.scss.
+  justify-content: flex-start;
+  gap: var(--ribbon-button-gap);
+  block-size: var(--ribbon-button-block-size);
+  inline-size: var(--ribbon-button-inline-size);
+  aspect-ratio: 1;
+  padding-block-start: var(--ribbon-button-pad-block-start);
+  // The caption band, held open for the caret positioned into it below. Border-box sizing makes this
+  // eat into the height rather than add to it, so the button still stands exactly one lane tall.
+  padding-block-end: var(--ribbon-button-caption-block-size);
   font: inherit;
-  font-size: 0.8rem;
+  font-size: var(--ribbon-button-label-font-size);
+  line-height: var(--ribbon-button-label-line-height);
   color: inherit;
   background: transparent;
   border: 0.0625rem solid transparent;
   border-radius: calc(0.5rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
   cursor: default;
+  // Positioned for two reasons: it anchors the caret into the caption band, and it lets the hover
+  // lift raise this button's stacking order above the ones beside it.
+  position: relative;
   transition:
     var(--hover-transition),
-    border-color 150ms ease-in-out;
+    border-color 150ms ease-in-out,
+    box-shadow 150ms ease-in-out;
 
   // Hover and the open state both lift the button onto the accent surface, so an open dropdown reads
   // as belonging to its trigger.
@@ -34,6 +50,21 @@
     background: var(--accent-surface-background-color);
     border-color: var(--accent-surface-border-color);
     color: var(--accent-surface-foreground-color);
+  }
+
+  &:hover {
+    box-shadow: var(--ribbon-button-hover-shadow);
+    z-index: 1;
+  }
+
+  // The caret is revealed by hover, by keyboard focus, and while the menu is open — an open dropdown
+  // with no caret showing would look like the panel belonged to nothing.
+  &:hover,
+  &:focus-visible,
+  &[aria-expanded='true'] {
+    .ribbon-actions__caret {
+      opacity: 0.7;
+    }
   }
 
   &:focus-visible {
@@ -45,15 +76,36 @@
     opacity: 0.4;
     pointer-events: none;
   }
+
+  app-icon:not(.ribbon-actions__caret),
+  .ribbon-actions__label {
+    flex: none;
+  }
 }
 
+// The two-line label box, as on the plain button: a one-line caption is centred in it rather than
+// leaving its spare line as a gap underneath.
 .ribbon-actions__label {
-  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  block-size: var(--ribbon-button-label-block-size);
+  inline-size: 100%;
+  overflow: hidden;
+  text-align: center;
 }
 
-// The caret sits just under the label, muted, marking the button as a dropdown without taking a full
-// row's worth of vertical space.
+// Sits in the caption band rather than in the flow, so the icon and label above it centre over the
+// same content box as every other big button's. Hidden at rest like the other dropdowns' carets; the
+// band is reserved whether or not it is drawn, so nothing shifts as the pointer crosses it.
 .ribbon-actions__caret {
-  margin-block-start: -0.05rem;
-  opacity: 0.7;
+  position: absolute;
+  inset-inline: 0;
+  inset-block-end: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  block-size: var(--ribbon-button-caption-block-size);
+  opacity: 0;
+  transition: opacity 150ms ease-in-out;
 }
