@@ -12,36 +12,67 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
+  // Pinned to the top, not centred: the icon's height must not depend on how many lines the label
+  // under it takes, or a one-line button and a two-line one sit on different grids. See the layout
+  // note in _variables.scss.
+  justify-content: flex-start;
+  gap: var(--ribbon-button-gap);
   block-size: var(--ribbon-button-block-size);
-  inline-size: 4rem;
-  // The empty caption band. A plain button has no chevron to put there, but it keeps the space so
-  // its glyph and label centre over the same box a menu button's do — the button is the same height
-  // either way, and the band is transparent, so what changes is only that a row of big buttons lines
-  // up. Border-box sizing makes the padding eat into the height rather than add to it.
+  inline-size: var(--ribbon-button-inline-size);
+  aspect-ratio: 1;
+  padding-block-start: var(--ribbon-button-pad-block-start);
+  // The empty caption band. A plain button has no chevron to put there, but it keeps the space so its
+  // glyph and label sit over the same box a dropdown button's do. Border-box sizing makes the padding
+  // eat into the height rather than add to it.
   padding-block-end: var(--ribbon-button-caption-block-size);
   font: inherit;
-  font-size: 0.8rem;
+  font-size: var(--ribbon-button-label-font-size);
+  line-height: var(--ribbon-button-label-line-height);
   color: inherit;
   background: transparent;
   border: 0.0625rem solid transparent;
   border-radius: calc(0.5rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
   cursor: default;
+  // Positioned so the hover lift can raise its stacking order above the buttons beside it.
+  position: relative;
   transition:
     var(--hover-transition),
-    border-color 150ms ease-in-out;
+    border-color 150ms ease-in-out,
+    box-shadow 150ms ease-in-out;
 
   &:hover {
     background: var(--ribbon-tone-surface-background);
     border-color: var(--ribbon-tone-surface-border);
     color: var(--ribbon-tone-surface-foreground);
+    box-shadow: var(--ribbon-button-hover-shadow);
+    z-index: 1;
   }
 
   &:focus-visible {
     outline: var(--focus-ring-width) solid var(--focus-ring-color);
     outline-offset: 0.0625rem;
+  }
+
+  // Neither part may be squeezed by the other: both are fixed, and a flex child that shrank would
+  // take the icon line with it.
+  app-icon,
+  span {
+    flex: none;
+  }
+
+  // Always two lines tall, with the text centred inside. A one-line label's spare line is split above
+  // and below it rather than left as a gap under the text, so every appearance is the same shape and
+  // no button has to know how long another's caption is. Clipped rather than allowed to grow: a third
+  // line would otherwise push the icon out through the top of the button.
+  span {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    block-size: var(--ribbon-button-label-block-size);
+    inline-size: 100%;
+    overflow: hidden;
+    text-align: center;
   }
 
   &:disabled {

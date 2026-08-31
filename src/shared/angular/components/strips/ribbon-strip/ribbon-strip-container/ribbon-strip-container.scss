@@ -1,7 +1,10 @@
 :host {
   // The fixed lane height shared by every ribbon group's control area. Cascades to all descendant
   // ribbon components, so every contextual ribbon resolves to the exact same overall height.
-  --ribbon-content-height: 4rem;
+  //
+  // Tracks --ribbon-button-block-size: a big button is meant to fill the lane exactly, so the two
+  // move together. The lane is what gives the button the room its height budget needs.
+  --ribbon-content-height: var(--ribbon-button-block-size);
 
   display: block;
   color: var(--body-foreground-color);
