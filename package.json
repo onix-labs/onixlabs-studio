@@ -65,7 +65,7 @@
     "@openai/codex-sdk": "^0.150.0",
     "@phosphor-icons/web": "^2.1.2",
     "@vscode/ripgrep": "^1.18.0",
-    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-search": "^0.15.0",
     "@xterm/xterm": "^5.5.0",
     "ai": "^7.0.82",
