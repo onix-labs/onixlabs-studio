@@ -1,8 +1,5 @@
-import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
-import { AgentRequests } from '@shared/angular/services/agent-requests/agent-requests';
-import { Settings } from '@shared/angular/services/settings/settings';
 import { Tab, TAB_TYPE_METADATA, TabType } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { TitleStripTabMenu } from './title-strip-tab-menu';
@@ -10,24 +7,12 @@ import { TitleStripTabMenu } from './title-strip-tab-menu';
 describe('TitleStripTabMenu', () => {
   let component: TitleStripTabMenu;
   let fixture: ComponentFixture<TitleStripTabMenu>;
-  let settings: Settings;
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [TitleStripTabMenu],
-      providers: [
-        {
-          provide: AgentRequests,
-          useValue: {
-            count: signal(1),
-            tabIds: signal(new Set<string>(['tab-1'])),
-            entries: signal([]),
-          },
-        },
-      ],
     }).compileComponents();
 
-    settings = TestBed.inject(Settings);
     fixture = TestBed.createComponent(TitleStripTabMenu);
     component = fixture.componentInstance;
     await fixture.whenStable();
@@ -97,22 +82,16 @@ describe('TitleStripTabMenu', () => {
     ).toHaveLength(tools.length);
   });
 
-  it('trigger_whileARequestWaits_wearsTheAlertBell', () => {
+  it('trigger_isAlwaysThePlainTabListChevron', () => {
+    // The menu is a tab list and nothing else. It once doubled as the agent-requests inbox, turning
+    // the chevron into an accent bell and nesting inline answer buttons under each tab; that
+    // surfacing was removed, so the trigger has one appearance and one label.
     fixture.detectChanges();
 
     const trigger: HTMLElement | null = (fixture.nativeElement as HTMLElement).querySelector(
       '.title-strip-tab-menu__trigger',
     );
-    expect(trigger?.classList).toContain('title-strip-tab-menu__trigger--alert');
-  });
-
-  it('trigger_whenTheTabListSettingIsOff_staysAPlainChevron', () => {
-    settings.set('notifications.agentRequestsInTabList', false);
-    fixture.detectChanges();
-
-    const trigger: HTMLElement | null = (fixture.nativeElement as HTMLElement).querySelector(
-      '.title-strip-tab-menu__trigger',
-    );
+    expect(trigger?.getAttribute('aria-label')).toBe('Open tabs');
     expect(trigger?.classList).not.toContain('title-strip-tab-menu__trigger--alert');
   });
 });

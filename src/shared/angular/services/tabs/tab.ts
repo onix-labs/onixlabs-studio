@@ -19,6 +19,18 @@ export type TabType =
   | 'settings';
 
 /**
+ * Names what is asking for the user on a tab, so each source can raise and drop its own claim without
+ * disturbing the others.
+ *
+ * A tab shows one dot, but more than one thing can want it: an agent docked in the tab may be waiting
+ * on an answer while the file open in that same tab has changed on disk. Both sources sweep every tab
+ * they own on each evaluation — marking theirs and clearing the rest — so against a single shared flag
+ * they overwrite one another and the dot depends on which effect happened to run last. Tracking the
+ * claims separately and OR-ing them is what makes both correct at once.
+ */
+export type AttentionReason = 'agent' | 'conflict';
+
+/**
  * Defines a single top-level application tab.
  */
 export interface Tab {
@@ -55,8 +67,10 @@ export interface Tab {
   readonly dirty?: boolean;
 
   /**
-   * Gets a value indicating whether the tab needs the user's attention (for example, a document
-   * changed on disk and needs a keep/reload decision). Surfaced as an accent dot on the tab.
+   * Gets a value indicating whether the tab needs the user's attention — an agent of its own waiting
+   * on an answer, or a document that changed on disk and needs a keep/reload decision. Surfaced as a
+   * warning-coloured dot on the tab, which on a document tab replaces the dirty dot rather than
+   * sitting beside it (see {@link AttentionReason} for why the sources are tracked apart).
    */
   readonly attention?: boolean;
 

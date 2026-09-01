@@ -66,7 +66,7 @@ export class Icon {
    * Gets the remote-control icon shown on an agent's Remote toggle (its tool strip and ribbon) and on
    * Mission Control's enable-for-every-agent toggle.
    */
-  public static readonly REMOTE_CONTROL: Icon = new Icon('ph-duotone ph-sliders-horizontal');
+  public static readonly REMOTE_CONTROL: Icon = new Icon('ph-duotone ph-devices');
 
   /**
    * Gets the close icon shown on tab close buttons.

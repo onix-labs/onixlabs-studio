@@ -129,70 +129,6 @@
   background: currentColor;
 }
 
-.title-strip-tab-menu__item-bell {
-  flex-shrink: 0;
-  color: var(--accent-color);
-}
-
-// A pending agent request in the tab menu (#253), nested under its hosting tab's row (or under the
-// trailing "Agent panels" heading for hosts with no tab): what it asks plus inline answer buttons.
-// Plain buttons keep the menu open; answered entries drop off, and the menu dismisses itself once
-// the last request settles.
-.title-strip-tab-menu__request {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  margin-block-end: 0.25rem;
-  padding: 0.5rem 0.6rem;
-  border: 0.0625rem solid var(--accent-color);
-  border-radius: calc(0.375rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-}
-
-.title-strip-tab-menu__request--nested {
-  margin-block-start: 0.15rem;
-  margin-inline-start: 1.5rem;
-}
-
-.title-strip-tab-menu__request-source {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  align-self: flex-start;
-  padding: 0;
-  font: inherit;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--accent-color);
-  background: transparent;
-  border: none;
-  cursor: default;
-
-  &:hover {
-    text-decoration: underline;
-  }
-}
-
-.title-strip-tab-menu__request-heading {
-  margin: 0;
-  font-size: 0.85rem;
-  overflow-wrap: anywhere;
-}
-
-.title-strip-tab-menu__request-detail {
-  overflow: hidden;
-  font-family: var(--font-mono);
-  font-size: 0.72rem;
-  color: var(--settings-muted-foreground-color);
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.title-strip-tab-menu__request-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-}
 // The shared drop-menu surface used by the app-menu atom: a popup panel of activatable rows.
 .app-menu-panel {
   display: flex;
@@ -672,6 +608,13 @@
 // --- CDK overlay, so its panel styles live here with the other menus.
 
 .quick-responses__panel {
+  // How many replies stand before the list starts scrolling, and the height of the row they are
+  // counted in. The row is its text's line box plus the padding above and below it; the app states no
+  // global line-height, so the row states its own (see .quick-responses__select) and the count below
+  // is exact rather than a round number that happens to land near it.
+  --quick-responses-visible-rows: 16;
+  --quick-responses-row-block-size: calc(0.85rem * 1.2 + 0.8rem);
+
   display: flex;
   flex-direction: column;
   // Sized by its longest reply, since a reply that wrapped would be read as two. Past 40rem the row
@@ -679,8 +622,6 @@
   inline-size: max-content;
   min-inline-size: 14rem;
   max-inline-size: 40rem;
-  max-block-size: 24rem;
-  overflow-y: auto;
   padding: 0.25rem;
   // Lift the upward-opening menu clear of the button it opens from.
   margin-block-end: 0.375rem;
@@ -690,6 +631,14 @@
   border-radius: calc(0.5rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
   box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.25);
+}
+
+// The replies, and the only part of the panel that scrolls: the add field is the panel's sibling row
+// below, so it keeps its place at the foot whatever the list is doing.
+.quick-responses__list {
+  min-block-size: 0;
+  max-block-size: calc(var(--quick-responses-row-block-size) * var(--quick-responses-visible-rows));
+  overflow-y: auto;
 }
 
 // The row carries the hover surface so hovering anywhere on it — the delete control included —
@@ -715,9 +664,15 @@
   flex: 1;
   align-items: center;
   min-inline-size: 0;
-  padding: 0.4rem 0.6rem;
+  // The grip supplies the row's leading inset now, so the reply only pads away from it — the block
+  // padding is what the sixteen-row cap above is counted from and is unchanged.
+  padding-block: 0.4rem;
+  padding-inline: 0.2rem 0.6rem;
   font: inherit;
   font-size: 0.85rem;
+  // Stated rather than inherited: the app sets no global line-height, so without this the row's height
+  // — and with it the sixteen-row cap on the list — would drift with whatever font is resolved.
+  line-height: 1.2;
   text-align: start;
   color: inherit;
   background: transparent;
@@ -734,6 +689,31 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+// The reorder handle, leading the row: faint until the row is hovered so it never competes with the
+// reply itself, and wearing the vertical-resize arrows once held, which name the one axis a row can be
+// dragged along. It keeps its box when hidden — hence the opacity rather than a display switch — so
+// the reply beside it does not shift as the pointer crosses the row.
+.quick-responses__grip {
+  flex: none;
+  align-self: stretch;
+  display: inline-flex;
+  align-items: center;
+  padding-inline: 0.3rem 0;
+  color: var(--gray-500);
+  cursor: default;
+  opacity: 0;
+  transition: opacity var(--hover-transition);
+
+  .quick-responses__item:hover &,
+  .cdk-drag-preview & {
+    opacity: 1;
+  }
+
+  &:active {
+    cursor: ns-resize;
+  }
 }
 
 .quick-responses__empty {

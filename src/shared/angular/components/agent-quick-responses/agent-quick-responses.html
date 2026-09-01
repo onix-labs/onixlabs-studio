@@ -11,34 +11,58 @@
      an inline menu, which never dismisses. -->
 <ng-template #menu>
   <div class="quick-responses__panel" cdkMenu>
-    @for (response of responses(); track response.id) {
-      <div class="quick-responses__item">
-        <button
-          type="button"
-          class="quick-responses__select"
-          cdkMenuItem
-          (cdkMenuItemTriggered)="choose(response)"
+    <!-- Only the replies scroll. The list is the panel's one scrolling child so the add field below it
+         stays put however long the list grows, rather than being pushed out of reach past the foot of
+         a scrolled panel. -->
+    <div class="quick-responses__list" cdkDropList (cdkDropListDropped)="onDrop($event)">
+      @for (response of responses(); track response.id) {
+        <!-- The CDK parks a drag preview on `<body>` by default, where the row's styling — all of it
+             written against the panel's classes — stops matching and the clone re-lays-out under the
+             cursor. Rendering it into the row's own parent keeps those selectors applying. The preview
+             is a popover in the top layer, so the list's own scrolling never clips it. -->
+        <div
+          class="quick-responses__item"
+          cdkDrag
+          cdkDragLockAxis="y"
+          cdkDragPreviewContainer="parent"
         >
-          <span class="quick-responses__text">{{ response.text }}</span>
-        </button>
-        <!-- A plain icon button rather than a cdkMenuItem so deleting leaves the menu open, letting
-             several be cleared in a row; the stopPropagation keeps the click from reaching the menu. -->
-        <app-button
-          variant="none"
-          size="small"
-          [icon]="Icon.CLOSE"
-          [ariaLabel]="'Delete quick response: ' + response.text"
-          tooltip="Delete"
-          (pointerdown)="$event.preventDefault()"
-          (click)="remove(response); $event.stopPropagation()"
-        />
-      </div>
-    } @empty {
-      <p class="quick-responses__empty">
-        <app-icon [icon]="Icon.QUICK_RESPONSE" aria-hidden="true" />
-        <span>No quick responses yet</span>
-      </p>
-    }
+          <!-- Dragging starts from the grip alone: the rest of the row is the button that picks the
+               reply, and a row that moved when pulled anywhere would be hard to simply click. -->
+          <span
+            class="quick-responses__grip"
+            cdkDragHandle
+            aria-label="Drag to reorder"
+            title="Drag to reorder"
+          >
+            <app-icon [icon]="Icon.GRIP_VERTICAL" [size]="1" />
+          </span>
+          <button
+            type="button"
+            class="quick-responses__select"
+            cdkMenuItem
+            (cdkMenuItemTriggered)="choose(response)"
+          >
+            <span class="quick-responses__text">{{ response.text }}</span>
+          </button>
+          <!-- A plain icon button rather than a cdkMenuItem so deleting leaves the menu open, letting
+               several be cleared in a row; the stopPropagation keeps the click from reaching the menu. -->
+          <app-button
+            variant="none"
+            size="small"
+            [icon]="Icon.CLOSE"
+            [ariaLabel]="'Delete quick response: ' + response.text"
+            tooltip="Delete"
+            (pointerdown)="$event.preventDefault()"
+            (click)="remove(response); $event.stopPropagation()"
+          />
+        </div>
+      } @empty {
+        <p class="quick-responses__empty">
+          <app-icon [icon]="Icon.QUICK_RESPONSE" aria-hidden="true" />
+          <span>No quick responses yet</span>
+        </p>
+      }
+    </div>
 
     <!-- The CDK menu runs type-ahead over its items on every printable key, so a field inside the
          panel has to keep its keystrokes to itself or typing would move the menu's focus instead. -->

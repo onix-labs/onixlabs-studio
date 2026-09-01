@@ -56,6 +56,10 @@ import {
   createViewInjectorRegistrar,
   ViewInjectorRegistrar,
 } from '@shared/angular/services/view-injectors/view-injector-registration';
+import {
+  AgentHostRegistrar,
+  createAgentHostRegistrar,
+} from '@shared/angular/services/agent-hosts/agent-host-registration';
 import { ApiPrompts } from '../api-prompts/api-prompts';
 import { ApiHttp } from '../api-http/api-http';
 import { ApiRequestOpener } from '../api-request-opener/api-request-opener';
@@ -203,6 +207,20 @@ export class ApiExplorerView implements OnInit, OnDestroy, ApiExplorerCommandHan
   protected readonly variableSyntax: string = '{{base_url}}';
 
   /**
+   * Registers this tab's live agent with Mission Control and the requests inbox for the tab's whole
+   * life, service-only — the docked agent panel mounts lazily on first show, so registration cannot be
+   * left to its chat. Finalised in {@link ngOnInit} once the tab id is readable.
+   *
+   * Without this the tab's conversation registered from the chat itself, with no tab id behind it,
+   * which left the agent unattributed: it never lit this tab's waiting dot and never took a column of
+   * its own in Mission Control. The other document-bearing views register the same way.
+   */
+  private readonly agentHost: AgentHostRegistrar = createAgentHostRegistrar({
+    isActive: this.isActive,
+    surface: 'api',
+  });
+
+  /**
    * Publishes this view's injector so the shell's status strip can mount the API Explorer status
    * component inside it, reaching this tab's own API workspace. Finalised in {@link ngOnInit} once
    * the tab id is readable.
@@ -267,6 +285,7 @@ export class ApiExplorerView implements OnInit, OnDestroy, ApiExplorerCommandHan
    */
   public ngOnInit(): void {
     void this.capabilities;
+    this.agentHost.register(this.tabId());
     this.statusHost.register(this.tabId());
     this.commands.register(this);
     // Panels that need a globally-unique session id (the terminal) read the owning tab from here.

@@ -22,7 +22,7 @@
   transition: border-color 150ms ease-in-out;
 
   &:focus-within {
-    border-color: var(--accent-color);
+    border-color: var(--composer-focus-border-color);
   }
 }
 
@@ -476,9 +476,10 @@
   transition: border-color 150ms ease-in-out;
 
   // The editor is a text field, and reads as one: its frame takes the accent while the caret is in
-  // it, exactly as the composer's does.
+  // it, exactly as the composer's does — and at the same softened strength, so the two borders do not
+  // disagree when the caret is inside both at once.
   &:focus-within {
-    border-color: var(--accent-color);
+    border-color: var(--composer-focus-border-color);
   }
 
   app-markdown-editor {

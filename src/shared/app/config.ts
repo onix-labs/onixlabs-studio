@@ -6,6 +6,7 @@ import {
   provideZonelessChangeDetection,
 } from '@angular/core';
 import { AgentRequestToasts } from '@shared/angular/services/notifications/agent-request-toasts';
+import { AgentTabAttention } from '@shared/angular/services/agent-requests/agent-tab-attention';
 import { ConsoleForwarder } from '@shared/angular/services/console-forwarder/console-forwarder';
 import { Display } from '@shared/angular/services/display/display';
 import { provideUnsavedWork } from '@shared/angular/services/unsaved-work/unsaved-work';
@@ -57,6 +58,12 @@ export const config: ApplicationConfig = {
     // toasts (when the setting is on) whichever panels happen to be mounted.
     provideAppInitializer((): void => {
       inject(AgentRequestToasts);
+    }),
+    // Instantiate the agent tab-attention bridge at start-up, for the same reason: a tab's dot has to
+    // light while its conversation waits regardless of which panels are mounted, and no single chat
+    // is alive for long enough — or knows enough — to do it for every surface.
+    provideAppInitializer((): void => {
+      inject(AgentTabAttention);
     }),
     // Instantiate the core application menu at start-up, so the menu bar carries Studio's own commands
     // from the first paint rather than the platform's default roles. Features fold their own entries

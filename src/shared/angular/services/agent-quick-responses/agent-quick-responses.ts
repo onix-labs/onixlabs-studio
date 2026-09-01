@@ -24,8 +24,9 @@ export interface QuickResponse {
 const STORE_KEY: string = 'agent.quickResponses';
 
 /**
- * Owns the user's quick responses: short replies to an agent, kept in the order they were added and
- * persisted through the shared settings store so they survive a restart.
+ * Owns the user's quick responses: short replies to an agent, kept in the order the user arranged
+ * them — new ones land at the end until dragged elsewhere — and persisted through the shared settings
+ * store so both the list and its order survive a restart.
  *
  * A response is one line by design. It is picked from a menu that never wraps, and a saved paragraph
  * would be neither quick to read there nor distinguishable from the prompt library, which is where
@@ -89,6 +90,36 @@ export class AgentQuickResponses {
     );
     this.persist();
     this.log.info('AgentQuickResponses', 'Quick response deleted', id);
+  }
+
+  /**
+   * Moves the response identified by {@link sourceId} to the position of the one identified by
+   * {@link targetId}, preserving the order of the others. The menu is picked from by sight, so the
+   * replies used most belong where they can be reached without reading the whole list — which is a
+   * judgement only the user can make. A no-op when either id is unknown or the two are the same.
+   * @param sourceId The id of the response being moved.
+   * @param targetId The id of the response whose position it should take.
+   */
+  public reorder(sourceId: string, targetId: string): void {
+    if (sourceId === targetId) {
+      return;
+    }
+    const current: readonly QuickResponse[] = this.responsesState();
+    const from: number = current.findIndex(
+      (response: QuickResponse): boolean => response.id === sourceId,
+    );
+    const to: number = current.findIndex(
+      (response: QuickResponse): boolean => response.id === targetId,
+    );
+    if (from < 0 || to < 0) {
+      return;
+    }
+    const next: QuickResponse[] = [...current];
+    const [moved]: QuickResponse[] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    this.responsesState.set(next);
+    this.persist();
+    this.log.info('AgentQuickResponses', 'Quick response reordered', sourceId);
   }
 
   /**

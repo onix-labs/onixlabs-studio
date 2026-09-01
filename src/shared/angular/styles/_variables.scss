@@ -137,6 +137,17 @@
   --accent-surface-border-color: rgba(var(--accent-color-rgb), 0.6);
   --accent-surface-foreground-color: var(--accent-color);
 
+  // The focus border of a COMPOSING surface: the agent's message box and the commit message box, both
+  // of which frame an editor rather than being one. Around two thirds of the accent, from the same RGB
+  // triplet so it still tracks the user's chosen colour.
+  //
+  // Deliberately softer than the accent a form control takes on focus. A text field is small and its
+  // border is a thin outline, so the full accent reads as "the caret is here"; a composer is a large
+  // panel with a wide radius, and the same colour around all of it reads as an alert rather than as a
+  // focus. The atoms keep the full accent — see the forms/ components and _base.scss — because they
+  // are the case this does not apply to.
+  --composer-focus-border-color: rgba(var(--accent-color-rgb), 0.65);
+
   // Semantic state colours: a fixed set used ONLY to convey state (success, warning, error/danger,
   // info), deliberately independent of the accent palette so state never shifts with the user's chosen
   // accent. Single values shared by both themes for now — tuned per-theme later if contrast needs it.
@@ -195,16 +206,93 @@
   // corner, scaled by the concave multiplier so the scoops can be tuned independently.
   --dock-panel-foot-radius: calc(0.5rem * var(--concave-border-radius-multiplier));
 
-  // The big ribbon button's geometry, shared by the plain button and the menu (split) button so the
-  // two cannot drift apart. A big button is an icon, a label, and a CAPTION BAND beneath them: a
-  // menu button puts its chevron in the band, and a plain button leaves it empty. Both therefore
-  // stand the same height AND centre their glyph and label over the same box, so a group holding one
-  // of each reads as a row rather than as two rows half a step apart.
-  --ribbon-button-block-size: 4rem;
-  --ribbon-button-caption-block-size: 1rem;
-  --ribbon-button-content-block-size: calc(
-    var(--ribbon-button-block-size) - var(--ribbon-button-caption-block-size)
+  // The big ribbon button's geometry, shared by ALL FOUR big variants — the plain button, the menu
+  // button, the split button and the actions button — so they cannot drift apart. A big button is an
+  // icon, a label, and a CAPTION BAND beneath them: the dropdown variants put their caret in the
+  // band, and a plain button leaves it empty. All four therefore stand the same height AND centre
+  // their glyph and label over the same box, so a group holding several reads as one row.
+  //
+  // THE LAYOUT. A big button comes in four appearances — one or two lines of label, with or without a
+  // caret — and every one of them must put its icon at the same height, because a row of glyphs that
+  // drifts by half a line is the first thing the eye catches.
+  //
+  // That rules out centring the column, which is what this did before: centring makes the icon's
+  // position a function of how tall the label under it happens to be, so a one-line button's glyph
+  // always sits lower than a two-liner's, and no amount of tuning the box can reconcile them. It also
+  // dumped every bit of leftover height directly beneath the label, which is what made a resting
+  // button look bottom-heavy.
+  //
+  // So the column is pinned to the top instead, and each part below is a FIXED height:
+  //
+  //   pad (0.4) + icon (1.5) + gap (0.25) + label box (1.8) = 3.95rem
+  //   content box = 4rem, leaving 0.05rem spare. Total = content box + caption band.
+  //
+  // Note the direction: the content box is the fixed quantity and the button's height is derived from
+  // it, not the other way round. Stating the total instead would mean every change to the band came
+  // silently out of the content — which is the shape of the bug this block exists to prevent.
+  //
+  // Nothing here is negotiable downwards without giving something up. The five parts are already at
+  // their floor for this design: the band is the caret glyph, the label box is the two lines the
+  // alignment depends on, and the pad and gap are what stop the glyph and its caption touching. A
+  // shorter button therefore has to come out of the icon, the text size, or the two-line box — and
+  // the last of those is the one holding the icons in line, so it is the last thing to spend.
+  //
+  // The label box is always two lines tall whether the label needs one or two, with the text centred
+  // inside it. That is what keeps every appearance identical: a short label's spare line is split
+  // around it rather than added to the gap below, so all four sit on the same grid and nothing has to
+  // know how long anyone else's caption is. A third line clips rather than pushing the icon out of
+  // the button — the symptom this whole block exists to prevent.
+  // The fixed content area every big button lays its icon and label out in — the primary measurement
+  // here, from which the button's own height follows.
+  --ribbon-button-content-block-size: 4rem;
+  // The band the dropdown variants put their caret in, and the plain button leaves empty: the caret
+  // glyph (`<app-icon [size]="0.75">`) plus a little air above and below, so it is not pressed against
+  // the bottom edge of the button. The padding is stated separately because it is the part worth
+  // tuning; the glyph's own size lives in the three templates that draw it.
+  --ribbon-button-caption-pad-block: 0.0625rem;
+  --ribbon-button-caption-block-size: calc(0.75rem + 2 * var(--ribbon-button-caption-pad-block));
+  --ribbon-button-block-size: calc(
+    var(--ribbon-button-content-block-size) + var(--ribbon-button-caption-block-size)
   );
+  // The space above the icon. This, and nothing else, is what sets where every big button's glyph
+  // sits — change it and the whole ribbon's icon line moves together.
+  --ribbon-button-pad-block-start: 0.4rem;
+  // Every big button carries a transparent border, so its hover outline costs no layout. It has to be
+  // named here because the dropdown variants build their caption band from a real child rather than
+  // from padding: their two children have to fit the CONTENT box, which is the border box less this,
+  // twice. Sizing them to the border box instead — which is what they did — left flexbox quietly
+  // shrinking both to fit, so a dropdown button's action area came out ~0.1rem shorter than the plain
+  // button's and its caret band lost part of the padding above.
+  --ribbon-button-border-width: 0.0625rem;
+  // The action area of a dropdown variant: the content box, less the band beneath it. Equal to the
+  // plain button's own icon-and-label area, which is what keeps the two laying out identically.
+  --ribbon-button-action-block-size: calc(
+    var(--ribbon-button-content-block-size) - 2 * var(--ribbon-button-border-width)
+  );
+  // Exactly two label lines, so a one-line and a two-line button are the same shape.
+  --ribbon-button-label-block-size: calc(
+    2 * var(--ribbon-button-label-font-size) * var(--ribbon-button-label-line-height)
+  );
+  // Square. Derived from the height rather than stated, so the two cannot drift out of 1:1 — the call
+  // sites also declare `aspect-ratio: 1`, which says the same thing and holds it if either dimension
+  // ever becomes content-driven. Widening from 4rem to match the height gives the labels more room
+  // per line, so the two-line budget above has more headroom than it did, never less.
+  --ribbon-button-inline-size: var(--ribbon-button-block-size);
+  --ribbon-button-gap: 0.25rem;
+  // The icon's 1.5 in the budget above is each template's `<app-icon [size]="1.5">`, not a variable:
+  // the atom takes its size as an input, so CSS here could not set it without fighting that input.
+  // Change it in the four templates together, or the row stops lining up.
+  //
+  // Stated rather than inherited: the app sets no global line-height, so without this the label's
+  // two lines are as tall as the ambient font's default leading makes them, and the budget above
+  // cannot be relied on.
+  --ribbon-button-label-font-size: 0.75rem;
+  --ribbon-button-label-line-height: 1.2;
+
+  // The hover lift shared by every big ribbon button: a drop shadow, paired with a raised stacking
+  // order so the shadow falls over the buttons beside it rather than under them. Costs no layout, so
+  // hovering one button never moves another.
+  --ribbon-button-hover-shadow: 0 0.125rem 0.5rem rgb(0 0 0 / 35%);
 
   // Width of the Monaco change-margin bars (see _change-margin.scss); the colours are theme tokens.
   --change-margin-width: 4px;

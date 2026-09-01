@@ -21,7 +21,7 @@
         @let item = itemOf(row);
         <div
           class="rail__item"
-          [class.rail__item--pending]="item.entries.length > 0"
+          [class.rail__item--waiting]="item.isWaiting"
           [title]="'Scroll to ' + item.label"
         >
           <!-- The head is one centred flex row: column 1 (the agent icon beside its title-over-branch
@@ -47,29 +47,15 @@
                 </span>
               </div>
             </div>
-            <span
-              class="rail__status"
-              [class.rail__status--busy]="item.isRunning"
-              [class.rail__status--pending]="item.entries.length > 0"
-            >
+            <span class="rail__status" [class.rail__status--busy]="item.isRunning">
               <app-pulse-dot
-                [tone]="item.isRunning || item.entries.length > 0 ? 'accent' : 'neutral'"
+                [tone]="item.isWaiting ? 'warning' : item.isRunning ? 'accent' : 'neutral'"
                 [pulse]="item.isRunning"
                 [size]="0.45"
               />
               <span class="rail__status-label">{{ item.statusLabel }}</span>
             </span>
           </div>
-
-          @if (item.entries.length > 0) {
-            <!-- The request cards live inside the activation row, so stop clicks on them from
-                 bubbling to the row and scrolling the column out from under the user. -->
-            <div class="rail__requests">
-              @for (entry of item.entries; track entry.key) {
-                <app-agent-request-card [entry]="entry" (click)="$event.stopPropagation()" />
-              }
-            </div>
-          }
         </div>
 
         <!-- The hide toggle sits at the row's trailing edge, immediately left of the list's reorder
@@ -81,6 +67,7 @@
         <app-button
           class="rail__hide"
           variant="none"
+          [tone]="item.isWaiting ? 'warning' : 'accent'"
           [icon]="isHidden(item.id) ? Icon.AGENT_HIDDEN : Icon.AGENT_VISIBLE"
           [pressed]="isHidden(item.id)"
           [ariaLabel]="isHidden(item.id) ? 'Show agent column' : 'Hide agent column'"
@@ -89,16 +76,5 @@
         />
       </ng-template>
     </app-list-view>
-  }
-
-  @if (orphanEntries().length > 0) {
-    <section class="panel__group">
-      <span class="panel__group-label">Other requests</span>
-      <div class="rail__requests">
-        @for (entry of orphanEntries(); track entry.key) {
-          <app-agent-request-card [entry]="entry" />
-        }
-      </div>
-    </section>
   }
 </div>

@@ -2,7 +2,7 @@
   <app-ribbon-strip-group title="Session">
     <app-ribbon-strip-button
       [icon]="Icon.CHAT_NEW"
-      label="New"
+      label="New Chat"
       [disabled]="!hasMessages()"
       (action)="newChat()"
     />
@@ -13,47 +13,39 @@
       [disabled]="!isRunning()"
       (action)="stop()"
     />
+    <app-ribbon-strip-button
+      [icon]="Icon.COMPACT"
+      label="Compact"
+      [disabled]="isRunning() || !hasMessages()"
+      (action)="compact()"
+    />
     <!-- Remote Control is on or off; how much a peer may do once on is the global posture, set in
          Settings. The press only opens the confirmation — the toggle flips on Yes. -->
     @if (supportsRemoteControl()) {
       <app-ribbon-strip-button
         [icon]="Icon.REMOTE_CONTROL"
-        label="Remote"
+        label="Remote Control"
         [toggle]="true"
         [pressed]="remoteControlEnabled()"
         (action)="onRemoteControlToggle()"
       />
     }
-    <!-- The secondary session commands, stacked three-to-a-lane: they sit at the same height as the
-         large buttons beside them without claiming the same weight. -->
-    <app-ribbon-strip-column>
-      <app-ribbon-strip-button-small
-        [icon]="Icon.COMPACT"
-        label="Compact"
-        [disabled]="isRunning() || !hasMessages()"
-        (action)="compact()"
-      />
-      <app-ribbon-strip-button-small
-        [icon]="Icon.CLEAR"
-        label="Clear"
-        [disabled]="!hasContext()"
-        (action)="clearContext()"
-      />
-      <app-ribbon-strip-button-small
-        [icon]="Icon.RECENT"
-        label="History"
-        [toggle]="true"
-        [pressed]="historyOpen()"
-        (action)="toggleHistory()"
-      />
-    </app-ribbon-strip-column>
   </app-ribbon-strip-group>
 
+  <!-- What is looked at rather than what is run: where the transcript is scrolled to, and whether the
+       past conversations are listed beside it. -->
   <app-ribbon-strip-group title="View">
     <app-ribbon-strip-button
       [icon]="Icon.SCROLL_TO_BOTTOM"
-      label="Bottom"
+      label="Scroll to Bottom"
       (action)="scrollToBottom()"
+    />
+    <app-ribbon-strip-button
+      [icon]="Icon.RECENT"
+      label="History"
+      [toggle]="true"
+      [pressed]="historyOpen()"
+      (action)="toggleHistory()"
     />
   </app-ribbon-strip-group>
 
