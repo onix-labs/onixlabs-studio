@@ -1,3 +1,4 @@
+import { CdkDrag, CdkDragDrop, CdkDragHandle, CdkDropList } from '@angular/cdk/drag-drop';
 import { CdkMenu, CdkMenuItem, CdkMenuTrigger } from '@angular/cdk/menu';
 import { ConnectedPosition } from '@angular/cdk/overlay';
 import {
@@ -28,11 +29,22 @@ import {
  * means depends on what is already in the composer — the menu's job is to say which one was chosen.
  *
  * The list is the user's own: there are no built-in replies beyond the starter set the library seeds,
- * since a reply that reads naturally to one person is somebody else's clutter.
+ * since a reply that reads naturally to one person is somebody else's clutter. Its order is theirs
+ * too — each row carries a grip, so the replies reached for most can be dragged to the top.
  */
 @Component({
   selector: 'app-agent-quick-responses',
-  imports: [AppIcon, Button, TextField, CdkMenu, CdkMenuItem, CdkMenuTrigger],
+  imports: [
+    AppIcon,
+    Button,
+    TextField,
+    CdkMenu,
+    CdkMenuItem,
+    CdkMenuTrigger,
+    CdkDrag,
+    CdkDragHandle,
+    CdkDropList,
+  ],
   templateUrl: './agent-quick-responses.html',
   styleUrl: './agent-quick-responses.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -94,5 +106,21 @@ export class AgentQuickResponses {
    */
   protected remove(response: QuickResponse): void {
     this.library.remove(response.id);
+  }
+
+  /**
+   * Commits a drag by moving the dragged reply into the slot it was dropped on. The move is reported
+   * to the library rather than applied to the rendered list, since the order is the library's and has
+   * to be persisted; the rows re-render from it.
+   * @param event The drop, carrying the row's position before and after.
+   */
+  protected onDrop(event: CdkDragDrop<readonly QuickResponse[]>): void {
+    const saved: readonly QuickResponse[] = this.responses();
+    const source: QuickResponse | undefined = saved[event.previousIndex];
+    const target: QuickResponse | undefined = saved[event.currentIndex];
+    if (source === undefined || target === undefined) {
+      return;
+    }
+    this.library.reorder(source.id, target.id);
   }
 }
