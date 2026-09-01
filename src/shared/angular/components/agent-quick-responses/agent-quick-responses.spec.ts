@@ -101,6 +101,26 @@ describe('AgentQuickResponses', () => {
     expect(field.value).toBe('');
   });
 
+  it('open_whenRepliesAreSaved_givesEachRowAGripToSortItBy', () => {
+    open(['Okay', 'Ship it']);
+
+    const grips: NodeListOf<Element> = document.querySelectorAll('.quick-responses__grip');
+    expect(grips).toHaveLength(2);
+    expect(grips[0]?.getAttribute('aria-label')).toBe('Drag to reorder');
+  });
+
+  it('open_always_keepsTheAddFieldOutOfTheScrollingList', () => {
+    // Structural rather than measured: the field is a sibling of the list, not a row inside it, which
+    // is what keeps it at the foot of the panel once the replies start scrolling.
+    open(['Okay']);
+
+    expect(document.querySelector('.quick-responses__list .quick-responses__add')).toBeNull();
+    expect(
+      document.querySelector('.quick-responses__panel > .quick-responses__add'),
+    ).not.toBeNull();
+    expect(document.querySelector('.quick-responses__list .quick-responses__item')).not.toBeNull();
+  });
+
   it('remove_whenTheRowDeleteIsClicked_dropsItFromTheList', () => {
     const harness: Harness = open(['Okay']);
     const deleteButton: HTMLButtonElement | null = document.querySelector<HTMLButtonElement>(
