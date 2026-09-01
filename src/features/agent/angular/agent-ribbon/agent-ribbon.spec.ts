@@ -191,7 +191,7 @@ describe('AgentRibbon', () => {
   });
 
   it('newChat_whenClicked_clearsTheTranscript', () => {
-    button('New').click();
+    button('New Chat').click();
 
     expect(cleared).toBe(1);
   });
@@ -200,7 +200,7 @@ describe('AgentRibbon', () => {
     hasMessages.set(false);
     fixture.detectChanges();
 
-    expect(button('New').disabled).toBe(true);
+    expect(button('New Chat').disabled).toBe(true);
   });
 
   it('stop_whenNotRunning_isDisabled', () => {
@@ -261,7 +261,7 @@ describe('AgentRibbon', () => {
   });
 
   it('remote_whenClicked_doesNotFlipUntilTheConfirmationIsAnswered', () => {
-    button('Remote').click();
+    button('Remote Control').click();
     fixture.detectChanges();
 
     // The confirmation is now presented in its own modal window; the press opens it but must not flip
@@ -272,7 +272,7 @@ describe('AgentRibbon', () => {
   });
 
   it('remote_whenConfirmed_flipsTheRemoteControlState', () => {
-    button('Remote').click();
+    button('Remote Control').click();
     fixture.detectChanges();
     internals.onRemoteControlConfirmed();
 
@@ -282,7 +282,7 @@ describe('AgentRibbon', () => {
 
   it('remote_whenDismissed_leavesRemoteControlWhereItWas', () => {
     remoteControlEnabled.set(true);
-    button('Remote').click();
+    button('Remote Control').click();
     fixture.detectChanges();
     internals.onRemoteControlDismissed();
 
@@ -297,7 +297,7 @@ describe('AgentRibbon', () => {
   });
 
   it('bottom_whenClicked_scrollsTheActiveTranscriptToItsLatestMessage', () => {
-    button('Bottom').click();
+    button('Scroll to Bottom').click();
 
     expect(tailRequests).toBe(1);
   });
@@ -366,7 +366,7 @@ describe('AgentRibbon', () => {
     );
     expect(titles).toEqual(['Session', 'View', 'Engine', 'Attachments']);
     expect(field('Mode').closest('.ribbon-group')?.textContent).toContain('Engine');
-    expect(button('Remote').closest('.ribbon-group')?.textContent).toContain('Session');
+    expect(button('Remote Control').closest('.ribbon-group')?.textContent).toContain('Session');
   });
 
   it('menu_whenACommandIsChosen_runsTheSameHandlerAsTheRibbon', () => {
@@ -424,15 +424,30 @@ describe('AgentRibbon', () => {
     expect(entry('agent.history')?.checked).toBe(true);
   });
 
-  it('clearContext_whenNothingAttached_isDisabledOtherwiseClears', () => {
-    expect(button('Clear').disabled).toBe(true);
+  it('clearContext_whenNothingAttached_isDisabledOnTheMenu_theRibbonNoLongerOfferingIt', () => {
+    // Clearing every attachment at once left the ribbon — it read as a second "New" beside it — but
+    // survives on the tab's menu, where its full name says which of the two it is.
+    const menu: AppMenu = TestBed.inject(AppMenu);
+    TestBed.tick();
+    const clearEntry: () => MenuEntry | undefined = (): MenuEntry | undefined =>
+      menu
+        .sections()
+        .find((section: MenuContribution): boolean => section.id === 'agent')
+        ?.items.find((candidate: MenuEntry): boolean => candidate.id === 'agent.clearContext');
+
+    expect(clearEntry()?.enabled).toBe(false);
+    expect(
+      Array.from(host.querySelectorAll<HTMLButtonElement>('button')).map(
+        (element: HTMLButtonElement): string => element.textContent?.trim() ?? '',
+      ),
+    ).not.toContain('Clear');
 
     contextRefs.set([{ path: '/repo/a.ts', kind: 'file' }]);
     fixture.detectChanges();
-    const clear: HTMLButtonElement = button('Clear');
-    expect(clear.disabled).toBe(false);
+    TestBed.tick();
 
-    clear.click();
+    expect(clearEntry()?.enabled).toBe(true);
+    menu.dispatch('agent.clearContext');
     expect(clearedContexts).toBe(1);
   });
 });
