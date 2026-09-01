@@ -129,7 +129,7 @@
   transition: border-color 150ms ease-in-out;
 
   &:focus-within {
-    border-color: var(--accent-color);
+    border-color: var(--composer-focus-border-color);
   }
 }
 

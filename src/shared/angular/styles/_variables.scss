@@ -137,6 +137,17 @@
   --accent-surface-border-color: rgba(var(--accent-color-rgb), 0.6);
   --accent-surface-foreground-color: var(--accent-color);
 
+  // The focus border of a COMPOSING surface: the agent's message box and the commit message box, both
+  // of which frame an editor rather than being one. Around two thirds of the accent, from the same RGB
+  // triplet so it still tracks the user's chosen colour.
+  //
+  // Deliberately softer than the accent a form control takes on focus. A text field is small and its
+  // border is a thin outline, so the full accent reads as "the caret is here"; a composer is a large
+  // panel with a wide radius, and the same colour around all of it reads as an alert rather than as a
+  // focus. The atoms keep the full accent — see the forms/ components and _base.scss — because they
+  // are the case this does not apply to.
+  --composer-focus-border-color: rgba(var(--accent-color-rgb), 0.65);
+
   // Semantic state colours: a fixed set used ONLY to convey state (success, warning, error/danger,
   // info), deliberately independent of the accent palette so state never shifts with the user's chosen
   // accent. Single values shared by both themes for now — tuned per-theme later if contrast needs it.
