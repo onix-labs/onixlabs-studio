@@ -23,7 +23,6 @@ import { Icon } from '@shared/angular/icons/icon';
 import { DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host';
 import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button';
-import { RibbonStripButtonSmall } from '@shared/angular/components/ribbon-strip/ribbon-strip-button-small/ribbon-strip-button-small';
 import { RibbonStripColumn } from '@shared/angular/components/ribbon-strip/ribbon-strip-column/ribbon-strip-column';
 import { RibbonStripField } from '@shared/angular/components/ribbon-strip/ribbon-strip-field/ribbon-strip-field';
 import { RibbonStripGroup } from '@shared/angular/components/ribbon-strip/ribbon-strip-group/ribbon-strip-group';
@@ -31,13 +30,14 @@ import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/rib
 import { AgentRemoteModal } from '@shared/angular/components/agent-remote-modal/agent-remote-modal';
 
 /**
- * Represents the contextual ribbon shown when an agent tab is active. The Session group drives the
- * active tab's conversation through {@link AgentSessions} — New clears its transcript, Stop aborts its
- * in-flight run, Remote exposes the session to another machine, and the stacked Compact/Clear/History
- * controls summarise it, drop its attachments, and show its past conversations. The Engine group's
- * fields drive the active tab's connection/model selection (also through {@link AgentSessions}) and its
- * autonomy mode, with the option list drawn from {@link AgentEngine} and grouped by provider. The
- * Attachments group attaches files, folders, and the current editor selection to the conversation.
+ * Represents the contextual ribbon shown when an agent tab is active. The Session group acts on the
+ * conversation itself through {@link AgentSessions} — New clears its transcript, Stop aborts its
+ * in-flight run, Compact summarises it, and Remote exposes the session to another machine. The View
+ * group changes what is looked at rather than what is run: where the transcript is scrolled to, and
+ * whether the past conversations are listed. The Engine group's fields drive the active tab's
+ * connection/model selection (also through {@link AgentSessions}) and its autonomy mode, with the
+ * option list drawn from {@link AgentEngine} and grouped by provider. The Attachments group attaches
+ * files, folders, and the current editor selection to the conversation.
  */
 @Component({
   selector: 'app-agent-ribbon',
@@ -46,7 +46,6 @@ import { AgentRemoteModal } from '@shared/angular/components/agent-remote-modal/
     RibbonStripGroup,
     RibbonStripColumn,
     RibbonStripButton,
-    RibbonStripButtonSmall,
     RibbonStripField,
     AgentRemoteModal,
   ],

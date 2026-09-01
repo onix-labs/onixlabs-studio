@@ -27,7 +27,9 @@ app-button {
   min-inline-size: 0;
 }
 
-// Pins the history toggle to the far end of the strip, past the Engine field.
-.strip__history {
+// Pins the controls that act on the transcript rather than the conversation — scroll-to-bottom and
+// the history toggle — to the far end of the strip, past the Engine field. The auto margin goes on the
+// first of them, so everything after it is carried along in template order.
+.strip__end {
   margin-inline-start: auto;
 }
