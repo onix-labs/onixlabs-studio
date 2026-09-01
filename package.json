@@ -103,7 +103,7 @@
     "angular-eslint": "^22.1.0",
     "concurrently": "^10.0.5",
     "cross-env": "^10.1.0",
-    "electron": "^42.4.0",
+    "electron": "^42.10.1",
     "electron-builder": "^26.15.3",
     "esbuild": "^0.28.2",
     "eslint": "^10.9.1",
