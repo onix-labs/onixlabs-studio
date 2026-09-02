@@ -157,6 +157,18 @@ export class SolutionModel {
   private pendingChangedDirs: Set<string> | null | undefined = undefined;
 
   /**
+   * Holds whether the hosting view is visible. True by default so a consumer that never wires
+   * {@link setActive} behaves exactly as before.
+   */
+  private active: boolean = true;
+
+  /**
+   * Holds the root whose watch-driven reload was deferred while the view was hidden, or null when
+   * none is owed (see {@link setActive}).
+   */
+  private deferredRoot: string | null = null;
+
+  /**
    * Holds the background evaluation queue for the current load generation: the paths of the projects
    * whose contents have not been fetched yet, drained one at a time.
    */
@@ -653,6 +665,36 @@ export class SolutionModel {
         this.pendingChangedDirs.add(directory);
       }
     }
+    // A hidden view's reload can spawn a full project-system evaluation (60s budget for MSBuild)
+    // for a tree nobody can see; the accumulated changes are kept and the reload runs once on
+    // reactivation instead — mirroring the visibility gate the LSP prestart beside it already has.
+    if (!this.active) {
+      this.deferredRoot = root;
+      return;
+    }
+    this.armReload(root);
+  }
+
+  /**
+   * Sets whether the hosting view is visible. While hidden, watch-driven reloads defer (their
+   * changed directories keep accumulating); reactivation runs the owed reload through the ordinary
+   * debounced path.
+   * @param active Whether the hosting view is visible.
+   */
+  public setActive(active: boolean): void {
+    this.active = active;
+    if (active && this.deferredRoot !== null) {
+      const root: string = this.deferredRoot;
+      this.deferredRoot = null;
+      this.armReload(root);
+    }
+  }
+
+  /**
+   * Arms (or re-arms) the debounced reload with whatever changes have accumulated.
+   * @param root The root to reload.
+   */
+  private armReload(root: string): void {
     if (this.reloadTimer !== null) {
       clearTimeout(this.reloadTimer);
     }
@@ -673,6 +715,7 @@ export class SolutionModel {
       this.reloadTimer = null;
     }
     this.pendingChangedDirs = undefined;
+    this.deferredRoot = null;
     if (this.queryTimer !== null) {
       clearTimeout(this.queryTimer);
       this.queryTimer = null;

@@ -1059,6 +1059,18 @@ export class DirectoryView implements OnInit, OnDestroy {
       }
     });
 
+    // The heavy watch-driven consumers follow the tab's visibility: the repository model (status,
+    // refs, log, stashes, graph) and the solution model (which can spawn a full project-system
+    // evaluation) defer their refreshes while hidden and settle once on reactivation. WorkspaceGit
+    // deliberately stays live — Mission Control reads its branch for background tabs.
+    effect((): void => {
+      const active: boolean = this.isActive();
+      untracked((): void => {
+        this.repository.setActive(active);
+        this.solutionModel.setActive(active);
+      });
+    });
+
     effect((): void => {
       const root: string | null = this.workspace.root()?.path ?? null;
       // Only the visible view publishes the tab's root: a container tab hosts several sub-views

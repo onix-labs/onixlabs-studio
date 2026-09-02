@@ -268,6 +268,17 @@ const RECOLOR_PULL_CONCURRENCY: number = 3;
 const REASSOCIATE_STAGGER_MS: number = 200;
 
 /**
+ * How long a standalone file's server session may sit with no documents before it is stopped. A
+ * standalone session is rooted at the file's own directory, so nothing else will ever join it: once
+ * its last document closes it serves nothing, yet it used to live until the whole client suspended
+ * or was destroyed — one leaked server process per one-off file the user glanced at. Workspace
+ * sessions are deliberately NOT reaped this way: a workspace prestarts its servers so the first open
+ * is warm, and the hidden-view reap already covers workspaces nobody is looking at. The grace period
+ * exists so close-then-reopen (the common way people flick through files) never pays a cold start.
+ */
+const STANDALONE_DOCUMENTLESS_REAP_MS: number = 5 * 60_000;
+
+/**
  * Drives language-server document synchronisation and diagnostics. It lazily starts a server the
  * first time a document of a supported language opens, mirrors each open document's text to that
  * server, and feeds the server's `publishDiagnostics` into the {@link Diagnostics} aggregate as an
@@ -361,6 +372,15 @@ export class LspClient implements OnDestroy {
     string,
     { serverId: string; rootPath: string; standaloneFile?: string }
   > = new Map<string, { serverId: string; rootPath: string; standaloneFile?: string }>();
+
+  /**
+   * Holds the pending documentless reaps of standalone sessions, keyed by session id (see
+   * {@link STANDALONE_DOCUMENTLESS_REAP_MS}).
+   */
+  private readonly standaloneReapTimers: Map<string, ReturnType<typeof setTimeout>> = new Map<
+    string,
+    ReturnType<typeof setTimeout>
+  >();
 
   /**
    * Holds each started session's semantic token legend (the server's own ordered token-type and
@@ -896,7 +916,9 @@ export class LspClient implements OnDestroy {
   }
 
   /**
-   * Closes a document, sending `textDocument/didClose` and dropping its diagnostics.
+   * Closes a document, sending `textDocument/didClose` and dropping its diagnostics. Closing the
+   * last document of a standalone session arms its documentless reap (see
+   * {@link STANDALONE_DOCUMENTLESS_REAP_MS}).
    * @param documentId The identifier of the document to close.
    */
   public closeDocument(documentId: string): void {
@@ -909,8 +931,68 @@ export class LspClient implements OnDestroy {
       this.setMarkers(tracked, []);
       this.publish();
       this.enqueue(tracked, (): Promise<void> => this.close(tracked));
+      if (tracked.standalone) {
+        this.armStandaloneReap(`${tracked.rootPath}::${tracked.serverId}`);
+      }
       return;
     }
+  }
+
+  /**
+   * Arms the documentless reap for a standalone session, unless another tracked document still maps
+   * to it (several one-off files from one directory share a session).
+   * @param sessionId The standalone session to reap once its grace period passes documentless.
+   */
+  private armStandaloneReap(sessionId: string): void {
+    if (!this.sessions.has(sessionId) || this.hasDocumentsFor(sessionId)) {
+      return;
+    }
+    this.clearStandaloneReap(sessionId);
+    this.standaloneReapTimers.set(
+      sessionId,
+      setTimeout((): void => {
+        this.standaloneReapTimers.delete(sessionId);
+        // A document may have opened (and closed again, re-arming) during the grace period.
+        if (!this.sessions.has(sessionId) || this.hasDocumentsFor(sessionId)) {
+          return;
+        }
+        this.log.info('LspClient', `Stopping documentless standalone session`, sessionId);
+        void this.bridge?.invoke(LspChannel.Stop, sessionId);
+        this.status.remove(sessionId);
+        this.legends.delete(sessionId);
+        this.pullCapable.delete(sessionId);
+        this.settledSessions.delete(sessionId);
+        this.clearReassociateTimers(sessionId);
+        this.sessions.delete(sessionId);
+      }, STANDALONE_DOCUMENTLESS_REAP_MS),
+    );
+  }
+
+  /**
+   * Cancels a session's pending documentless reap, if any.
+   * @param sessionId The session whose reap is cancelled.
+   */
+  private clearStandaloneReap(sessionId: string): void {
+    const timer: ReturnType<typeof setTimeout> | undefined =
+      this.standaloneReapTimers.get(sessionId);
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      this.standaloneReapTimers.delete(sessionId);
+    }
+  }
+
+  /**
+   * Determines whether any tracked document maps to a session.
+   * @param sessionId The session to test.
+   * @returns Returns true when at least one tracked document belongs to it.
+   */
+  private hasDocumentsFor(sessionId: string): boolean {
+    for (const tracked of this.tracked.values()) {
+      if (`${tracked.rootPath}::${tracked.serverId}` === sessionId) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
@@ -1062,6 +1144,7 @@ export class LspClient implements OnDestroy {
       this.pullCapable.delete(sessionId);
       this.settledSessions.delete(sessionId);
       this.clearReassociateTimers(sessionId);
+      this.clearStandaloneReap(sessionId);
     }
     this.sessions.clear();
     for (const tracked of this.tracked.values()) {
@@ -1126,6 +1209,10 @@ export class LspClient implements OnDestroy {
       clearTimeout(timer);
     }
     this.diagnosticTimers.clear();
+    for (const timer of this.standaloneReapTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.standaloneReapTimers.clear();
     for (const sessionId of [...this.reassociateTimers.keys()]) {
       this.clearReassociateTimers(sessionId);
     }
@@ -1307,6 +1394,8 @@ export class LspClient implements OnDestroy {
       return null;
     }
     const sessionId: string = `${tracked.rootPath}::${tracked.serverId}`;
+    // A document (re-)joining the session withdraws any pending documentless reap.
+    this.clearStandaloneReap(sessionId);
     const pending: Promise<boolean> =
       this.sessions.get(sessionId) ??
       this.startSession(

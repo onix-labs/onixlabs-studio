@@ -1,5 +1,7 @@
 import { TestBed } from '@angular/core/testing';
+import { DirectoryWatch } from '@shared/angular/services/directory-watch/directory-watch';
 import { Notification, Notifications } from '@shared/angular/services/notifications/notifications';
+import { DirectoryChangeEvent } from '@shared/api/file-channels';
 import { GitMergeMode, GitOperationState } from '@shared/api/source-control-channels';
 import { ParsedRefs, ParsedStatus } from '../source-control/git-output';
 import {
@@ -1191,5 +1193,62 @@ describe('Repository', () => {
       expect(result.success).toBe(false);
       expect(provider.calls).not.toContain('checkout:x');
     });
+  });
+});
+
+describe('Repository visibility gating', () => {
+  it('setActive_whileHidden_defersExternalRefreshesAndReplaysTheStrongestKindOnReactivation', async () => {
+    // The repository model is the expensive crawl (status, refs, log, stashes, graph) and feeds
+    // panels nobody can see while its tab is hidden; watch-driven refreshes defer and settle once.
+    let watchCallback: ((event: DirectoryChangeEvent) => void) | null = null;
+    let commitReads: number = 0;
+    class CountingProvider extends FakeProvider {
+      public override getCommits(): Promise<GitCommit[]> {
+        commitReads += 1;
+        return super.getCommits();
+      }
+    }
+    TestBed.configureTestingModule({
+      providers: [
+        Repository,
+        {
+          provide: SourceControlProviders,
+          useValue: {
+            create: (root: string): SourceControlProvider => new CountingProvider(root),
+          },
+        },
+        {
+          provide: DirectoryWatch,
+          useValue: {
+            watch: (
+              _root: string,
+              onChange: (event: DirectoryChangeEvent) => void,
+            ): (() => void) => {
+              watchCallback = onChange;
+              return (): void => undefined;
+            },
+          },
+        },
+      ],
+    });
+    const repository: Repository = TestBed.inject(Repository);
+    repository.bind({ root: '/repo', name: 'repo' });
+    await repository.refresh();
+    const readsAfterBind: number = commitReads;
+
+    // A .git-touching burst while hidden: nothing runs, not even after the debounce window.
+    repository.setActive(false);
+    watchCallback!({ root: '/repo', directories: ['/repo/.git'], overflow: false });
+    await new Promise((resolve: (value: void) => void): void => {
+      setTimeout(resolve, 600);
+    });
+    expect(commitReads).toBe(readsAfterBind);
+
+    // Reactivation replays the deferred full refresh exactly once.
+    repository.setActive(true);
+    await new Promise((resolve: (value: void) => void): void => {
+      setTimeout(resolve, 600);
+    });
+    expect(commitReads).toBe(readsAfterBind + 1);
   });
 });
