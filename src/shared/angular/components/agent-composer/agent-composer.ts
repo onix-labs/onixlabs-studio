@@ -438,6 +438,27 @@ export class AgentComposer {
   private elapsedTimer: ReturnType<typeof setInterval> | null = null;
 
   /**
+   * Holds elapsed run milliseconds accumulated while the composer was off screen, folded into
+   * {@link elapsedMs} on the next visible tick. A hidden composer's timer writing the signal anyway
+   * scheduled an app-wide change-detection pass per second per running conversation — with agents
+   * running in background workspaces, a permanent 1 Hz tick nobody could see.
+   */
+  private hiddenElapsedMs: number = 0;
+
+  /**
+   * Holds whether the composer is on screen, which gates whether the elapsed tick writes its signal.
+   * Starts true and is only ever lowered by an observation, exactly as the transcript's gate is
+   * (see AgentChat.onScreen): the worst case is a tick that costs what it always did, never a stuck
+   * indicator.
+   */
+  private readonly onScreen: WritableSignal<boolean> = signal<boolean>(true);
+
+  /**
+   * Holds this component's own host element, observed to decide {@link onScreen}.
+   */
+  private readonly host: ElementRef<HTMLElement> = inject(ElementRef) as ElementRef<HTMLElement>;
+
+  /**
    * Gets the elapsed-run readout (`m:ss`), shown beside the token meter while a run executes.
    */
   protected readonly elapsedLabel: Signal<string> = computed((): string => {
@@ -615,14 +636,25 @@ export class AgentComposer {
    * budget's pause semantics.
    */
   public constructor() {
+    this.watchOnScreen();
     effect((): void => {
       const running: boolean = this.isRunning();
       untracked((): void => {
         if (running) {
           this.elapsedMs.set(0);
+          this.hiddenElapsedMs = 0;
           this.elapsedTimer ??= setInterval((): void => {
-            if (!this.awaitingDecision()) {
-              this.elapsedMs.update((value: number): number => value + 1000);
+            if (this.awaitingDecision()) {
+              return;
+            }
+            // An off-screen composer accumulates silently: writing the signal from a hidden view
+            // would schedule change detection nobody can see. The banked time folds in on the next
+            // visible tick, so the indicator stays wall-clock honest.
+            if (this.onScreen()) {
+              this.elapsedMs.update((value: number): number => value + 1000 + this.hiddenElapsedMs);
+              this.hiddenElapsedMs = 0;
+            } else {
+              this.hiddenElapsedMs += 1000;
             }
           }, 1000);
         } else if (this.elapsedTimer !== null) {
@@ -636,6 +668,28 @@ export class AgentComposer {
         clearInterval(this.elapsedTimer);
       }
     });
+  }
+
+  /**
+   * Watches this composer's own host element and records whether it is on screen, mirroring the
+   * transcript's gate: a hidden tab, an inactive dock stack and an off-viewport tile all report the
+   * same way, and none needs a host to say so. Where there is no observer the composer simply stays
+   * "shown" and ticks as it always did.
+   */
+  private watchOnScreen(): void {
+    if (typeof IntersectionObserver === 'undefined') {
+      return;
+    }
+    const observer: IntersectionObserver = new IntersectionObserver(
+      (entries: readonly IntersectionObserverEntry[]): void => {
+        const latest: IntersectionObserverEntry | undefined = entries[entries.length - 1];
+        if (latest !== undefined) {
+          this.onScreen.set(latest.isIntersecting);
+        }
+      },
+    );
+    observer.observe(this.host.nativeElement);
+    inject(DestroyRef).onDestroy((): void => observer.disconnect());
   }
 
   /**

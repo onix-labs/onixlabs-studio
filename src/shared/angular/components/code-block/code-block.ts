@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  DestroyRef,
   effect,
   inject,
   input,
@@ -43,6 +44,15 @@ const SHELL_LANGUAGES: ReadonlySet<string> = new Set<string>([
  * How long, in milliseconds, the copy button shows its confirmed state after a successful copy.
  */
 const COPIED_FEEDBACK_MS: number = 1500;
+
+/**
+ * How long, in milliseconds, a re-highlight waits after the code last changed. A streaming fence
+ * changes on every flush of the stream buffer (~30/s), and colorizing the whole growing block each
+ * time tokenizes it on the UI thread dozens of times a second; a trailing debounce means it
+ * colorizes once the stream goes quiet instead. Only a CHANGE debounces — the first highlight runs
+ * immediately, so a settled block never flashes its plain-text fallback.
+ */
+const HIGHLIGHT_DEBOUNCE_MS: number = 200;
 
 /**
  * Escapes the HTML-significant characters in text so raw code can be bound as trusted HTML without
@@ -120,6 +130,17 @@ export class CodeBlock {
   private highlightRequest: number = 0;
 
   /**
+   * Holds the pending debounced highlight, or null when none is scheduled.
+   */
+  private highlightTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * Holds whether the next highlight is the block's first, which runs immediately rather than
+   * debounced (see {@link HIGHLIGHT_DEBOUNCE_MS}).
+   */
+  private firstHighlight: boolean = true;
+
+  /**
    * Holds the Monaco-highlighted HTML, or null before it is available (Monaco still loading, or under
    * the test runner), in which case the escaped-plain-text fallback is shown instead.
    */
@@ -160,6 +181,9 @@ export class CodeBlock {
    * Constructs the block, wiring the effect that (re-)highlights the code whenever the code, its
    * language, the light/dark mode or Monaco's readiness changes. Before Monaco is ready the effect
    * clears the highlight so the plain-text fallback shows; a stale in-flight colorize is discarded.
+   * The first highlight runs immediately; a change debounces (see {@link HIGHLIGHT_DEBOUNCE_MS}), so
+   * a streaming fence shows its previous highlight until the stream pauses instead of re-tokenizing
+   * the whole growing block on every flush.
    */
   public constructor() {
     effect((): void => {
@@ -170,25 +194,52 @@ export class CodeBlock {
       const ready: boolean = this.monaco.isLoaded();
       this.theme.resolvedMode();
       const request: number = ++this.highlightRequest;
+      if (this.highlightTimer !== null) {
+        clearTimeout(this.highlightTimer);
+        this.highlightTimer = null;
+      }
       if (!ready) {
         this.highlighted.set(null);
         return;
       }
-      void this.highlighter
-        .colorize(code, lang)
-        .then((html: string): void => {
-          if (this.highlightRequest === request) {
-            this.highlighted.set(
-              html.length > 0 ? this.sanitizer.bypassSecurityTrustHtml(html) : null,
-            );
-          }
-        })
-        .catch((): void => {
-          if (this.highlightRequest === request) {
-            this.highlighted.set(null);
-          }
-        });
+      if (this.firstHighlight) {
+        this.firstHighlight = false;
+        this.highlight(code, lang, request);
+      } else {
+        this.highlightTimer = setTimeout((): void => {
+          this.highlightTimer = null;
+          this.highlight(code, lang, request);
+        }, HIGHLIGHT_DEBOUNCE_MS);
+      }
     });
+    inject(DestroyRef).onDestroy((): void => {
+      if (this.highlightTimer !== null) {
+        clearTimeout(this.highlightTimer);
+      }
+    });
+  }
+
+  /**
+   * Colorizes the code and applies the result, unless a newer request has superseded this one.
+   * @param code The code to colorize.
+   * @param lang The fence's language.
+   * @param request The request identity guarding against stale results.
+   */
+  private highlight(code: string, lang: string, request: number): void {
+    void this.highlighter
+      .colorize(code, lang)
+      .then((html: string): void => {
+        if (this.highlightRequest === request) {
+          this.highlighted.set(
+            html.length > 0 ? this.sanitizer.bypassSecurityTrustHtml(html) : null,
+          );
+        }
+      })
+      .catch((): void => {
+        if (this.highlightRequest === request) {
+          this.highlighted.set(null);
+        }
+      });
   }
 
   /**

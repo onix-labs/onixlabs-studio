@@ -1,5 +1,8 @@
 import { Component, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { Monaco } from '@shared/angular/services/monaco/monaco';
+import { MonacoHighlighter } from '@shared/angular/services/monaco/monaco-highlighter';
 import {
   TerminalLaunch,
   TerminalSessions,
@@ -95,5 +98,46 @@ describe('CodeBlock', () => {
     expect(terminals.launched).toEqual([
       { name: 'Run: npm test', kind: 'run', command: 'npm test' },
     ]);
+  });
+
+  it('colorizes immediately on first render but debounces while the code streams', () => {
+    // A streaming fence changes on every flush of the stream buffer; re-tokenizing the whole growing
+    // block each time is the cost this debounce removes. The first highlight must stay immediate so
+    // a settled block never flashes its plain-text fallback.
+    vi.useFakeTimers();
+    try {
+      const colorized: string[] = [];
+      TestBed.configureTestingModule({
+        imports: [TestHost],
+        providers: [
+          { provide: Monaco, useValue: { isLoaded: signal<boolean>(true) } },
+          {
+            provide: MonacoHighlighter,
+            useValue: {
+              colorize: (code: string): Promise<string> => {
+                colorized.push(code);
+                return Promise.resolve(`<span>${code}</span>`);
+              },
+            },
+          },
+        ],
+      });
+      const fixture: ComponentFixture<TestHost> = TestBed.createComponent(TestHost);
+      fixture.detectChanges();
+      expect(colorized).toEqual(['npm test']);
+
+      // Three rapid flushes: no colorize runs until the stream pauses, then exactly one runs with
+      // the latest code.
+      for (const grown of ['npm test -', 'npm test --c', 'npm test --coverage']) {
+        fixture.componentInstance.code.set(grown);
+        fixture.detectChanges();
+        vi.advanceTimersByTime(50);
+      }
+      expect(colorized).toEqual(['npm test']);
+      vi.advanceTimersByTime(500);
+      expect(colorized).toEqual(['npm test', 'npm test --coverage']);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

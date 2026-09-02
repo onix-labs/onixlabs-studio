@@ -368,6 +368,11 @@ export class AgentChat implements OnInit {
   private readonly host: ElementRef<HTMLElement> = inject(ElementRef) as ElementRef<HTMLElement>;
 
   /**
+   * Holds the built data URIs of transcript images, keyed by the image itself (see {@link imageSrc}).
+   */
+  private readonly imageSrcCache: WeakMap<AiImageRef, string> = new WeakMap<AiImageRef, string>();
+
+  /**
    * Holds whether this chat is actually on screen, which gates whether the transcript is built and
    * rendered at all.
    *
@@ -1254,12 +1259,21 @@ export class AgentChat implements OnInit {
   }
 
   /**
-   * Builds the data URI for a transcript image thumbnail.
+   * Builds the data URI for a transcript image thumbnail, reusing an earlier build for the same
+   * image. The template calls this per change-detection pass, and re-concatenating a screenshot's
+   * base64 payload on every streaming flush allocated megabytes for strings that never change;
+   * keying on the image object itself (transcript images are stable identities) makes the repeat
+   * calls free, and a `WeakMap` lets a pruned transcript release its URIs with its images.
    * @param image The image.
    * @returns Returns the data URI.
    */
   public imageSrc(image: AiImageRef): string {
-    return `data:${image.mediaType};base64,${image.data}`;
+    let src: string | undefined = this.imageSrcCache.get(image);
+    if (src === undefined) {
+      src = `data:${image.mediaType};base64,${image.data}`;
+      this.imageSrcCache.set(image, src);
+    }
+    return src;
   }
 
   /**
