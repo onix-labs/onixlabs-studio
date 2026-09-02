@@ -7,6 +7,7 @@ import {
   input,
   InputSignal,
 } from '@angular/core';
+import { DockGeometry } from '../../../services/dock-layout/dock-geometry';
 import { SplitDirection } from '../../../services/dock-layout/dock-node';
 import { DockState } from '../../../services/dock-layout/dock-state';
 
@@ -51,6 +52,12 @@ export class DockSplitter {
    * Holds the layout state the resize commits to.
    */
   private readonly dockState: DockState = inject(DockState);
+
+  /**
+   * Holds the dock geometry, told when a drag starts and ends so measurement-driven consumers (the
+   * tab strips' fill measurement) can defer their forced layouts until the gesture settles.
+   */
+  private readonly geometry: DockGeometry = inject(DockGeometry);
 
   /**
    * Gets the identifier of the split this handle resizes.
@@ -126,6 +133,7 @@ export class DockSplitter {
       this.document.removeEventListener('mousemove', onMove);
       this.document.removeEventListener('mouseup', onRelease);
       handle.classList.remove('dock-splitter--dragging');
+      this.geometry.endInteractiveResize();
       const next: number[] = [...sizes];
       next[index] = beforeGrow;
       next[index + 1] = afterGrow;
@@ -133,6 +141,7 @@ export class DockSplitter {
     };
 
     handle.classList.add('dock-splitter--dragging');
+    this.geometry.beginInteractiveResize();
     this.document.addEventListener('mousemove', onMove);
     this.document.addEventListener('mouseup', onRelease);
   }

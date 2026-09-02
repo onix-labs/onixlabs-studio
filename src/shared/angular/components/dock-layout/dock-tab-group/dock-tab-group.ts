@@ -13,6 +13,7 @@ import {
   InputSignal,
   signal,
   Signal,
+  untracked,
   viewChild,
   WritableSignal,
 } from '@angular/core';
@@ -285,6 +286,16 @@ export class DockTabGroup {
   );
 
   /**
+   * Holds whether a fill measurement is already scheduled for the next frame.
+   */
+  private measureScheduled: boolean = false;
+
+  /**
+   * Holds whether a fill measurement was deferred by an interactive resize, to settle on release.
+   */
+  private measureDeferred: boolean = false;
+
+  /**
    * Registers and unregisters this group with the geometry registry across its lifetime.
    */
   public constructor() {
@@ -294,10 +305,14 @@ export class DockTabGroup {
       const stack: StackNode = this.stack();
       this.geometry.registerGroup(stack.id, stack.role, this.hostElement.nativeElement);
 
-      // Re-measure whenever the strip is resized (the panel narrows or widens).
+      // Re-measure whenever the strip is resized (the panel narrows or widens) — coalesced to one
+      // measurement per frame: the observer can fire several times within a frame, and each
+      // measurement is a forced layout (see measureTabsFill).
       const strip: HTMLElement | undefined = this.tabstrip()?.nativeElement;
       if (strip !== undefined && typeof ResizeObserver !== 'undefined') {
-        const observer: ResizeObserver = new ResizeObserver((): void => this.measureTabsFill());
+        const observer: ResizeObserver = new ResizeObserver((): void =>
+          this.scheduleMeasureTabsFill(),
+        );
         observer.observe(strip);
         destroyRef.onDestroy((): void => observer.disconnect());
       }
@@ -310,9 +325,49 @@ export class DockTabGroup {
     effect((): void => {
       this.panels();
       if (typeof requestAnimationFrame !== 'undefined') {
-        requestAnimationFrame((): void => this.measureTabsFill());
+        requestAnimationFrame((): void => this.measureTabsFillUnlessResizing());
       }
     });
+
+    // A measurement deferred during a splitter drag settles once, when the gesture releases —
+    // during the drag every group's strip is resizing per frame, and measuring then thrashes layout
+    // for a fill state nobody can act on mid-gesture.
+    effect((): void => {
+      if (!this.geometry.resizing() && this.measureDeferred) {
+        this.measureDeferred = false;
+        untracked((): void => this.measureTabsFill());
+      }
+    });
+  }
+
+  /**
+   * Schedules one fill measurement for the next frame, deduplicating the observer's bursts.
+   */
+  private scheduleMeasureTabsFill(): void {
+    if (this.measureScheduled) {
+      return;
+    }
+    if (typeof requestAnimationFrame === 'undefined') {
+      this.measureTabsFillUnlessResizing();
+      return;
+    }
+    this.measureScheduled = true;
+    requestAnimationFrame((): void => {
+      this.measureScheduled = false;
+      this.measureTabsFillUnlessResizing();
+    });
+  }
+
+  /**
+   * Measures now, unless an interactive resize is in progress — then the measurement is deferred to
+   * the gesture's release (see the constructor's settling effect).
+   */
+  private measureTabsFillUnlessResizing(): void {
+    if (this.geometry.resizing()) {
+      this.measureDeferred = true;
+      return;
+    }
+    this.measureTabsFill();
   }
 
   /**

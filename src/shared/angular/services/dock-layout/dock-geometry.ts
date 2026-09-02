@@ -1,4 +1,4 @@
-import { Service } from '@angular/core';
+import { computed, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { StackRole } from './dock-node';
 import { Rect } from './dock-legality';
 
@@ -58,6 +58,34 @@ export class DockGeometry {
   private workspace: HTMLElement | null = null;
 
   /**
+   * Counts the interactive resizes in progress (a splitter drag, chiefly), so layout-reading work
+   * can wait for the gesture to finish instead of thrashing per frame.
+   */
+  private readonly interactiveResizes: WritableSignal<number> = signal<number>(0);
+
+  /**
+   * Gets whether an interactive resize is in progress. Consumers doing forced-layout measurement on
+   * resize (the tab strips' fill measurement) defer while this is true and settle once on release.
+   */
+  public readonly resizing: Signal<boolean> = computed(
+    (): boolean => this.interactiveResizes() > 0,
+  );
+
+  /**
+   * Marks an interactive resize as started.
+   */
+  public beginInteractiveResize(): void {
+    this.interactiveResizes.update((count: number): number => count + 1);
+  }
+
+  /**
+   * Marks an interactive resize as finished.
+   */
+  public endInteractiveResize(): void {
+    this.interactiveResizes.update((count: number): number => Math.max(0, count - 1));
+  }
+
+  /**
    * Registers a tab group so it can be hit-tested during a drag.
    * @param stackId The identifier of the stack.
    * @param role The role of the stack.
@@ -110,17 +138,65 @@ export class DockGeometry {
   public groupAt(x: number, y: number): DockGroupHit | null {
     for (const [stackId, registration] of this.groups) {
       const rect: Rect = toRect(registration.element.getBoundingClientRect());
-      if (
-        x >= rect.left &&
-        x <= rect.left + rect.width &&
-        y >= rect.top &&
-        y <= rect.top + rect.height
-      ) {
+      if (containsPoint(rect, x, y)) {
         return { stackId, role: registration.role, rect };
       }
     }
     return null;
   }
+
+  /**
+   * Reads every registered group's live rectangle once, in registration order. A drag hit-tests on
+   * every pointer move, and `getBoundingClientRect` per group per move forces a synchronous layout
+   * right after the ghost's style writes; the dock cannot reflow mid-drag, so the drag takes one
+   * snapshot at activation and hit-tests against it (see {@link hitInSnapshot}) instead.
+   * @returns Returns the groups with their rectangles, in registration order.
+   */
+  public snapshot(): readonly DockGroupHit[] {
+    const hits: DockGroupHit[] = [];
+    for (const [stackId, registration] of this.groups) {
+      hits.push({
+        stackId,
+        role: registration.role,
+        rect: toRect(registration.element.getBoundingClientRect()),
+      });
+    }
+    return hits;
+  }
+}
+
+/**
+ * Finds the first group in a snapshot whose rectangle contains the given point, mirroring
+ * {@link DockGeometry.groupAt}'s registration-order semantics without touching the DOM.
+ * @param snapshot The snapshot taken at drag activation.
+ * @param x The viewport x coordinate.
+ * @param y The viewport y coordinate.
+ * @returns Returns the hovered group, or null when no group contains the point.
+ */
+export function hitInSnapshot(
+  snapshot: readonly DockGroupHit[],
+  x: number,
+  y: number,
+): DockGroupHit | null {
+  for (const hit of snapshot) {
+    if (containsPoint(hit.rect, x, y)) {
+      return hit;
+    }
+  }
+  return null;
+}
+
+/**
+ * Determines whether a rectangle contains a point.
+ * @param rect The rectangle.
+ * @param x The viewport x coordinate.
+ * @param y The viewport y coordinate.
+ * @returns Returns true when the point lies within the rectangle.
+ */
+function containsPoint(rect: Rect, x: number, y: number): boolean {
+  return (
+    x >= rect.left && x <= rect.left + rect.width && y >= rect.top && y <= rect.top + rect.height
+  );
 }
 
 /**
