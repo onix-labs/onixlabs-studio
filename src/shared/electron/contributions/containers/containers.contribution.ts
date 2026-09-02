@@ -32,9 +32,16 @@ export class ContainersContribution implements MainContribution {
   public readonly permissions: readonly PermissionId[] = ['container.socket'];
 
   /**
-   * The open event stream, held so it can be closed on disposal. Null until activated.
+   * The open event stream, held so it can be closed when the last consumer leaves (and on
+   * disposal). Null while no consumer holds a watch.
    */
   private watchHandle: DockerStreamHandle | null = null;
+
+  /**
+   * Counts the renderer consumers holding the event stream open (see
+   * {@link ContainerChannel.WatchStart}).
+   */
+  private watchConsumers: number = 0;
 
   /**
    * The contribution's namespaced logger, captured at activation for use during disposal.
@@ -89,8 +96,30 @@ export class ContainersContribution implements MainContribution {
       },
     );
 
-    this.watchHandle = engine.watch((event): void => context.send(ContainerChannel.Events, event));
-    context.log.info('containers contribution active; channels wired, event watch started');
+    // The event stream is NOT started here: it is a persistent socket connection with capped-backoff
+    // reconnection, and with no daemon installed an unconditional stream retried that connection
+    // every thirty seconds for the life of the app, serving nobody. The renderer's consumers hold it
+    // open by ref-count instead — the status-strip count holds one while the engine is reachable.
+    context.handle(ContainerChannel.WatchStart, (): boolean => {
+      this.watchConsumers += 1;
+      if (this.watchConsumers === 1 && this.watchHandle === null) {
+        this.log?.info('first watch consumer; opening the engine event stream');
+        this.watchHandle = engine.watch((event): void =>
+          context.send(ContainerChannel.Events, event),
+        );
+      }
+      return true;
+    });
+    context.handle(ContainerChannel.WatchStop, (): boolean => {
+      this.watchConsumers = Math.max(0, this.watchConsumers - 1);
+      if (this.watchConsumers === 0 && this.watchHandle !== null) {
+        this.log?.info('last watch consumer left; closing the engine event stream');
+        this.watchHandle.close();
+        this.watchHandle = null;
+      }
+      return true;
+    });
+    context.log.info('containers contribution active; channels wired, event watch on demand');
   }
 
   /**
@@ -100,6 +129,7 @@ export class ContainersContribution implements MainContribution {
     this.log?.info('disposing containers contribution; closing event stream');
     this.watchHandle?.close();
     this.watchHandle = null;
+    this.watchConsumers = 0;
   }
 }
 
