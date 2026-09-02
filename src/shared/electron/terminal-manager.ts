@@ -51,6 +51,13 @@ const TERMINATE_GRACE_MS: number = 5000;
 const TERMINAL_KINDS: ReadonlySet<string> = new Set<string>(['shell', 'run', 'task']);
 
 /**
+ * The window PTY output coalesces over before its next send (see `emitData`). One frame: short
+ * enough that streaming output still reads live, long enough that a build's chunk flood costs a
+ * couple of renderer messages per frame instead of hundreds.
+ */
+const DATA_FLUSH_MS: number = 16;
+
+/**
  * Manages pseudo-terminal sessions for the renderer: spawns node-pty instances, forwards their I/O
  * over IPC, and answers resize/dispose/cwd requests. One instance is owned by the main process.
  */
@@ -81,6 +88,13 @@ export class TerminalManager {
    * exits within the grace period (or the session is disposed).
    */
   private readonly killTimers: Map<string, NodeJS.Timeout> = new Map<string, NodeJS.Timeout>();
+
+  /**
+   * Holds each session's output still coalescing toward its next send, keyed by session id (see
+   * {@link emitData}).
+   */
+  private readonly pendingData: Map<string, { data: string; timer: NodeJS.Timeout | null }> =
+    new Map<string, { data: string; timer: NodeJS.Timeout | null }>();
 
   /**
    * Initializes a new instance of the {@link TerminalManager} class.
@@ -150,6 +164,12 @@ export class TerminalManager {
       clearTimeout(timer);
     }
     this.killTimers.clear();
+    for (const pending of this.pendingData.values()) {
+      if (pending.timer !== null) {
+        clearTimeout(pending.timer);
+      }
+    }
+    this.pendingData.clear();
   }
 
   /**
@@ -257,10 +277,7 @@ export class TerminalManager {
         this.sendToWindow(TerminalChannel.Data, id, header, headerSeq);
       }
 
-      terminal.onData((data: string): void => {
-        const seq: number = this.scrollback.append(id, data);
-        this.sendToWindow(TerminalChannel.Data, id, data, seq);
-      });
+      terminal.onData((data: string): void => this.emitData(id, data));
 
       terminal.onExit((event: { exitCode: number; signal?: number }): void => {
         pidJournal()?.unregister(terminal.pid);
@@ -279,6 +296,9 @@ export class TerminalManager {
         // the process was terminated — 0 must not read as one, or every success would.
         const endedBy: number | null =
           typeof event.signal === 'number' && event.signal !== 0 ? event.signal : null;
+        // Land any output still coalescing before the exit banner, so the renderer never sees the
+        // exit arrive ahead of the process's final lines.
+        this.flushPendingData(id);
         // Keep the scrollback (with the exit recorded) so a pane re-attaching later still shows the
         // session's output and exit banner; only dispose removes it.
         this.scrollback.markExited(id, event.exitCode, endedBy);
@@ -414,6 +434,13 @@ export class TerminalManager {
    * @returns Returns true when a session (or its retained scrollback) existed and was removed.
    */
   private dispose(id: string): boolean {
+    // Drop (not flush) any coalescing output: the session and its scrollback are going away.
+    const pendingOutput: { data: string; timer: NodeJS.Timeout | null } | undefined =
+      this.pendingData.get(id);
+    if (pendingOutput !== undefined && pendingOutput.timer !== null) {
+      clearTimeout(pendingOutput.timer);
+    }
+    this.pendingData.delete(id);
     const hadScrollback: boolean = this.scrollback.delete(id);
     this.kinds.delete(id);
     const pendingKill: NodeJS.Timeout | undefined = this.killTimers.get(id);
@@ -600,6 +627,59 @@ export class TerminalManager {
    * @param channel The IPC channel to send on.
    * @param args The arguments to send.
    */
+  /**
+   * Ships one PTY output chunk to the renderer, coalescing the stream to one send per short window.
+   * Every chunk used to be its own scrollback append and `webContents.send` — a busy build in a
+   * background workspace was an unthrottled message stream into the one renderer. The first chunk
+   * of a quiet session sends immediately (keystroke echo stays instant); the flood behind it merges
+   * and lands on the window's trailing edge, so a full-rate stream costs at most two sends per
+   * window. Exit and dispose flush first, so ordering is exactly the PTY's.
+   * @param id The session the output belongs to.
+   * @param data The output chunk.
+   */
+  private emitData(id: string, data: string): void {
+    const pending: { data: string; timer: NodeJS.Timeout | null } | undefined =
+      this.pendingData.get(id);
+    if (pending === undefined || pending.timer === null) {
+      // Leading edge: send now, open the window.
+      const seq: number = this.scrollback.append(id, data);
+      this.sendToWindow(TerminalChannel.Data, id, data, seq);
+      const entry: { data: string; timer: NodeJS.Timeout | null } = pending ?? {
+        data: '',
+        timer: null,
+      };
+      entry.timer = setTimeout((): void => {
+        entry.timer = null;
+        this.flushPendingData(id);
+      }, DATA_FLUSH_MS);
+      this.pendingData.set(id, entry);
+      return;
+    }
+    pending.data += data;
+  }
+
+  /**
+   * Ships whatever output a session has coalescing, if any, and closes its window.
+   * @param id The session to flush.
+   */
+  private flushPendingData(id: string): void {
+    const pending: { data: string; timer: NodeJS.Timeout | null } | undefined =
+      this.pendingData.get(id);
+    if (pending === undefined) {
+      return;
+    }
+    if (pending.timer !== null) {
+      clearTimeout(pending.timer);
+      pending.timer = null;
+    }
+    if (pending.data.length > 0) {
+      const chunk: string = pending.data;
+      pending.data = '';
+      const seq: number = this.scrollback.append(id, chunk);
+      this.sendToWindow(TerminalChannel.Data, id, chunk, seq);
+    }
+  }
+
   private sendToWindow(channel: TerminalChannel, ...args: readonly unknown[]): void {
     const window: BrowserWindow | null = this.windowGetter();
     if (window !== null && !window.isDestroyed()) {
