@@ -435,10 +435,9 @@ export class TerminalManager {
    */
   private dispose(id: string): boolean {
     // Drop (not flush) any coalescing output: the session and its scrollback are going away.
-    const pendingOutput: { data: string; timer: NodeJS.Timeout | null } | undefined =
-      this.pendingData.get(id);
-    if (pendingOutput !== undefined && pendingOutput.timer !== null) {
-      clearTimeout(pendingOutput.timer);
+    const pendingTimer: NodeJS.Timeout | null | undefined = this.pendingData.get(id)?.timer;
+    if (pendingTimer != null) {
+      clearTimeout(pendingTimer);
     }
     this.pendingData.delete(id);
     const hadScrollback: boolean = this.scrollback.delete(id);
@@ -640,7 +639,7 @@ export class TerminalManager {
   private emitData(id: string, data: string): void {
     const pending: { data: string; timer: NodeJS.Timeout | null } | undefined =
       this.pendingData.get(id);
-    if (pending === undefined || pending.timer === null) {
+    if (pending?.timer == null) {
       // Leading edge: send now, open the window.
       const seq: number = this.scrollback.append(id, data);
       this.sendToWindow(TerminalChannel.Data, id, data, seq);
