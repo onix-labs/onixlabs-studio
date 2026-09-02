@@ -20,10 +20,25 @@ export enum LogChannel {
   Append = 'log:append',
 
   /**
-   * Pushes one newly-recorded {@link LogRecord} to every renderer window (main→renderer). Drives the
-   * System Monitor's live log audit.
+   * Pushes newly-recorded records to the subscribed renderers (main→renderer). The payload is a
+   * readonly {@link LogRecord} array — records are coalesced on a short flush window so a burst of
+   * logging costs one IPC delivery, not one per record. Drives the System Monitor's live log audit,
+   * and is only sent while at least one renderer holds a {@link Subscribe}.
    */
   Record = 'log:record',
+
+  /**
+   * Registers the sending renderer for {@link Record} pushes (renderer→main, fire-and-forget). The
+   * renderer Log service sends this when its first live-record listener attaches, so windows that
+   * show no log audit never pay for the stream.
+   */
+  Subscribe = 'log:subscribe',
+
+  /**
+   * Withdraws the sending renderer's {@link Subscribe} (renderer→main, fire-and-forget). Sent when
+   * the renderer Log service's last live-record listener detaches.
+   */
+  Unsubscribe = 'log:unsubscribe',
 
   /**
    * Queries the current session's buffered records, optionally filtered (renderer→main, request/reply).

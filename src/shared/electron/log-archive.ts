@@ -15,7 +15,11 @@ const DEFAULT_MAX_ROTATED: number = 5;
 
 /**
  * Persists log records to disk and reads them back: one JSONL file per app session under
- * `<directory>/sessions`, plus the rotating human-readable `<directory>/studio.log`. Deliberately free
+ * `<directory>/sessions`, plus the rotating human-readable `<directory>/studio.log`. Writes are
+ * batched: {@link enqueue}/{@link enqueueHuman} buffer lines and {@link flush} lands each stream with
+ * a single append, so per-record logging never pays a per-record filesystem round-trip on the main
+ * thread — the archive itself owns no timer, leaving the flush cadence (and the immediate flush on an
+ * error record) to the {@link import('./logger').Logger}. Deliberately free
  * of the electron module — it takes its base directory as a constructor argument, so it is
  * unit-testable against a temporary directory (the {@link import('./logger').Logger} constructs it with
  * the app's `userData/logs`). Every method swallows I/O failures: logging must not be able to take the
@@ -27,6 +31,17 @@ export class LogArchive {
    * every write. Null until the first write resolves it from disk.
    */
   private currentFileBytes: number | null = null;
+
+  /**
+   * Holds the enqueued-but-unflushed record lines, grouped by session so {@link flush} appends each
+   * session's batch with a single write.
+   */
+  private readonly pendingRecords: Map<string, string[]> = new Map<string, string[]>();
+
+  /**
+   * Holds the enqueued-but-unflushed human-readable lines.
+   */
+  private pendingHuman: string[] = [];
 
   /**
    * Initializes a new instance of the {@link LogArchive} class.
@@ -59,6 +74,67 @@ export class LogArchive {
       fs.appendFileSync(this.sessionFile(record.sessionId), `${JSON.stringify(record)}\n`);
     } catch {
       // A failed record write (disk full, permissions) is deliberately swallowed.
+    }
+  }
+
+  /**
+   * Enqueues one record for the next {@link flush}, so a burst of logging costs one write per flush
+   * window instead of one filesystem round-trip per record. Never throws.
+   * @param record The record to enqueue.
+   */
+  public enqueue(record: LogRecord): void {
+    try {
+      let lines: string[] | undefined = this.pendingRecords.get(record.sessionId);
+      if (lines === undefined) {
+        lines = [];
+        this.pendingRecords.set(record.sessionId, lines);
+      }
+      lines.push(JSON.stringify(record));
+    } catch {
+      // An unserialisable record is deliberately swallowed.
+    }
+  }
+
+  /**
+   * Enqueues one human-readable line for the next {@link flush}.
+   * @param line The fully formatted line, terminated with a newline.
+   */
+  public enqueueHuman(line: string): void {
+    this.pendingHuman.push(line);
+  }
+
+  /**
+   * Gets the number of enqueued-but-unflushed lines across both streams, so the caller can force an
+   * early flush when a burst outruns the flush window.
+   */
+  public get pendingCount(): number {
+    let count: number = this.pendingHuman.length;
+    for (const lines of this.pendingRecords.values()) {
+      count += lines.length;
+    }
+    return count;
+  }
+
+  /**
+   * Writes everything enqueued: each session's records as one append to its JSONL file, and the
+   * human-readable lines as one append to `studio.log` (rotating first when the batch would cross
+   * the size cap). The pending buffers are cleared whether or not the writes succeed — on a full
+   * disk, retrying the same lines forever would only grow the buffer. Never throws.
+   */
+  public flush(): void {
+    for (const [sessionId, lines] of this.pendingRecords) {
+      try {
+        fs.mkdirSync(this.sessionsDirectory, { recursive: true });
+        fs.appendFileSync(this.sessionFile(sessionId), `${lines.join('\n')}\n`);
+      } catch {
+        // A failed batch write (disk full, permissions) is deliberately swallowed.
+      }
+    }
+    this.pendingRecords.clear();
+    if (this.pendingHuman.length > 0) {
+      const batch: string[] = this.pendingHuman;
+      this.pendingHuman = [];
+      this.appendHuman(batch.join(''));
     }
   }
 

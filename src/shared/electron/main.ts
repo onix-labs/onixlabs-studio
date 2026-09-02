@@ -1094,6 +1094,9 @@ class Program {
     this.lspManager.disposeAll();
     this.debugManager.disposeAll();
     void this.contributions.disposeAll();
+    // Last, after the disposals above have logged their own records: land everything the logger has
+    // coalesced, so a session's final records are never lost to the flush window.
+    this.logger.flush();
   }
 
   /**

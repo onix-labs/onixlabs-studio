@@ -9,6 +9,7 @@ import {
   InputSignal,
   Signal,
   signal,
+  untracked,
   WritableSignal,
 } from '@angular/core';
 import { Button } from '@shared/angular/components/forms/button/button';
@@ -371,6 +372,12 @@ export class SystemMonitorView {
   protected readonly selectedCount: Signal<number> = computed((): number => this.selected().size);
 
   /**
+   * Holds the live record stream's unsubscribe, or null while the tab is hidden and the stream is
+   * closed.
+   */
+  private liveRecordsUnsubscribe: (() => void) | null = null;
+
+  /**
    * Gets whether the viewed session is the live one, so new records stream into it.
    */
   private readonly viewingLive: Signal<boolean> = computed((): boolean => {
@@ -454,7 +461,48 @@ export class SystemMonitorView {
     void this.loadSessions();
     void this.loadRecords();
 
-    const unsubscribe: () => void = this.log.onRecord((record: LogRecord): void => {
+    const unsubscribeSamples: () => void = this.metrics.onSample((sample: MetricsSample): void =>
+      this.accept(sample),
+    );
+
+    const destroy: DestroyRef = inject(DestroyRef);
+    destroy.onDestroy(unsubscribeSamples);
+    destroy.onDestroy((): void => this.unsubscribeFromLiveRecords());
+    destroy.onDestroy((): void => this.commands.unregister(this.commandHandler));
+    destroy.onDestroy((): void => this.metrics.stop());
+
+    // Sampling, the live record stream and the ribbon handler follow the tab's visibility: nothing
+    // is sampled and no record push is processed while the monitor is hidden (the performance-audit
+    // posture). Reactivation reloads the viewed session first, catching up on whatever was recorded
+    // while the stream was down.
+    effect((): void => {
+      const active: boolean = this.isActive();
+      // The reactive dependency is the visibility alone: the catch-up reload reads the selected
+      // session synchronously, and tracking that here would re-run this effect (and double-start
+      // the ref-counted sampling) every time the viewed session changes.
+      untracked((): void => {
+        if (active) {
+          this.commands.register(this.commandHandler);
+          this.metrics.start();
+          this.subscribeToLiveRecords();
+        } else {
+          this.commands.unregister(this.commandHandler);
+          this.metrics.stop();
+          this.unsubscribeFromLiveRecords();
+        }
+      });
+    });
+  }
+
+  /**
+   * Opens the live record stream (idempotent) and reloads the viewed session so records that landed
+   * while the stream was down appear before new ones stream in.
+   */
+  private subscribeToLiveRecords(): void {
+    if (this.liveRecordsUnsubscribe !== null) {
+      return;
+    }
+    this.liveRecordsUnsubscribe = this.log.onRecord((record: LogRecord): void => {
       if (!this.viewingLive() || record.sessionId !== this.currentSessionId()) {
         return;
       }
@@ -468,27 +516,16 @@ export class SystemMonitorView {
         return last !== undefined && record.id <= last.id ? records : [...records, record];
       });
     });
-    const unsubscribeSamples: () => void = this.metrics.onSample((sample: MetricsSample): void =>
-      this.accept(sample),
-    );
+    void this.loadRecords();
+  }
 
-    const destroy: DestroyRef = inject(DestroyRef);
-    destroy.onDestroy(unsubscribe);
-    destroy.onDestroy(unsubscribeSamples);
-    destroy.onDestroy((): void => this.commands.unregister(this.commandHandler));
-    destroy.onDestroy((): void => this.metrics.stop());
-
-    // Sampling and the ribbon handler follow the tab's visibility: nothing is sampled while the
-    // monitor is hidden (the performance-audit posture).
-    effect((): void => {
-      if (this.isActive()) {
-        this.commands.register(this.commandHandler);
-        this.metrics.start();
-      } else {
-        this.commands.unregister(this.commandHandler);
-        this.metrics.stop();
-      }
-    });
+  /**
+   * Closes the live record stream, if open. The last subscriber going away withdraws the renderer's
+   * subscription in main, so a hidden monitor costs no record IPC at all.
+   */
+  private unsubscribeFromLiveRecords(): void {
+    this.liveRecordsUnsubscribe?.();
+    this.liveRecordsUnsubscribe = null;
   }
 
   /**
