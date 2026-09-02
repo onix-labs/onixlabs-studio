@@ -12,6 +12,8 @@ import type {
   AiEffort,
   AiEvent,
   AiStopTaskRequest,
+  AiTextEvent,
+  AiThinkingEvent,
   AiImageRef,
   AiInputChoice,
   AiRemoteControlMode,
@@ -116,6 +118,12 @@ const MAX_SESSION_LIFETIME_MS: number = 7 * 24 * 60 * 60 * 1000;
  * turn.
  */
 const MAX_LIVE_SESSIONS: number = 8;
+
+/**
+ * The window streamed deltas merge over before the renderer sees them (see `emit`). Matches the
+ * renderer transcript's own flush cadence, so batching here costs no visible latency there.
+ */
+const DELTA_FLUSH_MS: number = 33;
 
 /**
  * Kill switch for persistent live sessions (#327). When true, a live-harness turn for a known agent
@@ -540,6 +548,11 @@ export class AiManager {
       'AiManager.disposeAll',
       `Shutting down: aborting ${this.runs.size} run(s) and closing ${this.liveSessions.size} live session(s)`,
     );
+    if (this.deltaFlushTimer !== null) {
+      clearTimeout(this.deltaFlushTimer);
+      this.deltaFlushTimer = null;
+    }
+    this.flushPendingDelta();
     for (const controller of this.runs.values()) {
       controller.abort();
     }
@@ -1222,10 +1235,91 @@ export class AiManager {
   }
 
   /**
-   * Sends an event to the renderer.
+   * Holds the delta merged in the open flush window: the first event of its stream (whose identity
+   * fields tag the merged send) and the concatenated delta text.
+   */
+  private pendingDelta: { readonly base: AiTextEvent | AiThinkingEvent; delta: string } | null =
+    null;
+
+  /**
+   * Holds the open delta flush window's timer, or null when no window is open.
+   */
+  private deltaFlushTimer: NodeJS.Timeout | null = null;
+
+  /**
+   * Sends an event to the renderer, coalescing streamed deltas.
+   *
+   * The AI-SDK and Codex providers emit one event per model token; each used to be its own
+   * `webContents.send` — a structured clone and a renderer wakeup per token, which the renderer
+   * then buffered onto its own 33ms flush anyway. Delta events (text and thinking) now ride a
+   * matching window in main: the first sends immediately (first-token latency stays zero), the
+   * flood behind it merges into one event per window, and any non-delta event flushes the merged
+   * delta first so ordering is exactly what the provider emitted. The Claude provider emits whole
+   * messages, not tokens, and is unaffected.
    * @param event The event to send.
    */
   private emit(event: AiEvent): void {
+    if (event.kind === 'text' || event.kind === 'thinking') {
+      this.emitDelta(event);
+      return;
+    }
+    this.flushPendingDelta();
+    this.send(event);
+  }
+
+  /**
+   * Sends or merges one streamed delta (see {@link emit}).
+   * @param event The delta event.
+   */
+  private emitDelta(event: AiTextEvent | AiThinkingEvent): void {
+    if (this.deltaFlushTimer === null) {
+      // Leading edge: send now, open the window.
+      this.send(event);
+      this.deltaFlushTimer = setTimeout((): void => {
+        this.deltaFlushTimer = null;
+        this.flushPendingDelta();
+      }, DELTA_FLUSH_MS);
+      return;
+    }
+    const pending: { readonly base: AiTextEvent | AiThinkingEvent; delta: string } | null =
+      this.pendingDelta;
+    // Deltas merge only within one stream: same run, same kind, same sub-agent lane, same message.
+    if (
+      pending !== null &&
+      (pending.base.requestId !== event.requestId ||
+        pending.base.kind !== event.kind ||
+        pending.base.parentToolId !== event.parentToolId ||
+        (pending.base.kind === 'text' &&
+          event.kind === 'text' &&
+          pending.base.messageUuid !== event.messageUuid))
+    ) {
+      this.flushPendingDelta();
+    }
+    if (this.pendingDelta === null) {
+      this.pendingDelta = { base: event, delta: event.delta };
+    } else {
+      this.pendingDelta.delta += event.delta;
+    }
+  }
+
+  /**
+   * Sends whatever delta has merged in the open window, if any.
+   */
+  private flushPendingDelta(): void {
+    const pending: { readonly base: AiTextEvent | AiThinkingEvent; delta: string } | null =
+      this.pendingDelta;
+    if (pending === null) {
+      return;
+    }
+    this.pendingDelta = null;
+    this.send({ ...pending.base, delta: pending.delta });
+  }
+
+  /**
+   * Sends an event to the renderer.
+   * @param event The event to send.
+   */
+  private send(event: AiEvent): void {
     this.windowGetter()?.webContents.send(AiChannel.Event, event);
   }
 
