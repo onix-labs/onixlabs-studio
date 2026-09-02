@@ -10,9 +10,9 @@ import {
 import { SettingControl } from '../setting-control/setting-control';
 import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
 import { SettingDescriptions } from '@features/settings/angular/setting-descriptions';
-import { findSection } from '@shared/angular/services/settings/settings-registry';
+import { SettingBinding, SettingBindings } from '@features/settings/angular/setting-bindings';
+import { findSection, SETTINGS_BY_KEY } from '@shared/angular/services/settings/settings-registry';
 import { SettingDef, VisibilityDef } from '@shared/angular/services/settings/settings-schema';
-import { Settings } from '@shared/angular/services/settings/settings';
 
 /**
  * Renders a settings section entirely from the registry: every setting in the section becomes a
@@ -36,9 +36,10 @@ export class SettingsSection {
   private readonly descriptions: SettingDescriptions = inject(SettingDescriptions);
 
   /**
-   * Holds the settings store, read to resolve a setting's visibility condition.
+   * Holds the binding resolver, used to read the value a setting's visibility condition depends on
+   * whichever service owns it.
    */
-  private readonly settingsStore: Settings = inject(Settings);
+  private readonly bindings: SettingBindings = inject(SettingBindings);
 
   /**
    * Gets the identifier of the section to render.
@@ -59,16 +60,20 @@ export class SettingsSection {
 
   /**
    * Determines whether a setting's condition is met, so a setting that qualifies another appears only
-   * while it has something to qualify. Reads the depended-on value through the settings store, so the
-   * row appears and disappears as that setting changes.
+   * while it has something to qualify. Reads the depended-on value through the binding layer rather
+   * than the settings store directly, so the condition can name a foreign-owned setting (the
+   * hardware-acceleration preference, for one) as readily as a stored one. The read is reactive, so
+   * the row appears and disappears as that setting changes.
    * @param setting The setting definition.
    * @returns Returns true when the setting should be rendered.
    */
   private isVisible(setting: SettingDef): boolean {
     const condition: VisibilityDef | undefined = setting.visibleWhen;
-    return (
-      condition === undefined || condition.equals.includes(this.settingsStore.get(condition.key))
-    );
+    if (condition === undefined) return true;
+
+    const dependency: SettingDef | undefined = SETTINGS_BY_KEY.get(condition.key);
+    const binding: SettingBinding = this.bindings.resolve(condition.key, dependency?.owner);
+    return condition.equals.includes(binding.value());
   }
 
   /**

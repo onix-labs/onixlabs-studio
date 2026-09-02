@@ -1,4 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { Display } from '@shared/angular/services/display/display';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { DockState } from '../../../services/dock-layout/dock-state';
 import { findStackOfPanel } from '../../../services/dock-layout/dock-tree';
@@ -18,6 +19,13 @@ describe('DockContainer', () => {
     component = fixture.componentInstance;
     dockState = TestBed.inject(DockState);
     fixture.detectChanges();
+  });
+
+  afterEach(() => {
+    // The Display service writes these to the shared document root; specs run without isolation, so
+    // leaving them set would follow the suite into the next file.
+    document.documentElement.removeAttribute('data-corners');
+    document.documentElement.removeAttribute('data-reduced-gpu');
   });
 
   it('should create', () => {
@@ -44,6 +52,32 @@ describe('DockContainer', () => {
     const element: HTMLElement = fixture.nativeElement as HTMLElement;
 
     expect(element.getAttribute('data-texture')).toBe('circuit-board');
+  });
+
+  it('texture_whenHardwareAccelerationIsOff_suppressesItWithoutClearingTheChoice', () => {
+    const settings: Settings = TestBed.inject(Settings);
+    settings.setWorkspaceTexture('circuit-board');
+    TestBed.inject(Display).setHardwareAcceleration(false);
+    fixture.detectChanges();
+
+    const element: HTMLElement = fixture.nativeElement as HTMLElement;
+
+    expect(element.hasAttribute('data-texture')).toBe(false);
+    expect(settings.workspaceTexture()).toBe('circuit-board');
+  });
+
+  it('texture_whenHardwareAccelerationIsRestored_paintsTheChosenTextureAgain', () => {
+    const display: Display = TestBed.inject(Display);
+    TestBed.inject(Settings).setWorkspaceTexture('circuit-board');
+    display.setHardwareAcceleration(false);
+    fixture.detectChanges();
+
+    display.setHardwareAcceleration(true);
+    fixture.detectChanges();
+
+    expect((fixture.nativeElement as HTMLElement).getAttribute('data-texture')).toBe(
+      'circuit-board',
+    );
   });
 
   it('reset_whenCalledAfterAChange_restoresTheSeededLayout', () => {

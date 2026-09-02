@@ -1,5 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
+import { Display } from '@shared/angular/services/display/display';
 import { findSection } from '@shared/angular/services/settings/settings-registry';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { ACCENT_PRESETS } from '@shared/angular/services/theme/theme';
@@ -15,6 +16,13 @@ describe('SettingsSection', () => {
     }).compileComponents();
 
     fixture = TestBed.createComponent(SettingsSection);
+  });
+
+  afterEach(() => {
+    // The Display service writes these to the shared document root; specs run without isolation, so
+    // leaving them set would follow the suite into the next file.
+    document.documentElement.removeAttribute('data-corners');
+    document.documentElement.removeAttribute('data-reduced-gpu');
   });
 
   /**
@@ -50,6 +58,28 @@ describe('SettingsSection', () => {
 
     expect(element.textContent).toContain('Application menu');
     expect(element.textContent).not.toContain('Application menu appearance');
+  });
+
+  it('render_whenAForeignOwnedConditionFails_leavesTheDependentSettingsOut', async () => {
+    // Modern UI Features and Workspace Texture are forced off without hardware acceleration, so the
+    // controls go rather than sitting there having no effect. The condition names a Display-owned
+    // key, which resolves through the binding layer rather than the settings store.
+    TestBed.inject(Display).setHardwareAcceleration(false);
+
+    const element: HTMLElement = await render('appearance');
+
+    expect(element.textContent).toContain('Hardware Acceleration');
+    expect(element.textContent).not.toContain('Modern UI Features');
+    expect(element.textContent).not.toContain('Workspace Texture');
+  });
+
+  it('render_whenAForeignOwnedConditionHolds_showsTheDependentSettings', async () => {
+    TestBed.inject(Display).setHardwareAcceleration(true);
+
+    const element: HTMLElement = await render('appearance');
+
+    expect(element.textContent).toContain('Modern UI Features');
+    expect(element.textContent).toContain('Workspace Texture');
   });
 
   it('render_whenASettingsConditionHolds_showsIt', async () => {
