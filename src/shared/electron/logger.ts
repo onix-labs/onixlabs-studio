@@ -1,12 +1,5 @@
 import * as path from 'node:path';
-import {
-  app,
-  BrowserWindow,
-  ipcMain,
-  IpcMainEvent,
-  IpcMainInvokeEvent,
-  WebContents,
-} from 'electron';
+import { app, ipcMain, IpcMainEvent, IpcMainInvokeEvent, WebContents } from 'electron';
 import {
   consoleLevelToSeverity,
   LOG_LEVELS,
@@ -25,14 +18,32 @@ import { LogArchive } from '@shared/electron/log-archive';
 import { LogInput, LogStore } from '@shared/electron/log-store';
 
 /**
+ * Holds the flush window: how long side effects (disk appends, the renderer push) may coalesce
+ * before they land. Short enough that the live audit still reads as live; long enough that a
+ * watcher-driven trace storm costs a handful of writes per second instead of thousands.
+ */
+const FLUSH_INTERVAL_MS: number = 250;
+
+/**
+ * Caps how many lines may sit unflushed; a burst that outruns the flush window flushes early rather
+ * than letting the buffers grow without bound.
+ */
+const MAX_PENDING_LINES: number = 512;
+
+/**
  * Collects application log records for the current app session and serves the log audit.
  *
  * This is the thin electron adapter over two electron-free cores: the {@link LogStore} holds the live
  * per-session ring buffer and the query logic, and the {@link LogArchive} persists and reloads records
- * on disk. Every record is buffered (the live audit source), persisted as one JSON line to the
- * session's `logs/sessions/<sessionId>.jsonl` file, written as a human-readable line to stdout in
- * development or the rotating `studio.log` in packaged builds, and pushed to every renderer window
- * over {@link LogChannel.Record}.
+ * on disk. Every record is buffered immediately (the live audit source); its side effects are
+ * coalesced on a short flush window so a logging burst costs one filesystem append per stream and one
+ * IPC delivery, not four synchronous syscalls and a broadcast per record — which is what made heavy
+ * trace traffic lag the whole app in packaged builds. On flush, records land in the session's
+ * `logs/sessions/<sessionId>.jsonl` file, the human-readable lines land on stdout in development or
+ * the rotating `studio.log` in packaged builds, and the batch is pushed only to renderers holding a
+ * {@link LogChannel.Subscribe} — a window with no log audit open pays nothing. An error record
+ * flushes immediately: a failure's context must be durable before anything else goes wrong, so
+ * crash-adjacent records are never sitting in a buffer.
  *
  * Main-process code logs directly through {@link log} (or the {@link info}/{@link warn}/… helpers). The
  * renderer's console methods are intercepted by the ConsoleForwarder and arrive over
@@ -66,6 +77,24 @@ export class Logger {
    * `main` versus a pop-out `window-<id>`. Null until wired by the main process.
    */
   private mainWebContentsId: (() => number | null) | null = null;
+
+  /**
+   * Holds the renderers subscribed to live record pushes. Only these receive
+   * {@link LogChannel.Record} batches; with the set empty the broadcast side effect is skipped
+   * entirely (records stay queryable through {@link LogChannel.Query}).
+   */
+  private readonly subscribers: Set<WebContents> = new Set<WebContents>();
+
+  /**
+   * Holds the records awaiting the next broadcast flush, oldest first.
+   */
+  private pendingBroadcast: LogRecord[] = [];
+
+  /**
+   * Holds the pending flush timer, or null when nothing is scheduled. Unref'd so an idle buffer
+   * never holds the process open.
+   */
+  private flushTimer: NodeJS.Timeout | null = null;
 
   /**
    * Wires the resolver used to label renderer records by their originating window.
@@ -122,11 +151,28 @@ export class Logger {
     );
 
     ipcMain.handle(LogChannel.Sessions, (): readonly LogSession[] => this.sessions());
+
+    ipcMain.on(LogChannel.Subscribe, (event: IpcMainEvent): void => {
+      const sender: WebContents = event.sender;
+      if (this.subscribers.has(sender)) {
+        return;
+      }
+      this.subscribers.add(sender);
+      sender.once('destroyed', (): void => {
+        this.subscribers.delete(sender);
+      });
+    });
+
+    ipcMain.on(LogChannel.Unsubscribe, (event: IpcMainEvent): void => {
+      this.subscribers.delete(event.sender);
+    });
   }
 
   /**
-   * Records one structured log: buffers it, persists it, writes the human-readable line and pushes it
-   * to the renderers. Never throws — logging must not be able to take the app down.
+   * Records one structured log: buffers it into the live audit immediately, and enqueues the disk
+   * and broadcast side effects for the next flush window. An error record flushes immediately so its
+   * context is durable before anything else goes wrong. Never throws — logging must not be able to
+   * take the app down.
    * @param input The record's origin, severity, source, message and optional originating window.
    */
   public log(input: LogInput): void {
@@ -134,12 +180,69 @@ export class Logger {
     // Each side effect is independently guarded: logging must never throw, even before the app is
     // ready (when `app.getPath`/`app.isPackaged` are unusable) or outside the Electron runtime.
     try {
-      this.archive.persist(record);
+      this.archive.enqueue(record);
     } catch {
       // A persistence failure is deliberately swallowed.
     }
     this.emitHuman(record);
-    this.broadcast(record);
+    if (this.subscribers.size > 0) {
+      this.pendingBroadcast.push(record);
+    }
+    if (record.severity === 'error' || this.pendingLines() >= MAX_PENDING_LINES) {
+      this.flush();
+    } else {
+      this.scheduleFlush();
+    }
+  }
+
+  /**
+   * Lands every enqueued side effect now: the batched disk appends and the batched renderer push.
+   * Called on the flush window, immediately for an error record, and by the main process's teardown
+   * so the final records of a session are never lost to the buffer. Never throws.
+   */
+  public flush(): void {
+    if (this.flushTimer !== null) {
+      clearTimeout(this.flushTimer);
+      this.flushTimer = null;
+    }
+    try {
+      this.archive.flush();
+    } catch {
+      // An unavailable archive (before ready / outside Electron) is deliberately swallowed.
+    }
+    if (this.pendingBroadcast.length > 0) {
+      const batch: readonly LogRecord[] = this.pendingBroadcast;
+      this.pendingBroadcast = [];
+      this.broadcast(batch);
+    }
+  }
+
+  /**
+   * Schedules a flush one window from now, unless one is already pending. The timer is unref'd so a
+   * quiet buffer never keeps the process alive.
+   */
+  private scheduleFlush(): void {
+    if (this.flushTimer !== null) {
+      return;
+    }
+    this.flushTimer = setTimeout((): void => {
+      this.flushTimer = null;
+      this.flush();
+    }, FLUSH_INTERVAL_MS);
+    this.flushTimer.unref();
+  }
+
+  /**
+   * Counts the lines awaiting a flush across the archive and broadcast buffers. Never throws.
+   * @returns Returns the pending line count, or the broadcast backlog alone when the archive is
+   * unavailable.
+   */
+  private pendingLines(): number {
+    try {
+      return this.archive.pendingCount + this.pendingBroadcast.length;
+    } catch {
+      return this.pendingBroadcast.length;
+    }
   }
 
   /**
@@ -269,19 +372,19 @@ export class Logger {
   }
 
   /**
-   * Pushes one record to every live renderer window over {@link LogChannel.Record}. Never throws.
-   * @param record The record to broadcast.
+   * Pushes one batch of records to every subscribed renderer over {@link LogChannel.Record}. Never
+   * throws.
+   * @param batch The records to push, oldest first.
    */
-  private broadcast(record: LogRecord): void {
+  private broadcast(batch: readonly LogRecord[]): void {
     try {
-      for (const window of BrowserWindow.getAllWindows()) {
-        if (!window.isDestroyed()) {
-          window.webContents.send(LogChannel.Record, record);
+      for (const subscriber of this.subscribers) {
+        if (!subscriber.isDestroyed()) {
+          subscriber.send(LogChannel.Record, batch);
         }
       }
     } catch {
-      // An unavailable BrowserWindow (before ready / outside Electron) or a window torn down
-      // mid-send is deliberately swallowed.
+      // A subscriber torn down mid-send is deliberately swallowed.
     }
   }
 
@@ -300,16 +403,17 @@ export class Logger {
   }
 
   /**
-   * Writes one record as a human-readable line: to stdout in development, to the rotating
-   * `studio.log` in packaged builds. Never throws.
-   * @param record The record to write.
+   * Emits one record as a human-readable line: to stdout immediately in development, enqueued for
+   * the rotating `studio.log` in packaged builds — the packaged file rides the same batched flush as
+   * the session records, so it costs no per-record syscall. Never throws.
+   * @param record The record to emit.
    */
   private emitHuman(record: LogRecord): void {
     try {
       const where: string = record.window ? `${record.origin}/${record.window}` : record.origin;
       const line: string = `${record.timestamp} [${where}:${record.severity}] ${record.source}: ${record.message}\n`;
       if (app.isPackaged) {
-        this.archive.appendHuman(line);
+        this.archive.enqueueHuman(line);
       } else {
         process.stdout.write(line);
       }

@@ -91,7 +91,7 @@ describe('Log', () => {
     expect(invoked[0].channel).toBe(LogChannel.Sessions);
   });
 
-  it('onRecord_subscribesToTheRecordChannelAndUnwrapsThePayload', () => {
+  it('onRecord_subscribesToTheRecordChannelAndUnwrapsTheBatch', () => {
     const seen: LogRecord[] = [];
     setup().onRecord((record: LogRecord): void => {
       seen.push(record);
@@ -106,8 +106,31 @@ describe('Log', () => {
       source: 'x',
       message: 'y',
     };
-    subscribed?.listener(record);
-    expect(seen).toEqual([record]);
+    const second: LogRecord = { ...record, id: 2 };
+    subscribed?.listener([record, second]);
+    expect(seen).toEqual([record, second]);
+  });
+
+  it('onRecord_opensTheStreamOnceAndClosesItWhenTheLastListenerDetaches', () => {
+    const log: Log = setup();
+    const offFirst: () => void = log.onRecord((): void => {
+      // The record content is not under test here.
+    });
+    const offSecond: () => void = log.onRecord((): void => {
+      // The record content is not under test here.
+    });
+    const streamChannels: readonly string[] = [LogChannel.Subscribe, LogChannel.Unsubscribe];
+    const streamSends: () => string[] = (): string[] =>
+      sent
+        .map((entry: { channel: string }): string => entry.channel)
+        .filter((channel: string): boolean => streamChannels.includes(channel));
+    expect(streamSends()).toEqual([LogChannel.Subscribe]);
+    offFirst();
+    expect(streamSends()).toEqual([LogChannel.Subscribe]);
+    offSecond();
+    // A second call to the same unsubscribe must not double-decrement.
+    offSecond();
+    expect(streamSends()).toEqual([LogChannel.Subscribe, LogChannel.Unsubscribe]);
   });
 
   it('withoutBridge_isASafeNoOp', async () => {

@@ -29,6 +29,13 @@ export class Log {
   private readonly bridge: Bridge | undefined = window.bridge;
 
   /**
+   * Counts the live {@link onRecord} listeners, so the main process's record stream is subscribed
+   * while the first is attached and withdrawn when the last detaches — a session with no log audit
+   * open costs no record IPC at all.
+   */
+  private recordListeners: number = 0;
+
+  /**
    * Records a trace-severity log.
    * @param source The source of the record — the "Where".
    * @param message The message text.
@@ -97,19 +104,52 @@ export class Log {
   }
 
   /**
-   * Subscribes to newly-recorded log records pushed from the main process.
+   * Subscribes to newly-recorded log records pushed from the main process. Records arrive batched
+   * per flush window; the listener is invoked once per record, oldest first. The first listener
+   * opens the main-process stream ({@link LogChannel.Subscribe}) and the last to detach closes it,
+   * so nothing is pushed while no one is watching.
    * @param listener The listener invoked with each new record.
    * @returns Returns a function that unsubscribes the listener; a no-op outside Electron.
    */
   public onRecord(listener: (record: LogRecord) => void): () => void {
-    return (
-      this.bridge?.on(LogChannel.Record, (...args: unknown[]): void =>
-        listener(args[0] as LogRecord),
-      ) ??
-      ((): void => {
+    if (this.bridge === undefined) {
+      return (): void => {
         // No bridge outside Electron; there is nothing to unsubscribe.
-      })
-    );
+      };
+    }
+    const detach: () => void = this.bridge.on(LogChannel.Record, (...args: unknown[]): void => {
+      for (const record of args[0] as readonly LogRecord[]) {
+        listener(record);
+      }
+    });
+    this.recordListeners += 1;
+    if (this.recordListeners === 1) {
+      this.sendSafely(LogChannel.Subscribe);
+    }
+    let detached: boolean = false;
+    return (): void => {
+      if (detached) {
+        return;
+      }
+      detached = true;
+      detach();
+      this.recordListeners -= 1;
+      if (this.recordListeners === 0) {
+        this.sendSafely(LogChannel.Unsubscribe);
+      }
+    };
+  }
+
+  /**
+   * Sends one payload-less message over the bridge, never letting a transport failure surface.
+   * @param channel The channel to send on.
+   */
+  private sendSafely(channel: LogChannel): void {
+    try {
+      this.bridge?.send(channel);
+    } catch {
+      // A failed send is deliberately swallowed.
+    }
   }
 
   /**
