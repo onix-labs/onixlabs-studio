@@ -579,7 +579,7 @@ export class TextEditor implements AfterViewInit, OnDestroy {
     // by whoever acts on it, and a selection can be large enough that carrying it on every keystroke
     // would be waste. Whitespace alone does not count, matching what an attach would actually take.
     this.editor.onDidChangeCursorSelection((): void => {
-      this.selectionChange.emit(this.getSelectionText().trim().length > 0);
+      this.selectionChange.emit(this.selectionHasText());
     });
 
     this.editorReady.set(true);
@@ -592,5 +592,31 @@ export class TextEditor implements AfterViewInit, OnDestroy {
    */
   private readEol(): TextEditorEol {
     return this.editor?.getModel()?.getEOL() === '\r\n' ? 'CRLF' : 'LF';
+  }
+
+  /**
+   * Determines whether the selection holds any non-whitespace text — without materialising it. This
+   * runs on every selection change, which fires per keystroke and per pointer event during a
+   * drag-select; copying the selection out of the model to answer a yes/no question cost O(selection
+   * bytes) each time (exactly the waste the emit above promises to avoid). Lines are scanned in
+   * place with an early exit, so a selection that starts with text answers from its first line.
+   * @returns Returns true when the selection contains non-whitespace text.
+   */
+  private selectionHasText(): boolean {
+    const selection: MonacoApi.Selection | null = this.editor?.getSelection() ?? null;
+    const model: MonacoApi.editor.ITextModel | null = this.editor?.getModel() ?? null;
+    if (selection === null || model === null || selection.isEmpty()) {
+      return false;
+    }
+    for (let line: number = selection.startLineNumber; line <= selection.endLineNumber; line += 1) {
+      const content: string = model.getLineContent(line);
+      const from: number = line === selection.startLineNumber ? selection.startColumn - 1 : 0;
+      const to: number =
+        line === selection.endLineNumber ? selection.endColumn - 1 : content.length;
+      if (content.slice(from, to).trim().length > 0) {
+        return true;
+      }
+    }
+    return false;
   }
 }

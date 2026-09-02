@@ -57,6 +57,13 @@ const MIN_FIT_WIDTH_PX: number = 40;
 const MIN_FIT_HEIGHT_PX: number = 20;
 
 /**
+ * Holds the trailing-edge debounce for container resizes. Long enough that a splitter drag's
+ * per-frame resizes collapse into a handful of fits; short enough that a finished resize lands its
+ * final geometry without a visible wait.
+ */
+const RESIZE_DEBOUNCE_MS: number = 100;
+
+/**
  * Represents the shared terminal pane: an xterm.js instance wired to a main-process node-pty session
  * through the {@link TerminalBridge}. It is the reusable capability wrapper consumed by the terminal
  * feature view and by docked terminal panels; it renders and drives a single terminal and nothing
@@ -233,6 +240,17 @@ export class Terminal implements AfterViewInit, OnDestroy {
   private scrollLocked: boolean = false;
 
   /**
+   * Holds the trailing-edge resize timer, or null when no debounce window is open (see
+   * {@link handleResize}).
+   */
+  private resizeDebounce: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * Holds whether a resize arrived while the debounce window was open, so the trailing edge re-fits.
+   */
+  private resizePending: boolean = false;
+
+  /**
    * Initializes a new instance of the {@link Terminal} class, wiring the activation and theme effects.
    */
   public constructor() {
@@ -275,6 +293,10 @@ export class Terminal implements AfterViewInit, OnDestroy {
     this.cleanupOnData?.();
     this.cleanupOnExit?.();
     this.resizeObserver?.disconnect();
+    if (this.resizeDebounce !== null) {
+      clearTimeout(this.resizeDebounce);
+      this.resizeDebounce = null;
+    }
     this.terminals.unregister(this.terminalId());
     if (!this.persistent()) {
       void this.bridge.dispose(this.terminalId());
@@ -286,11 +308,34 @@ export class Terminal implements AfterViewInit, OnDestroy {
   }
 
   /**
-   * Re-fits the terminal to its container and notifies the PTY of the new size. Safe to call at any
+   * Re-fits the terminal to its container and notifies the PTY of the new size — debounced on the
+   * trailing edge after an immediate leading fit. A splitter drag resizes the container on every
+   * frame, and fitting per frame sent the PTY a resize per frame too: each one raises SIGWINCH, the
+   * shell redraws its prompt, and the redraw streams back into the pane being resized — a feedback
+   * loop for the whole drag. With the debounce a drag costs one fit at its start, at most one per
+   * window while it lasts, and one trailing fit that lands the final geometry. Safe to call at any
    * time; a host without a plausible layout (hidden, detached, or mid-layout) is ignored — neither
    * xterm nor the PTY is resized from a degenerate geometry.
    */
   public handleResize(): void {
+    if (this.resizeDebounce !== null) {
+      this.resizePending = true;
+      return;
+    }
+    this.performResize();
+    this.resizeDebounce = setTimeout((): void => {
+      this.resizeDebounce = null;
+      if (this.resizePending) {
+        this.resizePending = false;
+        this.handleResize();
+      }
+    }, RESIZE_DEBOUNCE_MS);
+  }
+
+  /**
+   * Fits the terminal and ships the resulting grid to the PTY, when the host has a real layout.
+   */
+  private performResize(): void {
     if (this.xterm === null || this.fitAddon === null || !this.fitToHost(this.fitAddon)) {
       return;
     }

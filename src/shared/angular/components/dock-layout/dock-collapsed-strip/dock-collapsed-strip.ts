@@ -17,6 +17,10 @@ import { Rect } from '../../../services/dock-layout/dock-legality';
 import { DockSide, StackNode } from '../../../services/dock-layout/dock-node';
 import { DockPanel } from '../../../services/dock-layout/dock-panel';
 import { DockPanelAvailability } from '../../../services/dock-layout/dock-panel-availability';
+import {
+  CoalescedPointerMoves,
+  coalescePointerMoves,
+} from '../../../services/dock-layout/pointer-coalesce';
 import { DockPanelRegistry } from '../../../services/dock-layout/dock-panel-registry';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
@@ -320,17 +324,20 @@ export class DockCollapsedStrip {
     const start: number = vertical ? event.clientX : event.clientY;
     const startSize: number = this.flyoutSize();
 
-    const onMove: (move: MouseEvent) => void = (move: MouseEvent): void => {
+    // Coalesced to the frame rate: each processed move writes the resized signal (a change-detection
+    // pass), and only the frame's last position can ever be seen (see coalescePointerMoves).
+    const coalesced: CoalescedPointerMoves = coalescePointerMoves((move: MouseEvent): void => {
       const delta: number = (vertical ? move.clientX : move.clientY) - start;
       this.resized.set(Math.max(MINIMUM_FLYOUT_SIZE, startSize + sign * delta));
-    };
+    });
 
     const onRelease: () => void = (): void => {
-      this.document.removeEventListener('mousemove', onMove);
+      this.document.removeEventListener('mousemove', coalesced.move);
       this.document.removeEventListener('mouseup', onRelease);
+      coalesced.flush();
     };
 
-    this.document.addEventListener('mousemove', onMove);
+    this.document.addEventListener('mousemove', coalesced.move);
     this.document.addEventListener('mouseup', onRelease);
   }
 

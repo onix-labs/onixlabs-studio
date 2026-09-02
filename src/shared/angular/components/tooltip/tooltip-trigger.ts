@@ -73,7 +73,11 @@ const TOOLTIP_POSITIONS: readonly ConnectedPosition[] = [
     // A control that has been pressed has answered for itself; the bubble would only be in the way of
     // whatever the press opened.
     '(click)': 'onLeave()',
-    '(document:keydown.escape)': 'onLeave()',
+    // Escape is deliberately NOT a host binding here: a document-level Angular listener per trigger
+    // instance means every mounted control (hundreds, across ribbons, strips and tables) runs a
+    // handler — and schedules change detection — on every Escape pressed anywhere. Only a trigger
+    // with an OPEN bubble cares about Escape, so it attaches a native listener while its bubble
+    // shows (see onShow) and removes it with the bubble.
   },
 })
 export class TooltipTrigger {
@@ -126,6 +130,16 @@ export class TooltipTrigger {
    * Holds the open bubble's overlay, or null when none is showing.
    */
   private overlayRef: OverlayRef | null = null;
+
+  /**
+   * Holds the Escape listener attached to the document while the bubble is open, so pressing Escape
+   * dismisses it. Native and bubble-scoped: it exists only while there is a bubble to dismiss.
+   */
+  private readonly escapeHandler: (event: KeyboardEvent) => void = (event: KeyboardEvent): void => {
+    if (event.key === 'Escape') {
+      this.onLeave();
+    }
+  };
 
   /**
    * Initializes a new instance of the {@link TooltipTrigger} class, tearing down any open bubble with
@@ -185,12 +199,16 @@ export class TooltipTrigger {
     });
     const bubble: ComponentRef<Tooltip> = this.overlayRef.attach(new ComponentPortal(Tooltip));
     bubble.setInput('text', text);
+    this.element.nativeElement.ownerDocument.addEventListener('keydown', this.escapeHandler);
   }
 
   /**
-   * Closes the bubble.
+   * Closes the bubble, and with it the document Escape listener that existed to dismiss it.
    */
   protected onLeave(): void {
+    if (this.overlayRef !== null) {
+      this.element.nativeElement.ownerDocument.removeEventListener('keydown', this.escapeHandler);
+    }
     this.overlayRef?.dispose();
     this.overlayRef = null;
   }

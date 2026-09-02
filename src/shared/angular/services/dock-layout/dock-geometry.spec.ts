@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { DockGeometry, DockGroupHit } from './dock-geometry';
+import { DockGeometry, DockGroupHit, hitInSnapshot } from './dock-geometry';
 
 /**
  * Creates a detached element whose bounding rectangle is fixed for hit-testing.
@@ -71,5 +71,39 @@ describe('DockGeometry', () => {
 
   it('workspaceRect_whenNoWorkspaceSet_returnsNull', () => {
     expect(geometry.workspaceRect()).toBeNull();
+  });
+
+  it('snapshot_capturesEveryGroupInRegistrationOrder_andHitTestsWithoutTheDom', () => {
+    // A drag snapshots the rectangles once at activation so per-move hit-testing never forces a
+    // layout; the snapshot's hit semantics must mirror groupAt's registration order exactly.
+    geometry.registerGroup('stack-1', 'tool', elementAt(0, 0, 100, 100));
+    geometry.registerGroup('stack-2', 'document', elementAt(100, 0, 100, 100));
+
+    const snapshot: readonly DockGroupHit[] = geometry.snapshot();
+    expect(snapshot.map((hit: DockGroupHit): string => hit.stackId)).toEqual([
+      'stack-1',
+      'stack-2',
+    ]);
+    expect(hitInSnapshot(snapshot, 150, 50)?.stackId).toBe('stack-2');
+    expect(hitInSnapshot(snapshot, 500, 500)).toBeNull();
+
+    // The snapshot answers from its captured rectangles, not the live registry.
+    geometry.unregisterGroup('stack-2');
+    expect(hitInSnapshot(snapshot, 150, 50)?.stackId).toBe('stack-2');
+  });
+
+  it('resizing_tracksInteractiveResizesAsARefCount', () => {
+    expect(geometry.resizing()).toBe(false);
+    geometry.beginInteractiveResize();
+    geometry.beginInteractiveResize();
+    expect(geometry.resizing()).toBe(true);
+    geometry.endInteractiveResize();
+    expect(geometry.resizing()).toBe(true);
+    geometry.endInteractiveResize();
+    expect(geometry.resizing()).toBe(false);
+    // An unbalanced end must not wedge the count negative.
+    geometry.endInteractiveResize();
+    geometry.beginInteractiveResize();
+    expect(geometry.resizing()).toBe(true);
   });
 });
