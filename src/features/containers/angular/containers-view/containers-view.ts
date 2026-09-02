@@ -10,6 +10,7 @@ import {
   OnDestroy,
   Signal,
   signal,
+  untracked,
   WritableSignal,
 } from '@angular/core';
 import { Button } from '@shared/angular/components/forms/button/button';
@@ -180,19 +181,34 @@ export class ContainersView implements OnDestroy {
     this.log.info('containers.view', 'Containers view created');
     void this.load();
 
+    // A hidden view's per-event reload paid two IPC round-trips for a table nobody could see; the
+    // event marks it stale instead, and reactivation reloads once.
     const unsubscribe: () => void = this.client.onEvents((): void => {
-      void this.load();
+      if (this.isActive()) {
+        void this.load();
+      } else {
+        this.staleWhileHidden = true;
+      }
     });
     inject(DestroyRef).onDestroy(unsubscribe);
 
     effect((): void => {
       if (this.isActive()) {
         this.commands.register(this.commandHandler);
+        if (this.staleWhileHidden) {
+          this.staleWhileHidden = false;
+          untracked((): void => void this.load());
+        }
       } else {
         this.commands.unregister(this.commandHandler);
       }
     });
   }
+
+  /**
+   * Holds whether engine events arrived while the tab was hidden, so reactivation reloads once.
+   */
+  private staleWhileHidden: boolean = false;
 
   /**
    * Deregisters the ribbon handler and stops any readiness poll when the tab closes.

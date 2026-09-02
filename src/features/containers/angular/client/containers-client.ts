@@ -160,6 +160,24 @@ export class ContainersClient {
   }
 
   /**
+   * Registers this renderer as a consumer of the backend's event stream, opening it if it was
+   * closed. Ref-counted in main: hold one while events are wanted and balance with
+   * {@link watchStop}.
+   * @returns Returns a promise resolving true when the watch was registered.
+   */
+  public watchStart(): Promise<boolean> {
+    return this.bridge?.invoke<boolean>(ContainerChannel.WatchStart) ?? Promise.resolve(false);
+  }
+
+  /**
+   * Withdraws one {@link watchStart}; the backend closes the stream when the last consumer leaves.
+   * @returns Returns a promise resolving true when the withdrawal was registered.
+   */
+  public watchStop(): Promise<boolean> {
+    return this.bridge?.invoke<boolean>(ContainerChannel.WatchStop) ?? Promise.resolve(false);
+  }
+
+  /**
    * Subscribes to the backend's live event push.
    * @param listener Receives each normalised event.
    * @returns Returns an unsubscribe function (a no-op outside Electron).
