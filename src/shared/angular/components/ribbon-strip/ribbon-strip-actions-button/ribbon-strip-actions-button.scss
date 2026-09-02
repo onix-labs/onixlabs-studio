@@ -35,13 +35,11 @@
   border-radius: calc(0.5rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
   cursor: default;
-  // Positioned for two reasons: it anchors the caret into the caption band, and it lets the hover
-  // lift raise this button's stacking order above the ones beside it.
+  // Positioned to anchor the caret into the caption band.
   position: relative;
   transition:
     var(--hover-transition),
-    border-color 150ms ease-in-out,
-    box-shadow 150ms ease-in-out;
+    border-color 150ms ease-in-out;
 
   // Hover and the open state both lift the button onto the accent surface, so an open dropdown reads
   // as belonging to its trigger.
@@ -50,11 +48,6 @@
     background: var(--accent-surface-background-color);
     border-color: var(--accent-surface-border-color);
     color: var(--accent-surface-foreground-color);
-  }
-
-  &:hover {
-    box-shadow: var(--ribbon-button-hover-shadow);
-    z-index: 1;
   }
 
   // The caret is revealed by hover, by keyboard focus, and while the menu is open — an open dropdown

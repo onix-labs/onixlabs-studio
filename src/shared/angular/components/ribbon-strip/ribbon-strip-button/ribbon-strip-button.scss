@@ -34,19 +34,14 @@
   border-radius: calc(0.5rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
   cursor: default;
-  // Positioned so the hover lift can raise its stacking order above the buttons beside it.
-  position: relative;
   transition:
     var(--hover-transition),
-    border-color 150ms ease-in-out,
-    box-shadow 150ms ease-in-out;
+    border-color 150ms ease-in-out;
 
   &:hover {
     background: var(--ribbon-tone-surface-background);
     border-color: var(--ribbon-tone-surface-border);
     color: var(--ribbon-tone-surface-foreground);
-    box-shadow: var(--ribbon-button-hover-shadow);
-    z-index: 1;
   }
 
   &:focus-visible {
