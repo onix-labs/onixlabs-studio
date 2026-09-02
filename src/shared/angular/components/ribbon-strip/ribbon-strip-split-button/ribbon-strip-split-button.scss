@@ -13,18 +13,12 @@
   border-radius: calc(0.5rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
   overflow: hidden;
-  // Positioned so the hover lift can raise its stacking order above the buttons beside it.
-  position: relative;
-  transition:
-    border-color 150ms ease-in-out,
-    box-shadow 150ms ease-in-out;
+  transition: border-color 150ms ease-in-out;
 
   // Hovering either half lifts the whole control onto the accent surface, so the primary action and
   // its dropdown read as one button.
   &:hover {
     border-color: var(--accent-surface-border-color);
-    box-shadow: var(--ribbon-button-hover-shadow);
-    z-index: 1;
 
     .ribbon-split__action,
     .ribbon-split__menu {

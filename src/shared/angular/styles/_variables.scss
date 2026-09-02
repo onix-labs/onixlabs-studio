@@ -289,11 +289,6 @@
   --ribbon-button-label-font-size: 0.75rem;
   --ribbon-button-label-line-height: 1.2;
 
-  // The hover lift shared by every big ribbon button: a drop shadow, paired with a raised stacking
-  // order so the shadow falls over the buttons beside it rather than under them. Costs no layout, so
-  // hovering one button never moves another.
-  --ribbon-button-hover-shadow: 0 0.125rem 0.5rem rgb(0 0 0 / 35%);
-
   // Width of the Monaco change-margin bars (see _change-margin.scss); the colours are theme tokens.
   --change-margin-width: 4px;
   // Whitespace on each side of the change-margin bar: the line numbers sit this far to its left, and
