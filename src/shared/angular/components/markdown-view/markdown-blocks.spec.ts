@@ -48,17 +48,33 @@ describe('markdown-blocks', () => {
     expect(blocks[1]).toEqual({ kind: 'code', code: 'const a = 1;', lang: 'js' });
   });
 
-  it('renderMarkdownBlocks_whenARunHoldsSeveralTokens_joinsThemIntoOneProseBlock', () => {
-    // Rendering is per top-level token so each can be cached, but a contiguous run of them must still
-    // arrive as a single prose block — the template renders one element per block.
+  it('renderMarkdownBlocks_whenARunHoldsSeveralTokens_emitsOneProseBlockPerToken', () => {
+    // Block granularity is the cache granularity: the consumer binds one [innerHTML] per block, so a
+    // settled token keeps its block (and its DOM) while a streaming flush only replaces the block of
+    // the token still being written. Blank-line separators render to nothing and emit no block.
     const blocks: MarkdownBlock[] = renderMarkdownBlocks('## Title\n\nOne\n\nTwo\n');
 
-    expect(blocks.length).toBe(1);
-    expect(blocks[0].kind).toBe('html');
-    const html: string = (blocks[0] as { html: string }).html;
-    expect(html).toContain('Title');
-    expect(html).toContain('One');
-    expect(html).toContain('Two');
+    expect(blocks.map((block: MarkdownBlock): string => block.kind)).toEqual([
+      'html',
+      'html',
+      'html',
+    ]);
+    const htmls: string[] = blocks.map(
+      (block: MarkdownBlock): string => (block as { html: string }).html,
+    );
+    expect(htmls[0]).toContain('Title');
+    expect(htmls[1]).toContain('One');
+    expect(htmls[2]).toContain('Two');
+  });
+
+  it('renderMarkdownBlocks_whenAMessageStreams_keepsSettledBlocksIdentical', () => {
+    // The point of per-token blocks: a growing tail must not change the earlier blocks' HTML, or the
+    // consumer's identity-keyed wrappers (and the DOM behind them) rebuild on every flush anyway.
+    const settled: MarkdownBlock[] = renderMarkdownBlocks('First paragraph.\n\nSecond is grow');
+    const grown: MarkdownBlock[] = renderMarkdownBlocks('First paragraph.\n\nSecond is growing on');
+
+    expect((grown[0] as { html: string }).html).toBe((settled[0] as { html: string }).html);
+    expect((grown[1] as { html: string }).html).not.toBe((settled[1] as { html: string }).html);
   });
 
   it('renderMarkdownBlocks_whenCalledAgain_rendersIdenticallyFromTheCache', () => {

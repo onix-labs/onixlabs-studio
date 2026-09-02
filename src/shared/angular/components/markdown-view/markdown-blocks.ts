@@ -212,30 +212,22 @@ function cached(key: string, render: () => string): string {
 }
 
 /**
- * Renders one contiguous run of non-code tokens to sanitised HTML.
+ * Renders one contiguous run of non-code tokens carrying raw HTML to sanitised HTML, whole.
  *
- * Normally this is the per-token path: each token is rendered and cached on its own, and their output
- * is joined. A run carrying a raw HTML token is the exception — a model can open a tag in one token
- * and close it in a later one (a `<details>` wrapper around prose, say), and sanitising those tokens
- * separately would balance the tags within each fragment instead of across the run, changing the
- * nesting. Such a run is therefore rendered whole, exactly as it always was, and cached against the
- * run's own source so a settled one is still free to re-render.
+ * This is the exception to the per-token path: a model can open a tag in one token and close it in a
+ * later one (a `<details>` wrapper around prose, say), and sanitising those tokens separately would
+ * balance the tags within each fragment instead of across the run, changing the nesting. Such a run
+ * is rendered as one block, cached against the run's own source so a settled one is still free to
+ * re-render.
  * @param group The tokens forming the run.
  * @returns Returns the sanitised HTML.
  */
 function renderRun(group: readonly Token[]): string {
-  if (group.some((token: Token): boolean => token.type === 'html')) {
-    let key: string = '';
-    for (const token of group) {
-      key += token.type + ' ' + token.raw;
-    }
-    return cached(key, (): string => DOMPurify.sanitize(marked.parser(group as Token[])));
-  }
-  let html: string = '';
+  let key: string = '';
   for (const token of group) {
-    html += renderToken(token);
+    key += token.type + ' ' + token.raw;
   }
-  return html;
+  return cached(key, (): string => DOMPurify.sanitize(marked.parser(group as Token[])));
 }
 
 /**
@@ -249,9 +241,16 @@ export function resetMarkdownCache(): void {
 
 /**
  * Renders markdown text into its ordered blocks: fenced code blocks kept as raw text, everything else
- * (prose, lists, tables, block and inline math) rendered to HTML. Each contiguous run of non-code
- * tokens becomes one prose block, rendered token by token through a shared cache (see
- * {@link renderToken}) so re-rendering a streaming message only pays for the token still being written.
+ * (prose, lists, tables, block and inline math) rendered to HTML — one prose block PER TOP-LEVEL
+ * TOKEN, each rendered through the shared cache (see {@link renderToken}).
+ *
+ * Per-token blocks are the DOM half of the streaming fix: the consumer binds one `[innerHTML]` per
+ * block, so block granularity decides how much DOM a flush can rebuild. When a whole run between
+ * fences was one joined block, the join's string changed on every flush of a growing reply and the
+ * reply's entire prose re-parsed each time, cache hits notwithstanding; with one block per token only
+ * the paragraph still being written ever changes. A run carrying raw HTML is the exception and stays
+ * one whole block (see {@link renderRun}); a token rendering to nothing (blank-line separators) emits
+ * no block.
  * @param text The markdown text.
  * @returns Returns the blocks in document order.
  */
@@ -264,10 +263,20 @@ export function renderMarkdownBlocks(text: string): MarkdownBlock[] {
   const blocks: MarkdownBlock[] = [];
   let group: Token[] = [];
   const flush: () => void = (): void => {
-    if (group.length > 0) {
-      blocks.push({ kind: 'html', html: renderRun(group) });
-      group = [];
+    if (group.length === 0) {
+      return;
     }
+    if (group.some((token: Token): boolean => token.type === 'html')) {
+      blocks.push({ kind: 'html', html: renderRun(group) });
+    } else {
+      for (const token of group) {
+        const html: string = renderToken(token);
+        if (html.trim().length > 0) {
+          blocks.push({ kind: 'html', html });
+        }
+      }
+    }
+    group = [];
   };
   for (const token of tokens) {
     if (token.type === 'code') {
