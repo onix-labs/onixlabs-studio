@@ -29,7 +29,7 @@ import {
   lineForFileOffset,
   LineRow,
   linesForRange,
-} from './disasm-content';
+} from '@shared/angular/services/decoders/listing-content';
 import { describeFormat, disassemblyArchitecture, formatKey } from '../binary-format/binary-format';
 
 /**

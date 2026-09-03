@@ -5,9 +5,10 @@ import {
   buildContent,
   DisasmContent,
   lineForFileOffset,
+  lineForSourceLine,
   linesForRange,
   renderAddress,
-} from './disasm-content';
+} from '@shared/angular/services/decoders/listing-content';
 
 /**
  * Builds a decoded instruction for the tests.
@@ -243,5 +244,52 @@ describe('source-line gutter', (): void => {
   it('keeps the line map aligned once a gutter is present', (): void => {
     const content: DisasmContent = buildContent(withLines);
     expect(content.lines).toHaveLength(content.text.split('\n').length);
+  });
+});
+
+describe('lineForSourceLine', (): void => {
+  /**
+   * A listing whose rows carry source lines with a gap: nothing was generated from line 16.
+   */
+  const mapped: CodeListing = {
+    language: '.NET IL',
+    addressing: 'method-relative',
+    origin: { kind: 'buffer', path: '/tmp/a.dll' },
+    sections: [
+      {
+        id: 'm',
+        title: 'Shapes.Loop',
+        rows: [
+          { address: 0, fileOffset: 10, mnemonic: 'nop', operands: '', sourceLine: 14 },
+          { address: 1, fileOffset: 11, mnemonic: 'ldc.i4.0', operands: '', sourceLine: 15 },
+          { address: 2, fileOffset: 12, mnemonic: 'stloc.0', operands: '', sourceLine: 15 },
+          { address: 3, fileOffset: 13, mnemonic: 'ret', operands: '', sourceLine: 18 },
+        ],
+      },
+    ],
+  };
+
+  it('finds the first row generated from a line', (): void => {
+    const content: DisasmContent = buildContent(mapped);
+    const line: number | null = lineForSourceLine(content, 15);
+    expect(line).not.toBeNull();
+    expect(content.text.split('\n')[(line ?? 1) - 1]).toContain('ldc.i4.0');
+  });
+
+  it('falls forward to the next generated line when nothing came from the one asked for', (): void => {
+    // A blank line or a comment produces no instructions; scrolling to the next thing that did is
+    // more useful than not moving at all.
+    const content: DisasmContent = buildContent(mapped);
+    const line: number | null = lineForSourceLine(content, 16);
+    expect(content.text.split('\n')[(line ?? 1) - 1]).toContain('ret');
+  });
+
+  it('returns null past the last generated line', (): void => {
+    expect(lineForSourceLine(buildContent(mapped), 99)).toBeNull();
+  });
+
+  it('returns null for a listing that carries no source lines', (): void => {
+    const listing: CodeListing = listingFromInstructions([instruction(0, 'nop')], 'x64', null);
+    expect(lineForSourceLine(buildContent(listing), 1)).toBeNull();
   });
 });

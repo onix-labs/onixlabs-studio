@@ -4,6 +4,7 @@ import { BinaryChannel, DecodedInstruction } from '@shared/api/binary-channels';
 import { CodeListing } from '@shared/api/code-listing';
 import { DecoderDescription } from '@shared/api/decoder-protocol';
 import { Log } from '@shared/angular/services/log/log';
+import { Decoders } from '@shared/angular/services/decoders/decoders';
 
 /**
  * Represents the renderer-side client for native disassembly. It is a thin typed wrapper over the
@@ -21,6 +22,11 @@ export class BinaryDisassembly {
    * Holds the structured logger for disassembly requests.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds the shared decoder client the plugin-backed calls go through.
+   */
+  private readonly decoders: Decoders = inject(Decoders);
 
   /**
    * Disassembles a buffer of machine code, returning the instructions whose start falls in the
@@ -59,20 +65,16 @@ export class BinaryDisassembly {
 
   /**
    * Decodes a window of bytes into a listing using whichever installed decoder plugin fills the
-   * format's slot.
-   *
-   * Passing the bytes the renderer holds, rather than a path, is what keeps unsaved edits reflected —
-   * the same invariant the native path has always had, now extended to every format.
+   * format's slot. Delegates to the shared decoder client, which the code editor also uses.
    * @param format The canonical decoder format key.
    * @param bytes The bytes to decode.
    * @param baseOffset The absolute file offset of the buffer's first byte.
    * @param totalSize The whole file's size, when the bytes are a window of it.
    * @param path The file the bytes came from, for display only.
    * @param companions Companion files the decoder may need, keyed by a name it understands.
-   * @returns Returns the listing, or null when no decoder is installed, it failed, or the application
-   * is running outside Electron.
+   * @returns Returns the listing, or null when no decoder is installed or it failed.
    */
-  public async decodeListing(
+  public decodeListing(
     format: string,
     bytes: Uint8Array,
     baseOffset: number,
@@ -80,42 +82,15 @@ export class BinaryDisassembly {
     path?: string,
     companions?: Readonly<Record<string, Uint8Array>>,
   ): Promise<CodeListing | null> {
-    if (this.bridge === undefined) {
-      return null;
-    }
-    try {
-      return await this.bridge.invoke<CodeListing | null>(
-        BinaryChannel.DecodeListing,
-        format,
-        bytes,
-        baseOffset,
-        totalSize,
-        path,
-        companions,
-      );
-    } catch (error: unknown) {
-      this.log.debug('binary.disassembly', 'Decoder request failed', error);
-      return null;
-    }
+    return this.decoders.decode(format, bytes, baseOffset, totalSize, path, companions);
   }
 
   /**
    * Reports what the decoder for a format is, or null when none is installed.
-   *
-   * Asked before decoding, because a decoder that needs the whole file cannot be handed a viewport
-   * window and only the decoder knows which kind it is.
    * @param format The canonical decoder format key.
    * @returns Returns the decoder's description, or null.
    */
-  public async decoderInfo(format: string): Promise<DecoderDescription | null> {
-    if (this.bridge === undefined) {
-      return null;
-    }
-    try {
-      return await this.bridge.invoke<DecoderDescription | null>(BinaryChannel.DecoderInfo, format);
-    } catch (error: unknown) {
-      this.log.debug('binary.disassembly', 'Decoder info request failed', error);
-      return null;
-    }
+  public decoderInfo(format: string): Promise<DecoderDescription | null> {
+    return this.decoders.info(format);
   }
 }

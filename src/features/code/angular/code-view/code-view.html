@@ -40,6 +40,25 @@
     </app-panel>
   }
 
+  <!-- Mounts on first show, like the agent panel: an unopened panel reads no build output and costs
+       no DOM. -->
+  @if (generatedMounted()) {
+    <app-panel
+      panelId="generated"
+      defaultEdge="right"
+      [visible]="generatedVisible()"
+      [defaultSize]="420"
+      [minSize]="280"
+      [maxSize]="900"
+    >
+      <app-code-generated-panel
+        [sourcePath]="generatedSourcePath()"
+        [caretLine]="generatedCaretLine()"
+        (closed)="onGeneratedClosed()"
+      />
+    </app-panel>
+  }
+
   @if (findVisible()) {
     <app-panel
       panelId="find"

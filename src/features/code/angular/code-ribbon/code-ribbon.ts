@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import { Log } from '@shared/angular/services/log/log';
 import { CodeAgents } from '@features/code/angular/code-agents/code-agents';
+import { CodeGeneratedPanels } from '@features/code/angular/generated-code/code-generated-panels';
 import { EditorCommands } from '@shared/angular/services/editor-commands/editor-commands';
 import { CodeRunner } from '@features/code/angular/code-runner/code-runner';
 import { EditorTerminals } from '@shared/angular/services/editor-terminals/editor-terminals';
@@ -114,6 +115,11 @@ export class CodeRibbon {
    * Holds the docked agent-panel state backing the Agent toggle.
    */
   private readonly codeAgents: CodeAgents = inject(CodeAgents);
+
+  /**
+   * Holds the docked generated-code panel's per-tab state.
+   */
+  private readonly generatedPanels: CodeGeneratedPanels = inject(CodeGeneratedPanels);
 
   /**
    * Holds the settings service backing the view toggles.
@@ -454,6 +460,17 @@ export class CodeRibbon {
     if (id !== undefined) {
       this.log.debug('code.ribbon', 'Toggle docked agent panel', id);
       this.codeAgents.toggle(id);
+    }
+  }
+
+  /**
+   * Toggles the docked generated-code panel for the active tab.
+   */
+  protected onGeneratedCode(): void {
+    const id: string | undefined = this.tabs.activeTabId();
+    if (id !== undefined) {
+      this.log.debug('code.ribbon', 'Toggle docked generated-code panel', id);
+      this.generatedPanels.toggle(id);
     }
   }
 

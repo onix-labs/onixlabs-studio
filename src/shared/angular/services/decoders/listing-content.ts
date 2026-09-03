@@ -1,8 +1,12 @@
 import { CodeListing, ListingRow, ListingSection } from '@shared/api/code-listing';
 
-// Turns a code listing into the text the assembly panel shows, and the map from rendered line back to
-// the row it shows. Pure and separated from the component so the mapping — the part with all the ways
-// to be subtly wrong — is testable without Monaco.
+// Turns a code listing into the text a listing panel shows, and the map from rendered line back to the
+// row it shows. Pure and separated from any component so the mapping — the part with all the ways to
+// be subtly wrong — is testable without Monaco.
+//
+// Shared because two panels render listings: the binary editor's assembly panel, and the code editor's
+// generated-code panel. They differ in what they resolve a row *from* — a byte offset in one, a source
+// line in the other — which is why both lookups live here rather than in either panel.
 
 /**
  * Maps a rendered line back to the row it shows.
@@ -18,6 +22,11 @@ export interface LineRow {
    * Gets the row's length in bytes, or zero when it has none.
    */
   readonly byteLength: number;
+
+  /**
+   * Gets the source line the row was generated from, when the decoder reported one.
+   */
+  readonly sourceLine?: number;
 }
 
 /**
@@ -112,6 +121,7 @@ export function buildContent(listing: CodeListing | null): DisasmContent {
       lines.push({
         fileOffset: row.fileOffset ?? null,
         byteLength: row.bytes?.length ?? 0,
+        sourceLine: row.sourceLine,
       });
     }
   });
@@ -198,4 +208,27 @@ export function linesForRange(
     }
   });
   return result;
+}
+
+/**
+ * Finds the one-based listing line showing the first row generated from a source line.
+ *
+ * Used by the generated-code panel to follow the caret. Falls back to the nearest row *after* the
+ * requested line when nothing was generated from it exactly: a blank line or a comment produces no
+ * instructions, and scrolling to the next thing that did is more useful than not moving at all.
+ * @param content The built content.
+ * @param sourceLine The one-based source line to locate.
+ * @returns Returns the one-based listing line, or null when no row carries a source line at or after it.
+ */
+export function lineForSourceLine(content: DisasmContent, sourceLine: number): number | null {
+  let best: { line: number; source: number } | null = null;
+  content.lines.forEach((line: LineRow | null, index: number): void => {
+    if (line?.sourceLine === undefined || line.sourceLine < sourceLine) {
+      return;
+    }
+    if (best === null || line.sourceLine < best.source) {
+      best = { line: index + 1, source: line.sourceLine };
+    }
+  });
+  return best === null ? null : (best as { line: number; source: number }).line;
 }

@@ -1,0 +1,52 @@
+<app-tool-panel
+  title="Generated code"
+  dragTitle="Generated code"
+  [icon]="Icon.CODE"
+  closeLabel="Close generated code"
+  [flush]="true"
+  (closed)="closed.emit()"
+>
+  <div class="generated__body">
+    @if (state(); as result) {
+      @switch (result.kind) {
+        @case ('listing') {
+          @if (result.stale) {
+            <p class="generated__note generated__note--warn">
+              <app-icon [icon]="Icon.WARNING" />
+              This source is newer than the build. Rebuild to see current output.
+            </p>
+          }
+          @if (!result.matched) {
+            <p class="generated__note">Nothing in the build came from this file.</p>
+          }
+          <div class="generated__editor">
+            <app-text-editor
+              [content]="content().text"
+              [language]="ASM_LANGUAGE_ID"
+              [readOnly]="true"
+              [options]="editorOptions"
+              (ready)="onReady()"
+            />
+          </div>
+        }
+        @case ('not-built') {
+          <p class="generated__note">
+            This project hasn't been built yet. Build it to see what this file compiles to.
+          </p>
+        }
+        @case ('no-decoder') {
+          <p class="generated__note">
+            No decoder is installed for this build output. Install one under Plugins.
+          </p>
+        }
+        @default {
+          <p class="generated__note">Studio can't work out what this file compiles into.</p>
+        }
+      }
+    } @else if (loading()) {
+      <p class="generated__note">Reading the build output…</p>
+    } @else {
+      <p class="generated__note">Open a source file to see what it compiles to.</p>
+    }
+  </div>
+</app-tool-panel>

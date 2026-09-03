@@ -55,6 +55,8 @@ import { FindPanel } from '@shared/angular/components/find-panel/find-panel';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
 import { CodeFindAdapter } from '@features/code/angular/find/code-find-adapter';
 import { CodeAgentPanel } from './code-agent-panel/code-agent-panel';
+import { CodeGeneratedPanel } from './code-generated-panel/code-generated-panel';
+import { CodeGeneratedPanels } from '@features/code/angular/generated-code/code-generated-panels';
 import { CodeTerminalPanel } from './code-terminal-panel/code-terminal-panel';
 
 /**
@@ -68,7 +70,15 @@ import { CodeTerminalPanel } from './code-terminal-panel/code-terminal-panel';
  */
 @Component({
   selector: 'app-code-view',
-  imports: [PanelLayout, Panel, CodeDocumentEditor, CodeTerminalPanel, CodeAgentPanel, FindPanel],
+  imports: [
+    PanelLayout,
+    Panel,
+    CodeDocumentEditor,
+    CodeTerminalPanel,
+    CodeAgentPanel,
+    CodeGeneratedPanel,
+    FindPanel,
+  ],
   // The tab's agent and conversation live on the VIEW, not the docked agent panel: the panel now
   // mounts lazily on first show, and the conversation (and an in-flight run) must span the panel's
   // whole mounted/unmounted life — and register with Mission Control whether or not the panel was
@@ -171,6 +181,11 @@ export class CodeView implements OnInit, OnDestroy {
    * Holds the docked agent-panel state.
    */
   private readonly codeAgents: CodeAgents = inject(CodeAgents);
+
+  /**
+   * Holds the docked generated-code panel's per-tab state.
+   */
+  private readonly generatedPanels: CodeGeneratedPanels = inject(CodeGeneratedPanels);
 
   /**
    * Holds the change-margin registry that draws the editor's save-state gutter bars.
@@ -542,6 +557,45 @@ export class CodeView implements OnInit, OnDestroy {
    */
   protected agentVisible(): boolean {
     return this.codeAgents.isVisible(this.tabId());
+  }
+
+  /**
+   * Gets a value indicating whether the docked generated-code panel is mounted.
+   * @returns Returns true when the panel has been shown at least once.
+   */
+  protected generatedMounted(): boolean {
+    return this.generatedPanels.isMounted(this.tabId());
+  }
+
+  /**
+   * Gets a value indicating whether the docked generated-code panel is currently visible.
+   * @returns Returns true when the panel is shown.
+   */
+  protected generatedVisible(): boolean {
+    return this.generatedPanels.isVisible(this.tabId());
+  }
+
+  /**
+   * Gets the open file's path, for the generated-code panel to resolve its build output from.
+   * @returns Returns the path, or null when the document has never been saved.
+   */
+  protected generatedSourcePath(): string | null {
+    return this.doc()?.filePath() ?? null;
+  }
+
+  /**
+   * Gets the caret's one-based line, so the generated-code panel can follow it.
+   * @returns Returns the line, or null when the caret position is unknown.
+   */
+  protected generatedCaretLine(): number | null {
+    return this.caret()?.line ?? null;
+  }
+
+  /**
+   * Hides the generated-code panel when it asks to be dismissed.
+   */
+  protected onGeneratedClosed(): void {
+    this.generatedPanels.hide(this.tabId());
   }
 
   /**

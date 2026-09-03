@@ -5,7 +5,7 @@ import { CodeListing, listingFromInstructions } from '@shared/api/code-listing';
 import { BinaryDocumentEntry, BinarySelection } from '../binary-document/binary-document';
 import { BinaryFormat, disassemblyArchitecture } from '../binary-format/binary-format';
 import { BinaryDisasmPanel } from './binary-disasm-panel';
-import { LineRow } from './disasm-content';
+import { LineRow } from '@shared/angular/services/decoders/listing-content';
 
 /**
  * Exposes the protected listing state, so the built text and line map can be asserted directly (the
