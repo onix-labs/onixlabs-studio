@@ -1,0 +1,56 @@
+{
+  "id": "onixlabs.wasm-decoder",
+  "name": "WebAssembly Decoder",
+  "description": "Shows the instructions inside WebAssembly modules, function by function.",
+  "version": "1.0.0",
+  "apiVersion": "1.4.0",
+  "detail": "Pure TypeScript, so it needs no toolchain installed.",
+  "provision": {
+    "kind": "archive",
+    "downloads": {
+      "darwin-arm64": {
+        "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/wasm-decoder-1.0.0.tar.gz",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "archive": "tar.gz",
+        "executablePath": "wasm-decoder/main.js"
+      },
+      "darwin-x64": {
+        "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/wasm-decoder-1.0.0.tar.gz",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "archive": "tar.gz",
+        "executablePath": "wasm-decoder/main.js"
+      },
+      "linux-x64": {
+        "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/wasm-decoder-1.0.0.tar.gz",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "archive": "tar.gz",
+        "executablePath": "wasm-decoder/main.js"
+      },
+      "linux-arm64": {
+        "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/wasm-decoder-1.0.0.tar.gz",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "archive": "tar.gz",
+        "executablePath": "wasm-decoder/main.js"
+      },
+      "win32-x64": {
+        "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/wasm-decoder-1.0.0.tar.gz",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "archive": "tar.gz",
+        "executablePath": "wasm-decoder/main.js"
+      }
+    }
+  },
+  "contributes": {
+    "decoders": [
+      {
+        "id": "onixlabs.wasm-decoder",
+        "displayName": "WebAssembly Decoder",
+        "formats": ["wasm"],
+        "priority": 100,
+        "command": {
+          "kind": "node"
+        }
+      }
+    ]
+  }
+}

@@ -10,6 +10,7 @@ export type BinaryFormat =
   | { readonly kind: 'elf'; readonly architecture: string }
   | { readonly kind: 'macho'; readonly architecture: string }
   | { readonly kind: 'jvm' }
+  | { readonly kind: 'wasm'; readonly version: number }
   | { readonly kind: 'unknown' };
 
 /**
@@ -36,6 +37,10 @@ export function sniffFormat(bytes: Uint8Array): BinaryFormat {
   const macho: BinaryFormat | null = sniffMachO(bytes, view);
   if (macho !== null) {
     return macho;
+  }
+  // WebAssembly: '\0asm', then a four-byte little-endian version.
+  if (matches(bytes, 0, [0x00, 0x61, 0x73, 0x6d])) {
+    return { kind: 'wasm', version: readU32(view, 4, true) ?? 1 };
   }
   // JVM class: 0xCAFEBABE. (Shares its magic with Mach-O fat binaries, which are far rarer here; a
   // thin Mach-O is matched above, so a remaining 0xCAFEBABE is treated as a class file.)
@@ -79,6 +84,7 @@ export function disassemblyArchitecture(format: BinaryFormat): string | null {
     case 'macho':
       return DISASSEMBLABLE.has(format.architecture) ? format.architecture : null;
     case 'jvm':
+    case 'wasm':
     case 'unknown':
       return null;
   }
@@ -138,6 +144,8 @@ export function formatKey(format: BinaryFormat): string | null {
         : decoderFormatKey(format.kind, format.architecture);
     case 'jvm':
       return decoderFormatKey('jvm');
+    case 'wasm':
+      return decoderFormatKey('wasm');
     case 'unknown':
       return null;
   }
@@ -160,6 +168,8 @@ export function describeFormat(format: BinaryFormat): string {
       return `Mach-O · ${format.architecture}`;
     case 'jvm':
       return 'JVM class';
+    case 'wasm':
+      return `WebAssembly · v${format.version}`;
     case 'unknown':
       return 'Binary';
   }

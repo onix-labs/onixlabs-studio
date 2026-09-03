@@ -1,0 +1,56 @@
+{
+  "id": "onixlabs.jvm-decoder",
+  "name": "JVM Bytecode Decoder",
+  "description": "Shows the bytecode inside Java class files, method by method.",
+  "version": "1.0.0",
+  "apiVersion": "1.4.0",
+  "detail": "Pure TypeScript, so it needs no JVM installed. Source line numbers appear when the class was compiled with -g.",
+  "provision": {
+    "kind": "archive",
+    "downloads": {
+      "darwin-arm64": {
+        "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/jvm-decoder-1.0.0.tar.gz",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "archive": "tar.gz",
+        "executablePath": "jvm-decoder/main.js"
+      },
+      "darwin-x64": {
+        "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/jvm-decoder-1.0.0.tar.gz",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "archive": "tar.gz",
+        "executablePath": "jvm-decoder/main.js"
+      },
+      "linux-x64": {
+        "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/jvm-decoder-1.0.0.tar.gz",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "archive": "tar.gz",
+        "executablePath": "jvm-decoder/main.js"
+      },
+      "linux-arm64": {
+        "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/jvm-decoder-1.0.0.tar.gz",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "archive": "tar.gz",
+        "executablePath": "jvm-decoder/main.js"
+      },
+      "win32-x64": {
+        "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/jvm-decoder-1.0.0.tar.gz",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "archive": "tar.gz",
+        "executablePath": "jvm-decoder/main.js"
+      }
+    }
+  },
+  "contributes": {
+    "decoders": [
+      {
+        "id": "onixlabs.jvm-decoder",
+        "displayName": "JVM Bytecode Decoder",
+        "formats": ["jvm"],
+        "priority": 100,
+        "command": {
+          "kind": "node"
+        }
+      }
+    ]
+  }
+}
