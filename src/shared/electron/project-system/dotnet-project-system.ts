@@ -11,6 +11,7 @@ import {
   ProjectNode,
   ProjectOperationResult,
 } from '@shared/api/project-system';
+import { CompiledArtifact } from '@shared/api/project-system';
 import { DebugResolveResult } from '@shared/api/debug-channels';
 import { RunConfiguration } from '@shared/api/studio';
 import { buildItemTree, EvaluatedItem } from './item-tree';
@@ -406,6 +407,50 @@ export class DotnetProjectSystem implements ProjectSystem {
         (candidate: { id: string; name: string }): boolean => candidate.id === id,
       );
     return match?.name ?? 'Debug';
+  }
+
+  /**
+   * Resolves the assembly the project containing a source file produces, without building it.
+   *
+   * MSBuild is asked rather than the output path being guessed from `bin/<config>/<tfm>/`: that
+   * convention is a default, not a rule, and a project that moves its output would silently resolve to
+   * an assembly that is not its own — which reads as the decoder being wrong rather than the guess.
+   * @param sourcePath The absolute path of the source file.
+   * @param configurationId The selected build configuration, or undefined for Debug.
+   * @returns Returns the artefact, or null when there is no project, no dotnet, or nothing built yet.
+   */
+  public async resolveArtifact(
+    sourcePath: string,
+    configurationId?: string,
+  ): Promise<CompiledArtifact | null> {
+    const projectPath: string | null = await nearestProject(sourcePath);
+    if (projectPath === null) {
+      return null;
+    }
+    const dotnet: string | null = await this.resolveDotnet();
+    if (dotnet === null) {
+      return null;
+    }
+    const artifactPath: string | null = await this.queryTargetPath(
+      dotnet,
+      projectPath,
+      this.buildConfigurationName(configurationId),
+    );
+    if (artifactPath === null) {
+      return null;
+    }
+    const artifactTime: number | null = await modifiedTime(artifactPath);
+    if (artifactTime === null) {
+      // Evaluated but never built: the panel says "not built yet" rather than reporting an error.
+      return null;
+    }
+    const symbolsPath: string = artifactPath.replace(/\.[^./\\]+$/, '.pdb');
+    const sourceTime: number | null = await modifiedTime(sourcePath);
+    return {
+      artifactPath,
+      symbolsPath: (await modifiedTime(symbolsPath)) === null ? null : symbolsPath,
+      stale: sourceTime !== null && sourceTime > artifactTime,
+    };
   }
 
   /**
@@ -868,4 +913,48 @@ function buildErrorText(error: unknown): string {
   }
   const text: string = parts.join('\n').trim();
   return text.length > BUILD_ERROR_TAIL ? text.slice(-BUILD_ERROR_TAIL) : text;
+}
+
+/**
+ * Finds the project file governing a source file, by walking up from it.
+ *
+ * The nearest project wins, which is how MSBuild itself decides: a file inside a nested project belongs
+ * to that project rather than to the solution above it.
+ * @param sourcePath The absolute path of the source file.
+ * @returns Returns the project file path, or null when there is none above it.
+ */
+async function nearestProject(sourcePath: string): Promise<string | null> {
+  let directory: string = path.dirname(sourcePath);
+  for (;;) {
+    let entries: Dirent[];
+    try {
+      entries = await fs.readdir(directory, { withFileTypes: true });
+    } catch {
+      return null;
+    }
+    const project: Dirent | undefined = entries.find(
+      (entry: Dirent): boolean => entry.isFile() && /\.(cs|fs|vb)proj$/i.test(entry.name),
+    );
+    if (project !== undefined) {
+      return path.join(directory, project.name);
+    }
+    const parent: string = path.dirname(directory);
+    if (parent === directory) {
+      return null;
+    }
+    directory = parent;
+  }
+}
+
+/**
+ * Gets a file's modification time in milliseconds, or null when it does not exist.
+ * @param filePath The path to stat.
+ * @returns Returns the modification time, or null.
+ */
+async function modifiedTime(filePath: string): Promise<number | null> {
+  try {
+    return (await fs.stat(filePath)).mtimeMs;
+  } catch {
+    return null;
+  }
 }

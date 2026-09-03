@@ -265,6 +265,32 @@ export interface ProjectCapabilities {
 }
 
 /**
+ * Describes the compiled artefact a source file's project produces — what a decoder can read to show
+ * what that source became.
+ */
+export interface CompiledArtifact {
+  /**
+   * Gets the absolute path of the compiled output (an assembly, or a class file).
+   */
+  readonly artifactPath: string;
+
+  /**
+   * Gets the absolute path of the symbols beside it, or null when there are none. A decoder needs these
+   * to report source lines, and their absence is why a release build shows IL without them.
+   */
+  readonly symbolsPath: string | null;
+
+  /**
+   * Gets a value indicating whether the source file is newer than the artefact.
+   *
+   * Reported rather than acted on: rebuilding because someone opened a panel would be a surprise, and
+   * showing stale output as though it were current would be a lie. The caller says so and lets the user
+   * decide.
+   */
+  readonly stale: boolean;
+}
+
+/**
  * The outcome of a project-system edit (renaming a solution folder, for example). Deliberately narrow:
  * an edit either took or gives the reason it did not, which is what the caller reports.
  */
