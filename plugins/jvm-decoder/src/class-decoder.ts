@@ -112,13 +112,44 @@ export function decodeClass(bytes: Uint8Array, path: string | null): CodeListing
 
   skipMembers(reader); // fields
   const methods: ListingSection[] = readMethods(reader, view, pool, bytes);
+  // Class-level attributes follow the methods; `SourceFile` names the file the class was compiled
+  // from. It is a bare file name rather than a path — the class file records no directory — so a
+  // caller matching it against an open document compares file names, not paths.
+  const sourceFile: string | null = readSourceFile(reader, pool);
 
   return {
     language: `JVM bytecode (class ${major}.${minor})`,
     addressing: 'method-relative',
     origin: { kind: 'buffer', path },
-    sections: methods.length > 0 ? methods : [emptySection(className(pool, thisClass))],
+    sections:
+      methods.length > 0
+        ? methods.map((section: ListingSection): ListingSection =>
+            sourceFile === null ? section : { ...section, sourcePath: sourceFile },
+          )
+        : [emptySection(className(pool, thisClass))],
   };
+}
+
+/**
+ * Reads the class's `SourceFile` attribute, which names the file it was compiled from.
+ * @param reader The reader, positioned at the class-level attributes table.
+ * @param pool The constant pool.
+ * @returns Returns the source file name, or null when the class carries no such attribute.
+ */
+function readSourceFile(reader: Reader, pool: PoolEntry[]): string | null {
+  const attributes: RawAttribute[] = readAttributes(reader, pool);
+  const attribute: RawAttribute | undefined = attributes.find(
+    (candidate: RawAttribute): boolean => candidate.name === 'SourceFile',
+  );
+  if (attribute === undefined) {
+    return null;
+  }
+  const index: number = reader.position;
+  reader.position = attribute.start;
+  const nameIndex: number = reader.u2();
+  reader.position = index;
+  const name: string = utf8(pool, nameIndex);
+  return name.startsWith('<#') ? null : name;
 }
 
 /**

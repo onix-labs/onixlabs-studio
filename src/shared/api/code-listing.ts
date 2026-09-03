@@ -149,6 +149,16 @@ export interface ListingSection {
   readonly fileRange?: { readonly start: number; readonly length: number };
 
   /**
+   * Gets the absolute path of the source file this section was compiled from, when the decoder could
+   * determine it — from a portable PDB, or a JVM `SourceFile` attribute.
+   *
+   * This is what lets a source-first view show only the methods belonging to the file on screen.
+   * Filtering on the section title instead would be guesswork: a partial class spans files, and a
+   * nested or generated type's name says nothing about where it was written.
+   */
+  readonly sourcePath?: string;
+
+  /**
    * Gets per-section annotations to show beneath the heading, such as `Tier0`, `no PGO data`, or
    * `max_stack=2`.
    */

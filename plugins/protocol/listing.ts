@@ -51,6 +51,13 @@ export interface ListingSection {
   readonly id: string;
   readonly title: string;
   readonly fileRange?: { readonly start: number; readonly length: number };
+
+  /**
+   * The absolute path of the source file this section was compiled from, when the decoder can
+   * determine it. Lets a source-first view show only the methods belonging to the file on screen.
+   */
+  readonly sourcePath?: string;
+
   readonly notes?: readonly string[];
   readonly rows: readonly ListingRow[];
 }

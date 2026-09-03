@@ -38,8 +38,12 @@ internal sealed record Section(
     [property: JsonPropertyName("id")] string Id,
     [property: JsonPropertyName("title")] string Title,
     [property: JsonPropertyName("fileRange")] FileRange? FileRange,
+    [property: JsonPropertyName("sourcePath")] string? SourcePath,
     [property: JsonPropertyName("notes")] string[]? Notes,
     [property: JsonPropertyName("rows")] Row[] Rows);
+
+/// <summary>Holds what a portable PDB says about one method: where it was written, and its lines.</summary>
+internal sealed record MethodDebug(string? SourcePath, Dictionary<int, int> Lines);
 
 internal static class Program
 {
@@ -150,7 +154,7 @@ internal static class Program
     {
         // The source mapping lives in the PDB, not the assembly. Without one the listing is still
         // correct, just without line numbers — which is the ordinary case for a release build.
-        Dictionary<int, Dictionary<int, int>> sequencePoints = ReadSequencePoints(pdb);
+        Dictionary<int, MethodDebug> sequencePoints = ReadSequencePoints(pdb);
         using MemoryStream stream = new(bytes, writable: false);
         using PEFile file = new(path ?? "assembly", stream);
         MetadataReader metadata = file.Metadata;
@@ -176,7 +180,7 @@ internal static class Program
             if (definition.RelativeVirtualAddress == 0)
             {
                 sections.Add(new Section(
-                    token.ToString(), title, null, ["abstract or extern — no IL body"], []));
+                    token.ToString(), title, null, null, ["abstract or extern — no IL body"], []));
                 continue;
             }
 
@@ -195,18 +199,17 @@ internal static class Program
                 ilOffset = headerOffset + headerSize;
             }
 
+            sequencePoints.TryGetValue(token, out MethodDebug? debug);
             sections.Add(new Section(
                 token.ToString(),
                 title,
                 ilOffset >= 0 ? new FileRange(ilOffset, il.Length) : null,
+                debug?.SourcePath,
                 [
                     $"token=0x{token:X8}, maxStack={body.MaxStack}, header={headerSize}b, {il.Length} bytes of IL",
-                    sequencePoints.ContainsKey(token)
-                        ? "source lines from the portable PDB"
-                        : "no source mapping",
+                    debug is null ? "no source mapping" : "source lines from the portable PDB",
                 ],
-                DecodeIl(il, ilOffset, metadata,
-                    sequencePoints.TryGetValue(token, out Dictionary<int, int>? lines) ? lines : null)));
+                DecodeIl(il, ilOffset, metadata, debug?.Lines)));
         }
 
         if (truncated)
@@ -214,6 +217,7 @@ internal static class Program
             sections.Add(new Section(
                 "truncated",
                 $"… {MaxSections}-method limit reached; the rest of this assembly is not shown",
+                null,
                 null,
                 null,
                 []));
@@ -426,9 +430,9 @@ internal static class Program
     /// Hidden sequence points are skipped: they mark compiler-generated code that belongs to no line,
     /// and attributing them to the previous statement would make the sync jump about.
     /// </summary>
-    private static Dictionary<int, Dictionary<int, int>> ReadSequencePoints(byte[]? pdb)
+    private static Dictionary<int, MethodDebug> ReadSequencePoints(byte[]? pdb)
     {
-        Dictionary<int, Dictionary<int, int>> result = [];
+        Dictionary<int, MethodDebug> result = [];
         if (pdb is null || pdb.Length == 0)
         {
             return result;
@@ -449,17 +453,25 @@ internal static class Program
                 }
 
                 Dictionary<int, int> lines = [];
+                string? sourcePath = null;
                 foreach (SequencePoint point in info.GetSequencePoints())
                 {
-                    if (!point.IsHidden)
+                    if (point.IsHidden)
                     {
-                        lines[point.Offset] = point.StartLine;
+                        continue;
                     }
+
+                    lines[point.Offset] = point.StartLine;
+                    // A method's points normally all name one document; the first wins, which is what
+                    // a reader means by "the file this method is in" even for the rare method whose
+                    // body was stitched from more than one.
+                    sourcePath ??= DocumentPath(reader, point.Document);
                 }
 
                 if (lines.Count > 0)
                 {
-                    result[MetadataTokens.GetToken(handle.ToDefinitionHandle())] = lines;
+                    result[MetadataTokens.GetToken(handle.ToDefinitionHandle())] =
+                        new MethodDebug(sourcePath, lines);
                 }
             }
         }
@@ -470,6 +482,25 @@ internal static class Program
         }
 
         return result;
+    }
+
+    /// <summary>Reads a PDB document's file path.</summary>
+    private static string? DocumentPath(MetadataReader reader, DocumentHandle handle)
+    {
+        if (handle.IsNil)
+        {
+            return null;
+        }
+
+        try
+        {
+            Document document = reader.GetDocument(handle);
+            return reader.GetString(document.Name);
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     /// <summary>Translates a relative virtual address to a file offset via the containing section.</summary>
