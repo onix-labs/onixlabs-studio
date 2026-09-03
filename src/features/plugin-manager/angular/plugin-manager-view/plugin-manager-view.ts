@@ -7,7 +7,14 @@ import {
   InputSignal,
   Signal,
 } from '@angular/core';
-import { PluginContribution, PluginSlot, PluginSummary } from '@shared/api/plugin-channels';
+import {
+  FormatPluginContribution,
+  LanguagePluginContribution,
+  PluginContribution,
+  PluginSlot,
+  PluginSummary,
+  isLanguageContribution,
+} from '@shared/api/plugin-channels';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
@@ -33,6 +40,7 @@ const COLUMNS: readonly TableColumn[] = [
 const SLOT_LABELS: Readonly<Record<PluginSlot, string>> = {
   'language-server': 'Language server',
   'debug-adapter': 'Debugger',
+  decoder: 'Decoder',
 };
 
 /**
@@ -152,12 +160,28 @@ export class PluginManagerView {
   protected languages(plugin: PluginSummary): string {
     const languages: readonly string[] = [
       ...new Set(
-        plugin.contributions.flatMap(
-          (contribution: PluginContribution): readonly string[] => contribution.languages,
-        ),
+        plugin.contributions
+          .filter(isLanguageContribution)
+          .flatMap(
+            (contribution: LanguagePluginContribution): readonly string[] => contribution.languages,
+          ),
       ),
     ];
-    return languages.map(languageDisplayName).join(', ');
+    // A decoder is keyed by format rather than language, so its formats are listed alongside the
+    // language names rather than being silently dropped from the column.
+    const formats: readonly string[] = [
+      ...new Set(
+        plugin.contributions
+          .filter(
+            (contribution: PluginContribution): contribution is FormatPluginContribution =>
+              contribution.slot === 'decoder',
+          )
+          .flatMap(
+            (contribution: FormatPluginContribution): readonly string[] => contribution.formats,
+          ),
+      ),
+    ];
+    return [...languages.map(languageDisplayName), ...formats].join(', ');
   }
 
   /**

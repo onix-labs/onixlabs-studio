@@ -21,6 +21,7 @@ import { PLUGIN_API_VERSION } from './plugin-manifest';
  */
 const FINGERPRINTS: Readonly<Record<string, string>> = {
   '1.3.0': 'ac21fce464a40790842d4c6f5a3b19e19d4fe6169ae0faf0af44f2d13c73c4a4',
+  '1.4.0': '9c77f18a2e7cb7b380519c200c0af02ebeec8b9758684c89144eecd53babdabc',
 };
 
 /**

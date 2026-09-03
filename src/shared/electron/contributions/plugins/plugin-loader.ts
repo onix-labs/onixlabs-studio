@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import {
   ManifestCommand,
   ManifestDebugAdapter,
+  ManifestDecoder,
   ManifestDownload,
   ManifestError,
   ManifestLanguageServer,
@@ -13,6 +14,11 @@ import {
 } from '@shared/api/plugin-manifest';
 import { PluginContribution, PluginOrigin } from '@shared/api/plugin-channels';
 import { logger } from '../../logger';
+import {
+  DecoderDescriptor,
+  DecoderResolution,
+  decoderUnavailable,
+} from '../../decoders/decoder-descriptor';
 import {
   LanguageServerContext,
   LanguageServerDescriptor,
@@ -332,7 +338,16 @@ export function toContributions(manifest: PluginManifest): readonly PluginContri
       priority: adapter.priority,
     }),
   );
-  return [...servers, ...adapters];
+  const decoders: readonly PluginContribution[] = (manifest.contributes.decoders ?? []).map(
+    (decoder: ManifestDecoder): PluginContribution => ({
+      slot: 'decoder',
+      id: decoder.id,
+      displayName: decoder.displayName,
+      formats: decoder.formats,
+      priority: decoder.priority,
+    }),
+  );
+  return [...servers, ...adapters, ...decoders];
 }
 
 /**
@@ -480,6 +495,62 @@ export function toDebugAdapterEntries(
               env: adapter.command.env,
               transport: adapter.transport,
             },
+    }),
+  );
+}
+
+/**
+ * Turns a manifest's decoders into descriptors the decoder registry can resolve.
+ *
+ * The decoder lives inside the same payload as everything else the plugin contributes — a plugin is one
+ * payload however many things it provides — so it is located by asking where that payload was installed
+ * rather than by searching the PATH.
+ * @param manifest The validated manifest.
+ * @param provisioner Gets the provisioner the plugin's install went through, so the answer cannot
+ * disagree with where the payload actually landed.
+ * @param nodeRuntime Gets how to run a JavaScript entry point under the runtime Studio ships, so a
+ * decoder distributed as a bundle needs no Node on the machine.
+ * @returns Returns the descriptors.
+ */
+export function toDecoderDescriptors(
+  manifest: PluginManifest,
+  provisioner: () => LspProvisioner,
+  nodeRuntime: (entryPoint: string) => { command: string; args: readonly string[] },
+): readonly DecoderDescriptor[] {
+  const ops: PayloadOps = payloadOps(manifest);
+  return (manifest.contributes.decoders ?? []).map(
+    (decoder: ManifestDecoder): DecoderDescriptor => ({
+      id: decoder.id,
+      displayName: decoder.displayName,
+      formats: decoder.formats,
+      priority: decoder.priority,
+      resolve: (): DecoderResolution => {
+        // Never installs: an uninstalled decoder resolves to unavailable and the user installs it in
+        // the Plugin Manager, rather than opening a file silently triggering a large download.
+        const entryPoint: string | null = ops.isInstalled(provisioner())
+          ? ops.target(provisioner(), decoder.entryPoint)
+          : null;
+        if (entryPoint === null) {
+          return decoderUnavailable(
+            `${decoder.displayName} is not installed — install it in Plugins.`,
+          );
+        }
+        if (decoder.command.kind === 'node') {
+          const runtime: { command: string; args: readonly string[] } = nodeRuntime(entryPoint);
+          return {
+            available: true,
+            spec: {
+              command: runtime.command,
+              args: [...runtime.args, ...(decoder.command.args ?? [])],
+              env: decoder.command.env,
+            },
+          };
+        }
+        return {
+          available: true,
+          spec: { command: entryPoint, args: decoder.command.args ?? [], env: decoder.command.env },
+        };
+      },
     }),
   );
 }

@@ -1,3 +1,4 @@
+import { FormatSlotEntry } from './format-slot';
 import { LanguageSlotEntry } from './language-slot';
 
 // Shared plugin contract used between the Electron main process and the renderer. Keep this module
@@ -43,19 +44,41 @@ export enum PluginChannel {
  * plugin fills them. Kept a closed union deliberately — a new slot is a change to the application's
  * own surface, not something a plugin may invent.
  */
-export type PluginSlot = 'language-server' | 'debug-adapter';
+export type PluginSlot = 'language-server' | 'debug-adapter' | 'decoder';
 
 /**
- * Describes one implementation a plugin contributes into a slot. The identifier is what the slot's
- * registry knows the implementation by, so a plugin's contribution and the registry entry it produces
- * are the same thing named once.
+ * Names the slots keyed by language, as opposed to by format.
  */
-export interface PluginContribution extends LanguageSlotEntry {
+export type LanguagePluginSlot = 'language-server' | 'debug-adapter';
+
+/**
+ * Describes one implementation a plugin contributes into a language-keyed slot. The identifier is what
+ * the slot's registry knows the implementation by, so a plugin's contribution and the registry entry it
+ * produces are the same thing named once.
+ */
+export interface LanguagePluginContribution extends LanguageSlotEntry {
   /**
-   * Gets the slot this implementation fills.
+   * Gets the language-keyed slot this implementation fills.
    */
-  readonly slot: PluginSlot;
+  readonly slot: LanguagePluginSlot;
 }
+
+/**
+ * Describes one implementation a plugin contributes into a format-keyed slot. A decoder is chosen per
+ * binary format rather than per language, which is why it is keyed differently rather than being made
+ * to carry a `languages` array it would have nothing to put in.
+ */
+export interface FormatPluginContribution extends FormatSlotEntry {
+  /**
+   * Gets the format-keyed slot this implementation fills.
+   */
+  readonly slot: 'decoder';
+}
+
+/**
+ * Describes one implementation a plugin contributes into a slot, whichever way that slot is keyed.
+ */
+export type PluginContribution = LanguagePluginContribution | FormatPluginContribution;
 
 /**
  * Describes a plugin's current state on this machine.
@@ -187,10 +210,33 @@ export interface PluginActionResult {
  */
 export function installedContributions(
   plugins: readonly PluginSummary[],
+  slot: LanguagePluginSlot,
+): readonly LanguagePluginContribution[];
+export function installedContributions(
+  plugins: readonly PluginSummary[],
+  slot: 'decoder',
+): readonly FormatPluginContribution[];
+export function installedContributions(
+  plugins: readonly PluginSummary[],
   slot: PluginSlot,
 ): readonly PluginContribution[] {
   return plugins
     .filter((plugin: PluginSummary): boolean => plugin.state === 'installed')
     .flatMap((plugin: PluginSummary): readonly PluginContribution[] => plugin.contributions)
     .filter((contribution: PluginContribution): boolean => contribution.slot === slot);
+}
+
+/**
+ * Narrows a contribution to the language-keyed form when it fills a language-keyed slot.
+ *
+ * Exists because `slot` discriminates the union, and narrowing on a comparison against a slot *variable*
+ * does not narrow — only a comparison against a literal does. Callers that filter by a slot they were
+ * handed need this rather than a cast.
+ * @param contribution The contribution to test.
+ * @returns Returns true when the contribution is language-keyed.
+ */
+export function isLanguageContribution(
+  contribution: PluginContribution,
+): contribution is LanguagePluginContribution {
+  return contribution.slot === 'language-server' || contribution.slot === 'debug-adapter';
 }
