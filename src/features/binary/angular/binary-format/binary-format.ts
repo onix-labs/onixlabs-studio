@@ -117,6 +117,40 @@ export function formatKey(format: BinaryFormat): string | null {
 }
 
 /**
+ * Resolves the architecture label the *assembler* takes for a format, or null when its machine code
+ * cannot be written here.
+ *
+ * Separate from {@link formatKey} and named for what it is for. A format key identifies which decoder
+ * reads a file; this identifies which instruction set is being written, and the two are different
+ * values — the assembler wants `x64`, not `pe/x64`. Conflating them silently breaks every write.
+ * @param format The detected format.
+ * @returns Returns the architecture label, or null when the format holds no writable machine code.
+ */
+export function assemblerArchitecture(format: BinaryFormat): string | null {
+  switch (format.kind) {
+    case 'pe':
+      return format.managed ? null : nativeArchitecture(format.architecture);
+    case 'mz':
+    case 'elf':
+    case 'macho':
+      return nativeArchitecture(format.architecture);
+    case 'jvm':
+    case 'wasm':
+    case 'unknown':
+      return null;
+  }
+}
+
+/**
+ * Narrows a sniffed architecture label to one the assembler recognises.
+ * @param architecture The sniffed label.
+ * @returns Returns the label, or null when it is not a writable instruction set.
+ */
+function nativeArchitecture(architecture: string): string | null {
+  return ['x86-16', 'x86', 'x64', 'ARM', 'ARM64'].includes(architecture) ? architecture : null;
+}
+
+/**
  * Formats a detected format for display in the status strip.
  * @param format The detected format.
  * @returns Returns a short human-readable label.

@@ -417,9 +417,11 @@ describe('BinaryAgentCapabilities', () => {
       assembly: 'mov rax, rbx',
     })) as { ok: boolean; text: string };
 
+    // The assembler takes an instruction set, not a decoder format key: `x64`, never `pe/x64`.
+    // Passing the key silently fails every write, which is how this was broken once already.
     expect(fake.assembles[0]).toEqual({
       assembly: 'mov rax, rbx',
-      architecture: 'pe/x64',
+      architecture: 'x64',
       address: 16,
     });
     expect(fake.patches).toEqual([{ offset: 16, values: [0x48, 0x89, 0xd8] }]);
