@@ -1,6 +1,7 @@
 import { inject, Service } from '@angular/core';
 import { Bridge } from '@shared/api/bridge';
 import { BinaryChannel, DecodedInstruction } from '@shared/api/binary-channels';
+import { CodeListing } from '@shared/api/code-listing';
 import { Log } from '@shared/angular/services/log/log';
 
 /**
@@ -53,5 +54,44 @@ export class BinaryDisassembly {
         architecture,
       ) ?? Promise.resolve([])
     );
+  }
+
+  /**
+   * Decodes a window of bytes into a listing using whichever installed decoder plugin fills the
+   * format's slot.
+   *
+   * Passing the bytes the renderer holds, rather than a path, is what keeps unsaved edits reflected —
+   * the same invariant the native path has always had, now extended to every format.
+   * @param format The canonical decoder format key.
+   * @param bytes The bytes to decode.
+   * @param baseOffset The absolute file offset of the buffer's first byte.
+   * @param totalSize The whole file's size, when the bytes are a window of it.
+   * @param path The file the bytes came from, for display only.
+   * @returns Returns the listing, or null when no decoder is installed, it failed, or the application
+   * is running outside Electron.
+   */
+  public async decodeListing(
+    format: string,
+    bytes: Uint8Array,
+    baseOffset: number,
+    totalSize?: number,
+    path?: string,
+  ): Promise<CodeListing | null> {
+    if (this.bridge === undefined) {
+      return null;
+    }
+    try {
+      return await this.bridge.invoke<CodeListing | null>(
+        BinaryChannel.DecodeListing,
+        format,
+        bytes,
+        baseOffset,
+        totalSize,
+        path,
+      );
+    } catch (error: unknown) {
+      this.log.debug('binary.disassembly', 'Decoder request failed', error);
+      return null;
+    }
   }
 }

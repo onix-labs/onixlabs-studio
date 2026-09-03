@@ -6,6 +6,6 @@
   "type": "commonjs",
   "main": "dist/main.js",
   "scripts": {
-    "build": "esbuild src/main.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/main.js --external:disassembler"
+    "build": "node build.mjs"
   }
 }

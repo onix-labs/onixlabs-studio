@@ -500,6 +500,15 @@ export function toDebugAdapterEntries(
 }
 
 /**
+ * Describes how to run a JavaScript entry point under the runtime the host supplies.
+ */
+export interface NodeRuntimeSpec {
+  readonly command: string;
+  readonly args: readonly string[];
+  readonly env?: Readonly<Record<string, string>>;
+}
+
+/**
  * Turns a manifest's decoders into descriptors the decoder registry can resolve.
  *
  * The decoder lives inside the same payload as everything else the plugin contributes — a plugin is one
@@ -515,7 +524,8 @@ export function toDebugAdapterEntries(
 export function toDecoderDescriptors(
   manifest: PluginManifest,
   provisioner: () => LspProvisioner,
-  nodeRuntime: (entryPoint: string) => { command: string; args: readonly string[] },
+  nodeRuntime: (entryPoint: string) => NodeRuntimeSpec,
+  localRoot?: string,
 ): readonly DecoderDescriptor[] {
   const ops: PayloadOps = payloadOps(manifest);
   return (manifest.contributes.decoders ?? []).map(
@@ -527,22 +537,29 @@ export function toDecoderDescriptors(
       resolve: (): DecoderResolution => {
         // Never installs: an uninstalled decoder resolves to unavailable and the user installs it in
         // the Plugin Manager, rather than opening a file silently triggering a large download.
-        const entryPoint: string | null = ops.isInstalled(provisioner())
-          ? ops.target(provisioner(), decoder.entryPoint)
-          : null;
+        //
+        // A sideloaded plugin may carry its payload beside its manifest, and that wins when it is
+        // actually there — otherwise a locally built decoder could never run, because it has nothing
+        // published to download.
+        const local: string | null = localEntryPoint(localRoot, manifest, decoder.entryPoint);
+        const entryPoint: string | null =
+          local ??
+          (ops.isInstalled(provisioner()) ? ops.target(provisioner(), decoder.entryPoint) : null);
         if (entryPoint === null) {
           return decoderUnavailable(
             `${decoder.displayName} is not installed — install it in Plugins.`,
           );
         }
         if (decoder.command.kind === 'node') {
-          const runtime: { command: string; args: readonly string[] } = nodeRuntime(entryPoint);
+          const runtime: NodeRuntimeSpec = nodeRuntime(entryPoint);
           return {
             available: true,
             spec: {
               command: runtime.command,
               args: [...runtime.args, ...(decoder.command.args ?? [])],
-              env: decoder.command.env,
+              // The runtime's own environment first, so a manifest cannot accidentally unset what the
+              // runtime needs to start at all.
+              env: { ...runtime.env, ...decoder.command.env },
             },
           };
         }
@@ -553,4 +570,45 @@ export function toDecoderDescriptors(
       },
     }),
   );
+}
+
+/**
+ * Resolves a contribution's entry point inside a sideloaded plugin's own directory, when the payload
+ * is there.
+ *
+ * Returns null when there is no local root, when the manifest names no entry point to look for, or
+ * when the file is simply not present — in which case the caller falls back to the provisioner, so a
+ * sideloaded manifest whose payload is published still installs the published one.
+ * @param localRoot The sideloaded plugin's directory, or undefined when it was not sideloaded.
+ * @param manifest The validated manifest.
+ * @param entryPoint The contribution's own entry point, or undefined to use the provision's.
+ * @returns Returns the absolute entry-point path, or null.
+ */
+function localEntryPoint(
+  localRoot: string | undefined,
+  manifest: PluginManifest,
+  entryPoint?: string,
+): string | null {
+  if (localRoot === undefined) {
+    return null;
+  }
+  const relative: string | undefined = entryPoint ?? provisionEntryPoint(manifest) ?? undefined;
+  if (relative === undefined) {
+    return null;
+  }
+  const candidate: string = path.join(localRoot, relative);
+  return existsSync(candidate) ? candidate : null;
+}
+
+/**
+ * Gets the entry point a manifest's provisioning names, whichever kind it is.
+ * @param manifest The validated manifest.
+ * @returns Returns the relative entry point, or null when the provision names none.
+ */
+function provisionEntryPoint(manifest: PluginManifest): string | null {
+  if (manifest.provision.kind === 'npm') {
+    return manifest.provision.executablePath ?? null;
+  }
+  const downloads: readonly ManifestDownload[] = Object.values(manifest.provision.downloads);
+  return downloads[0]?.executablePath ?? null;
 }

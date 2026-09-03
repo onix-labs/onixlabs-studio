@@ -18,6 +18,14 @@ export enum BinaryChannel {
    * operands resolve), and receives the assembled machine bytes or the assembler's error.
    */
   Assemble = 'binary:assemble',
+
+  /**
+   * Decodes a window of bytes into a {@link import('./code-listing').CodeListing} using whichever
+   * installed decoder plugin fills the format's slot (invoke). The renderer sends the bytes it is
+   * displaying — so unsaved edits are reflected — the format key it sniffed, and the buffer's base
+   * offset. Answers null when no decoder for the format is installed.
+   */
+  DecodeListing = 'binary:decode-listing',
 }
 
 /**

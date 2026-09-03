@@ -29,6 +29,7 @@ import {
   BinaryFormat,
   codeOffset,
   disassemblyArchitecture,
+  formatKey,
   sniffFormat,
 } from '../binary-format/binary-format';
 
@@ -232,13 +233,27 @@ export class BinaryDocumentEntry {
    * not.
    */
   public readonly listing: Signal<CodeListing | null> = computed((): CodeListing | null => {
+    // An installed decoder plugin wins: it is the direction of travel, and it can decode formats the
+    // in-core path never could. The native fallback below exists only until that path is removed.
+    const decoded: CodeListing | null = this.pluginListing();
+    if (decoded !== null) {
+      return decoded;
+    }
     const architecture: string | null = disassemblyArchitecture(this.format());
-    const decoded: readonly DecodedInstruction[] = this.instructions();
-    if (architecture === null || decoded.length === 0) {
+    const instructions: readonly DecodedInstruction[] = this.instructions();
+    if (architecture === null || instructions.length === 0) {
       return null;
     }
-    return listingFromInstructions(decoded, architecture, this.path);
+    return listingFromInstructions(instructions, architecture, this.path);
   });
+
+  /**
+   * Holds the listing an installed decoder plugin returned for the current range, or null when none is
+   * installed for this format or it has not answered yet.
+   */
+  private readonly pluginListing: WritableSignal<CodeListing | null> = signal<CodeListing | null>(
+    null,
+  );
 
   /**
    * Holds disassembled ranges keyed by `arch:offset:length`, so re-visiting a range does not re-invoke
@@ -531,21 +546,27 @@ export class BinaryDocumentEntry {
    */
   public loadDisassembly(offset: number, length: number): void {
     const architecture: string | null = disassemblyArchitecture(this.format());
-    if (architecture === null || length <= 0) {
+    const formatSlot: string | null = formatKey(this.format());
+    if (length <= 0 || (architecture === null && formatSlot === null)) {
       this.instructions.set([]);
+      this.pluginListing.set(null);
       return;
     }
+
     // The edits version is part of the key so an overwrite invalidates the cached decode and the range
     // re-disassembles from the edited bytes rather than the stale result.
-    const key: string = `${architecture}:${offset}:${length}:${this.editsVersion()}`;
+    const key: string = `${architecture ?? formatSlot ?? ''}:${offset}:${length}:${this.editsVersion()}`;
     const cached: readonly DecodedInstruction[] | undefined = this.disassemblyCache.get(key);
-    if (cached !== undefined) {
+    if (architecture !== null && cached !== undefined) {
       this.instructions.set(cached);
       return;
     }
     if (this.disassemblyTimer !== null) {
       clearTimeout(this.disassemblyTimer);
     }
+    // One token and one debounce covers both paths: a decoder plugin and the in-core disassembler are
+    // asked about the same window, and a result that arrives after the viewport has moved on is
+    // discarded whichever produced it.
     const token: number = (this.disassemblyToken += 1);
     this.disassemblyTimer = setTimeout((): void => {
       const window: { bytes: Uint8Array; base: number } | null = this.disassemblyWindow(
@@ -556,6 +577,20 @@ export class BinaryDocumentEntry {
         if (token === this.disassemblyToken) {
           this.instructions.set([]);
         }
+        return;
+      }
+      // A decoder plugin is asked whenever the format has a key — and for a format the in-core path
+      // cannot handle at all, it is the only thing asked.
+      if (formatSlot !== null) {
+        void this.disassembly
+          .decodeListing(formatSlot, window.bytes, window.base, this.size(), this.path)
+          .then((listing: CodeListing | null): void => {
+            if (token === this.disassemblyToken && listing !== null) {
+              this.pluginListing.set(listing);
+            }
+          });
+      }
+      if (architecture === null) {
         return;
       }
       void this.disassembly
