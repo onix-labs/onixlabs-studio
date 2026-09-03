@@ -170,6 +170,9 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
       },
       {
         key: 'appearance.modernUiFeatures',
+        // Hidden without hardware acceleration: the effects are then forced off regardless of the
+        // choice, because rasterising them on the CPU costs a core.
+        visibleWhen: { key: 'display.hardwareAcceleration', equals: [true] },
         title: 'Modern UI Features',
         description: 'Squircle corners and richer visual effects.',
         control: {
@@ -184,6 +187,9 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
       },
       {
         key: 'appearance.workspaceTexture',
+        // Hidden without hardware acceleration: a full-workspace masked layer is among the costliest
+        // things to rasterise in software, so the texture resolves to none regardless of the choice.
+        visibleWhen: { key: 'display.hardwareAcceleration', equals: [true] },
         title: 'Workspace Texture',
         description:
           'A pattern tiled behind the workspace panes, painted in the accent colour. Patterns from Hero Patterns.',
@@ -211,7 +217,7 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         owner: 'display',
         title: 'Hardware Acceleration',
         description:
-          'Use the GPU to render the interface. Turning this off can fix rendering glitches on some graphics hardware, but may reduce smoothness. Changing it restarts the application.',
+          'Use the GPU to render the interface. Turning this off can fix rendering glitches on some graphics hardware, but renders every pixel on the CPU, which is slow enough to make the whole interface lag. Modern UI features and the workspace texture are turned off with it. Changing it restarts the application.',
         control: { kind: 'toggle' },
         requiresRestart: true,
       },

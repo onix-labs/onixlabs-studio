@@ -8,6 +8,7 @@ import {
   inject,
   Signal,
 } from '@angular/core';
+import { Display } from '@shared/angular/services/display/display';
 import { Log } from '@shared/angular/services/log/log';
 import { Settings, WorkspaceTexture } from '@shared/angular/services/settings/settings';
 import { DockFocus } from '../../../services/dock-layout/dock-focus';
@@ -72,6 +73,12 @@ export class DockContainer {
   private readonly settings: Settings = inject(Settings);
 
   /**
+   * Holds the display policy, read so the texture is suppressed while the interface is rendered
+   * without hardware acceleration.
+   */
+  private readonly display: Display = inject(Display);
+
+  /**
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
@@ -84,8 +91,13 @@ export class DockContainer {
   /**
    * Gets the background texture to paint behind the docked panes, or null when the user has chosen
    * none — the attribute is then absent, and the texture layer resolves to nothing.
+   *
+   * Disabling hardware acceleration also resolves to null: the texture is a full-workspace masked
+   * layer repainted with everything behind it, which is among the costliest things to rasterise in
+   * software. The choice itself is preserved and returns when acceleration does.
    */
   protected readonly texture: Signal<string | null> = computed((): string | null => {
+    if (!this.display.hardwareAccelerationEnabled()) return null;
     const texture: WorkspaceTexture = this.settings.workspaceTexture();
     return texture === 'none' ? null : texture;
   });

@@ -90,11 +90,11 @@ export class Display {
 
   /**
    * Applies the resolved display policy to the document root whenever the modern-UI-features choice
-   * changes.
+   * or the hardware-acceleration preference changes.
    */
   public constructor() {
     effect((): void => {
-      this.applyDisplayPolicy(this.settings.modernUiFeatures());
+      this.applyDisplayPolicy(this.settings.modernUiFeatures(), this.hardwareAccelerationSignal());
     });
   }
 
@@ -119,11 +119,23 @@ export class Display {
   /**
    * Resolves the modern-UI-features choice against the GPU recommendation and toggles the document
    * attributes the SCSS uses to fall back to plain rounded corners and reduced effects.
+   *
+   * Hardware acceleration overrides the choice: without it every pixel is rasterised on the CPU, and
+   * the modern features are the most expensive thing to rasterise — squircle corner masks resolve to
+   * `corner-shape: squircle` on 100+ declarations, and the decorative effects are large blurs. Paying
+   * for them in software costs a CPU core for a look the machine cannot afford, so they are forced
+   * off rather than merely recommended against.
    * @param mode The modern-UI-features mode to apply.
+   * @param hardwareAcceleration Whether GPU hardware acceleration is enabled.
    */
-  private applyDisplayPolicy(mode: ModernUiFeatures): void {
-    const reduceEffects: boolean =
-      mode === 'off' ? true : mode === 'on' ? false : this.recommendReducedEffects;
+  private applyDisplayPolicy(mode: ModernUiFeatures, hardwareAcceleration: boolean): void {
+    const reduceEffects: boolean = !hardwareAcceleration
+      ? true
+      : mode === 'off'
+        ? true
+        : mode === 'on'
+          ? false
+          : this.recommendReducedEffects;
     const root: HTMLElement = this.document.documentElement;
 
     if (reduceEffects) {

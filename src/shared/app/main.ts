@@ -7,12 +7,16 @@ import { Root } from './root/root';
 /**
  * Resolves whether the heavier UI effects should be reduced for the first paint, mirroring the
  * Display service so the document is correct before Angular bootstraps (avoiding a squircle-to-round
- * flash). The persisted "modern UI features" choice wins when explicit; otherwise the GPU-derived
- * recommendation from the main process decides. Best-effort: any read/parse failure falls back to
- * the recommendation. Once Angular boots, the Display service takes over and keeps this in sync.
+ * flash). Disabled hardware acceleration forces the reduction, because every pixel is then rasterised
+ * on the CPU; otherwise the persisted "modern UI features" choice wins when explicit, and failing
+ * that the GPU-derived recommendation from the main process decides. Best-effort: any read/parse
+ * failure falls back to the recommendation. Once Angular boots, the Display service takes over and
+ * keeps this in sync.
  * @returns Returns true when corners and decorative effects should be reduced.
  */
 function shouldReduceEffects(): boolean {
+  if (window.host?.display?.hardwareAccelerationEnabled === false) return true;
+
   const recommend: boolean = window.host?.display?.gpuRendering?.recommendReducedEffects ?? false;
   try {
     const raw: string | null = localStorage.getItem('settings');

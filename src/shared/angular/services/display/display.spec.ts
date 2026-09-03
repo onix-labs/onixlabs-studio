@@ -106,6 +106,44 @@ describe('Display', () => {
     expect(document.documentElement.getAttribute('data-reduced-gpu')).toBe('true');
   });
 
+  it('applyDisplayPolicy_whenLaunchedWithoutHardwareAcceleration_forcesReducedEffects', () => {
+    stubHost(startup(false, false));
+    TestBed.inject(Display);
+    TestBed.inject(Settings).setModernUiFeatures('on');
+
+    TestBed.tick();
+
+    expect(document.documentElement.getAttribute('data-corners')).toBe('round');
+    expect(document.documentElement.getAttribute('data-reduced-gpu')).toBe('true');
+  });
+
+  it('applyDisplayPolicy_whenHardwareAccelerationIsTurnedOff_reducesEffectsWithoutWaitingForRelaunch', () => {
+    stubHost(startup(false, true));
+    const display: Display = TestBed.inject(Display);
+    TestBed.inject(Settings).setModernUiFeatures('on');
+    TestBed.tick();
+
+    display.setHardwareAcceleration(false);
+    TestBed.tick();
+
+    expect(document.documentElement.getAttribute('data-corners')).toBe('round');
+    expect(document.documentElement.getAttribute('data-reduced-gpu')).toBe('true');
+  });
+
+  it('applyDisplayPolicy_whenHardwareAccelerationIsRestored_returnsTheChosenEffects', () => {
+    stubHost(startup(false, true));
+    const display: Display = TestBed.inject(Display);
+    TestBed.inject(Settings).setModernUiFeatures('on');
+    display.setHardwareAcceleration(false);
+    TestBed.tick();
+
+    display.setHardwareAcceleration(true);
+    TestBed.tick();
+
+    expect(document.documentElement.hasAttribute('data-corners')).toBe(false);
+    expect(document.documentElement.hasAttribute('data-reduced-gpu')).toBe(false);
+  });
+
   it('setHardwareAcceleration_whenChanged_persistsAndFlagsARestart', () => {
     stubHost(startup(false, true));
     const display: Display = TestBed.inject(Display);
