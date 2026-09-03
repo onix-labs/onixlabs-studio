@@ -277,7 +277,24 @@ export function toOrigin(
  * @param manifest The validated manifest.
  * @returns Returns the operations for the manifest's provisioning kind.
  */
-export function payloadOps(manifest: PluginManifest): PayloadOps {
+export function payloadOps(manifest: PluginManifest, localRoot?: string): PayloadOps {
+  // A sideloaded plugin carrying its own payload is already installed, by the only definition that
+  // matters: the thing to run is on disk. Answering anything else would report it missing while it
+  // works, and offer an install that downloads over a payload the user put there deliberately.
+  const local: string | null = localEntryPoint(localRoot, manifest);
+  if (local !== null) {
+    return {
+      target: (_p: LspProvisioner, entryPoint?: string): string | null =>
+        localEntryPoint(localRoot, manifest, entryPoint),
+      supported: (): boolean => true,
+      isInstalled: (): boolean => true,
+      // Nothing to fetch: the payload is already beside the manifest.
+      ensure: (): Promise<string | null> => Promise.resolve(local),
+      // Removing it is the user's business, since they placed it by hand. Deleting a directory they
+      // manage from under them would be a surprise, so this reports success and touches nothing.
+      remove: (): Promise<void> => Promise.resolve(),
+    };
+  }
   const tree: LockfileProvision | null = toTreeProvision(manifest);
   if (tree !== null) {
     return {
@@ -381,8 +398,8 @@ export function toDetail(manifest: PluginManifest): string | undefined {
  * @param manifest The validated manifest.
  * @returns Returns the descriptor.
  */
-export function toPluginDescriptor(manifest: PluginManifest): PluginDescriptor {
-  const ops: PayloadOps = payloadOps(manifest);
+export function toPluginDescriptor(manifest: PluginManifest, localRoot?: string): PluginDescriptor {
+  const ops: PayloadOps = payloadOps(manifest, localRoot);
   return {
     id: manifest.id,
     name: manifest.name,
@@ -527,7 +544,7 @@ export function toDecoderDescriptors(
   nodeRuntime: (entryPoint: string) => NodeRuntimeSpec,
   localRoot?: string,
 ): readonly DecoderDescriptor[] {
-  const ops: PayloadOps = payloadOps(manifest);
+  const ops: PayloadOps = payloadOps(manifest, localRoot);
   return (manifest.contributes.decoders ?? []).map(
     (decoder: ManifestDecoder): DecoderDescriptor => ({
       id: decoder.id,
@@ -538,13 +555,9 @@ export function toDecoderDescriptors(
         // Never installs: an uninstalled decoder resolves to unavailable and the user installs it in
         // the Plugin Manager, rather than opening a file silently triggering a large download.
         //
-        // A sideloaded plugin may carry its payload beside its manifest, and that wins when it is
-        // actually there — otherwise a locally built decoder could never run, because it has nothing
-        // published to download.
-        const local: string | null = localEntryPoint(localRoot, manifest, decoder.entryPoint);
-        const entryPoint: string | null =
-          local ??
-          (ops.isInstalled(provisioner()) ? ops.target(provisioner(), decoder.entryPoint) : null);
+        const entryPoint: string | null = ops.isInstalled(provisioner())
+          ? ops.target(provisioner(), decoder.entryPoint)
+          : null;
         if (entryPoint === null) {
           return decoderUnavailable(
             `${decoder.displayName} is not installed — install it in Plugins.`,

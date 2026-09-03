@@ -112,7 +112,10 @@ export function contributedManifests(): readonly PluginManifest[] {
  * @returns Returns the descriptors.
  */
 export function contributedPlugins(): readonly PluginDescriptor[] {
-  return contributedManifests().map(toPluginDescriptor);
+  const local: ReadonlyMap<string, string> = sideloadedDirectories();
+  return contributedManifests().map((manifest: PluginManifest): PluginDescriptor =>
+    toPluginDescriptor(manifest, local.get(manifest.id)),
+  );
 }
 
 /**
