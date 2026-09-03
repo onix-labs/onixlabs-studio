@@ -1,0 +1,68 @@
+{
+  "id": "onixlabs.native-decoder",
+  "name": "Native Disassembler",
+  "description": "Disassembles native machine code (x86, x64, ARM, ARM64) using Capstone.",
+  "version": "1.0.0",
+  "apiVersion": "1.4.0",
+  "detail": "Decodes the machine code inside PE, ELF, Mach-O and MS-DOS binaries. Studio ships no decoder of its own, so this provides the assembly listing the binary editor shows.",
+  "provision": {
+    "kind": "archive",
+    "downloads": {
+      "darwin-arm64": {
+        "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/native-decoder-1.0.0.tar.gz",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "archive": "tar.gz",
+        "executablePath": "native-decoder/main.js"
+      },
+      "darwin-x64": {
+        "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/native-decoder-1.0.0.tar.gz",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "archive": "tar.gz",
+        "executablePath": "native-decoder/main.js"
+      },
+      "linux-x64": {
+        "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/native-decoder-1.0.0.tar.gz",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "archive": "tar.gz",
+        "executablePath": "native-decoder/main.js"
+      },
+      "linux-arm64": {
+        "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/native-decoder-1.0.0.tar.gz",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "archive": "tar.gz",
+        "executablePath": "native-decoder/main.js"
+      },
+      "win32-x64": {
+        "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/native-decoder-1.0.0.tar.gz",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "archive": "tar.gz",
+        "executablePath": "native-decoder/main.js"
+      }
+    }
+  },
+  "contributes": {
+    "decoders": [
+      {
+        "id": "onixlabs.native-decoder",
+        "displayName": "Capstone",
+        "formats": [
+          "pe/x86",
+          "pe/x64",
+          "pe/arm",
+          "pe/arm64",
+          "mz/x86-16",
+          "elf/x86",
+          "elf/x64",
+          "elf/arm",
+          "elf/arm64",
+          "macho/x86",
+          "macho/x64",
+          "macho/arm",
+          "macho/arm64"
+        ],
+        "priority": 100,
+        "command": { "kind": "node" }
+      }
+    ]
+  }
+}

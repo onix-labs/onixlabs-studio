@@ -167,3 +167,6 @@ vite.config.ts.timestamp-*
 # Studio workspace settings — run configurations and the like are per-developer, not per-repo
 .studio/*.user.json
 .studio/workspace.json
+
+# Decoder plugin build output — published as a release artefact, not tracked.
+/plugins/*/dist

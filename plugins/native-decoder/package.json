@@ -1,0 +1,11 @@
+{
+  "name": "@onixlabs/native-decoder",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Native machine-code decoder plugin for ONIXLabs Studio.",
+  "type": "commonjs",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "esbuild src/main.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/main.js --external:disassembler"
+  }
+}
