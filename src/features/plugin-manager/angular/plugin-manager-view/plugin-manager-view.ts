@@ -1,14 +1,24 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  InputSignal,
+  Signal,
+  WritableSignal,
   computed,
   inject,
   input,
-  InputSignal,
-  Signal,
+  signal,
 } from '@angular/core';
-import { PluginContribution, PluginSlot, PluginSummary } from '@shared/api/plugin-channels';
+import {
+  FormatPluginContribution,
+  LanguagePluginContribution,
+  PluginContribution,
+  PluginSlot,
+  PluginSummary,
+  isLanguageContribution,
+} from '@shared/api/plugin-channels';
 import { Icon } from '@shared/angular/icons/icon';
+import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { Table, TableColumn, TableRow, TableRowDef } from '@shared/angular/components/table/table';
@@ -33,6 +43,7 @@ const COLUMNS: readonly TableColumn[] = [
 const SLOT_LABELS: Readonly<Record<PluginSlot, string>> = {
   'language-server': 'Language server',
   'debug-adapter': 'Debugger',
+  decoder: 'Decoder',
 };
 
 /**
@@ -46,7 +57,7 @@ const SLOT_LABELS: Readonly<Record<PluginSlot, string>> = {
  */
 @Component({
   selector: 'app-plugin-manager-view',
-  imports: [Button, AppIcon, Table, TableRowDef],
+  imports: [Button, AppIcon, Table, TableRowDef, TextField],
   templateUrl: './plugin-manager-view.html',
   styleUrl: './plugin-manager-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -78,15 +89,39 @@ export class PluginManagerView {
   private readonly plugins: Plugins = inject(Plugins);
 
   /**
-   * Gets every known plugin, installed first so what is in use leads, adapted to the table's row shape.
+   * Holds the filter text. Not persisted: a filter is what the user is doing right now, and finding a
+   * list mysteriously filtered on the next visit is worse than retyping four characters.
+   */
+  protected readonly query: WritableSignal<string> = signal<string>('');
+
+  /**
+   * Gets the plugins matching the filter, installed first so what is in use leads.
+   */
+  private readonly matching: Signal<readonly PluginSummary[]> = computed(
+    (): readonly PluginSummary[] => {
+      const terms: readonly string[] = this.query().toLowerCase().split(/\s+/).filter(Boolean);
+      return [...this.plugins.plugins()]
+        .filter((plugin: PluginSummary): boolean => matches(plugin, terms))
+        .sort(
+          (left: PluginSummary, right: PluginSummary): number =>
+            Number(right.state === 'installed') - Number(left.state === 'installed'),
+        );
+    },
+  );
+
+  /**
+   * Gets the matching plugins adapted to the table's row shape.
    */
   protected readonly rows: Signal<readonly TableRow[]> = computed((): readonly TableRow[] =>
-    [...this.plugins.plugins()]
-      .sort(
-        (left: PluginSummary, right: PluginSummary): number =>
-          Number(right.state === 'installed') - Number(left.state === 'installed'),
-      )
-      .map((plugin: PluginSummary): TableRow => ({ id: plugin.id, data: plugin })),
+    this.matching().map((plugin: PluginSummary): TableRow => ({ id: plugin.id, data: plugin })),
+  );
+
+  /**
+   * Gets whether a filter is narrowing the list, so the empty state can say which of the two nothings
+   * this is: no plugins at all, or none matching what was typed.
+   */
+  protected readonly filtered: Signal<boolean> = computed(
+    (): boolean => this.query().trim() !== '',
   );
 
   /**
@@ -128,6 +163,13 @@ export class PluginManagerView {
   }
 
   /**
+   * Clears the filter, so the list returns to everything.
+   */
+  protected clearQuery(): void {
+    this.query.set('');
+  }
+
+  /**
    * Describes what kind of thing a plugin contributes, without repeating the languages beside it.
    * @param plugin The plugin.
    * @returns Returns the distinct slot labels it fills.
@@ -152,12 +194,28 @@ export class PluginManagerView {
   protected languages(plugin: PluginSummary): string {
     const languages: readonly string[] = [
       ...new Set(
-        plugin.contributions.flatMap(
-          (contribution: PluginContribution): readonly string[] => contribution.languages,
-        ),
+        plugin.contributions
+          .filter(isLanguageContribution)
+          .flatMap(
+            (contribution: LanguagePluginContribution): readonly string[] => contribution.languages,
+          ),
       ),
     ];
-    return languages.map(languageDisplayName).join(', ');
+    // A decoder is keyed by format rather than language, so its formats are listed alongside the
+    // language names rather than being silently dropped from the column.
+    const formats: readonly string[] = [
+      ...new Set(
+        plugin.contributions
+          .filter(
+            (contribution: PluginContribution): contribution is FormatPluginContribution =>
+              contribution.slot === 'decoder',
+          )
+          .flatMap(
+            (contribution: FormatPluginContribution): readonly string[] => contribution.formats,
+          ),
+      ),
+    ];
+    return [...languages.map(languageDisplayName), ...formats].join(', ');
   }
 
   /**
@@ -225,4 +283,34 @@ export class PluginManagerView {
   protected uninstall(plugin: PluginSummary): void {
     void this.plugins.uninstall(plugin.id);
   }
+}
+
+/**
+ * Determines whether a plugin matches every search term.
+ *
+ * Every term must match, but each may match any field — so "python debug" finds a Python debugger
+ * without the user knowing which field holds which word. Matching is over what the table actually
+ * shows, plus the identifier: a filter that hides a row whose visible text contains the query would
+ * read as a bug.
+ * @param plugin The plugin to test.
+ * @param terms The lower-cased search terms, empty when nothing is typed.
+ * @returns Returns true when the plugin matches.
+ */
+function matches(plugin: PluginSummary, terms: readonly string[]): boolean {
+  if (terms.length === 0) {
+    return true;
+  }
+  const haystack: string = [
+    plugin.name,
+    plugin.description,
+    plugin.id,
+    plugin.detail ?? '',
+    ...plugin.contributions.flatMap((contribution: PluginContribution): readonly string[] => [
+      contribution.displayName,
+      ...(isLanguageContribution(contribution) ? contribution.languages : contribution.formats),
+    ]),
+  ]
+    .join(' ')
+    .toLowerCase();
+  return terms.every((term: string): boolean => haystack.includes(term));
 }

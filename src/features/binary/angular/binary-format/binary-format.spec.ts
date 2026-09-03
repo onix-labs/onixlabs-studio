@@ -1,10 +1,4 @@
-import {
-  BinaryFormat,
-  codeOffset,
-  describeFormat,
-  disassemblyArchitecture,
-  sniffFormat,
-} from './binary-format';
+import { BinaryFormat, codeOffset, describeFormat, formatKey, sniffFormat } from './binary-format';
 
 /**
  * Holds a byte buffer and a data view over it, for building header fixtures.
@@ -171,18 +165,35 @@ describe('describeFormat', () => {
   });
 });
 
-describe('disassemblyArchitecture', () => {
-  it('returnsTheArchitectureForNativeCodeAndNullForManagedOrUnsupported', () => {
-    expect(disassemblyArchitecture({ kind: 'pe', architecture: 'x64', managed: false })).toBe(
-      'x64',
-    );
-    expect(disassemblyArchitecture({ kind: 'elf', architecture: 'ARM64' })).toBe('ARM64');
-    expect(disassemblyArchitecture({ kind: 'macho', architecture: 'x86' })).toBe('x86');
-    expect(disassemblyArchitecture({ kind: 'mz', architecture: 'x86-16' })).toBe('x86-16');
-    // Managed .NET, JVM, unknown, and unsupported architectures have no native disassembly.
-    expect(disassemblyArchitecture({ kind: 'pe', architecture: 'x64', managed: true })).toBeNull();
-    expect(disassemblyArchitecture({ kind: 'jvm' })).toBeNull();
-    expect(disassemblyArchitecture({ kind: 'unknown' })).toBeNull();
-    expect(disassemblyArchitecture({ kind: 'elf', architecture: 'RISC-V' })).toBeNull();
+describe('WebAssembly', (): void => {
+  /**
+   * Builds a minimal WebAssembly module header.
+   * @param version The version to encode.
+   * @returns Returns the bytes.
+   */
+  function wasmHeader(version: number = 1): Uint8Array {
+    const bytes: Uint8Array = new Uint8Array(8);
+    bytes.set([0x00, 0x61, 0x73, 0x6d], 0);
+    new DataView(bytes.buffer).setUint32(4, version, true);
+    return bytes;
+  }
+
+  it('sniffFormat_recognisesTheModuleMagicAndVersion', (): void => {
+    expect(sniffFormat(wasmHeader())).toEqual({ kind: 'wasm', version: 1 });
+  });
+
+  it('describeFormat_namesTheVersion', (): void => {
+    expect(describeFormat(sniffFormat(wasmHeader()))).toBe('WebAssembly · v1');
+  });
+
+  it('formatKey_resolvesToTheCanonicalWasmKey', (): void => {
+    expect(formatKey(sniffFormat(wasmHeader()))).toBe('wasm');
+  });
+
+  it('sniffFormat_doesNotMistakeALeadingNulByteForAModule', (): void => {
+    // A binary starting with a NUL is ordinary; only the full four-byte magic is a module.
+    expect(sniffFormat(new Uint8Array([0x00, 0x00, 0x00, 0x00, 0x00]))).toEqual({
+      kind: 'unknown',
+    });
   });
 });

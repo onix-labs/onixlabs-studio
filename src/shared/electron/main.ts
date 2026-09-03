@@ -46,7 +46,7 @@ import {
 } from '@shared/electron/contributions/permissions/permission-broker';
 import { ContainerSocketFactory } from '@shared/electron/contributions/permissions/brokers/container-socket';
 import { CodeRunner } from '@shared/electron/code-runner';
-import { BinaryDisassembler } from '@shared/electron/binary-disassembler';
+import { DecoderHost } from '@shared/electron/decoders/decoder-ipc';
 import { BinaryAssembler } from '@shared/electron/binary-assembler';
 import { DirectoryWatcher } from '@shared/electron/directory-watcher';
 import { FileManager } from '@shared/electron/file-manager';
@@ -380,7 +380,10 @@ class Program {
    * Disassembles native machine code for the binary/hex editor. It decodes bytes the renderer sends
    * (already obtained through the gated byte-read channel), so it needs no disk access of its own.
    */
-  private readonly binaryDisassembler: BinaryDisassembler = new BinaryDisassembler();
+  /**
+   * Holds the decoder host: the registry of installed decoder plugins and the processes they run in.
+   */
+  private readonly decoderHost: DecoderHost = new DecoderHost();
 
   /**
    * Assembles machine code for the binary/hex editor's agent, the write-side counterpart to the
@@ -760,7 +763,7 @@ class Program {
     this.searchManager.register();
     this.studioStore.register();
     this.worktreeManager.register();
-    this.binaryDisassembler.register();
+    this.decoderHost.register();
     this.binaryAssembler.register();
     this.fileWatcher.register();
     this.directoryWatcher.register();
@@ -1088,6 +1091,7 @@ class Program {
     this.logger.info('app', 'Shutting down; disposing subsystems');
     this.terminalManager.disposeAll();
     this.codeRunner.dispose();
+    this.decoderHost.dispose();
     this.fileWatcher.disposeAll();
     this.directoryWatcher.disposeAll();
     this.aiManager.disposeAll();

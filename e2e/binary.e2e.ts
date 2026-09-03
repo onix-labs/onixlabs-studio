@@ -59,7 +59,9 @@ fs.writeFileSync(FIXTURE_PATH, buildElfFixture());
 
 // The main process only re-opens previously-trusted paths; seed the fixture as trusted before
 // launch, exactly as a real prior "open" would have recorded it.
-test.use({ trustedPaths: [FIXTURE_PATH] });
+// Studio ships no decoder, so the native one is installed into the test profile before launch —
+// which is what a user does before expecting any disassembly at all.
+test.use({ trustedPaths: [FIXTURE_PATH], sideloadPlugins: ['native-decoder'] });
 
 /**
  * Reads the full assembly listing from the disassembly panel's Monaco model — the whole decoded

@@ -1,3 +1,5 @@
+import { decoderFormatKey } from '@shared/api/decoder-protocol';
+
 /**
  * Describes the container format and target architecture of a binary, sniffed from its header. Drives
  * which disassembly back-end a binary's bytes are handed to, and is surfaced in the status strip.
@@ -8,6 +10,7 @@ export type BinaryFormat =
   | { readonly kind: 'elf'; readonly architecture: string }
   | { readonly kind: 'macho'; readonly architecture: string }
   | { readonly kind: 'jvm' }
+  | { readonly kind: 'wasm'; readonly version: number }
   | { readonly kind: 'unknown' };
 
 /**
@@ -35,6 +38,10 @@ export function sniffFormat(bytes: Uint8Array): BinaryFormat {
   if (macho !== null) {
     return macho;
   }
+  // WebAssembly: '\0asm', then a four-byte little-endian version.
+  if (matches(bytes, 0, [0x00, 0x61, 0x73, 0x6d])) {
+    return { kind: 'wasm', version: readU32(view, 4, true) ?? 1 };
+  }
   // JVM class: 0xCAFEBABE. (Shares its magic with Mach-O fat binaries, which are far rarer here; a
   // thin Mach-O is matched above, so a remaining 0xCAFEBABE is treated as a class file.)
   if (matches(bytes, 0, [0xca, 0xfe, 0xba, 0xbe])) {
@@ -46,40 +53,6 @@ export function sniffFormat(bytes: Uint8Array): BinaryFormat {
     return sniffPe(bytes, view) ?? { kind: 'mz', architecture: 'x86-16' };
   }
   return { kind: 'unknown' };
-}
-
-/**
- * Holds the architecture labels the native disassembler supports.
- */
-const DISASSEMBLABLE: ReadonlySet<string> = new Set<string>([
-  'x86-16',
-  'x86',
-  'x64',
-  'ARM',
-  'ARM64',
-]);
-
-/**
- * Resolves the architecture a format's native code should be disassembled as, or null when native
- * disassembly does not apply — managed .NET assemblies, JVM class files, and unknown or unsupported
- * architectures (the managed formats are handled by later phases' sidecars).
- * @param format The detected format.
- * @returns Returns the architecture label, or null.
- */
-export function disassemblyArchitecture(format: BinaryFormat): string | null {
-  switch (format.kind) {
-    case 'pe':
-      return !format.managed && DISASSEMBLABLE.has(format.architecture)
-        ? format.architecture
-        : null;
-    case 'mz':
-    case 'elf':
-    case 'macho':
-      return DISASSEMBLABLE.has(format.architecture) ? format.architecture : null;
-    case 'jvm':
-    case 'unknown':
-      return null;
-  }
 }
 
 /**
@@ -108,6 +81,76 @@ export function codeOffset(bytes: Uint8Array): number | null {
 }
 
 /**
+ * Resolves the canonical decoder format key for a sniffed format, or null when the format is not one
+ * any decoder could claim (an unrecognised container, or a container whose architecture did not
+ * resolve).
+ *
+ * This is the join between what the sniffer detects and what a plugin's manifest claims, so both sides
+ * must spell it the same way — hence one function rather than two conventions. A managed PE is its own
+ * key rather than an architecture-bearing one: what decodes IL has nothing to do with the machine the
+ * assembly nominally targets.
+ * @param format The detected format.
+ * @returns Returns the format key, or null when nothing could decode it.
+ */
+export function formatKey(format: BinaryFormat): string | null {
+  switch (format.kind) {
+    case 'pe':
+      return format.managed
+        ? 'pe-managed'
+        : format.architecture === 'unknown'
+          ? null
+          : decoderFormatKey('pe', format.architecture);
+    case 'mz':
+      return decoderFormatKey('mz', format.architecture);
+    case 'elf':
+    case 'macho':
+      return format.architecture === 'unknown'
+        ? null
+        : decoderFormatKey(format.kind, format.architecture);
+    case 'jvm':
+      return decoderFormatKey('jvm');
+    case 'wasm':
+      return decoderFormatKey('wasm');
+    case 'unknown':
+      return null;
+  }
+}
+
+/**
+ * Resolves the architecture label the *assembler* takes for a format, or null when its machine code
+ * cannot be written here.
+ *
+ * Separate from {@link formatKey} and named for what it is for. A format key identifies which decoder
+ * reads a file; this identifies which instruction set is being written, and the two are different
+ * values — the assembler wants `x64`, not `pe/x64`. Conflating them silently breaks every write.
+ * @param format The detected format.
+ * @returns Returns the architecture label, or null when the format holds no writable machine code.
+ */
+export function assemblerArchitecture(format: BinaryFormat): string | null {
+  switch (format.kind) {
+    case 'pe':
+      return format.managed ? null : nativeArchitecture(format.architecture);
+    case 'mz':
+    case 'elf':
+    case 'macho':
+      return nativeArchitecture(format.architecture);
+    case 'jvm':
+    case 'wasm':
+    case 'unknown':
+      return null;
+  }
+}
+
+/**
+ * Narrows a sniffed architecture label to one the assembler recognises.
+ * @param architecture The sniffed label.
+ * @returns Returns the label, or null when it is not a writable instruction set.
+ */
+function nativeArchitecture(architecture: string): string | null {
+  return ['x86-16', 'x86', 'x64', 'ARM', 'ARM64'].includes(architecture) ? architecture : null;
+}
+
+/**
  * Formats a detected format for display in the status strip.
  * @param format The detected format.
  * @returns Returns a short human-readable label.
@@ -124,6 +167,8 @@ export function describeFormat(format: BinaryFormat): string {
       return `Mach-O · ${format.architecture}`;
     case 'jvm':
       return 'JVM class';
+    case 'wasm':
+      return `WebAssembly · v${format.version}`;
     case 'unknown':
       return 'Binary';
   }

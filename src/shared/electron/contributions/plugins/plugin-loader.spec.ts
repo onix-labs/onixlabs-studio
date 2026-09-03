@@ -6,13 +6,18 @@ import { PluginContribution, PluginOrigin } from '@shared/api/plugin-channels';
 import { ArchiveProvision } from '../../provisioning/archive-provision';
 import { LockfileProvision } from '../../provisioning/lockfile-provision';
 import { LspProvisioner } from '../../lsp/lsp-provisioner';
+import { DecoderDescriptor, DecoderResolution } from '../../decoders/decoder-descriptor';
 import { LanguageServerDescriptor, LspResolution } from '../../lsp/language-server-descriptor';
 import { DebugAdapterCatalogueEntry, DebugAdapterSpec } from '../../debug/debug-adapter-registry';
 import {
   discoverPlugins,
   LoadedPlugin,
   MANIFEST_FILE,
+  NodeRuntimeSpec,
+  payloadOps,
+  PayloadOps,
   toDebugAdapterEntries,
+  toDecoderDescriptors,
   toOrigin,
   toLanguageServerDescriptors,
   toPluginDescriptor,
@@ -614,5 +619,131 @@ describe('plugin loader', () => {
         ),
       ).toEqual([]);
     });
+  });
+});
+
+describe('a sideloaded plugin carrying its own payload', () => {
+  /**
+   * Builds a manifest contributing one decoder, provisioned from an archive that does not exist.
+   * @returns Returns the manifest.
+   */
+  function decoderManifest(): PluginManifest {
+    return {
+      id: 'local.decoder',
+      name: 'Local Decoder',
+      description: 'A decoder built locally.',
+      version: '1.0.0',
+      apiVersion: PLUGIN_API_VERSION,
+      provision: {
+        kind: 'archive',
+        downloads: {
+          'darwin-arm64': {
+            url: 'https://example.invalid/never-published.tar.gz',
+            sha256: '0'.repeat(64),
+            archive: 'tar.gz',
+            executablePath: 'payload/main.js',
+          },
+        },
+      },
+      contributes: {
+        decoders: [
+          {
+            id: 'local.decoder',
+            displayName: 'Local Decoder',
+            formats: ['jvm'],
+            priority: 100,
+            command: { kind: 'node' },
+          },
+        ],
+      },
+      requires: [],
+    };
+  }
+
+  /**
+   * A provisioner that reports nothing downloaded, which is the real situation for a plugin that was
+   * never published.
+   */
+  const nothingDownloaded: LspProvisioner = {
+    archiveTarget: (): string | null => null,
+    isArchiveInstalled: (): boolean => false,
+  } as unknown as LspProvisioner;
+
+  let root: string;
+
+  beforeEach(() => {
+    root = mkdtempSync(path.join(tmpdir(), 'sideload-payload-'));
+  });
+
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it('payloadOps_reportsInstalledWhenThePayloadIsBesideTheManifest', () => {
+    mkdirSync(path.join(root, 'payload'), { recursive: true });
+    writeFileSync(path.join(root, 'payload', 'main.js'), '', 'utf8');
+    const ops: PayloadOps = payloadOps(decoderManifest(), root);
+    // Installed by the only definition that matters: the thing to run is on disk.
+    expect(ops.isInstalled(nothingDownloaded)).toBe(true);
+    expect(ops.target(nothingDownloaded)).toBe(path.join(root, 'payload', 'main.js'));
+  });
+
+  it('payloadOps_fallsBackToTheProvisionerWhenNoPayloadIsPresent', () => {
+    // An empty sideload directory must not claim the plugin is installed, or the Plugin Manager would
+    // report a working plugin that cannot run.
+    const ops: PayloadOps = payloadOps(decoderManifest(), root);
+    expect(ops.isInstalled(nothingDownloaded)).toBe(false);
+  });
+
+  it('payloadOps_neverDownloadsWhenThePayloadIsAlreadyThere', async () => {
+    mkdirSync(path.join(root, 'payload'), { recursive: true });
+    writeFileSync(path.join(root, 'payload', 'main.js'), '', 'utf8');
+    const ops: PayloadOps = payloadOps(decoderManifest(), root);
+    // Installing must resolve to what is already on disk rather than fetching the unpublished archive.
+    expect(await ops.ensure(nothingDownloaded)).toBe(path.join(root, 'payload', 'main.js'));
+  });
+
+  it('toPluginDescriptor_reportsTheSideloadedPluginAsInstalled', async () => {
+    mkdirSync(path.join(root, 'payload'), { recursive: true });
+    writeFileSync(path.join(root, 'payload', 'main.js'), '', 'utf8');
+    const descriptor: ReturnType<typeof toPluginDescriptor> = toPluginDescriptor(
+      decoderManifest(),
+      root,
+    );
+    // The Plugin Manager and the decoder registry must agree: one saying "not installed" while the
+    // other happily runs it is how a working plugin ends up offering an install that must fail.
+    expect(await descriptor.detect?.({ provisioner: nothingDownloaded } as never)).toBe(true);
+    expect(descriptor.supported?.({ provisioner: nothingDownloaded } as never)).toBe(true);
+  });
+
+  it('toDecoderDescriptors_resolvesTheLocalPayload', () => {
+    mkdirSync(path.join(root, 'payload'), { recursive: true });
+    writeFileSync(path.join(root, 'payload', 'main.js'), '', 'utf8');
+    const descriptors: readonly DecoderDescriptor[] = toDecoderDescriptors(
+      decoderManifest(),
+      (): LspProvisioner => nothingDownloaded,
+      (entryPoint: string): NodeRuntimeSpec => ({
+        command: '/runtime',
+        args: [entryPoint],
+        env: { ELECTRON_RUN_AS_NODE: '1' },
+      }),
+      root,
+    );
+    const resolution: DecoderResolution = descriptors[0].resolve();
+    expect(resolution.available).toBe(true);
+    if (resolution.available) {
+      expect(resolution.spec.args).toEqual([path.join(root, 'payload', 'main.js')]);
+      expect(resolution.spec.env).toEqual({ ELECTRON_RUN_AS_NODE: '1' });
+    }
+  });
+
+  it('toDecoderDescriptors_isUnavailableWithNeitherPayloadNorDownload', () => {
+    const descriptors: readonly DecoderDescriptor[] = toDecoderDescriptors(
+      decoderManifest(),
+      (): LspProvisioner => nothingDownloaded,
+      (entryPoint: string): NodeRuntimeSpec => ({ command: '/runtime', args: [entryPoint] }),
+      root,
+    );
+    expect(descriptors[0].resolve().available).toBe(false);
   });
 });

@@ -6,18 +6,35 @@
  */
 export enum BinaryChannel {
   /**
-   * Disassembles a buffer of machine code for the given architecture (invoke). The renderer sends the
-   * bytes it is displaying — so unsaved edits are reflected — along with the buffer's base offset and
-   * the sub-range to return instructions for.
-   */
-  Disassemble = 'binary:disassemble',
-
-  /**
    * Assembles a snippet of assembly for the given architecture (invoke). The renderer sends the
    * assembly text, the architecture label, and the address the code is assembled at (so PC-relative
    * operands resolve), and receives the assembled machine bytes or the assembler's error.
    */
   Assemble = 'binary:assemble',
+
+  /**
+   * Decodes a window of bytes into a {@link import('./code-listing').CodeListing} using whichever
+   * installed decoder plugin fills the format's slot (invoke). The renderer sends the bytes it is
+   * displaying — so unsaved edits are reflected — the format key it sniffed, and the buffer's base
+   * offset. Answers null when no decoder for the format is installed.
+   */
+  DecodeListing = 'binary:decode-listing',
+
+  /**
+   * Reports what the decoder for a format is, starting it if needed (invoke). Answers null when no
+   * decoder for the format is installed. The renderer needs this before it decodes: a decoder that
+   * requires the whole file cannot be given a viewport-sized window, and only the decoder knows which
+   * it is.
+   */
+  DecoderInfo = 'binary:decoder-info',
+
+  /**
+   * Runs an assembly with JIT disassembly enabled and returns what the JIT generated (invoke).
+   *
+   * Unlike every other channel here this *executes* the program: JIT assembly is not a decode, and
+   * there is no way to obtain it without running the code that provokes it.
+   */
+  JitCapture = 'binary:jit-capture',
 }
 
 /**

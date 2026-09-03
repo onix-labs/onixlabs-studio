@@ -307,7 +307,7 @@ describe('BinaryAgentCapabilities', () => {
     expect(result.text).toContain('File: blob.bin (/ws/blob.bin)');
     expect(result.text).toContain('Size: 64 bytes');
     expect(result.text).toContain('Format: PE · x64');
-    expect(result.text).toContain('Disassembly: available (x64)');
+    expect(result.text).toContain('Disassembly: available (pe/x64)');
     expect(result.text).toContain('Cursor: 0x10 (16)');
     expect(result.text).toContain('Selection: 0x2–0x6 (4 bytes)');
     expect(result.text).toContain('Unsaved edits: no');
@@ -417,6 +417,8 @@ describe('BinaryAgentCapabilities', () => {
       assembly: 'mov rax, rbx',
     })) as { ok: boolean; text: string };
 
+    // The assembler takes an instruction set, not a decoder format key: `x64`, never `pe/x64`.
+    // Passing the key silently fails every write, which is how this was broken once already.
     expect(fake.assembles[0]).toEqual({
       assembly: 'mov rax, rbx',
       architecture: 'x64',

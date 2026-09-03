@@ -20,41 +20,17 @@ import { ToolPanel } from '@shared/angular/components/panels/tool-panel/tool-pan
 import { Log } from '@shared/angular/services/log/log';
 import { Icon } from '@shared/angular/icons/icon';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
+import { DecoderSupportPrompt } from '@shared/angular/services/plugins/decoder-support-prompt';
 import { ASM_LANGUAGE_ID } from '@shared/angular/services/monaco/monaco-asm-language';
-import { DecodedInstruction } from '@shared/api/binary-channels';
 import { BinaryDocumentEntry, BinarySelection } from '../binary-document/binary-document';
-import { disassemblyArchitecture } from '../binary-format/binary-format';
-
-/**
- * Maps a rendered line back to the instruction it shows, so a click can select its bytes and a byte
- * selection can highlight its line.
- */
-interface LineInstruction {
-  /**
-   * Gets the instruction's first byte offset.
-   */
-  readonly startOffset: number;
-
-  /**
-   * Gets the instruction's length in bytes.
-   */
-  readonly byteLength: number;
-}
-
-/**
- * Holds the built disassembly text and its line-to-instruction map.
- */
-interface DisasmContent {
-  /**
-   * Gets the assembly listing text, one instruction per line.
-   */
-  readonly text: string;
-
-  /**
-   * Gets the per-line instruction map (index `i` is line `i + 1`).
-   */
-  readonly lines: readonly LineInstruction[];
-}
+import {
+  buildContent,
+  DisasmContent,
+  lineForFileOffset,
+  LineRow,
+  linesForRange,
+} from '@shared/angular/services/decoders/listing-content';
+import { describeFormat, formatKey } from '../binary-format/binary-format';
 
 /**
  * Represents the disassembly side panel: a read-only assembly listing showing the native instructions
@@ -82,6 +58,11 @@ export class BinaryDisasmPanel implements OnDestroy {
    * Holds the structured logger for disassembly-panel interactions.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds the decoder-install offer, so a format nothing decodes points at the plugin that would.
+   */
+  private readonly decoderPrompt: DecoderSupportPrompt = inject(DecoderSupportPrompt);
 
   /**
    * Gets the icon set, exposed for the template.
@@ -131,9 +112,37 @@ export class BinaryDisasmPanel implements OnDestroy {
   /**
    * Holds whether the document's format can be natively disassembled (drives the empty note overlay).
    */
-  protected readonly disassemblable: Signal<boolean> = computed((): boolean => {
+  /**
+   * Holds what to say when there is no listing to show.
+   *
+   * Three different situations read identically as an empty pane, and telling them apart is the whole
+   * point: nothing recognises the file, something could decode it but is not installed, or a decoder is
+   * installed and simply has not decoded this range yet.
+   */
+  protected readonly emptyNote: Signal<string | null> = computed((): string | null => {
     const document: BinaryDocumentEntry | undefined = this.document();
-    return document !== undefined && disassemblyArchitecture(document.format()) !== null;
+    if (document === undefined) {
+      return null;
+    }
+    // A listing on screen is proof a decoder answered, whatever the install state says — the two are
+    // resolved independently, and reporting "no decoder" over a visible listing would be absurd.
+    if (document.listing() !== null) {
+      return null;
+    }
+    const key: string | null = formatKey(document.format());
+    if (key === null) {
+      return 'No listing available for this format.';
+    }
+    // A format a decoder covers says nothing while it has not decoded yet: an empty listing there
+    // means "not decoded", not "cannot decode", and reporting the latter would flicker a wrong
+    // message every time the viewport moves.
+    if (this.decoderPrompt.isCovered(key)) {
+      return null;
+    }
+    const description: string = describeFormat(document.format());
+    return this.decoderPrompt.isOffered(key)
+      ? `No decoder installed for ${description}.`
+      : `No decoder available for ${description}.`;
   });
 
   /**
@@ -141,7 +150,7 @@ export class BinaryDisasmPanel implements OnDestroy {
    * instructions change (the viewport moved, or the format resolved). Bound to the editor's content.
    */
   protected readonly content: Signal<DisasmContent> = computed((): DisasmContent =>
-    buildContent(this.document()?.instructions() ?? []),
+    buildContent(this.document()?.listing() ?? null),
   );
 
   /**
@@ -184,6 +193,19 @@ export class BinaryDisasmPanel implements OnDestroy {
       this.applyHighlight(selection);
     });
 
+    // Offer the decoder install at the moment it is missed, rather than leaving an empty pane with no
+    // hint that anything exists. Asks once per format per session.
+    effect((): void => {
+      const document: BinaryDocumentEntry | undefined = this.document();
+      if (document?.listing() !== null) {
+        return;
+      }
+      const key: string | null = formatKey(document.format());
+      if (key !== null) {
+        this.decoderPrompt.offerFor(key, describeFormat(document.format()));
+      }
+    });
+
     // Queue a scroll to a requested offset (the entry-point jump on open, or a go-to-offset) once its
     // instruction is present in the listing. Re-runs when the listing changes so a reveal made before
     // the target byte was decoded is honoured the moment the instruction arrives; the version guard
@@ -196,7 +218,7 @@ export class BinaryDisasmPanel implements OnDestroy {
       if (offset === null || version === this.lastRevealedVersion) {
         return;
       }
-      const line: number | null = lineForOffset(content, offset);
+      const line: number | null = lineForFileOffset(content, offset);
       if (line === null) {
         return;
       }
@@ -288,24 +310,22 @@ export class BinaryDisasmPanel implements OnDestroy {
       this.highlight.clear();
       return;
     }
-    const decorations: MonacoApi.editor.IModelDeltaDecoration[] = [];
-    let firstLine: number | null = null;
-    this.content().lines.forEach((line: LineInstruction, index: number): void => {
-      if (
-        line.startOffset < selection.end &&
-        line.startOffset + line.byteLength > selection.start
-      ) {
-        const lineNumber: number = index + 1;
-        firstLine ??= lineNumber;
-        decorations.push({
-          range: new monaco.Range(lineNumber, 1, lineNumber, 1),
-          options: { isWholeLine: true, className: 'disasm-line-highlight' },
-        });
-      }
-    });
+    // Rows with no file offset — JIT output, whose bytes are in no file — never match, which is the
+    // correct outcome rather than a gap: there is nothing on disk for the selection to correspond to.
+    const overlapping: readonly number[] = linesForRange(
+      this.content(),
+      selection.start,
+      selection.end,
+    );
+    const decorations: MonacoApi.editor.IModelDeltaDecoration[] = overlapping.map(
+      (lineNumber: number): MonacoApi.editor.IModelDeltaDecoration => ({
+        range: new monaco.Range(lineNumber, 1, lineNumber, 1),
+        options: { isWholeLine: true, className: 'disasm-line-highlight' },
+      }),
+    );
     this.highlight.set(decorations);
-    if (firstLine !== null) {
-      editor.revealLineInCenterIfOutsideViewport(firstLine);
+    if (overlapping.length > 0) {
+      editor.revealLineInCenterIfOutsideViewport(overlapping[0]);
     }
   }
 
@@ -320,46 +340,15 @@ export class BinaryDisasmPanel implements OnDestroy {
     if (lineNumber === undefined || document === undefined) {
       return;
     }
-    const line: LineInstruction | undefined = this.content().lines[lineNumber - 1];
-    if (line === undefined) {
+    // A section heading or note occupies a line but shows no row, so clicking one selects nothing
+    // rather than selecting whatever row happened to be at that index.
+    const line: LineRow | null | undefined = this.content().lines[lineNumber - 1];
+    if (line?.fileOffset === undefined || line.fileOffset === null) {
       return;
     }
-    this.log.debug(
-      'binary.disassembly',
-      `Instruction line selected at 0x${line.startOffset.toString(16)}`,
-    );
-    document.cursor.set(line.startOffset);
-    document.selection.set({ start: line.startOffset, end: line.startOffset + line.byteLength });
+    const start: number = line.fileOffset;
+    this.log.debug('binary.disassembly', `Instruction line selected at 0x${start.toString(16)}`);
+    document.cursor.set(start);
+    document.selection.set({ start, end: start + Math.max(line.byteLength, 1) });
   }
-}
-
-/**
- * Finds the one-based listing line whose instruction covers a byte offset.
- * @param content The built listing and its line map.
- * @param offset The byte offset to locate.
- * @returns Returns the one-based line number, or null when no line covers the offset.
- */
-function lineForOffset(content: DisasmContent, offset: number): number | null {
-  const index: number = content.lines.findIndex(
-    (line: LineInstruction): boolean =>
-      line.startOffset <= offset && offset < line.startOffset + line.byteLength,
-  );
-  return index === -1 ? null : index + 1;
-}
-
-/**
- * Builds the assembly listing text and its line-to-instruction map from the decoded instructions.
- * @param instructions The decoded instructions.
- * @returns Returns the listing text and per-line instruction map.
- */
-function buildContent(instructions: readonly DecodedInstruction[]): DisasmContent {
-  const rows: string[] = [];
-  const lines: LineInstruction[] = [];
-  for (const instruction of instructions) {
-    const address: string = instruction.startOffset.toString(16).padStart(8, '0').toUpperCase();
-    const operands: string = instruction.operands.length > 0 ? ` ${instruction.operands}` : '';
-    rows.push(`${address}  ${instruction.mnemonic}${operands}`);
-    lines.push({ startOffset: instruction.startOffset, byteLength: instruction.byteLength });
-  }
-  return { text: rows.join('\n'), lines };
 }

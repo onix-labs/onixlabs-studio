@@ -477,6 +477,74 @@ describe('parsePluginManifest', () => {
     expect(result.errors.length).toBeGreaterThan(4);
   });
 
+  describe('decoder contributions', () => {
+    it('accepts a decoder contributed alone, with no language server', () => {
+      const result: ManifestResult = parsePluginManifest(
+        manifest({
+          contributes: {
+            decoders: [
+              {
+                id: 'native',
+                displayName: 'Native disassembler',
+                formats: ['elf/x64', 'macho/x64'],
+                priority: 50,
+                command: { kind: 'node' },
+              },
+            ],
+          },
+        }),
+      );
+      expect(result.errors).toEqual([]);
+      expect(result.manifest?.contributes.decoders).toHaveLength(1);
+      expect(result.manifest?.contributes.decoders?.[0].formats).toEqual(['elf/x64', 'macho/x64']);
+    });
+
+    it('refuses an unknown format key rather than accepting a decoder that could never match', () => {
+      // An unrecognised key cannot match anything the sniffer produces, so accepting one would
+      // install a decoder that silently never runs.
+      const result: ManifestResult = parsePluginManifest(
+        manifest({
+          contributes: {
+            decoders: [
+              {
+                id: 'typo',
+                displayName: 'Typo',
+                formats: ['elf/x86_64'],
+                priority: 50,
+                command: { kind: 'node' },
+              },
+            ],
+          },
+        }),
+      );
+      expect(paths(result)).toContain('contributes.decoders[0].formats');
+    });
+
+    it('refuses an empty format list', () => {
+      const result: ManifestResult = parsePluginManifest(
+        manifest({
+          contributes: {
+            decoders: [
+              {
+                id: 'empty',
+                displayName: 'Empty',
+                formats: [],
+                priority: 50,
+                command: { kind: 'node' },
+              },
+            ],
+          },
+        }),
+      );
+      expect(paths(result)).toContain('contributes.decoders[0].formats');
+    });
+
+    it('still refuses a manifest contributing nothing at all', () => {
+      const result: ManifestResult = parsePluginManifest(manifest({ contributes: {} }));
+      expect(paths(result)).toContain('contributes');
+    });
+  });
+
   describe('describes the real catalogue', () => {
     // The format is only worth having if it can describe plugins that actually exist. These are the
     // live recipes Studio installs from, not fixtures written to pass: the two whose descriptors still

@@ -1,0 +1,19 @@
+/* TypeScript configuration for the decoder protocol module.
+   Shared between the decoder plugins and bundled into each of them, so every plugin artefact stays
+   self-contained. Deliberately separate from the application's `src/`: a decoder's contract with
+   Studio is the wire protocol, not shared TypeScript. */
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "types": ["node"],
+    "esModuleInterop": true,
+    "importHelpers": false,
+    "noEmit": true,
+    "declaration": false
+  },
+  "include": ["*.ts"]
+}

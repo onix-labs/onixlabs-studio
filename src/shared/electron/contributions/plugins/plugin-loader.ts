@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import {
   ManifestCommand,
   ManifestDebugAdapter,
+  ManifestDecoder,
   ManifestDownload,
   ManifestError,
   ManifestLanguageServer,
@@ -13,6 +14,11 @@ import {
 } from '@shared/api/plugin-manifest';
 import { PluginContribution, PluginOrigin } from '@shared/api/plugin-channels';
 import { logger } from '../../logger';
+import {
+  DecoderDescriptor,
+  DecoderResolution,
+  decoderUnavailable,
+} from '../../decoders/decoder-descriptor';
 import {
   LanguageServerContext,
   LanguageServerDescriptor,
@@ -271,7 +277,24 @@ export function toOrigin(
  * @param manifest The validated manifest.
  * @returns Returns the operations for the manifest's provisioning kind.
  */
-export function payloadOps(manifest: PluginManifest): PayloadOps {
+export function payloadOps(manifest: PluginManifest, localRoot?: string): PayloadOps {
+  // A sideloaded plugin carrying its own payload is already installed, by the only definition that
+  // matters: the thing to run is on disk. Answering anything else would report it missing while it
+  // works, and offer an install that downloads over a payload the user put there deliberately.
+  const local: string | null = localEntryPoint(localRoot, manifest);
+  if (local !== null) {
+    return {
+      target: (_p: LspProvisioner, entryPoint?: string): string | null =>
+        localEntryPoint(localRoot, manifest, entryPoint),
+      supported: (): boolean => true,
+      isInstalled: (): boolean => true,
+      // Nothing to fetch: the payload is already beside the manifest.
+      ensure: (): Promise<string | null> => Promise.resolve(local),
+      // Removing it is the user's business, since they placed it by hand. Deleting a directory they
+      // manage from under them would be a surprise, so this reports success and touches nothing.
+      remove: (): Promise<void> => Promise.resolve(),
+    };
+  }
   const tree: LockfileProvision | null = toTreeProvision(manifest);
   if (tree !== null) {
     return {
@@ -332,7 +355,16 @@ export function toContributions(manifest: PluginManifest): readonly PluginContri
       priority: adapter.priority,
     }),
   );
-  return [...servers, ...adapters];
+  const decoders: readonly PluginContribution[] = (manifest.contributes.decoders ?? []).map(
+    (decoder: ManifestDecoder): PluginContribution => ({
+      slot: 'decoder',
+      id: decoder.id,
+      displayName: decoder.displayName,
+      formats: decoder.formats,
+      priority: decoder.priority,
+    }),
+  );
+  return [...servers, ...adapters, ...decoders];
 }
 
 /**
@@ -366,8 +398,8 @@ export function toDetail(manifest: PluginManifest): string | undefined {
  * @param manifest The validated manifest.
  * @returns Returns the descriptor.
  */
-export function toPluginDescriptor(manifest: PluginManifest): PluginDescriptor {
-  const ops: PayloadOps = payloadOps(manifest);
+export function toPluginDescriptor(manifest: PluginManifest, localRoot?: string): PluginDescriptor {
+  const ops: PayloadOps = payloadOps(manifest, localRoot);
   return {
     id: manifest.id,
     name: manifest.name,
@@ -482,4 +514,114 @@ export function toDebugAdapterEntries(
             },
     }),
   );
+}
+
+/**
+ * Describes how to run a JavaScript entry point under the runtime the host supplies.
+ */
+export interface NodeRuntimeSpec {
+  readonly command: string;
+  readonly args: readonly string[];
+  readonly env?: Readonly<Record<string, string>>;
+}
+
+/**
+ * Turns a manifest's decoders into descriptors the decoder registry can resolve.
+ *
+ * The decoder lives inside the same payload as everything else the plugin contributes — a plugin is one
+ * payload however many things it provides — so it is located by asking where that payload was installed
+ * rather than by searching the PATH.
+ * @param manifest The validated manifest.
+ * @param provisioner Gets the provisioner the plugin's install went through, so the answer cannot
+ * disagree with where the payload actually landed.
+ * @param nodeRuntime Gets how to run a JavaScript entry point under the runtime Studio ships, so a
+ * decoder distributed as a bundle needs no Node on the machine.
+ * @returns Returns the descriptors.
+ */
+export function toDecoderDescriptors(
+  manifest: PluginManifest,
+  provisioner: () => LspProvisioner,
+  nodeRuntime: (entryPoint: string) => NodeRuntimeSpec,
+  localRoot?: string,
+): readonly DecoderDescriptor[] {
+  const ops: PayloadOps = payloadOps(manifest, localRoot);
+  return (manifest.contributes.decoders ?? []).map(
+    (decoder: ManifestDecoder): DecoderDescriptor => ({
+      id: decoder.id,
+      displayName: decoder.displayName,
+      formats: decoder.formats,
+      priority: decoder.priority,
+      resolve: (): DecoderResolution => {
+        // Never installs: an uninstalled decoder resolves to unavailable and the user installs it in
+        // the Plugin Manager, rather than opening a file silently triggering a large download.
+        //
+        const entryPoint: string | null = ops.isInstalled(provisioner())
+          ? ops.target(provisioner(), decoder.entryPoint)
+          : null;
+        if (entryPoint === null) {
+          return decoderUnavailable(
+            `${decoder.displayName} is not installed — install it in Plugins.`,
+          );
+        }
+        if (decoder.command.kind === 'node') {
+          const runtime: NodeRuntimeSpec = nodeRuntime(entryPoint);
+          return {
+            available: true,
+            spec: {
+              command: runtime.command,
+              args: [...runtime.args, ...(decoder.command.args ?? [])],
+              // The runtime's own environment first, so a manifest cannot accidentally unset what the
+              // runtime needs to start at all.
+              env: { ...runtime.env, ...decoder.command.env },
+            },
+          };
+        }
+        return {
+          available: true,
+          spec: { command: entryPoint, args: decoder.command.args ?? [], env: decoder.command.env },
+        };
+      },
+    }),
+  );
+}
+
+/**
+ * Resolves a contribution's entry point inside a sideloaded plugin's own directory, when the payload
+ * is there.
+ *
+ * Returns null when there is no local root, when the manifest names no entry point to look for, or
+ * when the file is simply not present — in which case the caller falls back to the provisioner, so a
+ * sideloaded manifest whose payload is published still installs the published one.
+ * @param localRoot The sideloaded plugin's directory, or undefined when it was not sideloaded.
+ * @param manifest The validated manifest.
+ * @param entryPoint The contribution's own entry point, or undefined to use the provision's.
+ * @returns Returns the absolute entry-point path, or null.
+ */
+function localEntryPoint(
+  localRoot: string | undefined,
+  manifest: PluginManifest,
+  entryPoint?: string,
+): string | null {
+  if (localRoot === undefined) {
+    return null;
+  }
+  const relative: string | undefined = entryPoint ?? provisionEntryPoint(manifest) ?? undefined;
+  if (relative === undefined) {
+    return null;
+  }
+  const candidate: string = path.join(localRoot, relative);
+  return existsSync(candidate) ? candidate : null;
+}
+
+/**
+ * Gets the entry point a manifest's provisioning names, whichever kind it is.
+ * @param manifest The validated manifest.
+ * @returns Returns the relative entry point, or null when the provision names none.
+ */
+function provisionEntryPoint(manifest: PluginManifest): string | null {
+  if (manifest.provision.kind === 'npm') {
+    return manifest.provision.executablePath ?? null;
+  }
+  const downloads: readonly ManifestDownload[] = Object.values(manifest.provision.downloads);
+  return downloads[0]?.executablePath ?? null;
 }

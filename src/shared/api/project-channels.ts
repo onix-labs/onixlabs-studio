@@ -20,4 +20,11 @@ export enum ProjectChannel {
    * Renames a solution folder within a root's solution file (invoke).
    */
   SolutionFolderRename = 'project:solution-folder-rename',
+
+  /**
+   * Resolves the compiled artefact a source file's project produces, without building it (invoke).
+   * Answers null when the file belongs to no project this build understands, or when nothing has been
+   * built yet.
+   */
+  ArtifactResolve = 'project:artifact-resolve',
 }

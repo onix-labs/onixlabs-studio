@@ -1,3 +1,5 @@
+import { DECODER_FORMATS } from './decoder-protocol';
+
 // The plugin manifest: the declarative description a third-party plugin ships so Studio can install it
 // and register what it contributes, without running any of its code to find out. Keep this module
 // platform-neutral (no Node or DOM dependencies) so both compilation targets can import it.
@@ -39,8 +41,13 @@
  * `1.3.0` added a per-contribution `entryPoint`, for a payload holding more than one program (#454),
  * and made `provision.executablePath` optional for the manifests that use it. Adds again: a
  * contribution that names none still resolves to the provision's entry point, exactly as before.
+ *
+ * `1.4.0` added the `decoders` contribution point (#584), the third slot after language servers and
+ * debug adapters, and the first keyed by binary *format* rather than by language. Adds only: every
+ * 1.3.0 manifest still validates and still means what it meant. The rule that a manifest contributing
+ * nothing is refused now counts decoders, which widens what is accepted rather than narrowing it.
  */
-export const PLUGIN_API_VERSION: string = '1.3.0';
+export const PLUGIN_API_VERSION: string = '1.4.0';
 
 /**
  * Matches a plain three-part semver. Deliberately strict and deliberately local: the rule below is the
@@ -236,6 +243,50 @@ export interface ManifestCommand {
 }
 
 /**
+ * Describes a decoder a plugin contributes. Keyed by *format* rather than by language: what decodes a
+ * JVM class file has nothing to say about a Mach-O binary.
+ *
+ * Studio ships no decoder of its own — including for native machine code — so every listing the binary
+ * editor shows comes from one of these.
+ */
+export interface ManifestDecoder {
+  /**
+   * Gets the identifier the decoder is registered under.
+   */
+  readonly id: string;
+
+  /**
+   * Gets the display name shown when choosing between decoders.
+   */
+  readonly displayName: string;
+
+  /**
+   * Gets the format keys this decoder handles, from {@link DECODER_FORMATS}.
+   *
+   * Validated against that list rather than accepted freely: a key is the join between what the
+   * sniffer detects and what a plugin claims, so a misspelled key would not fail — it would simply
+   * never match, and the decoder would appear installed but inert.
+   */
+  readonly formats: readonly string[];
+
+  /**
+   * Gets the priority used to pick a default among installed decoders, higher first.
+   */
+  readonly priority: number;
+
+  /**
+   * Gets how to start the decoder.
+   */
+  readonly command: ManifestCommand;
+
+  /**
+   * Gets this contribution's own entry point within the installed payload, or undefined to use the
+   * provision's. See {@link ManifestLanguageServer.entryPoint}.
+   */
+  readonly entryPoint?: string;
+}
+
+/**
  * Describes a language server a plugin contributes. Keyed by language: a language served by more than
  * one installed plugin is a choice the user makes.
  */
@@ -361,6 +412,11 @@ export interface ManifestContributions {
    * Gets the debug adapters contributed.
    */
   readonly debugAdapters?: readonly ManifestDebugAdapter[];
+
+  /**
+   * Gets the decoders contributed.
+   */
+  readonly decoders?: readonly ManifestDecoder[];
 }
 
 /**
@@ -832,10 +888,65 @@ function readContributions(value: unknown, errors: Errors): ManifestContribution
       });
     },
   );
-  if (languageServers.length === 0 && debugAdapters.length === 0) {
-    errors.add('contributes', 'must contribute at least one language server or debug adapter');
+  const decoders: ManifestDecoder[] = [];
+  readContributionList(
+    source['decoders'],
+    'contributes.decoders',
+    errors,
+    (entry: Record<string, unknown>, path: string): void => {
+      const command: ManifestCommand | null = readCommand(
+        entry['command'],
+        `${path}.command`,
+        errors,
+      );
+      decoders.push({
+        id: readId(entry, 'id', `${path}.`, errors),
+        displayName: readString(entry, 'displayName', `${path}.`, errors),
+        formats: readFormats(entry['formats'], `${path}.formats`, errors),
+        priority: readPriority(entry, path, errors),
+        command: command ?? { kind: 'executable' },
+        entryPoint: readEntryPoint(entry, 'entryPoint', `${path}.`, errors),
+      });
+    },
+  );
+  if (languageServers.length === 0 && debugAdapters.length === 0 && decoders.length === 0) {
+    errors.add(
+      'contributes',
+      'must contribute at least one language server, debug adapter or decoder',
+    );
   }
-  return { languageServers, debugAdapters };
+  return { languageServers, debugAdapters, decoders };
+}
+
+/**
+ * Validates a decoder's format keys against the canonical list.
+ *
+ * Unknown keys are rejected rather than ignored: an unrecognised key cannot match anything the sniffer
+ * produces, so accepting one would install a decoder that silently never runs — the hardest kind of
+ * failure to diagnose, because everything reports success.
+ * @param value The candidate format array.
+ * @param path The dotted path for failures.
+ * @param errors The failure collector.
+ * @returns Returns the format keys, or an empty array when invalid.
+ */
+function readFormats(value: unknown, path: string, errors: Errors): readonly string[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    errors.add(path, 'must be a non-empty array of format keys');
+    return [];
+  }
+  if (!value.every((entry: unknown): boolean => typeof entry === 'string' && entry.length > 0)) {
+    errors.add(path, 'must contain only non-empty format keys');
+    return [];
+  }
+  const keys: readonly string[] = value as readonly string[];
+  const unknown: readonly string[] = keys.filter(
+    (key: string): boolean => !DECODER_FORMATS.includes(key),
+  );
+  if (unknown.length > 0) {
+    errors.add(path, `has unknown format keys: ${unknown.join(', ')}`);
+    return [];
+  }
+  return keys;
 }
 
 /**
