@@ -25,7 +25,8 @@ internal sealed record Row(
     [property: JsonPropertyName("fileOffset")] int? FileOffset,
     [property: JsonPropertyName("mnemonic")] string Mnemonic,
     [property: JsonPropertyName("operands")] string Operands,
-    [property: JsonPropertyName("comment")] string? Comment);
+    [property: JsonPropertyName("comment")] string? Comment,
+    [property: JsonPropertyName("sourceLine")] int? SourceLine);
 
 /// <summary>Represents a section's byte range in the backing file.</summary>
 internal sealed record FileRange(
@@ -140,12 +141,16 @@ internal static class Program
         }
 
         string? path = request.TryGetProperty("path", out JsonElement p) ? p.GetString() : null;
-        return new { id, ok = true, listing = BuildListing(bytes, path) };
+        byte[]? pdb = ReadCompanion(request, "pdb");
+        return new { id, ok = true, listing = BuildListing(bytes, path, pdb) };
     }
 
     /// <summary>Builds the listing for a whole assembly, one section per method with a body.</summary>
-    private static object BuildListing(byte[] bytes, string? path)
+    private static object BuildListing(byte[] bytes, string? path, byte[]? pdb)
     {
+        // The source mapping lives in the PDB, not the assembly. Without one the listing is still
+        // correct, just without line numbers — which is the ordinary case for a release build.
+        Dictionary<int, Dictionary<int, int>> sequencePoints = ReadSequencePoints(pdb);
         using MemoryStream stream = new(bytes, writable: false);
         using PEFile file = new(path ?? "assembly", stream);
         MetadataReader metadata = file.Metadata;
@@ -194,8 +199,14 @@ internal static class Program
                 token.ToString(),
                 title,
                 ilOffset >= 0 ? new FileRange(ilOffset, il.Length) : null,
-                [$"token=0x{token:X8}, maxStack={body.MaxStack}, header={headerSize}b, {il.Length} bytes of IL"],
-                DecodeIl(il, ilOffset, metadata)));
+                [
+                    $"token=0x{token:X8}, maxStack={body.MaxStack}, header={headerSize}b, {il.Length} bytes of IL",
+                    sequencePoints.ContainsKey(token)
+                        ? "source lines from the portable PDB"
+                        : "no source mapping",
+                ],
+                DecodeIl(il, ilOffset, metadata,
+                    sequencePoints.TryGetValue(token, out Dictionary<int, int>? lines) ? lines : null)));
         }
 
         if (truncated)
@@ -218,14 +229,23 @@ internal static class Program
     }
 
     /// <summary>Decodes a method body's IL into listing rows.</summary>
-    private static Row[] DecodeIl(byte[] il, int ilFileOffset, MetadataReader metadata)
+    private static Row[] DecodeIl(
+        byte[] il, int ilFileOffset, MetadataReader metadata, Dictionary<int, int>? lines)
     {
         List<Row> rows = [];
         int position = 0;
+        int? currentLine = null;
 
         while (position < il.Length)
         {
             int start = position;
+            // A sequence point marks where a source statement begins; the rows after it belong to that
+            // statement until the next one, which is what makes a caret-to-instruction sync possible.
+            if (lines is not null && lines.TryGetValue(start, out int line))
+            {
+                currentLine = line;
+            }
+
             int key;
             if (il[position] == 0xFE && position + 1 < il.Length)
             {
@@ -240,7 +260,7 @@ internal static class Program
 
             if (!OpCodes.TryGetValue(key, out OpCode opCode))
             {
-                rows.Add(Filler(start, ilFileOffset, il[start]));
+                rows.Add(Filler(start, ilFileOffset, il[start], currentLine));
                 position = start + 1;
                 continue;
             }
@@ -248,7 +268,7 @@ internal static class Program
             int size = OperandSize(opCode.OperandType, il, position);
             if (position + size > il.Length)
             {
-                rows.Add(Filler(start, ilFileOffset, il[start]));
+                rows.Add(Filler(start, ilFileOffset, il[start], currentLine));
                 position = start + 1;
                 continue;
             }
@@ -261,20 +281,22 @@ internal static class Program
                 ilFileOffset < 0 ? null : ilFileOffset + start,
                 opCode.Name ?? "?",
                 operands,
-                comment));
+                comment,
+                currentLine));
         }
 
         return [.. rows];
     }
 
     /// <summary>Builds a filler row for a byte that is not a known opcode.</summary>
-    private static Row Filler(int offset, int ilFileOffset, byte value) => new(
+    private static Row Filler(int offset, int ilFileOffset, byte value, int? sourceLine) => new(
         "instruction",
         offset,
         ilFileOffset < 0 ? null : ilFileOffset + offset,
         ".byte",
         $"0x{value:X2}",
-        null);
+        null,
+        sourceLine);
 
     /// <summary>Builds the opcode table by reflecting over the framework's own opcode definitions.</summary>
     private static Dictionary<int, OpCode> BuildOpCodes()
@@ -382,6 +404,72 @@ internal static class Program
     {
         TypeDefinition declaring = metadata.GetTypeDefinition(definition.GetDeclaringType());
         return $"{metadata.GetString(declaring.Name)}.{metadata.GetString(definition.Name)}";
+    }
+
+    /// <summary>Reads a named companion file from a request, or null when it was not supplied.</summary>
+    private static byte[]? ReadCompanion(JsonElement request, string name)
+    {
+        if (!request.TryGetProperty("companions", out JsonElement companions) ||
+            companions.ValueKind != JsonValueKind.Object ||
+            !companions.TryGetProperty(name, out JsonElement value))
+        {
+            return null;
+        }
+
+        string? encoded = value.GetString();
+        return string.IsNullOrEmpty(encoded) ? null : Convert.FromBase64String(encoded);
+    }
+
+    /// <summary>
+    /// Reads a portable PDB's sequence points, giving each method's IL offsets their source lines.
+    ///
+    /// Hidden sequence points are skipped: they mark compiler-generated code that belongs to no line,
+    /// and attributing them to the previous statement would make the sync jump about.
+    /// </summary>
+    private static Dictionary<int, Dictionary<int, int>> ReadSequencePoints(byte[]? pdb)
+    {
+        Dictionary<int, Dictionary<int, int>> result = [];
+        if (pdb is null || pdb.Length == 0)
+        {
+            return result;
+        }
+
+        try
+        {
+            using MemoryStream stream = new(pdb, writable: false);
+            using MetadataReaderProvider provider = MetadataReaderProvider.FromPortablePdbStream(stream);
+            MetadataReader reader = provider.GetMetadataReader();
+
+            foreach (MethodDebugInformationHandle handle in reader.MethodDebugInformation)
+            {
+                MethodDebugInformation info = reader.GetMethodDebugInformation(handle);
+                if (info.SequencePointsBlob.IsNil)
+                {
+                    continue;
+                }
+
+                Dictionary<int, int> lines = [];
+                foreach (SequencePoint point in info.GetSequencePoints())
+                {
+                    if (!point.IsHidden)
+                    {
+                        lines[point.Offset] = point.StartLine;
+                    }
+                }
+
+                if (lines.Count > 0)
+                {
+                    result[MetadataTokens.GetToken(handle.ToDefinitionHandle())] = lines;
+                }
+            }
+        }
+        catch
+        {
+            // A PDB that does not match the assembly, or is not portable, is no worse than none.
+            return [];
+        }
+
+        return result;
     }
 
     /// <summary>Translates a relative virtual address to a file offset via the containing section.</summary>

@@ -124,6 +124,18 @@ export interface DecoderDecodeRequest {
    * handed are authoritative, and may differ from what is on disk.
    */
   readonly path?: string;
+
+  /**
+   * Gets companion files the decoder may need, keyed by a name the decoder understands, base64-encoded.
+   *
+   * Some formats keep part of what a reader needs in a second file — a .NET assembly's source mapping
+   * lives in its portable PDB, not in the assembly. Since a decoder never touches disk, the caller
+   * reads the companion through the same gate as the main file and hands over its bytes; a decoder
+   * fetching it itself would reintroduce exactly the disagreement that handing over bytes prevents.
+   *
+   * Absent or missing entries are normal: a decoder degrades to what it can do without them.
+   */
+  readonly companions?: Readonly<Record<string, string>>;
 }
 
 /**

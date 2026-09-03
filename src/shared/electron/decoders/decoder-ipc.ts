@@ -61,7 +61,9 @@ export class DecoderHost {
         baseOffset: unknown,
         totalSize: unknown,
         path: unknown,
-      ): Promise<CodeListing | null> => this.decode(format, bytes, baseOffset, totalSize, path),
+        companions: unknown,
+      ): Promise<CodeListing | null> =>
+        this.decode(format, bytes, baseOffset, totalSize, path, companions),
     );
   }
 
@@ -79,6 +81,7 @@ export class DecoderHost {
    * @param baseOffset The absolute file offset of the first byte.
    * @param totalSize The whole file's size, when the bytes are a window of it.
    * @param path The file the bytes came from, for display only.
+   * @param companions Companion files the renderer read through its own gate, keyed by name.
    * @returns Returns the listing, or null when the request is malformed or nothing decodes the format.
    */
   private decode(
@@ -87,6 +90,7 @@ export class DecoderHost {
     baseOffset: unknown,
     totalSize: unknown,
     path: unknown,
+    companions: unknown,
   ): Promise<CodeListing | null> {
     if (typeof format !== 'string' || format.length === 0) {
       return Promise.resolve(null);
@@ -103,6 +107,7 @@ export class DecoderHost {
       baseOffset,
       typeof totalSize === 'number' ? totalSize : undefined,
       typeof path === 'string' ? path : undefined,
+      readCompanions(companions),
     );
   }
 }
@@ -121,4 +126,25 @@ function nodeRuntime(entryPoint: string): NodeRuntimeSpec {
     // Runs the Electron binary as plain Node, the same way a Node-based language server is run.
     env: { ELECTRON_RUN_AS_NODE: '1' },
   };
+}
+
+/**
+ * Validates the companion files a renderer sent, discarding anything that is not bytes.
+ *
+ * The renderer read these through the same trust gate as the main file, so this is shape validation
+ * rather than a second permission check.
+ * @param value The candidate companions.
+ * @returns Returns the companions, or undefined when there are none.
+ */
+function readCompanions(value: unknown): Readonly<Record<string, Uint8Array>> | undefined {
+  if (typeof value !== 'object' || value === null) {
+    return undefined;
+  }
+  const result: Record<string, Uint8Array> = {};
+  for (const [name, bytes] of Object.entries(value)) {
+    if (bytes instanceof Uint8Array && bytes.length > 0) {
+      result[name] = bytes;
+    }
+  }
+  return Object.keys(result).length === 0 ? undefined : result;
 }

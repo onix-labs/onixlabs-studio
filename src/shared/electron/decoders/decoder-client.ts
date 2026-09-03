@@ -167,6 +167,7 @@ export class DecoderClient {
    * @param baseOffset The absolute file offset of the first byte.
    * @param totalSize The whole file's size, when the bytes are a window of it.
    * @param path The file the bytes came from, for display only.
+   * @param companions Companion files the decoder may need, keyed by name.
    * @returns Returns the listing, or null when the decoder failed, timed out, or is not running.
    */
   public async decode(
@@ -175,6 +176,7 @@ export class DecoderClient {
     baseOffset: number,
     totalSize?: number,
     path?: string,
+    companions?: Readonly<Record<string, Uint8Array>>,
   ): Promise<CodeListing | null> {
     if (this.description === null) {
       return null;
@@ -188,6 +190,7 @@ export class DecoderClient {
         baseOffset,
         totalSize,
         path,
+        companions: encodeCompanions(companions),
       },
       REQUEST_TIMEOUT_MS,
     );
@@ -316,4 +319,22 @@ export class DecoderClient {
       entry.resolve({ id, ok: false, error: 'the decoder exited' });
     }
   }
+}
+
+/**
+ * Encodes companion files for the wire, or returns undefined when there are none.
+ * @param companions The companion files, keyed by name.
+ * @returns Returns the base64-encoded companions, or undefined.
+ */
+function encodeCompanions(
+  companions: Readonly<Record<string, Uint8Array>> | undefined,
+): Readonly<Record<string, string>> | undefined {
+  if (companions === undefined) {
+    return undefined;
+  }
+  const encoded: Record<string, string> = {};
+  for (const [name, bytes] of Object.entries(companions)) {
+    encoded[name] = Buffer.from(bytes).toString('base64');
+  }
+  return Object.keys(encoded).length === 0 ? undefined : encoded;
 }

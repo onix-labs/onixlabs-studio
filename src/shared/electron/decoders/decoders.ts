@@ -47,6 +47,7 @@ export class Decoders {
    * @param baseOffset The absolute file offset of the first byte.
    * @param totalSize The whole file's size, when the bytes are a window of it.
    * @param path The file the bytes came from, for display only.
+   * @param companions Companion files the decoder may need, keyed by name.
    * @returns Returns the listing, or null when no decoder is installed for the format, it could not be
    * started, or it failed.
    */
@@ -56,9 +57,12 @@ export class Decoders {
     baseOffset: number,
     totalSize?: number,
     path?: string,
+    companions?: Readonly<Record<string, Uint8Array>>,
   ): Promise<CodeListing | null> {
     const client: DecoderClient | null = await this.clientFor(format);
-    return client === null ? null : client.decode(format, bytes, baseOffset, totalSize, path);
+    return client === null
+      ? null
+      : client.decode(format, bytes, baseOffset, totalSize, path, companions);
   }
 
   /**

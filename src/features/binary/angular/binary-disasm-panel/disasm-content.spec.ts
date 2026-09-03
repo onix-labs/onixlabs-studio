@@ -194,3 +194,54 @@ describe('renderAddress', (): void => {
     expect(renderAddress(7, il)).toBe('00000007');
   });
 });
+
+describe('source-line gutter', (): void => {
+  /**
+   * Builds a listing whose rows carry source lines.
+   */
+  const withLines: CodeListing = {
+    language: '.NET IL',
+    addressing: 'method-relative',
+    origin: { kind: 'buffer', path: '/tmp/a.dll' },
+    sections: [
+      {
+        id: 'm',
+        title: 'Shapes.Loop',
+        notes: ['source lines from the portable PDB'],
+        rows: [
+          { address: 0, fileOffset: 100, mnemonic: 'nop', operands: '', sourceLine: 14 },
+          { address: 1, fileOffset: 101, mnemonic: 'ldc.i4.0', operands: '', sourceLine: 15 },
+          { address: 2, fileOffset: 102, mnemonic: 'ret', operands: '' },
+        ],
+      },
+      { id: 'other', title: 'Shapes.Text', rows: [] },
+    ],
+  };
+
+  it('renders the line beside each row that has one', (): void => {
+    const text: string = buildContent(withLines).text;
+    expect(text).toContain('   14 ');
+    expect(text).toContain('   15 ');
+  });
+
+  it('keeps the column width for a row with no line, so addresses stay aligned', (): void => {
+    // A ragged left edge reads as corruption in a listing.
+    const lines: readonly string[] = buildContent(withLines).text.split('\n');
+    const withLine: string | undefined = lines.find((line: string): boolean =>
+      line.includes('nop'),
+    );
+    const without: string | undefined = lines.find((line: string): boolean => line.includes('ret'));
+    expect(withLine?.indexOf('0000')).toBe(without?.indexOf('0000'));
+  });
+
+  it('shows no gutter at all when the listing carries no source lines', (): void => {
+    // A decoder with no source mapping must not pay for an empty column on every row.
+    const listing: CodeListing = listingFromInstructions([instruction(0, 'nop')], 'x64', null);
+    expect(buildContent(listing).text).toBe('00000000  nop');
+  });
+
+  it('keeps the line map aligned once a gutter is present', (): void => {
+    const content: DisasmContent = buildContent(withLines);
+    expect(content.lines).toHaveLength(content.text.split('\n').length);
+  });
+});

@@ -83,6 +83,11 @@ export function buildContent(listing: CodeListing | null): DisasmContent {
   }
   const rows: string[] = [];
   const lines: (LineRow | null)[] = [];
+  // A source-line gutter only appears when the listing actually carries lines, so a decoder without a
+  // source mapping does not pay for an empty column on every row.
+  const showSourceLines: boolean = listing.sections.some((section: ListingSection): boolean =>
+    section.rows.some((row: ListingRow): boolean => row.sourceLine !== undefined),
+  );
   // A single-section listing shows no heading: that is what native disassembly produces, the panel
   // header already says "Assembly", and the status strip already names the format — so a lone heading
   // would be a third statement of the same thing, and would change what users see today for nothing.
@@ -94,15 +99,16 @@ export function buildContent(listing: CodeListing | null): DisasmContent {
         rows.push('');
         lines.push(null);
       }
-      rows.push(section.title);
+      const indent: string = showSourceLines ? '      ' : '';
+      rows.push(`${indent}${section.title}`);
       lines.push(null);
       for (const note of section.notes ?? []) {
-        rows.push(`  ; ${note}`);
+        rows.push(`${indent}  ; ${note}`);
         lines.push(null);
       }
     }
     for (const row of section.rows) {
-      rows.push(renderRow(row, listing));
+      rows.push(renderRow(row, listing, showSourceLines));
       lines.push({
         fileOffset: row.fileOffset ?? null,
         byteLength: row.bytes?.length ?? 0,
@@ -119,14 +125,15 @@ export function buildContent(listing: CodeListing | null): DisasmContent {
  * @param listing The listing being rendered, which decides the address base.
  * @returns Returns the rendered line.
  */
-function renderRow(row: ListingRow, listing: CodeListing): string {
+function renderRow(row: ListingRow, listing: CodeListing, showSourceLines: boolean): string {
+  const gutter: string = showSourceLines ? renderSourceLine(row.sourceLine) : '';
   if (row.kind === 'label') {
     const at: string =
       row.address === undefined ? '' : `  ; ${renderAddress(row.address, listing).trim()}`;
-    return `${row.mnemonic}:${at}`;
+    return `${gutter}${row.mnemonic}:${at}`;
   }
   if (row.kind === 'comment') {
-    return `  ; ${row.mnemonic}`;
+    return `${gutter}  ; ${row.mnemonic}`;
   }
   // A row with no address is not a defect: the .NET JIT reports an offset per instruction group and
   // none per instruction, so its rows are aligned under the group label rather than given a made-up
@@ -135,7 +142,19 @@ function renderRow(row: ListingRow, listing: CodeListing): string {
     row.address === undefined ? ' '.repeat(8) : renderAddress(row.address, listing);
   const operands: string = row.operands.length > 0 ? ` ${row.operands}` : '';
   const comment: string = row.comment === undefined ? '' : `   // ${row.comment}`;
-  return `${address}  ${row.mnemonic}${operands}${comment}`;
+  return `${gutter}${address}  ${row.mnemonic}${operands}${comment}`;
+}
+
+/**
+ * Renders the source-line gutter for a row.
+ *
+ * A row with no line keeps the column's width rather than collapsing it, so the addresses beside it
+ * stay in one column — a ragged left edge reads as corruption in a listing.
+ * @param sourceLine The row's source line, when it has one.
+ * @returns Returns the gutter text.
+ */
+function renderSourceLine(sourceLine: number | undefined): string {
+  return sourceLine === undefined ? '      ' : `${String(sourceLine).padStart(5)} `;
 }
 
 /**

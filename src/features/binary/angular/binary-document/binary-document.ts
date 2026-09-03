@@ -44,6 +44,12 @@ import {
 const MAX_WHOLE_FILE_DECODE: number = 64 * 1024 * 1024;
 
 /**
+ * Specifies the largest companion file that will be read and sent alongside a decode. A portable PDB
+ * for a very large assembly is a few megabytes; this is a guard, not a limit anyone should meet.
+ */
+const MAX_COMPANION_BYTES: number = 32 * 1024 * 1024;
+
+/**
  * Specifies the size, in bytes, of each block fetched and cached from a file. A multiple of the row
  * width so a block boundary never splits a rendered row. Larger than a typical viewport so scrolling
  * within a block needs no further reads.
@@ -672,6 +678,7 @@ export class BinaryDocumentEntry {
       0,
       size,
       this.path,
+      await this.readCompanions(),
     );
     if (listing !== null) {
       this.pluginListing.set(listing);
@@ -679,6 +686,31 @@ export class BinaryDocumentEntry {
       // Let a later attempt retry rather than caching a failure forever.
       this.wholeFileDecodeVersion = -1;
     }
+  }
+
+  /**
+   * Reads the companion files a decoder may need for this document.
+   *
+   * A .NET assembly keeps its source mapping in a portable PDB beside it rather than inside itself, and
+   * a decoder never touches disk — so the companion is read here, through the same gate as the
+   * assembly, and handed over as bytes. A missing companion is ordinary: the decoder degrades to a
+   * listing with no source lines.
+   * @returns Returns the companions keyed by name, or undefined when none were found.
+   */
+  private async readCompanions(): Promise<Readonly<Record<string, Uint8Array>> | undefined> {
+    const pdbPath: string = this.path.replace(/\.[^./\\]+$/, '.pdb');
+    if (pdbPath === this.path) {
+      return undefined;
+    }
+    const chunk: BinaryChunk | null = await this.workspace.readBytes(
+      pdbPath,
+      0,
+      MAX_COMPANION_BYTES,
+    );
+    if (chunk === null || chunk.bytes.length === 0) {
+      return undefined;
+    }
+    return { pdb: new Uint8Array(chunk.bytes) };
   }
 
   /**

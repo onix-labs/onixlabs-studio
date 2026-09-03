@@ -68,6 +68,7 @@ export class BinaryDisassembly {
    * @param baseOffset The absolute file offset of the buffer's first byte.
    * @param totalSize The whole file's size, when the bytes are a window of it.
    * @param path The file the bytes came from, for display only.
+   * @param companions Companion files the decoder may need, keyed by a name it understands.
    * @returns Returns the listing, or null when no decoder is installed, it failed, or the application
    * is running outside Electron.
    */
@@ -77,6 +78,7 @@ export class BinaryDisassembly {
     baseOffset: number,
     totalSize?: number,
     path?: string,
+    companions?: Readonly<Record<string, Uint8Array>>,
   ): Promise<CodeListing | null> {
     if (this.bridge === undefined) {
       return null;
@@ -89,6 +91,7 @@ export class BinaryDisassembly {
         baseOffset,
         totalSize,
         path,
+        companions,
       );
     } catch (error: unknown) {
       this.log.debug('binary.disassembly', 'Decoder request failed', error);
