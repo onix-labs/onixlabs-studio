@@ -1,11 +1,13 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  InputSignal,
+  Signal,
+  WritableSignal,
   computed,
   inject,
   input,
-  InputSignal,
-  Signal,
+  signal,
 } from '@angular/core';
 import {
   FormatPluginContribution,
@@ -16,6 +18,7 @@ import {
   isLanguageContribution,
 } from '@shared/api/plugin-channels';
 import { Icon } from '@shared/angular/icons/icon';
+import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { Table, TableColumn, TableRow, TableRowDef } from '@shared/angular/components/table/table';
@@ -54,7 +57,7 @@ const SLOT_LABELS: Readonly<Record<PluginSlot, string>> = {
  */
 @Component({
   selector: 'app-plugin-manager-view',
-  imports: [Button, AppIcon, Table, TableRowDef],
+  imports: [Button, AppIcon, Table, TableRowDef, TextField],
   templateUrl: './plugin-manager-view.html',
   styleUrl: './plugin-manager-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -86,15 +89,39 @@ export class PluginManagerView {
   private readonly plugins: Plugins = inject(Plugins);
 
   /**
-   * Gets every known plugin, installed first so what is in use leads, adapted to the table's row shape.
+   * Holds the filter text. Not persisted: a filter is what the user is doing right now, and finding a
+   * list mysteriously filtered on the next visit is worse than retyping four characters.
+   */
+  protected readonly query: WritableSignal<string> = signal<string>('');
+
+  /**
+   * Gets the plugins matching the filter, installed first so what is in use leads.
+   */
+  private readonly matching: Signal<readonly PluginSummary[]> = computed(
+    (): readonly PluginSummary[] => {
+      const terms: readonly string[] = this.query().toLowerCase().split(/\s+/).filter(Boolean);
+      return [...this.plugins.plugins()]
+        .filter((plugin: PluginSummary): boolean => matches(plugin, terms))
+        .sort(
+          (left: PluginSummary, right: PluginSummary): number =>
+            Number(right.state === 'installed') - Number(left.state === 'installed'),
+        );
+    },
+  );
+
+  /**
+   * Gets the matching plugins adapted to the table's row shape.
    */
   protected readonly rows: Signal<readonly TableRow[]> = computed((): readonly TableRow[] =>
-    [...this.plugins.plugins()]
-      .sort(
-        (left: PluginSummary, right: PluginSummary): number =>
-          Number(right.state === 'installed') - Number(left.state === 'installed'),
-      )
-      .map((plugin: PluginSummary): TableRow => ({ id: plugin.id, data: plugin })),
+    this.matching().map((plugin: PluginSummary): TableRow => ({ id: plugin.id, data: plugin })),
+  );
+
+  /**
+   * Gets whether a filter is narrowing the list, so the empty state can say which of the two nothings
+   * this is: no plugins at all, or none matching what was typed.
+   */
+  protected readonly filtered: Signal<boolean> = computed(
+    (): boolean => this.query().trim() !== '',
   );
 
   /**
@@ -133,6 +160,13 @@ export class PluginManagerView {
    */
   protected total(): number {
     return this.plugins.plugins().length;
+  }
+
+  /**
+   * Clears the filter, so the list returns to everything.
+   */
+  protected clearQuery(): void {
+    this.query.set('');
   }
 
   /**
@@ -249,4 +283,34 @@ export class PluginManagerView {
   protected uninstall(plugin: PluginSummary): void {
     void this.plugins.uninstall(plugin.id);
   }
+}
+
+/**
+ * Determines whether a plugin matches every search term.
+ *
+ * Every term must match, but each may match any field — so "python debug" finds a Python debugger
+ * without the user knowing which field holds which word. Matching is over what the table actually
+ * shows, plus the identifier: a filter that hides a row whose visible text contains the query would
+ * read as a bug.
+ * @param plugin The plugin to test.
+ * @param terms The lower-cased search terms, empty when nothing is typed.
+ * @returns Returns true when the plugin matches.
+ */
+function matches(plugin: PluginSummary, terms: readonly string[]): boolean {
+  if (terms.length === 0) {
+    return true;
+  }
+  const haystack: string = [
+    plugin.name,
+    plugin.description,
+    plugin.id,
+    plugin.detail ?? '',
+    ...plugin.contributions.flatMap((contribution: PluginContribution): readonly string[] => [
+      contribution.displayName,
+      ...(isLanguageContribution(contribution) ? contribution.languages : contribution.formats),
+    ]),
+  ]
+    .join(' ')
+    .toLowerCase();
+  return terms.every((term: string): boolean => haystack.includes(term));
 }

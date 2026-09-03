@@ -111,3 +111,11 @@
 .plugin-manager__row-actions {
   white-space: nowrap;
 }
+
+/* The filter sits beside the heading rather than above the table: it belongs to the view, not to the
+   grid, and putting it in the header keeps the table flush with the rows it lists. */
+.plugin-manager__filter {
+  flex: 0 0 auto;
+  width: 18rem;
+  max-width: 100%;
+}
