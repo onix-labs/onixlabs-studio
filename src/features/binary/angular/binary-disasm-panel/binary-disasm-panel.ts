@@ -30,7 +30,7 @@ import {
   LineRow,
   linesForRange,
 } from '@shared/angular/services/decoders/listing-content';
-import { describeFormat, disassemblyArchitecture, formatKey } from '../binary-format/binary-format';
+import { describeFormat, formatKey } from '../binary-format/binary-format';
 
 /**
  * Represents the disassembly side panel: a read-only assembly listing showing the native instructions
@@ -112,11 +112,6 @@ export class BinaryDisasmPanel implements OnDestroy {
   /**
    * Holds whether the document's format can be natively disassembled (drives the empty note overlay).
    */
-  protected readonly disassemblable: Signal<boolean> = computed((): boolean => {
-    const document: BinaryDocumentEntry | undefined = this.document();
-    return document !== undefined && disassemblyArchitecture(document.format()) !== null;
-  });
-
   /**
    * Holds what to say when there is no listing to show.
    *
@@ -129,20 +124,22 @@ export class BinaryDisasmPanel implements OnDestroy {
     if (document === undefined) {
       return null;
     }
-    // A format the in-core disassembler handles says nothing while it has not decoded yet: an empty
-    // listing there means "not decoded", not "cannot decode", and reporting the latter would flicker a
-    // wrong message every time the viewport moves.
-    if (this.disassemblable()) {
+    // A listing on screen is proof a decoder answered, whatever the install state says — the two are
+    // resolved independently, and reporting "no decoder" over a visible listing would be absurd.
+    if (document.listing() !== null) {
       return null;
     }
     const key: string | null = formatKey(document.format());
     if (key === null) {
       return 'No listing available for this format.';
     }
-    const description: string = describeFormat(document.format());
+    // A format a decoder covers says nothing while it has not decoded yet: an empty listing there
+    // means "not decoded", not "cannot decode", and reporting the latter would flicker a wrong
+    // message every time the viewport moves.
     if (this.decoderPrompt.isCovered(key)) {
       return null;
     }
+    const description: string = describeFormat(document.format());
     return this.decoderPrompt.isOffered(key)
       ? `No decoder installed for ${description}.`
       : `No decoder available for ${description}.`;
@@ -200,7 +197,7 @@ export class BinaryDisasmPanel implements OnDestroy {
     // hint that anything exists. Asks once per format per session.
     effect((): void => {
       const document: BinaryDocumentEntry | undefined = this.document();
-      if (document === undefined || this.disassemblable()) {
+      if (document?.listing() !== null) {
         return;
       }
       const key: string | null = formatKey(document.format());

@@ -10,7 +10,7 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { AssembleResult, DecodedInstruction } from '@shared/api/binary-channels';
-import { CodeListing, listingFromInstructions } from '@shared/api/code-listing';
+import { CodeListing } from '@shared/api/code-listing';
 import { DecoderDescription } from '@shared/api/decoder-protocol';
 import { BinaryChunk, BinaryPatch } from '@shared/api/workspace-channels';
 import { FileConflicts } from '@shared/angular/services/file-conflicts/file-conflicts';
@@ -26,13 +26,7 @@ import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { PieceRun, PieceTable, PieceTableSnapshot } from './binary-piece-table';
 import { BinaryDisassembly } from '../binary-disassembly/binary-disassembly';
 import { BinaryAssembly } from '../binary-assembly/binary-assembly';
-import {
-  BinaryFormat,
-  codeOffset,
-  disassemblyArchitecture,
-  formatKey,
-  sniffFormat,
-} from '../binary-format/binary-format';
+import { BinaryFormat, codeOffset, formatKey, sniffFormat } from '../binary-format/binary-format';
 
 /**
  * Specifies the largest file that will be sent whole to a decoder that needs it all.
@@ -86,7 +80,6 @@ const SAVE_ECHO_WINDOW_MS: number = 2000;
  * Specifies the largest number of disassembled ranges cached before the cache is cleared, bounding
  * memory over a long editing session.
  */
-const MAX_DISASSEMBLY_CACHE: number = 128;
 
 /**
  * Describes a contiguous byte selection within a binary document, as a half-open range `[start, end)`.
@@ -232,12 +225,16 @@ export class BinaryDocumentEntry {
   public readonly codeOffset: WritableSignal<number | null> = signal<number | null>(null);
 
   /**
-   * Holds the decoded instructions for the current viewport range, or an empty list when the format is
-   * not natively disassemblable (managed/JVM/unknown) or none has been loaded yet.
+   * Holds the decoded instructions for the current range, flattened out of the decoder's listing.
+   *
+   * Derived rather than stored: the listing is what a decoder returns, and instructions are a view over
+   * it for the callers that want a flat, offset-keyed list — snapping a selection to instruction
+   * boundaries, and answering the agent. Rows with no file offset are left out, because those callers
+   * are asking about bytes and a row without one describes no bytes.
    */
-  public readonly instructions: WritableSignal<readonly DecodedInstruction[]> = signal<
-    readonly DecodedInstruction[]
-  >([]);
+  public readonly instructions: Signal<readonly DecodedInstruction[]> = computed(
+    (): readonly DecodedInstruction[] => flattenListing(this.listing()),
+  );
 
   /**
    * Holds the decoded instructions as a {@link CodeListing}, which is the contract the assembly panel
@@ -248,28 +245,15 @@ export class BinaryDocumentEntry {
    * the native path moves out of core into a decoder plugin, the producer changes and the panel does
    * not.
    */
-  public readonly listing: Signal<CodeListing | null> = computed((): CodeListing | null => {
-    // An installed decoder plugin wins: it is the direction of travel, and it can decode formats the
-    // in-core path never could. The native fallback below exists only until that path is removed.
-    const decoded: CodeListing | null = this.pluginListing();
-    if (decoded !== null) {
-      return decoded;
-    }
-    const architecture: string | null = disassemblyArchitecture(this.format());
-    const instructions: readonly DecodedInstruction[] = this.instructions();
-    if (architecture === null || instructions.length === 0) {
-      return null;
-    }
-    return listingFromInstructions(instructions, architecture, this.path);
-  });
 
   /**
-   * Holds the listing an installed decoder plugin returned for the current range, or null when none is
+   * Holds the listing the installed decoder returned for the current range, or null when no decoder is
    * installed for this format or it has not answered yet.
+   *
+   * Writable because the document owns it: a decode completes and sets it. Everything byte-oriented
+   * derives from it rather than the other way round.
    */
-  private readonly pluginListing: WritableSignal<CodeListing | null> = signal<CodeListing | null>(
-    null,
-  );
+  public readonly listing: WritableSignal<CodeListing | null> = signal<CodeListing | null>(null);
 
   /**
    * Holds the edit version whose whole-file decode has been requested, so scrolling a managed assembly
@@ -277,15 +261,6 @@ export class BinaryDocumentEntry {
    * attempt retries.
    */
   private wholeFileDecodeVersion: number = -1;
-
-  /**
-   * Holds disassembled ranges keyed by `arch:offset:length`, so re-visiting a range does not re-invoke
-   * the disassembler.
-   */
-  private readonly disassemblyCache: Map<string, readonly DecodedInstruction[]> = new Map<
-    string,
-    readonly DecodedInstruction[]
-  >();
 
   /**
    * Holds the pending debounced disassembly timer, or null when none is scheduled.
@@ -568,62 +543,25 @@ export class BinaryDocumentEntry {
    * @param length The number of bytes in the range.
    */
   public loadDisassembly(offset: number, length: number): void {
-    const architecture: string | null = disassemblyArchitecture(this.format());
     const formatSlot: string | null = formatKey(this.format());
-    if (length <= 0 || (architecture === null && formatSlot === null)) {
-      this.instructions.set([]);
-      this.pluginListing.set(null);
-      return;
-    }
-
-    // The edits version is part of the key so an overwrite invalidates the cached decode and the range
-    // re-disassembles from the edited bytes rather than the stale result.
-    const key: string = `${architecture ?? formatSlot ?? ''}:${offset}:${length}:${this.editsVersion()}`;
-    const cached: readonly DecodedInstruction[] | undefined = this.disassemblyCache.get(key);
-    if (architecture !== null && cached !== undefined) {
-      this.instructions.set(cached);
+    if (length <= 0 || formatSlot === null) {
+      this.listing.set(null);
       return;
     }
     if (this.disassemblyTimer !== null) {
       clearTimeout(this.disassemblyTimer);
     }
-    // One token and one debounce covers both paths: a decoder plugin and the in-core disassembler are
-    // asked about the same window, and a result that arrives after the viewport has moved on is
-    // discarded whichever produced it.
+    // Debounced so it fires once scrolling settles, and tokened so a result arriving after the
+    // viewport moved on is discarded.
     const token: number = (this.disassemblyToken += 1);
     this.disassemblyTimer = setTimeout((): void => {
       const window: { bytes: Uint8Array; base: number } | null = this.disassemblyWindow(
         offset,
         length,
       );
-      if (window === null) {
-        if (token === this.disassemblyToken) {
-          this.instructions.set([]);
-        }
-        return;
-      }
-      // A decoder plugin is asked whenever the format has a key — and for a format the in-core path
-      // cannot handle at all, it is the only thing asked.
-      if (formatSlot !== null) {
+      if (window !== null) {
         void this.decodeWithPlugin(formatSlot, window, token);
       }
-      if (architecture === null) {
-        return;
-      }
-      void this.disassembly
-        .disassemble(window.bytes, window.base, offset, offset + length, architecture)
-        .then((result: readonly DecodedInstruction[]): void => {
-          if (this.disassemblyCache.size >= MAX_DISASSEMBLY_CACHE) {
-            const oldest: string | undefined = this.disassemblyCache.keys().next().value;
-            if (oldest !== undefined) {
-              this.disassemblyCache.delete(oldest);
-            }
-          }
-          this.disassemblyCache.set(key, result);
-          if (token === this.disassemblyToken) {
-            this.instructions.set(result);
-          }
-        });
     }, DISASSEMBLY_DEBOUNCE_MS);
   }
 
@@ -656,7 +594,7 @@ export class BinaryDocumentEntry {
         this.path,
       );
       if (token === this.disassemblyToken && listing !== null) {
-        this.pluginListing.set(listing);
+        this.listing.set(listing);
       }
       return;
     }
@@ -681,7 +619,7 @@ export class BinaryDocumentEntry {
       await this.readCompanions(),
     );
     if (listing !== null) {
-      this.pluginListing.set(listing);
+      this.listing.set(listing);
     } else {
       // Let a later attempt retry rather than caching a failure forever.
       this.wholeFileDecodeVersion = -1;
@@ -862,8 +800,8 @@ export class BinaryDocumentEntry {
     length: number,
   ): Promise<readonly DecodedInstruction[] | null> {
     await this.ensureBlock(0);
-    const architecture: string | null = disassemblyArchitecture(this.format());
-    if (architecture === null) {
+    const formatSlot: string | null = formatKey(this.format());
+    if (formatSlot === null) {
       return null;
     }
     const size: number = this.size();
@@ -881,7 +819,29 @@ export class BinaryDocumentEntry {
     if (window === null) {
       return [];
     }
-    return this.disassembly.disassemble(window.bytes, window.base, start, end, architecture);
+    const info: DecoderDescription | null = await this.disassembly.decoderInfo(formatSlot);
+    if (info === null) {
+      // No decoder installed for this format: reported as null so the caller can say so, rather than
+      // as an empty range, which would read as "there is no code here".
+      return null;
+    }
+    const bytes: Uint8Array = info.requiresWholeFile
+      ? new Uint8Array(await this.readBytes(0, size))
+      : window.bytes;
+    const listing: CodeListing | null = await this.disassembly.decodeListing(
+      formatSlot,
+      bytes,
+      info.requiresWholeFile ? 0 : window.base,
+      size,
+      this.path,
+      await this.readCompanions(),
+    );
+    return listing === null
+      ? null
+      : flattenListing(listing).filter(
+          (instruction: DecodedInstruction): boolean =>
+            instruction.startOffset >= start && instruction.startOffset < end,
+        );
   }
 
   /**
@@ -1358,4 +1318,35 @@ export class BinaryDocuments implements UnsavedWorkSource {
     const parts: string[] = path.split(/[\\/]/);
     return parts[parts.length - 1] || path;
   }
+}
+
+/**
+ * Flattens a listing into the offset-keyed instructions the byte-oriented callers want.
+ *
+ * Rows with no file offset are dropped: those callers are asking about bytes, and a row without one
+ * describes no bytes in the file.
+ * @param listing The decoded listing, or null when there is none.
+ * @returns Returns the instructions, in listing order.
+ */
+function flattenListing(listing: CodeListing | null): readonly DecodedInstruction[] {
+  if (listing === null) {
+    return [];
+  }
+  const result: DecodedInstruction[] = [];
+  for (const section of listing.sections) {
+    for (const row of section.rows) {
+      if (row.fileOffset === undefined) {
+        continue;
+      }
+      const raw: readonly number[] = row.bytes ?? [];
+      result.push({
+        startOffset: row.fileOffset,
+        byteLength: Math.max(raw.length, 1),
+        mnemonic: row.mnemonic,
+        operands: row.operands,
+        raw,
+      });
+    }
+  }
+  return result;
 }

@@ -1,6 +1,5 @@
 import { inject, Service } from '@angular/core';
 import { Bridge } from '@shared/api/bridge';
-import { BinaryChannel, DecodedInstruction } from '@shared/api/binary-channels';
 import { CodeListing } from '@shared/api/code-listing';
 import { DecoderDescription } from '@shared/api/decoder-protocol';
 import { Log } from '@shared/angular/services/log/log';
@@ -27,41 +26,6 @@ export class BinaryDisassembly {
    * Holds the shared decoder client the plugin-backed calls go through.
    */
   private readonly decoders: Decoders = inject(Decoders);
-
-  /**
-   * Disassembles a buffer of machine code, returning the instructions whose start falls in the
-   * requested sub-range. The caller pads the buffer around that sub-range so straddling instructions
-   * decode; passing the bytes it holds (rather than a path) reflects any unsaved edits.
-   * @param bytes The buffer to disassemble.
-   * @param baseOffset The absolute file offset of the buffer's first byte.
-   * @param filterStart The first offset to return instructions for.
-   * @param filterEnd The offset one past the last to return instructions for.
-   * @param architecture The sniffed architecture label (`x86`, `x64`, `ARM`, `ARM64`).
-   * @returns Returns the decoded instructions within the sub-range, or an empty list when unsupported
-   * or running outside Electron.
-   */
-  public disassemble(
-    bytes: Uint8Array,
-    baseOffset: number,
-    filterStart: number,
-    filterEnd: number,
-    architecture: string,
-  ): Promise<readonly DecodedInstruction[]> {
-    this.log.trace(
-      'binary.disassembly',
-      `Disassemble ${architecture} [0x${filterStart.toString(16)}, 0x${filterEnd.toString(16)})`,
-    );
-    return (
-      this.bridge?.invoke<readonly DecodedInstruction[]>(
-        BinaryChannel.Disassemble,
-        bytes,
-        baseOffset,
-        filterStart,
-        filterEnd,
-        architecture,
-      ) ?? Promise.resolve([])
-    );
-  }
 
   /**
    * Decodes a window of bytes into a listing using whichever installed decoder plugin fills the

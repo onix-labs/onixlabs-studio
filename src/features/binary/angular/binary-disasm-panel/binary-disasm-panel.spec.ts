@@ -3,7 +3,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { DecodedInstruction } from '@shared/api/binary-channels';
 import { CodeListing, listingFromInstructions } from '@shared/api/code-listing';
 import { BinaryDocumentEntry, BinarySelection } from '../binary-document/binary-document';
-import { BinaryFormat, disassemblyArchitecture } from '../binary-format/binary-format';
+import { BinaryFormat, formatKey } from '../binary-format/binary-format';
 import { BinaryDisasmPanel } from './binary-disasm-panel';
 import { LineRow } from '@shared/angular/services/decoders/listing-content';
 
@@ -48,13 +48,13 @@ function fakeDocument(format: BinaryFormat): FakeDocument {
     readonly DecodedInstruction[]
   >([]);
   const formatSignal: WritableSignal<BinaryFormat> = signal<BinaryFormat>(format);
-  // Mirrors the real document: native disassembly is flat, so it becomes a one-section listing.
+  // Mirrors the real document: the listing is what a decoder returned, and a format nothing decodes
+  // simply has none.
   const listing: Signal<CodeListing | null> = computed((): CodeListing | null => {
-    const architecture: string | null = disassemblyArchitecture(formatSignal());
     const decoded: readonly DecodedInstruction[] = instructions();
-    return architecture === null || decoded.length === 0
+    return formatKey(formatSignal()) === null || decoded.length === 0
       ? null
-      : listingFromInstructions(decoded, architecture, null);
+      : listingFromInstructions(decoded, 'x64', null);
   });
   const entry: BinaryDocumentEntry = {
     instructions,
@@ -129,17 +129,35 @@ describe('BinaryDisasmPanel', () => {
     expect(internals.content().text).toBe('00000000  nop');
   });
 
-  it('render_showsTheEmptyNoteOnlyForFormatsWithoutNativeDisassembly', async () => {
-    const document: FakeDocument = fakeDocument({ kind: 'unknown' });
-    const fixture: ComponentFixture<BinaryDisasmPanel> = await create(document);
+  it('render_saysNothingRecognisesAnUnknownFormat', async () => {
+    const fixture: ComponentFixture<BinaryDisasmPanel> = await create(
+      fakeDocument({ kind: 'unknown' }),
+    );
     const host: HTMLElement = fixture.nativeElement as HTMLElement;
     expect(host.querySelector('.disasm__empty')?.textContent).toContain('No listing available');
+  });
 
-    document.format.set({ kind: 'pe', architecture: 'x64', managed: false });
-    await fixture.whenStable();
+  it('render_namesARecognisedFormatWithNoDecoderInstalled', async () => {
+    // Studio ships no decoder, so a recognised format with nothing installed says so rather than
+    // showing an empty pane — which is the whole reason the empty state exists.
+    const fixture: ComponentFixture<BinaryDisasmPanel> = await create(
+      fakeDocument({ kind: 'pe', architecture: 'x64', managed: false }),
+    );
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    expect(host.querySelector('.disasm__empty')?.textContent).toContain('PE · x64');
+  });
 
-    // A format the in-core disassembler handles says nothing while it has simply not decoded yet.
-    expect(host.querySelector('.disasm__empty')).toBeNull();
+  it('render_saysNothingOnceThereIsAListing', async () => {
+    const document: FakeDocument = fakeDocument({
+      kind: 'pe',
+      architecture: 'x64',
+      managed: false,
+    });
+    document.instructions.set([
+      { startOffset: 0, byteLength: 1, mnemonic: 'nop', operands: '', raw: [0x90] },
+    ]);
+    const fixture: ComponentFixture<BinaryDisasmPanel> = await create(document);
+    expect((fixture.nativeElement as HTMLElement).querySelector('.disasm__empty')).toBeNull();
   });
 
   it('render_namesTheFormatWhenNoDecoderCanDecodeIt', async () => {

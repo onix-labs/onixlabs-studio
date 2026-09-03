@@ -41,6 +41,16 @@ interface StudioOptions {
    * "open" would have recorded them. Undefined for suites that need no seeding.
    */
   readonly trustedPaths: readonly string[] | undefined;
+
+  /**
+   * Seeds decoder plugins into the isolated userData directory's `plugins/` before launch, by copying
+   * each named plugin's built `dist` tree.
+   *
+   * Needed because Studio ships no decoder of its own: without one installed the binary editor shows an
+   * offer to install rather than a listing, so a test that asserts instructions has to put one there
+   * first — which is also exactly what a user does.
+   */
+  readonly sideloadPlugins: readonly string[] | undefined;
 }
 
 /**
@@ -54,13 +64,23 @@ export const test: TestType<
   PlaywrightWorkerArgs & PlaywrightWorkerOptions
 > = base.extend<StudioFixtures & StudioOptions>({
   trustedPaths: [undefined, { option: true }],
+  sideloadPlugins: [undefined, { option: true }],
   app: async (
-    { trustedPaths }: { trustedPaths: readonly string[] | undefined },
+    {
+      trustedPaths,
+      sideloadPlugins,
+    }: {
+      trustedPaths: readonly string[] | undefined;
+      sideloadPlugins: readonly string[] | undefined;
+    },
     use: (app: ElectronApplication) => Promise<void>,
   ): Promise<void> => {
     const userDataDir: string = fs.mkdtempSync(path.join(os.tmpdir(), 'studio-e2e-'));
     if (trustedPaths !== undefined) {
       fs.writeFileSync(path.join(userDataDir, 'trusted-paths.json'), JSON.stringify(trustedPaths));
+    }
+    for (const plugin of sideloadPlugins ?? []) {
+      seedPlugin(userDataDir, plugin);
     }
     const app: ElectronApplication = await electron.launch({
       args: [
@@ -99,3 +119,24 @@ export const test: TestType<
 });
 
 export { expect } from '@playwright/test';
+
+/**
+ * Copies a built decoder plugin into a test profile's sideload directory.
+ *
+ * Fails loudly rather than launching without it: a missing plugin would show up as a test asserting
+ * instructions against an empty panel, which reads as a decoder bug rather than a missing build step.
+ * @param userDataDir The isolated userData directory.
+ * @param plugin The plugin directory name under `plugins/`.
+ */
+function seedPlugin(userDataDir: string, plugin: string): void {
+  const dist: string = path.join(REPO_ROOT, 'plugins', plugin, 'dist');
+  if (!fs.existsSync(dist)) {
+    throw new Error(`Plugin '${plugin}' has not been built. Run: node plugins/${plugin}/build.mjs`);
+  }
+  const manifest: { id: string } = JSON.parse(
+    fs.readFileSync(path.join(dist, 'plugin.json'), 'utf8'),
+  ) as { id: string };
+  const target: string = path.join(userDataDir, 'plugins', manifest.id);
+  fs.mkdirSync(target, { recursive: true });
+  fs.cpSync(dist, target, { recursive: true });
+}

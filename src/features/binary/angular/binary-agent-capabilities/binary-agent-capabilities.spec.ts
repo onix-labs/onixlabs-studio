@@ -307,7 +307,7 @@ describe('BinaryAgentCapabilities', () => {
     expect(result.text).toContain('File: blob.bin (/ws/blob.bin)');
     expect(result.text).toContain('Size: 64 bytes');
     expect(result.text).toContain('Format: PE · x64');
-    expect(result.text).toContain('Disassembly: available (x64)');
+    expect(result.text).toContain('Disassembly: available (pe/x64)');
     expect(result.text).toContain('Cursor: 0x10 (16)');
     expect(result.text).toContain('Selection: 0x2–0x6 (4 bytes)');
     expect(result.text).toContain('Unsaved edits: no');
@@ -419,7 +419,7 @@ describe('BinaryAgentCapabilities', () => {
 
     expect(fake.assembles[0]).toEqual({
       assembly: 'mov rax, rbx',
-      architecture: 'x64',
+      architecture: 'pe/x64',
       address: 16,
     });
     expect(fake.patches).toEqual([{ offset: 16, values: [0x48, 0x89, 0xd8] }]);

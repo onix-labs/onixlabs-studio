@@ -56,41 +56,6 @@ export function sniffFormat(bytes: Uint8Array): BinaryFormat {
 }
 
 /**
- * Holds the architecture labels the native disassembler supports.
- */
-const DISASSEMBLABLE: ReadonlySet<string> = new Set<string>([
-  'x86-16',
-  'x86',
-  'x64',
-  'ARM',
-  'ARM64',
-]);
-
-/**
- * Resolves the architecture a format's native code should be disassembled as, or null when native
- * disassembly does not apply — managed .NET assemblies, JVM class files, and unknown or unsupported
- * architectures (the managed formats are handled by later phases' sidecars).
- * @param format The detected format.
- * @returns Returns the architecture label, or null.
- */
-export function disassemblyArchitecture(format: BinaryFormat): string | null {
-  switch (format.kind) {
-    case 'pe':
-      return !format.managed && DISASSEMBLABLE.has(format.architecture)
-        ? format.architecture
-        : null;
-    case 'mz':
-    case 'elf':
-    case 'macho':
-      return DISASSEMBLABLE.has(format.architecture) ? format.architecture : null;
-    case 'jvm':
-    case 'wasm':
-    case 'unknown':
-      return null;
-  }
-}
-
-/**
  * Resolves the file offset where a binary's code begins, so the editor can jump past the headers to
  * real instructions: the PE entry point (translated through the section table, or the first executable
  * section), the ELF entry point (translated through the program headers), or the MS-DOS header size.

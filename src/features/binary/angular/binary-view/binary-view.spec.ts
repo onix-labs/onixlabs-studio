@@ -1,3 +1,4 @@
+import { CodeListing } from '@shared/api/code-listing';
 import { ApplicationRef } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Bridge } from '@shared/api/bridge';
@@ -158,9 +159,7 @@ describe('BinaryView', () => {
     const { fixture, document } = await createView();
     const internals: BinaryViewInternals =
       fixture.componentInstance as unknown as BinaryViewInternals;
-    document.instructions.set([
-      { startOffset: 10, byteLength: 3, mnemonic: 'mov', operands: 'a, b', raw: [0, 0, 0] },
-    ]);
+    document.listing.set(listingOf([{ offset: 10, length: 3, mnemonic: 'mov' }]));
 
     internals.onUnitSelect(11);
 
@@ -191,3 +190,33 @@ describe('BinaryView', () => {
     expect(panels.isMounted(tab.id, 'inspector')).toBe(false);
   });
 });
+
+/**
+ * Builds a decoder-shaped listing over some instructions, for tests that need the document to have
+ * decoded something.
+ * @param rows The instructions, as offset/length/mnemonic triples.
+ * @returns Returns the listing.
+ */
+function listingOf(
+  rows: readonly { offset: number; length: number; mnemonic: string }[],
+): CodeListing {
+  return {
+    language: 'x64',
+    addressing: 'file-offset',
+    origin: { kind: 'buffer', path: null },
+    sections: [
+      {
+        id: 'native',
+        title: '',
+        rows: rows.map((row) => ({
+          kind: 'instruction' as const,
+          address: row.offset,
+          fileOffset: row.offset,
+          bytes: new Array<number>(row.length).fill(0),
+          mnemonic: row.mnemonic,
+          operands: '',
+        })),
+      },
+    ],
+  };
+}

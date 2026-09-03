@@ -1,11 +1,4 @@
-import {
-  BinaryFormat,
-  codeOffset,
-  describeFormat,
-  disassemblyArchitecture,
-  formatKey,
-  sniffFormat,
-} from './binary-format';
+import { BinaryFormat, codeOffset, describeFormat, formatKey, sniffFormat } from './binary-format';
 
 /**
  * Holds a byte buffer and a data view over it, for building header fixtures.
@@ -172,22 +165,6 @@ describe('describeFormat', () => {
   });
 });
 
-describe('disassemblyArchitecture', () => {
-  it('returnsTheArchitectureForNativeCodeAndNullForManagedOrUnsupported', () => {
-    expect(disassemblyArchitecture({ kind: 'pe', architecture: 'x64', managed: false })).toBe(
-      'x64',
-    );
-    expect(disassemblyArchitecture({ kind: 'elf', architecture: 'ARM64' })).toBe('ARM64');
-    expect(disassemblyArchitecture({ kind: 'macho', architecture: 'x86' })).toBe('x86');
-    expect(disassemblyArchitecture({ kind: 'mz', architecture: 'x86-16' })).toBe('x86-16');
-    // Managed .NET, JVM, unknown, and unsupported architectures have no native disassembly.
-    expect(disassemblyArchitecture({ kind: 'pe', architecture: 'x64', managed: true })).toBeNull();
-    expect(disassemblyArchitecture({ kind: 'jvm' })).toBeNull();
-    expect(disassemblyArchitecture({ kind: 'unknown' })).toBeNull();
-    expect(disassemblyArchitecture({ kind: 'elf', architecture: 'RISC-V' })).toBeNull();
-  });
-});
-
 describe('WebAssembly', (): void => {
   /**
    * Builds a minimal WebAssembly module header.
@@ -211,10 +188,6 @@ describe('WebAssembly', (): void => {
 
   it('formatKey_resolvesToTheCanonicalWasmKey', (): void => {
     expect(formatKey(sniffFormat(wasmHeader()))).toBe('wasm');
-  });
-
-  it('disassemblyArchitecture_isNullBecauseNativeDisassemblyDoesNotApply', (): void => {
-    expect(disassemblyArchitecture(sniffFormat(wasmHeader()))).toBeNull();
   });
 
   it('sniffFormat_doesNotMistakeALeadingNulByteForAModule', (): void => {
