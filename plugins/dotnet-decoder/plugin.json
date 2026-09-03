@@ -4,7 +4,7 @@
   "description": "Shows the IL inside managed .NET assemblies, method by method.",
   "version": "1.0.0",
   "apiVersion": "1.4.0",
-  "detail": "Reads ECMA-335 metadata, so it needs the whole assembly rather than the visible range. Large assemblies are truncated to the first 2000 methods.",
+  "detail": "Reads ECMA-335 metadata, so it needs the whole assembly rather than the visible range. Needs the .NET runtime installed. Large assemblies are truncated to the first 2000 methods.",
   "provision": {
     "kind": "archive",
     "downloads": {
@@ -47,8 +47,15 @@
         "displayName": "ICSharpCode.Decompiler",
         "formats": ["pe-managed"],
         "priority": 100,
-        "command": { "kind": "executable" }
+        "command": {
+          "kind": "executable"
+        }
       }
     ]
-  }
+  },
+  "requires": [
+    {
+      "runtime": "dotnet"
+    }
+  ]
 }

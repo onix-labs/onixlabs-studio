@@ -1,8 +1,9 @@
 // Builds the .NET decoder plugin into the layout its manifest names.
 //
-// Published self-contained: the decoder must run on a machine with no .NET installed, which is most
-// of them. That makes the payload large, which is exactly why this is a plugin rather than something
-// every Studio install carries.
+// Framework-dependent, with a native apphost per platform. Self-contained would be ~79 MB a platform
+// and ~400 MB across the release, to avoid a dependency that anyone decoding .NET assemblies already
+// has. The manifest declares `requires: dotnet` instead, so Studio detects its absence and says so
+// rather than shipping a runtime nobody needed.
 import { execFileSync } from 'node:child_process';
 import { cpSync, mkdirSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -13,6 +14,9 @@ const runtime = process.argv[2] ?? 'osx-x64';
 const publish = join(root, 'obj', 'publish', runtime);
 
 rmSync(join(root, 'dist'), { recursive: true, force: true });
+// Also the publish tree: a stale self-contained publish would otherwise be copied over a
+// framework-dependent one, silently shipping a runtime the manifest says is not included.
+rmSync(publish, { recursive: true, force: true });
 mkdirSync(join(root, 'dist'), { recursive: true });
 
 execFileSync(
@@ -25,7 +29,7 @@ execFileSync(
     '-r',
     runtime,
     '--self-contained',
-    'true',
+    'false',
     '-p:PublishSingleFile=false',
     '-o',
     publish,
