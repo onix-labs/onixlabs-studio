@@ -10,31 +10,31 @@
     "downloads": {
       "darwin-arm64": {
         "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/jvm-decoder-1.0.0.tar.gz",
-        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "sha256": "33324391bb7d604c37e8519c412e76d2dd2172083a68732021f0b4637a766a38",
         "archive": "tar.gz",
         "executablePath": "jvm-decoder/main.js"
       },
       "darwin-x64": {
         "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/jvm-decoder-1.0.0.tar.gz",
-        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "sha256": "33324391bb7d604c37e8519c412e76d2dd2172083a68732021f0b4637a766a38",
         "archive": "tar.gz",
         "executablePath": "jvm-decoder/main.js"
       },
       "linux-x64": {
         "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/jvm-decoder-1.0.0.tar.gz",
-        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "sha256": "33324391bb7d604c37e8519c412e76d2dd2172083a68732021f0b4637a766a38",
         "archive": "tar.gz",
         "executablePath": "jvm-decoder/main.js"
       },
       "linux-arm64": {
         "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/jvm-decoder-1.0.0.tar.gz",
-        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "sha256": "33324391bb7d604c37e8519c412e76d2dd2172083a68732021f0b4637a766a38",
         "archive": "tar.gz",
         "executablePath": "jvm-decoder/main.js"
       },
       "win32-x64": {
         "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/jvm-decoder-1.0.0.tar.gz",
-        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "sha256": "33324391bb7d604c37e8519c412e76d2dd2172083a68732021f0b4637a766a38",
         "archive": "tar.gz",
         "executablePath": "jvm-decoder/main.js"
       }

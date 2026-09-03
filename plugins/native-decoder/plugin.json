@@ -10,31 +10,31 @@
     "downloads": {
       "darwin-arm64": {
         "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/native-decoder-1.0.0.tar.gz",
-        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "sha256": "1de77c3e58bece779e0625c4710ffcf0ca1567c3417ffb1deb2e085f10637268",
         "archive": "tar.gz",
         "executablePath": "native-decoder/main.js"
       },
       "darwin-x64": {
         "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/native-decoder-1.0.0.tar.gz",
-        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "sha256": "1de77c3e58bece779e0625c4710ffcf0ca1567c3417ffb1deb2e085f10637268",
         "archive": "tar.gz",
         "executablePath": "native-decoder/main.js"
       },
       "linux-x64": {
         "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/native-decoder-1.0.0.tar.gz",
-        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "sha256": "1de77c3e58bece779e0625c4710ffcf0ca1567c3417ffb1deb2e085f10637268",
         "archive": "tar.gz",
         "executablePath": "native-decoder/main.js"
       },
       "linux-arm64": {
         "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/native-decoder-1.0.0.tar.gz",
-        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "sha256": "1de77c3e58bece779e0625c4710ffcf0ca1567c3417ffb1deb2e085f10637268",
         "archive": "tar.gz",
         "executablePath": "native-decoder/main.js"
       },
       "win32-x64": {
         "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/native-decoder-1.0.0.tar.gz",
-        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "sha256": "1de77c3e58bece779e0625c4710ffcf0ca1567c3417ffb1deb2e085f10637268",
         "archive": "tar.gz",
         "executablePath": "native-decoder/main.js"
       }
@@ -61,7 +61,9 @@
           "macho/arm64"
         ],
         "priority": 100,
-        "command": { "kind": "node" }
+        "command": {
+          "kind": "node"
+        }
       }
     ]
   }

@@ -10,31 +10,31 @@
     "downloads": {
       "darwin-arm64": {
         "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/wasm-decoder-1.0.0.tar.gz",
-        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "sha256": "93d8aaf2cf139d3811f44c780e92a3ba3316481a57078a2c2e77af3b7383a672",
         "archive": "tar.gz",
         "executablePath": "wasm-decoder/main.js"
       },
       "darwin-x64": {
         "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/wasm-decoder-1.0.0.tar.gz",
-        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "sha256": "93d8aaf2cf139d3811f44c780e92a3ba3316481a57078a2c2e77af3b7383a672",
         "archive": "tar.gz",
         "executablePath": "wasm-decoder/main.js"
       },
       "linux-x64": {
         "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/wasm-decoder-1.0.0.tar.gz",
-        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "sha256": "93d8aaf2cf139d3811f44c780e92a3ba3316481a57078a2c2e77af3b7383a672",
         "archive": "tar.gz",
         "executablePath": "wasm-decoder/main.js"
       },
       "linux-arm64": {
         "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/wasm-decoder-1.0.0.tar.gz",
-        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "sha256": "93d8aaf2cf139d3811f44c780e92a3ba3316481a57078a2c2e77af3b7383a672",
         "archive": "tar.gz",
         "executablePath": "wasm-decoder/main.js"
       },
       "win32-x64": {
         "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/wasm-decoder-1.0.0.tar.gz",
-        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "sha256": "93d8aaf2cf139d3811f44c780e92a3ba3316481a57078a2c2e77af3b7383a672",
         "archive": "tar.gz",
         "executablePath": "wasm-decoder/main.js"
       }

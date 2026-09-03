@@ -10,31 +10,31 @@
     "downloads": {
       "darwin-arm64": {
         "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/dotnet-decoder-1.0.0-darwin-arm64.tar.gz",
-        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "sha256": "0bac0110949cc017e71389b81a3579088657b746748aa184a254ef575dbc5384",
         "archive": "tar.gz",
         "executablePath": "dotnet-decoder/dotnet-decoder"
       },
       "darwin-x64": {
         "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/dotnet-decoder-1.0.0-darwin-x64.tar.gz",
-        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "sha256": "985fe1130173d182a0a61dbb0f6df0a8eec2644838e8367c37ea511841e07950",
         "archive": "tar.gz",
         "executablePath": "dotnet-decoder/dotnet-decoder"
       },
       "linux-x64": {
         "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/dotnet-decoder-1.0.0-linux-x64.tar.gz",
-        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "sha256": "88d5b267d14489eac6eaa6ad4e3cf73e1889bdabca12ab7e2ab4ed6b87f2daa3",
         "archive": "tar.gz",
         "executablePath": "dotnet-decoder/dotnet-decoder"
       },
       "linux-arm64": {
         "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/dotnet-decoder-1.0.0-linux-arm64.tar.gz",
-        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "sha256": "f3a1346f1a5bdb29e2ccec3b389a0dddef5643357144eeda9f23b220d0c29699",
         "archive": "tar.gz",
         "executablePath": "dotnet-decoder/dotnet-decoder"
       },
       "win32-x64": {
         "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/dotnet-decoder-1.0.0-win32-x64.tar.gz",
-        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "sha256": "c962f3a04b315f71f823764bdcfede7dc6dc671c1121daf76582b6ed72a68fec",
         "archive": "tar.gz",
         "executablePath": "dotnet-decoder/dotnet-decoder.exe"
       }

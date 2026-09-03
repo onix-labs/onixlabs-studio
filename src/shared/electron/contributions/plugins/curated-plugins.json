@@ -1,5 +1,5 @@
 {
-  "revision": 4,
+  "revision": 5,
   "plugins": [
     {
       "id": "pyright",
@@ -405,6 +405,249 @@
           }
         ]
       }
+    },
+    {
+      "id": "onixlabs.native-decoder",
+      "name": "Native Disassembler",
+      "description": "Disassembles native machine code (x86, x64, ARM, ARM64) using Capstone.",
+      "version": "1.0.0",
+      "apiVersion": "1.4.0",
+      "detail": "Decodes the machine code inside PE, ELF, Mach-O and MS-DOS binaries. Studio ships no decoder of its own, so this provides the assembly listing the binary editor shows.",
+      "provision": {
+        "kind": "archive",
+        "downloads": {
+          "darwin-arm64": {
+            "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/native-decoder-1.0.0.tar.gz",
+            "sha256": "1de77c3e58bece779e0625c4710ffcf0ca1567c3417ffb1deb2e085f10637268",
+            "archive": "tar.gz",
+            "executablePath": "native-decoder/main.js"
+          },
+          "darwin-x64": {
+            "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/native-decoder-1.0.0.tar.gz",
+            "sha256": "1de77c3e58bece779e0625c4710ffcf0ca1567c3417ffb1deb2e085f10637268",
+            "archive": "tar.gz",
+            "executablePath": "native-decoder/main.js"
+          },
+          "linux-x64": {
+            "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/native-decoder-1.0.0.tar.gz",
+            "sha256": "1de77c3e58bece779e0625c4710ffcf0ca1567c3417ffb1deb2e085f10637268",
+            "archive": "tar.gz",
+            "executablePath": "native-decoder/main.js"
+          },
+          "linux-arm64": {
+            "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/native-decoder-1.0.0.tar.gz",
+            "sha256": "1de77c3e58bece779e0625c4710ffcf0ca1567c3417ffb1deb2e085f10637268",
+            "archive": "tar.gz",
+            "executablePath": "native-decoder/main.js"
+          },
+          "win32-x64": {
+            "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/native-decoder-1.0.0.tar.gz",
+            "sha256": "1de77c3e58bece779e0625c4710ffcf0ca1567c3417ffb1deb2e085f10637268",
+            "archive": "tar.gz",
+            "executablePath": "native-decoder/main.js"
+          }
+        }
+      },
+      "contributes": {
+        "decoders": [
+          {
+            "id": "onixlabs.native-decoder",
+            "displayName": "Capstone",
+            "formats": [
+              "pe/x86",
+              "pe/x64",
+              "pe/arm",
+              "pe/arm64",
+              "mz/x86-16",
+              "elf/x86",
+              "elf/x64",
+              "elf/arm",
+              "elf/arm64",
+              "macho/x86",
+              "macho/x64",
+              "macho/arm",
+              "macho/arm64"
+            ],
+            "priority": 100,
+            "command": {
+              "kind": "node"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "onixlabs.jvm-decoder",
+      "name": "JVM Bytecode Decoder",
+      "description": "Shows the bytecode inside Java class files, method by method.",
+      "version": "1.0.0",
+      "apiVersion": "1.4.0",
+      "detail": "Pure TypeScript, so it needs no JVM installed. Source line numbers appear when the class was compiled with -g.",
+      "provision": {
+        "kind": "archive",
+        "downloads": {
+          "darwin-arm64": {
+            "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/jvm-decoder-1.0.0.tar.gz",
+            "sha256": "33324391bb7d604c37e8519c412e76d2dd2172083a68732021f0b4637a766a38",
+            "archive": "tar.gz",
+            "executablePath": "jvm-decoder/main.js"
+          },
+          "darwin-x64": {
+            "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/jvm-decoder-1.0.0.tar.gz",
+            "sha256": "33324391bb7d604c37e8519c412e76d2dd2172083a68732021f0b4637a766a38",
+            "archive": "tar.gz",
+            "executablePath": "jvm-decoder/main.js"
+          },
+          "linux-x64": {
+            "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/jvm-decoder-1.0.0.tar.gz",
+            "sha256": "33324391bb7d604c37e8519c412e76d2dd2172083a68732021f0b4637a766a38",
+            "archive": "tar.gz",
+            "executablePath": "jvm-decoder/main.js"
+          },
+          "linux-arm64": {
+            "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/jvm-decoder-1.0.0.tar.gz",
+            "sha256": "33324391bb7d604c37e8519c412e76d2dd2172083a68732021f0b4637a766a38",
+            "archive": "tar.gz",
+            "executablePath": "jvm-decoder/main.js"
+          },
+          "win32-x64": {
+            "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/jvm-decoder-1.0.0.tar.gz",
+            "sha256": "33324391bb7d604c37e8519c412e76d2dd2172083a68732021f0b4637a766a38",
+            "archive": "tar.gz",
+            "executablePath": "jvm-decoder/main.js"
+          }
+        }
+      },
+      "contributes": {
+        "decoders": [
+          {
+            "id": "onixlabs.jvm-decoder",
+            "displayName": "JVM Bytecode Decoder",
+            "formats": ["jvm"],
+            "priority": 100,
+            "command": {
+              "kind": "node"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "onixlabs.wasm-decoder",
+      "name": "WebAssembly Decoder",
+      "description": "Shows the instructions inside WebAssembly modules, function by function.",
+      "version": "1.0.0",
+      "apiVersion": "1.4.0",
+      "detail": "Pure TypeScript, so it needs no toolchain installed.",
+      "provision": {
+        "kind": "archive",
+        "downloads": {
+          "darwin-arm64": {
+            "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/wasm-decoder-1.0.0.tar.gz",
+            "sha256": "93d8aaf2cf139d3811f44c780e92a3ba3316481a57078a2c2e77af3b7383a672",
+            "archive": "tar.gz",
+            "executablePath": "wasm-decoder/main.js"
+          },
+          "darwin-x64": {
+            "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/wasm-decoder-1.0.0.tar.gz",
+            "sha256": "93d8aaf2cf139d3811f44c780e92a3ba3316481a57078a2c2e77af3b7383a672",
+            "archive": "tar.gz",
+            "executablePath": "wasm-decoder/main.js"
+          },
+          "linux-x64": {
+            "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/wasm-decoder-1.0.0.tar.gz",
+            "sha256": "93d8aaf2cf139d3811f44c780e92a3ba3316481a57078a2c2e77af3b7383a672",
+            "archive": "tar.gz",
+            "executablePath": "wasm-decoder/main.js"
+          },
+          "linux-arm64": {
+            "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/wasm-decoder-1.0.0.tar.gz",
+            "sha256": "93d8aaf2cf139d3811f44c780e92a3ba3316481a57078a2c2e77af3b7383a672",
+            "archive": "tar.gz",
+            "executablePath": "wasm-decoder/main.js"
+          },
+          "win32-x64": {
+            "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/wasm-decoder-1.0.0.tar.gz",
+            "sha256": "93d8aaf2cf139d3811f44c780e92a3ba3316481a57078a2c2e77af3b7383a672",
+            "archive": "tar.gz",
+            "executablePath": "wasm-decoder/main.js"
+          }
+        }
+      },
+      "contributes": {
+        "decoders": [
+          {
+            "id": "onixlabs.wasm-decoder",
+            "displayName": "WebAssembly Decoder",
+            "formats": ["wasm"],
+            "priority": 100,
+            "command": {
+              "kind": "node"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "onixlabs.dotnet-decoder",
+      "name": ".NET IL Decoder",
+      "description": "Shows the IL inside managed .NET assemblies, method by method.",
+      "version": "1.0.0",
+      "apiVersion": "1.4.0",
+      "detail": "Reads ECMA-335 metadata, so it needs the whole assembly rather than the visible range. Needs the .NET runtime installed. Large assemblies are truncated to the first 2000 methods.",
+      "provision": {
+        "kind": "archive",
+        "downloads": {
+          "darwin-arm64": {
+            "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/dotnet-decoder-1.0.0-darwin-arm64.tar.gz",
+            "sha256": "0bac0110949cc017e71389b81a3579088657b746748aa184a254ef575dbc5384",
+            "archive": "tar.gz",
+            "executablePath": "dotnet-decoder/dotnet-decoder"
+          },
+          "darwin-x64": {
+            "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/dotnet-decoder-1.0.0-darwin-x64.tar.gz",
+            "sha256": "985fe1130173d182a0a61dbb0f6df0a8eec2644838e8367c37ea511841e07950",
+            "archive": "tar.gz",
+            "executablePath": "dotnet-decoder/dotnet-decoder"
+          },
+          "linux-x64": {
+            "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/dotnet-decoder-1.0.0-linux-x64.tar.gz",
+            "sha256": "88d5b267d14489eac6eaa6ad4e3cf73e1889bdabca12ab7e2ab4ed6b87f2daa3",
+            "archive": "tar.gz",
+            "executablePath": "dotnet-decoder/dotnet-decoder"
+          },
+          "linux-arm64": {
+            "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/dotnet-decoder-1.0.0-linux-arm64.tar.gz",
+            "sha256": "f3a1346f1a5bdb29e2ccec3b389a0dddef5643357144eeda9f23b220d0c29699",
+            "archive": "tar.gz",
+            "executablePath": "dotnet-decoder/dotnet-decoder"
+          },
+          "win32-x64": {
+            "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/dotnet-decoder-1.0.0-win32-x64.tar.gz",
+            "sha256": "c962f3a04b315f71f823764bdcfede7dc6dc671c1121daf76582b6ed72a68fec",
+            "archive": "tar.gz",
+            "executablePath": "dotnet-decoder/dotnet-decoder.exe"
+          }
+        }
+      },
+      "contributes": {
+        "decoders": [
+          {
+            "id": "onixlabs.dotnet-decoder",
+            "displayName": "ICSharpCode.Decompiler",
+            "formats": ["pe-managed"],
+            "priority": 100,
+            "command": {
+              "kind": "executable"
+            }
+          }
+        ]
+      },
+      "requires": [
+        {
+          "runtime": "dotnet"
+        }
+      ]
     }
   ]
 }
