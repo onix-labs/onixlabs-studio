@@ -10,6 +10,7 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { AssembleResult, DecodedInstruction } from '@shared/api/binary-channels';
+import { CodeListing, listingFromInstructions } from '@shared/api/code-listing';
 import { BinaryChunk, BinaryPatch } from '@shared/api/workspace-channels';
 import { FileConflicts } from '@shared/angular/services/file-conflicts/file-conflicts';
 import { FileWatch } from '@shared/angular/services/file-watch/file-watch';
@@ -220,6 +221,24 @@ export class BinaryDocumentEntry {
   public readonly instructions: WritableSignal<readonly DecodedInstruction[]> = signal<
     readonly DecodedInstruction[]
   >([]);
+
+  /**
+   * Holds the decoded instructions as a {@link CodeListing}, which is the contract the assembly panel
+   * consumes and the shape every decoder returns.
+   *
+   * Native disassembly is flat and offset-keyed, so it becomes a listing with one section — which is
+   * exactly why the listing contract wraps {@link DecodedInstruction} rather than replacing it. When
+   * the native path moves out of core into a decoder plugin, the producer changes and the panel does
+   * not.
+   */
+  public readonly listing: Signal<CodeListing | null> = computed((): CodeListing | null => {
+    const architecture: string | null = disassemblyArchitecture(this.format());
+    const decoded: readonly DecodedInstruction[] = this.instructions();
+    if (architecture === null || decoded.length === 0) {
+      return null;
+    }
+    return listingFromInstructions(decoded, architecture, this.path);
+  });
 
   /**
    * Holds disassembled ranges keyed by `arch:offset:length`, so re-visiting a range does not re-invoke

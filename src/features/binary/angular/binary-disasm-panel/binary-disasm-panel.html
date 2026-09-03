@@ -16,8 +16,8 @@
         (ready)="onReady()"
       />
     </div>
-    @if (!disassemblable()) {
-      <p class="disasm__empty">No native disassembly for this format.</p>
+    @if (emptyNote(); as note) {
+      <p class="disasm__empty">{{ note }}</p>
     }
   </div>
 </app-tool-panel>

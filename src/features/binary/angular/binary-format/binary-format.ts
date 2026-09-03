@@ -1,3 +1,5 @@
+import { decoderFormatKey } from '@shared/api/decoder-protocol';
+
 /**
  * Describes the container format and target architecture of a binary, sniffed from its header. Drives
  * which disassembly back-end a binary's bytes are handed to, and is surfaced in the status strip.
@@ -105,6 +107,40 @@ export function codeOffset(bytes: Uint8Array): number | null {
     return headerParagraphs === null ? null : headerParagraphs * 16;
   }
   return null;
+}
+
+/**
+ * Resolves the canonical decoder format key for a sniffed format, or null when the format is not one
+ * any decoder could claim (an unrecognised container, or a container whose architecture did not
+ * resolve).
+ *
+ * This is the join between what the sniffer detects and what a plugin's manifest claims, so both sides
+ * must spell it the same way — hence one function rather than two conventions. A managed PE is its own
+ * key rather than an architecture-bearing one: what decodes IL has nothing to do with the machine the
+ * assembly nominally targets.
+ * @param format The detected format.
+ * @returns Returns the format key, or null when nothing could decode it.
+ */
+export function formatKey(format: BinaryFormat): string | null {
+  switch (format.kind) {
+    case 'pe':
+      return format.managed
+        ? 'pe-managed'
+        : format.architecture === 'unknown'
+          ? null
+          : decoderFormatKey('pe', format.architecture);
+    case 'mz':
+      return decoderFormatKey('mz', format.architecture);
+    case 'elf':
+    case 'macho':
+      return format.architecture === 'unknown'
+        ? null
+        : decoderFormatKey(format.kind, format.architecture);
+    case 'jvm':
+      return decoderFormatKey('jvm');
+    case 'unknown':
+      return null;
+  }
 }
 
 /**
