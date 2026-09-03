@@ -7,46 +7,104 @@
   (closed)="closed.emit()"
 >
   <div class="generated__body">
-    @if (state(); as result) {
-      @switch (result.kind) {
-        @case ('listing') {
-          @if (result.stale) {
-            <p class="generated__note generated__note--warn">
-              <app-icon [icon]="Icon.WARNING" />
-              This source is newer than the build. Rebuild to see current output.
+    <!-- The mode and tier are controls rather than settings: the same method is markedly different
+         code at each tier, so which one is on screen has to be visible and switchable here. -->
+    <div class="generated__modes">
+      <app-button
+        [variant]="mode() === 'static' ? 'solid' : 'none'"
+        size="small"
+        label="Compiled"
+        (click)="setMode('static')"
+      />
+      <app-button
+        [variant]="mode() === 'jit' ? 'solid' : 'none'"
+        size="small"
+        label="JIT"
+        (click)="setMode('jit')"
+      />
+      @if (mode() === 'jit') {
+        <span class="generated__spacer"></span>
+        <app-button
+          [variant]="tier() === 'full-opts' ? 'solid' : 'none'"
+          size="small"
+          label="Optimised"
+          [disabled]="capturing()"
+          (click)="setTier('full-opts')"
+        />
+        <app-button
+          [variant]="tier() === 'tier0' ? 'solid' : 'none'"
+          size="small"
+          label="Tier 0"
+          [disabled]="capturing()"
+          (click)="setTier('tier0')"
+        />
+      }
+    </div>
+
+    @if (mode() === 'jit') {
+      @if (capturing()) {
+        <p class="generated__note">Running the program to see what the JIT generates…</p>
+      } @else if (jitError(); as message) {
+        <p class="generated__note">{{ message }}</p>
+      } @else {
+        @if (jitStopped()) {
+          <p class="generated__note generated__note--warn">
+            <app-icon [icon]="Icon.WARNING" />
+            The program was stopped after 20 seconds. This is what it produced before then.
+          </p>
+        }
+        <div class="generated__editor">
+          <app-text-editor
+            [content]="content().text"
+            [language]="ASM_LANGUAGE_ID"
+            [readOnly]="true"
+            [options]="editorOptions"
+            (ready)="onReady()"
+          />
+        </div>
+      }
+    } @else {
+      @if (state(); as result) {
+        @switch (result.kind) {
+          @case ('listing') {
+            @if (result.stale) {
+              <p class="generated__note generated__note--warn">
+                <app-icon [icon]="Icon.WARNING" />
+                This source is newer than the build. Rebuild to see current output.
+              </p>
+            }
+            @if (!result.matched) {
+              <p class="generated__note">Nothing in the build came from this file.</p>
+            }
+            <div class="generated__editor">
+              <app-text-editor
+                [content]="content().text"
+                [language]="ASM_LANGUAGE_ID"
+                [readOnly]="true"
+                [options]="editorOptions"
+                (ready)="onReady()"
+              />
+            </div>
+          }
+          @case ('not-built') {
+            <p class="generated__note">
+              This project hasn't been built yet. Build it to see what this file compiles to.
             </p>
           }
-          @if (!result.matched) {
-            <p class="generated__note">Nothing in the build came from this file.</p>
+          @case ('no-decoder') {
+            <p class="generated__note">
+              No decoder is installed for this build output. Install one under Plugins.
+            </p>
           }
-          <div class="generated__editor">
-            <app-text-editor
-              [content]="content().text"
-              [language]="ASM_LANGUAGE_ID"
-              [readOnly]="true"
-              [options]="editorOptions"
-              (ready)="onReady()"
-            />
-          </div>
+          @default {
+            <p class="generated__note">Studio can't work out what this file compiles into.</p>
+          }
         }
-        @case ('not-built') {
-          <p class="generated__note">
-            This project hasn't been built yet. Build it to see what this file compiles to.
-          </p>
-        }
-        @case ('no-decoder') {
-          <p class="generated__note">
-            No decoder is installed for this build output. Install one under Plugins.
-          </p>
-        }
-        @default {
-          <p class="generated__note">Studio can't work out what this file compiles into.</p>
-        }
+      } @else if (loading()) {
+        <p class="generated__note">Reading the build output…</p>
+      } @else {
+        <p class="generated__note">Open a source file to see what it compiles to.</p>
       }
-    } @else if (loading()) {
-      <p class="generated__note">Reading the build output…</p>
-    } @else {
-      <p class="generated__note">Open a source file to see what it compiles to.</p>
     }
   </div>
 </app-tool-panel>

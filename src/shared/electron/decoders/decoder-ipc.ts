@@ -8,6 +8,8 @@ import { logger } from '../logger';
 import { DecoderDescriptor } from './decoder-descriptor';
 import { DecoderRegistry } from './decoder-registry';
 import { Decoders } from './decoders';
+import { JitCaptureResult } from '@shared/api/jit-capture';
+import { JitCapture } from './jit-capture';
 
 /**
  * Hosts the decoder registry and answers the renderer's decode requests.
@@ -26,6 +28,11 @@ export class DecoderHost {
    * Holds the running decoders.
    */
   private readonly decoders: Decoders = new Decoders(this.registry);
+
+  /**
+   * Holds the JIT capture, which runs a program rather than decoding a file.
+   */
+  private readonly jit: JitCapture = new JitCapture();
 
   /**
    * Registers every contributed decoder and the decode IPC handler.
@@ -53,6 +60,16 @@ export class DecoderHost {
     );
 
     ipcMain.handle(
+      BinaryChannel.JitCapture,
+      (
+        _event: IpcMainInvokeEvent,
+        assemblyPath: unknown,
+        methodPattern: unknown,
+        tier: unknown,
+      ): Promise<JitCaptureResult> => this.captureJit(assemblyPath, methodPattern, tier),
+    );
+
+    ipcMain.handle(
       BinaryChannel.DecodeListing,
       (
         _event: IpcMainInvokeEvent,
@@ -65,6 +82,29 @@ export class DecoderHost {
       ): Promise<CodeListing | null> =>
         this.decode(format, bytes, baseOffset, totalSize, path, companions),
     );
+  }
+
+  /**
+   * Validates a JIT capture request and runs it.
+   *
+   * The assembly must be one the workspace already resolved, so this cannot be aimed at an arbitrary
+   * executable: the renderer only ever passes back a path the project system gave it.
+   * @param assemblyPath The assembly to run.
+   * @param methodPattern The JitDisasm method pattern.
+   * @param tier The optimisation tier.
+   * @returns Returns the capture result.
+   */
+  private captureJit(
+    assemblyPath: unknown,
+    methodPattern: unknown,
+    tier: unknown,
+  ): Promise<JitCaptureResult> {
+    if (typeof assemblyPath !== 'string' || assemblyPath.length === 0) {
+      return Promise.resolve({ ok: false, error: 'No assembly to run.' });
+    }
+    const pattern: string =
+      typeof methodPattern === 'string' && methodPattern.length > 0 ? methodPattern : '*';
+    return this.jit.capture(assemblyPath, pattern, tier === 'tier0' ? 'tier0' : 'full-opts');
   }
 
   /**

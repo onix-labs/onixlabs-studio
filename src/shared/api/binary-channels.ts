@@ -27,6 +27,14 @@ export enum BinaryChannel {
    * it is.
    */
   DecoderInfo = 'binary:decoder-info',
+
+  /**
+   * Runs an assembly with JIT disassembly enabled and returns what the JIT generated (invoke).
+   *
+   * Unlike every other channel here this *executes* the program: JIT assembly is not a decode, and
+   * there is no way to obtain it without running the code that provokes it.
+   */
+  JitCapture = 'binary:jit-capture',
 }
 
 /**

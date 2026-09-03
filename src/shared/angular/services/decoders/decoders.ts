@@ -3,6 +3,7 @@ import { Bridge } from '@shared/api/bridge';
 import { BinaryChannel } from '@shared/api/binary-channels';
 import { CodeListing } from '@shared/api/code-listing';
 import { DecoderDescription } from '@shared/api/decoder-protocol';
+import { JitCaptureResult } from '@shared/api/jit-capture';
 import { Log } from '@shared/angular/services/log/log';
 
 /**
@@ -83,6 +84,37 @@ export class Decoders {
     } catch (error: unknown) {
       this.log.debug('decoders', 'Decoder request failed', error);
       return null;
+    }
+  }
+
+  /**
+   * Runs an assembly with JIT disassembly enabled and returns what the JIT generated.
+   *
+   * Unlike everything else here this executes the program: JIT assembly is not a decode, and there is
+   * no way to obtain it without running the code that provokes it.
+   * @param assemblyPath The assembly to run.
+   * @param methodPattern The JitDisasm method pattern.
+   * @param tier The optimisation tier to ask for.
+   * @returns Returns the capture result, or a failure when the bridge is absent.
+   */
+  public async captureJit(
+    assemblyPath: string,
+    methodPattern: string,
+    tier: 'tier0' | 'full-opts',
+  ): Promise<JitCaptureResult> {
+    if (this.bridge === undefined) {
+      return { ok: false, error: 'JIT capture needs the desktop application.' };
+    }
+    try {
+      return await this.bridge.invoke<JitCaptureResult>(
+        BinaryChannel.JitCapture,
+        assemblyPath,
+        methodPattern,
+        tier,
+      );
+    } catch (error: unknown) {
+      this.log.debug('decoders', 'JIT capture failed', error);
+      return { ok: false, error: 'The JIT capture could not be started.' };
     }
   }
 }

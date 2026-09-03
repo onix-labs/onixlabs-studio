@@ -28,3 +28,16 @@
   gap: 0.4rem;
   color: var(--status-warning-color, var(--text-color));
 }
+
+.generated__modes {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.5rem 0.6rem;
+  border-block-end: 1px solid var(--form-border-color);
+}
+
+.generated__spacer {
+  flex: 1;
+}

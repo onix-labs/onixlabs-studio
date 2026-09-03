@@ -15,6 +15,7 @@ import {
 } from '@angular/core';
 import type * as MonacoApi from 'monaco-editor';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { Button } from '@shared/angular/components/forms/button/button';
 import { TextEditor } from '@shared/angular/components/text-editor/text-editor';
 import { ToolPanel } from '@shared/angular/components/panels/tool-panel/tool-panel';
 import { Icon } from '@shared/angular/icons/icon';
@@ -26,6 +27,9 @@ import {
   EMPTY_CONTENT,
   lineForSourceLine,
 } from '@shared/angular/services/decoders/listing-content';
+import { CodeListing, ListingSection } from '@shared/api/code-listing';
+import { JitCaptureResult, JitTier } from '@shared/api/jit-capture';
+import { Decoders } from '@shared/angular/services/decoders/decoders';
 import {
   GeneratedCode,
   GeneratedCodeResolver,
@@ -39,7 +43,7 @@ import {
  */
 @Component({
   selector: 'app-code-generated-panel',
-  imports: [ToolPanel, TextEditor, AppIcon],
+  imports: [ToolPanel, TextEditor, AppIcon, Button],
   templateUrl: './code-generated-panel.html',
   styleUrl: './code-generated-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -54,6 +58,11 @@ export class CodeGeneratedPanel {
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds the shared decoder client, used here for the JIT capture.
+   */
+  private readonly decoders: Decoders = inject(Decoders);
 
   /**
    * Gets the icon set, exposed for the template.
@@ -117,9 +126,53 @@ export class CodeGeneratedPanel {
    * Holds the rendered listing text and its line map.
    */
   protected readonly content: Signal<DisasmContent> = computed((): DisasmContent => {
+    if (this.mode() === 'jit') {
+      const captured: JitCaptureResult | null = this.jit();
+      return captured?.ok === true ? buildContent(captured.listing) : EMPTY_CONTENT;
+    }
     const result: GeneratedCode | null = this.state();
     return result?.kind === 'listing' ? buildContent(result.listing) : EMPTY_CONTENT;
   });
+
+  /**
+   * Holds the JIT capture's failure text, when the last capture produced none.
+   */
+  protected readonly jitError: Signal<string | null> = computed((): string | null => {
+    const captured: JitCaptureResult | null = this.jit();
+    return captured === null || captured.ok ? null : captured.error;
+  });
+
+  /**
+   * Holds whether the captured program had to be stopped before it exited.
+   */
+  protected readonly jitStopped: Signal<boolean> = computed((): boolean => {
+    const captured: JitCaptureResult | null = this.jit();
+    return captured !== null && captured.ok && captured.stopped;
+  });
+
+  /**
+   * Holds which listing the panel is showing: what the compiler produced, or what the JIT did.
+   */
+  protected readonly mode: WritableSignal<'static' | 'jit'> = signal<'static' | 'jit'>('static');
+
+  /**
+   * Holds the optimisation tier the JIT capture asks for. A control rather than a setting: the same
+   * method is markedly different code at each tier.
+   */
+  protected readonly tier: WritableSignal<JitTier> = signal<JitTier>('full-opts');
+
+  /**
+   * Holds the JIT capture's outcome, or null before one has run for this file.
+   */
+  protected readonly jit: WritableSignal<JitCaptureResult | null> = signal<JitCaptureResult | null>(
+    null,
+  );
+
+  /**
+   * Holds whether a JIT capture is running, which takes seconds rather than milliseconds because it
+   * runs the program.
+   */
+  protected readonly capturing: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
    * Holds the resolution token, so an answer for a file the user has already navigated away from is
@@ -167,6 +220,55 @@ export class CodeGeneratedPanel {
   }
 
   /**
+   * Switches between the compiler's output and the JIT's, capturing on first switch.
+   * @param mode The mode to show.
+   */
+  protected setMode(mode: 'static' | 'jit'): void {
+    this.mode.set(mode);
+    if (mode === 'jit' && this.jit() === null) {
+      void this.captureJit();
+    }
+  }
+
+  /**
+   * Re-runs the JIT capture, for the tier control and the retry button.
+   * @param tier The tier to ask for.
+   */
+  protected setTier(tier: JitTier): void {
+    this.tier.set(tier);
+    void this.captureJit();
+  }
+
+  /**
+   * Runs the program and captures what the JIT generated for this file's methods.
+   *
+   * Captures everything the JIT compiled and then narrows to the methods this file produced, taken
+   * from the static listing — the JIT names methods its own way, and matching on those names is more
+   * reliable than trying to express the file's methods as a JitDisasm pattern.
+   */
+  private async captureJit(): Promise<void> {
+    const result: GeneratedCode | null = this.state();
+    if (result?.kind !== 'listing') {
+      return;
+    }
+    this.capturing.set(true);
+    try {
+      const captured: JitCaptureResult = await this.decoders.captureJit(
+        result.artifactPath,
+        '*',
+        this.tier(),
+      );
+      this.jit.set(
+        captured.ok
+          ? { ...captured, listing: narrowToMethods(captured.listing, result.listing) }
+          : captured,
+      );
+    } finally {
+      this.capturing.set(false);
+    }
+  }
+
+  /**
    * Resolves and decodes the generated code for a source file.
    * @param path The source file, or null when there is none.
    */
@@ -176,6 +278,7 @@ export class CodeGeneratedPanel {
       return;
     }
     const current: number = (this.token += 1);
+    this.jit.set(null);
     this.loading.set(true);
     try {
       const result: GeneratedCode = await this.resolver.resolve(path);
@@ -189,4 +292,38 @@ export class CodeGeneratedPanel {
       }
     }
   }
+}
+
+/**
+ * Narrows a JIT listing to the methods a static listing says came from the open file.
+ *
+ * The JIT names a method `Type:Method(args):ret` while the static listing names it `Type.Method`, so
+ * they are compared on the method name alone. Coarse, but the alternative — trusting the JIT to have
+ * compiled only what was asked for — is worse: a JitDisasm pattern matches by substring and would
+ * quietly include unrelated methods.
+ * @param jit The captured JIT listing.
+ * @param staticListing The static listing for the open file.
+ * @returns Returns the narrowed listing, or the whole capture when nothing matched.
+ */
+function narrowToMethods(jit: CodeListing, staticListing: CodeListing): CodeListing {
+  const wanted: ReadonlySet<string> = new Set<string>(
+    staticListing.sections.map((section: ListingSection): string => methodName(section.title)),
+  );
+  const matched: readonly ListingSection[] = jit.sections.filter(
+    (section: ListingSection): boolean => wanted.has(methodName(section.title)),
+  );
+  // Nothing matched means the JIT compiled none of this file's methods during the run — which is
+  // itself worth showing, so the whole capture is kept rather than an empty listing.
+  return matched.length === 0 ? jit : { ...jit, sections: matched };
+}
+
+/**
+ * Extracts a bare method name from either naming convention.
+ * @param title The section title.
+ * @returns Returns the method name.
+ */
+function methodName(title: string): string {
+  const withoutArgs: string = title.split('(')[0];
+  const parts: readonly string[] = withoutArgs.split(/[.:]/);
+  return parts[parts.length - 1] ?? withoutArgs;
 }
