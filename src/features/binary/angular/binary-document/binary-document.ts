@@ -11,6 +11,7 @@ import {
 } from '@angular/core';
 import { AssembleResult, DecodedInstruction } from '@shared/api/binary-channels';
 import { CodeListing, listingFromInstructions } from '@shared/api/code-listing';
+import { DecoderDescription } from '@shared/api/decoder-protocol';
 import { BinaryChunk, BinaryPatch } from '@shared/api/workspace-channels';
 import { FileConflicts } from '@shared/angular/services/file-conflicts/file-conflicts';
 import { FileWatch } from '@shared/angular/services/file-watch/file-watch';
@@ -32,6 +33,15 @@ import {
   formatKey,
   sniffFormat,
 } from '../binary-format/binary-format';
+
+/**
+ * Specifies the largest file that will be sent whole to a decoder that needs it all.
+ *
+ * A metadata decoder cannot work from a window, so the alternative to sending everything is showing
+ * nothing. Assemblies are small; this is a guard against a pathological file rather than a limit
+ * anyone should meet.
+ */
+const MAX_WHOLE_FILE_DECODE: number = 64 * 1024 * 1024;
 
 /**
  * Specifies the size, in bytes, of each block fetched and cached from a file. A multiple of the row
@@ -254,6 +264,13 @@ export class BinaryDocumentEntry {
   private readonly pluginListing: WritableSignal<CodeListing | null> = signal<CodeListing | null>(
     null,
   );
+
+  /**
+   * Holds the edit version whose whole-file decode has been requested, so scrolling a managed assembly
+   * does not re-send the entire file on every viewport movement. Reset to -1 on failure so a later
+   * attempt retries.
+   */
+  private wholeFileDecodeVersion: number = -1;
 
   /**
    * Holds disassembled ranges keyed by `arch:offset:length`, so re-visiting a range does not re-invoke
@@ -582,13 +599,7 @@ export class BinaryDocumentEntry {
       // A decoder plugin is asked whenever the format has a key — and for a format the in-core path
       // cannot handle at all, it is the only thing asked.
       if (formatSlot !== null) {
-        void this.disassembly
-          .decodeListing(formatSlot, window.bytes, window.base, this.size(), this.path)
-          .then((listing: CodeListing | null): void => {
-            if (token === this.disassemblyToken && listing !== null) {
-              this.pluginListing.set(listing);
-            }
-          });
+        void this.decodeWithPlugin(formatSlot, window, token);
       }
       if (architecture === null) {
         return;
@@ -608,6 +619,66 @@ export class BinaryDocumentEntry {
           }
         });
     }, DISASSEMBLY_DEBOUNCE_MS);
+  }
+
+  /**
+   * Decodes a range with a decoder plugin, sending the whole file when the decoder needs it.
+   *
+   * A metadata format cannot be read from a viewport window at all — the tables that locate a method
+   * body are spread across the file — so those decoders are given everything, once, rather than a
+   * slice per scroll. The result is cached against the edit version, so scrolling a managed assembly
+   * costs one decode rather than one per movement.
+   * @param format The canonical format key.
+   * @param window The padded viewport window, used by windowed decoders.
+   * @param token The request token, so a result arriving after the viewport moved on is discarded.
+   */
+  private async decodeWithPlugin(
+    format: string,
+    window: { bytes: Uint8Array; base: number },
+    token: number,
+  ): Promise<void> {
+    const info: DecoderDescription | null = await this.disassembly.decoderInfo(format);
+    if (info === null) {
+      return;
+    }
+    if (!info.requiresWholeFile) {
+      const listing: CodeListing | null = await this.disassembly.decodeListing(
+        format,
+        window.bytes,
+        window.base,
+        this.size(),
+        this.path,
+      );
+      if (token === this.disassemblyToken && listing !== null) {
+        this.pluginListing.set(listing);
+      }
+      return;
+    }
+    // Whole-file decoders answer for the entire file at once, so the answer does not change as the
+    // viewport moves — only when the bytes do.
+    const version: number = this.editsVersion();
+    if (this.wholeFileDecodeVersion === version) {
+      return;
+    }
+    const size: number = this.size();
+    if (size > MAX_WHOLE_FILE_DECODE) {
+      return;
+    }
+    this.wholeFileDecodeVersion = version;
+    const bytes: number[] = await this.readBytes(0, size);
+    const listing: CodeListing | null = await this.disassembly.decodeListing(
+      format,
+      new Uint8Array(bytes),
+      0,
+      size,
+      this.path,
+    );
+    if (listing !== null) {
+      this.pluginListing.set(listing);
+    } else {
+      // Let a later attempt retry rather than caching a failure forever.
+      this.wholeFileDecodeVersion = -1;
+    }
   }
 
   /**

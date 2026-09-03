@@ -1,0 +1,54 @@
+{
+  "id": "onixlabs.dotnet-decoder",
+  "name": ".NET IL Decoder",
+  "description": "Shows the IL inside managed .NET assemblies, method by method.",
+  "version": "1.0.0",
+  "apiVersion": "1.4.0",
+  "detail": "Reads ECMA-335 metadata, so it needs the whole assembly rather than the visible range. Large assemblies are truncated to the first 2000 methods.",
+  "provision": {
+    "kind": "archive",
+    "downloads": {
+      "darwin-arm64": {
+        "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/dotnet-decoder-1.0.0-darwin-arm64.tar.gz",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "archive": "tar.gz",
+        "executablePath": "dotnet-decoder/dotnet-decoder"
+      },
+      "darwin-x64": {
+        "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/dotnet-decoder-1.0.0-darwin-x64.tar.gz",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "archive": "tar.gz",
+        "executablePath": "dotnet-decoder/dotnet-decoder"
+      },
+      "linux-x64": {
+        "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/dotnet-decoder-1.0.0-linux-x64.tar.gz",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "archive": "tar.gz",
+        "executablePath": "dotnet-decoder/dotnet-decoder"
+      },
+      "linux-arm64": {
+        "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/dotnet-decoder-1.0.0-linux-arm64.tar.gz",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "archive": "tar.gz",
+        "executablePath": "dotnet-decoder/dotnet-decoder"
+      },
+      "win32-x64": {
+        "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/dotnet-decoder-1.0.0-win32-x64.tar.gz",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "archive": "tar.gz",
+        "executablePath": "dotnet-decoder/dotnet-decoder.exe"
+      }
+    }
+  },
+  "contributes": {
+    "decoders": [
+      {
+        "id": "onixlabs.dotnet-decoder",
+        "displayName": "ICSharpCode.Decompiler",
+        "formats": ["pe-managed"],
+        "priority": 100,
+        "command": { "kind": "executable" }
+      }
+    ]
+  }
+}

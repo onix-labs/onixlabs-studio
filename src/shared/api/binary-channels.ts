@@ -26,6 +26,14 @@ export enum BinaryChannel {
    * offset. Answers null when no decoder for the format is installed.
    */
   DecodeListing = 'binary:decode-listing',
+
+  /**
+   * Reports what the decoder for a format is, starting it if needed (invoke). Answers null when no
+   * decoder for the format is installed. The renderer needs this before it decodes: a decoder that
+   * requires the whole file cannot be given a viewport-sized window, and only the decoder knows which
+   * it is.
+   */
+  DecoderInfo = 'binary:decoder-info',
 }
 
 /**

@@ -1,4 +1,5 @@
 import { CodeListing } from '@shared/api/code-listing';
+import { DecoderDescription } from '@shared/api/decoder-protocol';
 import { logger } from '../logger';
 import { DecoderClient } from './decoder-client';
 import { DecoderDescriptor, DecoderResolution } from './decoder-descriptor';
@@ -58,6 +59,19 @@ export class Decoders {
   ): Promise<CodeListing | null> {
     const client: DecoderClient | null = await this.clientFor(format);
     return client === null ? null : client.decode(format, bytes, baseOffset, totalSize, path);
+  }
+
+  /**
+   * Gets what the decoder for a format is, starting it if it is not already running.
+   *
+   * Starting it is the point: whether a decoder needs the whole file rather than a window is something
+   * only the decoder can say, and the caller has to know before it decides what to send.
+   * @param format The canonical format key.
+   * @returns Returns the decoder's description, or null when none is installed or it failed to start.
+   */
+  public async info(format: string): Promise<DecoderDescription | null> {
+    const client: DecoderClient | null = await this.clientFor(format);
+    return client?.describe() ?? null;
   }
 
   /**

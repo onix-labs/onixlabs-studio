@@ -1,6 +1,7 @@
 import { ipcMain, IpcMainInvokeEvent } from 'electron';
 import { BinaryChannel } from '@shared/api/binary-channels';
 import { CodeListing } from '@shared/api/code-listing';
+import { DecoderDescription } from '@shared/api/decoder-protocol';
 import { contributedDecoders } from '../contributions/plugins/contributed';
 import { NodeRuntimeSpec } from '../contributions/plugins/plugin-loader';
 import { logger } from '../logger';
@@ -41,6 +42,14 @@ export class DecoderHost {
         : `Registered ${registered.length} decoder(s): ${registered
             .map((descriptor: DecoderDescriptor): string => descriptor.id)
             .join(', ')}`,
+    );
+
+    ipcMain.handle(
+      BinaryChannel.DecoderInfo,
+      (_event: IpcMainInvokeEvent, format: unknown): Promise<DecoderDescription | null> =>
+        typeof format === 'string' && format.length > 0
+          ? this.decoders.info(format)
+          : Promise.resolve(null),
     );
 
     ipcMain.handle(

@@ -2,6 +2,7 @@ import { inject, Service } from '@angular/core';
 import { Bridge } from '@shared/api/bridge';
 import { BinaryChannel, DecodedInstruction } from '@shared/api/binary-channels';
 import { CodeListing } from '@shared/api/code-listing';
+import { DecoderDescription } from '@shared/api/decoder-protocol';
 import { Log } from '@shared/angular/services/log/log';
 
 /**
@@ -91,6 +92,26 @@ export class BinaryDisassembly {
       );
     } catch (error: unknown) {
       this.log.debug('binary.disassembly', 'Decoder request failed', error);
+      return null;
+    }
+  }
+
+  /**
+   * Reports what the decoder for a format is, or null when none is installed.
+   *
+   * Asked before decoding, because a decoder that needs the whole file cannot be handed a viewport
+   * window and only the decoder knows which kind it is.
+   * @param format The canonical decoder format key.
+   * @returns Returns the decoder's description, or null.
+   */
+  public async decoderInfo(format: string): Promise<DecoderDescription | null> {
+    if (this.bridge === undefined) {
+      return null;
+    }
+    try {
+      return await this.bridge.invoke<DecoderDescription | null>(BinaryChannel.DecoderInfo, format);
+    } catch (error: unknown) {
+      this.log.debug('binary.disassembly', 'Decoder info request failed', error);
       return null;
     }
   }
