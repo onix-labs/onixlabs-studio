@@ -322,6 +322,33 @@ describe('AgentRibbon', () => {
     expect(tailRequests).toBe(0);
   });
 
+  it('scrollButtons_whenChatEmpty_areDisabled', () => {
+    // With no messages every jump lands in the same empty place, so offering them offers nothing.
+    hasMessages.set(false);
+    fixture.detectChanges();
+
+    expect(button('Scroll to Top').disabled).toBe(true);
+    expect(button('Last Prompt').disabled).toBe(true);
+    expect(button('Scroll to Bottom').disabled).toBe(true);
+  });
+
+  it('scrollButtons_onceTheChatHasMessages_areEnabled', () => {
+    hasMessages.set(true);
+    fixture.detectChanges();
+
+    expect(button('Scroll to Top').disabled).toBe(false);
+    expect(button('Last Prompt').disabled).toBe(false);
+    expect(button('Scroll to Bottom').disabled).toBe(false);
+  });
+
+  it('history_isNotGatedOnMessages_becauseItListsPastConversations', () => {
+    // History shows other conversations, which exist whether or not this one has started.
+    hasMessages.set(false);
+    fixture.detectChanges();
+
+    expect(button('History').disabled).toBe(false);
+  });
+
   it('mode_whenChanged_setsTheChosenMode', () => {
     const select: HTMLSelectElement = field('Mode');
     expect(select.value).toBe('Full agent');

@@ -23,6 +23,7 @@ import { Icon } from '@shared/angular/icons/icon';
 import { DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { RibbonHost } from '@shared/angular/components/ribbon-strip/ribbon-host/ribbon-host';
 import { RibbonStripButton } from '@shared/angular/components/ribbon-strip/ribbon-strip-button/ribbon-strip-button';
+import { RibbonStripButtonSmall } from '@shared/angular/components/ribbon-strip/ribbon-strip-button-small/ribbon-strip-button-small';
 import { RibbonStripColumn } from '@shared/angular/components/ribbon-strip/ribbon-strip-column/ribbon-strip-column';
 import { RibbonStripField } from '@shared/angular/components/ribbon-strip/ribbon-strip-field/ribbon-strip-field';
 import { RibbonStripGroup } from '@shared/angular/components/ribbon-strip/ribbon-strip-group/ribbon-strip-group';
@@ -46,6 +47,7 @@ import { AgentRemoteModal } from '@shared/angular/components/agent-remote-modal/
     RibbonStripGroup,
     RibbonStripColumn,
     RibbonStripButton,
+    RibbonStripButtonSmall,
     RibbonStripField,
     AgentRemoteModal,
   ],
