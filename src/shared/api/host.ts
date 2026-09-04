@@ -5,9 +5,25 @@
 // process before the window was created. Keep this module platform-neutral (types only).
 
 /**
+ * Identifies how much of the GPU rendering path the interface uses — one ladder replacing what were
+ * three independent dials (hardware acceleration, modern UI features, workspace texture), because
+ * the lower rungs only ever made sense together:
+ *
+ * - `off` — hardware acceleration disabled, so every pixel is rasterised on the CPU. The modern
+ *   features and the workspace texture are the most expensive things to rasterise, so they go too.
+ * - `limited` — hardware accelerated, but without the squircle corner masks, the heavier decorative
+ *   effects or the workspace texture. For GPUs that render those poorly or corrupt them.
+ * - `full` — hardware accelerated with every visual feature available.
+ * - `auto` — resolves to `limited` or `full` at startup from the GPU the main process detected. It
+ *   never resolves to `off`: turning acceleration off is a troubleshooting escape hatch for broken
+ *   drivers, which cannot be detected before the fact.
+ */
+export type GraphicsAcceleration = 'auto' | 'off' | 'limited' | 'full';
+
+/**
  * Describes the GPU-derived rendering recommendation resolved by the main process at startup. The
- * renderer uses it to seed (and explain) the "modern UI features" setting when that setting is left
- * on its automatic mode.
+ * renderer uses it to resolve (and explain) the graphics-acceleration setting when that setting is
+ * left on its automatic mode.
  */
 export interface GpuRenderingInfo {
   /**
@@ -36,8 +52,17 @@ export interface DisplayStartup {
   readonly gpuRendering: GpuRenderingInfo;
 
   /**
-   * Gets a value indicating whether GPU hardware acceleration is enabled for this launch (the
-   * persisted preference applied before the app became ready).
+   * Gets the persisted graphics-acceleration level, or null when none has been persisted yet — a
+   * first run, or an installation last written before the setting was merged. The renderer resolves
+   * null by migrating the pre-merge choices, then persists the result.
+   */
+  readonly graphicsAcceleration: GraphicsAcceleration | null;
+
+  /**
+   * Gets a value indicating whether GPU hardware acceleration is enabled for this launch. This is
+   * what the main process actually applied, which is not always what the level implies: the
+   * `STUDIO_DISABLE_GPU` diagnostic forces it off regardless. The restart prompt compares against
+   * this rather than the persisted level, so it reflects the running process.
    */
   readonly hardwareAccelerationEnabled: boolean;
 }

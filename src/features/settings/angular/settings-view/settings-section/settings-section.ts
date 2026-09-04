@@ -62,8 +62,11 @@ export class SettingsSection {
    * Determines whether a setting's condition is met, so a setting that qualifies another appears only
    * while it has something to qualify. Reads the depended-on value through the binding layer rather
    * than the settings store directly, so the condition can name a foreign-owned setting (the
-   * hardware-acceleration preference, for one) as readily as a stored one. The read is reactive, so
-   * the row appears and disappears as that setting changes.
+   * graphics-acceleration level, for one) as readily as a stored one. The read is reactive, so the
+   * row appears and disappears as that setting changes.
+   *
+   * Where the binding offers a resolved value, that is what the condition tests: a setting qualified
+   * on a specific level has to follow the level actually in force, not an automatic mode's name.
    * @param setting The setting definition.
    * @returns Returns true when the setting should be rendered.
    */
@@ -73,7 +76,7 @@ export class SettingsSection {
 
     const dependency: SettingDef | undefined = SETTINGS_BY_KEY.get(condition.key);
     const binding: SettingBinding = this.bindings.resolve(condition.key, dependency?.owner);
-    return condition.equals.includes(binding.value());
+    return condition.equals.includes((binding.resolvedValue ?? binding.value)());
   }
 
   /**

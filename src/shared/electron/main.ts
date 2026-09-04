@@ -73,6 +73,7 @@ import {
 import { PrintManager } from '@shared/electron/print-manager';
 import { SecurityManager } from '@shared/electron/security-manager';
 import { hydrateLoginShellEnvironment } from '@shared/electron/shell-env';
+import type { GraphicsAcceleration } from '@shared/api/host';
 import { StartupPreferences, StartupPreferencesStore } from './startup-preferences';
 import { GitManager } from '@shared/electron/git-manager';
 import { SearchManager } from '@shared/electron/search-manager';
@@ -223,8 +224,8 @@ class Program {
   /**
    * Holds the GPU-derived rendering recommendation, resolved from the active GPU (or the
    * STUDIO_CORNERS override) at startup, before the window is created, and reported synchronously to
-   * the preload on request. The renderer uses it to seed the "modern UI features" setting and its
-   * hint when that setting is on its automatic mode.
+   * the preload on request. The renderer uses it to resolve the graphics-acceleration setting and
+   * its hint when that setting is on its automatic mode.
    */
   private gpuRendering: { recommendReducedEffects: boolean; description: string } = {
     recommendReducedEffects: false,
@@ -232,8 +233,16 @@ class Program {
   };
 
   /**
-   * Holds whether GPU hardware acceleration is enabled for this launch, mirroring the persisted
-   * startup preference so the preload can report it to the settings UI.
+   * Holds the persisted graphics-acceleration level (null when none has been persisted), read before
+   * the app is ready and reported to the preload so the renderer resolves the same level this launch
+   * was configured with.
+   */
+  private graphicsAcceleration: GraphicsAcceleration | null = null;
+
+  /**
+   * Holds whether GPU hardware acceleration is enabled for this launch. Follows the level, except
+   * that the `STUDIO_DISABLE_GPU` diagnostic forces it off — so the renderer is told what actually
+   * happened rather than what was asked for.
    */
   private hardwareAccelerationEnabled: boolean = true;
 
@@ -519,8 +528,13 @@ class Program {
     // synchronously from the startup-preferences file (the renderer's settings store is unreachable
     // this early), and the STUDIO_DISABLE_GPU diagnostic switch forces it off regardless.
     const startupPreferences: StartupPreferences = StartupPreferencesStore.read();
-    this.hardwareAccelerationEnabled = startupPreferences.hardwareAcceleration;
-    if (!startupPreferences.hardwareAcceleration || process.env['STUDIO_DISABLE_GPU'] === '1') {
+    this.graphicsAcceleration = startupPreferences.graphicsAcceleration;
+    // An unpersisted level is accelerated: the renderer completes the migration and may then ask for
+    // a relaunch, which is the right way round — a first launch should not start degraded.
+    const wantsAcceleration: boolean = this.graphicsAcceleration !== 'off';
+    this.hardwareAccelerationEnabled =
+      wantsAcceleration && process.env['STUDIO_DISABLE_GPU'] !== '1';
+    if (!this.hardwareAccelerationEnabled) {
       app.disableHardwareAcceleration();
       this.logger.warn('startup', 'GPU hardware acceleration disabled');
     }
@@ -695,6 +709,7 @@ class Program {
       // Synchronous: every value was resolved before the window (and thus this preload) was created.
       event.returnValue = {
         gpuRendering: this.gpuRendering,
+        graphicsAcceleration: this.graphicsAcceleration,
         hardwareAccelerationEnabled: this.hardwareAccelerationEnabled,
         homeDir: os.homedir(),
         // The versions ride with the startup facts because only main can read the app's own version,
@@ -709,12 +724,16 @@ class Program {
     });
 
     ipcMain.handle(
-      AppChannel.SetHardwareAcceleration,
-      (_event: IpcMainInvokeEvent, enabled: unknown): void => {
-        if (typeof enabled !== 'boolean') {
+      AppChannel.SetGraphicsAcceleration,
+      (_event: IpcMainInvokeEvent, level: unknown): void => {
+        if (level !== 'auto' && level !== 'off' && level !== 'limited' && level !== 'full') {
           return;
         }
-        StartupPreferencesStore.write({ hardwareAcceleration: enabled });
+        // Kept current, not just persisted: on macOS the window can be closed and re-opened from the
+        // dock within the same process, and that new window's preload reads this field to bootstrap
+        // its rendering policy. Left at the startup value it would come back at the old level.
+        this.graphicsAcceleration = level;
+        StartupPreferencesStore.write({ graphicsAcceleration: level });
       },
     );
 

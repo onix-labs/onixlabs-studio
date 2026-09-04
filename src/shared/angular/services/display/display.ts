@@ -1,21 +1,40 @@
-import { DOCUMENT, effect, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import {
+  computed,
+  DOCUMENT,
+  effect,
+  inject,
+  Service,
+  signal,
+  Signal,
+  WritableSignal,
+} from '@angular/core';
 import { AppChannel } from '@shared/api/app-channels';
 import type { Bridge } from '@shared/api/bridge';
-import type { DisplayStartup } from '@shared/api/host';
-import { ModernUiFeatures, Settings } from '@shared/angular/services/settings/settings';
+import type { DisplayStartup, GraphicsAcceleration } from '@shared/api/host';
+import {
+  renderGraphicsAcceleration,
+  ResolvedGraphicsAcceleration,
+  resolveGraphicsAcceleration,
+  startupGraphicsAcceleration,
+  wantsHardwareAcceleration,
+} from './display-policy';
 
 /**
- * Represents the owner of the document's GPU-rendering display policy.
+ * Represents the owner of the graphics-acceleration policy: one ladder — off, limited, full, or the
+ * automatic mode that picks between the upper two from the GPU the main process detected — replacing
+ * what were three settings that only ever made sense in combination.
  *
- * It resolves the user's "modern UI features" choice against the GPU-derived recommendation reported
- * by the main process, and applies the result to the document root by an effect: when the modern
- * features are off, the `data-corners='round'` and `data-reduced-gpu` attributes the SCSS switches on
- * are set, falling the UI back to plain rounded corners and reduced decorative effects; when on, they
- * are removed. It also mediates the hardware-acceleration preference, which can only change after a
- * relaunch.
+ * It resolves the user's choice and applies the result to the document root by an effect. Below
+ * `full`, the `data-corners='round'` and `data-reduced-gpu` attributes the SCSS switches on are set,
+ * falling the UI back to plain rounded corners and reduced decorative effects; at `full` they are
+ * removed. The workspace texture is gated on the same resolved level (see `DockContainer`).
  *
- * Outside Electron (where `window.host`/`window.bridge` are undefined) the recommendation is "full
- * effects" and hardware acceleration reports enabled, so the browser-served build behaves as before.
+ * Only the `off` rung needs a relaunch, because hardware acceleration can only be toggled before the
+ * app is ready. The rest apply immediately, so moving between `limited` and `full` is instant and
+ * only the escape hatch costs a restart.
+ *
+ * Outside Electron (where `window.host`/`window.bridge` are undefined) the level resolves to `full`
+ * and hardware acceleration reports enabled, so the browser-served build behaves as before.
  */
 @Service()
 export class Display {
@@ -25,24 +44,19 @@ export class Display {
   private readonly document: Document = inject(DOCUMENT);
 
   /**
-   * Holds the settings service backing the modern-UI-features choice.
-   */
-  private readonly settings: Settings = inject(Settings);
-
-  /**
    * Holds the display startup snapshot from the static host object, or undefined outside Electron.
    */
   private readonly startup: DisplayStartup | undefined = window.host?.display;
 
   /**
-   * Holds the generic transport used to change the hardware-acceleration preference and relaunch, or
-   * undefined outside Electron.
+   * Holds the generic transport used to persist the level and relaunch, or undefined outside
+   * Electron.
    */
   private readonly bridge: Bridge | undefined = window.bridge;
 
   /**
-   * Gets whether the bridge is available (true when running inside Electron). Hardware acceleration
-   * can only be changed when it is.
+   * Gets whether the bridge is available (true when running inside Electron). The level can only be
+   * changed when it is, since it is persisted by the main process.
    */
   public readonly isAvailable: boolean = this.bridge !== undefined;
 
@@ -60,53 +74,81 @@ export class Display {
   public readonly gpuDescription: string = this.startup?.gpuRendering.description ?? '';
 
   /**
-   * Holds whether GPU hardware acceleration is enabled for this launch (the persisted preference).
+   * Holds whether hardware acceleration was actually applied for this launch, which the restart
+   * prompt compares against. Not derived from the level: the `STUDIO_DISABLE_GPU` diagnostic can
+   * force it off, and a restart prompt should reflect the running process rather than the file.
    */
-  private readonly hardwareAccelerationSignal: WritableSignal<boolean> = signal<boolean>(
-    this.startup?.hardwareAccelerationEnabled ?? true,
+  private readonly launchedWithHardwareAcceleration: boolean =
+    this.startup?.hardwareAccelerationEnabled ?? true;
+
+  /**
+   * Holds the chosen graphics-acceleration level, seeded from the persisted preference (migrating the
+   * pre-merge settings when there is none).
+   */
+  private readonly levelSignal: WritableSignal<GraphicsAcceleration> = signal<GraphicsAcceleration>(
+    startupGraphicsAcceleration(this.startup),
   );
 
   /**
-   * Holds whether a hardware-acceleration change is pending a relaunch to take effect.
+   * Gets the chosen graphics-acceleration level, as chosen — `auto` reads as `auto`. The settings
+   * dropdown binds to this; everything that renders binds to {@link resolvedGraphicsAcceleration}.
    */
-  private readonly restartRequiredSignal: WritableSignal<boolean> = signal<boolean>(false);
+  public readonly graphicsAcceleration: Signal<GraphicsAcceleration> =
+    this.levelSignal.asReadonly();
 
   /**
-   * Gets the modern-UI-features mode that the automatic setting resolves to, for the settings hint.
+   * Gets the graphics-acceleration level actually in force: the automatic mode resolved against the
+   * detected GPU, then clamped to what this launch can afford. This is the level the UI is drawn at,
+   * and what a setting qualified on a level is qualified against.
    */
-  public readonly recommendedModernUi: 'on' | 'off' = this.recommendReducedEffects ? 'off' : 'on';
+  public readonly resolvedGraphicsAcceleration: Signal<ResolvedGraphicsAcceleration> = computed(
+    (): ResolvedGraphicsAcceleration =>
+      renderGraphicsAcceleration(
+        this.levelSignal(),
+        this.recommendReducedEffects,
+        this.launchedWithHardwareAcceleration,
+      ),
+  );
 
   /**
-   * Gets whether GPU hardware acceleration is enabled (the persisted preference; a change applies
-   * only after a relaunch).
+   * Gets the level the automatic mode resolves to on this system, for the settings hint.
    */
-  public readonly hardwareAccelerationEnabled: Signal<boolean> =
-    this.hardwareAccelerationSignal.asReadonly();
+  public readonly recommendedGraphicsAcceleration: ResolvedGraphicsAcceleration =
+    resolveGraphicsAcceleration('auto', this.recommendReducedEffects);
 
   /**
-   * Gets whether a hardware-acceleration change is awaiting a relaunch.
+   * Gets whether a change is awaiting a relaunch: the chosen level wants hardware acceleration in a
+   * state this process was not launched in. Moving between the accelerated rungs never sets it.
    */
-  public readonly restartRequired: Signal<boolean> = this.restartRequiredSignal.asReadonly();
+  public readonly restartRequired: Signal<boolean> = computed(
+    (): boolean =>
+      wantsHardwareAcceleration(this.levelSignal()) !== this.launchedWithHardwareAcceleration,
+  );
 
   /**
-   * Applies the resolved display policy to the document root whenever the modern-UI-features choice
-   * or the hardware-acceleration preference changes.
+   * Applies the resolved display policy to the document root whenever the level changes, and
+   * persists the migrated level on first construction so the main process can act on it at the next
+   * launch (a no-op once one has been persisted).
    */
   public constructor() {
+    if (this.startup?.graphicsAcceleration == null) {
+      this.persist(this.levelSignal());
+    }
+
     effect((): void => {
-      this.applyDisplayPolicy(this.settings.modernUiFeatures(), this.hardwareAccelerationSignal());
+      this.applyDisplayPolicy(this.resolvedGraphicsAcceleration());
     });
   }
 
   /**
-   * Persists the hardware-acceleration preference and flags that a relaunch is needed for it to take
-   * effect. A no-op outside Electron.
-   * @param enabled Whether hardware acceleration should be enabled on the next launch.
+   * Sets the graphics-acceleration level, applying it immediately and persisting it for the next
+   * launch. Moving on or off the `off` rung additionally flags a relaunch, which is what
+   * {@link restartRequired} reports.
+   * @param level The graphics-acceleration level to apply.
    */
-  public setHardwareAcceleration(enabled: boolean): void {
-    this.hardwareAccelerationSignal.set(enabled);
-    this.restartRequiredSignal.set(enabled !== (this.startup?.hardwareAccelerationEnabled ?? true));
-    void this.bridge?.invoke(AppChannel.SetHardwareAcceleration, enabled);
+  public setGraphicsAcceleration(level: GraphicsAcceleration): void {
+    this.levelSignal.set(level);
+    this.persist(level);
   }
 
   /**
@@ -117,33 +159,34 @@ export class Display {
   }
 
   /**
-   * Resolves the modern-UI-features choice against the GPU recommendation and toggles the document
-   * attributes the SCSS uses to fall back to plain rounded corners and reduced effects.
-   *
-   * Hardware acceleration overrides the choice: without it every pixel is rasterised on the CPU, and
-   * the modern features are the most expensive thing to rasterise — squircle corner masks resolve to
-   * `corner-shape: squircle` on 100+ declarations, and the decorative effects are large blurs. Paying
-   * for them in software costs a CPU core for a look the machine cannot afford, so they are forced
-   * off rather than merely recommended against.
-   * @param mode The modern-UI-features mode to apply.
-   * @param hardwareAcceleration Whether GPU hardware acceleration is enabled.
+   * Persists a level through the main process. A no-op outside Electron, where there is nowhere to
+   * persist it to.
+   * @param level The level to persist.
    */
-  private applyDisplayPolicy(mode: ModernUiFeatures, hardwareAcceleration: boolean): void {
-    const reduceEffects: boolean = !hardwareAcceleration
-      ? true
-      : mode === 'off'
-        ? true
-        : mode === 'on'
-          ? false
-          : this.recommendReducedEffects;
+  private persist(level: GraphicsAcceleration): void {
+    void this.bridge?.invoke(AppChannel.SetGraphicsAcceleration, level);
+  }
+
+  /**
+   * Toggles the document attributes the SCSS uses to fall back to plain rounded corners and reduced
+   * decorative effects, from the resolved level.
+   *
+   * Anything below `full` reduces, and both lower rungs reduce for the same reason: the modern
+   * features are the most expensive thing on screen to draw. Squircle corner masks resolve to
+   * `corner-shape: squircle` on 100+ declarations and the decorative effects are large blurs — which
+   * is a poor trade on a GPU that renders them badly (`limited`), and an outright waste of a CPU core
+   * when there is no GPU in the path at all (`off`).
+   * @param level The resolved graphics-acceleration level to apply.
+   */
+  private applyDisplayPolicy(level: ResolvedGraphicsAcceleration): void {
     const root: HTMLElement = this.document.documentElement;
 
-    if (reduceEffects) {
-      root.setAttribute('data-corners', 'round');
-      root.setAttribute('data-reduced-gpu', 'true');
-    } else {
+    if (level === 'full') {
       root.removeAttribute('data-corners');
       root.removeAttribute('data-reduced-gpu');
+    } else {
+      root.setAttribute('data-corners', 'round');
+      root.setAttribute('data-reduced-gpu', 'true');
     }
   }
 }

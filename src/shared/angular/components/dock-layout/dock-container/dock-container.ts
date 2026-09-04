@@ -73,8 +73,8 @@ export class DockContainer {
   private readonly settings: Settings = inject(Settings);
 
   /**
-   * Holds the display policy, read so the texture is suppressed while the interface is rendered
-   * without hardware acceleration.
+   * Holds the display policy, read so the texture is suppressed below the full graphics-acceleration
+   * level.
    */
   private readonly display: Display = inject(Display);
 
@@ -92,12 +92,12 @@ export class DockContainer {
    * Gets the background texture to paint behind the docked panes, or null when the user has chosen
    * none — the attribute is then absent, and the texture layer resolves to nothing.
    *
-   * Disabling hardware acceleration also resolves to null: the texture is a full-workspace masked
-   * layer repainted with everything behind it, which is among the costliest things to rasterise in
-   * software. The choice itself is preserved and returns when acceleration does.
+   * Anything below the full graphics-acceleration level also resolves to null: the texture is a
+   * full-workspace masked layer repainted with everything behind it, which is among the costliest
+   * things to draw. The choice itself is preserved and returns at the full level.
    */
   protected readonly texture: Signal<string | null> = computed((): string | null => {
-    if (!this.display.hardwareAccelerationEnabled()) return null;
+    if (this.display.resolvedGraphicsAcceleration() !== 'full') return null;
     const texture: WorkspaceTexture = this.settings.workspaceTexture();
     return texture === 'none' ? null : texture;
   });

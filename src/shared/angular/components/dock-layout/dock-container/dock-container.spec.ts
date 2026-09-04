@@ -54,10 +54,10 @@ describe('DockContainer', () => {
     expect(element.getAttribute('data-texture')).toBe('circuit-board');
   });
 
-  it('texture_whenHardwareAccelerationIsOff_suppressesItWithoutClearingTheChoice', () => {
+  it('texture_whenBelowTheFullLevel_suppressesItWithoutClearingTheChoice', () => {
     const settings: Settings = TestBed.inject(Settings);
     settings.setWorkspaceTexture('circuit-board');
-    TestBed.inject(Display).setHardwareAcceleration(false);
+    TestBed.inject(Display).setGraphicsAcceleration('limited');
     fixture.detectChanges();
 
     const element: HTMLElement = fixture.nativeElement as HTMLElement;
@@ -66,13 +66,13 @@ describe('DockContainer', () => {
     expect(settings.workspaceTexture()).toBe('circuit-board');
   });
 
-  it('texture_whenHardwareAccelerationIsRestored_paintsTheChosenTextureAgain', () => {
+  it('texture_whenTheFullLevelIsRestored_paintsTheChosenTextureAgain', () => {
     const display: Display = TestBed.inject(Display);
     TestBed.inject(Settings).setWorkspaceTexture('circuit-board');
-    display.setHardwareAcceleration(false);
+    display.setGraphicsAcceleration('limited');
     fixture.detectChanges();
 
-    display.setHardwareAcceleration(true);
+    display.setGraphicsAcceleration('full');
     fixture.detectChanges();
 
     expect((fixture.nativeElement as HTMLElement).getAttribute('data-texture')).toBe(

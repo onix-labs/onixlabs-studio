@@ -1,5 +1,7 @@
 import { inject, Service } from '@angular/core';
 import { Display } from '@shared/angular/services/display/display';
+import { SETTINGS_BY_KEY } from '@shared/angular/services/settings/settings-registry';
+import type { SettingDef } from '@shared/angular/services/settings/settings-schema';
 
 /**
  * Resolves dynamic descriptions for settings whose help text depends on runtime state, keyed by
@@ -11,7 +13,7 @@ import { Display } from '@shared/angular/services/display/display';
 @Service()
 export class SettingDescriptions {
   /**
-   * Holds the display service backing the modern-UI-features recommendation.
+   * Holds the display service backing the graphics-acceleration recommendation.
    */
   private readonly display: Display = inject(Display);
 
@@ -22,24 +24,24 @@ export class SettingDescriptions {
    * @returns Returns the dynamic description, or undefined.
    */
   public resolve(key: string): string | undefined {
-    if (key === 'appearance.modernUiFeatures') {
-      return this.modernUiHint();
+    if (key === 'display.graphicsAcceleration') {
+      return this.graphicsAccelerationHint();
     }
     return undefined;
   }
 
   /**
-   * Builds the modern-UI-features hint, naming what the automatic mode recommends for this system
-   * (and the detected GPU, when known).
+   * Builds the graphics-acceleration hint, naming what the automatic mode resolves to on this system
+   * (and the detected GPU, when known). Appended to the registry's static description rather than
+   * replacing it, so the levels stay explained while the machine-specific part is added.
    * @returns Returns the hint text.
    */
-  private modernUiHint(): string {
-    const recommended: string = this.display.recommendedModernUi === 'on' ? 'On' : 'Off';
+  private graphicsAccelerationHint(): string {
+    const level: string =
+      this.display.recommendedGraphicsAcceleration === 'full' ? 'Full' : 'Limited';
     const gpu: string = this.display.gpuDescription;
     const detail: string = gpu.length > 0 ? ` (${gpu} detected)` : '';
-    return (
-      'Squircle corners and richer visual effects. Turn off if the interface looks corrupted or ' +
-      `sluggish. Recommended for this system: ${recommended}${detail}.`
-    );
+    const setting: SettingDef | undefined = SETTINGS_BY_KEY.get('display.graphicsAcceleration');
+    return `${setting?.description ?? ''} Automatic resolves to ${level} on this system${detail}.`;
   }
 }
