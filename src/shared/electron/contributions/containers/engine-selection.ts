@@ -1,7 +1,7 @@
 import { app } from 'electron';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import * as path from 'node:path';
-import { ContainerEngineInfo } from '@shared/api/docker-types';
+import { ContainerEngineInfo } from '@shared/api/container-types';
 import { resolveSlot } from '@shared/api/slot';
 import { logger } from '../../logger';
 import {
@@ -53,17 +53,23 @@ export function availableEngines(): readonly ContainerEngineDescriptor[] {
 
 /**
  * Gets the engine in effect: the user's choice when they have made one and it is present, otherwise
- * the highest-priority engine that is — and, when none is present at all, the first in the catalogue
- * so the surface still has something to report a failed connection against.
+ * the highest-priority engine that is.
+ *
+ * When none is present at all the choice still decides, because an engine that is installed but not
+ * running is exactly the case the surface has to describe — falling through to the catalogue default
+ * there is what told a Podman user that Docker was not running. Only a user who has never chosen gets
+ * the default.
  * @returns Returns the descriptor of the engine in effect.
  */
 export function selectedEngine(): ContainerEngineDescriptor {
   chosen ??= loadChoice();
+  const catalogue: readonly ContainerEngineDescriptor[] = containerEngineCatalogue();
   const available: readonly ContainerEngineDescriptor[] = availableEngines();
   const id: string | null = resolveSlot(available, chosen ?? undefined);
   return (
     available.find((engine: ContainerEngineDescriptor): boolean => engine.id === id) ??
-    containerEngineCatalogue()[0]
+    catalogue.find((engine: ContainerEngineDescriptor): boolean => engine.id === chosen) ??
+    catalogue[0]
   );
 }
 
@@ -87,23 +93,27 @@ export function chooseEngine(engineId: string | null): void {
 }
 
 /**
- * Describes the engines to the renderer: what exists, what is present here, and which is in effect.
- * Mirrors the plugin catalogue exactly — the surface offers a choice only when more than one engine is
- * actually available, and an engine that is not installed is never offered.
+ * Describes the engines to the renderer: what exists, what is present here, which is in effect, and how
+ * an engine that is not running is started. Mirrors the plugin catalogue exactly — the surface offers a
+ * choice only when more than one engine is actually available, and an engine that is not installed is
+ * never offered.
+ *
+ * `inEffect` is deliberately independent of `available`: the engine in effect is the one the surface is
+ * talking to, and it has the most to say precisely when that engine is not answering.
  * @returns Returns the engine descriptions.
  */
 export function describeEngines(): readonly ContainerEngineInfo[] {
   const inEffect: string = selectedEngine().id;
+  const platform: NodeJS.Platform = process.platform;
   return containerEngineCatalogue().map(
-    (engine: ContainerEngineDescriptor): ContainerEngineInfo => {
-      const available: boolean = isEngineAvailable(engine);
-      return {
-        id: engine.id,
-        displayName: engine.displayName,
-        available,
-        inEffect: available && engine.id === inEffect,
-        cli: engine.cli,
-      };
-    },
+    (engine: ContainerEngineDescriptor): ContainerEngineInfo => ({
+      id: engine.id,
+      displayName: engine.displayName,
+      available: isEngineAvailable(engine),
+      inEffect: engine.id === inEffect,
+      cli: engine.cli,
+      canLaunch: engine.canLaunch(platform),
+      startCommand: engine.startCommand(platform),
+    }),
   );
 }

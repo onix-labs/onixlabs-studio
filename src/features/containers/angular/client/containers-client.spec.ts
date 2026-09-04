@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { TestBed } from '@angular/core/testing';
 import { Bridge } from '@shared/api/bridge';
 import { ContainerChannel } from '@shared/api/container-channels';
-import { DockerEvent } from '@shared/api/docker-types';
+import { ContainerEvent } from '@shared/api/container-types';
 import { ContainersClient } from './containers-client';
 
 /**
@@ -36,8 +36,18 @@ describe('ContainersClient', () => {
               available: false,
               inEffect: false,
               cli: 'docker',
+              canLaunch: true,
+              startCommand: null,
             },
-            { id: 'podman', displayName: 'Podman', available: true, inEffect: true, cli: 'podman' },
+            {
+              id: 'podman',
+              displayName: 'Podman',
+              available: true,
+              inEffect: true,
+              cli: 'podman',
+              canLaunch: false,
+              startCommand: 'podman machine start',
+            },
           ] as T);
         }
         return Promise.resolve(reply as T);
@@ -86,12 +96,12 @@ describe('ContainersClient', () => {
   it('routesEventPushesToTheListener', () => {
     stubBridge(undefined);
     const client: ContainersClient = TestBed.inject(ContainersClient);
-    const received: DockerEvent[] = [];
-    client.onEvents((event: DockerEvent): void => {
+    const received: ContainerEvent[] = [];
+    client.onEvents((event: ContainerEvent): void => {
       received.push(event);
     });
 
-    const event: DockerEvent = { type: 'container', action: 'start', id: 'abc' };
+    const event: ContainerEvent = { type: 'container', action: 'start', id: 'abc' };
     listeners.get(ContainerChannel.Events)?.(event);
 
     expect(received).toEqual([event]);
@@ -130,5 +140,21 @@ describe('ContainersClient', () => {
     const client: ContainersClient = TestBed.inject(ContainersClient);
 
     expect(client.engineCli()).toBe('docker');
+  });
+
+  it('engineInEffect_reportsTheEngineTheSurfaceIsTalkingTo', async () => {
+    stubBridge(true);
+    const client: ContainersClient = TestBed.inject(ContainersClient);
+    await client.refreshEngines();
+
+    expect(client.engineInEffect()?.displayName).toBe('Podman');
+    expect(client.engineInEffect()?.startCommand).toBe('podman machine start');
+  });
+
+  it('engineInEffect_beforeTheEnginesAreKnown_isNull', () => {
+    delete (window as unknown as { bridge?: unknown }).bridge;
+    const client: ContainersClient = TestBed.inject(ContainersClient);
+
+    expect(client.engineInEffect()).toBeNull();
   });
 });

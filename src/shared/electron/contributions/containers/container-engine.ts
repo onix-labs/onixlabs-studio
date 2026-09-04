@@ -1,12 +1,13 @@
 import { existsSync } from 'node:fs';
 import * as path from 'node:path';
 import {
+  ContainerEvent,
+  ContainerStatus,
   ContainerSummary,
-  DockerEvent,
-  DockerStatus,
   ImageSummary,
-} from '@shared/api/docker-types';
+} from '@shared/api/container-types';
 import { SlotEntry } from '@shared/api/slot';
+import { dockerDesktopLaunchCommand } from './docker-desktop';
 import { DockerStreamHandle } from './docker-transport';
 
 /**
@@ -56,14 +57,14 @@ export interface ContainerEngine {
    * Reports whether the engine is reachable, and what it is.
    * @returns Returns the status.
    */
-  status(): Promise<DockerStatus>;
+  status(): Promise<ContainerStatus>;
 
   /**
    * Watches the engine's event stream.
    * @param onEvent Invoked for each event.
    * @returns Returns the stream handle, closed to stop watching.
    */
-  watch(onEvent: (event: DockerEvent) => void): DockerStreamHandle;
+  watch(onEvent: (event: ContainerEvent) => void): DockerStreamHandle;
 }
 
 /**
@@ -87,6 +88,24 @@ export interface ContainerEngineDescriptor extends SlotEntry {
    * terminal session rather than an API call — following logs, opening a shell in a container.
    */
   readonly cli: string;
+
+  /**
+   * Gets whether the application can start this engine itself on a platform. An engine that ships a
+   * launchable desktop application can be started for the user; one that is a daemon the user brings up
+   * themselves cannot, and pretending otherwise is what {@link startCommand} exists to avoid.
+   * @param platform The platform to resolve for.
+   * @returns Returns true when the engine can be launched from the surface.
+   */
+  canLaunch(platform: NodeJS.Platform): boolean;
+
+  /**
+   * Gets the command the user runs to start the engine themselves on a platform, or null when there is
+   * nothing useful to tell them (because the application can do it, or because the answer depends on an
+   * installation the application cannot see).
+   * @param platform The platform to resolve for.
+   * @returns Returns the command, or null.
+   */
+  startCommand(platform: NodeJS.Platform): string | null;
 }
 
 /**
@@ -108,6 +127,11 @@ const DOCKER: ContainerEngineDescriptor = {
   cli: 'docker',
   socketPath: (): string =>
     process.platform === 'win32' ? '\\\\.\\pipe\\docker_engine' : '/var/run/docker.sock',
+  // Docker Desktop is an application the operating system can be asked to open, on every platform the
+  // launcher knows how to do it for.
+  canLaunch: (platform: NodeJS.Platform): boolean =>
+    dockerDesktopLaunchCommand(platform, process.env) !== null,
+  startCommand: (): string | null => null,
 };
 
 /**
@@ -135,6 +159,12 @@ const PODMAN: ContainerEngineDescriptor = {
     }
     return '/run/podman/podman.sock';
   },
+  // There is no Podman application to open: macOS and Windows run it in a virtual machine the user
+  // starts, and Linux serves it from a socket-activated user unit. All the surface can honestly do is
+  // say which command brings it up.
+  canLaunch: (): boolean => false,
+  startCommand: (platform: NodeJS.Platform): string | null =>
+    platform === 'linux' ? 'systemctl --user start podman.socket' : 'podman machine start',
 };
 
 /**

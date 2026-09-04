@@ -1,9 +1,9 @@
 import {
   ContainerSummary,
-  DockerEvent,
-  DockerStatus,
+  ContainerEvent,
+  ContainerStatus,
   ImageSummary,
-} from '@shared/api/docker-types';
+} from '@shared/api/container-types';
 import { ContainerSocket } from '../permissions/brokers/container-socket';
 import { ContainerEngine } from './container-engine';
 import { DockerStreamHandle, DockerTransport, HttpDockerTransport } from './docker-transport';
@@ -123,7 +123,7 @@ export class DockerEngine implements ContainerEngine {
    * Reports whether the daemon is reachable, and its version when it is.
    * @returns Returns the daemon status.
    */
-  public async status(): Promise<DockerStatus> {
+  public async status(): Promise<ContainerStatus> {
     const raw: { Version?: string } | null = await this.getJson<{ Version?: string }>('/version');
     return raw === null ? { available: false } : { available: true, version: raw.Version };
   }
@@ -135,7 +135,7 @@ export class DockerEngine implements ContainerEngine {
    * @param onEvent Receives each normalised event.
    * @returns Returns a handle that stops watching.
    */
-  public watch(onEvent: (event: DockerEvent) => void): DockerStreamHandle {
+  public watch(onEvent: (event: ContainerEvent) => void): DockerStreamHandle {
     let closed: boolean = false;
     let stream: DockerStreamHandle | null = null;
     let backoff: number = INITIAL_BACKOFF_MS;
@@ -148,7 +148,7 @@ export class DockerEngine implements ContainerEngine {
         'GET',
         '/events',
         (line: string): void => {
-          const event: DockerEvent | null = parseEvent(line);
+          const event: ContainerEvent | null = parseEvent(line);
           if (event !== null) {
             onEvent(event);
           }
@@ -218,12 +218,12 @@ export class DockerEngine implements ContainerEngine {
 }
 
 /**
- * Normalises one raw Docker event line into a {@link DockerEvent}, or null when the line is not valid
+ * Normalises one raw Docker event line into a {@link ContainerEvent}, or null when the line is not valid
  * JSON. Exported for unit testing.
  * @param line One newline-delimited body line from `GET /events`.
  * @returns Returns the normalised event, or null.
  */
-export function parseEvent(line: string): DockerEvent | null {
+export function parseEvent(line: string): ContainerEvent | null {
   let raw: RawEvent;
   try {
     raw = JSON.parse(line) as RawEvent;

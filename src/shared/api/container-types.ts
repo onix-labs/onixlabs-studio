@@ -1,7 +1,11 @@
 /**
- * The Docker payload contract shared between the main-process backend and the renderer. These are the
- * small, normalised shapes the backend maps the raw Docker Engine API responses into — the renderer
- * never sees the engine's wire format.
+ * The container payload contract shared between the main-process backend and the renderer. These are
+ * the small, normalised shapes the backend maps the raw engine API responses into — the renderer never
+ * sees the engine's wire format.
+ *
+ * Nothing here is Docker's alone. The shapes follow the Docker Engine API because that is the protocol
+ * the engines in the catalogue serve, but a container, an image, an event and a status are what any
+ * engine reports, and the surface reading them never knows which one answered.
  */
 
 /**
@@ -55,10 +59,10 @@ export interface ImageSummary {
 }
 
 /**
- * A normalised Docker engine event, pushed to the renderer as it happens so the dashboard reflects
+ * A normalised container engine event, pushed to the renderer as it happens so the dashboard reflects
  * out-of-band changes (a `docker start` from the CLI) without polling.
  */
-export interface DockerEvent {
+export interface ContainerEvent {
   /**
    * The object the event concerns (for example `container`, `image`).
    */
@@ -76,16 +80,16 @@ export interface DockerEvent {
 }
 
 /**
- * Whether the Docker daemon is reachable, and its version when it is.
+ * Whether the container engine is reachable, and its version when it is.
  */
-export interface DockerStatus {
+export interface ContainerStatus {
   /**
-   * Whether the daemon answered.
+   * Whether the engine answered.
    */
   readonly available: boolean;
 
   /**
-   * The daemon version, present only when {@link available} is true.
+   * The engine version, present only when {@link available} is true.
    */
   readonly version?: string;
 }
@@ -116,6 +120,10 @@ export interface ContainerEngineInfo {
 
   /**
    * Gets whether this is the engine currently in effect.
+   *
+   * Independent of {@link available}: the engine in effect is the one the surface is talking to, and an
+   * engine whose socket is down is still that engine. This is what lets the surface say *which* engine
+   * is not running rather than guessing at the default.
    */
   readonly inEffect: boolean;
 
@@ -124,4 +132,17 @@ export interface ContainerEngineInfo {
    * session rather than an API call — following logs, opening a shell in a container.
    */
   readonly cli: string;
+
+  /**
+   * Gets whether Studio can start this engine itself on this platform. True only for engines that ship
+   * something launchable through the operating system — Docker Desktop does, a Podman machine does not.
+   */
+  readonly canLaunch: boolean;
+
+  /**
+   * Gets the command the user runs to start the engine themselves on this platform, or null when there
+   * is nothing useful to tell them. Offered instead of a button when {@link canLaunch} is false, so the
+   * surface stays truthful about what it can and cannot do for them.
+   */
+  readonly startCommand: string | null;
 }
