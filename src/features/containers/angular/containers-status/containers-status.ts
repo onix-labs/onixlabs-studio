@@ -2,7 +2,7 @@ import { effect, inject, Service, signal, WritableSignal } from '@angular/core';
 import { Log } from '@shared/angular/services/log/log';
 import { StatusBar } from '@shared/angular/services/status-bar/status-bar';
 import { Icon } from '@shared/angular/icons/icon';
-import { ContainerSummary } from '@shared/api/docker-types';
+import { ContainerSummary } from '@shared/api/container-types';
 import { ContainersClient } from '../client/containers-client';
 
 /**

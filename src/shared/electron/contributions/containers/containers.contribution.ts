@@ -1,6 +1,6 @@
 import type { IpcMainInvokeEvent } from 'electron';
 import { ContainerChannel } from '@shared/api/container-channels';
-import { ContainerEngineInfo } from '@shared/api/docker-types';
+import { ContainerEngineInfo } from '@shared/api/container-types';
 import { ContributionContext, MainContribution } from '../main-contribution';
 import { PermissionId } from '../permissions/permission';
 import { ContainerSocket } from '../permissions/brokers/container-socket';

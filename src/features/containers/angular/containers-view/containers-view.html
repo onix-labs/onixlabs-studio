@@ -3,23 +3,36 @@
     @if (available() === null) {
       <div class="containers__empty">
         <app-icon class="containers__empty-icon" [icon]="Icon.CONTAINERS" />
-        <p class="containers__empty-text">Connecting to Docker…</p>
+        <p class="containers__empty-text">Connecting to {{ engineLabel() }}…</p>
       </div>
     } @else if (available() === false) {
       <div class="containers__empty">
         <app-icon class="containers__empty-icon" [icon]="Icon.WARNING" />
-        <p class="containers__empty-text">Docker isn't running</p>
+        <p class="containers__empty-text">{{ engineTitle() }} isn't running</p>
         @if (launching()) {
-          <p class="containers__empty-hint">Starting Docker… this can take a moment.</p>
+          <p class="containers__empty-hint">
+            Starting {{ engineLabel() }}… this can take a moment.
+          </p>
         } @else {
-          <p class="containers__empty-hint">Start Docker to manage containers and images.</p>
+          <p class="containers__empty-hint">
+            Start {{ engineLabel() }} to manage containers and images.
+          </p>
+          <!-- An engine the application cannot launch is told about rather than pretended at: the
+               command that starts it, for the user to run themselves. -->
+          @if (engineStartCommand(); as command) {
+            <p class="containers__empty-command">
+              Run <code>{{ command }}</code> in a terminal.
+            </p>
+          }
           <div class="containers__empty-actions">
-            <app-button
-              variant="solid"
-              [icon]="Icon.PLAY"
-              label="Start Docker"
-              (click)="startDocker()"
-            />
+            @if (canLaunchEngine()) {
+              <app-button
+                variant="solid"
+                [icon]="Icon.PLAY"
+                [label]="'Start ' + engineLabel()"
+                (click)="startEngine()"
+              />
+            }
             <app-button
               variant="outline"
               [icon]="Icon.REFRESH"

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { DockerEvent } from '@shared/api/docker-types';
+import { ContainerEvent } from '@shared/api/container-types';
 import { ContainerSocket } from '../permissions/brokers/container-socket';
 import { DockerEngine, parseEvent } from './docker-engine';
 import { DockerResponse, DockerStreamHandle, DockerTransport } from './docker-transport';
@@ -148,8 +148,8 @@ describe('DockerEngine', () => {
 
   it('watch_pushesNormalisedEventsAndIgnoresMalformedLines', () => {
     const { engine, transport } = engineWith();
-    const events: DockerEvent[] = [];
-    engine.watch((event: DockerEvent): void => {
+    const events: ContainerEvent[] = [];
+    engine.watch((event: ContainerEvent): void => {
       events.push(event);
     });
 
