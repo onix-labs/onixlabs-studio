@@ -55,16 +55,16 @@
         (action)="scrollToTop()"
       />
       <app-ribbon-strip-button-small
-        [icon]="Icon.SCROLL_TO_LAST_PROMPT"
-        label="Last Prompt"
-        [disabled]="!hasMessages()"
-        (action)="scrollToLastPrompt()"
-      />
-      <app-ribbon-strip-button-small
         [icon]="Icon.SCROLL_TO_BOTTOM"
         label="Scroll to Bottom"
         [disabled]="!hasMessages()"
         (action)="scrollToBottom()"
+      />
+      <app-ribbon-strip-button-small
+        [icon]="Icon.SCROLL_TO_LAST_PROMPT"
+        label="Last Prompt"
+        [disabled]="!hasMessages()"
+        (action)="scrollToLastPrompt()"
       />
     </app-ribbon-strip-column>
   </app-ribbon-strip-group>
