@@ -66,6 +66,8 @@ describe('AgentRibbon', () => {
   let stopped: number;
   let historyToggles: number;
   let tailRequests: number;
+  let topRequests: number;
+  let promptRequests: number;
   let providerChoices: AiProviderId[];
   let modelChoices: string[];
   let remoteControlChoices: boolean[];
@@ -119,6 +121,8 @@ describe('AgentRibbon', () => {
     stopped = 0;
     historyToggles = 0;
     tailRequests = 0;
+    topRequests = 0;
+    promptRequests = 0;
     providerChoices = [];
     modelChoices = [];
     remoteControlChoices = [];
@@ -157,6 +161,8 @@ describe('AgentRibbon', () => {
       newChat: (): void => void (cleared += 1),
       stop: (): void => void (stopped += 1),
       toggleHistory: (): void => void (historyToggles += 1),
+      scrollToTop: (): void => void (topRequests += 1),
+      scrollToLastPrompt: (): void => void (promptRequests += 1),
       scrollToBottom: (): void => void (tailRequests += 1),
       setMode: (value: AgentMode): void => void modeChoices.push(value),
       compact: (): void => void (compacted += 1),
@@ -300,6 +306,47 @@ describe('AgentRibbon', () => {
     button('Scroll to Bottom').click();
 
     expect(tailRequests).toBe(1);
+  });
+
+  it('top_whenClicked_scrollsTheActiveTranscriptToItsFirstMessage', () => {
+    button('Scroll to Top').click();
+
+    expect(topRequests).toBe(1);
+    expect(tailRequests).toBe(0);
+  });
+
+  it('lastPrompt_whenClicked_scrollsTheActiveTranscriptToTheLastThingTheUserSent', () => {
+    button('Last Prompt').click();
+
+    expect(promptRequests).toBe(1);
+    expect(tailRequests).toBe(0);
+  });
+
+  it('scrollButtons_whenChatEmpty_areDisabled', () => {
+    // With no messages every jump lands in the same empty place, so offering them offers nothing.
+    hasMessages.set(false);
+    fixture.detectChanges();
+
+    expect(button('Scroll to Top').disabled).toBe(true);
+    expect(button('Last Prompt').disabled).toBe(true);
+    expect(button('Scroll to Bottom').disabled).toBe(true);
+  });
+
+  it('scrollButtons_onceTheChatHasMessages_areEnabled', () => {
+    hasMessages.set(true);
+    fixture.detectChanges();
+
+    expect(button('Scroll to Top').disabled).toBe(false);
+    expect(button('Last Prompt').disabled).toBe(false);
+    expect(button('Scroll to Bottom').disabled).toBe(false);
+  });
+
+  it('history_isNotGatedOnMessages_becauseItListsPastConversations', () => {
+    // History shows other conversations, which exist whether or not this one has started.
+    hasMessages.set(false);
+    fixture.detectChanges();
+
+    expect(button('History').disabled).toBe(false);
   });
 
   it('mode_whenChanged_setsTheChosenMode', () => {

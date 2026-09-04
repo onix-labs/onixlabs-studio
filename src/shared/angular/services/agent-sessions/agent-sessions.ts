@@ -94,6 +94,16 @@ export interface AgentSessionHandle {
   scrollToBottom(): void;
 
   /**
+   * Scrolls the conversation's transcript to its first message.
+   */
+  scrollToTop(): void;
+
+  /**
+   * Scrolls the conversation's transcript to the most recent message the user sent.
+   */
+  scrollToLastPrompt(): void;
+
+  /**
    * Sets how much autonomy the conversation's runs use.
    * @param mode The new mode: `agent` (full tools) or `chat` (read-only).
    */
@@ -288,6 +298,20 @@ export class AgentSessions {
    */
   public toggleHistory(): void {
     this.activeSession()?.toggleHistory();
+  }
+
+  /**
+   * Scrolls the active agent tab's transcript to its first message.
+   */
+  public scrollToTop(): void {
+    this.activeSession()?.scrollToTop();
+  }
+
+  /**
+   * Scrolls the active agent tab's transcript to the most recent message the user sent.
+   */
+  public scrollToLastPrompt(): void {
+    this.activeSession()?.scrollToLastPrompt();
   }
 
   /**

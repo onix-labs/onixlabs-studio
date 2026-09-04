@@ -32,14 +32,11 @@
     }
   </app-ribbon-strip-group>
 
-  <!-- What is looked at rather than what is run: where the transcript is scrolled to, and whether the
-       past conversations are listed beside it. -->
+  <!-- What is looked at rather than what is run: whether the past conversations are listed beside the
+       transcript, and where that transcript is scrolled to. History leads as the big button because it
+       changes what is on screen; the three jumps are a set, so they stack together rather than sitting
+       in a row that would read as three unrelated commands. -->
   <app-ribbon-strip-group title="View">
-    <app-ribbon-strip-button
-      [icon]="Icon.SCROLL_TO_BOTTOM"
-      label="Scroll to Bottom"
-      (action)="scrollToBottom()"
-    />
     <app-ribbon-strip-button
       [icon]="Icon.RECENT"
       label="History"
@@ -47,6 +44,29 @@
       [pressed]="historyOpen()"
       (action)="toggleHistory()"
     />
+    <app-ribbon-strip-column>
+      <!-- Disabled until there is a transcript to move through: with no messages every jump lands in
+           the same empty place, so offering them would be offering nothing. Gated on the same signal
+           as New Chat. -->
+      <app-ribbon-strip-button-small
+        [icon]="Icon.SCROLL_TO_TOP"
+        label="Scroll to Top"
+        [disabled]="!hasMessages()"
+        (action)="scrollToTop()"
+      />
+      <app-ribbon-strip-button-small
+        [icon]="Icon.SCROLL_TO_BOTTOM"
+        label="Scroll to Bottom"
+        [disabled]="!hasMessages()"
+        (action)="scrollToBottom()"
+      />
+      <app-ribbon-strip-button-small
+        [icon]="Icon.SCROLL_TO_LAST_PROMPT"
+        label="Last Prompt"
+        [disabled]="!hasMessages()"
+        (action)="scrollToLastPrompt()"
+      />
+    </app-ribbon-strip-column>
   </app-ribbon-strip-group>
 
   <app-ribbon-strip-group title="Engine">
