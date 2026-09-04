@@ -76,6 +76,20 @@
   <app-button
     class="strip__end"
     variant="none"
+    [icon]="Icon.SCROLL_TO_TOP"
+    ariaLabel="Scroll to top"
+    tooltip="Scroll to top"
+    (click)="conversation.scrollToTop()"
+  />
+  <app-button
+    variant="none"
+    [icon]="Icon.SCROLL_TO_LAST_PROMPT"
+    ariaLabel="Scroll to last prompt"
+    tooltip="Scroll to last prompt"
+    (click)="conversation.scrollToLastPrompt()"
+  />
+  <app-button
+    variant="none"
     [icon]="Icon.SCROLL_TO_BOTTOM"
     ariaLabel="Scroll to bottom"
     tooltip="Scroll to bottom"

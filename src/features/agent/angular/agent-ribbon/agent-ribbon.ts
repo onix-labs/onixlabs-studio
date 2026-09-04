@@ -246,6 +246,22 @@ export class AgentRibbon {
   }
 
   /**
+   * Scrolls the active tab's transcript to its first message.
+   */
+  protected scrollToTop(): void {
+    this.log.trace('agent.ribbon', 'Scroll to top requested');
+    this.sessions.scrollToTop();
+  }
+
+  /**
+   * Scrolls the active tab's transcript to the most recent message the user sent.
+   */
+  protected scrollToLastPrompt(): void {
+    this.log.trace('agent.ribbon', 'Scroll to last prompt requested');
+    this.sessions.scrollToLastPrompt();
+  }
+
+  /**
    * Compacts the active tab's conversation into a summary.
    */
   protected compact(): void {

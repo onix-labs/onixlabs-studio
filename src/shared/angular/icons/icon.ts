@@ -950,6 +950,21 @@ export class Icon {
    */
   public static readonly SCROLL_TO_BOTTOM: Icon = new Icon('ph-duotone ph-arrow-fat-lines-down');
 
+  /**
+   * Gets the jump-to-the-start icon, shown on the controls that scroll a transcript to its beginning.
+   * The mirror of {@link SCROLL_TO_BOTTOM}, and drawn to match it.
+   */
+  public static readonly SCROLL_TO_TOP: Icon = new Icon('ph-duotone ph-arrow-fat-lines-up');
+
+  /**
+   * Gets the jump-to-the-last-prompt icon, shown on the controls that scroll a transcript back to the
+   * most recent thing the user asked.
+   *
+   * A lighter arrow than {@link SCROLL_TO_TOP} on purpose: it moves a shorter distance, to a place in
+   * the conversation rather than to its edge.
+   */
+  public static readonly SCROLL_TO_LAST_PROMPT: Icon = new Icon('ph-duotone ph-arrow-line-up');
+
   // --- Settings ---
 
   /**
