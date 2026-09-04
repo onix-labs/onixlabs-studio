@@ -18,7 +18,6 @@ import type {
   ImageAlignment,
   ImageSizing,
   MarginSize,
-  ModernUiFeatures,
   PrintMargin,
   RibbonAlignment,
   SelectAllScope,
@@ -50,7 +49,6 @@ export type TileScrollMode = 'into-view' | 'absolute-left';
  */
 export interface SettingsValues {
   readonly 'appearance.ribbonAlignment': RibbonAlignment;
-  readonly 'appearance.modernUiFeatures': ModernUiFeatures;
   readonly 'appearance.workspaceTexture': WorkspaceTexture;
 
   readonly 'application.undoStackSize': number;
@@ -133,12 +131,25 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
     label: 'Appearance',
     settings: [
       {
-        key: 'appearance.accent',
-        owner: 'theme',
-        title: 'Accent',
+        key: 'display.graphicsAcceleration',
+        owner: 'display',
+        title: 'Graphics Acceleration',
         description:
-          'The colour used for highlights and focus. Pick a preset, or choose Custom for any hue.',
-        control: { kind: 'accent' },
+          'How much of the GPU the interface uses. Full renders every visual feature; Limited keeps ' +
+          'hardware acceleration but drops squircle corners, the richer effects and the workspace ' +
+          'texture, for graphics hardware that renders them poorly; Off turns hardware acceleration ' +
+          'off entirely, which can fix rendering glitches but draws every pixel on the CPU and makes ' +
+          'the whole interface lag. Turning acceleration on or off restarts the application.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'auto', label: 'Automatic' },
+            { value: 'off', label: 'Off' },
+            { value: 'limited', label: 'Limited' },
+            { value: 'full', label: 'Full' },
+          ],
+        },
+        requiresRestart: true,
       },
       {
         key: 'appearance.themeMode',
@@ -155,6 +166,14 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         },
       },
       {
+        key: 'appearance.accent',
+        owner: 'theme',
+        title: 'Accent',
+        description:
+          'The colour used for highlights and focus. Pick a preset, or choose Custom for any hue.',
+        control: { kind: 'accent' },
+      },
+      {
         key: 'appearance.ribbonAlignment',
         title: 'Ribbon Alignment',
         description: "How the ribbon's controls are aligned within the ribbon strip.",
@@ -169,27 +188,13 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         default: 'left',
       },
       {
-        key: 'appearance.modernUiFeatures',
-        // Hidden without hardware acceleration: the effects are then forced off regardless of the
-        // choice, because rasterising them on the CPU costs a core.
-        visibleWhen: { key: 'display.hardwareAcceleration', equals: [true] },
-        title: 'Modern UI Features',
-        description: 'Squircle corners and richer visual effects.',
-        control: {
-          kind: 'select',
-          options: [
-            { value: 'auto', label: 'Auto' },
-            { value: 'on', label: 'On' },
-            { value: 'off', label: 'Off' },
-          ],
-        },
-        default: 'auto',
-      },
-      {
         key: 'appearance.workspaceTexture',
-        // Hidden without hardware acceleration: a full-workspace masked layer is among the costliest
-        // things to rasterise in software, so the texture resolves to none regardless of the choice.
-        visibleWhen: { key: 'display.hardwareAcceleration', equals: [true] },
+        // Shown only at the full level, which is where the texture is actually painted. Below it the
+        // texture resolves to nothing regardless of the choice — a full-workspace masked layer is
+        // among the costliest things to draw — so the control would do nothing, which reads as broken
+        // rather than as inapplicable. The condition tests the *resolved* level, so the automatic mode
+        // shows or hides the row according to what it actually resolved to on this machine.
+        visibleWhen: { key: 'display.graphicsAcceleration', equals: ['full'] },
         title: 'Workspace Texture',
         description:
           'A pattern tiled behind the workspace panes, painted in the accent colour. Patterns from Hero Patterns.',
@@ -211,15 +216,6 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           ],
         },
         default: 'none',
-      },
-      {
-        key: 'display.hardwareAcceleration',
-        owner: 'display',
-        title: 'Hardware Acceleration',
-        description:
-          'Use the GPU to render the interface. Turning this off can fix rendering glitches on some graphics hardware, but renders every pixel on the CPU, which is slow enough to make the whole interface lag. Modern UI features and the workspace texture are turned off with it. Changing it restarts the application.',
-        control: { kind: 'toggle' },
-        requiresRestart: true,
       },
     ],
   },

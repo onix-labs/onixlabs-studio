@@ -2,8 +2,7 @@ import { TestBed } from '@angular/core/testing';
 
 import { AppChannel } from '@shared/api/app-channels';
 import { Bridge } from '@shared/api/bridge';
-import type { DisplayStartup } from '@shared/api/host';
-import { Settings } from '@shared/angular/services/settings/settings';
+import type { DisplayStartup, GraphicsAcceleration } from '@shared/api/host';
 import { Display } from './display';
 
 /**
@@ -44,17 +43,33 @@ describe('Display', () => {
   /**
    * Builds a startup snapshot.
    * @param recommendReducedEffects Whether the GPU is flagged for reduced effects.
-   * @param hardwareAccelerationEnabled Whether hardware acceleration is enabled for this launch.
+   * @param graphicsAcceleration The persisted level, or null when none has been persisted.
+   * @param hardwareAccelerationEnabled Whether hardware acceleration was applied for this launch;
+   * defaults to what the level implies.
    * @returns Returns the snapshot.
    */
   function startup(
     recommendReducedEffects: boolean,
-    hardwareAccelerationEnabled: boolean,
+    graphicsAcceleration: GraphicsAcceleration | null,
+    hardwareAccelerationEnabled: boolean = graphicsAcceleration !== 'off',
   ): DisplayStartup {
     return {
       gpuRendering: { recommendReducedEffects, description: 'Test GPU' },
+      graphicsAcceleration,
       hardwareAccelerationEnabled,
     };
+  }
+
+  /**
+   * Reports whether the document root carries the reduced-effects fallback attributes.
+   * @returns Returns true when the fallback is applied.
+   */
+  function reduced(): boolean {
+    const root: HTMLElement = document.documentElement;
+    return (
+      root.getAttribute('data-corners') === 'round' &&
+      root.getAttribute('data-reduced-gpu') === 'true'
+    );
   }
 
   beforeEach(() => {
@@ -68,108 +83,149 @@ describe('Display', () => {
     document.documentElement.removeAttribute('data-reduced-gpu');
   });
 
-  it('applyDisplayPolicy_whenModernFeaturesAreOff_setsTheFallbackAttributes', () => {
-    stubHost(startup(false, true));
+  it('applyDisplayPolicy_whenLimited_setsTheFallbackAttributes', () => {
+    stubHost(startup(false, 'limited'));
     TestBed.inject(Display);
-    TestBed.inject(Settings).setModernUiFeatures('off');
 
     TestBed.tick();
 
-    expect(document.documentElement.getAttribute('data-corners')).toBe('round');
-    expect(document.documentElement.getAttribute('data-reduced-gpu')).toBe('true');
+    expect(reduced()).toBe(true);
   });
 
-  it('applyDisplayPolicy_whenModernFeaturesAreOn_removesTheFallbackAttributes', () => {
-    stubHost(startup(true, true));
-    TestBed.inject(Display);
-    const settings: Settings = TestBed.inject(Settings);
-    settings.setModernUiFeatures('off');
+  it('applyDisplayPolicy_whenFull_removesTheFallbackAttributes', () => {
+    stubHost(startup(true, 'limited'));
+    const display: Display = TestBed.inject(Display);
     TestBed.tick();
 
-    settings.setModernUiFeatures('on');
+    display.setGraphicsAcceleration('full');
     TestBed.tick();
 
     expect(document.documentElement.hasAttribute('data-corners')).toBe(false);
     expect(document.documentElement.hasAttribute('data-reduced-gpu')).toBe(false);
   });
 
-  it('applyDisplayPolicy_whenAutomaticAndReductionRecommended_fallsBackToReducedEffects', () => {
-    stubHost(startup(true, true));
+  it('applyDisplayPolicy_whenOff_setsTheFallbackAttributes', () => {
+    stubHost(startup(false, 'off'));
+    TestBed.inject(Display);
+
+    TestBed.tick();
+
+    expect(reduced()).toBe(true);
+  });
+
+  it('resolve_whenAutomaticAndReductionRecommended_fallsBackToLimited', () => {
+    stubHost(startup(true, 'auto'));
     const display: Display = TestBed.inject(Display);
-    TestBed.inject(Settings).setModernUiFeatures('auto');
 
     TestBed.tick();
 
     expect(display.recommendReducedEffects).toBe(true);
-    expect(display.recommendedModernUi).toBe('off');
+    expect(display.recommendedGraphicsAcceleration).toBe('limited');
+    expect(display.resolvedGraphicsAcceleration()).toBe('limited');
     expect(display.gpuDescription).toBe('Test GPU');
-    expect(document.documentElement.getAttribute('data-reduced-gpu')).toBe('true');
+    expect(reduced()).toBe(true);
   });
 
-  it('applyDisplayPolicy_whenLaunchedWithoutHardwareAcceleration_forcesReducedEffects', () => {
-    stubHost(startup(false, false));
-    TestBed.inject(Display);
-    TestBed.inject(Settings).setModernUiFeatures('on');
-
-    TestBed.tick();
-
-    expect(document.documentElement.getAttribute('data-corners')).toBe('round');
-    expect(document.documentElement.getAttribute('data-reduced-gpu')).toBe('true');
-  });
-
-  it('applyDisplayPolicy_whenHardwareAccelerationIsTurnedOff_reducesEffectsWithoutWaitingForRelaunch', () => {
-    stubHost(startup(false, true));
+  it('resolve_whenAutomaticAndNoReductionRecommended_resolvesToFull', () => {
+    stubHost(startup(false, 'auto'));
     const display: Display = TestBed.inject(Display);
-    TestBed.inject(Settings).setModernUiFeatures('on');
+
     TestBed.tick();
 
-    display.setHardwareAcceleration(false);
-    TestBed.tick();
-
-    expect(document.documentElement.getAttribute('data-corners')).toBe('round');
-    expect(document.documentElement.getAttribute('data-reduced-gpu')).toBe('true');
-  });
-
-  it('applyDisplayPolicy_whenHardwareAccelerationIsRestored_returnsTheChosenEffects', () => {
-    stubHost(startup(false, true));
-    const display: Display = TestBed.inject(Display);
-    TestBed.inject(Settings).setModernUiFeatures('on');
-    display.setHardwareAcceleration(false);
-    TestBed.tick();
-
-    display.setHardwareAcceleration(true);
-    TestBed.tick();
-
-    expect(document.documentElement.hasAttribute('data-corners')).toBe(false);
+    expect(display.recommendedGraphicsAcceleration).toBe('full');
+    expect(display.resolvedGraphicsAcceleration()).toBe('full');
     expect(document.documentElement.hasAttribute('data-reduced-gpu')).toBe(false);
   });
 
-  it('setHardwareAcceleration_whenChanged_persistsAndFlagsARestart', () => {
-    stubHost(startup(false, true));
-    const display: Display = TestBed.inject(Display);
-
-    display.setHardwareAcceleration(false);
-
-    expect(display.hardwareAccelerationEnabled()).toBe(false);
-    expect(display.restartRequired()).toBe(true);
-    expect(invokes).toEqual([{ channel: AppChannel.SetHardwareAcceleration, args: [false] }]);
+  it('resolve_whenAutomatic_neverResolvesToOff', () => {
+    // Turning acceleration off is a troubleshooting escape hatch for broken drivers, which cannot be
+    // detected from the GPU; the automatic mode only ever chooses between the accelerated rungs.
+    stubHost(startup(true, 'auto'));
+    expect(TestBed.inject(Display).resolvedGraphicsAcceleration()).not.toBe('off');
   });
 
-  it('setHardwareAcceleration_whenRestoredToTheLaunchValue_clearsTheRestartFlag', () => {
-    stubHost(startup(false, true));
+  it('resolve_whenRaisedWhileLaunchedUnaccelerated_staysAtOffUntilRelaunch', () => {
+    // Hardware acceleration is fixed for the life of the process, so the raised level is kept but
+    // nothing is drawn above what this launch can afford.
+    stubHost(startup(false, 'off'));
     const display: Display = TestBed.inject(Display);
 
-    display.setHardwareAcceleration(false);
-    display.setHardwareAcceleration(true);
+    display.setGraphicsAcceleration('full');
+    TestBed.tick();
+
+    expect(display.graphicsAcceleration()).toBe('full');
+    expect(display.resolvedGraphicsAcceleration()).toBe('off');
+    expect(reduced()).toBe(true);
+  });
+
+  it('resolve_whenLaunchDisabledAccelerationBehindTheLevel_clampsToOff', () => {
+    // The STUDIO_DISABLE_GPU diagnostic forces acceleration off without touching the persisted level,
+    // so the two disagree and what actually happened wins.
+    stubHost(startup(false, 'full', false));
+    const display: Display = TestBed.inject(Display);
+
+    TestBed.tick();
+
+    expect(display.resolvedGraphicsAcceleration()).toBe('off');
+    expect(reduced()).toBe(true);
+  });
+
+  it('setGraphicsAcceleration_whenMovingOffTheAcceleratedRungs_persistsAndFlagsARestart', () => {
+    stubHost(startup(false, 'full'));
+    const display: Display = TestBed.inject(Display);
+
+    display.setGraphicsAcceleration('off');
+
+    expect(display.graphicsAcceleration()).toBe('off');
+    expect(display.restartRequired()).toBe(true);
+    expect(invokes).toEqual([{ channel: AppChannel.SetGraphicsAcceleration, args: ['off'] }]);
+  });
+
+  it('setGraphicsAcceleration_whenMovingBetweenAcceleratedRungs_needsNoRestart', () => {
+    // The whole point of the ladder: only the escape hatch costs a relaunch.
+    stubHost(startup(false, 'full'));
+    const display: Display = TestBed.inject(Display);
+
+    display.setGraphicsAcceleration('limited');
+    TestBed.tick();
+
+    expect(display.restartRequired()).toBe(false);
+    expect(reduced()).toBe(true);
+  });
+
+  it('setGraphicsAcceleration_whenRestoredToTheLaunchState_clearsTheRestartFlag', () => {
+    stubHost(startup(false, 'full'));
+    const display: Display = TestBed.inject(Display);
+
+    display.setGraphicsAcceleration('off');
+    display.setGraphicsAcceleration('auto');
 
     expect(display.restartRequired()).toBe(false);
   });
 
   it('relaunch_whenCalled_sendsTheRelaunchChannel', () => {
-    stubHost(startup(false, true));
+    stubHost(startup(false, 'auto'));
     TestBed.inject(Display).relaunch();
 
     expect(sends).toEqual([{ channel: AppChannel.Relaunch, args: [] }]);
+  });
+
+  it('migrate_whenNoLevelPersisted_derivesItFromThePreMergeSettingsAndPersistsIt', () => {
+    localStorage.setItem('settings', JSON.stringify({ appearance: { modernUiFeatures: 'off' } }));
+    stubHost(startup(false, null));
+
+    const display: Display = TestBed.inject(Display);
+
+    expect(display.graphicsAcceleration()).toBe('limited');
+    expect(invokes).toEqual([{ channel: AppChannel.SetGraphicsAcceleration, args: ['limited'] }]);
+  });
+
+  it('migrate_whenALevelIsPersisted_writesNothingBack', () => {
+    stubHost(startup(false, 'auto'));
+
+    TestBed.inject(Display);
+
+    expect(invokes).toEqual([]);
   });
 
   it('defaults_whenRunningOutsideElectron_reportFullEffectsAndAcceleration', () => {
@@ -177,8 +233,9 @@ describe('Display', () => {
 
     expect(display.isAvailable).toBe(false);
     expect(display.recommendReducedEffects).toBe(false);
-    expect(display.recommendedModernUi).toBe('on');
+    expect(display.recommendedGraphicsAcceleration).toBe('full');
+    expect(display.resolvedGraphicsAcceleration()).toBe('full');
     expect(display.gpuDescription).toBe('');
-    expect(display.hardwareAccelerationEnabled()).toBe(true);
+    expect(display.restartRequired()).toBe(false);
   });
 });

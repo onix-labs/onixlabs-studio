@@ -73,14 +73,13 @@ describe('SettingControl', () => {
     expect(element.querySelectorAll('option').length).toBe(3);
   });
 
-  it('render_whenDisplayOwnedToggle_reflectsTheEnabledState', async () => {
+  it('render_whenDisplayOwnedSetting_rendersADropdownWithAnOptionPerLevel', async () => {
     // A setting whose value lives outside the Settings store, resolved through the owner adapter. The
     // language-server settings used to be the example here; they are now rendered by their own
     // per-language page, so Display stands in as the foreign owner.
-    const element: HTMLElement = await render('display.hardwareAcceleration');
-    const checkbox: HTMLInputElement =
-      element.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
-    expect(checkbox.checked).toBe(true);
+    const element: HTMLElement = await render('display.graphicsAcceleration');
+    expect(element.querySelector('app-dropdown')).toBeTruthy();
+    expect(element.querySelectorAll('option').length).toBe(4);
   });
 
   it('render_whenValueSet_reflectsTheCurrentValue', async () => {

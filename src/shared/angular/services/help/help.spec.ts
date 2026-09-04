@@ -46,6 +46,7 @@ function withHost(platform: string, arch: string): void {
     homeDir: '/home/test',
     display: {
       gpuRendering: { recommendReducedEffects: false, description: '' },
+      graphicsAcceleration: 'auto',
       hardwareAccelerationEnabled: true,
     },
   };

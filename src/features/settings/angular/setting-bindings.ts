@@ -1,4 +1,5 @@
 import { computed, inject, Injector, Service, signal, Signal } from '@angular/core';
+import type { GraphicsAcceleration } from '@shared/api/host';
 import type { ImageSourcePolicy } from '@shared/api/security-channels';
 import { Display } from '@shared/angular/services/display/display';
 import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
@@ -24,6 +25,15 @@ export interface SettingBinding {
    * @param value The value to write.
    */
   set(value: unknown): void;
+
+  /**
+   * Gets the value that visibility conditions test, for a setting whose stored value is a choice
+   * rather than an answer. Graphics acceleration is the case: it stores `auto`, which resolves to a
+   * real level at startup, and a setting qualified on `full` has to follow what `auto` actually
+   * resolved to — not the word `auto`. Undefined when the stored value is already the answer, which
+   * is the normal case.
+   */
+  readonly resolvedValue?: Signal<unknown>;
 
   /**
    * Gets whether the control should be disabled (for example when the owning bridge is unavailable
@@ -81,16 +91,17 @@ export class SettingBindings {
   }
 
   /**
-   * Builds a binding backed by the Display service (the hardware-acceleration preference). The value
-   * is owned by the main process (it sets the GPU flag at launch), so a change reports as pending a
-   * restart until the application relaunches.
+   * Builds a binding backed by the Display service (the graphics-acceleration level). The level is
+   * persisted by the main process, and its `off` rung is applied before the app is ready, so moving
+   * on or off that rung reports as pending a restart until the application relaunches.
    * @returns Returns the binding.
    */
   private displayBinding(): SettingBinding {
     const display: Display = this.injector.get(Display);
     return {
-      value: display.hardwareAccelerationEnabled,
-      set: (value: unknown): void => display.setHardwareAcceleration(value as boolean),
+      value: display.graphicsAcceleration,
+      resolvedValue: display.resolvedGraphicsAcceleration,
+      set: (value: unknown): void => display.setGraphicsAcceleration(value as GraphicsAcceleration),
       disabled: signal(!display.isAvailable).asReadonly(),
       restartPending: display.restartRequired,
     };
