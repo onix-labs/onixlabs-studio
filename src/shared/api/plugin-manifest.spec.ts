@@ -7,6 +7,7 @@ import {
 import CURATED_PLUGINS from '@shared/electron/contributions/plugins/curated-plugins.json';
 import {
   isApiCompatible,
+  ManifestContainerEngine,
   ManifestError,
   ManifestResult,
   PLUGIN_API_VERSION,
@@ -78,6 +79,32 @@ function npmManifest(
     provision: base,
     ...(languageServers === undefined ? {} : { contributes: { languageServers } }),
   });
+}
+
+/**
+ * Builds a well-formed container-engine contribution, modelled on the engine P5 will publish, which
+ * tests then break in one place at a time.
+ * @returns Returns the contribution as untrusted JSON would arrive.
+ */
+function containerEngine(): Record<string, unknown> {
+  return {
+    id: 'podman',
+    displayName: 'Podman',
+    priority: 50,
+    entryPoint: 'bin/podman',
+    discovery: {
+      hostVariable: 'CONTAINER_HOST',
+      sockets: {
+        darwin: ['/run/podman/podman.sock'],
+        linux: ['/run/podman/podman.sock'],
+        win32: ['\\\\.\\pipe\\podman-machine-default'],
+      },
+    },
+    startCommands: {
+      darwin: 'podman machine start',
+      linux: 'systemctl --user start podman.socket',
+    },
+  };
 }
 
 /**
@@ -184,6 +211,31 @@ describe('parsePluginManifest', () => {
 
       expect(result.errors).toEqual([]);
       expect(result.manifest?.contributes.debugAdapters?.[0]?.transport).toBe('tcp-server');
+    });
+
+    it('aContainerEngineContribution', () => {
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { containerEngines: [containerEngine()] } }),
+      );
+
+      expect(result.errors).toEqual([]);
+      const engine: ManifestContainerEngine | undefined =
+        result.manifest?.contributes.containerEngines?.[0];
+      expect(engine?.id).toBe('podman');
+      expect(engine?.discovery.hostVariable).toBe('CONTAINER_HOST');
+      expect(engine?.discovery.sockets['linux']).toEqual(['/run/podman/podman.sock']);
+      expect(engine?.startCommands?.['darwin']).toBe('podman machine start');
+    });
+
+    it('aContainerEngineWithNoStartCommands_becauseThereMayBeNothingToSay', () => {
+      const engine: Record<string, unknown> = containerEngine();
+      delete engine['startCommands'];
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { containerEngines: [engine] } }),
+      );
+
+      expect(result.errors).toEqual([]);
+      expect(result.manifest?.contributes.containerEngines?.[0]?.startCommands).toBeUndefined();
     });
 
     it('aContributionWithoutAPriority_defaultingIt', () => {
@@ -321,6 +373,59 @@ describe('parsePluginManifest', () => {
 
       expect(result.manifest).toBeNull();
       expect(paths(result)).toContain('contributes');
+    });
+
+    it('aContainerEngineNamingNoSocketForAnyPlatform', () => {
+      // An engine that says nothing about where it is served describes no way to reach it, and would
+      // install as an option that can never connect.
+      const engine: Record<string, unknown> = containerEngine();
+      engine['discovery'] = { hostVariable: 'CONTAINER_HOST', sockets: {} };
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { containerEngines: [engine] } }),
+      );
+
+      expect(result.manifest).toBeNull();
+      expect(paths(result)).toContain('contributes.containerEngines[0].discovery.sockets');
+    });
+
+    it('aContainerEngineWithNoDiscoveryAtAll', () => {
+      const engine: Record<string, unknown> = containerEngine();
+      delete engine['discovery'];
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { containerEngines: [engine] } }),
+      );
+
+      expect(result.manifest).toBeNull();
+      expect(paths(result)).toContain('contributes.containerEngines[0].discovery');
+    });
+
+    it('aContainerEngineKeyingSocketsByAnUnknownPlatform', () => {
+      const engine: Record<string, unknown> = containerEngine();
+      engine['discovery'] = {
+        hostVariable: 'CONTAINER_HOST',
+        sockets: { 'darwin-arm64': ['/run/podman/podman.sock'] },
+      };
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { containerEngines: [engine] } }),
+      );
+
+      // Keyed by platform, not by platform-and-architecture: where a socket lives does not vary by
+      // architecture, and accepting the download-style key would quietly never match.
+      expect(result.manifest).toBeNull();
+      expect(paths(result)).toContain(
+        'contributes.containerEngines[0].discovery.sockets.darwin-arm64',
+      );
+    });
+
+    it('aContainerEngineWhoseStartCommandIsNotAString', () => {
+      const engine: Record<string, unknown> = containerEngine();
+      engine['startCommands'] = { darwin: 42 };
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { containerEngines: [engine] } }),
+      );
+
+      expect(result.manifest).toBeNull();
+      expect(paths(result)).toContain('contributes.containerEngines[0].startCommands.darwin');
     });
 
     it('aProvisionPublishingNoPlatforms', () => {

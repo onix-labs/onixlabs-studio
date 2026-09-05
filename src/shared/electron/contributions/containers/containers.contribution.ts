@@ -4,8 +4,10 @@ import { ContainerEngineInfo } from '@shared/api/container-types';
 import { ContributionContext, MainContribution } from '../main-contribution';
 import { PermissionId } from '../permissions/permission';
 import { ContainerSocket } from '../permissions/brokers/container-socket';
+import { contributedContainerEngines } from '../plugins/contributed';
 import { launchDockerDesktop } from './docker-desktop';
-import { ContainerEngine, ContainerEngineDescriptor } from './container-engine';
+import { ContainerEngine, ContainerEngineDescriptor, engineSocketPath } from './container-engine';
+import { contributedEngines } from './container-engine-registry';
 import { DockerEngine } from './docker-engine';
 import { chooseEngine, describeEngines, selectedEngine } from './engine-selection';
 import { DockerStreamHandle } from './docker-transport';
@@ -49,6 +51,18 @@ export class ContainersContribution implements MainContribution {
   private log: ContributionContext['log'] | null = null;
 
   /**
+   * The engine client in use, rebuilt whenever the engine in effect or its endpoint changes.
+   */
+  private engine: ContainerEngine | null = null;
+
+  /**
+   * Identifies the engine {@link engine} was built for, as engine identity plus resolved endpoint. Both
+   * halves matter: choosing a different engine changes the first, and an engine that was not running
+   * when Studio started changes the second once it is.
+   */
+  private engineKey: string | null = null;
+
+  /**
    * Resolves the socket permission, wires the operation channels, and starts the event push.
    * @param context The contribution context.
    */
@@ -56,42 +70,49 @@ export class ContainersContribution implements MainContribution {
     // Throws PermissionDeniedError when the broker refuses; the registry isolates that (the feature
     // simply does not activate) rather than letting it abort startup.
     this.log = context.log;
-    const socket: ContainerSocket = context.permission<ContainerSocket>('container.socket');
-    const descriptor: ContainerEngineDescriptor = selectedEngine();
-    context.log.info(
-      `activating with the ${descriptor.displayName} engine; socket resolved at ${socket.path}`,
-    );
-    // Docker and Podman both serve the Docker Engine API, so one client speaks to either; the engine
-    // in effect decides only which socket was opened above and which CLI the surface drives.
-    const engine: ContainerEngine = new DockerEngine(socket);
+    this.refreshContributedEngines();
+    // Resolved now so activation says which engine it is talking to, but *not* held for the session:
+    // every handler asks again, because the answer can change while Studio runs (#594).
+    this.currentEngine(context);
 
     context.handle(ContainerChannel.ListContainers, (): Promise<unknown> =>
-      engine.listContainers(),
+      this.currentEngine(context).listContainers(),
     );
-    context.handle(ContainerChannel.ListImages, (): Promise<unknown> => engine.listImages());
+    context.handle(ContainerChannel.ListImages, (): Promise<unknown> =>
+      this.currentEngine(context).listImages(),
+    );
     context.handle(
       ContainerChannel.Start,
-      (_event: IpcMainInvokeEvent, id: unknown): Promise<boolean> => engine.start(String(id)),
+      (_event: IpcMainInvokeEvent, id: unknown): Promise<boolean> =>
+        this.currentEngine(context).start(String(id)),
     );
     context.handle(
       ContainerChannel.Stop,
-      (_event: IpcMainInvokeEvent, id: unknown): Promise<boolean> => engine.stop(String(id)),
+      (_event: IpcMainInvokeEvent, id: unknown): Promise<boolean> =>
+        this.currentEngine(context).stop(String(id)),
     );
     context.handle(
       ContainerChannel.Remove,
-      (_event: IpcMainInvokeEvent, id: unknown): Promise<boolean> => engine.remove(String(id)),
+      (_event: IpcMainInvokeEvent, id: unknown): Promise<boolean> =>
+        this.currentEngine(context).remove(String(id)),
     );
-    context.handle(ContainerChannel.Status, (): Promise<unknown> => engine.status());
+    context.handle(ContainerChannel.Status, (): Promise<unknown> =>
+      this.currentEngine(context).status(),
+    );
     context.handle(ContainerChannel.LaunchDesktop, (): Promise<boolean> => launchDockerDesktop());
-    context.handle(ContainerChannel.ListEngines, (): readonly ContainerEngineInfo[] =>
-      describeEngines(),
-    );
+    context.handle(ContainerChannel.ListEngines, (): readonly ContainerEngineInfo[] => {
+      // Recomputed here rather than cached from activation: this is the call the surface makes when
+      // it wants to know what its choices are, so it is exactly when a plugin installed since launch
+      // should start counting.
+      this.refreshContributedEngines();
+      return describeEngines();
+    });
     context.handle(
       ContainerChannel.ChooseEngine,
       (_event: IpcMainInvokeEvent, id: unknown): readonly ContainerEngineInfo[] => {
         chooseEngine(typeof id === 'string' && id.length > 0 ? id : null);
-        // The socket was opened at activation, so a different engine takes effect on the next launch;
-        // the refreshed list is what tells the renderer to say so.
+        // The choice takes effect on the next call, not on the next launch: the engine client is
+        // rebuilt when the engine in effect changes, so nothing here has to outlive the choice.
         return describeEngines();
       },
     );
@@ -104,9 +125,7 @@ export class ContainersContribution implements MainContribution {
       this.watchConsumers += 1;
       if (this.watchConsumers === 1 && this.watchHandle === null) {
         this.log?.info('first watch consumer; opening the engine event stream');
-        this.watchHandle = engine.watch((event): void =>
-          context.send(ContainerChannel.Events, event),
-        );
+        this.watchHandle = this.openWatch(context);
       }
       return true;
     });
@@ -123,6 +142,82 @@ export class ContainersContribution implements MainContribution {
   }
 
   /**
+   * Recomputes which engines installed plugins contribute (#594).
+   *
+   * Cheap and idempotent, so it is simply redone rather than invalidated on a signal: the alternative
+   * is a cross-contribution notification from the Plugin Manager, which would couple two contributions
+   * to save a directory check on a call the user made.
+   */
+  private refreshContributedEngines(): void {
+    contributedEngines.replaceAll(contributedContainerEngines());
+  }
+
+  /**
+   * Gets the engine client to serve a request with, rebuilding it when the engine in effect or its
+   * endpoint has changed since the last one.
+   *
+   * This is the lifecycle the contribution used to lack. The socket was resolved once at activation and
+   * captured in the handler closures, so choosing a different engine took effect only on the next
+   * launch — untenable once an engine can be *installed* while Studio runs.
+   * @param context The contribution context, which is the only door to the socket permission.
+   * @returns Returns the engine client.
+   */
+  private currentEngine(context: ContributionContext): ContainerEngine {
+    const descriptor: ContainerEngineDescriptor = selectedEngine();
+    const key: string = `${descriptor.id}@${engineSocketPath(descriptor) ?? ''}`;
+    if (this.engine === null || this.engineKey !== key) {
+      this.adoptEngine(context, descriptor, key);
+    }
+    // Non-null by construction: the branch above assigns it when it is null.
+    return this.engine!;
+  }
+
+  /**
+   * Builds the client for an engine and takes any open event stream across to it.
+   *
+   * The permission is resolved here rather than per request because resolving it mints a fresh handle
+   * and audits the grant; doing that on every list would fill the audit with the same decision. Here it
+   * happens exactly when the thing being granted has actually changed.
+   * @param context The contribution context.
+   * @param descriptor The engine now in effect.
+   * @param key The identity of that engine and its endpoint.
+   */
+  private adoptEngine(
+    context: ContributionContext,
+    descriptor: ContainerEngineDescriptor,
+    key: string,
+  ): void {
+    const socket: ContainerSocket = context.permission<ContainerSocket>('container.socket');
+    context.log.info(
+      `using the ${descriptor.displayName} engine; socket resolved at ${socket.path}`,
+    );
+    const watching: boolean = this.watchHandle !== null;
+    this.watchHandle?.close();
+    this.watchHandle = null;
+    // Docker and Podman both serve the Docker Engine API, so one client speaks to either; the engine
+    // in effect decides only which socket it opens and which CLI the surface drives.
+    this.engine = new DockerEngine(socket);
+    this.engineKey = key;
+    if (watching && this.watchConsumers > 0) {
+      // Consumers hold a watch on *the engine*, not on one connection to it, so a stream that was open
+      // reopens against the new engine rather than leaving those consumers silently unsubscribed.
+      this.log?.info('engine changed while watched; reopening the event stream');
+      this.watchHandle = this.openWatch(context);
+    }
+  }
+
+  /**
+   * Opens the engine event stream and pushes each event to the renderer.
+   * @param context The contribution context.
+   * @returns Returns the stream handle.
+   */
+  private openWatch(context: ContributionContext): DockerStreamHandle {
+    return this.currentEngine(context).watch((event): void =>
+      context.send(ContainerChannel.Events, event),
+    );
+  }
+
+  /**
    * Closes the event stream. The IPC handlers are removed automatically by the registry's tracker.
    */
   public dispose(): void {
@@ -130,6 +225,8 @@ export class ContainersContribution implements MainContribution {
     this.watchHandle?.close();
     this.watchHandle = null;
     this.watchConsumers = 0;
+    this.engine = null;
+    this.engineKey = null;
   }
 }
 

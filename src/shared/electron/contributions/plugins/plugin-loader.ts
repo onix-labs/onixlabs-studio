@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import * as path from 'node:path';
 import {
   ManifestCommand,
+  ManifestContainerEngine,
   ManifestDebugAdapter,
   ManifestDecoder,
   ManifestDownload,
@@ -14,6 +15,7 @@ import {
 } from '@shared/api/plugin-manifest';
 import { PluginContribution, PluginOrigin } from '@shared/api/plugin-channels';
 import { logger } from '../../logger';
+import { ContainerEngineDescriptor } from '../containers/container-engine';
 import {
   DecoderDescriptor,
   DecoderResolution,
@@ -364,7 +366,15 @@ export function toContributions(manifest: PluginManifest): readonly PluginContri
       priority: decoder.priority,
     }),
   );
-  return [...servers, ...adapters, ...decoders];
+  const engines: readonly PluginContribution[] = (manifest.contributes.containerEngines ?? []).map(
+    (engine: ManifestContainerEngine): PluginContribution => ({
+      slot: 'container-engine',
+      id: engine.id,
+      displayName: engine.displayName,
+      priority: engine.priority,
+    }),
+  );
+  return [...servers, ...adapters, ...decoders, ...engines];
 }
 
 /**
@@ -583,6 +593,58 @@ export function toDecoderDescriptors(
       },
     }),
   );
+}
+
+/**
+ * Turns a manifest's container engines into descriptors the engine catalogue can offer.
+ *
+ * Unlike a decoder, an engine is dropped entirely when its payload is not installed rather than being
+ * registered as unavailable. A decoder descriptor can say *why* it cannot run and have the panel offer
+ * the install; an engine has no such channel — the surface reports an engine as unavailable when its
+ * **socket** is absent, which is a different fact — so an uninstalled engine that stayed in the
+ * catalogue would be selectable, and would report "not running" about something that is not there.
+ * Offering the install is the empty state's job (#595), not the catalogue's.
+ * @param manifest The validated manifest.
+ * @param provisioner Gets the provisioner the plugin's install went through, so the answer cannot
+ * disagree with where the payload actually landed.
+ * @param localRoot The sideloaded plugin's directory, or undefined when it was not sideloaded.
+ * @returns Returns the descriptors for the engines whose payload is installed.
+ */
+export function toContainerEngineDescriptors(
+  manifest: PluginManifest,
+  provisioner: () => LspProvisioner,
+  localRoot?: string,
+): readonly ContainerEngineDescriptor[] {
+  const ops: PayloadOps = payloadOps(manifest, localRoot);
+  const descriptors: ContainerEngineDescriptor[] = [];
+  for (const engine of manifest.contributes.containerEngines ?? []) {
+    const cli: string | null = ops.isInstalled(provisioner())
+      ? ops.target(provisioner(), engine.entryPoint)
+      : null;
+    if (cli === null) {
+      continue;
+    }
+    descriptors.push({
+      id: engine.id,
+      displayName: engine.displayName,
+      priority: engine.priority,
+      // The provisioned client, named by its absolute path rather than by a bare binary name: the
+      // point of provisioning it is that the surface no longer depends on one being on the PATH.
+      cli,
+      discovery: {
+        hostVariable: engine.discovery.hostVariable,
+        dockerContext: engine.discovery.dockerContext === true,
+        defaults: (platform: NodeJS.Platform): readonly string[] =>
+          engine.discovery.sockets[platform] ?? [],
+      },
+      // A manifest cannot claim Studio can start its engine. Launching an *application* the user
+      // installed is Docker Desktop's special case; a provisioned CLI is not something to launch.
+      canLaunch: (): boolean => false,
+      startCommand: (platform: NodeJS.Platform): string | null =>
+        engine.startCommands?.[platform] ?? null,
+    });
+  }
+  return descriptors;
 }
 
 /**

@@ -16,6 +16,7 @@ import {
   NodeRuntimeSpec,
   payloadOps,
   PayloadOps,
+  toContainerEngineDescriptors,
   toDebugAdapterEntries,
   toDecoderDescriptors,
   toOrigin,
@@ -24,6 +25,7 @@ import {
   toProvision,
   validManifests,
 } from './plugin-loader';
+import { ContainerEngineDescriptor } from '../containers/container-engine';
 
 /**
  * Builds a well-formed manifest for a sideloaded plugin.
@@ -745,5 +747,91 @@ describe('a sideloaded plugin carrying its own payload', () => {
       root,
     );
     expect(descriptors[0].resolve().available).toBe(false);
+  });
+
+  /**
+   * A sideloaded manifest contributing a container engine, whose payload is its client CLI.
+   * @returns Returns the manifest.
+   */
+  function engineManifest(): PluginManifest {
+    return {
+      ...decoderManifest(),
+      id: 'local.engine',
+      contributes: {
+        containerEngines: [
+          {
+            id: 'local.engine',
+            displayName: 'Local Engine',
+            priority: 10,
+            discovery: {
+              hostVariable: 'LOCAL_HOST',
+              dockerContext: true,
+              sockets: { darwin: ['/run/local.sock'], linux: ['/run/local.sock'] },
+            },
+            startCommands: { darwin: 'local machine start' },
+          },
+        ],
+      },
+    };
+  }
+
+  it('toContainerEngineDescriptors_describesTheEngineFromItsManifest', () => {
+    mkdirSync(path.join(root, 'payload'), { recursive: true });
+    writeFileSync(path.join(root, 'payload', 'main.js'), '', 'utf8');
+    const descriptors: readonly ContainerEngineDescriptor[] = toContainerEngineDescriptors(
+      engineManifest(),
+      (): LspProvisioner => nothingDownloaded,
+      root,
+    );
+
+    expect(descriptors).toHaveLength(1);
+    // The CLI is the provisioned client's absolute path, not a bare name: the point of provisioning it
+    // is that nothing has to be on the PATH.
+    expect(descriptors[0].cli).toBe(path.join(root, 'payload', 'main.js'));
+    expect(descriptors[0].discovery.hostVariable).toBe('LOCAL_HOST');
+    expect(descriptors[0].discovery.defaults('darwin')).toEqual(['/run/local.sock']);
+    expect(descriptors[0].startCommand('darwin')).toBe('local machine start');
+  });
+
+  it('toContainerEngineDescriptors_reportsNoSocketsForAPlatformTheEngineOmits', () => {
+    mkdirSync(path.join(root, 'payload'), { recursive: true });
+    writeFileSync(path.join(root, 'payload', 'main.js'), '', 'utf8');
+    const descriptors: readonly ContainerEngineDescriptor[] = toContainerEngineDescriptors(
+      engineManifest(),
+      (): LspProvisioner => nothingDownloaded,
+      root,
+    );
+
+    // No candidates is how "this engine does not run here" is expressed, which discovery turns into
+    // no endpoint at all rather than into a path that cannot exist.
+    expect(descriptors[0].discovery.defaults('win32')).toEqual([]);
+    expect(descriptors[0].startCommand('win32')).toBeNull();
+  });
+
+  it('toContainerEngineDescriptors_neverClaimsStudioCanLaunchTheEngine', () => {
+    mkdirSync(path.join(root, 'payload'), { recursive: true });
+    writeFileSync(path.join(root, 'payload', 'main.js'), '', 'utf8');
+    const descriptors: readonly ContainerEngineDescriptor[] = toContainerEngineDescriptors(
+      engineManifest(),
+      (): LspProvisioner => nothingDownloaded,
+      root,
+    );
+
+    // Launching an application the user installed is Docker Desktop's special case; a provisioned CLI
+    // is not something to launch, and a manifest has no way to say otherwise.
+    expect(descriptors[0].canLaunch('darwin')).toBe(false);
+  });
+
+  it('toContainerEngineDescriptors_dropsAnEngineWhosePayloadIsNotInstalled', () => {
+    // Unlike a decoder, which registers as unavailable and has the panel offer the install: an engine
+    // left in the catalogue would be selectable, and would report "not running" about something that
+    // is not there at all.
+    const descriptors: readonly ContainerEngineDescriptor[] = toContainerEngineDescriptors(
+      engineManifest(),
+      (): LspProvisioner => nothingDownloaded,
+      root,
+    );
+
+    expect(descriptors).toEqual([]);
   });
 });

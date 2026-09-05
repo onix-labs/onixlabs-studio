@@ -44,6 +44,7 @@ const SLOT_LABELS: Readonly<Record<PluginSlot, string>> = {
   'language-server': 'Language server',
   'debug-adapter': 'Debugger',
   decoder: 'Decoder',
+  'container-engine': 'Container engine',
 };
 
 /**
@@ -286,6 +287,21 @@ export class PluginManagerView {
 }
 
 /**
+ * Gets what a contribution is keyed by, whichever way its slot is keyed.
+ *
+ * A container engine is keyed by nothing at all — it is chosen once for the application — so it
+ * contributes no keys to search on, and its display name alone has to carry it.
+ * @param contribution The contribution.
+ * @returns Returns the keys, empty for an unkeyed slot.
+ */
+function contributionKeys(contribution: PluginContribution): readonly string[] {
+  if (isLanguageContribution(contribution)) {
+    return contribution.languages;
+  }
+  return contribution.slot === 'decoder' ? contribution.formats : [];
+}
+
+/**
  * Determines whether a plugin matches every search term.
  *
  * Every term must match, but each may match any field — so "python debug" finds a Python debugger
@@ -307,7 +323,7 @@ function matches(plugin: PluginSummary, terms: readonly string[]): boolean {
     plugin.detail ?? '',
     ...plugin.contributions.flatMap((contribution: PluginContribution): readonly string[] => [
       contribution.displayName,
-      ...(isLanguageContribution(contribution) ? contribution.languages : contribution.formats),
+      ...contributionKeys(contribution),
     ]),
   ]
     .join(' ')

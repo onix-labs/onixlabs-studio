@@ -6,6 +6,7 @@ import {
   ImageSummary,
 } from '@shared/api/container-types';
 import { SlotEntry } from '@shared/api/slot';
+import { contributedEngines } from './container-engine-registry';
 import { dockerDesktopLaunchCommand } from './docker-desktop';
 import { DockerStreamHandle } from './docker-transport';
 import {
@@ -187,14 +188,19 @@ const PODMAN: ContainerEngineDescriptor = {
 };
 
 /**
- * The container engines the application knows how to talk to.
+ * The container engines the application can talk to: the built-in ones, then whatever installed
+ * plugins contribute (#594).
  *
- * A closed list, like the debug adapters: a new engine is a change to what the application supports,
- * and the runtime-contributed case is the plugin loader's concern (#295).
+ * No longer a closed list. It was one when the comment here said so, and the analogy it drew — "like
+ * the debug adapters" — is exactly what expired: debug adapters became a contribution point, and an
+ * engine is the same kind of thing, an implementation filling a slot the application defines.
+ *
+ * Built-ins come first so that registration order, which breaks ties between equal priorities, cannot
+ * be changed by installing a plugin.
  * @returns Returns the descriptors, in registration order.
  */
 export function containerEngineCatalogue(): readonly ContainerEngineDescriptor[] {
-  return [DOCKER, PODMAN];
+  return [DOCKER, PODMAN, ...contributedEngines.all()];
 }
 
 /**
