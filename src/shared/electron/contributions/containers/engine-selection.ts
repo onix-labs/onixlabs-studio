@@ -142,7 +142,6 @@ export function describeEngines(
     available: isEngineAvailable(engine, environment),
     inEffect: engine.id === inEffect,
     cli: engine.cli,
-    canLaunch: engine.canLaunch(platform),
     startCommand: engine.startCommand(platform),
   }));
 }

@@ -16,8 +16,8 @@ import {
  * `window.bridge` directly. Outside Electron (or before the backend answers) every call degrades to a
  * safe empty result, so callers need no environment checks.
  *
- * It speaks to whichever engine is in effect (#394), so nothing here is Docker-specific beyond
- * {@link launchDesktop}, which really does launch Docker Desktop.
+ * It speaks to whichever engine is in effect (#394), and since the engines themselves became plugins
+ * (#596) nothing here is Docker-specific at all.
  */
 @Service()
 export class ContainersClient {
@@ -141,12 +141,16 @@ export class ContainersClient {
 
   /**
    * Gets the command-line tool of the engine in effect, for the operations that are a terminal session
-   * rather than an API call. Falls back to `docker` before the engines have been reported, which is
-   * both the default engine and the overwhelmingly likely answer.
-   * @returns Returns the CLI binary name.
+   * rather than an API call.
+   *
+   * Empty when no engine is in effect, and deliberately not `docker`: the fallback made sense while
+   * Docker was compiled in and overwhelmingly likely, but an engine is now something the user installs,
+   * and guessing at a binary that may not exist would build a command that fails obscurely instead of
+   * an operation that is simply unavailable.
+   * @returns Returns the CLI path, or an empty string when no engine is in effect.
    */
   public engineCli(): string {
-    return this.engineInEffect()?.cli ?? 'docker';
+    return this.engineInEffect()?.cli ?? '';
   }
 
   /**
@@ -173,15 +177,6 @@ export class ContainersClient {
         engineId,
       )) ?? [];
     this.engines.set(engines);
-  }
-
-  /**
-   * Attempts to launch Docker Desktop through the operating system.
-   * @returns Returns true when the launch was issued (a no-op returning false outside Electron).
-   */
-  public launchDesktop(): Promise<boolean> {
-    this.log.info('containers.client', 'Launching Docker Desktop');
-    return this.bridge?.invoke<boolean>(ContainerChannel.LaunchDesktop) ?? Promise.resolve(false);
   }
 
   /**

@@ -31,11 +31,6 @@ vi.mock('node:fs', () => ({
 const STORE: string = path.join(tmpdir(), 'container-engine.json');
 
 /**
- * The Docker socket on the platforms the suite runs on.
- */
-const DOCKER_SOCKET: string = '/var/run/docker.sock';
-
-/**
  * Builds a discovery environment reporting a given set of sockets and no Docker configuration.
  * @param sockets The engine sockets present on the machine.
  * @returns Returns the environment.
@@ -70,9 +65,11 @@ describe('selectedEngine', () => {
   });
 
   it('withNothingInstalledAndNoChoice_fallsBackToTheDefaultEngine', async () => {
+    // Podman is the only engine still built in: Docker left core with #596 and now arrives as a
+    // plugin, so it is absent from the catalogue unless one is installed.
     const { selectedEngine } = await import('./engine-selection');
 
-    expect(selectedEngine(machineWith([]))?.id).toBe('docker');
+    expect(selectedEngine(machineWith([]))?.id).toBe('podman');
   });
 
   it('withTheChosenEngineNotRunning_staysWithTheChoiceRatherThanTheDefault', async () => {
@@ -88,7 +85,7 @@ describe('selectedEngine', () => {
     chose('nonexistent');
     const { selectedEngine } = await import('./engine-selection');
 
-    expect(selectedEngine(machineWith([DOCKER_SOCKET]))?.id).toBe('docker');
+    expect(selectedEngine(machineWith(['/run/podman/podman.sock']))?.id).toBe('podman');
   });
 
   it('withOnlyPodmanRunning_choosesPodmanWithoutBeingTold', async () => {
@@ -130,10 +127,11 @@ describe('describeEngines', () => {
 
   it('reportsAnEngineAsAvailableOnlyWhenDiscoveryFindsItsSocket', async () => {
     const { describeEngines } = await import('./engine-selection');
-    const engines: readonly ContainerEngineInfo[] = describeEngines(machineWith([DOCKER_SOCKET]));
 
-    expect(pick(engines, 'docker')?.available).toBe(true);
-    expect(pick(engines, 'podman')?.available).toBe(false);
+    expect(
+      pick(describeEngines(machineWith(['/run/podman/podman.sock'])), 'podman')?.available,
+    ).toBe(true);
+    expect(pick(describeEngines(machineWith([])), 'podman')?.available).toBe(false);
   });
 
   it('offersAStartCommandForAnEngineTheApplicationCannotLaunch', async () => {
@@ -143,18 +141,17 @@ describe('describeEngines', () => {
       'podman',
     );
 
-    expect(podman?.canLaunch).toBe(false);
     expect(podman?.startCommand).not.toBeNull();
   });
 
-  it('offersNoStartCommandForAnEngineTheApplicationLaunchesItself', async () => {
+  it('describesOnlyTheEnginesInTheCatalogue', async () => {
+    // Docker is not among them any more: it arrives as a plugin, and an engine that is not installed
+    // is not something the surface may offer (#596).
     const { describeEngines } = await import('./engine-selection');
-    const docker: ContainerEngineInfo | undefined = pick(
-      describeEngines(machineWith([])),
-      'docker',
-    );
 
-    expect(docker?.startCommand).toBeNull();
+    expect(
+      describeEngines(machineWith([])).map((engine: ContainerEngineInfo): string => engine.id),
+    ).toEqual(['podman']);
   });
 
   it('namesExactlyOneEngineAsInEffect', async () => {

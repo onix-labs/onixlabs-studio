@@ -153,6 +153,7 @@ export function toProvision(manifest: PluginManifest): ArchiveProvision | null {
       sha256: source.sha256,
       archive: source.archive,
       executablePath: source.executablePath,
+      members: source.members,
     };
   }
   return { id: manifest.id, version: manifest.version, downloads };
@@ -637,9 +638,6 @@ export function toContainerEngineDescriptors(
         defaults: (platform: NodeJS.Platform): readonly string[] =>
           engine.discovery.sockets[platform] ?? [],
       },
-      // A manifest cannot claim Studio can start its engine. Launching an *application* the user
-      // installed is Docker Desktop's special case; a provisioned CLI is not something to launch.
-      canLaunch: (): boolean => false,
       startCommand: (platform: NodeJS.Platform): string | null =>
         engine.startCommands?.[platform] ?? null,
     });

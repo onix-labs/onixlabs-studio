@@ -55,8 +55,12 @@ import { DECODER_FORMATS } from './decoder-protocol';
  * speaks to an engine over a socket the user's own engine serves, and provisions only the client CLI
  * for the operations that are a terminal session. That is a widening of what a contribution *is*, and
  * it is recorded here rather than left to be inferred.
+ *
+ * `1.6.0` added the optional `members` to a download (#596), for an upstream that publishes one archive
+ * holding more than the thing being contributed. Adds only: a download naming none still extracts the
+ * whole archive, exactly as before.
  */
-export const PLUGIN_API_VERSION: string = '1.5.0';
+export const PLUGIN_API_VERSION: string = '1.6.0';
 
 /**
  * Matches a plain three-part semver. Deliberately strict and deliberately local: the rule below is the
@@ -166,6 +170,19 @@ export interface ManifestDownload {
    * Gets the executable or entry point's path within the extracted tree.
    */
   readonly executablePath: string;
+
+  /**
+   * Gets the archive members to extract, or undefined to extract the whole archive.
+   *
+   * For an upstream that publishes one archive holding more than the thing being contributed. Docker's
+   * static package is the case that forced it (#596): on macOS it carries the client alone, but on Linux
+   * and Windows it carries the whole engine, and extracting all of it would put a second container
+   * daemon on the disk of a machine already running one.
+   *
+   * The archive is still downloaded and verified whole — a hash of part of a file is not a hash of the
+   * file — so this narrows what is written to disk, never what is checked.
+   */
+  readonly members?: readonly string[];
 }
 
 /**
@@ -810,9 +827,46 @@ function readDownload(value: unknown, path: string, errors: Errors): ManifestDow
       'must be a relative path inside the archive, with no parent traversal',
     );
   }
+  const members: readonly string[] | undefined = readMembers(source['members'], path, errors);
   return errors.items.length > 0
     ? null
-    : { url, sha256, archive: archive as ManifestDownload['archive'], executablePath };
+    : { url, sha256, archive: archive as ManifestDownload['archive'], executablePath, members };
+}
+
+/**
+ * Validates the optional archive members to extract.
+ *
+ * Held to the same rule as an entry point — relative, no parent traversal — because a member name is a
+ * path handed to an extractor, and `../` in one writes outside the install directory just as surely.
+ * @param value The candidate members, or undefined when the field is absent.
+ * @param path The dotted path for failures.
+ * @param errors The failure collector.
+ * @returns Returns the members, or undefined when the field was absent.
+ */
+function readMembers(value: unknown, path: string, errors: Errors): readonly string[] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!Array.isArray(value) || value.length === 0) {
+    errors.add(`${path}.members`, 'must be a non-empty array of archive member paths');
+    return undefined;
+  }
+  const members: string[] = [];
+  for (const member of value) {
+    if (typeof member !== 'string' || member.length === 0) {
+      errors.add(`${path}.members`, 'must be a non-empty array of archive member paths');
+      continue;
+    }
+    if (member.startsWith('/') || member.includes('..')) {
+      errors.add(
+        `${path}.members`,
+        'must name relative paths inside the archive, with no parent traversal',
+      );
+      continue;
+    }
+    members.push(member);
+  }
+  return members;
 }
 
 /**

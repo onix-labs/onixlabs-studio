@@ -1,5 +1,5 @@
 {
-  "revision": 5,
+  "revision": 6,
   "plugins": [
     {
       "id": "pyright",
@@ -47,7 +47,9 @@
           {
             "id": "pyright",
             "displayName": "Pyright",
-            "languages": ["python"],
+            "languages": [
+              "python"
+            ],
             "priority": 100,
             "command": {
               "kind": "node"
@@ -102,11 +104,15 @@
           {
             "id": "ty",
             "displayName": "ty (Astral)",
-            "languages": ["python"],
+            "languages": [
+              "python"
+            ],
             "priority": 50,
             "command": {
               "kind": "executable",
-              "args": ["server"]
+              "args": [
+                "server"
+              ]
             }
           }
         ]
@@ -158,7 +164,9 @@
           {
             "id": "lua-language-server",
             "displayName": "Lua Language Server",
-            "languages": ["lua"],
+            "languages": [
+              "lua"
+            ],
             "priority": 100,
             "command": {
               "kind": "executable"
@@ -202,7 +210,9 @@
           {
             "id": "sqls",
             "displayName": "sqls",
-            "languages": ["sql"],
+            "languages": [
+              "sql"
+            ],
             "priority": 100,
             "command": {
               "kind": "executable"
@@ -245,11 +255,15 @@
           {
             "id": "perlnavigator",
             "displayName": "Perl Navigator",
-            "languages": ["perl"],
+            "languages": [
+              "perl"
+            ],
             "priority": 100,
             "command": {
               "kind": "executable",
-              "args": ["--stdio"]
+              "args": [
+                "--stdio"
+              ]
             }
           }
         ]
@@ -272,7 +286,9 @@
           {
             "id": "dockerfile-language-server",
             "displayName": "Dockerfile Language Server",
-            "languages": ["dockerfile"],
+            "languages": [
+              "dockerfile"
+            ],
             "priority": 100,
             "command": {
               "kind": "node"
@@ -298,7 +314,9 @@
           {
             "id": "yaml-language-server",
             "displayName": "YAML Language Server",
-            "languages": ["yaml"],
+            "languages": [
+              "yaml"
+            ],
             "priority": 100,
             "command": {
               "kind": "node"
@@ -324,11 +342,15 @@
           {
             "id": "bash-language-server",
             "displayName": "Bash Language Server",
-            "languages": ["shell"],
+            "languages": [
+              "shell"
+            ],
             "priority": 100,
             "command": {
               "kind": "node",
-              "args": ["start"]
+              "args": [
+                "start"
+              ]
             }
           }
         ]
@@ -351,7 +373,9 @@
           {
             "id": "svelte-language-server",
             "displayName": "Svelte Language Server",
-            "languages": ["svelte"],
+            "languages": [
+              "svelte"
+            ],
             "priority": 100,
             "command": {
               "kind": "node"
@@ -376,7 +400,9 @@
           {
             "id": "vscode-html-language-server",
             "displayName": "HTML Language Server",
-            "languages": ["html"],
+            "languages": [
+              "html"
+            ],
             "priority": 100,
             "entryPoint": "node_modules/vscode-langservers-extracted/bin/vscode-html-language-server",
             "command": {
@@ -386,7 +412,10 @@
           {
             "id": "vscode-css-language-server",
             "displayName": "CSS Language Server",
-            "languages": ["css", "scss"],
+            "languages": [
+              "css",
+              "scss"
+            ],
             "priority": 100,
             "entryPoint": "node_modules/vscode-langservers-extracted/bin/vscode-css-language-server",
             "command": {
@@ -396,7 +425,9 @@
           {
             "id": "vscode-json-language-server",
             "displayName": "JSON Language Server",
-            "languages": ["json"],
+            "languages": [
+              "json"
+            ],
             "priority": 100,
             "entryPoint": "node_modules/vscode-langservers-extracted/bin/vscode-json-language-server",
             "command": {
@@ -523,7 +554,9 @@
           {
             "id": "onixlabs.jvm-decoder",
             "displayName": "JVM Bytecode Decoder",
-            "formats": ["jvm"],
+            "formats": [
+              "jvm"
+            ],
             "priority": 100,
             "command": {
               "kind": "node"
@@ -579,7 +612,9 @@
           {
             "id": "onixlabs.wasm-decoder",
             "displayName": "WebAssembly Decoder",
-            "formats": ["wasm"],
+            "formats": [
+              "wasm"
+            ],
             "priority": 100,
             "command": {
               "kind": "node"
@@ -635,7 +670,9 @@
           {
             "id": "onixlabs.dotnet-decoder",
             "displayName": "ICSharpCode.Decompiler",
-            "formats": ["pe-managed"],
+            "formats": [
+              "pe-managed"
+            ],
             "priority": 100,
             "command": {
               "kind": "executable"
@@ -648,6 +685,93 @@
           "runtime": "dotnet"
         }
       ]
+    },
+    {
+      "id": "docker-engine",
+      "name": "Docker",
+      "description": "Talk to a Docker-compatible container engine over its local socket.",
+      "detail": "Installs only the `docker` command-line client. Studio speaks to the engine over its socket, so this does not install or run a container engine itself.",
+      "version": "29.8.0",
+      "apiVersion": "1.6.0",
+      "provision": {
+        "kind": "archive",
+        "downloads": {
+          "darwin-arm64": {
+            "url": "https://download.docker.com/mac/static/stable/aarch64/docker-29.8.0.tgz",
+            "sha256": "3f37afe51f8f53f224192099a76a454a62eb6100d426738da17fdf8472cf4b5f",
+            "archive": "tar.gz",
+            "executablePath": "docker/docker",
+            "members": [
+              "docker/docker"
+            ]
+          },
+          "darwin-x64": {
+            "url": "https://download.docker.com/mac/static/stable/x86_64/docker-29.8.0.tgz",
+            "sha256": "aeb74337d43dc9f863d056760e156daa71f9462ffdc0f836a14f1528fa1f0f13",
+            "archive": "tar.gz",
+            "executablePath": "docker/docker",
+            "members": [
+              "docker/docker"
+            ]
+          },
+          "linux-x64": {
+            "url": "https://download.docker.com/linux/static/stable/x86_64/docker-29.8.0.tgz",
+            "sha256": "cc21815cf1e2efed867dc9c8b96b46ffed8ea176ffab32b0aacb54726ded8f25",
+            "archive": "tar.gz",
+            "executablePath": "docker/docker",
+            "members": [
+              "docker/docker"
+            ]
+          },
+          "linux-arm64": {
+            "url": "https://download.docker.com/linux/static/stable/aarch64/docker-29.8.0.tgz",
+            "sha256": "1462a696be6029bd478d7d60d7f3c31cdd15affd1178a4a278aaf4a1d1b7f8b5",
+            "archive": "tar.gz",
+            "executablePath": "docker/docker",
+            "members": [
+              "docker/docker"
+            ]
+          },
+          "win32-x64": {
+            "url": "https://download.docker.com/win/static/stable/x86_64/docker-29.8.0.zip",
+            "sha256": "bca70bfcddb4eed5bb8af5c15a1fb583b95edacf6096152e20a621ae68c871cb",
+            "archive": "zip",
+            "executablePath": "docker/docker.exe",
+            "members": [
+              "docker/docker.exe"
+            ]
+          }
+        }
+      },
+      "contributes": {
+        "containerEngines": [
+          {
+            "id": "docker",
+            "displayName": "Docker",
+            "priority": 100,
+            "discovery": {
+              "hostVariable": "DOCKER_HOST",
+              "dockerContext": true,
+              "sockets": {
+                "darwin": [
+                  "/var/run/docker.sock"
+                ],
+                "linux": [
+                  "/var/run/docker.sock"
+                ],
+                "win32": [
+                  "\\\\.\\pipe\\docker_engine"
+                ]
+              }
+            },
+            "startCommands": {
+              "darwin": "open -a Docker",
+              "linux": "sudo systemctl start docker"
+            }
+          }
+        ]
+      },
+      "requires": []
     }
   ]
 }

@@ -77,6 +77,11 @@ export async function integrityOf(file: string, algorithm: string): Promise<stri
  * @param kind The archive kind.
  * @param stripComponents How many leading path components to drop, for archives rooted at a directory
  * that is not wanted (an npm tarball's `package/`). Only meaningful for tar.
+ * @param members The archive members to extract, or empty to extract everything. For an upstream that
+ * publishes one archive holding more than the thing being installed — Docker's static package carries
+ * the whole engine on Linux and Windows, and only its client is wanted. Narrows what is written to
+ * disk; the archive is still downloaded and verified whole, because a hash of part of a file is not a
+ * hash of the file.
  * @returns Returns a promise that resolves once extraction completes.
  */
 export async function extractArchive(
@@ -84,17 +89,19 @@ export async function extractArchive(
   destination: string,
   kind: ArchiveKind,
   stripComponents: number = 0,
+  members: readonly string[] = [],
 ): Promise<void> {
   const strip: readonly string[] =
     stripComponents > 0 ? [`--strip-components=${stripComponents}`] : [];
   if (kind === 'tar.gz') {
-    await execFileAsync('tar', ['-xzf', archive, '-C', destination, ...strip]);
+    await execFileAsync('tar', ['-xzf', archive, '-C', destination, ...strip, ...members]);
     return;
   }
   // `tar` reads zips through libarchive on Windows and modern macOS; `unzip` is the fallback.
   if (process.platform === 'win32') {
-    await execFileAsync('tar', ['-xf', archive, '-C', destination, ...strip]);
+    await execFileAsync('tar', ['-xf', archive, '-C', destination, ...strip, ...members]);
     return;
   }
-  await execFileAsync('unzip', ['-q', '-o', archive, '-d', destination]);
+  // `unzip` wants the members before the destination flag, unlike tar's trailing operands.
+  await execFileAsync('unzip', ['-q', '-o', archive, ...members, '-d', destination]);
 }

@@ -213,6 +213,30 @@ describe('parsePluginManifest', () => {
       expect(result.manifest?.contributes.debugAdapters?.[0]?.transport).toBe('tcp-server');
     });
 
+    it('aDownloadNamingTheMembersToExtract', () => {
+      const value: Record<string, unknown> = manifest();
+      const downloads: Record<string, Record<string, unknown>> = (
+        value['provision'] as { downloads: Record<string, Record<string, unknown>> }
+      ).downloads;
+      downloads['darwin-arm64']['members'] = ['docker/docker'];
+      const result: ManifestResult = parsePluginManifest(value);
+
+      expect(result.errors).toEqual([]);
+      expect(result.manifest?.provision).toMatchObject({
+        downloads: { 'darwin-arm64': { members: ['docker/docker'] } },
+      });
+    });
+
+    it('aDownloadNamingNoMembers_extractingEverything', () => {
+      const result: ManifestResult = parsePluginManifest(manifest());
+
+      expect(result.errors).toEqual([]);
+      expect(
+        (result.manifest?.provision as { downloads: Record<string, { members?: unknown }> })
+          .downloads['darwin-arm64'].members,
+      ).toBeUndefined();
+    });
+
     it('aContainerEngineContribution', () => {
       const result: ManifestResult = parsePluginManifest(
         manifest({ contributes: { containerEngines: [containerEngine()] } }),
@@ -373,6 +397,32 @@ describe('parsePluginManifest', () => {
 
       expect(result.manifest).toBeNull();
       expect(paths(result)).toContain('contributes');
+    });
+
+    it('aDownloadWhoseMembersEscapeTheArchive', () => {
+      // A member name is a path handed to an extractor, and `../` in one writes outside the install
+      // directory just as surely as an entry point would.
+      const value: Record<string, unknown> = manifest();
+      const downloads: Record<string, Record<string, unknown>> = (
+        value['provision'] as { downloads: Record<string, Record<string, unknown>> }
+      ).downloads;
+      downloads['darwin-arm64']['members'] = ['../../etc/passwd'];
+      const result: ManifestResult = parsePluginManifest(value);
+
+      expect(result.manifest).toBeNull();
+      expect(paths(result)).toContain('provision.downloads.darwin-arm64.members');
+    });
+
+    it('aDownloadWhoseMembersAreEmpty', () => {
+      const value: Record<string, unknown> = manifest();
+      const downloads: Record<string, Record<string, unknown>> = (
+        value['provision'] as { downloads: Record<string, Record<string, unknown>> }
+      ).downloads;
+      downloads['darwin-arm64']['members'] = [];
+      const result: ManifestResult = parsePluginManifest(value);
+
+      expect(result.manifest).toBeNull();
+      expect(paths(result)).toContain('provision.downloads.darwin-arm64.members');
     });
 
     it('aContainerEngineNamingNoSocketForAnyPlatform', () => {

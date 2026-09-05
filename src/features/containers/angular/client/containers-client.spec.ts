@@ -36,7 +36,6 @@ describe('ContainersClient', () => {
               available: false,
               inEffect: false,
               cli: 'docker',
-              canLaunch: true,
               startCommand: null,
             },
             {
@@ -45,7 +44,6 @@ describe('ContainersClient', () => {
               available: true,
               inEffect: true,
               cli: 'podman',
-              canLaunch: false,
               startCommand: 'podman machine start',
             },
           ] as T);
@@ -107,14 +105,6 @@ describe('ContainersClient', () => {
     expect(received).toEqual([event]);
   });
 
-  it('forwardsLaunchDesktopToItsChannel', async () => {
-    stubBridge(true);
-    const client: ContainersClient = TestBed.inject(ContainersClient);
-
-    expect(await client.launchDesktop()).toBe(true);
-    expect(operations()).toEqual([{ channel: ContainerChannel.LaunchDesktop, args: [] }]);
-  });
-
   it('degradesToSafeDefaultsWithoutABridge', async () => {
     delete (window as unknown as { bridge?: unknown }).bridge;
     const client: ContainersClient = TestBed.inject(ContainersClient);
@@ -123,7 +113,6 @@ describe('ContainersClient', () => {
     expect(await client.listImages()).toEqual([]);
     expect(await client.status()).toEqual({ available: false });
     expect(await client.start('abc')).toBe(false);
-    expect(await client.launchDesktop()).toBe(false);
     expect(client.onEvents((): void => undefined)).toBeTypeOf('function');
   });
 
@@ -135,11 +124,13 @@ describe('ContainersClient', () => {
     expect(client.engineCli()).toBe('podman');
   });
 
-  it('engineCli_beforeTheEnginesAreKnown_fallsBackToDocker', () => {
+  it('engineCli_withNoEngineInEffect_isEmptyRatherThanGuessingDocker', () => {
+    // Guessing at a binary that may not exist would build a command that fails obscurely, instead of
+    // an operation that is simply unavailable.
     delete (window as unknown as { bridge?: unknown }).bridge;
     const client: ContainersClient = TestBed.inject(ContainersClient);
 
-    expect(client.engineCli()).toBe('docker');
+    expect(client.engineCli()).toBe('');
   });
 
   it('engineInEffect_reportsTheEngineTheSurfaceIsTalkingTo', async () => {

@@ -40,8 +40,8 @@ import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigg
  * unreachable it names the engine in effect in an empty state rather than showing an error.
  *
  * Nothing it says is written for one engine (#455): the copy names whichever engine is in effect, and
- * what the empty state *offers* follows what that engine supports — a launch button only where the
- * application can genuinely start it, and the command to run where it cannot.
+ * the empty state offers the command that starts it. Studio does not start an engine itself — it used
+ * to launch Docker Desktop, the one engine it could, and that went when engines became plugins (#596).
  */
 @Component({
   selector: 'app-containers-view',
@@ -52,13 +52,6 @@ import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigg
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ContainersView implements OnDestroy {
-  /**
-   * How many times, and how far apart (ms), to poll the engine for readiness after launching it —
-   * roughly a minute, which comfortably covers a cold start.
-   */
-  private static readonly READINESS_ATTEMPTS: number = 30;
-  private static readonly READINESS_INTERVAL_MS: number = 2_000;
-
   /**
    * What the engine is called before the main process has said which one is in effect. Only reachable
    * outside Electron and in the moment before the engine list arrives, but the copy has to read as a
@@ -141,12 +134,6 @@ export class ContainersView implements OnDestroy {
   protected readonly busy: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
-   * Holds whether the engine is being launched and awaited, so the empty state shows a "starting"
-   * affordance instead of the launch button.
-   */
-  protected readonly launching: WritableSignal<boolean> = signal<boolean>(false);
-
-  /**
    * Gets the engine in effect's name as it reads inside a sentence ("Start Podman to…").
    */
   protected readonly engineLabel: Signal<string> = computed(
@@ -183,25 +170,12 @@ export class ContainersView implements OnDestroy {
   );
 
   /**
-   * Gets whether the empty state may offer to start the engine itself, which only holds for an engine
-   * the application can genuinely launch through the operating system.
-   */
-  protected readonly canLaunchEngine: Signal<boolean> = computed(
-    (): boolean => this.client.engineInEffect()?.canLaunch === true,
-  );
-
-  /**
    * Gets the command the user runs to start the engine themselves, or null when there is none to offer.
    * Shown in place of a launch button for an engine the application cannot start.
    */
   protected readonly engineStartCommand: Signal<string | null> = computed(
     (): string | null => this.client.engineInEffect()?.startCommand ?? null,
   );
-
-  /**
-   * Holds whether the view has been destroyed, so the readiness poll stops when the tab closes.
-   */
-  private destroyed: boolean = false;
 
   /**
    * Gets whether a container is selected.
@@ -285,41 +259,7 @@ export class ContainersView implements OnDestroy {
    */
   public ngOnDestroy(): void {
     this.log.info('containers.view', 'Containers view destroyed');
-    this.destroyed = true;
     this.commands.unregister(this.commandHandler);
-  }
-
-  /**
-   * Launches the engine and then polls it until it comes up (or a timeout), so the dashboard fills in
-   * on its own once the engine is ready. A no-op while already launching, and only ever reached for an
-   * engine that reports it can be launched.
-   */
-  protected async startEngine(): Promise<void> {
-    if (this.launching()) {
-      return;
-    }
-    this.log.info('containers.view', 'Starting the engine and awaiting readiness');
-    this.launching.set(true);
-    try {
-      if (!(await this.client.launchDesktop())) {
-        this.log.warn('containers.view', 'Engine launch was not issued');
-        return;
-      }
-      for (let attempt: number = 0; attempt < ContainersView.READINESS_ATTEMPTS; attempt += 1) {
-        await this.delay(ContainersView.READINESS_INTERVAL_MS);
-        if (this.destroyed) {
-          return;
-        }
-        await this.load();
-        if (this.available() === true) {
-          this.log.info('containers.view', 'The engine became ready', attempt + 1);
-          return;
-        }
-      }
-      this.log.warn('containers.view', 'The engine did not become ready before timeout');
-    } finally {
-      this.launching.set(false);
-    }
   }
 
   /**
@@ -521,17 +461,6 @@ export class ContainersView implements OnDestroy {
     } finally {
       this.busy.set(false);
     }
-  }
-
-  /**
-   * Resolves after the given delay.
-   * @param ms The delay in milliseconds.
-   * @returns Returns a promise that resolves once the delay elapses.
-   */
-  private delay(ms: number): Promise<void> {
-    return new Promise<void>((resolve: () => void): void => {
-      setTimeout(resolve, ms);
-    });
   }
 
   /**

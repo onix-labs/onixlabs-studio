@@ -7,7 +7,6 @@ import {
 } from '@shared/api/container-types';
 import { SlotEntry } from '@shared/api/slot';
 import { contributedEngines } from './container-engine-registry';
-import { dockerDesktopLaunchCommand } from './docker-desktop';
 import { DockerStreamHandle } from './docker-transport';
 import {
   DiscoveryEnvironment,
@@ -98,15 +97,6 @@ export interface ContainerEngineDescriptor extends SlotEntry {
   readonly cli: string;
 
   /**
-   * Gets whether the application can start this engine itself on a platform. An engine that ships a
-   * launchable desktop application can be started for the user; one that is a daemon the user brings up
-   * themselves cannot, and pretending otherwise is what {@link startCommand} exists to avoid.
-   * @param platform The platform to resolve for.
-   * @returns Returns true when the engine can be launched from the surface.
-   */
-  canLaunch(platform: NodeJS.Platform): boolean;
-
-  /**
    * Gets the command the user runs to start the engine themselves on a platform, or null when there is
    * nothing useful to tell them (because the application can do it, or because the answer depends on an
    * installation the application cannot see).
@@ -124,29 +114,6 @@ function runtimeDirectory(): string | null {
   const runtime: string | undefined = process.env['XDG_RUNTIME_DIR'];
   return runtime !== undefined && runtime.length > 0 ? runtime : null;
 }
-
-/**
- * The Docker engine descriptor. The default, because it is what most machines with containers have.
- */
-const DOCKER: ContainerEngineDescriptor = {
-  id: 'docker',
-  displayName: 'Docker',
-  priority: 100,
-  cli: 'docker',
-  // Honouring the docker context means this entry reaches far past Docker Desktop: Colima, OrbStack
-  // and Rancher Desktop all publish their socket as the active context, and all serve the same API.
-  discovery: {
-    hostVariable: 'DOCKER_HOST',
-    dockerContext: true,
-    defaults: (platform: NodeJS.Platform): readonly string[] =>
-      platform === 'win32' ? ['\\\\.\\pipe\\docker_engine'] : ['/var/run/docker.sock'],
-  },
-  // Docker Desktop is an application the operating system can be asked to open, on every platform the
-  // launcher knows how to do it for.
-  canLaunch: (platform: NodeJS.Platform): boolean =>
-    dockerDesktopLaunchCommand(platform, process.env) !== null,
-  startCommand: (): string | null => null,
-};
 
 /**
  * The Podman engine descriptor. Podman serves the Docker Engine API, so the same client speaks to it
@@ -179,10 +146,9 @@ const PODMAN: ContainerEngineDescriptor = {
         : [rootless, '/run/podman/podman.sock'];
     },
   },
-  // There is no Podman application to open: macOS and Windows run it in a virtual machine the user
-  // starts, and Linux serves it from a socket-activated user unit. All the surface can honestly do is
-  // say which command brings it up.
-  canLaunch: (): boolean => false,
+  // No Podman application to open: macOS and Windows run it in a virtual machine the user starts, and
+  // Linux serves it from a socket-activated user unit. Saying which command brings it up is the whole
+  // of what the surface can honestly offer.
   startCommand: (platform: NodeJS.Platform): string | null =>
     platform === 'linux' ? 'systemctl --user start podman.socket' : 'podman machine start',
 };
@@ -200,7 +166,7 @@ const PODMAN: ContainerEngineDescriptor = {
  * @returns Returns the descriptors, in registration order.
  */
 export function containerEngineCatalogue(): readonly ContainerEngineDescriptor[] {
-  return [DOCKER, PODMAN, ...contributedEngines.all()];
+  return [PODMAN, ...contributedEngines.all()];
 }
 
 /**

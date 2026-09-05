@@ -48,23 +48,29 @@ describe('ContainerSocketFactory', () => {
 });
 
 describe('resolveContainerSocketPath', () => {
-  it('fallsBackToTheUnixSocketWhenNothingNamesAnEndpoint', () => {
-    expect(resolveContainerSocketPath(bareMachine('darwin'))).toBe('/var/run/docker.sock');
+  it('fallsBackToTheUnixSocketOfTheEngineInEffect', () => {
+    // Docker left core with #596, so the built-in engine a bare machine falls back to is Podman.
+    // Which engine that is matters far less than that the fallback is the engine's own default.
+    expect(resolveContainerSocketPath(bareMachine('darwin'))).toBe('/run/podman/podman.sock');
   });
 
-  it('fallsBackToTheWindowsNamedPipeWhenNothingNamesAnEndpoint', () => {
-    expect(resolveContainerSocketPath(bareMachine('win32'))).toBe('\\\\.\\pipe\\docker_engine');
+  it('fallsBackToTheWindowsNamedPipeOfTheEngineInEffect', () => {
+    expect(resolveContainerSocketPath(bareMachine('win32'))).toBe(
+      '\\\\.\\pipe\\podman-machine-default',
+    );
   });
 
   it('opensTheEndpointTheEnvironmentNames', () => {
-    // The point of the change: Studio talks to whatever the user's own `docker` command talks to,
-    // which on a machine running Colima or OrbStack is not the default path. The context-store route
-    // to the same outcome is covered in `socket-discovery.spec.ts`.
+    // The point of the change: Studio talks to whatever endpoint the user's own tooling talks to,
+    // which is not the default path. Each engine names its own variable — Podman's is `CONTAINER_HOST`
+    // — and the docker-context route to the same outcome is covered in `socket-discovery.spec.ts`.
     const contextual: DiscoveryEnvironment = {
       ...bareMachine('darwin'),
-      env: { DOCKER_HOST: 'unix:///home/tester/.colima/default/docker.sock' },
+      env: { CONTAINER_HOST: 'unix:///home/tester/.local/share/containers/podman.sock' },
     };
 
-    expect(resolveContainerSocketPath(contextual)).toBe('/home/tester/.colima/default/docker.sock');
+    expect(resolveContainerSocketPath(contextual)).toBe(
+      '/home/tester/.local/share/containers/podman.sock',
+    );
   });
 });

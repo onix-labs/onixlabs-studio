@@ -134,15 +134,12 @@ export interface ContainerEngineInfo {
   readonly cli: string;
 
   /**
-   * Gets whether Studio can start this engine itself on this platform. True only for engines that ship
-   * something launchable through the operating system — Docker Desktop does, a Podman machine does not.
-   */
-  readonly canLaunch: boolean;
-
-  /**
    * Gets the command the user runs to start the engine themselves on this platform, or null when there
-   * is nothing useful to tell them. Offered instead of a button when {@link canLaunch} is false, so the
-   * surface stays truthful about what it can and cannot do for them.
+   * is nothing useful to tell them.
+   *
+   * There is no counterpart that starts the engine *for* them. Studio used to launch Docker Desktop,
+   * which was the one engine it could; now that engines arrive as plugins and Studio talks to whatever
+   * socket is served, saying what to run is the whole of what it can honestly offer (#596).
    */
   readonly startCommand: string | null;
 }
