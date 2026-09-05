@@ -1,5 +1,6 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { signal } from '@angular/core';
 import { Bridge } from '@shared/api/bridge';
 import { ContainerChannel } from '@shared/api/container-channels';
 import {
@@ -7,6 +8,8 @@ import {
   ContainerStatus,
   ContainerSummary,
 } from '@shared/api/container-types';
+import { PluginSummary } from '@shared/api/plugin-channels';
+import { ContainerEnginePrompt } from '@shared/angular/services/plugins/container-engine-prompt';
 import { ContainerTerminals } from '../container-terminals/container-terminals';
 import { ContainersView } from './containers-view';
 
@@ -56,8 +59,25 @@ const PODMAN: ContainerEngineInfo = {
   startCommand: 'podman machine start',
 };
 
+/**
+ * An engine plugin the empty state can offer to install.
+ */
+const ENGINE_PLUGIN: PluginSummary = {
+  id: 'docker-engine',
+  name: 'Docker',
+  description: '',
+  state: 'available',
+  contributions: [{ slot: 'container-engine', id: 'docker', displayName: 'Docker', priority: 100 }],
+  version: '1.0.0',
+  detail: null,
+  origin: null,
+  installedVersion: null,
+};
+
 describe('ContainersView', () => {
   let calls: RecordedCall[];
+  let offers: number;
+  let installs: number;
 
   /**
    * Installs a recording stub bridge answering status/list channels with fixed replies.
@@ -91,6 +111,36 @@ describe('ContainersView', () => {
   }
 
   /**
+   * Installs a fake engine-install offer, so the view's empty state is tested without reaching the
+   * real plugin catalogue.
+   * @param candidates The engine plugins available to install.
+   */
+  function stubPrompt(candidates: readonly PluginSummary[] = []): void {
+    offers = 0;
+    installs = 0;
+    // Reset first, so a test that wants candidates can re-stub over the default one every test gets.
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        {
+          provide: ContainerEnginePrompt,
+          useValue: {
+            candidates: signal(candidates),
+            isInstalled: signal(false),
+            offer: (): void => {
+              offers += 1;
+            },
+            installFirstCandidate: (): Promise<void> => {
+              installs += 1;
+              return Promise.resolve();
+            },
+          },
+        },
+      ],
+    });
+  }
+
+  /**
    * Creates the view with its required inputs set and its first load settled.
    * @returns Returns the component fixture.
    */
@@ -105,6 +155,12 @@ describe('ContainersView', () => {
     fixture.detectChanges();
     return fixture;
   }
+
+  beforeEach(() => {
+    // Every test gets the fake offer, not just the ones about it: the real one reaches the plugin
+    // catalogue through the bridge, which these tests stub for containers rather than for plugins.
+    stubPrompt();
+  });
 
   afterEach(() => {
     delete (window as unknown as { bridge?: unknown }).bridge;
@@ -143,13 +199,65 @@ describe('ContainersView', () => {
     expect(actions).not.toContain('Start');
   });
 
-  it('namesNoEngineBeforeTheEnginesAreKnown', async () => {
+  it('withNoEngineInstalled_saysSoRatherThanThatOneIsNotRunning', async () => {
+    // The two states look identical from the outside and need opposite things said: one is fixed by
+    // starting something, the other by installing something.
     stubBridge({ available: false }, null);
+    stubPrompt([ENGINE_PLUGIN]);
     const fixture: ComponentFixture<ContainersView> = await createView();
     const text: string = (fixture.nativeElement as HTMLElement).textContent ?? '';
 
-    expect(text).toContain("The container engine isn't running");
-    expect(text).not.toContain('Docker');
+    expect(text).toContain('No container engine is installed');
+    expect(text).not.toContain("isn't running");
+    expect(text).toContain('Install Docker');
+  });
+
+  it('withNoEngineInstalled_raisesTheInstallOfferOnce', async () => {
+    stubBridge({ available: false }, null);
+    stubPrompt([ENGINE_PLUGIN]);
+    const fixture: ComponentFixture<ContainersView> = await createView();
+
+    (fixture.componentInstance as unknown as { refresh(): void }).refresh();
+    await new Promise<void>((resolve: () => void): void => {
+      setTimeout(resolve, 0);
+    });
+
+    // The prompt itself is what enforces once-per-session; the view simply asks each time it finds
+    // nothing, which is why asking twice must be harmless.
+    expect(offers).toBeGreaterThanOrEqual(1);
+  });
+
+  it('withNoEngineInstalledAndNothingToInstall_saysThatToo', async () => {
+    stubBridge({ available: false }, null);
+    stubPrompt([]);
+    const fixture: ComponentFixture<ContainersView> = await createView();
+    const text: string = (fixture.nativeElement as HTMLElement).textContent ?? '';
+
+    expect(text).toContain('No container engine is installed');
+    expect(text).toContain('No container engine plugin is available to install.');
+  });
+
+  it('installEngine_installsTheOfferedEngine', async () => {
+    stubBridge({ available: false }, null);
+    stubPrompt([ENGINE_PLUGIN]);
+    const fixture: ComponentFixture<ContainersView> = await createView();
+
+    await (
+      fixture.componentInstance as unknown as { installEngine(): Promise<void> }
+    ).installEngine();
+
+    expect(installs).toBe(1);
+  });
+
+  it('withAnEngineInstalledButNotRunning_neverOffersAnInstall', async () => {
+    // Installing a second engine is not the answer to the first one being stopped.
+    stubBridge({ available: false }, PODMAN);
+    stubPrompt([ENGINE_PLUGIN]);
+    const fixture: ComponentFixture<ContainersView> = await createView();
+    const text: string = (fixture.nativeElement as HTMLElement).textContent ?? '';
+
+    expect(text).toContain("Podman isn't running");
+    expect(offers).toBe(0);
   });
 
   it('listsContainersWhenTheDaemonIsUp', async () => {

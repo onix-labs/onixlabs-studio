@@ -234,6 +234,10 @@ export function installedContributions(
 ): readonly FormatPluginContribution[];
 export function installedContributions(
   plugins: readonly PluginSummary[],
+  slot: 'container-engine',
+): readonly UnkeyedPluginContribution[];
+export function installedContributions(
+  plugins: readonly PluginSummary[],
   slot: PluginSlot,
 ): readonly PluginContribution[] {
   return plugins

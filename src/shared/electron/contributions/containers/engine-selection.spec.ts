@@ -72,7 +72,7 @@ describe('selectedEngine', () => {
   it('withNothingInstalledAndNoChoice_fallsBackToTheDefaultEngine', async () => {
     const { selectedEngine } = await import('./engine-selection');
 
-    expect(selectedEngine(machineWith([])).id).toBe('docker');
+    expect(selectedEngine(machineWith([]))?.id).toBe('docker');
   });
 
   it('withTheChosenEngineNotRunning_staysWithTheChoiceRatherThanTheDefault', async () => {
@@ -81,20 +81,20 @@ describe('selectedEngine', () => {
     chose('podman');
     const { selectedEngine } = await import('./engine-selection');
 
-    expect(selectedEngine(machineWith([])).id).toBe('podman');
+    expect(selectedEngine(machineWith([]))?.id).toBe('podman');
   });
 
   it('withAnEngineRunning_prefersTheRunningEngineOverAStaleChoice', async () => {
     chose('nonexistent');
     const { selectedEngine } = await import('./engine-selection');
 
-    expect(selectedEngine(machineWith([DOCKER_SOCKET])).id).toBe('docker');
+    expect(selectedEngine(machineWith([DOCKER_SOCKET]))?.id).toBe('docker');
   });
 
   it('withOnlyPodmanRunning_choosesPodmanWithoutBeingTold', async () => {
     const { selectedEngine } = await import('./engine-selection');
 
-    expect(selectedEngine(machineWith(['/run/podman/podman.sock'])).id).toBe('podman');
+    expect(selectedEngine(machineWith(['/run/podman/podman.sock']))?.id).toBe('podman');
   });
 });
 
@@ -170,6 +170,28 @@ describe('describeEngines', () => {
     const { describeEngines, selectedEngine } = await import('./engine-selection');
     const machine: DiscoveryEnvironment = machineWith(['/run/podman/podman.sock']);
 
-    expect(pick(describeEngines(machine), selectedEngine(machine).id)?.inEffect).toBe(true);
+    expect(pick(describeEngines(machine), selectedEngine(machine)?.id ?? '')?.inEffect).toBe(true);
+  });
+});
+
+describe('with no engine installed at all', () => {
+  // The state #596 and #597 create by moving the built-in engines out of core. It cannot be reached
+  // while Docker and Podman are compiled in, so the catalogue is passed in empty — and it is passed
+  // rather than mocked because the Angular unit-test system refuses `vi.mock` for relative imports,
+  // which is a good reason to inject what varies instead of reaching around the module system.
+  beforeEach(() => {
+    chose(null);
+  });
+
+  it('selectedEngine_isNullRatherThanTheFirstOfAnEmptyList', async () => {
+    const { selectedEngine } = await import('./engine-selection');
+
+    expect(selectedEngine(machineWith([]), [])).toBeNull();
+  });
+
+  it('describeEngines_describesNothing', async () => {
+    const { describeEngines } = await import('./engine-selection');
+
+    expect(describeEngines(machineWith([]), [])).toEqual([]);
   });
 });

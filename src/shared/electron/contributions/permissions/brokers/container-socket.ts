@@ -1,6 +1,10 @@
 import * as net from 'node:net';
 import { logger } from '../../../logger';
-import { containerEngineCatalogue, engineSocketPath } from '../../containers/container-engine';
+import {
+  ContainerEngineDescriptor,
+  containerEngineCatalogue,
+  engineSocketPath,
+} from '../../containers/container-engine';
 import { selectedEngine } from '../../containers/engine-selection';
 import {
   DiscoveryEnvironment,
@@ -41,11 +45,11 @@ export interface ContainerSocket {
 export function resolveContainerSocketPath(
   environment: DiscoveryEnvironment = processDiscoveryEnvironment(),
 ): string {
-  return (
-    engineSocketPath(selectedEngine(environment), environment) ??
-    engineSocketPath(containerEngineCatalogue()[0], environment) ??
-    ''
-  );
+  const engine: ContainerEngineDescriptor | null =
+    selectedEngine(environment) ?? containerEngineCatalogue()[0] ?? null;
+  // The empty string when no engine is installed at all: there is no socket to name, and the caller
+  // that would open one does not get that far (#595).
+  return engine === null ? '' : (engineSocketPath(engine, environment) ?? '');
 }
 
 /**
