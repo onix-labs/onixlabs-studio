@@ -1,10 +1,32 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+import { ContainerEngineDescriptor } from '../../containers/container-engine';
+import { contributedEngines } from '../../containers/container-engine-registry';
 import { DiscoveryEnvironment } from '../../containers/socket-discovery';
 import {
   ContainerSocket,
   ContainerSocketFactory,
   resolveContainerSocketPath,
 } from './container-socket';
+
+/**
+ * Builds the Podman engine as its plugin contributes it, so a test can have an engine installed
+ * without depending on one being compiled in.
+ * @returns Returns the descriptor.
+ */
+function podmanEngine(): ContainerEngineDescriptor {
+  return {
+    id: 'podman',
+    displayName: 'Podman',
+    priority: 50,
+    cli: '/plugins/podman-engine/bin/podman',
+    discovery: {
+      hostVariable: 'CONTAINER_HOST',
+      dockerContext: false,
+      defaults: (): readonly string[] => ['/run/podman/podman.sock'],
+    },
+    startCommand: (): string | null => 'podman machine start',
+  };
+}
 
 /**
  * A machine with no engine socket, no `docker` configuration and nothing in the environment — so
@@ -48,34 +70,27 @@ describe('ContainerSocketFactory', () => {
 });
 
 describe('resolveContainerSocketPath', () => {
-  // The rootless Podman candidate is computed from `XDG_RUNTIME_DIR` in the process environment,
-  // which the injected `DiscoveryEnvironment` does not describe. CI runners set that variable and
-  // developer machines mostly do not, so clear it here: a bare machine is one with no runtime
-  // directory either, and the assertion below is about the fallback rather than about the box.
-  beforeEach(() => {
-    vi.stubEnv('XDG_RUNTIME_DIR', '');
-  });
-
   afterEach(() => {
-    vi.unstubAllEnvs();
+    contributedEngines.replaceAll([]);
   });
 
-  it('fallsBackToTheUnixSocketOfTheEngineInEffect', () => {
-    // Docker left core with #596, so the built-in engine a bare machine falls back to is Podman.
-    // Which engine that is matters far less than that the fallback is the engine's own default.
+  it('withNoEngineInstalled_namesNoSocket', () => {
+    // Studio ships no engine since #596 and #597, so a machine with no engine plugin has no socket to
+    // name — and the caller that would open one never gets that far (#595).
+    expect(resolveContainerSocketPath(bareMachine('darwin'))).toBe('');
+  });
+
+  it('fallsBackToTheDefaultSocketOfTheEngineInEffect', () => {
+    contributedEngines.replaceAll([podmanEngine()]);
+
     expect(resolveContainerSocketPath(bareMachine('darwin'))).toBe('/run/podman/podman.sock');
-  });
-
-  it('fallsBackToTheWindowsNamedPipeOfTheEngineInEffect', () => {
-    expect(resolveContainerSocketPath(bareMachine('win32'))).toBe(
-      '\\\\.\\pipe\\podman-machine-default',
-    );
   });
 
   it('opensTheEndpointTheEnvironmentNames', () => {
     // The point of the change: Studio talks to whatever endpoint the user's own tooling talks to,
-    // which is not the default path. Each engine names its own variable — Podman's is `CONTAINER_HOST`
-    // — and the docker-context route to the same outcome is covered in `socket-discovery.spec.ts`.
+    // which is not the default path. Each engine names its own variable, and the docker-context route
+    // to the same outcome is covered in `socket-discovery.spec.ts`.
+    contributedEngines.replaceAll([podmanEngine()]);
     const contextual: DiscoveryEnvironment = {
       ...bareMachine('darwin'),
       env: { CONTAINER_HOST: 'unix:///home/tester/.local/share/containers/podman.sock' },

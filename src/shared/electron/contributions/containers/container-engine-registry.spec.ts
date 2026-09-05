@@ -85,30 +85,26 @@ describe('containerEngineCatalogue', () => {
     contributedEngines.replaceAll([]);
   });
 
-  it('offersTheBuiltInEnginesWhenNothingIsContributed', () => {
+  it('offersNothingWhenNoEngineIsInstalled', () => {
+    // Studio ships no engine of its own since #596 and #597: an empty catalogue is the delivery model
+    // working, not a gap in it, and the Containers surface turns it into an offer to install.
     contributedEngines.replaceAll([]);
 
-    expect(
-      containerEngineCatalogue().map((entry: ContainerEngineDescriptor): string => entry.id),
-    ).toEqual(['podman']);
+    expect(containerEngineCatalogue()).toEqual([]);
   });
 
-  it('offersContributedEnginesAfterTheBuiltInOnes', () => {
-    // After, so installing a plugin cannot change the registration order that breaks ties between
-    // engines of equal priority.
-    contributedEngines.replaceAll([engine('colima')]);
+  it('offersTheContributedEnginesInRegistrationOrder', () => {
+    contributedEngines.replaceAll([engine('docker', 100), engine('colima', 10)]);
 
     expect(
       containerEngineCatalogue().map((entry: ContainerEngineDescriptor): string => entry.id),
-    ).toEqual(['podman', 'colima']);
+    ).toEqual(['docker', 'colima']);
   });
 
   it('dropsAContributedEngineWhenItsPluginIsRemoved', () => {
     contributedEngines.replaceAll([engine('colima')]);
     contributedEngines.replaceAll([]);
 
-    expect(
-      containerEngineCatalogue().map((entry: ContainerEngineDescriptor): string => entry.id),
-    ).toEqual(['podman']);
+    expect(containerEngineCatalogue()).toEqual([]);
   });
 });

@@ -1,4 +1,3 @@
-import * as path from 'node:path';
 import {
   ContainerEvent,
   ContainerStatus,
@@ -107,66 +106,17 @@ export interface ContainerEngineDescriptor extends SlotEntry {
 }
 
 /**
- * Gets the runtime directory a rootless engine keeps its socket under, or null when unset.
- * @returns Returns the runtime directory, or null.
- */
-function runtimeDirectory(): string | null {
-  const runtime: string | undefined = process.env['XDG_RUNTIME_DIR'];
-  return runtime !== undefined && runtime.length > 0 ? runtime : null;
-}
-
-/**
- * The Podman engine descriptor. Podman serves the Docker Engine API, so the same client speaks to it
- * unchanged — the whole difference is which socket to open and which CLI to drive, which is precisely
- * what a slot descriptor should carry.
+ * The container engines the application can talk to: whatever installed plugins contribute (#594).
  *
- * Rootless Podman puts its socket under the runtime directory; rootful puts it in `/run`. Both are
- * offered, nearest first.
- */
-const PODMAN: ContainerEngineDescriptor = {
-  id: 'podman',
-  displayName: 'Podman',
-  priority: 50,
-  cli: 'podman',
-  // Podman keeps its own configuration rather than appearing in the docker context store, so it is
-  // found by its own variable and its own candidates: rootless under the runtime directory first,
-  // then rootful in `/run`.
-  discovery: {
-    hostVariable: 'CONTAINER_HOST',
-    dockerContext: false,
-    defaults: (platform: NodeJS.Platform): readonly string[] => {
-      if (platform === 'win32') {
-        return ['\\\\.\\pipe\\podman-machine-default'];
-      }
-      const runtime: string | null = runtimeDirectory();
-      const rootless: string | null =
-        runtime === null ? null : path.join(runtime, 'podman', 'podman.sock');
-      return rootless === null
-        ? ['/run/podman/podman.sock']
-        : [rootless, '/run/podman/podman.sock'];
-    },
-  },
-  // No Podman application to open: macOS and Windows run it in a virtual machine the user starts, and
-  // Linux serves it from a socket-activated user unit. Saying which command brings it up is the whole
-  // of what the surface can honestly offer.
-  startCommand: (platform: NodeJS.Platform): string | null =>
-    platform === 'linux' ? 'systemctl --user start podman.socket' : 'podman machine start',
-};
-
-/**
- * The container engines the application can talk to: the built-in ones, then whatever installed
- * plugins contribute (#594).
- *
- * No longer a closed list. It was one when the comment here said so, and the analogy it drew — "like
- * the debug adapters" — is exactly what expired: debug adapters became a contribution point, and an
- * engine is the same kind of thing, an implementation filling a slot the application defines.
- *
- * Built-ins come first so that registration order, which breaks ties between equal priorities, cannot
- * be changed by installing a plugin.
+ * **Studio ships no engine of its own.** It was a closed list of two when the comment here said so, and
+ * the analogy it drew — "like the debug adapters" — is exactly what expired: debug adapters became a
+ * contribution point, and an engine is the same kind of thing. Docker left in #596 and Podman in #597,
+ * so this is empty until the user installs one, which is the delivery model working rather than a gap
+ * in it. The Containers surface turns an empty catalogue into an offer to install (#595).
  * @returns Returns the descriptors, in registration order.
  */
 export function containerEngineCatalogue(): readonly ContainerEngineDescriptor[] {
-  return [PODMAN, ...contributedEngines.all()];
+  return contributedEngines.all();
 }
 
 /**
