@@ -3,7 +3,7 @@ import * as http from 'node:http';
 import { rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { DockerResponse, DockerStreamHandle, HttpDockerTransport } from './docker-transport';
+import { SocketHttpResponse, StreamHandle, SocketHttpTransport } from './socket-http-transport';
 
 /**
  * Distinguishes the socket file each test creates.
@@ -15,10 +15,10 @@ let counter: number = 0;
  * socket — a genuine fake daemon, no Docker required. Skipped on Windows, whose named-pipe transport is
  * a documented follow-on rather than v0.
  */
-describe.skipIf(process.platform === 'win32')('HttpDockerTransport', () => {
+describe.skipIf(process.platform === 'win32')('SocketHttpTransport', () => {
   let server: http.Server;
   let socketPath: string;
-  let transport: HttpDockerTransport;
+  let transport: SocketHttpTransport;
   let handler: (request: http.IncomingMessage, response: http.ServerResponse) => void;
 
   beforeEach(async (): Promise<void> => {
@@ -36,7 +36,7 @@ describe.skipIf(process.platform === 'win32')('HttpDockerTransport', () => {
     await new Promise<void>((resolve: () => void): void => {
       server.listen(socketPath, resolve);
     });
-    transport = new HttpDockerTransport(socketPath);
+    transport = new SocketHttpTransport(socketPath);
   });
 
   afterEach(async (): Promise<void> => {
@@ -52,14 +52,14 @@ describe.skipIf(process.platform === 'win32')('HttpDockerTransport', () => {
       response.end(JSON.stringify({ Version: '27.0.0' }));
     };
 
-    const response: DockerResponse = await transport.request('GET', '/version');
+    const response: SocketHttpResponse = await transport.request('GET', '/version');
 
     expect(response.statusCode).toBe(200);
     expect(JSON.parse(response.body)).toEqual({ Version: '27.0.0' });
   });
 
   it('request_reportsANon2xxStatus', async (): Promise<void> => {
-    const response: DockerResponse = await transport.request('GET', '/missing');
+    const response: SocketHttpResponse = await transport.request('GET', '/missing');
     expect(response.statusCode).toBe(404);
   });
 
@@ -74,7 +74,7 @@ describe.skipIf(process.platform === 'win32')('HttpDockerTransport', () => {
 
     const lines: string[] = [];
     await new Promise<void>((resolve: () => void): void => {
-      const handle: DockerStreamHandle = transport.openStream(
+      const handle: StreamHandle = transport.openStream(
         'GET',
         '/events',
         (line: string): void => {

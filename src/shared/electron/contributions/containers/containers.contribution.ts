@@ -9,7 +9,7 @@ import { ContainerEngine, ContainerEngineDescriptor, engineSocketPath } from './
 import { contributedEngines } from './container-engine-registry';
 import { DockerEngine } from './docker-engine';
 import { chooseEngine, describeEngines, selectedEngine } from './engine-selection';
-import { DockerStreamHandle } from './docker-transport';
+import { StreamHandle } from './socket-http-transport';
 
 /**
  * The container engine backend contribution — the first real {@link MainContribution}. It requests the
@@ -36,7 +36,7 @@ export class ContainersContribution implements MainContribution {
    * The open event stream, held so it can be closed when the last consumer leaves (and on
    * disposal). Null while no consumer holds a watch.
    */
-  private watchHandle: DockerStreamHandle | null = null;
+  private watchHandle: StreamHandle | null = null;
 
   /**
    * Counts the renderer consumers holding the event stream open (see
@@ -235,7 +235,7 @@ export class ContainersContribution implements MainContribution {
    * @param context The contribution context.
    * @returns Returns the stream handle, or null when no engine is installed to watch.
    */
-  private openWatch(context: ContributionContext): DockerStreamHandle | null {
+  private openWatch(context: ContributionContext): StreamHandle | null {
     return (
       this.currentEngine(context)?.watch((event): void =>
         context.send(ContainerChannel.Events, event),

@@ -2,23 +2,23 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ContainerEvent } from '@shared/api/container-types';
 import { ContainerSocket } from '../permissions/brokers/container-socket';
 import { DockerEngine, parseEvent } from './docker-engine';
-import { DockerResponse, DockerStreamHandle, DockerTransport } from './docker-transport';
+import { SocketHttpResponse, StreamHandle, SocketTransport } from './socket-http-transport';
 
 /**
  * A fake transport recording requests and exposing the opened streams, so the engine's mapping,
  * daemon-absent handling, and reconnect logic can be driven without a daemon.
  */
-class FakeTransport implements DockerTransport {
+class FakeTransport implements SocketTransport {
   public readonly requests: { method: string; path: string }[] = [];
   public readonly streams: {
     onLine: (line: string) => void;
     onError: (error: Error) => void;
     closed: boolean;
   }[] = [];
-  public responder: (method: string, path: string) => Promise<DockerResponse> =
-    (): Promise<DockerResponse> => Promise.reject(new Error('ENOENT'));
+  public responder: (method: string, path: string) => Promise<SocketHttpResponse> =
+    (): Promise<SocketHttpResponse> => Promise.reject(new Error('ENOENT'));
 
-  public request(method: string, path: string): Promise<DockerResponse> {
+  public request(method: string, path: string): Promise<SocketHttpResponse> {
     this.requests.push({ method, path });
     return this.responder(method, path);
   }
@@ -28,7 +28,7 @@ class FakeTransport implements DockerTransport {
     _path: string,
     onLine: (line: string) => void,
     onError: (error: Error) => void,
-  ): DockerStreamHandle {
+  ): StreamHandle {
     const record: {
       onLine: (line: string) => void;
       onError: (error: Error) => void;
@@ -69,8 +69,8 @@ function engineWith(): { engine: DockerEngine; transport: FakeTransport } {
 function respondJson(
   path: string,
   body: unknown,
-): (method: string, path: string) => Promise<DockerResponse> {
-  return (_method: string, requested: string): Promise<DockerResponse> =>
+): (method: string, path: string) => Promise<SocketHttpResponse> {
+  return (_method: string, requested: string): Promise<SocketHttpResponse> =>
     requested === path
       ? Promise.resolve({ statusCode: 200, body: JSON.stringify(body) })
       : Promise.reject(new Error('unexpected path'));
@@ -110,7 +110,7 @@ describe('DockerEngine', () => {
 
   it('listImages_returnsEmptyOnANon2xxStatus', async () => {
     const { engine, transport } = engineWith();
-    transport.responder = (): Promise<DockerResponse> =>
+    transport.responder = (): Promise<SocketHttpResponse> =>
       Promise.resolve({ statusCode: 500, body: 'nope' });
     expect(await engine.listImages()).toEqual([]);
   });
@@ -128,7 +128,7 @@ describe('DockerEngine', () => {
 
   it('start_stop_remove_issueTheRightRequestsAndReportSuccess', async () => {
     const { engine, transport } = engineWith();
-    transport.responder = (): Promise<DockerResponse> =>
+    transport.responder = (): Promise<SocketHttpResponse> =>
       Promise.resolve({ statusCode: 204, body: '' });
 
     expect(await engine.start('abc')).toBe(true);
@@ -165,7 +165,7 @@ describe('DockerEngine', () => {
   it('watch_reconnectsAfterTheStreamDropsAndStopsOnceClosed', () => {
     vi.useFakeTimers();
     const { engine, transport } = engineWith();
-    const handle: DockerStreamHandle = engine.watch((): void => undefined);
+    const handle: StreamHandle = engine.watch((): void => undefined);
 
     expect(transport.streams).toHaveLength(1);
     transport.streams[0].onError(new Error('dropped'));

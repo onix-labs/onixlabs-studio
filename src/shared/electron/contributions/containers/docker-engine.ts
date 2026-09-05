@@ -6,7 +6,7 @@ import {
 } from '@shared/api/container-types';
 import { ContainerSocket } from '../permissions/brokers/container-socket';
 import { ContainerEngine } from './container-engine';
-import { DockerStreamHandle, DockerTransport, HttpDockerTransport } from './docker-transport';
+import { StreamHandle, SocketTransport, SocketHttpTransport } from './socket-http-transport';
 
 /**
  * The raw container shape from `GET /containers/json`.
@@ -44,33 +44,36 @@ const INITIAL_BACKOFF_MS: number = 1_000;
 const MAX_BACKOFF_MS: number = 30_000;
 
 /**
- * A thin client for the Docker Engine API, speaking it over an injected {@link DockerTransport}
+ * A thin client for the Docker Engine API, speaking it over an injected {@link SocketTransport}
  * (HTTP-over-socket by default). Every operation is daemon-absent-safe: a connection failure resolves
  * to an empty result or an unavailable status rather than throwing to the renderer, and the event
  * watcher reconnects with capped backoff so the dashboard recovers when the engine starts.
  *
- * **The `Docker` in these names is the protocol, not the product** — decided deliberately when the
- * engines became plugins (#598) rather than left as residue. "Docker Engine API" is what the wire
- * format is called, by Podman's own documentation as much as by Docker's, and this file implements
- * that specification: renaming it to something engine-neutral would name it after nothing. The line
- * drawn is that anything naming the *product* left (#596), and anything naming the *protocol* stayed.
+ * **The `Docker` in this class's name is the protocol, not the product.** "Docker Engine API" is what
+ * the wire format is called — Podman describes its own implementation of it as Docker-compatible — and
+ * this file implements that specification, so the name is what tells a reader which reference to go and
+ * read. A neutral name would say strictly less. The test of it: this class serves every engine in the
+ * catalogue, and none of them is Docker.
  *
- * The test of the distinction: this class is what every engine in the catalogue is served by, and none
- * of them is Docker.
+ * That argument reaches exactly this far and no further. The transport underneath was called
+ * `DockerTransport` on the same reasoning, and there it did not hold: it carries HTTP over a socket and
+ * knows nothing of any API, so it had been named after its only caller rather than after what it does,
+ * and was renamed (#598). The line is between the layer that *implements* the protocol, named for it,
+ * and the layer that carries bytes, named for that.
  */
 export class DockerEngine implements ContainerEngine {
   /**
    * The transport the Engine API is spoken over.
    */
-  private readonly transport: DockerTransport;
+  private readonly transport: SocketTransport;
 
   /**
    * Initializes a new instance of the {@link DockerEngine} class.
    * @param socket The granted Docker socket handle (its path drives the default transport).
    * @param transport The transport to use; defaults to HTTP over the socket path.
    */
-  public constructor(socket: ContainerSocket, transport?: DockerTransport) {
-    this.transport = transport ?? new HttpDockerTransport(socket.path);
+  public constructor(socket: ContainerSocket, transport?: SocketTransport) {
+    this.transport = transport ?? new SocketHttpTransport(socket.path);
   }
 
   /**
@@ -144,9 +147,9 @@ export class DockerEngine implements ContainerEngine {
    * @param onEvent Receives each normalised event.
    * @returns Returns a handle that stops watching.
    */
-  public watch(onEvent: (event: ContainerEvent) => void): DockerStreamHandle {
+  public watch(onEvent: (event: ContainerEvent) => void): StreamHandle {
     let closed: boolean = false;
-    let stream: DockerStreamHandle | null = null;
+    let stream: StreamHandle | null = null;
     let backoff: number = INITIAL_BACKOFF_MS;
 
     const connect: () => void = (): void => {
