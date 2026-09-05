@@ -4,6 +4,7 @@ import {
   DiscoveryEnvironment,
   EndpointDiscovery,
   endpointToPath,
+  expandVariables,
   resolveEndpoint,
   ResolvedEndpoint,
 } from './socket-discovery';
@@ -101,6 +102,30 @@ describe('endpointToPath', () => {
   });
 });
 
+describe('expandVariables', () => {
+  it('expandsAVariableNamedInACandidate', () => {
+    expect(
+      expandVariables('${XDG_RUNTIME_DIR}/podman/podman.sock', {
+        XDG_RUNTIME_DIR: '/run/user/1000',
+      }),
+    ).toBe('/run/user/1000/podman/podman.sock');
+  });
+
+  it('leavesACandidateWithNoVariablesAlone', () => {
+    expect(expandVariables('/run/podman/podman.sock', {})).toBe('/run/podman/podman.sock');
+  });
+
+  it('refusesACandidateWhoseVariableIsUnset', () => {
+    // Not expanded to an empty string: `/podman/podman.sock` is a real path that would be probed and
+    // could even exist, and a wrong answer is worse than no answer.
+    expect(expandVariables('${XDG_RUNTIME_DIR}/podman/podman.sock', {})).toBeNull();
+  });
+
+  it('refusesACandidateWhoseVariableIsEmpty', () => {
+    expect(expandVariables('${XDG_RUNTIME_DIR}/podman.sock', { XDG_RUNTIME_DIR: '' })).toBeNull();
+  });
+});
+
 describe('resolveEndpoint', () => {
   it('prefersTheEnvironmentVariableOverEverythingElse', () => {
     const endpoint: ResolvedEndpoint | null = resolveEndpoint(
@@ -160,6 +185,45 @@ describe('resolveEndpoint', () => {
     );
 
     expect(endpoint).toEqual({ path: '/tmp/podman.sock', source: 'environment', exists: false });
+  });
+
+  it('dropsARootlessCandidateWhoseVariableIsUnsetAndTakesTheRootfulOne', () => {
+    // How a *manifest* describes a rootless socket: the path is per-user and known only at runtime,
+    // so it names `${XDG_RUNTIME_DIR}` and is skipped on a machine that does not set it.
+    const rootless: EndpointDiscovery = {
+      hostVariable: 'CONTAINER_HOST',
+      dockerContext: false,
+      defaults: (): readonly string[] => [
+        '${XDG_RUNTIME_DIR}/podman/podman.sock',
+        '/run/podman/podman.sock',
+      ],
+    };
+    const endpoint: ResolvedEndpoint | null = resolveEndpoint(
+      rootless,
+      environmentWith({ sockets: ['/run/podman/podman.sock'] }),
+    );
+
+    expect(endpoint?.path).toBe('/run/podman/podman.sock');
+  });
+
+  it('takesTheExpandedRootlessCandidateWhenItsVariableIsSet', () => {
+    const rootless: EndpointDiscovery = {
+      hostVariable: 'CONTAINER_HOST',
+      dockerContext: false,
+      defaults: (): readonly string[] => [
+        '${XDG_RUNTIME_DIR}/podman/podman.sock',
+        '/run/podman/podman.sock',
+      ],
+    };
+    const endpoint: ResolvedEndpoint | null = resolveEndpoint(
+      rootless,
+      environmentWith({
+        env: { XDG_RUNTIME_DIR: '/run/user/1000' },
+        sockets: ['/run/user/1000/podman/podman.sock', '/run/podman/podman.sock'],
+      }),
+    );
+
+    expect(endpoint?.path).toBe('/run/user/1000/podman/podman.sock');
   });
 
   it('takesTheRootlessPodmanSocketBeforeTheRootfulOne', () => {

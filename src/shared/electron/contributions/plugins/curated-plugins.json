@@ -1,5 +1,5 @@
 {
-  "revision": 6,
+  "revision": 7,
   "plugins": [
     {
       "id": "pyright",
@@ -714,6 +714,74 @@
             "startCommands": {
               "darwin": "open -a Docker",
               "linux": "sudo systemctl start docker"
+            }
+          }
+        ]
+      },
+      "requires": []
+    },
+    {
+      "id": "podman-engine",
+      "name": "Podman",
+      "description": "Talk to a Podman container engine over its local socket.",
+      "detail": "Installs only the `podman` remote client. Studio speaks to the engine over its socket, so this does not install or run a container engine itself. No build is published for Intel Macs.",
+      "version": "6.1.1",
+      "apiVersion": "1.6.0",
+      "provision": {
+        "kind": "archive",
+        "downloads": {
+          "darwin-arm64": {
+            "url": "https://github.com/containers/podman/releases/download/v6.1.1/podman-remote-release-darwin_arm64.zip",
+            "sha256": "bb38e97f5168b563a70e121248634379c65c22f74414f53f0751b5caa485ec70",
+            "archive": "zip",
+            "executablePath": "podman-6.1.1/usr/bin/podman",
+            "members": ["podman-6.1.1/usr/bin/podman"]
+          },
+          "linux-x64": {
+            "url": "https://github.com/containers/podman/releases/download/v6.1.1/podman-remote-static-linux_amd64.tar.gz",
+            "sha256": "31ff7c653fc19e652e648f45406c5b72925defdf8fc73af698ce2512e87ee502",
+            "archive": "tar.gz",
+            "executablePath": "bin/podman-remote-static-linux_amd64",
+            "members": ["bin/podman-remote-static-linux_amd64"]
+          },
+          "linux-arm64": {
+            "url": "https://github.com/containers/podman/releases/download/v6.1.1/podman-remote-static-linux_arm64.tar.gz",
+            "sha256": "c2a697cba879b36333dc2d2543d3a1a0351e8b42b28b903d29aba6980a55237c",
+            "archive": "tar.gz",
+            "executablePath": "bin/podman-remote-static-linux_arm64",
+            "members": ["bin/podman-remote-static-linux_arm64"]
+          },
+          "win32-x64": {
+            "url": "https://github.com/containers/podman/releases/download/v6.1.1/podman-remote-release-windows_amd64.zip",
+            "sha256": "68766f21aebec379ec34cfee46d0550b025ec6d79c02fbdcb61a80bc7191ef01",
+            "archive": "zip",
+            "executablePath": "podman-6.1.1/usr/bin/podman.exe",
+            "members": ["podman-6.1.1/usr/bin/podman.exe"]
+          }
+        }
+      },
+      "contributes": {
+        "containerEngines": [
+          {
+            "id": "podman",
+            "displayName": "Podman",
+            "priority": 50,
+            "discovery": {
+              "hostVariable": "CONTAINER_HOST",
+              "dockerContext": false,
+              "sockets": {
+                "darwin": [
+                  "${HOME}/.local/share/containers/podman/machine/podman.sock",
+                  "/run/podman/podman.sock"
+                ],
+                "linux": ["${XDG_RUNTIME_DIR}/podman/podman.sock", "/run/podman/podman.sock"],
+                "win32": ["\\\\.\\pipe\\podman-machine-default"]
+              }
+            },
+            "startCommands": {
+              "darwin": "podman machine start",
+              "linux": "systemctl --user start podman.socket",
+              "win32": "podman machine start"
             }
           }
         ]

@@ -160,6 +160,40 @@ export function endpointToPath(endpoint: string): string | null {
 }
 
 /**
+ * Matches a `${NAME}` placeholder in a socket candidate.
+ */
+const VARIABLE_PATTERN: RegExp = /\$\{([A-Z_][A-Z0-9_]*)\}/g;
+
+/**
+ * Expands `${NAME}` placeholders in a socket candidate, or returns null when one names a variable that
+ * is unset.
+ *
+ * This is what lets a *manifest* describe a rootless socket. Podman's is under the runtime directory,
+ * which is per-user and known only at runtime, so a static string cannot name it and the built-in
+ * descriptor computed it in code. A candidate whose variable is unset is dropped rather than expanded
+ * to an empty string, because `/podman/podman.sock` is a real path that would be probed and could even
+ * exist — a wrong answer is worse than no answer.
+ * @param candidate The candidate path, possibly containing placeholders.
+ * @param env The environment to expand against.
+ * @returns Returns the expanded path, or null when a referenced variable is unset.
+ */
+export function expandVariables(candidate: string, env: NodeJS.ProcessEnv): string | null {
+  let missing: boolean = false;
+  const expanded: string = candidate.replace(
+    VARIABLE_PATTERN,
+    (_match: string, name: string): string => {
+      const value: string | undefined = env[name];
+      if (value === undefined || value.length === 0) {
+        missing = true;
+        return '';
+      }
+      return value;
+    },
+  );
+  return missing ? null : expanded;
+}
+
+/**
  * Gets the Docker configuration directory, honouring `DOCKER_CONFIG` as the CLI does.
  * @param environment The discovery environment.
  * @returns Returns the configuration directory.
@@ -257,7 +291,10 @@ export function resolveEndpoint(
   }
 
   for (const fallback of discovery.defaults(environment.platform)) {
-    candidates.push({ path: fallback, source: 'default' });
+    const expanded: string | null = expandVariables(fallback, environment.env);
+    if (expanded !== null) {
+      candidates.push({ path: expanded, source: 'default' });
+    }
   }
 
   if (candidates.length === 0) {
