@@ -47,7 +47,16 @@ const MAX_BACKOFF_MS: number = 30_000;
  * A thin client for the Docker Engine API, speaking it over an injected {@link DockerTransport}
  * (HTTP-over-socket by default). Every operation is daemon-absent-safe: a connection failure resolves
  * to an empty result or an unavailable status rather than throwing to the renderer, and the event
- * watcher reconnects with capped backoff so the dashboard recovers when Docker starts.
+ * watcher reconnects with capped backoff so the dashboard recovers when the engine starts.
+ *
+ * **The `Docker` in these names is the protocol, not the product** — decided deliberately when the
+ * engines became plugins (#598) rather than left as residue. "Docker Engine API" is what the wire
+ * format is called, by Podman's own documentation as much as by Docker's, and this file implements
+ * that specification: renaming it to something engine-neutral would name it after nothing. The line
+ * drawn is that anything naming the *product* left (#596), and anything naming the *protocol* stayed.
+ *
+ * The test of the distinction: this class is what every engine in the catalogue is served by, and none
+ * of them is Docker.
  */
 export class DockerEngine implements ContainerEngine {
   /**

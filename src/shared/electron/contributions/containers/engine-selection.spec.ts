@@ -136,6 +136,17 @@ describe('selectedEngine', () => {
     expect(selectedEngine(machineWith([PODMAN_SOCKET]), BOTH)?.id).toBe('podman');
   });
 
+  it('withOnlyOneEngineInstalledAndStopped_namesThatEngineRatherThanADefault', async () => {
+    // The limit #455 shipped with, now gone. A user who has never chosen an engine, whose only engine
+    // is installed but not running, used to be told that *Docker* was not running — because the
+    // catalogue held every engine Studio knew of and the default won. The catalogue now holds only
+    // what is installed, so the answer is the engine they actually have.
+    const { selectedEngine } = await import('./engine-selection');
+    const onlyPodman: readonly ContainerEngineDescriptor[] = [engine('podman', 50, PODMAN_SOCKET)];
+
+    expect(selectedEngine(machineWith([]), onlyPodman)?.displayName).toBe('Podman');
+  });
+
   it('withNoEngineInstalled_isNullRatherThanTheFirstOfAnEmptyList', async () => {
     // The ordinary state of a fresh Studio since #597: no engine ships, so nothing is selected until
     // the user installs one.
