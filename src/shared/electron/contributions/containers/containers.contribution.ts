@@ -75,29 +75,33 @@ export class ContainersContribution implements MainContribution {
     // every handler asks again, because the answer can change while Studio runs (#594).
     this.currentEngine(context);
 
-    context.handle(ContainerChannel.ListContainers, (): Promise<unknown> =>
-      this.currentEngine(context).listContainers(),
+    context.handle(
+      ContainerChannel.ListContainers,
+      (): Promise<unknown> => this.currentEngine(context)?.listContainers() ?? Promise.resolve([]),
     );
-    context.handle(ContainerChannel.ListImages, (): Promise<unknown> =>
-      this.currentEngine(context).listImages(),
+    context.handle(
+      ContainerChannel.ListImages,
+      (): Promise<unknown> => this.currentEngine(context)?.listImages() ?? Promise.resolve([]),
     );
     context.handle(
       ContainerChannel.Start,
       (_event: IpcMainInvokeEvent, id: unknown): Promise<boolean> =>
-        this.currentEngine(context).start(String(id)),
+        this.currentEngine(context)?.start(String(id)) ?? Promise.resolve(false),
     );
     context.handle(
       ContainerChannel.Stop,
       (_event: IpcMainInvokeEvent, id: unknown): Promise<boolean> =>
-        this.currentEngine(context).stop(String(id)),
+        this.currentEngine(context)?.stop(String(id)) ?? Promise.resolve(false),
     );
     context.handle(
       ContainerChannel.Remove,
       (_event: IpcMainInvokeEvent, id: unknown): Promise<boolean> =>
-        this.currentEngine(context).remove(String(id)),
+        this.currentEngine(context)?.remove(String(id)) ?? Promise.resolve(false),
     );
-    context.handle(ContainerChannel.Status, (): Promise<unknown> =>
-      this.currentEngine(context).status(),
+    context.handle(
+      ContainerChannel.Status,
+      (): Promise<unknown> =>
+        this.currentEngine(context)?.status() ?? Promise.resolve({ available: false }),
     );
     context.handle(ContainerChannel.LaunchDesktop, (): Promise<boolean> => launchDockerDesktop());
     context.handle(ContainerChannel.ListEngines, (): readonly ContainerEngineInfo[] => {
@@ -159,17 +163,39 @@ export class ContainersContribution implements MainContribution {
    * This is the lifecycle the contribution used to lack. The socket was resolved once at activation and
    * captured in the handler closures, so choosing a different engine took effect only on the next
    * launch — untenable once an engine can be *installed* while Studio runs.
+   * Null when no engine is installed at all — the state a Studio is in before an engine plugin arrives
+   * (#595). Every operation degrades to an empty answer there rather than throwing: nothing is wrong,
+   * there is simply nothing to ask.
    * @param context The contribution context, which is the only door to the socket permission.
-   * @returns Returns the engine client.
+   * @returns Returns the engine client, or null when no engine is installed.
    */
-  private currentEngine(context: ContributionContext): ContainerEngine {
-    const descriptor: ContainerEngineDescriptor = selectedEngine();
+  private currentEngine(context: ContributionContext): ContainerEngine | null {
+    const descriptor: ContainerEngineDescriptor | null = selectedEngine();
+    if (descriptor === null) {
+      this.releaseEngine();
+      return null;
+    }
     const key: string = `${descriptor.id}@${engineSocketPath(descriptor) ?? ''}`;
     if (this.engine === null || this.engineKey !== key) {
       this.adoptEngine(context, descriptor, key);
     }
     // Non-null by construction: the branch above assigns it when it is null.
     return this.engine!;
+  }
+
+  /**
+   * Drops the engine client when there is no longer an engine to serve, closing any open stream. Reached
+   * when the last engine plugin is uninstalled while Studio runs.
+   */
+  private releaseEngine(): void {
+    if (this.engine === null) {
+      return;
+    }
+    this.log?.info('no container engine is installed; releasing the engine client');
+    this.watchHandle?.close();
+    this.watchHandle = null;
+    this.engine = null;
+    this.engineKey = null;
   }
 
   /**
@@ -209,11 +235,13 @@ export class ContainersContribution implements MainContribution {
   /**
    * Opens the engine event stream and pushes each event to the renderer.
    * @param context The contribution context.
-   * @returns Returns the stream handle.
+   * @returns Returns the stream handle, or null when no engine is installed to watch.
    */
-  private openWatch(context: ContributionContext): DockerStreamHandle {
-    return this.currentEngine(context).watch((event): void =>
-      context.send(ContainerChannel.Events, event),
+  private openWatch(context: ContributionContext): DockerStreamHandle | null {
+    return (
+      this.currentEngine(context)?.watch((event): void =>
+        context.send(ContainerChannel.Events, event),
+      ) ?? null
     );
   }
 

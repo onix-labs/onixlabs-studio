@@ -22,6 +22,8 @@ import { Terminal } from '@shared/angular/components/terminal/terminal';
 import { Log } from '@shared/angular/services/log/log';
 import { Icon } from '@shared/angular/icons/icon';
 import { ContainerSummary, ImageSummary } from '@shared/api/container-types';
+import { PluginSummary } from '@shared/api/plugin-channels';
+import { ContainerEnginePrompt } from '@shared/angular/services/plugins/container-engine-prompt';
 import { ContainerTerminals } from '../container-terminals/container-terminals';
 import {
   ContainersCommandHandler,
@@ -100,6 +102,11 @@ export class ContainersView implements OnDestroy {
   protected readonly terminals: ContainerTerminals = inject(ContainerTerminals);
 
   /**
+   * Holds the offer to install a container engine, raised when the tab finds none installed.
+   */
+  private readonly enginePrompt: ContainerEnginePrompt = inject(ContainerEnginePrompt);
+
+  /**
    * Gets the edges the terminal panel may dock to — the bottom by default, or a side.
    */
   protected readonly terminalEdges: readonly PanelEdge[] = ['bottom', 'right', 'left'];
@@ -153,6 +160,26 @@ export class ContainersView implements OnDestroy {
   protected readonly engineTitle: Signal<string> = computed(
     (): string =>
       this.client.engineInEffect()?.displayName ?? `The ${ContainersView.UNKNOWN_ENGINE}`,
+  );
+
+  /**
+   * Gets whether no container engine is installed at all, as opposed to one being installed and not
+   * running (#595).
+   *
+   * The two look identical from the outside — an empty dashboard — and need opposite things said about
+   * them: one is fixed by starting something, the other by installing something. The engine list is
+   * empty only in the first case, because an engine that is installed is described whether or not its
+   * socket answers.
+   */
+  protected readonly noEngineInstalled: Signal<boolean> = computed(
+    (): boolean => this.client.containerEngines().length === 0,
+  );
+
+  /**
+   * Gets the plugin the empty state offers to install, or null when none is available.
+   */
+  protected readonly engineCandidate: Signal<PluginSummary | null> = computed(
+    (): PluginSummary | null => this.enginePrompt.candidates()[0] ?? null,
   );
 
   /**
@@ -361,6 +388,16 @@ export class ContainersView implements OnDestroy {
   }
 
   /**
+   * Installs the container engine the empty state offers, then reloads so the dashboard fills in
+   * without the user going looking for a refresh.
+   */
+  protected async installEngine(): Promise<void> {
+    await this.enginePrompt.installFirstCandidate();
+    await this.client.refreshEngines();
+    await this.load();
+  }
+
+  /**
    * Determines whether a container is running.
    * @param container The container to test.
    * @returns Returns true when the container's state is `running`.
@@ -504,11 +541,19 @@ export class ContainersView implements OnDestroy {
    */
   private async load(): Promise<void> {
     this.log.trace('containers.view', 'Loading daemon snapshot');
+    // Awaited before anything is decided: an empty engine list means "not known yet" until the main
+    // process has answered once, and only then means "no engine is installed".
+    await this.client.ready();
     const available: boolean = (await this.client.status()).available;
     this.available.set(available);
     if (!available) {
       this.containers.set([]);
       this.images.set([]);
+      if (this.noEngineInstalled()) {
+        // Offered here rather than on construction, so the offer follows the discovery that there is
+        // nothing to talk to rather than the mere existence of the tab.
+        this.enginePrompt.offer();
+      }
       return;
     }
     const [containers, images]: [ContainerSummary[], ImageSummary[]] = await Promise.all([

@@ -92,10 +92,28 @@ export class ContainersClient {
   }
 
   /**
+   * Holds the first engine load, so a caller can wait for it rather than mistaking "not answered yet"
+   * for "no engines".
+   */
+  private readonly firstLoad: Promise<void>;
+
+  /**
    * Initializes the client, loading which container engines are present.
    */
   public constructor() {
-    void this.refreshEngines();
+    this.firstLoad = this.refreshEngines();
+  }
+
+  /**
+   * Waits for the first engine list to arrive.
+   *
+   * The distinction matters because an empty list means two opposite things: before the main process
+   * answers it means "not known yet", and after it means "no engine is installed" — which is what the
+   * empty state is about to tell the user (#595).
+   * @returns Returns a promise that resolves once the engines have been reported at least once.
+   */
+  public ready(): Promise<void> {
+    return this.firstLoad;
   }
 
   /**

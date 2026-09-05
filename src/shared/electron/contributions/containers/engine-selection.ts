@@ -51,12 +51,14 @@ function loadChoice(): string | null {
  * reads the Docker configuration off disk, and one snapshot means every engine in an answer was judged
  * against the same machine state.
  * @param environment The discovery environment; defaults to the running process.
+ * @param catalogue The engines to consider; defaults to the whole catalogue.
  * @returns Returns the available descriptors.
  */
 export function availableEngines(
   environment: DiscoveryEnvironment = processDiscoveryEnvironment(),
+  catalogue: readonly ContainerEngineDescriptor[] = containerEngineCatalogue(),
 ): readonly ContainerEngineDescriptor[] {
-  return containerEngineCatalogue().filter((descriptor: ContainerEngineDescriptor): boolean =>
+  return catalogue.filter((descriptor: ContainerEngineDescriptor): boolean =>
     isEngineAvailable(descriptor, environment),
   );
 }
@@ -69,15 +71,24 @@ export function availableEngines(
  * running is exactly the case the surface has to describe — falling through to the catalogue default
  * there is what told a Podman user that Docker was not running. Only a user who has never chosen gets
  * the default.
+ *
+ * **Null when the catalogue is empty**, which is not a defensive nicety: once the built-in engines
+ * leave core (#596, #597), a Studio with no engine plugin installed has nothing to select, and that
+ * state has to be nameable rather than crash on the first element of an empty list.
  * @param environment The discovery environment; defaults to the running process.
- * @returns Returns the descriptor of the engine in effect.
+ * @param catalogue The engines to choose between; defaults to the whole catalogue. Injected rather
+ * than read, so the empty case — the one #596 and #597 create — is testable before it is reachable.
+ * @returns Returns the descriptor of the engine in effect, or null when no engine is installed.
  */
 export function selectedEngine(
   environment: DiscoveryEnvironment = processDiscoveryEnvironment(),
-): ContainerEngineDescriptor {
+  catalogue: readonly ContainerEngineDescriptor[] = containerEngineCatalogue(),
+): ContainerEngineDescriptor | null {
   chosen ??= loadChoice();
-  const catalogue: readonly ContainerEngineDescriptor[] = containerEngineCatalogue();
-  const available: readonly ContainerEngineDescriptor[] = availableEngines(environment);
+  if (catalogue.length === 0) {
+    return null;
+  }
+  const available: readonly ContainerEngineDescriptor[] = availableEngines(environment, catalogue);
   const id: string | null = resolveSlot(available, chosen ?? undefined);
   return (
     available.find((engine: ContainerEngineDescriptor): boolean => engine.id === id) ??
@@ -114,22 +125,24 @@ export function chooseEngine(engineId: string | null): void {
  * `inEffect` is deliberately independent of `available`: the engine in effect is the one the surface is
  * talking to, and it has the most to say precisely when that engine is not answering.
  * @param environment The discovery environment; defaults to the running process.
+ * @param catalogue The engines to describe; defaults to the whole catalogue.
  * @returns Returns the engine descriptions.
  */
 export function describeEngines(
   environment: DiscoveryEnvironment = processDiscoveryEnvironment(),
+  catalogue: readonly ContainerEngineDescriptor[] = containerEngineCatalogue(),
 ): readonly ContainerEngineInfo[] {
-  const inEffect: string = selectedEngine(environment).id;
+  // Undefined when no engine is installed, which matches no engine's id — so an empty catalogue
+  // describes nothing rather than naming an engine that is not there.
+  const inEffect: string | undefined = selectedEngine(environment, catalogue)?.id;
   const platform: NodeJS.Platform = environment.platform;
-  return containerEngineCatalogue().map(
-    (engine: ContainerEngineDescriptor): ContainerEngineInfo => ({
-      id: engine.id,
-      displayName: engine.displayName,
-      available: isEngineAvailable(engine, environment),
-      inEffect: engine.id === inEffect,
-      cli: engine.cli,
-      canLaunch: engine.canLaunch(platform),
-      startCommand: engine.startCommand(platform),
-    }),
-  );
+  return catalogue.map((engine: ContainerEngineDescriptor): ContainerEngineInfo => ({
+    id: engine.id,
+    displayName: engine.displayName,
+    available: isEngineAvailable(engine, environment),
+    inEffect: engine.id === inEffect,
+    cli: engine.cli,
+    canLaunch: engine.canLaunch(platform),
+    startCommand: engine.startCommand(platform),
+  }));
 }
