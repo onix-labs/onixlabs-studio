@@ -41,38 +41,23 @@
         <div class="containers__empty">
           <app-icon class="containers__empty-icon" [icon]="Icon.WARNING" />
           <p class="containers__empty-text">{{ engineTitle() }} isn't running</p>
-          @if (launching()) {
-            <p class="containers__empty-hint">
-              Starting {{ engineLabel() }}… this can take a moment.
+          <p class="containers__empty-hint">
+            Start {{ engineLabel() }} to manage containers and images.
+          </p>
+          <!-- Told about rather than pretended at: Studio talks to an engine, it does not run one. -->
+          @if (engineStartCommand(); as command) {
+            <p class="containers__empty-command">
+              Run <code>{{ command }}</code> in a terminal.
             </p>
-          } @else {
-            <p class="containers__empty-hint">
-              Start {{ engineLabel() }} to manage containers and images.
-            </p>
-            <!-- An engine the application cannot launch is told about rather than pretended at: the
-               command that starts it, for the user to run themselves. -->
-            @if (engineStartCommand(); as command) {
-              <p class="containers__empty-command">
-                Run <code>{{ command }}</code> in a terminal.
-              </p>
-            }
-            <div class="containers__empty-actions">
-              @if (canLaunchEngine()) {
-                <app-button
-                  variant="solid"
-                  [icon]="Icon.PLAY"
-                  [label]="'Start ' + engineLabel()"
-                  (click)="startEngine()"
-                />
-              }
-              <app-button
-                variant="outline"
-                [icon]="Icon.REFRESH"
-                label="Refresh"
-                (click)="refresh()"
-              />
-            </div>
           }
+          <div class="containers__empty-actions">
+            <app-button
+              variant="outline"
+              [icon]="Icon.REFRESH"
+              label="Refresh"
+              (click)="refresh()"
+            />
+          </div>
         </div>
       }
     } @else {

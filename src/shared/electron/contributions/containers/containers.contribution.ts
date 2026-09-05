@@ -5,7 +5,6 @@ import { ContributionContext, MainContribution } from '../main-contribution';
 import { PermissionId } from '../permissions/permission';
 import { ContainerSocket } from '../permissions/brokers/container-socket';
 import { contributedContainerEngines } from '../plugins/contributed';
-import { launchDockerDesktop } from './docker-desktop';
 import { ContainerEngine, ContainerEngineDescriptor, engineSocketPath } from './container-engine';
 import { contributedEngines } from './container-engine-registry';
 import { DockerEngine } from './docker-engine';
@@ -103,7 +102,6 @@ export class ContainersContribution implements MainContribution {
       (): Promise<unknown> =>
         this.currentEngine(context)?.status() ?? Promise.resolve({ available: false }),
     );
-    context.handle(ContainerChannel.LaunchDesktop, (): Promise<boolean> => launchDockerDesktop());
     context.handle(ContainerChannel.ListEngines, (): readonly ContainerEngineInfo[] => {
       // Recomputed here rather than cached from activation: this is the call the surface makes when
       // it wants to know what its choices are, so it is exactly when a plugin installed since launch

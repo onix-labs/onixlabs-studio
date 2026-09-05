@@ -19,7 +19,6 @@ function engine(id: string, priority: number = 10): ContainerEngineDescriptor {
       dockerContext: false,
       defaults: (): readonly string[] => [`/run/${id}.sock`],
     },
-    canLaunch: (): boolean => false,
     startCommand: (): string | null => null,
   };
 }
@@ -91,7 +90,7 @@ describe('containerEngineCatalogue', () => {
 
     expect(
       containerEngineCatalogue().map((entry: ContainerEngineDescriptor): string => entry.id),
-    ).toEqual(['docker', 'podman']);
+    ).toEqual(['podman']);
   });
 
   it('offersContributedEnginesAfterTheBuiltInOnes', () => {
@@ -101,7 +100,7 @@ describe('containerEngineCatalogue', () => {
 
     expect(
       containerEngineCatalogue().map((entry: ContainerEngineDescriptor): string => entry.id),
-    ).toEqual(['docker', 'podman', 'colima']);
+    ).toEqual(['podman', 'colima']);
   });
 
   it('dropsAContributedEngineWhenItsPluginIsRemoved', () => {
@@ -110,6 +109,6 @@ describe('containerEngineCatalogue', () => {
 
     expect(
       containerEngineCatalogue().map((entry: ContainerEngineDescriptor): string => entry.id),
-    ).toEqual(['docker', 'podman']);
+    ).toEqual(['podman']);
   });
 });

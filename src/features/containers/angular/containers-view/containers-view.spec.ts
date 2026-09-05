@@ -41,7 +41,6 @@ const DOCKER: ContainerEngineInfo = {
   available: true,
   inEffect: true,
   cli: 'docker',
-  canLaunch: true,
   startCommand: null,
 };
 
@@ -55,7 +54,6 @@ const PODMAN: ContainerEngineInfo = {
   available: false,
   inEffect: true,
   cli: 'podman',
-  canLaunch: false,
   startCommand: 'podman machine start',
 };
 
@@ -166,12 +164,18 @@ describe('ContainersView', () => {
     delete (window as unknown as { bridge?: unknown }).bridge;
   });
 
-  it('showsTheDaemonAbsentEmptyStateWithAStartDockerAction', async () => {
+  it('showsTheEngineAbsentEmptyStateWithoutOfferingToStartIt', async () => {
+    // Studio talks to an engine; it does not run one. The launch button went with Docker Desktop when
+    // the engines became plugins (#596) — asserted over the buttons, because the copy still says
+    // "Start Docker to manage containers and images", which is advice rather than an offer.
     stubBridge({ available: false });
     const fixture: ComponentFixture<ContainersView> = await createView();
-    const text: string = (fixture.nativeElement as HTMLElement).textContent ?? '';
-    expect(text).toContain("Docker isn't running");
-    expect(text).toContain('Start Docker');
+    const actions: readonly string[] = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('.containers__empty-actions button'),
+    ).map((button: Element): string => button.textContent?.trim() ?? '');
+
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain("Docker isn't running");
+    expect(actions).toEqual(['Refresh']);
   });
 
   it('namesTheEngineInEffectRatherThanDockerWhenItIsNotRunning', async () => {

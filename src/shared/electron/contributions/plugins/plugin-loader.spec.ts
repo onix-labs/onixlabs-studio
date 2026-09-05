@@ -808,20 +808,6 @@ describe('a sideloaded plugin carrying its own payload', () => {
     expect(descriptors[0].startCommand('win32')).toBeNull();
   });
 
-  it('toContainerEngineDescriptors_neverClaimsStudioCanLaunchTheEngine', () => {
-    mkdirSync(path.join(root, 'payload'), { recursive: true });
-    writeFileSync(path.join(root, 'payload', 'main.js'), '', 'utf8');
-    const descriptors: readonly ContainerEngineDescriptor[] = toContainerEngineDescriptors(
-      engineManifest(),
-      (): LspProvisioner => nothingDownloaded,
-      root,
-    );
-
-    // Launching an application the user installed is Docker Desktop's special case; a provisioned CLI
-    // is not something to launch, and a manifest has no way to say otherwise.
-    expect(descriptors[0].canLaunch('darwin')).toBe(false);
-  });
-
   it('toContainerEngineDescriptors_dropsAnEngineWhosePayloadIsNotInstalled', () => {
     // Unlike a decoder, which registers as unavailable and has the panel offer the install: an engine
     // left in the catalogue would be selectable, and would report "not running" about something that

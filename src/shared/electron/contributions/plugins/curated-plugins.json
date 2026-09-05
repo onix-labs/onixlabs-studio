@@ -1,5 +1,5 @@
 {
-  "revision": 5,
+  "revision": 6,
   "plugins": [
     {
       "id": "pyright",
@@ -648,6 +648,77 @@
           "runtime": "dotnet"
         }
       ]
+    },
+    {
+      "id": "docker-engine",
+      "name": "Docker",
+      "description": "Talk to a Docker-compatible container engine over its local socket.",
+      "detail": "Installs only the `docker` command-line client. Studio speaks to the engine over its socket, so this does not install or run a container engine itself.",
+      "version": "29.8.0",
+      "apiVersion": "1.6.0",
+      "provision": {
+        "kind": "archive",
+        "downloads": {
+          "darwin-arm64": {
+            "url": "https://download.docker.com/mac/static/stable/aarch64/docker-29.8.0.tgz",
+            "sha256": "3f37afe51f8f53f224192099a76a454a62eb6100d426738da17fdf8472cf4b5f",
+            "archive": "tar.gz",
+            "executablePath": "docker/docker",
+            "members": ["docker/docker"]
+          },
+          "darwin-x64": {
+            "url": "https://download.docker.com/mac/static/stable/x86_64/docker-29.8.0.tgz",
+            "sha256": "aeb74337d43dc9f863d056760e156daa71f9462ffdc0f836a14f1528fa1f0f13",
+            "archive": "tar.gz",
+            "executablePath": "docker/docker",
+            "members": ["docker/docker"]
+          },
+          "linux-x64": {
+            "url": "https://download.docker.com/linux/static/stable/x86_64/docker-29.8.0.tgz",
+            "sha256": "cc21815cf1e2efed867dc9c8b96b46ffed8ea176ffab32b0aacb54726ded8f25",
+            "archive": "tar.gz",
+            "executablePath": "docker/docker",
+            "members": ["docker/docker"]
+          },
+          "linux-arm64": {
+            "url": "https://download.docker.com/linux/static/stable/aarch64/docker-29.8.0.tgz",
+            "sha256": "1462a696be6029bd478d7d60d7f3c31cdd15affd1178a4a278aaf4a1d1b7f8b5",
+            "archive": "tar.gz",
+            "executablePath": "docker/docker",
+            "members": ["docker/docker"]
+          },
+          "win32-x64": {
+            "url": "https://download.docker.com/win/static/stable/x86_64/docker-29.8.0.zip",
+            "sha256": "bca70bfcddb4eed5bb8af5c15a1fb583b95edacf6096152e20a621ae68c871cb",
+            "archive": "zip",
+            "executablePath": "docker/docker.exe",
+            "members": ["docker/docker.exe"]
+          }
+        }
+      },
+      "contributes": {
+        "containerEngines": [
+          {
+            "id": "docker",
+            "displayName": "Docker",
+            "priority": 100,
+            "discovery": {
+              "hostVariable": "DOCKER_HOST",
+              "dockerContext": true,
+              "sockets": {
+                "darwin": ["/var/run/docker.sock"],
+                "linux": ["/var/run/docker.sock"],
+                "win32": ["\\\\.\\pipe\\docker_engine"]
+              }
+            },
+            "startCommands": {
+              "darwin": "open -a Docker",
+              "linux": "sudo systemctl start docker"
+            }
+          }
+        ]
+      },
+      "requires": []
     }
   ]
 }
