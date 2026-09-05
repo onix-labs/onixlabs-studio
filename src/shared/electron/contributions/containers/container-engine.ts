@@ -6,7 +6,7 @@ import {
 } from '@shared/api/container-types';
 import { SlotEntry } from '@shared/api/slot';
 import { contributedEngines } from './container-engine-registry';
-import { DockerStreamHandle } from './docker-transport';
+import { StreamHandle } from './socket-http-transport';
 import {
   DiscoveryEnvironment,
   EndpointDiscovery,
@@ -70,7 +70,7 @@ export interface ContainerEngine {
    * @param onEvent Invoked for each event.
    * @returns Returns the stream handle, closed to stop watching.
    */
-  watch(onEvent: (event: ContainerEvent) => void): DockerStreamHandle;
+  watch(onEvent: (event: ContainerEvent) => void): StreamHandle;
 }
 
 /**
