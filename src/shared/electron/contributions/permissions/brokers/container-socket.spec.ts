@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DiscoveryEnvironment } from '../../containers/socket-discovery';
 import {
   ContainerSocket,
@@ -48,6 +48,18 @@ describe('ContainerSocketFactory', () => {
 });
 
 describe('resolveContainerSocketPath', () => {
+  // The rootless Podman candidate is computed from `XDG_RUNTIME_DIR` in the process environment,
+  // which the injected `DiscoveryEnvironment` does not describe. CI runners set that variable and
+  // developer machines mostly do not, so clear it here: a bare machine is one with no runtime
+  // directory either, and the assertion below is about the fallback rather than about the box.
+  beforeEach(() => {
+    vi.stubEnv('XDG_RUNTIME_DIR', '');
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it('fallsBackToTheUnixSocketOfTheEngineInEffect', () => {
     // Docker left core with #596, so the built-in engine a bare machine falls back to is Podman.
     // Which engine that is matters far less than that the fallback is the engine's own default.
