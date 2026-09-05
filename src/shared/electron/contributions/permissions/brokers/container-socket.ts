@@ -1,7 +1,11 @@
 import * as net from 'node:net';
 import { logger } from '../../../logger';
-import { containerEngineCatalogue } from '../../containers/container-engine';
+import { containerEngineCatalogue, engineSocketPath } from '../../containers/container-engine';
 import { selectedEngine } from '../../containers/engine-selection';
+import {
+  DiscoveryEnvironment,
+  processDiscoveryEnvironment,
+} from '../../containers/socket-discovery';
 import { PermissionFactory } from '../permission-broker';
 import { PermissionId } from '../permission';
 
@@ -27,10 +31,21 @@ export interface ContainerSocket {
  * Resolves the socket path of the container engine in effect — the user's chosen engine when they have
  * one and it is present, otherwise the highest-priority engine that is. Docker and Podman both serve
  * the Docker Engine API, so the difference between them is entirely which socket this returns.
+ *
+ * The path itself is discovered rather than assumed (#593): `DOCKER_HOST`, then the active `docker`
+ * context, then the platform default. That is what lets this open Colima's or OrbStack's socket
+ * without either being known to the application.
+ * @param environment The discovery environment; defaults to the running process.
  * @returns Returns the socket path for the engine in effect.
  */
-export function resolveContainerSocketPath(): string {
-  return selectedEngine().socketPath() ?? containerEngineCatalogue()[0].socketPath() ?? '';
+export function resolveContainerSocketPath(
+  environment: DiscoveryEnvironment = processDiscoveryEnvironment(),
+): string {
+  return (
+    engineSocketPath(selectedEngine(environment), environment) ??
+    engineSocketPath(containerEngineCatalogue()[0], environment) ??
+    ''
+  );
 }
 
 /**
