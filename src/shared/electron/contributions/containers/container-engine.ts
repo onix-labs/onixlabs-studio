@@ -1,4 +1,3 @@
-import { existsSync } from 'node:fs';
 import * as path from 'node:path';
 import {
   ContainerEvent,
@@ -9,6 +8,14 @@ import {
 import { SlotEntry } from '@shared/api/slot';
 import { dockerDesktopLaunchCommand } from './docker-desktop';
 import { DockerStreamHandle } from './docker-transport';
+import {
+  DiscoveryEnvironment,
+  EndpointDiscovery,
+  processDiscoveryEnvironment,
+  reportEndpoint,
+  resolveEndpoint,
+  ResolvedEndpoint,
+} from './socket-discovery';
 
 /**
  * The container engine slot's contract: everything the Containers surface asks of whatever is behind
@@ -78,10 +85,10 @@ export interface ContainerEngine {
  */
 export interface ContainerEngineDescriptor extends SlotEntry {
   /**
-   * Gets the socket path the engine's API is served on for this platform, or null when the engine does
-   * not run here.
+   * Gets how this engine's socket is found: the environment variable that names it, whether the
+   * `docker` context store does, and the platform defaults to fall back on (#593).
    */
-  socketPath(): string | null;
+  readonly discovery: EndpointDiscovery;
 
   /**
    * Gets the command-line tool that drives the engine directly, used for the operations that are a
@@ -125,8 +132,14 @@ const DOCKER: ContainerEngineDescriptor = {
   displayName: 'Docker',
   priority: 100,
   cli: 'docker',
-  socketPath: (): string =>
-    process.platform === 'win32' ? '\\\\.\\pipe\\docker_engine' : '/var/run/docker.sock',
+  // Honouring the docker context means this entry reaches far past Docker Desktop: Colima, OrbStack
+  // and Rancher Desktop all publish their socket as the active context, and all serve the same API.
+  discovery: {
+    hostVariable: 'DOCKER_HOST',
+    dockerContext: true,
+    defaults: (platform: NodeJS.Platform): readonly string[] =>
+      platform === 'win32' ? ['\\\\.\\pipe\\docker_engine'] : ['/var/run/docker.sock'],
+  },
   // Docker Desktop is an application the operating system can be asked to open, on every platform the
   // launcher knows how to do it for.
   canLaunch: (platform: NodeJS.Platform): boolean =>
@@ -147,17 +160,23 @@ const PODMAN: ContainerEngineDescriptor = {
   displayName: 'Podman',
   priority: 50,
   cli: 'podman',
-  socketPath: (): string | null => {
-    if (process.platform === 'win32') {
-      return '\\\\.\\pipe\\podman-machine-default';
-    }
-    const runtime: string | null = runtimeDirectory();
-    const rootless: string | null =
-      runtime === null ? null : path.join(runtime, 'podman', 'podman.sock');
-    if (rootless !== null && existsSync(rootless)) {
-      return rootless;
-    }
-    return '/run/podman/podman.sock';
+  // Podman keeps its own configuration rather than appearing in the docker context store, so it is
+  // found by its own variable and its own candidates: rootless under the runtime directory first,
+  // then rootful in `/run`.
+  discovery: {
+    hostVariable: 'CONTAINER_HOST',
+    dockerContext: false,
+    defaults: (platform: NodeJS.Platform): readonly string[] => {
+      if (platform === 'win32') {
+        return ['\\\\.\\pipe\\podman-machine-default'];
+      }
+      const runtime: string | null = runtimeDirectory();
+      const rootless: string | null =
+        runtime === null ? null : path.join(runtime, 'podman', 'podman.sock');
+      return rootless === null
+        ? ['/run/podman/podman.sock']
+        : [rootless, '/run/podman/podman.sock'];
+    },
   },
   // There is no Podman application to open: macOS and Windows run it in a virtual machine the user
   // starts, and Linux serves it from a socket-activated user unit. All the surface can honestly do is
@@ -179,19 +198,51 @@ export function containerEngineCatalogue(): readonly ContainerEngineDescriptor[]
 }
 
 /**
- * Gets whether an engine is present on this machine, by looking for its socket. This is the engine
- * slot's equivalent of a plugin being installed: an engine whose socket is absent is not something the
- * user can choose, and offering it would be offering a connection that cannot be made.
+ * Resolves where an engine's socket is, following the discovery order in {@link resolveEndpoint}, and
+ * reports it to the log when the answer changes.
+ * @param descriptor The engine to locate.
+ * @param environment The discovery environment; defaults to the running process.
+ * @returns Returns the resolved endpoint, or null when the engine does not run on this platform.
+ */
+export function engineEndpoint(
+  descriptor: ContainerEngineDescriptor,
+  environment: DiscoveryEnvironment = processDiscoveryEnvironment(),
+): ResolvedEndpoint | null {
+  const endpoint: ResolvedEndpoint | null = resolveEndpoint(descriptor.discovery, environment);
+  reportEndpoint(descriptor.id, endpoint);
+  return endpoint;
+}
+
+/**
+ * Gets the socket path an engine's API is served on, or null when the engine does not run here. The
+ * path is returned whether or not anything is listening on it: the caller that opens the socket needs
+ * somewhere to try, and the caller that reports a failure needs something to name.
+ * @param descriptor The engine to locate.
+ * @param environment The discovery environment; defaults to the running process.
+ * @returns Returns the socket path, or null.
+ */
+export function engineSocketPath(
+  descriptor: ContainerEngineDescriptor,
+  environment: DiscoveryEnvironment = processDiscoveryEnvironment(),
+): string | null {
+  return engineEndpoint(descriptor, environment)?.path ?? null;
+}
+
+/**
+ * Gets whether an engine is present on this machine, by looking for the socket discovery resolves to.
+ * This is the engine slot's equivalent of a plugin being installed: an engine whose socket is absent is
+ * not something the user can choose, and offering it would be offering a connection that cannot be
+ * made.
  *
  * Windows named pipes do not appear on the file system the way sockets do, so there they are always
  * treated as candidates and the connection attempt is what reports the truth.
  * @param descriptor The engine to test.
+ * @param environment The discovery environment; defaults to the running process.
  * @returns Returns true when the engine looks reachable.
  */
-export function isEngineAvailable(descriptor: ContainerEngineDescriptor): boolean {
-  const socket: string | null = descriptor.socketPath();
-  if (socket === null) {
-    return false;
-  }
-  return process.platform === 'win32' ? true : existsSync(socket);
+export function isEngineAvailable(
+  descriptor: ContainerEngineDescriptor,
+  environment: DiscoveryEnvironment = processDiscoveryEnvironment(),
+): boolean {
+  return engineEndpoint(descriptor, environment)?.exists === true;
 }

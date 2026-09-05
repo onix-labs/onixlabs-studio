@@ -9,6 +9,7 @@ import {
   containerEngineCatalogue,
   isEngineAvailable,
 } from './container-engine';
+import { DiscoveryEnvironment, processDiscoveryEnvironment } from './socket-discovery';
 
 /**
  * Holds the user's chosen engine for this session, loaded lazily from disk.
@@ -45,10 +46,19 @@ function loadChoice(): string | null {
 
 /**
  * Gets the engines present on this machine, in catalogue order.
+ *
+ * The discovery environment is taken once and threaded through rather than rebuilt per engine: it
+ * reads the Docker configuration off disk, and one snapshot means every engine in an answer was judged
+ * against the same machine state.
+ * @param environment The discovery environment; defaults to the running process.
  * @returns Returns the available descriptors.
  */
-export function availableEngines(): readonly ContainerEngineDescriptor[] {
-  return containerEngineCatalogue().filter(isEngineAvailable);
+export function availableEngines(
+  environment: DiscoveryEnvironment = processDiscoveryEnvironment(),
+): readonly ContainerEngineDescriptor[] {
+  return containerEngineCatalogue().filter((descriptor: ContainerEngineDescriptor): boolean =>
+    isEngineAvailable(descriptor, environment),
+  );
 }
 
 /**
@@ -59,12 +69,15 @@ export function availableEngines(): readonly ContainerEngineDescriptor[] {
  * running is exactly the case the surface has to describe — falling through to the catalogue default
  * there is what told a Podman user that Docker was not running. Only a user who has never chosen gets
  * the default.
+ * @param environment The discovery environment; defaults to the running process.
  * @returns Returns the descriptor of the engine in effect.
  */
-export function selectedEngine(): ContainerEngineDescriptor {
+export function selectedEngine(
+  environment: DiscoveryEnvironment = processDiscoveryEnvironment(),
+): ContainerEngineDescriptor {
   chosen ??= loadChoice();
   const catalogue: readonly ContainerEngineDescriptor[] = containerEngineCatalogue();
-  const available: readonly ContainerEngineDescriptor[] = availableEngines();
+  const available: readonly ContainerEngineDescriptor[] = availableEngines(environment);
   const id: string | null = resolveSlot(available, chosen ?? undefined);
   return (
     available.find((engine: ContainerEngineDescriptor): boolean => engine.id === id) ??
@@ -100,16 +113,19 @@ export function chooseEngine(engineId: string | null): void {
  *
  * `inEffect` is deliberately independent of `available`: the engine in effect is the one the surface is
  * talking to, and it has the most to say precisely when that engine is not answering.
+ * @param environment The discovery environment; defaults to the running process.
  * @returns Returns the engine descriptions.
  */
-export function describeEngines(): readonly ContainerEngineInfo[] {
-  const inEffect: string = selectedEngine().id;
-  const platform: NodeJS.Platform = process.platform;
+export function describeEngines(
+  environment: DiscoveryEnvironment = processDiscoveryEnvironment(),
+): readonly ContainerEngineInfo[] {
+  const inEffect: string = selectedEngine(environment).id;
+  const platform: NodeJS.Platform = environment.platform;
   return containerEngineCatalogue().map(
     (engine: ContainerEngineDescriptor): ContainerEngineInfo => ({
       id: engine.id,
       displayName: engine.displayName,
-      available: isEngineAvailable(engine),
+      available: isEngineAvailable(engine, environment),
       inEffect: engine.id === inEffect,
       cli: engine.cli,
       canLaunch: engine.canLaunch(platform),
