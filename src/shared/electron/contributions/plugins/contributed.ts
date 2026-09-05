@@ -8,6 +8,7 @@ import { PluginDescriptor } from './plugin-catalogue';
 import { PluginIndex } from './plugin-index';
 import {
   NodeRuntimeSpec,
+  toContainerEngineDescriptors,
   toDebugAdapterEntries,
   toDecoderDescriptors,
   toLanguageServerDescriptors,
@@ -15,6 +16,7 @@ import {
 } from './plugin-loader';
 import { sideloadedDirectories, sideloadedManifests } from './sideloaded';
 import { DecoderDescriptor } from '../../decoders/decoder-descriptor';
+import { ContainerEngineDescriptor } from '../containers/container-engine';
 
 // Everything Studio did not compile in: the plugins dropped into the sideload directory and the plugins
 // the curated index offers. They arrive by different routes and are the same kind of thing once they
@@ -150,6 +152,20 @@ export function contributedDecoders(
   const local: ReadonlyMap<string, string> = sideloadedDirectories();
   return contributedManifests().flatMap((manifest): readonly DecoderDescriptor[] =>
     toDecoderDescriptors(manifest, payloadProvisioner, nodeRuntime, local.get(manifest.id)),
+  );
+}
+
+/**
+ * Gets the container engines the contributed plugins provide, for the engine catalogue to offer.
+ *
+ * Only engines whose payload is installed appear: an engine that is not installed is not something the
+ * user can choose, and offering it would be offering a connection that cannot be made.
+ * @returns Returns the descriptors.
+ */
+export function contributedContainerEngines(): readonly ContainerEngineDescriptor[] {
+  const local: ReadonlyMap<string, string> = sideloadedDirectories();
+  return contributedManifests().flatMap((manifest): readonly ContainerEngineDescriptor[] =>
+    toContainerEngineDescriptors(manifest, payloadProvisioner, local.get(manifest.id)),
   );
 }
 

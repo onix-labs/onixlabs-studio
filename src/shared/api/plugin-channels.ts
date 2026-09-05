@@ -1,5 +1,6 @@
 import { FormatSlotEntry } from './format-slot';
 import { LanguageSlotEntry } from './language-slot';
+import { SlotEntry } from './slot';
 
 // Shared plugin contract used between the Electron main process and the renderer. Keep this module
 // platform-neutral (no Node or DOM dependencies) so both compilation targets can import it.
@@ -44,7 +45,7 @@ export enum PluginChannel {
  * plugin fills them. Kept a closed union deliberately — a new slot is a change to the application's
  * own surface, not something a plugin may invent.
  */
-export type PluginSlot = 'language-server' | 'debug-adapter' | 'decoder';
+export type PluginSlot = 'language-server' | 'debug-adapter' | 'decoder' | 'container-engine';
 
 /**
  * Names the slots keyed by language, as opposed to by format.
@@ -76,9 +77,24 @@ export interface FormatPluginContribution extends FormatSlotEntry {
 }
 
 /**
+ * Describes one implementation a plugin contributes into a slot that is keyed by nothing at all.
+ *
+ * A container engine is chosen once for the application, so it carries neither `languages` nor
+ * `formats` — the distinction the slot contract draws between a keyed slot and a plain one, surfaced
+ * here rather than papered over with an array that would have nothing to put in it.
+ */
+export interface UnkeyedPluginContribution extends SlotEntry {
+  /**
+   * Gets the unkeyed slot this implementation fills.
+   */
+  readonly slot: 'container-engine';
+}
+
+/**
  * Describes one implementation a plugin contributes into a slot, whichever way that slot is keyed.
  */
-export type PluginContribution = LanguagePluginContribution | FormatPluginContribution;
+export type PluginContribution =
+  LanguagePluginContribution | FormatPluginContribution | UnkeyedPluginContribution;
 
 /**
  * Describes a plugin's current state on this machine.

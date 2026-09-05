@@ -46,8 +46,17 @@ import { DECODER_FORMATS } from './decoder-protocol';
  * debug adapters, and the first keyed by binary *format* rather than by language. Adds only: every
  * 1.3.0 manifest still validates and still means what it meant. The rule that a manifest contributing
  * nothing is refused now counts decoders, which widens what is accepted rather than narrowing it.
+ *
+ * `1.5.0` added the `containerEngines` contribution point (#594), the fourth slot, and the first keyed
+ * by nothing at all — an engine is chosen once for the application rather than per language or per
+ * format. Adds only, on the same terms as every minor before it.
+ *
+ * It is also the first contribution point whose payload is not the thing being contributed: Studio
+ * speaks to an engine over a socket the user's own engine serves, and provisions only the client CLI
+ * for the operations that are a terminal session. That is a widening of what a contribution *is*, and
+ * it is recorded here rather than left to be inferred.
  */
-export const PLUGIN_API_VERSION: string = '1.4.0';
+export const PLUGIN_API_VERSION: string = '1.5.0';
 
 /**
  * Matches a plain three-part semver. Deliberately strict and deliberately local: the rule below is the
@@ -117,6 +126,15 @@ const PLATFORM_KEYS: readonly string[] = [
   'linux-arm64',
   'win32-x64',
 ];
+
+/**
+ * The platform keys a container engine's discovery and start-command maps are keyed by, matching
+ * `process.platform`.
+ *
+ * Deliberately not the `${platform}-${arch}` keys downloads use: a download differs per architecture
+ * because it is a binary, whereas where a socket lives does not.
+ */
+const PLATFORMS: readonly string[] = ['darwin', 'linux', 'win32'];
 
 /**
  * The archive kinds the provisioner can extract.
@@ -287,6 +305,83 @@ export interface ManifestDecoder {
 }
 
 /**
+ * Describes how a contributed container engine's socket is found, as data.
+ *
+ * This is the shape core already resolves against (#593), lifted verbatim: the variable that names the
+ * endpoint outright, whether the `docker` CLI's context store names it, and the per-platform fallbacks.
+ * Nothing here is a function of anything but the platform and the environment, which is what makes an
+ * engine describable at all — a manifest can say *where to look*, and never has to run code to decide.
+ */
+export interface ManifestEndpointDiscovery {
+  /**
+   * Gets the environment variable that names the endpoint, such as `DOCKER_HOST`.
+   */
+  readonly hostVariable: string;
+
+  /**
+   * Gets whether the active `docker` context names this engine's endpoint. Honouring it is what makes
+   * Colima, OrbStack and Rancher Desktop reachable, since all three publish a socket that way.
+   */
+  readonly dockerContext?: boolean;
+
+  /**
+   * Gets the fallback socket paths per platform key (`darwin`, `linux`, `win32`), nearest first. A
+   * platform with no entry is one the engine does not run on.
+   */
+  readonly sockets: Readonly<Record<string, readonly string[]>>;
+}
+
+/**
+ * Describes a container engine a plugin contributes.
+ *
+ * Keyed by nothing at all, which is the point {@link import('./slot').SlotEntry} exists to make: a
+ * language server is chosen per language and a decoder per format, but an engine is chosen once for the
+ * application because there is nothing to vary it by.
+ *
+ * The payload is the engine's **client CLI**, not the engine itself. Studio speaks the Engine API over
+ * a socket the user's engine already serves; the CLI is needed only for the operations that are a
+ * terminal session rather than an API call — following logs, opening a shell in a container.
+ */
+export interface ManifestContainerEngine {
+  /**
+   * Gets the identifier the engine is registered under.
+   */
+  readonly id: string;
+
+  /**
+   * Gets the display name, which is what the surface calls the engine when it names it.
+   */
+  readonly displayName: string;
+
+  /**
+   * Gets the priority used to pick a default among installed engines, higher first.
+   */
+  readonly priority: number;
+
+  /**
+   * Gets how the engine's socket is found.
+   */
+  readonly discovery: ManifestEndpointDiscovery;
+
+  /**
+   * Gets the command the user runs to start this engine themselves, per platform key, or undefined
+   * where there is nothing useful to tell them.
+   *
+   * There is deliberately no way for a manifest to say "Studio can start this for you". Studio can
+   * launch an *application* it did not install (Docker Desktop, historically); it cannot start an
+   * engine out of a CLI it provisioned, and a manifest claiming otherwise would be claiming something
+   * the host cannot honour.
+   */
+  readonly startCommands?: Readonly<Record<string, string>>;
+
+  /**
+   * Gets this contribution's own entry point within the installed payload — the client CLI — or
+   * undefined to use the provision's. See {@link ManifestLanguageServer.entryPoint}.
+   */
+  readonly entryPoint?: string;
+}
+
+/**
  * Describes a language server a plugin contributes. Keyed by language: a language served by more than
  * one installed plugin is a choice the user makes.
  */
@@ -417,6 +512,11 @@ export interface ManifestContributions {
    * Gets the decoders contributed.
    */
   readonly decoders?: readonly ManifestDecoder[];
+
+  /**
+   * Gets the container engines contributed.
+   */
+  readonly containerEngines?: readonly ManifestContainerEngine[];
 }
 
 /**
@@ -909,13 +1009,138 @@ function readContributions(value: unknown, errors: Errors): ManifestContribution
       });
     },
   );
-  if (languageServers.length === 0 && debugAdapters.length === 0 && decoders.length === 0) {
+  const containerEngines: ManifestContainerEngine[] = [];
+  readContributionList(
+    source['containerEngines'],
+    'contributes.containerEngines',
+    errors,
+    (entry: Record<string, unknown>, path: string): void => {
+      containerEngines.push({
+        id: readId(entry, 'id', `${path}.`, errors),
+        displayName: readString(entry, 'displayName', `${path}.`, errors),
+        priority: readPriority(entry, path, errors),
+        discovery: readDiscovery(entry['discovery'], `${path}.discovery`, errors),
+        startCommands: readPlatformStrings(entry['startCommands'], `${path}.startCommands`, errors),
+        entryPoint: readEntryPoint(entry, 'entryPoint', `${path}.`, errors),
+      });
+    },
+  );
+  if (
+    languageServers.length === 0 &&
+    debugAdapters.length === 0 &&
+    decoders.length === 0 &&
+    containerEngines.length === 0
+  ) {
     errors.add(
       'contributes',
-      'must contribute at least one language server, debug adapter or decoder',
+      'must contribute at least one language server, debug adapter, decoder or container engine',
     );
   }
-  return { languageServers, debugAdapters, decoders };
+  return { languageServers, debugAdapters, decoders, containerEngines };
+}
+
+/**
+ * Validates a container engine's discovery rules.
+ *
+ * The socket map is required and must name at least one platform: an engine that says nothing about
+ * where it is served describes no way to reach it, and would install as an option that can never
+ * connect — the same failure mode as a decoder claiming a format nothing produces.
+ * @param value The candidate discovery object.
+ * @param path The dotted path, for error messages.
+ * @param errors The failure collector.
+ * @returns Returns the discovery rules.
+ */
+function readDiscovery(value: unknown, path: string, errors: Errors): ManifestEndpointDiscovery {
+  const source: Record<string, unknown> | null = readObject(value, path, errors);
+  if (source === null) {
+    return { hostVariable: '', sockets: {} };
+  }
+  const context: unknown = source['dockerContext'];
+  if (context !== undefined && typeof context !== 'boolean') {
+    errors.add(`${path}.dockerContext`, 'must be a boolean');
+  }
+  const sockets: Readonly<Record<string, readonly string[]>> = readPlatformSockets(
+    source['sockets'],
+    `${path}.sockets`,
+    errors,
+  );
+  if (Object.keys(sockets).length === 0) {
+    errors.add(`${path}.sockets`, 'must name a socket path for at least one platform');
+  }
+  return {
+    hostVariable: readString(source, 'hostVariable', `${path}.`, errors),
+    dockerContext: context === true,
+    sockets,
+  };
+}
+
+/**
+ * Validates a map of platform key to socket paths.
+ * @param value The candidate map.
+ * @param path The dotted path, for error messages.
+ * @param errors The failure collector.
+ * @returns Returns the map, with unusable entries dropped.
+ */
+function readPlatformSockets(
+  value: unknown,
+  path: string,
+  errors: Errors,
+): Readonly<Record<string, readonly string[]>> {
+  const source: Record<string, unknown> | null = readObject(value, path, errors);
+  if (source === null) {
+    return {};
+  }
+  const parsed: Record<string, readonly string[]> = {};
+  for (const [platform, paths] of Object.entries(source)) {
+    if (!PLATFORMS.includes(platform)) {
+      errors.add(`${path}.${platform}`, `must be one of ${PLATFORMS.join(', ')}`);
+      continue;
+    }
+    if (
+      !Array.isArray(paths) ||
+      paths.length === 0 ||
+      paths.some((entry: unknown): boolean => typeof entry !== 'string' || entry.length === 0)
+    ) {
+      errors.add(`${path}.${platform}`, 'must be a non-empty array of socket paths');
+      continue;
+    }
+    parsed[platform] = paths as readonly string[];
+  }
+  return parsed;
+}
+
+/**
+ * Validates a map of platform key to a single string.
+ * @param value The candidate map, or undefined when the field is absent.
+ * @param path The dotted path, for error messages.
+ * @param errors The failure collector.
+ * @returns Returns the map, or undefined when the field was absent.
+ */
+function readPlatformStrings(
+  value: unknown,
+  path: string,
+  errors: Errors,
+): Readonly<Record<string, string>> | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const source: Record<string, unknown> | null = readObject(value, path, errors);
+  if (source === null) {
+    return undefined;
+  }
+  const parsed: Record<string, string> = {};
+  for (const [platform, command] of Object.entries(source)) {
+    if (!PLATFORMS.includes(platform)) {
+      errors.add(`${path}.${platform}`, `must be one of ${PLATFORMS.join(', ')}`);
+      continue;
+    }
+    if (typeof command !== 'string' || command.length === 0) {
+      errors.add(`${path}.${platform}`, 'must be a non-empty string');
+      continue;
+    }
+    parsed[platform] = command;
+  }
+  return parsed;
 }
 
 /**
