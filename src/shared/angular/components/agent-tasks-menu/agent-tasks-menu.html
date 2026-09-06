@@ -1,13 +1,12 @@
 @if (count() > 0) {
-  <!-- The same quiet icon button as its neighbours (shortcuts, quick responses), using the atom's own
-       loading spinner as the glyph: the conversation genuinely is busy, and `loadingInteractive`
-       keeps the button pressable so the drop-up still opens. No visible count — the spinner is the
-       signal, and the count lives in the accessible label and tooltip. -->
+  <!-- The same quiet icon button as its neighbours (shortcuts, quick responses), its glyph spinning
+       continuously for as long as work is running — presentation only, not a loading state, so the
+       spin never pauses on hover and the button stays an ordinary menu trigger. No visible count —
+       the spinner is the signal, and the count lives in the accessible label and tooltip. -->
   <app-button
     variant="none"
     [icon]="Icon.SPINNER"
-    [loading]="true"
-    [loadingInteractive]="true"
+    [iconSpin]="true"
     [ariaLabel]="triggerTitle()"
     [tooltip]="triggerTitle()"
     [cdkMenuTriggerFor]="menu"

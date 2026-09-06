@@ -18,6 +18,7 @@
   @if (icon(); as glyph) {
     <app-icon
       class="button__icon button__icon--content"
+      [class.button__icon--spin]="iconSpin()"
       [icon]="glyph"
       [rotation]="iconRotation()"
     />

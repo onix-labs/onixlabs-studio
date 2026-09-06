@@ -83,6 +83,23 @@ describe('Button', () => {
     expect(host.classList.contains('button--icon-only')).toBe(false);
   });
 
+  it('iconSpin_whenSet_animatesTheContentGlyph_withoutEnteringTheLoadingState', () => {
+    render({ icon: Icon.SPINNER, iconSpin: true, ariaLabel: 'Working' });
+
+    // Presentation only: the ordinary content icon spins, the button is not busy and not disabled.
+    const glyph: HTMLElement | null = host.querySelector('.button__icon--content');
+    expect(glyph?.classList.contains('button__icon--spin')).toBe(true);
+    expect(host.classList.contains('button--loading')).toBe(false);
+    expect(host.querySelector('button')?.disabled).toBe(false);
+  });
+
+  it('iconSpin_whenUnstated_leavesTheGlyphStill', () => {
+    render({ icon: Icon.SPINNER, ariaLabel: 'Working' });
+
+    const glyph: HTMLElement | null = host.querySelector('.button__icon--content');
+    expect(glyph?.classList.contains('button__icon--spin')).toBe(false);
+  });
+
   it('type_whenUnstated_isAPlainButton_soAFormIsNotSubmittedByAccident', () => {
     render();
 
