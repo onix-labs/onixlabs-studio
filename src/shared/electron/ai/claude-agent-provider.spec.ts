@@ -81,6 +81,13 @@ class FakeQuery {
     return Promise.resolve();
   }
 
+  public readonly stopTaskCalls: string[] = [];
+
+  public stopTask(taskId: string): Promise<void> {
+    this.stopTaskCalls.push(taskId);
+    return Promise.resolve();
+  }
+
   public commands: { name: string; description: string; argumentHint: string }[] = [];
 
   public supportedCommands(): Promise<
@@ -866,6 +873,93 @@ describe('ClaudeAgentSession (remote control re-aim)', () => {
     expect(harness.createQueryCalls()).toBe(1);
 
     await harness.session.close();
+  });
+});
+
+describe('ClaudeAgentSession (panic stop)', () => {
+  /**
+   * Opens a session, runs one turn to completion, and clears the collected events — leaving a live
+   * idle session, the state a hung background task strands a conversation in.
+   * @param events The collected event sink.
+   * @returns The opened harness.
+   */
+  async function openSettledSession(events: AiEvent[]): Promise<SessionHarness> {
+    const controller: AbortController = new AbortController();
+    const harness: SessionHarness = makeSession(
+      turnCtx('run-1', 'claude-opus-4-8', controller.signal, events, 'conv-1'),
+    );
+    const turn: Promise<void> = harness.session.turn(
+      turnCtx('run-1', 'claude-opus-4-8', controller.signal, events, 'conv-1'),
+    );
+    await flush();
+    harness.query()?.emit({ type: 'result', session_id: 'sess-a' });
+    await turn;
+    events.length = 0;
+    return harness;
+  }
+
+  it('panicStop_stopsLiveTasks_interrupts_andClosesWhenTheHarnessStaysSilent', async () => {
+    const events: AiEvent[] = [];
+    const harness: SessionHarness = await openSettledSession(events);
+    harness.query()?.emit({
+      type: 'system',
+      subtype: 'task_started',
+      task_id: 'task-1',
+      tool_use_id: 'tool-1',
+      description: 'long build',
+      session_id: 'sess-a',
+    });
+    await flush();
+
+    vi.useFakeTimers();
+    try {
+      harness.session.panicStop();
+      // The graduated stop: every live task stopped, the turn interrupted.
+      expect(harness.query()?.stopTaskCalls).toEqual(['task-1']);
+      expect(harness.query()?.interruptCount).toBe(1);
+      expect(harness.session.alive).toBe(true);
+
+      // The harness never answers with a result: the watchdog closes the session outright.
+      await vi.advanceTimersByTimeAsync(5_100);
+      expect(harness.session.alive).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('panicStop_whenTheInterruptLands_leavesTheSessionOpen', async () => {
+    const events: AiEvent[] = [];
+    const harness: SessionHarness = await openSettledSession(events);
+
+    vi.useFakeTimers();
+    try {
+      harness.session.panicStop();
+      // The harness acknowledges the interrupt: a result arrives within the grace window, so the
+      // session survives for the conversation's next turn.
+      harness.query()?.emit({ type: 'result', session_id: 'sess-a' });
+      await vi.advanceTimersByTimeAsync(6_000);
+      expect(harness.session.alive).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+    await harness.session.close();
+  });
+
+  it('close_emitsATerminalStatus_soAnAdoptedTurnLandsInsteadOfSpinningForever', async () => {
+    const events: AiEvent[] = [];
+    const harness: SessionHarness = await openSettledSession(events);
+
+    // The renderer may have adopted a task-driven turn under run-1 (no Studio run is awaiting it).
+    // The session dies — panic-closed, reaped, or crashed — and without a terminal status that
+    // adoption would spin "Working" forever.
+    await harness.session.close();
+
+    const status: Record<string, unknown> | undefined = (
+      events as unknown as Record<string, unknown>[]
+    ).find((event: Record<string, unknown>): boolean => event['kind'] === 'status');
+    expect(status).toBeDefined();
+    expect(status?.['state']).toBe('aborted');
+    expect(status?.['requestId']).toBe('run-1');
   });
 });
 

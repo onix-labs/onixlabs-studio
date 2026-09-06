@@ -317,6 +317,18 @@ export class AiRuntime {
   }
 
   /**
+   * Panic-stops an agent's held-open live session: stops its background tasks, interrupts the
+   * in-flight turn — including an adopted task- or peer-driven turn no run is awaiting, which
+   * {@link abort} cannot reach — and escalates to closing the session if the harness does not
+   * respond. No-op in the main process when no session is open.
+   * @param agentSessionId The agent conversation whose session to stop.
+   */
+  public stopAgent(agentSessionId: string): void {
+    this.log.info('AiRuntime', 'Agent panic stop requested', agentSessionId);
+    void this.api?.stopAgent(agentSessionId);
+  }
+
+  /**
    * Injects a user message into an in-flight run (mid-run steering).
    * @param requestId The identifier of the run to steer.
    * @param text The user message to inject.

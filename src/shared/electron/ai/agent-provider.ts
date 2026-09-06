@@ -366,6 +366,15 @@ export interface AgentSession {
   setRemoteControl?(mode: AiRemoteControlMode): void;
 
   /**
+   * Panic-stops the session: stops its live background tasks, interrupts whatever turn is in flight
+   * (including one no run is awaiting — a task- or peer-driven turn), and escalates to closing the
+   * session outright if the harness does not respond. The user's Stop is a promise that everything
+   * halts, not a request. Optional: a provider without the graduated path simply does not implement
+   * it, and the manager closes the session instead.
+   */
+  panicStop?(): void;
+
+  /**
    * Ends the session and releases its resources (the harness subprocess).
    */
   close(): Promise<void>;
