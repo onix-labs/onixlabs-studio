@@ -19,6 +19,18 @@ function buffer(size: number): HeaderBuffer {
 }
 
 /**
+ * Writes a Mach-O fixed-width, NUL-padded 16-byte name field.
+ * @param bytes The buffer to write into.
+ * @param offset The byte offset of the field.
+ * @param name The name to write.
+ */
+function writeName(bytes: Uint8Array, offset: number, name: string): void {
+  for (let index: number = 0; index < name.length; index += 1) {
+    bytes[offset + index] = name.charCodeAt(index);
+  }
+}
+
+/**
  * Builds a minimal PE header with a given machine, optional-header magic, and CLR directory RVA.
  * @param machine The FileHeader.Machine value.
  * @param optionalMagic The optional-header magic (0x10b PE32, 0x20b PE32+).
@@ -96,6 +108,65 @@ describe('sniffFormat', () => {
   it('returnsUnknownForUnrecognisedHeaders', () => {
     expect(sniffFormat(new Uint8Array([0x00, 0x01, 0x02, 0x03]))).toEqual({ kind: 'unknown' });
   });
+
+  it('recoversReadyToRunArchitectureThroughEveryOperatingSystemOverride', () => {
+    // .NET XORs the machine field with an OS-specific value for non-Windows ReadyToRun targets, so
+    // the raw value means nothing until it is undone. 0xC020 is what a real `dotnet publish
+    // -p:PublishReadyToRun -r osx-x64` writes, and 0xC020 ^ 0x4644 is 0x8664 (AMD64).
+    const overrides: readonly { os: string; override: number }[] = [
+      { os: 'Apple', override: 0x4644 },
+      { os: 'Linux', override: 0x7b79 },
+      { os: 'FreeBSD', override: 0xadc4 },
+      { os: 'NetBSD', override: 0x1993 },
+      { os: 'SunOS', override: 0x1992 },
+    ];
+    for (const { os, override } of overrides) {
+      const x64: BinaryFormat = sniffFormat(makePe(0x8664 ^ override, 0x20b, 0x2000));
+      expect(x64, `${os} x64`).toEqual({
+        kind: 'pe',
+        architecture: 'x64',
+        managed: true,
+        readyToRun: true,
+      });
+      const arm64: BinaryFormat = sniffFormat(makePe(0xaa64 ^ override, 0x20b, 0x2000));
+      expect(arm64, `${os} ARM64`).toEqual({
+        kind: 'pe',
+        architecture: 'ARM64',
+        managed: true,
+        readyToRun: true,
+      });
+    }
+  });
+
+  it('readyToRunRecoveryIsNotAppliedToAnOrdinaryAssembly', () => {
+    // Every override is a 16-bit XOR, so applied to a machine value that already means something it
+    // would produce a different valid one. A recognised machine must never be reinterpreted.
+    expect(sniffFormat(makePe(0x8664, 0x20b, 0x2000))).toEqual({
+      kind: 'pe',
+      architecture: 'x64',
+      managed: true,
+    });
+  });
+
+  it('readyToRunRecoveryIsNotAppliedToAnUnmanagedImage', () => {
+    // A native PE whose machine is genuinely unrecognised stays unknown: only a managed image can be
+    // ReadyToRun, so there is nothing here to undo.
+    expect(sniffFormat(makePe(0xc020, 0x20b, 0))).toEqual({
+      kind: 'pe',
+      architecture: 'unknown',
+      managed: false,
+    });
+  });
+
+  it('anUnrecoverableManagedMachineStaysUnknownRatherThanBeingGuessedAt', () => {
+    // Undoing every override still yields nothing recognisable, so the value is unrecognised for some
+    // other reason and the sniffer must not invent an architecture for it.
+    expect(sniffFormat(makePe(0x0001, 0x20b, 0x2000))).toEqual({
+      kind: 'pe',
+      architecture: 'unknown',
+      managed: true,
+    });
+  });
 });
 
 describe('codeOffset', () => {
@@ -143,8 +214,80 @@ describe('codeOffset', () => {
     expect(codeOffset(bytes)).toBe(32); // 2 * 16
   });
 
+  it('findsTheMachOTextSection', () => {
+    // A NativeAOT binary disassembled but its Code button did nothing, because Mach-O was the one
+    // container this could not locate code in. Layout mirrors a real 64-bit image: header, one
+    // LC_SEGMENT_64 for __TEXT, one __text section within it.
+    const command: number = 32;
+    const sections: number = command + 72;
+    const { bytes, view } = buffer(sections + 80);
+    view.setUint32(0, 0xfeedfacf, true); // MH_MAGIC_64
+    view.setUint32(16, 1, true); // ncmds
+    view.setUint32(command, 0x19, true); // LC_SEGMENT_64
+    view.setUint32(command + 4, 72 + 80, true); // cmdsize
+    writeName(bytes, command + 8, '__TEXT');
+    view.setUint32(command + 64, 1, true); // nsects
+    writeName(bytes, sections, '__text');
+    view.setUint32(sections + 48, 0x1d10, true); // section offset
+    expect(codeOffset(bytes)).toBe(0x1d10);
+  });
+
+  it('findsTheMachOTextSectionInA32BitImage', () => {
+    const command: number = 28;
+    const sections: number = command + 56;
+    const { bytes, view } = buffer(sections + 68);
+    view.setUint32(0, 0xfeedface, true); // MH_MAGIC
+    view.setUint32(16, 1, true); // ncmds
+    view.setUint32(command, 0x01, true); // LC_SEGMENT
+    view.setUint32(command + 4, 56 + 68, true); // cmdsize
+    writeName(bytes, command + 8, '__TEXT');
+    view.setUint32(command + 48, 1, true); // nsects
+    writeName(bytes, sections, '__text');
+    view.setUint32(sections + 40, 0x900, true); // section offset
+    expect(codeOffset(bytes)).toBe(0x900);
+  });
+
+  it('skipsMachOLoadCommandsBeforeTheTextSegment', () => {
+    // __TEXT is rarely the first load command; the walk must step over the ones ahead of it by their
+    // own declared size rather than assuming a position.
+    const first: number = 32;
+    const firstSize: number = 24;
+    const command: number = first + firstSize;
+    const sections: number = command + 72;
+    const { bytes, view } = buffer(sections + 80);
+    view.setUint32(0, 0xfeedfacf, true);
+    view.setUint32(16, 2, true); // ncmds
+    view.setUint32(first, 0x22, true); // LC_DYLD_INFO_ONLY — not a segment
+    view.setUint32(first + 4, firstSize, true);
+    view.setUint32(command, 0x19, true);
+    view.setUint32(command + 4, 72 + 80, true);
+    writeName(bytes, command + 8, '__TEXT');
+    view.setUint32(command + 64, 1, true);
+    writeName(bytes, sections, '__text');
+    view.setUint32(sections + 48, 0x2000, true);
+    expect(codeOffset(bytes)).toBe(0x2000);
+  });
+
   it('returnsNullForFormatsWithoutAKnownCodeOffset', () => {
     expect(codeOffset(new Uint8Array([0xca, 0xfe, 0xba, 0xbe]))).toBeNull();
+  });
+});
+
+describe('formatKey', () => {
+  it('routesAReadyToRunImageToTheNativeDecoder_notTheIlOne', () => {
+    // The native code is why the image was published this way, and it is exactly what an IL decoder
+    // cannot show. An ordinary managed assembly still goes to the IL decoder.
+    expect(formatKey({ kind: 'pe', architecture: 'x64', managed: true, readyToRun: true })).toBe(
+      'pe/x64',
+    );
+    expect(formatKey({ kind: 'pe', architecture: 'x64', managed: true })).toBe('pe-managed');
+  });
+
+  it('fallsBackToTheIlDecoderWhenAReadyToRunArchitectureNeverResolved', () => {
+    // Better a listing of its IL than nothing at all.
+    expect(
+      formatKey({ kind: 'pe', architecture: 'unknown', managed: true, readyToRun: true }),
+    ).toBe('pe-managed');
   });
 });
 
@@ -153,6 +296,10 @@ describe('describeFormat', () => {
     const cases: readonly { format: BinaryFormat; label: string }[] = [
       { format: { kind: 'pe', architecture: 'x64', managed: false }, label: 'PE · x64' },
       { format: { kind: 'pe', architecture: 'x86', managed: true }, label: '.NET · x86' },
+      {
+        format: { kind: 'pe', architecture: 'x64', managed: true, readyToRun: true },
+        label: '.NET R2R · x64',
+      },
       { format: { kind: 'mz', architecture: 'x86-16' }, label: 'MS-DOS · x86-16' },
       { format: { kind: 'elf', architecture: 'ARM64' }, label: 'ELF · ARM64' },
       { format: { kind: 'macho', architecture: 'x64' }, label: 'Mach-O · x64' },
