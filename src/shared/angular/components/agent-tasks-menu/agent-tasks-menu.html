@@ -1,19 +1,20 @@
 @if (count() > 0) {
   <button
     type="button"
-    class="tasks-menu__trigger"
+    class="agent-tasks-menu__trigger"
     [title]="triggerTitle()"
     [attr.aria-label]="triggerTitle()"
     [cdkMenuTriggerFor]="menu"
     [cdkMenuPosition]="menuPosition"
   >
-    <app-icon class="tasks-menu__glyph" [icon]="Icon.SPINNER" />
-    <span class="tasks-menu__count">{{ count() }}</span>
+    <app-icon class="agent-tasks-menu__glyph" [icon]="Icon.SPINNER" />
+    <span class="agent-tasks-menu__count">{{ count() }}</span>
   </button>
 }
 
 <!-- `cdkMenu` must be this template's root node: on an inner element the CDK silently falls back to
-     an inline menu, which never dismisses and stretches the panel across the strip. -->
+     an inline menu, which never dismisses. The panel reuses the global tasks-menu classes (see
+     _menu.scss) so this drop-up and the status strip's read as the same surface. -->
 <ng-template #menu>
   <div class="tasks-menu__panel" cdkMenu>
     <div class="tasks-menu__header">
@@ -26,19 +27,8 @@
           <span class="tasks-menu__item-title">{{ task.description }}</span>
           <span class="tasks-menu__item-detail">{{ detail(task) }}</span>
         </span>
-        <!-- Plain buttons rather than cdkMenuItems so the flyout stays open: stopping one task of
+        <!-- A plain button rather than a cdkMenuItem so the drop-up stays open: stopping one task of
              several should not close the list you are working through. -->
-        @if (task.ownerTabId) {
-          <app-button
-            variant="none"
-            size="small"
-            [icon]="Icon.ARROWS_OUT"
-            [ariaLabel]="'Show the agent running: ' + task.description"
-            tooltip="Show the agent"
-            (pointerdown)="$event.preventDefault()"
-            (click)="reveal(task); $event.stopPropagation()"
-          />
-        }
         <app-button
           variant="none"
           size="small"

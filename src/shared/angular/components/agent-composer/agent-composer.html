@@ -187,6 +187,9 @@
     <div class="agent__composer-aids">
       <app-agent-composer-shortcuts />
       <app-agent-quick-responses (chosen)="onQuickResponse($event)" />
+      <!-- This conversation's background tasks, appearing only while some are running — the
+           conversation-scoped counterpart of the status strip's app-wide indicator. -->
+      <app-agent-tasks-menu />
     </div>
 
     <div class="agent__composer-actions">

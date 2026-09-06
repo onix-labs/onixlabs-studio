@@ -38,6 +38,7 @@ import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { AgentComposerShortcuts } from '@shared/angular/components/agent-composer-shortcuts/agent-composer-shortcuts';
 import { AgentQuickResponses } from '@shared/angular/components/agent-quick-responses/agent-quick-responses';
+import { AgentTasksMenu } from '@shared/angular/components/agent-tasks-menu/agent-tasks-menu';
 import { AgentLoginModal } from '@shared/angular/components/agent-login-modal/agent-login-modal';
 import { MarkdownEditor } from '@shared/angular/components/markdown-editor/markdown-editor';
 import { AgentPerf } from '@shared/angular/services/agent-perf/agent-perf';
@@ -189,6 +190,7 @@ interface ContextChip {
     AgentLoginModal,
     AgentComposerShortcuts,
     AgentQuickResponses,
+    AgentTasksMenu,
   ],
   templateUrl: './agent-composer.html',
   styleUrl: './agent-composer.scss',

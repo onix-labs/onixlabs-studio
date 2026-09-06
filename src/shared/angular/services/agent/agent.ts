@@ -975,7 +975,7 @@ export class Agent {
           this.tabs.activate(tabId);
         }
       },
-      stop: (taskId: string): void => this.runtime.stopTask(this.agentSessionId, taskId),
+      stop: (taskId: string): void => this.stopTask(taskId),
     });
     this.destroyRef.onDestroy(unregisterTasks);
     this.destroyRef.onDestroy((): void => {
@@ -1331,6 +1331,15 @@ export class Agent {
    */
   public clearContext(): void {
     this.contextPathsState.set([]);
+  }
+
+  /**
+   * Asks the provider to stop one of this conversation's background tasks. The harness settles it as
+   * `stopped` through the ordinary lifecycle events, so the task leaves {@link tasks} on its own.
+   * @param taskId The task to stop.
+   */
+  public stopTask(taskId: string): void {
+    this.runtime.stopTask(this.agentSessionId, taskId);
   }
 
   /**
