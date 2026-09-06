@@ -8,9 +8,10 @@ import { Icon } from '@shared/angular/icons/icon';
 import { Agent, AgentTask } from '@shared/angular/services/agent/agent';
 
 /**
- * The composer's own task indicator: a spinner and count beside the quick-response button while THIS
- * conversation is running background tasks, opening a drop-up of just those tasks with a stop control
- * on each row.
+ * The composer's own task indicator: a spinning icon button beside the quick-response button while
+ * THIS conversation is running background tasks, opening a drop-up of just those tasks with a stop
+ * control on each row. The count is spoken, not shown — it names the tally in the button's tooltip
+ * and accessible label, while the face stays a bare spinner like its neighbouring icon buttons.
  *
  * It is the conversation-scoped counterpart of the status strip's app-wide indicator (see
  * `StatusStripTasksMenu`): the strip answers "what is running anywhere?", this answers "what is this

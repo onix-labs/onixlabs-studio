@@ -1,15 +1,17 @@
 @if (count() > 0) {
-  <button
-    type="button"
-    class="agent-tasks-menu__trigger"
-    [title]="triggerTitle()"
-    [attr.aria-label]="triggerTitle()"
+  <!-- The same quiet icon button as its neighbours (shortcuts, quick responses), its glyph spinning
+       continuously for as long as work is running — presentation only, not a loading state, so the
+       spin never pauses on hover and the button stays an ordinary menu trigger. No visible count —
+       the spinner is the signal, and the count lives in the accessible label and tooltip. -->
+  <app-button
+    variant="none"
+    [icon]="Icon.SPINNER"
+    [iconSpin]="true"
+    [ariaLabel]="triggerTitle()"
+    [tooltip]="triggerTitle()"
     [cdkMenuTriggerFor]="menu"
     [cdkMenuPosition]="menuPosition"
-  >
-    <app-icon class="agent-tasks-menu__glyph" [icon]="Icon.SPINNER" />
-    <span class="agent-tasks-menu__count">{{ count() }}</span>
-  </button>
+  />
 }
 
 <!-- `cdkMenu` must be this template's root node: on an inner element the CDK silently falls back to
