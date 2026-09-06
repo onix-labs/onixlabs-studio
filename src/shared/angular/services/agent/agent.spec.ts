@@ -56,6 +56,7 @@ describe('Agent', () => {
   }[];
   let abortCalls: string[];
   let closeSessionCalls: string[];
+  let remoteControlCalls: { agentSessionId: string; mode: AiRemoteControlMode }[];
   let steerCalls: { requestId: string; text: string }[];
   let steerResult: boolean;
   let permissionReplies: { permissionId: string; granted: boolean; remember?: string }[];
@@ -94,6 +95,7 @@ describe('Agent', () => {
     runCalls = [];
     abortCalls = [];
     closeSessionCalls = [];
+    remoteControlCalls = [];
     steerCalls = [];
     steerResult = false;
     permissionReplies = [];
@@ -106,6 +108,7 @@ describe('Agent', () => {
       | 'abort'
       | 'steer'
       | 'closeSession'
+      | 'setSessionRemoteControl'
       | 'listProviders'
       | 'respondPermission'
       | 'respondInput'
@@ -116,6 +119,8 @@ describe('Agent', () => {
       // exercise error handling, not the login prompt, so the user is reported as signed in.
       checkClaudeAuth: (): Promise<boolean> => Promise.resolve(true),
       closeSession: (agentSessionId: string): void => void closeSessionCalls.push(agentSessionId),
+      setSessionRemoteControl: (agentSessionId: string, mode: AiRemoteControlMode): void =>
+        void remoteControlCalls.push({ agentSessionId, mode }),
       onEvent: (listener: (event: AiEvent) => void): (() => void) => {
         fireEvent = listener;
         return (): void => undefined;
@@ -617,16 +622,34 @@ describe('Agent', () => {
     expect(runCalls[0].remoteControl).toBe('mirror');
   });
 
-  it('setRemoteControlEnabled_whenIdle_endsTheLiveSessionSoTheNextTurnReopensBridged', () => {
+  it('setRemoteControlEnabled_whenToggled_reAimsTheLiveSessionInPlaceWithoutEndingIt', () => {
     agent.send('hello');
     const first: string | undefined = runCalls[0].agentSessionId;
     fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
 
+    // The toggle pushes the mode onto the held-open session — no close, no re-mint — so the session
+    // appears on claude.ai immediately and the next turn continues the same session.
     agent.setRemoteControlEnabled(true);
     agent.send('again');
 
-    expect(closeSessionCalls).toContain(first);
-    expect(runCalls[1].agentSessionId).not.toBe(first);
+    expect(remoteControlCalls).toEqual([{ agentSessionId: first, mode: 'control' }]);
+    expect(closeSessionCalls).not.toContain(first);
+    expect(runCalls[1].agentSessionId).toBe(first);
+
+    agent.setRemoteControlEnabled(false);
+    expect(remoteControlCalls[1]).toEqual({ agentSessionId: first, mode: 'off' });
+  });
+
+  it('setRemoteControlEnabled_whileBusy_stillReAimsTheLiveSession', () => {
+    agent.send('hello');
+    const first: string | undefined = runCalls[0].agentSessionId;
+
+    // Mid-run is precisely when remote control is wanted; the push lands on the live session rather
+    // than being skipped until a reopen that a held-open session never performs.
+    agent.setRemoteControlEnabled(true);
+
+    expect(agent.isRunning()).toBe(true);
+    expect(remoteControlCalls).toEqual([{ agentSessionId: first, mode: 'control' }]);
   });
 
   it('clear_closesTheLiveSessionAndMintsAFreshOne', () => {
