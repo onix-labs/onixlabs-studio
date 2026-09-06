@@ -57,6 +57,14 @@ import { isNotLoggedInReply, looksLikeAuthFailure } from './auth-failure';
 export const STREAM_FLUSH_MS: number = 33;
 
 /**
+ * How long a Stop gives the main process to land a terminal status before the renderer settles the
+ * stop locally, in milliseconds. Longer than the main process's own panic escalation (which closes a
+ * wedged session and emits the status), so the local landing is the fallback of last resort — the UI
+ * must never stay "Working" after the user said stop, whatever the harness is doing.
+ */
+export const STOP_SETTLE_DEADLINE_MS: number = 8_000;
+
+/**
  * Identifies the kind of transcript item.
  */
 export type AgentItemKind =
@@ -1326,13 +1334,34 @@ export class Agent {
   }
 
   /**
-   * Stops the in-flight run.
+   * Stops the agent — a panic button, not a request. The per-run abort covers a Studio-initiated
+   * turn, but an adopted task- or peer-driven turn has no run behind it (its launching run already
+   * finished), so the abort alone was a silent no-op exactly when a background task hung. The
+   * session-level panic stop reaches those: it stops the session's background tasks, interrupts
+   * whatever turn is in flight, and escalates to closing the session if the harness is wedged. A
+   * local deadline then guarantees the conversation lands even if no terminal status ever arrives.
    */
   public stop(): void {
-    if (this.activeRequestId !== null) {
-      this.logger.info('Agent', 'Run interrupted', this.activeRequestId);
-      this.runtime.abort(this.activeRequestId);
+    const requestId: string | null = this.activeRequestId;
+    this.logger.info('Agent', 'Stop requested', requestId ?? '(no active run)');
+    if (requestId !== null) {
+      this.runtime.abort(requestId);
     }
+    this.runtime.stopAgent(this.agentSessionId);
+    if (requestId === null) {
+      return;
+    }
+    setTimeout((): void => {
+      if (this.activeRequestId !== requestId) {
+        return;
+      }
+      this.logger.warn(
+        'Agent',
+        'Stop deadline passed with no terminal status; landing it locally',
+        requestId,
+      );
+      this.onStatus('aborted', '');
+    }, STOP_SETTLE_DEADLINE_MS);
   }
 
   /**

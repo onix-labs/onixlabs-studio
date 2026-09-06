@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { vi } from 'vitest';
 
 import type {
   AgentContextRef,
@@ -57,6 +58,7 @@ describe('Agent', () => {
   let abortCalls: string[];
   let closeSessionCalls: string[];
   let remoteControlCalls: { agentSessionId: string; mode: AiRemoteControlMode }[];
+  let stopAgentCalls: string[];
   let steerCalls: { requestId: string; text: string }[];
   let steerResult: boolean;
   let permissionReplies: { permissionId: string; granted: boolean; remember?: string }[];
@@ -96,6 +98,7 @@ describe('Agent', () => {
     abortCalls = [];
     closeSessionCalls = [];
     remoteControlCalls = [];
+    stopAgentCalls = [];
     steerCalls = [];
     steerResult = false;
     permissionReplies = [];
@@ -109,6 +112,7 @@ describe('Agent', () => {
       | 'steer'
       | 'closeSession'
       | 'setSessionRemoteControl'
+      | 'stopAgent'
       | 'listProviders'
       | 'respondPermission'
       | 'respondInput'
@@ -121,6 +125,7 @@ describe('Agent', () => {
       closeSession: (agentSessionId: string): void => void closeSessionCalls.push(agentSessionId),
       setSessionRemoteControl: (agentSessionId: string, mode: AiRemoteControlMode): void =>
         void remoteControlCalls.push({ agentSessionId, mode }),
+      stopAgent: (agentSessionId: string): void => void stopAgentCalls.push(agentSessionId),
       onEvent: (listener: (event: AiEvent) => void): (() => void) => {
         fireEvent = listener;
         return (): void => undefined;
@@ -638,6 +643,63 @@ describe('Agent', () => {
 
     agent.setRemoteControlEnabled(false);
     expect(remoteControlCalls[1]).toEqual({ agentSessionId: first, mode: 'off' });
+  });
+
+  it('stop_abortsTheRun_andPanicStopsTheSession', () => {
+    agent.send('hello');
+
+    agent.stop();
+
+    // The per-run abort covers the Studio turn; the session-level panic reaches everything the abort
+    // cannot — the background tasks, and an adopted turn with no run behind it.
+    expect(abortCalls).toEqual(['run-1']);
+    expect(stopAgentCalls).toEqual([runCalls[0].agentSessionId]);
+  });
+
+  it('stop_whenIdle_stillPanicStopsTheSession_withoutAbortingAnything', () => {
+    // No run in flight — but a background task could still be hanging on the held-open session.
+    agent.stop();
+
+    expect(abortCalls).toEqual([]);
+    expect(stopAgentCalls).toHaveLength(1);
+  });
+
+  it('stop_whenNoTerminalStatusArrives_landsTheStopLocally', () => {
+    vi.useFakeTimers();
+    try {
+      agent.send('hello');
+      agent.stop();
+      expect(agent.isRunning()).toBe(true);
+
+      // Nothing answers — not the abort, not the panic stop. The renderer's deadline lands the stop
+      // itself: the UI must never stay "Working" after the user said stop.
+      vi.advanceTimersByTime(8_100);
+
+      expect(agent.isRunning()).toBe(false);
+      const last: AgentItem | undefined = lastItem();
+      expect(last?.kind).toBe('assistant');
+      expect((last as { text?: string }).text).toBe('_Stopped._');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('stop_deadline_isANoOp_whenTheStatusArrivedFirst', () => {
+    vi.useFakeTimers();
+    try {
+      agent.send('hello');
+      agent.stop();
+      fireEvent({ requestId: 'run-1', kind: 'status', state: 'aborted', detail: '' });
+      expect(agent.isRunning()).toBe(false);
+      const itemsAfterStatus: number = agent.items().length;
+
+      vi.advanceTimersByTime(8_100);
+
+      // The deadline found the turn already landed and did nothing — no second "_Stopped._".
+      expect(agent.items().length).toBe(itemsAfterStatus);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('setRemoteControlEnabled_whileBusy_stillReAimsTheLiveSession', () => {

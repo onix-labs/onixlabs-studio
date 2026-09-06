@@ -514,6 +514,12 @@ export class AiManager {
         this.closeSession(id);
       }
     });
+    ipcMain.handle(AiChannel.StopAgent, (_event: IpcMainInvokeEvent, id: unknown): void => {
+      logger.trace('AiManager.register', 'StopAgent invoked');
+      if (typeof id === 'string') {
+        this.stopAgent(id);
+      }
+    });
     ipcMain.handle(
       AiChannel.SetSessionRemoteControl,
       (_event: IpcMainInvokeEvent, id: unknown, mode: unknown): void => {
@@ -1121,6 +1127,30 @@ export class AiManager {
     const entry: LiveSessionEntry | undefined = this.liveSessions.get(agentSessionId);
     if (entry !== undefined) {
       logger.info('AiManager.closeSession', `Closing live session ${agentSessionId}`);
+      this.dropSession(agentSessionId, entry);
+    }
+  }
+
+  /**
+   * Panic-stops an agent's held-open live session. The per-run abort cannot reach a turn no run is
+   * awaiting (a task- or peer-driven adopted turn — its launching run has already finished, so there
+   * is no controller registered under its request id), which left Stop dead exactly when a background
+   * task hung. The session's own graduated stop covers those: tasks stopped, turn interrupted, and
+   * the session closed outright if the harness does not respond. A provider without the graduated
+   * path gets the outright close, which kills its subprocess and settles everything; either way the
+   * conversation's next turn reopens and resumes. No-op when no session is open.
+   * @param agentSessionId The agent conversation whose session to stop.
+   */
+  private stopAgent(agentSessionId: string): void {
+    const entry: LiveSessionEntry | undefined = this.liveSessions.get(agentSessionId);
+    if (entry === undefined) {
+      logger.debug('AiManager.stopAgent', `No live session to panic-stop for ${agentSessionId}`);
+      return;
+    }
+    logger.warn('AiManager.stopAgent', `Panic stop for session ${agentSessionId}`);
+    if (entry.session.panicStop !== undefined) {
+      entry.session.panicStop();
+    } else {
       this.dropSession(agentSessionId, entry);
     }
   }

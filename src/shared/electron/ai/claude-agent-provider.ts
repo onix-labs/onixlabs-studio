@@ -253,6 +253,13 @@ const TERMINAL_SURFACE_TOOLS: readonly string[] = [
 const AUDIT_SKIP_TOOLS: readonly string[] = ['Task', 'TodoWrite'];
 
 /**
+ * How long a panic stop ({@link ClaudeAgentSession.panicStop}) gives the harness to acknowledge the
+ * interrupt with a `result` before the session is closed outright, in milliseconds. Generous enough
+ * for a healthy interrupt to land, short enough that Stop still reads as a stop.
+ */
+const PANIC_CLOSE_GRACE_MS: number = 5_000;
+
+/**
  * Holds the read-only binary tools auto-allowed on a binary-surface run, so the agent can inspect the
  * file without prompting. The byte-patching tool is intentionally excluded: it flows through the
  * permission broker instead.
@@ -2196,6 +2203,14 @@ export class ClaudeAgentSession implements AgentSession {
   private bridgeSeq: number = 0;
 
   /**
+   * How many `result` messages the pump has seen — the session's sign of life. A panic stop
+   * ({@link panicStop}) snapshots it: a result arriving within the grace window means the interrupt
+   * landed and the session may live; an unchanged count means the harness is wedged and the session
+   * is closed outright.
+   */
+  private resultsSeen: number = 0;
+
+  /**
    * Initialises a new instance of the {@link ClaudeAgentSession} class.
    * @param deps The provider capabilities the session borrows.
    * @param initialContext The context of the turn the session opens for.
@@ -2581,6 +2596,41 @@ export class ClaudeAgentSession implements AgentSession {
   }
 
   /**
+   * Panic-stops the session: stops every live background task, interrupts whatever turn is in flight
+   * (a task- or peer-driven turn included — those have no abortable run behind them, which is why the
+   * per-run abort alone cannot reach them), and escalates. The interrupt and stops are requests to
+   * the harness; a wedged harness ignores them, so a watchdog gives it {@link PANIC_CLOSE_GRACE_MS}
+   * to answer with a `result` and then closes the session outright — killing the subprocess and with
+   * it the hung tasks. A closed session reopens transparently on the conversation's next turn
+   * (`alive` reads false, so the manager reopens and resumes). Idempotent while pending; a no-op once
+   * closed.
+   */
+  public panicStop(): void {
+    if (this.closed) {
+      return;
+    }
+    logger.warn(
+      'ClaudeAgentSession.panicStop',
+      `Panic stop: interrupting, stopping ${this.liveTasks.size} live task(s)`,
+    );
+    for (const taskId of this.liveTasks.keys()) {
+      this.stopTask(taskId);
+    }
+    this.interrupt();
+    const resultsAtPanic: number = this.resultsSeen;
+    setTimeout((): void => {
+      if (this.closed || this.resultsSeen > resultsAtPanic) {
+        return;
+      }
+      logger.warn(
+        'ClaudeAgentSession.panicStop',
+        'The harness did not acknowledge the interrupt; closing the session',
+      );
+      void this.close();
+    }, PANIC_CLOSE_GRACE_MS);
+  }
+
+  /**
    * The streaming-input generator: yields queued messages, then parks until the next message is queued
    * or the input closes.
    * @returns Yields the session's user messages.
@@ -2612,6 +2662,8 @@ export class ClaudeAgentSession implements AgentSession {
     if (this.sdkQuery === null) {
       return;
     }
+    // Whether a Studio run was awaiting the in-flight turn when the stream ended; null until known.
+    let unawaitedAtEnd: boolean | null = null;
     try {
       for await (const message of this.sdkQuery) {
         const sessionId: string | null = this.deps.sessionIdOf(message);
@@ -2665,6 +2717,9 @@ export class ClaudeAgentSession implements AgentSession {
         // interrupted turn arrives here too (the SDK emits a `result` for it). The stream itself ends
         // only when the input closes (via {@link close}), never on a per-turn abort — so a Stop
         // interrupts the turn without ending the session.
+        if (message.type === 'result') {
+          this.resultsSeen += 1;
+        }
         if (message.type === 'result' && this.pendingMessages.length === 0) {
           // A Studio-initiated turn is awaited by an AiManager run (turnSettle set), which emits the
           // terminal status that clears the renderer's spinner. A turn nothing is awaiting has no run
@@ -2689,6 +2744,9 @@ export class ClaudeAgentSession implements AgentSession {
         }
       }
     } catch (error: unknown) {
+      // Whether a Studio run was awaiting the turn is read BEFORE settling: the settle below clears
+      // it, and the finally block needs the answer to decide whether to emit a terminal status.
+      unawaitedAtEnd = this.turnSettle === null;
       // A deliberate teardown ({@link close} aborted the master controller) ends any in-flight turn as
       // settled; any other stream error rejects the in-flight turn so the manager lands it as an error
       // (and evicts the now-dead session so the next turn opens fresh).
@@ -2702,7 +2760,22 @@ export class ClaudeAgentSession implements AgentSession {
       // The stream has ended: the session cannot take another turn. Mark the input closed so a stray
       // later turn() does not park forever waiting on a pump that has exited.
       this.inputClosed = true;
+      unawaitedAtEnd ??= this.turnSettle === null;
       this.settleTurn();
+      // The stream ended with no Studio run awaiting a turn. If the renderer had adopted a turn (a
+      // task- or peer-driven one), no `result` will ever emit its terminal status now — the session
+      // died, was reaped, or was panic-closed under it — so without this it spins "Working" forever.
+      // Emitted under the current turn's request id, the same id an adoption used; when nothing is
+      // adopted the renderer's per-turn filter drops it (see the `result` branch above for the same
+      // reasoning on the completion side).
+      if (unawaitedAtEnd) {
+        this.currentContext.emit({
+          requestId: this.currentContext.requestId,
+          kind: 'status',
+          state: 'aborted',
+          detail: '',
+        });
+      }
     }
   }
 
