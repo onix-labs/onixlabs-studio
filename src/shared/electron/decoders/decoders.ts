@@ -89,7 +89,12 @@ export class Decoders {
   }
 
   /**
-   * Stops every running decoder. Called at quit and when a window closes the last binary.
+   * Stops every running decoder.
+   *
+   * Called on every path that ends the application: an ordinary quit, a shell-delivered SIGTERM/SIGINT,
+   * and a renderer that died. What no path covers is an abrupt kill, which runs no shutdown at all —
+   * hence the pid journal each decoder registers with, which reaps on the next launch whatever was
+   * left behind.
    */
   public disposeAll(): void {
     for (const [, client] of this.clients) {

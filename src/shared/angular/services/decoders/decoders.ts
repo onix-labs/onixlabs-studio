@@ -4,6 +4,7 @@ import { BinaryChannel } from '@shared/api/binary-channels';
 import { CodeListing } from '@shared/api/code-listing';
 import { DecoderDescription } from '@shared/api/decoder-protocol';
 import { JitCaptureResult } from '@shared/api/jit-capture';
+import { DecoderPerf } from '@shared/angular/services/decoder-perf/decoder-perf';
 import { Log } from '@shared/angular/services/log/log';
 
 /**
@@ -27,6 +28,12 @@ export class Decoders {
    * Holds the structured logger for decoder requests.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds the decode-latency probe, so what moving decoding out of process costs is measured rather
+   * than assumed (#583).
+   */
+  private readonly perf: DecoderPerf = inject(DecoderPerf);
 
   /**
    * Reports what the decoder for a format is, starting it if needed.
@@ -71,8 +78,14 @@ export class Decoders {
     if (this.bridge === undefined) {
       return null;
     }
+    // Measured here rather than at either call site: this is the one place every decode passes
+    // through, from both the binary editor and the code editor (#583). A whole-file decode is
+    // recognised by the bytes being the file rather than a window of it — the two are judged against
+    // different budgets because they are different interactions.
+    const startedAt: number = performance.now();
+    const wholeFile: boolean = totalSize === undefined || bytes.length >= totalSize;
     try {
-      return await this.bridge.invoke<CodeListing | null>(
+      const listing: CodeListing | null = await this.bridge.invoke<CodeListing | null>(
         BinaryChannel.DecodeListing,
         format,
         bytes,
@@ -81,7 +94,16 @@ export class Decoders {
         path,
         companions,
       );
+      this.perf.decoded(
+        format,
+        performance.now() - startedAt,
+        bytes.length,
+        wholeFile,
+        listing !== null,
+      );
+      return listing;
     } catch (error: unknown) {
+      this.perf.decoded(format, performance.now() - startedAt, bytes.length, wholeFile, false);
       this.log.debug('decoders', 'Decoder request failed', error);
       return null;
     }

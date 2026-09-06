@@ -7,6 +7,7 @@ import {
   isCompatibleProtocol,
 } from '@shared/api/decoder-protocol';
 import { logger } from '../logger';
+import { pidJournal } from '../pid-journal';
 import { DecoderSpec } from './decoder-descriptor';
 
 /**
@@ -23,6 +24,13 @@ const REQUEST_TIMEOUT_MS: number = 10_000;
  * what it is promptly is not one worth waiting on, and this runs before anything is on screen.
  */
 const HANDSHAKE_TIMEOUT_MS: number = 5_000;
+
+/**
+ * Specifies the grace period, in milliseconds, between SIGTERM and SIGKILL when stopping a decoder.
+ * Long enough for a healthy decoder to close its stdio and exit, short enough that a wedged one does
+ * not linger.
+ */
+const KILL_GRACE_MS: number = 2_000;
 
 /**
  * Holds a request awaiting its answer.
@@ -114,6 +122,11 @@ export class DecoderClient {
       logger.warn('DecoderClient', `Could not spawn decoder '${this.id}'`, error);
       return null;
     }
+    // Journal the child like every other long-lived process Studio owns (terminals, language servers,
+    // debug adapters, agent runs). Ordinary shutdown stops it below; the journal is what reaps it after
+    // a shutdown that never ran — a SIGKILL, a power loss — on the next launch, rather than leaving a
+    // decoder running for an application that no longer exists (#583).
+    pidJournal()?.register(this.process.pid, 'decoder', this.spec.command);
 
     this.process.stdout?.setEncoding('utf8');
     this.process.stdout?.on('data', (chunk: string): void => this.onData(chunk));
@@ -206,6 +219,12 @@ export class DecoderClient {
 
   /**
    * Stops the decoder and abandons anything still in flight.
+   *
+   * SIGTERM asks; it does not compel. A decoder wedged in a native call, or one that installed its own
+   * handler, ignores it and would go on running — so the term is followed by a SIGKILL once a grace
+   * period passes without the process exiting. The escalation timer is unreferenced so it can never
+   * hold the event loop open at quit; that case is covered instead by the pid journal, which reaps on
+   * the next launch what an abrupt exit left behind (#583).
    */
   public dispose(): void {
     this.disposed = true;
@@ -214,12 +233,26 @@ export class DecoderClient {
     }
     this.pending.clear();
     this.description = null;
-    if (this.process !== null) {
-      this.process.stdin?.end();
-      this.process.kill();
-      this.process = null;
-      logger.debug('DecoderClient', `Decoder '${this.id}' stopped`);
+    const child: ChildProcess | null = this.process;
+    if (child === null) {
+      return;
     }
+    this.process = null;
+    pidJournal()?.unregister(child.pid);
+    child.stdin?.end();
+    child.kill();
+    logger.debug('DecoderClient', `Decoder '${this.id}' stopped`);
+    if (child.exitCode !== null || child.signalCode !== null) {
+      return;
+    }
+    const escalation: NodeJS.Timeout = setTimeout((): void => {
+      if (child.exitCode === null && child.signalCode === null) {
+        logger.warn('DecoderClient', `Decoder '${this.id}' ignored SIGTERM; killing it`);
+        child.kill('SIGKILL');
+      }
+    }, KILL_GRACE_MS);
+    escalation.unref?.();
+    child.once('exit', (): void => clearTimeout(escalation));
   }
 
   /**
