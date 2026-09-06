@@ -356,6 +356,16 @@ export interface AgentSession {
   stopTask?(taskId: string): void;
 
   /**
+   * Re-aims the session's Remote Control exposure (#331) in place: attaches, detaches, or changes the
+   * mode of its claude.ai/code bridge without ending the session, so a toggle lands immediately — even
+   * mid-run — rather than waiting for a session reopen that a held-open harness never performs.
+   * Optional: a provider without the feature (the AI-SDK path, Codex) simply does not implement it,
+   * and the control degrades to absent.
+   * @param mode The remote-control mode the session should now be exposed at.
+   */
+  setRemoteControl?(mode: AiRemoteControlMode): void;
+
+  /**
    * Ends the session and releases its resources (the harness subprocess).
    */
   close(): Promise<void>;

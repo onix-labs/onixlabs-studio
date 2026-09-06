@@ -1,4 +1,4 @@
-import { beforeEach, describe, it, expect, vi } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import type {
   Options,
   PermissionResult,
@@ -8,6 +8,7 @@ import type {
 import type { AiEvent, AiModelInfo } from '@shared/api/ai-types';
 import type { AgentAuth, AgentRunContext } from './agent-provider';
 import { ClaudeAgentProvider, ClaudeAgentSession, type SessionDeps } from './claude-agent-provider';
+import { RemoteControlBridge, type RemoteControlOptions } from './claude-remote-control';
 import type { ClaudeSdkModel } from './claude-model-discovery';
 
 // The real `buildRunOptions` (exercised below) dynamically imports the node-only Agent SDK for its tool
@@ -738,6 +739,131 @@ describe('ClaudeAgentSession (live multi-turn)', () => {
     expect(latest.commands.map((command: { name: string }): string => command.name)).toEqual([
       'review',
     ]);
+
+    await harness.session.close();
+  });
+});
+
+describe('ClaudeAgentSession (remote control re-aim)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  /**
+   * Builds a minimal stand-in for an attached bridge, recording {@link RemoteControlBridge.close}.
+   * @returns Returns the fake bridge.
+   */
+  function fakeBridge(): { close: ReturnType<typeof vi.fn> } {
+    return { close: vi.fn() };
+  }
+
+  it('setRemoteControl_whenAimedOn_opensTheBridge_andARepeatAimIsANoOp', async () => {
+    const bridge: { close: ReturnType<typeof vi.fn> } = fakeBridge();
+    const openModes: string[] = [];
+    vi.spyOn(RemoteControlBridge, 'open').mockImplementation(
+      (options: RemoteControlOptions): Promise<RemoteControlBridge | null> => {
+        openModes.push(options.mode);
+        return Promise.resolve(bridge as unknown as RemoteControlBridge);
+      },
+    );
+    const events: AiEvent[] = [];
+    const harness: SessionHarness = makeSession(
+      turnCtx('run-1', 'claude-opus-4-8', new AbortController().signal, events),
+    );
+
+    // The re-aim lands on the session in place (the bridge attaches claude.ai-side) — no turn, no
+    // query open, no session reopen required. A repeat of the same aim opens nothing further.
+    harness.session.setRemoteControl('control');
+    harness.session.setRemoteControl('control');
+    await flush();
+
+    expect(openModes).toEqual(['control']);
+
+    await harness.session.close();
+    expect(bridge.close).toHaveBeenCalled();
+  });
+
+  it('setRemoteControl_off_closesTheInstalledBridge', async () => {
+    const bridge: { close: ReturnType<typeof vi.fn> } = fakeBridge();
+    vi.spyOn(RemoteControlBridge, 'open').mockResolvedValue(
+      bridge as unknown as RemoteControlBridge,
+    );
+    const events: AiEvent[] = [];
+    const harness: SessionHarness = makeSession(
+      turnCtx('run-1', 'claude-opus-4-8', new AbortController().signal, events),
+    );
+
+    harness.session.setRemoteControl('mirror');
+    await flush();
+    harness.session.setRemoteControl('off');
+
+    expect(bridge.close).toHaveBeenCalledTimes(1);
+    await harness.session.close();
+  });
+
+  it('setRemoteControl_whenTheAimMovesOnWhileOpening_discardsTheStaleBridge', async () => {
+    const resolvers: ((bridge: RemoteControlBridge | null) => void)[] = [];
+    vi.spyOn(RemoteControlBridge, 'open').mockImplementation(
+      (): Promise<RemoteControlBridge | null> =>
+        new Promise(
+          (resolve: (bridge: RemoteControlBridge | null) => void): void =>
+            void resolvers.push(resolve),
+        ),
+    );
+    const events: AiEvent[] = [];
+    const harness: SessionHarness = makeSession(
+      turnCtx('run-1', 'claude-opus-4-8', new AbortController().signal, events),
+    );
+
+    // The aim moves to off while the open is still in flight: the late bridge must be discarded
+    // (closed, never installed), or the session would sit exposed with its toggle showing off.
+    harness.session.setRemoteControl('control');
+    harness.session.setRemoteControl('off');
+    const stale: { close: ReturnType<typeof vi.fn> } = fakeBridge();
+    resolvers[0](stale as unknown as RemoteControlBridge);
+    await flush();
+
+    expect(stale.close).toHaveBeenCalled();
+    await harness.session.close();
+  });
+
+  it('turn_aimsRemoteControlFromItsContext_soAChangeBetweenTurnsLandsOnTheHeldOpenSession', async () => {
+    const openModes: string[] = [];
+    vi.spyOn(RemoteControlBridge, 'open').mockImplementation(
+      (options: RemoteControlOptions): Promise<RemoteControlBridge | null> => {
+        openModes.push(options.mode);
+        return Promise.resolve(null);
+      },
+    );
+    const events: AiEvent[] = [];
+    const c1: AbortController = new AbortController();
+    const harness: SessionHarness = makeSession(
+      turnCtx('run-1', 'claude-opus-4-8', c1.signal, events),
+    );
+
+    // The first turn carries no remote control: nothing opens.
+    const turn1: Promise<void> = harness.session.turn(
+      turnCtx('run-1', 'claude-opus-4-8', c1.signal, events),
+    );
+    await flush();
+    harness.query()?.emit({ type: 'result', session_id: 'sess-a' });
+    await turn1;
+    expect(openModes).toEqual([]);
+
+    // The toggle flipped between turns: the next turn re-aims the SAME held-open session (one query
+    // for the whole test) rather than needing a reopen the held-open harness never performs.
+    const c2: AbortController = new AbortController();
+    const ctx2: AgentRunContext = {
+      ...turnCtx('run-2', 'claude-opus-4-8', c2.signal, events),
+      remoteControl: 'control',
+    };
+    const turn2: Promise<void> = harness.session.turn(ctx2);
+    await flush();
+    harness.query()?.emit({ type: 'result', session_id: 'sess-a' });
+    await turn2;
+
+    expect(openModes).toEqual(['control']);
+    expect(harness.createQueryCalls()).toBe(1);
 
     await harness.session.close();
   });

@@ -514,6 +514,16 @@ export class AiManager {
         this.closeSession(id);
       }
     });
+    ipcMain.handle(
+      AiChannel.SetSessionRemoteControl,
+      (_event: IpcMainInvokeEvent, id: unknown, mode: unknown): void => {
+        logger.trace('AiManager.register', 'SetSessionRemoteControl invoked');
+        // The renderer is untrusted: only a well-formed id and a known mode reach the session.
+        if (typeof id === 'string' && (mode === 'off' || mode === 'mirror' || mode === 'control')) {
+          this.setSessionRemoteControl(id, mode);
+        }
+      },
+    );
     ipcMain.handle(AiChannel.GetRemoteNotifications, (): boolean =>
       readRemoteNotificationsEnabled(),
     );
@@ -1113,6 +1123,30 @@ export class AiManager {
       logger.info('AiManager.closeSession', `Closing live session ${agentSessionId}`);
       this.dropSession(agentSessionId, entry);
     }
+  }
+
+  /**
+   * Re-aims a held-open live session's Remote Control exposure (#331) in place, so a toggle (or a
+   * posture change) lands immediately — even mid-run — instead of waiting for a session reopen that a
+   * held-open harness never performs. A no-op when no session is open (the next turn's open applies
+   * the requested mode instead) or the session's provider does not implement the feature.
+   * @param agentSessionId The agent conversation whose session to re-aim.
+   * @param mode The remote-control mode the session should now be exposed at.
+   */
+  private setSessionRemoteControl(agentSessionId: string, mode: AiRemoteControlMode): void {
+    const entry: LiveSessionEntry | undefined = this.liveSessions.get(agentSessionId);
+    if (entry?.session.setRemoteControl === undefined) {
+      logger.debug(
+        'AiManager.setSessionRemoteControl',
+        `No live session able to re-aim remote control for ${agentSessionId}`,
+      );
+      return;
+    }
+    logger.info(
+      'AiManager.setSessionRemoteControl',
+      `Re-aiming remote control to '${mode}' on session ${agentSessionId}`,
+    );
+    entry.session.setRemoteControl(mode);
   }
 
   /**

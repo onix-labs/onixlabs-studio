@@ -61,6 +61,7 @@ import {
   type AiInputChoice,
   type AiModelInfo,
   type AiPermissionPosture,
+  type AiRemoteControlMode,
   type ClaudeExecutableChoice,
   type AiProviderId,
   type AiToolPolicy,
@@ -75,7 +76,7 @@ import type {
 } from './agent-provider';
 import { resolveClaudeExecutable } from './claude-executable';
 import type { ClaudeSdkModel } from './claude-model-discovery';
-import { RemoteControlBridge } from './claude-remote-control';
+import { RemoteControlBridge, type RemoteControlAttachMode } from './claude-remote-control';
 import {
   applyCapturedEnvironment,
   captureShellEnvironmentCached,
@@ -2176,9 +2177,23 @@ export class ClaudeAgentSession implements AgentSession {
 
   /**
    * The claude.ai/code bridge for this session when remote control is on (#331), or null when off or
-   * unavailable. Opened at first-turn open from the opening context's mode; closed with the session.
+   * unavailable. Opened when a turn or a live toggle aims the session at a non-off mode; closed with
+   * the session.
    */
   private bridge: RemoteControlBridge | null = null;
+
+  /**
+   * The remote-control mode the session is currently aimed at — the intent, which the (asynchronous)
+   * bridge open trails. Kept so a repeated aim is a no-op and a stale open (superseded while in
+   * flight) is discarded.
+   */
+  private bridgeMode: AiRemoteControlMode = 'off';
+
+  /**
+   * A monotonic counter identifying the latest bridge open, so an earlier open that resolves after a
+   * newer aim (off, or a different mode) closes its bridge instead of installing it.
+   */
+  private bridgeSeq: number = 0;
 
   /**
    * Initialises a new instance of the {@link ClaudeAgentSession} class.
@@ -2234,6 +2249,10 @@ export class ClaudeAgentSession implements AgentSession {
       this.appliedModel = context.model;
       void this.sdkQuery.setModel(context.model);
     }
+    // Aim the session's remote-control exposure at this turn's mode, like the live model change above:
+    // the bridge attaches claude.ai-side, so a change (a toggle, or a posture change in Settings)
+    // lands here on the held-open session rather than waiting for a reopen that never comes (#331).
+    this.setRemoteControl(context.remoteControl);
     // Register this turn's steer handler so a mid-turn injected message becomes a follow-up input.
     context.setSteerHandler((steered: string): boolean => {
       if (this.inputClosed) {
@@ -2298,6 +2317,7 @@ export class ClaudeAgentSession implements AgentSession {
     this.currentContext.setSteerHandler(null);
     this.bridge?.close();
     this.bridge = null;
+    this.bridgeMode = 'off';
     this.controller?.abort();
     this.wake?.();
     // The pump's failure (if any) is surfaced through the in-flight turn; teardown ignores it.
@@ -2325,10 +2345,34 @@ export class ClaudeAgentSession implements AgentSession {
     // Discover the session's slash commands once it is open (#330); refreshed later by the
     // `commands_changed` push handled in the pump. Best-effort — a failure never disturbs the run.
     void this.emitCommands();
-    // Bridge the session to claude.ai/code when remote control is on (#331). Bound at open like the
-    // structural options, so a mid-session mode change takes effect on reopen. Best-effort.
-    if (this.currentContext.remoteControl !== 'off') {
-      this.openBridge(this.currentContext);
+    // Remote control (#331) is aimed by `turn` (and live re-aims via `setRemoteControl`) rather than
+    // bound here, so a toggle lands on the held-open session instead of waiting for a reopen.
+  }
+
+  /**
+   * Aims the session's Remote Control exposure (#331) at a mode, in place: opens the claude.ai/code
+   * bridge when turning on, closes it when turning off, and re-attaches on a mode change (a bridge
+   * carries its mode from attach). Landing on the live session — even mid-run — is the point: the
+   * held-open harness never reopens between turns, so an open-time-only binding would leave a toggle
+   * dangling forever. A repeat of the current aim is a no-op; anything unrecognised aims off.
+   * Best-effort: a failed open leaves the session unbridged and the local run untouched.
+   * @param mode The remote-control mode the session should now be exposed at.
+   */
+  public setRemoteControl(mode: AiRemoteControlMode): void {
+    const target: AiRemoteControlMode = mode === 'mirror' || mode === 'control' ? mode : 'off';
+    if (this.closed || target === this.bridgeMode) {
+      return;
+    }
+    logger.info(
+      'ClaudeAgentSession.setRemoteControl',
+      `Re-aiming remote control '${this.bridgeMode}' -> '${target}'`,
+    );
+    // A mode change needs a fresh attach, so any existing exposure ends first either way.
+    this.bridge?.close();
+    this.bridge = null;
+    this.bridgeMode = target;
+    if (target !== 'off') {
+      this.openBridge(target);
     }
   }
 
@@ -2336,15 +2380,17 @@ export class ClaudeAgentSession implements AgentSession {
    * Opens the claude.ai/code bridge for the session (#331), asynchronously. In control mode a peer's
    * message is injected into the session exactly like a steered follow-up. Best-effort: any failure
    * leaves the local run untouched and the session simply stays unbridged.
-   * @param context The opening turn's context (its remote-control mode is used).
+   * @param mode How the session is exposed; the rest of the bridge context (cwd, model) is read from
+   * the session's current turn context.
    */
-  private openBridge(context: AgentRunContext): void {
-    const cwd: string = context.workspaceRoot ?? homedir();
+  private openBridge(mode: RemoteControlAttachMode): void {
+    const seq: number = (this.bridgeSeq += 1);
+    const cwd: string = this.currentContext.workspaceRoot ?? homedir();
     void RemoteControlBridge.open({
-      mode: context.remoteControl === 'control' ? 'control' : 'mirror',
+      mode,
       title: `ONIXLabs Studio — ${basename(cwd)}`,
       cwd,
-      model: context.model,
+      model: this.currentContext.model,
       onInbound: (text: string): void => {
         if (this.inputClosed) {
           return;
@@ -2362,9 +2408,13 @@ export class ClaudeAgentSession implements AgentSession {
         this.wake?.();
       },
     }).then((bridge: RemoteControlBridge | null): void => {
-      // The session may have closed while the bridge was opening; drop it if so.
-      if (this.closed) {
-        bridge?.close();
+      if (bridge === null) {
+        return;
+      }
+      // The session may have closed, or the aim may have moved on (off, a different mode, a newer
+      // open), while this bridge was opening; a stale bridge is discarded, not installed.
+      if (this.closed || seq !== this.bridgeSeq || this.bridgeMode !== mode) {
+        bridge.close();
         return;
       }
       this.bridge = bridge;

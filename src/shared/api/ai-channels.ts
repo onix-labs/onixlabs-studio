@@ -17,6 +17,7 @@ import type {
   AiInputReply,
   AiPermissionReply,
   AiProviderInfo,
+  AiRemoteControlMode,
   AiRunRequest,
   AiSetConnectionKeyRequest,
   AiSteerRequest,
@@ -77,6 +78,13 @@ export enum AiChannel {
    * Closes an agent's held-open live session (New chat / tab close); no-op when none is open (invoke).
    */
   CloseSession = 'ai:close-session',
+
+  /**
+   * Re-aims a held-open live session's Remote Control exposure (#331) — attaches, detaches, or changes
+   * the mode of its claude.ai/code bridge without ending the session; no-op when none is open or the
+   * provider does not support the feature (invoke).
+   */
+  SetSessionRemoteControl = 'ai:set-session-remote-control',
 
   /**
    * Stops a task the agent is running in the background; no-op when the session or task has already
@@ -226,6 +234,16 @@ export interface AiClient {
    * @param agentSessionId The agent conversation whose session to close.
    */
   closeSession(agentSessionId: string): Promise<void>;
+
+  /**
+   * Re-aims a held-open live session's Remote Control exposure (#331): attaches, detaches, or changes
+   * the mode of its claude.ai/code bridge in place, without ending the session. No-op when no session
+   * is open (the next turn's open applies the mode instead) or the provider does not support the
+   * feature.
+   * @param agentSessionId The agent conversation whose session to re-aim.
+   * @param mode The remote-control mode the session should now be exposed at.
+   */
+  setSessionRemoteControl(agentSessionId: string, mode: AiRemoteControlMode): Promise<void>;
 
   /**
    * Stops a task an agent is running in the background. The provider settles it as `stopped`, which

@@ -305,6 +305,18 @@ export class AiRuntime {
   }
 
   /**
+   * Re-aims an agent's held-open live session's Remote Control exposure (#331) in place — attaching,
+   * detaching, or changing the mode of its claude.ai/code bridge without ending the session; no-op in
+   * the main process when no session is open (the next turn's open applies the mode instead).
+   * @param agentSessionId The agent conversation whose session to re-aim.
+   * @param mode The remote-control mode the session should now be exposed at.
+   */
+  public setSessionRemoteControl(agentSessionId: string, mode: AiRemoteControlMode): void {
+    this.log.trace('AiRuntime', 'Session remote control requested', agentSessionId, mode);
+    void this.api?.setSessionRemoteControl(agentSessionId, mode);
+  }
+
+  /**
    * Injects a user message into an in-flight run (mid-run steering).
    * @param requestId The identifier of the run to steer.
    * @param text The user message to inject.

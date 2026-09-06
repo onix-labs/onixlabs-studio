@@ -1271,10 +1271,11 @@ export class Agent {
    * Exposes this conversation's session via the provider's Remote Control feature (#331), or stops
    * exposing it. What exposure means is the user's global Remote control posture, not an argument here.
    *
-   * The provider binds the bridge when it opens the session, so a live session is ended on a change:
-   * the next turn reopens it — resuming the same provider conversation — with the bridge in its new
-   * state, rather than the toggle sitting on while nothing is actually exposed. A session mid-run is
-   * left alone (ending it would abort the run); that turn finishes, and the change lands on the next.
+   * The change is pushed onto the held-open live session, which attaches or detaches its bridge in
+   * place — even mid-run — so the session appears on (or leaves) claude.ai the moment the toggle
+   * lands, with nothing to wait for. When no session is open yet (the agent has not run), the push is
+   * a main-process no-op and the first turn's open applies the mode instead; every turn also carries
+   * the current mode, so a posture change in Settings lands on an exposed agent by its next turn.
    * @param enabled Whether the session is exposed.
    */
   public setRemoteControlEnabled(enabled: boolean): void {
@@ -1287,10 +1288,7 @@ export class Agent {
       `Remote control ${enabled ? 'enabled' : 'disabled'}`,
       this.remoteControl(),
     );
-    if (!this.busy()) {
-      this.runtime.closeSession(this.agentSessionId);
-      this.agentSessionId = crypto.randomUUID();
-    }
+    this.runtime.setSessionRemoteControl(this.agentSessionId, this.remoteControl());
   }
 
   /**
