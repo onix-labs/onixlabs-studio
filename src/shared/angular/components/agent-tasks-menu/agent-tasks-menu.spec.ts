@@ -59,43 +59,44 @@ describe('AgentTasksMenu', () => {
   it('render_withNoTasks_showsNoTrigger_soTheComposerStaysQuiet', () => {
     const harness: Harness = mount([]);
 
-    expect(harness.host.querySelectorAll('.agent-tasks-menu__trigger').length).toBe(0);
+    expect(harness.host.querySelectorAll('button').length).toBe(0);
   });
 
-  it('render_withLiveTasks_countsThem', () => {
+  it('render_withLiveTasks_showsTheSpinnerTrigger_withTheCountInItsLabelOnly', () => {
     const harness: Harness = mount([task('t1'), task('t2')]);
 
-    expect(harness.host.querySelectorAll('.agent-tasks-menu__trigger').length).toBe(1);
-    expect(harness.host.textContent).toContain('2');
+    expect(harness.host.querySelectorAll('button').length).toBe(1);
+    // The spinner is the whole visual: the count lives in the accessible label, not the button face.
+    expect(harness.host.querySelector('button')?.textContent?.trim()).toBe('');
   });
 
   it('render_whenTheLastTaskSettles_theTriggerDisappears', () => {
     const harness: Harness = mount([task('t1')]);
-    expect(harness.host.querySelectorAll('.agent-tasks-menu__trigger').length).toBe(1);
+    expect(harness.host.querySelectorAll('button').length).toBe(1);
 
     harness.tasks.set([]);
     harness.fixture.detectChanges();
 
-    expect(harness.host.querySelectorAll('.agent-tasks-menu__trigger').length).toBe(0);
+    expect(harness.host.querySelectorAll('button').length).toBe(0);
   });
 
   it('render_withOnlyAmbientTasks_showsNoTrigger', () => {
     // Ambient housekeeping is listed in the drop-up, but never advertised on the composer.
     const harness: Harness = mount([task('t1', { skipTranscript: true })]);
 
-    expect(harness.host.querySelectorAll('.agent-tasks-menu__trigger').length).toBe(0);
+    expect(harness.host.querySelectorAll('button').length).toBe(0);
   });
 
   it('triggerTitle_namesTheCount_andPluralisesCorrectly', () => {
     const harness: Harness = mount([task('t1')]);
-    const trigger: HTMLElement | null = harness.host.querySelector('.agent-tasks-menu__trigger');
+    const trigger: HTMLElement | null = harness.host.querySelector('button');
     expect(trigger?.getAttribute('aria-label')).toBe('1 background task running');
 
     harness.tasks.set([task('t1'), task('t2')]);
     harness.fixture.detectChanges();
 
-    expect(
-      harness.host.querySelector('.agent-tasks-menu__trigger')?.getAttribute('aria-label'),
-    ).toBe('2 background tasks running');
+    expect(harness.host.querySelector('button')?.getAttribute('aria-label')).toBe(
+      '2 background tasks running',
+    );
   });
 });
