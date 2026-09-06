@@ -36,6 +36,52 @@ function stub(name: string, body: string): DecoderSpec {
 }
 
 /**
+ * Reads the process id of a started client's child, before disposal drops the reference.
+ * @param client The started client.
+ * @returns Returns the child's process id.
+ */
+function processIdOf(client: DecoderClient): number {
+  const pid: number | undefined = (client as unknown as { process: { pid?: number } | null })
+    .process?.pid;
+  expect(pid).toBeTypeOf('number');
+  return pid!;
+}
+
+/**
+ * Reports whether a process still exists. Signal 0 performs the permission and existence checks
+ * without delivering anything.
+ * @param pid The process id to test.
+ * @returns Returns true while the process is alive.
+ */
+function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Waits for a process to disappear.
+ * @param pid The process id to watch.
+ * @param timeoutMs How long to wait before giving up.
+ * @returns Returns true when the process has gone, false when it outlasted the wait.
+ */
+async function waitForExit(pid: number, timeoutMs: number = 2_000): Promise<boolean> {
+  const deadline: number = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (!alive(pid)) {
+      return true;
+    }
+    await new Promise<void>((resolve: () => void): void => {
+      setTimeout(resolve, 50);
+    });
+  }
+  return !alive(pid);
+}
+
+/**
  * Builds a stub that answers describe with a given protocol, and echoes a one-row listing for decode.
  * @param protocol The protocol version to announce.
  * @returns Returns the script body.
@@ -201,4 +247,43 @@ describe('DecoderClient', (): void => {
     expect(await client.start()).toBeNull();
     client.dispose();
   });
+
+  it('leaves no process behind when the decoder exits on being asked', async (): Promise<void> => {
+    const client: DecoderClient = new DecoderClient('polite', stub('polite', wellBehaved('1.0')));
+    expect(await client.start()).not.toBeNull();
+    const pid: number = processIdOf(client);
+
+    client.dispose();
+
+    expect(await waitForExit(pid)).toBe(true);
+  });
+
+  it('kills a decoder that ignores being asked to stop, rather than leaving it running', async (): Promise<void> => {
+    // A decoder wedged in a native call, or one with its own handler, does not go away on SIGTERM.
+    // Nothing else would ever stop it, so the client must escalate (#583).
+    const stubborn: string = `
+        process.on('SIGTERM', () => {});
+        process.stdin.setEncoding('utf8');
+        process.stdin.on('data', (chunk) => {
+          for (const line of chunk.split('\\n')) {
+            if (!line.trim()) continue;
+            const request = JSON.parse(line);
+            process.stdout.write(JSON.stringify({
+              id: request.id, ok: true,
+              description: { protocol: '1.0', formats: ['elf/x64'], requiresWholeFile: false },
+            }) + '\\n');
+          }
+        });
+        setInterval(() => {}, 1000);
+      `;
+    const client: DecoderClient = new DecoderClient('stubborn', stub('stubborn', stubborn));
+    expect(await client.start()).not.toBeNull();
+    const pid: number = processIdOf(client);
+
+    client.dispose();
+
+    // It survives the polite request, and is killed once the grace period passes.
+    expect(alive(pid)).toBe(true);
+    expect(await waitForExit(pid, 6_000)).toBe(true);
+  }, 10_000);
 });
