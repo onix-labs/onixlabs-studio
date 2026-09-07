@@ -1121,6 +1121,63 @@ export class Icon {
    */
   public static readonly WELCOME_SETTINGS: Icon = new Icon('ph-light ph-gear-six');
 
+  // --- Setup wizard ---
+  //
+  // One icon per step of the setup wizard's rail, plus the marks its welcome step uses. They are a
+  // set at a single regular weight rather than borrowed from the tokens each subject already has:
+  // those were picked for their own surfaces and span light, regular, bold and duotone, and a rail
+  // is a column of icons read together, where a weight that changes between rows reads as a mistake.
+
+  /**
+   * Gets the icon of the setup wizard's welcome step.
+   */
+  public static readonly SETUP_WELCOME: Icon = new Icon('ph ph-house-line');
+
+  /**
+   * Gets the icon of the setup wizard's what's-new step.
+   */
+  public static readonly SETUP_WHATS_NEW: Icon = new Icon('ph ph-megaphone');
+
+  /**
+   * Gets the icon of the setup wizard's appearance step.
+   */
+  public static readonly SETUP_APPEARANCE: Icon = new Icon('ph ph-monitor');
+
+  /**
+   * Gets the icon of the setup wizard's environment step.
+   */
+  public static readonly SETUP_ENVIRONMENT: Icon = new Icon('ph ph-gear-six');
+
+  /**
+   * Gets the icon of the setup wizard's tooling and plugins step.
+   */
+  public static readonly SETUP_TOOLING: Icon = new Icon('ph ph-wrench');
+
+  /**
+   * Gets the icon of the setup wizard's AI provider step.
+   */
+  public static readonly SETUP_AI_PROVIDER: Icon = new Icon('ph ph-sparkle');
+
+  /**
+   * Gets the icon of the setup wizard's security step.
+   */
+  public static readonly SETUP_SECURITY: Icon = new Icon('ph ph-shield');
+
+  /**
+   * Gets the icon of the setup wizard's terminal step.
+   */
+  public static readonly SETUP_TERMINAL: Icon = new Icon('ph ph-terminal-window');
+
+  /**
+   * Gets the icon of the setup wizard's source control step.
+   */
+  public static readonly SETUP_SOURCE_CONTROL: Icon = new Icon('ph ph-git-branch');
+
+  /**
+   * Gets the arrow trailing the setup wizard's Next button.
+   */
+  public static readonly ARROW_RIGHT: Icon = new Icon('ph ph-arrow-right');
+
   // --- Status bar ---
 
   /**

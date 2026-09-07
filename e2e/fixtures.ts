@@ -62,6 +62,17 @@ interface StudioOptions {
    * installed, and an engine installed whose socket is not answering.
    */
   readonly sideloadEngine: string | undefined;
+
+  /**
+   * Runs the setup wizard for this suite. False — the default — suppresses it, which is what every
+   * test that is not about the wizard needs: a throwaway profile is a first run, so the wizard would
+   * otherwise stand blocking in front of the welcome screen and every surface behind it.
+   *
+   * Suppressing rather than walking through it keeps those tests honest. They are about what a user
+   * who has already set Studio up sees, and clicking Finish nine times before each one would test the
+   * wizard over and over while testing nothing else any better.
+   */
+  readonly runSetupWizard: boolean;
 }
 
 /**
@@ -77,15 +88,18 @@ export const test: TestType<
   trustedPaths: [undefined, { option: true }],
   sideloadPlugins: [undefined, { option: true }],
   sideloadEngine: [undefined, { option: true }],
+  runSetupWizard: [false, { option: true }],
   app: async (
     {
       trustedPaths,
       sideloadPlugins,
       sideloadEngine,
+      runSetupWizard,
     }: {
       trustedPaths: readonly string[] | undefined;
       sideloadPlugins: readonly string[] | undefined;
       sideloadEngine: string | undefined;
+      runSetupWizard: boolean;
     },
     use: (app: ElectronApplication) => Promise<void>,
   ): Promise<void> => {
@@ -110,6 +124,7 @@ export const test: TestType<
       env: {
         ...process.env,
         STUDIO_USER_DATA_DIR: userDataDir,
+        ...(runSetupWizard ? {} : { STUDIO_SKIP_SETUP: '1' }),
       },
     });
     await use(app);

@@ -712,6 +712,9 @@ class Program {
         graphicsAcceleration: this.graphicsAcceleration,
         hardwareAccelerationEnabled: this.hardwareAccelerationEnabled,
         homeDir: os.homedir(),
+        // The escape hatch past a blocking setup wizard. It rides with the startup facts because the
+        // wizard decides whether to run before the first paint, which is too early for the bridge.
+        skipSetup: process.env['STUDIO_SKIP_SETUP'] === '1',
         // The versions ride with the startup facts because only main can read the app's own version,
         // and the About dialog needs all four together.
         versions: {
