@@ -1,0 +1,70 @@
+<!-- Freestanding is not optional. At a cold start the main window is hidden by ShellPresence, and on
+     macOS a child of a hidden window is not displayed at all — a parented wizard would be invisible on
+     exactly the launch that matters most. Blocking (no dismissal, no Escape) because the point is that
+     every step is seen; the window nonetheless keeps its close button, following the welcome screen's
+     precedent, so a wedged step can never trap the user. Closing that way abandons the run and
+     records nothing, so it is asked again next launch. -->
+<app-modal
+  [open]="wizard.isOpen()"
+  [dismissable]="false"
+  [closable]="true"
+  [freestanding]="true"
+  [expandable]="true"
+  [width]="42"
+  [height]="34"
+  [minWidth]="34"
+  [minHeight]="28"
+  ariaLabel="Set up ONIXLabs Studio"
+  (dismiss)="abandon()"
+>
+  <ng-template appModalContent>
+    <section class="setup" role="group" [attr.aria-label]="step()?.title">
+      <header class="setup__header">
+        <p class="setup__progress">{{ progress() }}</p>
+        <h2 class="setup__title">{{ step()?.title }}</h2>
+        <p class="setup__summary">{{ step()?.summary }}</p>
+      </header>
+
+      <div class="setup__body">
+        @switch (step()?.id) {
+          @case ('welcome') {
+            <div class="setup__intro">
+              <img class="setup__logo" src="icon.svg" alt="" draggable="false" />
+              <p class="setup__lead">
+                @if (wizard.mode === 'upgrade') {
+                  You are now running version {{ version() }}. This pass covers what changed and
+                  anything on this machine that needs attention.
+                } @else {
+                  A few questions about how Studio should look, what it should use underneath, and
+                  which AI provider it should talk to.
+                }
+              </p>
+            </div>
+          }
+          @default {
+            <!-- Later phases add a case per step id. A step with no case is a programming error, not
+                 a state the user should discover as a blank panel. -->
+            <p class="setup__lead">This step is not available in this build.</p>
+          }
+        }
+      </div>
+
+      <!-- The step rail is a progress indicator, not navigation: steps are walked in order, so a
+           marker is not a target. -->
+      <ol class="setup__rail" aria-hidden="true">
+        @for (rung of wizard.steps(); track rung.id; let index = $index) {
+          <li class="setup__rung" [class.setup__rung--done]="index <= wizard.stepIndex()"></li>
+        }
+      </ol>
+
+      <footer class="setup__actions">
+        <app-button label="Back" [disabled]="!wizard.canGoBack()" (click)="wizard.back()" />
+        <app-button
+          variant="solid"
+          [label]="wizard.isLastStep() ? 'Finish' : 'Next'"
+          (click)="wizard.next()"
+        />
+      </footer>
+    </section>
+  </ng-template>
+</app-modal>
