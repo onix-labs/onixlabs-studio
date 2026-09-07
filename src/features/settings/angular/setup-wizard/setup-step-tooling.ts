@@ -1,6 +1,15 @@
-import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  Signal,
+  signal,
+  WritableSignal,
+} from '@angular/core';
 import { PluginSummary } from '@shared/api/plugin-channels';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
 
 /**
@@ -12,33 +21,52 @@ import { Plugins } from '@shared/angular/services/plugins/plugins';
  * running" is the wrong sentence when nothing is *installed*. This is where that gets said once,
  * before it is discovered as an empty panel.
  *
+ * Installed plugins stay in the list rather than being summarised away beneath it. The list is long
+ * enough to need filtering, and a filter that hides half its subject is a filter that lies — a user
+ * searching for "rust" wants to know it is already there just as much as they want to install it.
+ *
  * Installing goes through the same consent the Plugin Manager asks for. A wizard is another entry
  * point to an install, never a shortcut past the question.
  */
 @Component({
   selector: 'app-setup-step-tooling',
-  imports: [Button],
+  imports: [Button, TextField],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrl: './setup-step-tooling.scss',
   template: `
-    @if (!plugins.busy() && available().length === 0) {
+    <app-text-field
+      class="tooling__filter"
+      kind="search"
+      placeholder="Filter by name or description"
+      ariaLabel="Filter plugins"
+      [(value)]="filter"
+    />
+
+    @if (matching().length === 0) {
       <p class="tooling__empty">
-        @if (installed().length > 0) {
-          Everything in the catalogue is already installed. You can manage plugins later from the
-          Plugin Manager.
+        @if (filter().trim().length > 0) {
+          Nothing matches “{{ filter() }}”.
         } @else {
-          No plugins are available to install on this machine.
+          No plugins are available on this machine.
         }
       </p>
     } @else {
       <ul class="tooling__list">
-        @for (plugin of available(); track plugin.id) {
+        @for (plugin of matching(); track plugin.id) {
           <li class="tooling__item">
             <span class="tooling__text">
               <span class="tooling__name">{{ plugin.name }}</span>
               <span class="tooling__detail">{{ plugin.description }}</span>
             </span>
-            <app-button label="Install" [disabled]="plugins.busy()" (click)="install(plugin.id)" />
+            @if (plugin.state === 'installed') {
+              <span class="tooling__state">Installed</span>
+            } @else {
+              <app-button
+                label="Install"
+                [disabled]="plugins.busy()"
+                (click)="install(plugin.id)"
+              />
+            }
           </li>
         }
       </ul>
@@ -46,10 +74,6 @@ import { Plugins } from '@shared/angular/services/plugins/plugins';
 
     @if (plugins.error(); as failure) {
       <p class="tooling__error">{{ failure }}</p>
-    }
-
-    @if (installed().length > 0) {
-      <p class="tooling__installed">Already installed: {{ installedNames() }}</p>
     }
   `,
 })
@@ -60,33 +84,29 @@ export class SetupStepTooling {
   protected readonly plugins: Plugins = inject(Plugins);
 
   /**
-   * Gets the plugins that are not installed, which are the ones there is anything to decide about.
+   * Holds the text the list is filtered by.
    */
-  protected readonly available: Signal<readonly PluginSummary[]> = computed(
-    (): readonly PluginSummary[] =>
-      this.plugins
-        .plugins()
-        .filter((plugin: PluginSummary): boolean => plugin.state !== 'installed'),
-  );
+  protected readonly filter: WritableSignal<string> = signal<string>('');
 
   /**
-   * Gets the plugins already installed, reported rather than listed for action — so a user who has
-   * been here before is told the step is not asking them to do anything twice.
+   * Gets the plugins to list: everything the catalogue knows, matching the filter, with what is not
+   * installed first — the list exists to be acted on, so the actionable rows lead it.
    */
-  protected readonly installed: Signal<readonly PluginSummary[]> = computed(
-    (): readonly PluginSummary[] =>
-      this.plugins
+  protected readonly matching: Signal<readonly PluginSummary[]> = computed(
+    (): readonly PluginSummary[] => {
+      const needle: string = this.filter().trim().toLowerCase();
+      return this.plugins
         .plugins()
-        .filter((plugin: PluginSummary): boolean => plugin.state === 'installed'),
-  );
-
-  /**
-   * Gets the installed plugins' names, as a sentence.
-   */
-  protected readonly installedNames: Signal<string> = computed((): string =>
-    this.installed()
-      .map((plugin: PluginSummary): string => plugin.name)
-      .join(', '),
+        .filter(
+          (plugin: PluginSummary): boolean =>
+            needle.length === 0 ||
+            plugin.name.toLowerCase().includes(needle) ||
+            plugin.description.toLowerCase().includes(needle),
+        )
+        .toSorted((left: PluginSummary, right: PluginSummary): number =>
+          left.state === right.state ? 0 : left.state === 'installed' ? 1 : -1,
+        );
+    },
   );
 
   /**

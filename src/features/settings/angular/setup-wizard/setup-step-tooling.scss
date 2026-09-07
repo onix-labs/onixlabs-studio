@@ -42,8 +42,20 @@
   color: var(--settings-muted-foreground-color);
 }
 
+// The list is the scrolling part, so the filter stays put above it.
+.tooling__filter {
+  flex: none;
+}
+
+// A plain word rather than a disabled button: there is no action here, and a greyed-out control
+// invites a click that does nothing.
+.tooling__state {
+  flex: none;
+  font-size: 0.75rem;
+  color: var(--settings-muted-foreground-color);
+}
+
 .tooling__empty,
-.tooling__installed,
 .tooling__error {
   margin: 0;
   font-size: 0.78rem;

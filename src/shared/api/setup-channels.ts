@@ -8,8 +8,13 @@
  * identifier; it never sends a command, a path, or an argument vector. A probe that took any of those
  * from the renderer would be a way to run an arbitrary binary from an untrusted process, which is
  * exactly what the bridge exists to prevent.
+ *
+ * The set is not arbitrary: it is git, plus the toolchain behind every language Studio has support
+ * for. Adding a language server means adding its toolchain here, and a language Studio cannot open is
+ * deliberately absent — reporting on a toolchain nothing would use is noise dressed as diligence.
  */
-export type SetupProbeId = 'git' | 'git-identity' | 'dotnet' | 'java' | 'node' | 'clangd';
+export type SetupProbeId =
+  'git' | 'git-identity' | 'node' | 'dotnet' | 'java' | 'go' | 'rust' | 'python' | 'clangd';
 
 /**
  * Describes how a probe turned out.

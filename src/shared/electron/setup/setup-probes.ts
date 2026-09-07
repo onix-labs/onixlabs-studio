@@ -61,25 +61,42 @@ const PROBES: Readonly<Record<Exclude<SetupProbeId, 'git-identity'>, ProbeDefini
     args: ['--version'],
     missing: 'Source control is unavailable without it.',
   },
+  node: {
+    binary: 'node',
+    args: ['--version'],
+    missing: 'TypeScript and JavaScript language support needs it.',
+  },
   dotnet: {
     binary: 'dotnet',
     args: ['--version'],
-    missing: 'The C# language server and .NET projects need it.',
+    missing: 'C# language support and .NET projects need it.',
   },
   java: {
     binary: 'java',
     args: ['-version'],
-    missing: 'The Java and Kotlin language servers need it.',
+    missing: 'Java and Kotlin language support need it.',
   },
-  node: {
-    binary: 'node',
+  go: {
+    binary: 'go',
+    args: ['version'],
+    missing: 'Go language support needs it.',
+  },
+  // Cargo rather than rustc: it is what rust-analyzer drives, and a Rust toolchain that has one has
+  // the other.
+  rust: {
+    binary: 'cargo',
     args: ['--version'],
-    missing: 'TypeScript and JavaScript tooling needs it.',
+    missing: 'Rust language support needs it.',
+  },
+  python: {
+    binary: 'python3',
+    args: ['--version'],
+    missing: 'Python debugging needs it.',
   },
   clangd: {
     binary: 'clangd',
     args: ['--version'],
-    missing: 'The C and C++ language server needs it.',
+    missing: 'C and C++ language support needs it.',
   },
 };
 
@@ -175,7 +192,7 @@ async function probeGitIdentity(environment: NodeJS.ProcessEnv): Promise<SetupPr
     detail:
       status === 'ok'
         ? `${identity.name} <${identity.email}>`
-        : `No ${missing.join(' or ')} configured, so commits will be refused.`,
+        : `No ${missing.join(' or ')} configured, so commits will be refused. Set it on the Source Control step.`,
   };
 }
 

@@ -1,30 +1,39 @@
-import {
-  ChangeDetectionStrategy,
-  Component,
-  computed,
-  inject,
-  Signal,
-  signal,
-  WritableSignal,
-} from '@angular/core';
-import { GitIdentity, SetupProbeId, SetupProbeResult } from '@shared/api/setup-channels';
+import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
+import { SetupProbeId, SetupProbeResult } from '@shared/api/setup-channels';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
-import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { Icon } from '@shared/angular/icons/icon';
 import { SetupProbes } from '@shared/angular/services/setup-probes/setup-probes';
 
 /**
- * Names each probe in the user's terms. The main process reports what it found; what the thing is
- * called is presentation, and belongs here.
+ * Names each probe in the user's terms, and says what it is for. The main process reports what it
+ * found; what the thing is called and why it matters is presentation, and belongs here.
  */
 const PROBE_LABELS: Readonly<Record<SetupProbeId, string>> = {
   git: 'Git',
-  'git-identity': 'Git identity',
+  'git-identity': 'Commit identity',
+  node: 'Node.js',
   dotnet: '.NET SDK',
   java: 'Java',
-  node: 'Node.js',
+  go: 'Go',
+  rust: 'Rust',
+  python: 'Python',
   clangd: 'clangd',
+};
+
+/**
+ * Holds the probes that are about Studio working at all, rather than about one language. Git is here
+ * because source control is not a language feature — every workspace uses it.
+ */
+const ESSENTIAL_PROBES: readonly SetupProbeId[] = ['git'];
+
+/**
+ * Holds the probes that hang beneath another, because they are a property of it rather than a thing
+ * in their own right. An identity is a way git is *configured*; listing it as a sibling implied two
+ * independent tools, which is not what it is.
+ */
+const NESTED_PROBES: Readonly<Partial<Record<SetupProbeId, SetupProbeId>>> = {
+  'git-identity': 'git',
 };
 
 /**
@@ -35,13 +44,14 @@ const PROBE_LABELS: Readonly<Record<SetupProbeId, string>> = {
  * because `dotnet` is not on the login shell's PATH, a commit refused hours in because no identity was
  * ever configured. Saying so here costs a sentence; finding out the other way costs an afternoon.
  *
- * Nothing here blocks. A missing toolchain is a fact about the machine, not an error the user has to
- * clear before continuing — plenty of people have no use for .NET — so every finding is reported and
- * the step moves on.
+ * The toolchains listed are exactly those behind the languages Studio has support for, so the list is
+ * derived from what Studio can do rather than picked. Nothing here blocks and nothing here is a
+ * failure: a missing Go toolchain on a machine that writes no Go is not a problem, it is a fact, and
+ * the step reports it as one.
  */
 @Component({
   selector: 'app-setup-step-environment',
-  imports: [AppIcon, Button, TextField],
+  imports: [AppIcon, Button],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrl: './setup-step-environment.scss',
   template: `
@@ -50,41 +60,47 @@ const PROBE_LABELS: Readonly<Record<SetupProbeId, string>> = {
         The environment cannot be checked outside the desktop application.
       </p>
     } @else {
-      <ul class="env__list">
-        @for (result of probes.results(); track result.id) {
-          <li class="env__item" [class]="'env__item--' + result.status">
-            <app-icon class="env__mark" [icon]="markOf(result.status)" [size]="1" />
-            <span class="env__text">
-              <span class="env__name">{{ label(result.id) }}</span>
-              <span class="env__detail">{{ result.detail }}</span>
-            </span>
-          </li>
-        }
-      </ul>
+      <section class="env__group">
+        <h3 class="env__group-title">Essentials</h3>
+        <ul class="env__list">
+          @for (result of essentials(); track result.id) {
+            <li class="env__item" [class]="'env__item--' + result.status">
+              <app-icon class="env__mark" [icon]="markOf(result.status)" [size]="1" />
+              <span class="env__text">
+                <span class="env__name">{{ label(result.id) }}</span>
+                <span class="env__detail">{{ result.detail }}</span>
+              </span>
+            </li>
+            @for (child of childrenOf(result.id); track child.id) {
+              <li class="env__item env__item--nested" [class]="'env__item--' + child.status">
+                <app-icon class="env__mark" [icon]="markOf(child.status)" [size]="1" />
+                <span class="env__text">
+                  <span class="env__name">{{ label(child.id) }}</span>
+                  <span class="env__detail">{{ child.detail }}</span>
+                </span>
+              </li>
+            }
+          }
+        </ul>
+      </section>
 
-      @if (needsIdentity()) {
-        <div class="env__fix">
-          <p class="env__fix-title">Set who your commits are attributed to</p>
-          <div class="env__fix-fields">
-            <app-text-field placeholder="Your name" ariaLabel="Your name" [(value)]="name" />
-            <app-text-field
-              placeholder="you@example.com"
-              ariaLabel="Your email address"
-              [(value)]="email"
-            />
-            <app-button
-              variant="solid"
-              label="Save"
-              [disabled]="!canSaveIdentity()"
-              (click)="saveIdentity()"
-            />
-          </div>
-          <p class="env__fix-note">
-            Written to your global git configuration, exactly as
-            <code>git config --global</code> would.
-          </p>
-        </div>
-      }
+      <section class="env__group">
+        <h3 class="env__group-title">Language toolchains</h3>
+        <p class="env__group-note">
+          One per language Studio supports. Anything you do not write in is safe to leave missing.
+        </p>
+        <ul class="env__list">
+          @for (result of toolchains(); track result.id) {
+            <li class="env__item" [class]="'env__item--' + result.status">
+              <app-icon class="env__mark" [icon]="markOf(result.status)" [size]="1" />
+              <span class="env__text">
+                <span class="env__name">{{ label(result.id) }}</span>
+                <span class="env__detail">{{ result.detail }}</span>
+              </span>
+            </li>
+          }
+        </ul>
+      </section>
 
       <div class="env__actions">
         <app-button
@@ -109,32 +125,41 @@ export class SetupStepEnvironment {
   protected readonly probes: SetupProbes = inject(SetupProbes);
 
   /**
-   * Holds the name being entered for the git identity.
+   * Gets the essential results, excluding anything that hangs beneath another row.
    */
-  protected readonly name: WritableSignal<string> = signal<string>('');
-
-  /**
-   * Holds the email being entered for the git identity.
-   */
-  protected readonly email: WritableSignal<string> = signal<string>('');
-
-  /**
-   * Gets whether the git identity needs setting, which is what puts the inline fix on screen. The fix
-   * is offered only when it would help: git present, identity absent.
-   */
-  protected readonly needsIdentity: Signal<boolean> = computed(
-    (): boolean =>
-      this.probes.statusOf('git') === 'ok' && this.probes.statusOf('git-identity') === 'warn',
+  protected readonly essentials: Signal<readonly SetupProbeResult[]> = computed(
+    (): readonly SetupProbeResult[] =>
+      this.probes
+        .results()
+        .filter(
+          (result: SetupProbeResult): boolean =>
+            ESSENTIAL_PROBES.includes(result.id) && NESTED_PROBES[result.id] === undefined,
+        ),
   );
 
   /**
-   * Gets whether both identity fields have been filled in. Git will accept either alone, but a
-   * half-set identity fails exactly as an unset one does, so the fix asks for both.
+   * Gets the language-toolchain results — everything that is neither essential nor nested.
    */
-  protected readonly canSaveIdentity: Signal<boolean> = computed(
-    (): boolean =>
-      this.name().trim().length > 0 && this.email().trim().length > 0 && !this.probes.busy(),
+  protected readonly toolchains: Signal<readonly SetupProbeResult[]> = computed(
+    (): readonly SetupProbeResult[] =>
+      this.probes
+        .results()
+        .filter(
+          (result: SetupProbeResult): boolean =>
+            !ESSENTIAL_PROBES.includes(result.id) && NESTED_PROBES[result.id] === undefined,
+        ),
   );
+
+  /**
+   * Returns the results that hang beneath a given probe.
+   * @param parent The parent probe identifier.
+   * @returns Returns its children, in probe order.
+   */
+  protected childrenOf(parent: SetupProbeId): readonly SetupProbeResult[] {
+    return this.probes
+      .results()
+      .filter((result: SetupProbeResult): boolean => NESTED_PROBES[result.id] === parent);
+  }
 
   /**
    * Initializes the step, running the probes as it is constructed. The step is created when the user
@@ -174,13 +199,5 @@ export class SetupStepEnvironment {
    */
   protected recheck(): void {
     void this.probes.refresh();
-  }
-
-  /**
-   * Writes the entered git identity and re-checks.
-   */
-  protected saveIdentity(): void {
-    const identity: GitIdentity = { name: this.name().trim(), email: this.email().trim() };
-    void this.probes.setGitIdentity(identity);
   }
 }

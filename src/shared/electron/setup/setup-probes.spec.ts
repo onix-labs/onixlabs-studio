@@ -17,8 +17,11 @@ describe('runSetupProbes', () => {
       'dotnet',
       'git',
       'git-identity',
+      'go',
       'java',
       'node',
+      'python',
+      'rust',
     ]);
   });
 

@@ -1,7 +1,37 @@
 :host {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 1.5rem;
+}
+
+.env__group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+// The settings view's section heading, so the two groups read as sections rather than as decoration.
+.env__group-title {
+  margin: 0 0 0.35rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--settings-muted-foreground-color);
+}
+
+.env__group-note {
+  margin: 0 0 0.5rem;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--settings-muted-foreground-color);
+}
+
+// A nested row is a property of the row above it, not a peer, so it is indented to the parent's text
+// and drawn without the divider that separates independent findings.
+.env__item--nested {
+  padding-inline-start: 1.6rem;
+  border-block-start: none !important;
 }
 
 .env__list {
@@ -61,46 +91,6 @@
   line-height: 1.45;
   color: var(--settings-muted-foreground-color);
   overflow-wrap: anywhere;
-}
-
-// The inline fix, framed so it reads as a thing to do rather than another row of findings.
-.env__fix {
-  display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
-  padding: 0.85rem;
-  border: 0.0625rem solid var(--settings-border-color);
-  border-radius: calc(0.625rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-  background: var(--settings-control-background-color);
-}
-
-.env__fix-title {
-  margin: 0;
-  font-size: 0.85rem;
-  font-weight: 500;
-}
-
-.env__fix-fields {
-  display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-
-.env__fix-fields app-text-field {
-  flex: 1 1 10rem;
-  min-inline-size: 0;
-}
-
-.env__fix-note {
-  margin: 0;
-  font-size: 0.75rem;
-  line-height: 1.45;
-  color: var(--settings-muted-foreground-color);
-}
-
-.env__fix-note code {
-  font-family: var(--font-mono);
 }
 
 .env__actions {
