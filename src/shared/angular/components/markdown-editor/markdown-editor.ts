@@ -81,6 +81,9 @@ const NEXT_TICK_DELAY: number = 0;
   templateUrl: './markdown-editor.html',
   styleUrl: './markdown-editor.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: {
+    '[class.markdown-editor--inset]': "variant() === 'inset'",
+  },
 })
 export class MarkdownEditor implements AfterViewInit, OnChanges, OnDestroy {
   /**
@@ -131,6 +134,16 @@ export class MarkdownEditor implements AfterViewInit, OnChanges, OnDestroy {
    * editor content (by recreating the editor) without raising {@link contentChange}.
    */
   public readonly content: InputSignal<string> = input<string>('');
+
+  /**
+   * Gets the editor's presentation variant. The default `page` is the roomy document surface the
+   * markdown tab and document well use; `inset` is the compact framed presentation for an editor
+   * embedded in other chrome (the agent composer's markdown modal): collapsed wrapper padding, a
+   * tight page gutter, and a separating fill in dark mode. The variant is a class on the host, and
+   * the global `_milkdown.scss` keys the presentation off it — consumers must not reach into the
+   * editor's DOM to restyle it.
+   */
+  public readonly variant: InputSignal<'page' | 'inset'> = input<'page' | 'inset'>('page');
 
   /**
    * Gets a value indicating whether the editor is read-only.

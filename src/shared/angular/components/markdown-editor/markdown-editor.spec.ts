@@ -165,6 +165,30 @@ describe('MarkdownEditor', () => {
     fixture.destroy();
   });
 
+  it('insetVariant_marksTheHost_soTheStylesheetKeysThePresentation', async () => {
+    const fixture: ComponentFixture<MarkdownEditor> = TestBed.createComponent(MarkdownEditor);
+    fixture.componentRef.setInput('variant', 'inset');
+    let ready: boolean = false;
+    fixture.componentInstance.ready.subscribe((): void => {
+      ready = true;
+    });
+    fixture.detectChanges();
+    expect(
+      (fixture.nativeElement as HTMLElement).classList.contains('markdown-editor--inset'),
+    ).toBe(true);
+    await vi.waitFor((): void => {
+      expect(ready).toBe(true);
+    });
+    fixture.destroy();
+  });
+
+  it('defaultVariant_leavesTheHostUnmarked', () => {
+    const fixture: ComponentFixture<MarkdownEditor> = TestBed.createComponent(MarkdownEditor);
+    expect(
+      (fixture.nativeElement as HTMLElement).classList.contains('markdown-editor--inset'),
+    ).toBe(false);
+  });
+
   it('replaceAll_swapsTheDocument_inOneUndoableStep', async () => {
     const { fixture } = await bootEditor('before\n');
     fixture.componentInstance.replaceAll('# After\n');
