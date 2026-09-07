@@ -1,27 +1,23 @@
-import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
-import { ShellInfo } from '@shared/api/terminal-channels';
-import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
+import { ChangeDetectionStrategy, Component, inject, Signal } from '@angular/core';
 import { Log } from '@shared/angular/services/log/log';
 import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
 import { Settings } from '@shared/angular/services/settings/settings';
-import { TerminalShells } from '@shared/angular/services/terminal-shells/terminal-shells';
-
-/**
- * Holds the setting value that means "use the main process's resolved default shell".
- */
-const SYSTEM_DEFAULT: string = '';
+import {
+  SHELL_PICKER_DEFAULT,
+  ShellPicker,
+} from '@shared/angular/components/forms/shell-picker/shell-picker';
 
 /**
  * Represents the Terminal section of the settings view: the default shell a new terminal starts with.
  *
- * The choice is a bespoke dropdown rather than a generic control because its options are discovered at
- * runtime — the shells installed on the host, supplied by {@link TerminalShells} — with a leading
- * "System default" entry that leaves the choice to the main process. The value persists through
- * {@link Settings} under `terminal.defaultShell` (an empty string for the system default).
+ * The choice is a bespoke control rather than a generic one because its options are discovered at
+ * runtime — the shells installed on the host — so it is rendered by the shared {@link ShellPicker},
+ * which every surface offering this choice uses. The value persists through {@link Settings} under
+ * `terminal.defaultShell` (an empty string for the system default).
  */
 @Component({
   selector: 'app-terminal-settings',
-  imports: [SettingRow, Dropdown],
+  imports: [SettingRow, ShellPicker],
   templateUrl: './terminal-settings.html',
   styleUrls: ['../section.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -33,26 +29,9 @@ export class TerminalSettingsSection {
   private readonly settings: Settings = inject(Settings);
 
   /**
-   * Holds the installed-shells provider populating the dropdown.
-   */
-  private readonly terminalShells: TerminalShells = inject(TerminalShells);
-
-  /**
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
-
-  /**
-   * Gets the dropdown options: a leading "System default" entry followed by each installed shell.
-   */
-  protected readonly shellOptions: Signal<readonly DropdownOption[]> = computed(
-    (): readonly DropdownOption[] => [
-      { value: SYSTEM_DEFAULT, label: 'System default' },
-      ...this.terminalShells
-        .shells()
-        .map((shell: ShellInfo): DropdownOption => ({ value: shell.path, label: shell.name })),
-    ],
-  );
 
   /**
    * Gets the persisted default shell (the empty string for the system default).
@@ -67,7 +46,7 @@ export class TerminalSettingsSection {
     this.log.info(
       'settings.terminal',
       'Default shell changed',
-      value === SYSTEM_DEFAULT ? 'system default' : value,
+      value === SHELL_PICKER_DEFAULT ? 'system default' : value,
     );
     this.settings.set('terminal.defaultShell', value);
   }

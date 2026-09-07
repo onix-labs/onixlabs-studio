@@ -184,6 +184,15 @@
   color: var(--settings-muted-foreground-color);
 }
 
+// A step's closing remark: something true about the step that is not itself a setting, so it has no
+// row to live in.
+.setup__note {
+  margin: 1rem 0 0;
+  font-size: 0.75rem;
+  line-height: 1.55;
+  color: var(--settings-muted-foreground-color);
+}
+
 .setup__pending {
   margin: 0;
   font-size: 0.85rem;

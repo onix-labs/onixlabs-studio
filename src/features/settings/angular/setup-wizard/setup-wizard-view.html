@@ -76,9 +76,23 @@
                   </p>
                 </div>
               }
+              @case ('appearance') {
+                <app-setup-step-settings [keys]="appearanceKeys" />
+              }
+              @case ('security') {
+                <app-setup-step-settings [keys]="securityKeys" />
+                <p class="setup__note">
+                  Beyond these, the agent may only write inside the workspace you have open. That
+                  boundary is not something a permission prompt can widen — it is changed in
+                  Settings, deliberately, and nowhere else.
+                </p>
+              }
+              @case ('terminal') {
+                <app-setup-step-terminal />
+              }
               @default {
                 <!-- The rail is complete from the first phase so the shell can be judged whole; the
-                     steps themselves are filled in by the phases that follow. This says so rather
+                     remaining steps are filled in by the phases that follow. This says so rather
                      than showing an empty panel that reads as broken. -->
                 <p class="setup__pending">
                   This step is not built yet. It arrives in a later phase of the setup wizard.

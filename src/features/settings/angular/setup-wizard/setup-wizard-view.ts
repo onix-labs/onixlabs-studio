@@ -1,5 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { SetupStepSettings } from './setup-step-settings';
+import { SetupStepTerminal } from './setup-step-terminal';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
@@ -22,7 +24,7 @@ import { SetupStep, SetupWizard } from '@shared/angular/services/setup-wizard/se
  */
 @Component({
   selector: 'app-setup-wizard-view',
-  imports: [Modal, ModalContent, Button, AppIcon],
+  imports: [Modal, ModalContent, Button, AppIcon, SetupStepSettings, SetupStepTerminal],
   templateUrl: './setup-wizard-view.html',
   styleUrl: './setup-wizard-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -49,6 +51,27 @@ export class SetupWizardView {
   protected readonly version: Signal<string> = computed(
     (): string => window.host?.versions.studio ?? '',
   );
+
+  /**
+   * Gets the settings the appearance step asks about: the two choices that change how Studio looks
+   * everywhere, and the graphics level, which is here because a machine that renders the heavier
+   * effects badly is better told at the start than left to conclude Studio is slow.
+   */
+  protected readonly appearanceKeys: readonly string[] = [
+    'appearance.themeMode',
+    'appearance.accent',
+    'display.graphicsAcceleration',
+  ];
+
+  /**
+   * Gets the settings the security step asks about: what content may reach the network, and how much
+   * the agent may do before asking. Both default to the cautious answer, which is exactly why they
+   * are shown — a user who never opens Settings never learns either default exists.
+   */
+  protected readonly securityKeys: readonly string[] = [
+    'security.imagePolicy',
+    'ai.permissionPosture',
+  ];
 
   /**
    * Abandons the run, which is what closing the window means: nothing was decided, so the wizard is
