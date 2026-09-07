@@ -41,7 +41,6 @@ import { AgentQuickResponses } from '@shared/angular/components/agent-quick-resp
 import { AgentTasksMenu } from '@shared/angular/components/agent-tasks-menu/agent-tasks-menu';
 import { AgentLoginModal } from '@shared/angular/components/agent-login-modal/agent-login-modal';
 import { MarkdownEditor } from '@shared/angular/components/markdown-editor/markdown-editor';
-import { MarkdownToolstrip } from '@shared/angular/components/markdown-toolstrip/markdown-toolstrip';
 import { AgentPerf } from '@shared/angular/services/agent-perf/agent-perf';
 
 /**
@@ -188,7 +187,6 @@ interface ContextChip {
     Modal,
     ModalContent,
     MarkdownEditor,
-    MarkdownToolstrip,
     AgentLoginModal,
     AgentComposerShortcuts,
     AgentQuickResponses,

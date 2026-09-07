@@ -462,12 +462,6 @@
   font-weight: 600;
 }
 
-// The formatting strip over the modal's editor: pulled tight against the editor frame below it so the
-// two read as one control, with the modal's own gap kept above.
-.agent__md-toolstrip {
-  margin-block-end: -0.6rem;
-}
-
 // The frame for the embedded markdown editor. The editor fills its host and scrolls internally, so
 // the frame is given a definite height via its flex basis (it collapses to zero otherwise) and grows
 // to fill the extra room when the modal is expanded. It uses the same flex hosting the markdown
