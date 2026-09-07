@@ -1,4 +1,5 @@
 import { computed, inject, Service, Signal, signal, WritableSignal } from '@angular/core';
+import { Icon } from '@shared/angular/icons/icon';
 import { Log } from '@shared/angular/services/log/log';
 import { SettingsStore } from '@shared/angular/services/settings-store/settings-store';
 
@@ -44,6 +45,11 @@ export interface SetupStep {
   readonly id: SetupStepId;
 
   /**
+   * Gets the icon shown beside the step on the rail.
+   */
+  readonly icon: Icon;
+
+  /**
    * Gets the short name shown on the step rail, where the room is a single line. Distinct from
    * {@link title}, which heads the step itself and can afford to be a sentence.
    */
@@ -72,6 +78,7 @@ export interface SetupStep {
 export const SETUP_STEPS: readonly SetupStep[] = [
   {
     id: 'welcome',
+    icon: Icon.SETUP_WELCOME,
     label: 'Welcome',
     title: 'Welcome to ONIXLabs Studio',
     summary:
@@ -80,18 +87,21 @@ export const SETUP_STEPS: readonly SetupStep[] = [
   },
   {
     id: 'whats-new',
+    icon: Icon.SETUP_WHATS_NEW,
     label: "What's New",
     title: 'What changed in this version',
     summary: 'The parts of this release worth knowing about before you carry on.',
   },
   {
     id: 'appearance',
+    icon: Icon.SETUP_APPEARANCE,
     label: 'Appearance',
     title: 'How Studio should look',
     summary: 'Theme, accent colour, and how much of the GPU the interface uses.',
   },
   {
     id: 'environment',
+    icon: Icon.SETUP_ENVIRONMENT,
     label: 'Environment',
     title: 'What is installed underneath',
     summary:
@@ -100,18 +110,21 @@ export const SETUP_STEPS: readonly SetupStep[] = [
   },
   {
     id: 'tooling',
+    icon: Icon.SETUP_TOOLING,
     label: 'Tooling',
     title: 'Tooling and plugins',
     summary: 'Language support, container engines and decoders, installed as you need them.',
   },
   {
     id: 'ai-provider',
+    icon: Icon.SETUP_AI_PROVIDER,
     label: 'AI Provider',
     title: 'Which AI Studio talks to',
     summary: 'A connection, a credential, and a model — verified before you leave this step.',
   },
   {
     id: 'security',
+    icon: Icon.SETUP_SECURITY,
     label: 'Security',
     title: 'Security and privacy',
     summary:
@@ -119,6 +132,7 @@ export const SETUP_STEPS: readonly SetupStep[] = [
   },
   {
     id: 'terminal',
+    icon: Icon.SETUP_TERMINAL,
     label: 'Terminal',
     title: 'Terminal and shell',
     summary:
@@ -126,6 +140,7 @@ export const SETUP_STEPS: readonly SetupStep[] = [
   },
   {
     id: 'source-control',
+    icon: Icon.SETUP_SOURCE_CONTROL,
     label: 'Source Control',
     title: 'Source control',
     summary: 'Who your commits are attributed to, and how Studio reaches your forge.',

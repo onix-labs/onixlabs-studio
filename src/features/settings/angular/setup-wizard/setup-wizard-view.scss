@@ -2,16 +2,24 @@
 // paragraph of highlights against a list of health probes), and a window resizing between steps reads
 // as instability. A fixed frame with the body scrolling keeps the rail and the actions in one place
 // the whole way through.
-//
-// Nothing here claims a drag region. The window is moved by the strip the modal service lays across
-// the top edge, level with the platform's window controls, and the panel's own leading padding
-// already reserves that band — so the wizard is dragged from exactly where every other window on the
-// system is.
 .setup {
   display: flex;
   flex-direction: column;
   block-size: 100%;
   min-block-size: 0;
+  // The panel's own padding is cancelled: the title bar has to reach the window's edges to be the
+  // band it looks like, and the rail draws its own inset. Paid back by the parts that want it.
+  margin: calc(var(--modal-panel-padding, 1rem) * -1);
+}
+
+// The title bar. The window is `hiddenInset`, so it has no title bar of its own and the platform
+// draws its controls over the leading end of this band. It is the only drag region in the wizard,
+// which is what makes the window move from where every other window on the system does. Its height
+// clears the controls.
+.setup__titlebar {
+  flex: none;
+  block-size: 2.75rem;
+  -webkit-app-region: drag;
 }
 
 .setup__columns {
@@ -19,6 +27,7 @@
   flex: 1;
   min-block-size: 0;
   gap: 1.5rem;
+  padding: 0 1.25rem 1.25rem;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -29,58 +38,35 @@
   flex: none;
   inline-size: 11.5rem;
   overflow-y: auto;
-  padding: 0.75rem;
+  padding: 0.5rem;
   border: 1px solid var(--divider-color, currentcolor);
-  border-radius: var(--panel-radius, 0.5rem);
+  border-radius: 0.9rem;
   background: var(--well-background-color, transparent);
 }
 
 .setup__steps {
   display: flex;
   flex-direction: column;
+  gap: 0.15rem;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-// Each rung is a marker beside a label, and the run between one marker and the next is drawn from the
-// rung above — so the line only ever appears between markers, never trailing off the last one.
 .setup__step {
-  position: relative;
   display: flex;
   align-items: center;
-  gap: 0.55rem;
-  padding-block: 0.4rem;
-  font-size: 0.82rem;
+  gap: 0.85rem;
+  padding: 0.7rem 0.85rem;
+  border-radius: 0.6rem;
+  font-size: 0.875rem;
   color: var(--muted-foreground-color, var(--body-foreground-color));
+  user-select: none;
 }
 
-.setup__step:not(:last-child)::after {
-  content: '';
-  position: absolute;
-  // Spans the whole gap between one marker and the next: from this marker's bottom edge (the rung's
-  // 0.4rem leading padding plus the 1.1rem marker) to the next marker's top edge (this rung's own
-  // 0.4rem trailing padding). Anything shorter reads as a dash rather than a run.
-  inset-block: 1.5rem -0.4rem;
-  // Centred on the marker, which is 1.1rem wide and starts at the rung's leading edge.
-  inset-inline-start: 0.55rem;
-  inline-size: 1px;
-  background: var(--divider-color, currentcolor);
-  opacity: 0.45;
-}
-
-// The checkbox metaphor, drawn rather than rendered as a control: an empty box for a step still
-// ahead, a ticked one for a step already walked.
-.setup__box {
+.setup__step-icon {
   flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  inline-size: 1.1rem;
-  block-size: 1.1rem;
-  border: 1px solid var(--divider-color, currentcolor);
-  border-radius: 0.25rem;
-  opacity: 0.55;
+  opacity: 0.85;
 }
 
 .setup__step-label {
@@ -89,25 +75,24 @@
   text-overflow: ellipsis;
 }
 
+// A step already walked reads at full strength but keeps its plain ground: the rail's job is to say
+// where you are, and a second filled treatment would compete with the one that says it.
 .setup__step--walked {
   color: var(--body-foreground-color);
 }
 
-.setup__step--walked .setup__box {
-  border-color: var(--accent-color);
-  color: var(--accent-color);
-  opacity: 1;
-}
-
-// The step being shown is the one fact the rail exists to carry, so it is the only rung with weight.
+// The step being shown is the one fact the rail exists to carry, so it is the only filled rung.
 .setup__step--current {
-  color: var(--accent-color);
+  color: #fff;
   font-weight: 500;
+  background: linear-gradient(
+    135deg,
+    var(--accent-color),
+    color-mix(in srgb, var(--accent-color) 72%, #000)
+  );
 }
 
-.setup__step--current .setup__box {
-  border-color: var(--accent-color);
-  box-shadow: inset 0 0 0 0.18rem var(--accent-color);
+.setup__step--current .setup__step-icon {
   opacity: 1;
 }
 
@@ -152,36 +137,106 @@
   overflow-y: auto;
 }
 
-// The first step introduces the application rather than asking anything, so it is centred in the pane
-// as a single stack — title, mark, and the sentence saying what the rest of the wizard is for.
+// ---------------------------------------------------------------------------------------------
+// The welcome step
+// ---------------------------------------------------------------------------------------------
+
+// The first step introduces the application rather than asking anything, so it is a centred stack:
+// the mark, the name, what the pass is for, and the three notes that answer "why am I being asked".
 .setup__intro {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 1.75rem;
+  gap: 1.1rem;
   block-size: 100%;
   text-align: center;
 }
 
-.setup__intro-title {
-  margin: 0;
-  font-size: 1.35rem;
-  font-weight: 500;
-  letter-spacing: -0.01em;
+.setup__logo {
+  inline-size: 6rem;
+  block-size: 6rem;
+  margin-block-end: 0.4rem;
+  user-select: none;
 }
 
-.setup__logo {
-  inline-size: 5rem;
-  block-size: 5rem;
-  user-select: none;
+.setup__intro-title {
+  margin: 0;
+  font-size: 1.7rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
 }
 
 .setup__lead {
   margin: 0;
-  max-inline-size: 26rem;
+  max-inline-size: 27rem;
   font-size: 0.9rem;
-  line-height: 1.6;
+  line-height: 1.55;
+  color: var(--muted-foreground-color, var(--body-foreground-color));
+}
+
+.setup__highlights {
+  display: flex;
+  gap: 1.1rem;
+  margin: 1.5rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.setup__highlight {
+  display: flex;
+  flex: 1;
+  align-items: flex-start;
+  gap: 0.6rem;
+  text-align: start;
+}
+
+// A tinted, rounded tile per note. The tints are stated rather than derived from the accent: the
+// three sit side by side and have to be told apart, which one hue in three shades would not manage.
+.setup__highlight-mark {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 1.9rem;
+  block-size: 1.9rem;
+  border-radius: 0.6rem;
+}
+
+.setup__highlight-mark--quick {
+  color: #4c8dff;
+  background: color-mix(in srgb, #4c8dff 18%, transparent);
+}
+
+.setup__highlight-mark--tailored {
+  color: #a78bfa;
+  background: color-mix(in srgb, #a78bfa 18%, transparent);
+}
+
+.setup__highlight-mark--ready {
+  color: #34d399;
+  background: color-mix(in srgb, #34d399 18%, transparent);
+}
+
+.setup__highlight-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-inline-size: 0;
+}
+
+.setup__highlight-title {
+  font-size: 0.8rem;
+  font-weight: 500;
+  // The three titles sit side by side in a narrow column each; balancing keeps a title that has
+  // to wrap from leaving one word stranded on its own line.
+  text-wrap: balance;
+}
+
+.setup__highlight-detail {
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--muted-foreground-color, var(--body-foreground-color));
 }
 
 .setup__pending {

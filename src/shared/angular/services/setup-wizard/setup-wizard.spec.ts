@@ -182,13 +182,25 @@ describe('SetupWizard', () => {
       expect(build().steps()[0].id).toBe('welcome');
     });
 
-    it('steps_always_giveEveryStepARailLabelAndATitle', () => {
-      // The rail shows the label and the pane shows the title; a step missing either renders blank.
+    it('steps_always_giveEveryStepARailLabelATitleAndAnIcon', () => {
+      // The rail shows the icon and label, the pane shows the title; a step missing any of them
+      // renders blank in a place the user cannot report usefully.
       for (const step of build().steps()) {
         expect(step.label.length, `${step.id} label`).toBeGreaterThan(0);
         expect(step.title.length, `${step.id} title`).toBeGreaterThan(0);
         expect(step.summary.length, `${step.id} summary`).toBeGreaterThan(0);
+        expect(step.icon.classList.length, `${step.id} icon`).toBeGreaterThan(0);
       }
+    });
+
+    it('steps_always_giveEveryStepItsOwnIcon', () => {
+      // A rail is a column of icons read together; two the same would make one step look like
+      // another at a glance.
+      const glyphs: readonly string[] = build()
+        .steps()
+        .map((step: SetupStep): string => step.icon.classList);
+
+      expect(new Set(glyphs).size).toBe(glyphs.length);
     });
   });
 
