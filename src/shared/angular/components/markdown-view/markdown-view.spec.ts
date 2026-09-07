@@ -1,6 +1,6 @@
 import { Component, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { MarkdownView } from './markdown-view';
+import { MarkdownView, resetTrustedBlockCache } from './markdown-view';
 
 @Component({
   imports: [MarkdownView],
@@ -16,6 +16,7 @@ describe('MarkdownView', () => {
   let host: HTMLElement;
 
   beforeEach(async () => {
+    resetTrustedBlockCache();
     await TestBed.configureTestingModule({ imports: [TestHost] }).compileComponents();
     fixture = TestBed.createComponent(TestHost);
     component = fixture.componentInstance;
@@ -47,6 +48,18 @@ describe('MarkdownView', () => {
     component.text.set('The identity $x^2$ is quadratic.');
     fixture.detectChanges();
     expect(host.querySelector('.markdown-view__prose .katex')).not.toBeNull();
+  });
+
+  it('keeps a settled block’s DOM node while a later block streams', () => {
+    // The streaming fix: a settled block's HTML is wrapped once and reused, so its [innerHTML]
+    // binding never sees a new identity and the browser never re-parses its subtree on a flush.
+    component.text.set('First paragraph.\n\nSecond is grow');
+    fixture.detectChanges();
+    const settled: HTMLElement | null = host.querySelector('.markdown-view__prose');
+    expect(settled).not.toBeNull();
+    component.text.set('First paragraph.\n\nSecond is growing longer');
+    fixture.detectChanges();
+    expect(host.querySelector('.markdown-view__prose')).toBe(settled);
   });
 
   it('renders nothing for empty text', () => {

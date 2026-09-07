@@ -237,6 +237,28 @@ export class AgentConversation implements AgentSessionHandle {
   public readonly tailRequest: Signal<number> = this.tailRequestState.asReadonly();
 
   /**
+   * Holds how many times a surface has asked this conversation's transcript to jump to its start.
+   */
+  private readonly topRequestState: WritableSignal<number> = signal<number>(0);
+
+  /**
+   * Gets the running count of jump-to-the-start requests. A counter for the same reason
+   * {@link tailRequest} is one: the request is an event, not a state.
+   */
+  public readonly topRequest: Signal<number> = this.topRequestState.asReadonly();
+
+  /**
+   * Holds how many times a surface has asked this conversation's transcript to jump to the last thing
+   * the user asked.
+   */
+  private readonly promptRequestState: WritableSignal<number> = signal<number>(0);
+
+  /**
+   * Gets the running count of jump-to-the-last-prompt requests.
+   */
+  public readonly promptRequest: Signal<number> = this.promptRequestState.asReadonly();
+
+  /**
    * Holds the id of the conversation currently open, or null for an unsaved/new conversation.
    */
   private readonly currentIdState: WritableSignal<string | null> = signal<string | null>(null);
@@ -391,6 +413,23 @@ export class AgentConversation implements AgentSessionHandle {
    */
   public scrollToBottom(): void {
     this.tailRequestState.update((count: number): number => count + 1);
+  }
+
+  /**
+   * Scrolls this conversation's transcript to its first message (part of
+   * {@link AgentSessionHandle}), and stops following the tail — a reader who has asked for the start
+   * does not want the next streamed token to drag them back down.
+   */
+  public scrollToTop(): void {
+    this.topRequestState.update((count: number): number => count + 1);
+  }
+
+  /**
+   * Scrolls this conversation's transcript to the most recent message the user sent (part of
+   * {@link AgentSessionHandle}), so a long answer can be read from the question that prompted it.
+   */
+  public scrollToLastPrompt(): void {
+    this.promptRequestState.update((count: number): number => count + 1);
   }
 
   /**

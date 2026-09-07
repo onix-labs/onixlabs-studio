@@ -138,6 +138,18 @@ export class Repository {
   private pendingExternalKind: 'status' | 'full' | null = null;
 
   /**
+   * Holds whether the hosting view is visible. True by default so a consumer that never wires
+   * {@link setActive} behaves exactly as before.
+   */
+  private active: boolean = true;
+
+  /**
+   * Holds the strongest refresh kind deferred while the hosting view was hidden, or null when none
+   * is owed (see {@link setActive}).
+   */
+  private deferredExternalKind: 'status' | 'full' | null = null;
+
+  /**
    * Holds whether an external refresh is currently running, so bursts can never stack overlapping
    * git processes — on a large working tree a status alone can outlast the debounce window.
    */
@@ -478,15 +490,38 @@ export class Repository {
   }
 
   /**
+   * Sets whether the hosting view is visible. While hidden, external refreshes defer (strongest
+   * kind remembered) instead of running: this model is the expensive crawl — status plus refs, the
+   * commit log, stashes and the graph rebuild — and it feeds panels nobody can see while the tab is
+   * in the background (the lighter WorkspaceGit stays live for Mission Control's branch reads).
+   * Reactivation replays the strongest deferred kind through the ordinary debounced path.
+   * @param active Whether the hosting view is visible.
+   */
+  public setActive(active: boolean): void {
+    this.active = active;
+    if (active && this.deferredExternalKind !== null) {
+      const kind: 'status' | 'full' = this.deferredExternalKind;
+      this.deferredExternalKind = null;
+      this.scheduleExternalRefresh(kind);
+    }
+  }
+
+  /**
    * Schedules a coalesced refresh in response to external on-disk changes, so a burst of changes (a
    * checkout, a build) refreshes the repository once rather than per file. The window is not extended
    * by further events — continuous churn refreshes at this cadence instead of starving — and the
-   * strongest kind the window accumulated wins. The application's own git reads never re-enter here:
-   * the main process runs them with optional index writes disabled, so a refresh leaves the
-   * repository untouched on disk.
+   * strongest kind the window accumulated wins. While the hosting view is hidden the refresh defers
+   * entirely (see {@link setActive}). The application's own git reads never re-enter here: the main
+   * process runs them with optional index writes disabled, so a refresh leaves the repository
+   * untouched on disk.
    * @param kind The refresh kind the triggering burst needs.
    */
   private scheduleExternalRefresh(kind: 'status' | 'full'): void {
+    if (!this.active) {
+      this.deferredExternalKind =
+        kind === 'full' || this.deferredExternalKind === 'full' ? 'full' : 'status';
+      return;
+    }
     this.pendingExternalKind =
       kind === 'full' || this.pendingExternalKind === 'full' ? 'full' : 'status';
     if (this.externalRefreshTimer !== null) {

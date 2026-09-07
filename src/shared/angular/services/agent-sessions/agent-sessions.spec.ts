@@ -75,6 +75,8 @@ function createSession(): FakeSession {
     toggleHistory: (): void => {
       calls.push('toggleHistory');
     },
+    scrollToTop: (): void => void calls.push('scrollToTop'),
+    scrollToLastPrompt: (): void => void calls.push('scrollToLastPrompt'),
     scrollToBottom: (): void => {
       calls.push('scrollToBottom');
     },

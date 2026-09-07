@@ -11,7 +11,12 @@ import { logger } from './logger';
 import * as fs from 'node:fs/promises';
 import type { Dirent, Stats } from 'node:fs';
 import * as path from 'node:path';
-import { ProjectItems, ProjectModel, ProjectOperationResult } from '@shared/api/project-system';
+import {
+  CompiledArtifact,
+  ProjectItems,
+  ProjectModel,
+  ProjectOperationResult,
+} from '@shared/api/project-system';
 import {
   PackageManagerModel,
   PackageSearchOptions,
@@ -264,6 +269,17 @@ export class WorkspaceManager {
       },
     );
     ipcMain.handle(
+      ProjectChannel.ArtifactResolve,
+      (
+        _event: IpcMainInvokeEvent,
+        sourcePath: unknown,
+        configurationId: unknown,
+      ): Promise<CompiledArtifact | null> => {
+        logger.trace('WorkspaceManager.register', `IPC ${ProjectChannel.ArtifactResolve}`);
+        return this.resolveArtifact(sourcePath, configurationId);
+      },
+    );
+    ipcMain.handle(
       ProjectChannel.SolutionFolderRename,
       (
         _event: IpcMainInvokeEvent,
@@ -424,6 +440,37 @@ export class WorkspaceManager {
     }
     const system: ProjectSystem | null = projectSystems.matchProject(projectPath);
     return (await system?.loadProjectItems?.(projectPath)) ?? null;
+  }
+
+  /**
+   * Resolves the compiled artefact a source file's project produces.
+   *
+   * Confined like every other path-taking request: the file must be inside the open workspace, so a
+   * renderer cannot aim this at a project elsewhere on disk. Every provider is asked in turn rather
+   * than routing by project file, because the caller has a *source* path and which provider owns it is
+   * exactly what is being worked out.
+   * @param sourcePath The source file path, unvalidated.
+   * @param configurationId The selected build configuration, unvalidated.
+   * @returns Returns the artefact, or null when nothing resolves it.
+   */
+  private async resolveArtifact(
+    sourcePath: unknown,
+    configurationId: unknown,
+  ): Promise<CompiledArtifact | null> {
+    if (typeof sourcePath !== 'string' || !this.workspace.isWithin(sourcePath)) {
+      logger.warn('WorkspaceManager.resolveArtifact', 'Rejected a file outside the workspace');
+      return null;
+    }
+    const configuration: string | undefined =
+      typeof configurationId === 'string' ? configurationId : undefined;
+    for (const system of projectSystems.all()) {
+      const artifact: CompiledArtifact | null =
+        (await system.resolveArtifact?.(sourcePath, configuration)) ?? null;
+      if (artifact !== null) {
+        return artifact;
+      }
+    }
+    return null;
   }
 
   /**

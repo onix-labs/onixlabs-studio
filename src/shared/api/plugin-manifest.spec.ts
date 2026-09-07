@@ -7,6 +7,7 @@ import {
 import CURATED_PLUGINS from '@shared/electron/contributions/plugins/curated-plugins.json';
 import {
   isApiCompatible,
+  ManifestContainerEngine,
   ManifestError,
   ManifestResult,
   PLUGIN_API_VERSION,
@@ -78,6 +79,32 @@ function npmManifest(
     provision: base,
     ...(languageServers === undefined ? {} : { contributes: { languageServers } }),
   });
+}
+
+/**
+ * Builds a well-formed container-engine contribution, modelled on the engine P5 will publish, which
+ * tests then break in one place at a time.
+ * @returns Returns the contribution as untrusted JSON would arrive.
+ */
+function containerEngine(): Record<string, unknown> {
+  return {
+    id: 'podman',
+    displayName: 'Podman',
+    priority: 50,
+    entryPoint: 'bin/podman',
+    discovery: {
+      hostVariable: 'CONTAINER_HOST',
+      sockets: {
+        darwin: ['/run/podman/podman.sock'],
+        linux: ['/run/podman/podman.sock'],
+        win32: ['\\\\.\\pipe\\podman-machine-default'],
+      },
+    },
+    startCommands: {
+      darwin: 'podman machine start',
+      linux: 'systemctl --user start podman.socket',
+    },
+  };
 }
 
 /**
@@ -184,6 +211,55 @@ describe('parsePluginManifest', () => {
 
       expect(result.errors).toEqual([]);
       expect(result.manifest?.contributes.debugAdapters?.[0]?.transport).toBe('tcp-server');
+    });
+
+    it('aDownloadNamingTheMembersToExtract', () => {
+      const value: Record<string, unknown> = manifest();
+      const downloads: Record<string, Record<string, unknown>> = (
+        value['provision'] as { downloads: Record<string, Record<string, unknown>> }
+      ).downloads;
+      downloads['darwin-arm64']['members'] = ['docker/docker'];
+      const result: ManifestResult = parsePluginManifest(value);
+
+      expect(result.errors).toEqual([]);
+      expect(result.manifest?.provision).toMatchObject({
+        downloads: { 'darwin-arm64': { members: ['docker/docker'] } },
+      });
+    });
+
+    it('aDownloadNamingNoMembers_extractingEverything', () => {
+      const result: ManifestResult = parsePluginManifest(manifest());
+
+      expect(result.errors).toEqual([]);
+      expect(
+        (result.manifest?.provision as { downloads: Record<string, { members?: unknown }> })
+          .downloads['darwin-arm64'].members,
+      ).toBeUndefined();
+    });
+
+    it('aContainerEngineContribution', () => {
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { containerEngines: [containerEngine()] } }),
+      );
+
+      expect(result.errors).toEqual([]);
+      const engine: ManifestContainerEngine | undefined =
+        result.manifest?.contributes.containerEngines?.[0];
+      expect(engine?.id).toBe('podman');
+      expect(engine?.discovery.hostVariable).toBe('CONTAINER_HOST');
+      expect(engine?.discovery.sockets['linux']).toEqual(['/run/podman/podman.sock']);
+      expect(engine?.startCommands?.['darwin']).toBe('podman machine start');
+    });
+
+    it('aContainerEngineWithNoStartCommands_becauseThereMayBeNothingToSay', () => {
+      const engine: Record<string, unknown> = containerEngine();
+      delete engine['startCommands'];
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { containerEngines: [engine] } }),
+      );
+
+      expect(result.errors).toEqual([]);
+      expect(result.manifest?.contributes.containerEngines?.[0]?.startCommands).toBeUndefined();
     });
 
     it('aContributionWithoutAPriority_defaultingIt', () => {
@@ -321,6 +397,85 @@ describe('parsePluginManifest', () => {
 
       expect(result.manifest).toBeNull();
       expect(paths(result)).toContain('contributes');
+    });
+
+    it('aDownloadWhoseMembersEscapeTheArchive', () => {
+      // A member name is a path handed to an extractor, and `../` in one writes outside the install
+      // directory just as surely as an entry point would.
+      const value: Record<string, unknown> = manifest();
+      const downloads: Record<string, Record<string, unknown>> = (
+        value['provision'] as { downloads: Record<string, Record<string, unknown>> }
+      ).downloads;
+      downloads['darwin-arm64']['members'] = ['../../etc/passwd'];
+      const result: ManifestResult = parsePluginManifest(value);
+
+      expect(result.manifest).toBeNull();
+      expect(paths(result)).toContain('provision.downloads.darwin-arm64.members');
+    });
+
+    it('aDownloadWhoseMembersAreEmpty', () => {
+      const value: Record<string, unknown> = manifest();
+      const downloads: Record<string, Record<string, unknown>> = (
+        value['provision'] as { downloads: Record<string, Record<string, unknown>> }
+      ).downloads;
+      downloads['darwin-arm64']['members'] = [];
+      const result: ManifestResult = parsePluginManifest(value);
+
+      expect(result.manifest).toBeNull();
+      expect(paths(result)).toContain('provision.downloads.darwin-arm64.members');
+    });
+
+    it('aContainerEngineNamingNoSocketForAnyPlatform', () => {
+      // An engine that says nothing about where it is served describes no way to reach it, and would
+      // install as an option that can never connect.
+      const engine: Record<string, unknown> = containerEngine();
+      engine['discovery'] = { hostVariable: 'CONTAINER_HOST', sockets: {} };
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { containerEngines: [engine] } }),
+      );
+
+      expect(result.manifest).toBeNull();
+      expect(paths(result)).toContain('contributes.containerEngines[0].discovery.sockets');
+    });
+
+    it('aContainerEngineWithNoDiscoveryAtAll', () => {
+      const engine: Record<string, unknown> = containerEngine();
+      delete engine['discovery'];
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { containerEngines: [engine] } }),
+      );
+
+      expect(result.manifest).toBeNull();
+      expect(paths(result)).toContain('contributes.containerEngines[0].discovery');
+    });
+
+    it('aContainerEngineKeyingSocketsByAnUnknownPlatform', () => {
+      const engine: Record<string, unknown> = containerEngine();
+      engine['discovery'] = {
+        hostVariable: 'CONTAINER_HOST',
+        sockets: { 'darwin-arm64': ['/run/podman/podman.sock'] },
+      };
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { containerEngines: [engine] } }),
+      );
+
+      // Keyed by platform, not by platform-and-architecture: where a socket lives does not vary by
+      // architecture, and accepting the download-style key would quietly never match.
+      expect(result.manifest).toBeNull();
+      expect(paths(result)).toContain(
+        'contributes.containerEngines[0].discovery.sockets.darwin-arm64',
+      );
+    });
+
+    it('aContainerEngineWhoseStartCommandIsNotAString', () => {
+      const engine: Record<string, unknown> = containerEngine();
+      engine['startCommands'] = { darwin: 42 };
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { containerEngines: [engine] } }),
+      );
+
+      expect(result.manifest).toBeNull();
+      expect(paths(result)).toContain('contributes.containerEngines[0].startCommands.darwin');
     });
 
     it('aProvisionPublishingNoPlatforms', () => {
@@ -475,6 +630,74 @@ describe('parsePluginManifest', () => {
       expect.arrayContaining(['id', 'name', 'description', 'version', 'contributes']),
     );
     expect(result.errors.length).toBeGreaterThan(4);
+  });
+
+  describe('decoder contributions', () => {
+    it('accepts a decoder contributed alone, with no language server', () => {
+      const result: ManifestResult = parsePluginManifest(
+        manifest({
+          contributes: {
+            decoders: [
+              {
+                id: 'native',
+                displayName: 'Native disassembler',
+                formats: ['elf/x64', 'macho/x64'],
+                priority: 50,
+                command: { kind: 'node' },
+              },
+            ],
+          },
+        }),
+      );
+      expect(result.errors).toEqual([]);
+      expect(result.manifest?.contributes.decoders).toHaveLength(1);
+      expect(result.manifest?.contributes.decoders?.[0].formats).toEqual(['elf/x64', 'macho/x64']);
+    });
+
+    it('refuses an unknown format key rather than accepting a decoder that could never match', () => {
+      // An unrecognised key cannot match anything the sniffer produces, so accepting one would
+      // install a decoder that silently never runs.
+      const result: ManifestResult = parsePluginManifest(
+        manifest({
+          contributes: {
+            decoders: [
+              {
+                id: 'typo',
+                displayName: 'Typo',
+                formats: ['elf/x86_64'],
+                priority: 50,
+                command: { kind: 'node' },
+              },
+            ],
+          },
+        }),
+      );
+      expect(paths(result)).toContain('contributes.decoders[0].formats');
+    });
+
+    it('refuses an empty format list', () => {
+      const result: ManifestResult = parsePluginManifest(
+        manifest({
+          contributes: {
+            decoders: [
+              {
+                id: 'empty',
+                displayName: 'Empty',
+                formats: [],
+                priority: 50,
+                command: { kind: 'node' },
+              },
+            ],
+          },
+        }),
+      );
+      expect(paths(result)).toContain('contributes.decoders[0].formats');
+    });
+
+    it('still refuses a manifest contributing nothing at all', () => {
+      const result: ManifestResult = parsePluginManifest(manifest({ contributes: {} }));
+      expect(paths(result)).toContain('contributes');
+    });
   });
 
   describe('describes the real catalogue', () => {

@@ -78,6 +78,12 @@ export class AgentRequests {
 
   /**
    * Gets every pending agent request across the registered conversations, in registration order.
+   *
+   * The computed re-runs on every transcript change of every registered agent — including each
+   * streamed-token flush — and almost always produces the same requests it did last time (usually
+   * none at all). The custom equality keeps the previous value in that case, so downstream consumers
+   * (the count, the tab markers, the attention and toast effects) see nothing and re-run nothing
+   * while an agent merely streams.
    */
   public readonly entries: Signal<readonly AgentRequestEntry[]> = computed(
     (): readonly AgentRequestEntry[] =>
@@ -94,6 +100,21 @@ export class AgentRequests {
               agent: source.agent,
             })),
       ),
+    {
+      equal: (
+        previous: readonly AgentRequestEntry[],
+        next: readonly AgentRequestEntry[],
+      ): boolean =>
+        previous.length === next.length &&
+        previous.every(
+          (entry: AgentRequestEntry, index: number): boolean =>
+            entry.key === next[index].key &&
+            entry.item === next[index].item &&
+            entry.agent === next[index].agent &&
+            entry.tabId === next[index].tabId &&
+            entry.label === next[index].label,
+        ),
+    },
   );
 
   /**

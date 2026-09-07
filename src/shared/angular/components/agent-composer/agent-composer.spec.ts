@@ -15,7 +15,12 @@ import type {
   AiSlashCommand,
 } from '@shared/api/ai-types';
 import type { AgentMode } from '@shared/api/ai-types';
-import { Agent, AgentItem, AgentQueuedMessage } from '@shared/angular/services/agent/agent';
+import {
+  Agent,
+  AgentItem,
+  AgentQueuedMessage,
+  AgentTask,
+} from '@shared/angular/services/agent/agent';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
 import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine';
 import { AgentPrompts } from '@shared/angular/services/agent-prompts/agent-prompts';
@@ -106,6 +111,8 @@ describe('AgentComposer', () => {
     contextTokens = signal<number>(0);
     contextWindow = signal<number>(0);
     const agentStub: Partial<Agent> = {
+      // The composer hosts the conversation-scoped tasks menu, which reads the live-task list.
+      tasks: signal<readonly AgentTask[]>([]),
       items,
       isRunning: running,
       awaitingDecision: awaiting,

@@ -90,6 +90,46 @@ describe('LogArchive', () => {
     expect(new LogArchive(dir).sessions(current)).toEqual([current]);
   });
 
+  it('enqueue_buffersRecordsUntilFlush', () => {
+    const archive: LogArchive = new LogArchive(dir);
+    archive.enqueue(record({ id: 1, message: 'a' }));
+    archive.enqueue(record({ id: 2, message: 'b' }));
+    expect(archive.readSession('session-a')).toEqual([]);
+    expect(archive.pendingCount).toBe(2);
+    archive.flush();
+    expect(
+      archive.readSession('session-a').map((entry: LogRecord): string => entry.message),
+    ).toEqual(['a', 'b']);
+    expect(archive.pendingCount).toBe(0);
+  });
+
+  it('flush_writesEachSessionsBatchToItsOwnFile', () => {
+    const archive: LogArchive = new LogArchive(dir);
+    archive.enqueue(record({ sessionId: 'session-a', message: 'from-a' }));
+    archive.enqueue(record({ sessionId: 'session-b', message: 'from-b' }));
+    archive.enqueue(record({ sessionId: 'session-a', id: 2, message: 'also-a' }));
+    archive.flush();
+    expect(archive.readSession('session-a')).toHaveLength(2);
+    expect(archive.readSession('session-b')[0].message).toBe('from-b');
+  });
+
+  it('flush_isIdempotentOnceTheBuffersAreDrained', () => {
+    const archive: LogArchive = new LogArchive(dir);
+    archive.enqueue(record({ message: 'once' }));
+    archive.flush();
+    archive.flush();
+    expect(archive.readSession('session-a')).toHaveLength(1);
+  });
+
+  it('enqueueHuman_buffersLinesUntilFlush', () => {
+    const archive: LogArchive = new LogArchive(dir);
+    archive.enqueueHuman('line one\n');
+    archive.enqueueHuman('line two\n');
+    expect(existsSync(join(dir, 'studio.log'))).toBe(false);
+    archive.flush();
+    expect(readFileSync(join(dir, 'studio.log'), 'utf8')).toBe('line one\nline two\n');
+  });
+
   it('appendHuman_appendsToStudioLog', () => {
     const archive: LogArchive = new LogArchive(dir);
     archive.appendHuman('line one\n');

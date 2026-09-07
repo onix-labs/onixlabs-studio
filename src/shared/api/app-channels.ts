@@ -24,10 +24,11 @@ export enum AppChannel {
   GetDisplayStartup = 'app:get-display-startup',
 
   /**
-   * Persists the GPU hardware-acceleration preference; takes effect after the next relaunch, since
+   * Persists the graphics-acceleration level. Its accelerated rungs apply immediately in the
+   * renderer; moving on or off the `off` rung takes effect only after the next relaunch, since
    * hardware acceleration can only be toggled before the app is ready (invoke).
    */
-  SetHardwareAcceleration = 'app:set-hardware-acceleration',
+  SetGraphicsAcceleration = 'app:set-graphics-acceleration',
 
   /**
    * Relaunches the application so a startup-only preference change can take effect (send).

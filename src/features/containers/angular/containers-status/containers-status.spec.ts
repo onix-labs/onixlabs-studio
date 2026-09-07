@@ -3,7 +3,7 @@ import { ApplicationRef } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Bridge } from '@shared/api/bridge';
 import { ContainerChannel } from '@shared/api/container-channels';
-import { ContainerSummary, DockerStatus } from '@shared/api/docker-types';
+import { ContainerSummary, ContainerStatus } from '@shared/api/container-types';
 import { StatusBar } from '@shared/angular/services/status-bar/status-bar';
 import { Icon } from '@shared/angular/icons/icon';
 import { ContainersStatus } from './containers-status';
@@ -20,7 +20,7 @@ const CONTAINERS: ContainerSummary[] = [
  * Installs a stub bridge answering status and list-containers with fixed replies.
  * @param status The daemon status to report.
  */
-function stubBridge(status: DockerStatus): void {
+function stubBridge(status: ContainerStatus): void {
   const bridge: Bridge = {
     invoke: <T>(channel: string): Promise<T> => {
       if ((channel as ContainerChannel) === ContainerChannel.Status) {

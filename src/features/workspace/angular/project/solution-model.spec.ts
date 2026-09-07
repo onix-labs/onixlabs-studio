@@ -487,6 +487,24 @@ describe('SolutionModel', () => {
     void model;
   });
 
+  it('setActive_whileHidden_defersTheWatchDrivenReloadAndRunsItOnceOnReactivation', async () => {
+    // A hidden view's reload can spawn a full project-system evaluation for a tree nobody can see;
+    // the changes accumulate and the reload settles once when the view is shown again.
+    project.model = sampleModel();
+    const model: SolutionModel = build();
+    await open(model);
+    const loadsAfterOpen: number = project.modelLoads;
+
+    model.setActive(false);
+    treeChanged!({ root: '/root', directories: ['/root/A'], overflow: false });
+    await waitForReloadDebounce();
+    expect(project.modelLoads).toBe(loadsAfterOpen);
+
+    model.setActive(true);
+    await waitForReloadDebounce();
+    expect(project.modelLoads).toBe(loadsAfterOpen + 1);
+  });
+
   it('toggle_expandingAProject_showsItsAlreadyLoadedContentsWithoutFetchingAgain', async () => {
     project.model = sampleModel();
     project.itemsByPath.set('/root/A/A.csproj', sampleItems());

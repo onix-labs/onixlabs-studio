@@ -1,5 +1,5 @@
 // The Containers view fills its tab: a panel layout with the list in the main area and the logs/shell
-// terminals docked below. It is a lean dashboard over the Docker backend: two sections (containers,
+// terminals docked below. It is a lean dashboard over the container engine: two sections (containers,
 // then images) of simple rows.
 :host {
   display: block;
@@ -234,6 +234,20 @@
   margin: 0 0 0.5rem;
   font-size: 0.85rem;
   color: var(--form-muted-foreground-color);
+}
+
+.containers__empty-command {
+  margin: 0 0 0.5rem;
+  font-size: 0.85rem;
+  color: var(--form-muted-foreground-color);
+
+  code {
+    padding: 0.1rem 0.35rem;
+    border-radius: 0.25rem;
+    background-color: var(--form-control-background-color);
+    font-family: var(--monospace-font-family, monospace);
+    user-select: text;
+  }
 }
 
 .containers__empty-actions {

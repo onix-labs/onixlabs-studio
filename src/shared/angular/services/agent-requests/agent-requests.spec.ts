@@ -66,6 +66,37 @@ describe('AgentRequests', () => {
     expect(requests.tabIds().has('tab-1')).toBe(true);
   });
 
+  it('entries_whenATranscriptChangesWithoutTouchingRequests_keepsItsValueIdentity', () => {
+    // The computed re-runs on every transcript change of every agent — including each streamed-token
+    // flush — and almost always produces the same requests it did last time. The equality guard must
+    // keep the previous value in that case so downstream effects see nothing.
+    const pending: AgentItem = {
+      id: 'item-1',
+      kind: 'permission',
+      text: '',
+      permissionId: 'p1',
+      permissionName: 'Bash',
+      permissionState: 'pending',
+    };
+    items.set([pending]);
+    requests.register({
+      agent: fakeAgent(),
+      tabId: (): string | null => 'tab-1',
+      label: (): string => 'main.ts',
+    });
+    const before: readonly unknown[] = requests.entries();
+
+    // A streamed token replaces the transcript array (and its streaming tail) but not the request.
+    items.set([pending, { id: 'item-2', kind: 'assistant', text: 'streaming…' }]);
+    expect(requests.entries()).toBe(before);
+
+    // The empty case — the overwhelmingly common one — must hold its identity too.
+    items.set([]);
+    const emptyBefore: readonly unknown[] = requests.entries();
+    items.set([{ id: 'item-3', kind: 'assistant', text: 'more' }]);
+    expect(requests.entries()).toBe(emptyBefore);
+  });
+
   it('entries_whenARequestSettles_dropOffTheList', () => {
     items.set([
       {

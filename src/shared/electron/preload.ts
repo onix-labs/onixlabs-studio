@@ -24,6 +24,7 @@ const host: HostEnv = {
   homeDir: startup.homeDir,
   display: {
     gpuRendering: startup.gpuRendering,
+    graphicsAcceleration: startup.graphicsAcceleration,
     hardwareAccelerationEnabled: startup.hardwareAccelerationEnabled,
   },
 };

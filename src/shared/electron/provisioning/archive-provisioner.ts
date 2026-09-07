@@ -219,7 +219,7 @@ export class ArchiveProvisioner {
         await fs.rm(directory, { recursive: true, force: true });
         return null;
       }
-      await extractArchive(archive, directory, download.archive);
+      await extractArchive(archive, directory, download.archive, 0, download.members ?? []);
       await fs.rm(archive, { force: true });
       if (!existsSync(target)) {
         logger.warn(this.logName, `Extracted ${provision.id} but its entry point is missing`);

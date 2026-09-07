@@ -106,13 +106,6 @@ export type ApplicationMenuMode = 'hidden' | 'icon' | 'full';
 export type ApplicationMenuAppearance = 'vertical' | 'horizontal';
 
 /**
- * Identifies whether the modern UI features (GPU-rasterized squircle corners and the heavier
- * decorative effects) are used. `auto` follows the GPU-derived recommendation resolved at startup;
- * `on` and `off` are explicit user overrides.
- */
-export type ModernUiFeatures = 'auto' | 'on' | 'off';
-
-/**
  * Identifies the optional background texture tiled behind the workspace's docked panes. `none` is a
  * plain backdrop; every other value names a pattern in the texture catalogue
  * (`styles/_textures.scss`), which paints it in the theme's own colour.
@@ -297,13 +290,8 @@ export interface AppearanceSettings {
   readonly ribbonAlignment: RibbonAlignment;
 
   /**
-   * Gets whether the modern UI features (squircle corners and the heavier decorative effects) are
-   * used, or whether the choice follows the GPU-derived recommendation.
-   */
-  readonly modernUiFeatures: ModernUiFeatures;
-
-  /**
-   * Gets the background texture tiled behind the workspace's docked panes.
+   * Gets the background texture tiled behind the workspace's docked panes. Painted only at the full
+   * graphics-acceleration level; the choice is kept, not cleared, below it (see `Display`).
    */
   readonly workspaceTexture: WorkspaceTexture;
 }
@@ -533,7 +521,6 @@ export class Settings {
    */
   public readonly appearance: Signal<AppearanceSettings> = computed((): AppearanceSettings => ({
     ribbonAlignment: this.read('appearance.ribbonAlignment'),
-    modernUiFeatures: this.read('appearance.modernUiFeatures'),
     workspaceTexture: this.read('appearance.workspaceTexture'),
   }));
 
@@ -542,14 +529,6 @@ export class Settings {
    */
   public readonly ribbonAlignment: Signal<RibbonAlignment> = this.value(
     'appearance.ribbonAlignment',
-  );
-
-  /**
-   * Gets whether the modern UI features are used, or whether the choice follows the GPU-derived
-   * recommendation.
-   */
-  public readonly modernUiFeatures: Signal<ModernUiFeatures> = this.value(
-    'appearance.modernUiFeatures',
   );
 
   /**
@@ -889,14 +868,6 @@ export class Settings {
    */
   public setRibbonAlignment(alignment: RibbonAlignment): void {
     this.set('appearance.ribbonAlignment', alignment);
-  }
-
-  /**
-   * Sets whether the modern UI features are used.
-   * @param value The modern UI features mode to apply.
-   */
-  public setModernUiFeatures(value: ModernUiFeatures): void {
-    this.set('appearance.modernUiFeatures', value);
   }
 
   /**

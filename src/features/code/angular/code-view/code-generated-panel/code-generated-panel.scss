@@ -1,0 +1,43 @@
+.generated__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.generated__editor {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Notes sit above the listing rather than replacing it: a stale build still shows its output, because
+   out-of-date instructions are more useful than none while you decide whether to rebuild. */
+.generated__note {
+  flex: none;
+  margin: 0;
+  padding: 0.6rem 0.85rem;
+  color: var(--text-muted-color);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.generated__note--warn {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--status-warning-color, var(--text-color));
+}
+
+.generated__modes {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.5rem 0.6rem;
+  border-block-end: 1px solid var(--form-border-color);
+}
+
+.generated__spacer {
+  flex: 1;
+}

@@ -1,13 +1,25 @@
+import { decoderFormatKey } from '@shared/api/decoder-protocol';
+
 /**
  * Describes the container format and target architecture of a binary, sniffed from its header. Drives
  * which disassembly back-end a binary's bytes are handed to, and is surfaced in the status strip.
  */
 export type BinaryFormat =
-  | { readonly kind: 'pe'; readonly architecture: string; readonly managed: boolean }
+  | {
+      readonly kind: 'pe';
+      readonly architecture: string;
+      readonly managed: boolean;
+      /**
+       * Gets whether the image is ReadyToRun: managed, but carrying ahead-of-time compiled native
+       * code for {@link architecture} as well as IL. Absent means no (an ordinary PE, managed or not).
+       */
+      readonly readyToRun?: boolean;
+    }
   | { readonly kind: 'mz'; readonly architecture: string }
   | { readonly kind: 'elf'; readonly architecture: string }
   | { readonly kind: 'macho'; readonly architecture: string }
   | { readonly kind: 'jvm' }
+  | { readonly kind: 'wasm'; readonly version: number }
   | { readonly kind: 'unknown' };
 
 /**
@@ -15,6 +27,23 @@ export type BinaryFormat =
  * in via `e_lfanew`, well within the first fetched block).
  */
 export const FORMAT_SNIFF_LENGTH: number = 512;
+
+/**
+ * The values .NET exclusive-ORs into a ReadyToRun image's PE `Machine` field when the target is not
+ * Windows, keyed by the operating system they mark.
+ *
+ * The field is not corrupt and the image is not mis-built: a non-Windows R2R image deliberately
+ * carries a machine value no Windows loader will accept, so it cannot be run as a native PE on the
+ * wrong platform. Undoing the override is the only way to learn what the ahead-of-time code was
+ * actually compiled for — an Apple x64 image reads `0xC020`, and `0xC020 ^ 0x4644` is `0x8664`.
+ */
+const R2R_MACHINE_OVERRIDES: ReadonlyMap<string, number> = new Map<string, number>([
+  ['Apple', 0x4644],
+  ['Linux', 0x7b79],
+  ['FreeBSD', 0xadc4],
+  ['NetBSD', 0x1993],
+  ['SunOS', 0x1992],
+]);
 
 /**
  * Sniffs a binary's container format and architecture from its leading bytes. Pure and dependency
@@ -35,6 +64,10 @@ export function sniffFormat(bytes: Uint8Array): BinaryFormat {
   if (macho !== null) {
     return macho;
   }
+  // WebAssembly: '\0asm', then a four-byte little-endian version.
+  if (matches(bytes, 0, [0x00, 0x61, 0x73, 0x6d])) {
+    return { kind: 'wasm', version: readU32(view, 4, true) ?? 1 };
+  }
   // JVM class: 0xCAFEBABE. (Shares its magic with Mach-O fat binaries, which are far rarer here; a
   // thin Mach-O is matched above, so a remaining 0xCAFEBABE is treated as a class file.)
   if (matches(bytes, 0, [0xca, 0xfe, 0xba, 0xbe])) {
@@ -49,44 +82,12 @@ export function sniffFormat(bytes: Uint8Array): BinaryFormat {
 }
 
 /**
- * Holds the architecture labels the native disassembler supports.
- */
-const DISASSEMBLABLE: ReadonlySet<string> = new Set<string>([
-  'x86-16',
-  'x86',
-  'x64',
-  'ARM',
-  'ARM64',
-]);
-
-/**
- * Resolves the architecture a format's native code should be disassembled as, or null when native
- * disassembly does not apply — managed .NET assemblies, JVM class files, and unknown or unsupported
- * architectures (the managed formats are handled by later phases' sidecars).
- * @param format The detected format.
- * @returns Returns the architecture label, or null.
- */
-export function disassemblyArchitecture(format: BinaryFormat): string | null {
-  switch (format.kind) {
-    case 'pe':
-      return !format.managed && DISASSEMBLABLE.has(format.architecture)
-        ? format.architecture
-        : null;
-    case 'mz':
-    case 'elf':
-    case 'macho':
-      return DISASSEMBLABLE.has(format.architecture) ? format.architecture : null;
-    case 'jvm':
-    case 'unknown':
-      return null;
-  }
-}
-
-/**
  * Resolves the file offset where a binary's code begins, so the editor can jump past the headers to
  * real instructions: the PE entry point (translated through the section table, or the first executable
- * section), the ELF entry point (translated through the program headers), or the MS-DOS header size.
- * Returns null when it cannot be determined (Mach-O/JVM/unknown, or a malformed or truncated header).
+ * section), the ELF entry point (translated through the program headers), the Mach-O `__TEXT,__text`
+ * section, or the MS-DOS header size.
+ * Returns null when it cannot be determined (JVM/WebAssembly/unknown, or a malformed or truncated
+ * header).
  * @param bytes The file's leading bytes (the first block).
  * @returns Returns the code file offset, or null.
  */
@@ -94,6 +95,10 @@ export function codeOffset(bytes: Uint8Array): number | null {
   const view: DataView = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   if (matches(bytes, 0, [0x7f, 0x45, 0x4c, 0x46])) {
     return elfCodeOffset(bytes, view);
+  }
+  const macho: number | null = machoCodeOffset(view);
+  if (macho !== null) {
+    return macho;
   }
   if (matches(bytes, 0, [0x4d, 0x5a])) {
     const peOffset: number | null = readU32(view, 0x3c, true);
@@ -108,6 +113,89 @@ export function codeOffset(bytes: Uint8Array): number | null {
 }
 
 /**
+ * Resolves the canonical decoder format key for a sniffed format, or null when the format is not one
+ * any decoder could claim (an unrecognised container, or a container whose architecture did not
+ * resolve).
+ *
+ * This is the join between what the sniffer detects and what a plugin's manifest claims, so both sides
+ * must spell it the same way — hence one function rather than two conventions. A managed PE is its own
+ * key rather than an architecture-bearing one: what decodes IL has nothing to do with the machine the
+ * assembly nominally targets.
+ * @param format The detected format.
+ * @returns Returns the format key, or null when nothing could decode it.
+ */
+export function formatKey(format: BinaryFormat): string | null {
+  switch (format.kind) {
+    case 'pe':
+      // A ReadyToRun image is managed and also carries ahead-of-time native code. It routes to the
+      // native decoder rather than the IL one: the native code is the reason the image was published
+      // this way, and it is what an IL decoder cannot show. Its IL is still in there, which is a
+      // limitation recorded on the format rather than papered over — the panel shows one listing.
+      if (format.readyToRun === true) {
+        return format.architecture === 'unknown'
+          ? 'pe-managed'
+          : decoderFormatKey('pe', format.architecture);
+      }
+      return format.managed
+        ? 'pe-managed'
+        : format.architecture === 'unknown'
+          ? null
+          : decoderFormatKey('pe', format.architecture);
+    case 'mz':
+      return decoderFormatKey('mz', format.architecture);
+    case 'elf':
+    case 'macho':
+      return format.architecture === 'unknown'
+        ? null
+        : decoderFormatKey(format.kind, format.architecture);
+    case 'jvm':
+      return decoderFormatKey('jvm');
+    case 'wasm':
+      return decoderFormatKey('wasm');
+    case 'unknown':
+      return null;
+  }
+}
+
+/**
+ * Resolves the architecture label the *assembler* takes for a format, or null when its machine code
+ * cannot be written here.
+ *
+ * Separate from {@link formatKey} and named for what it is for. A format key identifies which decoder
+ * reads a file; this identifies which instruction set is being written, and the two are different
+ * values — the assembler wants `x64`, not `pe/x64`. Conflating them silently breaks every write.
+ * @param format The detected format.
+ * @returns Returns the architecture label, or null when the format holds no writable machine code.
+ */
+export function assemblerArchitecture(format: BinaryFormat): string | null {
+  switch (format.kind) {
+    case 'pe':
+      // Managed code is IL, which this cannot write — except a ReadyToRun image, whose ahead-of-time
+      // section is ordinary machine code for a real instruction set.
+      return format.managed && format.readyToRun !== true
+        ? null
+        : nativeArchitecture(format.architecture);
+    case 'mz':
+    case 'elf':
+    case 'macho':
+      return nativeArchitecture(format.architecture);
+    case 'jvm':
+    case 'wasm':
+    case 'unknown':
+      return null;
+  }
+}
+
+/**
+ * Narrows a sniffed architecture label to one the assembler recognises.
+ * @param architecture The sniffed label.
+ * @returns Returns the label, or null when it is not a writable instruction set.
+ */
+function nativeArchitecture(architecture: string): string | null {
+  return ['x86-16', 'x86', 'x64', 'ARM', 'ARM64'].includes(architecture) ? architecture : null;
+}
+
+/**
  * Formats a detected format for display in the status strip.
  * @param format The detected format.
  * @returns Returns a short human-readable label.
@@ -115,6 +203,9 @@ export function codeOffset(bytes: Uint8Array): number | null {
 export function describeFormat(format: BinaryFormat): string {
   switch (format.kind) {
     case 'pe':
+      if (format.readyToRun === true) {
+        return `.NET R2R · ${format.architecture}`;
+      }
       return format.managed ? `.NET · ${format.architecture}` : `PE · ${format.architecture}`;
     case 'mz':
       return `MS-DOS · ${format.architecture}`;
@@ -124,6 +215,8 @@ export function describeFormat(format: BinaryFormat): string {
       return `Mach-O · ${format.architecture}`;
     case 'jvm':
       return 'JVM class';
+    case 'wasm':
+      return `WebAssembly · v${format.version}`;
     case 'unknown':
       return 'Binary';
   }
@@ -201,7 +294,40 @@ function sniffPe(bytes: Uint8Array, view: DataView): BinaryFormat | null {
   // The CLR runtime header is data directory index 14; a non-zero RVA marks a managed assembly.
   const clrRva: number | null = readU32(view, directoriesOffset + 14 * 8, true);
   const managed: boolean = clrRva !== null && clrRva !== 0;
-  return { kind: 'pe', architecture: peArchitecture(machine), managed };
+  const architecture: string = peArchitecture(machine);
+  if (architecture !== 'unknown' || !managed) {
+    return { kind: 'pe', architecture, managed };
+  }
+  // A managed image whose machine value means nothing is the ReadyToRun case: the value is XORed with
+  // an operating-system override, so undo each in turn and take the one that yields a real machine.
+  const revealed: string | null = readyToRunArchitecture(machine);
+  return revealed === null
+    ? { kind: 'pe', architecture, managed }
+    : { kind: 'pe', architecture: revealed, managed, readyToRun: true };
+}
+
+/**
+ * Recovers the architecture of a ReadyToRun image whose `Machine` field carries a non-Windows
+ * operating-system override, or null when undoing every known override still yields nothing
+ * recognisable (so the value is unrecognised for some other reason and must not be guessed at).
+ *
+ * Only ever consulted for a managed image whose machine value is already unrecognised, which is what
+ * keeps it from reinterpreting an ordinary assembly: every override is a 16-bit XOR, so applied to a
+ * valid machine value it would happily produce a different valid one.
+ * @param machine The raw machine value, or null.
+ * @returns Returns the architecture label, or null.
+ */
+function readyToRunArchitecture(machine: number | null): string | null {
+  if (machine === null) {
+    return null;
+  }
+  for (const [, override] of R2R_MACHINE_OVERRIDES) {
+    const architecture: string = peArchitecture(machine ^ override);
+    if (architecture !== 'unknown') {
+      return architecture;
+    }
+  }
+  return null;
 }
 
 /**
@@ -291,6 +417,90 @@ function elfCodeOffset(bytes: Uint8Array, view: DataView): number | null {
     }
   }
   return null;
+}
+
+/**
+ * Resolves a Mach-O file's code offset: the `__text` section of the `__TEXT` segment, which is where
+ * a Mach-O keeps its machine code. Returns null when the file is not a thin Mach-O, or when the load
+ * commands do not describe that section.
+ *
+ * Unlike ELF and PE this does not follow an entry point. A Mach-O entry is `LC_MAIN`, whose `entryoff`
+ * is already a file offset into `__TEXT` — but a dynamic library has no `LC_MAIN` at all, and a
+ * NativeAOT binary's interesting code is not at its entry anyway. The section start is what the
+ * ribbon's Code button should land on in every case.
+ * @param view A view over the file's leading bytes.
+ * @returns Returns the code file offset, or null.
+ */
+function machoCodeOffset(view: DataView): number | null {
+  const magicBe: number | null = readU32(view, 0, false);
+  const magicLe: number | null = readU32(view, 0, true);
+  let littleEndian: boolean;
+  let magic: number;
+  if (magicBe === 0xfeedface || magicBe === 0xfeedfacf) {
+    littleEndian = false;
+    magic = magicBe;
+  } else if (magicLe === 0xfeedface || magicLe === 0xfeedfacf) {
+    littleEndian = true;
+    magic = magicLe;
+  } else {
+    return null;
+  }
+  const is64: boolean = magic === 0xfeedfacf;
+  const commandCount: number | null = readU32(view, 16, littleEndian);
+  if (commandCount === null) {
+    return null;
+  }
+  // The 64-bit header carries a trailing reserved word the 32-bit one does not.
+  let command: number = is64 ? 32 : 28;
+  for (let index: number = 0; index < commandCount; index += 1) {
+    const kind: number | null = readU32(view, command, littleEndian);
+    const size: number | null = readU32(view, command + 4, littleEndian);
+    if (kind === null || size === null || size <= 0) {
+      return null;
+    }
+    // LC_SEGMENT_64 (0x19) and LC_SEGMENT (0x01) share a layout up to their section count, differing
+    // only in the width of the address and size fields between.
+    const isSegment64: boolean = kind === 0x19;
+    if ((isSegment64 || kind === 0x01) && readName(view, command + 8) === '__TEXT') {
+      const sectionCount: number | null = readU32(
+        view,
+        command + (isSegment64 ? 64 : 48),
+        littleEndian,
+      );
+      const sections: number = command + (isSegment64 ? 72 : 56);
+      const sectionSize: number = isSegment64 ? 80 : 68;
+      for (let section: number = 0; section < (sectionCount ?? 0); section += 1) {
+        const start: number = sections + section * sectionSize;
+        if (readName(view, start) === '__text') {
+          return readU32(view, start + (isSegment64 ? 48 : 40), littleEndian);
+        }
+      }
+      return null;
+    }
+    command += size;
+  }
+  return null;
+}
+
+/**
+ * Reads a Mach-O fixed-width, NUL-padded 16-byte name field.
+ * @param view The data view.
+ * @param offset The byte offset of the field.
+ * @returns Returns the name, or an empty string when out of bounds.
+ */
+function readName(view: DataView, offset: number): string {
+  if (offset + 16 > view.byteLength) {
+    return '';
+  }
+  let name: string = '';
+  for (let index: number = 0; index < 16; index += 1) {
+    const byte: number = view.getUint8(offset + index);
+    if (byte === 0) {
+      break;
+    }
+    name += String.fromCharCode(byte);
+  }
+  return name;
 }
 
 /**

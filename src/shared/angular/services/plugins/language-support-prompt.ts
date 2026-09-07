@@ -1,5 +1,10 @@
 import { effect, inject, Service } from '@angular/core';
-import { PluginContribution, PluginSlot, PluginSummary } from '@shared/api/plugin-channels';
+import {
+  isLanguageContribution,
+  LanguagePluginSlot,
+  PluginContribution,
+  PluginSummary,
+} from '@shared/api/plugin-channels';
 import { Log } from '@shared/angular/services/log/log';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
 import { languageDisplayName } from './language-names';
@@ -114,11 +119,15 @@ export class LanguageSupportPrompt {
    * @param slot The slot to look for.
    * @returns Returns the uninstalled plugins providing the language, in catalogue order.
    */
-  private uninstalledFor(language: string, slot: PluginSlot): readonly PluginSummary[] {
+  private uninstalledFor(language: string, slot: LanguagePluginSlot): readonly PluginSummary[] {
     const serves: (plugin: PluginSummary) => boolean = (plugin: PluginSummary): boolean =>
       plugin.contributions.some(
         (contribution: PluginContribution): boolean =>
-          contribution.slot === slot && contribution.languages.includes(language),
+          // Narrowed rather than compared directly: `slot` is a variable, and comparing the union's
+          // discriminant against a variable does not narrow it — only a literal does.
+          isLanguageContribution(contribution) &&
+          contribution.slot === slot &&
+          contribution.languages.includes(language),
       );
     const all: readonly PluginSummary[] = this.plugins.plugins();
     const installed: boolean = all.some(

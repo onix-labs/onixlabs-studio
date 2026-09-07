@@ -87,6 +87,18 @@ jobs:
       - name: Build Electron main + preload
         run: npm run build:electron
 
+      # The managed-IL scenario drives the .NET decoder plugin, which is a framework-dependent
+      # per-RID executable rather than a JS bundle: without a runtime and a build for this platform
+      # the test declares itself skipped, so the SDK is what makes it actually run here. The
+      # zero-toolchain decoders (native, JVM) are built by `npm run e2e` itself.
+      - name: Set up .NET (for the managed-IL decoder plugin)
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build the .NET decoder plugin
+        run: node plugins/dotnet-decoder/build.mjs linux-x64
+
       - name: Run E2E suite
         run: xvfb-run --auto-servernum -- npm run e2e
 

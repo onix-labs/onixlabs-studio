@@ -1,14 +1,14 @@
-import { inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { Log } from '@shared/angular/services/log/log';
 import { Bridge } from '@shared/api/bridge';
 import { ContainerChannel } from '@shared/api/container-channels';
 import {
   ContainerEngineInfo,
   ContainerSummary,
-  DockerEvent,
-  DockerStatus,
+  ContainerEvent,
+  ContainerStatus,
   ImageSummary,
-} from '@shared/api/docker-types';
+} from '@shared/api/container-types';
 
 /**
  * The renderer client for the containers backend contribution (#391): a thin, typed wrapper over the
@@ -16,8 +16,8 @@ import {
  * `window.bridge` directly. Outside Electron (or before the backend answers) every call degrades to a
  * safe empty result, so callers need no environment checks.
  *
- * It speaks to whichever engine is in effect (#394), so nothing here is Docker-specific beyond
- * {@link launchDesktop}, which really does launch Docker Desktop.
+ * It speaks to whichever engine is in effect (#394), and since the engines themselves became plugins
+ * (#596) nothing here is Docker-specific at all.
  */
 @Service()
 export class ContainersClient {
@@ -84,18 +84,36 @@ export class ContainersClient {
    * Reports whether the container engine is reachable.
    * @returns Returns the engine status.
    */
-  public status(): Promise<DockerStatus> {
+  public status(): Promise<ContainerStatus> {
     return (
-      this.bridge?.invoke<DockerStatus>(ContainerChannel.Status) ??
+      this.bridge?.invoke<ContainerStatus>(ContainerChannel.Status) ??
       Promise.resolve({ available: false })
     );
   }
 
   /**
+   * Holds the first engine load, so a caller can wait for it rather than mistaking "not answered yet"
+   * for "no engines".
+   */
+  private readonly firstLoad: Promise<void>;
+
+  /**
    * Initializes the client, loading which container engines are present.
    */
   public constructor() {
-    void this.refreshEngines();
+    this.firstLoad = this.refreshEngines();
+  }
+
+  /**
+   * Waits for the first engine list to arrive.
+   *
+   * The distinction matters because an empty list means two opposite things: before the main process
+   * answers it means "not known yet", and after it means "no engine is installed" — which is what the
+   * empty state is about to tell the user (#595).
+   * @returns Returns a promise that resolves once the engines have been reported at least once.
+   */
+  public ready(): Promise<void> {
+    return this.firstLoad;
   }
 
   /**
@@ -112,16 +130,27 @@ export class ContainersClient {
     this.engines.asReadonly();
 
   /**
+   * Gets the engine in effect, or null before the main process has reported the engines (and outside
+   * Electron, where there are none). The surface uses it to name the engine it is talking to instead of
+   * naming one particular engine in its own copy.
+   */
+  public readonly engineInEffect: Signal<ContainerEngineInfo | null> = computed(
+    (): ContainerEngineInfo | null =>
+      this.engines().find((engine: ContainerEngineInfo): boolean => engine.inEffect) ?? null,
+  );
+
+  /**
    * Gets the command-line tool of the engine in effect, for the operations that are a terminal session
-   * rather than an API call. Falls back to `docker` before the engines have been reported, which is
-   * both the default engine and the overwhelmingly likely answer.
-   * @returns Returns the CLI binary name.
+   * rather than an API call.
+   *
+   * Empty when no engine is in effect, and deliberately not `docker`: the fallback made sense while
+   * Docker was compiled in and overwhelmingly likely, but an engine is now something the user installs,
+   * and guessing at a binary that may not exist would build a command that fails obscurely instead of
+   * an operation that is simply unavailable.
+   * @returns Returns the CLI path, or an empty string when no engine is in effect.
    */
   public engineCli(): string {
-    return (
-      this.engines().find((engine: ContainerEngineInfo): boolean => engine.inEffect)?.cli ??
-      'docker'
-    );
+    return this.engineInEffect()?.cli ?? '';
   }
 
   /**
@@ -151,12 +180,21 @@ export class ContainersClient {
   }
 
   /**
-   * Attempts to launch Docker Desktop through the operating system.
-   * @returns Returns true when the launch was issued (a no-op returning false outside Electron).
+   * Registers this renderer as a consumer of the backend's event stream, opening it if it was
+   * closed. Ref-counted in main: hold one while events are wanted and balance with
+   * {@link watchStop}.
+   * @returns Returns a promise resolving true when the watch was registered.
    */
-  public launchDesktop(): Promise<boolean> {
-    this.log.info('containers.client', 'Launching Docker Desktop');
-    return this.bridge?.invoke<boolean>(ContainerChannel.LaunchDesktop) ?? Promise.resolve(false);
+  public watchStart(): Promise<boolean> {
+    return this.bridge?.invoke<boolean>(ContainerChannel.WatchStart) ?? Promise.resolve(false);
+  }
+
+  /**
+   * Withdraws one {@link watchStart}; the backend closes the stream when the last consumer leaves.
+   * @returns Returns a promise resolving true when the withdrawal was registered.
+   */
+  public watchStop(): Promise<boolean> {
+    return this.bridge?.invoke<boolean>(ContainerChannel.WatchStop) ?? Promise.resolve(false);
   }
 
   /**
@@ -164,10 +202,10 @@ export class ContainersClient {
    * @param listener Receives each normalised event.
    * @returns Returns an unsubscribe function (a no-op outside Electron).
    */
-  public onEvents(listener: (event: DockerEvent) => void): () => void {
+  public onEvents(listener: (event: ContainerEvent) => void): () => void {
     return (
       this.bridge?.on(ContainerChannel.Events, (...args: unknown[]): void =>
-        listener(args[0] as DockerEvent),
+        listener(args[0] as ContainerEvent),
       ) ?? ((): void => undefined)
     );
   }

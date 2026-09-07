@@ -9,6 +9,10 @@ import {
 } from '../../../services/dock-layout/dock-floating';
 import { DockPanel } from '../../../services/dock-layout/dock-panel';
 import { DockPanelRegistry } from '../../../services/dock-layout/dock-panel-registry';
+import {
+  CoalescedPointerMoves,
+  coalescePointerMoves,
+} from '../../../services/dock-layout/pointer-coalesce';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
@@ -206,15 +210,20 @@ export class DockFloatingLayer {
   }
 
   /**
-   * Attaches a move handler to the document until the next mouse release.
+   * Attaches a move handler to the document until the next mouse release, coalesced to the frame
+   * rate — every floating move and resize rebuilds the windows array and re-renders the layer, and
+   * that work between paints is invisible (see {@link coalescePointerMoves}). The release flushes
+   * any unprocessed move first, so the gesture always ends exactly where the pointer did.
    * @param onMove The move handler.
    */
   private track(onMove: (move: MouseEvent) => void): void {
+    const coalesced: CoalescedPointerMoves = coalescePointerMoves(onMove);
     const onRelease: () => void = (): void => {
-      this.document.removeEventListener('mousemove', onMove);
+      this.document.removeEventListener('mousemove', coalesced.move);
       this.document.removeEventListener('mouseup', onRelease);
+      coalesced.flush();
     };
-    this.document.addEventListener('mousemove', onMove);
+    this.document.addEventListener('mousemove', coalesced.move);
     this.document.addEventListener('mouseup', onRelease);
   }
 }

@@ -317,6 +317,23 @@ describe('SystemMonitorView', () => {
     expect(view.selectedCount()).toBe(0);
   });
 
+  it('whenHidden_detachesTheLiveRecordStream_andReactivationCatchesUp', async () => {
+    await create([record({ id: 1 })]);
+    expect(fake.listener).not.toBeNull();
+    fixture.componentRef.setInput('isActive', false);
+    fixture.detectChanges();
+    expect(fake.listener).toBeNull();
+    // Records that land while hidden arrive through the reactivation reload, not the stream.
+    fake.records = [record({ id: 1 }), record({ id: 2 })];
+    const before: number = fake.queries.length;
+    fixture.componentRef.setInput('isActive', true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(fake.listener).not.toBeNull();
+    expect(fake.queries.length).toBeGreaterThan(before);
+    expect(view.records().map((r: LogRecord): number => r.id)).toEqual([1, 2]);
+  });
+
   it('whenActive_startsSamplingAndStopsWhenHidden', async () => {
     await create();
     expect(metrics.started).toBeGreaterThan(0);

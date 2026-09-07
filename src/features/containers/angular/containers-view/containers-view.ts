@@ -10,6 +10,7 @@ import {
   OnDestroy,
   Signal,
   signal,
+  untracked,
   WritableSignal,
 } from '@angular/core';
 import { Button } from '@shared/angular/components/forms/button/button';
@@ -20,7 +21,9 @@ import { PanelEdge } from '@shared/angular/components/panel-layout/panel-types';
 import { Terminal } from '@shared/angular/components/terminal/terminal';
 import { Log } from '@shared/angular/services/log/log';
 import { Icon } from '@shared/angular/icons/icon';
-import { ContainerSummary, ImageSummary } from '@shared/api/docker-types';
+import { ContainerSummary, ImageSummary } from '@shared/api/container-types';
+import { PluginSummary } from '@shared/api/plugin-channels';
+import { ContainerEnginePrompt } from '@shared/angular/services/plugins/container-engine-prompt';
 import { ContainerTerminals } from '../container-terminals/container-terminals';
 import {
   ContainersCommandHandler,
@@ -34,7 +37,11 @@ import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigg
  * The Containers tab: a thin dashboard over the containers backend contribution (#391). It lists
  * containers and images, starts/stops/removes a container, and stays live via the backend's event
  * push — so a `docker start` from the CLI reflects here without polling. When the engine is
- * unreachable it shows a "Docker isn't running" empty state rather than an error.
+ * unreachable it names the engine in effect in an empty state rather than showing an error.
+ *
+ * Nothing it says is written for one engine (#455): the copy names whichever engine is in effect, and
+ * the empty state offers the command that starts it. Studio does not start an engine itself — it used
+ * to launch Docker Desktop, the one engine it could, and that went when engines became plugins (#596).
  */
 @Component({
   selector: 'app-containers-view',
@@ -46,11 +53,11 @@ import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigg
 })
 export class ContainersView implements OnDestroy {
   /**
-   * How many times, and how far apart (ms), to poll the daemon for readiness after launching Docker
-   * Desktop — roughly a minute, which comfortably covers a cold start.
+   * What the engine is called before the main process has said which one is in effect. Only reachable
+   * outside Electron and in the moment before the engine list arrives, but the copy has to read as a
+   * sentence either way.
    */
-  private static readonly READINESS_ATTEMPTS: number = 30;
-  private static readonly READINESS_INTERVAL_MS: number = 2_000;
+  private static readonly UNKNOWN_ENGINE: string = 'container engine';
 
   /**
    * Gets the icon set, exposed for the template.
@@ -88,6 +95,11 @@ export class ContainersView implements OnDestroy {
   protected readonly terminals: ContainerTerminals = inject(ContainerTerminals);
 
   /**
+   * Holds the offer to install a container engine, raised when the tab finds none installed.
+   */
+  private readonly enginePrompt: ContainerEnginePrompt = inject(ContainerEnginePrompt);
+
+  /**
    * Gets the edges the terminal panel may dock to — the bottom by default, or a side.
    */
   protected readonly terminalEdges: readonly PanelEdge[] = ['bottom', 'right', 'left'];
@@ -122,15 +134,48 @@ export class ContainersView implements OnDestroy {
   protected readonly busy: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
-   * Holds whether Docker Desktop is being launched and the daemon awaited, so the empty state shows a
-   * "starting" affordance instead of the launch button.
+   * Gets the engine in effect's name as it reads inside a sentence ("Start Podman to…").
    */
-  protected readonly launching: WritableSignal<boolean> = signal<boolean>(false);
+  protected readonly engineLabel: Signal<string> = computed(
+    (): string =>
+      this.client.engineInEffect()?.displayName ?? `the ${ContainersView.UNKNOWN_ENGINE}`,
+  );
 
   /**
-   * Holds whether the view has been destroyed, so the readiness poll stops when the tab closes.
+   * Gets the engine in effect's name as it reads at the start of a sentence ("Podman isn't running").
    */
-  private destroyed: boolean = false;
+  protected readonly engineTitle: Signal<string> = computed(
+    (): string =>
+      this.client.engineInEffect()?.displayName ?? `The ${ContainersView.UNKNOWN_ENGINE}`,
+  );
+
+  /**
+   * Gets whether no container engine is installed at all, as opposed to one being installed and not
+   * running (#595).
+   *
+   * The two look identical from the outside — an empty dashboard — and need opposite things said about
+   * them: one is fixed by starting something, the other by installing something. The engine list is
+   * empty only in the first case, because an engine that is installed is described whether or not its
+   * socket answers.
+   */
+  protected readonly noEngineInstalled: Signal<boolean> = computed(
+    (): boolean => this.client.containerEngines().length === 0,
+  );
+
+  /**
+   * Gets the plugin the empty state offers to install, or null when none is available.
+   */
+  protected readonly engineCandidate: Signal<PluginSummary | null> = computed(
+    (): PluginSummary | null => this.enginePrompt.candidates()[0] ?? null,
+  );
+
+  /**
+   * Gets the command the user runs to start the engine themselves, or null when there is none to offer.
+   * Shown in place of a launch button for an engine the application cannot start.
+   */
+  protected readonly engineStartCommand: Signal<string | null> = computed(
+    (): string | null => this.client.engineInEffect()?.startCommand ?? null,
+  );
 
   /**
    * Gets whether a container is selected.
@@ -180,14 +225,24 @@ export class ContainersView implements OnDestroy {
     this.log.info('containers.view', 'Containers view created');
     void this.load();
 
+    // A hidden view's per-event reload paid two IPC round-trips for a table nobody could see; the
+    // event marks it stale instead, and reactivation reloads once.
     const unsubscribe: () => void = this.client.onEvents((): void => {
-      void this.load();
+      if (this.isActive()) {
+        void this.load();
+      } else {
+        this.staleWhileHidden = true;
+      }
     });
     inject(DestroyRef).onDestroy(unsubscribe);
 
     effect((): void => {
       if (this.isActive()) {
         this.commands.register(this.commandHandler);
+        if (this.staleWhileHidden) {
+          this.staleWhileHidden = false;
+          untracked((): void => void this.load());
+        }
       } else {
         this.commands.unregister(this.commandHandler);
       }
@@ -195,44 +250,16 @@ export class ContainersView implements OnDestroy {
   }
 
   /**
+   * Holds whether engine events arrived while the tab was hidden, so reactivation reloads once.
+   */
+  private staleWhileHidden: boolean = false;
+
+  /**
    * Deregisters the ribbon handler and stops any readiness poll when the tab closes.
    */
   public ngOnDestroy(): void {
     this.log.info('containers.view', 'Containers view destroyed');
-    this.destroyed = true;
     this.commands.unregister(this.commandHandler);
-  }
-
-  /**
-   * Launches Docker Desktop and then polls the daemon until it comes up (or a timeout), so the
-   * dashboard fills in on its own once Docker is ready. A no-op while already launching.
-   */
-  protected async startDocker(): Promise<void> {
-    if (this.launching()) {
-      return;
-    }
-    this.log.info('containers.view', 'Starting Docker and awaiting readiness');
-    this.launching.set(true);
-    try {
-      if (!(await this.client.launchDesktop())) {
-        this.log.warn('containers.view', 'Docker Desktop launch was not issued');
-        return;
-      }
-      for (let attempt: number = 0; attempt < ContainersView.READINESS_ATTEMPTS; attempt += 1) {
-        await this.delay(ContainersView.READINESS_INTERVAL_MS);
-        if (this.destroyed) {
-          return;
-        }
-        await this.load();
-        if (this.available() === true) {
-          this.log.info('containers.view', 'Docker became ready', attempt + 1);
-          return;
-        }
-      }
-      this.log.warn('containers.view', 'Docker did not become ready before timeout');
-    } finally {
-      this.launching.set(false);
-    }
   }
 
   /**
@@ -298,6 +325,16 @@ export class ContainersView implements OnDestroy {
    */
   protected refresh(): void {
     void this.load();
+  }
+
+  /**
+   * Installs the container engine the empty state offers, then reloads so the dashboard fills in
+   * without the user going looking for a refresh.
+   */
+  protected async installEngine(): Promise<void> {
+    await this.enginePrompt.installFirstCandidate();
+    await this.client.refreshEngines();
+    await this.load();
   }
 
   /**
@@ -427,28 +464,25 @@ export class ContainersView implements OnDestroy {
   }
 
   /**
-   * Resolves after the given delay.
-   * @param ms The delay in milliseconds.
-   * @returns Returns a promise that resolves once the delay elapses.
-   */
-  private delay(ms: number): Promise<void> {
-    return new Promise<void>((resolve: () => void): void => {
-      setTimeout(resolve, ms);
-    });
-  }
-
-  /**
    * Reads the daemon status and, when reachable, the container and image lists, dropping a selection
    * that no longer exists.
    * @returns Returns a promise that resolves once the snapshot has loaded.
    */
   private async load(): Promise<void> {
     this.log.trace('containers.view', 'Loading daemon snapshot');
+    // Awaited before anything is decided: an empty engine list means "not known yet" until the main
+    // process has answered once, and only then means "no engine is installed".
+    await this.client.ready();
     const available: boolean = (await this.client.status()).available;
     this.available.set(available);
     if (!available) {
       this.containers.set([]);
       this.images.set([]);
+      if (this.noEngineInstalled()) {
+        // Offered here rather than on construction, so the offer follows the discovery that there is
+        // nothing to talk to rather than the mere existence of the tab.
+        this.enginePrompt.offer();
+      }
       return;
     }
     const [containers, images]: [ContainerSummary[], ImageSummary[]] = await Promise.all([

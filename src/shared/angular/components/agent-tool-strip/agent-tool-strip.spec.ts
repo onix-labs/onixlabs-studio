@@ -18,6 +18,8 @@ describe('AgentToolStrip', () => {
   let newChats: number;
   let historyToggles: number;
   let tailRequests: number;
+  let topRequests: number;
+  let promptRequests: number;
   let running: WritableSignal<boolean>;
   let historyOpen: WritableSignal<boolean>;
   let hasMessages: WritableSignal<boolean>;
@@ -81,6 +83,8 @@ describe('AgentToolStrip', () => {
     newChats = 0;
     historyToggles = 0;
     tailRequests = 0;
+    topRequests = 0;
+    promptRequests = 0;
     running = signal<boolean>(false);
     historyOpen = signal<boolean>(false);
     hasMessages = signal<boolean>(true);
@@ -92,6 +96,8 @@ describe('AgentToolStrip', () => {
       stop: (): void => undefined,
       compact: (): void => undefined,
       toggleHistory: (): void => void (historyToggles += 1),
+      scrollToTop: (): void => void (topRequests += 1),
+      scrollToLastPrompt: (): void => void (promptRequests += 1),
       scrollToBottom: (): void => void (tailRequests += 1),
     };
     providerChoices = [];
@@ -160,6 +166,31 @@ describe('AgentToolStrip', () => {
     button('Scroll to bottom').click();
 
     expect(tailRequests).toBe(1);
+  });
+
+  it('scrollToTop_whenClicked_asksTheTranscriptForItsFirstMessage', () => {
+    button('Scroll to top').click();
+
+    expect(topRequests).toBe(1);
+    // The three jumps are separate requests: asking for the top must not also ask for the tail.
+    expect(tailRequests).toBe(0);
+    expect(promptRequests).toBe(0);
+  });
+
+  it('scrollToLastPrompt_whenClicked_asksTheTranscriptForTheLastThingTheUserSent', () => {
+    button('Scroll to last prompt').click();
+
+    expect(promptRequests).toBe(1);
+    expect(topRequests).toBe(0);
+    expect(tailRequests).toBe(0);
+  });
+
+  it('scrollButtons_askAgainOnEveryClick', () => {
+    // Each is an event rather than a state, so a second click has to scroll a second time.
+    button('Scroll to top').click();
+    button('Scroll to top').click();
+
+    expect(topRequests).toBe(2);
   });
 
   it('engine_whenProvidersLoad_offersOneFieldGroupingModelsByProvider', () => {

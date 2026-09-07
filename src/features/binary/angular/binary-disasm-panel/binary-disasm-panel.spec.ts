@@ -1,9 +1,11 @@
-import { signal, WritableSignal } from '@angular/core';
+import { computed, signal, Signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { DecodedInstruction } from '@shared/api/binary-channels';
+import { CodeListing, listingFromInstructions } from '@shared/api/code-listing';
 import { BinaryDocumentEntry, BinarySelection } from '../binary-document/binary-document';
-import { BinaryFormat } from '../binary-format/binary-format';
+import { BinaryFormat, formatKey } from '../binary-format/binary-format';
 import { BinaryDisasmPanel } from './binary-disasm-panel';
+import { LineRow } from '@shared/angular/services/decoders/listing-content';
 
 /**
  * Exposes the protected listing state, so the built text and line map can be asserted directly (the
@@ -12,7 +14,7 @@ import { BinaryDisasmPanel } from './binary-disasm-panel';
 interface BinaryDisasmPanelInternals {
   content(): {
     text: string;
-    lines: readonly { startOffset: number; byteLength: number }[];
+    lines: readonly (LineRow | null)[];
   };
 }
 
@@ -46,8 +48,17 @@ function fakeDocument(format: BinaryFormat): FakeDocument {
     readonly DecodedInstruction[]
   >([]);
   const formatSignal: WritableSignal<BinaryFormat> = signal<BinaryFormat>(format);
+  // Mirrors the real document: the listing is what a decoder returned, and a format nothing decodes
+  // simply has none.
+  const listing: Signal<CodeListing | null> = computed((): CodeListing | null => {
+    const decoded: readonly DecodedInstruction[] = instructions();
+    return formatKey(formatSignal()) === null || decoded.length === 0
+      ? null
+      : listingFromInstructions(decoded, 'x64', null);
+  });
   const entry: BinaryDocumentEntry = {
     instructions,
+    listing,
     format: formatSignal,
     selection: signal<BinarySelection | null>(null),
     cursor: signal<number | null>(null),
@@ -95,8 +106,8 @@ describe('BinaryDisasmPanel', () => {
 
     expect(internals.content().text).toBe('00000010  mov rax, rbx\n00000013  ret');
     expect(internals.content().lines).toEqual([
-      { startOffset: 16, byteLength: 3 },
-      { startOffset: 19, byteLength: 1 },
+      { fileOffset: 16, byteLength: 3 },
+      { fileOffset: 19, byteLength: 1 },
     ]);
   });
 
@@ -118,16 +129,45 @@ describe('BinaryDisasmPanel', () => {
     expect(internals.content().text).toBe('00000000  nop');
   });
 
-  it('render_showsTheEmptyNoteOnlyForFormatsWithoutNativeDisassembly', async () => {
-    const document: FakeDocument = fakeDocument({ kind: 'unknown' });
-    const fixture: ComponentFixture<BinaryDisasmPanel> = await create(document);
+  it('render_saysNothingRecognisesAnUnknownFormat', async () => {
+    const fixture: ComponentFixture<BinaryDisasmPanel> = await create(
+      fakeDocument({ kind: 'unknown' }),
+    );
     const host: HTMLElement = fixture.nativeElement as HTMLElement;
-    expect(host.querySelector('.disasm__empty')?.textContent).toContain('No native disassembly');
+    expect(host.querySelector('.disasm__empty')?.textContent).toContain('No listing available');
+  });
 
-    document.format.set({ kind: 'pe', architecture: 'x64', managed: false });
-    await fixture.whenStable();
+  it('render_namesARecognisedFormatWithNoDecoderInstalled', async () => {
+    // Studio ships no decoder, so a recognised format with nothing installed says so rather than
+    // showing an empty pane — which is the whole reason the empty state exists.
+    const fixture: ComponentFixture<BinaryDisasmPanel> = await create(
+      fakeDocument({ kind: 'pe', architecture: 'x64', managed: false }),
+    );
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    expect(host.querySelector('.disasm__empty')?.textContent).toContain('PE · x64');
+  });
 
-    expect(host.querySelector('.disasm__empty')).toBeNull();
+  it('render_saysNothingOnceThereIsAListing', async () => {
+    const document: FakeDocument = fakeDocument({
+      kind: 'pe',
+      architecture: 'x64',
+      managed: false,
+    });
+    document.instructions.set([
+      { startOffset: 0, byteLength: 1, mnemonic: 'nop', operands: '', raw: [0x90] },
+    ]);
+    const fixture: ComponentFixture<BinaryDisasmPanel> = await create(document);
+    expect((fixture.nativeElement as HTMLElement).querySelector('.disasm__empty')).toBeNull();
+  });
+
+  it('render_namesTheFormatWhenNoDecoderCanDecodeIt', async () => {
+    // A JVM class is recognised but nothing in core decodes it, so the note names the format rather
+    // than saying nothing at all.
+    const fixture: ComponentFixture<BinaryDisasmPanel> = await create(
+      fakeDocument({ kind: 'jvm' }),
+    );
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    expect(host.querySelector('.disasm__empty')?.textContent).toContain('JVM class');
   });
 
   it('close_clickEmitsTheClosedOutput', async () => {

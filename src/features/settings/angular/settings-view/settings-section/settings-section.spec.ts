@@ -1,5 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
+import { Display } from '@shared/angular/services/display/display';
 import { findSection } from '@shared/angular/services/settings/settings-registry';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { ACCENT_PRESETS } from '@shared/angular/services/theme/theme';
@@ -15,6 +16,13 @@ describe('SettingsSection', () => {
     }).compileComponents();
 
     fixture = TestBed.createComponent(SettingsSection);
+  });
+
+  afterEach(() => {
+    // The Display service writes these to the shared document root; specs run without isolation, so
+    // leaving them set would follow the suite into the next file.
+    document.documentElement.removeAttribute('data-corners');
+    document.documentElement.removeAttribute('data-reduced-gpu');
   });
 
   /**
@@ -50,6 +58,36 @@ describe('SettingsSection', () => {
 
     expect(element.textContent).toContain('Application menu');
     expect(element.textContent).not.toContain('Application menu appearance');
+  });
+
+  it('render_whenAForeignOwnedConditionFails_leavesTheDependentSettingOut', async () => {
+    // The workspace texture is painted only at the full graphics-acceleration level, so below it the
+    // control goes rather than sitting there having no effect. The condition names a Display-owned
+    // key, which resolves through the binding layer rather than the settings store.
+    TestBed.inject(Display).setGraphicsAcceleration('limited');
+
+    const element: HTMLElement = await render('appearance');
+
+    expect(element.textContent).toContain('Graphics Acceleration');
+    expect(element.textContent).not.toContain('Workspace Texture');
+  });
+
+  it('render_whenAForeignOwnedConditionHolds_showsTheDependentSetting', async () => {
+    TestBed.inject(Display).setGraphicsAcceleration('full');
+
+    const element: HTMLElement = await render('appearance');
+
+    expect(element.textContent).toContain('Workspace Texture');
+  });
+
+  it('render_whenAnAutomaticLevelResolvesToTheConditionsValue_showsTheDependentSetting', async () => {
+    // The condition tests the resolved level, not the word `auto`: on a system with no reduced-effects
+    // recommendation the automatic mode is the full level, so the texture applies and must be offered.
+    TestBed.inject(Display).setGraphicsAcceleration('auto');
+
+    const element: HTMLElement = await render('appearance');
+
+    expect(element.textContent).toContain('Workspace Texture');
   });
 
   it('render_whenASettingsConditionHolds_showsIt', async () => {
@@ -99,19 +137,36 @@ describe('SettingsSection', () => {
   });
 
   it('render_whenAppearanceSection_rendersThemeOwnedRowsAndAccentPicker', async () => {
-    // Accent, theme, ribbon alignment, modern UI features, workspace texture, hardware acceleration.
+    // Graphics acceleration, theme, accent, ribbon alignment, workspace texture.
     const element: HTMLElement = await render('appearance');
-    expect(element.querySelectorAll('app-setting-row').length).toBe(6);
+    expect(element.querySelectorAll('app-setting-row').length).toBe(5);
     // The accent picker renders a dropdown with an option per preset plus the trailing Custom entry.
     expect(element.querySelector('app-accent-picker')).toBeTruthy();
     expect(element.querySelectorAll('app-accent-picker option').length).toBe(
       ACCENT_PRESETS.length + 1,
     );
-    expect(element.querySelector('app-toggle')).toBeTruthy();
+  });
+
+  it('render_whenAppearanceSection_keepsTheChosenSettingOrder', async () => {
+    // The section renders in registry order, and this order was chosen deliberately: the setting that
+    // governs what the rest of them can do comes first. Nothing else pins it, so an edit that
+    // reordered the registry entries would otherwise shuffle the page silently.
+    const element: HTMLElement = await render('appearance');
+    const titles: string[] = Array.from(element.querySelectorAll('app-setting-row')).map(
+      (row: Element): string => row.querySelector('.setting-row__label')?.textContent?.trim() ?? '',
+    );
+
+    expect(titles).toEqual([
+      'Graphics Acceleration',
+      'Theme',
+      'Accent',
+      'Ribbon Alignment',
+      'Workspace Texture',
+    ]);
   });
 
   it('render_whenSettingHasDynamicDescription_usesTheResolvedText', async () => {
     const element: HTMLElement = await render('appearance');
-    expect(element.textContent).toContain('Recommended for this system');
+    expect(element.textContent).toContain('Automatic resolves to');
   });
 });

@@ -1,3 +1,4 @@
+import { CodeListing } from '@shared/api/code-listing';
 import { TestBed } from '@angular/core/testing';
 import { Bridge } from '@shared/api/bridge';
 import { BinaryPatch, BinarySpan, WorkspaceChannel } from '@shared/api/workspace-channels';
@@ -178,10 +179,12 @@ describe('BinaryDocuments', () => {
   it('instructionRangeAt_returnsTheRangeOfTheInstructionCoveringAnOffset', async () => {
     const entry: BinaryDocumentEntry = documents.get(documents.open('/ws/blob.bin').id)!;
     await flush();
-    entry.instructions.set([
-      { startOffset: 10, byteLength: 3, mnemonic: 'mov', operands: 'a, b', raw: [0, 0, 0] },
-      { startOffset: 13, byteLength: 2, mnemonic: 'add', operands: 'c', raw: [0, 0] },
-    ]);
+    entry.listing.set(
+      listingOf([
+        { offset: 10, length: 3, mnemonic: 'mov' },
+        { offset: 13, length: 2, mnemonic: 'add' },
+      ]),
+    );
     expect(entry.instructionRangeAt(11)).toEqual({ start: 10, end: 13 });
     expect(entry.instructionRangeAt(13)).toEqual({ start: 13, end: 15 });
     expect(entry.instructionRangeAt(99)).toBeNull();
@@ -380,3 +383,33 @@ describe('BinaryDocuments', () => {
     expect(capturedWrites).toEqual([]);
   });
 });
+
+/**
+ * Builds a decoder-shaped listing over some instructions, for tests that need the document to have
+ * decoded something.
+ * @param rows The instructions, as offset/length/mnemonic triples.
+ * @returns Returns the listing.
+ */
+function listingOf(
+  rows: readonly { offset: number; length: number; mnemonic: string }[],
+): CodeListing {
+  return {
+    language: 'x64',
+    addressing: 'file-offset',
+    origin: { kind: 'buffer', path: null },
+    sections: [
+      {
+        id: 'native',
+        title: '',
+        rows: rows.map((row) => ({
+          kind: 'instruction' as const,
+          address: row.offset,
+          fileOffset: row.offset,
+          bytes: new Array<number>(row.length).fill(0),
+          mnemonic: row.mnemonic,
+          operands: '',
+        })),
+      },
+    ],
+  };
+}

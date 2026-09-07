@@ -122,6 +122,14 @@ export class Button {
   public readonly iconRotation: InputSignal<number> = input<number>(0);
 
   /**
+   * Gets whether the {@link icon} turns continuously — for a trigger whose glyph depicts ongoing work
+   * elsewhere (the composer's background-task menu). Unlike {@link loading} this is presentation
+   * only: the button is not busy, stays fully interactive, and the spin never pauses on hover. The
+   * button owns the animation so no caller hand-rolls spin keyframes around a spinner glyph.
+   */
+  public readonly iconSpin: InputSignal<boolean> = input<boolean>(false);
+
+  /**
    * Gets the accessible name, for a button whose label is a glyph. When absent the visible label
    * names the button, as it should.
    */

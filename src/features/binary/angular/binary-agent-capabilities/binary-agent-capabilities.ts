@@ -17,7 +17,7 @@ import {
   BinaryDocuments,
   BinarySelection,
 } from '../binary-document/binary-document';
-import { describeFormat, disassemblyArchitecture } from '../binary-format/binary-format';
+import { assemblerArchitecture, describeFormat, formatKey } from '../binary-format/binary-format';
 
 /**
  * The result of a binary read capability: whether a binary document was available to read, and the
@@ -131,7 +131,7 @@ export class BinaryAgentCapabilities {
       return { available: false, text: '' };
     }
     await document.whenReady();
-    const architecture: string | null = disassemblyArchitecture(document.format());
+    const architecture: string | null = formatKey(document.format());
     const cursor: number | null = document.cursor();
     const selection: BinarySelection | null = document.selection();
     const lines: string[] = [
@@ -367,7 +367,7 @@ export class BinaryAgentCapabilities {
     if (length !== null && (!Number.isInteger(length) || length <= 0)) {
       return { ok: false, text: 'When given, length must be a positive whole number of bytes.' };
     }
-    const architecture: string | null = disassemblyArchitecture(document.format());
+    const architecture: string | null = assemblerArchitecture(document.format());
     if (architecture === null) {
       return {
         ok: false,

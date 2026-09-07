@@ -12,6 +12,8 @@ import type {
   AiEffort,
   AiEvent,
   AiStopTaskRequest,
+  AiTextEvent,
+  AiThinkingEvent,
   AiImageRef,
   AiInputChoice,
   AiRemoteControlMode,
@@ -116,6 +118,12 @@ const MAX_SESSION_LIFETIME_MS: number = 7 * 24 * 60 * 60 * 1000;
  * turn.
  */
 const MAX_LIVE_SESSIONS: number = 8;
+
+/**
+ * The window streamed deltas merge over before the renderer sees them (see `emit`). Matches the
+ * renderer transcript's own flush cadence, so batching here costs no visible latency there.
+ */
+const DELTA_FLUSH_MS: number = 33;
 
 /**
  * Kill switch for persistent live sessions (#327). When true, a live-harness turn for a known agent
@@ -506,6 +514,22 @@ export class AiManager {
         this.closeSession(id);
       }
     });
+    ipcMain.handle(AiChannel.StopAgent, (_event: IpcMainInvokeEvent, id: unknown): void => {
+      logger.trace('AiManager.register', 'StopAgent invoked');
+      if (typeof id === 'string') {
+        this.stopAgent(id);
+      }
+    });
+    ipcMain.handle(
+      AiChannel.SetSessionRemoteControl,
+      (_event: IpcMainInvokeEvent, id: unknown, mode: unknown): void => {
+        logger.trace('AiManager.register', 'SetSessionRemoteControl invoked');
+        // The renderer is untrusted: only a well-formed id and a known mode reach the session.
+        if (typeof id === 'string' && (mode === 'off' || mode === 'mirror' || mode === 'control')) {
+          this.setSessionRemoteControl(id, mode);
+        }
+      },
+    );
     ipcMain.handle(AiChannel.GetRemoteNotifications, (): boolean =>
       readRemoteNotificationsEnabled(),
     );
@@ -540,6 +564,11 @@ export class AiManager {
       'AiManager.disposeAll',
       `Shutting down: aborting ${this.runs.size} run(s) and closing ${this.liveSessions.size} live session(s)`,
     );
+    if (this.deltaFlushTimer !== null) {
+      clearTimeout(this.deltaFlushTimer);
+      this.deltaFlushTimer = null;
+    }
+    this.flushPendingDelta();
     for (const controller of this.runs.values()) {
       controller.abort();
     }
@@ -1103,6 +1132,54 @@ export class AiManager {
   }
 
   /**
+   * Panic-stops an agent's held-open live session. The per-run abort cannot reach a turn no run is
+   * awaiting (a task- or peer-driven adopted turn — its launching run has already finished, so there
+   * is no controller registered under its request id), which left Stop dead exactly when a background
+   * task hung. The session's own graduated stop covers those: tasks stopped, turn interrupted, and
+   * the session closed outright if the harness does not respond. A provider without the graduated
+   * path gets the outright close, which kills its subprocess and settles everything; either way the
+   * conversation's next turn reopens and resumes. No-op when no session is open.
+   * @param agentSessionId The agent conversation whose session to stop.
+   */
+  private stopAgent(agentSessionId: string): void {
+    const entry: LiveSessionEntry | undefined = this.liveSessions.get(agentSessionId);
+    if (entry === undefined) {
+      logger.debug('AiManager.stopAgent', `No live session to panic-stop for ${agentSessionId}`);
+      return;
+    }
+    logger.warn('AiManager.stopAgent', `Panic stop for session ${agentSessionId}`);
+    if (entry.session.panicStop !== undefined) {
+      entry.session.panicStop();
+    } else {
+      this.dropSession(agentSessionId, entry);
+    }
+  }
+
+  /**
+   * Re-aims a held-open live session's Remote Control exposure (#331) in place, so a toggle (or a
+   * posture change) lands immediately — even mid-run — instead of waiting for a session reopen that a
+   * held-open harness never performs. A no-op when no session is open (the next turn's open applies
+   * the requested mode instead) or the session's provider does not implement the feature.
+   * @param agentSessionId The agent conversation whose session to re-aim.
+   * @param mode The remote-control mode the session should now be exposed at.
+   */
+  private setSessionRemoteControl(agentSessionId: string, mode: AiRemoteControlMode): void {
+    const entry: LiveSessionEntry | undefined = this.liveSessions.get(agentSessionId);
+    if (entry?.session.setRemoteControl === undefined) {
+      logger.debug(
+        'AiManager.setSessionRemoteControl',
+        `No live session able to re-aim remote control for ${agentSessionId}`,
+      );
+      return;
+    }
+    logger.info(
+      'AiManager.setSessionRemoteControl',
+      `Re-aiming remote control to '${mode}' on session ${agentSessionId}`,
+    );
+    entry.session.setRemoteControl(mode);
+  }
+
+  /**
    * Ends a run: drops its controller and emits a terminal status event.
    * @param requestId The run's identifier.
    * @param state The terminal state.
@@ -1222,10 +1299,91 @@ export class AiManager {
   }
 
   /**
-   * Sends an event to the renderer.
+   * Holds the delta merged in the open flush window: the first event of its stream (whose identity
+   * fields tag the merged send) and the concatenated delta text.
+   */
+  private pendingDelta: { readonly base: AiTextEvent | AiThinkingEvent; delta: string } | null =
+    null;
+
+  /**
+   * Holds the open delta flush window's timer, or null when no window is open.
+   */
+  private deltaFlushTimer: NodeJS.Timeout | null = null;
+
+  /**
+   * Sends an event to the renderer, coalescing streamed deltas.
+   *
+   * The AI-SDK and Codex providers emit one event per model token; each used to be its own
+   * `webContents.send` — a structured clone and a renderer wakeup per token, which the renderer
+   * then buffered onto its own 33ms flush anyway. Delta events (text and thinking) now ride a
+   * matching window in main: the first sends immediately (first-token latency stays zero), the
+   * flood behind it merges into one event per window, and any non-delta event flushes the merged
+   * delta first so ordering is exactly what the provider emitted. The Claude provider emits whole
+   * messages, not tokens, and is unaffected.
    * @param event The event to send.
    */
   private emit(event: AiEvent): void {
+    if (event.kind === 'text' || event.kind === 'thinking') {
+      this.emitDelta(event);
+      return;
+    }
+    this.flushPendingDelta();
+    this.send(event);
+  }
+
+  /**
+   * Sends or merges one streamed delta (see {@link emit}).
+   * @param event The delta event.
+   */
+  private emitDelta(event: AiTextEvent | AiThinkingEvent): void {
+    if (this.deltaFlushTimer === null) {
+      // Leading edge: send now, open the window.
+      this.send(event);
+      this.deltaFlushTimer = setTimeout((): void => {
+        this.deltaFlushTimer = null;
+        this.flushPendingDelta();
+      }, DELTA_FLUSH_MS);
+      return;
+    }
+    const pending: { readonly base: AiTextEvent | AiThinkingEvent; delta: string } | null =
+      this.pendingDelta;
+    // Deltas merge only within one stream: same run, same kind, same sub-agent lane, same message.
+    if (
+      pending !== null &&
+      (pending.base.requestId !== event.requestId ||
+        pending.base.kind !== event.kind ||
+        pending.base.parentToolId !== event.parentToolId ||
+        (pending.base.kind === 'text' &&
+          event.kind === 'text' &&
+          pending.base.messageUuid !== event.messageUuid))
+    ) {
+      this.flushPendingDelta();
+    }
+    if (this.pendingDelta === null) {
+      this.pendingDelta = { base: event, delta: event.delta };
+    } else {
+      this.pendingDelta.delta += event.delta;
+    }
+  }
+
+  /**
+   * Sends whatever delta has merged in the open window, if any.
+   */
+  private flushPendingDelta(): void {
+    const pending: { readonly base: AiTextEvent | AiThinkingEvent; delta: string } | null =
+      this.pendingDelta;
+    if (pending === null) {
+      return;
+    }
+    this.pendingDelta = null;
+    this.send({ ...pending.base, delta: pending.delta });
+  }
+
+  /**
+   * Sends an event to the renderer.
+   * @param event The event to send.
+   */
+  private send(event: AiEvent): void {
     this.windowGetter()?.webContents.send(AiChannel.Event, event);
   }
 

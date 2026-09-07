@@ -1,5 +1,5 @@
 {
-  "revision": 4,
+  "revision": 7,
   "plugins": [
     {
       "id": "pyright",
@@ -405,6 +405,388 @@
           }
         ]
       }
+    },
+    {
+      "id": "onixlabs.native-decoder",
+      "name": "Native Disassembler",
+      "description": "Disassembles native machine code (x86, x64, ARM, ARM64) using Capstone.",
+      "version": "1.0.0",
+      "apiVersion": "1.4.0",
+      "detail": "Decodes the machine code inside PE, ELF, Mach-O and MS-DOS binaries. Studio ships no decoder of its own, so this provides the assembly listing the binary editor shows.",
+      "provision": {
+        "kind": "archive",
+        "downloads": {
+          "darwin-arm64": {
+            "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/native-decoder-1.0.0.tar.gz",
+            "sha256": "1de77c3e58bece779e0625c4710ffcf0ca1567c3417ffb1deb2e085f10637268",
+            "archive": "tar.gz",
+            "executablePath": "native-decoder/main.js"
+          },
+          "darwin-x64": {
+            "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/native-decoder-1.0.0.tar.gz",
+            "sha256": "1de77c3e58bece779e0625c4710ffcf0ca1567c3417ffb1deb2e085f10637268",
+            "archive": "tar.gz",
+            "executablePath": "native-decoder/main.js"
+          },
+          "linux-x64": {
+            "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/native-decoder-1.0.0.tar.gz",
+            "sha256": "1de77c3e58bece779e0625c4710ffcf0ca1567c3417ffb1deb2e085f10637268",
+            "archive": "tar.gz",
+            "executablePath": "native-decoder/main.js"
+          },
+          "linux-arm64": {
+            "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/native-decoder-1.0.0.tar.gz",
+            "sha256": "1de77c3e58bece779e0625c4710ffcf0ca1567c3417ffb1deb2e085f10637268",
+            "archive": "tar.gz",
+            "executablePath": "native-decoder/main.js"
+          },
+          "win32-x64": {
+            "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/native-decoder-1.0.0.tar.gz",
+            "sha256": "1de77c3e58bece779e0625c4710ffcf0ca1567c3417ffb1deb2e085f10637268",
+            "archive": "tar.gz",
+            "executablePath": "native-decoder/main.js"
+          }
+        }
+      },
+      "contributes": {
+        "decoders": [
+          {
+            "id": "onixlabs.native-decoder",
+            "displayName": "Capstone",
+            "formats": [
+              "pe/x86",
+              "pe/x64",
+              "pe/arm",
+              "pe/arm64",
+              "mz/x86-16",
+              "elf/x86",
+              "elf/x64",
+              "elf/arm",
+              "elf/arm64",
+              "macho/x86",
+              "macho/x64",
+              "macho/arm",
+              "macho/arm64"
+            ],
+            "priority": 100,
+            "command": {
+              "kind": "node"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "onixlabs.jvm-decoder",
+      "name": "JVM Bytecode Decoder",
+      "description": "Shows the bytecode inside Java class files, method by method.",
+      "version": "1.0.0",
+      "apiVersion": "1.4.0",
+      "detail": "Pure TypeScript, so it needs no JVM installed. Source line numbers appear when the class was compiled with -g.",
+      "provision": {
+        "kind": "archive",
+        "downloads": {
+          "darwin-arm64": {
+            "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/jvm-decoder-1.0.0.tar.gz",
+            "sha256": "33324391bb7d604c37e8519c412e76d2dd2172083a68732021f0b4637a766a38",
+            "archive": "tar.gz",
+            "executablePath": "jvm-decoder/main.js"
+          },
+          "darwin-x64": {
+            "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/jvm-decoder-1.0.0.tar.gz",
+            "sha256": "33324391bb7d604c37e8519c412e76d2dd2172083a68732021f0b4637a766a38",
+            "archive": "tar.gz",
+            "executablePath": "jvm-decoder/main.js"
+          },
+          "linux-x64": {
+            "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/jvm-decoder-1.0.0.tar.gz",
+            "sha256": "33324391bb7d604c37e8519c412e76d2dd2172083a68732021f0b4637a766a38",
+            "archive": "tar.gz",
+            "executablePath": "jvm-decoder/main.js"
+          },
+          "linux-arm64": {
+            "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/jvm-decoder-1.0.0.tar.gz",
+            "sha256": "33324391bb7d604c37e8519c412e76d2dd2172083a68732021f0b4637a766a38",
+            "archive": "tar.gz",
+            "executablePath": "jvm-decoder/main.js"
+          },
+          "win32-x64": {
+            "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/jvm-decoder-1.0.0.tar.gz",
+            "sha256": "33324391bb7d604c37e8519c412e76d2dd2172083a68732021f0b4637a766a38",
+            "archive": "tar.gz",
+            "executablePath": "jvm-decoder/main.js"
+          }
+        }
+      },
+      "contributes": {
+        "decoders": [
+          {
+            "id": "onixlabs.jvm-decoder",
+            "displayName": "JVM Bytecode Decoder",
+            "formats": ["jvm"],
+            "priority": 100,
+            "command": {
+              "kind": "node"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "onixlabs.wasm-decoder",
+      "name": "WebAssembly Decoder",
+      "description": "Shows the instructions inside WebAssembly modules, function by function.",
+      "version": "1.0.0",
+      "apiVersion": "1.4.0",
+      "detail": "Pure TypeScript, so it needs no toolchain installed.",
+      "provision": {
+        "kind": "archive",
+        "downloads": {
+          "darwin-arm64": {
+            "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/wasm-decoder-1.0.0.tar.gz",
+            "sha256": "93d8aaf2cf139d3811f44c780e92a3ba3316481a57078a2c2e77af3b7383a672",
+            "archive": "tar.gz",
+            "executablePath": "wasm-decoder/main.js"
+          },
+          "darwin-x64": {
+            "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/wasm-decoder-1.0.0.tar.gz",
+            "sha256": "93d8aaf2cf139d3811f44c780e92a3ba3316481a57078a2c2e77af3b7383a672",
+            "archive": "tar.gz",
+            "executablePath": "wasm-decoder/main.js"
+          },
+          "linux-x64": {
+            "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/wasm-decoder-1.0.0.tar.gz",
+            "sha256": "93d8aaf2cf139d3811f44c780e92a3ba3316481a57078a2c2e77af3b7383a672",
+            "archive": "tar.gz",
+            "executablePath": "wasm-decoder/main.js"
+          },
+          "linux-arm64": {
+            "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/wasm-decoder-1.0.0.tar.gz",
+            "sha256": "93d8aaf2cf139d3811f44c780e92a3ba3316481a57078a2c2e77af3b7383a672",
+            "archive": "tar.gz",
+            "executablePath": "wasm-decoder/main.js"
+          },
+          "win32-x64": {
+            "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/wasm-decoder-1.0.0.tar.gz",
+            "sha256": "93d8aaf2cf139d3811f44c780e92a3ba3316481a57078a2c2e77af3b7383a672",
+            "archive": "tar.gz",
+            "executablePath": "wasm-decoder/main.js"
+          }
+        }
+      },
+      "contributes": {
+        "decoders": [
+          {
+            "id": "onixlabs.wasm-decoder",
+            "displayName": "WebAssembly Decoder",
+            "formats": ["wasm"],
+            "priority": 100,
+            "command": {
+              "kind": "node"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "onixlabs.dotnet-decoder",
+      "name": ".NET IL Decoder",
+      "description": "Shows the IL inside managed .NET assemblies, method by method.",
+      "version": "1.0.0",
+      "apiVersion": "1.4.0",
+      "detail": "Reads ECMA-335 metadata, so it needs the whole assembly rather than the visible range. Needs the .NET runtime installed. Large assemblies are truncated to the first 2000 methods.",
+      "provision": {
+        "kind": "archive",
+        "downloads": {
+          "darwin-arm64": {
+            "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/dotnet-decoder-1.0.0-darwin-arm64.tar.gz",
+            "sha256": "0bac0110949cc017e71389b81a3579088657b746748aa184a254ef575dbc5384",
+            "archive": "tar.gz",
+            "executablePath": "dotnet-decoder/dotnet-decoder"
+          },
+          "darwin-x64": {
+            "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/dotnet-decoder-1.0.0-darwin-x64.tar.gz",
+            "sha256": "985fe1130173d182a0a61dbb0f6df0a8eec2644838e8367c37ea511841e07950",
+            "archive": "tar.gz",
+            "executablePath": "dotnet-decoder/dotnet-decoder"
+          },
+          "linux-x64": {
+            "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/dotnet-decoder-1.0.0-linux-x64.tar.gz",
+            "sha256": "88d5b267d14489eac6eaa6ad4e3cf73e1889bdabca12ab7e2ab4ed6b87f2daa3",
+            "archive": "tar.gz",
+            "executablePath": "dotnet-decoder/dotnet-decoder"
+          },
+          "linux-arm64": {
+            "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/dotnet-decoder-1.0.0-linux-arm64.tar.gz",
+            "sha256": "f3a1346f1a5bdb29e2ccec3b389a0dddef5643357144eeda9f23b220d0c29699",
+            "archive": "tar.gz",
+            "executablePath": "dotnet-decoder/dotnet-decoder"
+          },
+          "win32-x64": {
+            "url": "https://github.com/onix-labs/onixlabs-studio/releases/download/decoders-v1.0.0/dotnet-decoder-1.0.0-win32-x64.tar.gz",
+            "sha256": "c962f3a04b315f71f823764bdcfede7dc6dc671c1121daf76582b6ed72a68fec",
+            "archive": "tar.gz",
+            "executablePath": "dotnet-decoder/dotnet-decoder.exe"
+          }
+        }
+      },
+      "contributes": {
+        "decoders": [
+          {
+            "id": "onixlabs.dotnet-decoder",
+            "displayName": "ICSharpCode.Decompiler",
+            "formats": ["pe-managed"],
+            "priority": 100,
+            "command": {
+              "kind": "executable"
+            }
+          }
+        ]
+      },
+      "requires": [
+        {
+          "runtime": "dotnet"
+        }
+      ]
+    },
+    {
+      "id": "docker-engine",
+      "name": "Docker",
+      "description": "Talk to a Docker-compatible container engine over its local socket.",
+      "detail": "Installs only the `docker` command-line client. Studio speaks to the engine over its socket, so this does not install or run a container engine itself.",
+      "version": "29.8.0",
+      "apiVersion": "1.6.0",
+      "provision": {
+        "kind": "archive",
+        "downloads": {
+          "darwin-arm64": {
+            "url": "https://download.docker.com/mac/static/stable/aarch64/docker-29.8.0.tgz",
+            "sha256": "3f37afe51f8f53f224192099a76a454a62eb6100d426738da17fdf8472cf4b5f",
+            "archive": "tar.gz",
+            "executablePath": "docker/docker",
+            "members": ["docker/docker"]
+          },
+          "darwin-x64": {
+            "url": "https://download.docker.com/mac/static/stable/x86_64/docker-29.8.0.tgz",
+            "sha256": "aeb74337d43dc9f863d056760e156daa71f9462ffdc0f836a14f1528fa1f0f13",
+            "archive": "tar.gz",
+            "executablePath": "docker/docker",
+            "members": ["docker/docker"]
+          },
+          "linux-x64": {
+            "url": "https://download.docker.com/linux/static/stable/x86_64/docker-29.8.0.tgz",
+            "sha256": "cc21815cf1e2efed867dc9c8b96b46ffed8ea176ffab32b0aacb54726ded8f25",
+            "archive": "tar.gz",
+            "executablePath": "docker/docker",
+            "members": ["docker/docker"]
+          },
+          "linux-arm64": {
+            "url": "https://download.docker.com/linux/static/stable/aarch64/docker-29.8.0.tgz",
+            "sha256": "1462a696be6029bd478d7d60d7f3c31cdd15affd1178a4a278aaf4a1d1b7f8b5",
+            "archive": "tar.gz",
+            "executablePath": "docker/docker",
+            "members": ["docker/docker"]
+          },
+          "win32-x64": {
+            "url": "https://download.docker.com/win/static/stable/x86_64/docker-29.8.0.zip",
+            "sha256": "bca70bfcddb4eed5bb8af5c15a1fb583b95edacf6096152e20a621ae68c871cb",
+            "archive": "zip",
+            "executablePath": "docker/docker.exe",
+            "members": ["docker/docker.exe"]
+          }
+        }
+      },
+      "contributes": {
+        "containerEngines": [
+          {
+            "id": "docker",
+            "displayName": "Docker",
+            "priority": 100,
+            "discovery": {
+              "hostVariable": "DOCKER_HOST",
+              "dockerContext": true,
+              "sockets": {
+                "darwin": ["/var/run/docker.sock"],
+                "linux": ["/var/run/docker.sock"],
+                "win32": ["\\\\.\\pipe\\docker_engine"]
+              }
+            },
+            "startCommands": {
+              "darwin": "open -a Docker",
+              "linux": "sudo systemctl start docker"
+            }
+          }
+        ]
+      },
+      "requires": []
+    },
+    {
+      "id": "podman-engine",
+      "name": "Podman",
+      "description": "Talk to a Podman container engine over its local socket.",
+      "detail": "Installs only the `podman` remote client. Studio speaks to the engine over its socket, so this does not install or run a container engine itself. No build is published for Intel Macs.",
+      "version": "6.1.1",
+      "apiVersion": "1.6.0",
+      "provision": {
+        "kind": "archive",
+        "downloads": {
+          "darwin-arm64": {
+            "url": "https://github.com/containers/podman/releases/download/v6.1.1/podman-remote-release-darwin_arm64.zip",
+            "sha256": "bb38e97f5168b563a70e121248634379c65c22f74414f53f0751b5caa485ec70",
+            "archive": "zip",
+            "executablePath": "podman-6.1.1/usr/bin/podman",
+            "members": ["podman-6.1.1/usr/bin/podman"]
+          },
+          "linux-x64": {
+            "url": "https://github.com/containers/podman/releases/download/v6.1.1/podman-remote-static-linux_amd64.tar.gz",
+            "sha256": "31ff7c653fc19e652e648f45406c5b72925defdf8fc73af698ce2512e87ee502",
+            "archive": "tar.gz",
+            "executablePath": "bin/podman-remote-static-linux_amd64",
+            "members": ["bin/podman-remote-static-linux_amd64"]
+          },
+          "linux-arm64": {
+            "url": "https://github.com/containers/podman/releases/download/v6.1.1/podman-remote-static-linux_arm64.tar.gz",
+            "sha256": "c2a697cba879b36333dc2d2543d3a1a0351e8b42b28b903d29aba6980a55237c",
+            "archive": "tar.gz",
+            "executablePath": "bin/podman-remote-static-linux_arm64",
+            "members": ["bin/podman-remote-static-linux_arm64"]
+          },
+          "win32-x64": {
+            "url": "https://github.com/containers/podman/releases/download/v6.1.1/podman-remote-release-windows_amd64.zip",
+            "sha256": "68766f21aebec379ec34cfee46d0550b025ec6d79c02fbdcb61a80bc7191ef01",
+            "archive": "zip",
+            "executablePath": "podman-6.1.1/usr/bin/podman.exe",
+            "members": ["podman-6.1.1/usr/bin/podman.exe"]
+          }
+        }
+      },
+      "contributes": {
+        "containerEngines": [
+          {
+            "id": "podman",
+            "displayName": "Podman",
+            "priority": 50,
+            "discovery": {
+              "hostVariable": "CONTAINER_HOST",
+              "dockerContext": false,
+              "sockets": {
+                "darwin": [
+                  "${HOME}/.local/share/containers/podman/machine/podman.sock",
+                  "/run/podman/podman.sock"
+                ],
+                "linux": ["${XDG_RUNTIME_DIR}/podman/podman.sock", "/run/podman/podman.sock"],
+                "win32": ["\\\\.\\pipe\\podman-machine-default"]
+              }
+            },
+            "startCommands": {
+              "darwin": "podman machine start",
+              "linux": "systemctl --user start podman.socket",
+              "win32": "podman machine start"
+            }
+          }
+        ]
+      },
+      "requires": []
     }
   ]
 }

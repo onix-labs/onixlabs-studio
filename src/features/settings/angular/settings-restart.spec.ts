@@ -19,7 +19,13 @@ describe('SettingsRestart', () => {
   });
 
   it('restartRequired_whenRestartGatedSettingChanges_becomesTrue', () => {
-    display.setHardwareAcceleration(false);
+    display.setGraphicsAcceleration('off');
     expect(restart.restartRequired()).toBe(true);
+  });
+
+  it('restartRequired_whenAcceleratedLevelChanges_staysFalse', () => {
+    // Only turning hardware acceleration on or off needs a relaunch; the effects rungs apply live.
+    display.setGraphicsAcceleration('limited');
+    expect(restart.restartRequired()).toBe(false);
   });
 });

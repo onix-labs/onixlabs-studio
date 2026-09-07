@@ -9,11 +9,11 @@
   border: 0.0625rem solid var(--ribbon-group-border-color);
   border-radius: calc(0.5rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
-  // Deliberately NOT clipped. A hovered big button lifts on a drop shadow that spreads further than
-  // the 0.25rem the body keeps around it, so anything clipping here would cut that shadow off at the
-  // group's edge. The one thing the clip was doing for appearance, rounding the title band into the
-  // group's bottom corners, the title band now does for itself.
-  overflow: visible;
+  // Clipped for paint containment: without it a hover repaint's damage rect can spill across
+  // neighbouring groups, which is measurable on GPUs that rasterize the squircle masks. The clip
+  // once existed to round the title band into the group's bottom corners; the band now rounds
+  // itself, so this is containment alone — nothing inside the group is allowed to paint past it.
+  overflow: hidden;
 }
 
 .ribbon-group__body {
@@ -22,9 +22,9 @@
   // the inner area equal to the token despite the global border-box default.
   //
   // This used to clip too, as a guard against a control exceeding the lane. That guard cost more
-  // than it gave: it hid such a control's overflow rather than preventing it, and it was what cut
-  // the hover shadow off. A control that does not fit the lane is a bug to fix in that control —
-  // the big buttons' own height budget lives in _variables.scss.
+  // than it gave: it hid such a control's overflow rather than preventing it. A control that does
+  // not fit the lane is a bug to fix in that control — the big buttons' own height budget lives in
+  // _variables.scss — and the group's own clip is the containment boundary.
   display: flex;
   align-items: center;
   gap: 0.25rem;

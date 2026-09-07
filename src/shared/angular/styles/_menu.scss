@@ -343,7 +343,9 @@
   }
 }
 
-// --- The status strip's running-task flyout (see status-strip-tasks-menu). Rendered through the CDK
+// --- The running-task flyouts — the status strip's app-wide one (see status-strip-tasks-menu) and
+// the composer's conversation-scoped one (see agent-tasks-menu) share these classes so the two
+// surfaces read as the same thing. Rendered through the CDK
 // --- overlay, like the notification centre below, so its panel styles live here too.
 
 .tasks-menu__panel {

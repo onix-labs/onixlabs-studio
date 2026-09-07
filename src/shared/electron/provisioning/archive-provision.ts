@@ -24,6 +24,20 @@ export interface ArchiveDownload {
    * `package/langserver.index.js`, or `clangd_22.1.6/bin/clangd`).
    */
   readonly executablePath: string;
+
+  /**
+   * Gets the archive members to extract, or undefined to extract the whole archive.
+   *
+   * For the upstream that publishes one archive containing more than the thing being installed. Docker's
+   * static package is the case that forced it: on macOS it holds the client alone, but on Linux and
+   * Windows it holds the whole engine — `dockerd`, `containerd`, `runc` — and extracting all of it would
+   * put a second container daemon on the disk of a machine already running one, for the sake of the
+   * client beside them.
+   *
+   * The download is unaffected: the archive is pinned and fetched whole, because a hash of part of a
+   * file is not a hash of the file. This narrows what is written to disk, not what is verified.
+   */
+  readonly members?: readonly string[];
 }
 
 /**

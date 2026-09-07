@@ -39,8 +39,12 @@
     @for (row of windowedRows(); track row.id) {
       @switch (row.kind) {
         @case ('user') {
+          <!-- Marked so "scroll to the last prompt" can find this row in the DOM. The transcript is
+               virtualised by a window, so the target has to be located from what is rendered rather
+               than by index into the whole conversation. -->
           <div
             class="agent__message agent__message--user"
+            [attr.data-user-row]="row.id"
             [class.agent__unmeasured]="!isMeasured(row.id)"
           >
             <span class="agent__avatar" aria-hidden="true"><app-icon [icon]="Icon.USER" /></span>

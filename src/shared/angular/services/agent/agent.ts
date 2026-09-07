@@ -57,6 +57,14 @@ import { isNotLoggedInReply, looksLikeAuthFailure } from './auth-failure';
 export const STREAM_FLUSH_MS: number = 33;
 
 /**
+ * How long a Stop gives the main process to land a terminal status before the renderer settles the
+ * stop locally, in milliseconds. Longer than the main process's own panic escalation (which closes a
+ * wedged session and emits the status), so the local landing is the fallback of last resort — the UI
+ * must never stay "Working" after the user said stop, whatever the harness is doing.
+ */
+export const STOP_SETTLE_DEADLINE_MS: number = 8_000;
+
+/**
  * Identifies the kind of transcript item.
  */
 export type AgentItemKind =
@@ -967,7 +975,7 @@ export class Agent {
           this.tabs.activate(tabId);
         }
       },
-      stop: (taskId: string): void => this.runtime.stopTask(this.agentSessionId, taskId),
+      stop: (taskId: string): void => this.stopTask(taskId),
     });
     this.destroyRef.onDestroy(unregisterTasks);
     this.destroyRef.onDestroy((): void => {
@@ -1271,10 +1279,11 @@ export class Agent {
    * Exposes this conversation's session via the provider's Remote Control feature (#331), or stops
    * exposing it. What exposure means is the user's global Remote control posture, not an argument here.
    *
-   * The provider binds the bridge when it opens the session, so a live session is ended on a change:
-   * the next turn reopens it — resuming the same provider conversation — with the bridge in its new
-   * state, rather than the toggle sitting on while nothing is actually exposed. A session mid-run is
-   * left alone (ending it would abort the run); that turn finishes, and the change lands on the next.
+   * The change is pushed onto the held-open live session, which attaches or detaches its bridge in
+   * place — even mid-run — so the session appears on (or leaves) claude.ai the moment the toggle
+   * lands, with nothing to wait for. When no session is open yet (the agent has not run), the push is
+   * a main-process no-op and the first turn's open applies the mode instead; every turn also carries
+   * the current mode, so a posture change in Settings lands on an exposed agent by its next turn.
    * @param enabled Whether the session is exposed.
    */
   public setRemoteControlEnabled(enabled: boolean): void {
@@ -1287,10 +1296,7 @@ export class Agent {
       `Remote control ${enabled ? 'enabled' : 'disabled'}`,
       this.remoteControl(),
     );
-    if (!this.busy()) {
-      this.runtime.closeSession(this.agentSessionId);
-      this.agentSessionId = crypto.randomUUID();
-    }
+    this.runtime.setSessionRemoteControl(this.agentSessionId, this.remoteControl());
   }
 
   /**
@@ -1328,13 +1334,43 @@ export class Agent {
   }
 
   /**
-   * Stops the in-flight run.
+   * Asks the provider to stop one of this conversation's background tasks. The harness settles it as
+   * `stopped` through the ordinary lifecycle events, so the task leaves {@link tasks} on its own.
+   * @param taskId The task to stop.
+   */
+  public stopTask(taskId: string): void {
+    this.runtime.stopTask(this.agentSessionId, taskId);
+  }
+
+  /**
+   * Stops the agent — a panic button, not a request. The per-run abort covers a Studio-initiated
+   * turn, but an adopted task- or peer-driven turn has no run behind it (its launching run already
+   * finished), so the abort alone was a silent no-op exactly when a background task hung. The
+   * session-level panic stop reaches those: it stops the session's background tasks, interrupts
+   * whatever turn is in flight, and escalates to closing the session if the harness is wedged. A
+   * local deadline then guarantees the conversation lands even if no terminal status ever arrives.
    */
   public stop(): void {
-    if (this.activeRequestId !== null) {
-      this.logger.info('Agent', 'Run interrupted', this.activeRequestId);
-      this.runtime.abort(this.activeRequestId);
+    const requestId: string | null = this.activeRequestId;
+    this.logger.info('Agent', 'Stop requested', requestId ?? '(no active run)');
+    if (requestId !== null) {
+      this.runtime.abort(requestId);
     }
+    this.runtime.stopAgent(this.agentSessionId);
+    if (requestId === null) {
+      return;
+    }
+    setTimeout((): void => {
+      if (this.activeRequestId !== requestId) {
+        return;
+      }
+      this.logger.warn(
+        'Agent',
+        'Stop deadline passed with no terminal status; landing it locally',
+        requestId,
+      );
+      this.onStatus('aborted', '');
+    }, STOP_SETTLE_DEADLINE_MS);
   }
 
   /**

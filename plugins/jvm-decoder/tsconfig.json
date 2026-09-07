@@ -1,0 +1,23 @@
+/* TypeScript configuration for the jvm decoder plugin.
+   The plugin is a separate program from Studio: it runs as its own process under the Node runtime
+   Studio ships, and talks to it only over the decoder protocol. It shares no code with the app, which
+   is the point — a decoder is a plugin like any other, and this config is what keeps that true rather
+   than letting it reach back into `src/`.
+   The build is done by esbuild (see the package's `build` script); this config is `tsc --noEmit` only. */
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "types": ["node"],
+    "rootDir": "..",
+    "outDir": "dist",
+    "esModuleInterop": true,
+    "importHelpers": false,
+    "noEmit": true,
+    "declaration": false
+  },
+  "include": ["src/**/*.ts", "../protocol/**/*.ts"]
+}

@@ -1,6 +1,7 @@
 import { app } from 'electron';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import type { GraphicsAcceleration } from '@shared/api/host';
 import { logger } from './logger';
 
 /**
@@ -10,19 +11,44 @@ import { logger } from './logger';
  */
 export interface StartupPreferences {
   /**
-   * Gets a value indicating whether GPU hardware acceleration is enabled. Applied via
-   * {@link Electron.App.disableHardwareAcceleration}, which must be called before the app is ready,
-   * so the choice can only take effect after a relaunch.
+   * Gets the graphics-acceleration level, or null when none has been persisted. Its `off` rung is
+   * applied via {@link Electron.App.disableHardwareAcceleration}, which must be called before the app
+   * is ready, which is why the level lives here rather than in the renderer's settings store: the
+   * whole ladder is kept in one place, and the rung that must be known first is readable first.
+   *
+   * Null is reported to the renderer as "not yet persisted", which is its cue to migrate the
+   * pre-merge settings (see `display-policy.ts`) and write the result back.
    */
-  readonly hardwareAcceleration: boolean;
+  readonly graphicsAcceleration: GraphicsAcceleration | null;
+}
+
+/**
+ * Describes the shape of the preferences file as written before the graphics-acceleration settings
+ * were merged, so an existing installation is read rather than silently reset.
+ *
+ * MIGRATION SHIM. `hardwareAcceleration: false` carries enough to fix the level at `off`; `true` is
+ * ambiguous (it could mean either of the two accelerated rungs) and resolves to null, leaving the
+ * renderer to finish the migration from its own store. Delete alongside the rest of the shim.
+ */
+interface LegacyStartupPreferences {
+  /**
+   * Gets the pre-merge hardware-acceleration preference.
+   */
+  readonly hardwareAcceleration?: unknown;
 }
 
 /**
  * Holds the startup preferences applied when none have been persisted.
  */
 const DEFAULT_STARTUP_PREFERENCES: StartupPreferences = {
-  hardwareAcceleration: true,
+  graphicsAcceleration: null,
 };
+
+/**
+ * Holds the graphics-acceleration levels accepted from the persisted file, so a hand-edited or
+ * corrupt value degrades to the default rather than reaching the rest of the app.
+ */
+const GRAPHICS_ACCELERATION_LEVELS: readonly string[] = ['auto', 'off', 'limited', 'full'];
 
 /**
  * Holds the file name the startup preferences are persisted under, within the app's user-data
@@ -47,17 +73,38 @@ export class StartupPreferencesStore {
   public static read(): StartupPreferences {
     try {
       const raw: string = fs.readFileSync(StartupPreferencesStore.filePath(), 'utf-8');
-      const parsed: Partial<StartupPreferences> = JSON.parse(raw) as Partial<StartupPreferences>;
-      const preferences: StartupPreferences = { ...DEFAULT_STARTUP_PREFERENCES, ...parsed };
+      const parsed: Partial<StartupPreferences> & LegacyStartupPreferences = JSON.parse(
+        raw,
+      ) as Partial<StartupPreferences> & LegacyStartupPreferences;
+      const preferences: StartupPreferences = {
+        graphicsAcceleration: StartupPreferencesStore.level(parsed),
+      };
       logger.debug(
         'StartupPreferences',
-        `Read startup preferences (hardwareAcceleration: ${preferences.hardwareAcceleration})`,
+        `Read startup preferences (graphicsAcceleration: ${preferences.graphicsAcceleration ?? 'unset'})`,
       );
       return preferences;
     } catch (error: unknown) {
       logger.debug('StartupPreferences', 'No readable startup preferences; using defaults', error);
       return DEFAULT_STARTUP_PREFERENCES;
     }
+  }
+
+  /**
+   * Extracts the graphics-acceleration level from a parsed preferences file, validating the merged
+   * key and falling back to the pre-merge one.
+   * @param parsed The parsed preferences file.
+   * @returns Returns the level, or null when the file names none this process can trust.
+   */
+  private static level(
+    parsed: Partial<StartupPreferences> & LegacyStartupPreferences,
+  ): GraphicsAcceleration | null {
+    const level: unknown = parsed.graphicsAcceleration;
+    if (typeof level === 'string' && GRAPHICS_ACCELERATION_LEVELS.includes(level)) {
+      return level as GraphicsAcceleration;
+    }
+    // MIGRATION SHIM: only the disabled case is unambiguous; see LegacyStartupPreferences.
+    return parsed.hardwareAcceleration === false ? 'off' : null;
   }
 
   /**

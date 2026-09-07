@@ -1,4 +1,5 @@
 import {
+  CompiledArtifact,
   ProjectCapabilities,
   ProjectItems,
   ProjectModel,
@@ -51,6 +52,20 @@ export interface ProjectSystem {
    * @returns Returns the contents, or null when they could not be loaded.
    */
   loadProjectItems?(projectPath: string): Promise<ProjectItems | null>;
+
+  /**
+   * Resolves the compiled artefact the project containing a source file produces.
+   *
+   * **Must not build.** This answers a question a panel asks whenever a file is opened, and building on
+   * open would turn browsing a project into compiling it. A project that has not been built yet
+   * resolves to null, which the caller shows as "not built" rather than as an error.
+   *
+   * Optional: a provider whose ecosystem has no compiled artefact need not implement it.
+   * @param sourcePath The absolute path of the source file.
+   * @param configurationId The selected build configuration, or undefined for the provider's default.
+   * @returns Returns the artefact, or null when there is none to point at.
+   */
+  resolveArtifact?(sourcePath: string, configurationId?: string): Promise<CompiledArtifact | null>;
 
   /**
    * Determines whether a project file belongs to this provider (by its manifest shape), so a
@@ -143,6 +158,15 @@ export class ProjectSystemRegistry {
    * the provider that produced the project rather than a hard-coded ecosystem.
    * @param projectPath The absolute project-file path.
    * @returns Returns the owning project system, or null when none claims the file.
+   */
+  public all(): readonly ProjectSystem[] {
+    return [...this.systems.values()];
+  }
+
+  /**
+   * Determines which provider owns a project file.
+   * @param projectPath The absolute path of the project file.
+   * @returns Returns the provider, or null when none claims it.
    */
   public matchProject(projectPath: string): ProjectSystem | null {
     for (const system of this.systems.values()) {

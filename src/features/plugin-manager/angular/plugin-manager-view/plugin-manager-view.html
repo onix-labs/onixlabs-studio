@@ -9,6 +9,14 @@
         same thing, choose between them in Settings.
       </p>
     </div>
+    <app-text-field
+      class="plugin-manager__filter"
+      kind="search"
+      placeholder="Filter plugins"
+      ariaLabel="Filter plugins"
+      [(value)]="query"
+      (escape)="clearQuery()"
+    />
   </header>
 
   @if (error(); as message) {
@@ -22,7 +30,7 @@
     class="plugin-manager__table"
     [columns]="columns"
     [rows]="rows()"
-    emptyText="No plugins are available."
+    [emptyText]="filtered() ? 'No plugins match this filter.' : 'No plugins are available.'"
   >
     <ng-template appTableRow let-row>
       <td class="plugin-manager__name">

@@ -2,7 +2,7 @@ import { DOCUMENT } from '@angular/common';
 import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { Log } from '@shared/angular/services/log/log';
 import { DockFloating } from './dock-floating';
-import { DockGeometry, DockGroupHit } from './dock-geometry';
+import { DockGeometry, DockGroupHit, hitInSnapshot } from './dock-geometry';
 import {
   DockResolution,
   DockTarget,
@@ -278,6 +278,28 @@ export class DockDrag {
     this.onMove(event);
 
   /**
+   * Holds the pointer position of the newest move not yet processed, or null when up to date. Moves
+   * arrive faster than frames paint (high-rate mice report at 500–1000Hz), and each processed move
+   * writes several signals and re-resolves the drop target — work no one can see between frames.
+   * The first move in a frame window is processed synchronously (so a drag activates and the specs
+   * observe state without waiting on a frame) and the flood behind it coalesces into one trailing
+   * pass per frame.
+   */
+  private pendingMove: { readonly x: number; readonly y: number } | null = null;
+
+  /**
+   * Holds whether a trailing-frame pass is scheduled.
+   */
+  private moveFrameScheduled: boolean = false;
+
+  /**
+   * Holds the group rectangles snapshotted when the drag activated. The dock cannot reflow while a
+   * drag is in progress, so hit-testing reads these instead of forcing a synchronous layout per
+   * move (see {@link DockGeometry.snapshot}).
+   */
+  private groupSnapshot: readonly DockGroupHit[] | null = null;
+
+  /**
    * Holds the bound release handler so it can be detached.
    */
   private readonly releaseHandler: (event: MouseEvent) => void = (event: MouseEvent): void =>
@@ -472,6 +494,9 @@ export class DockDrag {
     }
     this.offset = armed.offset;
     this.log.trace('DockDrag', `Drag started`, describe(armed.subject));
+    // The dock cannot reflow mid-drag, so the groups' rectangles are read once here and every move
+    // hit-tests the snapshot rather than forcing a layout per pointer event.
+    this.groupSnapshot = this.geometry.snapshot();
     this.workspaceRect.set(armed.workspace);
     this.draggedSubject.set(armed.subject);
     this.ghostRect.set({
@@ -483,17 +508,42 @@ export class DockDrag {
   }
 
   /**
-   * Tracks the cursor, arming then activating the drag once the threshold is crossed, moving the
-   * ghost and resolving the current drop target and overlay state.
+   * Receives a pointer move: the first in a frame window is processed synchronously, and the rest
+   * coalesce into one trailing pass per frame (see {@link pendingMove}).
    * @param event The mouse move event.
    */
   private onMove(event: MouseEvent): void {
-    const armed: ArmedDrag | null = this.armed;
-    if (armed === null) {
+    if (this.armed === null) {
       return;
     }
-    const x: number = event.clientX;
-    const y: number = event.clientY;
+    this.pendingMove = { x: event.clientX, y: event.clientY };
+    if (this.moveFrameScheduled) {
+      return;
+    }
+    this.flushMove();
+    if (typeof requestAnimationFrame !== 'undefined') {
+      this.moveFrameScheduled = true;
+      requestAnimationFrame((): void => {
+        this.moveFrameScheduled = false;
+        this.flushMove();
+      });
+    }
+  }
+
+  /**
+   * Processes the newest unprocessed pointer position, if any: arming then activating the drag once
+   * the threshold is crossed, moving the ghost and resolving the current drop target and overlay
+   * state.
+   */
+  private flushMove(): void {
+    const point: { readonly x: number; readonly y: number } | null = this.pendingMove;
+    const armed: ArmedDrag | null = this.armed;
+    if (point === null || armed === null) {
+      return;
+    }
+    this.pendingMove = null;
+    const x: number = point.x;
+    const y: number = point.y;
     if (this.draggedSubject() === null) {
       if (Math.hypot(x - armed.startX, y - armed.startY) < DRAG_THRESHOLD) {
         return;
@@ -530,7 +580,10 @@ export class DockDrag {
 
     // A group hovering its own rectangle has no legal target — every guide would move it onto
     // itself — so the compass stays hidden there rather than offering guides that do nothing.
-    const hit: DockGroupHit | null = this.geometry.groupAt(x, y);
+    const hit: DockGroupHit | null =
+      this.groupSnapshot !== null
+        ? hitInSnapshot(this.groupSnapshot, x, y)
+        : this.geometry.groupAt(x, y);
     if (hit === null || (subject.kind === 'group' && hit.stackId === subject.stackId)) {
       this.currentTarget = null;
       this.previewRect.set(null);
@@ -580,6 +633,10 @@ export class DockDrag {
   private onRelease(event: MouseEvent): void {
     this.document.removeEventListener('mousemove', this.moveHandler);
     this.document.removeEventListener('mouseup', this.releaseHandler);
+
+    // A move may still be waiting on its trailing frame; the commit must resolve against where the
+    // pointer actually is, not where the last painted frame left it.
+    this.flushMove();
 
     const subject: DragSubject | null = this.draggedSubject();
     const target: DockTarget | null = this.currentTarget;
@@ -684,6 +741,8 @@ export class DockDrag {
    */
   private reset(): void {
     this.currentTarget = null;
+    this.pendingMove = null;
+    this.groupSnapshot = null;
     this.draggedSubject.set(null);
     this.ghostRect.set(null);
     this.compassState.set(null);

@@ -78,9 +78,12 @@ export type ForeignOwner = Exclude<SettingOwner, 'settings'>;
  */
 export interface VisibilityDef {
   /**
-   * Gets the key of the setting this one depends on.
+   * Gets the key of the setting this one depends on. A plain string rather than a {@link SettingsKey}
+   * because the depended-on setting may be foreign-owned, and those keys are plain strings too (see
+   * {@link ForeignSettingDef}); the section resolves the key through the binding layer, so any
+   * owner's value can qualify another setting.
    */
-  readonly key: SettingsKey;
+  readonly key: string;
 
   /**
    * Gets the values of that setting for which this setting is shown.

@@ -14,6 +14,7 @@ import type {
   AiInputReply,
   AiPermissionReply,
   AiProviderInfo,
+  AiRemoteControlMode,
   AiRunRequest,
   AiSetConnectionKeyRequest,
   AiSteerRequest,
@@ -49,6 +50,10 @@ function createClient(bridge: Bridge): AiClient {
       bridge.invoke(AiChannel.StopTask, request),
     closeSession: (agentSessionId: string): Promise<void> =>
       bridge.invoke(AiChannel.CloseSession, agentSessionId),
+    setSessionRemoteControl: (agentSessionId: string, mode: AiRemoteControlMode): Promise<void> =>
+      bridge.invoke(AiChannel.SetSessionRemoteControl, agentSessionId, mode),
+    stopAgent: (agentSessionId: string): Promise<void> =>
+      bridge.invoke(AiChannel.StopAgent, agentSessionId),
     getRemoteNotifications: (): Promise<boolean> => bridge.invoke(AiChannel.GetRemoteNotifications),
     setRemoteNotifications: (enabled: boolean): Promise<void> =>
       bridge.invoke(AiChannel.SetRemoteNotifications, enabled),

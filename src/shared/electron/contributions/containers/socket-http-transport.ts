@@ -2,9 +2,9 @@ import * as http from 'node:http';
 import { logger } from '../../logger';
 
 /**
- * A buffered response from the Docker Engine: the HTTP status and the full body text.
+ * A buffered HTTP response: the status and the full body text.
  */
-export interface DockerResponse {
+export interface SocketHttpResponse {
   /**
    * The HTTP status code (0 when none was received).
    */
@@ -19,7 +19,7 @@ export interface DockerResponse {
 /**
  * A handle to an open event stream; closing it tears the underlying request down.
  */
-export interface DockerStreamHandle {
+export interface StreamHandle {
   /**
    * Closes the stream.
    */
@@ -27,11 +27,16 @@ export interface DockerStreamHandle {
 }
 
 /**
- * The transport the {@link import('./docker-engine').DockerEngine} speaks the Engine API over. Injected
- * so the engine's parsing, daemon-absent handling, and reconnect logic can be unit-tested against a
- * fake without a running daemon.
+ * HTTP over a local socket: buffered requests, and line-delimited streams that can be torn down.
+ *
+ * Named for what it does rather than for who calls it. It was `DockerTransport`, which was a name
+ * borrowed from its only caller — nothing here knows the Docker Engine API, or any API: it carries
+ * bytes to a Unix domain socket or a Windows named pipe and reads them back (#598).
+ *
+ * Injected into the engine client so that client's parsing, daemon-absent handling and reconnect logic
+ * can be unit-tested against a fake, with no socket and no running daemon.
  */
-export interface DockerTransport {
+export interface SocketTransport {
   /**
    * Performs one buffered request, resolving with the status and body, or rejecting on a connection
    * error (for example the daemon being absent).
@@ -39,7 +44,7 @@ export interface DockerTransport {
    * @param path The request path (including any query string).
    * @returns Returns the buffered response.
    */
-  request(method: string, path: string): Promise<DockerResponse>;
+  request(method: string, path: string): Promise<SocketHttpResponse>;
 
   /**
    * Opens a long-lived streaming request, delivering each newline-delimited body line to `onLine` and
@@ -55,17 +60,17 @@ export interface DockerTransport {
     path: string,
     onLine: (line: string) => void,
     onError: (error: Error) => void,
-  ): DockerStreamHandle;
+  ): StreamHandle;
 }
 
 /**
- * The production {@link DockerTransport}: HTTP over the Docker daemon's local socket (a Unix domain
- * socket, or a Windows named pipe), so structured data comes straight from the Engine API with no
- * dependency on the `docker` CLI.
+ * The production {@link SocketTransport}: Node's HTTP client pointed at a local socket (a Unix domain
+ * socket, or a Windows named pipe) instead of a host and port. Structured data therefore comes off the
+ * engine's own socket, with no dependency on a command-line client being present.
  */
-export class HttpDockerTransport implements DockerTransport {
+export class SocketHttpTransport implements SocketTransport {
   /**
-   * Initializes a new instance of the {@link HttpDockerTransport} class.
+   * Initializes a new instance of the {@link SocketHttpTransport} class.
    * @param socketPath The daemon socket path.
    */
   public constructor(private readonly socketPath: string) {}
@@ -76,10 +81,10 @@ export class HttpDockerTransport implements DockerTransport {
    * @param path The request path.
    * @returns Returns the buffered response.
    */
-  public request(method: string, path: string): Promise<DockerResponse> {
-    logger.trace('DockerTransport', `${method} ${path}`);
-    return new Promise<DockerResponse>(
-      (resolve: (response: DockerResponse) => void, reject: (error: Error) => void): void => {
+  public request(method: string, path: string): Promise<SocketHttpResponse> {
+    logger.trace('SocketTransport', `${method} ${path}`);
+    return new Promise<SocketHttpResponse>(
+      (resolve: (response: SocketHttpResponse) => void, reject: (error: Error) => void): void => {
         const request: http.ClientRequest = http.request(
           { socketPath: this.socketPath, method, path },
           (response: http.IncomingMessage): void => {
@@ -111,8 +116,8 @@ export class HttpDockerTransport implements DockerTransport {
     path: string,
     onLine: (line: string) => void,
     onError: (error: Error) => void,
-  ): DockerStreamHandle {
-    logger.trace('DockerTransport', `Opening event stream ${method} ${path}`);
+  ): StreamHandle {
+    logger.trace('SocketTransport', `Opening event stream ${method} ${path}`);
     let buffer: string = '';
     const request: http.ClientRequest = http.request(
       { socketPath: this.socketPath, method, path },
@@ -138,7 +143,7 @@ export class HttpDockerTransport implements DockerTransport {
     request.end();
     return {
       close: (): void => {
-        logger.trace('DockerTransport', 'Closing event stream');
+        logger.trace('SocketTransport', 'Closing event stream');
         request.destroy();
       },
     };

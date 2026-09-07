@@ -12,7 +12,12 @@ import type {
   AiSlashCommand,
 } from '@shared/api/ai-types';
 import type { AgentMode } from '@shared/api/ai-types';
-import { Agent, AgentItem, AgentQueuedMessage } from '@shared/angular/services/agent/agent';
+import {
+  Agent,
+  AgentItem,
+  AgentQueuedMessage,
+  AgentTask,
+} from '@shared/angular/services/agent/agent';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
 import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine';
 import { Search } from '@shared/angular/services/search/search';
@@ -51,6 +56,8 @@ describe('AgentChat', () => {
   let attachedContext: AgentContextRef[];
   let conversationDraft: WritableSignal<string>;
   let tailRequest: WritableSignal<number>;
+  let topRequest: WritableSignal<number>;
+  let promptRequest: WritableSignal<number>;
   // The chat decides for itself whether it is on screen by watching its own host element, which jsdom
   // cannot answer; this puts those observations under the test's control.
   let observers: FakeIntersectionObserver;
@@ -60,6 +67,8 @@ describe('AgentChat', () => {
     observers = FakeIntersectionObserver.install();
     conversationDraft = signal<string>('');
     tailRequest = signal<number>(0);
+    topRequest = signal<number>(0);
+    promptRequest = signal<number>(0);
     compacted = 0;
     clearedChats = 0;
     modeChanges = [];
@@ -96,6 +105,8 @@ describe('AgentChat', () => {
     contextTokens = signal<number>(0);
     contextWindow = signal<number>(0);
     const agentStub: Partial<Agent> = {
+      // The composer hosts the conversation-scoped tasks menu, which reads the live-task list.
+      tasks: signal<readonly AgentTask[]>([]),
       items,
       isRunning: running,
       awaitingDecision: awaiting,
@@ -183,6 +194,8 @@ describe('AgentChat', () => {
           useValue: {
             draft: conversationDraft,
             tailRequest: tailRequest.asReadonly(),
+            topRequest: topRequest.asReadonly(),
+            promptRequest: promptRequest.asReadonly(),
           } as unknown as AgentConversation,
         },
       ],
@@ -793,6 +806,54 @@ describe('AgentChat', () => {
     fixture.detectChanges();
 
     expect(list.scrollTop).toBe(1000);
+  });
+
+  it('topRequest_whenASurfaceAsksForTheStart_scrollsThisTranscriptThere', () => {
+    let jumps: number = 0;
+    (component as unknown as { scrollToTop: () => void }).scrollToTop = (): void => {
+      jumps += 1;
+    };
+
+    topRequest.set(1);
+    TestBed.tick();
+    expect(jumps).toBe(1);
+
+    topRequest.set(2);
+    TestBed.tick();
+    expect(jumps).toBe(2);
+  });
+
+  it('promptRequest_whenASurfaceAsksForTheLastPrompt_scrollsThisTranscriptThere', () => {
+    let jumps: number = 0;
+    (component as unknown as { scrollToLastPrompt: () => void }).scrollToLastPrompt = (): void => {
+      jumps += 1;
+    };
+
+    promptRequest.set(1);
+    TestBed.tick();
+    expect(jumps).toBe(1);
+  });
+
+  it('scrollToTop_stopsFollowingTheTail', () => {
+    // Otherwise the next streamed token pins the list straight back to the bottom and the jump looks
+    // like it failed.
+    const internals: { following: WritableSignal<boolean>; scrollToTop: () => void } =
+      component as unknown as { following: WritableSignal<boolean>; scrollToTop: () => void };
+    internals.following.set(true);
+
+    internals.scrollToTop();
+
+    expect(internals.following()).toBe(false);
+  });
+
+  it('scrollToLastPrompt_withNoPromptRendered_doesNothingRatherThanJumpingSomewhereArbitrary', () => {
+    // The transcript renders a window, so the last prompt is only reachable when it is on screen.
+    const list: HTMLElement = layOutMessages();
+    list.scrollTop = 250;
+
+    (component as unknown as { scrollToLastPrompt: () => void }).scrollToLastPrompt();
+
+    expect(list.scrollTop).toBe(250);
   });
 
   it('tailRequest_whenASurfaceAsksForTheTail_pinsThisTranscript', () => {

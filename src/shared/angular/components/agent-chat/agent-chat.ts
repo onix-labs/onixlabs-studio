@@ -368,6 +368,11 @@ export class AgentChat implements OnInit {
   private readonly host: ElementRef<HTMLElement> = inject(ElementRef) as ElementRef<HTMLElement>;
 
   /**
+   * Holds the built data URIs of transcript images, keyed by the image itself (see {@link imageSrc}).
+   */
+  private readonly imageSrcCache: WeakMap<AiImageRef, string> = new WeakMap<AiImageRef, string>();
+
+  /**
    * Holds whether this chat is actually on screen, which gates whether the transcript is built and
    * rendered at all.
    *
@@ -917,6 +922,28 @@ export class AgentChat implements OnInit {
       });
     });
 
+    // A surface asking for the start. Stops following first: a reader who asked for the top does not
+    // want the next streamed token to drag them back down.
+    effect((): void => {
+      const requested: number = this.conversation?.topRequest() ?? 0;
+      untracked((): void => {
+        if (requested > 0) {
+          this.scrollToTop();
+        }
+      });
+    });
+
+    // A surface asking for the last thing the user sent, so a long answer can be read from the
+    // question that prompted it.
+    effect((): void => {
+      const requested: number = this.conversation?.promptRequest() ?? 0;
+      untracked((): void => {
+        if (requested > 0) {
+          this.scrollToLastPrompt();
+        }
+      });
+    });
+
     // Follow the tail: after each render that grows the transcript (streamed text, a new row, or the
     // working indicator), pin the list to the bottom while the preference is on and the reader has not
     // scrolled away. Reading the rendered rows re-runs this as the transcript streams.
@@ -1190,6 +1217,46 @@ export class AgentChat implements OnInit {
   }
 
   /**
+   * Scrolls the transcript to its first message.
+   *
+   * Stops following the tail, because the two are opposites: leaving it on would let the next streamed
+   * token pin the list straight back to the bottom, and the jump would look like it had failed.
+   */
+  public scrollToTop(): void {
+    this.following.set(false);
+    const container: HTMLElement | undefined = this.messagesRef()?.nativeElement;
+    if (container !== undefined) {
+      // Assigned rather than `scrollTo`, matching how the rest of this component moves the scroller.
+      container.scrollTop = 0;
+    }
+  }
+
+  /**
+   * Scrolls the transcript to the most recent message the user sent.
+   *
+   * Finds the row in the DOM rather than by index: the transcript renders a window over a long
+   * conversation, so the last prompt is only reachable when it is one of the rows on screen. When it
+   * is not — the reader is far enough back that no prompt is rendered — this does nothing rather than
+   * scrolling somewhere arbitrary.
+   */
+  public scrollToLastPrompt(): void {
+    this.following.set(false);
+    const container: HTMLElement | undefined = this.messagesRef()?.nativeElement;
+    if (container === undefined) {
+      return;
+    }
+    const prompts: NodeListOf<HTMLElement> =
+      container.querySelectorAll<HTMLElement>('[data-user-row]');
+    const last: HTMLElement | undefined = prompts[prompts.length - 1];
+    if (last === undefined) {
+      return;
+    }
+    // Measured against the container rather than passed to `scrollIntoView`, which would also scroll
+    // whatever the panel itself sits inside.
+    container.scrollTop = last.offsetTop - container.offsetTop;
+  }
+
+  /**
    * Re-pins the transcript to the tail when the composer dispatches a message, even if the reader had
    * scrolled up to read back.
    */
@@ -1254,12 +1321,21 @@ export class AgentChat implements OnInit {
   }
 
   /**
-   * Builds the data URI for a transcript image thumbnail.
+   * Builds the data URI for a transcript image thumbnail, reusing an earlier build for the same
+   * image. The template calls this per change-detection pass, and re-concatenating a screenshot's
+   * base64 payload on every streaming flush allocated megabytes for strings that never change;
+   * keying on the image object itself (transcript images are stable identities) makes the repeat
+   * calls free, and a `WeakMap` lets a pruned transcript release its URIs with its images.
    * @param image The image.
    * @returns Returns the data URI.
    */
   public imageSrc(image: AiImageRef): string {
-    return `data:${image.mediaType};base64,${image.data}`;
+    let src: string | undefined = this.imageSrcCache.get(image);
+    if (src === undefined) {
+      src = `data:${image.mediaType};base64,${image.data}`;
+      this.imageSrcCache.set(image, src);
+    }
+    return src;
   }
 
   /**
