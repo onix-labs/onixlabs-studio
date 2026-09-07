@@ -44,7 +44,6 @@ function withHost(platform: string, arch: string): void {
     arch,
     versions: { studio: '2026.1.0', electron: '42.4.0', chromium: '140.0.0', node: '24.16.0' },
     homeDir: '/home/test',
-    skipSetup: false,
     display: {
       gpuRendering: { recommendReducedEffects: false, description: '' },
       graphicsAcceleration: 'auto',

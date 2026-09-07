@@ -11,12 +11,6 @@
   }
 }
 
-<!-- The setup wizard, mounted before the welcome screen because it precedes it: on a first launch and
-     after every version change it is what the user meets, and the welcome screen stands aside until
-     it is done. Mounted here rather than in a pop-out host so there is exactly one, in the main
-     window. -->
-<app-setup-wizard-host />
-
 <!-- The welcome screen stays mounted so it can animate in and out; it manages its own visible state. -->
 <app-welcome-screen class="welcome-screen" />
 

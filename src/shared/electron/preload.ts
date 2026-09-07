@@ -9,12 +9,9 @@ import type { DisplayStartup, HostEnv, HostVersions } from '@shared/api/host';
  * process resolved these from the active GPU and the persisted startup preferences by the time this
  * preload runs.
  */
-const startup: DisplayStartup & { homeDir: string; versions: HostVersions; skipSetup: boolean } =
-  ipcRenderer.sendSync(AppChannel.GetDisplayStartup) as DisplayStartup & {
-    homeDir: string;
-    versions: HostVersions;
-    skipSetup: boolean;
-  };
+const startup: DisplayStartup & { homeDir: string; versions: HostVersions } = ipcRenderer.sendSync(
+  AppChannel.GetDisplayStartup,
+) as DisplayStartup & { homeDir: string; versions: HostVersions };
 
 /**
  * Specifies the static host facts exposed to the renderer under `window.host`: values needed
@@ -25,7 +22,6 @@ const host: HostEnv = {
   arch: process.arch,
   versions: startup.versions,
   homeDir: startup.homeDir,
-  skipSetup: startup.skipSetup,
   display: {
     gpuRendering: startup.gpuRendering,
     graphicsAcceleration: startup.graphicsAcceleration,
