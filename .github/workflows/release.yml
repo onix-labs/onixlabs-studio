@@ -106,6 +106,66 @@ jobs:
       - name: Package
         run: npx electron-builder ${{ matrix.args }} --publish never
 
+      # A job must emit its own target and nothing else. An `arch:` list in electron-builder.yml
+      # silently overrides the CLI arch flag, and when both macOS jobs built both architectures they
+      # produced identical filenames — which the release job's artifact merge then wrote concurrently,
+      # splicing beta.4's Intel dmg out of two different builds (#617). A stray architecture here is
+      # that failure a step before it can happen, so fail the build on it.
+      - name: Verify this job built only its own target
+        shell: bash
+        env:
+          SUFFIX: ${{ matrix.platform == 'darwin' && format('mac-{0}', matrix.arch) || '' }}
+        run: |
+          shopt -s nullglob
+          status=0
+          for f in release/*.dmg release/*.zip release/*.exe release/*.AppImage; do
+            echo "built    $f"
+            if [ -n "$SUFFIX" ] && [[ "$f" != *"-$SUFFIX."* ]]; then
+              echo "::error::$f is not a $SUFFIX artifact — this job built more than its own target."
+              status=1
+            fi
+          done
+          exit $status
+
+      # electron-builder reports success for a disk image macOS cannot mount: beta.4's Intel dmg was
+      # the right size, had an intact UDIF trailer, and still failed with "The disk you attached was
+      # not readable by this computer". Only attaching it proves otherwise.
+      - name: Verify the disk images mount
+        if: matrix.platform == 'darwin'
+        shell: bash
+        run: |
+          shopt -s nullglob
+          for dmg in release/*.dmg; do
+            echo "verifying $dmg"
+            hdiutil verify "$dmg"
+            mount="$(mktemp -d)"
+            hdiutil attach "$dmg" -readonly -nobrowse -noverify -mountpoint "$mount" >/dev/null
+            ls -1 "$mount"
+            hdiutil detach "$mount" >/dev/null
+          done
+
+      # Hashes recorded at the source, checked again after the release job downloads them. This is the
+      # only guard that covers the journey itself — beta.4 was corrupted in transit, between a build
+      # that succeeded and a release that published, where nothing was looking.
+      - name: Record checksums
+        shell: bash
+        run: |
+          shopt -s nullglob
+          files=(release/*.dmg release/*.zip release/*.exe release/*.AppImage)
+          node -e '
+            const { createHash } = require("crypto");
+            const { readFileSync, writeFileSync } = require("fs");
+            const { basename } = require("path");
+            const lines = process.argv.slice(1).map((f) => {
+              const hash = createHash("sha256").update(readFileSync(f)).digest("hex");
+              return `${hash}  ${basename(f)}`;
+            });
+            writeFileSync(process.env.OUT, lines.join("\n") + "\n");
+            console.log(lines.join("\n"));
+          ' "${files[@]}"
+        env:
+          OUT: release/SHA256SUMS.txt
+
       - name: Upload installers
         uses: actions/upload-artifact@v7
         with:
@@ -116,6 +176,7 @@ jobs:
             release/*.zip
             release/*.exe
             release/*.AppImage
+            release/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 7
 
@@ -154,12 +215,39 @@ jobs:
             exit 1
           fi
 
+      # No `merge-multiple`. It flattens every artifact into one directory, and the four downloads run
+      # concurrently: two jobs that happen to emit the same filename write the same path at the same
+      # time, and the loser is not overwritten but interleaved. That is how beta.4's Intel dmg was
+      # spliced out of two builds (#617). One directory per artifact makes the collision impossible
+      # rather than merely unlikely.
       - name: Download installers
         uses: actions/download-artifact@v8
         with:
           pattern: installers-*
-          merge-multiple: true
           path: installers
+
+      - name: Verify the installers survived the journey
+        run: |
+          shopt -s nullglob
+          dirs=(installers/*/)
+          if [ "${#dirs[@]}" -eq 0 ]; then
+            echo "::error::No artifacts were downloaded — there is nothing to verify or publish."
+            exit 1
+          fi
+          status=0
+          for dir in "${dirs[@]}"; do
+            if [ ! -f "$dir/SHA256SUMS.txt" ]; then
+              echo "::error::$dir carries no SHA256SUMS.txt, so its contents cannot be checked."
+              status=1
+              continue
+            fi
+            echo "checking $dir"
+            (cd "$dir" && sha256sum --check --strict SHA256SUMS.txt) || status=1
+          done
+          if [ "$status" -ne 0 ]; then
+            echo "::error::An installer does not match the checksum recorded when it was built — it was corrupted between the build and here. Do not publish."
+          fi
+          exit $status
 
       - name: Create the tag
         env:
@@ -185,7 +273,16 @@ jobs:
           EOF
           prerelease=""
           case "$VERSION" in *-*) prerelease="--prerelease" ;; esac
-          gh release create "$TAG" installers/* \
+          # Named by extension, one directory per artifact: the checksum files stay behind, and an
+          # unexpected file in `release/` cannot become a release asset by accident.
+          shopt -s nullglob
+          assets=(installers/*/*.dmg installers/*/*.zip installers/*/*.exe installers/*/*.AppImage)
+          if [ "${#assets[@]}" -eq 0 ]; then
+            echo "::error::No installers were found to publish."
+            exit 1
+          fi
+          printf 'publishing %s\n' "${assets[@]}"
+          gh release create "$TAG" "${assets[@]}" \
             --repo "$REPO" \
             --draft $prerelease \
             --verify-tag \
