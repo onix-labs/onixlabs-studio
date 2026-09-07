@@ -310,8 +310,10 @@
     <div class="agent__md-modal">
       <h2 class="agent__md-title">Markdown Prompt Editor</h2>
       @if (markdownOpen()) {
+        <app-markdown-toolstrip class="agent__md-toolstrip" [editor]="markdownEditor" />
         <div class="agent__md-editor">
           <app-markdown-editor
+            #markdownEditor
             [content]="markdownSeed()"
             [isActive]="true"
             (contentChange)="onMarkdownChange($event)"

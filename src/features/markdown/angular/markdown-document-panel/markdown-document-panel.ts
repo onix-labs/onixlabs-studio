@@ -7,8 +7,13 @@ import {
   inject,
   input,
   InputSignal,
+  signal,
   Signal,
+  viewChild,
+  WritableSignal,
 } from '@angular/core';
+import { MarkdownEditor } from '@shared/angular/components/markdown-editor/markdown-editor';
+import { MarkdownToolstrip } from '@shared/angular/components/markdown-toolstrip/markdown-toolstrip';
 import { CodeDocument, Documents } from '@shared/angular/services/documents/documents';
 import { DocumentStatus } from '@shared/angular/services/document-status/document-status';
 import { MarkdownDocument } from '@features/markdown/angular/markdown-document/markdown-document';
@@ -21,19 +26,41 @@ import {
  * Represents the lean markdown surface mounted in a workspace document well: the shared
  * {@link MarkdownDocument} core. Unlike the full markdown tab view it carries no ribbon and no
  * outline/review/reader tool panels — because the well is a secondary editing surface beside the
- * workspace tree — and it shows neither a file toolstrip nor an inline status strip: the dock supplies
- * the tab header and, while this panel is the active document, it publishes its word count, read time,
- * language and encoding to the shared {@link DocumentStatus} so the well's status strip renders them.
- * The editor is fully editable, as in a tab.
+ * workspace tree — but it does mount the shared {@link MarkdownToolstrip} over the editor, so the
+ * basic formatting capabilities the ribbon would otherwise provide are still reachable here. It shows
+ * no inline status strip: the dock supplies the tab header and, while this panel is the active
+ * document, it publishes its word count, read time, language and encoding to the shared
+ * {@link DocumentStatus} so the well's status strip renders them. The editor is fully editable, as in
+ * a tab.
  */
 @Component({
   selector: 'app-markdown-document-panel',
-  imports: [MarkdownDocument],
+  imports: [MarkdownDocument, MarkdownToolstrip],
   templateUrl: './markdown-document-panel.html',
   styleUrl: './markdown-document-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class MarkdownDocumentPanel {
+  /**
+   * Holds the document core hosting the shared editor pane.
+   */
+  private readonly core: Signal<MarkdownDocument | undefined> =
+    viewChild<MarkdownDocument>(MarkdownDocument);
+
+  /**
+   * Holds the editor pane the toolstrip drives, captured once the pane's editor is ready (and again
+   * after a recreate for external content).
+   */
+  protected readonly pane: WritableSignal<MarkdownEditor | undefined> = signal<
+    MarkdownEditor | undefined
+  >(undefined);
+
+  /**
+   * Captures the ready pane for the toolstrip.
+   */
+  protected onEditorReady(): void {
+    this.pane.set(this.core()?.getPane());
+  }
   /**
    * Holds the documents service backing the hosted document's content, language and encoding.
    */

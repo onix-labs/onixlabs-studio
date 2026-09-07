@@ -1,0 +1,104 @@
+<app-panel-toolbar>
+  <button
+    type="button"
+    class="panel-toolbar__button"
+    [appTooltip]="'Undo'"
+    aria-label="Undo"
+    (click)="onUndo()"
+  >
+    <app-icon [icon]="Icon.UNDO" />
+  </button>
+  <button
+    type="button"
+    class="panel-toolbar__button"
+    [appTooltip]="'Redo'"
+    aria-label="Redo"
+    (click)="onRedo()"
+  >
+    <app-icon [icon]="Icon.REDO" />
+  </button>
+  <span class="markdown-toolstrip__divider" aria-hidden="true"></span>
+  <button
+    type="button"
+    class="panel-toolbar__button"
+    [appTooltip]="'Bold'"
+    aria-label="Bold"
+    (click)="onBold()"
+  >
+    <app-icon [icon]="Icon.BOLD" />
+  </button>
+  <button
+    type="button"
+    class="panel-toolbar__button"
+    [appTooltip]="'Italic'"
+    aria-label="Italic"
+    (click)="onItalic()"
+  >
+    <app-icon [icon]="Icon.ITALIC" />
+  </button>
+  <button
+    type="button"
+    class="panel-toolbar__button"
+    [appTooltip]="'Strikethrough'"
+    aria-label="Strikethrough"
+    (click)="onStrikethrough()"
+  >
+    <app-icon [icon]="Icon.STRIKETHROUGH" />
+  </button>
+  <button
+    type="button"
+    class="panel-toolbar__button"
+    [appTooltip]="'Inline code'"
+    aria-label="Inline code"
+    (click)="onInlineCode()"
+  >
+    <app-icon [icon]="Icon.CODE_INLINE" />
+  </button>
+  <span class="markdown-toolstrip__divider" aria-hidden="true"></span>
+  <button
+    type="button"
+    class="panel-toolbar__button"
+    [appTooltip]="'Bullet list'"
+    aria-label="Bullet list"
+    (click)="onBulletList()"
+  >
+    <app-icon [icon]="Icon.BULLET_LIST" />
+  </button>
+  <button
+    type="button"
+    class="panel-toolbar__button"
+    [appTooltip]="'Numbered list'"
+    aria-label="Numbered list"
+    (click)="onOrderedList()"
+  >
+    <app-icon [icon]="Icon.NUMBERED_LIST" />
+  </button>
+  <button
+    type="button"
+    class="panel-toolbar__button"
+    [appTooltip]="'Task list'"
+    aria-label="Task list"
+    (click)="onTaskList()"
+  >
+    <app-icon [icon]="Icon.TASK_LIST" />
+  </button>
+  <span class="markdown-toolstrip__divider" aria-hidden="true"></span>
+  <button
+    type="button"
+    class="panel-toolbar__button"
+    [appTooltip]="'Insert table'"
+    aria-label="Insert table"
+    (click)="onTable()"
+  >
+    <app-icon [icon]="Icon.TABLE" />
+  </button>
+  <button
+    type="button"
+    class="panel-toolbar__button"
+    [appTooltip]="'Insert divider'"
+    aria-label="Insert divider"
+    (click)="onDivider()"
+  >
+    <app-icon [icon]="Icon.DIVIDER" />
+  </button>
+</app-panel-toolbar>

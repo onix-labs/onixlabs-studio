@@ -1,0 +1,12 @@
+// The strip is a seamless row over the editor it drives; the shared panel-toolbar supplies the
+// layout and the buttons take the global tool-strip class, so only the group dividers live here.
+:host {
+  display: block;
+}
+
+.markdown-toolstrip__divider {
+  inline-size: 0.0625rem;
+  block-size: 1rem;
+  margin-inline: 0.125rem;
+  background: var(--dock-border-color);
+}
