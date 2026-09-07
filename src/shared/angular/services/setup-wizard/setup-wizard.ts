@@ -268,6 +268,12 @@ export class SetupWizard {
       this.log.debug('SetupWizard', 'No host version; setup does not run outside Electron');
       return;
     }
+    // The way past a wizard that will not complete. Suppression is for the launch only and records
+    // nothing, so the pass is still owed and is asked for again as soon as the diagnostic is unset.
+    if (window.host?.skipSetup === true) {
+      this.log.info('SetupWizard', 'Setup suppressed for this launch (STUDIO_SKIP_SETUP=1)');
+      return;
+    }
     if (this.version === this.lastSeen) {
       this.log.debug('SetupWizard', `Setup already completed for ${this.version}`);
       return;
