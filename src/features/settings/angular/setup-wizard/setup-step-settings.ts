@@ -95,12 +95,21 @@ export class SetupStepSettings {
   }
 
   /**
-   * Returns the description shown for a setting, preferring a dynamic description when one is
-   * available and falling back to the registry's static text.
+   * Returns the description shown for a setting: its condensed text where it states one, with any
+   * dynamic hint layered on top.
+   *
+   * A wizard step shows settings to someone who did not go looking for them, several steps from
+   * where they were going, so a setting whose full text runs to a paragraph is one whose text does
+   * not get read. The machine-specific part of a hint survives regardless — that is usually the most
+   * useful thing on the screen.
    * @param setting The setting definition.
    * @returns Returns the description to render.
    */
   protected describe(setting: SettingDef): string {
-    return this.descriptions.resolve(setting.key) ?? setting.description;
+    return (
+      this.descriptions.resolveConcise(setting.key) ??
+      setting.shortDescription ??
+      setting.description
+    );
   }
 }

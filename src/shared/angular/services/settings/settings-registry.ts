@@ -140,6 +140,9 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           'texture, for graphics hardware that renders them poorly; Off turns hardware acceleration ' +
           'off entirely, which can fix rendering glitches but draws every pixel on the CPU and makes ' +
           'the whole interface lag. Turning acceleration on or off restarts the application.',
+        shortDescription:
+          'How much of the GPU the interface uses. Leave this automatic unless the interface ' +
+          'renders oddly or lags; changing it restarts Studio.',
         control: {
           kind: 'select',
           options: [

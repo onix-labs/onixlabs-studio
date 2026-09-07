@@ -79,6 +79,19 @@ describe('SetupStepSettings', () => {
     expect(rowLabels()).toEqual(['Application menu', 'Application menu appearance']);
   });
 
+  it('render_whenTheSettingStatesShortText_showsThatRatherThanTheFullDescription', async () => {
+    // A wizard step shows settings to someone who did not go looking for them; a setting whose full
+    // text runs to a paragraph is one whose text does not get read.
+    await render(['display.graphicsAcceleration']);
+
+    const description: string =
+      host.querySelector('.setting-row__description')?.textContent?.trim() ?? '';
+    expect(description).toContain('Leave this automatic unless the interface renders oddly');
+    expect(description).not.toContain('drops squircle corners');
+    // The machine-specific hint survives the shortening.
+    expect(description).toContain('Automatic resolves to');
+  });
+
   it('render_whenTheSettingIsOwnedElsewhere_bindsThroughItsOwner', async () => {
     // The graphics level belongs to the Display service, not the settings store. The step names it
     // like any other key and the binding layer routes it.
