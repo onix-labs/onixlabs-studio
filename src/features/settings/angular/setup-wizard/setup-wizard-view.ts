@@ -1,7 +1,9 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
+import { Icon } from '@shared/angular/icons/icon';
 import { SetupStep, SetupWizard } from '@shared/angular/services/setup-wizard/setup-wizard';
 
 /**
@@ -20,12 +22,17 @@ import { SetupStep, SetupWizard } from '@shared/angular/services/setup-wizard/se
  */
 @Component({
   selector: 'app-setup-wizard-view',
-  imports: [Modal, ModalContent, Button],
+  imports: [Modal, ModalContent, Button, AppIcon],
   templateUrl: './setup-wizard-view.html',
   styleUrl: './setup-wizard-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class SetupWizardView {
+  /**
+   * Gets the icon set, exposed for the template.
+   */
+  protected readonly Icon: typeof Icon = Icon;
+
   /**
    * Holds the service that owns the sequence, exposed for the template.
    */
@@ -41,13 +48,6 @@ export class SetupWizardView {
    */
   protected readonly version: Signal<string> = computed(
     (): string => window.host?.versions.studio ?? '',
-  );
-
-  /**
-   * Gets the position through the sequence, as "Step n of m".
-   */
-  protected readonly progress: Signal<string> = computed(
-    (): string => `Step ${this.wizard.stepIndex() + 1} of ${this.wizard.steps().length}`,
   );
 
   /**
