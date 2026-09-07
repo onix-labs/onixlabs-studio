@@ -1,0 +1,99 @@
+// The wizard fills its window rather than being measured: its steps differ in height by a lot (a
+// paragraph of highlights against a list of health probes), and a window resizing between steps reads
+// as instability. A fixed frame with the body scrolling keeps the header and the actions in one place
+// the whole way through.
+.setup {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  block-size: 100%;
+  min-block-size: 0;
+}
+
+.setup__header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  flex: none;
+}
+
+.setup__progress {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-color);
+}
+
+.setup__title {
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.setup__summary {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--muted-foreground-color, var(--body-foreground-color));
+}
+
+// The only scrolling region. Everything around it is fixed, so the Next button never moves.
+.setup__body {
+  flex: 1;
+  min-block-size: 0;
+  overflow-y: auto;
+}
+
+.setup__intro {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  padding-block: 1.5rem;
+  text-align: center;
+}
+
+.setup__logo {
+  inline-size: 4.5rem;
+  block-size: 4.5rem;
+  user-select: none;
+}
+
+.setup__lead {
+  margin: 0;
+  max-inline-size: 30rem;
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.setup__rail {
+  display: flex;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  flex: none;
+}
+
+.setup__rung {
+  block-size: 0.2rem;
+  flex: 1;
+  border-radius: 999px;
+  background: var(--divider-color, currentcolor);
+  opacity: 0.35;
+}
+
+.setup__rung--done {
+  background: var(--accent-color);
+  opacity: 1;
+}
+
+.setup__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  flex: none;
+}
