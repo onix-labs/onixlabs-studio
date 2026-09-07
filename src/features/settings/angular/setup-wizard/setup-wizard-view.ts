@@ -7,34 +7,6 @@ import { Icon } from '@shared/angular/icons/icon';
 import { SetupStep, SetupWizard } from '@shared/angular/services/setup-wizard/setup-wizard';
 
 /**
- * Describes one of the three notes the welcome step carries: a marked, one-line promise about what
- * the pass is for. They are the only decorative content in the wizard, and they earn their place by
- * answering the question a blocking dialog on a first launch always raises — why am I being asked
- * this at all.
- */
-interface SetupHighlight {
-  /**
-   * Gets the mark shown beside the note.
-   */
-  readonly icon: Icon;
-
-  /**
-   * Gets the note's tone, which selects the mark's tint.
-   */
-  readonly tone: 'quick' | 'tailored' | 'ready';
-
-  /**
-   * Gets the note's heading.
-   */
-  readonly title: string;
-
-  /**
-   * Gets the sentence beneath it.
-   */
-  readonly detail: string;
-}
-
-/**
  * Presents the setup wizard: the blocking pass a user walks on a first launch and after every version
  * change, before they reach a tab.
  *
@@ -77,31 +49,6 @@ export class SetupWizardView {
   protected readonly version: Signal<string> = computed(
     (): string => window.host?.versions.studio ?? '',
   );
-
-  /**
-   * Gets the notes shown on the welcome step. Fixed content, so a plain constant rather than a
-   * signal.
-   */
-  protected readonly highlights: readonly SetupHighlight[] = [
-    {
-      icon: Icon.SETUP_QUICK,
-      tone: 'quick',
-      title: 'Get set up quickly',
-      detail: 'A guided configuration in just a few steps.',
-    },
-    {
-      icon: Icon.SETUP_TAILORED,
-      tone: 'tailored',
-      title: 'Tailored to you',
-      detail: 'Customise the tools, UI and workflow.',
-    },
-    {
-      icon: Icon.SETUP_READY,
-      tone: 'ready',
-      title: 'Ready to build',
-      detail: 'Start coding faster with your preferences.',
-    },
-  ];
 
   /**
    * Abandons the run, which is what closing the window means: nothing was decided, so the wizard is

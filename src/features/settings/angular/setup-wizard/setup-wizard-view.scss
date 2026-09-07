@@ -1,21 +1,31 @@
-// The wizard fills its window rather than being measured: its steps differ in height by a lot (a
-// paragraph of highlights against a list of health probes), and a window resizing between steps reads
-// as instability. A fixed frame with the body scrolling keeps the rail and the actions in one place
-// the whole way through.
+// The wizard is the settings feature's onboarding face, so it is dressed as the settings view: the
+// same ground, the same framed navigation well beside a content pane, the same row chrome, and the
+// same corner treatment. It is a first impression of Studio, and a first impression that does not
+// look like the rest of Studio is worse than a plain one.
+:host {
+  --modal-panel-background: var(--settings-background-color);
+  // The wizard supplies its own insets: the title bar reaches the window edges, and the rail draws
+  // its own frame. Zeroing the panel's padding is the seam for that — a negative margin only shifts
+  // the box up, leaving its height short by exactly the padding it failed to reclaim, which is dead
+  // space along the bottom edge.
+  --modal-panel-padding: 0;
+}
+
+// The height is stated rather than inherited. The modal window host's own fill rule
+// (`.modal-window-host__content > :only-child`) cannot reach here: its stylesheet is view-encapsulated,
+// and this element carries this component's scope attribute rather than the host's, so the rule never
+// matches projected content. With the panel's padding zeroed above, 100% is the whole window — which
+// is also what closes the gap along the bottom edge that the padding used to leave.
 .setup {
   display: flex;
   flex-direction: column;
   block-size: 100%;
   min-block-size: 0;
-  // The panel's own padding is cancelled: the title bar has to reach the window's edges to be the
-  // band it looks like, and the rail draws its own inset. Paid back by the parts that want it.
-  margin: calc(var(--modal-panel-padding, 1rem) * -1);
 }
 
-// The title bar. The window is `hiddenInset`, so it has no title bar of its own and the platform
-// draws its controls over the leading end of this band. It is the only drag region in the wizard,
-// which is what makes the window move from where every other window on the system does. Its height
-// clears the controls.
+// The window is `hiddenInset`, so it has no title bar of its own and the platform draws its controls
+// over the leading end of this band. It is the wizard's only drag region, which is what makes the
+// window move from where every other window on the system does. Its height clears the controls.
 .setup__titlebar {
   flex: none;
   block-size: 2.75rem;
@@ -26,47 +36,50 @@
   display: flex;
   flex: 1;
   min-block-size: 0;
-  gap: 1.5rem;
-  padding: 0 1.25rem 1.25rem;
+  gap: 1rem;
+  padding: 0 1rem 1rem;
+  overflow: hidden;
 }
 
 // ---------------------------------------------------------------------------------------------
-// The step rail
+// The step rail — the settings navigation well, with steps instead of sections
 // ---------------------------------------------------------------------------------------------
 
 .setup__rail {
-  flex: none;
-  inline-size: 11.5rem;
-  overflow-y: auto;
-  padding: 0.5rem;
-  border: 1px solid var(--divider-color, currentcolor);
-  border-radius: 0.9rem;
-  background: var(--well-background-color, transparent);
+  display: flex;
+  flex: 0 0 12rem;
+  flex-direction: column;
+  padding-block: 0.5rem;
+  overflow: hidden;
+  border: 0.0625rem solid var(--settings-border-color);
+  border-radius: calc(1rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  background: var(--settings-nav-background-color);
 }
 
 .setup__steps {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
   margin: 0;
   padding: 0;
+  overflow-y: auto;
   list-style: none;
 }
 
+// The tree row's metrics and behaviour, which is what every other list in the application uses.
 .setup__step {
   display: flex;
   align-items: center;
-  gap: 0.85rem;
-  padding: 0.7rem 0.85rem;
-  border-radius: 0.6rem;
-  font-size: 0.875rem;
-  color: var(--muted-foreground-color, var(--body-foreground-color));
+  gap: 0.5rem;
+  inline-size: 100%;
+  block-size: 2rem;
+  padding-inline: 0.625rem;
+  font-size: 0.8125rem;
+  color: var(--settings-muted-foreground-color);
+  transition: var(--hover-transition);
   user-select: none;
 }
 
 .setup__step-icon {
-  flex: none;
-  opacity: 0.85;
+  flex: 0 0 auto;
 }
 
 .setup__step-label {
@@ -81,19 +94,11 @@
   color: var(--body-foreground-color);
 }
 
-// The step being shown is the one fact the rail exists to carry, so it is the only filled rung.
+// The application's selection treatment — an accent-tinted fill across the full row, exactly as the
+// trees and lists draw it. Not a saturated pill: nothing else in Studio is one.
 .setup__step--current {
-  color: #fff;
-  font-weight: 500;
-  background: linear-gradient(
-    135deg,
-    var(--accent-color),
-    color-mix(in srgb, var(--accent-color) 72%, #000)
-  );
-}
-
-.setup__step--current .setup__step-icon {
-  opacity: 1;
+  color: var(--body-foreground-color);
+  background: color-mix(in srgb, var(--accent-color) 22%, transparent);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -109,25 +114,28 @@
   gap: 1rem;
 }
 
+// The settings view's section heading, so a step reads as the settings section it stands in for.
 .setup__header {
   display: flex;
   flex-direction: column;
-  gap: 0.3rem;
+  gap: 0.4rem;
   flex: none;
 }
 
 .setup__title {
   margin: 0;
-  font-size: 1.25rem;
-  font-weight: 500;
-  letter-spacing: -0.01em;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--settings-muted-foreground-color);
 }
 
 .setup__summary {
   margin: 0;
   font-size: 0.85rem;
   line-height: 1.5;
-  color: var(--muted-foreground-color, var(--body-foreground-color));
+  color: var(--settings-muted-foreground-color);
 }
 
 // The only scrolling region. Everything around it is fixed, so the Next button never moves.
@@ -141,114 +149,51 @@
 // The welcome step
 // ---------------------------------------------------------------------------------------------
 
-// The first step introduces the application rather than asking anything, so it is a centred stack:
-// the mark, the name, what the pass is for, and the three notes that answer "why am I being asked".
+// The first step introduces the application rather than asking anything, so it is a centred stack
+// rather than a headed working screen.
 .setup__intro {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 1.1rem;
+  gap: 1rem;
   block-size: 100%;
   text-align: center;
 }
 
 .setup__logo {
-  inline-size: 6rem;
-  block-size: 6rem;
-  margin-block-end: 0.4rem;
+  inline-size: 5rem;
+  block-size: 5rem;
   user-select: none;
 }
 
+// The identity block is the welcome screen's and the About dialog's, scaled to this pane, so the
+// three surfaces that introduce the application agree on how it is named.
 .setup__intro-title {
   margin: 0;
-  font-size: 1.7rem;
-  font-weight: 600;
-  letter-spacing: -0.02em;
+  font-size: 1.45rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
 }
 
 .setup__lead {
   margin: 0;
-  max-inline-size: 27rem;
-  font-size: 0.9rem;
-  line-height: 1.55;
-  color: var(--muted-foreground-color, var(--body-foreground-color));
-}
-
-.setup__highlights {
-  display: flex;
-  gap: 1.1rem;
-  margin: 1.5rem 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.setup__highlight {
-  display: flex;
-  flex: 1;
-  align-items: flex-start;
-  gap: 0.6rem;
-  text-align: start;
-}
-
-// A tinted, rounded tile per note. The tints are stated rather than derived from the accent: the
-// three sit side by side and have to be told apart, which one hue in three shades would not manage.
-.setup__highlight-mark {
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  inline-size: 1.9rem;
-  block-size: 1.9rem;
-  border-radius: 0.6rem;
-}
-
-.setup__highlight-mark--quick {
-  color: #4c8dff;
-  background: color-mix(in srgb, #4c8dff 18%, transparent);
-}
-
-.setup__highlight-mark--tailored {
-  color: #a78bfa;
-  background: color-mix(in srgb, #a78bfa 18%, transparent);
-}
-
-.setup__highlight-mark--ready {
-  color: #34d399;
-  background: color-mix(in srgb, #34d399 18%, transparent);
-}
-
-.setup__highlight-text {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-  min-inline-size: 0;
-}
-
-.setup__highlight-title {
-  font-size: 0.8rem;
-  font-weight: 500;
-  // The three titles sit side by side in a narrow column each; balancing keeps a title that has
-  // to wrap from leaving one word stranded on its own line.
-  text-wrap: balance;
-}
-
-.setup__highlight-detail {
-  font-size: 0.75rem;
-  line-height: 1.45;
-  color: var(--muted-foreground-color, var(--body-foreground-color));
+  max-inline-size: 26rem;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--settings-muted-foreground-color);
 }
 
 .setup__pending {
   margin: 0;
   font-size: 0.85rem;
   line-height: 1.6;
-  color: var(--muted-foreground-color, var(--body-foreground-color));
+  color: var(--settings-muted-foreground-color);
 }
 
 .setup__actions {
   display: flex;
   justify-content: flex-end;
-  gap: 0.6rem;
+  gap: 0.5rem;
   flex: none;
 }
