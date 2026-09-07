@@ -13,8 +13,9 @@ const LAST_SEEN_KEY: string = 'studio.setup.lastSeenVersion';
  * Stands a host environment in on `window.host`, or removes it to stand in for running outside
  * Electron. The property is declared readonly, so it is redefined rather than assigned.
  * @param version The Studio version the host reports, or null for no host at all.
+ * @param skipSetup Whether the host reports the suppression diagnostic set.
  */
-function stubHostVersion(version: string | null): void {
+function stubHostVersion(version: string | null, skipSetup: boolean = false): void {
   if (version === null) {
     Reflect.deleteProperty(window, 'host');
     return;
@@ -25,6 +26,7 @@ function stubHostVersion(version: string | null): void {
       platform: 'darwin',
       arch: 'arm64',
       homeDir: '/Users/test',
+      skipSetup,
       versions: { studio: version, electron: '38.0.0', chromium: '140.0.0', node: '24.0.0' },
       display: {
         gpuRendering: { recommendReducedEffects: false, description: '' },
@@ -100,6 +102,24 @@ describe('SetupWizard', () => {
       stubHostVersion(null);
 
       expect(build().isOpen()).toBe(false);
+    });
+
+    it('isOpen_whenSuppressedByTheDiagnostic_doesNotRun', () => {
+      // The way past a wizard that will not complete, and what the end-to-end suite runs behind.
+      stubHostVersion('2026.1.0-beta.5', true);
+
+      expect(build().isOpen()).toBe(false);
+    });
+
+    it('isOpen_whenSuppressionIsLifted_asksAgain', () => {
+      // Suppression is for the launch only: it records nothing, so the pass is still owed.
+      stubHostVersion('2026.1.0-beta.5', true);
+      build();
+      TestBed.resetTestingModule();
+      stubHostVersion('2026.1.0-beta.5', false);
+
+      expect(build().isOpen()).toBe(true);
+      expect(localStorage.getItem(LAST_SEEN_KEY)).toBeNull();
     });
 
     it('lastSeenVersion_onAFirstRun_isNull', () => {
