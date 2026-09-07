@@ -17,7 +17,6 @@ import {
   RecentItems,
   RecentKind,
 } from '@shared/angular/services/recent-items/recent-items';
-import { SetupWizard } from '@shared/angular/services/setup-wizard/setup-wizard';
 import { Shell } from '@shared/angular/services/shell/shell';
 import { Studio } from '@shared/angular/services/studio/studio';
 import { TabType } from '@shared/angular/services/tabs/tab';
@@ -101,11 +100,6 @@ export class WelcomeScreen {
    * Holds the welcome modal state, dismissed once an action routes the user into a tab.
    */
   private readonly welcomeModal: WelcomeModal = inject(WelcomeModal);
-
-  /**
-   * Holds the setup wizard, which precedes this screen on a first launch and after a version change.
-   */
-  private readonly setupWizard: SetupWizard = inject(SetupWizard);
 
   /**
    * Holds the opener that routes a chosen file or folder to the right surface.
@@ -255,16 +249,10 @@ export class WelcomeScreen {
    * so it can animate in and out; this drives its visible state. It is shown at a cold start (no tabs)
    * and whenever it is explicitly summoned as a modal over the content, unless an action has just
    * dismissed it.
-   *
-   * The setup wizard takes precedence over all of it. Both want the same cold start, and both present
-   * a freestanding window over a hidden main window, so showing them together would race two windows
-   * for one launch. Setup comes first, and this reappears the moment it finishes.
    */
   protected readonly visible: Signal<boolean> = computed(
     (): boolean =>
-      !this.setupWizard.isOpen() &&
-      !this.dismissed() &&
-      (this.tabsService.tabs().length === 0 || this.welcomeModal.isOpen()),
+      !this.dismissed() && (this.tabsService.tabs().length === 0 || this.welcomeModal.isOpen()),
   );
 
   /**

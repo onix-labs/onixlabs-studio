@@ -123,22 +123,6 @@ export interface HostEnv {
   readonly homeDir: string;
 
   /**
-   * Gets a value indicating whether the setup wizard is suppressed for this launch, because the
-   * `STUDIO_SKIP_SETUP=1` diagnostic was set.
-   *
-   * The wizard blocks and offers no Skip: every step is meant to be seen. That is the right default
-   * and the wrong last word, because a wizard that will not complete — a step that throws, a probe
-   * that hangs — would otherwise stand between the user and their editor with nothing they can do
-   * about it. This is the way past, and it is an environment variable rather than a setting because
-   * a setting is behind the wizard.
-   *
-   * It suppresses the wizard for the launch only; it records nothing, so unsetting it asks again.
-   * The end-to-end suite sets it for every test that is not about the wizard, which is what a real
-   * user who has already completed setup looks like.
-   */
-  readonly skipSetup: boolean;
-
-  /**
    * Gets the display/GPU startup snapshot resolved before the first paint.
    */
   readonly display: DisplayStartup;

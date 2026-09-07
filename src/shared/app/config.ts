@@ -14,7 +14,6 @@ import { Documents } from '@shared/angular/services/documents/documents';
 import { Lifecycle } from '@shared/angular/services/lifecycle/lifecycle';
 import { OpenWith } from '@shared/angular/services/open-with/open-with';
 import { Printing } from '@shared/angular/services/printing/printing';
-import { SetupWizard } from '@shared/angular/services/setup-wizard/setup-wizard';
 import { Theme } from '@shared/angular/services/theme/theme';
 import { FeatureDescriptor, FeatureRegistry } from '@shared/angular/services/feature-registry';
 import { featureContributions } from '@shared/app/feature-contributions';
@@ -54,12 +53,6 @@ export const config: ApplicationConfig = {
     // `@page` rule before the first document is printed or exported.
     provideAppInitializer((): void => {
       inject(Printing);
-    }),
-    // Decide the setup gate at start-up, before the first view renders. The welcome screen consults
-    // it to stand aside, and both want the same cold start — resolving it here means the decision is
-    // already made when the root's view is built, rather than being taken during it.
-    provideAppInitializer((): void => {
-      inject(SetupWizard);
     }),
     // Instantiate the agent-request toast bridge at start-up so pending agent asks surface as
     // toasts (when the setting is on) whichever panels happen to be mounted.
