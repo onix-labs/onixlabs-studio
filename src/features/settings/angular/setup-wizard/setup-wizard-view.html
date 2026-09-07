@@ -5,15 +5,17 @@
      precedent, so a wedged step can never trap the user. Closing that way abandons the run and
      records nothing, so it is asked again next launch.
 
-     The window is moved by the band the modal service lays across its top edge, level with the
-     platform's window controls — where every other window on the system is dragged from. Nothing
-     inside claims a drag region of its own. -->
+     Chromeless, so the wizard supplies its own title bar rather than taking the modal service's drag
+     strip. That strip is the mechanism the welcome screen also declined, and for the same reason: a
+     window that fills its content wants the band to be part of its layout, not a fixed overlay above
+     it. The band below carries the drag region instead. -->
 <app-modal
   [open]="wizard.isOpen()"
   [dismissable]="false"
   [closable]="true"
   [freestanding]="true"
   [expandable]="true"
+  [chromeless]="true"
   [width]="50"
   [height]="37.5"
   [minWidth]="40"
@@ -23,6 +25,10 @@
 >
   <ng-template appModalContent>
     <section class="setup">
+      <!-- The title bar. It holds nothing — the platform's window controls are drawn over its leading
+           end — and exists so the window is moved from where every other window on the system is. -->
+      <div class="setup__titlebar"></div>
+
       <div class="setup__columns">
         <!-- The rail is a progress indicator, not navigation: the steps are walked in order and every
              one is meant to be seen, so a rung is not a target. Back moves between them. -->
@@ -35,13 +41,7 @@
                 [class.setup__step--walked]="index < wizard.furthestIndex()"
                 [attr.aria-current]="index === wizard.stepIndex() ? 'step' : null"
               >
-                <span class="setup__box" aria-hidden="true">
-                  <!-- Sized in rem, not pixels: the marker is 1.1rem square, so the tick sits just
-                       inside it. -->
-                  @if (index < wizard.furthestIndex()) {
-                    <app-icon [icon]="Icon.CHECK" [size]="0.7" />
-                  }
-                </span>
+                <app-icon class="setup__step-icon" [icon]="rung.icon" [size]="1.15" />
                 <span class="setup__step-label">{{ rung.label }}</span>
               </li>
             }
@@ -51,7 +51,7 @@
         <div class="setup__pane">
           <!-- Every step but the first is a working screen, and heads itself top-left so the content
                below starts at a predictable place. The first is an introduction with nothing to work
-               on, so it carries its own centred title instead of being topped by one. -->
+               on, so it is a centred stack instead. -->
           @if (step()?.id !== 'welcome') {
             <header class="setup__header">
               <h2 class="setup__title">{{ step()?.title }}</h2>
@@ -63,8 +63,8 @@
             @switch (step()?.id) {
               @case ('welcome') {
                 <div class="setup__intro">
-                  <h2 class="setup__intro-title">{{ step()?.title }}</h2>
                   <img class="setup__logo" src="icon.svg" alt="" draggable="false" />
+                  <h2 class="setup__intro-title">{{ step()?.title }}</h2>
                   <p class="setup__lead">
                     @if (wizard.mode === 'upgrade') {
                       You are now running version {{ version() }}. This pass covers what changed and
@@ -74,6 +74,22 @@
                       and which AI provider it should talk to.
                     }
                   </p>
+
+                  <ul class="setup__highlights">
+                    @for (highlight of highlights; track highlight.title) {
+                      <li class="setup__highlight">
+                        <span
+                          [class]="'setup__highlight-mark setup__highlight-mark--' + highlight.tone"
+                        >
+                          <app-icon [icon]="highlight.icon" [size]="1.1" />
+                        </span>
+                        <span class="setup__highlight-text">
+                          <span class="setup__highlight-title">{{ highlight.title }}</span>
+                          <span class="setup__highlight-detail">{{ highlight.detail }}</span>
+                        </span>
+                      </li>
+                    }
+                  </ul>
                 </div>
               }
               @default {
@@ -89,11 +105,17 @@
 
           <footer class="setup__actions">
             <app-button label="Back" [disabled]="!wizard.canGoBack()" (click)="wizard.back()" />
+            <!-- The arrow is projected rather than passed as the button's icon, which leads the
+                 label; an arrow that says "onwards" has to trail it. -->
             <app-button
               variant="solid"
               [label]="wizard.isLastStep() ? 'Finish' : 'Next'"
               (click)="wizard.next()"
-            />
+            >
+              @if (!wizard.isLastStep()) {
+                <app-icon [icon]="Icon.ARROW_RIGHT" [size]="0.85" />
+              }
+            </app-button>
           </footer>
         </div>
       </div>
