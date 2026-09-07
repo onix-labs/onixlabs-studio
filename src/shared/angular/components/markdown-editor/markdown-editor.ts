@@ -485,6 +485,19 @@ export class MarkdownEditor implements AfterViewInit, OnChanges, OnDestroy {
             if (markdown === this.postCreateMarkdown) {
               return;
             }
+            // A document ending in a non-paragraph block (a list, table or fence) is given an empty
+            // trailing paragraph by the editor right after creation, so the click target below the
+            // content exists. That paragraph serialises as nothing but a trailing blank line — a
+            // difference in trailing newlines only is that plumbing, not an edit, and reporting it
+            // would falsely dirty every such document the moment it is opened. The baseline follows
+            // it so the next comparison sees the settled form.
+            if (
+              this.withoutTrailingBlank(markdown) ===
+              this.withoutTrailingBlank(this.postCreateMarkdown)
+            ) {
+              this.postCreateMarkdown = markdown;
+              return;
+            }
             this.postCreateMarkdown = null;
           }
           this.zone.run((): void => {
@@ -888,6 +901,16 @@ export class MarkdownEditor implements AfterViewInit, OnChanges, OnDestroy {
     block.removeAttribute('contenteditable');
     block.classList.remove('editing');
     block.classList.add('rendered');
+  }
+
+  /**
+   * Normalises a serialisation's trailing blank lines to a single newline, so two serialisations can
+   * be compared for edits that markdown can actually represent.
+   * @param markdown The serialised markdown.
+   * @returns Returns the markdown with trailing newlines collapsed.
+   */
+  private withoutTrailingBlank(markdown: string): string {
+    return markdown.replace(/\n+$/, '\n');
   }
 
   /**
