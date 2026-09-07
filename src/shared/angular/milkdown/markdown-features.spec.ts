@@ -380,6 +380,25 @@ describe('markdown features', () => {
         expect(alert?.querySelector('.alert-content')?.textContent).toContain('Useful context.');
       });
     });
+
+    it('doesNotInjectAHardBreak_betweenTheMarkerAndTheBody', async () => {
+      await withEditor('> [!NOTE]\n> Useful context.\n', ({ root }): void => {
+        expect(root.querySelector('.alert-content [data-type="hardbreak"]')).toBeNull();
+      });
+    });
+
+    it('roundTrips_anAlert_toTheUnescapedCanonicalForm', async () => {
+      // The marker must stay `[!NOTE]` — the escaped `\[!NOTE]` reads as literal text on GitHub —
+      // and the body must not grow blank quote lines with each open/save cycle.
+      await expectRoundTrip('> [!NOTE]\n> Useful context.\n', '> [!NOTE]\n>\n> Useful context.\n');
+    });
+
+    it('roundTrips_everyAlertType_withItsMarkerIntact', async () => {
+      for (const type of ['NOTE', 'TIP', 'IMPORTANT', 'WARNING', 'CAUTION']) {
+        const serialised: string = await serialize(`> [!${type}]\n> Body.\n`);
+        expect(serialised).toBe(`> [!${type}]\n>\n> Body.\n`);
+      }
+    });
   });
 
   describe('collapsible sections', () => {
