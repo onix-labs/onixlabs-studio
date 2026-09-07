@@ -18,7 +18,7 @@ import {
   viewChild,
   WritableSignal,
 } from '@angular/core';
-import { Crepe } from '@milkdown/crepe';
+import type { Crepe } from '@milkdown/crepe';
 import type { Ctx } from '@milkdown/ctx';
 import { editorViewCtx, parserCtx } from '@milkdown/kit/core';
 import { type Node as ProseMirrorNode } from '@milkdown/kit/prose/model';
@@ -26,19 +26,9 @@ import { AllSelection, type Selection, TextSelection } from '@milkdown/kit/prose
 import type { EditorView } from '@milkdown/kit/prose/view';
 import type { ListenerManager } from '@milkdown/plugin-listener';
 import type { Parser } from '@milkdown/transformer';
-import { blockReorderPlugin } from '@shared/angular/milkdown/block-reorder-plugin';
-import { collapsePlugin } from '@shared/angular/milkdown/collapse-plugin';
-import { colorPreviewPlugin } from '@shared/angular/milkdown/color-preview-plugin';
-import { emojiPlugin } from '@shared/angular/milkdown/emoji-plugin';
-import { footnotePlugin } from '@shared/angular/milkdown/footnote-plugin';
-import { githubAlertPlugin } from '@shared/angular/milkdown/github-alert-plugin';
-import { htmlImagePlugin } from '@shared/angular/milkdown/html-image-plugin';
-import { fileToDataUrl, installImageResolver } from '@shared/angular/milkdown/media-source';
-import { mermaidPlugin, renderMermaidDiagram } from '@shared/angular/milkdown/mermaid-plugin';
-import { createMonacoCodeBlockPlugin } from '@shared/angular/milkdown/monaco-code-block-plugin';
-import { pasteCleanPlugin } from '@shared/angular/milkdown/paste-clean-plugin';
-import { searchPlugin } from '@shared/angular/milkdown/search-plugin';
-import { subscriptSuperscriptPlugin } from '@shared/angular/milkdown/subscript-superscript-plugin';
+import { createStudioCrepe } from '@shared/angular/milkdown/create-studio-crepe';
+import { installImageResolver } from '@shared/angular/milkdown/media-source';
+import { renderMermaidDiagram } from '@shared/angular/milkdown/mermaid-plugin';
 import { Log } from '@shared/angular/services/log/log';
 import { Milkdown } from '@shared/angular/services/milkdown/milkdown';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
@@ -472,49 +462,13 @@ export class MarkdownEditor implements AfterViewInit, OnChanges, OnDestroy {
     const imageSizing: ImageSizing = this.milkdown.imageSizing();
 
     await this.zone.runOutsideAngular(async (): Promise<void> => {
-      const crepe: Crepe = new Crepe({
+      const crepe: Crepe = createStudioCrepe({
         root: container,
         defaultValue: this.content(),
-        features: {
-          [Crepe.Feature.BlockEdit]: true,
-          [Crepe.Feature.CodeMirror]: true,
-          [Crepe.Feature.Cursor]: true,
-          [Crepe.Feature.ImageBlock]: imageSizing === 'sizable',
-          [Crepe.Feature.Latex]: true,
-          [Crepe.Feature.LinkTooltip]: true,
-          [Crepe.Feature.ListItem]: true,
-          [Crepe.Feature.Placeholder]: true,
-          [Crepe.Feature.Table]: true,
-          // The app provides a fixed formatting ribbon, so Crepe's inline toolbar is redundant.
-          [Crepe.Feature.Toolbar]: false,
-        },
-        featureConfigs: {
-          [Crepe.Feature.Placeholder]: { text: 'Start writing...' },
-          [Crepe.Feature.CodeMirror]: { previewOnlyByDefault: true },
-          // Embed a pasted or dropped image as a self-contained data URL so it persists across a save
-          // and reopen; Crepe's default blob URL is discarded when the editor is torn down.
-          [Crepe.Feature.ImageBlock]: {
-            onUpload: (file: File): Promise<string> => fileToDataUrl(file),
-          },
-        },
+        resizableImages: imageSizing === 'sizable',
+        monaco: this.monaco,
+        highlighter: this.highlighter,
       });
-
-      crepe.editor.use(pasteCleanPlugin);
-      // Registered after Crepe's features have loaded, so its Monaco code_block node view overrides
-      // CodeMirror's (which stays enabled for the Latex feature that depends on it).
-      crepe.editor.use(
-        createMonacoCodeBlockPlugin({ monaco: this.monaco, highlighter: this.highlighter }),
-      );
-      crepe.editor.use(subscriptSuperscriptPlugin);
-      crepe.editor.use(htmlImagePlugin);
-      crepe.editor.use(collapsePlugin);
-      crepe.editor.use(githubAlertPlugin);
-      crepe.editor.use(colorPreviewPlugin);
-      crepe.editor.use(mermaidPlugin);
-      crepe.editor.use(footnotePlugin);
-      crepe.editor.use(emojiPlugin);
-      crepe.editor.use(blockReorderPlugin);
-      crepe.editor.use(searchPlugin);
 
       crepe.on((api: ListenerManager): void => {
         api.markdownUpdated((_ctx: Ctx, markdown: string): void => {
