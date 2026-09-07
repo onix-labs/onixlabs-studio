@@ -44,6 +44,12 @@ export interface SetupStep {
   readonly id: SetupStepId;
 
   /**
+   * Gets the short name shown on the step rail, where the room is a single line. Distinct from
+   * {@link title}, which heads the step itself and can afford to be a sentence.
+   */
+  readonly label: string;
+
+  /**
    * Gets the step's title.
    */
   readonly title: string;
@@ -55,16 +61,74 @@ export interface SetupStep {
 }
 
 /**
- * Holds the setup steps in the order they are presented. Later phases of the epic add entries and the
- * rules that select a subset of them for an upgrade; the order here is the order the user walks.
+ * Holds the setup steps in the order they are presented — the order the user walks.
+ *
+ * The catalogue is complete; the steps' contents are not. Later phases of the epic fill each one in
+ * and add the rules that select a subset for an upgrade. It is stated in full here rather than grown
+ * a step at a time because the rail is the wizard's spine: a user is owed a view of how far they have
+ * to go from the first screen, and a rail that grew as the phases landed would mean the shell could
+ * not be judged until the last of them.
  */
 export const SETUP_STEPS: readonly SetupStep[] = [
   {
     id: 'welcome',
+    label: 'Welcome',
     title: 'Welcome to ONIXLabs Studio',
     summary:
       'A short pass through the things that decide whether Studio works on this machine. Nothing ' +
       'here is permanent — every choice is in Settings afterwards.',
+  },
+  {
+    id: 'whats-new',
+    label: "What's New",
+    title: 'What changed in this version',
+    summary: 'The parts of this release worth knowing about before you carry on.',
+  },
+  {
+    id: 'appearance',
+    label: 'Appearance',
+    title: 'How Studio should look',
+    summary: 'Theme, accent colour, and how much of the GPU the interface uses.',
+  },
+  {
+    id: 'environment',
+    label: 'Environment',
+    title: 'What is installed underneath',
+    summary:
+      'The tools Studio builds on, checked against this machine — so anything missing is said here ' +
+      'rather than failing quietly later.',
+  },
+  {
+    id: 'tooling',
+    label: 'Tooling',
+    title: 'Tooling and plugins',
+    summary: 'Language support, container engines and decoders, installed as you need them.',
+  },
+  {
+    id: 'ai-provider',
+    label: 'AI Provider',
+    title: 'Which AI Studio talks to',
+    summary: 'A connection, a credential, and a model — verified before you leave this step.',
+  },
+  {
+    id: 'security',
+    label: 'Security',
+    title: 'Security and privacy',
+    summary:
+      'What content may load from the network, and how much the agent may do without asking.',
+  },
+  {
+    id: 'terminal',
+    label: 'Terminal',
+    title: 'Terminal and shell',
+    summary:
+      'The shell new terminals start with, and the one the agent takes its environment from.',
+  },
+  {
+    id: 'source-control',
+    label: 'Source Control',
+    title: 'Source control',
+    summary: 'Who your commits are attributed to, and how Studio reaches your forge.',
   },
 ];
 
@@ -136,9 +200,26 @@ export class SetupWizard {
 
   /**
    * Gets the steps this run presents, in order.
+   *
+   * A first run has no previous version to report against, so it carries no What's New; the delta
+   * rules that shorten an upgrade to what actually changed arrive with the rest of that step.
    */
-  public readonly steps: Signal<readonly SetupStep[]> =
-    signal<readonly SetupStep[]>(SETUP_STEPS).asReadonly();
+  public readonly steps: Signal<readonly SetupStep[]> = signal<readonly SetupStep[]>(
+    this.mode === 'first-run'
+      ? SETUP_STEPS.filter((step: SetupStep): boolean => step.id !== 'whats-new')
+      : SETUP_STEPS,
+  ).asReadonly();
+
+  /**
+   * Holds the furthest step reached this run, which is what separates a step already walked from one
+   * still ahead. It is not the current index: going back does not un-walk the steps behind you.
+   */
+  private readonly furthest: WritableSignal<number> = signal<number>(0);
+
+  /**
+   * Gets the furthest step reached this run.
+   */
+  public readonly furthestIndex: Signal<number> = this.furthest.asReadonly();
 
   /**
    * Gets the index of the step being shown.
@@ -192,6 +273,7 @@ export class SetupWizard {
       return;
     }
     this.index.update((current: number): number => current + 1);
+    this.furthest.update((reached: number): number => Math.max(reached, this.index()));
   }
 
   /**

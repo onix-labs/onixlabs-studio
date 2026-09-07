@@ -1,51 +1,139 @@
 // The wizard fills its window rather than being measured: its steps differ in height by a lot (a
 // paragraph of highlights against a list of health probes), and a window resizing between steps reads
-// as instability. A fixed frame with the body scrolling keeps the header and the actions in one place
+// as instability. A fixed frame with the body scrolling keeps the rail and the actions in one place
 // the whole way through.
+//
+// Nothing here claims a drag region. The window is moved by the strip the modal service lays across
+// the top edge, level with the platform's window controls, and the panel's own leading padding
+// already reserves that band — so the wizard is dragged from exactly where every other window on the
+// system is.
 .setup {
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
   block-size: 100%;
   min-block-size: 0;
 }
 
-// The header doubles as the window's title bar. A modal window is `hiddenInset` — it has no title bar
-// of its own, and the only thing that moves it is the drag strip the modal service lays over the top
-// 44px, which is both invisible and exactly where the platform's window controls sit. Continuing the
-// drag region down through the header gives the window a band that looks like something you would
-// drag, and makes it one gesture rather than a hunt for a hairline.
-//
-// The negative inline margin (paid back as padding) carries the band to the window edges, past the
-// panel's own padding, so it reads as a title bar rather than a floating strip.
+.setup__columns {
+  display: flex;
+  flex: 1;
+  min-block-size: 0;
+  gap: 1.5rem;
+}
+
+// ---------------------------------------------------------------------------------------------
+// The step rail
+// ---------------------------------------------------------------------------------------------
+
+.setup__rail {
+  flex: none;
+  inline-size: 11.5rem;
+  overflow-y: auto;
+  padding: 0.75rem;
+  border: 1px solid var(--divider-color, currentcolor);
+  border-radius: var(--panel-radius, 0.5rem);
+  background: var(--well-background-color, transparent);
+}
+
+.setup__steps {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+// Each rung is a marker beside a label, and the run between one marker and the next is drawn from the
+// rung above — so the line only ever appears between markers, never trailing off the last one.
+.setup__step {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding-block: 0.4rem;
+  font-size: 0.82rem;
+  color: var(--muted-foreground-color, var(--body-foreground-color));
+}
+
+.setup__step:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  // Spans the whole gap between one marker and the next: from this marker's bottom edge (the rung's
+  // 0.4rem leading padding plus the 1.1rem marker) to the next marker's top edge (this rung's own
+  // 0.4rem trailing padding). Anything shorter reads as a dash rather than a run.
+  inset-block: 1.5rem -0.4rem;
+  // Centred on the marker, which is 1.1rem wide and starts at the rung's leading edge.
+  inset-inline-start: 0.55rem;
+  inline-size: 1px;
+  background: var(--divider-color, currentcolor);
+  opacity: 0.45;
+}
+
+// The checkbox metaphor, drawn rather than rendered as a control: an empty box for a step still
+// ahead, a ticked one for a step already walked.
+.setup__box {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 1.1rem;
+  block-size: 1.1rem;
+  border: 1px solid var(--divider-color, currentcolor);
+  border-radius: 0.25rem;
+  opacity: 0.55;
+}
+
+.setup__step-label {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.setup__step--walked {
+  color: var(--body-foreground-color);
+}
+
+.setup__step--walked .setup__box {
+  border-color: var(--accent-color);
+  color: var(--accent-color);
+  opacity: 1;
+}
+
+// The step being shown is the one fact the rail exists to carry, so it is the only rung with weight.
+.setup__step--current {
+  color: var(--accent-color);
+  font-weight: 500;
+}
+
+.setup__step--current .setup__box {
+  border-color: var(--accent-color);
+  box-shadow: inset 0 0 0 0.18rem var(--accent-color);
+  opacity: 1;
+}
+
+// ---------------------------------------------------------------------------------------------
+// The step itself
+// ---------------------------------------------------------------------------------------------
+
+.setup__pane {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-inline-size: 0;
+  min-block-size: 0;
+  gap: 1rem;
+}
+
 .setup__header {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 0.3rem;
   flex: none;
-  margin-inline: calc(var(--modal-panel-padding, 1rem) * -1);
-  padding-inline: var(--modal-panel-padding, 1rem);
-  -webkit-app-region: drag;
-}
-
-// Nothing in the header is interactive today, but a drag region swallows clicks whole — anything
-// added here later must opt back out or it will be undismissably unclickable.
-.setup__header :is(a, button, input, select, textarea) {
-  -webkit-app-region: no-drag;
-}
-
-.setup__progress {
-  margin: 0;
-  font-size: 0.72rem;
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--accent-color);
 }
 
 .setup__title {
   margin: 0;
-  font-size: 1.3rem;
+  font-size: 1.25rem;
   font-weight: 500;
   letter-spacing: -0.01em;
 }
@@ -64,48 +152,43 @@
   overflow-y: auto;
 }
 
+// The first step introduces the application rather than asking anything, so it is centred in the pane
+// as a single stack — title, mark, and the sentence saying what the rest of the wizard is for.
 .setup__intro {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1rem;
-  padding-block: 1.5rem;
+  justify-content: center;
+  gap: 1.75rem;
+  block-size: 100%;
   text-align: center;
 }
 
+.setup__intro-title {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
 .setup__logo {
-  inline-size: 4.5rem;
-  block-size: 4.5rem;
+  inline-size: 5rem;
+  block-size: 5rem;
   user-select: none;
 }
 
 .setup__lead {
   margin: 0;
-  max-inline-size: 30rem;
+  max-inline-size: 26rem;
   font-size: 0.9rem;
   line-height: 1.6;
 }
 
-.setup__rail {
-  display: flex;
-  gap: 0.35rem;
+.setup__pending {
   margin: 0;
-  padding: 0;
-  list-style: none;
-  flex: none;
-}
-
-.setup__rung {
-  block-size: 0.2rem;
-  flex: 1;
-  border-radius: 999px;
-  background: var(--divider-color, currentcolor);
-  opacity: 0.35;
-}
-
-.setup__rung--done {
-  background: var(--accent-color);
-  opacity: 1;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  color: var(--muted-foreground-color, var(--body-foreground-color));
 }
 
 .setup__actions {

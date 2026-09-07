@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import type { HostEnv } from '@shared/api/host';
 
-import { SetupWizard } from './setup-wizard';
+import { SetupStep, SetupWizard } from './setup-wizard';
 
 /**
  * Holds the store key the service persists the completed version under, restated here so the spec
@@ -155,6 +155,66 @@ describe('SetupWizard', () => {
       TestBed.resetTestingModule();
 
       expect(build().isOpen()).toBe(true);
+    });
+  });
+
+  describe('the step catalogue', () => {
+    it('steps_onAFirstRun_carriesNoWhatsNew', () => {
+      // There is no previous version to report against, so the step would have nothing to say.
+      expect(
+        build()
+          .steps()
+          .map((step: SetupStep): string => step.id),
+      ).not.toContain('whats-new');
+    });
+
+    it('steps_onAnUpgrade_carriesWhatsNew', () => {
+      localStorage.setItem(LAST_SEEN_KEY, JSON.stringify('2026.1.0-beta.4'));
+
+      expect(
+        build()
+          .steps()
+          .map((step: SetupStep): string => step.id),
+      ).toContain('whats-new');
+    });
+
+    it('steps_always_leadsWithWelcome', () => {
+      expect(build().steps()[0].id).toBe('welcome');
+    });
+
+    it('steps_always_giveEveryStepARailLabelAndATitle', () => {
+      // The rail shows the label and the pane shows the title; a step missing either renders blank.
+      for (const step of build().steps()) {
+        expect(step.label.length, `${step.id} label`).toBeGreaterThan(0);
+        expect(step.title.length, `${step.id} title`).toBeGreaterThan(0);
+        expect(step.summary.length, `${step.id} summary`).toBeGreaterThan(0);
+      }
+    });
+  });
+
+  describe('the walked mark', () => {
+    it('furthestIndex_beforeAnyNavigation_isTheFirstStep', () => {
+      expect(build().furthestIndex()).toBe(0);
+    });
+
+    it('furthestIndex_afterAdvancing_followsTheStep', () => {
+      const wizard: SetupWizard = build();
+
+      wizard.next();
+
+      expect(wizard.furthestIndex()).toBe(1);
+    });
+
+    it('furthestIndex_afterGoingBack_holdsTheFurthestReached', () => {
+      // Going back does not un-walk the steps behind you; the rail must keep their ticks.
+      const wizard: SetupWizard = build();
+      wizard.next();
+      wizard.next();
+
+      wizard.back();
+
+      expect(wizard.stepIndex()).toBe(1);
+      expect(wizard.furthestIndex()).toBe(2);
     });
   });
 
