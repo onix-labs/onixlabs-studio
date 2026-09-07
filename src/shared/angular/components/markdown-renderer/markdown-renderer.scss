@@ -8,6 +8,6 @@
 // KaTeX sizes its own boxes precisely; the bubble must not impose overflow clipping on them (setting
 // overflow-x also forces overflow-y non-visible, which clipped the bottom of tall expressions). Give
 // display math its normal breathing room and let a long equation overflow naturally.
-.markdown-view__prose ::ng-deep .katex-display {
+.markdown-renderer__prose ::ng-deep .katex-display {
   margin-block: 0.5em;
 }

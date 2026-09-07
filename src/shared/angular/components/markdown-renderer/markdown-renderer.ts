@@ -110,13 +110,13 @@ export function resetTrustedBlockCache(): void {
  * carry. Pure over its input, suitable for the many small, streaming assistant bubbles.
  */
 @Component({
-  selector: 'app-markdown-view',
+  selector: 'app-markdown-renderer',
   imports: [CodeBlock],
-  templateUrl: './markdown-view.html',
-  styleUrl: './markdown-view.scss',
+  templateUrl: './markdown-renderer.html',
+  styleUrl: './markdown-renderer.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class MarkdownView {
+export class MarkdownRenderer {
   /**
    * Gets the markdown text to render.
    */

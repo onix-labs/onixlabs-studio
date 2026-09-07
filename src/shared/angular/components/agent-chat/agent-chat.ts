@@ -35,7 +35,7 @@ import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { Radio } from '@shared/angular/components/forms/radio/radio';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
-import { MarkdownView } from '@shared/angular/components/markdown-view/markdown-view';
+import { MarkdownRenderer } from '@shared/angular/components/markdown-renderer/markdown-renderer';
 import { AgentComposer } from '@shared/angular/components/agent-composer/agent-composer';
 import { friendlyToolLabel, technicalToolName } from './tool-summary';
 
@@ -298,7 +298,7 @@ interface LaneInfo {
  */
 @Component({
   selector: 'app-agent-chat',
-  imports: [Button, AppIcon, MarkdownView, NgTemplateOutlet, Radio, Dropdown, AgentComposer],
+  imports: [Button, AppIcon, MarkdownRenderer, NgTemplateOutlet, Radio, Dropdown, AgentComposer],
   templateUrl: './agent-chat.html',
   styleUrl: './agent-chat.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
