@@ -1174,21 +1174,6 @@ export class Icon {
   public static readonly SETUP_SOURCE_CONTROL: Icon = new Icon('ph ph-git-branch');
 
   /**
-   * Gets the mark on the setup wizard's "get set up quickly" highlight.
-   */
-  public static readonly SETUP_QUICK: Icon = new Icon('ph ph-lightning');
-
-  /**
-   * Gets the mark on the setup wizard's "tailored to you" highlight.
-   */
-  public static readonly SETUP_TAILORED: Icon = new Icon('ph ph-sliders-horizontal');
-
-  /**
-   * Gets the mark on the setup wizard's "ready to build" highlight.
-   */
-  public static readonly SETUP_READY: Icon = new Icon('ph ph-sparkle');
-
-  /**
    * Gets the arrow trailing the setup wizard's Next button.
    */
   public static readonly ARROW_RIGHT: Icon = new Icon('ph ph-arrow-right');

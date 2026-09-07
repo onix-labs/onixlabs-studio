@@ -41,7 +41,7 @@
                 [class.setup__step--walked]="index < wizard.furthestIndex()"
                 [attr.aria-current]="index === wizard.stepIndex() ? 'step' : null"
               >
-                <app-icon class="setup__step-icon" [icon]="rung.icon" [size]="1.15" />
+                <app-icon class="setup__step-icon" [icon]="rung.icon" [size]="1" />
                 <span class="setup__step-label">{{ rung.label }}</span>
               </li>
             }
@@ -74,22 +74,6 @@
                       and which AI provider it should talk to.
                     }
                   </p>
-
-                  <ul class="setup__highlights">
-                    @for (highlight of highlights; track highlight.title) {
-                      <li class="setup__highlight">
-                        <span
-                          [class]="'setup__highlight-mark setup__highlight-mark--' + highlight.tone"
-                        >
-                          <app-icon [icon]="highlight.icon" [size]="1.1" />
-                        </span>
-                        <span class="setup__highlight-text">
-                          <span class="setup__highlight-title">{{ highlight.title }}</span>
-                          <span class="setup__highlight-detail">{{ highlight.detail }}</span>
-                        </span>
-                      </li>
-                    }
-                  </ul>
                 </div>
               }
               @default {
