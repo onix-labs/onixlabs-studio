@@ -188,14 +188,16 @@ describe('SetupWizard', () => {
       ).not.toContain('whats-new');
     });
 
-    it('steps_onAnUpgrade_carriesWhatsNew', () => {
+    it('steps_onAnUpgradeWithNothingToReport_omitsWhatsNew', () => {
+      // An upgrade across a release nobody wrote highlights for has nothing to say, and a What's New
+      // step that renders an empty list is worse than no step at all.
       localStorage.setItem(LAST_SEEN_KEY, JSON.stringify('2026.1.0-beta.4'));
 
       expect(
         build()
           .steps()
           .map((step: SetupStep): string => step.id),
-      ).toContain('whats-new');
+      ).not.toContain('whats-new');
     });
 
     it('steps_always_leadsWithWelcome', () => {
@@ -221,6 +223,78 @@ describe('SetupWizard', () => {
         .map((step: SetupStep): string => step.icon.classList);
 
       expect(new Set(glyphs).size).toBe(glyphs.length);
+    });
+  });
+
+  describe('the delta rules', () => {
+    it('steps_onAFirstRun_presentEverythingExceptWhatsNew', () => {
+      const ids: readonly string[] = build()
+        .steps()
+        .map((step: SetupStep): string => step.id);
+
+      expect(ids).toContain('appearance');
+      expect(ids).toContain('security');
+      expect(ids).toContain('terminal');
+      expect(ids).not.toContain('whats-new');
+    });
+
+    it('steps_onAnUpgradeFromBeforeASettingLanded_presentThatSettingsStep', () => {
+      // The graphics level landed in beta.4, so someone arriving from beta.3 has never seen it.
+      localStorage.setItem(LAST_SEEN_KEY, JSON.stringify('2026.1.0-beta.3'));
+
+      expect(
+        build()
+          .steps()
+          .map((step: SetupStep): string => step.id),
+      ).toContain('appearance');
+    });
+
+    it('steps_onAnUpgradeWithNothingNewInThem_leaveSettingsStepsOut', () => {
+      // Nothing in the security or terminal steps has changed since beta.4, so re-asking would turn
+      // the pass into a toll paid on every release.
+      localStorage.setItem(LAST_SEEN_KEY, JSON.stringify('2026.1.0-beta.4'));
+
+      const ids: readonly string[] = build()
+        .steps()
+        .map((step: SetupStep): string => step.id);
+
+      expect(ids).not.toContain('security');
+      expect(ids).not.toContain('terminal');
+      expect(ids).not.toContain('appearance');
+    });
+
+    it('steps_onAnUpgrade_alwaysKeepTheStepsAboutTheMachine', () => {
+      // The machine changes underneath Studio without any version doing so — a runtime uninstalled,
+      // a credential expired — so these are looked at again regardless.
+      localStorage.setItem(LAST_SEEN_KEY, JSON.stringify('2026.1.0-beta.4'));
+
+      const ids: readonly string[] = build()
+        .steps()
+        .map((step: SetupStep): string => step.id);
+
+      expect(ids).toContain('environment');
+      expect(ids).toContain('tooling');
+    });
+
+    it('steps_onAnUpgradeAcrossAReleaseWithHighlights_leadWithWhatsNew', () => {
+      localStorage.setItem(LAST_SEEN_KEY, JSON.stringify('2026.1.0-beta.3'));
+
+      const ids: readonly string[] = build()
+        .steps()
+        .map((step: SetupStep): string => step.id);
+
+      expect(ids[0]).toBe('welcome');
+      expect(ids[1]).toBe('whats-new');
+    });
+
+    it('highlights_onAnUpgrade_reportTheReleasesCrossed', () => {
+      localStorage.setItem(LAST_SEEN_KEY, JSON.stringify('2026.1.0-beta.3'));
+
+      expect(build().highlights.length).toBeGreaterThan(0);
+    });
+
+    it('highlights_onAFirstRun_areEmpty', () => {
+      expect(build().highlights).toEqual([]);
     });
   });
 

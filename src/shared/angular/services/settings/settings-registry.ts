@@ -133,6 +133,9 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
       {
         key: 'display.graphicsAcceleration',
         owner: 'display',
+        // Collapsed out of three separate switches in this release, so an upgrading user has never
+        // seen it and the wizard puts the appearance step in front of them once.
+        since: '2026.1.0-beta.4',
         title: 'Graphics Acceleration',
         description:
           'How much of the GPU the interface uses. Full renders every visual feature; Limited keeps ' +

@@ -76,11 +76,14 @@
                   </p>
                 </div>
               }
+              @case ('whats-new') {
+                <app-setup-step-whats-new />
+              }
               @case ('appearance') {
-                <app-setup-step-settings [keys]="appearanceKeys" />
+                <app-setup-step-settings [keys]="stepSettings['appearance']" />
               }
               @case ('security') {
-                <app-setup-step-settings [keys]="securityKeys" />
+                <app-setup-step-settings [keys]="stepSettings['security']" />
                 <p class="setup__note">
                   Beyond these, the agent may only write inside the workspace you have open. That
                   boundary is not something a permission prompt can widen — it is changed in
@@ -90,13 +93,23 @@
               @case ('terminal') {
                 <app-setup-step-terminal />
               }
+              @case ('environment') {
+                <app-setup-step-environment />
+              }
+              @case ('tooling') {
+                <app-setup-step-tooling />
+              }
+              @case ('ai-provider') {
+                <app-setup-step-ai-provider />
+              }
+              @case ('source-control') {
+                <app-setup-step-source-control />
+              }
               @default {
-                <!-- The rail is complete from the first phase so the shell can be judged whole; the
-                     remaining steps are filled in by the phases that follow. This says so rather
-                     than showing an empty panel that reads as broken. -->
-                <p class="setup__pending">
-                  This step is not built yet. It arrives in a later phase of the setup wizard.
-                </p>
+                <!-- Every step in the catalogue has a case above, so reaching this means a step was
+                     added without one. Saying so is better than an empty panel, which the user cannot
+                     tell apart from a control that failed to load. -->
+                <p class="setup__pending">This step could not be shown.</p>
               }
             }
           </div>

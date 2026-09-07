@@ -1174,6 +1174,16 @@ export class Icon {
   public static readonly SETUP_SOURCE_CONTROL: Icon = new Icon('ph ph-git-branch');
 
   /**
+   * Gets the mark against something the setup wizard's environment step could not find.
+   */
+  public static readonly SETUP_MISSING: Icon = new Icon('ph ph-x-circle');
+
+  /**
+   * Gets the mark against something present but incompletely set up, or that could not be checked.
+   */
+  public static readonly SETUP_WARNING: Icon = new Icon('ph ph-warning-circle');
+
+  /**
    * Gets the arrow trailing the setup wizard's Next button.
    */
   public static readonly ARROW_RIGHT: Icon = new Icon('ph ph-arrow-right');

@@ -1,0 +1,43 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+// The version heads its own block, because a user skipping releases is shown several and needs to
+// know which is which. It borrows the settings view's section-heading treatment.
+.release__version {
+  margin: 0 0 0.75rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent-color);
+  font-family: var(--font-mono);
+}
+
+.release__headlines {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.release__headline {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.release__headline-title {
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.release__headline-detail {
+  font-size: 0.8rem;
+  line-height: 1.55;
+  color: var(--settings-muted-foreground-color);
+}

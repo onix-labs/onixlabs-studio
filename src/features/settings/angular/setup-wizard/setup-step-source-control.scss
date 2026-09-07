@@ -1,0 +1,29 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.scm__note,
+.scm__unavailable {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--settings-muted-foreground-color);
+}
+
+.scm__status {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  font-size: 0.78rem;
+}
+
+.scm__verdict--good {
+  color: var(--success-color, #34d399);
+}
+
+.scm__verdict--bad {
+  color: var(--danger-color, #f87171);
+}

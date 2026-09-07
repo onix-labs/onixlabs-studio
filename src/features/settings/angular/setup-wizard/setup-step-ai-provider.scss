@@ -1,0 +1,32 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.ai__verify {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+// The verdict is the point of the step, so it says what happened in words rather than as a colour
+// alone — a tint is a hint, and this is an answer.
+.ai__verdict {
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--success-color, #34d399);
+}
+
+.ai__verdict--bad {
+  color: var(--danger-color, #f87171);
+}
+
+.ai__note,
+.ai__unavailable {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--settings-muted-foreground-color);
+}

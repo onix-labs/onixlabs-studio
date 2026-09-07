@@ -1,6 +1,10 @@
 import { computed, inject, Service, Signal, signal, WritableSignal } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
+import { highlightsBetween, ReleaseHighlights } from '@shared/api/release-highlights';
+import { isNewerStudioVersion } from '@shared/api/studio-version';
 import { Log } from '@shared/angular/services/log/log';
+import { SETTINGS_BY_KEY } from '@shared/angular/services/settings/settings-registry';
+import { SettingDef } from '@shared/angular/services/settings/settings-schema';
 import { SettingsStore } from '@shared/angular/services/settings-store/settings-store';
 
 /**
@@ -65,6 +69,21 @@ export interface SetupStep {
    */
   readonly summary: string;
 }
+
+/**
+ * Maps each settings-driven step to the setting keys it presents, so the delta rules can ask whether
+ * a step has anything new in it. A step absent from this map carries no settings — it is driven by
+ * something else (the environment probes, the plugin catalogue) and says for itself whether it
+ * applies.
+ *
+ * It lives beside the step catalogue rather than with the components that render it: which settings a
+ * step is *about* is what decides whether the step runs at all, and that decision is this service's.
+ */
+export const SETUP_STEP_SETTINGS: Readonly<Record<string, readonly string[]>> = {
+  appearance: ['appearance.themeMode', 'appearance.accent', 'display.graphicsAcceleration'],
+  security: ['security.imagePolicy', 'ai.permissionPosture'],
+  terminal: ['terminal.defaultShell', 'ai.agentShell'],
+};
 
 /**
  * Holds the setup steps in the order they are presented — the order the user walks.
@@ -214,15 +233,23 @@ export class SetupWizard {
   public readonly lastSeenVersion: string | null = this.lastSeen;
 
   /**
+   * Gets the highlights of every release being moved across, oldest first. Empty on a first run,
+   * and empty for a release nobody wrote highlights for.
+   */
+  public readonly highlights: readonly ReleaseHighlights[] = highlightsBetween(
+    this.lastSeen,
+    this.version ?? '',
+  );
+
+  /**
    * Gets the steps this run presents, in order.
    *
-   * A first run has no previous version to report against, so it carries no What's New; the delta
-   * rules that shorten an upgrade to what actually changed arrive with the rest of that step.
+   * Declared after {@link highlights}, and it has to be: class fields initialise in declaration
+   * order, and the rule that decides whether What's New runs reads the highlights. Ordered the other
+   * way, an upgrade would read them before they existed.
    */
   public readonly steps: Signal<readonly SetupStep[]> = signal<readonly SetupStep[]>(
-    this.mode === 'first-run'
-      ? SETUP_STEPS.filter((step: SetupStep): boolean => step.id !== 'whats-new')
-      : SETUP_STEPS,
+    SETUP_STEPS.filter((step: SetupStep): boolean => this.applies(step)),
   ).asReadonly();
 
   /**
@@ -283,6 +310,46 @@ export class SetupWizard {
       `Running setup for ${this.version} (${this.mode}, last seen ${this.lastSeen ?? 'never'})`,
     );
     this.running.set(true);
+  }
+
+  /**
+   * Decides whether a step runs this time.
+   *
+   * A first run presents everything except What's New, which has no previous version to report
+   * against. An upgrade presents only what it has something to say about: the release notes, and any
+   * step holding a setting that did not exist when the user last completed setup. Everything else
+   * they have already answered, and asking again on every beta would turn the pass into a toll.
+   *
+   * The environment and tooling steps always run. They are not about settings but about the machine,
+   * and the machine changes underneath Studio without any version doing so — a runtime uninstalled, a
+   * credential expired. A version bump is as good a moment as any to look again.
+   * @param step The step to test.
+   * @returns Returns true when the step should be presented.
+   */
+  private applies(step: SetupStep): boolean {
+    if (step.id === 'whats-new') {
+      return this.mode === 'upgrade' && this.highlights.length > 0;
+    }
+    if (this.mode === 'first-run' || this.lastSeen === null) {
+      return true;
+    }
+    if (step.id === 'welcome' || step.id === 'environment' || step.id === 'tooling') {
+      return true;
+    }
+    return this.hasNewSettings(step, this.lastSeen);
+  }
+
+  /**
+   * Determines whether a step presents a setting that did not exist at the given version.
+   * @param step The step to test.
+   * @param since The version the user last completed setup on.
+   * @returns Returns true when at least one of the step's settings is newer than that version.
+   */
+  private hasNewSettings(step: SetupStep, since: string): boolean {
+    return (SETUP_STEP_SETTINGS[step.id] ?? []).some((key: string): boolean => {
+      const setting: SettingDef | undefined = SETTINGS_BY_KEY.get(key);
+      return setting?.since !== undefined && isNewerStudioVersion(setting.since, since);
+    });
   }
 
   /**

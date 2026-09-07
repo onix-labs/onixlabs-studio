@@ -1,0 +1,115 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.env__list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.env__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding-block: 0.55rem;
+}
+
+.env__item:not(:first-child) {
+  border-block-start: 0.0625rem solid var(--settings-border-color);
+}
+
+// The mark carries the verdict, so it is the only coloured thing in the row. The text stays legible
+// rather than being tinted to match: a red sentence is harder to read than a red icon beside a plain
+// one, and this step is read closely.
+.env__mark {
+  flex: 0 0 auto;
+  margin-block-start: 0.1rem;
+}
+
+.env__item--ok .env__mark {
+  color: var(--success-color, #34d399);
+}
+
+.env__item--missing .env__mark {
+  color: var(--danger-color, #f87171);
+}
+
+.env__item--warn .env__mark,
+.env__item--unknown .env__mark {
+  color: var(--warning-color, #fbbf24);
+}
+
+.env__text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-inline-size: 0;
+}
+
+.env__name {
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.env__detail {
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--settings-muted-foreground-color);
+  overflow-wrap: anywhere;
+}
+
+// The inline fix, framed so it reads as a thing to do rather than another row of findings.
+.env__fix {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.85rem;
+  border: 0.0625rem solid var(--settings-border-color);
+  border-radius: calc(0.625rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  background: var(--settings-control-background-color);
+}
+
+.env__fix-title {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.env__fix-fields {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.env__fix-fields app-text-field {
+  flex: 1 1 10rem;
+  min-inline-size: 0;
+}
+
+.env__fix-note {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--settings-muted-foreground-color);
+}
+
+.env__fix-note code {
+  font-family: var(--font-mono);
+}
+
+.env__actions {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.env__unavailable {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--settings-muted-foreground-color);
+}
