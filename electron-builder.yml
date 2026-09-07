@@ -93,12 +93,16 @@ fileAssociations:
     name: Source File
     role: Editor
 
+# No `arch:` on the mac targets. An explicit arch list here *overrides* electron-builder's
+# `--x64` / `--arm64` CLI flags, so pinning `[arm64, x64]` made both release runners build both
+# architectures: every macOS job emitted all four artifacts under identical filenames, and the
+# release job's artifact merge then had two jobs writing the same paths at once. That spliced the
+# 2026.1.0-beta.4 Intel dmg out of two different builds and macOS refused to mount it (#617).
+# Omitting `arch` lets the CLI flag decide, which is what the per-architecture release matrix means.
 mac:
   target:
     - target: dmg
-      arch: [arm64, x64]
     - target: zip
-      arch: [arm64, x64]
   icon: build/icon.icns
   category: public.app-category.developer-tools
   identity: null # disable code signing for local/unsigned builds
