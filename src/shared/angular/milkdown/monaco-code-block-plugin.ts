@@ -208,12 +208,15 @@ class MonacoCodeBlockView implements NodeView {
   ) {
     this.node = node;
 
-    this.dom = document.createElement('div');
+    // Elements are created in the view's own document, so a fence hosted in another window (a modal)
+    // builds its DOM there rather than relying on cross-document adoption.
+    const ownerDocument: Document = view.dom.ownerDocument;
+    this.dom = ownerDocument.createElement('div');
     this.dom.className = 'milkdown-monaco-code-block';
 
-    const header: HTMLElement = document.createElement('div');
+    const header: HTMLElement = ownerDocument.createElement('div');
     header.className = 'milkdown-monaco-code-block__header';
-    this.languageInput = document.createElement('input');
+    this.languageInput = ownerDocument.createElement('input');
     this.languageInput.className = 'milkdown-monaco-code-block__language';
     this.languageInput.setAttribute('spellcheck', 'false');
     this.languageInput.placeholder = 'plain text';
@@ -232,7 +235,7 @@ class MonacoCodeBlockView implements NodeView {
     });
     header.appendChild(this.languageInput);
 
-    this.body = document.createElement('div');
+    this.body = ownerDocument.createElement('div');
     this.body.className = 'milkdown-monaco-code-block__body';
     // Entering the code area promotes the lightweight static placeholder to a live editor. Guard on
     // the document being editable so a read-only surface stays a static, highlighted block.
@@ -266,7 +269,10 @@ class MonacoCodeBlockView implements NodeView {
     const languageChanged: boolean = node.attrs['language'] !== this.node.attrs['language'];
     this.node = node;
 
-    if (document.activeElement !== this.languageInput) {
+    // Resolved against the fence's own document: in a modal (another window) the global document's
+    // active element is the main window's, so the guard would never hold and the field would be
+    // overwritten mid-typing.
+    if (this.dom.ownerDocument.activeElement !== this.languageInput) {
       this.languageInput.value = this.languageAttr();
     }
 
@@ -423,7 +429,7 @@ class MonacoCodeBlockView implements NodeView {
     }
 
     this.body.innerHTML = '';
-    const host: HTMLElement = document.createElement('div');
+    const host: HTMLElement = this.dom.ownerDocument.createElement('div');
     host.className = 'milkdown-monaco-code-block__editor';
     this.body.appendChild(host);
 
@@ -435,11 +441,51 @@ class MonacoCodeBlockView implements NodeView {
     // as it is being typed in.
     host.dataset['caretBlink'] = options.cursorBlinking ?? 'blink';
 
-    const model: MonacoApi.editor.ITextModel = monaco.editor.createModel(
-      this.node.textContent,
-      this.resolvedLanguageId(),
-    );
-    this.editor = monaco.editor.create(host, {
+    let model: MonacoApi.editor.ITextModel;
+    let editor: MonacoApi.editor.IStandaloneCodeEditor;
+    try {
+      model = monaco.editor.createModel(this.node.textContent, this.resolvedLanguageId());
+      editor = this.createEditor(monaco, host, model, options);
+    } catch {
+      // The placeholder was already cleared for the mount; a create failure (which a fence hosted in
+      // another window can hit) must put it back rather than leave the fence permanently blank.
+      this.renderPlaceholder();
+      return;
+    }
+    this.editor = editor;
+
+    this.editorDisposers = [
+      model,
+      editor,
+      editor.onDidChangeModelContent((event: MonacoApi.editor.IModelContentChangedEvent): void =>
+        this.forwardEdit(event),
+      ),
+      editor.onDidContentSizeChange((): void => this.syncHeight()),
+      editor.onDidBlurEditorWidget((): void => this.scheduleTeardown()),
+      editor.onKeyDown((event: MonacoApi.IKeyboardEvent): void => this.onKeyDown(event)),
+    ];
+
+    this.syncHeight();
+    if (focus) {
+      editor.focus();
+    }
+  }
+
+  /**
+   * Creates the fence's Monaco editor over the host element.
+   * @param monaco The loaded Monaco API.
+   * @param host The element the editor mounts into.
+   * @param model The text model backing the editor.
+   * @param options The base editor options from the code-editor settings.
+   * @returns Returns the created editor.
+   */
+  private createEditor(
+    monaco: typeof MonacoApi,
+    host: HTMLElement,
+    model: MonacoApi.editor.ITextModel,
+    options: MonacoApi.editor.IStandaloneEditorConstructionOptions,
+  ): MonacoApi.editor.IStandaloneCodeEditor {
+    return monaco.editor.create(host, {
       // The font (family and size) comes from the code-editor settings, exactly as the placeholder is
       // styled, so entering a fence does not resize its text.
       ...options,
@@ -473,22 +519,6 @@ class MonacoCodeBlockView implements NodeView {
       fixedOverflowWidgets: true,
       automaticLayout: true,
     });
-
-    this.editorDisposers = [
-      model,
-      this.editor,
-      this.editor.onDidChangeModelContent(
-        (event: MonacoApi.editor.IModelContentChangedEvent): void => this.forwardEdit(event),
-      ),
-      this.editor.onDidContentSizeChange((): void => this.syncHeight()),
-      this.editor.onDidBlurEditorWidget((): void => this.scheduleTeardown()),
-      this.editor.onKeyDown((event: MonacoApi.IKeyboardEvent): void => this.onKeyDown(event)),
-    ];
-
-    this.syncHeight();
-    if (focus) {
-      this.editor.focus();
-    }
   }
 
   /**
@@ -500,7 +530,17 @@ class MonacoCodeBlockView implements NodeView {
   private forwardEdit(event: MonacoApi.editor.IModelContentChangedEvent): void {
     const editor: MonacoApi.editor.IStandaloneCodeEditor | null = this.editor;
     const pos: number | undefined = this.getPos();
-    if (this.applyingRemoteEdit || editor === null || pos === undefined || !editor.hasTextFocus()) {
+    // Focus is judged by containment of the fence's own document's active element, not by Monaco's
+    // `hasTextFocus`: Monaco resolves focus against the document it was loaded into, so for a fence
+    // in another window (a modal) it can report an editor the user is typing in as unfocused — and
+    // every keystroke would be silently dropped here, to be discarded with the editor on blur.
+    const active: Element | null = this.dom.ownerDocument.activeElement;
+    if (
+      this.applyingRemoteEdit ||
+      editor === null ||
+      pos === undefined ||
+      !this.dom.contains(active)
+    ) {
       return;
     }
     const model: MonacoApi.editor.ITextModel | null = editor.getModel();
@@ -680,10 +720,11 @@ class MonacoCodeBlockView implements NodeView {
     this.cancelTeardown();
     this.teardownTimer = setTimeout((): void => {
       this.teardownTimer = null;
-      if (this.editor?.hasTextFocus() === true) {
-        return;
-      }
-      if (this.dom.contains(document.activeElement)) {
+      // Containment of the fence's own document's active element covers both the editor and the
+      // language field, and is right in any window — the global document's active element is the
+      // main window's, so in a modal the fence would always be judged unfocused and torn down under
+      // the user (and Monaco's own `hasTextFocus` misreads focus across windows the same way).
+      if (this.dom.contains(this.dom.ownerDocument.activeElement)) {
         return;
       }
       this.disposeEditor();
