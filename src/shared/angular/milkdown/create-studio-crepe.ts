@@ -2,6 +2,7 @@ import { Crepe } from '@milkdown/crepe';
 import { blockReorderPlugin } from './block-reorder-plugin';
 import { collapsePlugin } from './collapse-plugin';
 import { colorPreviewPlugin } from './color-preview-plugin';
+import { dividerSelectPlugin } from './divider-select-plugin';
 import { emojiPlugin } from './emoji-plugin';
 import { footnotePlugin } from './footnote-plugin';
 import { githubAlertPlugin } from './github-alert-plugin';
@@ -96,6 +97,7 @@ export function createStudioCrepe(options: StudioCrepeOptions): Crepe {
   crepe.editor.use(footnotePlugin);
   crepe.editor.use(emojiPlugin);
   crepe.editor.use(blockReorderPlugin);
+  crepe.editor.use(dividerSelectPlugin);
   crepe.editor.use(searchPlugin);
 
   return crepe;

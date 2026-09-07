@@ -359,15 +359,24 @@ app-markdown-editor .milkdown .ProseMirror {
     }
   }
 
+  // The visible rule stays a 4px bar, but the element carries transparent padding (content-box clip)
+  // so the divider presents a comfortable click target: clicking it gives it a node selection, from
+  // which the keyboard can delete or replace it.
   hr {
     border: none !important;
     height: 4px !important;
-    padding: 0 !important;
+    padding: 0.75em 0 !important;
     background: var(--crepe-color-outline) !important;
-    background-clip: border-box !important;
+    background-clip: content-box !important;
     border-radius: 9999px !important;
     corner-shape: var(--app-corner-shape, squircle);
-    margin: 2em 0 !important;
+    margin: 1.25em 0 !important;
+    cursor: default;
+  }
+
+  // The selected divider shows the accent, so the selection Backspace/Delete will act on is visible.
+  hr.ProseMirror-selectednode {
+    background: var(--focus-ring-color) !important;
   }
 
   img {
