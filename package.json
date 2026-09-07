@@ -96,7 +96,7 @@
     "@types/diff": "^8.0.0",
     "@types/dompurify": "^3.2.0",
     "@types/katex": "^0.16.8",
-    "@types/node": "^26.4.0",
+    "@types/node": "^26.4.1",
     "@vitest/coverage-v8": "^4.1.11",
     "@vscode/debugprotocol": "^1.68.0",
     "angular-eslint": "^22.1.0",
@@ -106,11 +106,11 @@
     "electron": "^42.10.1",
     "electron-builder": "^26.15.3",
     "esbuild": "^0.28.2",
-    "eslint": "^10.9.1",
+    "eslint": "^10.10.0",
     "jsdom": "^30.0.1",
     "prettier": "^3.9.6",
     "typescript": "~6.0.2",
-    "typescript-eslint": "^8.68.0",
+    "typescript-eslint": "^8.69.0",
     "vitest": "^4.0.8",
     "wait-on": "^9.1.0"
   }
