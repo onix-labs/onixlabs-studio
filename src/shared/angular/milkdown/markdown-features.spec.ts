@@ -341,6 +341,20 @@ describe('markdown features', () => {
         expect(root.querySelector('p sup')?.textContent).toBe('2');
       });
     });
+
+    it('roundTrips_subAndSupTags_unchanged', async () => {
+      await expectRoundTrip('H<sub>2</sub>O and x<sup>2</sup>\n');
+    });
+
+    it('rendersItsOwnSerialisation_withoutLosingTheMarks', async () => {
+      // The regression that motivated the html-node serialisation: the escaped form `\<sub>` parsed
+      // back as literal text, so the marks were lost the first time a document was reopened.
+      const serialised: string = await serialize('H<sub>2</sub>O and x<sup>2</sup>\n');
+      await withEditor(serialised, ({ root }): void => {
+        expect(root.querySelector('p sub')?.textContent).toBe('2');
+        expect(root.querySelector('p sup')?.textContent).toBe('2');
+      });
+    });
   });
 
   describe('footnotes', () => {
