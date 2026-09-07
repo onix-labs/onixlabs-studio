@@ -10,11 +10,28 @@
   min-block-size: 0;
 }
 
+// The header doubles as the window's title bar. A modal window is `hiddenInset` — it has no title bar
+// of its own, and the only thing that moves it is the drag strip the modal service lays over the top
+// 44px, which is both invisible and exactly where the platform's window controls sit. Continuing the
+// drag region down through the header gives the window a band that looks like something you would
+// drag, and makes it one gesture rather than a hunt for a hairline.
+//
+// The negative inline margin (paid back as padding) carries the band to the window edges, past the
+// panel's own padding, so it reads as a title bar rather than a floating strip.
 .setup__header {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
   flex: none;
+  margin-inline: calc(var(--modal-panel-padding, 1rem) * -1);
+  padding-inline: var(--modal-panel-padding, 1rem);
+  -webkit-app-region: drag;
+}
+
+// Nothing in the header is interactive today, but a drag region swallows clicks whole — anything
+// added here later must opt back out or it will be undismissably unclickable.
+.setup__header :is(a, button, input, select, textarea) {
+  -webkit-app-region: no-drag;
 }
 
 .setup__progress {
