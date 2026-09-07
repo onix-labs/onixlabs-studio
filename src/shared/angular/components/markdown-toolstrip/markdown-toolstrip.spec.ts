@@ -1,5 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import type { Ctx } from '@milkdown/ctx';
 import type { MarkdownEditor } from '@shared/angular/components/markdown-editor/markdown-editor';
 import { MarkdownToolstrip } from './markdown-toolstrip';
@@ -19,9 +19,9 @@ function fakePane(): { pane: MarkdownEditor; runs: ((ctx: Ctx) => unknown)[] } {
 }
 
 /**
- * The strip's buttons, by accessible name, in display order.
+ * The strip's formatting buttons, by accessible name, in display order.
  */
-const BUTTON_LABELS: readonly string[] = [
+const FORMATTING_LABELS: readonly string[] = [
   'Undo',
   'Redo',
   'Bold',
@@ -43,15 +43,20 @@ describe('MarkdownToolstrip', () => {
   });
 
   /**
-   * Creates the fixture, optionally binding a pane.
+   * Creates the fixture, optionally binding a pane and the open-in-tab affordance.
    * @param pane The pane to bind, if any.
+   * @param showOpenInTab Whether the open-in-tab button is enabled.
    * @returns Returns the fixture.
    */
-  function createStrip(pane?: MarkdownEditor): ComponentFixture<MarkdownToolstrip> {
+  function createStrip(
+    pane?: MarkdownEditor,
+    showOpenInTab: boolean = false,
+  ): ComponentFixture<MarkdownToolstrip> {
     const fixture: ComponentFixture<MarkdownToolstrip> = TestBed.createComponent(MarkdownToolstrip);
     if (pane !== undefined) {
       fixture.componentRef.setInput('editor', pane);
     }
+    fixture.componentRef.setInput('showOpenInTab', showOpenInTab);
     fixture.detectChanges();
     return fixture;
   }
@@ -70,30 +75,27 @@ describe('MarkdownToolstrip', () => {
     return button!;
   }
 
-  it('renders_everyBasicEditingControl_inOrder', () => {
+  it('renders_everyFormattingControl_inOrder', () => {
     const fixture: ComponentFixture<MarkdownToolstrip> = createStrip();
     const labels: (string | null)[] = Array.from(
       (fixture.nativeElement as HTMLElement).querySelectorAll('button'),
     ).map((button: HTMLButtonElement): string | null => button.getAttribute('aria-label'));
-    expect(labels).toEqual(BUTTON_LABELS);
+    expect(labels).toEqual(FORMATTING_LABELS);
   });
 
-  it('everyButton_runsAnActionAgainstTheBoundPane', () => {
+  it('everyFormattingButton_runsAnActionAgainstTheBoundPane', () => {
     const { pane, runs } = fakePane();
     const fixture: ComponentFixture<MarkdownToolstrip> = createStrip(pane);
-    for (const label of BUTTON_LABELS) {
+    for (const label of FORMATTING_LABELS) {
       buttonNamed(fixture, label).click();
     }
-    expect(runs).toHaveLength(BUTTON_LABELS.length);
-    for (const action of runs) {
-      expect(typeof action).toBe('function');
-    }
+    expect(runs).toHaveLength(FORMATTING_LABELS.length);
   });
 
   it('clicks_withoutAPane_areSafeNoOps', () => {
     const fixture: ComponentFixture<MarkdownToolstrip> = createStrip();
     expect((): void => {
-      for (const label of BUTTON_LABELS) {
+      for (const label of FORMATTING_LABELS) {
         buttonNamed(fixture, label).click();
       }
     }).not.toThrow();
@@ -107,6 +109,22 @@ describe('MarkdownToolstrip', () => {
     buttonNamed(fixture, 'Bold').click();
     buttonNamed(fixture, 'Italic').click();
     expect(runs[0]).not.toBe(runs[1]);
-    vi.restoreAllMocks();
+  });
+
+  it('openInTabButton_isAbsentByDefault', () => {
+    const fixture: ComponentFixture<MarkdownToolstrip> = createStrip();
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('button[aria-label="Open in Tab"]'),
+    ).toBeNull();
+  });
+
+  it('openInTabButton_whenEnabled_emitsTheIntent', () => {
+    const fixture: ComponentFixture<MarkdownToolstrip> = createStrip(undefined, true);
+    let emitted: number = 0;
+    fixture.componentInstance.openInTab.subscribe((): void => {
+      emitted++;
+    });
+    buttonNamed(fixture, 'Open in Tab').click();
+    expect(emitted).toBe(1);
   });
 });

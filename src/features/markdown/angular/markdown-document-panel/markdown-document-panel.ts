@@ -16,6 +16,7 @@ import { MarkdownEditor } from '@shared/angular/components/markdown-editor/markd
 import { MarkdownToolstrip } from '@shared/angular/components/markdown-toolstrip/markdown-toolstrip';
 import { CodeDocument, Documents } from '@shared/angular/services/documents/documents';
 import { DocumentStatus } from '@shared/angular/services/document-status/document-status';
+import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { MarkdownDocument } from '@features/markdown/angular/markdown-document/markdown-document';
 import {
   computeMarkdownStats,
@@ -61,6 +62,25 @@ export class MarkdownDocumentPanel {
   protected onEditorReady(): void {
     this.pane.set(this.core()?.getPane());
   }
+
+  /**
+   * Gets whether the backing document has a file path, and so can also be opened as its own tab.
+   */
+  protected readonly hasFilePath: Signal<boolean> = computed(
+    (): boolean => (this.document()?.filePath() ?? null) !== null,
+  );
+
+  /**
+   * Opens the well document's file as a standalone markdown tab, so it can be edited with the full
+   * tab chrome (ribbon and tool panels).
+   */
+  protected onOpenInTab(): void {
+    const path: string | null = this.document()?.filePath() ?? null;
+    if (path === null) {
+      return;
+    }
+    void this.fileOpener.reopenFile(path);
+  }
   /**
    * Holds the documents service backing the hosted document's content, language and encoding.
    */
@@ -70,6 +90,11 @@ export class MarkdownDocumentPanel {
    * Holds the well status strip this panel publishes to while it is the active document.
    */
   private readonly documentStatus: DocumentStatus = inject(DocumentStatus);
+
+  /**
+   * Holds the file opener backing the toolstrip's open-in-tab action.
+   */
+  private readonly fileOpener: FileOpener = inject(FileOpener);
 
   /**
    * Gets the identifier of the document this panel displays (the well panel's id).

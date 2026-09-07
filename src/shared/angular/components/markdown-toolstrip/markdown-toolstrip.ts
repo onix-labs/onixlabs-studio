@@ -1,4 +1,11 @@
-import { ChangeDetectionStrategy, Component, input, InputSignal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  input,
+  InputSignal,
+  output,
+  OutputEmitterRef,
+} from '@angular/core';
 import { redoCommand, undoCommand } from '@milkdown/kit/plugin/history';
 import {
   insertHrCommand,
@@ -10,28 +17,27 @@ import {
 } from '@milkdown/preset-commonmark';
 import { insertTableCommand, toggleStrikethroughCommand } from '@milkdown/preset-gfm';
 import { callCommand } from '@milkdown/utils';
-import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { Button } from '@shared/angular/components/forms/button/button';
 import { MarkdownEditor } from '@shared/angular/components/markdown-editor/markdown-editor';
-import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
-import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigger';
 import { Icon } from '@shared/angular/icons/icon';
 import { toggleTaskList } from '@shared/angular/milkdown/markdown-task-list';
 
 /**
  * Represents the compact formatting tool-strip for a markdown editor pane: the basic editing
  * capabilities — history, inline marks, lists, and the table and divider blocks — as a single
- * seamless row.
+ * seamless row of the same icon buttons the explorer tool strips use.
  *
- * The full markdown tab already presents these through its ribbon; this strip exists for the other
- * surfaces that host the shared editor without one (the workspace document well and the agent
- * composer's markdown modal), so a table can be inserted or a divider removed anywhere the editor
- * appears. It drives its commands directly against the pane it is given — it does not register with
- * the {@link import('@shared/angular/services/markdown-commands/markdown-commands').MarkdownCommands}
- * registry, which belongs to the ribbon's one-active-document model.
+ * The full markdown tab already presents these through its ribbon; this strip exists for the
+ * surfaces that host the shared editor without one (the workspace document well), so a table can be
+ * inserted or a divider removed there too. It drives its commands directly against the pane it is
+ * given — it does not register with the
+ * {@link import('@shared/angular/services/markdown-commands/markdown-commands').MarkdownCommands}
+ * registry, which belongs to the ribbon's one-active-document model. A host that can present the
+ * document as its own tab enables the trailing open-in-tab button and handles the emitted intent.
  */
 @Component({
   selector: 'app-markdown-toolstrip',
-  imports: [AppIcon, PanelToolbar, TooltipTrigger],
+  imports: [Button],
   templateUrl: './markdown-toolstrip.html',
   styleUrl: './markdown-toolstrip.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -47,6 +53,17 @@ export class MarkdownToolstrip {
    * (the strip's buttons no-op until it exists).
    */
   public readonly editor: InputSignal<MarkdownEditor | undefined> = input<MarkdownEditor>();
+
+  /**
+   * Gets whether the trailing open-in-tab button is shown. Enabled by hosts (the document well)
+   * whose document can also be presented as its own tab.
+   */
+  public readonly showOpenInTab: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Emits when the open-in-tab button is pressed, so the host can open its document as a tab.
+   */
+  public readonly openInTab: OutputEmitterRef<void> = output<void>();
 
   /**
    * Undoes the last edit.

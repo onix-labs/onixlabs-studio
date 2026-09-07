@@ -1,104 +1,92 @@
-<app-panel-toolbar>
-  <button
-    type="button"
-    class="panel-toolbar__button"
-    [appTooltip]="'Undo'"
-    aria-label="Undo"
+<div class="markdown-toolstrip">
+  <app-button
+    variant="none"
+    [icon]="Icon.UNDO"
+    ariaLabel="Undo"
+    tooltip="Undo"
     (click)="onUndo()"
-  >
-    <app-icon [icon]="Icon.UNDO" />
-  </button>
-  <button
-    type="button"
-    class="panel-toolbar__button"
-    [appTooltip]="'Redo'"
-    aria-label="Redo"
+  />
+  <app-button
+    variant="none"
+    [icon]="Icon.REDO"
+    ariaLabel="Redo"
+    tooltip="Redo"
     (click)="onRedo()"
-  >
-    <app-icon [icon]="Icon.REDO" />
-  </button>
+  />
   <span class="markdown-toolstrip__divider" aria-hidden="true"></span>
-  <button
-    type="button"
-    class="panel-toolbar__button"
-    [appTooltip]="'Bold'"
-    aria-label="Bold"
+  <app-button
+    variant="none"
+    [icon]="Icon.BOLD"
+    ariaLabel="Bold"
+    tooltip="Bold"
     (click)="onBold()"
-  >
-    <app-icon [icon]="Icon.BOLD" />
-  </button>
-  <button
-    type="button"
-    class="panel-toolbar__button"
-    [appTooltip]="'Italic'"
-    aria-label="Italic"
+  />
+  <app-button
+    variant="none"
+    [icon]="Icon.ITALIC"
+    ariaLabel="Italic"
+    tooltip="Italic"
     (click)="onItalic()"
-  >
-    <app-icon [icon]="Icon.ITALIC" />
-  </button>
-  <button
-    type="button"
-    class="panel-toolbar__button"
-    [appTooltip]="'Strikethrough'"
-    aria-label="Strikethrough"
+  />
+  <app-button
+    variant="none"
+    [icon]="Icon.STRIKETHROUGH"
+    ariaLabel="Strikethrough"
+    tooltip="Strikethrough"
     (click)="onStrikethrough()"
-  >
-    <app-icon [icon]="Icon.STRIKETHROUGH" />
-  </button>
-  <button
-    type="button"
-    class="panel-toolbar__button"
-    [appTooltip]="'Inline code'"
-    aria-label="Inline code"
+  />
+  <app-button
+    variant="none"
+    [icon]="Icon.CODE_INLINE"
+    ariaLabel="Inline code"
+    tooltip="Inline code"
     (click)="onInlineCode()"
-  >
-    <app-icon [icon]="Icon.CODE_INLINE" />
-  </button>
+  />
   <span class="markdown-toolstrip__divider" aria-hidden="true"></span>
-  <button
-    type="button"
-    class="panel-toolbar__button"
-    [appTooltip]="'Bullet list'"
-    aria-label="Bullet list"
+  <app-button
+    variant="none"
+    [icon]="Icon.BULLET_LIST"
+    ariaLabel="Bullet list"
+    tooltip="Bullet list"
     (click)="onBulletList()"
-  >
-    <app-icon [icon]="Icon.BULLET_LIST" />
-  </button>
-  <button
-    type="button"
-    class="panel-toolbar__button"
-    [appTooltip]="'Numbered list'"
-    aria-label="Numbered list"
+  />
+  <app-button
+    variant="none"
+    [icon]="Icon.NUMBERED_LIST"
+    ariaLabel="Numbered list"
+    tooltip="Numbered list"
     (click)="onOrderedList()"
-  >
-    <app-icon [icon]="Icon.NUMBERED_LIST" />
-  </button>
-  <button
-    type="button"
-    class="panel-toolbar__button"
-    [appTooltip]="'Task list'"
-    aria-label="Task list"
+  />
+  <app-button
+    variant="none"
+    [icon]="Icon.TASK_LIST"
+    ariaLabel="Task list"
+    tooltip="Task list"
     (click)="onTaskList()"
-  >
-    <app-icon [icon]="Icon.TASK_LIST" />
-  </button>
+  />
   <span class="markdown-toolstrip__divider" aria-hidden="true"></span>
-  <button
-    type="button"
-    class="panel-toolbar__button"
-    [appTooltip]="'Insert table'"
-    aria-label="Insert table"
+  <app-button
+    variant="none"
+    [icon]="Icon.TABLE"
+    ariaLabel="Insert table"
+    tooltip="Insert table"
     (click)="onTable()"
-  >
-    <app-icon [icon]="Icon.TABLE" />
-  </button>
-  <button
-    type="button"
-    class="panel-toolbar__button"
-    [appTooltip]="'Insert divider'"
-    aria-label="Insert divider"
+  />
+  <app-button
+    variant="none"
+    [icon]="Icon.DIVIDER"
+    ariaLabel="Insert divider"
+    tooltip="Insert divider"
     (click)="onDivider()"
-  >
-    <app-icon [icon]="Icon.DIVIDER" />
-  </button>
-</app-panel-toolbar>
+  />
+  @if (showOpenInTab()) {
+    <span class="markdown-toolstrip__spacer"></span>
+    <app-button
+      variant="none"
+      [icon]="Icon.OPEN_EXTERNAL"
+      ariaLabel="Open in Tab"
+      tooltip="Open in Tab"
+      (click)="openInTab.emit()"
+    />
+  }
+</div>
