@@ -1,14 +1,14 @@
 <div class="markdown-toolstrip">
   <app-button
     variant="none"
-    [icon]="Icon.UNDO"
+    [icon]="Icon.UNDO_BOLD"
     ariaLabel="Undo"
     tooltip="Undo"
     (click)="onUndo()"
   />
   <app-button
     variant="none"
-    [icon]="Icon.REDO"
+    [icon]="Icon.REDO_BOLD"
     ariaLabel="Redo"
     tooltip="Redo"
     (click)="onRedo()"
@@ -16,28 +16,28 @@
   <span class="markdown-toolstrip__divider" aria-hidden="true"></span>
   <app-button
     variant="none"
-    [icon]="Icon.BOLD"
+    [icon]="Icon.BOLD_BOLD"
     ariaLabel="Bold"
     tooltip="Bold"
     (click)="onBold()"
   />
   <app-button
     variant="none"
-    [icon]="Icon.ITALIC"
+    [icon]="Icon.ITALIC_BOLD"
     ariaLabel="Italic"
     tooltip="Italic"
     (click)="onItalic()"
   />
   <app-button
     variant="none"
-    [icon]="Icon.STRIKETHROUGH"
+    [icon]="Icon.STRIKETHROUGH_BOLD"
     ariaLabel="Strikethrough"
     tooltip="Strikethrough"
     (click)="onStrikethrough()"
   />
   <app-button
     variant="none"
-    [icon]="Icon.CODE_INLINE"
+    [icon]="Icon.CODE_INLINE_BOLD"
     ariaLabel="Inline code"
     tooltip="Inline code"
     (click)="onInlineCode()"
@@ -45,21 +45,21 @@
   <span class="markdown-toolstrip__divider" aria-hidden="true"></span>
   <app-button
     variant="none"
-    [icon]="Icon.BULLET_LIST"
+    [icon]="Icon.BULLET_LIST_BOLD"
     ariaLabel="Bullet list"
     tooltip="Bullet list"
     (click)="onBulletList()"
   />
   <app-button
     variant="none"
-    [icon]="Icon.NUMBERED_LIST"
+    [icon]="Icon.NUMBERED_LIST_BOLD"
     ariaLabel="Numbered list"
     tooltip="Numbered list"
     (click)="onOrderedList()"
   />
   <app-button
     variant="none"
-    [icon]="Icon.TASK_LIST"
+    [icon]="Icon.TASK_LIST_BOLD"
     ariaLabel="Task list"
     tooltip="Task list"
     (click)="onTaskList()"
@@ -67,14 +67,14 @@
   <span class="markdown-toolstrip__divider" aria-hidden="true"></span>
   <app-button
     variant="none"
-    [icon]="Icon.TABLE"
+    [icon]="Icon.TABLE_BOLD"
     ariaLabel="Insert table"
     tooltip="Insert table"
     (click)="onTable()"
   />
   <app-button
     variant="none"
-    [icon]="Icon.DIVIDER"
+    [icon]="Icon.DIVIDER_BOLD"
     ariaLabel="Insert divider"
     tooltip="Insert divider"
     (click)="onDivider()"
@@ -83,7 +83,7 @@
     <span class="markdown-toolstrip__spacer"></span>
     <app-button
       variant="none"
-      [icon]="Icon.OPEN_EXTERNAL"
+      [icon]="Icon.OPEN_EXTERNAL_BOLD"
       ariaLabel="Open in Tab"
       tooltip="Open in Tab"
       (click)="openInTab.emit()"
