@@ -21,6 +21,11 @@ updates:
       # old addons. Grouped, that upgrade is one PR that installs.
       xterm:
         patterns: ['@xterm/*']
+      # Same story as xterm: `@vitest/coverage-v8` peer-depends on the exact `vitest` version, so a
+      # split pair can never install — vitest 5 arrived as #637 and #635 and both failed `npm ci`
+      # with ERESOLVE, each against the other's old version. Grouped, they move as one.
+      vitest:
+        patterns: ['vitest', '@vitest/*']
       dev-minor-patch:
         dependency-type: development
         update-types: [minor, patch]
@@ -29,6 +34,14 @@ updates:
       # Electron majors change the Node ABI node-pty is rebuilt against; they are taken deliberately,
       # not on a Monday.
       - dependency-name: electron
+        update-types: ['version-update:semver-major']
+      # `ng test` runs through @angular/build's vitest integration, and that package peer-depends on
+      # `vitest ^4.0.8` — still true on 22.1.7, the newest release of the line. A vitest major is
+      # therefore not ours to take: it cannot resolve, and the builder is written against vitest 4's
+      # API. Lift this (both entries) once @angular/build widens the peer range.
+      - dependency-name: vitest
+        update-types: ['version-update:semver-major']
+      - dependency-name: '@vitest/*'
         update-types: ['version-update:semver-major']
 
   - package-ecosystem: github-actions
