@@ -1,3 +1,4 @@
+import { Component } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { FileInfo } from '@shared/api/file-channels';
@@ -6,6 +7,20 @@ import type { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 
 import { MarkdownDocumentPanel } from './markdown-document-panel';
+
+/**
+ * Hosts the panel behind a SCOPED Documents provider, mirroring the workspace view, which provides
+ * its own Documents instance for its document well. The scoping is what the open-in-tab regression
+ * hid behind: a single-instance test bed cannot tell the scoped instance from the root one.
+ */
+@Component({
+  template: '<app-markdown-document-panel [documentId]="documentId" />',
+  imports: [MarkdownDocumentPanel],
+  providers: [Documents],
+})
+class ScopedWorkspaceHost {
+  public documentId: string = '';
+}
 
 describe('MarkdownDocumentPanel', () => {
   beforeAll(() => {
@@ -45,23 +60,26 @@ describe('MarkdownDocumentPanel', () => {
     expect(fixture.componentInstance).toBeTruthy();
   });
 
-  it('openInTab_seedsTheTabFromTheLiveDocument_notFromDisk', () => {
-    // The regression: opening in a tab re-read the file over IPC, so a just-created file (still
-    // empty on disk) or one holding unsaved edits opened an empty tab. The tab must carry the well
-    // document's CURRENT content.
-    const documents: Documents = TestBed.inject(Documents);
+  it('openInTab_seedsTheRootDocuments_fromTheLiveScopedWellDocument', () => {
+    // The regression, both halves. The well lives behind the workspace's SCOPED Documents while a
+    // top-level markdown tab's view reads the ROOT instance — seeding the scoped one opened an
+    // empty "New Document" tab. And the seed must be the live document's CURRENT content, not a
+    // disk re-read, so a just-created file (still empty on disk) or unsaved edits carry over.
+    const fixture: ComponentFixture<ScopedWorkspaceHost> =
+      TestBed.createComponent(ScopedWorkspaceHost);
+    const scopedDocuments: Documents = fixture.debugElement.injector.get(Documents);
+    const rootDocuments: Documents = TestBed.inject(Documents);
+    expect(scopedDocuments).not.toBe(rootDocuments);
+
     const fileInfo: FileInfo = {
       path: '/ws/notes.md',
       name: 'notes.md',
       extension: '.md',
       content: '# Saved content\n',
     };
-    const wellId: string = documents.createWellDocument(fileInfo);
-    documents.setContent(wellId, '# Edited but unsaved\n');
-
-    const fixture: ComponentFixture<MarkdownDocumentPanel> =
-      TestBed.createComponent(MarkdownDocumentPanel);
-    fixture.componentRef.setInput('documentId', wellId);
+    const wellId: string = scopedDocuments.createWellDocument(fileInfo);
+    scopedDocuments.setContent(wellId, '# Edited but unsaved\n');
+    fixture.componentInstance.documentId = wellId;
     fixture.detectChanges();
 
     const button: HTMLElement | null = (fixture.nativeElement as HTMLElement).querySelector(
@@ -73,7 +91,7 @@ describe('MarkdownDocumentPanel', () => {
     const tab: Tab | undefined = TestBed.inject(Tabs).findByResource('markdown', '/ws/notes.md');
     expect(tab).toBeDefined();
     expect(tab?.id).not.toBe(wellId);
-    expect(documents.initialContentOf(tab?.id ?? '')).toBe('# Edited but unsaved\n');
+    expect(rootDocuments.initialContentOf(tab?.id ?? '')).toBe('# Edited but unsaved\n');
 
     fixture.destroy();
   });

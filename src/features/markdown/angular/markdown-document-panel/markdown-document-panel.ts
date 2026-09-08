@@ -4,6 +4,7 @@ import {
   computed,
   DestroyRef,
   effect,
+  EnvironmentInjector,
   inject,
   input,
   InputSignal,
@@ -83,7 +84,9 @@ export class MarkdownDocumentPanel {
     }
     const name: string = document.fileName();
     const separator: number = name.lastIndexOf('.');
-    this.documents.openFileInfo(
+    // Opened through the ROOT documents service: the tab lives at the top level, outside this
+    // workspace's scoped Documents, and must be seeded where its view will look for it.
+    this.rootDocuments.openFileInfo(
       {
         path,
         name,
@@ -104,6 +107,15 @@ export class MarkdownDocumentPanel {
    * Holds the well status strip this panel publishes to while it is the active document.
    */
   private readonly documentStatus: DocumentStatus = inject(DocumentStatus);
+
+  /**
+   * Holds the ROOT documents service, which owns the documents behind top-level editor tabs. It is
+   * resolved through the environment injector because it must NOT be the instance the ordinary
+   * `documents` field holds: the workspace view provides a scoped {@link Documents} for its well,
+   * and a top-level markdown tab's view resolves the root instance — a tab seeded into the scoped
+   * one mounts against the root one, finds nothing, and opens as an empty "New Document".
+   */
+  private readonly rootDocuments: Documents = inject(EnvironmentInjector).get(Documents);
 
   /**
    * Gets the identifier of the document this panel displays (the well panel's id).
