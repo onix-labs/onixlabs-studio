@@ -2,7 +2,7 @@ import { DebugAdapterId, DebugAdapterSummary } from '@shared/api/debug-channels'
 import { debugpyInterpreter } from './debugpy-install';
 import { logger } from '../logger';
 import { contributedDebugAdapters } from '../contributions/plugins/contributed';
-import { DebugProvisioner } from './debug-provisioner';
+import { DebugAdapterLocator } from './debug-adapter-locator';
 
 /**
  * The priority given to the adapter shipped as a language's default, chosen when the user has
@@ -140,7 +140,7 @@ export function debugAdapterCatalogue(): readonly DebugAdapterCatalogueEntry[] {
 
 /**
  * Owns the catalogue of known debug adapters and turns a {@link DebugAdapterId} into a spawn
- * specification, locating each adapter's executable through the {@link DebugProvisioner}. It is the
+ * specification, locating each adapter's executable through the {@link DebugAdapterLocator}. It is the
  * single seam that the adapter catalogue and executable detection sit behind, so the renderer only ever
  * names an adapter — mirroring the role `LspServerRegistry` plays for language servers.
  *
@@ -151,7 +151,7 @@ export class DebugAdapterRegistry {
   /**
    * Locates adapter executables already present on the machine.
    */
-  private readonly provisioner: DebugProvisioner;
+  private readonly locator: DebugAdapterLocator;
 
   /**
    * Indexes the registered adapters by id, in registration order (the first-party catalogue first), so
@@ -165,10 +165,10 @@ export class DebugAdapterRegistry {
   /**
    * Initializes a new instance of the {@link DebugAdapterRegistry} class, seeded with the first-party
    * catalogue.
-   * @param provisioner The provisioner used to locate adapter executables.
+   * @param locator The locator used to find adapter executables.
    */
-  public constructor(provisioner: DebugProvisioner) {
-    this.provisioner = provisioner;
+  public constructor(locator: DebugAdapterLocator) {
+    this.locator = locator;
     for (const entry of debugAdapterCatalogue()) {
       this.register(entry);
     }
@@ -241,7 +241,7 @@ export class DebugAdapterRegistry {
     // environment — and fall back to a copy already on the machine (override, project-local, or PATH).
     // Nothing is downloaded here: an adapter arrives through an install the user asked for.
     const binaryPath: string | null =
-      (await entry.locate?.()) ?? (await this.provisioner.locate(entry.binary, rootPath));
+      (await entry.locate?.()) ?? (await this.locator.locate(entry.binary, rootPath));
     logger.debug('DebugAdapterRegistry', `Located ${entry.binary}: ${binaryPath ?? 'not found'}`);
     if (binaryPath === null) {
       logger.warn(
