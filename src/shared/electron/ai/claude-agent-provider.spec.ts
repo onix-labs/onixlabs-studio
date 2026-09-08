@@ -949,9 +949,18 @@ describe('ClaudeAgentSession (panic stop)', () => {
     const events: AiEvent[] = [];
     const harness: SessionHarness = await openSettledSession(events);
 
-    // The renderer may have adopted a task-driven turn under run-1 (no Studio run is awaiting it).
-    // The session dies — panic-closed, reaped, or crashed — and without a terminal status that
-    // adoption would spin "Working" forever.
+    // A backgrounded task settles: the CLI starts a report-back turn of its own, which the renderer
+    // adopts under run-1 (no Studio run is awaiting it). The session then dies — panic-closed,
+    // reaped, or crashed — and without a terminal status that adoption would spin "Working" forever.
+    harness.query()?.emit({
+      type: 'system',
+      subtype: 'task_notification',
+      task_id: 'task-1',
+      status: 'completed',
+      summary: 'done',
+      session_id: 'sess-a',
+    });
+    await flush();
     await harness.session.close();
 
     const status: Record<string, unknown> | undefined = (
@@ -960,6 +969,48 @@ describe('ClaudeAgentSession (panic stop)', () => {
     expect(status).toBeDefined();
     expect(status?.['state']).toBe('aborted');
     expect(status?.['requestId']).toBe('run-1');
+  });
+
+  it('close_emitsNoTerminalStatus_whenNothingWasAdopted_soATransientRunIsNotReportedAsStopped', async () => {
+    // A transient run (compaction, commit-message generation) opens a session, runs one awaited turn,
+    // and closes it immediately — so the stream always ends with nothing awaiting a turn. An abort
+    // emitted here would reach the renderer BEFORE the run's own `completed`, and the compaction that
+    // just succeeded would report "Compaction stopped".
+    const events: AiEvent[] = [];
+    const harness: SessionHarness = await openSettledSession(events);
+
+    await harness.session.close();
+
+    const status: Record<string, unknown> | undefined = (
+      events as unknown as Record<string, unknown>[]
+    ).find((event: Record<string, unknown>): boolean => event['kind'] === 'status');
+    expect(status).toBeUndefined();
+  });
+
+  it('close_emitsNoTerminalStatus_onceAnAdoptedTurnHasSettledOnItsOwn', async () => {
+    // The adoption is discharged by its own `result`: the renderer's spinner is already cleared by the
+    // completion the pump emits there, so a later close owes it nothing.
+    const events: AiEvent[] = [];
+    const harness: SessionHarness = await openSettledSession(events);
+    harness.query()?.emit({
+      type: 'system',
+      subtype: 'task_notification',
+      task_id: 'task-1',
+      status: 'completed',
+      summary: 'done',
+      session_id: 'sess-a',
+    });
+    await flush();
+    harness.query()?.emit({ type: 'result', session_id: 'sess-a' });
+    await flush();
+    events.length = 0;
+
+    await harness.session.close();
+
+    const status: Record<string, unknown> | undefined = (
+      events as unknown as Record<string, unknown>[]
+    ).find((event: Record<string, unknown>): boolean => event['kind'] === 'status');
+    expect(status).toBeUndefined();
   });
 });
 

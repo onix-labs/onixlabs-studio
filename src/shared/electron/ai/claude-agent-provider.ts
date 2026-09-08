@@ -2211,6 +2211,16 @@ export class ClaudeAgentSession implements AgentSession {
   private resultsSeen: number = 0;
 
   /**
+   * Whether an adoption has gone out under the current request id and has not yet been settled — a
+   * peer-driven message (#331) or a settled background task's report-back turn (#426), both of which
+   * leave the renderer showing a turn no Studio run is awaiting. Only such a turn needs the terminal
+   * status the pump emits when the stream ends: a transient run's stream ends the instant its own
+   * awaited turn completes, so emitting there unconditionally lands an `aborted` on the renderer
+   * *before* the run's own `completed` and reads as a stop that never happened.
+   */
+  private adoptedTurn: boolean = false;
+
+  /**
    * Initialises a new instance of the {@link ClaudeAgentSession} class.
    * @param deps The provider capabilities the session borrows.
    * @param initialContext The context of the turn the session opens for.
@@ -2248,6 +2258,9 @@ export class ClaudeAgentSession implements AgentSession {
    */
   public async turn(context: AgentRunContext): Promise<void> {
     this.currentContext = context;
+    // A Studio run is awaiting this turn, so it owns the terminal status from here: whatever the
+    // renderer had adopted before is no longer what its spinner is waiting on.
+    this.adoptedTurn = false;
     logger.trace(
       'ClaudeAgentSession.turn',
       `Turn dispatch for request ${context.requestId} (model ${context.model})`,
@@ -2419,6 +2432,7 @@ export class ClaudeAgentSession implements AgentSession {
           agentSessionId: this.currentContext.agentSessionId,
           text,
         });
+        this.adoptedTurn = true;
         this.pendingMessages.push(userMessageOf(text));
         this.wake?.();
       },
@@ -2501,6 +2515,9 @@ export class ClaudeAgentSession implements AgentSession {
       ...(message.tool_use_id === undefined ? {} : { toolId: message.tool_use_id }),
       ...(message.skip_transcript === undefined ? {} : { skipTranscript: message.skip_transcript }),
     });
+    // The CLI answers a settled task with a report-back turn of its own, which the renderer adopts;
+    // nothing in Studio awaits it, so the pump owes it a terminal status if the stream ends first.
+    this.adoptedTurn = true;
   }
 
   /**
@@ -2733,6 +2750,8 @@ export class ClaudeAgentSession implements AgentSession {
           // adopted is harmless: the renderer's per-turn filter drops a status it is not expecting.
           const unawaitedTurn: boolean = this.turnSettle === null;
           this.settleTurn();
+          // The turn is over however it was driven, so any adoption it carried is discharged.
+          this.adoptedTurn = false;
           if (unawaitedTurn) {
             this.currentContext.emit({
               requestId: this.currentContext.requestId,
@@ -2762,13 +2781,16 @@ export class ClaudeAgentSession implements AgentSession {
       this.inputClosed = true;
       unawaitedAtEnd ??= this.turnSettle === null;
       this.settleTurn();
-      // The stream ended with no Studio run awaiting a turn. If the renderer had adopted a turn (a
-      // task- or peer-driven one), no `result` will ever emit its terminal status now — the session
-      // died, was reaped, or was panic-closed under it — so without this it spins "Working" forever.
-      // Emitted under the current turn's request id, the same id an adoption used; when nothing is
-      // adopted the renderer's per-turn filter drops it (see the `result` branch above for the same
-      // reasoning on the completion side).
-      if (unawaitedAtEnd) {
+      // The stream ended under a turn the renderer had adopted (a task- or peer-driven one) that no
+      // Studio run is awaiting: no `result` will ever emit its terminal status now — the session died,
+      // was reaped, or was panic-closed under it — so without this it spins "Working" forever. Emitted
+      // under the current turn's request id, the same id the adoption used.
+      //
+      // Both conditions are load-bearing. Unawaited alone is not enough: a transient run (compaction,
+      // commit-message generation) closes its session the moment its own awaited turn settles, so the
+      // stream always ends unawaited there — and this abort would reach the renderer ahead of the run's
+      // own `completed`, claiming a stop that never happened.
+      if (unawaitedAtEnd && this.adoptedTurn) {
         this.currentContext.emit({
           requestId: this.currentContext.requestId,
           kind: 'status',
