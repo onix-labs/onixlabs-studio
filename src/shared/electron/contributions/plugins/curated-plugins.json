@@ -1,5 +1,5 @@
 {
-  "revision": 7,
+  "revision": 11,
   "plugins": [
     {
       "id": "pyright",
@@ -401,6 +401,291 @@
             "entryPoint": "node_modules/vscode-langservers-extracted/bin/vscode-json-language-server",
             "command": {
               "kind": "node"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "rust-analyzer",
+      "name": "rust-analyzer",
+      "description": "Rust language support.",
+      "version": "2026-07-13",
+      "apiVersion": "1.8.0",
+      "detail": "Runs cargo to load a workspace, so the Rust toolchain must be on your PATH.",
+      "provision": {
+        "kind": "archive",
+        "downloads": {
+          "darwin-arm64": {
+            "url": "https://github.com/rust-lang/rust-analyzer/releases/download/2026-07-13/rust-analyzer-aarch64-apple-darwin.gz",
+            "sha256": "9c6b3ebf06480e2c95a7b01750fa68d77834bffa34da81e4eb00cef3cdff4613",
+            "archive": "gz",
+            "executablePath": "rust-analyzer"
+          },
+          "darwin-x64": {
+            "url": "https://github.com/rust-lang/rust-analyzer/releases/download/2026-07-13/rust-analyzer-x86_64-apple-darwin.gz",
+            "sha256": "b8832accb9f163214e63ccc989bb2161d52f19270eafb136da0fb16093185041",
+            "archive": "gz",
+            "executablePath": "rust-analyzer"
+          },
+          "linux-arm64": {
+            "url": "https://github.com/rust-lang/rust-analyzer/releases/download/2026-07-13/rust-analyzer-aarch64-unknown-linux-gnu.gz",
+            "sha256": "d30c3ac726f93ae7cb57c6e16cd2d2b5460c9893ccdd38b6d3ae9300c72852ab",
+            "archive": "gz",
+            "executablePath": "rust-analyzer"
+          },
+          "linux-x64": {
+            "url": "https://github.com/rust-lang/rust-analyzer/releases/download/2026-07-13/rust-analyzer-x86_64-unknown-linux-gnu.gz",
+            "sha256": "5ee1754afa7a1eb7f56606847b61328e6fac2f316e40ebf314dcefb30263df4d",
+            "archive": "gz",
+            "executablePath": "rust-analyzer"
+          },
+          "win32-x64": {
+            "url": "https://github.com/rust-lang/rust-analyzer/releases/download/2026-07-13/rust-analyzer-x86_64-pc-windows-msvc.zip",
+            "sha256": "d8d79975da21ca59dcb9d19d253b2210f33c3eef41eab24ec48b6d5aaaa4e1ff",
+            "archive": "zip",
+            "members": ["rust-analyzer.exe"],
+            "executablePath": "rust-analyzer.exe"
+          }
+        }
+      },
+      "contributes": {
+        "languageServers": [
+          {
+            "id": "rust",
+            "displayName": "rust-analyzer",
+            "languages": ["rust"],
+            "priority": 100,
+            "command": {
+              "kind": "executable"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "clangd",
+      "name": "clangd",
+      "description": "C and C++ language support, from the LLVM project.",
+      "version": "22.1.6",
+      "apiVersion": "1.1.0",
+      "detail": "A large download — it carries the Clang toolchain headers.",
+      "provision": {
+        "kind": "archive",
+        "downloads": {
+          "darwin-arm64": {
+            "url": "https://github.com/clangd/clangd/releases/download/22.1.6/clangd-mac-22.1.6.zip",
+            "sha256": "631aef462556cbd74e0ebaae1778a38d1997d0ba3371652ca54f82652a179e7d",
+            "archive": "zip",
+            "executablePath": "clangd_22.1.6/bin/clangd"
+          },
+          "darwin-x64": {
+            "url": "https://github.com/clangd/clangd/releases/download/22.1.6/clangd-mac-22.1.6.zip",
+            "sha256": "631aef462556cbd74e0ebaae1778a38d1997d0ba3371652ca54f82652a179e7d",
+            "archive": "zip",
+            "executablePath": "clangd_22.1.6/bin/clangd"
+          },
+          "linux-x64": {
+            "url": "https://github.com/clangd/clangd/releases/download/22.1.6/clangd-linux-22.1.6.zip",
+            "sha256": "a9c77443af2e447ed467e84771848d3a6ac1c56f84bcfcde717e66318de77cfa",
+            "archive": "zip",
+            "executablePath": "clangd_22.1.6/bin/clangd"
+          },
+          "win32-x64": {
+            "url": "https://github.com/clangd/clangd/releases/download/22.1.6/clangd-windows-22.1.6.zip",
+            "sha256": "ce54f16e0b4fd76d450eeda9664420b195360b73febcfe40e661108fa57f2ce1",
+            "archive": "zip",
+            "executablePath": "clangd_22.1.6/bin/clangd.exe"
+          }
+        }
+      },
+      "contributes": {
+        "languageServers": [
+          {
+            "id": "clangd",
+            "displayName": "clangd",
+            "languages": ["cpp", "c"],
+            "priority": 100,
+            "command": {
+              "kind": "executable",
+              "args": ["--log=error"]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "netcoredbg",
+      "name": ".NET Debugger (netcoredbg)",
+      "description": "Debug .NET projects.",
+      "version": "3.2.0-1092",
+      "apiVersion": "1.0.0",
+      "detail": "Samsung’s MIT-licensed .NET debugger. Microsoft’s vsdbg is not offered: it is licensed only for use within the Visual Studio family.",
+      "provision": {
+        "kind": "archive",
+        "downloads": {
+          "darwin-arm64": {
+            "url": "https://github.com/Samsung/netcoredbg/releases/download/3.2.0-1092/netcoredbg-osx-arm64.zip",
+            "sha256": "f4fa33b3ff874910cc184b4bb3b9c56d0abdf5c6521cee0b144d7c6e4a6e59ea",
+            "archive": "zip",
+            "executablePath": "netcoredbg/netcoredbg"
+          },
+          "darwin-x64": {
+            "url": "https://github.com/Samsung/netcoredbg/releases/download/3.1.3-1062/netcoredbg-osx-amd64.tar.gz",
+            "sha256": "49459b066836b6a452f418501d7ecab57bcd7e60d8464faac21ff70b496b8634",
+            "archive": "tar.gz",
+            "executablePath": "netcoredbg/netcoredbg"
+          },
+          "linux-x64": {
+            "url": "https://github.com/Samsung/netcoredbg/releases/download/3.2.0-1092/netcoredbg-linux-amd64.tar.gz",
+            "sha256": "080eb3b2d2152465f599d3b33d1ee6e747794e11cc0a3773ec689f5e5f2c5afa",
+            "archive": "tar.gz",
+            "executablePath": "netcoredbg/netcoredbg"
+          },
+          "linux-arm64": {
+            "url": "https://github.com/Samsung/netcoredbg/releases/download/3.2.0-1092/netcoredbg-linux-arm64.tar.gz",
+            "sha256": "065ff49badec8a695dbea2de6ab6a330c774a191e426a217ab8cc05250627ccb",
+            "archive": "tar.gz",
+            "executablePath": "netcoredbg/netcoredbg"
+          },
+          "win32-x64": {
+            "url": "https://github.com/Samsung/netcoredbg/releases/download/3.2.0-1092/netcoredbg-win64.zip",
+            "sha256": "3c410a45fa502415203a94fcb88654af65bf8e3dac158a5527a722e7a6b9274a",
+            "archive": "zip",
+            "executablePath": "netcoredbg/netcoredbg.exe"
+          }
+        }
+      },
+      "contributes": {
+        "debugAdapters": [
+          {
+            "id": "netcoredbg",
+            "displayName": ".NET (netcoredbg)",
+            "languages": ["csharp"],
+            "priority": 100,
+            "command": {
+              "kind": "executable",
+              "args": ["--interpreter=vscode"]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "js-debug",
+      "name": "Node Debugger (js-debug)",
+      "description": "Debug Node projects with Microsoft's js-debug.",
+      "version": "1.117.0",
+      "apiVersion": "1.0.0",
+      "detail": "Platform-independent JavaScript, run under the Node runtime Studio ships.",
+      "provision": {
+        "kind": "archive",
+        "downloads": {
+          "darwin-arm64": {
+            "url": "https://github.com/microsoft/vscode-js-debug/releases/download/v1.117.0/js-debug-dap-v1.117.0.tar.gz",
+            "sha256": "ad8d04ede9d4b75cc290fd5438a65047a06f786d04f604b6112485b36f090772",
+            "archive": "tar.gz",
+            "executablePath": "js-debug/src/dapDebugServer.js"
+          },
+          "darwin-x64": {
+            "url": "https://github.com/microsoft/vscode-js-debug/releases/download/v1.117.0/js-debug-dap-v1.117.0.tar.gz",
+            "sha256": "ad8d04ede9d4b75cc290fd5438a65047a06f786d04f604b6112485b36f090772",
+            "archive": "tar.gz",
+            "executablePath": "js-debug/src/dapDebugServer.js"
+          },
+          "linux-x64": {
+            "url": "https://github.com/microsoft/vscode-js-debug/releases/download/v1.117.0/js-debug-dap-v1.117.0.tar.gz",
+            "sha256": "ad8d04ede9d4b75cc290fd5438a65047a06f786d04f604b6112485b36f090772",
+            "archive": "tar.gz",
+            "executablePath": "js-debug/src/dapDebugServer.js"
+          },
+          "linux-arm64": {
+            "url": "https://github.com/microsoft/vscode-js-debug/releases/download/v1.117.0/js-debug-dap-v1.117.0.tar.gz",
+            "sha256": "ad8d04ede9d4b75cc290fd5438a65047a06f786d04f604b6112485b36f090772",
+            "archive": "tar.gz",
+            "executablePath": "js-debug/src/dapDebugServer.js"
+          },
+          "win32-x64": {
+            "url": "https://github.com/microsoft/vscode-js-debug/releases/download/v1.117.0/js-debug-dap-v1.117.0.tar.gz",
+            "sha256": "ad8d04ede9d4b75cc290fd5438a65047a06f786d04f604b6112485b36f090772",
+            "archive": "tar.gz",
+            "executablePath": "js-debug/src/dapDebugServer.js"
+          }
+        }
+      },
+      "contributes": {
+        "debugAdapters": [
+          {
+            "id": "js-debug",
+            "displayName": "Node (js-debug)",
+            "languages": ["typescript", "javascript"],
+            "priority": 100,
+            "command": {
+              "kind": "node",
+              "args": ["0", "127.0.0.1"]
+            },
+            "transport": "tcp-server"
+          }
+        ]
+      }
+    },
+    {
+      "id": "debugpy",
+      "name": "Python Debugger (debugpy)",
+      "description": "Debug Python projects.",
+      "version": "1.8.21",
+      "apiVersion": "1.7.0",
+      "detail": "Needs Python 3.8+ on your machine. Ships the pure-Python build, which debugs any interpreter version but steps more slowly than a compiled one.",
+      "requires": [
+        {
+          "runtime": "python",
+          "minimumVersion": "3.8.0"
+        }
+      ],
+      "provision": {
+        "kind": "archive",
+        "downloads": {
+          "darwin-arm64": {
+            "url": "https://files.pythonhosted.org/packages/95/51/67e7cf11a53e40694f720457d5b3a1cdaaa3d5a9a633e482f225456b93ff/debugpy-1.8.21-py2.py3-none-any.whl",
+            "sha256": "b1e37d333663c8851516a47364ef473da127f9caebe4417e6df6f5825a7e9a92",
+            "archive": "zip",
+            "executablePath": "debugpy/adapter/__main__.py"
+          },
+          "darwin-x64": {
+            "url": "https://files.pythonhosted.org/packages/95/51/67e7cf11a53e40694f720457d5b3a1cdaaa3d5a9a633e482f225456b93ff/debugpy-1.8.21-py2.py3-none-any.whl",
+            "sha256": "b1e37d333663c8851516a47364ef473da127f9caebe4417e6df6f5825a7e9a92",
+            "archive": "zip",
+            "executablePath": "debugpy/adapter/__main__.py"
+          },
+          "linux-x64": {
+            "url": "https://files.pythonhosted.org/packages/95/51/67e7cf11a53e40694f720457d5b3a1cdaaa3d5a9a633e482f225456b93ff/debugpy-1.8.21-py2.py3-none-any.whl",
+            "sha256": "b1e37d333663c8851516a47364ef473da127f9caebe4417e6df6f5825a7e9a92",
+            "archive": "zip",
+            "executablePath": "debugpy/adapter/__main__.py"
+          },
+          "linux-arm64": {
+            "url": "https://files.pythonhosted.org/packages/95/51/67e7cf11a53e40694f720457d5b3a1cdaaa3d5a9a633e482f225456b93ff/debugpy-1.8.21-py2.py3-none-any.whl",
+            "sha256": "b1e37d333663c8851516a47364ef473da127f9caebe4417e6df6f5825a7e9a92",
+            "archive": "zip",
+            "executablePath": "debugpy/adapter/__main__.py"
+          },
+          "win32-x64": {
+            "url": "https://files.pythonhosted.org/packages/95/51/67e7cf11a53e40694f720457d5b3a1cdaaa3d5a9a633e482f225456b93ff/debugpy-1.8.21-py2.py3-none-any.whl",
+            "sha256": "b1e37d333663c8851516a47364ef473da127f9caebe4417e6df6f5825a7e9a92",
+            "archive": "zip",
+            "executablePath": "debugpy/adapter/__main__.py"
+          }
+        }
+      },
+      "contributes": {
+        "debugAdapters": [
+          {
+            "id": "debugpy",
+            "displayName": "Python (debugpy)",
+            "languages": ["python"],
+            "priority": 100,
+            "command": {
+              "kind": "python"
             }
           }
         ]

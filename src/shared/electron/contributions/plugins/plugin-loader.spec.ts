@@ -8,7 +8,11 @@ import { LockfileProvision } from '../../provisioning/lockfile-provision';
 import { LspProvisioner } from '../../lsp/lsp-provisioner';
 import { DecoderDescriptor, DecoderResolution } from '../../decoders/decoder-descriptor';
 import { LanguageServerDescriptor, LspResolution } from '../../lsp/language-server-descriptor';
-import { DebugAdapterCatalogueEntry, DebugAdapterSpec } from '../../debug/debug-adapter-registry';
+import {
+  DebugAdapterCatalogueEntry,
+  DebugAdapterResolution,
+} from '../../debug/debug-adapter-registry';
+import { setPythonRuntimeForTesting } from '../../provisioning/python-runtime';
 import {
   discoverPlugins,
   LoadedPlugin,
@@ -318,7 +322,7 @@ describe('plugin loader', () => {
       );
       const resolveContext: Parameters<LanguageServerDescriptor['resolve']>[0] = {
         rootPath: '/w',
-        settings: { get: (): never => ({}) as never } as never,
+        settings: { get: (): never => ({ serverPaths: {} }) as never } as never,
         provisioner: stubProvisioner('/tree'),
         nodePackageServer: (entry: string) => ({
           command: '/electron',
@@ -374,17 +378,13 @@ describe('plugin loader', () => {
       // showed "Not supported here" for a plugin that installs perfectly well.
       const descriptor: ReturnType<typeof toPluginDescriptor> = toPluginDescriptor(multiServer());
 
-      expect(descriptor.supported?.({ provisioner: stubProvisioner('/tree') } as never)).not.toBe(
-        false,
-      );
+      expect(descriptor.supported?.({ provisioner: stubProvisioner('/tree') })).not.toBe(false);
     });
 
     it('isNotReportedInstalledMerelyBecauseItHasNoEntryPoint', async () => {
       const descriptor: ReturnType<typeof toPluginDescriptor> = toPluginDescriptor(multiServer());
 
-      expect(await descriptor.detect?.({ provisioner: stubProvisioner(null) } as never)).toBe(
-        false,
-      );
+      expect(await descriptor.detect?.({ provisioner: stubProvisioner(null) })).toBe(false);
     });
   });
 
@@ -455,10 +455,11 @@ describe('plugin loader', () => {
      */
     function context(
       installedPath: string | null,
+      serverPaths: Record<string, string> = {},
     ): Parameters<LanguageServerDescriptor['resolve']>[0] {
       return {
         rootPath: '/w',
-        settings: { get: (): never => ({}) as never } as never,
+        settings: { get: (): never => ({ serverPaths }) as never } as never,
         provisioner: stubProvisioner(installedPath),
         nodePackageServer: (entry: string) => ({
           command: '/electron',
@@ -468,6 +469,40 @@ describe('plugin loader', () => {
         installedPath: (): string | null => installedPath,
       };
     }
+
+    it('runsTheUsersOwnCopyInPreferenceToTheInstalledOne', async () => {
+      writePlugin('zls', manifest());
+      const descriptors: readonly LanguageServerDescriptor[] = toLanguageServerDescriptors(
+        validManifests(discoverPlugins(root))[0],
+      );
+      const own: string = path.join(root, 'my-zls');
+      writeFileSync(own, '');
+
+      const resolution: LspResolution = await descriptors[0].resolve(
+        context('/installed/zls', { zls: own }),
+      );
+
+      // Someone with their own build keeps using it rather than carrying a second copy — and the
+      // override is honoured for a *contributed* server, which is the point: the set of servers is
+      // open, so the override cannot be a field per server.
+      expect(resolution.spec?.command).toBe(own);
+    });
+
+    it('saysWhereItLookedWhenTheOverridePathIsWrong', async () => {
+      writePlugin('zls', manifest());
+      const descriptors: readonly LanguageServerDescriptor[] = toLanguageServerDescriptors(
+        validManifests(discoverPlugins(root))[0],
+      );
+
+      const resolution: LspResolution = await descriptors[0].resolve(
+        context('/installed/zls', { zls: '/nowhere/zls' }),
+      );
+
+      // Falling back to the installed copy would silently ignore what the user asked for, which is
+      // how someone spends an afternoon wondering why their build is not being used.
+      expect(resolution.spec).toBeNull();
+      expect(resolution.error).toContain('/nowhere/zls');
+    });
 
     it('resolvesAnExecutableCommandToTheProvisionedBinary', async () => {
       writePlugin('zls', manifest());
@@ -590,10 +625,10 @@ describe('plugin loader', () => {
         languages: ['zig'],
         command: { kind: 'executable', args: ['--dap'] },
       });
-      const spec: DebugAdapterSpec = entries[0].buildSpec('/installed/dbg');
+      const resolution: DebugAdapterResolution = entries[0].buildSpec('/installed/dbg');
 
-      expect(spec.command).toBe('/installed/dbg');
-      expect(spec.args).toEqual(['--dap']);
+      expect(resolution.spec?.command).toBe('/installed/dbg');
+      expect(resolution.spec?.args).toEqual(['--dap']);
     });
 
     it('spawnsANodeAdapterUnderTheBundledRuntime', () => {
@@ -604,12 +639,46 @@ describe('plugin loader', () => {
         command: { kind: 'node', args: ['0', '127.0.0.1'] },
         transport: 'tcp-server',
       });
-      const spec: DebugAdapterSpec = entries[0].buildSpec('/installed/server.js');
+      const resolution: DebugAdapterResolution = entries[0].buildSpec('/installed/server.js');
 
-      expect(spec.command).toBe(process.execPath);
-      expect(spec.args).toEqual(['/installed/server.js', '0', '127.0.0.1']);
-      expect(spec.env?.['ELECTRON_RUN_AS_NODE']).toBe('1');
-      expect(spec.transport).toBe('tcp-server');
+      expect(resolution.spec?.command).toBe(process.execPath);
+      expect(resolution.spec?.args).toEqual(['/installed/server.js', '0', '127.0.0.1']);
+      expect(resolution.spec?.env?.['ELECTRON_RUN_AS_NODE']).toBe('1');
+      expect(resolution.spec?.transport).toBe('tcp-server');
+    });
+
+    it('spawnsAPythonAdapterUnderTheDetectedInterpreter', () => {
+      setPythonRuntimeForTesting('/usr/bin/python3');
+      const entries: readonly DebugAdapterCatalogueEntry[] = entriesFor({
+        id: 'debugpy',
+        displayName: 'Python (debugpy)',
+        languages: ['python'],
+        command: { kind: 'python' },
+      });
+      const resolution: DebugAdapterResolution = entries[0].buildSpec('/installed/adapter.py');
+
+      // Run as a script rather than through `-m`: an entry point that expects that arranges its own
+      // imports, so nothing has to be said here about packages or import paths.
+      expect(resolution.spec?.command).toBe('/usr/bin/python3');
+      expect(resolution.spec?.args).toEqual(['/installed/adapter.py']);
+      expect(resolution.error).toBeNull();
+    });
+
+    it('saysPythonIsMissingRatherThanReportingTheAdapterAbsent', () => {
+      setPythonRuntimeForTesting(null);
+      const entries: readonly DebugAdapterCatalogueEntry[] = entriesFor({
+        id: 'debugpy',
+        displayName: 'Python (debugpy)',
+        languages: ['python'],
+        command: { kind: 'python' },
+      });
+      const resolution: DebugAdapterResolution = entries[0].buildSpec('/installed/adapter.py');
+
+      // Installed and unrunnable at once: the payload is there, the interpreter it needs is not, and
+      // those have different fixes. Reporting it "not installed" would send the user to reinstall
+      // something that is already present.
+      expect(resolution.spec).toBeNull();
+      expect(resolution.error).toContain('Python 3.8+');
     });
 
     it('contributesNoAdaptersWhenTheManifestDeclaresNone', () => {
@@ -714,8 +783,8 @@ describe('a sideloaded plugin carrying its own payload', () => {
     );
     // The Plugin Manager and the decoder registry must agree: one saying "not installed" while the
     // other happily runs it is how a working plugin ends up offering an install that must fail.
-    expect(await descriptor.detect?.({ provisioner: nothingDownloaded } as never)).toBe(true);
-    expect(descriptor.supported?.({ provisioner: nothingDownloaded } as never)).toBe(true);
+    expect(await descriptor.detect?.({ provisioner: nothingDownloaded })).toBe(true);
+    expect(descriptor.supported?.({ provisioner: nothingDownloaded })).toBe(true);
   });
 
   it('toDecoderDescriptors_resolvesTheLocalPayload', () => {

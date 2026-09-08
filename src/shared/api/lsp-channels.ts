@@ -288,15 +288,16 @@ export interface LspSettings {
   readonly dotnetPath: string | null;
 
   /**
-   * Gets the user's override for the clangd executable (the C/C++ server), or null to auto-detect.
+   * Gets the user's own copy of a server's entry point, keyed by server identifier, for a server they
+   * would rather run than the one the Plugin Manager installed. A server with no entry runs the
+   * installed copy.
+   *
+   * Keyed rather than one field per server, because the set of servers is open: a contributed server
+   * arrives from a manifest core has never heard of, and it can be overridden the same way the
+   * first-party ones are. What the path points at follows the server's own shape — an executable for
+   * one spawned directly, a JavaScript module for one run under Node.
    */
-  readonly clangdPath: string | null;
-
-  /**
-   * Gets the user's override for the TypeScript language server's entry point (the path to its
-   * JavaScript CLI module, run through the bundled Node runtime), or null to use the bundled server.
-   */
-  readonly typescriptServerPath: string | null;
+  readonly serverPaths: Readonly<Record<string, string>>;
 
   /**
    * Gets extra command-line arguments appended to a server's invocation, keyed by server identifier.

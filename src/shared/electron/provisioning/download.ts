@@ -1,7 +1,10 @@
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createReadStream, createWriteStream } from 'node:fs';
+import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
 import { Readable } from 'node:stream';
+import { createGunzip } from 'node:zlib';
 import { pipeline } from 'node:stream/promises';
 import { promisify } from 'node:util';
 
@@ -22,7 +25,7 @@ const execFileAsync: (
 /**
  * The archive kinds the extractor understands.
  */
-export type ArchiveKind = 'tar.gz' | 'zip';
+export type ArchiveKind = 'tar.gz' | 'zip' | 'gz';
 
 /**
  * Downloads a URL to a file.
@@ -90,9 +93,17 @@ export async function extractArchive(
   kind: ArchiveKind,
   stripComponents: number = 0,
   members: readonly string[] = [],
+  target: string = '',
 ): Promise<void> {
   const strip: readonly string[] =
     stripComponents > 0 ? [`--strip-components=${stripComponents}`] : [];
+  if (kind === 'gz') {
+    // Not an archive at all: a single compressed file, which several projects publish instead of a
+    // one-entry tarball. There is nothing inside it to name, so the caller says where it lands.
+    await fs.mkdir(path.dirname(target), { recursive: true });
+    await pipeline(createReadStream(archive), createGunzip(), createWriteStream(target));
+    return;
+  }
   if (kind === 'tar.gz') {
     await execFileAsync('tar', ['-xzf', archive, '-C', destination, ...strip, ...members]);
     return;

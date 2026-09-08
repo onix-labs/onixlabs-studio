@@ -17,7 +17,7 @@ export interface ArchiveDownload {
   /**
    * Gets the archive kind, deciding how it is extracted.
    */
-  readonly archive: 'tar.gz' | 'zip';
+  readonly archive: 'tar.gz' | 'zip' | 'gz';
 
   /**
    * Gets the executable or entry point's path relative to the extracted directory (for example
