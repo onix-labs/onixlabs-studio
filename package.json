@@ -97,7 +97,7 @@
     "@types/dompurify": "^3.2.0",
     "@types/katex": "^0.16.8",
     "@types/node": "^26.4.1",
-    "@vitest/coverage-v8": "^4.1.11",
+    "@vitest/coverage-v8": "^5.0.0",
     "@vscode/debugprotocol": "^1.68.0",
     "angular-eslint": "^22.1.0",
     "concurrently": "^10.0.5",
