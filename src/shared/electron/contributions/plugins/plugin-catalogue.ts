@@ -9,7 +9,6 @@ import {
   KOTLIN_LS_VERSION,
   LspProvisioner,
   ROSLYN_VERSION,
-  RUST_ANALYZER_VERSION,
 } from '../../lsp/lsp-provisioner';
 import { ArchiveProvision } from '../../provisioning/archive-provision';
 
@@ -230,19 +229,6 @@ export function pluginCatalogue(): readonly PluginDescriptor[] {
         await context.provisioner.removeArchive(TYPESCRIPT_SERVER_PROVISION);
         await context.provisioner.removeArchive(TYPESCRIPT_PROVISION);
       },
-    },
-    {
-      id: 'rust-analyzer',
-      name: 'rust-analyzer',
-      description: 'Rust language support.',
-      version: RUST_ANALYZER_VERSION,
-      contributions: [languageServer('rust', 'rust-analyzer', ['rust'], 100)],
-      detect: (context: PluginContext): Promise<boolean> =>
-        Promise.resolve(context.provisioner.isProvisioned('rust-analyzer', RUST_ANALYZER_VERSION)),
-      install: (context: PluginContext): Promise<string | null> =>
-        context.provisioner.ensureRustAnalyzer(),
-      uninstall: (context: PluginContext): Promise<void> =>
-        context.provisioner.removeProvisioned('rust-analyzer', RUST_ANALYZER_VERSION),
     },
     {
       id: 'jdtls',

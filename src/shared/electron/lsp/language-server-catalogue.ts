@@ -191,32 +191,6 @@ const KOTLIN: LanguageServerDescriptor = {
 };
 
 /**
- * rust-analyzer, downloading its platform binary on first use. It runs `cargo`/`rustc` to load a Cargo
- * workspace, so the toolchain's `~/.cargo/bin` is appended to the spawned PATH — a GUI-launched app
- * does not inherit the shell PATH that rustup adds.
- */
-const RUST: LanguageServerDescriptor = {
-  id: 'rust',
-  displayName: 'rust-analyzer',
-  languages: ['rust'],
-  priority: DEFAULT_PRIORITY,
-  resolve: async (context: LanguageServerContext): Promise<LspResolution> => {
-    const binary: string | null = await context.provisioner.ensureRustAnalyzer();
-    if (binary === null) {
-      return unavailable('The Rust language server could not be downloaded.');
-    }
-    const home: string | undefined = process.env['HOME'] ?? process.env['USERPROFILE'];
-    const env: Record<string, string> | undefined =
-      home === undefined
-        ? undefined
-        : {
-            PATH: `${process.env['PATH'] ?? ''}${path.delimiter}${path.join(home, '.cargo', 'bin')}`,
-          };
-    return resolved({ command: binary, args: [], env });
-  },
-};
-
-/**
  * gopls, detecting the Go toolchain and building the server with it on first use. gopls shells out to
  * `go` at runtime, so the toolchain's directory is appended to the spawned PATH.
  */
@@ -296,15 +270,26 @@ const CSHARP: LanguageServerDescriptor = {
  * further descriptors at runtime, so a plugin-contributed server is a peer of every entry here rather
  * than a special case.
  *
- * Every entry left is here because resolving it is a computation, not a description: detecting a Java
- * runtime or a .NET SDK, building the server with the user's Go toolchain, deriving Roslyn's
- * `solution/open` from the workspace, or — for TypeScript — deciding whether to point the server at
- * the bundled compiler, which depends on whether the workspace brought its own. The servers that
- * resolve to "the entry point of the archive we installed" moved into the curated index, where the
- * facts about them are data.
+ * Every entry left is here because resolving it is a computation, not a description, and each one is
+ * a different computation:
+ *
+ * - **Kotlin** needs `JAVA_HOME` set from the Java runtime *Studio detected*, which a static manifest
+ *   cannot name — and the closed `requires` list exists precisely because a manifest may declare a
+ *   prerequisite but may not teach Studio to find one.
+ * - **jdtls** additionally globs a version-stamped launcher jar out of its own payload and passes a
+ *   data directory computed per workspace.
+ * - **gopls** is built with the user's Go toolchain rather than downloaded at all.
+ * - **Roslyn** derives its `solution/open` traffic from the workspace.
+ * - **TypeScript** decides whether to point the server at the bundled compiler, which depends on
+ *   whether the workspace brought its own — pointing there unconditionally would make the editor
+ *   disagree with the project's own `tsc`.
+ *
+ * The servers that resolve to "the entry point of the archive we installed" moved into the curated
+ * index, where the facts about them are data. What is left is the line where description stops and
+ * execution begins, and it is not expected to get much shorter.
  *
  * @returns Returns the catalogue descriptors.
  */
 export function languageServerCatalogue(): readonly LanguageServerDescriptor[] {
-  return [TYPESCRIPT, JAVA, KOTLIN, RUST, GO, CSHARP];
+  return [TYPESCRIPT, JAVA, KOTLIN, GO, CSHARP];
 }

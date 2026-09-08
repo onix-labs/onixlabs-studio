@@ -1,7 +1,18 @@
 import { execFile } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { createGzip } from 'node:zlib';
+import {
+  createReadStream,
+  createWriteStream,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
+import { pipeline } from 'node:stream/promises';
 import { promisify } from 'node:util';
 import { extractArchive } from './download';
 
@@ -32,6 +43,20 @@ describe('extractArchive', () => {
 
   afterEach(() => {
     rmSync(root, { recursive: true, force: true });
+  });
+
+  it('decompressesASingleGzippedFileToWhereTheCallerAsked', async () => {
+    // Not an archive: rust-analyzer publishes its Unix builds as a bare gzipped binary rather than a
+    // one-entry tarball, so there is nothing inside to name and the caller says where it lands.
+    const plain: string = path.join(root, 'server');
+    writeFileSync(plain, 'binary-contents', 'utf8');
+    const gzipped: string = path.join(root, 'server.gz');
+    await pipeline(createReadStream(plain), createGzip(), createWriteStream(gzipped));
+    const target: string = path.join(destination, 'nested', 'rust-analyzer');
+
+    await extractArchive(gzipped, destination, 'gz', 0, [], target);
+
+    expect(readFileSync(target, 'utf8')).toBe('binary-contents');
   });
 
   it('extractsEverythingWhenNoMembersAreNamed', async () => {
