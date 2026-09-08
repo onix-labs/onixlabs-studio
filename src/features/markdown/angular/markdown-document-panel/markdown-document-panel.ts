@@ -16,7 +16,6 @@ import { MarkdownEditor } from '@shared/angular/components/markdown-editor/markd
 import { MarkdownToolstrip } from '@shared/angular/components/markdown-toolstrip/markdown-toolstrip';
 import { CodeDocument, Documents } from '@shared/angular/services/documents/documents';
 import { DocumentStatus } from '@shared/angular/services/document-status/document-status';
-import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { MarkdownDocument } from '@features/markdown/angular/markdown-document/markdown-document';
 import {
   computeMarkdownStats,
@@ -71,15 +70,30 @@ export class MarkdownDocumentPanel {
   );
 
   /**
-   * Opens the well document's file as a standalone markdown tab, so it can be edited with the full
-   * tab chrome (ribbon and tool panels).
+   * Opens the well document as a standalone markdown tab, so it can be edited with the full tab
+   * chrome (ribbon and tool panels). The tab is seeded from the LIVE document — not by re-reading
+   * the file from disk — so a just-created file (still empty on disk) and unsaved edits carry over
+   * instead of opening an empty tab; a tab already showing the file is re-activated.
    */
   protected onOpenInTab(): void {
-    const path: string | null = this.document()?.filePath() ?? null;
-    if (path === null) {
+    const document: CodeDocument | undefined = this.document();
+    const path: string | null = document?.filePath() ?? null;
+    if (document === undefined || path === null) {
       return;
     }
-    void this.fileOpener.reopenFile(path);
+    const name: string = document.fileName();
+    const separator: number = name.lastIndexOf('.');
+    this.documents.openFileInfo(
+      {
+        path,
+        name,
+        extension: separator < 0 ? '' : name.slice(separator),
+        content: document.content(),
+        encoding: document.encoding(),
+        hasBom: document.hasBom(),
+      },
+      'markdown',
+    );
   }
   /**
    * Holds the documents service backing the hosted document's content, language and encoding.
@@ -90,11 +104,6 @@ export class MarkdownDocumentPanel {
    * Holds the well status strip this panel publishes to while it is the active document.
    */
   private readonly documentStatus: DocumentStatus = inject(DocumentStatus);
-
-  /**
-   * Holds the file opener backing the toolstrip's open-in-tab action.
-   */
-  private readonly fileOpener: FileOpener = inject(FileOpener);
 
   /**
    * Gets the identifier of the document this panel displays (the well panel's id).
