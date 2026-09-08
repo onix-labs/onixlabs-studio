@@ -1219,9 +1219,25 @@ export class Icon {
   public static readonly MINUS_SQUARE: Icon = new Icon('ph ph-minus-square');
 
   /**
+   * Gets the duotone plus-square glyph used by the explorer tool strips' expand-all button.
+   */
+  public static readonly PLUS_SQUARE_DUOTONE: Icon = new Icon('ph-duotone ph-plus-square');
+
+  /**
+   * Gets the duotone minus-square glyph used by the explorer tool strips' collapse-all button.
+   */
+  public static readonly MINUS_SQUARE_DUOTONE: Icon = new Icon('ph-duotone ph-minus-square');
+
+  /**
    * Gets the three-dots glyph used to open an overflow menu of further actions.
    */
   public static readonly DOTS_THREE: Icon = new Icon('ph ph-dots-three');
+
+  /**
+   * Gets the bold three-dots glyph used by the explorer tool strips' more-actions menu button, where
+   * the regular weight reads too faint beside the strips' duotone icons.
+   */
+  public static readonly DOTS_THREE_BOLD: Icon = new Icon('ph-bold ph-dots-three');
 
   /**
    * Gets the vertical three-dots glyph used for a row's overflow menu. Regular weight, as its
