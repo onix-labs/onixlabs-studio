@@ -1,10 +1,11 @@
 import { Component } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { FileInfo } from '@shared/api/file-channels';
 import { Documents } from '@shared/angular/services/documents/documents';
 import type { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
+import { drainMilkdownTimers } from '@shared/angular/testing/drain-milkdown-timers';
 
 import { MarkdownDocumentPanel } from './markdown-document-panel';
 
@@ -43,6 +44,9 @@ describe('MarkdownDocumentPanel', () => {
     globalRef.ResizeObserver ??= StubObserver;
     globalRef.IntersectionObserver ??= StubObserver;
   });
+
+  // Milkdown's timer watchdogs cannot be cancelled; let them fire before the environment goes.
+  afterAll(drainMilkdownTimers);
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({

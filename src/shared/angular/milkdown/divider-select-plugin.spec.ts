@@ -1,10 +1,11 @@
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Crepe } from '@milkdown/crepe';
 import type { Ctx } from '@milkdown/ctx';
 import { editorViewCtx } from '@milkdown/kit/core';
 import type { Node as ProseMirrorNode } from '@milkdown/kit/prose/model';
 import { NodeSelection } from '@milkdown/kit/prose/state';
 import type { EditorView } from '@milkdown/kit/prose/view';
+import { drainMilkdownTimers } from '../testing/drain-milkdown-timers';
 import { createStudioCrepe } from './create-studio-crepe';
 import type { MonacoCodeBlockDeps } from './monaco-code-block-plugin';
 import { selectDividerOnClick } from './divider-select-plugin';
@@ -94,6 +95,9 @@ describe('dividerSelectPlugin', () => {
     globalRef.ResizeObserver ??= StubObserver;
     globalRef.IntersectionObserver ??= StubObserver;
   });
+
+  // Milkdown's timer watchdogs cannot be cancelled; let them fire before the environment goes.
+  afterAll(drainMilkdownTimers);
 
   it('click_onADivider_selectsIt', async () => {
     await withView('above\n\n---\n\nbelow\n', (view: EditorView): void => {

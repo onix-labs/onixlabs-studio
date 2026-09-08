@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Crepe } from '@milkdown/crepe';
 import type { Ctx } from '@milkdown/ctx';
 import { editorViewCtx } from '@milkdown/kit/core';
@@ -11,6 +11,7 @@ import { insertTableCommand } from '@milkdown/preset-gfm';
 import { AllSelection } from '@milkdown/kit/prose/state';
 import type { EditorView } from '@milkdown/kit/prose/view';
 import { callCommand } from '@milkdown/utils';
+import { drainMilkdownTimers } from '../testing/drain-milkdown-timers';
 import { createStudioCrepe } from './create-studio-crepe';
 import type { MonacoCodeBlockDeps } from './monaco-code-block-plugin';
 
@@ -162,6 +163,10 @@ describe('markdown features', () => {
     globalRef.ResizeObserver ??= StubObserver;
     globalRef.IntersectionObserver ??= StubObserver;
   });
+
+  // Every boot below leaves Milkdown watchdogs pending that nothing can cancel; hold the environment
+  // open until they have fired, or they throw into a runner that has already torn it down.
+  afterAll(drainMilkdownTimers);
 
   describe('headings', () => {
     it('renders_everyAtxHeadingLevel_asItsHeadingElement', async () => {

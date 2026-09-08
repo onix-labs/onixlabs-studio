@@ -1,4 +1,5 @@
 import { Crepe } from '@milkdown/crepe';
+import { drainMilkdownTimers } from '../testing/drain-milkdown-timers';
 import {
   createMonacoCodeBlockPlugin,
   MonacoCodeBlockDeps,
@@ -46,6 +47,9 @@ describe('MonacoCodeBlock plugin', () => {
     globalRef.ResizeObserver ??= StubObserver;
     globalRef.IntersectionObserver ??= StubObserver;
   });
+
+  // Milkdown's timer watchdogs cannot be cancelled; let them fire before the environment goes.
+  afterAll(drainMilkdownTimers);
 
   it('boots and overrides the CodeMirror code-block view with the Monaco one', async () => {
     const root: HTMLDivElement = document.createElement('div');
