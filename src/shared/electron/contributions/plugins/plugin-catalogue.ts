@@ -1,10 +1,5 @@
 import { PluginContribution, PluginOrigin } from '@shared/api/plugin-channels';
 import {
-  DebugAdapterCatalogueEntry,
-  debugAdapterCatalogue,
-} from '../../debug/debug-adapter-registry';
-import { DebugAdapterProvision, DebugProvisioner } from '../../debug/debug-provisioner';
-import {
   DEBUGPY_VERSION,
   installDebugpy,
   isDebugpyInstalled,
@@ -35,11 +30,6 @@ export interface PluginContext {
    * Gets the provisioner that downloads language servers and detects the runtimes some of them need.
    */
   readonly provisioner: LspProvisioner;
-
-  /**
-   * Gets the provisioner that downloads debug adapters.
-   */
-  readonly debugProvisioner: DebugProvisioner;
 }
 
 /**
@@ -185,53 +175,6 @@ function archivePlugin(
       context.provisioner.ensureArchive(provision),
     uninstall: (context: PluginContext): Promise<void> =>
       context.provisioner.removeArchive(provision),
-  };
-}
-
-/**
- * Looks up a first-party debug adapter's pinned provisioning recipe from the adapter catalogue, so the
- * pinned URL and checksum are declared once and the plugin entry cannot drift from what the registry
- * actually spawns.
- * @param adapterId The adapter identifier.
- * @returns Returns the provisioning recipe, or undefined when the adapter ships none.
- */
-function adapterProvision(adapterId: string): DebugAdapterProvision | undefined {
-  return debugAdapterCatalogue().find(
-    (entry: DebugAdapterCatalogueEntry): boolean => entry.id === adapterId,
-  )?.provision;
-}
-
-/**
- * Builds the descriptor for a debug adapter Studio downloads, wiring it to the adapter's own recipe.
- * @param id The plugin (and adapter) identifier.
- * @param name The display name.
- * @param description The one-line description.
- * @param languages The languages the adapter debugs.
- * @returns Returns the descriptor.
- */
-function adapterPlugin(
-  id: string,
-  name: string,
-  description: string,
-  languages: readonly string[],
-): PluginDescriptor {
-  const provision: DebugAdapterProvision | undefined = adapterProvision(id);
-  return {
-    id,
-    name,
-    description,
-    version: provision?.version ?? 'unknown',
-    contributions: [{ slot: 'debug-adapter', id, displayName: name, languages, priority: 100 }],
-    detect: (context: PluginContext): Promise<boolean> =>
-      provision === undefined
-        ? Promise.resolve(false)
-        : context.debugProvisioner.isProvisioned(provision),
-    install: (context: PluginContext): Promise<string | null> =>
-      provision === undefined ? Promise.resolve(null) : context.debugProvisioner.ensure(provision),
-    uninstall: (context: PluginContext): Promise<void> =>
-      provision === undefined
-        ? Promise.resolve()
-        : context.debugProvisioner.removeProvisioned(provision),
   };
 }
 
@@ -393,12 +336,5 @@ export function pluginCatalogue(): readonly PluginDescriptor[] {
       install: (): Promise<string | null> => installDebugpy(),
       uninstall: (): Promise<void> => uninstallDebugpy(),
     },
-    adapterPlugin('netcoredbg', '.NET Debugger (netcoredbg)', 'Debug .NET projects.', ['csharp']),
-    adapterPlugin(
-      'js-debug',
-      'Node Debugger (js-debug)',
-      "Debug Node projects with Microsoft's js-debug.",
-      ['typescript', 'javascript'],
-    ),
   ];
 }

@@ -1,7 +1,5 @@
 import { app } from 'electron';
-import * as path from 'node:path';
 import { PluginActionResult, PluginChannel, PluginSummary } from '@shared/api/plugin-channels';
-import { DebugProvisioner } from '../../debug/debug-provisioner';
 import { LspProvisioner } from '../../lsp/lsp-provisioner';
 import { ContributionContext, MainContribution } from '../main-contribution';
 import { PluginContext, pluginCatalogue } from './plugin-catalogue';
@@ -35,15 +33,7 @@ export class PluginsContribution implements MainContribution {
    */
   public activate(context: ContributionContext): void {
     const userData: string = app.getPath('userData');
-    const pluginContext: PluginContext = {
-      provisioner: new LspProvisioner(),
-      // The same install root the debug adapter registry provisions into, so what the Plugin Manager
-      // reports installed is exactly what a debug session would find.
-      debugProvisioner: new DebugProvisioner(
-        new Map<string, string>(),
-        path.join(userData, 'debug-adapters'),
-      ),
-    };
+    const pluginContext: PluginContext = { provisioner: new LspProvisioner() };
     // First-party plugins plus whatever was contributed — dropped into the sideload directory, or
     // offered by the curated index. A manifest is not a special case: it becomes a catalogue entry
     // and installs down the same path as everything else.
