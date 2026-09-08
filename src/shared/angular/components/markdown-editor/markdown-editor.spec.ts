@@ -1,9 +1,10 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Ctx } from '@milkdown/ctx';
 import { editorViewCtx } from '@milkdown/kit/core';
 import type { EditorView } from '@milkdown/kit/prose/view';
 
+import { drainMilkdownTimers } from '../../testing/drain-milkdown-timers';
 import { MarkdownEditor } from './markdown-editor';
 
 /**
@@ -83,6 +84,9 @@ describe('MarkdownEditor', () => {
       getBoundingClientRect: (): DOMRect => new DOMRect(0, 0, 0, 0),
     });
   });
+
+  // Milkdown's timer watchdogs cannot be cancelled; let them fire before the environment goes.
+  afterAll(drainMilkdownTimers);
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
