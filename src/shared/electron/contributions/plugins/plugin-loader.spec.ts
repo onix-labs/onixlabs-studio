@@ -374,17 +374,13 @@ describe('plugin loader', () => {
       // showed "Not supported here" for a plugin that installs perfectly well.
       const descriptor: ReturnType<typeof toPluginDescriptor> = toPluginDescriptor(multiServer());
 
-      expect(descriptor.supported?.({ provisioner: stubProvisioner('/tree') } as never)).not.toBe(
-        false,
-      );
+      expect(descriptor.supported?.({ provisioner: stubProvisioner('/tree') })).not.toBe(false);
     });
 
     it('isNotReportedInstalledMerelyBecauseItHasNoEntryPoint', async () => {
       const descriptor: ReturnType<typeof toPluginDescriptor> = toPluginDescriptor(multiServer());
 
-      expect(await descriptor.detect?.({ provisioner: stubProvisioner(null) } as never)).toBe(
-        false,
-      );
+      expect(await descriptor.detect?.({ provisioner: stubProvisioner(null) })).toBe(false);
     });
   });
 
@@ -714,8 +710,8 @@ describe('a sideloaded plugin carrying its own payload', () => {
     );
     // The Plugin Manager and the decoder registry must agree: one saying "not installed" while the
     // other happily runs it is how a working plugin ends up offering an install that must fail.
-    expect(await descriptor.detect?.({ provisioner: nothingDownloaded } as never)).toBe(true);
-    expect(descriptor.supported?.({ provisioner: nothingDownloaded } as never)).toBe(true);
+    expect(await descriptor.detect?.({ provisioner: nothingDownloaded })).toBe(true);
+    expect(descriptor.supported?.({ provisioner: nothingDownloaded })).toBe(true);
   });
 
   it('toDecoderDescriptors_resolvesTheLocalPayload', () => {

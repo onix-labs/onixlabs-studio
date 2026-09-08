@@ -244,13 +244,13 @@ export class DebugAdapterRegistry {
       (await entry.locate?.()) ?? (await this.locator.locate(entry.binary, rootPath));
     logger.debug('DebugAdapterRegistry', `Located ${entry.binary}: ${binaryPath ?? 'not found'}`);
     if (binaryPath === null) {
-      logger.warn(
-        'DebugAdapterRegistry',
-        `${entry.displayName} adapter (${entry.binary}) could not be found or installed`,
-      );
+      logger.warn('DebugAdapterRegistry', `${entry.displayName} adapter is not installed`);
+      // Resolving no longer downloads anything, so the honest answer names the one action that fixes
+      // it. Telling someone an adapter "could not be installed" would describe an attempt that this
+      // no longer makes.
       return {
         spec: null,
-        error: `The ${entry.displayName} debug adapter (${entry.binary}) could not be found or installed.`,
+        error: `The ${entry.displayName} debug adapter is not installed — install it in Plugins.`,
       };
     }
     logger.debug('DebugAdapterRegistry', `Resolved ${adapterId} to ${binaryPath}`);
