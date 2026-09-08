@@ -62,6 +62,11 @@ interface StudioOptions {
    * installed, and an engine installed whose socket is not answering.
    */
   readonly sideloadEngine: string | undefined;
+
+  /**
+   * Gets the display name of a synthetic debug-adapter plugin to sideload, or undefined for none.
+   */
+  readonly sideloadAdapter: string | undefined;
 }
 
 /**
@@ -77,15 +82,18 @@ export const test: TestType<
   trustedPaths: [undefined, { option: true }],
   sideloadPlugins: [undefined, { option: true }],
   sideloadEngine: [undefined, { option: true }],
+  sideloadAdapter: [undefined, { option: true }],
   app: async (
     {
       trustedPaths,
       sideloadPlugins,
       sideloadEngine,
+      sideloadAdapter,
     }: {
       trustedPaths: readonly string[] | undefined;
       sideloadPlugins: readonly string[] | undefined;
       sideloadEngine: string | undefined;
+      sideloadAdapter: string | undefined;
     },
     use: (app: ElectronApplication) => Promise<void>,
   ): Promise<void> => {
@@ -98,6 +106,9 @@ export const test: TestType<
     }
     if (sideloadEngine !== undefined) {
       seedEnginePlugin(userDataDir, sideloadEngine);
+    }
+    if (sideloadAdapter !== undefined) {
+      seedAdapterPlugin(userDataDir, sideloadAdapter);
     }
     const app: ElectronApplication = await electron.launch({
       args: [
@@ -191,6 +202,65 @@ function seedEnginePlugin(userDataDir: string, displayName: string): void {
               sockets: { darwin: [socket], linux: [socket], win32: ['\\\\.\\pipe\\e2e'] },
             },
             startCommands: { darwin: 'e2e engine start', linux: 'e2e engine start' },
+          },
+        ],
+      },
+      requires: [],
+    }),
+    'utf8',
+  );
+}
+
+/**
+ * Writes a synthetic debug-adapter plugin into a test profile's sideload directory.
+ *
+ * Its payload sits beside the manifest, so nothing is downloaded and the plugin is installed by the
+ * only definition that matters: the thing to run is on disk. That makes it the one way to prove the
+ * debug-adapter contribution point end to end without a real debugger — core knows nothing about this
+ * adapter, and its manifest alone has to carry it into the catalogue.
+ * @param userDataDir The isolated userData directory.
+ * @param displayName The adapter's display name, which is what the Plugin Manager calls it.
+ */
+function seedAdapterPlugin(userDataDir: string, displayName: string): void {
+  const id: string = 'e2e-adapter';
+  const target: string = path.join(userDataDir, 'plugins', id);
+  fs.mkdirSync(path.join(target, 'payload'), { recursive: true });
+  fs.writeFileSync(path.join(target, 'payload', 'adapter'), '', 'utf8');
+  fs.writeFileSync(
+    path.join(target, 'plugin.json'),
+    JSON.stringify({
+      id,
+      name: displayName,
+      description: 'A debug adapter, for end-to-end tests.',
+      version: '1.0.0',
+      apiVersion: '1.0.0',
+      // As with the engine: a manifest whose archive provision publishes no platform is refused by
+      // validation, and the payload beside the manifest is what resolves, so the URL is never fetched.
+      provision: {
+        kind: 'archive',
+        downloads: Object.fromEntries(
+          ['darwin-arm64', 'darwin-x64', 'linux-x64', 'linux-arm64', 'win32-x64'].map(
+            (platform: string): [string, unknown] => [
+              platform,
+              {
+                url: 'https://example.invalid/never-published.tar.gz',
+                sha256: '0'.repeat(64),
+                archive: 'tar.gz',
+                executablePath: 'payload/adapter',
+              },
+            ],
+          ),
+        ),
+      },
+      contributes: {
+        debugAdapters: [
+          {
+            id: 'e2e-dbg',
+            displayName,
+            languages: ['zig'],
+            priority: 100,
+            entryPoint: 'payload/adapter',
+            command: { kind: 'executable' },
           },
         ],
       },
