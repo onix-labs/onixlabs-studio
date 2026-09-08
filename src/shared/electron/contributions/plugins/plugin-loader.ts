@@ -28,7 +28,10 @@ import {
   resolved,
   unavailable,
 } from '../../lsp/language-server-descriptor';
-import { DebugAdapterCatalogueEntry, DebugAdapterSpec } from '../../debug/debug-adapter-registry';
+import {
+  DebugAdapterCatalogueEntry,
+  DebugAdapterResolution,
+} from '../../debug/debug-adapter-registry';
 import { ArchiveDownload, ArchiveProvision } from '../../provisioning/archive-provision';
 import {
   LockfilePackage,
@@ -36,6 +39,7 @@ import {
   parseLockfileDocument,
 } from '../../provisioning/lockfile-provision';
 import { LspProvisioner } from '../../lsp/lsp-provisioner';
+import { pythonRuntime } from '../../provisioning/python-runtime';
 import { PluginContext, PluginDescriptor } from './plugin-catalogue';
 import { bundledLockfile } from './bundled-lockfiles';
 
@@ -448,6 +452,18 @@ function toSpec(
       context.nodePackageServer(entryPoint);
     return resolved({ ...spec, args: [...spec.args, ...(command.args ?? [])], env: command.env });
   }
+  if (command.kind === 'python') {
+    // Python is the user's, not Studio's, so this is the one kind that can fail for a reason the
+    // plugin is not at fault for. Saying which is missing beats a spawn that fails opaquely.
+    const runtime: { command: string; args: string[] } | null = pythonRuntime(entryPoint);
+    return runtime === null
+      ? unavailable('Python 3.8+ not found — install Python, or set its path in Settings.')
+      : resolved({
+          command: runtime.command,
+          args: [...runtime.args, ...(command.args ?? [])],
+          env: command.env,
+        });
+  }
   return resolved({ command: entryPoint, args: command.args ?? [], env: command.env });
 }
 
@@ -509,20 +525,45 @@ export function toDebugAdapterEntries(
         Promise.resolve(
           ops.isInstalled(provisioner()) ? ops.target(provisioner(), adapter.entryPoint) : null,
         ),
-      buildSpec: (entryPoint: string): DebugAdapterSpec =>
-        adapter.command.kind === 'node'
-          ? {
+      buildSpec: (entryPoint: string): DebugAdapterResolution => {
+        if (adapter.command.kind === 'node') {
+          return {
+            spec: {
               command: process.execPath,
               args: [entryPoint, ...(adapter.command.args ?? [])],
               env: { ELECTRON_RUN_AS_NODE: '1', ...(adapter.command.env ?? {}) },
               transport: adapter.transport,
-            }
-          : {
-              command: entryPoint,
-              args: adapter.command.args ?? [],
-              env: adapter.command.env,
-              transport: adapter.transport,
             },
+            error: null,
+          };
+        }
+        if (adapter.command.kind === 'python') {
+          const python: { command: string; args: string[] } | null = pythonRuntime(entryPoint);
+          return python === null
+            ? {
+                spec: null,
+                error: `${adapter.displayName} needs Python 3.8+, which was not found on this machine.`,
+              }
+            : {
+                spec: {
+                  command: python.command,
+                  args: [...python.args, ...(adapter.command.args ?? [])],
+                  env: adapter.command.env,
+                  transport: adapter.transport,
+                },
+                error: null,
+              };
+        }
+        return {
+          spec: {
+            command: entryPoint,
+            args: adapter.command.args ?? [],
+            env: adapter.command.env,
+            transport: adapter.transport,
+          },
+          error: null,
+        };
+      },
     }),
   );
 }
@@ -586,6 +627,21 @@ export function toDecoderDescriptors(
               env: { ...runtime.env, ...decoder.command.env },
             },
           };
+        }
+        if (decoder.command.kind === 'python') {
+          const python: { command: string; args: string[] } | null = pythonRuntime(entryPoint);
+          return python === null
+            ? decoderUnavailable(
+                `${decoder.displayName} needs Python 3.8+, which was not found on this machine.`,
+              )
+            : {
+                available: true,
+                spec: {
+                  command: python.command,
+                  args: [...python.args, ...(decoder.command.args ?? [])],
+                  env: decoder.command.env,
+                },
+              };
         }
         return {
           available: true,

@@ -1,11 +1,5 @@
 import { PluginContribution, PluginOrigin } from '@shared/api/plugin-channels';
 import {
-  DEBUGPY_VERSION,
-  installDebugpy,
-  isDebugpyInstalled,
-  uninstallDebugpy,
-} from '../../debug/debugpy-install';
-import {
   CLANGD_PROVISION,
   TYPESCRIPT_PROVISION,
   TYPESCRIPT_SERVER_PROVISION,
@@ -316,25 +310,6 @@ export function pluginCatalogue(): readonly PluginDescriptor[] {
         // compiled objects it was built from behind.
         await context.provisioner.removeGoBuildCache();
       },
-    },
-    {
-      id: 'debugpy',
-      name: 'Python Debugger (debugpy)',
-      description: 'Debug Python projects.',
-      version: DEBUGPY_VERSION,
-      contributions: [
-        {
-          slot: 'debug-adapter',
-          id: 'debugpy',
-          displayName: 'Python (debugpy)',
-          languages: ['python'],
-          priority: 100,
-        },
-      ],
-      detail: 'Installed into its own environment, so it needs Python 3.8+ to install.',
-      detect: (): Promise<boolean> => Promise.resolve(isDebugpyInstalled()),
-      install: (): Promise<string | null> => installDebugpy(),
-      uninstall: (): Promise<void> => uninstallDebugpy(),
     },
   ];
 }

@@ -1,5 +1,5 @@
 {
-  "revision": 8,
+  "revision": 9,
   "plugins": [
     {
       "id": "pyright",
@@ -517,6 +517,68 @@
               "args": ["0", "127.0.0.1"]
             },
             "transport": "tcp-server"
+          }
+        ]
+      }
+    },
+    {
+      "id": "debugpy",
+      "name": "Python Debugger (debugpy)",
+      "description": "Debug Python projects.",
+      "version": "1.8.21",
+      "apiVersion": "1.7.0",
+      "detail": "Needs Python 3.8+ on your machine. Ships the pure-Python build, which debugs any interpreter version but steps more slowly than a compiled one.",
+      "requires": [
+        {
+          "runtime": "python",
+          "minimumVersion": "3.8.0"
+        }
+      ],
+      "provision": {
+        "kind": "archive",
+        "downloads": {
+          "darwin-arm64": {
+            "url": "https://files.pythonhosted.org/packages/95/51/67e7cf11a53e40694f720457d5b3a1cdaaa3d5a9a633e482f225456b93ff/debugpy-1.8.21-py2.py3-none-any.whl",
+            "sha256": "b1e37d333663c8851516a47364ef473da127f9caebe4417e6df6f5825a7e9a92",
+            "archive": "zip",
+            "executablePath": "debugpy/adapter/__main__.py"
+          },
+          "darwin-x64": {
+            "url": "https://files.pythonhosted.org/packages/95/51/67e7cf11a53e40694f720457d5b3a1cdaaa3d5a9a633e482f225456b93ff/debugpy-1.8.21-py2.py3-none-any.whl",
+            "sha256": "b1e37d333663c8851516a47364ef473da127f9caebe4417e6df6f5825a7e9a92",
+            "archive": "zip",
+            "executablePath": "debugpy/adapter/__main__.py"
+          },
+          "linux-x64": {
+            "url": "https://files.pythonhosted.org/packages/95/51/67e7cf11a53e40694f720457d5b3a1cdaaa3d5a9a633e482f225456b93ff/debugpy-1.8.21-py2.py3-none-any.whl",
+            "sha256": "b1e37d333663c8851516a47364ef473da127f9caebe4417e6df6f5825a7e9a92",
+            "archive": "zip",
+            "executablePath": "debugpy/adapter/__main__.py"
+          },
+          "linux-arm64": {
+            "url": "https://files.pythonhosted.org/packages/95/51/67e7cf11a53e40694f720457d5b3a1cdaaa3d5a9a633e482f225456b93ff/debugpy-1.8.21-py2.py3-none-any.whl",
+            "sha256": "b1e37d333663c8851516a47364ef473da127f9caebe4417e6df6f5825a7e9a92",
+            "archive": "zip",
+            "executablePath": "debugpy/adapter/__main__.py"
+          },
+          "win32-x64": {
+            "url": "https://files.pythonhosted.org/packages/95/51/67e7cf11a53e40694f720457d5b3a1cdaaa3d5a9a633e482f225456b93ff/debugpy-1.8.21-py2.py3-none-any.whl",
+            "sha256": "b1e37d333663c8851516a47364ef473da127f9caebe4417e6df6f5825a7e9a92",
+            "archive": "zip",
+            "executablePath": "debugpy/adapter/__main__.py"
+          }
+        }
+      },
+      "contributes": {
+        "debugAdapters": [
+          {
+            "id": "debugpy",
+            "displayName": "Python (debugpy)",
+            "languages": ["python"],
+            "priority": 100,
+            "command": {
+              "kind": "python"
+            }
           }
         ]
       }

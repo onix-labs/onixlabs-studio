@@ -1,14 +1,7 @@
 import { DebugAdapterId, DebugAdapterSummary } from '@shared/api/debug-channels';
-import { debugpyInterpreter } from './debugpy-install';
 import { logger } from '../logger';
 import { contributedDebugAdapters } from '../contributions/plugins/contributed';
 import { DebugAdapterLocator } from './debug-adapter-locator';
-
-/**
- * The priority given to the adapter shipped as a language's default, chosen when the user has
- * expressed no preference.
- */
-const DEFAULT_PRIORITY: number = 100;
 
 /**
  * Describes how to spawn a debug adapter. The command and arguments are decided entirely by the main
@@ -93,49 +86,21 @@ export interface DebugAdapterCatalogueEntry {
   readonly priority: number;
 
   /**
-   * Locates an adapter that is neither on the PATH nor a downloadable archive — debugpy lives in a
-   * managed virtual environment, so it knows where to look for itself. Tried before the PATH search, so
-   * the copy the Plugin Manager installed wins over whatever else is on the machine.
+   * Locates the adapter inside the payload its plugin installed. Tried before the PATH search, so the
+   * copy the Plugin Manager installed wins over whatever else is on the machine.
    * @returns Returns the executable path, or null when the adapter is not installed.
    */
   readonly locate?: () => Promise<string | null>;
 
   /**
-   * Builds the spawn specification from the located executable path.
+   * Builds the spawn specification from the located executable path, or reports why the adapter cannot
+   * be started even though its payload is present — a Python adapter with no interpreter on the
+   * machine is installed and unrunnable at the same time, and those are different problems with
+   * different fixes. Mirrors the LSP layer's resolution.
    * @param binaryPath The absolute path of the located executable.
-   * @returns Returns the spawn specification.
+   * @returns Returns the resolution.
    */
-  readonly buildSpec: (binaryPath: string) => DebugAdapterSpec;
-}
-
-/**
- * The built-in debug adapters — what is left of them.
- *
- * Core owns the protocol client, not the adapters: netcoredbg and js-debug are plugins in the curated
- * index, obtained and started from data. Only debugpy remains described in code, because installing it
- * means creating a managed Python environment, which no manifest can express without executing
- * something at install time.
- *
- * @returns Returns the catalogue entries.
- */
-export function debugAdapterCatalogue(): readonly DebugAdapterCatalogueEntry[] {
-  return [
-    {
-      id: 'debugpy',
-      displayName: 'Python (debugpy)',
-      binary: 'debugpy',
-      languages: ['python'],
-      priority: DEFAULT_PRIORITY,
-      // debugpy is a Python package rather than a binary, so it ships no archive recipe: the Plugin
-      // Manager installs it into a managed virtual environment and this finds it there. Verified to
-      // speak DAP over stdio from `python -m debugpy.adapter`, which is how VS Code drives it too.
-      locate: (): Promise<string | null> => Promise.resolve(debugpyInterpreter()),
-      buildSpec: (interpreter: string): DebugAdapterSpec => ({
-        command: interpreter,
-        args: ['-m', 'debugpy.adapter'],
-      }),
-    },
-  ];
+  readonly buildSpec: (binaryPath: string) => DebugAdapterResolution;
 }
 
 /**
@@ -154,8 +119,8 @@ export class DebugAdapterRegistry {
   private readonly locator: DebugAdapterLocator;
 
   /**
-   * Indexes the registered adapters by id, in registration order (the first-party catalogue first), so
-   * ties on priority break deterministically.
+   * Indexes the registered adapters by id, in registration order, so ties on priority break
+   * deterministically.
    */
   private readonly entries: Map<DebugAdapterId, DebugAdapterCatalogueEntry> = new Map<
     DebugAdapterId,
@@ -163,27 +128,22 @@ export class DebugAdapterRegistry {
   >();
 
   /**
-   * Initializes a new instance of the {@link DebugAdapterRegistry} class, seeded with the first-party
-   * catalogue.
+   * Initializes a new instance of the {@link DebugAdapterRegistry} class.
+   *
+   * Seeded from contributions alone: **core ships no debug adapter**. An empty registry is how
+   * "nothing installed" is expressed, exactly as it is for decoders and container engines.
    * @param locator The locator used to find adapter executables.
    */
   public constructor(locator: DebugAdapterLocator) {
     this.locator = locator;
-    for (const entry of debugAdapterCatalogue()) {
-      this.register(entry);
-    }
-    // Contributed plugins — sideloaded or indexed — register through the same seam a contributed
-    // adapter always would: the manifest advertises the contribution point, so it has to actually
-    // reach the registry.
     for (const entry of contributedDebugAdapters()) {
       this.register(entry);
     }
   }
 
   /**
-   * Registers a debug adapter, replacing any registered under the same id. This is the seam a
-   * contributed adapter arrives through; the first-party catalogue uses it too, so there is exactly one
-   * registration path.
+   * Registers a debug adapter, replacing any registered under the same id. This is the seam every
+   * adapter arrives through.
    * @param entry The catalogue entry to register.
    */
   public register(entry: DebugAdapterCatalogueEntry): void {
@@ -254,6 +214,6 @@ export class DebugAdapterRegistry {
       };
     }
     logger.debug('DebugAdapterRegistry', `Resolved ${adapterId} to ${binaryPath}`);
-    return { spec: entry.buildSpec(binaryPath), error: null };
+    return entry.buildSpec(binaryPath);
   }
 }

@@ -73,6 +73,7 @@ import {
 import { PrintManager } from '@shared/electron/print-manager';
 import { SecurityManager } from '@shared/electron/security-manager';
 import { hydrateLoginShellEnvironment } from '@shared/electron/shell-env';
+import { hydratePythonRuntime } from '@shared/electron/provisioning/python-runtime';
 import type { GraphicsAcceleration } from '@shared/api/host';
 import { StartupPreferences, StartupPreferencesStore } from './startup-preferences';
 import { GitManager } from '@shared/electron/git-manager';
@@ -1220,6 +1221,9 @@ class Program {
     // agent's Bash and the terminal. Hydrate `process.env` before any manager reads it (the managers
     // resolve their env lazily at spawn time, and this runs ahead of every field initializer).
     hydrateLoginShellEnvironment();
+    // After the shell's PATH is in place, since that is usually the only one Python is on. Not
+    // awaited: nothing at start-up needs the answer, and a debug session is minutes away.
+    void hydratePythonRuntime();
     new Program();
   }
 }

@@ -59,8 +59,12 @@ import { DECODER_FORMATS } from './decoder-protocol';
  * `1.6.0` added the optional `members` to a download (#596), for an upstream that publishes one archive
  * holding more than the thing being contributed. Adds only: a download naming none still extracts the
  * whole archive, exactly as before.
+ *
+ * `1.7.0` added the `python` command kind (#649), for a payload distributed as Python source. Unlike
+ * `node`, it runs under an interpreter found on the machine rather than one Studio ships, so a plugin
+ * using it should also declare `requires` — Python is the user's, and may be absent.
  */
-export const PLUGIN_API_VERSION: string = '1.6.0';
+export const PLUGIN_API_VERSION: string = '1.7.0';
 
 /**
  * Matches a plain three-part semver. Deliberately strict and deliberately local: the rule below is the
@@ -258,13 +262,17 @@ export type ManifestProvision = ManifestArchiveProvision | ManifestNpmProvision;
  *
  * `executable` runs the provisioned entry point directly. `node` runs it as JavaScript under the
  * runtime Studio ships, so a plugin distributed as a JavaScript bundle needs no Node on the machine.
- * Those are the only two shapes the first-party catalogue uses.
+ * `python` runs it as Python under an interpreter found on the machine.
+ *
+ * The asymmetry between `node` and `python` is not an oversight: Studio *is* a Node runtime, so it can
+ * promise one; it ships no Python, so a `python` plugin depends on the user having one and should say
+ * so in `requires`. A payload that must bring its own runtime is not expressible here at all.
  */
 export interface ManifestCommand {
   /**
    * Gets how the entry point is run.
    */
-  readonly kind: 'executable' | 'node';
+  readonly kind: 'executable' | 'node' | 'python';
 
   /**
    * Gets the arguments passed to it, or undefined for none.
@@ -766,8 +774,8 @@ function readCommand(value: unknown, path: string, errors: Errors): ManifestComm
     return null;
   }
   const kind: unknown = source['kind'];
-  if (kind !== 'executable' && kind !== 'node') {
-    errors.add(`${path}.kind`, "must be 'executable' or 'node'");
+  if (kind !== 'executable' && kind !== 'node' && kind !== 'python') {
+    errors.add(`${path}.kind`, "must be 'executable', 'node' or 'python'");
     return null;
   }
   const args: unknown = source['args'];
