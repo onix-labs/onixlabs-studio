@@ -92,7 +92,7 @@
     "@angular/compiler-cli": "^22.1.4",
     "@electron/rebuild": "^4.2.0",
     "@eslint/js": "^10.0.1",
-    "@playwright/test": "^1.62.1",
+    "@playwright/test": "^1.63.0",
     "@types/diff": "^8.0.0",
     "@types/dompurify": "^3.2.0",
     "@types/katex": "^0.16.8",
