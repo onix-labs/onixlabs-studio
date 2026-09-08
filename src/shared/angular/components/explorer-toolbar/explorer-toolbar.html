@@ -10,21 +10,21 @@
   <div class="explorer-toolbar__actions">
     <app-button
       variant="none"
-      [icon]="Icon.PLUS_SQUARE"
+      [icon]="Icon.PLUS_SQUARE_DUOTONE"
       ariaLabel="Expand All"
       tooltip="Expand All"
       (click)="expandAll.emit()"
     />
     <app-button
       variant="none"
-      [icon]="Icon.MINUS_SQUARE"
+      [icon]="Icon.MINUS_SQUARE_DUOTONE"
       ariaLabel="Collapse All"
       tooltip="Collapse All"
       (click)="collapseAll.emit()"
     />
     <app-button
       variant="none"
-      [icon]="Icon.DOTS_THREE"
+      [icon]="Icon.DOTS_THREE_BOLD"
       ariaLabel="More Actions"
       tooltip="More Actions"
       [cdkMenuTriggerFor]="moreMenu.panel() ?? null"

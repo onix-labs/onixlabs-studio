@@ -279,9 +279,19 @@ export class Icon {
   public static readonly UNDO: Icon = new Icon('ph ph-arrow-u-up-left');
 
   /**
+   * Gets the bold undo glyph used by the markdown tool strip.
+   */
+  public static readonly UNDO_BOLD: Icon = new Icon('ph-bold ph-arrow-u-up-left');
+
+  /**
    * Gets the redo icon.
    */
   public static readonly REDO: Icon = new Icon('ph ph-arrow-u-down-right');
+
+  /**
+   * Gets the bold redo glyph used by the markdown tool strip.
+   */
+  public static readonly REDO_BOLD: Icon = new Icon('ph-bold ph-arrow-u-down-right');
 
   /**
    * Gets the find/search icon.
@@ -348,9 +358,19 @@ export class Icon {
   public static readonly BOLD: Icon = new Icon('ph ph-text-b');
 
   /**
+   * Gets the bold-weight variant of the bold-formatting glyph, used by the markdown tool strip.
+   */
+  public static readonly BOLD_BOLD: Icon = new Icon('ph-bold ph-text-b');
+
+  /**
    * Gets the italic icon.
    */
   public static readonly ITALIC: Icon = new Icon('ph ph-text-italic');
+
+  /**
+   * Gets the bold italic-formatting glyph used by the markdown tool strip.
+   */
+  public static readonly ITALIC_BOLD: Icon = new Icon('ph-bold ph-text-italic');
 
   /**
    * Gets the strikethrough icon.
@@ -358,9 +378,19 @@ export class Icon {
   public static readonly STRIKETHROUGH: Icon = new Icon('ph ph-text-strikethrough');
 
   /**
+   * Gets the bold strikethrough-formatting glyph used by the markdown tool strip.
+   */
+  public static readonly STRIKETHROUGH_BOLD: Icon = new Icon('ph-bold ph-text-strikethrough');
+
+  /**
    * Gets the inline-code icon.
    */
   public static readonly CODE_INLINE: Icon = new Icon('ph ph-code');
+
+  /**
+   * Gets the bold inline-code glyph used by the markdown tool strip.
+   */
+  public static readonly CODE_INLINE_BOLD: Icon = new Icon('ph-bold ph-code');
 
   /**
    * Gets the align-left icon.
@@ -383,9 +413,19 @@ export class Icon {
   public static readonly TABLE: Icon = new Icon('ph-duotone ph-grid-nine');
 
   /**
+   * Gets the bold table glyph used by the markdown tool strip.
+   */
+  public static readonly TABLE_BOLD: Icon = new Icon('ph-bold ph-grid-nine');
+
+  /**
    * Gets the horizontal-divider icon.
    */
   public static readonly DIVIDER: Icon = new Icon('ph ph-minus');
+
+  /**
+   * Gets the bold divider glyph used by the markdown tool strip.
+   */
+  public static readonly DIVIDER_BOLD: Icon = new Icon('ph-bold ph-minus');
 
   /**
    * Gets the image icon, shown on the markdown Insert group's Image button.
@@ -402,6 +442,11 @@ export class Icon {
    * pull request or issue on its forge).
    */
   public static readonly OPEN_EXTERNAL: Icon = new Icon('ph ph-arrow-square-out');
+
+  /**
+   * Gets the bold open-external glyph used by the markdown tool strip's open-in-tab button.
+   */
+  public static readonly OPEN_EXTERNAL_BOLD: Icon = new Icon('ph-bold ph-arrow-square-out');
 
   /**
    * Gets the math icon, shown on the markdown Insert group's Math button.
@@ -464,14 +509,29 @@ export class Icon {
   public static readonly BULLET_LIST: Icon = new Icon('ph ph-list-bullets');
 
   /**
+   * Gets the bold bullet-list glyph used by the markdown tool strip.
+   */
+  public static readonly BULLET_LIST_BOLD: Icon = new Icon('ph-bold ph-list-bullets');
+
+  /**
    * Gets the numbered-list icon.
    */
   public static readonly NUMBERED_LIST: Icon = new Icon('ph ph-list-numbers');
 
   /**
+   * Gets the bold numbered-list glyph used by the markdown tool strip.
+   */
+  public static readonly NUMBERED_LIST_BOLD: Icon = new Icon('ph-bold ph-list-numbers');
+
+  /**
    * Gets the task-list icon.
    */
   public static readonly TASK_LIST: Icon = new Icon('ph ph-list-checks');
+
+  /**
+   * Gets the bold task-list glyph used by the markdown tool strip.
+   */
+  public static readonly TASK_LIST_BOLD: Icon = new Icon('ph-bold ph-list-checks');
 
   // --- Ribbon: build and source control ---
 
@@ -1219,9 +1279,25 @@ export class Icon {
   public static readonly MINUS_SQUARE: Icon = new Icon('ph ph-minus-square');
 
   /**
+   * Gets the duotone plus-square glyph used by the explorer tool strips' expand-all button.
+   */
+  public static readonly PLUS_SQUARE_DUOTONE: Icon = new Icon('ph-duotone ph-plus-square');
+
+  /**
+   * Gets the duotone minus-square glyph used by the explorer tool strips' collapse-all button.
+   */
+  public static readonly MINUS_SQUARE_DUOTONE: Icon = new Icon('ph-duotone ph-minus-square');
+
+  /**
    * Gets the three-dots glyph used to open an overflow menu of further actions.
    */
   public static readonly DOTS_THREE: Icon = new Icon('ph ph-dots-three');
+
+  /**
+   * Gets the bold three-dots glyph used by the explorer tool strips' more-actions menu button, where
+   * the regular weight reads too faint beside the strips' duotone icons.
+   */
+  public static readonly DOTS_THREE_BOLD: Icon = new Icon('ph-bold ph-dots-three');
 
   /**
    * Gets the vertical three-dots glyph used for a row's overflow menu. Regular weight, as its

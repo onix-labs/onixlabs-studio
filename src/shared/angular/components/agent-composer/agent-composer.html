@@ -312,6 +312,7 @@
       @if (markdownOpen()) {
         <div class="agent__md-editor">
           <app-markdown-editor
+            variant="inset"
             [content]="markdownSeed()"
             [isActive]="true"
             (contentChange)="onMarkdownChange($event)"

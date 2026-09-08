@@ -1,9 +1,16 @@
 <div class="document-panel">
+  <app-markdown-toolstrip
+    class="document-panel__toolstrip"
+    [editor]="pane()"
+    [showOpenInTab]="hasFilePath()"
+    (openInTab)="onOpenInTab()"
+  />
   <div class="document-panel__editor">
     <app-markdown-document
       [documentId]="documentId()"
       [isActive]="isActive()"
       [removeOnDestroy]="removeOnDestroy()"
+      (ready)="onEditorReady()"
     />
   </div>
 </div>
