@@ -322,7 +322,7 @@ describe('plugin loader', () => {
       );
       const resolveContext: Parameters<LanguageServerDescriptor['resolve']>[0] = {
         rootPath: '/w',
-        settings: { get: (): never => ({}) as never } as never,
+        settings: { get: (): never => ({ serverPaths: {} }) as never } as never,
         provisioner: stubProvisioner('/tree'),
         nodePackageServer: (entry: string) => ({
           command: '/electron',
@@ -455,10 +455,11 @@ describe('plugin loader', () => {
      */
     function context(
       installedPath: string | null,
+      serverPaths: Record<string, string> = {},
     ): Parameters<LanguageServerDescriptor['resolve']>[0] {
       return {
         rootPath: '/w',
-        settings: { get: (): never => ({}) as never } as never,
+        settings: { get: (): never => ({ serverPaths }) as never } as never,
         provisioner: stubProvisioner(installedPath),
         nodePackageServer: (entry: string) => ({
           command: '/electron',
@@ -468,6 +469,40 @@ describe('plugin loader', () => {
         installedPath: (): string | null => installedPath,
       };
     }
+
+    it('runsTheUsersOwnCopyInPreferenceToTheInstalledOne', async () => {
+      writePlugin('zls', manifest());
+      const descriptors: readonly LanguageServerDescriptor[] = toLanguageServerDescriptors(
+        validManifests(discoverPlugins(root))[0],
+      );
+      const own: string = path.join(root, 'my-zls');
+      writeFileSync(own, '');
+
+      const resolution: LspResolution = await descriptors[0].resolve(
+        context('/installed/zls', { zls: own }),
+      );
+
+      // Someone with their own build keeps using it rather than carrying a second copy — and the
+      // override is honoured for a *contributed* server, which is the point: the set of servers is
+      // open, so the override cannot be a field per server.
+      expect(resolution.spec?.command).toBe(own);
+    });
+
+    it('saysWhereItLookedWhenTheOverridePathIsWrong', async () => {
+      writePlugin('zls', manifest());
+      const descriptors: readonly LanguageServerDescriptor[] = toLanguageServerDescriptors(
+        validManifests(discoverPlugins(root))[0],
+      );
+
+      const resolution: LspResolution = await descriptors[0].resolve(
+        context('/installed/zls', { zls: '/nowhere/zls' }),
+      );
+
+      // Falling back to the installed copy would silently ignore what the user asked for, which is
+      // how someone spends an afternoon wondering why their build is not being used.
+      expect(resolution.spec).toBeNull();
+      expect(resolution.error).toContain('/nowhere/zls');
+    });
 
     it('resolvesAnExecutableCommandToTheProvisionedBinary', async () => {
       writePlugin('zls', manifest());

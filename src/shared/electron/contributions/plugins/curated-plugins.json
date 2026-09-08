@@ -1,5 +1,5 @@
 {
-  "revision": 9,
+  "revision": 10,
   "plugins": [
     {
       "id": "pyright",
@@ -401,6 +401,57 @@
             "entryPoint": "node_modules/vscode-langservers-extracted/bin/vscode-json-language-server",
             "command": {
               "kind": "node"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "clangd",
+      "name": "clangd",
+      "description": "C and C++ language support, from the LLVM project.",
+      "version": "22.1.6",
+      "apiVersion": "1.1.0",
+      "detail": "A large download — it carries the Clang toolchain headers.",
+      "provision": {
+        "kind": "archive",
+        "downloads": {
+          "darwin-arm64": {
+            "url": "https://github.com/clangd/clangd/releases/download/22.1.6/clangd-mac-22.1.6.zip",
+            "sha256": "631aef462556cbd74e0ebaae1778a38d1997d0ba3371652ca54f82652a179e7d",
+            "archive": "zip",
+            "executablePath": "clangd_22.1.6/bin/clangd"
+          },
+          "darwin-x64": {
+            "url": "https://github.com/clangd/clangd/releases/download/22.1.6/clangd-mac-22.1.6.zip",
+            "sha256": "631aef462556cbd74e0ebaae1778a38d1997d0ba3371652ca54f82652a179e7d",
+            "archive": "zip",
+            "executablePath": "clangd_22.1.6/bin/clangd"
+          },
+          "linux-x64": {
+            "url": "https://github.com/clangd/clangd/releases/download/22.1.6/clangd-linux-22.1.6.zip",
+            "sha256": "a9c77443af2e447ed467e84771848d3a6ac1c56f84bcfcde717e66318de77cfa",
+            "archive": "zip",
+            "executablePath": "clangd_22.1.6/bin/clangd"
+          },
+          "win32-x64": {
+            "url": "https://github.com/clangd/clangd/releases/download/22.1.6/clangd-windows-22.1.6.zip",
+            "sha256": "ce54f16e0b4fd76d450eeda9664420b195360b73febcfe40e661108fa57f2ce1",
+            "archive": "zip",
+            "executablePath": "clangd_22.1.6/bin/clangd.exe"
+          }
+        }
+      },
+      "contributes": {
+        "languageServers": [
+          {
+            "id": "clangd",
+            "displayName": "clangd",
+            "languages": ["cpp", "c"],
+            "priority": 100,
+            "command": {
+              "kind": "executable",
+              "args": ["--log=error"]
             }
           }
         ]

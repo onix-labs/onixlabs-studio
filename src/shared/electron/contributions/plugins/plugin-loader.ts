@@ -485,6 +485,16 @@ export function toLanguageServerDescriptors(
       resolve: (context: LanguageServerContext): LspResolution => {
         // Never installs: a server resolves to "not installed" and the user installs it in the Plugin
         // Manager, rather than opening a file silently triggering a large download.
+        // The user's own copy wins over the installed one, so someone with their own build keeps
+        // using it rather than carrying a second. Applied here rather than in the registry because
+        // what a path *means* depends on the command's kind: an executable to spawn, or a module to
+        // run under a runtime.
+        const override: string | undefined = context.settings.get().serverPaths[server.id];
+        if (override !== undefined) {
+          return existsSync(override)
+            ? toSpec(server.command, override, context)
+            : unavailable(`${server.displayName} was not found at ${override}.`);
+        }
         const entryPoint: string | null = ops.isInstalled(context.provisioner)
           ? ops.target(context.provisioner, server.entryPoint)
           : null;

@@ -1,6 +1,5 @@
 import { PluginContribution, PluginOrigin } from '@shared/api/plugin-channels';
 import {
-  CLANGD_PROVISION,
   TYPESCRIPT_PROVISION,
   TYPESCRIPT_SERVER_PROVISION,
 } from '../../lsp/language-server-downloads';
@@ -179,10 +178,14 @@ function archivePlugin(
  * It is deliberately short, and getting shorter. Everything a pinned archive and an entry point can
  * express now lives in the curated index as data (`curated-plugins.json`), because a list of downloads
  * expressed as TypeScript is a list of downloads that needs a release to change. What is left is what
- * genuinely resists description: a server built from source with the user's toolchain, one installed
- * into a managed language environment, one whose start-up traffic is computed from the workspace, and
- * the two that honour a path the user configured in Settings. Those are not oversights in the manifest
+ * genuinely resists description: a server built from source with the user's toolchain, and servers
+ * whose start-up traffic is computed from the workspace. Those are not oversights in the manifest
  * format — they are the line where description stops and execution begins.
+ *
+ * Honouring a path the user configured is no longer on that list. It used to keep two servers here,
+ * and it was never really about them: an override belongs to the *settings*, which is core's, not to
+ * the description of a plugin. It is keyed by server id now, so a contributed server can be overridden
+ * too.
  *
  * Being in this list means the Plugin Manager offers the plugin; it says nothing about whether it is
  * present. What is *installed* is decided per machine by each descriptor's `detect`, and only installed
@@ -228,14 +231,6 @@ export function pluginCatalogue(): readonly PluginDescriptor[] {
         await context.provisioner.removeArchive(TYPESCRIPT_PROVISION);
       },
     },
-    archivePlugin(
-      'clangd',
-      'clangd',
-      'C and C++ language support, from the LLVM project.',
-      CLANGD_PROVISION,
-      [languageServer('clangd', 'clangd', ['cpp', 'c'], 100)],
-      'A large download — it carries the Clang toolchain headers.',
-    ),
     {
       id: 'rust-analyzer',
       name: 'rust-analyzer',

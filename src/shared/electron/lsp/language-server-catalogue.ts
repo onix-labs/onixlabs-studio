@@ -13,11 +13,7 @@ import {
   unavailable,
 } from './language-server-descriptor';
 import { JdtlsInstall } from './lsp-provisioner';
-import {
-  CLANGD_PROVISION,
-  TYPESCRIPT_PROVISION,
-  TYPESCRIPT_SERVER_PROVISION,
-} from './language-server-downloads';
+import { TYPESCRIPT_PROVISION, TYPESCRIPT_SERVER_PROVISION } from './language-server-downloads';
 
 /**
  * Holds the JVM arguments passed to the Eclipse JDT Language Server's Equinox launcher, before the
@@ -116,8 +112,8 @@ const TYPESCRIPT: LanguageServerDescriptor = {
     const bundled: string | null = context.installedPath(TYPESCRIPT_PROVISION);
     const initializationOptions: { tsserver: { path: string } } | undefined =
       typescriptInitializationOptions(context.rootPath, bundled);
-    const override: string | null = context.settings.get().typescriptServerPath;
-    if (override !== null) {
+    const override: string | undefined = context.settings.get().serverPaths['typescript'];
+    if (override !== undefined) {
       if (!existsSync(override)) {
         return unavailable(`The TypeScript language server was not found at ${override}.`);
       }
@@ -295,29 +291,6 @@ const CSHARP: LanguageServerDescriptor = {
 };
 
 /**
- * clangd, downloaded from its own release rather than borrowed from an LLVM or Xcode install. It
- * discovers its compile flags from a `compile_commands.json` relative to the workspace root.
- */
-const CLANGD: LanguageServerDescriptor = {
-  id: 'clangd',
-  displayName: 'clangd',
-  languages: ['cpp', 'c'],
-  priority: DEFAULT_PRIORITY,
-  resolve: (context: LanguageServerContext): LspResolution => {
-    // A configured path still wins, so a user with their own LLVM keeps using it rather than carrying
-    // a second copy; otherwise clangd is the one the Plugin Manager installed.
-    const override: string | null = context.settings.get().clangdPath;
-    if (override !== null && existsSync(override)) {
-      return resolved({ command: override, args: ['--log=error'] });
-    }
-    const clangd: string | null = context.installedPath(CLANGD_PROVISION);
-    return clangd === null
-      ? unavailable('clangd is not installed — install it in Plugins, or set its path in Settings.')
-      : resolved({ command: clangd, args: ['--log=error'] });
-  },
-};
-
-/**
  * The language servers that need code to resolve. This is the *contents* of the slots, not the slot
  * mechanism: {@link import('./lsp-server-registry').LspServerRegistry} indexes these and accepts
  * further descriptors at runtime, so a plugin-contributed server is a peer of every entry here rather
@@ -325,12 +298,13 @@ const CLANGD: LanguageServerDescriptor = {
  *
  * Every entry left is here because resolving it is a computation, not a description: detecting a Java
  * runtime or a .NET SDK, building the server with the user's Go toolchain, deriving Roslyn's
- * `solution/open` from the workspace, or honouring a path the user set in Settings. The servers that
+ * `solution/open` from the workspace, or — for TypeScript — deciding whether to point the server at
+ * the bundled compiler, which depends on whether the workspace brought its own. The servers that
  * resolve to "the entry point of the archive we installed" moved into the curated index, where the
  * facts about them are data.
  *
  * @returns Returns the catalogue descriptors.
  */
 export function languageServerCatalogue(): readonly LanguageServerDescriptor[] {
-  return [TYPESCRIPT, JAVA, KOTLIN, RUST, GO, CSHARP, CLANGD];
+  return [TYPESCRIPT, JAVA, KOTLIN, RUST, GO, CSHARP];
 }

@@ -22,8 +22,7 @@ const DEFAULT_SETTINGS: LspSettingsData = {
   disabledServers: [],
   javaPath: null,
   dotnetPath: null,
-  clangdPath: null,
-  typescriptServerPath: null,
+  serverPaths: {},
   serverArgs: {},
   languageServers: {},
 };
@@ -286,25 +285,31 @@ export class LspSettings {
   }
 
   /**
-   * Sets the clangd override, persisting the change through the main process. An empty value clears
-   * the override (auto-detect).
-   * @param clangdPath The clangd executable path, or an empty string to auto-detect.
-   * @returns Returns a promise that resolves once the change is stored.
+   * Gets the user's own copy of a server's entry point, or an empty string when they have not named
+   * one.
+   * @param serverId The server identifier whose override is read.
+   * @returns Returns the path, or an empty string.
    */
-  public async setClangdPath(clangdPath: string): Promise<void> {
-    const trimmed: string = clangdPath.trim();
-    await this.store({ ...this.current(), clangdPath: trimmed === '' ? null : trimmed });
+  public serverPath(serverId: string): string {
+    return this.current().serverPaths[serverId] ?? '';
   }
 
   /**
-   * Sets the custom TypeScript server path, persisting the change through the main process. An empty
-   * value clears the override (use the bundled server).
-   * @param serverPath The TypeScript server entry point, or an empty string to use the bundled one.
+   * Sets a server's path override, persisting the change through the main process. An empty value
+   * clears the override, so the copy installed under Plugins is used again.
+   * @param serverId The server identifier the path belongs to.
+   * @param serverPath The entry point to run, or an empty string to clear the override.
    * @returns Returns a promise that resolves once the change is stored.
    */
-  public async setTypescriptServerPath(serverPath: string): Promise<void> {
+  public async setServerPath(serverId: string, serverPath: string): Promise<void> {
     const trimmed: string = serverPath.trim();
-    await this.store({ ...this.current(), typescriptServerPath: trimmed === '' ? null : trimmed });
+    const paths: Record<string, string> = { ...this.current().serverPaths };
+    if (trimmed === '') {
+      delete paths[serverId];
+    } else {
+      paths[serverId] = trimmed;
+    }
+    await this.store({ ...this.current(), serverPaths: paths });
   }
 
   /**

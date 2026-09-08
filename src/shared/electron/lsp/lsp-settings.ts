@@ -3,6 +3,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { LspChannel, LspSettings } from '@shared/api/lsp-channels';
 import { logger } from '../logger';
+import { migrateServerId, readServerPaths } from './lsp-settings-migration';
 
 /**
  * Holds the default settings used before any have been stored.
@@ -11,29 +12,10 @@ const DEFAULT_SETTINGS: LspSettings = {
   disabledServers: [],
   javaPath: null,
   dotnetPath: null,
-  clangdPath: null,
-  typescriptServerPath: null,
+  serverPaths: {},
   serverArgs: {},
   languageServers: {},
 };
-
-/**
- * Renames server identifiers that have changed meaning, applied to every persisted id as it is read.
- * The Python server used to be identified by its *language* (`python`), which stopped working once a
- * language could be served by more than one implementation: the id now names the implementation
- * (`pyright`), so a settings file written before the change would otherwise silently disable, or pass
- * arguments to, a server that no longer exists.
- */
-const LEGACY_SERVER_IDS: Readonly<Record<string, string>> = { python: 'pyright' };
-
-/**
- * Applies {@link LEGACY_SERVER_IDS} to a persisted server identifier.
- * @param serverId The identifier as persisted.
- * @returns Returns the current identifier for that server.
- */
-function migrateServerId(serverId: string): string {
-  return LEGACY_SERVER_IDS[serverId] ?? serverId;
-}
 
 /**
  * Owns the user's language-server settings in the main process: which servers are disabled and the
@@ -138,6 +120,7 @@ export class LspSettingsManager {
       dotnetPath?: unknown;
       clangdPath?: unknown;
       typescriptServerPath?: unknown;
+      serverPaths?: unknown;
       serverArgs?: unknown;
       languageServers?: unknown;
     } = value;
@@ -156,14 +139,8 @@ export class LspSettingsManager {
     if (dotnetPath === undefined) {
       return null;
     }
-    const clangdPath: string | null | undefined = this.parsePath(candidate.clangdPath);
-    if (clangdPath === undefined) {
-      return null;
-    }
-    const typescriptServerPath: string | null | undefined = this.parsePath(
-      candidate.typescriptServerPath,
-    );
-    if (typescriptServerPath === undefined) {
+    const serverPaths: Record<string, string> | null = readServerPaths(candidate);
+    if (serverPaths === null) {
       return null;
     }
     const serverArgs: Record<string, readonly string[]> | null = this.parseServerArgs(
@@ -182,8 +159,7 @@ export class LspSettingsManager {
       disabledServers: (disabledServers as readonly string[]).map(migrateServerId),
       javaPath,
       dotnetPath,
-      clangdPath,
-      typescriptServerPath,
+      serverPaths,
       serverArgs,
       languageServers,
     };
