@@ -45,6 +45,39 @@ const MAXIMUM_LINE_BYTES: number = 8 * 1024 * 1024;
 const CLOSE_GRACE_MS: number = 2_000;
 
 /**
+ * Environment variables never passed to a harness.
+ *
+ * These configure *this* process's Node runtime, and a harness is a separate program that has nothing
+ * to do with how Studio was started. Inheriting them makes a harness behave differently depending on
+ * how its host happened to be launched, which is the opposite of what running out of process is for.
+ *
+ * ⚠️ `NODE_OPTIONS` is the one that bites in practice: a user with it set in their shell, or a runner
+ * that exports it pointing at its own instrumentation, would have every harness start under flags
+ * meant for something else — and a harness that dies on startup reports only that it could not be
+ * started.
+ */
+const UNINHERITED_VARIABLES: readonly string[] = [
+  'NODE_OPTIONS',
+  'NODE_V8_COVERAGE',
+  'NODE_REPL_EXTERNAL_MODULE',
+];
+
+/**
+ * Builds the environment a harness runs in.
+ * @param overrides The variables the caller wants set.
+ * @returns Returns the environment.
+ */
+function harnessEnvironment(
+  overrides: Readonly<Record<string, string>> | undefined,
+): NodeJS.ProcessEnv {
+  const environment: NodeJS.ProcessEnv = { ...process.env, ...overrides };
+  for (const name of UNINHERITED_VARIABLES) {
+    delete environment[name];
+  }
+  return environment;
+}
+
+/**
  * Runs a harness as a child process and carries the protocol over its stdio.
  *
  * The counterpart of `HarnessHost`, which knows the protocol and nothing about processes; this knows
@@ -90,7 +123,7 @@ export class HarnessProcess implements HarnessTransport {
     logger.info('HarnessProcess', `Starting harness: ${spec.command}`);
     this.child = spawn(spec.command, [...spec.args], {
       cwd: spec.cwd,
-      env: spec.env === undefined ? process.env : { ...process.env, ...spec.env },
+      env: harnessEnvironment(spec.env),
       // stdin and stdout carry the protocol; stderr is a pipe so it can be drained to the log rather
       // than left to fill.
       stdio: ['pipe', 'pipe', 'pipe'],
