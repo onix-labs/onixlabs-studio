@@ -1,4 +1,12 @@
-import { beforeEach, describe, it, expect } from 'vitest';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
+
+// `buildClientOptions` asks where the bundled Codex binary is, which reads `app.isPackaged`. There is
+// no Electron app in a unit run, and the answer is irrelevant to what these tests assert.
+// ⛔ Mocking `./codex-executable` directly is not an option: the Angular unit-test system refuses
+// `vi.mock` on a relative import. A bare specifier like `electron` is fine, so the dependency is cut
+// one level further down.
+vi.mock('electron', () => ({ app: { isPackaged: false } }));
+
 import type { CodexOptions, ThreadEvent, ThreadOptions, Usage } from '@openai/codex-sdk';
 import type { AiEvent, AiModelInfo } from '@shared/api/ai-types';
 import type { AgentAuth, AgentRunContext } from './agent-provider';
@@ -159,6 +167,20 @@ describe('CodexAgentProvider', () => {
 
   it('declaresItsEffortLevels_withoutMax', () => {
     expect(provider.supportedEfforts).toEqual(['minimal', 'low', 'medium', 'high', 'xhigh']);
+  });
+
+  it('buildClientOptions_suppressesTheUnstableFeaturesWarning', () => {
+    const build: (context: AgentRunContext) => CodexOptions = (
+      provider as unknown as { buildClientOptions(context: AgentRunContext): CodexOptions }
+    ).buildClientOptions.bind(provider);
+
+    const options: CodexOptions = build({
+      auth: { hasCodexLogin: true, apiKey: null },
+    } as AgentRunContext);
+
+    // With an under-development feature enabled in the user's own config, the CLI's warning about it
+    // reached the transcript joined onto the front of the model's reply (#541).
+    expect(options.configOverrides).toContain('suppress_unstable_features_warning=true');
   });
 
   it('buildThreadOptions_appliesTheEffort_butOmitsMax_andReadOnlyForChat', () => {
