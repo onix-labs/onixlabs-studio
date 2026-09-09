@@ -1,11 +1,9 @@
-import { app } from 'electron';
 import { PluginActionResult, PluginChannel, PluginSummary } from '@shared/api/plugin-channels';
 import { LspProvisioner } from '../../lsp/lsp-provisioner';
 import { ContributionContext, MainContribution } from '../main-contribution';
 import { PluginContext, pluginCatalogue } from './plugin-catalogue';
 import { PluginManager } from './plugin-manager';
-import { PluginStore } from './plugin-store';
-import { contributedPlugins, pluginIndex } from './contributed';
+import { contributedPlugins, pluginIndex, pluginStore } from './contributed';
 
 /**
  * The Plugin Manager's backend: the catalogue of available plugins, what is installed on this machine,
@@ -32,15 +30,18 @@ export class PluginsContribution implements MainContribution {
    * @param context The surface the contribution reaches the application through.
    */
   public activate(context: ContributionContext): void {
-    const userData: string = app.getPath('userData');
     const pluginContext: PluginContext = { provisioner: new LspProvisioner() };
     // First-party plugins plus whatever was contributed — dropped into the sideload directory, or
     // offered by the curated index. A manifest is not a special case: it becomes a catalogue entry
     // and installs down the same path as everything else.
+    //
+    // The store comes from `contributed.ts` rather than being constructed here, because the resolution
+    // path reads the installed version from it to decide which version to run (#456). Two instances
+    // over one file would let the manager and the registries disagree about what is installed.
     this.manager = new PluginManager(
       [...pluginCatalogue(), ...contributedPlugins()],
       pluginContext,
-      new PluginStore(userData),
+      pluginStore(),
     );
     context.handle(PluginChannel.List, (): Promise<readonly PluginSummary[]> => this.list());
     context.handle(

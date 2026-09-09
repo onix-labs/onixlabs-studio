@@ -139,13 +139,64 @@ export function validManifests(plugins: readonly LoadedPlugin[]): readonly Plugi
 }
 
 /**
+ * Looks up the version of a plugin that is actually installed on this machine, or null when none is.
+ *
+ * Takes the identifier rather than being bound to one plugin, so a single lookup serves every manifest.
+ * Takes the offered version too, so the common case — what the catalogue offers is what is installed —
+ * is answered without preferring some other copy to it.
+ */
+export type InstalledVersion = (id: string, offered: string) => string | null;
+
+/**
+ * Decides which installed version a contribution should resolve against.
+ *
+ * Pure, and separated from the disk read that feeds it, because the *order* is the part with a
+ * judgement in it and the part worth holding to by test. The caller supplies what is on disk and what
+ * was recorded; this decides.
+ *
+ * The order is what a person would do:
+ *
+ *   1. **Is the offered version installed?** Then that, and nothing else needs deciding. This is the
+ *      ordinary case, and it must win — preferring some other copy to the one the catalogue offers
+ *      would resolve an old install on a machine that is perfectly up to date.
+ *   2. **Is the recorded version installed?** Then that. The catalogue has moved ahead and the record
+ *      says which version the user actually has: #456's ordinary shape.
+ *   3. **Exactly one install, and no record naming it?** Then that one. This is the state #456 leaves
+ *      behind — the install is on disk and its record was forgotten as stale (#463) — so a lookup that
+ *      stopped at step 2 could not heal a profile the bug had already broken.
+ *
+ * ⚠️ Several installs with nothing to say which is meant is the one case that declines to answer.
+ * Pruning after an update makes it nearly unreachable, and guessing between two copies risks spawning
+ * an old binary against a new workspace; reporting nothing installed is the recoverable failure.
+ * @param versions The versions installed and complete on disk.
+ * @param offered The version the catalogue offers.
+ * @param recorded The version the install store recorded, or null when it has no record.
+ * @returns Returns the version to resolve against, or null when none can be chosen.
+ */
+export function resolveInstalledVersion(
+  versions: readonly string[],
+  offered: string,
+  recorded: string | null,
+): string | null {
+  if (versions.includes(offered)) {
+    return offered;
+  }
+  if (recorded !== null && versions.includes(recorded)) {
+    return recorded;
+  }
+  return versions.length === 1 ? versions[0] : null;
+}
+
+/**
  * Turns a manifest's provisioning into the recipe the archive provisioner installs from. The shapes
  * are deliberately the same: the manifest format was derived from this recipe, so a contributed plugin
  * installs through exactly the same path as a first-party one.
  * @param manifest The validated manifest.
+ * @param version The version to build the recipe for, defaulting to the one the manifest offers. Pass
+ * an installed version to describe an install that is already on disk rather than the one on offer.
  * @returns Returns the provisioning recipe, or null when the plugin is not archive-provisioned.
  */
-export function toProvision(manifest: PluginManifest): ArchiveProvision | null {
+export function toProvision(manifest: PluginManifest, version?: string): ArchiveProvision | null {
   if (manifest.provision.kind !== 'archive') {
     return null;
   }
@@ -160,21 +211,25 @@ export function toProvision(manifest: PluginManifest): ArchiveProvision | null {
       members: source.members,
     };
   }
-  return { id: manifest.id, version: manifest.version, downloads };
+  return { id: manifest.id, version: version ?? manifest.version, downloads };
 }
 
 /**
  * Turns a manifest's provisioning into the recipe the lockfile provisioner installs from.
  * @param manifest The validated manifest.
+ * @param version The version to build the recipe for, defaulting to the one the manifest offers.
  * @returns Returns the provisioning recipe, or null when the plugin is not npm-provisioned.
  */
-export function toTreeProvision(manifest: PluginManifest): LockfileProvision | null {
+export function toTreeProvision(
+  manifest: PluginManifest,
+  version?: string,
+): LockfileProvision | null {
   if (manifest.provision.kind !== 'npm') {
     return null;
   }
   return {
     id: manifest.id,
-    version: manifest.version,
+    version: version ?? manifest.version,
     lockfileUrl: manifest.provision.lockfileUrl,
     sha256: manifest.provision.sha256,
     executablePath: manifest.provision.executablePath,
@@ -281,10 +336,41 @@ export function toOrigin(
 
 /**
  * Binds a manifest's provisioning to the provisioner calls that serve it.
+ *
+ * **Two versions are in play, and which one each operation means is the whole of #456.** Installs are
+ * version-scoped (`<root>/<id>/<version>/<platform>`), so a catalogue that has moved ahead of what is
+ * on disk names a directory that does not exist. Asking the catalogue's version whether a plugin is
+ * installed therefore answered "no" about a plugin that was installed and perfectly runnable, and the
+ * contributed server stopped until the user accepted the update. Worse, the Plugin Manager treats a
+ * record whose install does not detect as stale and forgets it (#463) — so the answer being wrong here
+ * also erased the record of the install it was wrong about.
+ *
+ * So:
+ *
+ *   - **Running it** — `target`, `isInstalled` — means the version **on disk**. The old one keeps
+ *     working while the update is offered.
+ *   - **Installing it** — `ensure` — means the version the catalogue **offers**. That is the update.
+ *   - **Removing it** — `remove` — means the version on disk, because that is what is there to remove.
+ *     Removing the offered version deleted nothing and left the real install orphaned.
+ *   - **`supported`** is version-independent in effect: it asks whether this machine's platform is
+ *     published at all, so it is answered against what is on offer.
+ *
+ * ⚠️ The old install's directory is located by its recorded version, but the path *within* it comes
+ * from the current manifest. A plugin that moves its entry point between versions will therefore
+ * mis-resolve its predecessor — which is a reason the update offer stays prominent, not a reason to
+ * keep a copy of every manifest that has ever been installed.
  * @param manifest The validated manifest.
+ * @param localRoot The sideloaded plugin's directory, or undefined when it was not sideloaded.
+ * @param installedVersion Looks up the version actually installed. Consulted on every call rather than
+ * read once, because an install or an update lands mid-session and the descriptors built from this are
+ * built at start-up.
  * @returns Returns the operations for the manifest's provisioning kind.
  */
-export function payloadOps(manifest: PluginManifest, localRoot?: string): PayloadOps {
+export function payloadOps(
+  manifest: PluginManifest,
+  localRoot?: string,
+  installedVersion?: InstalledVersion,
+): PayloadOps {
   // A sideloaded plugin carrying its own payload is already installed, by the only definition that
   // matters: the thing to run is on disk. Answering anything else would report it missing while it
   // works, and offer an install that downloads over a payload the user put there deliberately.
@@ -302,17 +388,23 @@ export function payloadOps(manifest: PluginManifest, localRoot?: string): Payloa
       remove: (): Promise<void> => Promise.resolve(),
     };
   }
+  // The version on disk when one is recorded and differs, the offered one otherwise. Read per call:
+  // installing an update mid-session must change what resolves next, without a restart.
+  const onDisk: () => string = (): string =>
+    installedVersion?.(manifest.id, manifest.version) ?? manifest.version;
   const tree: LockfileProvision | null = toTreeProvision(manifest);
   if (tree !== null) {
+    const installedTree: () => LockfileProvision = (): LockfileProvision =>
+      toTreeProvision(manifest, onDisk()) ?? tree;
     return {
       target: (p: LspProvisioner, entryPoint?: string): string | null =>
-        p.treeTarget(tree, entryPoint),
+        p.treeTarget(installedTree(), entryPoint),
       // A tree installs anywhere provisioning is enabled; the lockfile's own `os`/`cpu` fields decide
       // what goes into it, so there is no platform for the plugin as a whole to be unsupported on.
       supported: (p: LspProvisioner): boolean => p.treeDirectory(tree) !== null,
-      isInstalled: (p: LspProvisioner): boolean => p.isTreeInstalled(tree),
+      isInstalled: (p: LspProvisioner): boolean => p.isTreeInstalled(installedTree()),
       ensure: (p: LspProvisioner): Promise<string | null> => p.ensureTree(tree),
-      remove: (p: LspProvisioner): Promise<void> => p.removeTree(tree),
+      remove: (p: LspProvisioner): Promise<void> => p.removeTree(installedTree()),
     };
   }
   const archive: ArchiveProvision | null = toProvision(manifest);
@@ -327,14 +419,16 @@ export function payloadOps(manifest: PluginManifest, localRoot?: string): Payloa
       remove: (): Promise<void> => Promise.resolve(),
     };
   }
+  const installedArchive: () => ArchiveProvision = (): ArchiveProvision =>
+    toProvision(manifest, onDisk()) ?? archive;
   return {
     // An archive names its entry point per platform, so a contribution's override does not apply.
-    target: (p: LspProvisioner): string | null => p.archiveTarget(archive),
+    target: (p: LspProvisioner): string | null => p.archiveTarget(installedArchive()),
     // An archive publishes per platform, so having no entry point here IS being unsupported.
     supported: (p: LspProvisioner): boolean => p.archiveTarget(archive) !== null,
-    isInstalled: (p: LspProvisioner): boolean => p.isArchiveInstalled(archive),
+    isInstalled: (p: LspProvisioner): boolean => p.isArchiveInstalled(installedArchive()),
     ensure: (p: LspProvisioner): Promise<string | null> => p.ensureArchive(archive),
-    remove: (p: LspProvisioner): Promise<void> => p.removeArchive(archive),
+    remove: (p: LspProvisioner): Promise<void> => p.removeArchive(installedArchive()),
   };
 }
 
@@ -411,10 +505,18 @@ export function toDetail(manifest: PluginManifest): string | undefined {
  * first-party one. A sideloaded plugin is not a special case: it is a catalogue entry that happened to
  * arrive as data rather than as code.
  * @param manifest The validated manifest.
+ * @param localRoot The sideloaded plugin's directory, or undefined when it was not sideloaded.
+ * @param installedVersion Looks up the version actually installed, so a plugin whose catalogue entry
+ * has moved ahead still detects as installed and is offered the update rather than being reported
+ * missing and having its install record forgotten (#456).
  * @returns Returns the descriptor.
  */
-export function toPluginDescriptor(manifest: PluginManifest, localRoot?: string): PluginDescriptor {
-  const ops: PayloadOps = payloadOps(manifest, localRoot);
+export function toPluginDescriptor(
+  manifest: PluginManifest,
+  localRoot?: string,
+  installedVersion?: InstalledVersion,
+): PluginDescriptor {
+  const ops: PayloadOps = payloadOps(manifest, localRoot, installedVersion);
   return {
     id: manifest.id,
     name: manifest.name,
@@ -470,12 +572,15 @@ function toSpec(
 /**
  * Turns a manifest's language servers into descriptors the server registry can resolve.
  * @param manifest The validated manifest.
+ * @param installedVersion Looks up the version actually installed, so a server whose catalogue entry
+ * has moved ahead keeps serving from the version on disk until the update is accepted (#456).
  * @returns Returns the descriptors.
  */
 export function toLanguageServerDescriptors(
   manifest: PluginManifest,
+  installedVersion?: InstalledVersion,
 ): readonly LanguageServerDescriptor[] {
-  const ops: PayloadOps = payloadOps(manifest);
+  const ops: PayloadOps = payloadOps(manifest, undefined, installedVersion);
   return (manifest.contributes.languageServers ?? []).map(
     (server: ManifestLanguageServer): LanguageServerDescriptor => ({
       id: server.id,
@@ -520,8 +625,9 @@ export function toLanguageServerDescriptors(
 export function toDebugAdapterEntries(
   manifest: PluginManifest,
   provisioner: () => LspProvisioner,
+  installedVersion?: InstalledVersion,
 ): readonly DebugAdapterCatalogueEntry[] {
-  const ops: PayloadOps = payloadOps(manifest);
+  const ops: PayloadOps = payloadOps(manifest, undefined, installedVersion);
   return (manifest.contributes.debugAdapters ?? []).map(
     (adapter: ManifestDebugAdapter): DebugAdapterCatalogueEntry => ({
       id: adapter.id,
@@ -605,8 +711,9 @@ export function toDecoderDescriptors(
   provisioner: () => LspProvisioner,
   nodeRuntime: (entryPoint: string) => NodeRuntimeSpec,
   localRoot?: string,
+  installedVersion?: InstalledVersion,
 ): readonly DecoderDescriptor[] {
-  const ops: PayloadOps = payloadOps(manifest, localRoot);
+  const ops: PayloadOps = payloadOps(manifest, localRoot, installedVersion);
   return (manifest.contributes.decoders ?? []).map(
     (decoder: ManifestDecoder): DecoderDescriptor => ({
       id: decoder.id,
@@ -681,8 +788,9 @@ export function toContainerEngineDescriptors(
   manifest: PluginManifest,
   provisioner: () => LspProvisioner,
   localRoot?: string,
+  installedVersion?: InstalledVersion,
 ): readonly ContainerEngineDescriptor[] {
-  const ops: PayloadOps = payloadOps(manifest, localRoot);
+  const ops: PayloadOps = payloadOps(manifest, localRoot, installedVersion);
   const descriptors: ContainerEngineDescriptor[] = [];
   for (const engine of manifest.contributes.containerEngines ?? []) {
     const cli: string | null = ops.isInstalled(provisioner())

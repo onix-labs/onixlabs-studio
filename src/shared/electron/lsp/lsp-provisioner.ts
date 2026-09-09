@@ -13,6 +13,7 @@ import {
   ArchiveProvisioner,
   isComplete,
   markComplete,
+  installedVersions,
   pruneVersions,
 } from '../provisioning/archive-provisioner';
 import { LockfileProvision } from '../provisioning/lockfile-provision';
@@ -455,6 +456,15 @@ export class LspProvisioner {
    */
   public pruneOtherVersions(id: string, keep: string): Promise<void> {
     return pruneVersions(this.serversRoot(), id, keep, 'LspProvisioner');
+  }
+
+  /**
+   * Gets the versions of a plugin that are installed and complete, read from the layout on disk.
+   * @param id The plugin identifier.
+   * @returns Returns the installed versions, or nothing when none is.
+   */
+  public installedVersions(id: string): readonly string[] {
+    return installedVersions(this.serversRoot(), id);
   }
 
   /**

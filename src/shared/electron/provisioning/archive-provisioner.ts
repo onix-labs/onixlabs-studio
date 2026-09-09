@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { logger } from '../logger';
@@ -30,6 +30,39 @@ export async function markComplete(directory: string): Promise<void> {
  */
 export function isComplete(directory: string): boolean {
   return existsSync(path.join(directory, MARKER));
+}
+
+/**
+ * Gets the versions of a component that are installed and complete, by reading the layout rather than
+ * any record of what was installed.
+ *
+ * **The directory is the ground truth.** Both provisioners lay installs out as
+ * `<root>/<id>/<version>/<platform>`, so the version is in the path and the marker proves the install
+ * finished. The install store is a convenience over this, and a convenience that can be lost: it was
+ * erased for exactly the plugins that hit #456, because a record whose install does not detect is
+ * treated as stale and forgotten (#463). A lookup that trusted only the store therefore could not heal
+ * the profiles the bug had already broken.
+ *
+ * Synchronous on purpose. Resolution is synchronous all the way down — a decoder's `resolve` is, and
+ * its consumers are — so this is asked on paths that cannot await.
+ * @param root The directory installs are rooted at, or null when provisioning is disabled.
+ * @param id The component identifier.
+ * @returns Returns the installed versions, in directory order, or nothing when none is.
+ */
+export function installedVersions(root: string | null, id: string): readonly string[] {
+  if (root === null) {
+    return [];
+  }
+  const directory: string = path.join(root, id);
+  let versions: string[];
+  try {
+    versions = readdirSync(directory);
+  } catch {
+    return [];
+  }
+  return versions.filter((version: string): boolean =>
+    isComplete(path.join(directory, version, platformKey())),
+  );
 }
 
 /**

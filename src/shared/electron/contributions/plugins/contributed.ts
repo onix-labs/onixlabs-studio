@@ -6,12 +6,14 @@ import { LanguageServerDescriptor } from '../../lsp/language-server-descriptor';
 import { LspProvisioner } from '../../lsp/lsp-provisioner';
 import { PluginDescriptor } from './plugin-catalogue';
 import { PluginIndex } from './plugin-index';
+import { PluginStore } from './plugin-store';
 import {
   NodeRuntimeSpec,
   toContainerEngineDescriptors,
   toDebugAdapterEntries,
   toDecoderDescriptors,
   toLanguageServerDescriptors,
+  resolveInstalledVersion,
   toPluginDescriptor,
 } from './plugin-loader';
 import { sideloadedDirectories, sideloadedManifests } from './sideloaded';
@@ -116,7 +118,7 @@ export function contributedManifests(): readonly PluginManifest[] {
 export function contributedPlugins(): readonly PluginDescriptor[] {
   const local: ReadonlyMap<string, string> = sideloadedDirectories();
   return contributedManifests().map((manifest: PluginManifest): PluginDescriptor =>
-    toPluginDescriptor(manifest, local.get(manifest.id)),
+    toPluginDescriptor(manifest, local.get(manifest.id), installedVersion),
   );
 }
 
@@ -125,7 +127,11 @@ export function contributedPlugins(): readonly PluginDescriptor[] {
  * @returns Returns the descriptors.
  */
 export function contributedLanguageServers(): readonly LanguageServerDescriptor[] {
-  return contributedManifests().flatMap(toLanguageServerDescriptors);
+  // ⚠️ Called through an arrow rather than passed to `flatMap` directly: `flatMap` supplies the index
+  // as a second argument, which would arrive as the installed-version lookup.
+  return contributedManifests().flatMap((manifest): readonly LanguageServerDescriptor[] =>
+    toLanguageServerDescriptors(manifest, installedVersion),
+  );
 }
 
 /**
@@ -134,7 +140,7 @@ export function contributedLanguageServers(): readonly LanguageServerDescriptor[
  */
 export function contributedDebugAdapters(): readonly DebugAdapterCatalogueEntry[] {
   return contributedManifests().flatMap((manifest): readonly DebugAdapterCatalogueEntry[] =>
-    toDebugAdapterEntries(manifest, payloadProvisioner),
+    toDebugAdapterEntries(manifest, payloadProvisioner, installedVersion),
   );
 }
 
@@ -151,7 +157,13 @@ export function contributedDecoders(
 ): readonly DecoderDescriptor[] {
   const local: ReadonlyMap<string, string> = sideloadedDirectories();
   return contributedManifests().flatMap((manifest): readonly DecoderDescriptor[] =>
-    toDecoderDescriptors(manifest, payloadProvisioner, nodeRuntime, local.get(manifest.id)),
+    toDecoderDescriptors(
+      manifest,
+      payloadProvisioner,
+      nodeRuntime,
+      local.get(manifest.id),
+      installedVersion,
+    ),
   );
 }
 
@@ -165,7 +177,12 @@ export function contributedDecoders(
 export function contributedContainerEngines(): readonly ContainerEngineDescriptor[] {
   const local: ReadonlyMap<string, string> = sideloadedDirectories();
   return contributedManifests().flatMap((manifest): readonly ContainerEngineDescriptor[] =>
-    toContainerEngineDescriptors(manifest, payloadProvisioner, local.get(manifest.id)),
+    toContainerEngineDescriptors(
+      manifest,
+      payloadProvisioner,
+      local.get(manifest.id),
+      installedVersion,
+    ),
   );
 }
 
@@ -183,4 +200,65 @@ let payloads: LspProvisioner | null = null;
 function payloadProvisioner(): LspProvisioner {
   payloads ??= new LspProvisioner();
   return payloads;
+}
+
+/**
+ * Holds the record of what Studio installed, opened once per launch.
+ */
+let store: PluginStore | null = null;
+
+/**
+ * Gets the install store, opened against the user-data directory on first use.
+ *
+ * **One instance, shared.** The Plugin Manager writes to it on every install and uninstall, and the
+ * resolution path reads from it to decide which version to run — a second instance over the same file
+ * would let the two disagree about what is installed, which is precisely the split-brain #463 removed.
+ * @returns Returns the store.
+ */
+export function pluginStore(): PluginStore {
+  store ??= new PluginStore(app.getPath('userData'));
+  return store;
+}
+
+/**
+ * Gets the version of a plugin that is actually installed, or null when none is.
+ *
+ * **Answered from the disk, with the install record only breaking ties.** The obvious implementation —
+ * read the version out of the store — is not enough, and the reason is #456's own second-order effect:
+ * a record whose install does not detect is treated as stale and forgotten (#463), so every profile
+ * that already hit the bug has an install on disk and *no record of it*. A store-only lookup cannot
+ * heal those, and this bug has been reachable since the index went public.
+ *
+ * The order is what a person would do. Is the version being offered installed? Then that, and nothing
+ * else needs deciding — this is the ordinary case and it short-circuits. Otherwise, is the version we
+ * recorded installed? Then that. Otherwise there is exactly one install and no record naming it, so it
+ * is the one that was meant.
+ *
+ * ⚠️ Several installs with nothing to say which is meant is the one case that declines to answer.
+ * Pruning after an update makes it nearly unreachable, and guessing between two copies risks spawning
+ * an old binary against a new workspace — reporting nothing installed is the recoverable failure.
+ * @param id The plugin identifier.
+ * @param offered The version the catalogue offers.
+ * @returns Returns the installed version, or null.
+ */
+function installedVersion(id: string, offered: string): string | null {
+  const versions: readonly string[] = payloadProvisioner().installedVersions(id);
+  if (versions.length === 0) {
+    return null;
+  }
+  const recorded: string | null = pluginStore().get(id)?.version ?? null;
+  const resolved: string | null = resolveInstalledVersion(versions, offered, recorded);
+  if (resolved === null) {
+    logger.warn(
+      'ContributedPlugins',
+      `${id} has ${versions.length} installs (${versions.join(', ')}) and no record naming one; ` +
+        'resolving none of them',
+    );
+  } else if (resolved !== offered && resolved !== recorded) {
+    logger.info(
+      'ContributedPlugins',
+      `${id} ${resolved} is installed with no record of it; resolving against it`,
+    );
+  }
+  return resolved;
 }
