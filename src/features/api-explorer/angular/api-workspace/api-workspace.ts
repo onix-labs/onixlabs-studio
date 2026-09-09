@@ -28,9 +28,13 @@ import { FileWriteResult } from '@shared/api/file-channels';
 import { ApiHttp } from '../api-http/api-http';
 
 /**
- * The store key the API Explorer's collections, environments and history are persisted under.
+ * The store key untitled workspaces used to share, kept only to hand its contents to the first tab
+ * opened after upgrading and then delete it.
+ *
+ * It was a single global key, so **every** untitled tab read and wrote the same document: two of them
+ * showed the same collections and overwrote each other's edits (#417). Nothing writes it any more.
  */
-const STORE_KEY: string = 'api-explorer.workspace';
+const LEGACY_SCRATCH_KEY: string = 'api-explorer.workspace';
 
 /**
  * How many sends the history keeps. Old entries fall off the end rather than growing without bound.
@@ -106,11 +110,16 @@ export function newField(name: string = '', value: string = ''): HttpField {
  * does, and what would let a second transport (gRPC, GraphQL) reuse the tree without reusing the HTTP
  * semantics.
  *
- * It is also the tab's *document*, and behaves like one in two modes. **Untitled**, it auto-saves to
- * the session store on every edit, so a scratch workspace is never lost and never nags — there is no
- * file for it to be out of step with. **Bound to a file** (opened from a `*.api.json`, or saved to
- * one), the file becomes the only thing that matters: edits mark the document dirty and are written
- * when the user saves, exactly as a code document behaves.
+ * It is also the tab's *document*, and behaves like every other document in Studio: edits mark it
+ * dirty, closing it offers to save, and saving an untitled one asks where. Opened from a `*.api.json`
+ * or saved to one, it is bound to that file from then on.
+ *
+ * **Each tab is a distinct workspace** — one suite of endpoints, the way a second window of an API
+ * client is a second workspace rather than another view of the first. Untitled workspaces used to
+ * auto-save to one shared session key, which made every untitled tab the same document: two of them
+ * showed the same collections and overwrote each other's edits (#417). Nothing is shared now, and the
+ * cost is that an untitled scratch is unsaved work rather than something that quietly reappears — so
+ * it asks to be saved on the way out instead of being kept somewhere the user cannot see it.
  *
  * Provided by the API Explorer view, so it lives exactly as long as the tab.
  */
@@ -197,7 +206,8 @@ export class ApiWorkspace {
   private readonly filePathSignal: WritableSignal<string | null> = signal<string | null>(null);
 
   /**
-   * Holds whether the bound file has edits that have not been written to it.
+   * Holds whether the workspace has edits that have not been written to a file — including an
+   * untitled one, which has no file to be out of step with but is unsaved work all the same.
    */
   private readonly dirtySignal: WritableSignal<boolean> = signal<boolean>(false);
 
@@ -207,8 +217,9 @@ export class ApiWorkspace {
   public readonly filePath: Signal<string | null> = this.filePathSignal.asReadonly();
 
   /**
-   * Gets whether the workspace has edits not yet written to its file. An untitled workspace is never
-   * dirty: it has no file to be out of step with, and every edit is already in the session store.
+   * Gets whether the workspace has edits not yet written to a file. True for an edited untitled
+   * workspace too: it has no file to be out of step with, but it is unsaved work, and since #417 there
+   * is no session store quietly holding it.
    */
   public readonly dirty: Signal<boolean> = this.dirtySignal.asReadonly();
 
@@ -266,23 +277,48 @@ export class ApiWorkspace {
   );
 
   /**
-   * Restores the persisted workspace, seeding a starter collection and environment the first time the
-   * view is opened so there is something to send rather than an empty tree.
+   * Starts an untitled workspace: the scratch left by an older build if there is one, otherwise a
+   * seeded starter collection and environment so there is something to send rather than an empty tree.
+   *
+   * Either way it starts clean. Neither a seed nor an adopted scratch is work the user has done in
+   * this tab, and a workspace that arrived dirty would ask to be saved before it had been touched.
    */
   public constructor() {
-    const persisted: ApiDocument | null = this.store.get<ApiDocument | null>(STORE_KEY, null);
-    if (persisted === null) {
+    const legacy: ApiDocument | null = this.adoptLegacyScratch();
+    if (legacy === null) {
       this.seed();
-      return;
     }
-    this.foldersSignal.set(persisted.folders);
-    this.requestsSignal.set(persisted.requests);
-    this.environmentsSignal.set(persisted.environments);
-    this.activeEnvironmentIdSignal.set(persisted.activeEnvironmentId);
-    this.log.info('api-explorer.workspace', 'Restored API workspace', {
-      collections: persisted.folders.length,
-      requests: persisted.requests.length,
-    });
+    this.dirtySignal.set(false);
+  }
+
+  /**
+   * Takes over the single scratch document older builds shared between every untitled tab, and removes
+   * it so the next tab opened gets a workspace of its own.
+   *
+   * A one-time migration, and the whole of it: the first untitled tab opened after upgrading keeps
+   * whatever was in the old shared scratch, and nobody loses work to the fix. There is nothing to do on
+   * a profile that never had one.
+   * @returns Returns the adopted document, or null when there was none.
+   */
+  private adoptLegacyScratch(): ApiDocument | null {
+    const legacy: ApiDocument | null = this.store.get<ApiDocument | null>(LEGACY_SCRATCH_KEY, null);
+    if (legacy === null) {
+      return null;
+    }
+    this.store.remove(LEGACY_SCRATCH_KEY);
+    this.foldersSignal.set(legacy.folders);
+    this.requestsSignal.set(legacy.requests);
+    this.environmentsSignal.set(legacy.environments);
+    this.activeEnvironmentIdSignal.set(legacy.activeEnvironmentId);
+    this.log.info(
+      'api-explorer.workspace',
+      'Adopted the shared scratch workspace from an older build',
+      {
+        collections: legacy.folders.length,
+        requests: legacy.requests.length,
+      },
+    );
+    return legacy;
   }
 
   /**
@@ -952,17 +988,17 @@ export class ApiWorkspace {
   }
 
   /**
-   * Records an edit. A workspace bound to a file becomes dirty and waits to be saved — the file is the
-   * user's, and writing to it behind their back is not this view's decision. An untitled workspace has
-   * no file to be out of step with, so it keeps auto-saving to the session store exactly as it did
-   * before documents existed: a scratch workspace survives a restart without ever being saved.
+   * Records an edit: the workspace becomes dirty and waits to be saved. The file is the user's, and
+   * writing to it behind their back is not this view's decision.
+   *
+   * Untitled workspaces used to auto-save to a session store instead, which is what made every one of
+   * them the *same* workspace (#417). They are now ordinary unsaved documents — the tab shows a dirty
+   * mark, closing it offers to save, and `save()` falls through to Save As because there is no file
+   * yet. That is how every other untitled document in Studio behaves, and it is the only model that
+   * lets two of them exist at once.
    */
   private persist(): void {
-    if (this.filePathSignal() !== null) {
-      this.dirtySignal.set(true);
-      return;
-    }
-    this.store.set<ApiDocument>(STORE_KEY, this.toDocument());
+    this.dirtySignal.set(true);
   }
 
   /**

@@ -319,8 +319,10 @@ export class ApiExplorerView implements OnInit, OnDestroy, ApiExplorerCommandHan
   }
 
   /**
-   * Lists this workspace as unsaved work when it is bound to a file with unwritten edits, so closing
-   * the window prompts for it. An untitled workspace is never listed: it is already in the store.
+   * Lists this workspace as unsaved work when it has unwritten edits, so closing the window prompts
+   * for it. Untitled workspaces are listed too since #417 — they are no longer squirrelled away in a
+   * shared session key, so the prompt is the only thing standing between a scratch workspace and
+   * being lost.
    * @returns Returns the dirty document, or nothing.
    */
   public dirtyDocuments(): readonly UnsavedDocument[] {
