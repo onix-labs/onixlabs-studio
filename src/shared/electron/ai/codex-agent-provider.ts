@@ -21,6 +21,26 @@ import { resolveBundledCodexExecutable } from './codex-executable';
 import { buildRunPrompt } from './studio-tools';
 
 /**
+ * Codex CLI notices Studio turns off, as raw `--config` overrides.
+ *
+ * `suppress_unstable_features_warning` — with an under-development feature enabled in the user's own
+ * `~/.codex/config.toml`, the CLI emits a warning about it, and that warning reached the transcript
+ * joined onto the front of the model's reply with no separator: *"Under-development features enabled:
+ * chronicle…config.toml.I'm Codex…"* (#541). The model appeared to say something it had not.
+ *
+ * Suppressed at the source rather than stripped afterwards. Matching a notice by its text means
+ * tracking someone else's wording forever, and getting it wrong either leaves the noise or eats a real
+ * first line of a reply.
+ *
+ * ⚠️ This is a warning about a choice the user made deliberately, in a file only they can edit, and it
+ * is not being hidden from them — the same warning still greets them in the Codex CLI itself, where it
+ * is actionable. What it cannot usefully do is appear inside an assistant message in a GUI transcript.
+ *
+ * These are **client** options, so they apply to every turn on every thread.
+ */
+const SUPPRESSED_CLI_NOTICES: readonly string[] = ['suppress_unstable_features_warning=true'];
+
+/**
  * The completed stream a Codex turn produces: an async iterator of thread events. Declared narrowly
  * (rather than importing the SDK's classes, which carry private members) so a session can be driven by a
  * fake client in tests.
@@ -221,6 +241,7 @@ export class CodexAgentProvider implements AgentProvider {
         ? 'No bundled Codex executable; SDK will resolve its own'
         : `Resolved bundled Codex executable: ${executable}`,
     );
+    options.configOverrides = [...SUPPRESSED_CLI_NOTICES];
     const auth: AgentAuth = context.auth;
     if (!auth.hasCodexLogin && auth.apiKey !== null) {
       options.apiKey = auth.apiKey;
