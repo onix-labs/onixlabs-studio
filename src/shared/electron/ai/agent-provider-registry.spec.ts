@@ -8,7 +8,8 @@ import type { AgentProvider } from './agent-provider';
 // relative import, so the dependency is cut at the bare specifier instead.
 vi.mock('electron', () => ({ app: { isPackaged: false } }));
 
-const { AgentProviderRegistry, coreAgentProviders } = await import('./agent-provider-registry');
+const { AgentProviderRegistry, coreAgentProviders, toHarnessDescriptor } =
+  await import('./agent-provider-registry');
 type AgentProviderDescriptor = import('./agent-provider-registry').AgentProviderDescriptor;
 
 /**
@@ -134,5 +135,75 @@ describe('coreAgentProviders', () => {
     expect(servedBy('api-key')).toBe('ai-sdk');
     // Including a local Ollama, which needs no harness code at all — it is a connection.
     expect(servedBy('none')).toBe('ai-sdk');
+  });
+});
+
+describe('toHarnessDescriptor', () => {
+  /**
+   * Builds a contributed harness whose payload may or may not be installed.
+   * @param installed Whether the payload is on disk.
+   * @returns Returns the contributed harness.
+   */
+  function contributed(installed: boolean): {
+    id: string;
+    displayName: string;
+    priority: number;
+    connectionAuths: readonly string[];
+    spawnSpec: () => { command: string; args: readonly string[] } | null;
+  } {
+    return {
+      id: 'claude-harness',
+      displayName: 'Claude',
+      priority: 100,
+      connectionAuths: ['claude-login'],
+      spawnSpec: (): { command: string; args: readonly string[] } | null =>
+        installed ? { command: '/bin/harness', args: [] } : null,
+    };
+  }
+
+  it('servesTheConnectionAuthsItClaims', () => {
+    const descriptor: AgentProviderDescriptor = toHarnessDescriptor(
+      contributed(true),
+      () => ({}) as never,
+    );
+
+    expect(descriptor.serves(connection('c1', 'claude-login'))).toBe(true);
+    expect(descriptor.serves(connection('c1', 'api-key'))).toBe(false);
+  });
+
+  it('servesNothingWhenItsPayloadIsNotInstalled', () => {
+    const descriptor: AgentProviderDescriptor = toHarnessDescriptor(
+      contributed(false),
+      () => ({}) as never,
+    );
+
+    // The manifest can be in the catalogue without the payload being on disk, and a descriptor that
+    // claimed a connection it cannot run would take it from the in-core provider that can.
+    expect(descriptor.serves(connection('c1', 'claude-login'))).toBe(false);
+  });
+
+  it('buildsAProviderCarryingTheConnectionsOwnModels', () => {
+    const descriptor: AgentProviderDescriptor = toHarnessDescriptor(
+      contributed(true),
+      () => ({}) as never,
+    );
+
+    // The harness knows how to run a turn; the connection knows which models and which id. The
+    // registry joins them, which is why the manifest declares neither.
+    const provider: AgentProvider = descriptor.create(connection('my-claude', 'claude-login'));
+    expect(provider.id).toBe('my-claude');
+    expect(provider.label).toBe('Claude');
+  });
+
+  it('registersAheadOfTheInCoreHarnessSoAnInstalledPluginWinsTheConnection', () => {
+    const registry: InstanceType<typeof AgentProviderRegistry> = new AgentProviderRegistry();
+    registry.register(toHarnessDescriptor(contributed(true), () => ({}) as never));
+    for (const core of coreAgentProviders()) {
+      registry.register(core);
+    }
+
+    // "Core defines, plugins provide": while the two live harnesses are still compiled in, they are
+    // the fallback rather than the answer.
+    expect(registry.registered()[0]).toBe('claude-harness');
   });
 });

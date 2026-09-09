@@ -67,8 +67,14 @@ import { DECODER_FORMATS } from './decoder-protocol';
  * `1.8.0` added the `gz` archive kind (#651), for a publisher that ships a single compressed binary
  * rather than a one-entry tarball. It has nothing inside to name, so the download's `executablePath`
  * says where the decompressed file lands rather than where to find it.
+ *
+ * `1.9.0` added the `agentHarnesses` contribution point (#653), the fifth slot, and the first whose
+ * payload is a **peer** rather than a tool: a harness runs an agent turn and stops mid-way to ask the
+ * user for permission, where every other point answers a question or transforms bytes. It is keyed by
+ * the AI connection's authentication kind, because which harness runs a turn is a property of the
+ * connection the user picked. Adds only, on the same terms as every minor before it.
  */
-export const PLUGIN_API_VERSION: string = '1.8.0';
+export const PLUGIN_API_VERSION: string = '1.9.0';
 
 /**
  * Matches a plain three-part semver. Deliberately strict and deliberately local: the rule below is the
@@ -411,6 +417,56 @@ export interface ManifestContainerEngine {
 }
 
 /**
+ * Describes an agent harness a plugin contributes (#653).
+ *
+ * The fifth contribution point, and the first whose payload is a **peer** rather than a tool: a language
+ * server answers questions about a file and a decoder turns bytes into a listing, but a harness runs an
+ * agent turn and stops mid-way to ask the user for permission. Studio speaks the agent protocol to it,
+ * exactly as it speaks LSP to a language server.
+ *
+ * Keyed by the **connection** it serves, because which harness runs a turn is a property of the AI
+ * connection the user picked, not of a language or a file format. A connection an installed harness
+ * claims is run by it; every other connection falls through to the in-core adapter, which is why an
+ * OpenAI-compatible endpoint needs no harness at all.
+ */
+export interface ManifestAgentHarness {
+  /**
+   * Gets the identifier the harness is registered under.
+   */
+  readonly id: string;
+
+  /**
+   * Gets the display name, which is what the surface calls the harness.
+   */
+  readonly displayName: string;
+
+  /**
+   * Gets the priority used to pick among harnesses claiming the same connection, higher first.
+   */
+  readonly priority: number;
+
+  /**
+   * Gets the authentication kinds of the connections this harness serves.
+   *
+   * A closed set of strings the manifest matches against `AiConnection.auth`. Deliberately not a
+   * pattern or an expression: a harness declares which connections it is *for*, and anything richer
+   * would be a rule Studio has to evaluate on a plugin's behalf.
+   */
+  readonly connectionAuths: readonly string[];
+
+  /**
+   * Gets how the harness is started. Its stdin and stdout carry the agent protocol.
+   */
+  readonly command: ManifestCommand;
+
+  /**
+   * Gets this contribution's own entry point within the installed payload, or undefined to use the
+   * provision's. See {@link ManifestLanguageServer.entryPoint}.
+   */
+  readonly entryPoint?: string;
+}
+
+/**
  * Describes a language server a plugin contributes. Keyed by language: a language served by more than
  * one installed plugin is a choice the user makes.
  */
@@ -546,6 +602,11 @@ export interface ManifestContributions {
    * Gets the container engines contributed.
    */
   readonly containerEngines?: readonly ManifestContainerEngine[];
+
+  /**
+   * Gets the agent harnesses contributed.
+   */
+  readonly agentHarnesses?: readonly ManifestAgentHarness[];
 }
 
 /**
@@ -1091,18 +1152,40 @@ function readContributions(value: unknown, errors: Errors): ManifestContribution
       });
     },
   );
+  const agentHarnesses: ManifestAgentHarness[] = [];
+  readContributionList(
+    source['agentHarnesses'],
+    'contributes.agentHarnesses',
+    errors,
+    (entry: Record<string, unknown>, path: string): void => {
+      const command: ManifestCommand | null = readCommand(
+        entry['command'],
+        `${path}.command`,
+        errors,
+      );
+      agentHarnesses.push({
+        id: readId(entry, 'id', `${path}.`, errors),
+        displayName: readString(entry, 'displayName', `${path}.`, errors),
+        priority: readPriority(entry, path, errors),
+        connectionAuths: readAuths(entry['connectionAuths'], `${path}.connectionAuths`, errors),
+        command: command ?? { kind: 'executable' },
+        entryPoint: readEntryPoint(entry, 'entryPoint', `${path}.`, errors),
+      });
+    },
+  );
   if (
     languageServers.length === 0 &&
     debugAdapters.length === 0 &&
     decoders.length === 0 &&
-    containerEngines.length === 0
+    containerEngines.length === 0 &&
+    agentHarnesses.length === 0
   ) {
     errors.add(
       'contributes',
-      'must contribute at least one language server, debug adapter, decoder or container engine',
+      'must contribute at least one language server, debug adapter, decoder, container engine or agent harness',
     );
   }
-  return { languageServers, debugAdapters, decoders, containerEngines };
+  return { languageServers, debugAdapters, decoders, containerEngines, agentHarnesses };
 }
 
 /**
@@ -1238,6 +1321,31 @@ function readFormats(value: unknown, path: string, errors: Errors): readonly str
     return [];
   }
   return keys;
+}
+
+/**
+ * Validates the connection authentication kinds a harness serves.
+ *
+ * ⚠️ Deliberately **not** checked against a closed list, unlike a decoder's formats. A connection's
+ * `auth` is user-editable data rather than a vocabulary Studio owns, and a harness published for an
+ * auth kind Studio has not shipped yet is a harness waiting for it, not a broken manifest. The cost of
+ * being wrong is symmetrical to the decoder case and lands the other way: an unmatched harness simply
+ * never claims a connection, and the in-core adapter serves it exactly as it does today.
+ * @param value The candidate array.
+ * @param path The dotted path for failures.
+ * @param errors The failure collector.
+ * @returns Returns the auth kinds, or an empty array when invalid.
+ */
+function readAuths(value: unknown, path: string, errors: Errors): readonly string[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    errors.add(path, 'must be a non-empty array of connection auth kinds');
+    return [];
+  }
+  if (!value.every((entry: unknown): boolean => typeof entry === 'string' && entry.length > 0)) {
+    errors.add(path, 'must contain only non-empty auth kinds');
+    return [];
+  }
+  return value as readonly string[];
 }
 
 /**

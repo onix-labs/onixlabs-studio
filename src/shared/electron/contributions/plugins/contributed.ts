@@ -8,7 +8,9 @@ import { PluginDescriptor } from './plugin-catalogue';
 import { PluginIndex } from './plugin-index';
 import { PluginStore } from './plugin-store';
 import {
+  ContributedHarness,
   NodeRuntimeSpec,
+  toAgentHarnesses,
   toContainerEngineDescriptors,
   toDebugAdapterEntries,
   toDecoderDescriptors,
@@ -180,6 +182,29 @@ export function contributedContainerEngines(): readonly ContainerEngineDescripto
     toContainerEngineDescriptors(
       manifest,
       payloadProvisioner,
+      local.get(manifest.id),
+      installedVersion,
+    ),
+  );
+}
+
+/**
+ * Gets the agent harnesses the contributed plugins provide, for the provider registry to run.
+ *
+ * Studio contributes none of its own: the two in-core harnesses are still compiled in, and this is the
+ * seam by which they stop being (#653).
+ * @param nodeRuntime Gets how to run a JavaScript entry point under the runtime Studio ships.
+ * @returns Returns the contributed harnesses.
+ */
+export function contributedAgentHarnesses(
+  nodeRuntime: (entryPoint: string) => NodeRuntimeSpec,
+): readonly ContributedHarness[] {
+  const local: ReadonlyMap<string, string> = sideloadedDirectories();
+  return contributedManifests().flatMap((manifest): readonly ContributedHarness[] =>
+    toAgentHarnesses(
+      manifest,
+      payloadProvisioner,
+      nodeRuntime,
       local.get(manifest.id),
       installedVersion,
     ),

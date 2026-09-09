@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import * as path from 'node:path';
 import {
+  ManifestAgentHarness,
   ManifestCommand,
   ManifestContainerEngine,
   ManifestDebugAdapter,
@@ -473,7 +474,15 @@ export function toContributions(manifest: PluginManifest): readonly PluginContri
       priority: engine.priority,
     }),
   );
-  return [...servers, ...adapters, ...decoders, ...engines];
+  const harnesses: readonly PluginContribution[] = (manifest.contributes.agentHarnesses ?? []).map(
+    (harness: ManifestAgentHarness): PluginContribution => ({
+      slot: 'agent-harness',
+      id: harness.id,
+      displayName: harness.displayName,
+      priority: harness.priority,
+    }),
+  );
+  return [...servers, ...adapters, ...decoders, ...engines, ...harnesses];
 }
 
 /**
@@ -817,6 +826,96 @@ export function toContainerEngineDescriptors(
     });
   }
   return descriptors;
+}
+
+/**
+ * Describes an agent harness a plugin contributes, as the registry needs it.
+ *
+ * Deliberately not a `HarnessDefinition`: that carries the connection's models and label, which belong
+ * to the connection rather than to the plugin. This is what the *manifest* knows — which connections
+ * the harness claims, and how to start it — and the registry joins the two.
+ */
+export interface ContributedHarness {
+  /**
+   * Gets the harness identifier.
+   */
+  readonly id: string;
+
+  /**
+   * Gets the display name.
+   */
+  readonly displayName: string;
+
+  /**
+   * Gets the priority among harnesses claiming the same connection, higher first.
+   */
+  readonly priority: number;
+
+  /**
+   * Gets the connection auth kinds this harness serves.
+   */
+  readonly connectionAuths: readonly string[];
+
+  /**
+   * Gets how to start the harness, or null when its payload is not installed.
+   * @returns Returns the spawn specification, or null.
+   */
+  spawnSpec(): { command: string; args: readonly string[] } | null;
+}
+
+/**
+ * Turns a manifest's agent harnesses into what the provider registry needs to run them.
+ *
+ * A harness whose payload is not installed reports no spawn specification rather than being dropped, so
+ * the Plugin Manager can still list it and the registry can say plainly that it is not installed —
+ * unlike a container engine, which is dropped entirely because a selectable engine that is not there
+ * would offer a connection that cannot be made. A harness is chosen by the connection, not by the user
+ * picking from a list, so there is nothing to mis-offer.
+ * @param manifest The validated manifest.
+ * @param provisioner Gets the provisioner the plugin's install went through.
+ * @param nodeRuntime Gets how to run a JavaScript entry point under the runtime Studio ships.
+ * @param localRoot The sideloaded plugin's directory, or undefined when it was not sideloaded.
+ * @param installedVersion Looks up the version actually installed.
+ * @returns Returns the contributed harnesses.
+ */
+export function toAgentHarnesses(
+  manifest: PluginManifest,
+  provisioner: () => LspProvisioner,
+  nodeRuntime: (entryPoint: string) => NodeRuntimeSpec,
+  localRoot?: string,
+  installedVersion?: InstalledVersion,
+): readonly ContributedHarness[] {
+  const ops: PayloadOps = payloadOps(manifest, localRoot, installedVersion);
+  return (manifest.contributes.agentHarnesses ?? []).map(
+    (harness: ManifestAgentHarness): ContributedHarness => ({
+      id: harness.id,
+      displayName: harness.displayName,
+      priority: harness.priority,
+      connectionAuths: harness.connectionAuths,
+      spawnSpec: (): { command: string; args: readonly string[] } | null => {
+        const entryPoint: string | null = ops.isInstalled(provisioner())
+          ? ops.target(provisioner(), harness.entryPoint)
+          : null;
+        if (entryPoint === null) {
+          return null;
+        }
+        if (harness.command.kind === 'node') {
+          const runtime: NodeRuntimeSpec = nodeRuntime(entryPoint);
+          return {
+            command: runtime.command,
+            args: [...runtime.args, ...(harness.command.args ?? [])],
+          };
+        }
+        if (harness.command.kind === 'python') {
+          const python: { command: string; args: string[] } | null = pythonRuntime(entryPoint);
+          return python === null
+            ? null
+            : { command: python.command, args: [...python.args, ...(harness.command.args ?? [])] };
+        }
+        return { command: entryPoint, args: harness.command.args ?? [] };
+      },
+    }),
+  );
 }
 
 /**

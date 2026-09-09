@@ -45,7 +45,8 @@ export enum PluginChannel {
  * plugin fills them. Kept a closed union deliberately — a new slot is a change to the application's
  * own surface, not something a plugin may invent.
  */
-export type PluginSlot = 'language-server' | 'debug-adapter' | 'decoder' | 'container-engine';
+export type PluginSlot =
+  'language-server' | 'debug-adapter' | 'decoder' | 'container-engine' | 'agent-harness';
 
 /**
  * Names the slots keyed by language, as opposed to by format.
@@ -82,12 +83,17 @@ export interface FormatPluginContribution extends FormatSlotEntry {
  * A container engine is chosen once for the application, so it carries neither `languages` nor
  * `formats` — the distinction the slot contract draws between a keyed slot and a plain one, surfaced
  * here rather than papered over with an array that would have nothing to put in it.
+ *
+ * An agent harness is here for a different reason: it *is* keyed, but by the AI connection it serves,
+ * and a connection is user-created data rather than a vocabulary the application owns. There is no
+ * fixed key set to declare, so it carries none — which the manifest states instead, as the auth kinds
+ * the harness claims.
  */
 export interface UnkeyedPluginContribution extends SlotEntry {
   /**
    * Gets the unkeyed slot this implementation fills.
    */
-  readonly slot: 'container-engine';
+  readonly slot: 'container-engine' | 'agent-harness';
 }
 
 /**
@@ -234,7 +240,7 @@ export function installedContributions(
 ): readonly FormatPluginContribution[];
 export function installedContributions(
   plugins: readonly PluginSummary[],
-  slot: 'container-engine',
+  slot: 'container-engine' | 'agent-harness',
 ): readonly UnkeyedPluginContribution[];
 export function installedContributions(
   plugins: readonly PluginSummary[],

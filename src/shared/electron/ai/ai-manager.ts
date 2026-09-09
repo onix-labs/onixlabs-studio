@@ -47,7 +47,15 @@ import type {
   ProviderAvailability,
 } from './agent-provider';
 import { AiAuthManager } from './ai-auth-manager';
-import { AgentProviderRegistry, coreAgentProviders } from './agent-provider-registry';
+import {
+  AgentProviderRegistry,
+  coreAgentProviders,
+  toHarnessDescriptor,
+} from './agent-provider-registry';
+import { contributedAgentHarnesses } from '../contributions/plugins/contributed';
+import type { NodeRuntimeSpec } from '../contributions/plugins/plugin-loader';
+import type { HarnessTransport } from './harness-host';
+import { HarnessProcess } from './harness-process';
 import { isConnection, sanitizeClaudeExecutable, sanitizeConnections } from './connection-guard';
 import { AgentAuditLog, type AuditGrantSource } from './agent-audit-log';
 import { ClaudeAgentProvider } from './claude-agent-provider';
@@ -368,8 +376,18 @@ export class AiManager {
     this.windowGetter = windowGetter;
     this.bridge = new RendererBridge(windowGetter);
 
-    // Seeded with the harnesses Studio compiles in. Registered here rather than inside the registry so
-    // there is one obvious place a contributed harness joins them later (#653).
+    // Contributed harnesses first, then the ones Studio compiles in. Order is the whole point: an
+    // installed harness plugin claiming a connection wins it, and the in-core pair is the fallback
+    // rather than the answer. Each harness that moves out of core simply stops being registered (#653).
+    for (const harness of contributedAgentHarnesses(harnessNodeRuntime)) {
+      this.harnesses.register(
+        toHarnessDescriptor(
+          harness,
+          (spec: { command: string; args: readonly string[] }): HarnessTransport =>
+            new HarnessProcess({ command: spec.command, args: spec.args }),
+        ),
+      );
+    }
     for (const descriptor of coreAgentProviders()) {
       this.harnesses.register(descriptor);
     }
@@ -1815,4 +1833,19 @@ export class AiManager {
         ref.kind === 'selection' ? ref : { path: ref.path, kind: ref.kind },
       );
   }
+}
+
+/**
+ * Builds how to run a harness's JavaScript entry point: through the Electron binary in Node mode, the
+ * same way a Node-based decoder or language server is run, so a harness shipped as a bundle needs no
+ * Node on the machine.
+ * @param entryPoint The entry point to run.
+ * @returns Returns the command and arguments.
+ */
+function harnessNodeRuntime(entryPoint: string): NodeRuntimeSpec {
+  return {
+    command: process.execPath,
+    args: [entryPoint],
+    env: { ELECTRON_RUN_AS_NODE: '1' },
+  };
 }

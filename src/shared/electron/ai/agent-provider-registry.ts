@@ -1,6 +1,9 @@
 import type { AiConnection } from '@shared/api/ai-types';
 import { logger } from '@shared/electron/logger';
+import type { ContributedHarness } from '../contributions/plugins/plugin-loader';
 import type { AgentProvider } from './agent-provider';
+import { HarnessAgentProvider } from './harness-agent-provider';
+import type { HarnessTransport } from './harness-host';
 import { AiSdkAdapter } from './ai-sdk-adapter';
 import { ClaudeAgentProvider } from './claude-agent-provider';
 import { CodexAgentProvider } from './codex-agent-provider';
@@ -101,6 +104,47 @@ export class AgentProviderRegistry {
   public registered(): readonly string[] {
     return this.descriptors.map((descriptor: AgentProviderDescriptor): string => descriptor.id);
   }
+}
+
+/**
+ * Turns an installed harness plugin into a registry descriptor.
+ *
+ * Registered **ahead of** the in-core harnesses, so an installed plugin claiming a connection wins it.
+ * That is what "core defines, plugins provide" means here: while the two live harnesses are still
+ * compiled in, they are the fallback rather than the answer, and each one that moves out of core simply
+ * stops being registered.
+ *
+ * ⚠️ A harness whose payload is not installed does not serve anything. The manifest can be in the
+ * catalogue without the payload being on disk, and a descriptor that claimed a connection it cannot run
+ * would take it from the in-core provider that can.
+ * @param harness The contributed harness.
+ * @param connect Opens a transport to a started harness.
+ * @returns Returns the descriptor.
+ */
+export function toHarnessDescriptor(
+  harness: ContributedHarness,
+  connect: (spec: { command: string; args: readonly string[] }) => HarnessTransport,
+): AgentProviderDescriptor {
+  return {
+    id: harness.id,
+    serves: (connection: AiConnection): boolean =>
+      harness.connectionAuths.includes(connection.auth) && harness.spawnSpec() !== null,
+    create: (connection: AiConnection): AgentProvider => {
+      const spec: { command: string; args: readonly string[] } | null = harness.spawnSpec();
+      if (spec === null) {
+        // Unreachable while `serves` checks the same thing, and worth failing loudly rather than
+        // silently handing back something that cannot run.
+        throw new Error(`${harness.displayName} is not installed.`);
+      }
+      return new HarnessAgentProvider({
+        id: connection.id,
+        label: harness.displayName,
+        models: connection.models,
+        defaultModelId: connection.defaultModelId,
+        connect: (): HarnessTransport => connect(spec),
+      });
+    },
+  };
 }
 
 /**

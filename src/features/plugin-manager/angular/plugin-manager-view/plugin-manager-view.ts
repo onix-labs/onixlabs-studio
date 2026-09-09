@@ -45,6 +45,7 @@ const SLOT_LABELS: Readonly<Record<PluginSlot, string>> = {
   'debug-adapter': 'Debugger',
   decoder: 'Decoder',
   'container-engine': 'Container engine',
+  'agent-harness': 'AI provider',
 };
 
 /**
