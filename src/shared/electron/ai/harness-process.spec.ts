@@ -1,0 +1,169 @@
+import { existsSync } from 'node:fs';
+import * as path from 'node:path';
+import { describe, expect, it, vi } from 'vitest';
+import type { AgentRunContext } from './agent-provider';
+
+// `HarnessProcess` reaches the pid journal and the process-tree helpers, both of which are Electron's
+// world. Nothing here depends on what they do.
+// ⛔ The relative modules cannot be mocked — the Angular unit-test system refuses `vi.mock` on a
+// relative import — so the dependency is cut at the bare specifier.
+vi.mock('electron', () => ({ app: { isPackaged: false, getPath: (): string => '/tmp' } }));
+
+const { HarnessAgentProvider } = await import('./harness-agent-provider');
+const { HarnessProcess } = await import('./harness-process');
+
+/**
+ * The reference harness, spawned for real by these tests.
+ *
+ * This is the only place the transport is exercised end to end. Everything else in the agent-protocol
+ * stack is driven by a fake, which is the right trade for logic — but a fake transport cannot show
+ * that a real pipe carries the protocol, that stderr does not corrupt it, or that a line arriving in
+ * pieces is still one message.
+ */
+const ECHO_HARNESS: string = path.join(
+  process.cwd(),
+  'src',
+  'shared',
+  'electron',
+  'ai',
+  'testing',
+  'echo-harness.mjs',
+);
+
+// ⛔ Resolved from the working directory, not from `import.meta.url`. A spec is transformed before it
+// runs, so its module URL is not a path on disk under every runner configuration — resolving from it
+// worked under `ng test` and silently produced a path that does not exist under `--coverage`, where
+// the only symptom was a harness that would not start. Fail loudly here instead.
+if (!existsSync(ECHO_HARNESS)) {
+  throw new Error(`The reference harness is missing: ${ECHO_HARNESS}`);
+}
+
+/**
+ * Builds a provider that runs the reference harness in a real child process.
+ * @returns Returns the provider.
+ */
+function echoProvider(): InstanceType<typeof HarnessAgentProvider> {
+  return new HarnessAgentProvider({
+    id: 'echo',
+    label: 'Echo Harness',
+    models: [{ id: 'm1', label: 'M1', contextWindow: 100 }],
+    defaultModelId: 'm1',
+    connect: (): InstanceType<typeof HarnessProcess> =>
+      new HarnessProcess({ command: process.execPath, args: [ECHO_HARNESS] }),
+  });
+}
+
+/**
+ * Builds a run context, recording what the harness emitted and what it asked.
+ * @param prompt The prompt, which is what tells the reference harness what to do.
+ * @param overrides Context fields to replace.
+ * @returns Returns the context and what it recorded.
+ */
+function contextFor(
+  prompt: string,
+  overrides: Partial<Record<string, unknown>> = {},
+): { context: AgentRunContext; texts: string[]; audits: string[] } {
+  const texts: string[] = [];
+  const audits: string[] = [];
+  const context: Record<string, unknown> = {
+    requestId: 'r1',
+    prompt,
+    workspaceRoot: null,
+    model: 'm1',
+    agentSessionId: null,
+    effort: null,
+    mode: 'agent',
+    surface: 'editor',
+    allowedWritePaths: [],
+    deniedWritePaths: [],
+    allowedNetworkLocations: [],
+    deniedNetworkLocations: [],
+    tokenCap: 1000,
+    resumeSessionId: null,
+    forkSession: false,
+    signal: new AbortController().signal,
+    bridge: { request: (): Promise<unknown> => Promise.resolve(null) },
+    emit: (event: unknown): void => {
+      const typed: { kind?: string; delta?: string } = event as { kind?: string; delta?: string };
+      if (typed.kind === 'text' && typed.delta !== undefined) {
+        texts.push(typed.delta);
+      }
+    },
+    recordAudit: (name: string): void => void audits.push(name),
+    setSteerHandler: (): void => undefined,
+    requestPermission: (): Promise<boolean> => Promise.resolve(true),
+    requestInput: (): Promise<string | null> => Promise.resolve('hello'),
+    requestEditDecision: (): Promise<string> => Promise.resolve('yes'),
+    ...overrides,
+  };
+  return { context: context as unknown as AgentRunContext, texts, audits };
+}
+
+describe('HarnessProcess, against the reference harness', () => {
+  it('carriesAWholeTurnOverARealPipe', async () => {
+    const { context, texts } = contextFor('hello there');
+
+    await echoProvider().run(context);
+
+    // Spawn, handshake, turn envelope, streamed event, settle — over stdin and stdout of an actual
+    // process, with nothing faked.
+    expect(texts).toEqual(['echo: hello there']);
+  }, 20_000);
+
+  it('putsTheHarnessQuestionToTheUserAndCarriesTheAnswerBack', async () => {
+    const { context, texts } = contextFor('ask');
+
+    await echoProvider().run(context);
+
+    // The harness blocked, Studio answered, and the harness saw the answer: the round-trip this whole
+    // protocol exists for, proved across a process boundary.
+    expect(texts).toEqual(['permitted']);
+  }, 20_000);
+
+  it('carriesTheUsersAnswerToAQuestionBackAsText', async () => {
+    const { context, texts } = contextFor('input');
+
+    await echoProvider().run(context);
+
+    expect(texts).toEqual(['hello']);
+  }, 20_000);
+
+  it('stderrAndNonJsonOnStdoutDoNotCorruptTheProtocol', async () => {
+    const { context, texts } = contextFor('noise');
+
+    await echoProvider().run(context);
+
+    // The failure #541 was, proved against a real stream: a harness writing diagnostics cannot have
+    // them mistaken for content, and a stray line cannot derail the turn.
+    expect(texts).toEqual(['survived the noise']);
+  }, 20_000);
+
+  it('recordsAnAuditEntryTheHarnessReports', async () => {
+    const { context, audits } = contextFor('hello');
+
+    await echoProvider().run(context);
+
+    expect(audits).toEqual(['Echo']);
+  }, 20_000);
+
+  it('failsTheTurnWhenTheHarnessFailsIt', async () => {
+    const { context } = contextFor('fail');
+
+    await expect(echoProvider().run(context)).rejects.toThrow('asked to fail');
+  }, 20_000);
+
+  it('failsTheTurnWhenTheHarnessCannotBeStarted', async () => {
+    const provider: InstanceType<typeof HarnessAgentProvider> = new HarnessAgentProvider({
+      id: 'missing',
+      label: 'Missing Harness',
+      models: [{ id: 'm1', label: 'M1', contextWindow: 100 }],
+      defaultModelId: 'm1',
+      connect: (): InstanceType<typeof HarnessProcess> =>
+        new HarnessProcess({ command: path.join(path.sep, 'nonexistent-harness'), args: [] }),
+    });
+
+    // A harness that never starts must fail the turn rather than leave it waiting on a handshake that
+    // will never come.
+    await expect(provider.run(contextFor('hello').context)).rejects.toThrow();
+  }, 20_000);
+});
