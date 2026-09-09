@@ -247,6 +247,50 @@ export function installedContributions(
 }
 
 /**
+ * Describes which contributions fill the slot being asked about.
+ *
+ * A predicate rather than a slot and a key, because the three slots are not keyed the same way and
+ * {@link installedContributions}' overloads exist precisely to say so: a language server is keyed by
+ * language, a decoder by binary format, and a container engine by nothing at all. Flattening that into
+ * one signature would mean inventing a key for the slot that has none.
+ */
+export type ContributionMatch = (contribution: PluginContribution) => boolean;
+
+/**
+ * Gets the plugins that could fill a slot but are not installed — what to offer a user who has just
+ * run into the gap.
+ *
+ * The counterpart of {@link installedContributions}, and the answer to the same question from the
+ * other side. Three prompts each computed this for their own slot before #657, with three
+ * implementations that agreed by coincidence rather than by construction.
+ *
+ * **Nothing is offered once something already fills the slot.** Support that exists is never advertised
+ * again, whether the user installed it a moment ago or a year ago.
+ *
+ * ⚠️ Only `available` plugins are candidates, deliberately narrower than "not installed". A plugin can
+ * also be `unavailable` — its publisher ships no build for this platform — and offering one is offering
+ * an install the Plugin Manager will refuse. `podman-engine` on an Intel Mac is the live example.
+ * @param plugins The known plugins.
+ * @param matches Tests whether a contribution fills the slot in question.
+ * @returns Returns the installable candidates in catalogue order, or nothing when the slot is filled.
+ */
+export function slotCandidates(
+  plugins: readonly PluginSummary[],
+  matches: ContributionMatch,
+): readonly PluginSummary[] {
+  const fills: (plugin: PluginSummary) => boolean = (plugin: PluginSummary): boolean =>
+    plugin.contributions.some(matches);
+  if (
+    plugins.some((plugin: PluginSummary): boolean => plugin.state === 'installed' && fills(plugin))
+  ) {
+    return [];
+  }
+  return plugins.filter(
+    (plugin: PluginSummary): boolean => plugin.state === 'available' && fills(plugin),
+  );
+}
+
+/**
  * Narrows a contribution to the language-keyed form when it fills a language-keyed slot.
  *
  * Exists because `slot` discriminates the union, and narrowing on a comparison against a slot *variable*
