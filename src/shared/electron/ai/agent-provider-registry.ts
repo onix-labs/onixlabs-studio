@@ -77,6 +77,39 @@ export class AgentProviderRegistry {
   }
 
   /**
+   * Reports where a contributed harness has taken a connection an in-core one would also have served.
+   *
+   * **This is the transitional hazard of #653, said out loud.** Contributed harnesses register ahead of
+   * the ones Studio compiles in, which is the intended shape — a harness that has moved out of core
+   * should win. But while both exist, an *incomplete* plugin claiming `claude-login` silently replaces
+   * a provider that does considerably more, and the user's only symptom is capability quietly going
+   * missing: no sub-agents, no remote control, no tool policy.
+   *
+   * Nothing is refused here, because refusing would defeat the point of the ordering. What this does is
+   * make the displacement visible in the log instead of invisible in the product, so a bug report saying
+   * "the agent stopped doing X after I installed Y" has one line that explains it.
+   *
+   * ⛔ The real answer is that a partial adapter must not claim an auth kind an in-core harness serves.
+   * That is a rule for whoever writes one, and this is how it gets caught when it is broken.
+   * @param connection The connection being resolved.
+   * @param winner The descriptor that served it.
+   */
+  private reportDisplacement(connection: AiConnection, winner: AgentProviderDescriptor): void {
+    const core: readonly string[] = coreAgentProviders()
+      .filter((candidate: AgentProviderDescriptor): boolean => candidate.id !== 'ai-sdk')
+      .filter((candidate: AgentProviderDescriptor): boolean => candidate.serves(connection))
+      .map((candidate: AgentProviderDescriptor): string => candidate.id);
+    if (core.length === 0 || core.includes(winner.id)) {
+      return;
+    }
+    logger.warn(
+      'AgentProviderRegistry',
+      `Harness '${winner.id}' is running connection '${connection.id}' in place of the built-in ` +
+        `'${core.join(', ')}'. If capability is missing from this agent, that is where it went.`,
+    );
+  }
+
+  /**
    * Builds the provider for a connection, from the first registered harness that serves it.
    * @param connection The connection to build a provider for.
    * @returns Returns the provider, or null when nothing registered serves the connection.
@@ -94,6 +127,7 @@ export class AgentProviderRegistry {
       );
       return null;
     }
+    this.reportDisplacement(connection, descriptor);
     return descriptor.create(connection);
   }
 

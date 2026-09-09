@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { AiConnection } from '@shared/api/ai-types';
+import { logger } from '@shared/electron/logger';
 import type { AgentProvider } from './agent-provider';
 
 // The core descriptors construct the real providers, and `ClaudeAgentProvider` reaches Electron through
@@ -205,5 +206,104 @@ describe('toHarnessDescriptor', () => {
     // "Core defines, plugins provide": while the two live harnesses are still compiled in, they are
     // the fallback rather than the answer.
     expect(registry.registered()[0]).toBe('claude-harness');
+  });
+});
+
+describe('displacing a built-in harness', () => {
+  /**
+   * Builds a contributed harness claiming an auth kind.
+   * @param id The harness id.
+   * @param auth The auth kind it claims.
+   * @returns Returns the contributed harness.
+   */
+  function claiming(
+    id: string,
+    auth: string,
+  ): {
+    id: string;
+    displayName: string;
+    priority: number;
+    connectionAuths: readonly string[];
+    spawnSpec: () => { command: string; args: readonly string[] } | null;
+  } {
+    return {
+      id,
+      displayName: id,
+      priority: 100,
+      connectionAuths: [auth],
+      spawnSpec: (): { command: string; args: readonly string[] } | null => ({
+        command: '/bin/harness',
+        args: [],
+      }),
+    };
+  }
+
+  it('warnsWhenAPluginTakesAConnectionABuiltInHarnessWouldHaveServed', () => {
+    const warnings: string[] = [];
+    const original: typeof logger.warn = logger.warn.bind(logger);
+    logger.warn = (source: string, message: string): void => void warnings.push(message);
+    try {
+      const registry: InstanceType<typeof AgentProviderRegistry> = new AgentProviderRegistry();
+      registry.register(
+        toHarnessDescriptor(claiming('my-claude', 'claude-login'), () => ({}) as never),
+      );
+      for (const core of coreAgentProviders()) {
+        registry.register(core);
+      }
+
+      registry.providerFor(connection('c1', 'claude-login'));
+    } finally {
+      logger.warn = original;
+    }
+
+    // Nothing is refused — refusing would defeat the ordering that makes moving a harness out of core
+    // a one-line change. But an incomplete plugin replacing a provider that does more is a capability
+    // regression whose only symptom is something quietly missing, so it is said in the log.
+    expect(warnings.join(' ')).toContain('in place of the built-in');
+    expect(warnings.join(' ')).toContain('claude');
+  });
+
+  it('saysNothingWhenNoBuiltInHarnessWantedTheConnection', () => {
+    const warnings: string[] = [];
+    const original: typeof logger.warn = logger.warn.bind(logger);
+    logger.warn = (source: string, message: string): void => void warnings.push(message);
+    try {
+      const registry: InstanceType<typeof AgentProviderRegistry> = new AgentProviderRegistry();
+      registry.register(
+        toHarnessDescriptor(claiming('novel', 'some-new-login'), () => ({}) as never),
+      );
+      for (const core of coreAgentProviders()) {
+        registry.register(core);
+      }
+
+      registry.providerFor(connection('c1', 'some-new-login'));
+    } finally {
+      logger.warn = original;
+    }
+
+    // A harness serving an auth kind Studio ships no provider for displaces nothing. That is the
+    // ordinary case and must stay quiet, or the warning becomes noise nobody reads.
+    expect(warnings).toEqual([]);
+  });
+
+  it('saysNothingWhenTheGenericAdapterWouldHaveTakenIt', () => {
+    const warnings: string[] = [];
+    const original: typeof logger.warn = logger.warn.bind(logger);
+    logger.warn = (source: string, message: string): void => void warnings.push(message);
+    try {
+      const registry: InstanceType<typeof AgentProviderRegistry> = new AgentProviderRegistry();
+      registry.register(toHarnessDescriptor(claiming('novel', 'api-key'), () => ({}) as never));
+      for (const core of coreAgentProviders()) {
+        registry.register(core);
+      }
+
+      registry.providerFor(connection('c1', 'api-key'));
+    } finally {
+      logger.warn = original;
+    }
+
+    // The AI-SDK descriptor serves everything, so counting it would warn on every harness ever
+    // installed. It is a fallback, not a capability being lost.
+    expect(warnings).toEqual([]);
   });
 });
