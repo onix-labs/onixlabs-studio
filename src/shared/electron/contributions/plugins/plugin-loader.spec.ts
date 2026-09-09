@@ -20,6 +20,7 @@ import {
   NodeRuntimeSpec,
   payloadOps,
   PayloadOps,
+  resolveInstalledVersion,
   toContainerEngineDescriptors,
   toDebugAdapterEntries,
   toDecoderDescriptors,
@@ -1076,5 +1077,38 @@ describe('an install older than the catalogue offers (#456)', () => {
     await expect(
       descriptor.detect({ provisioner: versionedProvisioner('1.0.0', []) }),
     ).resolves.toBe(true);
+  });
+});
+
+describe('resolveInstalledVersion', () => {
+  it('prefersTheOfferedVersionWhenItIsTheOneInstalled', () => {
+    // The ordinary case, and it must win: preferring another copy would resolve an old install on a
+    // machine that is perfectly up to date.
+    expect(resolveInstalledVersion(['1.0.0', '2.0.0'], '2.0.0', '1.0.0')).toBe('2.0.0');
+  });
+
+  it('fallsBackToTheRecordedVersionWhenTheCatalogueHasMovedAhead', () => {
+    expect(resolveInstalledVersion(['1.0.0'], '2.0.0', '1.0.0')).toBe('1.0.0');
+  });
+
+  it('resolvesALoneInstallThatNoRecordNames', () => {
+    // The state #456 leaves behind: the install is on disk and its record was forgotten as stale
+    // (#463). Stopping at the record would leave every already-broken profile broken.
+    expect(resolveInstalledVersion(['1.0.0'], '2.0.0', null)).toBe('1.0.0');
+  });
+
+  it('ignoresARecordNamingAVersionThatIsNotOnDisk', () => {
+    // A record can outlive the directory it describes — removed by hand, or a failed prune.
+    expect(resolveInstalledVersion(['1.0.0'], '3.0.0', '2.0.0')).toBe('1.0.0');
+  });
+
+  it('declinesToGuessBetweenSeveralInstallsWithNoRecord', () => {
+    // Guessing risks spawning an old binary against a new workspace. Reporting nothing installed is
+    // the recoverable failure: the user is offered the install and gets a known-good copy.
+    expect(resolveInstalledVersion(['1.0.0', '1.5.0'], '2.0.0', null)).toBeNull();
+  });
+
+  it('resolvesNothingWhenNothingIsInstalled', () => {
+    expect(resolveInstalledVersion([], '2.0.0', '1.0.0')).toBeNull();
   });
 });

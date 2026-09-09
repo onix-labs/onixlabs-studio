@@ -13,6 +13,7 @@ import {
   toDebugAdapterEntries,
   toDecoderDescriptors,
   toLanguageServerDescriptors,
+  resolveInstalledVersion,
   toPluginDescriptor,
 } from './plugin-loader';
 import { sideloadedDirectories, sideloadedManifests } from './sideloaded';
@@ -220,13 +221,44 @@ export function pluginStore(): PluginStore {
 }
 
 /**
- * Gets the version of a plugin that is actually installed, or null when Studio has no record of one.
+ * Gets the version of a plugin that is actually installed, or null when none is.
  *
- * A free function rather than a method so it can be handed to the descriptor builders without handing
- * them the store itself: they need to know which version to resolve, not to be able to record one.
+ * **Answered from the disk, with the install record only breaking ties.** The obvious implementation —
+ * read the version out of the store — is not enough, and the reason is #456's own second-order effect:
+ * a record whose install does not detect is treated as stale and forgotten (#463), so every profile
+ * that already hit the bug has an install on disk and *no record of it*. A store-only lookup cannot
+ * heal those, and this bug has been reachable since the index went public.
+ *
+ * The order is what a person would do. Is the version being offered installed? Then that, and nothing
+ * else needs deciding — this is the ordinary case and it short-circuits. Otherwise, is the version we
+ * recorded installed? Then that. Otherwise there is exactly one install and no record naming it, so it
+ * is the one that was meant.
+ *
+ * ⚠️ Several installs with nothing to say which is meant is the one case that declines to answer.
+ * Pruning after an update makes it nearly unreachable, and guessing between two copies risks spawning
+ * an old binary against a new workspace — reporting nothing installed is the recoverable failure.
  * @param id The plugin identifier.
+ * @param offered The version the catalogue offers.
  * @returns Returns the installed version, or null.
  */
-function installedVersion(id: string): string | null {
-  return pluginStore().get(id)?.version ?? null;
+function installedVersion(id: string, offered: string): string | null {
+  const versions: readonly string[] = payloadProvisioner().installedVersions(id);
+  if (versions.length === 0) {
+    return null;
+  }
+  const recorded: string | null = pluginStore().get(id)?.version ?? null;
+  const resolved: string | null = resolveInstalledVersion(versions, offered, recorded);
+  if (resolved === null) {
+    logger.warn(
+      'ContributedPlugins',
+      `${id} has ${versions.length} installs (${versions.join(', ')}) and no record naming one; ` +
+        'resolving none of them',
+    );
+  } else if (resolved !== offered && resolved !== recorded) {
+    logger.info(
+      'ContributedPlugins',
+      `${id} ${resolved} is installed with no record of it; resolving against it`,
+    );
+  }
+  return resolved;
 }

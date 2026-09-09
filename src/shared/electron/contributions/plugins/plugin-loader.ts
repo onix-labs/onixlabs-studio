@@ -139,14 +139,53 @@ export function validManifests(plugins: readonly LoadedPlugin[]): readonly Plugi
 }
 
 /**
- * Looks up the version of a plugin that is actually installed on this machine, or null when Studio has
- * no record of having installed it.
+ * Looks up the version of a plugin that is actually installed on this machine, or null when none is.
  *
- * Takes the identifier rather than being bound to one plugin, so a single lookup backed by the install
- * store serves every manifest — there is one record of what is installed, and threading one function
- * is what keeps it that way (#463).
+ * Takes the identifier rather than being bound to one plugin, so a single lookup serves every manifest.
+ * Takes the offered version too, so the common case — what the catalogue offers is what is installed —
+ * is answered without preferring some other copy to it.
  */
-export type InstalledVersion = (id: string) => string | null;
+export type InstalledVersion = (id: string, offered: string) => string | null;
+
+/**
+ * Decides which installed version a contribution should resolve against.
+ *
+ * Pure, and separated from the disk read that feeds it, because the *order* is the part with a
+ * judgement in it and the part worth holding to by test. The caller supplies what is on disk and what
+ * was recorded; this decides.
+ *
+ * The order is what a person would do:
+ *
+ *   1. **Is the offered version installed?** Then that, and nothing else needs deciding. This is the
+ *      ordinary case, and it must win — preferring some other copy to the one the catalogue offers
+ *      would resolve an old install on a machine that is perfectly up to date.
+ *   2. **Is the recorded version installed?** Then that. The catalogue has moved ahead and the record
+ *      says which version the user actually has: #456's ordinary shape.
+ *   3. **Exactly one install, and no record naming it?** Then that one. This is the state #456 leaves
+ *      behind — the install is on disk and its record was forgotten as stale (#463) — so a lookup that
+ *      stopped at step 2 could not heal a profile the bug had already broken.
+ *
+ * ⚠️ Several installs with nothing to say which is meant is the one case that declines to answer.
+ * Pruning after an update makes it nearly unreachable, and guessing between two copies risks spawning
+ * an old binary against a new workspace; reporting nothing installed is the recoverable failure.
+ * @param versions The versions installed and complete on disk.
+ * @param offered The version the catalogue offers.
+ * @param recorded The version the install store recorded, or null when it has no record.
+ * @returns Returns the version to resolve against, or null when none can be chosen.
+ */
+export function resolveInstalledVersion(
+  versions: readonly string[],
+  offered: string,
+  recorded: string | null,
+): string | null {
+  if (versions.includes(offered)) {
+    return offered;
+  }
+  if (recorded !== null && versions.includes(recorded)) {
+    return recorded;
+  }
+  return versions.length === 1 ? versions[0] : null;
+}
 
 /**
  * Turns a manifest's provisioning into the recipe the archive provisioner installs from. The shapes
@@ -351,7 +390,8 @@ export function payloadOps(
   }
   // The version on disk when one is recorded and differs, the offered one otherwise. Read per call:
   // installing an update mid-session must change what resolves next, without a restart.
-  const onDisk: () => string = (): string => installedVersion?.(manifest.id) ?? manifest.version;
+  const onDisk: () => string = (): string =>
+    installedVersion?.(manifest.id, manifest.version) ?? manifest.version;
   const tree: LockfileProvision | null = toTreeProvision(manifest);
   if (tree !== null) {
     const installedTree: () => LockfileProvision = (): LockfileProvision =>
