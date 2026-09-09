@@ -1,5 +1,10 @@
 import { computed, effect, inject, Service, Signal } from '@angular/core';
-import { installedContributions, PluginSummary } from '@shared/api/plugin-channels';
+import {
+  installedContributions,
+  PluginContribution,
+  PluginSummary,
+  slotCandidates,
+} from '@shared/api/plugin-channels';
 import { Log } from '@shared/angular/services/log/log';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
 import { Plugins } from './plugins';
@@ -52,12 +57,10 @@ export class ContainerEnginePrompt {
    */
   public readonly candidates: Signal<readonly PluginSummary[]> = computed(
     (): readonly PluginSummary[] =>
-      this.plugins
-        .plugins()
-        .filter(
-          (plugin: PluginSummary): boolean =>
-            plugin.state !== 'installed' && this.contributesAnEngine(plugin),
-        ),
+      slotCandidates(
+        this.plugins.plugins(),
+        (contribution: PluginContribution): boolean => contribution.slot === 'container-engine',
+      ),
   );
 
   /**
@@ -123,16 +126,5 @@ export class ContainerEnginePrompt {
     }
     this.log.info('ContainerEnginePrompt', `Installing ${plugin.id} from the empty state`);
     return this.plugins.installWithConsent(plugin.id);
-  }
-
-  /**
-   * Gets whether a plugin contributes a container engine.
-   * @param plugin The plugin to test.
-   * @returns Returns true when it does.
-   */
-  private contributesAnEngine(plugin: PluginSummary): boolean {
-    return plugin.contributions.some(
-      (contribution): boolean => contribution.slot === 'container-engine',
-    );
   }
 }

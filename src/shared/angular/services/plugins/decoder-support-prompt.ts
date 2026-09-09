@@ -1,5 +1,10 @@
 import { computed, effect, inject, Service, Signal } from '@angular/core';
-import { FormatPluginContribution, PluginSummary } from '@shared/api/plugin-channels';
+import {
+  FormatPluginContribution,
+  PluginContribution,
+  PluginSummary,
+  slotCandidates,
+} from '@shared/api/plugin-channels';
 import { installedContributions } from '@shared/api/plugin-channels';
 import { Log } from '@shared/angular/services/log/log';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
@@ -100,9 +105,11 @@ export class DecoderSupportPrompt {
     if (this.offered.has(format) || this.isCovered(format)) {
       return;
     }
-    const candidates: readonly PluginSummary[] = this.plugins
-      .plugins()
-      .filter((plugin: PluginSummary): boolean => this.contributes(plugin, format));
+    const candidates: readonly PluginSummary[] = slotCandidates(
+      this.plugins.plugins(),
+      (contribution: PluginContribution): boolean =>
+        contribution.slot === 'decoder' && contribution.formats.includes(format),
+    );
     if (candidates.length === 0) {
       return;
     }
