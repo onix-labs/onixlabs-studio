@@ -30,6 +30,7 @@ import {
   validManifests,
 } from './plugin-loader';
 import { ContainerEngineDescriptor } from '../containers/container-engine';
+import { PluginDescriptor } from './plugin-catalogue';
 
 /**
  * Builds a well-formed manifest for a sideloaded plugin.
@@ -888,5 +889,192 @@ describe('a sideloaded plugin carrying its own payload', () => {
     );
 
     expect(descriptors).toEqual([]);
+  });
+});
+
+describe('an install older than the catalogue offers (#456)', () => {
+  // Installs are version-scoped, so which version a resolution asks about decides whether it finds
+  // anything at all. These stubs therefore record the version rather than ignoring it — a stub that
+  // answers the same for every version cannot fail the way the application did.
+
+  /**
+   * Builds a provisioner that reports an install for exactly one version, and records every version it
+   * was asked about, in call order.
+   * @param present The version that is on disk.
+   * @param asked Collects the versions the code under test asks about.
+   * @returns Returns the stub.
+   */
+  function versionedProvisioner(present: string, asked: string[]): LspProvisioner {
+    const seen: (provision: ArchiveProvision | LockfileProvision) => string = (
+      provision: ArchiveProvision | LockfileProvision,
+    ): string => {
+      asked.push(provision.version);
+      return provision.version;
+    };
+    return {
+      isArchiveInstalled: (p: ArchiveProvision): boolean => seen(p) === present,
+      archiveTarget: (p: ArchiveProvision): string | null =>
+        seen(p) === present ? `/installed/${p.version}/zls` : null,
+      removeArchive: (p: ArchiveProvision): Promise<void> => {
+        seen(p);
+        return Promise.resolve();
+      },
+      ensureArchive: (p: ArchiveProvision): Promise<string | null> => {
+        seen(p);
+        return Promise.resolve(`/installed/${p.version}/zls`);
+      },
+      isTreeInstalled: (p: LockfileProvision): boolean => seen(p) === present,
+      treeDirectory: (p: LockfileProvision): string | null => `/installed/${p.version}`,
+      treeTarget: (p: LockfileProvision, entryPoint?: string): string | null => {
+        const relative: string | undefined = entryPoint ?? p.executablePath;
+        return seen(p) === present && relative !== undefined
+          ? path.join(`/installed/${p.version}`, relative)
+          : null;
+      },
+      removeTree: (p: LockfileProvision): Promise<void> => {
+        seen(p);
+        return Promise.resolve();
+      },
+      pruneOtherVersions: (): Promise<void> => Promise.resolve(),
+    } as unknown as LspProvisioner;
+  }
+
+  /**
+   * Writes the manifest to a directory and loads it back through the real validator, so these tests
+   * exercise the shape the application actually resolves.
+   * @param directory The directory to write into.
+   * @param overrides Fields to replace on the standard manifest.
+   * @returns Returns the validated manifest.
+   */
+  function load(directory: string, overrides: Record<string, unknown> = {}): PluginManifest {
+    mkdirSync(path.join(directory, 'zls'), { recursive: true });
+    writeFileSync(
+      path.join(directory, 'zls', MANIFEST_FILE),
+      JSON.stringify(manifest({ version: '2.0.0', ...overrides })),
+      'utf8',
+    );
+    const loaded: readonly PluginManifest[] = validManifests(discoverPlugins(directory));
+    return loaded[0];
+  }
+
+  let root: string;
+
+  beforeEach(() => {
+    root = mkdtempSync(path.join(tmpdir(), 'studio-456-'));
+  });
+
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it('payloadOps_reportsInstalledAgainstTheVersionOnDiskNotTheOneOffered', () => {
+    const asked: string[] = [];
+    const ops: PayloadOps = payloadOps(load(root), undefined, (): string => '1.0.0');
+
+    // The catalogue offers 2.0.0; 1.0.0 is what is on disk. Before the fix this asked about 2.0.0,
+    // found nothing, and reported a perfectly runnable plugin as not installed.
+    expect(ops.isInstalled(versionedProvisioner('1.0.0', asked))).toBe(true);
+    expect(asked).toEqual(['1.0.0']);
+  });
+
+  it('payloadOps_resolvesTheEntryPointInsideTheInstalledVersionsDirectory', () => {
+    const ops: PayloadOps = payloadOps(load(root), undefined, (): string => '1.0.0');
+
+    expect(ops.target(versionedProvisioner('1.0.0', []))).toBe('/installed/1.0.0/zls');
+  });
+
+  it('payloadOps_installsTheOfferedVersionRatherThanTheOneAlreadyThere', async () => {
+    const asked: string[] = [];
+    const ops: PayloadOps = payloadOps(load(root), undefined, (): string => '1.0.0');
+
+    // Installing is the one operation that must mean the *new* version: it is the update.
+    await expect(ops.ensure(versionedProvisioner('1.0.0', asked))).resolves.toBe(
+      '/installed/2.0.0/zls',
+    );
+    expect(asked).toEqual(['2.0.0']);
+  });
+
+  it('payloadOps_removesTheVersionThatIsActuallyOnDisk', async () => {
+    const asked: string[] = [];
+    const ops: PayloadOps = payloadOps(load(root), undefined, (): string => '1.0.0');
+
+    // Removing the offered version deleted nothing and orphaned the real install on disk forever.
+    await ops.remove(versionedProvisioner('1.0.0', asked));
+
+    expect(asked).toEqual(['1.0.0']);
+  });
+
+  it('payloadOps_readsTheInstalledVersionOnEveryCallSoAnUpdateTakesEffectWithoutARestart', () => {
+    let installed: string = '1.0.0';
+    const ops: PayloadOps = payloadOps(load(root), undefined, (): string => installed);
+
+    expect(ops.target(versionedProvisioner('1.0.0', []))).toBe('/installed/1.0.0/zls');
+
+    // The user accepts the update mid-session. Descriptors are built once at start-up, so a version
+    // captured at construction would keep resolving the superseded install until Studio restarted.
+    installed = '2.0.0';
+
+    expect(ops.target(versionedProvisioner('2.0.0', []))).toBe('/installed/2.0.0/zls');
+  });
+
+  it('payloadOps_fallsBackToTheOfferedVersionWhenNothingIsRecorded', () => {
+    const asked: string[] = [];
+    const ops: PayloadOps = payloadOps(load(root), undefined, (): null => null);
+
+    // A plugin Studio has never installed has no record to resolve against, and the offered version is
+    // the only version there is.
+    expect(ops.isInstalled(versionedProvisioner('2.0.0', asked))).toBe(true);
+    expect(asked).toEqual(['2.0.0']);
+  });
+
+  it('payloadOps_scopesAnNpmTreeByTheInstalledVersionToo', () => {
+    const npm: PluginManifest = load(root, {
+      provision: {
+        kind: 'npm',
+        lockfileUrl: 'https://example.com/zls.lock.json',
+        sha256: 'd'.repeat(64),
+        executablePath: 'node_modules/a/bin/run',
+      },
+    });
+    const ops: PayloadOps = payloadOps(npm, undefined, (): string => '1.0.0');
+
+    // The npm layout is version-scoped in exactly the same way, so it has exactly the same defect.
+    expect(ops.target(versionedProvisioner('1.0.0', []))).toBe(
+      path.join('/installed/1.0.0', 'node_modules/a/bin/run'),
+    );
+  });
+
+  it('toLanguageServerDescriptors_keepsServingFromTheOldVersionWhileTheUpdateIsOffered', async () => {
+    const descriptors: readonly LanguageServerDescriptor[] = toLanguageServerDescriptors(
+      load(root),
+      (): string => '1.0.0',
+    );
+    const resolution: LspResolution = await descriptors[0].resolve({
+      provisioner: versionedProvisioner('1.0.0', []),
+      settings: { get: (): { serverPaths: Record<string, string> } => ({ serverPaths: {} }) },
+      nodePackageServer: (entry: string): { command: string; args: string[] } => ({
+        command: 'node',
+        args: [entry],
+      }),
+    } as never);
+
+    // The symptom this whole issue is about: the server kept running instead of reporting itself
+    // uninstalled the moment the catalogue moved ahead.
+    expect(resolution.spec?.command).toBe('/installed/1.0.0/zls');
+  });
+
+  it('toPluginDescriptor_detectsAnOlderInstallSoItsRecordIsNotForgottenAsStale', async () => {
+    const descriptor: PluginDescriptor = toPluginDescriptor(
+      load(root),
+      undefined,
+      (): string => '1.0.0',
+    );
+
+    // The Plugin Manager forgets a record whose install does not detect (#463). Answering this against
+    // the catalogue's version therefore did not merely stop the server: it erased the record of the
+    // install it was wrong about, which is what the update offer is computed from.
+    await expect(
+      descriptor.detect({ provisioner: versionedProvisioner('1.0.0', []) }),
+    ).resolves.toBe(true);
   });
 });

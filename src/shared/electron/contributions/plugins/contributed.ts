@@ -6,6 +6,7 @@ import { LanguageServerDescriptor } from '../../lsp/language-server-descriptor';
 import { LspProvisioner } from '../../lsp/lsp-provisioner';
 import { PluginDescriptor } from './plugin-catalogue';
 import { PluginIndex } from './plugin-index';
+import { PluginStore } from './plugin-store';
 import {
   NodeRuntimeSpec,
   toContainerEngineDescriptors,
@@ -116,7 +117,7 @@ export function contributedManifests(): readonly PluginManifest[] {
 export function contributedPlugins(): readonly PluginDescriptor[] {
   const local: ReadonlyMap<string, string> = sideloadedDirectories();
   return contributedManifests().map((manifest: PluginManifest): PluginDescriptor =>
-    toPluginDescriptor(manifest, local.get(manifest.id)),
+    toPluginDescriptor(manifest, local.get(manifest.id), installedVersion),
   );
 }
 
@@ -125,7 +126,11 @@ export function contributedPlugins(): readonly PluginDescriptor[] {
  * @returns Returns the descriptors.
  */
 export function contributedLanguageServers(): readonly LanguageServerDescriptor[] {
-  return contributedManifests().flatMap(toLanguageServerDescriptors);
+  // ⚠️ Called through an arrow rather than passed to `flatMap` directly: `flatMap` supplies the index
+  // as a second argument, which would arrive as the installed-version lookup.
+  return contributedManifests().flatMap((manifest): readonly LanguageServerDescriptor[] =>
+    toLanguageServerDescriptors(manifest, installedVersion),
+  );
 }
 
 /**
@@ -134,7 +139,7 @@ export function contributedLanguageServers(): readonly LanguageServerDescriptor[
  */
 export function contributedDebugAdapters(): readonly DebugAdapterCatalogueEntry[] {
   return contributedManifests().flatMap((manifest): readonly DebugAdapterCatalogueEntry[] =>
-    toDebugAdapterEntries(manifest, payloadProvisioner),
+    toDebugAdapterEntries(manifest, payloadProvisioner, installedVersion),
   );
 }
 
@@ -151,7 +156,13 @@ export function contributedDecoders(
 ): readonly DecoderDescriptor[] {
   const local: ReadonlyMap<string, string> = sideloadedDirectories();
   return contributedManifests().flatMap((manifest): readonly DecoderDescriptor[] =>
-    toDecoderDescriptors(manifest, payloadProvisioner, nodeRuntime, local.get(manifest.id)),
+    toDecoderDescriptors(
+      manifest,
+      payloadProvisioner,
+      nodeRuntime,
+      local.get(manifest.id),
+      installedVersion,
+    ),
   );
 }
 
@@ -165,7 +176,12 @@ export function contributedDecoders(
 export function contributedContainerEngines(): readonly ContainerEngineDescriptor[] {
   const local: ReadonlyMap<string, string> = sideloadedDirectories();
   return contributedManifests().flatMap((manifest): readonly ContainerEngineDescriptor[] =>
-    toContainerEngineDescriptors(manifest, payloadProvisioner, local.get(manifest.id)),
+    toContainerEngineDescriptors(
+      manifest,
+      payloadProvisioner,
+      local.get(manifest.id),
+      installedVersion,
+    ),
   );
 }
 
@@ -183,4 +199,34 @@ let payloads: LspProvisioner | null = null;
 function payloadProvisioner(): LspProvisioner {
   payloads ??= new LspProvisioner();
   return payloads;
+}
+
+/**
+ * Holds the record of what Studio installed, opened once per launch.
+ */
+let store: PluginStore | null = null;
+
+/**
+ * Gets the install store, opened against the user-data directory on first use.
+ *
+ * **One instance, shared.** The Plugin Manager writes to it on every install and uninstall, and the
+ * resolution path reads from it to decide which version to run — a second instance over the same file
+ * would let the two disagree about what is installed, which is precisely the split-brain #463 removed.
+ * @returns Returns the store.
+ */
+export function pluginStore(): PluginStore {
+  store ??= new PluginStore(app.getPath('userData'));
+  return store;
+}
+
+/**
+ * Gets the version of a plugin that is actually installed, or null when Studio has no record of one.
+ *
+ * A free function rather than a method so it can be handed to the descriptor builders without handing
+ * them the store itself: they need to know which version to resolve, not to be able to record one.
+ * @param id The plugin identifier.
+ * @returns Returns the installed version, or null.
+ */
+function installedVersion(id: string): string | null {
+  return pluginStore().get(id)?.version ?? null;
 }
