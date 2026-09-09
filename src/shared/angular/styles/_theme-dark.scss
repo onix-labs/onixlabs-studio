@@ -81,8 +81,6 @@
   --settings-muted-foreground-color: var(--gray-400);
   --settings-control-background-color: var(--gray-800);
   --settings-button-background-color--hover: var(--gray-700);
-  --settings-button-border-color: var(--gray-600);
-  --settings-button-border-color--hover: var(--gray-500);
 
   --welcome-backdrop-blur: 0.35rem;
 
@@ -95,7 +93,6 @@
   // round — its card is the half-step DARKER than its near-white fields.
   --modal-panel-background-color: var(--gray-850);
 
-  --welcome-border-color: var(--gray-700);
   --welcome-muted-foreground-color: var(--gray-400);
 
   --agent-view-surface-color: var(--gray-800);
