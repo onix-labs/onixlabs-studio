@@ -47,13 +47,12 @@ import type {
   ProviderAvailability,
 } from './agent-provider';
 import { AiAuthManager } from './ai-auth-manager';
-import { AiSdkAdapter } from './ai-sdk-adapter';
+import { AgentProviderRegistry, coreAgentProviders } from './agent-provider-registry';
 import { isConnection, sanitizeClaudeExecutable, sanitizeConnections } from './connection-guard';
 import { AgentAuditLog, type AuditGrantSource } from './agent-audit-log';
 import { ClaudeAgentProvider } from './claude-agent-provider';
 import { type ClaudeSdkModel, runClaudeDiscovery } from './claude-model-discovery';
 import { readRemoteNotificationsEnabled, writeRemoteNotificationsEnabled } from './claude-settings';
-import { CodexAgentProvider } from './codex-agent-provider';
 import { runCodexDiscovery } from './codex-model-discovery';
 import { ClaudeLoginDriver, readClaudeAuthStatus, runClaudeLogout } from './claude-login';
 import { sanitizeToolPolicies } from './tool-policy';
@@ -356,12 +355,24 @@ export class AiManager {
   private readonly timedOut: Set<string> = new Set<string>();
 
   /**
+   * Owns which harness runs a connection. Open: a descriptor is registered rather than named in a
+   * branch, which is what lets a harness arrive from somewhere other than this compilation (#653).
+   */
+  private readonly harnesses: AgentProviderRegistry = new AgentProviderRegistry();
+
+  /**
    * Initializes a new instance of the {@link AiManager} class.
    * @param windowGetter A function that returns the window agent events are sent to.
    */
   public constructor(windowGetter: () => BrowserWindow | null) {
     this.windowGetter = windowGetter;
     this.bridge = new RendererBridge(windowGetter);
+
+    // Seeded with the harnesses Studio compiles in. Registered here rather than inside the registry so
+    // there is one obvious place a contributed harness joins them later (#653).
+    for (const descriptor of coreAgentProviders()) {
+      this.harnesses.register(descriptor);
+    }
 
     // Seed the subsystem so it is runnable before the renderer has listed its connections; the first
     // `listProviders` call replaces these with the user's own connections (which default to the same
@@ -372,29 +383,28 @@ export class AiManager {
   }
 
   /**
-   * Builds one provider per connection: a `claude-login` connection runs through the Claude Agent SDK
-   * (the local-login, deeply-agentic path); every other connection runs through the generic AI-SDK
-   * adapter, configured by the connection's kind and endpoint. Whatever connections the user configures
-   * are built exactly as given — none is privileged, and an empty list yields no providers.
+   * Builds one provider per connection, asking the registry which harness serves each.
+   *
+   * The mapping used to be a three-way `if` on `connection.auth` here. It is the same mapping, moved
+   * behind {@link AgentProviderRegistry} so the set of harnesses is open (#653): a `claude-login`
+   * connection runs through the Claude Agent SDK, a `codex-login` one through Codex, and everything
+   * else through the generic AI-SDK adapter, which is registered last and serves whatever is left.
+   *
+   * Whatever connections the user configures are built exactly as given — none is privileged, and an
+   * empty list yields no providers.
    * @param connections The connections to build providers from.
    * @returns Returns the built provider map and connection map.
    */
   private buildProviders(connections: readonly AiConnection[]): BuiltProviders {
     const providers: Map<string, AgentProvider> = new Map<string, AgentProvider>();
     for (const connection of connections) {
-      if (connection.auth === 'claude-login') {
-        providers.set(
-          connection.id,
-          new ClaudeAgentProvider(connection.models, connection.defaultModelId),
-        );
-      } else if (connection.auth === 'codex-login') {
-        providers.set(
-          connection.id,
-          new CodexAgentProvider(connection.models, connection.defaultModelId),
-        );
-      } else {
-        providers.set(connection.id, new AiSdkAdapter(connection));
+      const provider: AgentProvider | null = this.harnesses.providerFor(connection);
+      if (provider === null) {
+        // The registry has already said why. Skipping leaves the connection listed but unrunnable,
+        // which is honest: building something arbitrary for it would be worse.
+        continue;
       }
+      providers.set(connection.id, provider);
     }
     return {
       providers,
