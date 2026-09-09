@@ -1,0 +1,350 @@
+import { AiEvent } from './ai/ai-event-types';
+
+// The agent protocol: the wire an out-of-process agent harness and Studio speak (#653 phase 2).
+//
+// Written as types plus a validator rather than as prose, following the plugin manifest (#294): the
+// host has something to use, and the shape is held to by tests rather than by a document somebody has
+// to remember to re-read.
+//
+// **This phase defines the vocabulary. Nothing speaks it yet.** The host that launches a harness and
+// the first-party adapters that wrap the vendor SDKs are phase 3; the `agentHarnesses` contribution
+// point is phase 4. Defining it first is deliberate — the protocol is the commitment, and it is far
+// cheaper to argue with a type than with an implementation.
+//
+// ## The shape, and why it is smaller than it looks
+//
+// The half that streams **already exists**. `AiEvent` is a serialisable discriminated union of
+// eighteen kinds that already crosses IPC to the renderer, so a harness's output needs no new
+// vocabulary at all — it emits the events Studio already renders. Inventing a second one would mean
+// maintaining a translation nobody asked for.
+//
+// What has to be designed is everything that is *not* a stream:
+//
+//   - the **turn envelope**: `AgentRunContext` minus the things that cannot cross a wire;
+//   - the four **blocking round-trips** where the harness stops and asks Studio a question;
+//   - **steering**, the one message that travels the other way mid-turn;
+//   - the **handshake**, so a version mismatch is refused rather than half-honoured.
+//
+// ## What cannot cross, and what replaces it
+//
+// | In `AgentRunContext` | Why it cannot be sent | Replacement |
+// | --- | --- | --- |
+// | `signal: AbortSignal` | A live object | A `turn.abort` message |
+// | `bridge: AgentBridge` | An object with a method | `request.bridge` round-trips |
+// | `requestPermission`, `requestInput`, `requestEditDecision` | Functions returning promises | Request/response pairs correlated by `callId` |
+// | `setSteerHandler` | Registers a callback | A `capabilities.steering` flag plus `steer` messages |
+// | `emit` | A function | The harness simply sends `event` messages |
+//
+// ⚠️ Everything arriving from a harness is **untrusted**. It is another program, possibly one Studio
+// downloaded, so every inbound message goes through {@link parseHarnessMessage} and a message that
+// does not validate is refused rather than partially believed — the same rule the plugin manifest
+// applies to a manifest.
+
+/**
+ * The protocol version this build implements, as semver.
+ *
+ * The same contract as `PLUGIN_API_VERSION`: a harness declares the version it was written against and
+ * Studio decides whether it can honour it. A **newer minor** is refused rather than tolerated, because
+ * a harness written against a later version may rely on a message this build will silently ignore, and
+ * an agent turn that quietly does less is worse than one that refuses to start.
+ *
+ * `1.0.0` is the initial vocabulary: the turn envelope, `AiEvent` as the output stream, four blocking
+ * round-trips, steering, and the handshake.
+ */
+export const AGENT_PROTOCOL_VERSION: string = '1.0.0';
+
+/**
+ * Matches a plain three-part semver. Local and deliberately strict, for the same reason the manifest's
+ * is: this module is imported by both compilations and stays free of dependencies.
+ */
+const VERSION_PATTERN: RegExp = /^(\d+)\.(\d+)\.(\d+)$/;
+
+/**
+ * The blocking questions a harness can ask Studio mid-turn.
+ *
+ * Each has a matching {@link HarnessAnswer}, correlated by `callId`. They are the reason this is a
+ * protocol rather than a stream: the harness stops and waits, and what it waits for is a person.
+ */
+export type HarnessRequestKind = 'permission' | 'input' | 'edit-decision' | 'bridge';
+
+/**
+ * How a harness maintains a conversation, declared at handshake.
+ *
+ * Mirrors `AgentSessionModel`: `live-harness` keeps a session open across turns and can be resumed;
+ * `stateless` treats every turn as a fresh call with the transcript replayed.
+ */
+export type HarnessSessionModel = 'live-harness' | 'stateless';
+
+/**
+ * What a harness says it can do, at handshake.
+ *
+ * Declared rather than assumed, and declared **once** rather than probed per turn. A capability absent
+ * here means Studio does not offer the corresponding affordance at all — which is the honest outcome,
+ * and better than offering one that silently does nothing.
+ */
+export interface HarnessCapabilities {
+  /**
+   * Gets the protocol version the harness was written against.
+   */
+  readonly protocolVersion: string;
+
+  /**
+   * Gets how the harness maintains a conversation.
+   */
+  readonly sessionModel: HarnessSessionModel;
+
+  /**
+   * Gets whether the harness accepts a user message injected mid-turn. When false, Studio queues a
+   * steering message for the next turn instead, exactly as it does today for a provider that registers
+   * no steer handler.
+   */
+  readonly steering: boolean;
+
+  /**
+   * Gets whether the harness accepts images in a turn's input.
+   */
+  readonly images: boolean;
+
+  /**
+   * Gets the reasoning-effort levels the harness understands, in ascending order. Empty when it has no
+   * notion of effort, in which case Studio does not offer the control.
+   */
+  readonly efforts: readonly string[];
+
+  /**
+   * Gets whether the harness can resume a previous session by id, and fork one. Meaningless for a
+   * `stateless` harness and ignored there.
+   */
+  readonly resumable: boolean;
+}
+
+/**
+ * The turn envelope: everything a harness needs to run one turn, and nothing that cannot be sent.
+ *
+ * This is `AgentRunContext` with the live objects removed and the callbacks turned into messages. The
+ * field names are kept identical on purpose — a reader holding both open should not have to translate.
+ */
+export interface TurnRequest {
+  /**
+   * Gets the identifier of the run, which every event and request for this turn carries back.
+   */
+  readonly requestId: string;
+
+  /**
+   * Gets the user's prompt.
+   */
+  readonly prompt: string;
+
+  /**
+   * Gets the absolute path of the workspace root, or null when no workspace is open.
+   */
+  readonly workspaceRoot: string | null;
+
+  /**
+   * Gets the model to run.
+   */
+  readonly model: string;
+
+  /**
+   * Gets the agent session this turn belongs to, or null for a one-off run.
+   */
+  readonly agentSessionId: string | null;
+
+  /**
+   * Gets the reasoning effort, or null to leave it to the harness.
+   */
+  readonly effort: string | null;
+
+  /**
+   * Gets whether the turn may write, or is read-only. `chat` is read-only; `agent` may act.
+   */
+  readonly mode: 'chat' | 'agent';
+
+  /**
+   * Gets the surface the turn was dispatched from, which some harnesses use to shape their prompt.
+   */
+  readonly surface: string;
+
+  /**
+   * Gets the paths the turn may write to. **A boundary, not a hint**: a harness that writes outside
+   * this is misbehaving, and the host enforces it rather than trusting the harness to.
+   */
+  readonly allowedWritePaths: readonly string[];
+
+  /**
+   * Gets the paths the turn may not write to, which win over {@link allowedWritePaths}.
+   */
+  readonly deniedWritePaths: readonly string[];
+
+  /**
+   * Gets the network locations the turn may reach, empty for no restriction.
+   */
+  readonly allowedNetworkLocations: readonly string[];
+
+  /**
+   * Gets the network locations the turn may not reach, which win over the allowed list.
+   */
+  readonly deniedNetworkLocations: readonly string[];
+
+  /**
+   * Gets the token budget for the turn.
+   */
+  readonly tokenCap: number;
+
+  /**
+   * Gets the session to resume, or null to start a new one. Ignored by a `stateless` harness.
+   */
+  readonly resumeSessionId: string | null;
+
+  /**
+   * Gets whether resuming should fork the session rather than continue it.
+   */
+  readonly forkSession: boolean;
+}
+
+/**
+ * A message Studio sends a harness.
+ */
+export type HostMessage =
+  | { readonly type: 'initialize'; readonly protocolVersion: string }
+  | { readonly type: 'turn.start'; readonly turn: TurnRequest }
+  | { readonly type: 'turn.abort'; readonly requestId: string }
+  | { readonly type: 'steer'; readonly requestId: string; readonly text: string }
+  | { readonly type: 'answer'; readonly callId: string; readonly answer: HarnessAnswer };
+
+/**
+ * The answer to a blocking request, carried back under the request's `callId`.
+ *
+ * ⚠️ Every one has a shape for "the user did not answer", because a turn can be aborted while a prompt
+ * is open. A harness must handle a refusal for every question it asks.
+ */
+export type HarnessAnswer =
+  | { readonly kind: 'permission'; readonly granted: boolean }
+  | { readonly kind: 'input'; readonly answer: string | null }
+  | { readonly kind: 'edit-decision'; readonly decision: 'yes' | 'no' }
+  | { readonly kind: 'bridge'; readonly result: unknown; readonly error: string | null };
+
+/**
+ * A message a harness sends Studio.
+ *
+ * `event` carries `AiEvent` unchanged, which is the whole reason this protocol is tractable: the
+ * streaming vocabulary is the one Studio already renders.
+ */
+export type HarnessMessage =
+  | { readonly type: 'ready'; readonly capabilities: HarnessCapabilities }
+  | { readonly type: 'event'; readonly event: AiEvent }
+  | {
+      readonly type: 'request';
+      readonly callId: string;
+      readonly requestId: string;
+      readonly request: HarnessRequest;
+    }
+  | {
+      readonly type: 'audit';
+      readonly name: string;
+      readonly detail: string;
+      readonly source: string;
+    }
+  | {
+      readonly type: 'turn.completed';
+      readonly requestId: string;
+      readonly sessionId: string | null;
+    }
+  | { readonly type: 'turn.failed'; readonly requestId: string; readonly error: string };
+
+/**
+ * The body of a blocking request from a harness.
+ */
+export type HarnessRequest =
+  | { readonly kind: 'permission'; readonly name: string; readonly detail: string }
+  | { readonly kind: 'input'; readonly question: string; readonly choices: readonly string[] }
+  | {
+      readonly kind: 'edit-decision';
+      readonly name: string;
+      readonly detail: string;
+      readonly hasDiff: boolean;
+    }
+  | {
+      readonly kind: 'bridge';
+      readonly capability: string;
+      readonly input: unknown;
+      readonly timeoutMs: number | null;
+    };
+
+/**
+ * Gets whether a harness's declared protocol version is one this build can honour.
+ *
+ * Same rule as the plugin manifest, and for the same reason: a different major is a different contract;
+ * a newer minor may use messages this build would ignore, and an agent turn that quietly does less is
+ * worse than one that refuses to start; an older minor is fine, since every version only adds.
+ * @param declared The version the harness declares.
+ * @param supported The version this build implements, defaulting to {@link AGENT_PROTOCOL_VERSION}.
+ * @returns Returns true when the harness can be hosted.
+ */
+export function isProtocolCompatible(
+  declared: string,
+  supported: string = AGENT_PROTOCOL_VERSION,
+): boolean {
+  const left: RegExpExecArray | null = VERSION_PATTERN.exec(declared);
+  const right: RegExpExecArray | null = VERSION_PATTERN.exec(supported);
+  if (left === null || right === null) {
+    return false;
+  }
+  if (left[1] !== right[1]) {
+    return false;
+  }
+  const declaredMinor: number = Number(left[2]);
+  const supportedMinor: number = Number(right[2]);
+  if (declaredMinor !== supportedMinor) {
+    return declaredMinor < supportedMinor;
+  }
+  return Number(left[3]) <= Number(right[3]);
+}
+
+/**
+ * The message types a harness may send, as a closed set the validator checks against.
+ */
+const HARNESS_MESSAGE_TYPES: readonly string[] = [
+  'ready',
+  'event',
+  'request',
+  'audit',
+  'turn.completed',
+  'turn.failed',
+];
+
+/**
+ * Validates a message arriving from a harness.
+ *
+ * **Refuses rather than repairs.** A harness is another program — possibly one Studio downloaded — so a
+ * message that is not the shape this protocol describes is not guessed at. The alternative is a
+ * malformed request reaching the permission prompt, which is the one place in Studio where believing a
+ * badly-formed thing has consequences.
+ *
+ * Deliberately shallow: it checks the envelope and the discriminants, not the whole payload. `AiEvent`
+ * is validated where it is consumed, and a `bridge` request's `input` is `unknown` by design — its
+ * shape belongs to the capability being invoked, not to this protocol.
+ * @param value The parsed JSON to validate.
+ * @returns Returns the message, or null when it is not one.
+ */
+export function parseHarnessMessage(value: unknown): HarnessMessage | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return null;
+  }
+  const candidate: { type?: unknown; callId?: unknown; requestId?: unknown } = value;
+  if (typeof candidate.type !== 'string' || !HARNESS_MESSAGE_TYPES.includes(candidate.type)) {
+    return null;
+  }
+  // A request is the only message whose correlation id Studio must answer under, so a missing one is
+  // not recoverable: nothing could route the reply back.
+  if (candidate.type === 'request' && typeof candidate.callId !== 'string') {
+    return null;
+  }
+  // Everything that belongs to a turn must say which turn. An event for no run cannot be rendered, and
+  // a settle for no run would resolve nothing.
+  const needsRequestId: readonly string[] = ['request', 'turn.completed', 'turn.failed'];
+  if (needsRequestId.includes(candidate.type) && typeof candidate.requestId !== 'string') {
+    return null;
+  }
+  return value as HarnessMessage;
+}
