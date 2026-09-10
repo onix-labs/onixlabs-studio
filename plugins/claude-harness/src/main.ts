@@ -112,7 +112,7 @@ function optionsFor(turn: TurnRequest): Options {
       if (answer.kind === 'permission' && answer.granted) {
         // Recorded at the point it was allowed, which is what makes the audit log a record of what
         // happened rather than of what was asked.
-        send({ type: 'audit', name, detail: describeInput(input), source: 'user' });
+        send({ type: 'audit', requestId, name, detail: describeInput(input), source: 'user' });
         return { behavior: 'allow' };
       }
       return { behavior: 'deny', message: 'The user did not permit this.' };

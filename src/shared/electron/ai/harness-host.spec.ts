@@ -115,7 +115,10 @@ describe('HarnessHost', () => {
   beforeEach(() => {
     transport = new FakeTransport();
     audits = [];
-    host = new HarnessHost(transport, (name: string): void => void audits.push(name));
+    host = new HarnessHost(
+      transport,
+      (requestId: string, name: string): void => void audits.push(`${requestId}:${name}`),
+    );
   });
 
   it('initialize_sendsTheHandshakeAndResolvesOnReady', async () => {
@@ -312,12 +315,26 @@ describe('HarnessHost', () => {
     expect(transport.sent).toEqual([]);
   });
 
-  it('audit_isRecordedWithoutBelongingToATurn', () => {
+  it('audit_isAttributedToTheTurnThatRanTheAction', () => {
+    transport.emit({
+      type: 'audit',
+      requestId: 'r1',
+      name: 'Bash',
+      detail: 'ls',
+      source: 'posture',
+    });
+
+    // Protocol 1.1.0 added `requestId` precisely so this is answerable. Before it, an audit record was
+    // host-level, because crediting an unattributed action to whichever run was first in a map would
+    // have made the log actively misleading rather than merely incomplete.
+    expect(audits).toEqual(['r1:Bash']);
+  });
+
+  it('audit_withoutARunIsRefusedByTheValidatorRatherThanRecorded', () => {
     transport.emit({ type: 'audit', name: 'Bash', detail: 'ls', source: 'posture' });
 
-    // The message carries no run id and the audit log is global; routing it to an arbitrary in-flight
-    // turn would attribute it to whichever run happened to be first in a map.
-    expect(audits).toEqual(['Bash']);
+    // An executed action that names no turn is exactly what an audit log must not accept.
+    expect(audits).toEqual([]);
   });
 });
 
@@ -336,6 +353,14 @@ describe('refusalFor', () => {
       result: null,
       error: 'refused',
     });
+    expect(refusalFor({ kind: 'credential' })).toEqual({ kind: 'credential', apiKey: null });
+  });
+
+  it('refusesACredentialAsIndistinguishableFromHavingNone', () => {
+    // Deliberately the same shape as an unconfigured connection. A harness that could tell a refusal
+    // from an absent key would have a reason to retry against the other, and neither answer means it
+    // can authenticate.
+    expect(refusalFor({ kind: 'credential' })).toEqual({ kind: 'credential', apiKey: null });
   });
 
   it('deniesByDefaultWhenItCannotTellWhatWasAsked', () => {

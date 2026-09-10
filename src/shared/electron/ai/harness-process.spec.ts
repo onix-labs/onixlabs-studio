@@ -82,6 +82,7 @@ function contextFor(
     resumeSessionId: null,
     forkSession: false,
     signal: new AbortController().signal,
+    auth: { hasLocalLogin: false, hasCodexLogin: false, apiKey: null },
     bridge: { request: (): Promise<unknown> => Promise.resolve(null) },
     emit: (event: unknown): void => {
       const typed: { kind?: string; delta?: string } = event as { kind?: string; delta?: string };
@@ -144,6 +145,29 @@ describe('HarnessProcess, against the reference harness', () => {
     await echoProvider().run(context);
 
     expect(audits).toEqual(['Echo']);
+  }, 20_000);
+
+  it('carriesACredentialToARealHarnessOverTheRealTransport', async () => {
+    // The only end-to-end coverage of the credential round-trip: a spawned process asks, and the key
+    // crosses the pipe as an answer rather than riding in the turn envelope. The fixture reports the
+    // key's length rather than the key, so no test output can ever contain a secret.
+    const { context, texts } = contextFor('credential', {
+      auth: { hasLocalLogin: false, hasCodexLogin: false, apiKey: 'sk-abcdef' },
+    });
+
+    await echoProvider().run(context);
+
+    expect(texts).toEqual(['credential of 9']);
+  }, 20_000);
+
+  it('tellsARealHarnessThereIsNoCredentialRatherThanFailingTheTurn', async () => {
+    const { context, texts } = contextFor('credential');
+
+    await echoProvider().run(context);
+
+    // An unconfigured connection is a turn the harness can still settle, having decided for itself
+    // that it cannot authenticate. Studio does not pre-empt that decision.
+    expect(texts).toEqual(['no credential']);
   }, 20_000);
 
   it('failsTheTurnWhenTheHarnessFailsIt', async () => {

@@ -44,7 +44,7 @@ describe('parseHarnessMessage', () => {
       { type: 'ready', capabilities: {} },
       { type: 'event', event: { requestId: 'r1', kind: 'text', delta: 'hi' } },
       { type: 'request', callId: 'c1', requestId: 'r1', request: { kind: 'permission' } },
-      { type: 'audit', name: 'Bash', detail: 'ls', source: 'posture' },
+      { type: 'audit', requestId: 'r1', name: 'Bash', detail: 'ls', source: 'posture' },
       { type: 'turn.completed', requestId: 'r1', sessionId: 's1' },
       { type: 'turn.failed', requestId: 'r1', error: 'boom' },
     ];

@@ -148,6 +148,7 @@ function contextFor(overrides: Partial<Record<string, unknown>> = {}): {
     resumeSessionId: null,
     forkSession: false,
     signal: new AbortController().signal,
+    auth: { hasLocalLogin: false, hasCodexLogin: false, apiKey: null },
     bridge: { request: (): Promise<unknown> => Promise.resolve('bridged') },
     emit: (event: unknown): void => void events.push(event),
     recordAudit: (): void => undefined,
@@ -212,6 +213,35 @@ describe('HarnessAgentProvider', () => {
       { kind: 'edit-decision', decision: 'yes' },
       { kind: 'bridge', result: 'bridged', error: null },
     ]);
+  });
+
+  it('run_answersACredentialRequestFromWhatStudioHoldsWithoutPromptingAnyone', async () => {
+    harness.requests = [{ kind: 'credential' }];
+    let prompted: boolean = false;
+    const { context } = contextFor({
+      auth: { hasLocalLogin: false, hasCodexLogin: false, apiKey: 'sk-test-key' },
+      requestPermission: (): Promise<boolean> => {
+        prompted = true;
+        return Promise.resolve(true);
+      },
+    });
+
+    await provider.run(context);
+
+    // ⛔ The key was configured in Settings against this connection. Asking again once per turn would
+    // be a prompt with only one possible answer, so this is the one blocking request Studio settles
+    // from what it already holds.
+    expect(harness.answers()).toEqual([{ kind: 'credential', apiKey: 'sk-test-key' }]);
+    expect(prompted).toBe(false);
+  });
+
+  it('run_answersACredentialRequestWithNullWhenTheConnectionHasNoKey', async () => {
+    harness.requests = [{ kind: 'credential' }];
+    const { context } = contextFor();
+
+    await provider.run(context);
+
+    expect(harness.answers()).toEqual([{ kind: 'credential', apiKey: null }]);
   });
 
   it('run_deniesAQuestionOfAKindStudioCannotPut', async () => {

@@ -141,16 +141,21 @@ export class HarnessHost {
   /**
    * Holds the sink executed actions are recorded to.
    */
-  private readonly onAudit: (name: string, detail: string, source: string) => void;
+  private readonly onAudit: (
+    requestId: string,
+    name: string,
+    detail: string,
+    source: string,
+  ) => void;
 
   /**
    * Initializes a new instance of the {@link HarnessHost} class.
    * @param transport The pipe to the harness process.
-   * @param onAudit Records an executed action to the audit log.
+   * @param onAudit Records an executed action to the audit log, attributed to the turn that ran it.
    */
   public constructor(
     transport: HarnessTransport,
-    onAudit: (name: string, detail: string, source: string) => void,
+    onAudit: (requestId: string, name: string, detail: string, source: string) => void,
   ) {
     this.transport = transport;
     this.onAudit = onAudit;
@@ -298,10 +303,10 @@ export class HarnessHost {
         this.handleRequest(message.callId, message.requestId, message.request);
         break;
       case 'audit':
-        // Host-level rather than turn-scoped, because the audit message carries no run id and the
-        // audit log is global anyway. Routing it to an arbitrary in-flight turn would attribute it to
-        // whichever run happened to be first in a map.
-        this.onAudit(message.name, message.detail, message.source);
+        // Attributed to the turn that ran the action, which is what protocol 1.1.0 added `requestId`
+        // for. Before it, this was host-level via a constructor sink, because routing an unattributed
+        // record to an arbitrary in-flight turn would have credited whichever run was first in a map.
+        this.onAudit(message.requestId, message.name, message.detail, message.source);
         break;
       case 'turn.completed':
         this.settlers.get(message.requestId)?.(null);
@@ -420,6 +425,12 @@ export function refusalFor(request: unknown): HarnessAnswer {
   }
   if (kind === 'bridge') {
     return { kind: 'bridge', result: null, error: 'refused' };
+  }
+  if (kind === 'credential') {
+    // The same shape as "there is no key configured". A harness cannot tell a refused request from an
+    // unconfigured connection, and does not need to: both mean it cannot authenticate, and inventing a
+    // distinction would invite one to retry against the other.
+    return { kind: 'credential', apiKey: null };
   }
   return { kind: 'permission', granted: false };
 }
