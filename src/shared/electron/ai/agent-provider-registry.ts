@@ -182,6 +182,7 @@ export function toHarnessDescriptor(
         models: connection.models,
         defaultModelId: connection.defaultModelId,
         connect: (): HarnessTransport => connect(spec),
+        sessionModel: harness.sessionModel,
       });
     },
   };
