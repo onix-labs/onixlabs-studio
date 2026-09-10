@@ -61,6 +61,11 @@ jobs:
       - name: Build Electron main + preload (typecheck + bundle)
         run: npm run build:electron
 
+      # esbuild strips a plugin's types without checking them, so nothing else in this gate would
+      # notice a plugin that does not compile — including a harness somebody's agent runs on.
+      - name: Typecheck the plugins
+        run: npm run typecheck:plugins
+
   e2e:
     name: E2E (Playwright + Electron)
     runs-on: ubuntu-latest

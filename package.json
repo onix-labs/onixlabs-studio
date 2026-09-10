@@ -26,6 +26,7 @@
     "start": "ng serve",
     "build": "ng build",
     "build:electron": "tsc --noEmit -p src/shared/electron/tsconfig.json && npm run build:main && npm run build:preload",
+    "typecheck:plugins": "node scripts/typecheck-plugins.mjs",
     "build:main": "esbuild src/shared/electron/main.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist-electron/electron/main.js --packages=external --tsconfig=tsconfig.json --sourcemap",
     "build:preload": "esbuild src/shared/electron/preload.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist-electron/electron/preload.js --packages=external --tsconfig=tsconfig.json --sourcemap",
     "rebuild": "electron-rebuild --only node-pty",
