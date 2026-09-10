@@ -24,7 +24,7 @@ import { createInterface } from 'node:readline';
 /**
  * The protocol version this harness speaks. Declared, not imported: the contract is the wire.
  */
-const PROTOCOL_VERSION = '1.3.0';
+const PROTOCOL_VERSION = '1.4.0';
 
 /**
  * Writes one protocol message to Studio.
@@ -132,11 +132,27 @@ function receive(message) {
           efforts: [],
           resumable: false,
           remoteControl: false,
+          discovery: true,
         },
       });
       break;
     case 'turn.start':
       void runTurn(message.turn);
+      break;
+    case 'discover':
+      // Asks for a credential first, under the discovery id, which is the whole point of a discovery
+      // being correlated like a run: the request path is the ordinary one. What comes back decides
+      // nothing here — the fixture only proves the round-trip reached a real process and returned.
+      void ask(message.discoveryId, { kind: 'credential' }).then((answer) => {
+        send({
+          type: 'models',
+          discoveryId: message.discoveryId,
+          models:
+            answer.apiKey === null
+              ? [{ id: 'echo-anonymous' }]
+              : [{ id: 'echo-authenticated', label: 'Echo (authenticated)' }],
+        });
+      });
       break;
     case 'answer': {
       const resolve = awaiting.get(message.callId);

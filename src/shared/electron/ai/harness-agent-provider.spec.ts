@@ -48,6 +48,16 @@ class ScriptedHarness {
   public declaredRemoteControl: boolean = true;
 
   /**
+   * Holds whether the harness declares it can report its models.
+   */
+  public declaredDiscovery: boolean = true;
+
+  /**
+   * Holds the models the harness reports when asked.
+   */
+  public declaredModels: readonly { id: string; label?: string }[] = [{ id: 'm1' }];
+
+  /**
    * Holds whether the provider closed the transport.
    */
   public closed: boolean = false;
@@ -75,7 +85,16 @@ class ScriptedHarness {
           efforts: ['low', 'high'],
           resumable: true,
           remoteControl: this.declaredRemoteControl,
+          discovery: this.declaredDiscovery,
         },
+      });
+      return;
+    }
+    if (message['type'] === 'discover') {
+      this.emit({
+        type: 'models',
+        discoveryId: message['discoveryId'],
+        models: this.declaredModels,
       });
       return;
     }
@@ -340,6 +359,37 @@ describe('HarnessAgentProvider', () => {
     await provider.run(contextFor().context);
 
     expect(provider.sessionModel).toBe('stateless');
+  });
+
+  it('discoverModels_returnsWhatTheHarnessReports', async () => {
+    harness.declaredModels = [{ id: 'x1', label: 'Model X1' }];
+
+    const models: readonly { id: string; label?: string }[] | null = await provider.discoverModels({
+      hasLocalLogin: false,
+      hasCodexLogin: false,
+      apiKey: null,
+    });
+
+    expect(models).toEqual([{ id: 'x1', label: 'Model X1' }]);
+  });
+
+  it('discoverModels_doesNotAskAHarnessThatDidNotDeclareIt', async () => {
+    // ⛔ The guard that stops an unimplemented message hanging. `discover` must be answered, and a
+    // harness ignoring one it never heard of would leave this awaiting a reply that never comes.
+    harness.declaredDiscovery = false;
+
+    const models: readonly { id: string; label?: string }[] | null = await provider.discoverModels({
+      hasLocalLogin: false,
+      hasCodexLogin: false,
+      apiKey: null,
+    });
+
+    expect(models).toBeNull();
+    expect(
+      harness.sent.some(
+        (message: Record<string, unknown>): boolean => message['type'] === 'discover',
+      ),
+    ).toBe(false);
   });
 
   it('offersRemoteControlOnlyWhenItsManifestDeclaresIt', () => {

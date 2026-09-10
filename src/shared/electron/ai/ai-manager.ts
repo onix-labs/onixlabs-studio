@@ -66,7 +66,7 @@ import { ClaudeLoginDriver, readClaudeAuthStatus, runClaudeLogout } from './clau
 import { sanitizeToolPolicies } from './tool-policy';
 import { sanitizeWritePaths } from './write-confinement';
 import { sanitizeAgentShell } from '@shared/electron/shell-env';
-import { type HttpFetch, runDiscovery } from './model-discovery';
+import { type HttpFetch, mergeModels, runDiscovery } from './model-discovery';
 import { PermissionRuleStore } from './permission-rule-store';
 import { RendererBridge } from './renderer-bridge';
 
@@ -676,6 +676,14 @@ export class AiManager {
       'AiManager.discoverModels',
       `Discovering models for connection ${connection.id} (auth ${connection.auth})`,
     );
+    // A provider that can answer for itself is asked first, and that is the point of this branch
+    // existing at all: the alternatives below read the connection's *auth kind* to decide which vendor
+    // to talk to, which is core knowing a vendor's identity. A harness plugin knows what it can run, so
+    // it is asked rather than inferred about (#653).
+    const provider: AgentProvider | undefined = this.providers.get(connection.id);
+    if (provider?.discoverModels !== undefined) {
+      return this.discoverThroughProvider(connection, provider);
+    }
     if (connection.auth === 'claude-login') {
       const choice: ClaudeExecutableChoice = sanitizeClaudeExecutable(executable);
       const provider: ClaudeAgentProvider = new ClaudeAgentProvider(
@@ -691,6 +699,56 @@ export class AiManager {
     }
     const apiKey: string | null = this.auth.authFor(connection.id, connection.auth).apiKey;
     return runDiscovery(connection, apiKey, process.env, this.httpFetch);
+  }
+
+  /**
+   * Discovers a connection's models by asking the provider that runs it, then merges what it reported
+   * into the connection's own list.
+   *
+   * ⛔ The merge, the context-window resolution and the wording are all here rather than in the
+   * provider. A provider reports what it can run; what that *means* for the user's model list is one
+   * decision, made once, so two providers cannot disagree about the same model.
+   * @param connection The connection to discover for.
+   * @param provider The provider that runs it.
+   * @returns Returns the discovery result.
+   */
+  private async discoverThroughProvider(
+    connection: AiConnection,
+    provider: AgentProvider,
+  ): Promise<AiDiscoverModelsResult> {
+    const reported: readonly { id: string; label?: string }[] | null =
+      await provider.discoverModels!(this.authForConnection(connection.id));
+    if (reported === null) {
+      return {
+        ok: false,
+        models: connection.models,
+        added: 0,
+        detail: `${provider.label} could not be asked for its models.`,
+      };
+    }
+    if (reported.length === 0) {
+      return {
+        ok: false,
+        models: connection.models,
+        added: 0,
+        detail: `${provider.label} reported no models. Add models manually.`,
+      };
+    }
+    const merged: AiModelInfo[] = mergeModels(connection.models, reported);
+    const added: number = merged.length - connection.models.length;
+    logger.info(
+      'AiManager.discoverThroughProvider',
+      `${provider.label} reported ${reported.length} model(s), ${added} new`,
+    );
+    return {
+      ok: true,
+      models: merged,
+      added,
+      detail:
+        added === 0
+          ? `${provider.label} reported ${reported.length} model(s); none were new.`
+          : `Added ${added} model(s) from ${provider.label}.`,
+    };
   }
 
   /**

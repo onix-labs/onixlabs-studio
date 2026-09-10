@@ -451,4 +451,16 @@ export interface AgentProvider {
    * @returns Returns the live session.
    */
   openSession?(context: AgentRunContext): AgentSession;
+
+  /**
+   * Asks the provider what models it can run, or omits it when it cannot say.
+   *
+   * ⛔ Returns what was *reported*, not a merged result: merging the discovered list into the
+   * connection's own, resolving each model's context window and phrasing the outcome for the settings
+   * dialog are all core's, and a provider that did them would be a provider that could disagree with
+   * another about the same model.
+   * @param auth The connection's credential, for a provider that must authenticate to ask.
+   * @returns Returns the models reported, or null when discovery could not run.
+   */
+  discoverModels?(auth: AgentAuth): Promise<readonly { id: string; label?: string }[] | null>;
 }

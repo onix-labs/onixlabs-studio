@@ -181,6 +181,32 @@ describe('HarnessProcess, against the reference harness', () => {
     expect(texts).toEqual(['no credential']);
   }, 20_000);
 
+  it('discoversModelsFromARealHarnessOverTheRealTransport', async () => {
+    // 🔑 Discovery correlates like a run, so the harness asks for a credential *under the discovery id*
+    // and the ordinary request path carries the answer. Proving that against a spawned process is the
+    // point: the alternative design — a request belonging to no run — would have needed the host's
+    // unknown-run refusal relaxed, and this shows it did not.
+    const models: readonly { id: string; label?: string }[] | null =
+      await echoProvider().discoverModels({
+        hasLocalLogin: false,
+        hasCodexLogin: false,
+        apiKey: 'sk-abcdef',
+      });
+
+    expect(models).toEqual([{ id: 'echo-authenticated', label: 'Echo (authenticated)' }]);
+  }, 20_000);
+
+  it('discoversWithoutACredentialWhenTheConnectionHasNone', async () => {
+    const models: readonly { id: string; label?: string }[] | null =
+      await echoProvider().discoverModels({
+        hasLocalLogin: false,
+        hasCodexLogin: false,
+        apiKey: null,
+      });
+
+    expect(models).toEqual([{ id: 'echo-anonymous' }]);
+  }, 20_000);
+
   it('failsTheTurnWhenTheHarnessFailsIt', async () => {
     const { context } = contextFor('fail');
 
