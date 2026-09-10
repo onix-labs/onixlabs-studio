@@ -4,14 +4,13 @@
   "description": "Runs Claude through Anthropic's Agent SDK in its own process, over Studio's agent protocol.",
   "version": "0.1.0",
   "apiVersion": "1.9.0",
-  "detail": "Early: runs a turn, streams text and tool activity, and asks permission. Does not yet do sub-agents, tool policy, MCP or remote control — which is why it serves its own connection kind rather than replacing the built-in Claude provider.",
+  "detail": "Early: runs a turn, streams text and tool activity, and asks permission. Does not yet do sub-agents, tool policy, MCP or remote control — which is why a connection has to name it rather than it replacing the built-in Claude provider. Downloads around 200MB: the SDK ships its Claude Code CLI as a native binary, and one platform's is fetched.",
   "provision": {
     "kind": "npm",
-    "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/plugins/claude-harness/lockfile.json",
-    "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
-    "executablePath": "claude-harness/main.js"
+    "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.claude-harness.lock.json",
+    "sha256": "c65c127eac67385f485d8c0e6c80e2efdc114d661b21a7d695c5958d3d80020e",
+    "executablePath": "node_modules/@onixlabs/claude-harness/main.js"
   },
-  "requires": [{ "runtime": "node" }],
   "contributes": {
     "agentHarnesses": [
       {
@@ -20,7 +19,7 @@
         "priority": 100,
         "connectionAuths": ["claude-login"],
         "command": { "kind": "node" },
-        "entryPoint": "claude-harness/main.js"
+        "entryPoint": "node_modules/@onixlabs/claude-harness/main.js"
       }
     ]
   }

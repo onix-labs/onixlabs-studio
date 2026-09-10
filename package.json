@@ -34,6 +34,7 @@
     "test": "ng test",
     "test:coverage": "ng test --watch=false --coverage",
     "verify:plugin-index": "node scripts/verify-plugin-index.mjs",
+    "pack:plugin": "node scripts/pack-plugin-tarball.mjs",
     "e2e": "node plugins/native-decoder/build.mjs && node plugins/jvm-decoder/build.mjs && playwright test --config e2e/playwright.config.ts",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

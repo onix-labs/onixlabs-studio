@@ -17,10 +17,14 @@
 //   node scripts/verify-plugin-index.mjs --plugin clangd  # one plugin
 
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { argv, exit, stdout } from 'node:process';
 
 const INDEX = 'src/shared/electron/contributions/plugins/curated-plugins.json';
+
+// A first-party lockfile is published straight out of this repository, so its pinned URL is this prefix
+// plus a path in the working tree.
+const OWN = 'https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/';
 
 /**
  * Gets the platform key for the machine running this, matching the main process's own.
@@ -31,11 +35,39 @@ function platformKey() {
 }
 
 /**
+ * Resolves a pinned URL that this repository itself publishes to the file in the working tree.
+ *
+ * A lockfile pinned at `raw.githubusercontent.com/…/main/…` is not a third-party artifact — it is a
+ * file in this checkout, served verbatim once merged. Hashing the checkout rather than fetching `main`
+ * is both more useful and more correct on a branch: it proves the pin matches the document being
+ * proposed, where fetching would either check the *previous* revision or, for a lockfile added by the
+ * same change, 404 until after the merge that the check is supposed to gate.
+ *
+ * Nothing is lost by not fetching. That the URL still resolves to somewhere is asserted by the plugin's
+ * own contract spec, which pins the exact string and reads the file it names, so a moved or renamed
+ * lockfile fails the unit suite rather than silently passing here.
+ * @param {string} url The pinned URL.
+ * @returns {string|null} Returns the local path, or null when the URL is somebody else's.
+ */
+function localPath(url) {
+  if (!url.startsWith(OWN)) {
+    return null;
+  }
+  const path = url.slice(OWN.length);
+  return existsSync(path) ? path : null;
+}
+
+/**
  * Downloads a URL and returns its SHA-256, without holding the whole body in memory.
  * @param {string} url The URL to fetch.
  * @returns {Promise<{ sha256: string, bytes: number }>} Returns the digest and size.
  */
 async function digestOf(url) {
+  const path = localPath(url);
+  if (path !== null) {
+    const bytes = readFileSync(path);
+    return { sha256: createHash('sha256').update(bytes).digest('hex'), bytes: bytes.length };
+  }
   const response = await fetch(url, { redirect: 'follow' });
   if (!response.ok) {
     throw new Error(`HTTP ${response.status}`);
@@ -94,7 +126,9 @@ function downloadsToCheck(index) {
 
 const index = JSON.parse(readFileSync(INDEX, 'utf8'));
 const checks = downloadsToCheck(index);
-stdout.write(`Verifying ${checks.length} pinned download(s) from index revision ${index.revision}\n`);
+stdout.write(
+  `Verifying ${checks.length} pinned download(s) from index revision ${index.revision}\n`,
+);
 
 let failures = 0;
 for (const check of checks) {
