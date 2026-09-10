@@ -48,6 +48,7 @@ import type {
 } from './agent-provider';
 import { AiAuthManager } from './ai-auth-manager';
 import {
+  AgentProviderDescriptor,
   AgentProviderRegistry,
   coreAgentProviders,
   toHarnessDescriptor,
@@ -376,18 +377,8 @@ export class AiManager {
     this.windowGetter = windowGetter;
     this.bridge = new RendererBridge(windowGetter);
 
-    // Contributed harnesses first, then the ones Studio compiles in. Order is the whole point: an
-    // installed harness plugin claiming a connection wins it, and the in-core pair is the fallback
-    // rather than the answer. Each harness that moves out of core simply stops being registered (#653).
-    for (const harness of contributedAgentHarnesses(harnessNodeRuntime)) {
-      this.harnesses.register(
-        toHarnessDescriptor(
-          harness,
-          (spec: { command: string; args: readonly string[] }): HarnessTransport =>
-            new HarnessProcess({ command: spec.command, args: spec.args }),
-        ),
-      );
-    }
+    // ⛔ Only the compiled-in harnesses here. Contributed ones are registered in `register()`, which
+    // runs after `app.whenReady()` — see `registerContributedHarnesses`.
     for (const descriptor of coreAgentProviders()) {
       this.harnesses.register(descriptor);
     }
@@ -398,6 +389,46 @@ export class AiManager {
     const built: BuiltProviders = this.buildProviders(SEED_CONNECTIONS);
     this.providers = built.providers;
     this.connections = built.connections;
+  }
+
+  /**
+   * Registers the harnesses contributed by installed plugins, ahead of the ones Studio compiles in.
+   *
+   * ⛔ **Called from `register()`, never from the constructor.** `AiManager` is a field initialiser on
+   * the application class, so it is constructed before `app.whenReady()` — and asking for contributed
+   * plugins reads the user-data directory and then **caches the answer for the whole session**. Doing
+   * that too early froze the plugin set at a moment when nothing was readable yet, and the symptom was
+   * an application with no plugins at all: the Plugin Manager empty, no language servers, no decoders,
+   * no container engines. Agents still ran, which is what made it hard to see.
+   *
+   * The ordering is the point of the epic: an installed harness plugin claiming a connection wins it,
+   * and the in-core pair is the fallback rather than the answer. Registering later does not change that
+   * — the core descriptors were added in the constructor, and `register` puts contributed ones in front
+   * by re-seeding the registry rather than appending to it.
+   */
+  private registerContributedHarnesses(): void {
+    const contributed: readonly AgentProviderDescriptor[] = contributedAgentHarnesses(
+      harnessNodeRuntime,
+    ).map((harness): AgentProviderDescriptor =>
+      toHarnessDescriptor(
+        harness,
+        (spec: { command: string; args: readonly string[] }): HarnessTransport =>
+          new HarnessProcess({ command: spec.command, args: spec.args }),
+      ),
+    );
+    if (contributed.length === 0) {
+      return;
+    }
+    this.harnesses.reseed([...contributed, ...coreAgentProviders()]);
+    // Providers built from the seed connections predate this, so they were built without the
+    // contributed harnesses. Rebuild them, or an installed harness would not take effect until the
+    // renderer next listed its connections.
+    const rebuilt: BuiltProviders = this.buildProviders([...this.connections.values()]);
+    this.providers = rebuilt.providers;
+    logger.info(
+      'AiManager',
+      `Registered ${contributed.length} contributed agent harness(es) ahead of the built-in ones`,
+    );
   }
 
   /**
@@ -457,6 +488,7 @@ export class AiManager {
    */
   public register(): void {
     logger.info('AiManager', 'Registering agent IPC handlers');
+    this.registerContributedHarnesses();
     this.auth.register();
     this.bridge.register();
     ipcMain.on(AiChannel.PermissionReply, (_event: IpcMainEvent, reply: unknown): void => {

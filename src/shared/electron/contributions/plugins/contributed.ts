@@ -105,6 +105,21 @@ let contributed: readonly PluginManifest[] | null = null;
  * @returns Returns the manifests.
  */
 export function contributedManifests(): readonly PluginManifest[] {
+  if (contributed === null && !app.isReady()) {
+    // ⛔ Asked before the application is ready. Answering would read a user-data directory that is not
+    // resolvable yet AND cache the result for the whole session, so one early caller empties the
+    // catalogue for every later one — no plugins in the manager, no language servers, no decoders, no
+    // container engines, and agents still running so nothing looks broken.
+    //
+    // Not hypothetical: `AiManager` is a field initialiser on the application class, so wiring
+    // contributed harnesses into its constructor (#653 phase 4) did exactly this. Refusing to answer,
+    // loudly and without caching, is what turns a silent session-long emptiness into a log line.
+    logger.error(
+      'ContributedPlugins',
+      'Asked for contributed plugins before the app was ready; refusing to cache an empty catalogue',
+    );
+    return [];
+  }
   contributed ??= mergeManifests([
     { origin: 'the sideload directory', manifests: sideloadedManifests() },
     { origin: 'the curated index', manifests: pluginIndex().manifests() },

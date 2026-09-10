@@ -132,6 +132,21 @@ export class AgentProviderRegistry {
   }
 
   /**
+   * Replaces everything registered, in one go.
+   *
+   * Exists because registration order decides precedence and contributed harnesses must come first,
+   * while the compiled-in ones are seeded early — before the user-data directory can be read. Appending
+   * later would put a plugin behind the built-in it is meant to replace.
+   * @param descriptors The harnesses to register, in precedence order.
+   */
+  public reseed(descriptors: readonly AgentProviderDescriptor[]): void {
+    this.descriptors.length = 0;
+    for (const descriptor of descriptors) {
+      this.register(descriptor);
+    }
+  }
+
+  /**
    * Gets the ids of the registered harnesses, in registration order.
    * @returns Returns the registered ids.
    */
