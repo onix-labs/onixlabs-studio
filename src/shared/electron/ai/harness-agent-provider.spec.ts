@@ -43,6 +43,11 @@ class ScriptedHarness {
   public declaredSessionModel: string = 'live-harness';
 
   /**
+   * Holds whether the harness declares it can expose its session to another machine.
+   */
+  public declaredRemoteControl: boolean = true;
+
+  /**
    * Holds whether the provider closed the transport.
    */
   public closed: boolean = false;
@@ -69,6 +74,7 @@ class ScriptedHarness {
           images: true,
           efforts: ['low', 'high'],
           resumable: true,
+          remoteControl: this.declaredRemoteControl,
         },
       });
       return;
@@ -193,6 +199,7 @@ describe('HarnessAgentProvider', () => {
       defaultModelId: 'm1',
       connect: (): ScriptedHarness => harness,
       sessionModel: 'stateless',
+      remoteControl: false,
     });
   });
 
@@ -335,9 +342,9 @@ describe('HarnessAgentProvider', () => {
     expect(provider.sessionModel).toBe('stateless');
   });
 
-  it('neverOffersRemoteControl', () => {
-    // The protocol carries no message for it: `bridge` is Studio reaching in, not a harness exposing
-    // itself outward.
+  it('offersRemoteControlOnlyWhenItsManifestDeclaresIt', () => {
+    // Static, like the session model, and for the same reason: the control is drawn in the agent ribbon
+    // from what `listProviders` reported at start-up, long before anything has been spawned.
     expect(provider.supportsRemoteControl).toBe(false);
   });
 });
@@ -430,6 +437,7 @@ describe('HarnessAgentSession', () => {
       defaultModelId: 'm1',
       connect: (): ScriptedHarness => harness,
       sessionModel: 'live-harness',
+      remoteControl: true,
     });
   });
 
@@ -485,6 +493,36 @@ describe('HarnessAgentSession', () => {
     // Nothing to abort once the turn has settled, and — the part that matters — the process is still up
     // for the next one. Interrupting a session is not closing it.
     expect(harness.closed).toBe(false);
+    expect(session.alive).toBe(true);
+  });
+
+  it('aimsRemoteControlAtTheOpenSessionRatherThanWaitingForTheNextTurn', async () => {
+    // ⛔ Session-scoped on purpose. A user toggling the control expects it to land on the conversation
+    // in front of them — including between turns, and mid-turn. For a held-open session the "next turn"
+    // could be never, so an aim that only took effect at turn start would dangle indefinitely.
+    const session: AgentSession = provider.openSession(contextFor().context);
+    await session.turn(contextFor().context);
+
+    session.setRemoteControl?.('control');
+
+    expect(harness.sent).toContainEqual({ type: 'remote-control', mode: 'control' });
+  });
+
+  it('doesNotAimRemoteControlAtAHarnessThatDidNotConfirmIt', async () => {
+    // ⚠️ Warned about, not refused — deliberately unlike a session-model mismatch. There the symptom is
+    // a conversation that silently forgets itself; here it is a toggle that does nothing, and killing a
+    // working provider over the second would cost more than the fault it reports.
+    harness.declaredRemoteControl = false;
+    const session: AgentSession = provider.openSession(contextFor().context);
+    await session.turn(contextFor().context);
+
+    session.setRemoteControl?.('mirror');
+
+    expect(
+      harness.sent.some(
+        (message: Record<string, unknown>): boolean => message['type'] === 'remote-control',
+      ),
+    ).toBe(false);
     expect(session.alive).toBe(true);
   });
 

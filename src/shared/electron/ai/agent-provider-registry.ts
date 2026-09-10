@@ -183,6 +183,7 @@ export function toHarnessDescriptor(
         defaultModelId: connection.defaultModelId,
         connect: (): HarnessTransport => connect(spec),
         sessionModel: harness.sessionModel,
+        remoteControl: harness.remoteControl,
       });
     },
   };

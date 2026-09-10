@@ -76,13 +76,18 @@ import { AiEvent } from './ai/ai-event-types';
  *     holds rather than one it can find for itself;
  *   - `requestId` on `audit`, so an executed action is attributable to the turn that executed it.
  *
+ * `1.3.0` adds **remote control**: a `remoteControl` capability and a `remote-control` message that
+ * re-aims an open session. ⛔ The bridge itself stays in the harness, not in Studio — claude.ai/code is
+ * Anthropic's, and a Studio that opened it would be core keeping vendor code for exactly the reason
+ * this seam exists to remove. The protocol carries the *mode*; what a harness does with it is its own.
+ *
  * `1.2.0` completes the **turn envelope**. `AgentRunContext` carries 29 fields and the envelope carried
  * 16, so a harness could not see the permission posture, the tool policies, attached images or context,
  * the remote-control mode, the agent shell, or the owning tab. Nine fields closes that, which is what
  * makes an out-of-process harness able to reach parity with an in-core provider at all — until now the
  * ceiling was the wire, not the port.
  */
-export const AGENT_PROTOCOL_VERSION: string = '1.2.0';
+export const AGENT_PROTOCOL_VERSION: string = '1.3.0';
 
 /**
  * Matches a plain three-part semver. Local and deliberately strict, for the same reason the manifest's
@@ -149,6 +154,16 @@ export interface HarnessCapabilities {
    * `stateless` harness and ignored there.
    */
   readonly resumable: boolean;
+
+  /**
+   * Gets whether the harness can expose its session to another machine.
+   *
+   * ⚠️ Confirms what the manifest already declared, because the control is offered in the ribbon before
+   * anything has been started. A harness that contradicts its manifest here is **warned about rather
+   * than refused**, unlike a session-model mismatch: the symptom is a toggle that does nothing, and
+   * refusing the whole provider over it would be a worse outcome than the fault it reports.
+   */
+  readonly remoteControl: boolean;
 }
 
 /**
@@ -345,6 +360,11 @@ export type HostMessage =
   | { readonly type: 'turn.start'; readonly turn: TurnRequest }
   | { readonly type: 'turn.abort'; readonly requestId: string }
   | { readonly type: 'steer'; readonly requestId: string; readonly text: string }
+  // Session-scoped rather than turn-scoped, and deliberately so: a user toggling remote control
+  // expects it to land on the conversation they are looking at, including between turns and mid-turn.
+  // An aim that only took effect at the start of a turn would leave the toggle dangling until the next
+  // one, which for a held-open session could be never.
+  | { readonly type: 'remote-control'; readonly mode: 'off' | 'mirror' | 'control' }
   | { readonly type: 'answer'; readonly callId: string; readonly answer: HarnessAnswer };
 
 /**
