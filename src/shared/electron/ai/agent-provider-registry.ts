@@ -89,8 +89,10 @@ export class AgentProviderRegistry {
    * make the displacement visible in the log instead of invisible in the product, so a bug report saying
    * "the agent stopped doing X after I installed Y" has one line that explains it.
    *
-   * ⛔ The real answer is that a partial adapter must not claim an auth kind an in-core harness serves.
-   * That is a rule for whoever writes one, and this is how it gets caught when it is broken.
+   * ⛔ Since a harness is now matched only by a connection naming it explicitly, this can no longer
+   * happen by accident — a user chose it. It stays because the choice is still worth reporting: if the
+   * plugin they picked does less than the built-in, this is the line that explains where the missing
+   * capability went.
    * @param connection The connection being resolved.
    * @param winner The descriptor that served it.
    */
@@ -161,8 +163,12 @@ export function toHarnessDescriptor(
 ): AgentProviderDescriptor {
   return {
     id: harness.id,
+    // ⛔ Matched on the connection naming this harness, never on its authentication kind. A plugin
+    // cannot claim a connection; a user points one at it. The first design matched on auth and was
+    // wrong twice: `AiAuthKind` is a closed union, so a plugin could not name a kind of its own — and
+    // naming an existing one would take every connection of that kind from the provider Studio ships.
     serves: (connection: AiConnection): boolean =>
-      harness.connectionAuths.includes(connection.auth) && harness.spawnSpec() !== null,
+      connection.harnessId === harness.id && harness.spawnSpec() !== null,
     create: (connection: AiConnection): AgentProvider => {
       const spec: { command: string; args: readonly string[] } | null = harness.spawnSpec();
       if (spec === null) {

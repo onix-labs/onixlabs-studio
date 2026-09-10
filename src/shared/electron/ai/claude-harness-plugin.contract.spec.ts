@@ -5,7 +5,8 @@ import { describe, expect, it, vi } from 'vitest';
 // The core descriptors construct real providers, one of which reaches Electron.
 vi.mock('electron', () => ({ app: { isPackaged: false } }));
 import { parsePluginManifest, PluginManifest } from '@shared/api/plugin-manifest';
-import { coreAgentProviders } from './agent-provider-registry';
+import type { AiConnection } from '@shared/api/ai-types';
+import { type AgentProviderDescriptor, toHarnessDescriptor } from './agent-provider-registry';
 
 /**
  * Guards the two claims the Claude harness plugin makes about itself, neither of which any other test
@@ -45,26 +46,35 @@ describe('the Claude harness plugin', () => {
     expect(manifest.contributes.agentHarnesses).toHaveLength(1);
   });
 
-  it('doesNotClaimAConnectionABuiltInHarnessAlreadyServes', () => {
+  it('cannotClaimAConnectionThatDoesNotNameIt', () => {
     const manifest: PluginManifest = parsed.manifest!;
-    const claimed: readonly string[] =
-      manifest.contributes.agentHarnesses?.[0]?.connectionAuths ?? [];
-
-    // The built-in descriptors, asked whether they would serve each auth this plugin claims. The
-    // generic AI-SDK descriptor is excluded because it serves everything — falling through to it is a
-    // fallback, not a capability being taken.
-    const displaced: readonly string[] = claimed.filter((auth: string): boolean =>
-      coreAgentProviders()
-        .filter((core): boolean => core.id !== 'ai-sdk')
-        .some((core): boolean =>
-          core.serves({ id: 'probe', auth, models: [], defaultModelId: null } as never),
-        ),
+    const id: string = manifest.contributes.agentHarnesses?.[0]?.id ?? '';
+    const descriptor: AgentProviderDescriptor = toHarnessDescriptor(
+      {
+        id,
+        displayName: 'Claude (out of process)',
+        priority: 100,
+        connectionAuths: manifest.contributes.agentHarnesses?.[0]?.connectionAuths ?? [],
+        spawnSpec: (): { command: string; args: readonly string[] } | null => ({
+          command: '/bin/harness',
+          args: [],
+        }),
+      },
+      () => ({}) as never,
     );
 
-    expect(
-      displaced,
-      'This adapter is not at parity with the in-core Claude provider. Claiming an auth kind it ' +
-        'serves would silently drop sub-agents, tool policy, MCP and remote control.',
-    ).toEqual([]);
+    // ⛔ The rule that replaced auth matching. A plugin cannot take the built-in Claude connection by
+    // declaring the same authentication kind — it serves only a connection that names it. Matching on
+    // auth would have handed every `claude-login` connection to an adapter that does far less.
+    const builtIn: AiConnection = {
+      id: 'claude',
+      auth: 'claude-login',
+      models: [],
+      defaultModelId: null,
+    } as unknown as AiConnection;
+    expect(descriptor.serves(builtIn)).toBe(false);
+
+    const chosen: AiConnection = { ...builtIn, harnessId: id };
+    expect(descriptor.serves(chosen)).toBe(true);
   });
 });
