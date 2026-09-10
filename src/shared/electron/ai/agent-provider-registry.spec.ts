@@ -19,8 +19,8 @@ type AgentProviderDescriptor = import('./agent-provider-registry').AgentProvider
  * @param auth The authentication kind, which is what the core descriptors match on.
  * @returns Returns the connection.
  */
-function connection(id: string, auth: string): AiConnection {
-  return { id, auth, models: [], defaultModelId: null } as unknown as AiConnection;
+function connection(id: string, auth: string, harnessId?: string): AiConnection {
+  return { id, auth, harnessId, models: [], defaultModelId: null } as unknown as AiConnection;
 }
 
 /**
@@ -162,13 +162,26 @@ describe('toHarnessDescriptor', () => {
     };
   }
 
-  it('servesTheConnectionAuthsItClaims', () => {
+  it('servesOnlyAConnectionThatNamesIt', () => {
     const descriptor: AgentProviderDescriptor = toHarnessDescriptor(
       contributed(true),
       () => ({}) as never,
     );
 
-    expect(descriptor.serves(connection('c1', 'claude-login'))).toBe(true);
+    expect(descriptor.serves(connection('c1', 'claude-login', 'claude-harness'))).toBe(true);
+  });
+
+  it('doesNotClaimAConnectionMerelyBecauseItsAuthMatches', () => {
+    const descriptor: AgentProviderDescriptor = toHarnessDescriptor(
+      contributed(true),
+      () => ({}) as never,
+    );
+
+    // ⛔ The bug this replaced. Matching on auth meant a plugin took every connection of that kind
+    // from the provider Studio ships — a capability downgrade nobody asked for. And `AiAuthKind` is a
+    // closed union, so a plugin could not even name a kind of its own: the harness matched nothing at
+    // all until a connection could point at it.
+    expect(descriptor.serves(connection('c1', 'claude-login'))).toBe(false);
     expect(descriptor.serves(connection('c1', 'api-key'))).toBe(false);
   });
 
@@ -180,7 +193,7 @@ describe('toHarnessDescriptor', () => {
 
     // The manifest can be in the catalogue without the payload being on disk, and a descriptor that
     // claimed a connection it cannot run would take it from the in-core provider that can.
-    expect(descriptor.serves(connection('c1', 'claude-login'))).toBe(false);
+    expect(descriptor.serves(connection('c1', 'claude-login', 'claude-harness'))).toBe(false);
   });
 
   it('buildsAProviderCarryingTheConnectionsOwnModels', () => {
@@ -191,7 +204,9 @@ describe('toHarnessDescriptor', () => {
 
     // The harness knows how to run a turn; the connection knows which models and which id. The
     // registry joins them, which is why the manifest declares neither.
-    const provider: AgentProvider = descriptor.create(connection('my-claude', 'claude-login'));
+    const provider: AgentProvider = descriptor.create(
+      connection('my-claude', 'claude-login', 'claude-harness'),
+    );
     expect(provider.id).toBe('my-claude');
     expect(provider.label).toBe('Claude');
   });
@@ -251,7 +266,7 @@ describe('displacing a built-in harness', () => {
         registry.register(core);
       }
 
-      registry.providerFor(connection('c1', 'claude-login'));
+      registry.providerFor(connection('c1', 'claude-login', 'my-claude'));
     } finally {
       logger.warn = original;
     }
@@ -276,7 +291,7 @@ describe('displacing a built-in harness', () => {
         registry.register(core);
       }
 
-      registry.providerFor(connection('c1', 'some-new-login'));
+      registry.providerFor(connection('c1', 'some-new-login', 'novel'));
     } finally {
       logger.warn = original;
     }
@@ -297,7 +312,7 @@ describe('displacing a built-in harness', () => {
         registry.register(core);
       }
 
-      registry.providerFor(connection('c1', 'api-key'));
+      registry.providerFor(connection('c1', 'api-key', 'novel'));
     } finally {
       logger.warn = original;
     }

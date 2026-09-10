@@ -45,6 +45,22 @@ export type AiAuthKind = 'api-key' | 'none' | 'claude-login' | 'codex-login';
  */
 export interface AiConnection {
   /**
+   * Gets the identifier of the agent harness plugin that runs this connection, or null/undefined to
+   * use the harness Studio compiles in.
+   *
+   * **Explicit, never inferred.** A harness plugin serves a connection only when that connection names
+   * it here — it cannot claim one by declaring an authentication kind. Matching by auth was the first
+   * design and it was wrong twice over: `AiAuthKind` is a closed union, so a plugin could not name a
+   * kind of its own at all; and if it named an existing one it would silently take every connection of
+   * that kind away from the provider Studio ships, which is a capability downgrade the user never asked
+   * for (#675).
+   *
+   * Naming it here inverts that. Nothing changes until somebody points a connection at a plugin, and
+   * when they do, they meant to.
+   */
+  readonly harnessId?: string | null;
+
+  /**
    * Gets the connection's stable identifier, unique within the user's connection list. It keys the
    * connection's stored credential and its remembered model selection, so it must not change once set.
    */
