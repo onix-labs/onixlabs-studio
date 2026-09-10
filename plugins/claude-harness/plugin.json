@@ -1,0 +1,27 @@
+{
+  "id": "onixlabs.claude-harness",
+  "name": "Claude (out of process)",
+  "description": "Runs Claude through Anthropic's Agent SDK in its own process, over Studio's agent protocol.",
+  "version": "0.1.0",
+  "apiVersion": "1.9.0",
+  "detail": "Early: runs a turn, streams text and tool activity, and asks permission. Does not yet do sub-agents, tool policy, MCP or remote control — which is why it serves its own connection kind rather than replacing the built-in Claude provider.",
+  "provision": {
+    "kind": "npm",
+    "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/plugins/claude-harness/lockfile.json",
+    "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "executablePath": "claude-harness/main.js"
+  },
+  "requires": [{ "runtime": "node" }],
+  "contributes": {
+    "agentHarnesses": [
+      {
+        "id": "onixlabs.claude-harness",
+        "displayName": "Claude (out of process)",
+        "priority": 100,
+        "connectionAuths": ["claude-harness"],
+        "command": { "kind": "node" },
+        "entryPoint": "claude-harness/main.js"
+      }
+    ]
+  }
+}
