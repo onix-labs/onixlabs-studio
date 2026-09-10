@@ -6,10 +6,10 @@ import { AiEvent } from './ai/ai-event-types';
 // host has something to use, and the shape is held to by tests rather than by a document somebody has
 // to remember to re-read.
 //
-// **This phase defines the vocabulary. Nothing speaks it yet.** The host that launches a harness and
-// the first-party adapters that wrap the vendor SDKs are phase 3; the `agentHarnesses` contribution
-// point is phase 4. Defining it first is deliberate — the protocol is the commitment, and it is far
-// cheaper to argue with a type than with an implementation.
+// Three things speak it: `HarnessHost` on Studio's side, the reference `echo-harness.mjs` that the
+// transport test spawns for real, and the Claude harness plugin. It was defined before any of them
+// existed, which was deliberate — the protocol is the commitment, and it is far cheaper to argue with a
+// type than with an implementation.
 //
 // ## The shape, and why it is smaller than it looks
 //
@@ -21,9 +21,26 @@ import { AiEvent } from './ai/ai-event-types';
 // What has to be designed is everything that is *not* a stream:
 //
 //   - the **turn envelope**: `AgentRunContext` minus the things that cannot cross a wire;
-//   - the four **blocking round-trips** where the harness stops and asks Studio a question;
+//   - the **blocking round-trips** where the harness stops and asks Studio a question;
 //   - **steering**, the one message that travels the other way mid-turn;
 //   - the **handshake**, so a version mismatch is refused rather than half-honoured.
+//
+// ## ⛔ The envelope never carries a secret
+//
+// A harness that needs a credential Studio holds **asks for it** (`kind: 'credential'`) rather than
+// being handed it at turn start. Three reasons, in order of how likely each is to bite:
+//
+//   1. Studio owns this protocol and has no second implementer keeping it honest, so the first thing
+//      anyone does when debugging it is dump the wire. A secret in the envelope is a secret in
+//      `studio.log` the day somebody adds a trace; a secret that is never in the envelope cannot be.
+//   2. A `live-harness` session outlives a turn, so a pushed key would sit in another process's memory
+//      for the life of the session with no way to rotate or revoke it.
+//   3. Only the harness that needs one gets one. `authFor` can return a key even for a `claude-login`
+//      connection (the `ANTHROPIC_API_KEY` development fallback), and the Claude harness — which
+//      authenticates through the CLI's own store — has no business receiving it.
+//
+// ⚠️ The two `has*Login` flags are deliberately *not* secrets and are not modelled here at all: whether
+// `~/.claude` exists is Studio's question to answer about a provider, not something a harness is told.
 //
 // ## What cannot cross, and what replaces it
 //
@@ -48,10 +65,18 @@ import { AiEvent } from './ai/ai-event-types';
  * a harness written against a later version may rely on a message this build will silently ignore, and
  * an agent turn that quietly does less is worse than one that refuses to start.
  *
- * `1.0.0` is the initial vocabulary: the turn envelope, `AiEvent` as the output stream, four blocking
- * round-trips, steering, and the handshake.
+ * `1.0.0` was the initial vocabulary: the turn envelope, `AiEvent` as the output stream, four blocking
+ * round-trips, steering, and the handshake. **It was never published** — no release artifact ever spoke
+ * it — which is why `1.1.0` was free to make `audit.requestId` required rather than optional. There is
+ * no 1.0.0 harness in the world to stay compatible with, and pretending otherwise would have meant
+ * carrying an unattributable audit record forever to protect nothing.
+ *
+ * `1.1.0` adds:
+ *   - the **credential** round-trip, a fifth blocking request, so a harness can obtain a secret Studio
+ *     holds rather than one it can find for itself;
+ *   - `requestId` on `audit`, so an executed action is attributable to the turn that executed it.
  */
-export const AGENT_PROTOCOL_VERSION: string = '1.0.0';
+export const AGENT_PROTOCOL_VERSION: string = '1.1.0';
 
 /**
  * Matches a plain three-part semver. Local and deliberately strict, for the same reason the manifest's
@@ -62,10 +87,12 @@ const VERSION_PATTERN: RegExp = /^(\d+)\.(\d+)\.(\d+)$/;
 /**
  * The blocking questions a harness can ask Studio mid-turn.
  *
- * Each has a matching {@link HarnessAnswer}, correlated by `callId`. They are the reason this is a
- * protocol rather than a stream: the harness stops and waits, and what it waits for is a person.
+ * Each has a matching {@link HarnessAnswer}, correlated by `callId`. Four of the five are the reason
+ * this is a protocol rather than a stream: the harness stops and waits, and what it waits for is a
+ * person. `credential` is the exception — Studio answers it from what the user configured earlier, and
+ * asking again per turn would be absurd.
  */
-export type HarnessRequestKind = 'permission' | 'input' | 'edit-decision' | 'bridge';
+export type HarnessRequestKind = 'permission' | 'input' | 'edit-decision' | 'bridge' | 'credential';
 
 /**
  * How a harness maintains a conversation, declared at handshake.
@@ -222,7 +249,8 @@ export type HarnessAnswer =
   | { readonly kind: 'permission'; readonly granted: boolean }
   | { readonly kind: 'input'; readonly answer: string | null }
   | { readonly kind: 'edit-decision'; readonly decision: 'yes' | 'no' }
-  | { readonly kind: 'bridge'; readonly result: unknown; readonly error: string | null };
+  | { readonly kind: 'bridge'; readonly result: unknown; readonly error: string | null }
+  | { readonly kind: 'credential'; readonly apiKey: string | null };
 
 /**
  * A message a harness sends Studio.
@@ -241,6 +269,7 @@ export type HarnessMessage =
     }
   | {
       readonly type: 'audit';
+      readonly requestId: string;
       readonly name: string;
       readonly detail: string;
       readonly source: string;
@@ -269,7 +298,11 @@ export type HarnessRequest =
       readonly capability: string;
       readonly input: unknown;
       readonly timeoutMs: number | null;
-    };
+    }
+  // Carries no fields: the turn already says which connection it belongs to, and there is exactly one
+  // secret a connection has. A harness naming the credential it wants would be a harness able to ask
+  // for somebody else's.
+  | { readonly kind: 'credential' };
 
 /**
  * Gets whether a harness's declared protocol version is one this build can honour.
@@ -340,9 +373,10 @@ export function parseHarnessMessage(value: unknown): HarnessMessage | null {
   if (candidate.type === 'request' && typeof candidate.callId !== 'string') {
     return null;
   }
-  // Everything that belongs to a turn must say which turn. An event for no run cannot be rendered, and
-  // a settle for no run would resolve nothing.
-  const needsRequestId: readonly string[] = ['request', 'turn.completed', 'turn.failed'];
+  // Everything that belongs to a turn must say which turn. An event for no run cannot be rendered, a
+  // settle for no run would resolve nothing, and an audit record for no run names an executed action
+  // without saying what executed it — which is the one thing an audit log exists to answer.
+  const needsRequestId: readonly string[] = ['request', 'audit', 'turn.completed', 'turn.failed'];
   if (needsRequestId.includes(candidate.type) && typeof candidate.requestId !== 'string') {
     return null;
   }

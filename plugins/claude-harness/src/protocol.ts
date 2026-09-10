@@ -13,7 +13,7 @@
  * The protocol version this harness speaks. Studio refuses a harness whose major differs, or whose
  * minor is newer than the build's.
  */
-export const PROTOCOL_VERSION: string = '1.0.0';
+export const PROTOCOL_VERSION: string = '1.1.0';
 
 /**
  * What a harness declares it can do, once, at the handshake.
@@ -101,6 +101,7 @@ export type HarnessMessage =
     }
   | {
       readonly type: 'audit';
+      readonly requestId: string;
       readonly name: string;
       readonly detail: string;
       readonly source: string;

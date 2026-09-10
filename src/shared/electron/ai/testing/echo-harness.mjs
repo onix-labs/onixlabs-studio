@@ -24,7 +24,7 @@ import { createInterface } from 'node:readline';
 /**
  * The protocol version this harness speaks. Declared, not imported: the contract is the wire.
  */
-const PROTOCOL_VERSION = '1.0.0';
+const PROTOCOL_VERSION = '1.1.0';
 
 /**
  * Writes one protocol message to Studio.
@@ -99,10 +99,16 @@ async function runTurn(turn) {
         choices: ['hello', 'goodbye'],
       });
       say(requestId, answer.answer ?? 'nothing');
+    } else if (prompt === 'credential') {
+      // Reports only whether a key arrived, never the key. A fixture that echoed a secret back as
+      // assistant text would put one in every test's captured output, which is how they end up in CI
+      // logs — the exact failure the credential round-trip exists to avoid.
+      const answer = await ask(requestId, { kind: 'credential' });
+      say(requestId, answer.apiKey === null ? 'no credential' : `credential of ${answer.apiKey.length}`);
     } else {
       say(requestId, `echo: ${prompt}`);
     }
-    send({ type: 'audit', name: 'Echo', detail: prompt, source: 'posture' });
+    send({ type: 'audit', requestId, name: 'Echo', detail: prompt, source: 'posture' });
     send({ type: 'turn.completed', requestId, sessionId: 'echo-session' });
   } finally {
     currentRun = null;

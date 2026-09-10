@@ -1,5 +1,5 @@
 {
-  "revision": 12,
+  "revision": 13,
   "plugins": [
     {
       "id": "pyright",
@@ -1083,7 +1083,7 @@
       "provision": {
         "kind": "npm",
         "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.claude-harness.lock.json",
-        "sha256": "c65c127eac67385f485d8c0e6c80e2efdc114d661b21a7d695c5958d3d80020e",
+        "sha256": "173ef85c880e03a6483a7d55f1f87c5992f4e364d8ffce171b8f75cbb95acd80",
         "executablePath": "node_modules/@onixlabs/claude-harness/main.js"
       },
       "contributes": {

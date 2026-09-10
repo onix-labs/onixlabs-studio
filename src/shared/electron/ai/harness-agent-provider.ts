@@ -157,8 +157,19 @@ export class HarnessAgentProvider implements AgentProvider {
   public async run(context: AgentRunContext): Promise<void> {
     const host: HarnessHost = new HarnessHost(
       this.definition.connect(),
-      (name: string, detail: string, source: string): void =>
-        context.recordAudit(name, detail, source as never),
+      (requestId: string, name: string, detail: string, source: string): void => {
+        // ⚠️ A record naming a turn other than this one is refused rather than relabelled. One process
+        // runs one turn today, so the only way to see a foreign id is a harness that invented it, and
+        // an audit log that can be written on another run's behalf is not an audit log.
+        if (requestId !== context.requestId) {
+          logger.warn(
+            'HarnessAgentProvider',
+            `Discarding an audit record attributed to run '${requestId}' during run '${context.requestId}'`,
+          );
+          return;
+        }
+        context.recordAudit(name, detail, source as never);
+      },
     );
     const abort: () => void = (): void => host.abort(context.requestId);
     context.signal.addEventListener('abort', abort);
@@ -231,6 +242,13 @@ export class HarnessAgentProvider implements AgentProvider {
         } catch (error: unknown) {
           return { kind: 'bridge', result: null, error: String(error) };
         }
+      }
+      case 'credential': {
+        // ⛔ Not put to the user. The key was configured in Settings against this connection; asking
+        // again once per turn would be a prompt nobody could answer differently. Studio answers from
+        // what it already holds, scoped to the connection this turn belongs to — a harness cannot ask
+        // for another connection's secret, because it has no way to name one.
+        return { kind: 'credential', apiKey: context.auth.apiKey };
       }
       default:
         // The host validated the envelope, not the body. A question Studio has no way to put to the
