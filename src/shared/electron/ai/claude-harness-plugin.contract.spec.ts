@@ -11,6 +11,7 @@ import {
   PluginManifest,
 } from '@shared/api/plugin-manifest';
 import type { AiConnection } from '@shared/api/ai-types';
+import { AGENT_PROTOCOL_VERSION, isProtocolCompatible } from '@shared/api/agent-protocol';
 import { type LockfilePackage, parseLockfileDocument } from '../provisioning/lockfile-provision';
 import { type AgentProviderDescriptor, toHarnessDescriptor } from './agent-provider-registry';
 
@@ -220,6 +221,22 @@ describe('the Claude harness plugin is installable', () => {
         ),
       );
     }
+  });
+
+  it('declaresAProtocolVersionThisBuildStillHonours', () => {
+    // 🔥 The published plugin speaks the version it was built against, not this build's. `0.1.0` went
+    // out at protocol 1.1.0 and this build is further along, so the "an older minor is fine" rule is
+    // the only thing keeping an installed copy working. A major bump would orphan every copy already on
+    // a user's machine, silently — the harness would be refused at the handshake and the connection
+    // would simply stop working. This fails first instead.
+    const source: string = readFileSync(
+      path.join(process.cwd(), 'plugins', 'claude-harness', 'src', 'protocol.ts'),
+      'utf8',
+    );
+    const declared: string = /PROTOCOL_VERSION: string = '([^']+)'/.exec(source)?.[1] ?? '';
+
+    expect(declared).not.toBe('');
+    expect(isProtocolCompatible(declared, AGENT_PROTOCOL_VERSION)).toBe(true);
   });
 
   it('isCarriedByTheCuratedIndex', () => {

@@ -1,5 +1,17 @@
-import type { AiEffort, AiEvent, AiModelInfo } from '@shared/api/ai-types';
-import type { HarnessAnswer, HarnessCapabilities, TurnRequest } from '@shared/api/agent-protocol';
+import type {
+  AgentContextRef,
+  AiEffort,
+  AiEvent,
+  AiImageRef,
+  AiModelInfo,
+} from '@shared/api/ai-types';
+import type {
+  HarnessAnswer,
+  HarnessCapabilities,
+  TurnContextRef,
+  TurnImage,
+  TurnRequest,
+} from '@shared/api/agent-protocol';
 import { logger } from '@shared/electron/logger';
 import type {
   AgentProvider,
@@ -303,5 +315,25 @@ export function toTurnRequest(context: AgentRunContext): TurnRequest {
     tokenCap: context.tokenCap,
     resumeSessionId: context.resumeSessionId,
     forkSession: context.forkSession,
+    resumeSessionAt: context.resumeSessionAt,
+    permissionPosture: context.permissionPosture,
+    toolPolicies: { ...context.toolPolicies },
+    images: context.images.map((image: AiImageRef): TurnImage => ({
+      mediaType: image.mediaType,
+      data: image.data,
+      ...(image.name === undefined ? {} : { name: image.name }),
+    })),
+    contextPaths: context.contextPaths.map((reference: AgentContextRef): TurnContextRef => ({
+      path: reference.path,
+      kind: reference.kind,
+      ...(reference.content === undefined ? {} : { content: reference.content }),
+    })),
+    remoteControl: context.remoteControl,
+    agentShell: context.agentShell,
+    owningTabId: context.owningTabId,
+    // ⛔ The one vendor-specific field, carried as an opaque setting rather than as a named one. A wire
+    // field called `claudeExecutable` would be the seam naming a vendor; a plugin that understands the
+    // key reads it, and every other plugin ignores a bag it did not put anything in.
+    providerSettings: { claudeExecutable: context.claudeExecutable },
   };
 }
