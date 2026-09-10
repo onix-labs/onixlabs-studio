@@ -76,6 +76,20 @@ import { AiEvent } from './ai/ai-event-types';
  *     holds rather than one it can find for itself;
  *   - `requestId` on `audit`, so an executed action is attributable to the turn that executed it.
  *
+ * `1.4.0` adds **model discovery**. `AiManager.discoverModels` branched on the connection's auth kind —
+ * the last place core read a vendor's identity to decide what to do — so a harness had no way to say
+ * what it can run and a plugin provider could only ever offer models typed in by hand.
+ *
+ * 🔑 A discovery reuses the turn machinery rather than inventing a second one: its `discoveryId` is a
+ * run id like any other, so a harness that needs to ask Studio something first (an API key, most
+ * obviously) asks under that id and the host routes the answer exactly as it would mid-turn. The
+ * alternative — a request belonging to no run — would have meant relaxing the rule that an unknown run
+ * is refused, which is the rule that stops a harness asking questions nothing is waiting for.
+ *
+ * ⛔ A harness reports `{ id, label? }` and nothing more. The context window is resolved in core from
+ * the id, because that is a fact about a model rather than about the harness that runs it, and a wire
+ * that carried it would invite two harnesses to disagree about the same model.
+ *
  * `1.3.0` adds **remote control**: a `remoteControl` capability and a `remote-control` message that
  * re-aims an open session. ⛔ The bridge itself stays in the harness, not in Studio — claude.ai/code is
  * Anthropic's, and a Studio that opened it would be core keeping vendor code for exactly the reason
@@ -87,7 +101,7 @@ import { AiEvent } from './ai/ai-event-types';
  * makes an out-of-process harness able to reach parity with an in-core provider at all — until now the
  * ceiling was the wire, not the port.
  */
-export const AGENT_PROTOCOL_VERSION: string = '1.3.0';
+export const AGENT_PROTOCOL_VERSION: string = '1.4.0';
 
 /**
  * Matches a plain three-part semver. Local and deliberately strict, for the same reason the manifest's
@@ -164,6 +178,17 @@ export interface HarnessCapabilities {
    * refusing the whole provider over it would be a worse outcome than the fault it reports.
    */
   readonly remoteControl: boolean;
+
+  /**
+   * Gets whether the harness can report the models it runs.
+   *
+   * ⛔ Load-bearing, not decorative. `discover` is a message the harness must answer, and a harness that
+   * simply ignores one it has never heard of leaves Studio waiting on a reply that will never come —
+   * a settings dialog stuck forever. Asking only a harness that said it can answer is what makes an
+   * unimplemented message safe, and a harness speaking an older minor sends no flag at all, so it is
+   * read as false and never asked.
+   */
+  readonly discovery: boolean;
 }
 
 /**
@@ -365,6 +390,9 @@ export type HostMessage =
   // An aim that only took effect at the start of a turn would leave the toggle dangling until the next
   // one, which for a held-open session could be never.
   | { readonly type: 'remote-control'; readonly mode: 'off' | 'mirror' | 'control' }
+  // Answered with `models` under the same id. The id is a run id, so anything the harness has to ask
+  // before it can answer travels the ordinary request path.
+  | { readonly type: 'discover'; readonly discoveryId: string }
   | { readonly type: 'answer'; readonly callId: string; readonly answer: HarnessAnswer };
 
 /**
@@ -407,7 +435,31 @@ export type HarnessMessage =
       readonly requestId: string;
       readonly sessionId: string | null;
     }
-  | { readonly type: 'turn.failed'; readonly requestId: string; readonly error: string };
+  | { readonly type: 'turn.failed'; readonly requestId: string; readonly error: string }
+  | {
+      readonly type: 'models';
+      readonly discoveryId: string;
+      readonly models: readonly HarnessModel[];
+    };
+
+/**
+ * A model a harness reports it can run.
+ *
+ * ⛔ Deliberately two fields. The context window is resolved in core from the id — it is a fact about a
+ * model, not about the harness running it, and a wire that carried it would let two harnesses disagree
+ * about the same model with nothing to arbitrate.
+ */
+export interface HarnessModel {
+  /**
+   * Gets the model identifier, as the harness would be asked to run it.
+   */
+  readonly id: string;
+
+  /**
+   * Gets the display name, or undefined to show the identifier.
+   */
+  readonly label?: string;
+}
 
 /**
  * The body of a blocking request from a harness.
@@ -472,6 +524,7 @@ const HARNESS_MESSAGE_TYPES: readonly string[] = [
   'audit',
   'turn.completed',
   'turn.failed',
+  'models',
 ];
 
 /**

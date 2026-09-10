@@ -3,6 +3,7 @@ import {
   HarnessAnswer,
   HarnessCapabilities,
   HarnessMessage,
+  HarnessModel,
   HostMessage,
   isProtocolCompatible,
   parseHarnessMessage,
@@ -129,6 +130,12 @@ export class HarnessHost {
   >();
 
   /**
+   * Holds the resolvers for discoveries in flight, by discovery id.
+   */
+  private readonly discoveries: Map<string, (models: readonly HarnessModel[] | null) => void> =
+    new Map<string, (models: readonly HarnessModel[] | null) => void>();
+
+  /**
    * Holds the resolver for the handshake, cleared once the harness is ready or has failed to be.
    */
   private readyResolver: ((capabilities: HarnessCapabilities | null) => void) | null = null;
@@ -214,6 +221,36 @@ export class HarnessHost {
         }
       });
       this.post({ type: 'turn.start', turn: turn as never });
+    });
+  }
+
+  /**
+   * Asks the harness what models it can run.
+   *
+   * 🔑 The discovery id **is** a run id. A harness that must ask Studio something before it can answer —
+   * an API key, most obviously — asks under that id, and the host routes the reply exactly as it would
+   * mid-turn. Giving discovery its own correlation space would have meant relaxing the rule that a
+   * request naming an unknown run is refused, and that rule is what stops a harness asking questions
+   * nothing is waiting for.
+   * @param discoveryId The id to correlate the answer under.
+   * @param handlers The handlers for anything the harness asks while answering.
+   * @returns Returns the models, or null when the harness could not answer.
+   */
+  public discover(
+    discoveryId: string,
+    handlers: HarnessTurnHandlers,
+  ): Promise<readonly HarnessModel[] | null> {
+    if (!this.alive) {
+      return Promise.resolve(null);
+    }
+    this.turns.set(discoveryId, handlers);
+    return new Promise<readonly HarnessModel[] | null>((resolve): void => {
+      this.discoveries.set(discoveryId, (models: readonly HarnessModel[] | null): void => {
+        this.turns.delete(discoveryId);
+        this.discoveries.delete(discoveryId);
+        resolve(models);
+      });
+      this.post({ type: 'discover', discoveryId });
     });
   }
 
@@ -331,6 +368,9 @@ export class HarnessHost {
       case 'turn.failed':
         this.settlers.get(message.requestId)?.(message.error);
         break;
+      case 'models':
+        this.discoveries.get(message.discoveryId)?.(message.models);
+        break;
     }
   }
 
@@ -420,6 +460,11 @@ export class HarnessHost {
     this.pending.clear();
     for (const settle of [...this.settlers.values()]) {
       settle(`The harness ended: ${reason}`);
+    }
+    // A discovery whose harness has gone will never answer on its own, and a settings dialog waiting
+    // forever is the same failure as a turn stuck "Working".
+    for (const resolve of [...this.discoveries.values()]) {
+      resolve(null);
     }
   }
 }

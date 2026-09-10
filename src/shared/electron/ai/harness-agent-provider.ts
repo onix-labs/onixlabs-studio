@@ -9,19 +9,21 @@ import type {
 import type {
   HarnessAnswer,
   HarnessCapabilities,
+  HarnessModel,
   TurnContextRef,
   TurnImage,
   TurnRequest,
 } from '@shared/api/agent-protocol';
 import { logger } from '@shared/electron/logger';
 import type {
+  AgentAuth,
   AgentProvider,
   AgentRunContext,
   AgentSession,
   AgentSessionModel,
   ProviderAvailability,
 } from './agent-provider';
-import { HarnessHost, HarnessTransport } from './harness-host';
+import { HarnessHost, HarnessTransport, refusalFor } from './harness-host';
 
 /**
  * Opens a transport to a harness — a spawned process, or a fake in tests.
@@ -206,6 +208,46 @@ export class HarnessAgentProvider implements AgentProvider {
    */
   public describeAvailability(): ProviderAvailability {
     return { available: true, detail: `${this.definition.label} runs as its own process.` };
+  }
+
+  /**
+   * Asks the harness what models it can run.
+   *
+   * Spawns the harness, asks, and closes it again — the same cost as one turn, for something a user
+   * triggers from Settings rather than something that runs on a timer.
+   *
+   * ⚠️ A harness may need a credential to answer (an OpenAI-compatible endpoint has to call `/models`).
+   * It asks under the discovery id, so the request path is the ordinary one and the only thing this
+   * has to supply is the connection's auth.
+   * @param auth The connection's credential.
+   * @returns Returns what the harness reported, or null when it could not answer.
+   */
+  public async discoverModels(auth: AgentAuth): Promise<readonly HarnessModel[] | null> {
+    const host: HarnessHost = new HarnessHost(this.definition.connect(), (): void => undefined);
+    try {
+      const capabilities: HarnessCapabilities | null = await host.initialize();
+      // ⛔ Never asked unless it said it can answer. `discover` is a message the harness must reply to,
+      // and one that ignores a message it has never heard of would leave this awaiting a reply that
+      // never comes — a settings dialog stuck forever rather than a discovery that failed. A harness on
+      // an older minor sends no flag, which reads as false, which is exactly right.
+      if (capabilities === null || (capabilities.discovery ?? false) !== true) {
+        return null;
+      }
+      return await host.discover('discover-1', {
+        onEvent: (): void => undefined,
+        // ⛔ Only a credential is answerable here. Nothing is watching a settings dialog on the user's
+        // behalf, so a harness that stops to ask permission during discovery is refused rather than
+        // left blocked — and refused in the shape it asked in.
+        onRequest: (request: unknown): Promise<HarnessAnswer> =>
+          Promise.resolve(
+            (request as { kind?: unknown } | null)?.kind === 'credential'
+              ? { kind: 'credential', apiKey: auth.apiKey }
+              : refusalFor(request),
+          ),
+      });
+    } finally {
+      host.close();
+    }
   }
 
   /**
