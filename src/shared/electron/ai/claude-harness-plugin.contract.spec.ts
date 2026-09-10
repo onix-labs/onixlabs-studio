@@ -1,11 +1,17 @@
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import * as path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 
 // The core descriptors construct real providers, one of which reaches Electron.
 vi.mock('electron', () => ({ app: { isPackaged: false } }));
-import { parsePluginManifest, PluginManifest } from '@shared/api/plugin-manifest';
+import {
+  type ManifestNpmProvision,
+  parsePluginManifest,
+  PluginManifest,
+} from '@shared/api/plugin-manifest';
 import type { AiConnection } from '@shared/api/ai-types';
+import { type LockfilePackage, parseLockfileDocument } from '../provisioning/lockfile-provision';
 import { type AgentProviderDescriptor, toHarnessDescriptor } from './agent-provider-registry';
 
 /**
@@ -27,6 +33,27 @@ import { type AgentProviderDescriptor, toHarnessDescriptor } from './agent-provi
  * The plugin's manifest, read from the file that ships.
  */
 const MANIFEST_PATH: string = path.join(process.cwd(), 'plugins', 'claude-harness', 'plugin.json');
+
+/**
+ * The npm package the harness is published as, whose tarball the lockfile names.
+ */
+const PACKAGE_PATH: string = path.join(process.cwd(), 'plugins', 'claude-harness', 'package.json');
+
+/**
+ * The lockfile describing the tree an install reifies.
+ */
+const LOCKFILE_PATH: string = path.join(
+  process.cwd(),
+  'src/shared/electron/contributions/plugins/lockfiles/onixlabs.claude-harness.lock.json',
+);
+
+/**
+ * The curated index, which is what puts the plugin in front of a user at all.
+ */
+const INDEX_PATH: string = path.join(
+  process.cwd(),
+  'src/shared/electron/contributions/plugins/curated-plugins.json',
+);
 
 describe('the Claude harness plugin', () => {
   const parsed: ReturnType<typeof parsePluginManifest> = parsePluginManifest(
@@ -76,5 +103,137 @@ describe('the Claude harness plugin', () => {
 
     const chosen: AiConnection = { ...builtIn, harnessId: id };
     expect(descriptor.serves(chosen)).toBe(true);
+  });
+});
+
+/**
+ * Guards the claims that make the plugin *installable*, as opposed to merely well-formed.
+ *
+ * ⛔ These exist because the first version of this manifest was none of them and shipped anyway: it
+ * pinned a lockfile that did not exist, at a URL outside the directory lockfiles live in, with a
+ * placeholder hash, naming an entry point at `claude-harness/main.js` — a path a lockfile-provisioned
+ * tree can never contain, because `isConfined` admits nothing outside `node_modules/`. Every one of
+ * those failures lands at install time on a user's machine, and none of them is visible to a test that
+ * only validates the manifest's shape.
+ */
+describe('the Claude harness plugin is installable', () => {
+  const manifest: PluginManifest = parsePluginManifest(
+    JSON.parse(readFileSync(MANIFEST_PATH, 'utf8')),
+  ).manifest!;
+  const lockfileText: string = readFileSync(LOCKFILE_PATH, 'utf8');
+  const packages: readonly LockfilePackage[] = parseLockfileDocument(JSON.parse(lockfileText))!;
+
+  // Narrowed once, here, rather than in each test. The kind is not incidental: an archive provision
+  // would put the payload wherever it liked, and every claim below is about a *tree*.
+  if (manifest.provision.kind !== 'npm') {
+    throw new Error(`Expected an npm provision, found '${manifest.provision.kind}'.`);
+  }
+  const provision: ManifestNpmProvision = manifest.provision;
+
+  it('pinsTheHashTheLockfileActuallyHas', () => {
+    // The pin is a claim about bytes served from the repository, so it is checked against the bytes in
+    // the repository. ⚠️ Formatting counts: the committed file is Prettier's output, and a hash taken
+    // before formatting is a hash of a file that no longer exists.
+    const digest: string = createHash('sha256').update(lockfileText).digest('hex');
+
+    expect(digest).toBe(provision.sha256);
+  });
+
+  it('pinsALockfileFromTheDirectoryLockfilesLiveIn', () => {
+    // The URL is public API the moment a build ships against it: an installed Studio fetches this exact
+    // path, so moving the file breaks installs for versions already out there.
+    expect(provision.lockfileUrl).toBe(
+      'https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/' +
+        'src/shared/electron/contributions/plugins/lockfiles/onixlabs.claude-harness.lock.json',
+    );
+  });
+
+  it('namesAnEntryPointTheTreeActuallyDelivers', () => {
+    // 🔥 The defect that made the first version unusable. `install` deletes the whole tree and reports
+    // failure when the entry point is missing, so an entry point no package provides is not a partial
+    // install — it is an install that can never succeed.
+    const harness: string = manifest.contributes.agentHarnesses![0].entryPoint ?? '';
+    const provided: readonly string[] = packages.map(
+      (entry: LockfilePackage): string => entry.path,
+    );
+
+    expect(provision.executablePath).toBe(harness);
+    expect(provided.some((directory: string): boolean => harness.startsWith(`${directory}/`))).toBe(
+      true,
+    );
+  });
+
+  it('resolvesItsOwnPackageFromTheReleaseRatherThanALocalFile', () => {
+    // The lockfile is generated against the tarball on disk, so `resolved` comes out as `file:…` and
+    // has to be repointed. Left alone it describes a tree only the machine that generated it can build.
+    const own: LockfilePackage | undefined = packages.find(
+      (entry: LockfilePackage): boolean => entry.path === 'node_modules/@onixlabs/claude-harness',
+    );
+
+    expect(own?.url).toBe(
+      'https://github.com/onix-labs/onixlabs-studio/releases/download/' +
+        'claude-harness-v0.1.0/onixlabs-claude-harness-0.1.0.tgz',
+    );
+  });
+
+  it('publishesTheVersionTheManifestNames', () => {
+    // The release tag, the asset filename and the index entry are all derived from one of these two
+    // numbers. They disagreeing is a release that publishes to a URL nothing points at.
+    const pkg: { version: string } = JSON.parse(readFileSync(PACKAGE_PATH, 'utf8')) as {
+      version: string;
+    };
+
+    expect(pkg.version).toBe(manifest.version);
+  });
+
+  it('fetchesOnlyTheSdkBinariesThisPlatformCanRun', () => {
+    // 🔑 Why this is provisioned as a tree rather than an archive. The SDK ships its CLI as eight
+    // platform builds of around 200MB each; the lockfile's `os`/`cpu` filter is what turns that into a
+    // download of one or two rather than eight. A lockfile that lost those fields would install all of
+    // them, and an archive provision would have meant hand-building five assets of that size.
+    //
+    // ⚠️ Linux gets TWO: the glibc and musl builds differ by npm's `libc` field, which `parseLockfile`
+    // does not read — so a Linux install fetches around 400MB where a Mac or Windows install fetches
+    // 200MB. Recorded here rather than asserted away, because it is a real cost and the fix is a change
+    // to shared provisioning (detecting musl at runtime), not to this plugin.
+    const expected: Record<string, readonly string[]> = {
+      'darwin arm64': ['darwin-arm64'],
+      'darwin x64': ['darwin-x64'],
+      'win32 x64': ['win32-x64'],
+      'linux x64': ['linux-x64', 'linux-x64-musl'],
+      'linux arm64': ['linux-arm64', 'linux-arm64-musl'],
+    };
+
+    for (const [key, suffixes] of Object.entries(expected)) {
+      const [platform, architecture] = key.split(' ');
+      const selected: readonly LockfilePackage[] = parseLockfileDocument(
+        JSON.parse(lockfileText),
+        platform,
+        architecture,
+      )!.filter((entry: LockfilePackage): boolean =>
+        entry.path.startsWith('node_modules/@anthropic-ai/claude-agent-sdk-'),
+      );
+
+      expect(selected.map((entry: LockfilePackage): string => entry.path).sort()).toEqual(
+        suffixes.map(
+          (suffix: string): string => `node_modules/@anthropic-ai/claude-agent-sdk-${suffix}`,
+        ),
+      );
+    }
+  });
+
+  it('isCarriedByTheCuratedIndex', () => {
+    // ⛔ The Plugin Manager lists what is sideloaded or indexed, and nothing else. A plugin absent from
+    // the index is not "not installed" — it is invisible, with no way for a user to reach it.
+    const index: { plugins: readonly { id: string }[] } = JSON.parse(
+      readFileSync(INDEX_PATH, 'utf8'),
+    ) as { plugins: readonly { id: string }[] };
+    const entry: { id: string } | undefined = index.plugins.find(
+      (plugin: { id: string }): boolean => plugin.id === manifest.id,
+    );
+
+    // Deep equality against the manifest as written, not as parsed: the index holds a *copy* of that
+    // document, and the ways the two drift are exactly the ways an install breaks.
+    expect(entry).toEqual(JSON.parse(readFileSync(MANIFEST_PATH, 'utf8')));
   });
 });
