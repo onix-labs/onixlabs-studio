@@ -79,8 +79,13 @@ import { DECODER_FORMATS } from './decoder-protocol';
  * started anything — a value that only exists once a process has spoken arrives after the decision it
  * informs. Absent means `stateless`, which is what every harness can serve, so every 1.9.0 manifest
  * still validates and still means what it meant.
+ *
+ * `1.11.0` added an agent harness's optional `remoteControl`, static for the same reason: the control
+ * is drawn in the agent ribbon from what `listProviders` reported at start-up. Absent means false,
+ * which is the conservative answer — a control not offered is a gap, where one offered and unhonoured
+ * is a control that lies.
  */
-export const PLUGIN_API_VERSION: string = '1.10.0';
+export const PLUGIN_API_VERSION: string = '1.11.0';
 
 /**
  * Matches a plain three-part semver. Deliberately strict and deliberately local: the rule below is the
@@ -484,6 +489,15 @@ export interface ManifestAgentHarness {
    * word, and a `stateless` harness held open would accumulate turns it cannot relate to each other.
    */
   readonly sessionModel?: 'live-harness' | 'stateless';
+
+  /**
+   * Gets whether the harness can expose its session to another machine, defaulting to false.
+   *
+   * ⛔ Static for the same reason as {@link sessionModel}: the control appears in the agent ribbon,
+   * built from what `listProviders` reported at start-up, so an answer that needs a running process
+   * arrives long after the control has already been drawn or withheld.
+   */
+  readonly remoteControl?: boolean;
 }
 
 /**
@@ -1191,6 +1205,7 @@ function readContributions(value: unknown, errors: Errors): ManifestContribution
         command: command ?? { kind: 'executable' },
         entryPoint: readEntryPoint(entry, 'entryPoint', `${path}.`, errors),
         sessionModel: readSessionModel(entry['sessionModel'], `${path}.sessionModel`, errors),
+        remoteControl: readFlag(entry['remoteControl'], `${path}.remoteControl`, errors),
       });
     },
   );
@@ -1207,6 +1222,27 @@ function readContributions(value: unknown, errors: Errors): ManifestContribution
     );
   }
   return { languageServers, debugAdapters, decoders, containerEngines, agentHarnesses };
+}
+
+/**
+ * Reads an optional boolean capability, defaulting to false.
+ *
+ * Absent means false because the conservative answer is "cannot": a capability Studio does not offer is
+ * a missing control, where one offered and unhonoured is a control that lies.
+ * @param value The declared value, or undefined.
+ * @param path The dotted path, for error messages.
+ * @param errors The failure collector.
+ * @returns Returns the flag.
+ */
+function readFlag(value: unknown, path: string, errors: Errors): boolean {
+  if (value === undefined) {
+    return false;
+  }
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  errors.add(path, 'must be a boolean');
+  return false;
 }
 
 /**

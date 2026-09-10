@@ -4,6 +4,7 @@ import type {
   AiEvent,
   AiImageRef,
   AiModelInfo,
+  AiRemoteControlMode,
 } from '@shared/api/ai-types';
 import type {
   HarnessAnswer,
@@ -65,6 +66,14 @@ export interface HarnessDefinition {
    * been learned.
    */
   readonly sessionModel: AgentSessionModel;
+
+  /**
+   * Gets whether the harness can expose its session to another machine, as its **manifest** declares.
+   *
+   * ⛔ Static for the same reason as {@link sessionModel}: the control is drawn in the agent ribbon from
+   * what `listProviders` reported at start-up, long before anything has been spawned.
+   */
+  readonly remoteControl: boolean;
 }
 
 /**
@@ -145,14 +154,14 @@ export class HarnessAgentProvider implements AgentProvider {
   }
 
   /**
-   * Gets whether the harness can expose a session to another machine.
+   * Gets whether the harness can expose its session to another machine, as its manifest declares.
    *
-   * Always false. Remote Control (#331) is a provider-implemented capability with its own surface, and
-   * the protocol carries no message for it — the `bridge` round-trip is Studio *reaching in*, not a
-   * harness exposing itself outward. Offering the control for a harness that cannot honour it would be
-   * offering a connection that cannot be made.
+   * Was hardwired false until the protocol had a message for it. `bridge` was never the answer — that
+   * is Studio reaching *in*, where remote control is a harness exposing itself *outward*.
    */
-  public readonly supportsRemoteControl: boolean = false;
+  public get supportsRemoteControl(): boolean {
+    return this.definition.remoteControl;
+  }
 
   /**
    * Gets how the harness maintains a conversation, as its manifest declares.
@@ -376,6 +385,28 @@ export class HarnessAgentSession implements AgentSession {
   }
 
   /**
+   * Re-aims the session's remote-control exposure, in place.
+   *
+   * ⚠️ A no-op with a warning when the harness did not confirm the capability its manifest claimed.
+   * Deliberately **not** the same treatment as a session-model mismatch, which refuses the harness
+   * outright: there the symptom is a conversation that silently forgets itself, here it is a toggle
+   * that does nothing, and killing a working provider over the second would cost more than the fault.
+   * @param mode How the session should now be exposed.
+   */
+  public setRemoteControl(mode: AiRemoteControlMode): void {
+    if (this.host === null) {
+      // Nothing started yet: the opening turn's envelope already carries the mode.
+      return;
+    }
+    if (!this.host.setRemoteControl(mode === 'mirror' || mode === 'control' ? mode : 'off')) {
+      logger.warn(
+        'HarnessAgentSession.setRemoteControl',
+        `${this.definition.label} was asked to aim remote control at '${mode}' but did not declare it`,
+      );
+    }
+  }
+
+  /**
    * Interrupts the in-flight turn, leaving the session open for the next one.
    */
   public interrupt(): void {
@@ -466,6 +497,16 @@ export class HarnessAgentSession implements AgentSession {
       throw new Error(
         `${this.definition.label} declares '${capabilities.sessionModel}' at the handshake but ` +
           `'${this.definition.sessionModel}' in its manifest.`,
+      );
+    }
+    // ⚠️ `?? false` because a harness speaking an older minor never sends this field at all — 1.1.0
+    // predates it. Comparing `undefined` against a boolean would warn on every such harness, which is
+    // precisely the compatibility the "an older minor is fine" rule promises.
+    if ((capabilities.remoteControl ?? false) !== this.definition.remoteControl) {
+      logger.warn(
+        'HarnessAgentSession',
+        `${this.definition.label} declares remoteControl=${String(capabilities.remoteControl)} at the ` +
+          `handshake but ${String(this.definition.remoteControl)} in its manifest`,
       );
     }
     this.onReady(capabilities);

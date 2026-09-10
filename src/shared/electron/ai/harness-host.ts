@@ -251,6 +251,23 @@ export class HarnessHost {
   }
 
   /**
+   * Re-aims the harness's remote-control exposure.
+   *
+   * ⛔ Studio carries the mode and nothing else. The bridge a harness opens is the vendor's — claude.ai
+   * for the Claude harness — and a Studio that opened it would be core keeping exactly the vendor code
+   * this seam exists to remove.
+   * @param mode How the session should now be exposed.
+   * @returns Returns true when the harness declared it can honour this.
+   */
+  public setRemoteControl(mode: 'off' | 'mirror' | 'control'): boolean {
+    if (this.capabilitiesValue?.remoteControl !== true || !this.alive) {
+      return false;
+    }
+    this.post({ type: 'remote-control', mode });
+    return true;
+  }
+
+  /**
    * Ends the harness.
    */
   public close(): void {

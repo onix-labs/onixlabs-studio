@@ -865,6 +865,11 @@ export interface ContributedHarness {
   readonly sessionModel: 'live-harness' | 'stateless';
 
   /**
+   * Gets whether the harness can expose its session to another machine, as its manifest declares.
+   */
+  readonly remoteControl: boolean;
+
+  /**
    * Gets how to start the harness, or null when its payload is not installed.
    * @returns Returns the spawn specification, or null.
    */
@@ -901,6 +906,7 @@ export function toAgentHarnesses(
       priority: harness.priority,
       connectionAuths: harness.connectionAuths,
       sessionModel: harness.sessionModel ?? 'stateless',
+      remoteControl: harness.remoteControl ?? false,
       spawnSpec: (): { command: string; args: readonly string[] } | null => {
         const entryPoint: string | null = ops.isInstalled(provisioner())
           ? ops.target(provisioner(), harness.entryPoint)

@@ -84,6 +84,7 @@ describe('the Claude harness plugin', () => {
         priority: 100,
         connectionAuths: manifest.contributes.agentHarnesses?.[0]?.connectionAuths ?? [],
         sessionModel: 'stateless',
+        remoteControl: false,
         spawnSpec: (): { command: string; args: readonly string[] } | null => ({
           command: '/bin/harness',
           args: [],

@@ -24,7 +24,7 @@ import { createInterface } from 'node:readline';
 /**
  * The protocol version this harness speaks. Declared, not imported: the contract is the wire.
  */
-const PROTOCOL_VERSION = '1.1.0';
+const PROTOCOL_VERSION = '1.3.0';
 
 /**
  * Writes one protocol message to Studio.
@@ -131,6 +131,7 @@ function receive(message) {
           images: false,
           efforts: [],
           resumable: false,
+          remoteControl: false,
         },
       });
       break;
