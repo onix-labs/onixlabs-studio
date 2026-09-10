@@ -150,6 +150,7 @@ describe('toHarnessDescriptor', () => {
     displayName: string;
     priority: number;
     connectionAuths: readonly string[];
+    sessionModel: 'stateless';
     spawnSpec: () => { command: string; args: readonly string[] } | null;
   } {
     return {
@@ -157,6 +158,7 @@ describe('toHarnessDescriptor', () => {
       displayName: 'Claude',
       priority: 100,
       connectionAuths: ['claude-login'],
+      sessionModel: 'stateless',
       spawnSpec: (): { command: string; args: readonly string[] } | null =>
         installed ? { command: '/bin/harness', args: [] } : null,
     };
@@ -239,6 +241,7 @@ describe('displacing a built-in harness', () => {
     displayName: string;
     priority: number;
     connectionAuths: readonly string[];
+    sessionModel: 'stateless';
     spawnSpec: () => { command: string; args: readonly string[] } | null;
   } {
     return {
@@ -246,6 +249,7 @@ describe('displacing a built-in harness', () => {
       displayName: id,
       priority: 100,
       connectionAuths: [auth],
+      sessionModel: 'stateless',
       spawnSpec: (): { command: string; args: readonly string[] } | null => ({
         command: '/bin/harness',
         args: [],

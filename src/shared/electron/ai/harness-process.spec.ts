@@ -50,6 +50,7 @@ function echoProvider(): InstanceType<typeof HarnessAgentProvider> {
     defaultModelId: 'm1',
     connect: (): InstanceType<typeof HarnessProcess> =>
       new HarnessProcess({ command: process.execPath, args: [ECHO_HARNESS] }),
+    sessionModel: 'stateless',
   });
 }
 
@@ -193,6 +194,7 @@ describe('HarnessProcess, against the reference harness', () => {
       defaultModelId: 'm1',
       connect: (): InstanceType<typeof HarnessProcess> =>
         new HarnessProcess({ command: path.join(path.sep, 'nonexistent-harness'), args: [] }),
+      sessionModel: 'stateless',
     });
 
     // A harness that never starts must fail the turn rather than leave it waiting on a handshake that

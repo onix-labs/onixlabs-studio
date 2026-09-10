@@ -83,6 +83,7 @@ describe('the Claude harness plugin', () => {
         displayName: 'Claude (out of process)',
         priority: 100,
         connectionAuths: manifest.contributes.agentHarnesses?.[0]?.connectionAuths ?? [],
+        sessionModel: 'stateless',
         spawnSpec: (): { command: string; args: readonly string[] } | null => ({
           command: '/bin/harness',
           args: [],

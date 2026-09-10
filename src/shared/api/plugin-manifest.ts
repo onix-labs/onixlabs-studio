@@ -73,8 +73,14 @@ import { DECODER_FORMATS } from './decoder-protocol';
  * user for permission, where every other point answers a question or transforms bytes. It is keyed by
  * the AI connection's authentication kind, because which harness runs a turn is a property of the
  * connection the user picked. Adds only, on the same terms as every minor before it.
+ *
+ * `1.10.0` added an agent harness's optional `sessionModel`. ⛔ It has to be declared statically rather
+ * than read from the handshake, because Studio decides whether to *open a live session* before it has
+ * started anything — a value that only exists once a process has spoken arrives after the decision it
+ * informs. Absent means `stateless`, which is what every harness can serve, so every 1.9.0 manifest
+ * still validates and still means what it meant.
  */
-export const PLUGIN_API_VERSION: string = '1.9.0';
+export const PLUGIN_API_VERSION: string = '1.10.0';
 
 /**
  * Matches a plain three-part semver. Deliberately strict and deliberately local: the rule below is the
@@ -464,6 +470,20 @@ export interface ManifestAgentHarness {
    * provision's. See {@link ManifestLanguageServer.entryPoint}.
    */
   readonly entryPoint?: string;
+
+  /**
+   * Gets how the harness maintains a conversation, defaulting to `stateless`.
+   *
+   * ⛔ Declared here rather than read from the handshake, and the reason is a chicken-and-egg: Studio
+   * decides whether to *open a session* before it has started anything, so a value only known after a
+   * process has spoken arrives too late. Reading it from the handshake gave a harness a transient first
+   * turn and live ones thereafter, which is worse than either.
+   *
+   * ⚠️ The handshake still declares it, and a harness that contradicts its own manifest is refused
+   * rather than reconciled: Studio has already committed to holding a process open on the manifest's
+   * word, and a `stateless` harness held open would accumulate turns it cannot relate to each other.
+   */
+  readonly sessionModel?: 'live-harness' | 'stateless';
 }
 
 /**
@@ -1170,6 +1190,7 @@ function readContributions(value: unknown, errors: Errors): ManifestContribution
         connectionAuths: readAuths(entry['connectionAuths'], `${path}.connectionAuths`, errors),
         command: command ?? { kind: 'executable' },
         entryPoint: readEntryPoint(entry, 'entryPoint', `${path}.`, errors),
+        sessionModel: readSessionModel(entry['sessionModel'], `${path}.sessionModel`, errors),
       });
     },
   );
@@ -1186,6 +1207,34 @@ function readContributions(value: unknown, errors: Errors): ManifestContribution
     );
   }
   return { languageServers, debugAdapters, decoders, containerEngines, agentHarnesses };
+}
+
+/**
+ * Reads a harness's session model, defaulting to `stateless`.
+ *
+ * Absent means `stateless` because that is the conservative answer: Studio runs a transient process per
+ * turn, which every harness can serve. A harness that keeps state has to say so, since being held open
+ * is a thing done *to* it.
+ * @param value The declared value, or undefined.
+ * @param path The dotted path, for error messages.
+ * @param errors The failure collector.
+ * @returns Returns the session model.
+ */
+function readSessionModel(
+  value: unknown,
+  path: string,
+  errors: Errors,
+): 'live-harness' | 'stateless' {
+  if (value === undefined) {
+    return 'stateless';
+  }
+  if (value === 'live-harness' || value === 'stateless') {
+    return value;
+  }
+  // Refused rather than defaulted. Silently reading an unknown value as `stateless` would turn a typo
+  // into a harness that never gets the session it was written to need, with nothing to point at.
+  errors.add(path, "must be 'live-harness' or 'stateless'");
+  return 'stateless';
 }
 
 /**

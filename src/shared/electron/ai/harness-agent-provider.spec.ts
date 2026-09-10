@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AGENT_PROTOCOL_VERSION } from '@shared/api/agent-protocol';
-import type { AgentRunContext } from './agent-provider';
+import type { AgentRunContext, AgentSession } from './agent-provider';
 
 vi.mock('electron', () => ({ app: { isPackaged: false } }));
 
@@ -38,6 +38,16 @@ class ScriptedHarness {
   public version: string = AGENT_PROTOCOL_VERSION;
 
   /**
+   * Holds the session model the harness declares at the handshake.
+   */
+  public declaredSessionModel: string = 'live-harness';
+
+  /**
+   * Holds whether the provider closed the transport.
+   */
+  public closed: boolean = false;
+
+  /**
    * Holds the line handler.
    */
   private lines: ((line: string) => void) | null = null;
@@ -54,7 +64,7 @@ class ScriptedHarness {
         type: 'ready',
         capabilities: {
           protocolVersion: this.version,
-          sessionModel: 'live-harness',
+          sessionModel: this.declaredSessionModel,
           steering: this.steering,
           images: true,
           efforts: ['low', 'high'],
@@ -96,7 +106,7 @@ class ScriptedHarness {
    * Ends the harness.
    */
   public close(): void {
-    // Nothing to end.
+    this.closed = true;
   }
 
   /**
@@ -182,6 +192,7 @@ describe('HarnessAgentProvider', () => {
       models: [{ id: 'm1', label: 'M1', contextWindow: 100 }],
       defaultModelId: 'm1',
       connect: (): ScriptedHarness => harness,
+      sessionModel: 'stateless',
     });
   });
 
@@ -304,13 +315,24 @@ describe('HarnessAgentProvider', () => {
     // appears after the first turn.
     expect(provider.supportsImages).toBe(false);
     expect(provider.supportedEfforts).toEqual([]);
-    expect(provider.sessionModel).toBe('stateless');
 
     await provider.run(contextFor().context);
 
     expect(provider.supportsImages).toBe(true);
     expect(provider.supportedEfforts).toEqual(['low', 'high']);
-    expect(provider.sessionModel).toBe('live-harness');
+  });
+
+  it('sessionModelComesFromTheManifestAndDoesNotChangeWhenTheHarnessSpeaks', async () => {
+    // ⛔ Deliberately NOT learned from the handshake, unlike every other capability. `dispatchLive` asks
+    // this before anything has been started, so an answer that needs a running process arrives after
+    // the decision it informs — which produced the worst of both: a transient first turn, then live
+    // ones once the answer had been learned. The scripted harness declares `live-harness`; the manifest
+    // says `stateless`, and the manifest is what Studio plans around.
+    expect(provider.sessionModel).toBe('stateless');
+
+    await provider.run(contextFor().context);
+
+    expect(provider.sessionModel).toBe('stateless');
   });
 
   it('neverOffersRemoteControl', () => {
@@ -392,5 +414,88 @@ describe('toTurnRequest', () => {
 
     expect(JSON.stringify(turn['images'])).toBe('[{"mediaType":"image/png","data":"AAAA"}]');
     expect(turn['contextPaths']).toEqual([{ path: '/ws/a.ts', kind: 'selection', content: 'x' }]);
+  });
+});
+
+describe('HarnessAgentSession', () => {
+  let harness: ScriptedHarness;
+  let provider: ProviderType;
+
+  beforeEach(() => {
+    harness = new ScriptedHarness();
+    provider = new HarnessAgentProvider({
+      id: 'demo',
+      label: 'Demo Harness',
+      models: [{ id: 'm1', label: 'M1', contextWindow: 100 }],
+      defaultModelId: 'm1',
+      connect: (): ScriptedHarness => harness,
+      sessionModel: 'live-harness',
+    });
+  });
+
+  it('handshakesOnceAndKeepsTheProcessAcrossTurns', async () => {
+    // 🔑 The whole point. A transient run builds and closes a host per turn, so turn two starts a model
+    // that has never heard of turn one. A session hands both turns to the same process, which is what
+    // lets a `live-harness` keep the conversation in its own memory instead of Studio replaying it.
+    const session: AgentSession = provider.openSession(contextFor().context);
+
+    await session.turn(contextFor().context);
+    await session.turn(contextFor({ requestId: 'r2' }).context);
+
+    const handshakes: number = harness.sent.filter(
+      (message: Record<string, unknown>): boolean => message['type'] === 'initialize',
+    ).length;
+    const turns: number = harness.sent.filter(
+      (message: Record<string, unknown>): boolean => message['type'] === 'turn.start',
+    ).length;
+    expect(handshakes).toBe(1);
+    expect(turns).toBe(2);
+    expect(harness.closed).toBe(false);
+  });
+
+  it('takesItsSessionIdFromTheStreamRatherThanFromTheSettle', async () => {
+    // A `live-harness` has a conversation as soon as it starts one, part way through the first turn —
+    // not when that turn ends. Reading it from the settle would leave the id null for the whole of the
+    // turn that created it, and a reap in that window would reopen with nothing to resume.
+    harness.events = [{ requestId: 'r1', kind: 'session', sessionId: 'thread-7' }];
+    const session: AgentSession = provider.openSession(contextFor().context);
+
+    await session.turn(contextFor().context);
+
+    expect(session.id).toBe('thread-7');
+  });
+
+  it('refusesAHarnessWhoseHandshakeContradictsItsManifest', async () => {
+    // ⛔ Studio has already committed to holding a process open on the manifest's word. A `stateless`
+    // harness kept alive would collect turns it cannot relate to one another, which reads to the user
+    // as a model that has forgotten the conversation and leaves nothing in the log to say why.
+    harness.declaredSessionModel = 'stateless';
+    const session: AgentSession = provider.openSession(contextFor().context);
+
+    await expect(session.turn(contextFor().context)).rejects.toThrow('in its manifest');
+    expect(session.alive).toBe(false);
+  });
+
+  it('interruptStopsTheTurnAndLeavesTheSessionOpen', async () => {
+    const session: AgentSession = provider.openSession(contextFor().context);
+    await session.turn(contextFor().context);
+
+    session.interrupt();
+
+    // Nothing to abort once the turn has settled, and — the part that matters — the process is still up
+    // for the next one. Interrupting a session is not closing it.
+    expect(harness.closed).toBe(false);
+    expect(session.alive).toBe(true);
+  });
+
+  it('closeEndsTheProcessAndIsIdempotent', async () => {
+    const session: AgentSession = provider.openSession(contextFor().context);
+    await session.turn(contextFor().context);
+
+    await session.close();
+    await session.close();
+
+    expect(harness.closed).toBe(true);
+    expect(session.alive).toBe(false);
   });
 });

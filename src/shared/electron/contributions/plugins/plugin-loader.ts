@@ -857,6 +857,14 @@ export interface ContributedHarness {
   readonly connectionAuths: readonly string[];
 
   /**
+   * Gets how the harness maintains a conversation, as its manifest declares.
+   *
+   * ⛔ Static rather than read from the handshake: Studio decides whether to open a live session before
+   * it has started anything, so an answer that needs a running process arrives after the question.
+   */
+  readonly sessionModel: 'live-harness' | 'stateless';
+
+  /**
    * Gets how to start the harness, or null when its payload is not installed.
    * @returns Returns the spawn specification, or null.
    */
@@ -892,6 +900,7 @@ export function toAgentHarnesses(
       displayName: harness.displayName,
       priority: harness.priority,
       connectionAuths: harness.connectionAuths,
+      sessionModel: harness.sessionModel ?? 'stateless',
       spawnSpec: (): { command: string; args: readonly string[] } | null => {
         const entryPoint: string | null = ops.isInstalled(provisioner())
           ? ops.target(provisioner(), harness.entryPoint)
