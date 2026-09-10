@@ -1,0 +1,123 @@
+# Harness plugins — builds a harness plugin's npm tarball and publishes it as the release asset the
+# curated index points at.
+#
+# One workflow for every harness plugin, keyed off the tag: `codex-harness-v0.1.0` builds
+# `plugins/codex-harness`. Generalised when the second harness arrived rather than when the first did,
+# because until then there was one caller and no evidence about what actually varies between them.
+#
+# Separate from the app's release workflow because a plugin is versioned separately from Studio. The
+# app ships an index that *names* this artifact; the artifact itself changes only when the harness
+# does, and pinning them to the same cadence would mean re-releasing one to change the other.
+#
+# The procedure:
+#   1. PR the harness change, including a regenerated lockfile and a repinned `curated-plugins.json`.
+#   2. After it merges, tag `<plugin>-v<version>` on `main` and push the tag.
+#   3. This workflow builds the tarball, checks it against the integrity the merged lockfile already
+#      pins, and publishes the release.
+#
+# Order matters: the index is pinned *before* the asset exists, because the pin is computed from a
+# local build. That is only safe because the build is reproducible and this workflow refuses to publish
+# an asset that does not match the pin — so the window between merging and tagging cannot ship a
+# mismatch, it can only fail here.
+name: Harness plugin
+
+on:
+  push:
+    tags: ['*-harness-v*']
+  # A dry run: builds and checks the tarball without publishing anything, so a change can be proved
+  # before it is tagged. There is no tag to read the plugin from, so it is named.
+  workflow_dispatch:
+    inputs:
+      plugin:
+        description: 'Which harness plugin to build (directory under plugins/)'
+        required: true
+        default: claude-harness
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Build, verify and publish the tarball
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node (version from .nvmrc)
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
+      # `--ignore-scripts`: the only dependency this needs is esbuild, and the repository's postinstall
+      # rebuilds node-pty against Electron, which is minutes of native compilation for a job that never
+      # launches the app.
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      # A tag that disagrees with the package it names would publish an asset under a version nobody
+      # can find from the manifest. Cheap to check, confusing to debug.
+      # The tag names the plugin and the version at once, so both are derived from it and then checked
+      # against what is actually in the tree. A tag naming a plugin that does not exist, or a version the
+      # plugin does not claim, publishes an asset nothing can resolve.
+      - name: Resolve the plugin
+        id: plugin
+        shell: bash
+        run: |
+          if [ "${GITHUB_EVENT_NAME}" != 'push' ]; then
+            name="${{ inputs.plugin }}"
+            if [ ! -d "plugins/${name}" ]; then
+              echo "::error::plugins/${name} does not exist."
+              exit 1
+            fi
+            version="$(node -p "require('./plugins/${name}/package.json').version")"
+            echo "name=${name}" >> "$GITHUB_OUTPUT"
+            echo "version=${version}" >> "$GITHUB_OUTPUT"
+            echo "asset=onixlabs-${name}-${version}.tgz" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          name="${GITHUB_REF_NAME%-v*}"
+          version="${GITHUB_REF_NAME##*-v}"
+          if [ ! -d "plugins/${name}" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} names plugins/${name}, which does not exist."
+            exit 1
+          fi
+          declared="$(node -p "require('./plugins/${name}/package.json').version")"
+          if [ "${declared}" != "${version}" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} claims ${version} but the plugin declares ${declared}."
+            exit 1
+          fi
+          echo "name=${name}" >> "$GITHUB_OUTPUT"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "asset=onixlabs-${name}-${version}.tgz" >> "$GITHUB_OUTPUT"
+
+      # Fails when the build does not reproduce the bytes the lockfile pins, which is the whole reason
+      # this is a script rather than two lines of shell.
+      - name: Build, pack and check against the pinned integrity
+        run: |
+          node scripts/pack-plugin-tarball.mjs \
+            "plugins/${{ steps.plugin.outputs.name }}" --out dist-plugins
+
+      - name: Publish the release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            "dist-plugins/${{ steps.plugin.outputs.asset }}" \
+            --title "${{ steps.plugin.outputs.name }} ${{ steps.plugin.outputs.version }}" \
+            --notes "An agent harness plugin, published as the npm tarball that
+          \`curated-plugins.json\` pins. Install it from Studio's Plugin Manager rather than by hand."
+
+      # On a manual run there is nothing to publish, so the proved artifact is kept for inspection.
+      - name: Upload the tarball
+        if: github.event_name != 'push'
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.plugin.outputs.name }}-tarball
+          path: dist-plugins/*.tgz
+          retention-days: 14

@@ -1,0 +1,14 @@
+{
+  "name": "@onixlabs/codex-harness",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Codex agent harness plugin for ONIXLabs Studio.",
+  "type": "commonjs",
+  "main": "main.js",
+  "dependencies": {
+    "@openai/codex-sdk": "0.153.4"
+  },
+  "scripts": {
+    "build": "node build.mjs"
+  }
+}
