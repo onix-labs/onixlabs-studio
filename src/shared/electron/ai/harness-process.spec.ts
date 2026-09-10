@@ -83,6 +83,15 @@ function contextFor(
     forkSession: false,
     signal: new AbortController().signal,
     auth: { hasLocalLogin: false, hasCodexLogin: false, apiKey: null },
+    resumeSessionAt: null,
+    permissionPosture: 'prompt',
+    toolPolicies: {},
+    images: [],
+    contextPaths: [],
+    remoteControl: 'off',
+    agentShell: null,
+    owningTabId: null,
+    claudeExecutable: { mode: 'bundled' },
     bridge: { request: (): Promise<unknown> => Promise.resolve(null) },
     emit: (event: unknown): void => {
       const typed: { kind?: string; delta?: string } = event as { kind?: string; delta?: string };

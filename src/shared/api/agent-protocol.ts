@@ -75,8 +75,14 @@ import { AiEvent } from './ai/ai-event-types';
  *   - the **credential** round-trip, a fifth blocking request, so a harness can obtain a secret Studio
  *     holds rather than one it can find for itself;
  *   - `requestId` on `audit`, so an executed action is attributable to the turn that executed it.
+ *
+ * `1.2.0` completes the **turn envelope**. `AgentRunContext` carries 29 fields and the envelope carried
+ * 16, so a harness could not see the permission posture, the tool policies, attached images or context,
+ * the remote-control mode, the agent shell, or the owning tab. Nine fields closes that, which is what
+ * makes an out-of-process harness able to reach parity with an in-core provider at all — until now the
+ * ceiling was the wire, not the port.
  */
-export const AGENT_PROTOCOL_VERSION: string = '1.1.0';
+export const AGENT_PROTOCOL_VERSION: string = '1.2.0';
 
 /**
  * Matches a plain three-part semver. Local and deliberately strict, for the same reason the manifest's
@@ -227,6 +233,108 @@ export interface TurnRequest {
    * Gets whether resuming should fork the session rather than continue it.
    */
   readonly forkSession: boolean;
+
+  /**
+   * Gets the timestamp to resume the session from, or null to resume at its end.
+   */
+  readonly resumeSessionAt: string | null;
+
+  /**
+   * Gets how freely the turn may act without asking. `prompt` asks for everything, `auto-edits`
+   * permits edits, `auto-all` permits everything.
+   *
+   * ⚠️ A posture is not a substitute for the permission round-trip — it decides how often the harness
+   * needs to use it. A harness that reads this and then never asks is misbehaving, which is why the
+   * host still refuses on abort rather than assuming a posture means nothing will be asked.
+   */
+  readonly permissionPosture: 'prompt' | 'auto-edits' | 'auto-all';
+
+  /**
+   * Gets the per-tool policy, keyed by tool name. A tool absent from the map has no policy of its own
+   * and falls to {@link permissionPosture}.
+   */
+  readonly toolPolicies: Readonly<Record<string, 'allow' | 'ask' | 'deny'>>;
+
+  /**
+   * Gets the images attached to the turn's input. Empty when there are none, and always empty for a
+   * harness that declared `images: false` at the handshake.
+   */
+  readonly images: readonly TurnImage[];
+
+  /**
+   * Gets the files and selections the user attached as context.
+   */
+  readonly contextPaths: readonly TurnContextRef[];
+
+  /**
+   * Gets whether the run may be driven from outside the app, and how far. `off` is the default and the
+   * only value a harness that declared no remote-control support will ever see.
+   */
+  readonly remoteControl: 'off' | 'mirror' | 'control';
+
+  /**
+   * Gets the shell the turn's own command execution should use, or null to inherit the environment.
+   */
+  readonly agentShell: string | null;
+
+  /**
+   * Gets the editor tab that owns the run, so in-app tools act on that tab; null for the standalone
+   * agent tab.
+   */
+  readonly owningTabId: string | null;
+
+  /**
+   * Gets the settings Studio holds on this plugin's behalf, whose meaning belongs to the plugin.
+   *
+   * ⛔ Opaque on purpose, on the same grounds as a `bridge` request's `input`: the protocol must not
+   * name one vendor's concepts. The Claude harness's choice of CLI is a setting *it* understands, and a
+   * field called `claudeExecutable` in a vendor-neutral wire would be the seam naming a vendor.
+   *
+   * ⚠️ A way station, not the destination. These values still originate as fields on Studio's own run
+   * context, so core continues to know their names until plugins can declare their own settings. What
+   * this buys now is that the *protocol* does not.
+   */
+  readonly providerSettings: Readonly<Record<string, unknown>>;
+}
+
+/**
+ * An image attached to a turn's input.
+ */
+export interface TurnImage {
+  /**
+   * Gets the IANA media type.
+   */
+  readonly mediaType: string;
+
+  /**
+   * Gets the base64-encoded bytes.
+   */
+  readonly data: string;
+
+  /**
+   * Gets the display name, when one is known.
+   */
+  readonly name?: string;
+}
+
+/**
+ * A file, folder or selection the user attached to a turn as context.
+ */
+export interface TurnContextRef {
+  /**
+   * Gets the absolute path.
+   */
+  readonly path: string;
+
+  /**
+   * Gets what was attached.
+   */
+  readonly kind: 'file' | 'folder' | 'selection';
+
+  /**
+   * Gets the attached content, when Studio resolved it rather than leaving the harness to read it.
+   */
+  readonly content?: string;
 }
 
 /**

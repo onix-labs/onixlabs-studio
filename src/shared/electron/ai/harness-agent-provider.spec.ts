@@ -149,6 +149,15 @@ function contextFor(overrides: Partial<Record<string, unknown>> = {}): {
     forkSession: false,
     signal: new AbortController().signal,
     auth: { hasLocalLogin: false, hasCodexLogin: false, apiKey: null },
+    resumeSessionAt: null,
+    permissionPosture: 'auto-edits',
+    toolPolicies: { Bash: 'ask' },
+    images: [{ mediaType: 'image/png', data: 'AAAA', name: 'shot.png' }],
+    contextPaths: [{ path: '/ws/a.ts', kind: 'file' }],
+    remoteControl: 'mirror',
+    agentShell: '/bin/zsh',
+    owningTabId: 'tab-2',
+    claudeExecutable: { mode: 'bundled' },
     bridge: { request: (): Promise<unknown> => Promise.resolve('bridged') },
     emit: (event: unknown): void => void events.push(event),
     recordAudit: (): void => undefined,
@@ -330,5 +339,58 @@ describe('toTurnRequest', () => {
     expect(turn['emit']).toBeUndefined();
     expect(turn['requestPermission']).toBeUndefined();
     expect(turn['setSteerHandler']).toBeUndefined();
+  });
+
+  it('carriesEveryFieldAHarnessNeedsToReachParityWithAnInCoreProvider', () => {
+    // 🔑 Protocol 1.2.0. The envelope carried 16 of the run context's 29 fields, so a harness could not
+    // see the posture it was running under, the tool policies, the attached images or context, the
+    // remote-control mode, the shell, or the owning tab. The ceiling on an out-of-process provider was
+    // the wire rather than the port, and this is where that stopped being true.
+    const { context } = contextFor();
+
+    const turn: Record<string, unknown> = toTurnRequest(context) as unknown as Record<
+      string,
+      unknown
+    >;
+
+    expect(turn['permissionPosture']).toBe('auto-edits');
+    expect(turn['toolPolicies']).toEqual({ Bash: 'ask' });
+    expect(turn['images']).toEqual([{ mediaType: 'image/png', data: 'AAAA', name: 'shot.png' }]);
+    expect(turn['contextPaths']).toEqual([{ path: '/ws/a.ts', kind: 'file' }]);
+    expect(turn['remoteControl']).toBe('mirror');
+    expect(turn['agentShell']).toBe('/bin/zsh');
+    expect(turn['owningTabId']).toBe('tab-2');
+    expect(turn['resumeSessionAt']).toBeNull();
+  });
+
+  it('carriesAVendorsOwnSettingInTheOpaqueBagRatherThanAsANamedField', () => {
+    // ⛔ A wire field called `claudeExecutable` would be the seam naming a vendor. The setting still
+    // reaches the harness that understands it; the protocol simply does not know what it means.
+    const { context } = contextFor();
+
+    const turn: Record<string, unknown> = toTurnRequest(context) as unknown as Record<
+      string,
+      unknown
+    >;
+
+    expect(turn['claudeExecutable']).toBeUndefined();
+    expect(turn['providerSettings']).toEqual({ claudeExecutable: { mode: 'bundled' } });
+  });
+
+  it('omitsAnOptionalFieldRatherThanSendingItUndefined', () => {
+    // `exactOptionalPropertyTypes` aside, an explicit `undefined` survives neither `JSON.stringify` nor
+    // a strict reader on the far end. An absent name is absent.
+    const { context } = contextFor({
+      images: [{ mediaType: 'image/png', data: 'AAAA' }],
+      contextPaths: [{ path: '/ws/a.ts', kind: 'selection', content: 'x' }],
+    });
+
+    const turn: Record<string, unknown> = toTurnRequest(context) as unknown as Record<
+      string,
+      unknown
+    >;
+
+    expect(JSON.stringify(turn['images'])).toBe('[{"mediaType":"image/png","data":"AAAA"}]');
+    expect(turn['contextPaths']).toEqual([{ path: '/ws/a.ts', kind: 'selection', content: 'x' }]);
   });
 });
