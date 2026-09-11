@@ -94,7 +94,12 @@ export class PluginManager {
         return {
           success: false,
           state: 'available',
-          error: descriptor.detail ?? `${descriptor.name} could not be installed.`,
+          // ⛔ NOT `descriptor.detail`. That field is a note about runtimes the plugin needs *once it is
+          // installed*, and using it as the reason put the plugin's own description in front of the
+          // user as though it explained the failure: a 404 on a release asset read back as "The full
+          // Claude agent: sessions held open across turns, sub-agents…". A truthful generic beats a
+          // fluent wrong one, and the log carries the detail the descriptor cannot.
+          error: `${descriptor.name} could not be installed. The application log records what failed.`,
         };
       }
       // Installs are version-scoped, so installing a newer entry leaves the version it replaced beside

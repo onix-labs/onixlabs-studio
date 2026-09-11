@@ -105,6 +105,13 @@ function migrateAiConnections(overrides: SettingsOverrides): SettingsOverrides {
     }
   }
 
+  // The legacy keys go once they have been read. Copying them forward but leaving them behind kept a
+  // dead `ai.provider` in every upgraded profile indefinitely — settings the user cannot see, cannot
+  // edit, and that no longer decide anything, sitting next to the keys that replaced them. A migration
+  // that never finishes is not a migration.
+  delete result['ai.provider'];
+  delete result['ai.models'];
+
   return result;
 }
 
