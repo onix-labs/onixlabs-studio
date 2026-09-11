@@ -528,7 +528,7 @@ export function refusalFor(request: unknown): HarnessAnswer {
   if (kind === 'tools') {
     // An empty list, not an error: a refused turn has no tools, and a harness that reads this as "none
     // available" behaves correctly, where one handed an error might retry.
-    return { kind: 'tools', tools: [] };
+    return { kind: 'tools', tools: [], systemPrompt: '' };
   }
   if (kind === 'tool') {
     return { kind: 'tool', result: null, error: 'refused' };

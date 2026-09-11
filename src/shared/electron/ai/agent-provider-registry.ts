@@ -184,6 +184,14 @@ export function toHarnessDescriptor(
         connect: (): HarnessTransport => connect(spec),
         sessionModel: harness.sessionModel,
         remoteControl: harness.remoteControl,
+        // What the harness needs to know about the connection it serves. A harness talking to a plain
+        // model API cannot build a client without them, and the turn envelope — being turn-scoped —
+        // says nothing about which endpoint a connection points at.
+        settings: {
+          connectionKind: connection.kind,
+          connectionLabel: connection.label,
+          baseUrl: connection.baseUrl ?? null,
+        },
       });
     },
   };

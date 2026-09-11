@@ -243,6 +243,7 @@ describe('HarnessAgentProvider', () => {
       connect: (): ScriptedHarness => harness,
       sessionModel: 'stateless',
       remoteControl: false,
+      settings: {},
     });
   });
 
@@ -334,6 +335,54 @@ describe('HarnessAgentProvider', () => {
     expect(answer.kind).toBe('tools');
     expect(answer.tools.length).toBeGreaterThan(0);
     expect(answer.tools.map((t: { name: string }): string => t.name)).not.toContain(ASK_USER);
+  });
+
+  it('run_sendsStudiosInstructionsAlongsideTheToolsTheyDescribe', async () => {
+    // ⛔ The two travel together because the instructions describe the tools: what this surface is, how
+    // to use them, and — in a chat turn — that it may read but not act. A harness given the tools but
+    // not the instructions would have had to write its own, and two descriptions of one set of
+    // capabilities drift in exactly the way this seam exists to prevent.
+    harness.requests = [{ kind: 'tools' }];
+    const { context } = contextFor({ surface: 'editor', mode: 'agent' });
+
+    await provider.run(context);
+
+    const answer: { systemPrompt: string } = harness.answers()[0] as { systemPrompt: string };
+    expect(answer.systemPrompt.length).toBeGreaterThan(0);
+  });
+
+  it('run_tellsAChatTurnItMayNotAct', async () => {
+    // The read-only appendix is part of what makes a chat turn a chat turn for a harness that has no
+    // other way to know: its tools are already withheld, and this says why.
+    harness.requests = [{ kind: 'tools' }];
+    const { context } = contextFor({ surface: 'editor', mode: 'chat' });
+
+    await provider.run(context);
+
+    const chat: { systemPrompt: string } = harness.answers()[0] as { systemPrompt: string };
+    const { context: agentContext } = contextFor({ surface: 'editor', mode: 'agent' });
+    harness.sent.length = 0;
+    await provider.run(agentContext);
+    const agent: { systemPrompt: string } = harness.answers()[0] as { systemPrompt: string };
+
+    expect(chat.systemPrompt).not.toBe(agent.systemPrompt);
+  });
+
+  it('run_carriesTheConnectionSettingsAHarnessNeedsToBuildAClient', () => {
+    // 🔑 The envelope is turn-scoped and says nothing about which endpoint or provider kind a connection
+    // points at — facts a harness talking to a plain model API needs before it can build a client at
+    // all. They ride in the opaque bag rather than as named wire fields, because the protocol must not
+    // name one vendor's concepts.
+    const turn: Record<string, unknown> = toTurnRequest(contextFor().context, {
+      connectionKind: 'ollama',
+      baseUrl: 'http://localhost:11434/v1',
+    }) as unknown as Record<string, unknown>;
+
+    expect(turn['providerSettings']).toEqual({
+      connectionKind: 'ollama',
+      baseUrl: 'http://localhost:11434/v1',
+      claudeExecutable: { mode: 'bundled' },
+    });
   });
 
   it('run_describesEachToolWithAJsonSchemaRatherThanTheSchemaStudioHolds', async () => {
@@ -581,6 +630,7 @@ describe('HarnessAgentSession', () => {
       connect: (): ScriptedHarness => harness,
       sessionModel: 'live-harness',
       remoteControl: true,
+      settings: {},
     });
   });
 

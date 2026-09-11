@@ -2,7 +2,7 @@ import type { AiToolPolicy } from '@shared/api/ai-types';
 import type { HarnessTool } from '@shared/api/agent-protocol';
 import { logger } from '@shared/electron/logger';
 import type { AgentRunContext } from './agent-provider';
-import { toolsForSurface } from './ai-sdk-stream';
+import { promptForSurface, toolsForSurface } from './ai-sdk-stream';
 
 // Studio's own tools, described to a harness and run on its behalf (#653).
 //
@@ -77,7 +77,7 @@ async function toolsFor(context: AgentRunContext): Promise<Record<string, ToolLi
 }
 
 /**
- * Describes the tools a harness may use for a turn.
+ * Describes what Studio offers a harness for a turn: its instructions, and the tools they describe.
  *
  * ⛔ A tool the user set to **Deny** is omitted entirely rather than listed and refused — the model is
  * never told it exists. The accepted cost, recorded because it is a real one: a model that cannot see a
@@ -87,7 +87,9 @@ async function toolsFor(context: AgentRunContext): Promise<Record<string, ToolLi
  * @param context The run context.
  * @returns Returns the tool descriptions.
  */
-export async function describeTools(context: AgentRunContext): Promise<readonly HarnessTool[]> {
+export async function describeOffer(
+  context: AgentRunContext,
+): Promise<{ systemPrompt: string; tools: readonly HarnessTool[] }> {
   const tools: Record<string, ToolLike> = await toolsFor(context);
   const { z } = await import('zod');
   const described: HarnessTool[] = [];
@@ -105,10 +107,13 @@ export async function describeTools(context: AgentRunContext): Promise<readonly 
     });
   }
   logger.debug(
-    'harness-tools.describeTools',
+    'harness-tools.describeOffer',
     `Described ${described.length} of ${Object.keys(tools).length} tool(s) for ${context.surface}`,
   );
-  return described;
+  // The instructions travel with the tools because they describe them: what this surface is, how to use
+  // them, and that a chat turn may read but not act. A harness left to write its own would be a second
+  // description of one set of capabilities.
+  return { systemPrompt: promptForSurface(context), tools: described };
 }
 
 /**
