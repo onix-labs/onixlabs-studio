@@ -525,6 +525,14 @@ export function refusalFor(request: unknown): HarnessAnswer {
   if (kind === 'bridge') {
     return { kind: 'bridge', result: null, error: 'refused' };
   }
+  if (kind === 'tools') {
+    // An empty list, not an error: a refused turn has no tools, and a harness that reads this as "none
+    // available" behaves correctly, where one handed an error might retry.
+    return { kind: 'tools', tools: [] };
+  }
+  if (kind === 'tool') {
+    return { kind: 'tool', result: null, error: 'refused' };
+  }
   if (kind === 'credential') {
     // The same shape as "there is no key configured". A harness cannot tell a refused request from an
     // unconfigured connection, and does not need to: both mean it cannot authenticate, and inventing a

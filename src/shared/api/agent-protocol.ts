@@ -113,8 +113,25 @@ import { AiEvent } from './ai/ai-event-types';
  * plugin keeps working and simply is not offered the optional messages.
  *
  *
+ * `1.6.0` adds **Studio's own tools**: a `tools` request for their descriptions and a `tool` request to
+ * run one. A harness whose model brings its own tools — Claude's and Codex's SDKs both do — never asks.
+ * One that talks to a plain model API has none of its own, so Studio must supply them, and that is what
+ * makes Ollama and every OpenAI-compatible endpoint reachable as a plugin.
+ *
+ * ⛔ Descriptions cross the wire; **execution never does**. The harness is told a tool exists and what
+ * it takes, and asks Studio to run it — so the tool's implementation, its permission gate and its audit
+ * record all stay on Studio's side of the seam, which is where the user's permissions are enforced.
+ *
+ * ⛔ A tool the user has set to Deny is **omitted from the list entirely** rather than sent and refused.
+ * The model is never told it exists. The accepted cost, recorded here because it is a real one: a model
+ * that cannot see a capability may work around it or fail without explaining itself, where one told
+ * "that is switched off" could have said so.
+ *
+ * ⚠️ Neither request is gated by `answers`, and that is not an oversight: both travel *from* the harness,
+ * so a harness that does not implement them simply never asks. The hang that `answers` prevents is only
+ * possible for messages going the other way.
  */
-export const AGENT_PROTOCOL_VERSION: string = '1.5.0';
+export const AGENT_PROTOCOL_VERSION: string = '1.6.0';
 
 /**
  * Matches a plain three-part semver. Local and deliberately strict, for the same reason the manifest's
@@ -413,7 +430,36 @@ export type HarnessAnswer =
   | { readonly kind: 'input'; readonly answer: string | null }
   | { readonly kind: 'edit-decision'; readonly decision: 'yes' | 'no' }
   | { readonly kind: 'bridge'; readonly result: unknown; readonly error: string | null }
-  | { readonly kind: 'credential'; readonly apiKey: string | null };
+  | { readonly kind: 'credential'; readonly apiKey: string | null }
+  | { readonly kind: 'tools'; readonly tools: readonly HarnessTool[] }
+  | { readonly kind: 'tool'; readonly result: string | null; readonly error: string | null };
+
+/**
+ * One of Studio's own tools, as described to a harness.
+ *
+ * ⛔ No implementation crosses. The harness learns that a tool exists and what it takes; running it is a
+ * `tool` request back to Studio, so the permission gate and the audit record stay where the user's
+ * settings are enforced.
+ */
+export interface HarnessTool {
+  /**
+   * Gets the tool's name, which is what a `tool` request names to run it.
+   */
+  readonly name: string;
+
+  /**
+   * Gets the description shown to the model.
+   */
+  readonly description: string;
+
+  /**
+   * Gets the input shape, as JSON Schema.
+   *
+   * Converted from the schema Studio holds rather than authored twice — the two drifting apart would
+   * mean a model calling a tool with arguments Studio then rejects.
+   */
+  readonly inputSchema: unknown;
+}
 
 /**
  * A message a harness sends Studio.
@@ -489,7 +535,11 @@ export type HarnessRequest =
   // Carries no fields: the turn already says which connection it belongs to, and there is exactly one
   // secret a connection has. A harness naming the credential it wants would be a harness able to ask
   // for somebody else's.
-  | { readonly kind: 'credential' };
+  | { readonly kind: 'credential' }
+  // Asked by a harness whose model has no tools of its own. What comes back depends on the turn's
+  // surface and mode, so it is asked per turn rather than cached across a session.
+  | { readonly kind: 'tools' }
+  | { readonly kind: 'tool'; readonly name: string; readonly input: unknown };
 
 /**
  * Gets whether a harness's declared protocol version is one this build can honour.

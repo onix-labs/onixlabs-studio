@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AGENT_PROTOCOL_VERSION } from '@shared/api/agent-protocol';
 import type { AgentRunContext, AgentSession } from './agent-provider';
+import { ASK_USER } from '@shared/api/ai/ai-tool-surface';
 
 vi.mock('electron', () => ({ app: { isPackaged: false } }));
 
@@ -58,6 +59,16 @@ class ScriptedHarness {
   private lines: ((line: string) => void) | null = null;
 
   /**
+   * Holds the run awaiting settlement, or null when none is.
+   */
+  private settling: string | null = null;
+
+  /**
+   * Counts the answers received for the turn in flight.
+   */
+  private answered: number = 0;
+
+  /**
    * Answers what the provider sends, driving the exchange forward.
    * @param line The serialised message.
    */
@@ -92,11 +103,36 @@ class ScriptedHarness {
       for (const event of this.events) {
         this.emit({ type: 'event', event });
       }
+      this.settling = requestId;
+      this.answered = 0;
       for (const [index, request] of this.requests.entries()) {
         this.emit({ type: 'request', callId: `c${index}`, requestId, request });
       }
-      // Settled after the requests, on a later tick, so the answers are exchanged first.
-      queueMicrotask((): void => this.emit({ type: 'turn.completed', requestId, sessionId: 's1' }));
+      // ⚠️ A turn with no questions settles on a later tick; one with questions settles only once every
+      // answer has arrived. Settling on a timer instead was wrong the moment an answer became genuinely
+      // asynchronous — describing Studio's tools awaits an import — and the turn ended before the reply
+      // it was waiting for, which looked like the answer never being sent.
+      if (this.requests.length === 0) {
+        queueMicrotask((): void => this.settle());
+      }
+      return;
+    }
+    if (message['type'] === 'answer') {
+      this.answered += 1;
+      if (this.answered >= this.requests.length) {
+        this.settle();
+      }
+    }
+  }
+
+  /**
+   * Completes the turn in flight, once.
+   */
+  private settle(): void {
+    const requestId: string | null = this.settling;
+    this.settling = null;
+    if (requestId !== null) {
+      this.emit({ type: 'turn.completed', requestId, sessionId: 's1' });
     }
   }
 
@@ -276,6 +312,75 @@ describe('HarnessAgentProvider', () => {
     await provider.run(context);
 
     expect(harness.answers()).toEqual([{ kind: 'credential', apiKey: null }]);
+  });
+
+  it('run_describesStudiosToolsWhenAskedAndWithholdsDeniedOnes', async () => {
+    // ⛔ Matthew's ruling: a denied tool is omitted entirely, not listed and refused. The model is never
+    // told it exists — it cannot reach for what it has not been shown, and a denial it cannot see is a
+    // denial it cannot keep pushing against.
+    harness.requests = [{ kind: 'tools' }];
+    const { context } = contextFor({
+      surface: 'editor',
+      mode: 'agent',
+      toolPolicies: { [ASK_USER]: 'deny' },
+    });
+
+    await provider.run(context);
+
+    const answer: { kind: string; tools: readonly { name: string }[] } = harness.answers()[0] as {
+      kind: string;
+      tools: readonly { name: string }[];
+    };
+    expect(answer.kind).toBe('tools');
+    expect(answer.tools.length).toBeGreaterThan(0);
+    expect(answer.tools.map((t: { name: string }): string => t.name)).not.toContain(ASK_USER);
+  });
+
+  it('run_describesEachToolWithAJsonSchemaRatherThanTheSchemaStudioHolds', async () => {
+    // The schema Studio holds is a Zod object, which does not survive a pipe. Converting it — rather
+    // than hand-writing a second description of the same shape — is what stops the two drifting into a
+    // model calling a tool with arguments Studio then rejects.
+    harness.requests = [{ kind: 'tools' }];
+    const { context } = contextFor({ surface: 'editor', mode: 'agent' });
+
+    await provider.run(context);
+
+    const answer: { tools: readonly { inputSchema: { type?: string } }[] } =
+      harness.answers()[0] as {
+        tools: readonly { inputSchema: { type?: string } }[];
+      };
+    expect(answer.tools[0].inputSchema.type).toBe('object');
+  });
+
+  it('run_refusesToRunAToolStudioDoesNotHave', async () => {
+    harness.requests = [{ kind: 'tool', name: 'not_a_tool', input: {} }];
+    const { context } = contextFor({ surface: 'editor', mode: 'agent' });
+
+    await provider.run(context);
+
+    // Named rather than silently failed: a harness reaching for a tool it was never shown is either
+    // confused or trying its luck, and either way the answer should say so.
+    expect(harness.answers()[0]).toEqual({
+      kind: 'tool',
+      result: null,
+      error: "Studio has no tool called 'not_a_tool'.",
+    });
+  });
+
+  it('run_refusesToRunADeniedToolEvenWhenItWasNeverDescribed', async () => {
+    // ⛔ Defence in depth. Withholding the description stops the *model* reaching for it; this stops a
+    // *harness* reaching past the list it was given.
+    harness.requests = [{ kind: 'tool', name: ASK_USER, input: { question: 'hi', choices: [] } }];
+    const { context } = contextFor({
+      surface: 'editor',
+      mode: 'agent',
+      toolPolicies: { [ASK_USER]: 'deny' },
+    });
+
+    await provider.run(context);
+
+    const answer: { error: string | null } = harness.answers()[0] as { error: string | null };
+    expect(answer.error).toContain('Deny');
   });
 
   it('run_deniesAQuestionOfAKindStudioCannotPut', async () => {

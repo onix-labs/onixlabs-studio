@@ -207,6 +207,19 @@ describe('HarnessProcess, against the reference harness', () => {
     expect(models).toEqual([{ id: 'echo-anonymous' }]);
   }, 20_000);
 
+  it('describesAndRunsStudiosToolsForARealHarnessOverTheRealTransport', async () => {
+    // The end-to-end proof of what makes a plain model API reachable as a plugin: the harness asks what
+    // Studio offers, picks one, asks Studio to run it, and gets a result — all over a spawned process's
+    // pipe, with the tool's implementation never leaving Studio.
+    const { context, texts } = contextFor('tools', { surface: 'editor', mode: 'agent' });
+
+    await echoProvider().run(context);
+
+    expect(texts).toHaveLength(1);
+    expect(texts[0]).toContain('tools:');
+    expect(texts[0]).not.toContain('has no tool called');
+  }, 20_000);
+
   it('failsTheTurnWhenTheHarnessFailsIt', async () => {
     const { context } = contextFor('fail');
 
