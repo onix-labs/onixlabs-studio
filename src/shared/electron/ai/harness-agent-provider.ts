@@ -10,6 +10,7 @@ import type {
   HarnessAnswer,
   HarnessCapabilities,
   HarnessModel,
+  HarnessTool,
   TurnContextRef,
   TurnImage,
   TurnRequest,
@@ -24,7 +25,7 @@ import type {
   ProviderAvailability,
 } from './agent-provider';
 import { HarnessHost, HarnessTransport, refusalFor } from './harness-host';
-import { describeTools, invokeTool } from './harness-tools';
+import { describeOffer, invokeTool } from './harness-tools';
 
 /**
  * Opens a transport to a harness — a spawned process, or a fake in tests.
@@ -77,6 +78,16 @@ export interface HarnessDefinition {
    * what `listProviders` reported at start-up, long before anything has been spawned.
    */
   readonly remoteControl: boolean;
+
+  /**
+   * Gets the settings Studio holds on this harness's behalf, merged into every turn envelope.
+   *
+   * 🔑 Where a harness learns about the *connection* it serves. The envelope is turn-scoped and says
+   * nothing about which endpoint or provider kind a connection points at — facts a harness talking to a
+   * plain model API needs before it can build a client at all. They ride here rather than as named wire
+   * fields for the reason the bag exists: the protocol must not name one vendor's concepts.
+   */
+  readonly settings: Readonly<Record<string, unknown>>;
 }
 
 /**
@@ -288,7 +299,7 @@ export class HarnessAgentProvider implements AgentProvider {
           ? (text: string): boolean => host.steer(context.requestId, text)
           : null,
       );
-      await host.runTurn(toTurnRequest(context), {
+      await host.runTurn(toTurnRequest(context, this.definition.settings), {
         onEvent: (event: unknown): void => context.emit(event as AiEvent),
         onRequest: (request: unknown): Promise<HarnessAnswer> => answerRequest(request, context),
       });
@@ -408,7 +419,7 @@ export class HarnessAgentSession implements AgentSession {
           ? (text: string): boolean => host.steer(context.requestId, text)
           : null,
       );
-      await host.runTurn(toTurnRequest(context), {
+      await host.runTurn(toTurnRequest(context, this.definition.settings), {
         onEvent: (event: unknown): void => {
           this.noteSession(event);
           context.emit(event as AiEvent);
@@ -613,9 +624,11 @@ export async function answerRequest(
       }
     }
     case 'tools': {
-      // Studio's own tools, for a harness whose model has none. Claude's and Codex's SDKs bring their
-      // own, so neither ever asks.
-      return { kind: 'tools', tools: await describeTools(context) };
+      // What Studio offers this turn: its instructions, and the tools those instructions describe. A
+      // harness whose model brings its own tools — Claude's and Codex's SDKs both do — never asks.
+      const offer: { systemPrompt: string; tools: readonly HarnessTool[] } =
+        await describeOffer(context);
+      return { kind: 'tools', tools: offer.tools, systemPrompt: offer.systemPrompt };
     }
     case 'tool': {
       const outcome: { result: string | null; error: string | null } = await invokeTool(
@@ -667,7 +680,10 @@ function text(value: unknown, fallback: string): string {
  * @param context The run context.
  * @returns Returns the envelope to send.
  */
-export function toTurnRequest(context: AgentRunContext): TurnRequest {
+export function toTurnRequest(
+  context: AgentRunContext,
+  settings: Readonly<Record<string, unknown>> = {},
+): TurnRequest {
   return {
     requestId: context.requestId,
     prompt: context.prompt,
@@ -703,6 +719,8 @@ export function toTurnRequest(context: AgentRunContext): TurnRequest {
     // ⛔ The one vendor-specific field, carried as an opaque setting rather than as a named one. A wire
     // field called `claudeExecutable` would be the seam naming a vendor; a plugin that understands the
     // key reads it, and every other plugin ignores a bag it did not put anything in.
-    providerSettings: { claudeExecutable: context.claudeExecutable },
+    // The harness's own settings first, so a connection-level fact cannot be shadowed by a turn-level
+    // one that happens to share a key.
+    providerSettings: { ...settings, claudeExecutable: context.claudeExecutable },
   };
 }

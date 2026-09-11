@@ -130,8 +130,16 @@ import { AiEvent } from './ai/ai-event-types';
  * ⚠️ Neither request is gated by `answers`, and that is not an oversight: both travel *from* the harness,
  * so a harness that does not implement them simply never asks. The hang that `answers` prevents is only
  * possible for messages going the other way.
+ * `1.7.0` adds the **system prompt** to the `tools` answer. It was the other half of the same thing:
+ * Studio's per-surface instructions describe the very tools that answer already carries — how to use
+ * them, when to ask the user instead of guessing, and that a chat turn may not act. A harness given the
+ * tools but not the instructions would have had to invent its own, and two descriptions of one set of
+ * capabilities drift in exactly the way #653 exists to prevent.
+ *
+ * ⛔ Sent together rather than as a second request. They are never wanted apart, and splitting them
+ * would be two round-trips for one question.
  */
-export const AGENT_PROTOCOL_VERSION: string = '1.6.0';
+export const AGENT_PROTOCOL_VERSION: string = '1.7.0';
 
 /**
  * Matches a plain three-part semver. Local and deliberately strict, for the same reason the manifest's
@@ -431,7 +439,15 @@ export type HarnessAnswer =
   | { readonly kind: 'edit-decision'; readonly decision: 'yes' | 'no' }
   | { readonly kind: 'bridge'; readonly result: unknown; readonly error: string | null }
   | { readonly kind: 'credential'; readonly apiKey: string | null }
-  | { readonly kind: 'tools'; readonly tools: readonly HarnessTool[] }
+  | {
+      readonly kind: 'tools';
+      readonly tools: readonly HarnessTool[];
+      // Studio's instructions for the turn's surface and mode: what this surface is, how to use the
+      // tools above, and — in a chat turn — that it may read but not act. Carried with the tools
+      // because it describes them; a harness that had to write its own would be a second description
+      // of one set of capabilities, drifting from the first.
+      readonly systemPrompt: string;
+    }
   | { readonly kind: 'tool'; readonly result: string | null; readonly error: string | null };
 
 /**
