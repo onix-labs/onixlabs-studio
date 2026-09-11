@@ -24,6 +24,7 @@ import type {
   ProviderAvailability,
 } from './agent-provider';
 import { HarnessHost, HarnessTransport, refusalFor } from './harness-host';
+import { describeTools, invokeTool } from './harness-tools';
 
 /**
  * Opens a transport to a harness — a spawned process, or a fake in tests.
@@ -610,6 +611,19 @@ export async function answerRequest(
       } catch (error: unknown) {
         return { kind: 'bridge', result: null, error: String(error) };
       }
+    }
+    case 'tools': {
+      // Studio's own tools, for a harness whose model has none. Claude's and Codex's SDKs bring their
+      // own, so neither ever asks.
+      return { kind: 'tools', tools: await describeTools(context) };
+    }
+    case 'tool': {
+      const outcome: { result: string | null; error: string | null } = await invokeTool(
+        context,
+        text(asked['name'], ''),
+        asked['input'],
+      );
+      return { kind: 'tool', result: outcome.result, error: outcome.error };
     }
     case 'credential': {
       // ⛔ Not put to the user. The key was configured in Settings against this connection; asking
