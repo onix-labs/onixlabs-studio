@@ -186,11 +186,20 @@ export function toHarnessDescriptor(
         remoteControl: harness.remoteControl,
         // What the harness needs to know about the connection it serves. A harness talking to a plain
         // model API cannot build a client without them, and the turn envelope — being turn-scoped —
-        // says nothing about which endpoint a connection points at.
+        // says nothing about which endpoint a connection points at. Sent at the handshake as well as
+        // per turn (protocol 1.8.0), because `images` is declared once and `discover` has no envelope.
+        //
+        // ⛔ Nothing secret. Every field here is something the *user* typed into the connection form;
+        // the key it authenticates with is obtained through the credential round-trip and never this.
         settings: {
           connectionKind: connection.kind,
           connectionLabel: connection.label,
+          connectionAuth: connection.auth,
           baseUrl: connection.baseUrl ?? null,
+          // Gateways that need an extra header need it on every request, including the one that
+          // discovers models — so a harness that did not get them could reach an endpoint it is then
+          // refused by, and report that as the endpoint being wrong.
+          headers: connection.headers ?? {},
         },
       });
     },

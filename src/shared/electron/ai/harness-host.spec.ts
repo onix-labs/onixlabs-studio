@@ -123,15 +123,34 @@ describe('HarnessHost', () => {
 
   it('initialize_sendsTheHandshakeAndResolvesOnReady', async () => {
     const pending: Promise<unknown> = host.initialize();
+    // The settings ride the handshake from 1.8.0, and an empty bag is sent rather than the field being
+    // omitted: a harness reading it should not have to tell "no settings" from "an older host".
     expect(transport.sent[0]).toEqual({
       type: 'initialize',
       protocolVersion: AGENT_PROTOCOL_VERSION,
+      settings: {},
     });
 
     transport.emit(ready());
 
     expect(await pending).not.toBeNull();
     expect(host.capabilities?.sessionModel).toBe('live-harness');
+  });
+
+  it('initialize_tellsTheHarnessWhichConnectionItServesBeforeItDeclaresAnything', async () => {
+    // 🔑 What 1.8.0 exists for. A harness talking to a plain model API cannot say whether it accepts
+    // images without knowing the provider, and `discover` arrives with no turn envelope at all — so the
+    // first message it receives has to carry the connection's shape.
+    const pending: Promise<unknown> = host.initialize({ connectionKind: 'ollama', baseUrl: null });
+
+    expect(transport.sent[0]).toEqual({
+      type: 'initialize',
+      protocolVersion: AGENT_PROTOCOL_VERSION,
+      settings: { connectionKind: 'ollama', baseUrl: null },
+    });
+
+    transport.emit(ready());
+    expect(await pending).not.toBeNull();
   });
 
   it('initialize_refusesAHarnessSpeakingAVersionThisBuildCannotHonour', async () => {
@@ -302,6 +321,47 @@ describe('HarnessHost', () => {
         optional.includes(message['type'] as string),
       ),
     ).toEqual([]);
+  });
+
+  it('discover_carriesTheReasonAHarnessGaveForAnEmptyList', async () => {
+    // 1.4.0 gave a harness a way to report models and no way to report why it could not, so every
+    // failure reached Settings as the same sentence. "Could not reach your Ollama server" is something
+    // a user can go and fix; "reported no models" is not.
+    const pending: Promise<unknown> = host.initialize();
+    transport.emit(ready());
+    await pending;
+
+    const discovering: Promise<unknown> = host.discover('d1', {
+      onEvent: (): void => undefined,
+      onRequest: (): Promise<HarnessAnswer> => neverAnswers(),
+    });
+    transport.emit({
+      type: 'models',
+      discoveryId: 'd1',
+      models: [],
+      detail: 'Could not reach http://127.0.0.1:11434/v1/models.',
+    });
+
+    expect(await discovering).toEqual({
+      models: [],
+      detail: 'Could not reach http://127.0.0.1:11434/v1/models.',
+    });
+  });
+
+  it('discover_refusesADetailThatIsNotText', async () => {
+    // ⚠️ This reaches a settings dialog. A harness that sent an object would put `[object Object]` in
+    // front of somebody trying to work out why their connection does not run.
+    const pending: Promise<unknown> = host.initialize();
+    transport.emit(ready());
+    await pending;
+
+    const discovering: Promise<unknown> = host.discover('d1', {
+      onEvent: (): void => undefined,
+      onRequest: (): Promise<HarnessAnswer> => neverAnswers(),
+    });
+    transport.emit({ type: 'models', discoveryId: 'd1', models: [], detail: { why: 'nope' } });
+
+    expect(await discovering).toEqual({ models: [], detail: null });
   });
 
   it('treatsAHarnessThatSendsNoListAsAnsweringOnlyTheMandatoryFour', async () => {

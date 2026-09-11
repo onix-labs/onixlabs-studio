@@ -141,8 +141,10 @@ export class HarnessHost {
   /**
    * Holds the resolvers for discoveries in flight, by discovery id.
    */
-  private readonly discoveries: Map<string, (models: readonly HarnessModel[] | null) => void> =
-    new Map<string, (models: readonly HarnessModel[] | null) => void>();
+  private readonly discoveries: Map<string, (report: HarnessModelReport | null) => void> = new Map<
+    string,
+    (report: HarnessModelReport | null) => void
+  >();
 
   /**
    * Holds the resolver for the handshake, cleared once the harness is ready or has failed to be.
@@ -199,12 +201,20 @@ export class HarnessHost {
    * A harness whose protocol version this build cannot honour is **refused here**, before it is ever
    * given a turn. Refusing at the handshake is what makes an incompatibility a clear failure to start
    * rather than a turn that quietly does less than it was asked.
+   *
+   * 🔑 The settings travel with the handshake (1.8.0) because what a harness can do may depend on which
+   * connection it serves: a harness talking to a plain model API cannot say whether it accepts images
+   * without knowing the provider, and cannot answer `discover` at all without knowing the endpoint.
+   * @param settings The settings Studio holds on this harness's behalf, which it may need before it can
+   * declare anything.
    * @returns Returns the capabilities, or null when the harness cannot be hosted.
    */
-  public initialize(): Promise<HarnessCapabilities | null> {
+  public initialize(
+    settings: Readonly<Record<string, unknown>> = {},
+  ): Promise<HarnessCapabilities | null> {
     return new Promise<HarnessCapabilities | null>((resolve): void => {
       this.readyResolver = resolve;
-      this.post({ type: 'initialize', protocolVersion: AGENT_PROTOCOL_VERSION });
+      this.post({ type: 'initialize', protocolVersion: AGENT_PROTOCOL_VERSION, settings });
     });
   }
 
@@ -243,21 +253,21 @@ export class HarnessHost {
    * nothing is waiting for.
    * @param discoveryId The id to correlate the answer under.
    * @param handlers The handlers for anything the harness asks while answering.
-   * @returns Returns the models, or null when the harness could not answer.
+   * @returns Returns what the harness reported, or null when it could not answer at all.
    */
   public discover(
     discoveryId: string,
     handlers: HarnessTurnHandlers,
-  ): Promise<readonly HarnessModel[] | null> {
+  ): Promise<HarnessModelReport | null> {
     if (!this.alive || !this.answers('discover')) {
       return Promise.resolve(null);
     }
     this.turns.set(discoveryId, handlers);
-    return new Promise<readonly HarnessModel[] | null>((resolve): void => {
-      this.discoveries.set(discoveryId, (models: readonly HarnessModel[] | null): void => {
+    return new Promise<HarnessModelReport | null>((resolve): void => {
+      this.discoveries.set(discoveryId, (report: HarnessModelReport | null): void => {
         this.turns.delete(discoveryId);
         this.discoveries.delete(discoveryId);
-        resolve(models);
+        resolve(report);
       });
       this.post({ type: 'discover', discoveryId });
     });
@@ -405,7 +415,14 @@ export class HarnessHost {
         this.settlers.get(message.requestId)?.(message.error);
         break;
       case 'models':
-        this.discoveries.get(message.discoveryId)?.(message.models);
+        this.discoveries.get(message.discoveryId)?.({
+          models: message.models,
+          // ⚠️ Checked for a string rather than trusted: this reaches a settings dialog, and a harness
+          // that sent an object would put `[object Object]` in front of a person trying to fix a
+          // connection that does not work.
+          detail:
+            typeof message.detail === 'string' && message.detail.length > 0 ? message.detail : null,
+        });
         break;
     }
   }
@@ -504,6 +521,24 @@ export class HarnessHost {
       resolve(null);
     }
   }
+}
+
+/**
+ * What a harness reported when asked what it can run.
+ *
+ * Mirrors `AgentModelReport`, declared here because this is where the wire's `models` message lands: the
+ * list, and the reason it is empty when the harness supplied one.
+ */
+export interface HarnessModelReport {
+  /**
+   * Gets the models reported, which may be empty.
+   */
+  readonly models: readonly HarnessModel[];
+
+  /**
+   * Gets why the list is empty, or null when the harness said nothing.
+   */
+  readonly detail: string | null;
 }
 
 /**

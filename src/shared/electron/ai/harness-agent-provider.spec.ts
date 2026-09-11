@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AGENT_PROTOCOL_VERSION } from '@shared/api/agent-protocol';
-import type { AgentRunContext, AgentSession } from './agent-provider';
+import type { AgentModelReport, AgentRunContext, AgentSession } from './agent-provider';
 import { ASK_USER } from '@shared/api/ai/ai-tool-surface';
 
 vi.mock('electron', () => ({ app: { isPackaged: false } }));
@@ -506,13 +506,15 @@ describe('HarnessAgentProvider', () => {
   it('discoverModels_returnsWhatTheHarnessReports', async () => {
     harness.declaredModels = [{ id: 'x1', label: 'Model X1' }];
 
-    const models: readonly { id: string; label?: string }[] | null = await provider.discoverModels({
+    const report: AgentModelReport | null = await provider.discoverModels({
       hasLocalLogin: false,
       hasCodexLogin: false,
       apiKey: null,
     });
 
-    expect(models).toEqual([{ id: 'x1', label: 'Model X1' }]);
+    expect(report?.models).toEqual([{ id: 'x1', label: 'Model X1' }]);
+    // A harness that reported models says nothing about why it did not, and core phrases the success.
+    expect(report?.detail).toBeNull();
   });
 
   it('discoverModels_doesNotAskAHarnessThatDidNotDeclareIt', async () => {
@@ -520,13 +522,13 @@ describe('HarnessAgentProvider', () => {
     // harness ignoring one it never heard of would leave this awaiting a reply that never comes.
     harness.declaredAnswers = ['steer'];
 
-    const models: readonly { id: string; label?: string }[] | null = await provider.discoverModels({
+    const report: AgentModelReport | null = await provider.discoverModels({
       hasLocalLogin: false,
       hasCodexLogin: false,
       apiKey: null,
     });
 
-    expect(models).toBeNull();
+    expect(report).toBeNull();
     expect(
       harness.sent.some(
         (message: Record<string, unknown>): boolean => message['type'] === 'discover',

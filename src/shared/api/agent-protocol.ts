@@ -138,8 +138,38 @@ import { AiEvent } from './ai/ai-event-types';
  *
  * ⛔ Sent together rather than as a second request. They are never wanted apart, and splitting them
  * would be two round-trips for one question.
+ *
+ *
+ * `1.8.0` moves the provider settings onto `initialize`, so a harness knows **which connection it
+ * serves before it says what it can do**. They were turn-scoped, and two things a harness is asked
+ * happen outside a turn:
+ *
+ *   - the **handshake**. `images` is declared once, and for a harness talking to a plain model API
+ *     whether images are accepted is a fact about the connection's provider, not about the harness. One
+ *     that has not been told which provider it serves can only guess, and either guess is wrong for
+ *     half the connections.
+ *   - **discovery**. `discover` carries no envelope, so a harness asked what it can run had nothing
+ *     saying which endpoint to ask. For an OpenAI-compatible connection that is the entire question.
+ *
+ * ⛔ Still not a secret, and still not vendor-named. The bag is the same opaque
+ * {@link TurnRequest.providerSettings} — the endpoint and the provider kind a *user* configured, which
+ * a harness could have been handed at spawn time just as well. The credential round-trip is unchanged
+ * and remains the only way a harness obtains one.
+ *
+ * ⚠️ `turn.start` keeps carrying them. They are merged per turn and a turn-level value is the one that
+ * applies, so nothing that already reads them there has to change.
+ *
+ * It also lets a `models` answer say **why** it is empty. 1.4.0 gave a harness a way to report models
+ * and no way to report the reason it could not, so every failure — an unreachable local server, a
+ * missing key, a gateway answering 403 — arrived in Settings as the same sentence: "reported no models.
+ * Add models manually." The in-core discovery it replaces distinguishes all three by name, and losing
+ * that would have been the port costing a user something.
+ *
+ * ⛔ Advisory, and only used when the list is empty. A harness that reports models *and* a complaint is
+ * reporting models; core phrases the success, because how a discovery reads in Settings is one decision
+ * made in one place.
  */
-export const AGENT_PROTOCOL_VERSION: string = '1.7.0';
+export const AGENT_PROTOCOL_VERSION: string = '1.8.0';
 
 /**
  * Matches a plain three-part semver. Local and deliberately strict, for the same reason the manifest's
@@ -413,7 +443,13 @@ export interface TurnContextRef {
  * A message Studio sends a harness.
  */
 export type HostMessage =
-  | { readonly type: 'initialize'; readonly protocolVersion: string }
+  // Carries the settings from 1.8.0, because what a harness can do may depend on which connection it
+  // serves — and the handshake is the first thing that asks.
+  | {
+      readonly type: 'initialize';
+      readonly protocolVersion: string;
+      readonly settings: Readonly<Record<string, unknown>>;
+    }
   | { readonly type: 'turn.start'; readonly turn: TurnRequest }
   | { readonly type: 'turn.abort'; readonly requestId: string }
   | { readonly type: 'steer'; readonly requestId: string; readonly text: string }
@@ -509,6 +545,9 @@ export type HarnessMessage =
       readonly type: 'models';
       readonly discoveryId: string;
       readonly models: readonly HarnessModel[];
+      // Why the list is empty, when the harness knows (1.8.0). Read only when `models` is empty: a
+      // harness that reported models is reporting models, and core phrases the success.
+      readonly detail?: string;
     };
 
 /**

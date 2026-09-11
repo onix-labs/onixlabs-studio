@@ -9,7 +9,6 @@ import type {
 import type {
   HarnessAnswer,
   HarnessCapabilities,
-  HarnessModel,
   HarnessTool,
   TurnContextRef,
   TurnImage,
@@ -18,13 +17,14 @@ import type {
 import { logger } from '@shared/electron/logger';
 import type {
   AgentAuth,
+  AgentModelReport,
   AgentProvider,
   AgentRunContext,
   AgentSession,
   AgentSessionModel,
   ProviderAvailability,
 } from './agent-provider';
-import { HarnessHost, HarnessTransport, refusalFor } from './harness-host';
+import { HarnessHost, HarnessModelReport, HarnessTransport, refusalFor } from './harness-host';
 import { describeOffer, invokeTool } from './harness-tools';
 
 /**
@@ -234,17 +234,22 @@ export class HarnessAgentProvider implements AgentProvider {
    * @param auth The connection's credential.
    * @returns Returns what the harness reported, or null when it could not answer.
    */
-  public async discoverModels(auth: AgentAuth): Promise<readonly HarnessModel[] | null> {
+  public async discoverModels(auth: AgentAuth): Promise<AgentModelReport | null> {
     const host: HarnessHost = new HarnessHost(this.definition.connect(), (): void => undefined);
     try {
-      const capabilities: HarnessCapabilities | null = await host.initialize();
+      // ⛔ The settings matter more here than anywhere else. A discovery carries no turn envelope, so
+      // without them a harness asked what it can run has nothing saying which endpoint to ask — which
+      // for an OpenAI-compatible connection is the entire question.
+      const capabilities: HarnessCapabilities | null = await host.initialize(
+        this.definition.settings,
+      );
       // ⛔ The host refuses to send `discover` to a harness that did not list it, and answers null
       // instead — so a harness that never heard of the message cannot leave this awaiting a reply that
       // never comes. A settings dialog that says "could not ask" beats one that hangs.
       if (capabilities === null) {
         return null;
       }
-      return await host.discover('discover-1', {
+      const report: HarnessModelReport | null = await host.discover('discover-1', {
         onEvent: (): void => undefined,
         // ⛔ Only a credential is answerable here. Nothing is watching a settings dialog on the user's
         // behalf, so a harness that stops to ask permission during discovery is refused rather than
@@ -256,6 +261,7 @@ export class HarnessAgentProvider implements AgentProvider {
               : refusalFor(request),
           ),
       });
+      return report;
     } finally {
       host.close();
     }
@@ -285,7 +291,9 @@ export class HarnessAgentProvider implements AgentProvider {
     const abort: () => void = (): void => host.abort(context.requestId);
     context.signal.addEventListener('abort', abort);
     try {
-      const capabilities: HarnessCapabilities | null = await host.initialize();
+      const capabilities: HarnessCapabilities | null = await host.initialize(
+        this.definition.settings,
+      );
       if (capabilities === null) {
         throw new Error(`${this.definition.label} could not be started.`);
       }
@@ -537,7 +545,9 @@ export class HarnessAgentSession implements AgentSession {
       },
     );
     this.host = host;
-    const capabilities: HarnessCapabilities | null = await host.initialize();
+    const capabilities: HarnessCapabilities | null = await host.initialize(
+      this.definition.settings,
+    );
     if (capabilities === null) {
       this.closed = true;
       throw new Error(`${this.definition.label} could not be started.`);

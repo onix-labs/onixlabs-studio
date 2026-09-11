@@ -460,7 +460,30 @@ export interface AgentProvider {
    * dialog are all core's, and a provider that did them would be a provider that could disagree with
    * another about the same model.
    * @param auth The connection's credential, for a provider that must authenticate to ask.
-   * @returns Returns the models reported, or null when discovery could not run.
+   * @returns Returns the report, or null when discovery could not run at all.
    */
-  discoverModels?(auth: AgentAuth): Promise<readonly { id: string; label?: string }[] | null>;
+  discoverModels?(auth: AgentAuth): Promise<AgentModelReport | null>;
+}
+
+/**
+ * What a provider reports when asked what it can run.
+ *
+ * ⛔ Two fields rather than an array, because a discovery that found nothing is the case a user actually
+ * has to act on and "no models" is not a reason. An unreachable local server, a connection with no API
+ * key and a gateway answering 403 are three different things to go and fix, and a provider is the only
+ * thing that knows which one happened.
+ */
+export interface AgentModelReport {
+  /**
+   * Gets the models reported, which may be empty.
+   */
+  readonly models: readonly { id: string; label?: string }[];
+
+  /**
+   * Gets why the list is empty, or null when the provider has nothing to add.
+   *
+   * ⚠️ Read only when {@link models} is empty. A provider that reported models is reporting models, and
+   * how a successful discovery reads in Settings is core's wording, decided once.
+   */
+  readonly detail: string | null;
 }

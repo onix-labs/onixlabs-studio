@@ -40,6 +40,7 @@ import { AiChannel } from '@shared/api/ai-channels';
 import { sanitizeNetworkLocations } from '@shared/api/network-locations';
 import type {
   AgentAuth,
+  AgentModelReport,
   AgentProvider,
   AgentRunContext,
   AgentSession,
@@ -716,9 +717,10 @@ export class AiManager {
     connection: AiConnection,
     provider: AgentProvider,
   ): Promise<AiDiscoverModelsResult> {
-    const reported: readonly { id: string; label?: string }[] | null =
-      await provider.discoverModels!(this.authForConnection(connection.id));
-    if (reported === null) {
+    const report: AgentModelReport | null = await provider.discoverModels!(
+      this.authForConnection(connection.id),
+    );
+    if (report === null) {
       return {
         ok: false,
         models: connection.models,
@@ -726,12 +728,16 @@ export class AiManager {
         detail: `${provider.label} could not be asked for its models.`,
       };
     }
+    const reported: readonly { id: string; label?: string }[] = report.models;
     if (reported.length === 0) {
       return {
         ok: false,
         models: connection.models,
         added: 0,
-        detail: `${provider.label} reported no models. Add models manually.`,
+        // 🔑 The provider's own reason wins when it gave one. "Could not reach your Ollama server at
+        // http://127.0.0.1:11434" is something a user can go and fix; "reported no models" is not, and
+        // the in-core discovery this replaces has always distinguished the two.
+        detail: report.detail ?? `${provider.label} reported no models. Add models manually.`,
       };
     }
     const merged: AiModelInfo[] = mergeModels(connection.models, reported);

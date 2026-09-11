@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import * as path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import type { AgentRunContext } from './agent-provider';
+import type { AgentModelReport, AgentRunContext } from './agent-provider';
 
 // `HarnessProcess` reaches the pid journal and the process-tree helpers, both of which are Electron's
 // world. Nothing here depends on what they do.
@@ -42,7 +42,9 @@ if (!existsSync(ECHO_HARNESS)) {
  * Builds a provider that runs the reference harness in a real child process.
  * @returns Returns the provider.
  */
-function echoProvider(): InstanceType<typeof HarnessAgentProvider> {
+function echoProvider(
+  settings: Readonly<Record<string, unknown>> = {},
+): InstanceType<typeof HarnessAgentProvider> {
   return new HarnessAgentProvider({
     id: 'echo',
     label: 'Echo Harness',
@@ -52,7 +54,7 @@ function echoProvider(): InstanceType<typeof HarnessAgentProvider> {
       new HarnessProcess({ command: process.execPath, args: [ECHO_HARNESS] }),
     sessionModel: 'stateless',
     remoteControl: false,
-    settings: {},
+    settings,
   });
 }
 
@@ -187,25 +189,28 @@ describe('HarnessProcess, against the reference harness', () => {
     // and the ordinary request path carries the answer. Proving that against a spawned process is the
     // point: the alternative design — a request belonging to no run — would have needed the host's
     // unknown-run refusal relaxed, and this shows it did not.
-    const models: readonly { id: string; label?: string }[] | null =
-      await echoProvider().discoverModels({
-        hasLocalLogin: false,
-        hasCodexLogin: false,
-        apiKey: 'sk-abcdef',
-      });
+    // The label carries back what the *handshake* told the harness (1.8.0), which is the only way to
+    // see that the connection's shape reached a real process: a discovery has no turn envelope, so
+    // before this the harness had nothing saying which endpoint it was being asked about.
+    const report: AgentModelReport | null = await echoProvider({
+      connectionKind: 'ollama',
+    }).discoverModels({
+      hasLocalLogin: false,
+      hasCodexLogin: false,
+      apiKey: 'sk-abcdef',
+    });
 
-    expect(models).toEqual([{ id: 'echo-authenticated', label: 'Echo (authenticated)' }]);
+    expect(report?.models).toEqual([{ id: 'echo-authenticated', label: 'Echo (ollama)' }]);
   }, 20_000);
 
   it('discoversWithoutACredentialWhenTheConnectionHasNone', async () => {
-    const models: readonly { id: string; label?: string }[] | null =
-      await echoProvider().discoverModels({
-        hasLocalLogin: false,
-        hasCodexLogin: false,
-        apiKey: null,
-      });
+    const report: AgentModelReport | null = await echoProvider().discoverModels({
+      hasLocalLogin: false,
+      hasCodexLogin: false,
+      apiKey: null,
+    });
 
-    expect(models).toEqual([{ id: 'echo-anonymous' }]);
+    expect(report?.models).toEqual([{ id: 'echo-anonymous' }]);
   }, 20_000);
 
   it('describesAndRunsStudiosToolsForARealHarnessOverTheRealTransport', async () => {
