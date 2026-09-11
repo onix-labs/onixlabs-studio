@@ -49,7 +49,7 @@ import { AiEvent } from './ai/ai-event-types';
 // | `signal: AbortSignal` | A live object | A `turn.abort` message |
 // | `bridge: AgentBridge` | An object with a method | `request.bridge` round-trips |
 // | `requestPermission`, `requestInput`, `requestEditDecision` | Functions returning promises | Request/response pairs correlated by `callId` |
-// | `setSteerHandler` | Registers a callback | A `capabilities.steering` flag plus `steer` messages |
+// | `setSteerHandler` | Registers a callback | `steer` in `capabilities.answers`, plus `steer` messages |
 // | `emit` | A function | The harness simply sends `event` messages |
 //
 // ⚠️ Everything arriving from a harness is **untrusted**. It is another program, possibly one Studio
@@ -76,6 +76,19 @@ import { AiEvent } from './ai/ai-event-types';
  *     holds rather than one it can find for itself;
  *   - `requestId` on `audit`, so an executed action is attributable to the turn that executed it.
  *
+ *
+ * `1.2.0` completes the **turn envelope**. `AgentRunContext` carries 29 fields and the envelope carried
+ * 16, so a harness could not see the permission posture, the tool policies, attached images or context,
+ * the remote-control mode, the agent shell, or the owning tab. Nine fields closes that, which is what
+ * makes an out-of-process harness able to reach parity with an in-core provider at all — until now the
+ * ceiling was the wire, not the port.
+ *
+ * `1.3.0` adds **remote control**: a `remoteControl` capability and a `remote-control` message that
+ * re-aims an open session. ⛔ The bridge itself stays in the harness, not in Studio — claude.ai/code is
+ * Anthropic's, and a Studio that opened it would be core keeping vendor code for exactly the reason
+ * this seam exists to remove. The protocol carries the *mode*; what a harness does with it is its own.
+ *
+ *
  * `1.4.0` adds **model discovery**. `AiManager.discoverModels` branched on the connection's auth kind —
  * the last place core read a vendor's identity to decide what to do — so a harness had no way to say
  * what it can run and a plugin provider could only ever offer models typed in by hand.
@@ -90,18 +103,18 @@ import { AiEvent } from './ai/ai-event-types';
  * the id, because that is a fact about a model rather than about the harness that runs it, and a wire
  * that carried it would invite two harnesses to disagree about the same model.
  *
- * `1.3.0` adds **remote control**: a `remoteControl` capability and a `remote-control` message that
- * re-aims an open session. ⛔ The bridge itself stays in the harness, not in Studio — claude.ai/code is
- * Anthropic's, and a Studio that opened it would be core keeping vendor code for exactly the reason
- * this seam exists to remove. The protocol carries the *mode*; what a harness does with it is its own.
  *
- * `1.2.0` completes the **turn envelope**. `AgentRunContext` carries 29 fields and the envelope carried
- * 16, so a harness could not see the permission posture, the tool policies, attached images or context,
- * the remote-control mode, the agent shell, or the owning tab. Nine fields closes that, which is what
- * makes an out-of-process harness able to reach parity with an in-core provider at all — until now the
- * ceiling was the wire, not the port.
+ * `1.5.0` replaces the per-feature capability flags with a single `answers` list: the host messages a
+ * harness will reply to, with Studio refusing to send anything else. `steering`, `discovery` and the
+ * handshake half of `remoteControl` all became entries in it. ⛔ Three flags in four versions, each
+ * added because a message that goes unanswered **hangs** rather than fails, was a pattern rather than a
+ * coincidence — and the third was caught only because a bug had already been written. A harness on an
+ * older minor sends no list, which is read as "answers only the mandatory four", so every published
+ * plugin keeps working and simply is not offered the optional messages.
+ *
+ *
  */
-export const AGENT_PROTOCOL_VERSION: string = '1.4.0';
+export const AGENT_PROTOCOL_VERSION: string = '1.5.0';
 
 /**
  * Matches a plain three-part semver. Local and deliberately strict, for the same reason the manifest's
@@ -146,11 +159,26 @@ export interface HarnessCapabilities {
   readonly sessionModel: HarnessSessionModel;
 
   /**
-   * Gets whether the harness accepts a user message injected mid-turn. When false, Studio queues a
-   * steering message for the next turn instead, exactly as it does today for a provider that registers
-   * no steer handler.
+   * Gets the host messages the harness answers.
+   *
+   * ⛔ **One list rather than a flag per feature**, and the reason is a failure that had already
+   * happened twice by the time this replaced them. Several host messages are ones the harness *must*
+   * reply to — `discover` most obviously — and a harness that silently ignores a message it has never
+   * heard of leaves Studio awaiting a reply that never comes. Not a feature that fails: a settings
+   * dialog or a turn that hangs. Guarding each new message with its own boolean worked, but only for as
+   * long as whoever added the next message remembered to add the next boolean.
+   *
+   * Studio refuses to send anything absent from this list, so an unimplemented message is not merely
+   * unanswered — it is never sent, and the caller gets an immediate "cannot" instead of a wait.
+   *
+   * ⚠️ Four messages are **never** gated, because a harness that cannot handle them is not a harness:
+   * `initialize`, `turn.start`, `turn.abort` and `answer`.
+   *
+   * 🔑 This subsumes what used to be `steering`, `discovery`, and the handshake half of `remoteControl`.
+   * What remains below is genuinely different in kind: those describe what Studio should **offer the
+   * user**, not what the harness will reply to.
    */
-  readonly steering: boolean;
+  readonly answers: readonly string[];
 
   /**
    * Gets whether the harness accepts images in a turn's input.
@@ -168,27 +196,6 @@ export interface HarnessCapabilities {
    * `stateless` harness and ignored there.
    */
   readonly resumable: boolean;
-
-  /**
-   * Gets whether the harness can expose its session to another machine.
-   *
-   * ⚠️ Confirms what the manifest already declared, because the control is offered in the ribbon before
-   * anything has been started. A harness that contradicts its manifest here is **warned about rather
-   * than refused**, unlike a session-model mismatch: the symptom is a toggle that does nothing, and
-   * refusing the whole provider over it would be a worse outcome than the fault it reports.
-   */
-  readonly remoteControl: boolean;
-
-  /**
-   * Gets whether the harness can report the models it runs.
-   *
-   * ⛔ Load-bearing, not decorative. `discover` is a message the harness must answer, and a harness that
-   * simply ignores one it has never heard of leaves Studio waiting on a reply that will never come —
-   * a settings dialog stuck forever. Asking only a harness that said it can answer is what makes an
-   * unimplemented message safe, and a harness speaking an older minor sends no flag at all, so it is
-   * read as false and never asked.
-   */
-  readonly discovery: boolean;
 }
 
 /**
