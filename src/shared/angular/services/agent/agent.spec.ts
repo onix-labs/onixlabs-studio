@@ -418,7 +418,7 @@ describe('Agent', () => {
         .items()
         .some(
           (i: AgentItem): boolean =>
-            i.kind === 'assistant' && i.text.includes('Background task finished'),
+            i.kind === 'notice' && i.text.includes('Background task finished'),
         ),
     ).toBe(false);
   });
@@ -477,9 +477,14 @@ describe('Agent', () => {
     const assistants: readonly AgentItem[] = agent
       .items()
       .filter((i: AgentItem): boolean => i.kind === 'assistant');
-    const note: AgentItem | undefined = assistants.find((i: AgentItem): boolean =>
-      i.text.includes('Background task finished'),
-    );
+    // ⛔ The note is a `notice`, not assistant text (#691) — Studio's bookkeeping is not something the
+    // model said. It must still be sealed, so the report the agent streams next starts its own item.
+    const note: AgentItem | undefined = agent
+      .items()
+      .find(
+        (i: AgentItem): boolean =>
+          i.kind === 'notice' && i.text.includes('Background task finished'),
+      );
     expect(note).toBeDefined();
     expect(note?.text.includes('The suite passed.')).toBe(false);
     expect(
@@ -488,6 +493,42 @@ describe('Agent', () => {
           i.text === 'The suite passed.' && !i.text.includes('Background task'),
       ),
     ).toBe(true);
+  });
+
+  it('backgroundTask_isNeverAssistantContent_howeverLongTheHarnessesExplanationIs', () => {
+    // 🔥 #691. The harness reports its own housekeeping through this channel — a background shell
+    // orphaned by a previous process exit arrives as a settled task whose summary is a paragraph of
+    // internals ("Monitor timeout", "agent teardown", "the previous Claude Code process"). Written as
+    // assistant text it read as the model addressing the user about things the user cannot act on and
+    // the model never said. The kind is the fix: a notice is Studio talking about itself.
+    agent.send('go');
+    const sessionId: string | undefined = runCalls[0].agentSessionId;
+    const orphan: string =
+      'No completion record was found for this background shell command from the previous session. ' +
+      'It may have been stopped (via the UI, Monitor timeout, or agent teardown — these leave no ' +
+      'transcript marker), or it may have been running when the previous Claude Code process exited.';
+
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'background-task',
+      agentSessionId: sessionId ?? null,
+      taskId: 'task-orphan',
+      status: 'stopped',
+      summary: orphan,
+      outputFile: '/tmp/task-orphan.out',
+    });
+
+    const carrying: readonly AgentItem[] = agent
+      .items()
+      .filter((i: AgentItem): boolean => i.text.includes('No completion record was found'));
+    expect(carrying.length).toBe(1);
+    expect(carrying[0].kind).toBe('notice');
+    // The whole point: nothing in the transcript claims the agent said it.
+    expect(
+      agent
+        .items()
+        .some((i: AgentItem): boolean => i.kind === 'assistant' && i.text.includes(orphan)),
+    ).toBe(false);
   });
 
   it('backgroundTask_withReportingOff_notesItButLeavesTheConversationIdle', () => {
@@ -515,7 +556,7 @@ describe('Agent', () => {
         .items()
         .some(
           (i: AgentItem): boolean =>
-            i.kind === 'assistant' && i.text.includes('Background task finished'),
+            i.kind === 'notice' && i.text.includes('Background task finished'),
         ),
     ).toBe(true);
     // Anything the harness says anyway is still filtered out, as before.
@@ -677,8 +718,9 @@ describe('Agent', () => {
 
       expect(agent.isRunning()).toBe(false);
       const last: AgentItem | undefined = lastItem();
-      expect(last?.kind).toBe('assistant');
-      expect((last as { text?: string }).text).toBe('_Stopped._');
+      // A notice, not assistant text (#691): the model did not say "Stopped." — Studio did.
+      expect(last?.kind).toBe('notice');
+      expect((last as { text?: string }).text).toBe('Stopped.');
     } finally {
       vi.useRealTimers();
     }
@@ -695,7 +737,7 @@ describe('Agent', () => {
 
       vi.advanceTimersByTime(8_100);
 
-      // The deadline found the turn already landed and did nothing — no second "_Stopped._".
+      // The deadline found the turn already landed and did nothing — no second "Stopped." notice.
       expect(agent.items().length).toBe(itemsAfterStatus);
     } finally {
       vi.useRealTimers();
@@ -1472,8 +1514,9 @@ describe('Agent', () => {
 
     fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
 
-    expect(lastItem()?.kind).toBe('assistant');
-    expect(lastItem()?.text).toBe('_The model returned no output._');
+    // Reporting that the model said nothing is Studio talking, so it cannot be assistant text (#691).
+    expect(lastItem()?.kind).toBe('notice');
+    expect(lastItem()?.text).toBe('The model returned no output.');
   });
 
   it('status_whenCompletedAfterAReply_doesNotNoteEmptyOutput', () => {
