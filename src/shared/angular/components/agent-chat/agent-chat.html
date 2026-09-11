@@ -19,7 +19,27 @@
     @if (items().length === 0) {
       <div class="agent__empty">
         <app-icon class="agent__empty-icon" [icon]="Icon.AGENT_EMPTY" aria-hidden="true" />
-        <p class="agent__empty-caption">Ask the agent anything to get started</p>
+        @if (hasNoProviders()) {
+          <!-- Nothing installed can run a turn. Studio ships no AI provider of its own — each one is
+               a plugin, so the stack is the user's choice — which makes this the first thing a fresh
+               install has to say, and saying "ask the agent anything" instead would be an invitation
+               to type into something that cannot answer. -->
+          <p class="agent__empty-caption">No AI provider is installed</p>
+          <p class="agent__empty-detail">
+            Studio runs agents through provider plugins, so you can pick your own stack. Install one
+            from the Plugin Manager — Claude, Codex, or the AI SDK for OpenAI, Google, Ollama and
+            any OpenAI-compatible endpoint — then choose it under <strong>Runs through</strong> on a
+            connection in Settings.
+          </p>
+          <app-button
+            variant="solid"
+            [icon]="Icon.WELCOME_PLUGINS"
+            label="Open Plugin Manager"
+            (click)="openPluginManager()"
+          />
+        } @else {
+          <p class="agent__empty-caption">Ask the agent anything to get started</p>
+        }
       </div>
     }
 

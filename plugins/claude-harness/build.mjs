@@ -40,7 +40,13 @@ await build({
   target: 'node22',
   format: 'cjs',
   outfile: join(out, 'main.js'),
-  external: ['@anthropic-ai/claude-agent-sdk'],
+  // Both are left external, for different reasons. The Agent SDK ships its Claude Code CLI as a
+  // per-platform binary it resolves relative to its own module path, so inlining it produces a bundle
+  // that cannot find the program it exists to drive. The MCP SDK is external so there is one copy on
+  // disk rather than one bundled here and another beside it as the Agent SDK's peer dependency —
+  // which would be two copies of a package whose types already disagree with themselves across
+  // module formats (see the note in `src/tools.ts`).
+  external: ['@anthropic-ai/claude-agent-sdk', '@modelcontextprotocol/sdk'],
 });
 
 // The package manifest ships inside the tarball: it is what names the SDK dependency that the lockfile

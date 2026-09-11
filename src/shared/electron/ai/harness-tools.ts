@@ -1,4 +1,4 @@
-import type { AiToolPolicy } from '@shared/api/ai-types';
+import { ASK_USER, type AiToolPolicy } from '@shared/api/ai-types';
 import type { HarnessTool } from '@shared/api/agent-protocol';
 import { logger } from '@shared/electron/logger';
 import type { AgentRunContext } from './agent-provider';
@@ -89,11 +89,18 @@ async function toolsFor(context: AgentRunContext): Promise<Record<string, ToolLi
  */
 export async function describeOffer(
   context: AgentRunContext,
+  omit: readonly string[] = [],
 ): Promise<{ systemPrompt: string; tools: readonly HarnessTool[] }> {
   const tools: Record<string, ToolLike> = await toolsFor(context);
   const { z } = await import('zod');
   const described: HarnessTool[] = [];
   for (const [name, tool] of Object.entries(tools)) {
+    // A tool the harness already has (protocol 1.9.0). Sending it anyway would hand the model two ways
+    // to do one thing, described differently — and a model given both picks either, so the behaviour
+    // of asking the user would depend on which description it happened to read first.
+    if (omit.includes(name)) {
+      continue;
+    }
     const policy: AiToolPolicy | undefined = context.toolPolicies[name];
     if (policy === 'deny') {
       continue;
@@ -113,7 +120,16 @@ export async function describeOffer(
   // The instructions travel with the tools because they describe them: what this surface is, how to use
   // them, and that a chat turn may read but not act. A harness left to write its own would be a second
   // description of one set of capabilities.
-  return { systemPrompt: promptForSurface(context), tools: described };
+  //
+  // 🔑 Phrased for the tools actually offered, which is the whole reason `omit` says what the harness
+  // *has* rather than what to withhold. A harness with its own clarifying-question tool still needs the
+  // model told to ask rather than guess — it just must not be pointed at a Studio tool that is no
+  // longer in its list, because a model told to call a tool it cannot see either invents one or
+  // silently guesses instead.
+  return {
+    systemPrompt: promptForSurface(context, { nativeAsk: omit.includes(ASK_USER) }),
+    tools: described,
+  };
 }
 
 /**

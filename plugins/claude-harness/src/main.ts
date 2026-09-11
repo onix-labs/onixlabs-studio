@@ -3,54 +3,65 @@
 // protocol (#653).
 //
 // This is the relationship `rust-analyzer` has to LSP. The vendor SDK still runs — it just runs *here*,
-// in a process Studio launched and talks to over a pipe, rather than inside Studio itself. That is the
-// whole point of the exercise: nothing of Anthropic's executes in the application's process, and the
-// vocabulary between them is one core defines.
+// in a process Studio launched and talks to over a pipe, rather than inside the application. Nothing
+// of Anthropic's executes in Studio's process, and the vocabulary between them is one core defines.
 //
-// ## ⚠️ This adapter is deliberately incomplete, and deliberately does not claim `claude-login`
+// ## This is the parity port
 //
-// The in-core `ClaudeAgentProvider` is ~2,900 lines. Most of that is not the turn loop — it is hooks,
-// tool policy, MCP servers, write confinement, sub-agent attribution, remote control and background
-// tasks. What is here is the turn: prompt in, text and thinking and tool activity out, permission asked
-// and answered, abort, settle.
+// The first version of this plugin ran a turn and little else, which is why a connection had to opt
+// into it and the in-core `ClaudeAgentProvider` stayed registered. It no longer does: sessions held
+// open across turns, sub-agent attribution, background tasks, slash commands, tool policy, write
+// confinement, the OS sandbox, the agent shell, model discovery and Remote Control are all here. The
+// in-core provider is gone, and this is what replaced it.
 //
-// Because contributed harnesses register *ahead* of the in-core ones, an adapter claiming `claude-login`
-// would take that connection and silently drop everything it does not implement. So its manifest claims
-// the separate `claude-harness` auth kind: a user opts into it by creating a connection of that kind,
-// the built-in path is untouched, and the day this reaches parity it can claim `claude-login` and the
-// in-core provider stops being registered.
+// ## What did NOT come across, and why that is not a loss
+//
+//   - **the bundled-executable resolution.** 40 lines in core that existed only because the SDK sat
+//     inside `app.asar`, where a native binary cannot be spawned. A plugin has no asar, so the SDK
+//     resolves its own per-platform binary. The Codex port found exactly the same thing.
+//   - **the managed spawner.** Core registered the CLI in Studio's pid journal and killed its process
+//     tree, so a Bash tool mid-build did not keep building headless. This process is *itself* spawned
+//     as a process-group leader and journalled by `HarnessProcess`, and the CLI inherits that group —
+//     so closing the harness already ends the whole subtree. The workaround was a consequence of
+//     being in core.
+//   - **Studio's twenty-eight tool declarations.** Core answers a `tools` request with them now, so
+//     they are described once rather than restated here. See `tools.ts`.
+//
+// ## What is genuinely different
+//
+// Prompts for **Studio's own tools** are not raced against a claude.ai peer, because Studio raises
+// them on its own side of the seam. The SDK's built-in tools — which is everything that touches the
+// user's machine — are raced exactly as before. See the note at the top of `tools.ts`.
 
-import {
-  query,
-  type Options,
-  type PermissionResult,
-  type Query,
-} from '@anthropic-ai/claude-agent-sdk';
 import { createInterface } from 'node:readline';
+import { homedir } from 'node:os';
+import type { ModelInfo, Options, Query, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
+import { hasLocalLogin, resolveExecutable } from './environment';
+import { note } from './log';
 import {
   type Answer,
   type HarnessMessage,
+  type HarnessModel,
   type HostMessage,
   PROTOCOL_VERSION,
   type Request,
-  type TurnRequest,
 } from './protocol';
+import { Session, type Host } from './session';
 
 /**
- * Writes one protocol message to Studio.
- * @param message The message to send.
+ * The host messages this harness answers, beyond the four that are never gated.
+ *
+ * ⛔ Studio refuses to send anything absent from this list, which is what makes an unimplemented
+ * message an immediate "cannot" rather than a turn that hangs waiting for a reply. Adding a message
+ * to the loop below without adding it here means Studio never delivers it.
  */
-function send(message: HarnessMessage): void {
-  process.stdout.write(`${JSON.stringify(message)}\n`);
-}
+const ANSWERS: readonly string[] = ['steer', 'remote-control', 'discover', 'task.stop', 'panic'];
 
 /**
- * Emits one of Studio's own transcript events.
- * @param event The event, shaped as Studio's `AiEvent`.
+ * The reasoning-effort levels the Agent SDK offers, ascending. `minimal` is deliberately absent — it
+ * is not one of the SDK's levels.
  */
-function emit(event: Record<string, unknown>): void {
-  send({ type: 'event', event });
-}
+const EFFORTS: readonly string[] = ['low', 'medium', 'high', 'xhigh', 'max'];
 
 /**
  * Holds the answers Studio owes this harness, by call id.
@@ -63,177 +74,149 @@ const awaiting: Map<string, (answer: Answer) => void> = new Map<string, (answer:
 let calls: number = 0;
 
 /**
- * Holds the turn in flight, so an abort or a steer knows what it belongs to.
+ * Holds the settings Studio sent at the handshake, which say which connection this serves.
  */
-let running: { requestId: string; query: Query; abort: AbortController } | null = null;
+let settings: Readonly<Record<string, unknown>> = {};
 
 /**
- * Asks Studio a blocking question and resolves with its answer.
+ * Holds the conversation, opened lazily on the first turn.
+ */
+let session: Session | null = null;
+
+/**
+ * Writes one protocol message to Studio.
+ *
+ * ⛔ stdout carries the protocol and nothing else. Diagnostics go to stderr — see `log.ts`.
+ * @param message The message to send.
+ */
+function send(message: HarnessMessage): void {
+  process.stdout.write(`${JSON.stringify(message)}\n`);
+}
+
+/**
+ * Gets the refusal shape for a question, matching what Studio would send.
+ *
+ * Used when a question is withdrawn locally: the caller is still awaiting a promise, and resolving it
+ * as "no answer" is what unblocks the code that asked.
+ * @param request The question being abandoned.
+ * @returns Returns the refusal.
+ */
+function refusalFor(request: Request): Answer {
+  switch (request.kind) {
+    case 'input':
+      return { kind: 'input', answer: null };
+    case 'edit-decision':
+      return { kind: 'edit-decision', decision: 'no' };
+    case 'bridge':
+      return { kind: 'bridge', result: null, error: 'withdrawn' };
+    case 'credential':
+      return { kind: 'credential', apiKey: null };
+    case 'tools':
+      return { kind: 'tools', tools: [], systemPrompt: '' };
+    case 'tool':
+      return { kind: 'tool', result: null, error: 'withdrawn' };
+    default:
+      return { kind: 'permission', granted: false };
+  }
+}
+
+/**
+ * Asks Studio a blocking question.
+ *
+ * The returned `withdraw` both tells Studio to take the prompt off the user's screen and settles the
+ * promise locally as "no answer" — a question answered by a claude.ai peer must not leave this side
+ * waiting on a prompt nobody is going to touch.
  * @param requestId The run the question belongs to.
  * @param request The question.
- * @returns Returns the answer.
+ * @returns Returns the answer, and a way to withdraw the question.
  */
-function ask(requestId: string, request: Request): Promise<Answer> {
+function ask(
+  requestId: string,
+  request: Request,
+): { readonly answer: Promise<Answer>; readonly withdraw: () => void } {
   calls += 1;
   const callId: string = `call-${calls}`;
-  return new Promise<Answer>((resolve): void => {
+  let settle: ((answer: Answer) => void) | null = null;
+  const answer: Promise<Answer> = new Promise<Answer>((resolve): void => {
+    settle = resolve;
     awaiting.set(callId, resolve);
     send({ type: 'request', callId, requestId, request });
   });
-}
-
-/**
- * Builds the SDK options for a turn.
- *
- * ⚠️ The write confinement here is what the manifest cannot express and what the protocol carries
- * instead: Studio computes the boundary and sends it, and the harness applies it. A harness that
- * ignored these would be writing outside what the user permitted, which is why they are in the turn
- * envelope rather than left to the harness's own configuration.
- * @param turn The turn envelope.
- * @returns Returns the options.
- */
-function optionsFor(turn: TurnRequest): Options {
-  const options: Options = {
-    model: turn.model,
-    cwd: turn.workspaceRoot ?? undefined,
-    // A chat turn may read and may not act. The in-core provider expresses this the same way.
-    permissionMode: turn.mode === 'chat' ? 'plan' : 'default',
-    additionalDirectories: [...turn.allowedWritePaths],
-    canUseTool: async (name: string, input: Record<string, unknown>): Promise<PermissionResult> => {
-      const requestId: string | undefined = running?.requestId;
-      if (requestId === undefined) {
-        return { behavior: 'deny', message: 'No turn is running.' };
+  return {
+    answer,
+    withdraw: (): void => {
+      if (!awaiting.delete(callId)) {
+        return;
       }
-      const answer: Answer = await ask(requestId, {
-        kind: 'permission',
-        name,
-        detail: describeInput(input),
-      });
-      if (answer.kind === 'permission' && answer.granted) {
-        // Recorded at the point it was allowed, which is what makes the audit log a record of what
-        // happened rather than of what was asked.
-        send({ type: 'audit', requestId, name, detail: describeInput(input), source: 'user' });
-        return { behavior: 'allow' };
-      }
-      return { behavior: 'deny', message: 'The user did not permit this.' };
+      send({ type: 'cancel', callId });
+      settle?.(refusalFor(request));
     },
   };
-  if (turn.resumeSessionId !== null) {
-    options.resume = turn.resumeSessionId;
-    options.forkSession = turn.forkSession;
-  }
-  return options;
 }
 
 /**
- * Summarises a tool's input for a permission prompt, in one line.
+ * How the session reaches Studio.
+ */
+const host: Host = { send, ask };
+
+/**
+ * Lists the models the SDK reports for the current login.
  *
- * ⚠️ Kept short and kept a string. It reaches a prompt a person is about to answer, so a wall of JSON
- * would make the decision harder rather than better informed.
- * @param input The tool input.
- * @returns Returns the summary.
+ * Runs over a short-lived query's control channel: no turn is sent, so this works for a local-login
+ * connection that has no API key to drive an HTTP discovery. The SDK's streaming-input mode keeps the
+ * session open until the prompt generator completes, so the generator yields nothing and returns once
+ * the answer is in.
+ * @param discoveryId The id to answer under.
  */
-function describeInput(input: Record<string, unknown>): string {
-  const first: unknown =
-    input['command'] ?? input['file_path'] ?? input['path'] ?? input['pattern'];
-  if (typeof first === 'string') {
-    return first.length > 200 ? `${first.slice(0, 200)}…` : first;
+async function discover(discoveryId: string): Promise<void> {
+  const { query } = await import('@anthropic-ai/claude-agent-sdk');
+  let release: () => void = (): void => undefined;
+  const released: Promise<void> = new Promise<void>((resolve: () => void): void => {
+    release = resolve;
+  });
+  async function* keepOpen(): AsyncGenerator<SDKUserMessage> {
+    await released;
+    yield* [];
   }
-  const rendered: string = JSON.stringify(input);
-  return rendered.length > 200 ? `${rendered.slice(0, 200)}…` : rendered;
-}
-
-/**
- * Translates one SDK message into Studio's transcript events.
- * @param message The SDK message.
- * @param requestId The run it belongs to.
- * @returns Returns the session id when the message carries one, else null.
- */
-function translate(message: Record<string, unknown>, requestId: string): string | null {
-  const parentToolId: unknown = message['parent_tool_use_id'];
-  const parent: Record<string, unknown> = typeof parentToolId === 'string' ? { parentToolId } : {};
-  if (message['type'] === 'assistant') {
-    const body: Record<string, unknown> = (message['message'] ?? {}) as Record<string, unknown>;
-    const blocks: unknown = body['content'];
-    if (Array.isArray(blocks)) {
-      for (const block of blocks as readonly Record<string, unknown>[]) {
-        translateBlock(block, requestId, parent);
-      }
-    }
-  }
-  if (message['type'] === 'result') {
-    const usage: Record<string, unknown> = (message['usage'] ?? {}) as Record<string, unknown>;
-    emit({
-      requestId,
-      kind: 'usage',
-      inputTokens: Number(usage['input_tokens'] ?? 0),
-      outputTokens: Number(usage['output_tokens'] ?? 0),
-    });
-  }
-  const session: unknown = message['session_id'];
-  return typeof session === 'string' ? session : null;
-}
-
-/**
- * Translates one assistant content block.
- * @param block The block.
- * @param requestId The run it belongs to.
- * @param parent The sub-agent attribution, when the block belongs to one.
- */
-function translateBlock(
-  block: Record<string, unknown>,
-  requestId: string,
-  parent: Record<string, unknown>,
-): void {
-  if (block['type'] === 'text' && typeof block['text'] === 'string') {
-    emit({ requestId, kind: 'text', delta: block['text'], ...parent });
-    return;
-  }
-  if (block['type'] === 'thinking' && typeof block['thinking'] === 'string') {
-    emit({ requestId, kind: 'thinking', delta: block['thinking'], ...parent });
-    return;
-  }
-  if (block['type'] === 'tool_use') {
-    emit({
-      requestId,
-      kind: 'tool-start',
-      toolId: typeof block['id'] === 'string' ? block['id'] : '',
-      name: typeof block['name'] === 'string' ? block['name'] : '',
-      detail: describeInput((block['input'] ?? {}) as Record<string, unknown>),
-      ...parent,
-    });
-  }
-}
-
-/**
- * Runs one turn.
- * @param turn The turn envelope.
- */
-async function runTurn(turn: TurnRequest): Promise<void> {
-  const abort: AbortController = new AbortController();
-  let sessionId: string | null = null;
+  const executable: string | undefined = resolveExecutable(
+    settings['claudeExecutable'],
+    process.env,
+  );
+  const options: Options =
+    executable === undefined ? {} : { pathToClaudeCodeExecutable: executable };
+  let sdkQuery: Query | null = null;
   try {
-    const stream: Query = query({
-      prompt: turn.prompt,
-      options: { ...optionsFor(turn), abortController: abort },
+    sdkQuery = query({ prompt: keepOpen(), options });
+    const models: readonly ModelInfo[] = await sdkQuery.supportedModels();
+    send({
+      type: 'models',
+      discoveryId,
+      models: models.map((model: ModelInfo): HarnessModel => ({
+        id: model.value,
+        ...(typeof model.displayName === 'string' && model.displayName.length > 0
+          ? { label: model.displayName }
+          : {}),
+      })),
+      // Read only when the list is empty, and this is the case it exists for: without a login the SDK
+      // reports nothing, and "reported no models" would send the user looking in the wrong place.
+      ...(models.length === 0 && !hasLocalLogin(homedir())
+        ? { detail: 'Run `claude` to log in, or add an Anthropic API key to this connection.' }
+        : {}),
     });
-    running = { requestId: turn.requestId, query: stream, abort };
-    for await (const message of stream) {
-      const session: string | null = translate(message, turn.requestId);
-      sessionId ??= session;
-    }
-    send({ type: 'turn.completed', requestId: turn.requestId, sessionId });
   } catch (error: unknown) {
     send({
-      type: 'turn.failed',
-      requestId: turn.requestId,
-      error: error instanceof Error ? error.message : String(error),
+      type: 'models',
+      discoveryId,
+      models: [],
+      detail: `The Claude CLI could not be asked: ${error instanceof Error ? error.message : String(error)}`,
     });
   } finally {
-    running = null;
-    // Anything still waiting belongs to a turn that has ended; Studio refuses these locally too, but
-    // clearing here stops a late answer resolving into nothing.
-    awaiting.clear();
+    release();
+    try {
+      await sdkQuery?.interrupt();
+    } catch {
+      // Best-effort teardown of a short-lived discovery query.
+    }
   }
 }
 
@@ -244,25 +227,27 @@ async function runTurn(turn: TurnRequest): Promise<void> {
 function receive(message: HostMessage): void {
   switch (message.type) {
     case 'initialize':
+      settings = message.settings ?? {};
       send({
         type: 'ready',
         capabilities: {
           protocolVersion: PROTOCOL_VERSION,
-          // One process per turn today, so nothing is held open between them. This becomes
-          // `live-harness` when the session path lands, not before — declaring it early would have
-          // Studio offer resumption this cannot honour.
-          sessionModel: 'stateless',
-          // The SDK takes streaming input; this adapter does not wire it yet, and saying so means
-          // Studio queues a steer for the next turn rather than dropping it.
-          steering: false,
-          images: false,
-          efforts: [],
-          resumable: false,
+          // ⛔ Must match the manifest, or Studio refuses the harness outright: it has already decided
+          // to hold this process open on the manifest's word, and a `stateless` harness kept alive
+          // would collect turns it cannot relate to one another.
+          sessionModel: 'live-harness',
+          answers: [...ANSWERS],
+          // Claude's models are multimodal, and this is a fact about the provider rather than about
+          // the harness — which is why 1.8.0 moved the settings onto `initialize`.
+          images: true,
+          efforts: [...EFFORTS],
+          resumable: true,
         },
       });
       break;
     case 'turn.start':
-      void runTurn(message.turn);
+      session ??= new Session(host, message.turn);
+      void session.run(message.turn);
       break;
     case 'answer': {
       const resolve: ((answer: Answer) => void) | undefined = awaiting.get(message.callId);
@@ -271,11 +256,24 @@ function receive(message: HostMessage): void {
       break;
     }
     case 'turn.abort':
-      running?.abort.abort();
+      // Cancels the turn and leaves the session open, which is what makes this a conversation rather
+      // than a sequence of runs: the next turn continues where this one stopped.
+      session?.interrupt();
       break;
     case 'steer':
-      // Refused rather than dropped silently: `steering: false` was declared, so Studio has already
-      // queued this. Reaching here at all would be Studio ignoring the handshake.
+      session?.steer(message.text);
+      break;
+    case 'remote-control':
+      session?.setRemoteControl(message.mode);
+      break;
+    case 'task.stop':
+      session?.stopTask(message.taskId);
+      break;
+    case 'panic':
+      session?.panic();
+      break;
+    case 'discover':
+      void discover(message.discoveryId);
       break;
   }
 }
@@ -287,9 +285,16 @@ const lines: ReturnType<typeof createInterface> = createInterface({
 lines.on('line', (line: string): void => {
   try {
     receive(JSON.parse(line) as HostMessage);
-  } catch {
+  } catch (error: unknown) {
     // Not JSON, so not a message. Studio never sends one; ignoring beats dying.
+    note(`main: discarded a line that is not a message: ${String(error)}`);
   }
 });
-// End of input is Studio closing the pipe, which is how a harness is asked to stop.
-lines.on('close', (): void => process.exit(0));
+// End of input is Studio closing the pipe, which is how a harness is asked to stop. The session is
+// closed first so the CLI subprocess and any claude.ai bridge go down with it rather than being
+// orphaned for the process-tree kill to catch.
+lines.on('close', (): void => {
+  void (session === null ? Promise.resolve() : session.close()).finally((): never =>
+    process.exit(0),
+  );
+});

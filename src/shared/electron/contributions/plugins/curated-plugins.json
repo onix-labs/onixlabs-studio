@@ -1,5 +1,5 @@
 {
-  "revision": 16,
+  "revision": 17,
   "plugins": [
     {
       "id": "pyright",
@@ -469,7 +469,7 @@
       "description": "C and C++ language support, from the LLVM project.",
       "version": "22.1.6",
       "apiVersion": "1.1.0",
-      "detail": "A large download — it carries the Clang toolchain headers.",
+      "detail": "A large download \u2014 it carries the Clang toolchain headers.",
       "provision": {
         "kind": "archive",
         "downloads": {
@@ -520,7 +520,7 @@
       "description": "Debug .NET projects.",
       "version": "3.2.0-1092",
       "apiVersion": "1.0.0",
-      "detail": "Samsung’s MIT-licensed .NET debugger. Microsoft’s vsdbg is not offered: it is licensed only for use within the Visual Studio family.",
+      "detail": "Samsung\u2019s MIT-licensed .NET debugger. Microsoft\u2019s vsdbg is not offered: it is licensed only for use within the Visual Studio family.",
       "provision": {
         "kind": "archive",
         "downloads": {
@@ -1075,28 +1075,30 @@
     },
     {
       "id": "onixlabs.claude-harness",
-      "name": "Claude (out of process)",
+      "name": "Claude",
       "description": "Runs Claude through Anthropic's Agent SDK in its own process, over Studio's agent protocol.",
-      "version": "0.1.0",
-      "apiVersion": "1.9.0",
-      "detail": "Early: runs a turn, streams text and tool activity, and asks permission. Does not yet do sub-agents, tool policy, MCP or remote control — which is why a connection has to name it rather than it replacing the built-in Claude provider. Downloads around 200MB: the SDK ships its Claude Code CLI as a native binary, and one platform's is fetched.",
+      "version": "0.2.0",
+      "apiVersion": "1.11.0",
+      "detail": "The full Claude agent: sessions held open across turns, sub-agents, background tasks, slash commands, per-tool policy, write confinement, the OS sandbox, model discovery, and Remote Control through claude.ai/code. Authenticates with your local `claude` login, or with an Anthropic API key set on the connection. Downloads around 200MB: the SDK ships its Claude Code CLI as a native binary, and one platform's is fetched.",
       "provision": {
         "kind": "npm",
         "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.claude-harness.lock.json",
-        "sha256": "173ef85c880e03a6483a7d55f1f87c5992f4e364d8ffce171b8f75cbb95acd80",
+        "sha256": "97d27bc9d14dac81ab0d762e45b19151f8719d77dfe6fcbd4f9ddbda9be0d94a",
         "executablePath": "node_modules/@onixlabs/claude-harness/main.js"
       },
       "contributes": {
         "agentHarnesses": [
           {
             "id": "onixlabs.claude-harness",
-            "displayName": "Claude (out of process)",
+            "displayName": "Claude",
             "priority": 100,
-            "connectionAuths": ["claude-login"],
+            "connectionAuths": ["claude-login", "api-key"],
             "command": {
               "kind": "node"
             },
-            "entryPoint": "node_modules/@onixlabs/claude-harness/main.js"
+            "entryPoint": "node_modules/@onixlabs/claude-harness/main.js",
+            "sessionModel": "live-harness",
+            "remoteControl": true
           }
         ]
       }
@@ -1136,7 +1138,7 @@
       "description": "Runs OpenAI, Anthropic, Google, Ollama and any OpenAI-compatible endpoint through the Vercel AI SDK, in its own process.",
       "version": "0.1.0",
       "apiVersion": "1.11.0",
-      "detail": "The general-purpose harness: point a connection at any model API and this runs it. Studio supplies the tools for the turn's surface and runs them on the model's behalf, so an agent on Ollama has the same capabilities as one on Claude. Asks the endpoint what models it offers. Authenticates with the API key configured against the connection; a local Ollama server needs none. Around 2MB — the SDK is pure JavaScript and ships inside the plugin.",
+      "detail": "The general-purpose harness: point a connection at any model API and this runs it. Studio supplies the tools for the turn's surface and runs them on the model's behalf, so an agent on Ollama has the same capabilities as one on Claude. Asks the endpoint what models it offers. Authenticates with the API key configured against the connection; a local Ollama server needs none. Around 2MB \u2014 the SDK is pure JavaScript and ships inside the plugin.",
       "provision": {
         "kind": "npm",
         "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.ai-sdk-harness.lock.json",

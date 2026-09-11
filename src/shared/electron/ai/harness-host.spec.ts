@@ -399,6 +399,127 @@ describe('HarnessHost', () => {
     });
   });
 
+  it('cancel_dismissesThePromptWithoutAnsweringTheHarness', () => {
+    // 🔑 The case this exists for: the harness raced Studio's prompt against a peer on claude.ai and
+    // the peer answered first. Studio's prompt must come off the screen — but no answer may be sent,
+    // because the harness has already accepted one from somewhere else and a stale refusal arriving
+    // on top of it could overwrite the decision it just took.
+    let dismissed: boolean = false;
+    void host.runTurn(
+      { requestId: 'r1' },
+      {
+        onEvent: (): void => undefined,
+        onRequest: (_request: unknown, dismiss: AbortSignal): Promise<HarnessAnswer> => {
+          dismiss.addEventListener('abort', (): void => void (dismissed = true));
+          return neverAnswers();
+        },
+      },
+    );
+    transport.emit({
+      type: 'request',
+      callId: 'c1',
+      requestId: 'r1',
+      request: { kind: 'permission', name: 'Bash', detail: 'ls' },
+    });
+
+    transport.emit({ type: 'cancel', callId: 'c1' });
+
+    expect(dismissed).toBe(true);
+    expect(
+      transport.sent.some((m: Record<string, unknown>): boolean => m['type'] === 'answer'),
+    ).toBe(false);
+  });
+
+  it('cancel_forACallAlreadySettledIsIgnored', () => {
+    // Ordinary rather than exceptional: the user can answer at the same moment the peer does, and
+    // whichever message crosses second finds nothing to withdraw.
+    void host.runTurn(
+      { requestId: 'r1' },
+      { onEvent: (): void => undefined, onRequest: (): Promise<HarnessAnswer> => neverAnswers() },
+    );
+
+    expect((): void => transport.emit({ type: 'cancel', callId: 'never-asked' })).not.toThrow();
+  });
+
+  it('cancel_withoutACallIdIsRefusedRatherThanReadAsWithdrawEverything', () => {
+    let dismissed: boolean = false;
+    void host.runTurn(
+      { requestId: 'r1' },
+      {
+        onEvent: (): void => undefined,
+        onRequest: (_request: unknown, dismiss: AbortSignal): Promise<HarnessAnswer> => {
+          dismiss.addEventListener('abort', (): void => void (dismissed = true));
+          return neverAnswers();
+        },
+      },
+    );
+    transport.emit({
+      type: 'request',
+      callId: 'c1',
+      requestId: 'r1',
+      request: { kind: 'permission', name: 'Bash', detail: 'ls' },
+    });
+
+    transport.emit({ type: 'cancel' });
+
+    // The validator refuses it, so a malformed cancel cannot dismiss a prompt the user is part way
+    // through answering — which is the one thing a cancel naming nothing could otherwise be read as.
+    expect(dismissed).toBe(false);
+  });
+
+  it('abort_dismissesThePromptItRefuses', () => {
+    // Refusing the harness is only half of it: a stopped turn that leaves its permission card on
+    // screen leaves the user able to answer into a run that has already ended.
+    let dismissed: boolean = false;
+    void host.runTurn(
+      { requestId: 'r1' },
+      {
+        onEvent: (): void => undefined,
+        onRequest: (_request: unknown, dismiss: AbortSignal): Promise<HarnessAnswer> => {
+          dismiss.addEventListener('abort', (): void => void (dismissed = true));
+          return neverAnswers();
+        },
+      },
+    );
+    transport.emit({
+      type: 'request',
+      callId: 'c1',
+      requestId: 'r1',
+      request: { kind: 'permission', name: 'Bash', detail: 'ls' },
+    });
+
+    host.abort('r1');
+
+    expect(dismissed).toBe(true);
+  });
+
+  it('stopTask_andPanic_areGatedOnWhatTheHarnessAnswers', async () => {
+    const pending: Promise<unknown> = host.initialize();
+    transport.emit(ready({ answers: [] }));
+    await pending;
+
+    // Not merely unanswered: never sent. A host message a harness has never heard of leaves the
+    // caller awaiting a reply forever, so "cannot" has to be immediate.
+    expect(host.stopTask('t1')).toBe(false);
+    expect(host.panic()).toBe(false);
+    const types: readonly unknown[] = transport.sent.map(
+      (message: Record<string, unknown>): unknown => message['type'],
+    );
+    expect(types).not.toContain('task.stop');
+    expect(types).not.toContain('panic');
+  });
+
+  it('stopTask_andPanic_areSentWhenTheHarnessDeclaredThem', async () => {
+    const pending: Promise<unknown> = host.initialize();
+    transport.emit(ready({ answers: ['task.stop', 'panic'] }));
+    await pending;
+
+    expect(host.stopTask('t1')).toBe(true);
+    expect(transport.sent.at(-1)).toEqual({ type: 'task.stop', taskId: 't1' });
+    expect(host.panic()).toBe(true);
+    expect(transport.sent.at(-1)).toEqual({ type: 'panic' });
+  });
+
   it('close_failsEveryTurnInFlightRatherThanLeavingThemWorkingForever', async () => {
     const settled: Promise<void> = host.runTurn(
       { requestId: 'r1' },

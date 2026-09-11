@@ -460,9 +460,15 @@ export interface AgentProvider {
    * dialog are all core's, and a provider that did them would be a provider that could disagree with
    * another about the same model.
    * @param auth The connection's credential, for a provider that must authenticate to ask.
+   * @param settings Settings for this discovery that are not part of the connection — today, the
+   * Claude CLI choice, which is an application-wide setting rather than a connection field and so has
+   * nowhere else to ride. Merged over the provider's own settings.
    * @returns Returns the report, or null when discovery could not run at all.
    */
-  discoverModels?(auth: AgentAuth): Promise<AgentModelReport | null>;
+  discoverModels?(
+    auth: AgentAuth,
+    settings?: Readonly<Record<string, unknown>>,
+  ): Promise<AgentModelReport | null>;
 }
 
 /**

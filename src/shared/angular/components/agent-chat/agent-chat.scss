@@ -149,6 +149,18 @@
   opacity: 0.7;
 }
 
+// The no-provider state's explanation, which the ordinary empty state has no equivalent of: it has to
+// say what a provider is and where to get one, so it runs wider and sits quieter than the caption it
+// follows.
+.agent__empty-detail {
+  max-inline-size: 28rem;
+  margin: 0;
+  color: var(--form-muted-foreground-color);
+  font-size: 0.85rem;
+  line-height: 1.6;
+  opacity: 0.7;
+}
+
 .agent__message {
   display: flex;
   // The bubble's top edge lines up with the top of the avatar rather than centring against it.

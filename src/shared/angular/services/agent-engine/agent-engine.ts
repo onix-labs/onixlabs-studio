@@ -43,6 +43,26 @@ export class AgentEngine {
   public readonly providers: Signal<readonly AiProviderInfo[]> = this.providerList.asReadonly();
 
   /**
+   * Holds whether the providers have been asked for at least once.
+   */
+  private readonly loaded: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Gets whether nothing can run a turn: the providers have loaded, and there are none.
+   *
+   * ⚠️ **Both halves are load-bearing.** An empty list means two different things a fraction of a
+   * second apart — "not asked yet" and "there is nothing" — and a surface that read only the length
+   * would show "install a provider" for a moment on every start-up, including to users who have one.
+   *
+   * 🔑 It reports "no provider" rather than "no connection", and the distinction is the point since
+   * core stopped shipping providers (#653): a fresh install has connections, and none of them can run
+   * until a provider plugin is installed and the connection names it.
+   */
+  public readonly hasNoProviders: Signal<boolean> = computed(
+    (): boolean => this.loaded() && this.providerList().length === 0,
+  );
+
+  /**
    * Gets the selected connection id (persisted via {@link Settings}).
    */
   public readonly provider: Signal<AiProviderId> = this.settings.aiActiveConnectionId;
@@ -109,6 +129,7 @@ export class AgentEngine {
         : { ...info, label: providerDisplayLabel(connection.kind, connection.label) };
     });
     this.providerList.set(providers);
+    this.loaded.set(true);
     this.log.debug('AgentEngine', `Loaded ${providers.length} providers`);
     const current: AiProviderId = this.provider();
     const currentAvailable: boolean = providers.some(
