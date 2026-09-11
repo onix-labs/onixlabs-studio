@@ -98,7 +98,7 @@ function ready(overrides: Record<string, unknown> = {}): unknown {
     capabilities: {
       protocolVersion: AGENT_PROTOCOL_VERSION,
       sessionModel: 'live-harness',
-      steering: true,
+      answers: ['steer', 'discover', 'remote-control'],
       images: false,
       efforts: [],
       resumable: true,
@@ -258,9 +258,66 @@ describe('HarnessHost', () => {
     expect(transport.sent.at(-1)).toEqual({ type: 'turn.abort', requestId: 'r1' });
   });
 
+  it('sendsTheMandatoryMessagesEvenToAHarnessThatListedNothing', async () => {
+    // ⛔ `initialize`, `turn.start`, `turn.abort` and `answer` are never gated. A harness that cannot
+    // handle them is not a harness, and gating `initialize` would be circular: the list that would
+    // permit it only arrives in the reply to it.
+    const pending: Promise<unknown> = host.initialize();
+    transport.emit(ready({ answers: [] }));
+    await pending;
+
+    void host.runTurn(
+      { requestId: 'r1' },
+      { onEvent: (): void => undefined, onRequest: (): Promise<HarnessAnswer> => neverAnswers() },
+    );
+    host.abort('r1');
+
+    const types: readonly unknown[] = transport.sent.map(
+      (message: Record<string, unknown>): unknown => message['type'],
+    );
+    expect(types).toContain('initialize');
+    expect(types).toContain('turn.start');
+    expect(types).toContain('turn.abort');
+  });
+
+  it('refusesToSendAnyOptionalMessageAHarnessDidNotList', async () => {
+    // 🔑 The whole point of one list rather than a flag per feature. An unanswered message does not fail
+    // — it *hangs*, because nothing resolves. Not sending it turns that into an immediate "cannot".
+    const pending: Promise<unknown> = host.initialize();
+    transport.emit(ready({ answers: [] }));
+    await pending;
+
+    expect(host.steer('r1', 'stop')).toBe(false);
+    expect(host.setRemoteControl('mirror')).toBe(false);
+    await expect(
+      host.discover('d1', {
+        onEvent: (): void => undefined,
+        onRequest: (): Promise<HarnessAnswer> => neverAnswers(),
+      }),
+    ).resolves.toBeNull();
+
+    const optional: readonly string[] = ['steer', 'remote-control', 'discover'];
+    expect(
+      transport.sent.filter((message: Record<string, unknown>): boolean =>
+        optional.includes(message['type'] as string),
+      ),
+    ).toEqual([]);
+  });
+
+  it('treatsAHarnessThatSendsNoListAsAnsweringOnlyTheMandatoryFour', async () => {
+    // ⚠️ What keeps an already-published plugin working. A harness on an older minor has never heard of
+    // `answers`, so it sends none — and is simply not offered the optional messages.
+    const pending: Promise<unknown> = host.initialize();
+    transport.emit(ready({ answers: undefined }));
+    await pending;
+
+    expect(host.steer('r1', 'stop')).toBe(false);
+    expect(host.capabilities).not.toBeNull();
+  });
+
   it('steer_isRefusedWhenTheHarnessDidNotDeclareIt', async () => {
     const pending: Promise<unknown> = host.initialize();
-    transport.emit(ready({ steering: false }));
+    transport.emit(ready({ answers: [] }));
     await pending;
 
     expect(host.steer('r1', 'actually, stop')).toBe(false);
@@ -271,7 +328,7 @@ describe('HarnessHost', () => {
 
   it('steer_isSentWhenTheHarnessDeclaredIt', async () => {
     const pending: Promise<unknown> = host.initialize();
-    transport.emit(ready({ steering: true }));
+    transport.emit(ready({ answers: ['steer'] }));
     await pending;
 
     expect(host.steer('r1', 'actually, stop')).toBe(true);

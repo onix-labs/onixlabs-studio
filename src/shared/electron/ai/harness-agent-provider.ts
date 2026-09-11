@@ -226,11 +226,10 @@ export class HarnessAgentProvider implements AgentProvider {
     const host: HarnessHost = new HarnessHost(this.definition.connect(), (): void => undefined);
     try {
       const capabilities: HarnessCapabilities | null = await host.initialize();
-      // ⛔ Never asked unless it said it can answer. `discover` is a message the harness must reply to,
-      // and one that ignores a message it has never heard of would leave this awaiting a reply that
-      // never comes — a settings dialog stuck forever rather than a discovery that failed. A harness on
-      // an older minor sends no flag, which reads as false, which is exactly right.
-      if (capabilities === null || (capabilities.discovery ?? false) !== true) {
+      // ⛔ The host refuses to send `discover` to a harness that did not list it, and answers null
+      // instead — so a harness that never heard of the message cannot leave this awaiting a reply that
+      // never comes. A settings dialog that says "could not ask" beats one that hangs.
+      if (capabilities === null) {
         return null;
       }
       return await host.discover('discover-1', {
@@ -281,8 +280,10 @@ export class HarnessAgentProvider implements AgentProvider {
       this.declared = capabilities;
       // Steering is only offered when the harness said it takes it; otherwise the renderer queues the
       // message for the next turn, exactly as it does for an in-core provider with no steer handler.
+      // Steering is offered only when the harness listed it; otherwise the renderer queues the message
+      // for the next turn, exactly as it does for an in-core provider with no steer handler.
       context.setSteerHandler(
-        capabilities.steering
+        capabilities.answers.includes('steer')
           ? (text: string): boolean => host.steer(context.requestId, text)
           : null,
       );
@@ -402,7 +403,7 @@ export class HarnessAgentSession implements AgentSession {
     try {
       const capabilities: HarnessCapabilities | null = host.capabilities;
       context.setSteerHandler(
-        capabilities?.steering === true
+        capabilities?.answers.includes('steer') === true
           ? (text: string): boolean => host.steer(context.requestId, text)
           : null,
       );
@@ -541,14 +542,15 @@ export class HarnessAgentSession implements AgentSession {
           `'${this.definition.sessionModel}' in its manifest.`,
       );
     }
-    // ⚠️ `?? false` because a harness speaking an older minor never sends this field at all — 1.1.0
-    // predates it. Comparing `undefined` against a boolean would warn on every such harness, which is
-    // precisely the compatibility the "an older minor is fine" rule promises.
-    if ((capabilities.remoteControl ?? false) !== this.definition.remoteControl) {
+    // ⚠️ `?? []` because a harness speaking an older minor sends no list at all. Reading that as "the
+    // mandatory four only" is what keeps an already-published plugin working, and it means this warns
+    // only when a manifest genuinely over-claims rather than on every older harness.
+    const declared: boolean = (capabilities.answers ?? []).includes('remote-control');
+    if (declared !== this.definition.remoteControl) {
       logger.warn(
         'HarnessAgentSession',
-        `${this.definition.label} declares remoteControl=${String(capabilities.remoteControl)} at the ` +
-          `handshake but ${String(this.definition.remoteControl)} in its manifest`,
+        `${this.definition.label} ${declared ? 'answers' : 'does not answer'} remote control at the ` +
+          `handshake but its manifest says ${String(this.definition.remoteControl)}`,
       );
     }
     this.onReady(capabilities);

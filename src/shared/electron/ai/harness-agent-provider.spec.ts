@@ -28,9 +28,9 @@ class ScriptedHarness {
   public events: unknown[] = [];
 
   /**
-   * Holds whether the harness declares it accepts steering.
+   * Holds the host messages the harness declares it answers.
    */
-  public steering: boolean = true;
+  public declaredAnswers: readonly string[] = ['steer', 'discover', 'remote-control'];
 
   /**
    * Holds the protocol version the harness declares.
@@ -41,16 +41,6 @@ class ScriptedHarness {
    * Holds the session model the harness declares at the handshake.
    */
   public declaredSessionModel: string = 'live-harness';
-
-  /**
-   * Holds whether the harness declares it can expose its session to another machine.
-   */
-  public declaredRemoteControl: boolean = true;
-
-  /**
-   * Holds whether the harness declares it can report its models.
-   */
-  public declaredDiscovery: boolean = true;
 
   /**
    * Holds the models the harness reports when asked.
@@ -80,12 +70,10 @@ class ScriptedHarness {
         capabilities: {
           protocolVersion: this.version,
           sessionModel: this.declaredSessionModel,
-          steering: this.steering,
+          answers: this.declaredAnswers,
           images: true,
           efforts: ['low', 'high'],
           resumable: true,
-          remoteControl: this.declaredRemoteControl,
-          discovery: this.declaredDiscovery,
         },
       });
       return;
@@ -302,7 +290,7 @@ describe('HarnessAgentProvider', () => {
   });
 
   it('run_offersSteeringOnlyWhenTheHarnessDeclaredIt', async () => {
-    harness.steering = false;
+    harness.declaredAnswers = [];
     const { context, steerHandlers } = contextFor();
 
     await provider.run(context);
@@ -376,7 +364,7 @@ describe('HarnessAgentProvider', () => {
   it('discoverModels_doesNotAskAHarnessThatDidNotDeclareIt', async () => {
     // ⛔ The guard that stops an unimplemented message hanging. `discover` must be answered, and a
     // harness ignoring one it never heard of would leave this awaiting a reply that never comes.
-    harness.declaredDiscovery = false;
+    harness.declaredAnswers = ['steer'];
 
     const models: readonly { id: string; label?: string }[] | null = await provider.discoverModels({
       hasLocalLogin: false,
@@ -562,7 +550,7 @@ describe('HarnessAgentSession', () => {
     // ⚠️ Warned about, not refused — deliberately unlike a session-model mismatch. There the symptom is
     // a conversation that silently forgets itself; here it is a toggle that does nothing, and killing a
     // working provider over the second would cost more than the fault it reports.
-    harness.declaredRemoteControl = false;
+    harness.declaredAnswers = ['steer'];
     const session: AgentSession = provider.openSession(contextFor().context);
     await session.turn(contextFor().context);
 

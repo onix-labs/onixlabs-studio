@@ -24,7 +24,7 @@ import { createInterface } from 'node:readline';
 /**
  * The protocol version this harness speaks. Declared, not imported: the contract is the wire.
  */
-const PROTOCOL_VERSION = '1.4.0';
+const PROTOCOL_VERSION = '1.5.0';
 
 /**
  * Writes one protocol message to Studio.
@@ -127,12 +127,12 @@ function receive(message) {
         capabilities: {
           protocolVersion: PROTOCOL_VERSION,
           sessionModel: 'stateless',
-          steering: true,
+          // One list of what this answers, rather than a flag per feature. Studio will not send a
+          // message absent from it, so an unimplemented message cannot leave anyone waiting.
+          answers: ['steer', 'discover'],
           images: false,
           efforts: [],
           resumable: false,
-          remoteControl: false,
-          discovery: true,
         },
       });
       break;

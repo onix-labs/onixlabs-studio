@@ -44,6 +44,15 @@ export interface HarnessTransport {
 }
 
 /**
+ * The host messages every harness must handle, which are therefore never gated on what it declared.
+ *
+ * A harness that cannot take a turn, cannot be told to stop one, cannot be answered, or cannot complete
+ * a handshake is not a harness. Gating `initialize` in particular would be circular: the list that would
+ * permit it only arrives in the reply to it.
+ */
+const MANDATORY_MESSAGES: readonly string[] = ['initialize', 'turn.start', 'turn.abort', 'answer'];
+
+/**
  * A pending blocking request: the harness has stopped and is waiting for this to be answered.
  */
 interface PendingCall {
@@ -240,7 +249,7 @@ export class HarnessHost {
     discoveryId: string,
     handlers: HarnessTurnHandlers,
   ): Promise<readonly HarnessModel[] | null> {
-    if (!this.alive) {
+    if (!this.alive || !this.answers('discover')) {
       return Promise.resolve(null);
     }
     this.turns.set(discoveryId, handlers);
@@ -280,7 +289,7 @@ export class HarnessHost {
    * @returns Returns true when the harness declared it accepts steering.
    */
   public steer(requestId: string, text: string): boolean {
-    if (this.capabilitiesValue?.steering !== true || !this.alive) {
+    if (!this.alive || !this.answers('steer')) {
       return false;
     }
     this.post({ type: 'steer', requestId, text });
@@ -297,7 +306,7 @@ export class HarnessHost {
    * @returns Returns true when the harness declared it can honour this.
    */
   public setRemoteControl(mode: 'off' | 'mirror' | 'control'): boolean {
-    if (this.capabilitiesValue?.remoteControl !== true || !this.alive) {
+    if (!this.alive || !this.answers('remote-control')) {
       return false;
     }
     this.post({ type: 'remote-control', mode });
@@ -312,10 +321,37 @@ export class HarnessHost {
   }
 
   /**
+   * Determines whether the harness said it answers a message.
+   *
+   * ⛔ The guard that makes an unimplemented message safe. A harness that ignores a message it has never
+   * heard of leaves whoever sent it awaiting a reply forever — not a feature that fails, a turn or a
+   * settings dialog that hangs. Refusing to send is an immediate "cannot" instead of a wait.
+   *
+   * The four mandatory messages are never gated: a harness that cannot handle `initialize`,
+   * `turn.start`, `turn.abort` or `answer` is not a harness, and gating them would turn a broken
+   * handshake into silence.
+   *
+   * ⚠️ A harness on an older minor sends no list, which reads as "the mandatory four only". That is what
+   * keeps every already-published plugin working — it simply is not offered the optional messages.
+   * @param type The message type.
+   * @returns Returns true when the message may be sent.
+   */
+  private answers(type: HostMessage['type']): boolean {
+    if (MANDATORY_MESSAGES.includes(type)) {
+      return true;
+    }
+    return (this.capabilitiesValue?.answers ?? []).includes(type);
+  }
+
+  /**
    * Serialises and sends a message to the harness.
    * @param message The message to send.
    */
   private post(message: HostMessage): void {
+    if (!this.answers(message.type)) {
+      logger.debug('HarnessHost', `Not sending '${message.type}': the harness does not answer it`);
+      return;
+    }
     this.transport.send(JSON.stringify(message));
   }
 
@@ -393,7 +429,8 @@ export class HarnessHost {
     this.capabilitiesValue = capabilities;
     logger.info(
       'HarnessHost',
-      `Harness ready: protocol ${version}, ${capabilities.sessionModel}, steering=${capabilities.steering}`,
+      `Harness ready: protocol ${version}, ${capabilities.sessionModel}, ` +
+        `answers [${(capabilities.answers ?? []).join(', ')}]`,
     );
     this.readyResolver?.(capabilities);
     this.readyResolver = null;
