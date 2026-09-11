@@ -10,7 +10,10 @@ import {
   READ_BINARY_BYTES,
   READ_BINARY_DISASSEMBLY,
   CREATE_API_REQUEST,
+  DELETE_RUN_CONFIGURATIONS,
   LIST_API_REQUESTS,
+  LIST_RUN_CONFIGURATIONS,
+  SAVE_RUN_CONFIGURATIONS,
   SEND_API_REQUEST,
   SET_API_VARIABLE,
   UPDATE_API_REQUEST,
@@ -37,12 +40,17 @@ import {
   ASK_USER_PROMPT_APPENDIX,
   API_PROMPT_APPENDIX,
   BINARY_PROMPT_APPENDIX,
+  CLARIFYING_QUESTION_APPENDIX,
   createApiRequest,
+  deleteRunConfigurations,
   listApiRequests,
+  listRunConfigurations,
+  saveRunConfigurations,
   sendApiRequest,
   setApiVariable,
   updateApiRequest,
   PROJECT_PROMPT_APPENDIX,
+  RUN_CONFIGURATION_PROMPT_APPENDIX,
   STUDIO_PROMPT_APPENDIX,
   TERMINAL_PROMPT_APPENDIX,
   WORKBENCH_PROMPT_APPENDIX,
@@ -479,6 +487,105 @@ export async function createWorkbenchTools(context: AgentRunContext): Promise<To
 }
 
 /**
+ * Builds the run-configuration tools: reading the open workspace's Run dropdown, and authoring it.
+ *
+ * Registered on the **workspace-scoped** surfaces only — the IDE views (`editor`) and the standalone
+ * agent tab (`project`). A terminal- or binary- or API-docked agent is deliberately confined to its own
+ * surface, and authoring the workspace's launch configuration is not that surface's business.
+ *
+ * ⚠️ These were the one part of the Claude provider's tool set that had no equivalent here, which meant
+ * an agent on any other connection simply could not author a run configuration. Moving the Claude
+ * harness out of core made that gap load-bearing rather than merely untidy: a harness asks core for the
+ * tools, so a tool core does not describe is a tool nobody gets.
+ * @param context The run context the tools act through.
+ * @returns Returns the run-configuration tool set, or an empty set where they do not belong.
+ */
+export async function createRunConfigurationTools(context: AgentRunContext): Promise<ToolSet> {
+  if (context.mode === 'chat' || (context.surface !== 'editor' && context.surface !== 'project')) {
+    return {};
+  }
+  const { tool } = await import('ai');
+  const { z } = await import('zod');
+  // Declared once and used by both the create and the update tool, so the two cannot drift into
+  // describing different shapes of the same thing.
+  const configuration: ReturnType<typeof z.object> = z.object({
+    id: z.string().min(1).describe('Stable, unique, kebab-case identifier for the configuration.'),
+    name: z
+      .string()
+      .min(1)
+      .describe('Display name shown in the Run dropdown, written for a human.'),
+    providerKind: z
+      .string()
+      .optional()
+      .describe(
+        'The ecosystem that runs it: dotnet, node, jvm, cpp, rust, go — or "compound" for a configuration with members.',
+      ),
+    mode: z
+      .enum(['run', 'debug'])
+      .optional()
+      .describe('Whether it launches normally ("run", the default) or under the debugger.'),
+    program: z
+      .string()
+      .optional()
+      .describe(
+        'The command or executable to launch. When set it wins; otherwise the command is derived from providerKind and id.',
+      ),
+    args: z.array(z.string()).optional().describe('Arguments passed to the program.'),
+    cwd: z
+      .string()
+      .optional()
+      .describe('Working directory to launch in; defaults to the workspace root.'),
+    env: z
+      .record(z.string(), z.string())
+      .optional()
+      .describe('Environment variables to launch with.'),
+    members: z
+      .array(z.string())
+      .optional()
+      .describe(
+        'For a compound: the ids of the configurations to start in parallel. Every id must exist.',
+      ),
+  });
+  return {
+    // Listing is a read, so it runs without prompting — the agent can see what exists before deciding
+    // whether to amend it, which is what stops it duplicating entries.
+    [LIST_RUN_CONFIGURATIONS]: tool({
+      description:
+        "List the open workspace's run configurations (the entries in its Run dropdown, stored in .studio/workspace.json).",
+      inputSchema: z.object({}),
+      execute: (): Promise<string> => listRunConfigurations(context),
+    }),
+    [SAVE_RUN_CONFIGURATIONS]: tool({
+      description:
+        "Create or update the open workspace's run configurations. Entries are matched by id: a known id is replaced, a new id is added. A configuration with `members` is a compound that starts those configurations in parallel.",
+      inputSchema: z.object({
+        configurations: z
+          .array(configuration)
+          .min(1)
+          .describe('The configurations to create or update.'),
+      }),
+      execute: gated(
+        context,
+        SAVE_RUN_CONFIGURATIONS,
+        (args: { configurations: unknown[] }): Promise<string> =>
+          saveRunConfigurations(context, args.configurations),
+      ),
+    }),
+    [DELETE_RUN_CONFIGURATIONS]: tool({
+      description: 'Delete run configurations from the open workspace by id.',
+      inputSchema: z.object({
+        ids: z.array(z.string().min(1)).min(1).describe('The ids of the configurations to delete.'),
+      }),
+      execute: gated(
+        context,
+        DELETE_RUN_CONFIGURATIONS,
+        (args: { ids: string[] }): Promise<string> => deleteRunConfigurations(context, args.ids),
+      ),
+    }),
+  };
+}
+
+/**
  * Builds the API Explorer tools for an API-surface run: reading the collections, creating and
  * changing saved requests, sending one, and setting an environment variable. The handlers are the
  * same provider-agnostic ones the Claude path uses — only the tool-definition dialect differs — so
@@ -713,7 +820,10 @@ export async function createBinaryTools(context: AgentRunContext): Promise<ToolS
  * @param context The run context (carries the surface and mode).
  * @returns Returns the prompt appendix text.
  */
-export function promptForSurface(context: AgentRunContext): string {
+export function promptForSurface(
+  context: AgentRunContext,
+  options: { readonly nativeAsk?: boolean } = {},
+): string {
   const surface: AgentSurface = context.surface;
   const base: string = ((): string => {
     switch (surface) {
@@ -729,12 +839,23 @@ export function promptForSurface(context: AgentRunContext): string {
         return STUDIO_PROMPT_APPENDIX;
     }
   })();
-  const withAsk: string = `${base}\n\n${ASK_USER_PROMPT_APPENDIX}`;
+  // A caller whose model has its own clarifying-question tool gets the tool-agnostic wording: the
+  // instruction to ask rather than guess still applies, but naming a Studio tool it was not given
+  // would point the model at something absent from its list.
+  const withAsk: string = `${base}\n\n${options.nativeAsk === true ? CLARIFYING_QUESTION_APPENDIX : ASK_USER_PROMPT_APPENDIX}`;
   // The workbench tools are registered on every surface, so every surface is told about them — except
   // in chat mode, where they are withheld and describing them would only invite a refusal.
-  return context.mode === 'chat'
-    ? `${withAsk}\n\n${READ_ONLY_APPENDIX}`
-    : `${withAsk}\n\n${WORKBENCH_PROMPT_APPENDIX}`;
+  if (context.mode === 'chat') {
+    return `${withAsk}\n\n${READ_ONLY_APPENDIX}`;
+  }
+  const withWorkbench: string = `${withAsk}\n\n${WORKBENCH_PROMPT_APPENDIX}`;
+  // The run-configuration tools are registered on the workspace-scoped surfaces only, so only those
+  // are told how to author them. Kept in step with `createRunConfigurationTools` by hand, which is the
+  // cost of the guidance and the tools being two things; describing tools that are not there is the
+  // failure this condition exists to avoid.
+  return surface === 'editor' || surface === 'project'
+    ? `${withWorkbench}\n\n${RUN_CONFIGURATION_PROMPT_APPENDIX}`
+    : withWorkbench;
 }
 
 /**
@@ -748,6 +869,9 @@ export async function toolsForSurface(context: AgentRunContext): Promise<ToolSet
   const askUserTool: ToolSet = await createAskUserTool(context);
   // The workbench tools ride on every surface — see createWorkbenchTools.
   const workbenchTools: ToolSet = await createWorkbenchTools(context);
+  // The run-configuration tools ride on the workspace-scoped surfaces only, and decide that for
+  // themselves — see createRunConfigurationTools.
+  const runConfigurationTools: ToolSet = await createRunConfigurationTools(context);
   const surfaceTools: ToolSet = await ((): Promise<ToolSet> => {
     switch (context.surface) {
       case 'terminal':
@@ -764,7 +888,7 @@ export async function toolsForSurface(context: AgentRunContext): Promise<ToolSet
         return createStudioTools(context);
     }
   })();
-  return { ...askUserTool, ...workbenchTools, ...surfaceTools };
+  return { ...askUserTool, ...workbenchTools, ...runConfigurationTools, ...surfaceTools };
 }
 
 /**

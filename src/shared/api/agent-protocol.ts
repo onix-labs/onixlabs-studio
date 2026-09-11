@@ -168,8 +168,32 @@ import { AiEvent } from './ai/ai-event-types';
  * ⛔ Advisory, and only used when the list is empty. A harness that reports models *and* a complaint is
  * reporting models; core phrases the success, because how a discovery reads in Settings is one decision
  * made in one place.
+ *
+ *
+ * `1.9.0` is the version the **Claude port** needed, and every addition in it is a capability the
+ * in-core provider had that the wire could not carry. None is speculative: each one was found by
+ * putting `ClaudeAgentProvider` beside {@link HostMessage} and asking what would be lost.
+ *
+ *   - **`task.stop`** and **`panic`**, so a `live-harness` can honour `AgentSession.stopTask` and
+ *     `AgentSession.panicStop`. A harness that runs work in the background — Claude's SDK backgrounds a
+ *     shell command or a sub-agent — owns the only registry of what is running, so Studio cannot stop a
+ *     task by naming one it does not know about. ⚠️ `panic` is a *request*: the host still escalates to
+ *     closing the transport if the harness does not settle, because the user's Stop is a promise that
+ *     everything halts rather than a polite enquiry.
+ *   - **`cancel`**, the first message that travels *from* a harness to withdraw something. A harness
+ *     that raced Studio's prompt against another answerer — the Claude harness races claude.ai/code
+ *     under remote control — had no way to say the question had been answered elsewhere, so Studio's
+ *     prompt stayed open over a turn that had already moved on. It carries a `callId` and nothing else.
+ *   - **`choices` on an `input` request gains a description per choice.** `AiInputChoice` has carried
+ *     one since the input round-trip existed and the wire flattened it to a label, so a harness could
+ *     offer the options but not explain them — which is most of what makes a choice answerable.
+ *     ⚠️ A bare string is still accepted and read as a label, so every published harness is unaffected.
+ *   - **`omit` on a `tools` request**, for a harness whose model already brings one of Studio's tools.
+ *     Claude's SDK has its own clarifying-question tool, and being handed Studio's as well gives the
+ *     model two ways to ask, described differently. A harness names what it already has; core drops
+ *     those and — because the instructions describe the tools — phrases the prompt for what is left.
  */
-export const AGENT_PROTOCOL_VERSION: string = '1.8.0';
+export const AGENT_PROTOCOL_VERSION: string = '1.9.0';
 
 /**
  * Matches a plain three-part semver. Local and deliberately strict, for the same reason the manifest's
@@ -461,6 +485,16 @@ export type HostMessage =
   // Answered with `models` under the same id. The id is a run id, so anything the harness has to ask
   // before it can answer travels the ordinary request path.
   | { readonly type: 'discover'; readonly discoveryId: string }
+  // Session-scoped like `remote-control`, and for a sharper version of the same reason: a background
+  // task outlives the turn that launched it, so the run id it started under may long since have
+  // settled. The harness owns the registry of what is running; Studio only names one.
+  | { readonly type: 'task.stop'; readonly taskId: string }
+  // The user's Stop, escalated: stop the background work, interrupt whatever is in flight — including a
+  // turn nothing is awaiting, which a per-turn `turn.abort` cannot reach because no run holds it.
+  //
+  // ⚠️ A request, not a guarantee. The host gives the harness a grace period to settle and then closes
+  // the transport regardless, because a wedged harness is precisely what a panic stop is for.
+  | { readonly type: 'panic' }
   | { readonly type: 'answer'; readonly callId: string; readonly answer: HarnessAnswer };
 
 /**
@@ -528,6 +562,14 @@ export type HarnessMessage =
       readonly requestId: string;
       readonly request: HarnessRequest;
     }
+  // Withdraws a question the harness no longer needs answered (1.9.0). The only message that travels
+  // this way to *un*-ask something, and it exists because a harness can race Studio's prompt against
+  // another answerer: the Claude harness forwards a permission to claude.ai/code under remote control,
+  // and whichever side answers first should clear the other's prompt.
+  //
+  // ⚠️ Studio treats this as "the user did not answer", not as a denial. The harness got its answer
+  // from somewhere else; what it is saying here is only that this prompt is no longer needed.
+  | { readonly type: 'cancel'; readonly callId: string }
   | {
       readonly type: 'audit';
       readonly requestId: string;
@@ -574,7 +616,11 @@ export interface HarnessModel {
  */
 export type HarnessRequest =
   | { readonly kind: 'permission'; readonly name: string; readonly detail: string }
-  | { readonly kind: 'input'; readonly question: string; readonly choices: readonly string[] }
+  | {
+      readonly kind: 'input';
+      readonly question: string;
+      readonly choices: readonly HarnessChoice[];
+    }
   | {
       readonly kind: 'edit-decision';
       readonly name: string;
@@ -593,8 +639,38 @@ export type HarnessRequest =
   | { readonly kind: 'credential' }
   // Asked by a harness whose model has no tools of its own. What comes back depends on the turn's
   // surface and mode, so it is asked per turn rather than cached across a session.
-  | { readonly kind: 'tools' }
+  | {
+      readonly kind: 'tools';
+      // The tools the harness already has, which core leaves out of the answer (1.9.0). A harness
+      // whose model brings its own version of one of Studio's tools would otherwise be given two ways
+      // to do the same thing, described differently — and a model handed both picks either.
+      //
+      // ⛔ Names what the harness *has*, not what it wants withheld. That distinction decides how core
+      // phrases the instructions: a capability the harness provides itself is still described to the
+      // model, just without naming a Studio tool to reach it by.
+      readonly omit?: readonly string[];
+    }
   | { readonly kind: 'tool'; readonly name: string; readonly input: unknown };
+
+/**
+ * One suggested answer to an `input` request.
+ *
+ * ⚠️ A harness may send a bare string instead, which is read as a label with no description. That is
+ * what keeps every harness published against 1.8.0 and earlier working — the wire carried only labels
+ * until 1.9.0, and a shape that refused them would break the ones already installed.
+ */
+export interface HarnessChoice {
+  /**
+   * Gets the short answer label, which is what comes back verbatim when the user picks it.
+   */
+  readonly label: string;
+
+  /**
+   * Gets the explanation of what picking this choice means, or undefined when the label speaks for
+   * itself.
+   */
+  readonly description?: string;
+}
 
 /**
  * Gets whether a harness's declared protocol version is one this build can honour.
@@ -633,6 +709,7 @@ const HARNESS_MESSAGE_TYPES: readonly string[] = [
   'ready',
   'event',
   'request',
+  'cancel',
   'audit',
   'turn.completed',
   'turn.failed',
@@ -662,8 +739,13 @@ export function parseHarnessMessage(value: unknown): HarnessMessage | null {
     return null;
   }
   // A request is the only message whose correlation id Studio must answer under, so a missing one is
-  // not recoverable: nothing could route the reply back.
-  if (candidate.type === 'request' && typeof candidate.callId !== 'string') {
+  // not recoverable: nothing could route the reply back. A cancel names the same id from the other
+  // direction, and one that named nothing could only be read as "withdraw something", which is worse
+  // than being refused — it would dismiss a prompt the user is part way through answering.
+  if (
+    (candidate.type === 'request' || candidate.type === 'cancel') &&
+    typeof candidate.callId !== 'string'
+  ) {
     return null;
   }
   // Everything that belongs to a turn must say which turn. An event for no run cannot be rendered, a

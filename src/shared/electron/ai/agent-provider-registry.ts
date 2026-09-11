@@ -4,9 +4,6 @@ import type { ContributedHarness } from '../contributions/plugins/plugin-loader'
 import type { AgentProvider } from './agent-provider';
 import { HarnessAgentProvider } from './harness-agent-provider';
 import type { HarnessTransport } from './harness-host';
-import { AiSdkAdapter } from './ai-sdk-adapter';
-import { ClaudeAgentProvider } from './claude-agent-provider';
-import { CodexAgentProvider } from './codex-agent-provider';
 
 /**
  * Describes one kind of agent harness: whether it serves a given connection, and how to build the
@@ -77,42 +74,12 @@ export class AgentProviderRegistry {
   }
 
   /**
-   * Reports where a contributed harness has taken a connection an in-core one would also have served.
-   *
-   * **This is the transitional hazard of #653, said out loud.** Contributed harnesses register ahead of
-   * the ones Studio compiles in, which is the intended shape — a harness that has moved out of core
-   * should win. But while both exist, an *incomplete* plugin claiming `claude-login` silently replaces
-   * a provider that does considerably more, and the user's only symptom is capability quietly going
-   * missing: no sub-agents, no remote control, no tool policy.
-   *
-   * Nothing is refused here, because refusing would defeat the point of the ordering. What this does is
-   * make the displacement visible in the log instead of invisible in the product, so a bug report saying
-   * "the agent stopped doing X after I installed Y" has one line that explains it.
-   *
-   * ⛔ Since a harness is now matched only by a connection naming it explicitly, this can no longer
-   * happen by accident — a user chose it. It stays because the choice is still worth reporting: if the
-   * plugin they picked does less than the built-in, this is the line that explains where the missing
-   * capability went.
-   * @param connection The connection being resolved.
-   * @param winner The descriptor that served it.
-   */
-  private reportDisplacement(connection: AiConnection, winner: AgentProviderDescriptor): void {
-    const core: readonly string[] = coreAgentProviders()
-      .filter((candidate: AgentProviderDescriptor): boolean => candidate.id !== 'ai-sdk')
-      .filter((candidate: AgentProviderDescriptor): boolean => candidate.serves(connection))
-      .map((candidate: AgentProviderDescriptor): string => candidate.id);
-    if (core.length === 0 || core.includes(winner.id)) {
-      return;
-    }
-    logger.warn(
-      'AgentProviderRegistry',
-      `Harness '${winner.id}' is running connection '${connection.id}' in place of the built-in ` +
-        `'${core.join(', ')}'. If capability is missing from this agent, that is where it went.`,
-    );
-  }
-
-  /**
    * Builds the provider for a connection, from the first registered harness that serves it.
+   *
+   * ⛔ **Nothing serves a connection by default, and that is the design.** Core registers no harness
+   * at all, so a connection is runnable only once a provider plugin is installed *and* the connection
+   * names it. Returning null leaves the connection listed in Settings and absent from the agent —
+   * which is the honest reading of "configured, but there is nothing to run it".
    * @param connection The connection to build a provider for.
    * @returns Returns the provider, or null when nothing registered serves the connection.
    */
@@ -121,15 +88,13 @@ export class AgentProviderRegistry {
       (candidate: AgentProviderDescriptor): boolean => candidate.serves(connection),
     );
     if (descriptor === undefined) {
-      // Only reachable if the catch-all descriptor was never registered. Worth saying rather than
-      // returning a connection the user configured with no way to run it.
-      logger.warn(
+      logger.debug(
         'AgentProviderRegistry',
-        `No harness serves connection '${connection.id}' (auth ${connection.auth})`,
+        `No harness serves connection '${connection.id}'; it names ` +
+          `${connection.harnessId === null || connection.harnessId === undefined ? 'none' : `'${connection.harnessId}'`}`,
       );
       return null;
     }
-    this.reportDisplacement(connection, descriptor);
     return descriptor.create(connection);
   }
 
@@ -207,33 +172,23 @@ export function toHarnessDescriptor(
 }
 
 /**
- * The harnesses Studio compiles in, in the order they are asked.
+ * The harnesses Studio compiles in.
  *
- * Two live harnesses that drive a vendor CLI, then the generic adapter that serves everything else —
- * which is why an OpenAI-compatible endpoint (including a local Ollama) needs no code here at all: it
- * is a connection, and the last descriptor takes it.
- * @returns Returns the first-party descriptors, in registration order.
+ * ⛔ **There are none, and this function exists to say so.** Core used to register three — the Claude
+ * Agent SDK, Codex, and a generic AI-SDK adapter that served whatever was left — and every one of them
+ * is now a plugin: `onixlabs.claude-harness`, `onixlabs.codex-harness`, `onixlabs.ai-sdk-harness`.
+ * That was the point of #653, and Matthew's ruling states the acceptance test plainly: *a fresh binary
+ * has no working agents until a provider plugin is installed.*
+ *
+ * 🔑 It is kept, empty, rather than deleted, because the *registry* is core's and the emptiness is a
+ * decision rather than an oversight. Anything tempted to add a built-in back has to edit this function
+ * and read this comment first.
+ *
+ * ⚠️ Note what is **not** implied: `ai-sdk-stream.ts` stays in core and is not a provider. It holds
+ * Studio's own twenty-eight tools, which a harness asks for over the protocol — so adding a Studio
+ * capability reaches every provider at once instead of requiring each plugin to be republished.
+ * @returns Returns an empty list.
  */
 export function coreAgentProviders(): readonly AgentProviderDescriptor[] {
-  return [
-    {
-      id: 'claude',
-      serves: (connection: AiConnection): boolean => connection.auth === 'claude-login',
-      create: (connection: AiConnection): AgentProvider =>
-        new ClaudeAgentProvider(connection.models, connection.defaultModelId),
-    },
-    {
-      id: 'codex',
-      serves: (connection: AiConnection): boolean => connection.auth === 'codex-login',
-      create: (connection: AiConnection): AgentProvider =>
-        new CodexAgentProvider(connection.models, connection.defaultModelId),
-    },
-    {
-      // Last, and serves everything: the generic adapter configured by the connection's own kind and
-      // endpoint. Anything registered after this would never be asked.
-      id: 'ai-sdk',
-      serves: (): boolean => true,
-      create: (connection: AiConnection): AgentProvider => new AiSdkAdapter(connection),
-    },
-  ];
+  return [];
 }

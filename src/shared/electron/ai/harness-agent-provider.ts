@@ -3,6 +3,7 @@ import type {
   AiEffort,
   AiEvent,
   AiImageRef,
+  AiInputChoice,
   AiModelInfo,
   AiRemoteControlMode,
 } from '@shared/api/ai-types';
@@ -26,6 +27,15 @@ import type {
 } from './agent-provider';
 import { HarnessHost, HarnessModelReport, HarnessTransport, refusalFor } from './harness-host';
 import { describeOffer, invokeTool } from './harness-tools';
+
+/**
+ * How long {@link HarnessAgentSession.panicStop} gives a harness to settle its turns before the
+ * transport is closed under it, in milliseconds.
+ *
+ * The same budget the in-core Claude session used, and chosen the same way: generous enough that a
+ * healthy interrupt lands well inside it, short enough that Stop still reads as a stop.
+ */
+const PANIC_CLOSE_GRACE_MS: number = 5_000;
 
 /**
  * Opens a transport to a harness — a spawned process, or a fake in tests.
@@ -232,17 +242,23 @@ export class HarnessAgentProvider implements AgentProvider {
    * It asks under the discovery id, so the request path is the ordinary one and the only thing this
    * has to supply is the connection's auth.
    * @param auth The connection's credential.
+   * @param settings Settings for this discovery beyond the connection's own, merged over them.
    * @returns Returns what the harness reported, or null when it could not answer.
    */
-  public async discoverModels(auth: AgentAuth): Promise<AgentModelReport | null> {
+  public async discoverModels(
+    auth: AgentAuth,
+    settings: Readonly<Record<string, unknown>> = {},
+  ): Promise<AgentModelReport | null> {
     const host: HarnessHost = new HarnessHost(this.definition.connect(), (): void => undefined);
     try {
       // ⛔ The settings matter more here than anywhere else. A discovery carries no turn envelope, so
       // without them a harness asked what it can run has nothing saying which endpoint to ask — which
-      // for an OpenAI-compatible connection is the entire question.
-      const capabilities: HarnessCapabilities | null = await host.initialize(
-        this.definition.settings,
-      );
+      // for an OpenAI-compatible connection is the entire question. The caller's extras win, because
+      // they are the ones that are specific to this discovery.
+      const capabilities: HarnessCapabilities | null = await host.initialize({
+        ...this.definition.settings,
+        ...settings,
+      });
       // ⛔ The host refuses to send `discover` to a harness that did not list it, and answers null
       // instead — so a harness that never heard of the message cannot leave this awaiting a reply that
       // never comes. A settings dialog that says "could not ask" beats one that hangs.
@@ -309,7 +325,8 @@ export class HarnessAgentProvider implements AgentProvider {
       );
       await host.runTurn(toTurnRequest(context, this.definition.settings), {
         onEvent: (event: unknown): void => context.emit(event as AiEvent),
-        onRequest: (request: unknown): Promise<HarnessAnswer> => answerRequest(request, context),
+        onRequest: (request: unknown, dismiss: AbortSignal): Promise<HarnessAnswer> =>
+          answerRequest(request, context, dismiss),
       });
     } finally {
       context.signal.removeEventListener('abort', abort);
@@ -432,7 +449,8 @@ export class HarnessAgentSession implements AgentSession {
           this.noteSession(event);
           context.emit(event as AiEvent);
         },
-        onRequest: (request: unknown): Promise<HarnessAnswer> => answerRequest(request, context),
+        onRequest: (request: unknown, dismiss: AbortSignal): Promise<HarnessAnswer> =>
+          answerRequest(request, context, dismiss),
       });
     } finally {
       context.signal.removeEventListener('abort', abort);
@@ -467,6 +485,66 @@ export class HarnessAgentSession implements AgentSession {
         `${this.definition.label} was asked to aim remote control at '${mode}' but did not declare it`,
       );
     }
+  }
+
+  /**
+   * Stops a task the harness is running in the background.
+   *
+   * Best-effort by design: the task may have settled between the user pressing Stop and the message
+   * arriving, and the harness may have ended. Nothing is emitted here — the task settles through the
+   * lifecycle events the harness sends, which is the only account of it that can be right.
+   * @param taskId The harness's identifier for the task.
+   */
+  public stopTask(taskId: string): void {
+    if (this.host === null) {
+      return;
+    }
+    if (!this.host.stopTask(taskId)) {
+      logger.debug(
+        'HarnessAgentSession.stopTask',
+        `${this.definition.label} was asked to stop task '${taskId}' but does not answer 'task.stop'`,
+      );
+    }
+  }
+
+  /**
+   * Panic-stops the session: asks the harness to stop everything, and closes it outright if it does
+   * not.
+   *
+   * ⛔ The escalation is the point, and it is why this cannot live in {@link HarnessHost}. A per-turn
+   * abort reaches only turns a run is awaiting, and the turns that most need stopping — one a
+   * background task started, one a remote peer drove — have no run behind them at all. So the harness
+   * is asked once, and if it has not gone quiet within the grace period the transport is closed under
+   * it, killing the process and with it whatever was wedged.
+   *
+   * A closed session is not a broken one: `alive` reads false afterwards, so `AiManager` opens a fresh
+   * one on the conversation's next turn and resumes from the reported session id.
+   */
+  public panicStop(): void {
+    if (this.closed || this.host === null) {
+      return;
+    }
+    logger.warn(
+      'HarnessAgentSession.panicStop',
+      `Panic stop: ${this.inFlight.length} turn(s) in flight`,
+    );
+    // Every turn Studio knows about is stopped through the ordinary path first, so a healthy harness
+    // settles them normally and the watchdog below never fires.
+    for (const requestId of [...this.inFlight]) {
+      this.host.abort(requestId);
+    }
+    const asked: boolean = this.host.panic();
+    setTimeout((): void => {
+      if (this.closed || this.inFlight.length === 0) {
+        return;
+      }
+      logger.warn(
+        'HarnessAgentSession.panicStop',
+        `${this.definition.label} did not settle ${this.inFlight.length} turn(s)` +
+          `${asked ? '' : " and does not answer 'panic'"}; closing the session`,
+      );
+      void this.close();
+    }, PANIC_CLOSE_GRACE_MS);
   }
 
   /**
@@ -593,6 +671,7 @@ export class HarnessAgentSession implements AgentSession {
 export async function answerRequest(
   request: unknown,
   context: AgentRunContext,
+  dismiss?: AbortSignal,
 ): Promise<HarnessAnswer> {
   const asked: Record<string, unknown> = (request ?? {}) as Record<string, unknown>;
   switch (asked['kind']) {
@@ -600,16 +679,15 @@ export async function answerRequest(
       const granted: boolean = await context.requestPermission(
         text(asked['name'], 'Action'),
         text(asked['detail'], ''),
+        dismiss,
       );
       return { kind: 'permission', granted };
     }
     case 'input': {
-      const choices: readonly string[] = Array.isArray(asked['choices'])
-        ? (asked['choices'] as readonly string[])
-        : [];
       const answer: string | null = await context.requestInput(
         text(asked['question'], ''),
-        choices.map((label: string): { label: string } => ({ label: text(label, '') })),
+        toChoices(asked['choices']),
+        dismiss,
       );
       return { kind: 'input', answer };
     }
@@ -635,9 +713,16 @@ export async function answerRequest(
     }
     case 'tools': {
       // What Studio offers this turn: its instructions, and the tools those instructions describe. A
-      // harness whose model brings its own tools — Claude's and Codex's SDKs both do — never asks.
-      const offer: { systemPrompt: string; tools: readonly HarnessTool[] } =
-        await describeOffer(context);
+      // harness whose model brings its own tools — Codex's SDK does — never asks at all; one whose
+      // model brings *some* of them names those in `omit` and is given the rest.
+      const offer: { systemPrompt: string; tools: readonly HarnessTool[] } = await describeOffer(
+        context,
+        Array.isArray(asked['omit'])
+          ? (asked['omit'] as readonly unknown[]).filter(
+              (name: unknown): name is string => typeof name === 'string',
+            )
+          : [],
+      );
       return { kind: 'tools', tools: offer.tools, systemPrompt: offer.systemPrompt };
     }
     case 'tool': {
@@ -679,6 +764,45 @@ export async function answerRequest(
  */
 function text(value: unknown, fallback: string): string {
   return typeof value === 'string' ? value : fallback;
+}
+
+/**
+ * Reads the choices on an `input` request, accepting both shapes the wire has carried.
+ *
+ * Protocol 1.9.0 widened a choice from a bare label to `{ label, description? }`, because `AiInputChoice`
+ * has always had somewhere to put the explanation and the wire was flattening it away — which is most
+ * of what makes a choice answerable. A string is still read as a label with no description, so every
+ * harness published before that keeps working.
+ *
+ * ⚠️ Anything that is neither is **dropped rather than coerced**, on the same grounds as {@link text}:
+ * these reach a prompt the user is about to answer, and `[object Object]` as an option is worse than
+ * one option fewer.
+ * @param value The `choices` field as the harness sent it.
+ * @returns Returns the choices Studio can render.
+ */
+function toChoices(value: unknown): readonly AiInputChoice[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const choices: AiInputChoice[] = [];
+  for (const entry of value as readonly unknown[]) {
+    if (typeof entry === 'string') {
+      choices.push({ label: entry });
+      continue;
+    }
+    if (entry === null || typeof entry !== 'object') {
+      continue;
+    }
+    const record: Record<string, unknown> = entry as Record<string, unknown>;
+    if (typeof record['label'] !== 'string' || record['label'].length === 0) {
+      continue;
+    }
+    choices.push({
+      label: record['label'],
+      ...(typeof record['description'] === 'string' ? { description: record['description'] } : {}),
+    });
+  }
+  return choices;
 }
 
 /**

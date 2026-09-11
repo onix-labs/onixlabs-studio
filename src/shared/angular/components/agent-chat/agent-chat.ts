@@ -23,6 +23,7 @@ import type { AgentSurface, AiEditDecision, AiImageRef } from '@shared/api/ai-ty
 import { Agent, AgentItem, AgentItemKind } from '@shared/angular/services/agent/agent';
 import { formatTokens } from '@shared/angular/services/agent/token-format';
 import { Settings } from '@shared/angular/services/settings/settings';
+import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine';
 import { AgentPerf } from '@shared/angular/services/agent-perf/agent-perf';
 import { AgentRequests } from '@shared/angular/services/agent-requests/agent-requests';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
@@ -316,6 +317,11 @@ export class AgentChat implements OnInit {
   private readonly agent: Agent = inject(Agent);
 
   /**
+   * Holds the global engine, read only for whether anything can run a turn at all.
+   */
+  private readonly engine: AgentEngine = inject(AgentEngine);
+
+  /**
    * Holds the tab registry, used to light this conversation's tab while it awaits a decision.
    */
   private readonly tabs: Tabs = inject(Tabs);
@@ -571,6 +577,25 @@ export class AgentChat implements OnInit {
    * Gets the transcript rendered in the message list.
    */
   public readonly items: Signal<readonly AgentItem[]> = this.agent.items;
+
+  /**
+   * Gets a value indicating whether nothing is installed that could run a turn.
+   *
+   * The empty transcript says one of two quite different things, and telling a user to "ask the agent
+   * anything" when there is no agent to ask is the worse of the two. Core ships no provider (#653), so
+   * on a fresh install this is the first thing the view has to explain.
+   */
+  protected readonly hasNoProviders: Signal<boolean> = this.engine.hasNoProviders;
+
+  /**
+   * Opens the Plugin Manager, so the empty state is a way out rather than only an explanation.
+   *
+   * 🔑 It opens the manager rather than a connection editor, and that order is the doctrine: install a
+   * provider, *then* choose it. Offering the choice first would be a dropdown with nothing in it.
+   */
+  protected openPluginManager(): void {
+    this.tabs.open('plugin-manager');
+  }
 
   /**
    * Gets a value indicating whether a run is in flight.

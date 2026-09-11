@@ -54,6 +54,12 @@ class ScriptedHarness {
   public closed: boolean = false;
 
   /**
+   * Holds whether this harness settles the turns it is given. Set false to model one that has wedged,
+   * which is the only case a panic stop's escalation can be observed in.
+   */
+  public settlesTurns: boolean = true;
+
+  /**
    * Holds the line handler.
    */
   private lines: ((line: string) => void) | null = null;
@@ -129,6 +135,9 @@ class ScriptedHarness {
    * Completes the turn in flight, once.
    */
   private settle(): void {
+    if (!this.settlesTurns) {
+      return;
+    }
     const requestId: string | null = this.settling;
     this.settling = null;
     if (requestId !== null) {
@@ -284,6 +293,103 @@ describe('HarnessAgentProvider', () => {
       { kind: 'edit-decision', decision: 'yes' },
       { kind: 'bridge', result: 'bridged', error: null },
     ]);
+  });
+
+  it('run_carriesEachChoicesExplanationThroughToThePrompt', async () => {
+    // 1.9.0 widened a choice from a bare label to `{ label, description }`. `AiInputChoice` always had
+    // somewhere to put the explanation and the wire was flattening it away — which is most of what
+    // makes a choice answerable rather than a guess between two words.
+    harness.requests = [
+      {
+        kind: 'input',
+        question: 'which?',
+        choices: [{ label: 'Rebase', description: 'keeps history linear' }, { label: 'Merge' }],
+      },
+    ];
+    let offered: unknown = null;
+    const { context } = contextFor({
+      requestInput: (_question: string, choices: unknown): Promise<string | null> => {
+        offered = choices;
+        return Promise.resolve('Rebase');
+      },
+    });
+
+    await provider.run(context);
+
+    expect(offered).toEqual([
+      { label: 'Rebase', description: 'keeps history linear' },
+      { label: 'Merge' },
+    ]);
+  });
+
+  it('run_stillAcceptsTheBareLabelsEveryOlderHarnessSends', async () => {
+    // ⚠️ Every harness published before 1.9.0 sends strings, and a shape that refused them would break
+    // the ones already installed on somebody's machine.
+    harness.requests = [{ kind: 'input', question: 'which?', choices: ['a', 'b'] }];
+    let offered: unknown = null;
+    const { context } = contextFor({
+      requestInput: (_question: string, choices: unknown): Promise<string | null> => {
+        offered = choices;
+        return Promise.resolve('a');
+      },
+    });
+
+    await provider.run(context);
+
+    expect(offered).toEqual([{ label: 'a' }, { label: 'b' }]);
+  });
+
+  it('run_dropsAChoiceThatIsNeitherALabelNorAString', async () => {
+    // ⛔ Dropped rather than coerced, on the same grounds as every other text field from a harness:
+    // these reach a prompt the user is about to answer, and `[object Object]` as an option is worse
+    // than one option fewer.
+    harness.requests = [
+      { kind: 'input', question: 'which?', choices: [{ label: 'ok' }, { nope: 1 }, 42, null] },
+    ];
+    let offered: unknown = null;
+    const { context } = contextFor({
+      requestInput: (_question: string, choices: unknown): Promise<string | null> => {
+        offered = choices;
+        return Promise.resolve('ok');
+      },
+    });
+
+    await provider.run(context);
+
+    expect(offered).toEqual([{ label: 'ok' }]);
+  });
+
+  it('run_withholdsAToolTheHarnessSaysItAlreadyHas', async () => {
+    // A harness whose model brings its own version of one of Studio's tools names it in `omit`. Being
+    // handed both would give the model two ways to do one thing, described differently — and which
+    // one it reaches for would depend on which description it read first.
+    harness.requests = [{ kind: 'tools', omit: [ASK_USER] }];
+    const { context } = contextFor();
+
+    await provider.run(context);
+
+    const answer: { kind: string; tools: readonly { name: string }[] } = harness.answers()[0] as {
+      kind: string;
+      tools: readonly { name: string }[];
+    };
+    expect(answer.tools.some((tool: { name: string }): boolean => tool.name === ASK_USER)).toBe(
+      false,
+    );
+    expect(answer.tools.length).toBeGreaterThan(0);
+  });
+
+  it('run_stopsNamingStudiosAskToolOnceAHarnessProvidesItsOwn', async () => {
+    // 🔑 Why `omit` says what the harness *has* rather than what to withhold: the instructions
+    // describe the tools, so a model told to "ask with the ask_user tool" it was never given either
+    // invents one or quietly guesses instead. It still has to be told to ask.
+    harness.requests = [{ kind: 'tools', omit: [ASK_USER] }];
+    const { context } = contextFor();
+
+    await provider.run(context);
+
+    const answer: { systemPrompt: string } = harness.answers()[0] as { systemPrompt: string };
+    expect(answer.systemPrompt).not.toContain(`"${ASK_USER}"`);
+    expect(answer.systemPrompt).toContain('ask a clarifying question');
   });
 
   it('run_answersACredentialRequestFromWhatStudioHoldsWithoutPromptingAnyone', async () => {
@@ -719,6 +825,68 @@ describe('HarnessAgentSession', () => {
       ),
     ).toBe(false);
     expect(session.alive).toBe(true);
+  });
+
+  it('stopTask_asksTheHarnessToStopTheWorkItOwns', async () => {
+    // ⛔ Session-scoped rather than turn-scoped: a backgrounded task outlives the turn that launched
+    // it, so by the time the user presses Stop the run id it started under may have settled long ago.
+    // The harness owns the registry of what is running; Studio only names one.
+    harness.declaredAnswers = ['task.stop'];
+    const session: AgentSession = provider.openSession(contextFor().context);
+    await session.turn(contextFor().context);
+
+    session.stopTask?.('task-9');
+
+    expect(harness.sent).toContainEqual({ type: 'task.stop', taskId: 'task-9' });
+  });
+
+  it('stopTask_isANoOpForAHarnessThatDoesNotAnswerIt', async () => {
+    harness.declaredAnswers = [];
+    const session: AgentSession = provider.openSession(contextFor().context);
+    await session.turn(contextFor().context);
+
+    session.stopTask?.('task-9');
+
+    // Never sent rather than sent and ignored: an unanswered host message hangs whoever sent it.
+    expect(
+      harness.sent.some(
+        (message: Record<string, unknown>): boolean => message['type'] === 'task.stop',
+      ),
+    ).toBe(false);
+    expect(session.alive).toBe(true);
+  });
+
+  it('panicStop_asksTheHarnessToStopEverythingBeforeEscalating', async () => {
+    harness.declaredAnswers = ['panic'];
+    const session: AgentSession = provider.openSession(contextFor().context);
+    await session.turn(contextFor().context);
+
+    session.panicStop?.();
+
+    expect(harness.sent).toContainEqual({ type: 'panic' });
+    // Asked first, not killed first: a healthy harness settles its turns and the watchdog never fires.
+    expect(harness.closed).toBe(false);
+  });
+
+  it('panicStop_closesTheSessionWhenTheHarnessDoesNotSettleItsTurns', async () => {
+    // ⛔ The escalation is the point. The user's Stop is a promise that everything halts, and a wedged
+    // harness is precisely the case it exists for — so a harness that has not gone quiet within the
+    // grace period has the transport closed under it.
+    vi.useFakeTimers();
+    try {
+      harness.settlesTurns = false;
+      const session: AgentSession = provider.openSession(contextFor().context);
+      void session.turn(contextFor().context);
+      await vi.advanceTimersByTimeAsync(0);
+
+      session.panicStop?.();
+      await vi.advanceTimersByTimeAsync(6_000);
+
+      expect(harness.closed).toBe(true);
+      expect(session.alive).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('closeEndsTheProcessAndIsIdempotent', async () => {

@@ -59,10 +59,11 @@ import type { HarnessTransport } from './harness-host';
 import { HarnessProcess } from './harness-process';
 import { isConnection, sanitizeClaudeExecutable, sanitizeConnections } from './connection-guard';
 import { AgentAuditLog, type AuditGrantSource } from './agent-audit-log';
-import { ClaudeAgentProvider } from './claude-agent-provider';
-import { type ClaudeSdkModel, runClaudeDiscovery } from './claude-model-discovery';
 import { readRemoteNotificationsEnabled, writeRemoteNotificationsEnabled } from './claude-settings';
-import { runCodexDiscovery } from './codex-model-discovery';
+// ⚠️ The Claude *login* stays in core while the Claude *provider* does not, and the two are genuinely
+// different things. Whether `~/.claude` holds a login is a fact about the machine, and signing in is
+// a flow with its own UI; running a turn against it is the harness's job. A plugin that had to
+// re-implement the login modal would be a plugin duplicating Studio's chrome (#653).
 import { ClaudeLoginDriver, readClaudeAuthStatus, runClaudeLogout } from './claude-login';
 import { sanitizeToolPolicies } from './tool-policy';
 import { sanitizeWritePaths } from './write-confinement';
@@ -377,9 +378,9 @@ export class AiManager {
     this.windowGetter = windowGetter;
     this.bridge = new RendererBridge(windowGetter);
 
-    // Contributed harnesses first, then the ones Studio compiles in. Order is the whole point: an
-    // installed harness plugin claiming a connection wins it, and the in-core pair is the fallback
-    // rather than the answer. Each harness that moves out of core simply stops being registered (#653).
+    // Contributed harnesses, and nothing else. `coreAgentProviders()` is empty — every provider is a
+    // plugin now (#653) — so a connection is runnable only once one is installed and the connection
+    // names it. The loop below is therefore the whole supply of harnesses, not the first half of it.
     for (const harness of contributedAgentHarnesses(harnessNodeRuntime)) {
       this.harnesses.register(
         toHarnessDescriptor(
@@ -393,12 +394,22 @@ export class AiManager {
       this.harnesses.register(descriptor);
     }
 
-    // Seed the subsystem so it is runnable before the renderer has listed its connections; the first
-    // `listProviders` call replaces these with the user's own connections (which default to the same
-    // seeds on a fresh install but are fully editable — including removing every one).
+    // Build from the seeded connections so the subsystem is populated before the renderer has listed
+    // the user's own; the first `listProviders` call replaces them.
+    //
+    // ⚠️ The seeds are **connection templates, not working agents.** They carry a label, an auth kind
+    // and a model list — the parts a user would otherwise have to type — and none of them names a
+    // harness, so every one of them builds no provider until the user installs a plugin and points
+    // the connection at it. That is what makes a fresh binary have no working agents while still not
+    // making the first one a blank form.
     const built: BuiltProviders = this.buildProviders(SEED_CONNECTIONS);
     this.providers = built.providers;
     this.connections = built.connections;
+    logger.info(
+      'AiManager',
+      `Registered ${this.harnesses.registered().length} harness(es); ` +
+        `${this.providers.size} of ${SEED_CONNECTIONS.length} seeded connection(s) are runnable`,
+    );
   }
 
   /**
@@ -662,10 +673,17 @@ export class AiManager {
   }
 
   /**
-   * Discovers a connection's models and returns the merged list (or the existing list unchanged when
-   * discovery cannot run). A local-login Claude connection has no API key, so it discovers through the
-   * Claude Agent SDK (which reports the account's models over its control channel). A Codex-login
-   * connection reads the local Codex runtime catalogue; API-key connections query `/models`.
+   * Discovers a connection's models and returns the merged list, or the existing list unchanged when
+   * discovery cannot run.
+   *
+   * 🔑 **The provider is asked first, and there is no longer a vendor branch behind it.** This used to
+   * fall back to reading the connection's *auth kind* to decide which vendor to talk to — spawning the
+   * Claude SDK for a `claude-login` connection, reading the Codex catalogue for a `codex-login` one —
+   * which was core knowing a vendor's identity, the last place it did. A harness knows what it can
+   * run, so it is asked rather than inferred about (#653).
+   *
+   * What remains behind it is not a vendor branch: an HTTP `/models` call is how *any* OpenAI-shaped
+   * endpoint answers, and it is the only thing left to try for a connection with no harness at all.
    * @param connection The connection to discover models for.
    * @returns Returns the discovery result.
    */
@@ -677,26 +695,14 @@ export class AiManager {
       'AiManager.discoverModels',
       `Discovering models for connection ${connection.id} (auth ${connection.auth})`,
     );
-    // A provider that can answer for itself is asked first, and that is the point of this branch
-    // existing at all: the alternatives below read the connection's *auth kind* to decide which vendor
-    // to talk to, which is core knowing a vendor's identity. A harness plugin knows what it can run, so
-    // it is asked rather than inferred about (#653).
     const provider: AgentProvider | undefined = this.providers.get(connection.id);
     if (provider?.discoverModels !== undefined) {
-      return this.discoverThroughProvider(connection, provider);
-    }
-    if (connection.auth === 'claude-login') {
-      const choice: ClaudeExecutableChoice = sanitizeClaudeExecutable(executable);
-      const provider: ClaudeAgentProvider = new ClaudeAgentProvider(
-        connection.models,
-        connection.defaultModelId,
-      );
-      return runClaudeDiscovery(connection, (): Promise<readonly ClaudeSdkModel[]> =>
-        provider.listSupportedModels(choice),
-      );
-    }
-    if (connection.auth === 'codex-login') {
-      return runCodexDiscovery(connection, process.env);
+      // The CLI choice is an application setting rather than a connection field, so it has nowhere
+      // to ride except here. A harness that does not understand the key ignores a bag it put nothing
+      // in, which is the whole reason `providerSettings` is opaque.
+      return this.discoverThroughProvider(connection, provider, {
+        claudeExecutable: sanitizeClaudeExecutable(executable),
+      });
     }
     const apiKey: string | null = this.auth.authFor(connection.id, connection.auth).apiKey;
     return runDiscovery(connection, apiKey, process.env, this.httpFetch);
@@ -711,14 +717,17 @@ export class AiManager {
    * decision, made once, so two providers cannot disagree about the same model.
    * @param connection The connection to discover for.
    * @param provider The provider that runs it.
+   * @param settings Settings for this discovery beyond the connection's own.
    * @returns Returns the discovery result.
    */
   private async discoverThroughProvider(
     connection: AiConnection,
     provider: AgentProvider,
+    settings: Readonly<Record<string, unknown>> = {},
   ): Promise<AiDiscoverModelsResult> {
     const report: AgentModelReport | null = await provider.discoverModels!(
       this.authForConnection(connection.id),
+      settings,
     );
     if (report === null) {
       return {
@@ -783,11 +792,19 @@ export class AiManager {
     const connection: AiConnection | undefined = this.connections.get(request.providerId);
     if (provider === undefined || connection === undefined) {
       logger.warn('AiManager.run', `Unknown provider requested: ${request.providerId}`);
+      // ⚠️ Two quite different causes reach here, and naming the connection id explains only one of
+      // them. Since core stopped shipping providers (#653) the common case on a fresh install is that
+      // *nothing* can run a turn — and "Unknown provider: claude" would send that user looking at
+      // their connection rather than at the Plugin Manager.
       this.emit({
         requestId: request.requestId,
         kind: 'status',
         state: 'error',
-        detail: `Unknown provider: ${request.providerId}`,
+        detail:
+          this.providers.size === 0
+            ? 'No AI provider is installed. Install one from the Plugin Manager, then choose it ' +
+              'under "Runs through" on a connection in Settings.'
+            : `Unknown provider: ${request.providerId}`,
       });
       return;
     }

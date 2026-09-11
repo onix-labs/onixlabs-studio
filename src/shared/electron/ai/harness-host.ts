@@ -68,6 +68,15 @@ interface PendingCall {
   readonly request: unknown;
 
   /**
+   * Dismisses whatever Studio put in front of the user for this question.
+   *
+   * Aborted when the harness withdraws the question (`cancel`) or when the turn it belongs to is
+   * aborted. The prompts take it as their own cancel signal, which is how a prompt whose answer has
+   * stopped mattering leaves the screen instead of waiting for someone to notice.
+   */
+  readonly dismiss: AbortController;
+
+  /**
    * Settles the harness's question.
    * @param answer The answer to send back.
    */
@@ -87,9 +96,11 @@ export interface HarnessTurnHandlers {
   /**
    * Answers a blocking question from the harness.
    * @param request The question.
+   * @param dismiss Fires when the question stops mattering — the harness withdrew it, or the turn was
+   * aborted with it still open — so whatever was put in front of the user can be taken away again.
    * @returns Returns the answer, eventually.
    */
-  onRequest(request: unknown): Promise<HarnessAnswer>;
+  onRequest(request: unknown, dismiss: AbortSignal): Promise<HarnessAnswer>;
 }
 
 /**
@@ -324,6 +335,46 @@ export class HarnessHost {
   }
 
   /**
+   * Asks the harness to stop a task it is running in the background.
+   *
+   * ⛔ Session-scoped rather than turn-scoped. A backgrounded task outlives the turn that launched it —
+   * that is what backgrounding it means — so by the time a user presses Stop on it, the run id it
+   * started under may have settled long ago. The harness owns the registry of what is running; Studio
+   * only ever names one.
+   *
+   * Nothing is emitted here. The task settles through the ordinary lifecycle events the harness sends,
+   * which is also what makes a task that had already finished a harmless no-op rather than a lie.
+   * @param taskId The harness's identifier for the task.
+   * @returns Returns true when the harness declared it can honour this.
+   */
+  public stopTask(taskId: string): boolean {
+    if (!this.alive || !this.answers('task.stop')) {
+      return false;
+    }
+    this.post({ type: 'task.stop', taskId });
+    return true;
+  }
+
+  /**
+   * Asks the harness to stop everything at once.
+   *
+   * ⚠️ **A request, and the caller must treat it as one.** A harness that has wedged is exactly the
+   * case this exists for, and a wedged harness does not answer messages — so whoever calls this is
+   * responsible for escalating to {@link close} if nothing settles. {@link HarnessAgentSession.panicStop}
+   * is where that watchdog lives, because the grace period is a session-lifetime decision rather than a
+   * transport one.
+   * @returns Returns true when the harness declared it can honour this.
+   */
+  public panic(): boolean {
+    if (!this.alive || !this.answers('panic')) {
+      return false;
+    }
+    logger.warn('HarnessHost', 'Asking the harness to panic-stop');
+    this.post({ type: 'panic' });
+    return true;
+  }
+
+  /**
    * Ends the harness.
    */
   public close(): void {
@@ -402,6 +453,9 @@ export class HarnessHost {
       case 'request':
         this.handleRequest(message.callId, message.requestId, message.request);
         break;
+      case 'cancel':
+        this.handleCancel(message.callId);
+        break;
       case 'audit':
         // Attributed to the turn that ran the action, which is what protocol 1.1.0 added `requestId`
         // for. Before it, this was host-level via a constructor sink, because routing an unattributed
@@ -471,6 +525,7 @@ export class HarnessHost {
     const call: PendingCall = {
       requestId,
       request,
+      dismiss: new AbortController(),
       settle: (answer: HarnessAnswer): void => {
         if (this.pending.delete(callId)) {
           this.post({ type: 'answer', callId, answer });
@@ -479,9 +534,30 @@ export class HarnessHost {
     };
     this.pending.set(callId, call);
     void handlers
-      .onRequest(request)
+      .onRequest(request, call.dismiss.signal)
       .then((answer: HarnessAnswer): void => call.settle(answer))
       .catch((): void => this.refuse(callId, call));
+  }
+
+  /**
+   * Withdraws a question the harness no longer needs answered.
+   *
+   * ⛔ The prompt is dismissed but **no answer is sent**. The harness said it has stopped waiting, so
+   * replying would be answering a question nobody asked — and the one case this exists for is a
+   * harness that already took an answer from somewhere else (a remote peer under remote control).
+   * Sending a stale refusal on top of that could overwrite the answer it just accepted.
+   * @param callId The call to withdraw.
+   */
+  private handleCancel(callId: string): void {
+    const call: PendingCall | undefined = this.pending.get(callId);
+    if (call === undefined) {
+      // Already settled, or never known. Both are ordinary: the user can answer at the same moment the
+      // peer does, and whichever message crosses second finds nothing to withdraw.
+      return;
+    }
+    logger.debug('HarnessHost', `The harness withdrew call '${callId}'`);
+    this.pending.delete(callId);
+    call.dismiss.abort();
   }
 
   /**
@@ -493,6 +569,10 @@ export class HarnessHost {
     if (!this.pending.delete(callId)) {
       return;
     }
+    // The harness is being told "no answer"; the user must stop being asked for one. Without this a
+    // stopped turn leaves its permission prompt on screen, still answerable, attached to a run that
+    // has already ended.
+    call.dismiss.abort();
     if (this.alive) {
       this.post({ type: 'answer', callId, answer: refusalFor(call.request) });
     }
@@ -511,6 +591,12 @@ export class HarnessHost {
     logger.info('HarnessHost', `Harness ended: ${reason}`);
     this.readyResolver?.(null);
     this.readyResolver = null;
+    // Every open prompt belonged to a harness that is gone, so nothing will ever consume an answer to
+    // one. Dismissing before clearing is what takes them off the screen rather than leaving a dialog
+    // the user can still answer into nothing.
+    for (const call of [...this.pending.values()]) {
+      call.dismiss.abort();
+    }
     this.pending.clear();
     for (const settle of [...this.settlers.values()]) {
       settle(`The harness ended: ${reason}`);
