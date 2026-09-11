@@ -25,7 +25,7 @@ import { createInterface } from 'node:readline';
 /**
  * The protocol version this harness speaks. Declared, not imported: the contract is the wire.
  */
-const PROTOCOL_VERSION = '1.6.0';
+const PROTOCOL_VERSION = '1.8.0';
 
 /**
  * Writes one protocol message to Studio.
@@ -40,6 +40,15 @@ function send(message) {
  * @type {string | null}
  */
 let currentRun = null;
+
+/**
+ * Holds what Studio said about the connection this harness serves, from the handshake (1.8.0).
+ *
+ * A harness that talks to a plain model API needs this before it can declare anything: whether it takes
+ * images depends on the provider, and `discover` arrives with no turn envelope to read it from.
+ * @type {object}
+ */
+let settings = {};
 
 /**
  * Holds what to do with the answer to the question in flight, by call id.
@@ -130,6 +139,7 @@ async function runTurn(turn) {
 function receive(message) {
   switch (message.type) {
     case 'initialize':
+      settings = message.settings ?? {};
       send({
         type: 'ready',
         capabilities: {
@@ -158,7 +168,9 @@ function receive(message) {
           models:
             answer.apiKey === null
               ? [{ id: 'echo-anonymous' }]
-              : [{ id: 'echo-authenticated', label: 'Echo (authenticated)' }],
+              : // The label carries the connection kind back, which is how a spec sees that the
+                // handshake's settings reached a real process rather than merely typechecking.
+                [{ id: 'echo-authenticated', label: `Echo (${settings.connectionKind ?? 'unknown'})` }],
         });
       });
       break;

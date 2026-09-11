@@ -107,7 +107,7 @@ describe('the Claude harness plugin', () => {
  * Run over **every** harness plugin rather than written once per plugin: the second harness is exactly
  * when a copied spec starts drifting from the one it was copied from.
  */
-describe.each(['claude-harness', 'codex-harness'])(
+describe.each(['claude-harness', 'codex-harness', 'ai-sdk-harness'])(
   'the %s plugin is installable',
   (name: string) => {
     const directory: string = path.join(process.cwd(), 'plugins', name);
@@ -121,9 +121,12 @@ describe.each(['claude-harness', 'codex-harness'])(
     );
     const lockfileText: string = readFileSync(lockfilePath, 'utf8');
     const packages: readonly LockfilePackage[] = parseLockfileDocument(JSON.parse(lockfileText))!;
-    const pkg: { name: string; version: string } = JSON.parse(
-      readFileSync(path.join(directory, 'package.json'), 'utf8'),
-    ) as { name: string; version: string };
+    const pkg: { name: string; version: string; dependencies?: Record<string, string> } =
+      JSON.parse(readFileSync(path.join(directory, 'package.json'), 'utf8')) as {
+        name: string;
+        version: string;
+        dependencies?: Record<string, string>;
+      };
 
     // Narrowed once. The kind is not incidental: an archive provision would put the payload wherever it
     // liked, and every claim below is about a *tree*.
@@ -174,6 +177,23 @@ describe.each(['claude-harness', 'codex-harness'])(
         'https://github.com/onix-labs/onixlabs-studio/releases/download/' +
           `${name}-v${pkg.version}/onixlabs-${name}-${pkg.version}.tgz`,
       );
+    });
+
+    it('shipsEveryDependencyItDeclares', () => {
+      // 🔥 The failure this catches is invisible until a user installs. A harness leaves a dependency
+      // external when the bundle cannot inline it (a per-platform native binary), and the lockfile is
+      // what then delivers it — so a dependency added to `package.json` without the lockfile being
+      // regenerated produces a tree that installs cleanly and throws at the first `require`.
+      //
+      // ⚠️ Not the same as "the lockfile is complete". A harness that bundles its SDK declares nothing
+      // here and is correct with a one-package lockfile; this only says the two documents agree.
+      const provided: readonly string[] = packages.map((entry: LockfilePackage): string =>
+        entry.path.replace(/^node_modules\//, ''),
+      );
+
+      for (const dependency of Object.keys(pkg.dependencies ?? {})) {
+        expect(provided).toContain(dependency);
+      }
     });
 
     it('publishesTheVersionTheManifestNames', () => {
