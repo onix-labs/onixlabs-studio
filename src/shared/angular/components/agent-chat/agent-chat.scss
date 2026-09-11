@@ -63,6 +63,7 @@
 .agent__messages > .agent__message,
 .agent__messages > .agent__ask,
 .agent__messages > .agent__error,
+.agent__messages > .agent__notice,
 .agent__messages > .agent__permission {
   content-visibility: auto;
   contain-intrinsic-size: auto 5rem;
@@ -427,7 +428,8 @@ $agent-node-size: 1.75rem;
 // is outlined in the accent colour, a failed run in the warning colour.
 .agent__permission,
 .agent__ask,
-.agent__error {
+.agent__error,
+.agent__notice {
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
@@ -445,13 +447,15 @@ $agent-node-size: 1.75rem;
 .agent__action-summary,
 .agent__permission,
 .agent__ask,
-.agent__error {
+.agent__error,
+.agent__notice {
   background: var(--agent-view-surface-color);
 }
 
 .agent__permission,
 .agent__ask,
-.agent__error {
+.agent__error,
+.agent__notice {
   border: 0.0625rem solid var(--agent-view-border-color);
 }
 
@@ -489,6 +493,26 @@ $agent-node-size: 1.75rem;
 
 .agent__error-diagnostics {
   margin-block-start: 0.4rem;
+}
+
+// Studio's own bookkeeping, not the agent talking (#691). Deliberately the quietest card in the
+// transcript: it carries no accent and no warning colour, because a background task settling is
+// neither something to act on nor something that went wrong. The muted foreground is what separates
+// it from an answer at a glance — the shape alone would not, since an assistant bubble is a card too.
+.agent__notice {
+  flex-direction: row;
+  gap: 0.5rem;
+  align-items: baseline;
+  color: var(--form-muted-foreground-color);
+  font-size: 0.82rem;
+}
+
+.agent__notice-icon {
+  color: var(--form-muted-foreground-color);
+}
+
+.agent__notice-text {
+  margin: 0;
 }
 
 .agent__permission-text {
@@ -745,6 +769,7 @@ $agent-node-size: 1.75rem;
 .agent__permission,
 .agent__ask,
 .agent__error,
+.agent__notice,
 .agent__bubble-image {
   corner-shape: var(--app-corner-shape, squircle);
 }
@@ -752,6 +777,7 @@ $agent-node-size: 1.75rem;
 .agent__avatar,
 .agent__permission,
 .agent__ask,
-.agent__error {
+.agent__error,
+.agent__notice {
   border-radius: calc(0.6rem * var(--border-radius-multiplier));
 }

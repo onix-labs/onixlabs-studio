@@ -184,6 +184,17 @@
             }
           </div>
         }
+        @case ('notice') {
+          <!-- Studio's own bookkeeping — a background task settling, housekeeping the harness
+               reports from a previous session. ⛔ Deliberately NOT a bubble and NOT on the agent's
+               rail: the model did not write this, and rendering it as assistant text made it
+               indistinguishable from an answer (#691). Plain text, not Markdown, because the
+               sentence is ours rather than the model's and has no formatting to honour. -->
+          <div class="agent__notice" [class.agent__unmeasured]="!isMeasured(row.id)">
+            <app-icon class="agent__notice-icon" [icon]="Icon.INFO" aria-hidden="true" />
+            <p class="agent__notice-text">{{ row.item!.text }}</p>
+          </div>
+        }
         @case ('error') {
           <!-- A failed run: the cause over the provider it went through, expandable diagnostics,
                and a one-click retry of the failed turn. -->
