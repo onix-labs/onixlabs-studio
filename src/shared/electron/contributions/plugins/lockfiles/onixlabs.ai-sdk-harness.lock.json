@@ -14,7 +14,7 @@
     "node_modules/@onixlabs/ai-sdk-harness": {
       "version": "0.1.0",
       "resolved": "https://github.com/onix-labs/onixlabs-studio/releases/download/ai-sdk-harness-v0.1.0/onixlabs-ai-sdk-harness-0.1.0.tgz",
-      "integrity": "sha512-+i3TnHe7clIFB0eFnFWpJ8FXhnmSzz9KfR21Bw+hdwpgm+H9ZiFRhZTkW54FL1ho5w9PthT9OHOy6dB5btDa3Q=="
+      "integrity": "sha512-Icrgovu8wAEOOxdZV/HgtgEGDTaT5sOGkHt2TrzjBKsba/KJDFDxMaIcgOs33xCS6tJ70GgZ1oeQAVNnIa82yg=="
     }
   }
 }

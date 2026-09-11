@@ -18,7 +18,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { argv, exit, stdout } from 'node:process';
 import { fileURLToPath } from 'node:url';
@@ -60,6 +60,38 @@ const pinned = lockfile.packages[key]?.integrity;
 if (pinned === undefined) {
   stdout.write(`The lockfile has no entry for ${key}, so there is nothing to check against.\n`);
   exit(1);
+}
+
+// 🔥 A harness that bundles its dependencies resolves them out of the *repository's* `node_modules`,
+// because the plugin declares none of its own — so the bytes this script pins are decided by whatever
+// happens to be installed. A tree that has drifted from `package-lock.json` therefore produces a
+// perfectly valid tarball pinning versions no clean checkout will ever build, and the failure surfaces
+// on the release runner, after the merge, when the tag has already been spent.
+//
+// Compared only where both documents describe the same package: npm omits optional dependencies that do
+// not apply to this platform, and those absences are correct rather than drift.
+const installedLock = join(REPO, 'node_modules/.package-lock.json');
+if (existsSync(installedLock)) {
+  const locked = read(join(REPO, 'package-lock.json')).packages ?? {};
+  const installed = read(installedLock).packages ?? {};
+  const drifted = Object.keys(installed)
+    .filter((path) => locked[path] !== undefined)
+    .filter((path) => locked[path].version !== installed[path].version)
+    .map(
+      (path) =>
+        `  ${path}\n    locked ${locked[path].version}, installed ${installed[path].version}`,
+    );
+
+  if (drifted.length > 0) {
+    stdout.write(
+      `\nThe installed tree does not match package-lock.json, in ${drifted.length} package(s):\n` +
+        `${drifted.slice(0, 10).join('\n')}\n` +
+        (drifted.length > 10 ? `  …and ${drifted.length - 10} more\n` : '') +
+        `\nA bundling plugin takes its dependencies from this tree, so a pin computed here would be a\n` +
+        `pin no clean checkout reproduces. Run \`npm ci\` and build again.\n`,
+    );
+    exit(1);
+  }
 }
 
 stdout.write(`Building ${pkg.name} ${pkg.version}\n`);
