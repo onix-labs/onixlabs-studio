@@ -154,7 +154,12 @@
           </div>
         </header>
         <div class="tile__focus-body">
-          <ng-container [ngTemplateOutlet]="panelBody" />
+          <!-- ⛔ NOT `ngTemplateOutlet`. The modal is its own window, and a plain outlet would render
+               `#panelBody` in an embedded view that resolves from its declaration site here in the
+               main window — so every menu inside the composer would open in the main window's overlay
+               container, offset and behind the modal. `appScopedOutlet` carries this position's
+               injection scope, which is the modal window's, into the view it creates. -->
+          <ng-container [appScopedOutlet]="panelBody" />
         </div>
       </div>
     }
