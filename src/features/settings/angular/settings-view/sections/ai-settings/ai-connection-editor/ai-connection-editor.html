@@ -12,6 +12,23 @@
     />
   </app-setting-row>
 
+  <!-- Only once a harness plugin is installed: install, then choose. With none installed there is
+       nothing to choose between, and the row would be a dropdown containing one option. -->
+  @if (showHarness()) {
+    <app-setting-row
+      class="conn-editor__harness"
+      label="Runs through"
+      description="Which agent harness answers for this configuration. Built-in is the provider inside Studio; an installed plugin runs the agent in its own process."
+    >
+      <app-dropdown
+        [options]="harnessOptions()"
+        [value]="harnessValue()"
+        ariaLabel="Agent harness"
+        (valueChange)="onHarness($event)"
+      />
+    </app-setting-row>
+  }
+
   @if (showBaseUrl()) {
     <app-setting-row
       label="Base URL"
