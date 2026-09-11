@@ -1,5 +1,5 @@
 {
-  "revision": 15,
+  "revision": 16,
   "plugins": [
     {
       "id": "pyright",
@@ -1140,7 +1140,7 @@
       "provision": {
         "kind": "npm",
         "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.ai-sdk-harness.lock.json",
-        "sha256": "5ab61d9b990d83b209d082f5648096d6326a3988febc6c48b9447d064ffe4175",
+        "sha256": "0e8dce04f5b5200b760bde7285a636c38cf59ac11421e5c4dbb7fef57a4448a3",
         "executablePath": "node_modules/@onixlabs/ai-sdk-harness/main.js"
       },
       "contributes": {
