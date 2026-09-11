@@ -1,3 +1,4 @@
+import { OverlayContainer } from '@angular/cdk/overlay';
 import { Component, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
@@ -22,6 +23,19 @@ class TooltipHost {
   public readonly name: WritableSignal<string | undefined> = signal<string | undefined>('New chat');
   public readonly disabled: WritableSignal<boolean> = signal<boolean>(false);
 }
+
+/**
+ * Stands in for a control mounted in a secondary window — a modal, a popped-out dock. Such a host
+ * provides its own CDK overlay layer (see `windowScopedCdkProviders`), and everything inside it must
+ * use that one rather than the application's root container.
+ */
+@Component({
+  imports: [TooltipTrigger],
+  selector: 'app-scoped-window',
+  template: `<button type="button" appTooltip="Scoped">icon</button>`,
+  providers: [OverlayContainer],
+})
+class ScopedWindowHost {}
 
 describe('TooltipTrigger', () => {
   let fixture: ComponentFixture<TooltipHost>;
@@ -55,6 +69,30 @@ describe('TooltipTrigger', () => {
     // The bubble lives in an overlay outside the fixture, so a leaked one would be visible to the
     // next test's document query.
     fixture.destroy();
+  });
+
+  it('hover_inASecondaryWindow_drawsTheBubbleInThatWindowsOverlayContainer', () => {
+    // 🔥 The bubble used to be built from the `Overlay` service, which is `providedIn: 'root'` and so
+    // captures the ROOT container and the ROOT viewport ruler once and keeps them. A control inside a
+    // modal therefore had its tooltip drawn in the MAIN window and positioned against the MAIN
+    // window's viewport — offset, and behind a modal that is a separate OS window.
+    const scoped: ComponentFixture<ScopedWindowHost> = TestBed.createComponent(ScopedWindowHost);
+    scoped.detectChanges();
+    const container: OverlayContainer = scoped.debugElement.injector.get(OverlayContainer);
+    const root: OverlayContainer = TestBed.inject(OverlayContainer);
+    // The premise: the host really does have a container of its own to be wrong about.
+    expect(container).not.toBe(root);
+
+    (scoped.nativeElement as HTMLElement)
+      .querySelector('button')!
+      .dispatchEvent(new MouseEvent('mouseenter'));
+    scoped.detectChanges();
+
+    expect(container.getContainerElement().querySelector('app-tooltip')?.textContent?.trim()).toBe(
+      'Scoped',
+    );
+    expect(root.getContainerElement().querySelector('app-tooltip')).toBeNull();
+    scoped.destroy();
   });
 
   it('hover_whenTheControlIsNamed_showsTheNameAtOnce', () => {
