@@ -26,8 +26,8 @@ async function openPlugins(app: ElectronApplication, page: Page): Promise<void> 
  */
 function pluginRow(page: Page, name: string): Locator {
   return page
-    .locator('.plugin-manager__table tr')
-    .filter({ has: page.locator('.plugin-manager__plugin-name', { hasText: name }) });
+    .locator('.plugin-row')
+    .filter({ has: page.locator('.plugin-row__name', { hasText: name }) });
 }
 
 /**
@@ -48,7 +48,7 @@ test.describe('the plugin catalogue', () => {
     for (const name of ['.NET Debugger (netcoredbg)', 'Node Debugger (js-debug)']) {
       const row: Locator = pluginRow(page, name);
       await expect(row).toBeVisible();
-      await expect(row.locator('.plugin-manager__provides').first()).toHaveText('Debugger');
+      await expect(row.locator('.plugin-row__category')).toHaveText('Debug Adapters');
     }
   });
 
@@ -59,7 +59,7 @@ test.describe('the plugin catalogue', () => {
     // The point of the delivery model: a fresh installation carries no debugger, and says so, rather
     // than bundling one nobody asked for.
     await expect(row).toBeVisible();
-    await expect(row.locator('.plugin-manager__state')).not.toHaveText('Installed');
+    await expect(row.locator('.plugin-row__state')).not.toHaveText('Installed');
   });
 });
 
@@ -73,8 +73,8 @@ test.describe('a sideloaded plugin', () => {
     // Nothing in core knows this adapter exists: its manifest alone put it there, which is the whole
     // claim the contribution point makes.
     await expect(row).toBeVisible();
-    await expect(row.locator('.plugin-manager__provides').first()).toHaveText('Debugger');
+    await expect(row.locator('.plugin-row__category')).toHaveText('Debug Adapters');
     // Its payload sits beside the manifest, so it is installed without anything being fetched.
-    await expect(row.locator('.plugin-manager__state')).toHaveText('Installed');
+    await expect(row.locator('.plugin-row__state')).toHaveText('Installed');
   });
 });

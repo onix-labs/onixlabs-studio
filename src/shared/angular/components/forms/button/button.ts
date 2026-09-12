@@ -39,7 +39,7 @@ export type ButtonVariant = 'solid' | 'outline' | 'none';
  * - `success` / `warning` / `danger` / `info` — the semantic state colours, for an action whose
  *   meaning (a destructive Stop, a confirming Save) should read before it is hovered.
  */
-export type ButtonTone = 'accent' | 'success' | 'warning' | 'danger' | 'info';
+export type ButtonTone = 'accent' | 'success' | 'warning' | 'danger' | 'info' | 'neutral';
 
 /**
  * Names how large a button is drawn. Size is a separate axis from {@link ButtonVariant}: any variant
@@ -76,6 +76,7 @@ export type ButtonSize = 'medium' | 'small';
     '[class.button--tone-warning]': "tone() === 'warning'",
     '[class.button--tone-danger]': "tone() === 'danger'",
     '[class.button--tone-info]': "tone() === 'info'",
+    '[class.button--tone-neutral]': "tone() === 'neutral'",
     '[class.button--small]': "size() === 'small'",
     '[class.button--icon-only]': 'isIconOnly()',
     '[class.button--pressed]': 'pressed() === true',

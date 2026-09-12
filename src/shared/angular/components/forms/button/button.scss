@@ -112,6 +112,16 @@
   --btn-tone-surface-foreground: var(--info-color);
 }
 
+// Neutral: an action that is offered but not available here. It is a tone rather than the absence of
+// one so that a disabled solid button reads as grey, not as a faded accent — "cannot" and "primary,
+// dimmed" are different statements, and only the first is true.
+:host(.button--tone-neutral) .button {
+  --btn-tone-color: var(--neutral-color);
+  --btn-tone-surface-background: rgba(var(--neutral-color-rgb), 0.15);
+  --btn-tone-surface-border: rgba(var(--neutral-color-rgb), 0.6);
+  --btn-tone-surface-foreground: var(--neutral-color);
+}
+
 // A toned button reads neutral at rest — same glyph, border and fill as any untoned button — and only
 // takes its tone on hover (below) or while a solid/pressed button wears it as a fill. Meaning is
 // carried by the coloured hover, not by a tinted resting glyph, so a Stop in a strip sits as quietly

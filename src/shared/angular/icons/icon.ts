@@ -165,6 +165,59 @@ export class Icon {
   public static readonly AI_MODELS: Icon = new Icon('ph-duotone ph-cpu');
 
   /**
+   * Gets the Plugins content icon, which also stands for every category at once.
+   */
+  public static readonly PLUGINS: Icon = new Icon('ph-duotone ph-puzzle-piece');
+
+  /**
+   * Gets the decoders category icon.
+   *
+   * ⚠️ The same glyph as {@link AI_MODELS} and deliberately a separate token: a decoder category is not
+   * a model manager, and a shared token would make renaming one rename the other.
+   */
+  public static readonly DECODERS: Icon = new Icon('ph-duotone ph-cpu');
+
+  /**
+   * Gets the language servers category icon.
+   */
+  public static readonly LANGUAGE_SERVERS: Icon = new Icon('ph-duotone ph-desktop-tower');
+
+  /**
+   * Gets the light weight of each category's glyph, used on a plugin row.
+   *
+   * ⚠️ A parallel set rather than a weight chosen at the call site, because picking a token is how a
+   * weight is picked here — the categories panel wants the duotone family so it reads as a set of
+   * destinations, while a row wants the light one so a list of them does not turn into a wall of
+   * colour. Same glyphs, so a plugin and the category filtering to it still look like the same thing.
+   */
+  public static readonly PLUGINS_LIGHT: Icon = new Icon('ph-light ph-puzzle-piece');
+
+  /**
+   * Gets the light weight of the AI agents glyph, for a plugin row.
+   */
+  public static readonly AGENT_LIGHT: Icon = new Icon('ph-light ph-brain');
+
+  /**
+   * Gets the light weight of the container engines glyph, for a plugin row.
+   */
+  public static readonly CONTAINERS_LIGHT: Icon = new Icon('ph-light ph-shipping-container');
+
+  /**
+   * Gets the light weight of the debug adapters glyph, for a plugin row.
+   */
+  public static readonly DEBUG_LIGHT: Icon = new Icon('ph-light ph-bug');
+
+  /**
+   * Gets the light weight of the decoders glyph, for a plugin row.
+   */
+  public static readonly DECODERS_LIGHT: Icon = new Icon('ph-light ph-cpu');
+
+  /**
+   * Gets the light weight of the language servers glyph, for a plugin row.
+   */
+  public static readonly LANGUAGE_SERVERS_LIGHT: Icon = new Icon('ph-light ph-desktop-tower');
+
+  /**
    * Gets the agent content icon.
    */
   public static readonly AGENT: Icon = new Icon('ph-duotone ph-brain');
@@ -934,6 +987,30 @@ export class Icon {
   public static readonly INFO: Icon = new Icon('ph ph-info');
 
   /**
+   * Gets the filled information-severity icon, used where a status is stated as a solid,
+   * semantically-coloured badge rather than as body text.
+   */
+  public static readonly INFO_FILL: Icon = new Icon('ph-fill ph-info');
+
+  /**
+   * Gets the filled warning-severity icon in its circled form. The circled shape is what makes it read
+   * as one of a set of status badges rather than as an alert interrupting the row.
+   */
+  public static readonly WARNING_CIRCLE_FILL: Icon = new Icon('ph-fill ph-warning-circle');
+
+  /**
+   * Gets the filled success icon in its circled form, for a status badge stating that something is
+   * present and healthy.
+   */
+  public static readonly CHECK_CIRCLE_FILL: Icon = new Icon('ph-fill ph-check-circle');
+
+  /**
+   * Gets the filled download icon in its circled form, for a status badge stating that something is
+   * available to bring down rather than an action button that does it.
+   */
+  public static readonly DOWNLOAD_CIRCLE_FILL: Icon = new Icon('ph-fill ph-arrow-circle-down');
+
+  /**
    * Gets the hint-severity icon.
    */
   public static readonly HINT: Icon = new Icon('ph ph-lightbulb');
@@ -1204,6 +1281,12 @@ export class Icon {
    * Gets the delete (trash) icon.
    */
   public static readonly TRASH: Icon = new Icon('ph ph-trash');
+
+  /**
+   * Gets the delete icon in its lidless form, for a destructive action stated as a button beside other
+   * buttons, where the lidded bin's extra detail reads as noise at button size.
+   */
+  public static readonly TRASH_SIMPLE: Icon = new Icon('ph ph-trash-simple');
 
   /**
    * Gets the download icon, used for actions that fetch something over the network.

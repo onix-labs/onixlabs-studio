@@ -6,6 +6,7 @@ import { ModalWindows } from '@shared/angular/services/modal-windows/modal-windo
 import { FakeModalWindows } from '@shared/angular/services/modal-windows/modal-windows.fake';
 import { PluginConsent } from '@shared/angular/services/plugins/plugin-consent';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
+
 import { PluginConsentHost } from '@shared/angular/components/plugin-consent-modal/plugin-consent-host';
 import { PluginManagerView } from './plugin-manager-view';
 
@@ -136,15 +137,75 @@ describe('PluginManagerView', () => {
   }
 
   /**
-   * Clicks a row action in the view itself.
-   * @param label The button label to click.
+   * Clicks a row's action button.
+   *
+   * Drives the real button rather than reaching into the component: the actions are buttons in the row
+   * again, so there is no overlay in the way and no reason for the test to know anything the user does
+   * not. A missing button fails here rather than further down, because "the action was not offered" and
+   * "the action did nothing" are different defects.
+   * @param label The button's label.
    */
   function click(label: string): void {
-    clickIn(fixture.nativeElement as HTMLElement, label);
+    const buttons: readonly HTMLButtonElement[] = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>(
+        '.plugin-row__action button',
+      ),
+    );
+    const button: HTMLButtonElement | undefined = buttons.find(
+      (candidate: HTMLButtonElement): boolean => candidate.textContent?.trim() === label,
+    );
+    expect(button, `no row button labelled ${label}`).toBeDefined();
+
+    button?.click();
+    fixture.detectChanges();
+    flush();
+  }
+
+  /**
+   * Gets the label and disabled state of every row's action button, in row order.
+   * @returns Returns one entry per row.
+   */
+  function actionButtons(): readonly { label: string; disabled: boolean }[] {
+    return Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>(
+        '.plugin-row__action button',
+      ),
+    ).map((button: HTMLButtonElement) => ({
+      label: button.textContent?.trim() ?? '',
+      disabled: button.disabled,
+    }));
   }
 
   afterEach(() => {
     TestBed.resetTestingModule();
+  });
+
+  it('eachStateOffersTheOneActionThatAppliesToIt', () => {
+    // ⛔ One button per row, never a choice of two: Install, Update and Remove are mutually exclusive on
+    // any given plugin, so a row offering more than one of them would be offering a contradiction.
+    render([
+      summary({ id: 'a', state: 'available' }),
+      summary({ id: 'b', state: 'installed', installedVersion: '1.0.0', version: '1.0.0' }),
+      summary({ id: 'c', state: 'installed', installedVersion: '1.0.0', version: '2.0.0' }),
+      summary({ id: 'd', state: 'unavailable' }),
+    ]);
+
+    expect(actionButtons()).toEqual([
+      { label: 'Install', disabled: false },
+      { label: 'Remove', disabled: false },
+      { label: 'Update', disabled: false },
+      // Still offered, and still says what it would do — the state column beside it says why it cannot.
+      { label: 'Install', disabled: true },
+    ]);
+  });
+
+  it('anUpdateIsOfferedAsAnUpdateRatherThanAsARemoval', () => {
+    // 🔥 An outdated install satisfies *both* "is installed" and "has an update", and the row has one
+    // button to say it with. Offering Remove there would bury the update behind the one action nobody
+    // came for.
+    render([summary({ state: 'installed', installedVersion: '1.0.0', version: '2.0.0' })]);
+
+    expect(actionButtons()).toEqual([{ label: 'Update', disabled: false }]);
   });
 
   it('install_asksBeforeItInstallsAnything', () => {
@@ -293,119 +354,5 @@ describe('PluginManagerView', () => {
 
     expect(stub.uninstalled).toEqual(['dockerfile-language-server']);
     expect(windows.openWindows).toBe(0);
-  });
-
-  describe('filter', () => {
-    /**
-     * Gets the plugin names the table is currently showing.
-     * @returns Returns the visible names.
-     */
-    function visibleNames(): readonly string[] {
-      return [
-        ...(fixture.nativeElement as HTMLElement).querySelectorAll('.plugin-manager__plugin-name'),
-      ].map((element: Element): string => element.textContent?.trim() ?? '');
-    }
-
-    /**
-     * Types into the filter field.
-     * @param text The text to filter by.
-     */
-    function filterBy(text: string): void {
-      const field: HTMLInputElement | null = (
-        fixture.nativeElement as HTMLElement
-      ).querySelector<HTMLInputElement>('.plugin-manager__filter input');
-      expect(field).not.toBeNull();
-      if (field !== null) {
-        field.value = text;
-        field.dispatchEvent(new Event('input'));
-      }
-      fixture.detectChanges();
-    }
-
-    /**
-     * Renders three plugins that differ in name, description and contribution.
-     */
-    function renderThree(): void {
-      render([
-        summary({ id: 'ty', name: 'ty', description: 'Python type checking.' }),
-        summary({
-          id: 'clangd',
-          name: 'clangd',
-          description: 'C and C++ language support.',
-          contributions: [
-            {
-              slot: 'language-server',
-              id: 'clangd',
-              displayName: 'clangd',
-              languages: ['cpp'],
-              priority: 100,
-            },
-          ],
-        }),
-        summary({
-          id: 'native-decoder',
-          name: 'Native Disassembler',
-          description: 'Machine code.',
-        }),
-      ]);
-    }
-
-    it('filter_showsEverythingWhenNothingIsTyped', () => {
-      renderThree();
-      expect(visibleNames()).toHaveLength(3);
-    });
-
-    it('filter_narrowsToTheMatchingPluginByName', () => {
-      renderThree();
-      filterBy('disassembler');
-      expect(visibleNames()).toEqual(['Native Disassembler']);
-    });
-
-    it('filter_matchesTheDescriptionAsWellAsTheName', () => {
-      // The description is on screen, so a filter that hid a row containing the typed text would
-      // read as a bug rather than a filter.
-      renderThree();
-      filterBy('python');
-      expect(visibleNames()).toEqual(['ty']);
-    });
-
-    it('filter_matchesWhatAPluginContributes', () => {
-      renderThree();
-      filterBy('cpp');
-      expect(visibleNames()).toEqual(['clangd']);
-    });
-
-    it('filter_ignoresCase', () => {
-      renderThree();
-      filterBy('NATIVE');
-      expect(visibleNames()).toEqual(['Native Disassembler']);
-    });
-
-    it('filter_requiresEveryTermButLetsEachMatchAnyField', () => {
-      // "python ty" spans the description of one plugin and the name of the same one; a plugin
-      // matching only one of the terms must not appear.
-      renderThree();
-      filterBy('python ty');
-      expect(visibleNames()).toEqual(['ty']);
-      filterBy('python clangd');
-      expect(visibleNames()).toEqual([]);
-    });
-
-    it('filter_saysWhyTheListIsEmptyWhenNothingMatches', () => {
-      renderThree();
-      filterBy('nothing-matches-this');
-      expect(visibleNames()).toEqual([]);
-      expect((fixture.nativeElement as HTMLElement).textContent).toContain(
-        'No plugins match this filter',
-      );
-    });
-
-    it('filter_countsStayWholeSoTheSummaryDoesNotFollowTheFilter', () => {
-      // The summary reports the library, not the current view of it — a filter that changed
-      // "1 of 3 installed" would make the number mean something different depending on what was typed.
-      renderThree();
-      filterBy('disassembler');
-      expect((fixture.nativeElement as HTMLElement).textContent).toContain('of 3 installed');
-    });
   });
 });

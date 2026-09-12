@@ -66,7 +66,7 @@
   --form-track-color: var(--gray-700);
   --form-knob-color: var(--gray-300);
   --form-on-accent-color: var(--gray-100);
-  --form-muted-foreground-color: var(--gray-400);
+  --form-muted-foreground-color: var(--gray-550);
 
   // Dropdown picker menu (rendered by the customizable-select popup). Hover reaches for the accent.
   --dropdown-menu-background-color: var(--gray-800);
@@ -78,7 +78,7 @@
   --settings-background-color: var(--gray-800);
   --settings-nav-background-color: var(--gray-900);
   --settings-border-color: var(--gray-700);
-  --settings-muted-foreground-color: var(--gray-400);
+  --settings-muted-foreground-color: var(--gray-550);
   --settings-control-background-color: var(--gray-800);
   --settings-button-background-color--hover: var(--gray-700);
 
@@ -93,7 +93,7 @@
   // round — its card is the half-step DARKER than its near-white fields.
   --modal-panel-background-color: var(--gray-850);
 
-  --welcome-muted-foreground-color: var(--gray-400);
+  --welcome-muted-foreground-color: var(--gray-550);
 
   --agent-view-surface-color: var(--gray-800);
   --agent-view-border-color: var(--gray-700);

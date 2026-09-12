@@ -1,29 +1,111 @@
-// The Plugin Manager view fills its tab: a header explaining what is installed and where the choice
-// between implementations lives, then one table of every known plugin.
+// The Plugin Manager view fills its tab: a categories panel on the left, and on the right a heading
+// over the list of plugins. The ribbon owns searching, filtering and ordering; the status strip owns
+// the catalogue counts. What is left here is the two surfaces that show the result.
 :host {
   display: block;
   block-size: 100%;
 }
 
 .plugin-manager {
+  block-size: 100%;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Categories panel
+// ---------------------------------------------------------------------------------------------
+
+.plugin-manager__categories {
   display: flex;
   flex-direction: column;
   block-size: 100%;
   overflow: auto;
+  padding: 0.5rem;
+}
+
+.plugin-manager__panel-title {
+  flex: none;
+  margin: 0 0 0.5rem;
+  padding-inline: 0.25rem;
+  color: var(--form-muted-foreground-color);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.plugin-manager__category-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1875rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.plugin-manager__category {
+  display: flex;
+  inline-size: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.75rem 0.625rem;
+  // Transparent rather than absent, so selecting a row cannot nudge the list by a pixel.
+  border: 1px solid transparent;
+  border-radius: calc(4px * var(--border-radius-multiplier));
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: start;
+
+  &:hover {
+    background: var(--accent-surface-background-color);
+  }
+
+  &--selected {
+    border-color: var(--accent-surface-border-color);
+    background: var(--accent-surface-background-color);
+    color: var(--accent-surface-foreground-color);
+    font-weight: 600;
+
+    .plugin-manager__category-count {
+      color: var(--accent-color);
+    }
+  }
+}
+
+.plugin-manager__category-icon {
+  flex: none;
+}
+
+.plugin-manager__category-name {
+  flex: 1 1 auto;
+
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plugin-manager__category-count {
+  flex: none;
+  color: var(--form-muted-foreground-color);
+  font-variant-numeric: tabular-nums;
+}
+
+// ---------------------------------------------------------------------------------------------
+// The list
+// ---------------------------------------------------------------------------------------------
+
+.plugin-manager__main {
+  display: flex;
+  flex-direction: column;
+  block-size: 100%;
+  min-block-size: 0;
 }
 
 .plugin-manager__header {
-  display: flex;
   flex: none;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.85rem 1.25rem;
-  border-block-end: 1px solid var(--form-border-color);
-}
-
-.plugin-manager__heading {
-  min-inline-size: 0;
+  padding: 0.75rem 1rem 0.5rem;
 }
 
 .plugin-manager__title {
@@ -33,9 +115,9 @@
 }
 
 .plugin-manager__subtitle {
-  margin: 0.2rem 0 0;
-  font-size: 0.8rem;
+  margin: 0.25rem 0 0;
   color: var(--form-muted-foreground-color);
+  font-size: 0.8125rem;
 }
 
 .plugin-manager__error {
@@ -43,79 +125,157 @@
   flex: none;
   align-items: center;
   gap: 0.5rem;
-  margin: 0;
-  padding: 0.6rem 1.25rem;
-  font-size: 0.85rem;
+  margin: 0 1rem 0.5rem;
   color: var(--danger-color);
+  font-size: 0.8125rem;
 }
 
-.plugin-manager__table {
+.plugin-manager__list {
+  // The list scrolls, the heading does not: a heading that scrolled away would take the one sentence
+  // saying which category you are looking at with it.
   flex: 1 1 auto;
   min-block-size: 0;
 }
 
-// The name cell stacks the plugin's name, what it is for, and any note about obtaining it. The table's
-// cells are single-line with an ellipsis by default, which truncates a description mid-sentence — and
-// the note about how to install an external tool is the one thing that must be readable in full.
-.plugin-manager__name {
+// ---------------------------------------------------------------------------------------------
+// A row: one line of columns, with the name and its description stacked inside the first
+// ---------------------------------------------------------------------------------------------
+
+// Named because the identity column's width is derived from both of them, and a half that silently
+// stopped being a half the next time the gap changed would be a difficult thing to notice.
+$icon-column: 2.5rem;
+$column-gap: 0.875rem;
+// Fixed, so the buttons line up down the list however wide their labels are. "Remove", "Update" and
+// "Install" are all different lengths; sizing to content would stagger them row by row and make the
+// one control in the row something to be found again on each one.
+//
+// 🔥 The width has to be measured, not picked: nothing here sets a base `font-size`, so the row runs at
+// the browser's 16px, and the button spends 16px on inline padding, 2px on its border, and 22px on the
+// icon and its gap before the label gets anything. "Remove" is the longest of the three at ~58px, so
+// anything under 6.5rem cuts it — which is exactly what 4rem did.
+$action-column: 7rem;
+
+// 🔥 The row is a single grid *row*, and that is the whole trick. It was two rows — the columns on the
+// first, the description on the second — and a column occupying only the first row has nothing to be
+// centred against: `align-items: center` centred it within a track the height of one line, while the
+// row itself was two lines tall. The name and description stack inside their own cell instead, so the
+// row has exactly one track, that cell is the tallest thing in it, and every other column centres
+// against the full height.
+.plugin-row {
+  display: grid;
+  // The shared `.list-row` is a flex container, so this is a flex *item*, and a flex item is
+  // shrink-to-fit by default: without these it never filled the row and the fractional tracks below
+  // collapsed to nothing.
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  align-items: center;
+  // 🔥 Every track is a fixed width, a percentage or a fraction, and none is `auto`. Each row is its
+  // own grid, so a content-sized track would resolve against that row's own text and the columns would
+  // land somewhere different on every row.
+  //
+  // The identity column is sized so that the *pair* — icon plus name and description — comes to half
+  // the row: a percentage track resolves against the grid's content box, so the icon's own track and
+  // the gap between them are subtracted here rather than eating into the half. The remaining columns
+  // divide what is left; `minmax(0, …)` lets the fractional ones give way first when the panel is
+  // dragged narrow, leaving the version and state legible longest.
+  grid-template-columns:
+    #{$icon-column} calc(50% - #{$icon-column} - #{$column-gap}) minmax(0, 1fr)
+    minmax(0, 1.2fr) 8rem 9.5rem #{$action-column};
+  gap: $column-gap;
+  // The list itself does not space its rows, so the gap between one plugin and the next is ours.
+  padding-block: 0.5rem;
+}
+
+.plugin-row__icon {
+  justify-self: center;
+  color: var(--form-muted-foreground-color);
+}
+
+// The one cell that is two lines tall; it sets the row's height and everything else centres on it.
+.plugin-row__identity {
   display: flex;
+  min-inline-size: 0;
   flex-direction: column;
-  gap: 0.15rem;
-  white-space: normal;
+  gap: 0.125rem;
 }
 
-.plugin-manager__plugin-name {
+.plugin-row__name {
+  overflow: hidden;
   font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.plugin-manager__description,
-.plugin-manager__detail {
-  font-size: 0.8rem;
+// The name and the state carry the row; everything else is supporting text, so it is muted rather
+// than competing for the same attention. Muting is what separates them — the columns are read across
+// rows to compare plugins, so they keep the row's own text size and let the colour do the work.
+.plugin-row__category,
+.plugin-row__targets,
+.plugin-row__version {
+  overflow: hidden;
   color: var(--form-muted-foreground-color);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.plugin-manager__detail {
-  font-style: italic;
-}
-
-.plugin-manager__provides {
-  font-size: 0.85rem;
+// The description is the one thing that is genuinely secondary: it belongs to the name above it rather
+// than to a column being scanned, so it is the only text set smaller than the row.
+.plugin-row__description {
+  overflow: hidden;
   color: var(--form-muted-foreground-color);
+  font-size: 0.8125rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.plugin-manager__version {
-  display: block;
-  font-size: 0.75rem;
-  color: var(--form-muted-foreground-color);
+.plugin-row__version {
+  font-variant-numeric: tabular-nums;
 }
 
-// The status word carries the state's colour; the default (not installed) stays neutral so a list of
-// mostly-uninstalled plugins does not read as a list of problems.
-.plugin-manager__state {
-  font-size: 0.85rem;
+.plugin-row__state {
+  display: flex;
+  align-items: center;
+  gap: 0.3125rem;
+  justify-self: start;
   color: var(--form-muted-foreground-color);
+  white-space: nowrap;
 
+  // The four states the badge can be in, each stated in the semantic colour that already means it
+  // everywhere else in the application rather than in a colour picked for this view.
   &--installed {
     color: var(--success-color);
   }
 
-  &--busy {
-    color: var(--accent-color);
+  &--update {
+    color: var(--info-color);
+  }
+
+  &--available {
+    color: var(--warning-color);
   }
 
   &--unavailable {
-    color: var(--warning-color);
+    color: var(--danger-color);
+  }
+
+  // Not a colour: the work is transient, and a colour would imply an outcome it has not reached.
+  &--busy {
+    font-style: italic;
   }
 }
 
-.plugin-manager__row-actions {
-  white-space: nowrap;
-}
+// The action is the row's one interactive element, so it is pinned to the end and given a fixed track
+// of its own: a button that moved with the text beside it would have to be found again on every row.
+.plugin-row__action {
+  display: flex;
+  justify-content: flex-end;
 
-/* The filter sits beside the heading rather than above the table: it belongs to the view, not to the
-   grid, and putting it in the header keeps the table flush with the rows it lists. */
-.plugin-manager__filter {
-  flex: 0 0 auto;
-  width: 18rem;
-  max-width: 100%;
+  // The atom is built to be stretched by its call site — its inner button carries `flex: 1` — so the
+  // width is stated here rather than by reaching into the button's own styling.
+  app-button {
+    inline-size: 100%;
+    // The track is narrower than the widest label, so a label that does not fit is cut at the button's
+    // edge instead of spilling across the column beside it.
+    overflow: hidden;
+  }
 }
