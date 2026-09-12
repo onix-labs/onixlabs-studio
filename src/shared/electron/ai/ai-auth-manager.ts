@@ -1,5 +1,4 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { app, ipcMain, IpcMainInvokeEvent, safeStorage } from 'electron';
 import type {
@@ -50,22 +49,6 @@ export class AiAuthManager {
    * Holds the pure credential store, wired to this shell's storage and environment primitives.
    */
   private readonly store: CredentialStore = new CredentialStore(this.ports());
-
-  /**
-   * Reports whether the user has a local Claude login.
-   * @returns Returns true when `~/.claude` exists.
-   */
-  public hasLocalLogin(): boolean {
-    return existsSync(join(homedir(), '.claude'));
-  }
-
-  /**
-   * Reports whether the user has a local Codex login.
-   * @returns Returns true when `~/.codex` exists.
-   */
-  public hasCodexLogin(): boolean {
-    return existsSync(join(homedir(), '.codex'));
-  }
 
   /**
    * Gets the authentication status of a connection under its auth kind (never carries the key).
@@ -155,19 +138,7 @@ export class AiAuthManager {
     return {
       load: (): string | null => this.loadBlob(),
       save: (plaintext: string | null): void => this.saveBlob(plaintext),
-      hasLocalLogin: (): boolean => this.hasLocalLogin(),
-      hasCodexLogin: (): boolean => this.hasCodexLogin(),
-      envKey: (): string | null => this.envKey(),
     };
-  }
-
-  /**
-   * Reads the development-only `ANTHROPIC_API_KEY` environment variable.
-   * @returns Returns the environment key, or null when it is unset or empty.
-   */
-  private envKey(): string | null {
-    const key: string | undefined = process.env['ANTHROPIC_API_KEY'];
-    return typeof key === 'string' && key.length > 0 ? key : null;
   }
 
   /**

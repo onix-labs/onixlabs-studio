@@ -2,13 +2,13 @@
   "id": "onixlabs.claude-harness",
   "name": "Claude",
   "description": "Runs Claude through Anthropic's Agent SDK in its own process, over Studio's agent protocol.",
-  "version": "0.2.0",
-  "apiVersion": "1.11.0",
+  "version": "0.3.0",
+  "apiVersion": "1.12.0",
   "detail": "The full Claude agent: sessions held open across turns, sub-agents, background tasks, slash commands, per-tool policy, write confinement, the OS sandbox, model discovery, and Remote Control through claude.ai/code. Authenticates with your local `claude` login, or with an Anthropic API key set on the connection. Downloads around 200MB: the SDK ships its Claude Code CLI as a native binary, and one platform's is fetched.",
   "provision": {
     "kind": "npm",
     "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.claude-harness.lock.json",
-    "sha256": "18b689fa6a2be4d0c3430f9620d575d36eabcf9f72018102c6a7f3dffcdeba57",
+    "sha256": "43940e3c9563702d8b9b259aaf28907b52389085272be80564a6db6d435ef920",
     "executablePath": "node_modules/@onixlabs/claude-harness/main.js"
   },
   "contributes": {
@@ -23,7 +23,45 @@
         },
         "entryPoint": "node_modules/@onixlabs/claude-harness/main.js",
         "sessionModel": "live-harness",
-        "remoteControl": true
+        "remoteControl": true,
+        "providers": [
+          {
+            "kind": "anthropic",
+            "company": "Anthropic",
+            "description": "Run Claude through your Claude subscription (local login) or an Anthropic API key. Add one configuration per account.",
+            "authMethods": [
+              {
+                "auth": "claude-login",
+                "buttonLabel": "Subscription",
+                "defaultDisplayName": "Claude",
+                "hint": "Uses your local Claude login (~/.claude) through the Claude Agent SDK."
+              },
+              {
+                "auth": "api-key",
+                "buttonLabel": "API Key",
+                "defaultDisplayName": "Anthropic API",
+                "hint": "Uses an Anthropic API key, stored encrypted on this machine."
+              }
+            ],
+            "models": [
+              {
+                "id": "claude-opus-4-8",
+                "label": "Opus 4.8",
+                "contextWindow": 1000000
+              },
+              {
+                "id": "claude-sonnet-4-6",
+                "label": "Sonnet 4.6",
+                "contextWindow": 1000000
+              },
+              {
+                "id": "claude-haiku-4-5",
+                "label": "Haiku 4.5",
+                "contextWindow": 200000
+              }
+            ]
+          }
+        ]
       }
     ]
   }

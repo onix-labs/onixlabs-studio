@@ -15,16 +15,23 @@ describe('AiConnections', () => {
     settings = TestBed.inject(Settings);
   });
 
-  it('connections_whenUnconfigured_reflectsTheSeed', () => {
+  it('connections_whenUnconfigured_isEmpty', () => {
+    // ⛔ A fresh install seeds nothing (#653). Core used to ship four configurations — Claude, Codex, an
+    // Anthropic key and Ollama — so a binary carrying no way to run any of them still listed them all.
+    // A configuration exists because the user created one from a page an installed plugin contributed.
     expect(service.connections()).toEqual(settings.aiConnections());
-    expect(service.connections().length).toBeGreaterThan(0);
+    expect(service.connections()).toEqual([]);
   });
 
   it('isAvailable_whenBridgeAbsent_isFalse', () => {
     expect(service.isAvailable).toBe(false);
   });
 
-  it('add_whenCalled_appendsWithAUniqueIdAndKindDefaults', () => {
+  it('add_whenCalled_appendsWithAUniqueIdAndGenericDefaults', () => {
+    // ⛔ The defaults name no provider (#653). `add` used to label a connection from a `KIND_LABELS`
+    // table and default `ollama` to `none` and everything else to an API key — core knowing two named
+    // providers in the one place a configuration is created. The method supplied by a contributed page
+    // carries that now, and the kind is the only honest fallback when none is.
     const before: number = service.connections().length;
 
     const openai: AiConnection = service.add('openai');
@@ -33,7 +40,8 @@ describe('AiConnections', () => {
 
     expect(service.connections().length).toBe(before + 3);
     expect(openai.auth).toBe('api-key');
-    expect(ollama.auth).toBe('none');
+    expect(ollama.auth).toBe('api-key');
+    expect(ollama.label).toBe('ollama');
     expect(openai.id).not.toBe(openaiTwo.id);
   });
 
@@ -52,16 +60,15 @@ describe('AiConnections', () => {
   });
 
   it('connectionsForKinds_whenCalled_filtersByKind', () => {
-    // The seeds carry two anthropic connections (Claude subscription + API key) and one ollama.
+    service.add('anthropic');
+    service.add('anthropic');
+    service.add('ollama');
+
     const anthropic: readonly AiConnection[] = service.connectionsForKinds(['anthropic']);
     expect(anthropic.length).toBe(2);
     expect(anthropic.every((c: AiConnection): boolean => c.kind === 'anthropic')).toBe(true);
 
-    const custom: readonly AiConnection[] = service.connectionsForKinds([
-      'openai-compatible',
-      'custom',
-    ]);
-    expect(custom.length).toBe(0);
+    expect(service.connectionsForKinds(['openai-compatible', 'custom'])).toEqual([]);
   });
 
   it('update_whenCalled_patchesTheConnection', () => {
@@ -76,17 +83,6 @@ describe('AiConnections', () => {
     expect(updated?.baseUrl).toBe('https://example/v1');
   });
 
-  it('remove_whenSeedConnection_dropsItLikeAnyOther', () => {
-    // Seed connections are ordinary defaults with no privileged status; every one is removable.
-    const seed: AiConnection = service.connections()[0];
-
-    service.remove(seed.id);
-
-    expect(
-      service.connections().some((connection: AiConnection): boolean => connection.id === seed.id),
-    ).toBe(false);
-  });
-
   it('remove_whenUserConnection_dropsIt', () => {
     const created: AiConnection = service.add('openai');
 
@@ -99,43 +95,8 @@ describe('AiConnections', () => {
     ).toBe(false);
   });
 
-  it('restoreDefaults_whenSeedsRemoved_addsThemBackAndKeepsCustom', () => {
-    const custom: AiConnection = service.add('openai');
-    for (const seed of [...service.connections()]) {
-      if (seed.id !== custom.id) {
-        service.remove(seed.id);
-      }
-    }
-    expect(service.connections().map((c: AiConnection): string => c.id)).toEqual([custom.id]);
-
-    service.restoreDefaults();
-
-    const ids: string[] = service.connections().map((c: AiConnection): string => c.id);
-    expect(ids).toEqual(['claude', 'codex', 'vercel', 'ollama', custom.id]);
-  });
-
-  it('restoreDefaults_whenSeedEdited_resetsItToTheShippedDefinition', () => {
-    service.update('claude', { label: 'My Claude', models: [] });
-    expect(current('claude').label).toBe('My Claude');
-
-    service.restoreDefaults();
-
-    expect(current('claude').label).toBe('Claude');
-    expect(current('claude').models.length).toBeGreaterThan(0);
-  });
-
-  it('restoreDefaults_whenActiveWasRemoved_returnsSelectionToTheDefault', () => {
-    settings.setActiveConnection('ollama');
-    for (const seed of [...service.connections()]) {
-      service.remove(seed.id);
-    }
-
-    service.restoreDefaults();
-
-    expect(settings.aiActiveConnectionId()).toBe('claude');
-  });
-
   it('move_whenCalled_reordersTheConnection', () => {
+    service.add('ollama');
     const created: AiConnection = service.add('openai');
     const lastIndex: number = service.connections().length - 1;
     expect(service.connections()[lastIndex].id).toBe(created.id);

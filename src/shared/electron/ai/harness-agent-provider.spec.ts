@@ -216,7 +216,7 @@ function contextFor(overrides: Partial<Record<string, unknown>> = {}): {
     resumeSessionId: null,
     forkSession: false,
     signal: new AbortController().signal,
-    auth: { hasLocalLogin: false, hasCodexLogin: false, apiKey: null },
+    auth: { apiKey: null },
     resumeSessionAt: null,
     permissionPosture: 'auto-edits',
     toolPolicies: { Bash: 'ask' },
@@ -396,7 +396,7 @@ describe('HarnessAgentProvider', () => {
     harness.requests = [{ kind: 'credential' }];
     let prompted: boolean = false;
     const { context } = contextFor({
-      auth: { hasLocalLogin: false, hasCodexLogin: false, apiKey: 'sk-test-key' },
+      auth: { apiKey: 'sk-test-key' },
       requestPermission: (): Promise<boolean> => {
         prompted = true;
         return Promise.resolve(true);
@@ -613,8 +613,6 @@ describe('HarnessAgentProvider', () => {
     harness.declaredModels = [{ id: 'x1', label: 'Model X1' }];
 
     const report: AgentModelReport | null = await provider.discoverModels({
-      hasLocalLogin: false,
-      hasCodexLogin: false,
       apiKey: null,
     });
 
@@ -629,8 +627,6 @@ describe('HarnessAgentProvider', () => {
     harness.declaredAnswers = ['steer'];
 
     const report: AgentModelReport | null = await provider.discoverModels({
-      hasLocalLogin: false,
-      hasCodexLogin: false,
       apiKey: null,
     });
 

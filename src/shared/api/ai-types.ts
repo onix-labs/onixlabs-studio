@@ -62,10 +62,11 @@ export {
   DEFAULT_CLAUDE_EXECUTABLE,
 } from './ai/ai-provider-types';
 export type { AiProviderKind, AiAuthKind, AiConnection } from './ai/ai-connection-types';
+export { API_KEY_AUTH, NO_AUTH } from './ai/ai-connection-types';
 export type { AuthMethod, ProviderPage } from './ai/ai-provider-catalog';
 export {
-  COMPANY_LABELS,
-  PROVIDER_PAGES,
+  pagesFromContributions,
+  modelsForKind,
   providerPageForKind,
   providerDisplayLabel,
 } from './ai/ai-provider-catalog';
@@ -73,9 +74,7 @@ export type { ClaudeAuthStatus, ClaudeLoginPhase, ClaudeLoginStatus } from './ai
 export type { AiDiscoverModelsRequest, AiDiscoverModelsResult } from './ai/ai-discovery-types';
 export {
   SEED_CONNECTIONS,
-  CLAUDE_CONNECTION_ID,
   ANTHROPIC_KEY_CONNECTION_ID,
-  OLLAMA_CONNECTION_ID,
   DEFAULT_CONNECTION_ID,
 } from './ai/ai-seed-connections';
 export type {

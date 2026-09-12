@@ -1,6 +1,7 @@
 import { computed, effect, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import type { AiConnection, AiModelInfo, AiProviderId, AiProviderInfo } from '@shared/api/ai-types';
 import { providerDisplayLabel } from '@shared/api/ai-types';
+import { AiProviders } from '@shared/angular/services/ai-providers/ai-providers';
 import { AiRuntime } from '../ai-runtime/ai-runtime';
 import { Log } from '@shared/angular/services/log/log';
 import { Settings } from '@shared/angular/services/settings/settings';
@@ -29,6 +30,11 @@ export class AgentEngine {
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds the providers installed plugins contribute, read for the company half of a picker label.
+   */
+  private readonly catalogue: AiProviders = inject(AiProviders);
 
   /**
    * Holds the registered providers and their availability.
@@ -126,7 +132,14 @@ export class AgentEngine {
       );
       return connection === undefined
         ? info
-        : { ...info, label: providerDisplayLabel(connection.kind, connection.label) };
+        : {
+            ...info,
+            label: providerDisplayLabel(
+              this.catalogue.companyFor(connection.kind),
+              connection.kind,
+              connection.label,
+            ),
+          };
     });
     this.providerList.set(providers);
     this.loaded.set(true);

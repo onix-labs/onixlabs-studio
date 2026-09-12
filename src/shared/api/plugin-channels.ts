@@ -94,6 +94,100 @@ export interface UnkeyedPluginContribution extends SlotEntry {
    * Gets the unkeyed slot this implementation fills.
    */
   readonly slot: 'container-engine' | 'agent-harness';
+
+  /**
+   * Gets the AI providers an agent harness offers, or undefined when it offers none.
+   *
+   * ⛔ Carried on the contribution rather than through a channel of its own. The renderer already
+   * receives every installed contribution to draw the Plugin Manager and the harness picker, so the
+   * settings catalogue rides the same list — and cannot disagree with which harnesses are installed,
+   * which is the failure a second channel would eventually produce (#653).
+   */
+  readonly providers?: readonly ContributedAiProvider[];
+}
+
+/**
+ * An AI provider an installed harness offers: the company page Settings draws, how to sign in to it,
+ * and the models a new configuration starts with.
+ *
+ * This is the renderer-facing mirror of the manifest's `ManifestAiProvider`, declared here because
+ * `shared/api` is what both compilations share and the renderer must not import the manifest reader.
+ */
+export interface ContributedAiProvider {
+  /**
+   * Gets the provider family key, matched against a connection's `kind`.
+   */
+  readonly kind: string;
+
+  /**
+   * Gets the company name shown as the page title and in the agent picker's label.
+   */
+  readonly company: string;
+
+  /**
+   * Gets the sentence shown under the page title, or undefined for none.
+   */
+  readonly description?: string;
+
+  /**
+   * Gets the ways to sign in, each an add-button on the page.
+   */
+  readonly authMethods: readonly ContributedAiAuthMethod[];
+
+  /**
+   * Gets the models a new configuration starts with, or undefined for none.
+   */
+  readonly models?: readonly ContributedAiModel[];
+}
+
+/**
+ * One way to sign in to a contributed provider.
+ */
+export interface ContributedAiAuthMethod {
+  /**
+   * Gets the auth kind a configuration created this way uses.
+   */
+  readonly auth: string;
+
+  /**
+   * Gets the add-button's label.
+   */
+  readonly buttonLabel: string;
+
+  /**
+   * Gets the display name a configuration created this way is given.
+   */
+  readonly defaultDisplayName: string;
+
+  /**
+   * Gets the explanatory line shown with the button, or undefined for none.
+   */
+  readonly hint?: string;
+
+  /**
+   * Gets the endpoint a configuration created this way is preset with, or undefined for none.
+   */
+  readonly baseUrl?: string;
+}
+
+/**
+ * A model a contributed provider starts with.
+ */
+export interface ContributedAiModel {
+  /**
+   * Gets the model identifier.
+   */
+  readonly id: string;
+
+  /**
+   * Gets the display name.
+   */
+  readonly label: string;
+
+  /**
+   * Gets the context window in tokens.
+   */
+  readonly contextWindow: number;
 }
 
 /**

@@ -173,6 +173,10 @@ describe('Agent', () => {
     TestBed.configureTestingModule({
       providers: [Agent, { provide: AiRuntime, useValue: runtimeStub }],
     });
+    // ⚠️ Nothing is seeded any more (#653), so a fresh profile has no active connection until the
+    // engine's async provider load picks one. These tests run synchronously against a stubbed
+    // `listProviders`, so the selection is made explicit rather than raced for.
+    TestBed.inject(Settings).setActiveConnection('claude');
     agent = TestBed.inject(Agent);
   });
 

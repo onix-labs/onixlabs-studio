@@ -8,13 +8,13 @@
       "name": "ai-sdk-harness",
       "version": "1.0.0",
       "dependencies": {
-        "@onixlabs/ai-sdk-harness": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-ai-sdk-harness-v0.1.0/onixlabs-ai-sdk-harness-0.1.0.tgz"
+        "@onixlabs/ai-sdk-harness": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-ai-sdk-harness-v0.2.0/onixlabs-ai-sdk-harness-0.2.0.tgz"
       }
     },
     "node_modules/@onixlabs/ai-sdk-harness": {
-      "version": "0.1.0",
-      "resolved": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-ai-sdk-harness-v0.1.0/onixlabs-ai-sdk-harness-0.1.0.tgz",
-      "integrity": "sha512-Icrgovu8wAEOOxdZV/HgtgEGDTaT5sOGkHt2TrzjBKsba/KJDFDxMaIcgOs33xCS6tJ70GgZ1oeQAVNnIa82yg=="
+      "version": "0.2.0",
+      "resolved": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-ai-sdk-harness-v0.2.0/onixlabs-ai-sdk-harness-0.2.0.tgz",
+      "integrity": "sha512-XC4nRG/Yiup9ofdFbF7imuvJOlkszBhITlwNJNrFjmwKl76zA/2LReHO4O2gqENVjFo+7DR6AaY2ymnPzxsHNw=="
     }
   }
 }

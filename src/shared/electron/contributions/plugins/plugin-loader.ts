@@ -480,6 +480,9 @@ export function toContributions(manifest: PluginManifest): readonly PluginContri
       id: harness.id,
       displayName: harness.displayName,
       priority: harness.priority,
+      // Straight through. The manifest reader has already refused anything malformed per field, so a
+      // provider that arrives here is one the renderer can draw a page from.
+      ...(harness.providers === undefined ? {} : { providers: harness.providers }),
     }),
   );
   return [...servers, ...adapters, ...decoders, ...engines, ...harnesses];
