@@ -56,7 +56,7 @@ import {
 import { contributedAgentHarnesses } from '../contributions/plugins/contributed';
 import type { NodeRuntimeSpec } from '../contributions/plugins/plugin-loader';
 import type { HarnessTransport } from './harness-host';
-import { HarnessProcess } from './harness-process';
+import { HarnessProcess, type HarnessSpawnSpec } from './harness-process';
 import { isConnection, sanitizeClaudeExecutable, sanitizeConnections } from './connection-guard';
 import { AgentAuditLog, type AuditGrantSource } from './agent-audit-log';
 import { readRemoteNotificationsEnabled, writeRemoteNotificationsEnabled } from './claude-settings';
@@ -385,8 +385,10 @@ export class AiManager {
       this.harnesses.register(
         toHarnessDescriptor(
           harness,
-          (spec: { command: string; args: readonly string[] }): HarnessTransport =>
-            new HarnessProcess({ command: spec.command, args: spec.args }),
+          // ⛔ The whole spec, never a rebuild of it. Picking fields off by hand is how
+          // `ELECTRON_RUN_AS_NODE` was lost: the harness then ran as a second Studio, whose
+          // single-instance lock handed the entry point to the open window to display (#697).
+          (spec: HarnessSpawnSpec): HarnessTransport => new HarnessProcess(spec),
         ),
       );
     }

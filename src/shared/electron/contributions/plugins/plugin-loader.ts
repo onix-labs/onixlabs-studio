@@ -871,9 +871,19 @@ export interface ContributedHarness {
 
   /**
    * Gets how to start the harness, or null when its payload is not installed.
+   *
+   * ⛔ **`env` is load-bearing, not decoration.** A `node` harness runs through the Electron binary,
+   * which is only a Node interpreter when `ELECTRON_RUN_AS_NODE` is set. Without it the same command
+   * launches Studio itself, the single-instance lock forwards the entry point to the running window,
+   * and the harness "starts" by opening its own source in an editor tab (#697). Every consumer must
+   * carry this through to the spawn.
    * @returns Returns the spawn specification, or null.
    */
-  spawnSpec(): { command: string; args: readonly string[] } | null;
+  spawnSpec(): {
+    command: string;
+    args: readonly string[];
+    env?: Readonly<Record<string, string>>;
+  } | null;
 }
 
 /**
@@ -907,7 +917,11 @@ export function toAgentHarnesses(
       connectionAuths: harness.connectionAuths,
       sessionModel: harness.sessionModel ?? 'stateless',
       remoteControl: harness.remoteControl ?? false,
-      spawnSpec: (): { command: string; args: readonly string[] } | null => {
+      spawnSpec: (): {
+        command: string;
+        args: readonly string[];
+        env?: Readonly<Record<string, string>>;
+      } | null => {
         const entryPoint: string | null = ops.isInstalled(provisioner())
           ? ops.target(provisioner(), harness.entryPoint)
           : null;
@@ -919,15 +933,26 @@ export function toAgentHarnesses(
           return {
             command: runtime.command,
             args: [...runtime.args, ...(harness.command.args ?? [])],
+            // The runtime's own environment first, so a manifest cannot accidentally unset what the
+            // runtime needs to start at all — the same ordering the decoders use, for the same reason.
+            env: { ...runtime.env, ...harness.command.env },
           };
         }
         if (harness.command.kind === 'python') {
           const python: { command: string; args: string[] } | null = pythonRuntime(entryPoint);
           return python === null
             ? null
-            : { command: python.command, args: [...python.args, ...(harness.command.args ?? [])] };
+            : {
+                command: python.command,
+                args: [...python.args, ...(harness.command.args ?? [])],
+                env: { ...harness.command.env },
+              };
         }
-        return { command: entryPoint, args: harness.command.args ?? [] };
+        return {
+          command: entryPoint,
+          args: harness.command.args ?? [],
+          env: { ...harness.command.env },
+        };
       },
     }),
   );
