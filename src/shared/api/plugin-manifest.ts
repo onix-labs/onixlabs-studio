@@ -84,8 +84,15 @@ import { DECODER_FORMATS } from './decoder-protocol';
  * is drawn in the agent ribbon from what `listProviders` reported at start-up. Absent means false,
  * which is the conservative answer — a control not offered is a gap, where one offered and unhonoured
  * is a control that lies.
+ *
+ * `1.12.0` adds an agent harness's optional `providers`: the company pages Settings draws, the sign-in
+ * methods each offers, and the models a new configuration starts with. Core used to hardcode all three
+ * — `PROVIDER_PAGES` named Anthropic, OpenAI, Google, DeepSeek, xAI and Ollama and `SEED_CONNECTIONS`
+ * carried their model ids — so a binary shipped provider pages for agents it had no way to run (#653).
+ * Declared on the harness rather than through a seam of its own, because the plugin that runs Claude is
+ * the plugin that knows Anthropic.
  */
-export const PLUGIN_API_VERSION: string = '1.11.0';
+export const PLUGIN_API_VERSION: string = '1.12.0';
 
 /**
  * Matches a plain three-part semver. Deliberately strict and deliberately local: the rule below is the
@@ -498,6 +505,107 @@ export interface ManifestAgentHarness {
    * arrives long after the control has already been drawn or withheld.
    */
   readonly remoteControl?: boolean;
+
+  /**
+   * Gets the providers this harness offers, which is what Settings draws its company pages from.
+   * Absent contributes none, which is correct for a harness that only runs connections another plugin
+   * defines.
+   *
+   * ⛔ Declared on the harness rather than through a contribution point of its own. A plugin that runs
+   * Claude is the same plugin that knows Anthropic's name, its sign-in methods and its models, and a
+   * second seam would let the two disagree — a page offering a sign-in no installed harness can serve.
+   */
+  readonly providers?: readonly ManifestAiProvider[];
+}
+
+/**
+ * A provider a harness offers: the company page Settings shows, the ways to sign in to it, and the
+ * models it starts with.
+ *
+ * ⛔ This is the whole of what core used to hardcode (#653). `PROVIDER_PAGES` named Anthropic, OpenAI,
+ * Google, DeepSeek, xAI and Ollama; `SEED_CONNECTIONS` carried their model ids. Both shipped in the
+ * binary, so core could not stop offering providers it had no way to run.
+ */
+export interface ManifestAiProvider {
+  /**
+   * Gets the provider family key, matched against `AiConnection.kind` (for example `anthropic`).
+   */
+  readonly kind: string;
+
+  /**
+   * Gets the company name shown as the settings page title and in the agent picker's label.
+   */
+  readonly company: string;
+
+  /**
+   * Gets the sentence shown under the page title, or undefined for none.
+   */
+  readonly description?: string;
+
+  /**
+   * Gets the ways to sign in to this provider, each an add-button on its page. Empty offers no way to
+   * create a configuration, which is a page worth nothing — so a provider declaring none is refused.
+   */
+  readonly authMethods: readonly ManifestAiAuthMethod[];
+
+  /**
+   * Gets the models a new configuration starts with, or undefined for none. A starting point only: the
+   * user may add, remove or rediscover them.
+   */
+  readonly models?: readonly ManifestAiModel[];
+}
+
+/**
+ * One way to sign in to a provider, rendered as an add-button on its settings page.
+ */
+export interface ManifestAiAuthMethod {
+  /**
+   * Gets the auth kind a configuration created this way uses.
+   *
+   * `api-key` and `none` are the two core acts on itself — it stores a key, or it stores nothing.
+   * Anything else names a sign-in the plugin performs, and core neither probes nor interprets it.
+   */
+  readonly auth: string;
+
+  /**
+   * Gets the add-button's label (for example `Subscription`).
+   */
+  readonly buttonLabel: string;
+
+  /**
+   * Gets the display name a configuration created this way is given.
+   */
+  readonly defaultDisplayName: string;
+
+  /**
+   * Gets the explanatory line shown with the button, or undefined for none.
+   */
+  readonly hint?: string;
+
+  /**
+   * Gets the endpoint a configuration created this way is preset with, or undefined for none.
+   */
+  readonly baseUrl?: string;
+}
+
+/**
+ * A model a provider starts with.
+ */
+export interface ManifestAiModel {
+  /**
+   * Gets the model identifier, as the harness would be asked to run it.
+   */
+  readonly id: string;
+
+  /**
+   * Gets the display name.
+   */
+  readonly label: string;
+
+  /**
+   * Gets the context window in tokens.
+   */
+  readonly contextWindow: number;
 }
 
 /**
@@ -1206,6 +1314,7 @@ function readContributions(value: unknown, errors: Errors): ManifestContribution
         entryPoint: readEntryPoint(entry, 'entryPoint', `${path}.`, errors),
         sessionModel: readSessionModel(entry['sessionModel'], `${path}.sessionModel`, errors),
         remoteControl: readFlag(entry['remoteControl'], `${path}.remoteControl`, errors),
+        providers: readAiProviders(entry['providers'], `${path}.providers`, errors),
       });
     },
   );
@@ -1431,6 +1540,104 @@ function readAuths(value: unknown, path: string, errors: Errors): readonly strin
     return [];
   }
   return value as readonly string[];
+}
+
+/**
+ * Validates the providers a harness offers — the company pages Settings draws (#653).
+ *
+ * ⛔ Refuses rather than repairs, like every other reader here. A page is a thing the user creates
+ * configurations from, so a half-understood one produces a button that makes a connection nothing can
+ * run; saying which field is wrong costs a plugin its page and nothing else.
+ * @param value The candidate list.
+ * @param path The dotted path for failures.
+ * @param errors The failure collector.
+ * @returns Returns the providers, or undefined when none are declared.
+ */
+function readAiProviders(
+  value: unknown,
+  path: string,
+  errors: Errors,
+): readonly ManifestAiProvider[] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const providers: ManifestAiProvider[] = [];
+  readContributionList(value, path, errors, (entry: Record<string, unknown>, at: string): void => {
+    const methods: readonly ManifestAiAuthMethod[] = readAiAuthMethods(
+      entry['authMethods'],
+      `${at}.authMethods`,
+      errors,
+    );
+    providers.push({
+      kind: readId(entry, 'kind', `${at}.`, errors),
+      company: readString(entry, 'company', `${at}.`, errors),
+      description: readOptionalString(entry, 'description', `${at}.`, errors),
+      authMethods: methods,
+      models: readAiModels(entry['models'], `${at}.models`, errors),
+    });
+  });
+  return providers;
+}
+
+/**
+ * Validates the sign-in methods a provider offers.
+ * @param value The candidate list.
+ * @param path The dotted path for failures.
+ * @param errors The failure collector.
+ * @returns Returns the methods, empty when the list is missing or wrong.
+ */
+function readAiAuthMethods(
+  value: unknown,
+  path: string,
+  errors: Errors,
+): readonly ManifestAiAuthMethod[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    // A page with no way to add a configuration is a page that does nothing.
+    errors.add(path, 'must be a non-empty array of authentication methods');
+    return [];
+  }
+  const methods: ManifestAiAuthMethod[] = [];
+  readContributionList(value, path, errors, (entry: Record<string, unknown>, at: string): void => {
+    methods.push({
+      auth: readId(entry, 'auth', `${at}.`, errors),
+      buttonLabel: readString(entry, 'buttonLabel', `${at}.`, errors),
+      defaultDisplayName: readString(entry, 'defaultDisplayName', `${at}.`, errors),
+      hint: readOptionalString(entry, 'hint', `${at}.`, errors),
+      baseUrl: readOptionalString(entry, 'baseUrl', `${at}.`, errors),
+    });
+  });
+  return methods;
+}
+
+/**
+ * Validates the models a provider starts with.
+ * @param value The candidate list.
+ * @param path The dotted path for failures.
+ * @param errors The failure collector.
+ * @returns Returns the models, or undefined when none are declared.
+ */
+function readAiModels(
+  value: unknown,
+  path: string,
+  errors: Errors,
+): readonly ManifestAiModel[] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const models: ManifestAiModel[] = [];
+  readContributionList(value, path, errors, (entry: Record<string, unknown>, at: string): void => {
+    const window: unknown = entry['contextWindow'];
+    if (typeof window !== 'number' || !Number.isFinite(window) || window <= 0) {
+      errors.add(`${at}.contextWindow`, 'must be a positive number of tokens');
+      return;
+    }
+    models.push({
+      id: readString(entry, 'id', `${at}.`, errors),
+      label: readString(entry, 'label', `${at}.`, errors),
+      contextWindow: window,
+    });
+  });
+  return models;
 }
 
 /**
