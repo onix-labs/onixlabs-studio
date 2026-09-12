@@ -62,6 +62,7 @@ export {
   DEFAULT_CLAUDE_EXECUTABLE,
 } from './ai/ai-provider-types';
 export type { AiProviderKind, AiAuthKind, AiConnection } from './ai/ai-connection-types';
+export { API_KEY_AUTH, NO_AUTH } from './ai/ai-connection-types';
 export type { AuthMethod, ProviderPage } from './ai/ai-provider-catalog';
 export {
   COMPANY_LABELS,

@@ -77,7 +77,7 @@ import {
   writeTerminalInput,
   READ_ONLY_APPENDIX,
 } from './studio-tools';
-import { formatToolInput, formatToolOutput, summarizeToolInput } from './tool-format';
+import { summarizeToolInput } from './tool-format';
 import { coarseGrantSource } from './tool-policy';
 import { logger } from '../logger';
 
@@ -143,34 +143,6 @@ export function describeRunError(error: unknown): string {
     }
   }
   return 'The run failed with an unspecified error.';
-}
-
-/**
- * Drives an AI-SDK `fullStream` to completion, mapping each part to the shared event protocol and
- * stopping early when the run is aborted. Critically, an `error` part is thrown rather than ignored:
- * the SDK reports request/stream failures (an unreachable server, an unknown model, a refused
- * connection) as a part, not an exception, so swallowing it would end a failed run silently.
- * @param stream The SDK `fullStream`.
- * @param context The run context to emit through.
- */
-export async function consumeAgentStream(
-  stream: AsyncIterable<StreamPart>,
-  context: AgentRunContext,
-): Promise<void> {
-  for await (const part of stream) {
-    if (context.signal.aborted) {
-      return;
-    }
-    if (part.type === 'error') {
-      logger.error(
-        'ai-sdk-stream',
-        `Stream reported an error for run ${context.requestId}`,
-        part.error,
-      );
-      throw new Error(describeRunError(part.error));
-    }
-    mapStreamPart(part, context);
-  }
 }
 
 /**
@@ -889,76 +861,4 @@ export async function toolsForSurface(context: AgentRunContext): Promise<ToolSet
     }
   })();
   return { ...askUserTool, ...workbenchTools, ...runConfigurationTools, ...surfaceTools };
-}
-
-/**
- * Maps a single Vercel AI SDK `fullStream` part to the shared event protocol, emitting through the run
- * context. Shared by every AI-SDK-backed provider so the stream-to-event translation lives in one
- * place.
- * @param part The stream part.
- * @param context The run context to emit through.
- */
-export function mapStreamPart(part: StreamPart, context: AgentRunContext): void {
-  const requestId: string = context.requestId;
-  switch (part.type) {
-    case 'text-delta':
-      context.emit({ requestId, kind: 'text', delta: part.text ?? part.delta ?? '' });
-      break;
-    case 'reasoning-delta':
-      context.emit({ requestId, kind: 'thinking', delta: part.text ?? part.delta ?? '' });
-      break;
-    case 'tool-call': {
-      const input: string | undefined = formatToolInput(part.input);
-      context.emit({
-        requestId,
-        kind: 'tool-start',
-        toolId: part.toolCallId ?? '',
-        name: part.toolName ?? 'tool',
-        detail: typeof part.input === 'string' ? part.input : summarizeToolInput(part.input),
-        ...(input === undefined ? {} : { input }),
-      });
-      break;
-    }
-    case 'tool-result': {
-      const output: string | undefined = formatToolOutput(part.output);
-      context.emit({
-        requestId,
-        kind: 'tool-end',
-        toolId: part.toolCallId ?? '',
-        ok: true,
-        detail: 'done',
-        ...(output === undefined ? {} : { output }),
-      });
-      break;
-    }
-    case 'tool-error':
-      context.emit({
-        requestId,
-        kind: 'tool-end',
-        toolId: part.toolCallId ?? '',
-        ok: false,
-        detail: part.errorText ?? 'failed',
-        ...(part.errorText === undefined || part.errorText.length === 0
-          ? {}
-          : { output: part.errorText }),
-      });
-      break;
-    case 'finish': {
-      // The terminal `finish` part carries the run's cumulative usage; the AI-SDK providers do not
-      // report a cost, so it is left unknown.
-      const usage: StreamPart['totalUsage'] = part.totalUsage;
-      if (usage !== undefined) {
-        context.emit({
-          requestId,
-          kind: 'usage',
-          inputTokens: usage.inputTokens ?? 0,
-          outputTokens: usage.outputTokens ?? 0,
-          costUsd: null,
-        });
-      }
-      break;
-    }
-    default:
-      break;
-  }
 }

@@ -192,8 +192,18 @@ import { AiEvent } from './ai/ai-event-types';
  *     Claude's SDK has its own clarifying-question tool, and being handed Studio's as well gives the
  *     model two ways to ask, described differently. A harness names what it already has; core drops
  *     those and — because the instructions describe the tools — phrases the prompt for what is left.
+ *
+ * `1.10.0` moves the **context window onto the reported model**. It was resolved in core from the model
+ * id, against a table naming `gpt-4o`, `o3`, `claude-opus-4-8` and the rest — which meant core could not
+ * stop knowing about specific providers' specific models, however far the harnesses moved out. The
+ * earlier reasoning was that a context window is a fact about a model rather than about the harness
+ * running it, and that a wire carrying it would let two harnesses disagree. Both are true and neither
+ * pays for the cost: a harness reads the number from the provider it is already talking to, and two
+ * harnesses disagreeing about a model is a smaller problem than core shipping a table it cannot keep
+ * current. ⚠️ Optional, so every published harness is unaffected — an omitted window falls back to a
+ * single neutral default that names no provider.
  */
-export const AGENT_PROTOCOL_VERSION: string = '1.9.0';
+export const AGENT_PROTOCOL_VERSION: string = '1.10.0';
 
 /**
  * Matches a plain three-part semver. Local and deliberately strict, for the same reason the manifest's
@@ -595,9 +605,10 @@ export type HarnessMessage =
 /**
  * A model a harness reports it can run.
  *
- * ⛔ Deliberately two fields. The context window is resolved in core from the id — it is a fact about a
- * model, not about the harness running it, and a wire that carried it would let two harnesses disagree
- * about the same model with nothing to arbitrate.
+ * ⛔ The context window is the harness's to report (1.10.0). It used to be resolved in core from the id,
+ * on the reasoning that it is a fact about a model rather than about the harness — true, but it obliged
+ * core to carry a table of `gpt-4o`, `o3`, `claude-opus-4-8` and the rest, so core could never stop
+ * knowing which models which providers have. The harness is already talking to the provider that knows.
  */
 export interface HarnessModel {
   /**
@@ -609,6 +620,14 @@ export interface HarnessModel {
    * Gets the display name, or undefined to show the identifier.
    */
   readonly label?: string;
+
+  /**
+   * Gets the model's context window in tokens, or undefined when the harness does not know.
+   *
+   * ⚠️ Optional so that a harness published against an earlier protocol is unaffected: an omitted window
+   * falls back to core's single neutral default, which names no provider and no model.
+   */
+  readonly contextWindow?: number;
 }
 
 /**

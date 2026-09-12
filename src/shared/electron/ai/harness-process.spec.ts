@@ -87,7 +87,7 @@ function contextFor(
     resumeSessionId: null,
     forkSession: false,
     signal: new AbortController().signal,
-    auth: { hasLocalLogin: false, hasCodexLogin: false, apiKey: null },
+    auth: { apiKey: null },
     resumeSessionAt: null,
     permissionPosture: 'prompt',
     toolPolicies: {},
@@ -166,7 +166,7 @@ describe('HarnessProcess, against the reference harness', () => {
     // crosses the pipe as an answer rather than riding in the turn envelope. The fixture reports the
     // key's length rather than the key, so no test output can ever contain a secret.
     const { context, texts } = contextFor('credential', {
-      auth: { hasLocalLogin: false, hasCodexLogin: false, apiKey: 'sk-abcdef' },
+      auth: { apiKey: 'sk-abcdef' },
     });
 
     await echoProvider().run(context);
@@ -195,8 +195,6 @@ describe('HarnessProcess, against the reference harness', () => {
     const report: AgentModelReport | null = await echoProvider({
       connectionKind: 'ollama',
     }).discoverModels({
-      hasLocalLogin: false,
-      hasCodexLogin: false,
       apiKey: 'sk-abcdef',
     });
 
@@ -205,8 +203,6 @@ describe('HarnessProcess, against the reference harness', () => {
 
   it('discoversWithoutACredentialWhenTheConnectionHasNone', async () => {
     const report: AgentModelReport | null = await echoProvider().discoverModels({
-      hasLocalLogin: false,
-      hasCodexLogin: false,
       apiKey: null,
     });
 

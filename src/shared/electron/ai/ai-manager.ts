@@ -68,7 +68,7 @@ import { ClaudeLoginDriver, readClaudeAuthStatus, runClaudeLogout } from './clau
 import { sanitizeToolPolicies } from './tool-policy';
 import { sanitizeWritePaths } from './write-confinement';
 import { sanitizeAgentShell } from '@shared/electron/shell-env';
-import { type HttpFetch, mergeModels, runDiscovery } from './model-discovery';
+import { mergeModels, type ReportedModel } from './model-merge';
 import { PermissionRuleStore } from './permission-rule-store';
 import { RendererBridge } from './renderer-bridge';
 
@@ -257,15 +257,6 @@ export class AiManager {
    * per-connection credential (its auth kind) and the run path stays connection-driven.
    */
   private connections: Map<string, AiConnection>;
-
-  /**
-   * Holds the HTTP fetch used for model discovery (the main-process global fetch), referenced through
-   * `globalThis` so this module carries no ambient fetch-type dependency.
-   */
-  private readonly httpFetch: HttpFetch = (
-    url: string,
-    init?: { headers?: Record<string, string> },
-  ): ReturnType<HttpFetch> => (globalThis as unknown as { fetch: HttpFetch }).fetch(url, init);
 
   /**
    * Holds the abort controllers of in-flight runs, keyed by request id.
@@ -634,11 +625,7 @@ export class AiManager {
   private authForConnection(connectionId: string): AgentAuth {
     const connection: AiConnection | undefined = this.connections.get(connectionId);
     return connection === undefined
-      ? {
-          hasLocalLogin: this.auth.hasLocalLogin(),
-          hasCodexLogin: this.auth.hasCodexLogin(),
-          apiKey: null,
-        }
+      ? { apiKey: null }
       : this.auth.authFor(connectionId, connection.auth);
   }
 
@@ -711,17 +698,32 @@ export class AiManager {
         claudeExecutable: sanitizeClaudeExecutable(executable),
       });
     }
-    const apiKey: string | null = this.auth.authFor(connection.id, connection.auth).apiKey;
-    return runDiscovery(connection, apiKey, process.env, this.httpFetch);
+    // ⛔ No fallback. Core used to discover models itself over HTTP for any connection no harness
+    // served, which meant core carried the endpoints, the response shapes and the model table for
+    // every provider it had ever supported — the exact thing #653 set out to remove. A connection with
+    // no harness has no agent, so there is nothing to ask.
+    logger.debug(
+      'AiManager.discoverModels',
+      `No harness runs connection ${connection.id}; nothing to ask for models`,
+    );
+    return Promise.resolve({
+      ok: false,
+      models: connection.models,
+      added: 0,
+      detail:
+        'No agent plugin runs this configuration. Install one in Plugins, then choose it under ' +
+        '"Runs through".',
+    });
   }
 
   /**
    * Discovers a connection's models by asking the provider that runs it, then merges what it reported
    * into the connection's own list.
    *
-   * ⛔ The merge, the context-window resolution and the wording are all here rather than in the
-   * provider. A provider reports what it can run; what that *means* for the user's model list is one
-   * decision, made once, so two providers cannot disagree about the same model.
+   * ⛔ The merge and the wording are here rather than in the provider: a provider reports what it can
+   * run, and what that *means* for the user's list is one decision made once. The context window is
+   * **not** — that moved onto the report (protocol 1.10.0), because resolving it here obliged core to
+   * keep a table of which models which providers have.
    * @param connection The connection to discover for.
    * @param provider The provider that runs it.
    * @param settings Settings for this discovery beyond the connection's own.
@@ -744,7 +746,7 @@ export class AiManager {
         detail: `${provider.label} could not be asked for its models.`,
       };
     }
-    const reported: readonly { id: string; label?: string }[] = report.models;
+    const reported: readonly ReportedModel[] = report.models;
     if (reported.length === 0) {
       return {
         ok: false,

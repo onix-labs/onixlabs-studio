@@ -6,6 +6,7 @@
 // filesystem checks. An OAuth strategy is a future drop-in: add an implementation and register it in
 // {@link AUTH_STRATEGIES}, with no change to callers.
 
+import { API_KEY_AUTH, NO_AUTH } from '@shared/api/ai-types';
 import type { AiAuthKind, AiAuthSource, AiAuthStatus } from '@shared/api/ai-types';
 
 /**
@@ -35,20 +36,9 @@ export interface AuthContext {
    */
   readonly storedKey: string | null;
 
-  /**
-   * Gets a value indicating whether a local Claude login (`~/.claude`) is present.
-   */
-  readonly hasLocalLogin: boolean;
-
-  /**
-   * Gets a value indicating whether a local Codex login (`~/.codex`) is present.
-   */
-  readonly hasCodexLogin: boolean;
-
-  /**
-   * Gets the development-only `ANTHROPIC_API_KEY` environment key, or null when it is unset.
-   */
-  readonly envKey: string | null;
+  // ⛔ Nothing else. This carried `hasLocalLogin` (`~/.claude`), `hasCodexLogin` (`~/.codex`) and an
+  // `ANTHROPIC_API_KEY` environment fallback, so core probed specific providers' login state to phrase
+  // settings text for them. A provider's login is its plugin's to know (#653); core holds keys.
 }
 
 /**
@@ -78,98 +68,43 @@ export interface AuthStrategy {
 }
 
 /**
- * The `claude-login` strategy: prefer the user's local Claude login, then a stored key, then the
- * development environment key. This mirrors the precedence the agent used before connections existed,
- * so the built-in Claude connection behaves exactly as the old global credential did.
+ * The strategy for **any auth kind core does not own** — a provider's own subscription login, a device
+ * flow, an OAuth handshake: whatever the plugin does to authenticate itself.
+ *
+ * ⛔ Core used to carry one of these per provider, reading `~/.claude` and `~/.codex` to decide whether
+ * a subscription was signed in and phrasing "Run `claude` to log in" when it was not. That is provider
+ * knowledge, it only ever grew, and it meant a new provider could not authenticate any way core had not
+ * already been taught (#653). The harness is the thing talking to the provider and is the only thing
+ * that can answer — the Claude harness already checks its own login before asking core for a key, so
+ * core's copy decided nothing on the run path and only ever coloured the settings text.
+ *
+ * A stored key still wins if the user set one: an API key is core's to hold whatever the provider is.
+ * Otherwise this reports available and says the plugin authenticates, because core cannot know better
+ * and a false "not signed in" is worse than a vague "ask the plugin".
  */
-const CLAUDE_LOGIN_STRATEGY: AuthStrategy = {
-  kind: 'claude-login',
+const PROVIDER_LOGIN_STRATEGY: AuthStrategy = {
+  kind: 'provider-login',
 
   resolve(context: AuthContext): AiCredential {
-    if (context.hasLocalLogin) {
-      return { source: 'local-login', apiKey: null };
-    }
-    const key: string | null = context.storedKey ?? context.envKey;
-    return key !== null ? { source: 'api-key', apiKey: key } : { source: 'none', apiKey: null };
-  },
-
-  status(context: AuthContext): AiAuthStatus {
-    const hasStoredKey: boolean = context.storedKey !== null;
-    if (context.hasLocalLogin) {
-      return {
-        source: 'local-login',
-        available: true,
-        hasStoredKey,
-        detail: 'Using your local Claude login (~/.claude).',
-      };
-    }
-    if (hasStoredKey) {
-      return {
-        source: 'api-key',
-        available: true,
-        hasStoredKey: true,
-        detail: 'Using your stored Anthropic API key.',
-      };
-    }
-    if (context.envKey !== null) {
-      return {
-        source: 'api-key',
-        available: true,
-        hasStoredKey: false,
-        detail: 'Using ANTHROPIC_API_KEY from the environment.',
-      };
-    }
-    return {
-      source: 'none',
-      available: false,
-      hasStoredKey: false,
-      detail: 'Run `claude` to log in, or add an Anthropic API key.',
-    };
-  },
-};
-
-/**
- * The `codex-login` strategy: mirrors `claude-login` for OpenAI Codex — prefers the user's local Codex
- * login (`~/.codex`, the same credential the `codex` CLI uses), falling back to a stored API key.
- */
-const CODEX_LOGIN_STRATEGY: AuthStrategy = {
-  kind: 'codex-login',
-
-  resolve(context: AuthContext): AiCredential {
-    if (context.hasCodexLogin) {
-      return { source: 'local-login', apiKey: null };
-    }
-    // No env fallback here: `envKey` is the Anthropic key, and the Codex runtime picks up its own
-    // `OPENAI_API_KEY` from the environment, so only an explicitly stored key is surfaced.
     return context.storedKey !== null
       ? { source: 'api-key', apiKey: context.storedKey }
       : { source: 'none', apiKey: null };
   },
 
   status(context: AuthContext): AiAuthStatus {
-    const hasStoredKey: boolean = context.storedKey !== null;
-    if (context.hasCodexLogin) {
-      return {
-        source: 'local-login',
-        available: true,
-        hasStoredKey,
-        detail: 'Using your local Codex login (~/.codex).',
-      };
-    }
-    if (hasStoredKey) {
-      return {
-        source: 'api-key',
-        available: true,
-        hasStoredKey: true,
-        detail: 'Using your stored OpenAI API key.',
-      };
-    }
-    return {
-      source: 'none',
-      available: false,
-      hasStoredKey: false,
-      detail: 'Run `codex login`, or add an OpenAI API key.',
-    };
+    return context.storedKey !== null
+      ? {
+          source: 'api-key',
+          available: true,
+          hasStoredKey: true,
+          detail: 'Using your stored API key.',
+        }
+      : {
+          source: 'none',
+          available: true,
+          hasStoredKey: false,
+          detail: "Signed in through the provider's plugin.",
+        };
   },
 };
 
@@ -228,11 +163,9 @@ const NONE_STRATEGY: AuthStrategy = {
 /**
  * The registered authentication strategies, keyed by auth kind.
  */
-export const AUTH_STRATEGIES: Readonly<Record<AiAuthKind, AuthStrategy>> = {
-  'claude-login': CLAUDE_LOGIN_STRATEGY,
-  'codex-login': CODEX_LOGIN_STRATEGY,
-  'api-key': API_KEY_STRATEGY,
-  none: NONE_STRATEGY,
+export const AUTH_STRATEGIES: Readonly<Record<string, AuthStrategy>> = {
+  [API_KEY_AUTH]: API_KEY_STRATEGY,
+  [NO_AUTH]: NONE_STRATEGY,
 };
 
 /**
@@ -241,5 +174,7 @@ export const AUTH_STRATEGIES: Readonly<Record<AiAuthKind, AuthStrategy>> = {
  * @returns Returns the matching strategy.
  */
 export function strategyFor(kind: AiAuthKind): AuthStrategy {
-  return AUTH_STRATEGIES[kind];
+  // ⛔ Never index straight into the table now that the kind is open (#653): anything a plugin names
+  // lands here, and `undefined.resolve` during a run is the worst possible place to find that out.
+  return AUTH_STRATEGIES[kind] ?? PROVIDER_LOGIN_STRATEGY;
 }

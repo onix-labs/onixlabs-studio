@@ -37,20 +37,15 @@ export interface ProviderAvailability {
 }
 
 /**
- * The credential material a provider authenticates a run with. The Claude provider can use either the
- * local login or an API key; API-only providers (e.g. Vercel) require the key.
+ * The credential material a provider authenticates a run with.
+ *
+ * ⛔ One field. It used to carry `hasLocalLogin` and `hasCodexLogin` — core's reading of `~/.claude` and
+ * `~/.codex` — which made core the authority on whether two named providers were signed in, and obliged
+ * it to learn a new probe for every provider that followed (#653). A harness talks to its provider and
+ * checks its own login; the Claude harness already does exactly that before it asks for a key. What core
+ * can offer is the one credential core stores.
  */
 export interface AgentAuth {
-  /**
-   * Gets a value indicating whether a local Claude login (`~/.claude`) is present.
-   */
-  readonly hasLocalLogin: boolean;
-
-  /**
-   * Gets a value indicating whether a local Codex login (`~/.codex`) is present.
-   */
-  readonly hasCodexLogin: boolean;
-
   /**
    * Gets the available API key, or null when none is available.
    */
@@ -482,8 +477,12 @@ export interface AgentProvider {
 export interface AgentModelReport {
   /**
    * Gets the models reported, which may be empty.
+   *
+   * ⛔ `contextWindow` is the provider's to report (protocol 1.10.0). Core used to resolve it from the
+   * model id against a table naming `gpt-4o`, `claude-opus-4-8` and the rest — which is exactly the
+   * provider knowledge that cannot live here. Undefined falls back to one neutral default.
    */
-  readonly models: readonly { id: string; label?: string }[];
+  readonly models: readonly { id: string; label?: string; contextWindow?: number }[];
 
   /**
    * Gets why the list is empty, or null when the provider has nothing to add.
