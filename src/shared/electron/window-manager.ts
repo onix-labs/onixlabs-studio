@@ -245,8 +245,13 @@ export class WindowManager {
       window.maximize();
     }
     logger.info('WindowManager.showWindow', 'showing window');
+    // 🔥 Shown, not activated. `show()` already makes the window key when the application is the one
+    // in front, which is every ordinary case — the extra `focus()` only added anything when it was
+    // *not*, and that is precisely the case where it must not: Studio takes a while to boot, and a
+    // user who switched to something else while it did had the window yanked in front of them at the
+    // moment it finished. Deliberate focus requests — a second instance launching, the dock icon —
+    // come through `focusMain`, which still focuses explicitly.
     window.show();
-    window.focus();
   }
 
   /**
