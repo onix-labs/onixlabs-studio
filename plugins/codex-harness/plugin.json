@@ -8,7 +8,7 @@
   "provision": {
     "kind": "npm",
     "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.codex-harness.lock.json",
-    "sha256": "9818b914d7a5b03bf3049d11906aae729f82cf4eefbe4d54dafb8f5d354fe1af",
+    "sha256": "970770fdbc089f1d0f28bf6ccb52b68db1b522a57944a8e77a43643efe2619e8",
     "executablePath": "node_modules/@onixlabs/codex-harness/main.js"
   },
   "contributes": {
