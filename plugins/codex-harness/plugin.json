@@ -2,13 +2,13 @@
   "id": "onixlabs.codex-harness",
   "name": "Codex (out of process)",
   "description": "Runs OpenAI Codex through its SDK in its own process, over Studio's agent protocol.",
-  "version": "0.1.0",
-  "apiVersion": "1.11.0",
+  "version": "0.2.0",
+  "apiVersion": "1.12.0",
   "detail": "Holds a Codex thread open across turns, so a conversation keeps its context. Streams replies, reasoning, shell commands, file changes and web searches into the transcript. Authenticates through your local Codex login, or through an API key configured against the connection.",
   "provision": {
     "kind": "npm",
     "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.codex-harness.lock.json",
-    "sha256": "970770fdbc089f1d0f28bf6ccb52b68db1b522a57944a8e77a43643efe2619e8",
+    "sha256": "af80902d56bfc78a834b51d88d1c1600c24ee7d4caec909f138e0b2f35262750",
     "executablePath": "node_modules/@onixlabs/codex-harness/main.js"
   },
   "contributes": {
@@ -22,7 +22,29 @@
           "kind": "node"
         },
         "entryPoint": "node_modules/@onixlabs/codex-harness/main.js",
-        "sessionModel": "live-harness"
+        "sessionModel": "live-harness",
+        "providers": [
+          {
+            "kind": "openai",
+            "company": "OpenAI",
+            "description": "Run OpenAI models through your Codex subscription (local login).",
+            "authMethods": [
+              {
+                "auth": "codex-login",
+                "buttonLabel": "Subscription",
+                "defaultDisplayName": "Codex",
+                "hint": "Uses your local Codex login (~/.codex) through the OpenAI Codex CLI."
+              }
+            ],
+            "models": [
+              {
+                "id": "gpt-5.6-sol",
+                "label": "GPT-5.6-Sol",
+                "contextWindow": 1050000
+              }
+            ]
+          }
+        ]
       }
     ]
   }
