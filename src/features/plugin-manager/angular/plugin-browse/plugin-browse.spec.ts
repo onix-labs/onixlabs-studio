@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { signal, WritableSignal } from '@angular/core';
 import type { PluginSummary } from '@shared/api/plugin-channels';
+import { Icon } from '@shared/angular/icons/icon';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
 import { categoriesOf, PluginBrowse } from './plugin-browse';
 
@@ -98,12 +99,13 @@ describe('PluginBrowse', () => {
     expect(browse.visible().map((p: PluginSummary): string => p.id)).toEqual(['claude']);
   });
 
-  it('categories_areBuiltFromWhatIsContributed_withCounts', () => {
+  it('categories_areBuiltFromWhatIsContributed_withCountsAndIcons', () => {
     expect(browse.categories()).toEqual([
-      { name: 'AI Agents', count: 1 },
-      { name: 'Language Servers', count: 1 },
-      // A plugin contributing nothing recognisable still has to appear somewhere.
-      { name: 'Other', count: 1 },
+      { name: 'AI Agents', count: 1, icon: Icon.AGENT },
+      { name: 'Language Servers', count: 1, icon: Icon.LANGUAGE_SERVERS },
+      // A plugin contributing nothing recognisable still has to appear somewhere, and still needs a
+      // glyph — the puzzle piece, which is what the catalogue as a whole is drawn with.
+      { name: 'Other', count: 1, icon: Icon.PLUGINS },
     ]);
   });
 

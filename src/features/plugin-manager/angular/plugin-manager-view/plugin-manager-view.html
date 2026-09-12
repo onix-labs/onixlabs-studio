@@ -18,6 +18,7 @@
             [class.plugin-manager__category--selected]="browse.category() === null"
             (click)="browse.category.set(null)"
           >
+            <app-icon class="plugin-manager__category-icon" [icon]="Icon.PLUGINS" />
             <span class="plugin-manager__category-name">All Plugins</span>
             <span class="plugin-manager__category-count">{{ browse.all().length }}</span>
           </button>
@@ -30,6 +31,7 @@
               [class.plugin-manager__category--selected]="browse.category() === category.name"
               (click)="browse.category.set(category.name)"
             >
+              <app-icon class="plugin-manager__category-icon" [icon]="category.icon" />
               <span class="plugin-manager__category-name">{{ category.name }}</span>
               <span class="plugin-manager__category-count">{{ category.count }}</span>
             </button>

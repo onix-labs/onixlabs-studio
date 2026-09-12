@@ -1,6 +1,28 @@
 import { computed, inject, Injectable, Signal, signal, WritableSignal } from '@angular/core';
 import { type PluginContribution, type PluginSummary } from '@shared/api/plugin-channels';
+import { Icon } from '@shared/angular/icons/icon';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
+
+/**
+ * One row of the categories panel: what it is called, how many plugins it holds, and the glyph that
+ * stands for it.
+ */
+export interface PluginCategory {
+  /**
+   * Gets the category name, which is also how a plugin is matched to it.
+   */
+  readonly name: string;
+
+  /**
+   * Gets how many plugins fall under it.
+   */
+  readonly count: number;
+
+  /**
+   * Gets the icon shown beside it.
+   */
+  readonly icon: Icon;
+}
 
 /**
  * Which install states the list is narrowed to.
@@ -30,6 +52,21 @@ const SLOT_CATEGORIES: Readonly<Record<string, string>> = {
   decoder: 'Decoders',
   'container-engine': 'Container Engines',
   'agent-harness': 'AI Agents',
+};
+
+/**
+ * The glyph shown beside each category, all duotone so the panel reads as one set.
+ *
+ * Keyed by the category name rather than by the slot, so the panel and this table cannot drift: a
+ * category that appears because a plugin contributed it is looked up by the same string the panel
+ * shows. A name with no entry falls back to the puzzle piece rather than rendering nothing.
+ */
+const CATEGORY_ICONS: Readonly<Record<string, Icon>> = {
+  'Language Servers': Icon.LANGUAGE_SERVERS,
+  'Debug Adapters': Icon.DEBUG,
+  Decoders: Icon.DECODERS,
+  'Container Engines': Icon.CONTAINERS,
+  'AI Agents': Icon.AGENT,
 };
 
 /**
@@ -81,8 +118,8 @@ export class PluginBrowse {
    * Built from what is actually contributed rather than from the full slot list: a category with
    * nothing in it is a row that can only disappoint, and the set grows on its own as plugins arrive.
    */
-  public readonly categories: Signal<readonly { name: string; count: number }[]> = computed(
-    (): readonly { name: string; count: number }[] => {
+  public readonly categories: Signal<readonly PluginCategory[]> = computed(
+    (): readonly PluginCategory[] => {
       const counts: Map<string, number> = new Map<string, number>();
       for (const plugin of this.all()) {
         for (const name of categoriesOf(plugin)) {
@@ -90,9 +127,10 @@ export class PluginBrowse {
         }
       }
       return [...counts.entries()]
-        .map(([name, count]: [string, number]): { name: string; count: number } => ({
+        .map(([name, count]: [string, number]): PluginCategory => ({
           name,
           count,
+          icon: CATEGORY_ICONS[name] ?? Icon.PLUGINS,
         }))
         .sort((left, right): number => left.name.localeCompare(right.name));
     },

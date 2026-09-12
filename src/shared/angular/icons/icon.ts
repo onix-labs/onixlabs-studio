@@ -165,6 +165,24 @@ export class Icon {
   public static readonly AI_MODELS: Icon = new Icon('ph-duotone ph-cpu');
 
   /**
+   * Gets the Plugins content icon, which also stands for every category at once.
+   */
+  public static readonly PLUGINS: Icon = new Icon('ph-duotone ph-puzzle-piece');
+
+  /**
+   * Gets the decoders category icon.
+   *
+   * ⚠️ The same glyph as {@link AI_MODELS} and deliberately a separate token: a decoder category is not
+   * a model manager, and a shared token would make renaming one rename the other.
+   */
+  public static readonly DECODERS: Icon = new Icon('ph-duotone ph-cpu');
+
+  /**
+   * Gets the language servers category icon.
+   */
+  public static readonly LANGUAGE_SERVERS: Icon = new Icon('ph-duotone ph-desktop-tower');
+
+  /**
    * Gets the agent content icon.
    */
   public static readonly AGENT: Icon = new Icon('ph-duotone ph-brain');

@@ -68,7 +68,13 @@
   }
 }
 
+.plugin-manager__category-icon {
+  flex: none;
+}
+
 .plugin-manager__category-name {
+  flex: 1 1 auto;
+
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
