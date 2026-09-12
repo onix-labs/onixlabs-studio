@@ -116,6 +116,26 @@ describe('ArchiveProvisioner', () => {
     expect(provisioner.isInstalled(provision())).toBe(false);
   });
 
+  it('ensure_afterAFailure_downloadsAgainRatherThanAnsweringFromTheCache', async () => {
+    // The cache exists so racing callers share one download, not so one failure becomes permanent. When
+    // a null was cached, a plugin whose payload was briefly unreachable could not be installed again
+    // without restarting Studio — the Install button reported the same failure without a request going
+    // out. See the same fix in `LockfileProvisioner`, which is where #697 found it.
+    let attempts: number = 0;
+    vi.stubGlobal('fetch', (): Promise<Response> => {
+      attempts += 1;
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+    try {
+      expect(await provisioner.ensure(provision())).toBeNull();
+      expect(await provisioner.ensure(provision())).toBeNull();
+
+      expect(attempts).toBe(2);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('disabledProvisioning_installsNothing', async () => {
     const disabled: ArchiveProvisioner = new ArchiveProvisioner(null, 'Test');
 

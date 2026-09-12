@@ -1,5 +1,5 @@
 {
-  "revision": 17,
+  "revision": 18,
   "plugins": [
     {
       "id": "pyright",
@@ -1083,7 +1083,7 @@
       "provision": {
         "kind": "npm",
         "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.claude-harness.lock.json",
-        "sha256": "97d27bc9d14dac81ab0d762e45b19151f8719d77dfe6fcbd4f9ddbda9be0d94a",
+        "sha256": "18b689fa6a2be4d0c3430f9620d575d36eabcf9f72018102c6a7f3dffcdeba57",
         "executablePath": "node_modules/@onixlabs/claude-harness/main.js"
       },
       "contributes": {
@@ -1113,7 +1113,7 @@
       "provision": {
         "kind": "npm",
         "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.codex-harness.lock.json",
-        "sha256": "9818b914d7a5b03bf3049d11906aae729f82cf4eefbe4d54dafb8f5d354fe1af",
+        "sha256": "970770fdbc089f1d0f28bf6ccb52b68db1b522a57944a8e77a43643efe2619e8",
         "executablePath": "node_modules/@onixlabs/codex-harness/main.js"
       },
       "contributes": {
@@ -1142,7 +1142,7 @@
       "provision": {
         "kind": "npm",
         "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.ai-sdk-harness.lock.json",
-        "sha256": "0e8dce04f5b5200b760bde7285a636c38cf59ac11421e5c4dbb7fef57a4448a3",
+        "sha256": "1cfcbef118732df39381ad4623a186bf7e21c50649da7ab59d6ff62fd4bffb2f",
         "executablePath": "node_modules/@onixlabs/ai-sdk-harness/main.js"
       },
       "contributes": {

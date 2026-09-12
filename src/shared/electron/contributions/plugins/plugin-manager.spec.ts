@@ -124,6 +124,33 @@ describe('PluginManager', () => {
     expect((await only(manager)).state).toBe('available');
   });
 
+  it('install_thatFails_reportsAFailureAndNotThePluginsOwnDescription', async () => {
+    // #697: the reason shown to the user was `descriptor.detail`, which is a note about runtimes the
+    // plugin needs *once installed*. So a 404 on a release asset surfaced as "The full Claude agent:
+    // sessions held open across turns, sub-agents…" — the plugin's marketing copy offered as the
+    // explanation for why it would not install. Nothing here may be `detail`.
+    const detail: string = 'Needs a Java 21+ runtime to run once installed.';
+    const manager: PluginManager = new PluginManager(
+      [
+        {
+          ...descriptor('demo', (): boolean => false),
+          detail,
+          install: (): Promise<string | null> => Promise.resolve(null),
+        },
+      ],
+      context,
+      store,
+    );
+
+    const result: PluginActionResult = await manager.install('demo');
+
+    expect(result.success).toBe(false);
+    expect(result.state).toBe('available');
+    expect(result.error).not.toBe(detail);
+    expect(result.error).toContain('demo');
+    expect(store.get('demo')).toBeNull();
+  });
+
   it('install_unknownPlugin_isRejected', async () => {
     const manager: PluginManager = new PluginManager([], context, store);
 

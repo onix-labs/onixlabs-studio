@@ -90,6 +90,33 @@ describe('restoreOverrides', () => {
     expect(result['ai.connectionModels']).toEqual({ claude: 'claude-opus-4-8' });
   });
 
+  it('oldProviderAndModelKeys_areDroppedOnceTheyHaveBeenRead', () => {
+    // A migration that copies forward but leaves the source behind never finishes. Before this, an
+    // upgraded profile kept a dead `ai.provider` next to the `ai.activeConnectionId` that replaced it
+    // — settings the user could not see, could not edit, and that decided nothing (#697).
+    const result: SettingsOverrides = restoreOverrides({
+      'ai.provider': 'ollama',
+      'ai.models': { ollama: 'qwen3:8b' },
+    });
+
+    expect(result['ai.activeConnectionId']).toBe('ollama');
+    expect(result['ai.connectionModels']).toEqual({ ollama: 'qwen3:8b' });
+    expect('ai.provider' in result).toBe(false);
+    expect('ai.models' in result).toBe(false);
+  });
+
+  it('oldProviderAndModelKeys_areDroppedEvenWhenTheReplacementsAlreadyExist', () => {
+    const result: SettingsOverrides = restoreOverrides({
+      'ai.provider': 'ollama',
+      'ai.activeConnectionId': 'claude',
+      'ai.models': { ollama: 'qwen3:8b' },
+      'ai.connectionModels': { claude: 'claude-opus-4-8' },
+    });
+
+    expect('ai.provider' in result).toBe(false);
+    expect('ai.models' in result).toBe(false);
+  });
+
   it('noAiChoices_addNoConnectionKeys', () => {
     const result: SettingsOverrides = restoreOverrides({ 'application.undoStackSize': 50 });
 

@@ -1,9 +1,14 @@
 # Harness plugins — builds a harness plugin's npm tarball and publishes it as the release asset the
 # curated index points at.
 #
-# One workflow for every harness plugin, keyed off the tag: `codex-harness-v0.1.0` builds
+# One workflow for every harness plugin, keyed off the tag: `plugin-codex-harness-v0.1.0` builds
 # `plugins/codex-harness`. Generalised when the second harness arrived rather than when the first did,
 # because until then there was one caller and no evidence about what actually varies between them.
+#
+# The `plugin-` prefix marks a tag as naming a *plugin* release rather than a Studio release, which
+# share this repository and otherwise sort together indistinguishably. It is a prefix on the tag only —
+# the directory under `plugins/` keeps the plain name, because `plugins/plugin-codex-harness` says the
+# same word twice.
 #
 # Separate from the app's release workflow because a plugin is versioned separately from Studio. The
 # app ships an index that *names* this artifact; the artifact itself changes only when the harness
@@ -11,7 +16,7 @@
 #
 # The procedure:
 #   1. PR the harness change, including a regenerated lockfile and a repinned `curated-plugins.json`.
-#   2. After it merges, tag `<plugin>-v<version>` on `main` and push the tag.
+#   2. After it merges, tag `plugin-<plugin>-v<version>` on `main` and push the tag.
 #   3. This workflow builds the tarball, checks it against the integrity the merged lockfile already
 #      pins, and publishes the release.
 #
@@ -23,7 +28,7 @@ name: Harness plugin
 
 on:
   push:
-    tags: ['*-harness-v*']
+    tags: ['plugin-*-harness-v*']
   # A dry run: builds and checks the tarball without publishing anything, so a change can be proved
   # before it is tagged. There is no tag to read the plugin from, so it is named.
   workflow_dispatch:
@@ -79,7 +84,11 @@ jobs:
             echo "asset=onixlabs-${name}-${version}.tgz" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          # `plugin-codex-harness-v0.1.0` -> name `codex-harness`, version `0.1.0`. The prefix is
+          # stripped rather than carried into the path: it marks the tag as a plugin release, and the
+          # directory it names is `plugins/codex-harness`.
           name="${GITHUB_REF_NAME%-v*}"
+          name="${name#plugin-}"
           version="${GITHUB_REF_NAME##*-v}"
           if [ ! -d "plugins/${name}" ]; then
             echo "::error::Tag ${GITHUB_REF_NAME} names plugins/${name}, which does not exist."
@@ -109,7 +118,7 @@ jobs:
         run: |
           gh release create "${GITHUB_REF_NAME}" \
             "dist-plugins/${{ steps.plugin.outputs.asset }}" \
-            --title "${{ steps.plugin.outputs.name }} ${{ steps.plugin.outputs.version }}" \
+            --title "${GITHUB_REF_NAME}" \
             --notes "An agent harness plugin, published as the npm tarball that
           \`curated-plugins.json\` pins. Install it from Studio's Plugin Manager rather than by hand."
 

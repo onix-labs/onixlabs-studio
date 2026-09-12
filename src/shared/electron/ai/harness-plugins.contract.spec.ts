@@ -173,9 +173,11 @@ describe.each(['claude-harness', 'codex-harness', 'ai-sdk-harness'])(
         (entry: LockfilePackage): boolean => entry.path === `node_modules/${pkg.name}`,
       );
 
+      // ⚠️ The tag carries a `plugin-` prefix the asset filename does not: the prefix marks the tag as
+      // naming a plugin release rather than a Studio one, and the tarball is still npm's own naming.
       expect(own?.url).toBe(
         'https://github.com/onix-labs/onixlabs-studio/releases/download/' +
-          `${name}-v${pkg.version}/onixlabs-${name}-${pkg.version}.tgz`,
+          `plugin-${name}-v${pkg.version}/onixlabs-${name}-${pkg.version}.tgz`,
       );
     });
 
