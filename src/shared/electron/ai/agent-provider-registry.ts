@@ -4,6 +4,7 @@ import type { ContributedHarness } from '../contributions/plugins/plugin-loader'
 import type { AgentProvider } from './agent-provider';
 import { HarnessAgentProvider } from './harness-agent-provider';
 import type { HarnessTransport } from './harness-host';
+import type { HarnessSpawnSpec } from './harness-process';
 
 /**
  * Describes one kind of agent harness: whether it serves a given connection, and how to build the
@@ -124,7 +125,7 @@ export class AgentProviderRegistry {
  */
 export function toHarnessDescriptor(
   harness: ContributedHarness,
-  connect: (spec: { command: string; args: readonly string[] }) => HarnessTransport,
+  connect: (spec: HarnessSpawnSpec) => HarnessTransport,
 ): AgentProviderDescriptor {
   return {
     id: harness.id,
@@ -135,7 +136,7 @@ export function toHarnessDescriptor(
     serves: (connection: AiConnection): boolean =>
       connection.harnessId === harness.id && harness.spawnSpec() !== null,
     create: (connection: AiConnection): AgentProvider => {
-      const spec: { command: string; args: readonly string[] } | null = harness.spawnSpec();
+      const spec: HarnessSpawnSpec | null = harness.spawnSpec();
       if (spec === null) {
         // Unreachable while `serves` checks the same thing, and worth failing loudly rather than
         // silently handing back something that cannot run.

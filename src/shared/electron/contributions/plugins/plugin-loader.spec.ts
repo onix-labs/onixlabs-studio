@@ -21,6 +21,8 @@ import {
   payloadOps,
   PayloadOps,
   resolveInstalledVersion,
+  toAgentHarnesses,
+  ContributedHarness,
   toContainerEngineDescriptors,
   toDebugAdapterEntries,
   toDecoderDescriptors,
@@ -734,6 +736,29 @@ describe('a sideloaded plugin carrying its own payload', () => {
   }
 
   /**
+   * Builds a manifest contributing one Node-run agent harness.
+   * @returns Returns the manifest.
+   */
+  function harnessManifest(): PluginManifest {
+    return {
+      ...decoderManifest(),
+      id: 'local.harness',
+      name: 'Local Harness',
+      contributes: {
+        agentHarnesses: [
+          {
+            id: 'local.harness',
+            displayName: 'Local Harness',
+            priority: 100,
+            connectionAuths: ['api-key'],
+            command: { kind: 'node' },
+          },
+        ],
+      },
+    };
+  }
+
+  /**
    * A provisioner that reports nothing downloaded, which is the real situation for a plugin that was
    * never published.
    */
@@ -808,6 +833,61 @@ describe('a sideloaded plugin carrying its own payload', () => {
       expect(resolution.spec.args).toEqual([path.join(root, 'payload', 'main.js')]);
       expect(resolution.spec.env).toEqual({ ELECTRON_RUN_AS_NODE: '1' });
     }
+  });
+
+  it('toAgentHarnesses_runsTheEntryPointUnderTheRuntimeEnvironment', () => {
+    // 🔥🔥 The defect that made every harness unrunnable (#697). A `node` harness is started through
+    // the Electron binary, which is a Node interpreter only while `ELECTRON_RUN_AS_NODE` is set.
+    // `spawnSpec` built `{ command, args }` and dropped the runtime's environment, so the same command
+    // launched Studio instead — the single-instance lock handed the entry point to the running window,
+    // and "starting the harness" opened its own source in an editor tab.
+    mkdirSync(path.join(root, 'payload'), { recursive: true });
+    writeFileSync(path.join(root, 'payload', 'main.js'), '', 'utf8');
+    const harnesses: readonly ContributedHarness[] = toAgentHarnesses(
+      harnessManifest(),
+      (): LspProvisioner => nothingDownloaded,
+      (entryPoint: string): NodeRuntimeSpec => ({
+        command: '/runtime',
+        args: [entryPoint],
+        env: { ELECTRON_RUN_AS_NODE: '1' },
+      }),
+      root,
+    );
+
+    expect(harnesses[0].spawnSpec()?.env?.['ELECTRON_RUN_AS_NODE']).toBe('1');
+  });
+
+  it('toAgentHarnesses_letsTheManifestAddToTheRuntimeEnvironmentButNotUnsetIt', () => {
+    // A manifest may need its own variables, but it must not be able to remove what the runtime needs
+    // to start at all — so the runtime's environment is applied first, as it is for decoders.
+    mkdirSync(path.join(root, 'payload'), { recursive: true });
+    writeFileSync(path.join(root, 'payload', 'main.js'), '', 'utf8');
+    const manifest: PluginManifest = harnessManifest();
+    const harnesses: readonly ContributedHarness[] = toAgentHarnesses(
+      {
+        ...manifest,
+        contributes: {
+          agentHarnesses: [
+            {
+              ...manifest.contributes.agentHarnesses![0],
+              command: { kind: 'node', env: { HARNESS_EXTRA: 'yes' } },
+            },
+          ],
+        },
+      },
+      (): LspProvisioner => nothingDownloaded,
+      (entryPoint: string): NodeRuntimeSpec => ({
+        command: '/runtime',
+        args: [entryPoint],
+        env: { ELECTRON_RUN_AS_NODE: '1' },
+      }),
+      root,
+    );
+
+    expect(harnesses[0].spawnSpec()?.env).toEqual({
+      ELECTRON_RUN_AS_NODE: '1',
+      HARNESS_EXTRA: 'yes',
+    });
   });
 
   it('toDecoderDescriptors_isUnavailableWithNeitherPayloadNorDownload', () => {
