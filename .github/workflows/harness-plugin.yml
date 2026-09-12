@@ -116,8 +116,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
+          # ⛔ Never `--latest`. A plugin is versioned separately from Studio, so a plugin release
+          # taking the repository's Latest badge puts a harness where the application belongs on the
+          # releases page and behind `/releases/latest`. Separating the two is the whole point of the
+          # `plugin-` prefix; letting one headline the repository would give it back.
           gh release create "${GITHUB_REF_NAME}" \
             "dist-plugins/${{ steps.plugin.outputs.asset }}" \
+            --latest=false \
             --title "${GITHUB_REF_NAME}" \
             --notes "An agent harness plugin, published as the npm tarball that
           \`curated-plugins.json\` pins. Install it from Studio's Plugin Manager rather than by hand."
