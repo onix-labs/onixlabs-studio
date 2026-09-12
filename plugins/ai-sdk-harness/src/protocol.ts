@@ -118,6 +118,14 @@ export interface HarnessTool {
 export interface HarnessModel {
   readonly id: string;
   readonly label?: string;
+
+  /**
+   * The model's context window in tokens, or undefined when the harness does not know (1.10.0).
+   *
+   * Studio used to resolve this from the id against a table of its own, which obliged it to know which
+   * models every provider has. An omitted window falls back to one neutral default.
+   */
+  readonly contextWindow?: number;
 }
 
 /**

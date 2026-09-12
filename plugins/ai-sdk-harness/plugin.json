@@ -2,13 +2,13 @@
   "id": "onixlabs.ai-sdk-harness",
   "name": "AI SDK (out of process)",
   "description": "Runs OpenAI, Anthropic, Google, Ollama and any OpenAI-compatible endpoint through the Vercel AI SDK, in its own process.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "apiVersion": "1.12.0",
   "detail": "The general-purpose harness: point a connection at any model API and this runs it. Studio supplies the tools for the turn's surface and runs them on the model's behalf, so an agent on Ollama has the same capabilities as one on Claude. Asks the endpoint what models it offers. Authenticates with the API key configured against the connection; a local Ollama server needs none. Around 2MB \u2014 the SDK is pure JavaScript and ships inside the plugin.",
   "provision": {
     "kind": "npm",
     "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.ai-sdk-harness.lock.json",
-    "sha256": "a1aa209ff174af5793d17714aed6aa3a789741078271a287c85aafd568d6fe7a",
+    "sha256": "604789a0c400faca42453de3268c168a086100b4e7eb96e93a4a8c0a43db9550",
     "executablePath": "node_modules/@onixlabs/ai-sdk-harness/main.js"
   },
   "contributes": {
