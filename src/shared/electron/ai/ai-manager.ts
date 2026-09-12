@@ -697,7 +697,12 @@ export class AiManager {
       'AiManager.discoverModels',
       `Discovering models for connection ${connection.id} (auth ${connection.auth})`,
     );
-    const provider: AgentProvider | undefined = this.providers.get(connection.id);
+    // ⛔ Routed on the connection that ARRIVED, never on the cached provider map. Discovery is asked
+    // from the settings editor, about a connection the user is in the middle of changing, and the map
+    // is rebuilt only by `listProviders` — so a harness chosen seconds ago is not in it yet. Reading
+    // the map made "Runs through: Claude" followed by Refresh fall straight through to the HTTP path,
+    // which then asked a *subscription* connection for an API key it does not need (#697).
+    const provider: AgentProvider | null = this.harnesses.providerFor(connection);
     if (provider?.discoverModels !== undefined) {
       // The CLI choice is an application setting rather than a connection field, so it has nowhere
       // to ride except here. A harness that does not understand the key ignores a bag it put nothing
