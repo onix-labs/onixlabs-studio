@@ -1,5 +1,6 @@
 import { FeatureDescriptor } from '@shared/angular/services/feature-registry';
 import { PluginManagerRibbon } from './plugin-manager-ribbon/plugin-manager-ribbon';
+import { PluginManagerStatusStrip } from './plugin-manager-status/plugin-manager-status-strip';
 import { PluginManagerView } from './plugin-manager-view/plugin-manager-view';
 
 /**
@@ -15,4 +16,5 @@ export const descriptor: FeatureDescriptor = {
   type: 'plugin-manager',
   view: PluginManagerView,
   ribbon: PluginManagerRibbon,
+  status: PluginManagerStatusStrip,
 };

@@ -3,11 +3,9 @@ import {
   Component,
   InputSignal,
   Signal,
-  WritableSignal,
   computed,
   inject,
   input,
-  signal,
 } from '@angular/core';
 import {
   FormatPluginContribution,
@@ -18,24 +16,15 @@ import {
   isLanguageContribution,
 } from '@shared/api/plugin-channels';
 import { Icon } from '@shared/angular/icons/icon';
-import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
-import { Button } from '@shared/angular/components/forms/button/button';
-import { Table, TableColumn, TableRow, TableRowDef } from '@shared/angular/components/table/table';
+import { ListRow, ListView } from '@shared/angular/components/list-view/list-view';
+import { CdkMenuTrigger } from '@angular/cdk/menu';
+import { Menu, MenuChoice, MenuItem } from '@shared/angular/components/menu/menu';
+import { Panel } from '@shared/angular/components/panel-layout/panel';
+import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
+import { PluginBrowse, categoriesOf } from '../plugin-browse/plugin-browse';
 import { languageDisplayName } from '@shared/angular/services/plugins/language-names';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
-
-/**
- * The plugin table's columns.
- */
-const COLUMNS: readonly TableColumn[] = [
-  { id: 'name', header: 'Plugin' },
-  { id: 'provides', header: 'Provides', width: '11rem' },
-  { id: 'languages', header: 'Languages', width: '20%' },
-  { id: 'version', header: 'Version', width: '10rem' },
-  { id: 'state', header: 'Status', width: '11rem' },
-  { id: 'actions', header: '', width: '9rem', align: 'end' },
-];
 
 /**
  * How each slot is described where a plugin's contributions are listed.
@@ -59,7 +48,7 @@ const SLOT_LABELS: Readonly<Record<PluginSlot, string>> = {
  */
 @Component({
   selector: 'app-plugin-manager-view',
-  imports: [Button, AppIcon, Table, TableRowDef, TextField],
+  imports: [AppIcon, ListView, PanelLayout, Panel, Menu, CdkMenuTrigger],
   templateUrl: './plugin-manager-view.html',
   styleUrl: './plugin-manager-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -73,8 +62,6 @@ export class PluginManagerView {
   /**
    * Gets the table's columns.
    */
-  protected readonly columns: readonly TableColumn[] = COLUMNS;
-
   /**
    * Gets the identifier of the tab hosting this view.
    */
@@ -91,54 +78,38 @@ export class PluginManagerView {
   private readonly plugins: Plugins = inject(Plugins);
 
   /**
-   * Holds the filter text. Not persisted: a filter is what the user is doing right now, and finding a
-   * list mysteriously filtered on the next visit is worse than retyping four characters.
+   * Gets the browsing state the ribbon drives: the search text, the install-state filter, the selected
+   * category and the ordering.
    */
-  protected readonly query: WritableSignal<string> = signal<string>('');
+  protected readonly browse: PluginBrowse = inject(PluginBrowse);
 
   /**
-   * Gets the plugins matching the filter, installed first so what is in use leads.
+   * Gets the plugins to list, adapted to the list's row shape.
    */
-  private readonly matching: Signal<readonly PluginSummary[]> = computed(
-    (): readonly PluginSummary[] => {
-      const terms: readonly string[] = this.query().toLowerCase().split(/\s+/).filter(Boolean);
-      return [...this.plugins.plugins()]
-        .filter((plugin: PluginSummary): boolean => matches(plugin, terms))
-        .sort(
-          (left: PluginSummary, right: PluginSummary): number =>
-            Number(right.state === 'installed') - Number(left.state === 'installed'),
-        );
-    },
+  protected readonly rows: Signal<readonly ListRow[]> = computed((): readonly ListRow[] =>
+    this.browse
+      .visible()
+      .map((plugin: PluginSummary): ListRow => ({ id: plugin.id, data: plugin })),
   );
 
   /**
-   * Gets the matching plugins adapted to the table's row shape.
+   * Gets the heading, which names the selected category so the list always says what it is showing.
    */
-  protected readonly rows: Signal<readonly TableRow[]> = computed((): readonly TableRow[] =>
-    this.matching().map((plugin: PluginSummary): TableRow => ({ id: plugin.id, data: plugin })),
+  protected readonly heading: Signal<string> = computed(
+    (): string => this.browse.category() ?? 'Plugins',
   );
 
   /**
-   * Gets whether a filter is narrowing the list, so the empty state can say which of the two nothings
-   * this is: no plugins at all, or none matching what was typed.
+   * Gets the sentence under the heading: how many plugins are listed, and where choosing between two
+   * that provide the same thing happens — which is the one thing this view deliberately does not do.
    */
-  protected readonly filtered: Signal<boolean> = computed(
-    (): boolean => this.query().trim() !== '',
-  );
+  protected readonly summary: Signal<string> = computed((): string => {
+    const shown: number = this.rows().length;
+    const noun: string = shown === 1 ? 'plugin' : 'plugins';
+    const scope: string = this.browse.narrowed() ? 'match your filters' : 'available';
+    return `${shown} ${noun} ${scope}. Where two installed plugins provide the same thing, choose between them in Settings.`;
+  });
 
-  /**
-   * Gets how many plugins are installed, for the summary line.
-   */
-  protected readonly installedCount: Signal<number> = computed(
-    (): number =>
-      this.plugins
-        .plugins()
-        .filter((plugin: PluginSummary): boolean => plugin.state === 'installed').length,
-  );
-
-  /**
-   * Gets whether an operation is in flight.
-   */
   protected readonly busy: Signal<boolean> = this.plugins.busy;
 
   /**
@@ -153,7 +124,7 @@ export class PluginManagerView {
    * @param row The table row.
    * @returns Returns the row's plugin.
    */
-  protected plugin(row: TableRow): PluginSummary {
+  protected plugin(row: ListRow): PluginSummary {
     return row.data as PluginSummary;
   }
 
@@ -162,13 +133,6 @@ export class PluginManagerView {
    */
   protected total(): number {
     return this.plugins.plugins().length;
-  }
-
-  /**
-   * Clears the filter, so the list returns to everything.
-   */
-  protected clearQuery(): void {
-    this.query.set('');
   }
 
   /**
@@ -256,6 +220,89 @@ export class PluginManagerView {
   }
 
   /**
+   * Gets a plugin's categories as one readable phrase.
+   * @param plugin The plugin.
+   * @returns Returns the categories, comma-separated.
+   */
+  protected categories(plugin: PluginSummary): string {
+    return categoriesOf(plugin).join(', ');
+  }
+
+  /**
+   * Gets the word shown in a row's state badge.
+   * @param plugin The plugin.
+   * @returns Returns the label.
+   */
+  protected stateLabel(plugin: PluginSummary): string {
+    if (plugin.state === 'installed') {
+      return this.canUpdate(plugin) ? 'Update available' : 'Installed';
+    }
+    if (plugin.state === 'busy') {
+      return 'Working…';
+    }
+    return plugin.state === 'available' ? 'Not installed' : 'Not supported here';
+  }
+
+  /**
+   * Gets the icon shown beside a row's state.
+   * @param plugin The plugin.
+   * @returns Returns the icon.
+   */
+  protected stateIcon(plugin: PluginSummary): Icon {
+    if (plugin.state === 'installed') {
+      return this.canUpdate(plugin) ? Icon.DOWNLOAD : Icon.CHECK;
+    }
+    return plugin.state === 'unavailable' ? Icon.WARNING : Icon.DOWNLOAD;
+  }
+
+  /**
+   * Builds a row's overflow menu.
+   *
+   * ⛔ A menu rather than the buttons this list used to carry. Install, Update and Remove are
+   * mutually exclusive on any given row, so a button column was mostly empty space that still had to be
+   * paid for in every row's width — and the one action that applies was never in the same place twice.
+   */
+  protected readonly menuItemsFor: (data: unknown) => readonly MenuItem[] = (
+    data: unknown,
+  ): readonly MenuItem[] => {
+    // ⚠️ Asked before a trigger has supplied its row, so the absence of data is ordinary rather than a
+    // fault: the menu resolves its rows once on creation and again each time it opens.
+    if (data === null || data === undefined) {
+      return [];
+    }
+    const plugin: PluginSummary = data as PluginSummary;
+    const busy: boolean = this.busy();
+    const items: MenuItem[] = [];
+    if (this.canUpdate(plugin)) {
+      items.push({ id: 'update', label: 'Update', icon: Icon.DOWNLOAD, disabled: busy });
+    } else if (this.canInstall(plugin)) {
+      items.push({ id: 'install', label: 'Install', icon: Icon.DOWNLOAD, disabled: busy });
+    }
+    if (this.canUninstall(plugin)) {
+      items.push({ id: 'uninstall', label: 'Remove', icon: Icon.TRASH, disabled: busy });
+    }
+    return items;
+  };
+
+  /**
+   * Runs a row's chosen menu item.
+   * @param choice The chosen item, carrying the plugin its menu opened on.
+   */
+  protected onChosen(choice: MenuChoice): void {
+    if (choice.data === null || choice.data === undefined) {
+      return;
+    }
+    const plugin: PluginSummary = choice.data as PluginSummary;
+    if (choice.id === 'install') {
+      this.install(plugin);
+    } else if (choice.id === 'update') {
+      this.update(plugin);
+    } else if (choice.id === 'uninstall') {
+      this.uninstall(plugin);
+    }
+  }
+
+  /**
    * Installs, after the terms have been accepted.
    *
    * Verification proves a payload has not been *tampered with*; it has never claimed the code is good,
@@ -285,49 +332,4 @@ export class PluginManagerView {
   protected uninstall(plugin: PluginSummary): void {
     void this.plugins.uninstall(plugin.id);
   }
-}
-
-/**
- * Gets what a contribution is keyed by, whichever way its slot is keyed.
- *
- * A container engine is keyed by nothing at all — it is chosen once for the application — so it
- * contributes no keys to search on, and its display name alone has to carry it.
- * @param contribution The contribution.
- * @returns Returns the keys, empty for an unkeyed slot.
- */
-function contributionKeys(contribution: PluginContribution): readonly string[] {
-  if (isLanguageContribution(contribution)) {
-    return contribution.languages;
-  }
-  return contribution.slot === 'decoder' ? contribution.formats : [];
-}
-
-/**
- * Determines whether a plugin matches every search term.
- *
- * Every term must match, but each may match any field — so "python debug" finds a Python debugger
- * without the user knowing which field holds which word. Matching is over what the table actually
- * shows, plus the identifier: a filter that hides a row whose visible text contains the query would
- * read as a bug.
- * @param plugin The plugin to test.
- * @param terms The lower-cased search terms, empty when nothing is typed.
- * @returns Returns true when the plugin matches.
- */
-function matches(plugin: PluginSummary, terms: readonly string[]): boolean {
-  if (terms.length === 0) {
-    return true;
-  }
-  const haystack: string = [
-    plugin.name,
-    plugin.description,
-    plugin.id,
-    plugin.detail ?? '',
-    ...plugin.contributions.flatMap((contribution: PluginContribution): readonly string[] => [
-      contribution.displayName,
-      ...contributionKeys(contribution),
-    ]),
-  ]
-    .join(' ')
-    .toLowerCase();
-  return terms.every((term: string): boolean => haystack.includes(term));
 }

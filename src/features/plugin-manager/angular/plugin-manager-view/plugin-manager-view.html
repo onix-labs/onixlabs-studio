@@ -1,112 +1,107 @@
-<div class="plugin-manager">
-  <!-- What the view is for, and where the *choice* between two installed implementations happens —
-       stated here because that second surface is the reason to install a second implementation. -->
-  <header class="plugin-manager__header">
-    <div class="plugin-manager__heading">
-      <h2 class="plugin-manager__title">Plugins</h2>
-      <p class="plugin-manager__subtitle">
-        {{ installedCount() }} of {{ total() }} installed. Where two installed plugins provide the
-        same thing, choose between them in Settings.
-      </p>
-    </div>
-    <app-text-field
-      class="plugin-manager__filter"
-      kind="search"
-      placeholder="Filter plugins"
-      ariaLabel="Filter plugins"
-      [(value)]="query"
-      (escape)="clearQuery()"
-    />
-  </header>
-
-  @if (error(); as message) {
-    <p class="plugin-manager__error" role="alert">
-      <app-icon [icon]="Icon.WARNING" />
-      {{ message }}
-    </p>
-  }
-
-  <app-table
-    class="plugin-manager__table"
-    [columns]="columns"
-    [rows]="rows()"
-    [emptyText]="filtered() ? 'No plugins match this filter.' : 'No plugins are available.'"
+<app-panel-layout class="plugin-manager">
+  <!-- Categories are a panel rather than a column of the list, so they resize and collapse like every
+       other side surface in the application (#panel-layout). -->
+  <app-panel
+    panelId="plugin-categories"
+    defaultEdge="left"
+    [defaultSize]="220"
+    [minSize]="160"
+    [maxSize]="420"
   >
-    <ng-template appTableRow let-row>
-      <td class="plugin-manager__name">
-        <span class="plugin-manager__plugin-name">{{ plugin(row).name }}</span>
-        <span class="plugin-manager__description">{{ plugin(row).description }}</span>
-        @if (plugin(row).detail; as detail) {
-          <span class="plugin-manager__detail">{{ detail }}</span>
+    <div class="plugin-manager__categories">
+      <h3 class="plugin-manager__panel-title">Plugin Categories</h3>
+      <ul class="plugin-manager__category-list">
+        <li>
+          <button
+            type="button"
+            class="plugin-manager__category"
+            [class.plugin-manager__category--selected]="browse.category() === null"
+            (click)="browse.category.set(null)"
+          >
+            <span class="plugin-manager__category-name">All Plugins</span>
+            <span class="plugin-manager__category-count">{{ browse.all().length }}</span>
+          </button>
+        </li>
+        @for (category of browse.categories(); track category.name) {
+          <li>
+            <button
+              type="button"
+              class="plugin-manager__category"
+              [class.plugin-manager__category--selected]="browse.category() === category.name"
+              (click)="browse.category.set(category.name)"
+            >
+              <span class="plugin-manager__category-name">{{ category.name }}</span>
+              <span class="plugin-manager__category-count">{{ category.count }}</span>
+            </button>
+          </li>
         }
-      </td>
-      <td class="plugin-manager__provides">{{ provides(plugin(row)) }}</td>
-      <td class="plugin-manager__provides">{{ languages(plugin(row)) }}</td>
-      <td class="plugin-manager__version">
-        @if (canUpdate(plugin(row))) {
-          {{ plugin(row).installedVersion }} → {{ plugin(row).version }}
-        } @else {
-          {{ plugin(row).version }}
-        }
-      </td>
-      <td>
-        <span
-          class="plugin-manager__state"
-          [class.plugin-manager__state--installed]="plugin(row).state === 'installed'"
-          [class.plugin-manager__state--busy]="plugin(row).state === 'busy'"
-          [class.plugin-manager__state--unavailable]="plugin(row).state === 'unavailable'"
-        >
-          @switch (plugin(row).state) {
-            @case ('installed') {
-              @if (canUpdate(plugin(row))) {
-                Update available
-              } @else {
-                Installed
-              }
+      </ul>
+    </div>
+  </app-panel>
+
+  <div main class="plugin-manager__main">
+    <header class="plugin-manager__header">
+      <h2 class="plugin-manager__title">{{ heading() }}</h2>
+      <p class="plugin-manager__subtitle">{{ summary() }}</p>
+    </header>
+
+    @if (error(); as message) {
+      <p class="plugin-manager__error" role="alert">
+        <app-icon [icon]="Icon.WARNING" />
+        {{ message }}
+      </p>
+    }
+
+    <app-list-view
+      class="plugin-manager__list"
+      [rows]="rows()"
+      [emptyText]="
+        browse.narrowed() ? 'No plugins match these filters.' : 'No plugins are available.'
+      "
+    >
+      <ng-template let-row>
+        @let item = plugin(row);
+        <div class="plugin-row">
+          <app-icon class="plugin-row__icon" [icon]="Icon.WELCOME_PLUGINS" />
+          <span class="plugin-row__name">{{ item.name }}</span>
+          <span class="plugin-row__category">{{ categories(item) }}</span>
+          <span class="plugin-row__targets">{{ languages(item) }}</span>
+          <span class="plugin-row__version">
+            @if (canUpdate(item)) {
+              {{ item.installedVersion }} → {{ item.version }}
+            } @else {
+              {{ item.version }}
             }
-            @case ('available') {
-              Not installed
-            }
-            @case ('busy') {
-              Working…
-            }
-            @default {
-              Not supported here
-            }
+          </span>
+          <span
+            class="plugin-row__state"
+            [class.plugin-row__state--installed]="item.state === 'installed'"
+            [class.plugin-row__state--busy]="item.state === 'busy'"
+            [class.plugin-row__state--unavailable]="item.state === 'unavailable'"
+          >
+            <app-icon [icon]="stateIcon(item)" />
+            {{ stateLabel(item) }}
+          </span>
+          <span class="plugin-row__description">{{ item.description }}</span>
+          <!-- The row's own actions. Install, Update and Remove are mutually exclusive, so a button
+               column would be mostly empty space that every row still pays for in width — and the one
+               action that applies would never sit in the same place twice. -->
+          <button
+            type="button"
+            class="plugin-row__actions"
+            aria-label="Plugin actions"
+            [cdkMenuTriggerFor]="rowMenu.panel() ?? null"
+            [cdkMenuPosition]="rowMenu.position()"
+            [cdkMenuTriggerData]="item"
+          >
+            <app-icon [icon]="Icon.DOTS_THREE_VERTICAL" />
+          </button>
+          <app-menu #rowMenu [itemsFor]="menuItemsFor" (chosen)="onChosen($event)" />
+          @if (item.detail; as detail) {
+            <span class="plugin-row__detail">{{ detail }}</span>
           }
-        </span>
-      </td>
-      <td class="plugin-manager__row-actions">
-        @if (canUpdate(plugin(row))) {
-          <app-button
-            variant="solid"
-            size="small"
-            [icon]="Icon.DOWNLOAD"
-            label="Update"
-            [disabled]="busy()"
-            (click)="update(plugin(row))"
-          />
-        } @else if (canInstall(plugin(row))) {
-          <app-button
-            variant="solid"
-            size="small"
-            [icon]="Icon.DOWNLOAD"
-            label="Install"
-            [disabled]="busy()"
-            (click)="install(plugin(row))"
-          />
-        } @else if (canUninstall(plugin(row))) {
-          <app-button
-            variant="none"
-            size="small"
-            tone="danger"
-            [icon]="Icon.TRASH"
-            label="Remove"
-            [disabled]="busy()"
-            (click)="uninstall(plugin(row))"
-          />
-        }
-      </td>
-    </ng-template>
-  </app-table>
-</div>
+        </div>
+      </ng-template>
+    </app-list-view>
+  </div>
+</app-panel-layout>

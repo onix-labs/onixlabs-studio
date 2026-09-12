@@ -6,5 +6,47 @@
       [disabled]="busy()"
       (action)="onRefresh()"
     />
+    <!-- Mutually exclusive, so they are toggles rather than checks: pressing one releases the others,
+         and the pressed one is always the list you are looking at. -->
+    <app-ribbon-strip-button
+      [icon]="Icon.WELCOME_PLUGINS"
+      label="All Plugins"
+      [toggle]="true"
+      [pressed]="browse.stateFilter() === 'all'"
+      (action)="onState('all')"
+    />
+    <app-ribbon-strip-button
+      [icon]="Icon.CHECK"
+      label="Installed"
+      [toggle]="true"
+      [pressed]="browse.stateFilter() === 'installed'"
+      (action)="onState('installed')"
+    />
+    <app-ribbon-strip-button
+      [icon]="Icon.DOWNLOAD"
+      label="Not Installed"
+      [toggle]="true"
+      [pressed]="browse.stateFilter() === 'not-installed'"
+      (action)="onState('not-installed')"
+    />
+  </app-ribbon-strip-group>
+
+  <app-ribbon-strip-group title="Search">
+    <app-ribbon-strip-column>
+      <app-text-field
+        class="plugin-ribbon__search"
+        kind="search"
+        placeholder="Search…"
+        ariaLabel="Search plugins"
+        [(value)]="browse.query"
+        (escape)="browse.clearQuery()"
+      />
+      <app-ribbon-strip-field
+        label="Sort"
+        [options]="sortOptions"
+        [value]="browse.sort()"
+        (changed)="onSort($event)"
+      />
+    </app-ribbon-strip-column>
   </app-ribbon-strip-group>
 </app-ribbon-overflow>

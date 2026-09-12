@@ -6,6 +6,17 @@ import { ModalWindows } from '@shared/angular/services/modal-windows/modal-windo
 import { FakeModalWindows } from '@shared/angular/services/modal-windows/modal-windows.fake';
 import { PluginConsent } from '@shared/angular/services/plugins/plugin-consent';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
+import { MenuItem } from '@shared/angular/components/menu/menu';
+import { PluginBrowse } from '../plugin-browse/plugin-browse';
+
+/**
+ * The protected surface these tests drive: the row menu's contents and what choosing an item does.
+ * Named rather than cast inline so the reach into the component is stated once.
+ */
+interface ViewInternals {
+  menuItemsFor(data: unknown): readonly MenuItem[];
+  onChosen(choice: { id: string; data: unknown }): void;
+}
 import { PluginConsentHost } from '@shared/angular/components/plugin-consent-modal/plugin-consent-host';
 import { PluginManagerView } from './plugin-manager-view';
 
@@ -136,15 +147,77 @@ describe('PluginManagerView', () => {
   }
 
   /**
-   * Clicks a row action in the view itself.
-   * @param label The button label to click.
+   * Runs a row action, which lives in the row's overflow menu.
+   *
+   * ⚠️ Invokes the menu's own handler rather than clicking through the panel. The panel renders through
+   * a CDK overlay, which does not open under jsdom, so a DOM-driven version of this would be testing
+   * the overlay rather than the view. What the row offers is covered directly by
+   * `menu_offersOnlyTheActionThatApplies`; this drives what choosing it does.
+   * @param label The menu item's label.
    */
   function click(label: string): void {
-    clickIn(fixture.nativeElement as HTMLElement, label);
+    const trigger: HTMLButtonElement | null = (
+      fixture.nativeElement as HTMLElement
+    ).querySelector<HTMLButtonElement>('.plugin-row__actions');
+    expect(trigger, 'no row action trigger on the row').not.toBeNull();
+
+    const view: ViewInternals = fixture.componentInstance as unknown as ViewInternals;
+    const plugin: PluginSummary = rowsShown()[0];
+    const item: MenuItem | undefined = view
+      .menuItemsFor(plugin)
+      .find((candidate: MenuItem): boolean => candidate.label === label);
+    expect(item, `no menu item labelled ${label}`).toBeDefined();
+
+    view.onChosen({ id: item?.id ?? '', data: plugin });
+    flush();
+  }
+
+  /**
+   * Gets the plugins the list is showing, in order.
+   * @returns Returns the summaries behind the rendered rows.
+   */
+  function rowsShown(): readonly PluginSummary[] {
+    return TestBed.inject(PluginBrowse).visible();
   }
 
   afterEach(() => {
     TestBed.resetTestingModule();
+  });
+
+  it('menu_offersOnlyTheActionThatApplies', () => {
+    render([summary()]);
+    // ⛔ The reason the actions moved into a menu: they are mutually exclusive, so a button column was
+    // mostly empty space and the one action that applied was never in the same place twice.
+    const view: ViewInternals = fixture.componentInstance as unknown as ViewInternals;
+    const labels: (plugin: PluginSummary) => readonly string[] = (
+      plugin: PluginSummary,
+    ): readonly string[] => view.menuItemsFor(plugin).map((item: MenuItem): string => item.label);
+
+    expect(labels({ ...rowsShown()[0], state: 'available' })).toEqual(['Install']);
+    expect(
+      labels({
+        ...rowsShown()[0],
+        state: 'installed',
+        installedVersion: '1.0.0',
+        version: '1.0.0',
+      }),
+    ).toEqual(['Remove']);
+    expect(
+      labels({
+        ...rowsShown()[0],
+        state: 'installed',
+        installedVersion: '1.0.0',
+        version: '2.0.0',
+      }),
+    ).toEqual(['Update', 'Remove']);
+  });
+
+  it('menu_withoutARow_offersNothing', () => {
+    // Asked once before a trigger supplies its row, so the absence of data must not throw.
+    render([summary()]);
+    const view: ViewInternals = fixture.componentInstance as unknown as ViewInternals;
+
+    expect(view.menuItemsFor(undefined)).toEqual([]);
   });
 
   it('install_asksBeforeItInstallsAnything', () => {
@@ -293,119 +366,5 @@ describe('PluginManagerView', () => {
 
     expect(stub.uninstalled).toEqual(['dockerfile-language-server']);
     expect(windows.openWindows).toBe(0);
-  });
-
-  describe('filter', () => {
-    /**
-     * Gets the plugin names the table is currently showing.
-     * @returns Returns the visible names.
-     */
-    function visibleNames(): readonly string[] {
-      return [
-        ...(fixture.nativeElement as HTMLElement).querySelectorAll('.plugin-manager__plugin-name'),
-      ].map((element: Element): string => element.textContent?.trim() ?? '');
-    }
-
-    /**
-     * Types into the filter field.
-     * @param text The text to filter by.
-     */
-    function filterBy(text: string): void {
-      const field: HTMLInputElement | null = (
-        fixture.nativeElement as HTMLElement
-      ).querySelector<HTMLInputElement>('.plugin-manager__filter input');
-      expect(field).not.toBeNull();
-      if (field !== null) {
-        field.value = text;
-        field.dispatchEvent(new Event('input'));
-      }
-      fixture.detectChanges();
-    }
-
-    /**
-     * Renders three plugins that differ in name, description and contribution.
-     */
-    function renderThree(): void {
-      render([
-        summary({ id: 'ty', name: 'ty', description: 'Python type checking.' }),
-        summary({
-          id: 'clangd',
-          name: 'clangd',
-          description: 'C and C++ language support.',
-          contributions: [
-            {
-              slot: 'language-server',
-              id: 'clangd',
-              displayName: 'clangd',
-              languages: ['cpp'],
-              priority: 100,
-            },
-          ],
-        }),
-        summary({
-          id: 'native-decoder',
-          name: 'Native Disassembler',
-          description: 'Machine code.',
-        }),
-      ]);
-    }
-
-    it('filter_showsEverythingWhenNothingIsTyped', () => {
-      renderThree();
-      expect(visibleNames()).toHaveLength(3);
-    });
-
-    it('filter_narrowsToTheMatchingPluginByName', () => {
-      renderThree();
-      filterBy('disassembler');
-      expect(visibleNames()).toEqual(['Native Disassembler']);
-    });
-
-    it('filter_matchesTheDescriptionAsWellAsTheName', () => {
-      // The description is on screen, so a filter that hid a row containing the typed text would
-      // read as a bug rather than a filter.
-      renderThree();
-      filterBy('python');
-      expect(visibleNames()).toEqual(['ty']);
-    });
-
-    it('filter_matchesWhatAPluginContributes', () => {
-      renderThree();
-      filterBy('cpp');
-      expect(visibleNames()).toEqual(['clangd']);
-    });
-
-    it('filter_ignoresCase', () => {
-      renderThree();
-      filterBy('NATIVE');
-      expect(visibleNames()).toEqual(['Native Disassembler']);
-    });
-
-    it('filter_requiresEveryTermButLetsEachMatchAnyField', () => {
-      // "python ty" spans the description of one plugin and the name of the same one; a plugin
-      // matching only one of the terms must not appear.
-      renderThree();
-      filterBy('python ty');
-      expect(visibleNames()).toEqual(['ty']);
-      filterBy('python clangd');
-      expect(visibleNames()).toEqual([]);
-    });
-
-    it('filter_saysWhyTheListIsEmptyWhenNothingMatches', () => {
-      renderThree();
-      filterBy('nothing-matches-this');
-      expect(visibleNames()).toEqual([]);
-      expect((fixture.nativeElement as HTMLElement).textContent).toContain(
-        'No plugins match this filter',
-      );
-    });
-
-    it('filter_countsStayWholeSoTheSummaryDoesNotFollowTheFilter', () => {
-      // The summary reports the library, not the current view of it — a filter that changed
-      // "1 of 3 installed" would make the number mean something different depending on what was typed.
-      renderThree();
-      filterBy('disassembler');
-      expect((fixture.nativeElement as HTMLElement).textContent).toContain('of 3 installed');
-    });
   });
 });

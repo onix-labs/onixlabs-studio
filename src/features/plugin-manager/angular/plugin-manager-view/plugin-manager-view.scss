@@ -1,29 +1,99 @@
-// The Plugin Manager view fills its tab: a header explaining what is installed and where the choice
-// between implementations lives, then one table of every known plugin.
+// The Plugin Manager view fills its tab: a categories panel on the left, and on the right a heading
+// over the list of plugins. The ribbon owns searching, filtering and ordering; the status strip owns
+// the catalogue counts. What is left here is the two surfaces that show the result.
 :host {
   display: block;
   block-size: 100%;
 }
 
 .plugin-manager {
+  block-size: 100%;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Categories panel
+// ---------------------------------------------------------------------------------------------
+
+.plugin-manager__categories {
   display: flex;
   flex-direction: column;
   block-size: 100%;
   overflow: auto;
+  padding: 0.5rem;
+}
+
+.plugin-manager__panel-title {
+  flex: none;
+  margin: 0 0 0.5rem;
+  padding-inline: 0.25rem;
+  color: var(--form-muted-foreground-color);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.plugin-manager__category-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.plugin-manager__category {
+  display: flex;
+  inline-size: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.3125rem 0.5rem;
+  border: 0;
+  border-radius: calc(4px * var(--border-radius-multiplier));
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: start;
+
+  &:hover {
+    background: var(--accent-surface-background-color);
+  }
+
+  &--selected {
+    background: var(--accent-surface-background-color);
+    color: var(--accent-surface-foreground-color);
+    font-weight: 600;
+  }
+}
+
+.plugin-manager__category-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plugin-manager__category-count {
+  flex: none;
+  color: var(--form-muted-foreground-color);
+  font-variant-numeric: tabular-nums;
+}
+
+// ---------------------------------------------------------------------------------------------
+// The list
+// ---------------------------------------------------------------------------------------------
+
+.plugin-manager__main {
+  display: flex;
+  flex-direction: column;
+  block-size: 100%;
+  min-block-size: 0;
 }
 
 .plugin-manager__header {
-  display: flex;
   flex: none;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.85rem 1.25rem;
-  border-block-end: 1px solid var(--form-border-color);
-}
-
-.plugin-manager__heading {
-  min-inline-size: 0;
+  padding: 0.75rem 1rem 0.5rem;
 }
 
 .plugin-manager__title {
@@ -33,9 +103,9 @@
 }
 
 .plugin-manager__subtitle {
-  margin: 0.2rem 0 0;
-  font-size: 0.8rem;
+  margin: 0.25rem 0 0;
   color: var(--form-muted-foreground-color);
+  font-size: 0.8125rem;
 }
 
 .plugin-manager__error {
@@ -43,79 +113,106 @@
   flex: none;
   align-items: center;
   gap: 0.5rem;
-  margin: 0;
-  padding: 0.6rem 1.25rem;
-  font-size: 0.85rem;
+  margin: 0 1rem 0.5rem;
   color: var(--danger-color);
+  font-size: 0.8125rem;
 }
 
-.plugin-manager__table {
+.plugin-manager__list {
+  // The list scrolls, the heading does not: a heading that scrolled away would take the one sentence
+  // saying which category you are looking at with it.
   flex: 1 1 auto;
   min-block-size: 0;
 }
 
-// The name cell stacks the plugin's name, what it is for, and any note about obtaining it. The table's
-// cells are single-line with an ellipsis by default, which truncates a description mid-sentence — and
-// the note about how to install an external tool is the one thing that must be readable in full.
-.plugin-manager__name {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-  white-space: normal;
+// ---------------------------------------------------------------------------------------------
+// A row: identity and metadata on the first line, description on the second
+// ---------------------------------------------------------------------------------------------
+
+.plugin-row {
+  display: grid;
+  inline-size: 100%;
+  align-items: center;
+  // icon | name | category | targets | version | state — the description spans the metadata columns
+  // on the second line, so it starts under the name rather than under the icon.
+  grid-template-columns:
+    auto minmax(10rem, 1.4fr) minmax(6rem, 0.8fr)
+    minmax(6rem, 1fr) auto auto auto;
+  gap: 0.125rem 0.75rem;
 }
 
-.plugin-manager__plugin-name {
+.plugin-row__icon {
+  grid-row: 1 / span 2;
+  color: var(--form-muted-foreground-color);
+}
+
+.plugin-row__name {
   font-weight: 600;
 }
 
-.plugin-manager__description,
-.plugin-manager__detail {
-  font-size: 0.8rem;
+.plugin-row__category,
+.plugin-row__targets,
+.plugin-row__version {
+  overflow: hidden;
   color: var(--form-muted-foreground-color);
+  font-size: 0.8125rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.plugin-manager__detail {
-  font-style: italic;
+.plugin-row__version {
+  font-variant-numeric: tabular-nums;
 }
 
-.plugin-manager__provides {
-  font-size: 0.85rem;
+.plugin-row__state {
+  display: flex;
+  align-items: center;
+  gap: 0.3125rem;
+  justify-self: end;
   color: var(--form-muted-foreground-color);
-}
-
-.plugin-manager__version {
-  display: block;
-  font-size: 0.75rem;
-  color: var(--form-muted-foreground-color);
-}
-
-// The status word carries the state's colour; the default (not installed) stays neutral so a list of
-// mostly-uninstalled plugins does not read as a list of problems.
-.plugin-manager__state {
-  font-size: 0.85rem;
-  color: var(--form-muted-foreground-color);
+  font-size: 0.8125rem;
+  white-space: nowrap;
 
   &--installed {
     color: var(--success-color);
   }
 
   &--busy {
-    color: var(--accent-color);
+    font-style: italic;
   }
 
   &--unavailable {
-    color: var(--warning-color);
+    color: var(--danger-color);
   }
 }
 
-.plugin-manager__row-actions {
+.plugin-row__description,
+.plugin-row__detail {
+  grid-column: 2 / -1;
+  overflow: hidden;
+  color: var(--form-muted-foreground-color);
+  font-size: 0.8125rem;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* The filter sits beside the heading rather than above the table: it belongs to the view, not to the
-   grid, and putting it in the header keeps the table flush with the rows it lists. */
-.plugin-manager__filter {
-  flex: 0 0 auto;
-  width: 18rem;
-  max-width: 100%;
+.plugin-row__detail {
+  font-style: italic;
+}
+
+.plugin-row__actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.125rem;
+  border: 0;
+  border-radius: calc(4px * var(--border-radius-multiplier));
+  background: transparent;
+  color: var(--form-muted-foreground-color);
+  cursor: pointer;
+
+  &:hover {
+    background: var(--accent-surface-background-color);
+    color: var(--accent-surface-foreground-color);
+  }
 }
