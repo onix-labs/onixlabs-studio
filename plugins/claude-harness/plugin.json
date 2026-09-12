@@ -2,13 +2,13 @@
   "id": "onixlabs.claude-harness",
   "name": "Claude",
   "description": "Runs Claude through Anthropic's Agent SDK in its own process, over Studio's agent protocol.",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "apiVersion": "1.12.0",
   "detail": "The full Claude agent: sessions held open across turns, sub-agents, background tasks, slash commands, per-tool policy, write confinement, the OS sandbox, model discovery, and Remote Control through claude.ai/code. Authenticates with your local `claude` login, or with an Anthropic API key set on the connection. Downloads around 200MB: the SDK ships its Claude Code CLI as a native binary, and one platform's is fetched.",
   "provision": {
     "kind": "npm",
     "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.claude-harness.lock.json",
-    "sha256": "43940e3c9563702d8b9b259aaf28907b52389085272be80564a6db6d435ef920",
+    "sha256": "e89b61724df7c63ad5e02d4c427984645daef14c173f3284f62a4b366b2af7fb",
     "executablePath": "node_modules/@onixlabs/claude-harness/main.js"
   },
   "contributes": {

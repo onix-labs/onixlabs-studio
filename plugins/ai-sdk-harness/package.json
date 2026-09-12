@@ -1,6 +1,6 @@
 {
   "name": "@onixlabs/ai-sdk-harness",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "AI SDK agent harness plugin for ONIXLabs Studio.",
   "type": "commonjs",

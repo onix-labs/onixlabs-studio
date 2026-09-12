@@ -18,7 +18,7 @@
  * an `input` request, and `omit` on a `tools` request so this harness keeps its own clarifying-question
  * tool instead of being handed Studio's as well.
  */
-export const PROTOCOL_VERSION: string = '1.9.0';
+export const PROTOCOL_VERSION: string = '1.10.0';
 
 /**
  * What a harness declares it can do, once, at the handshake.
@@ -177,6 +177,14 @@ export type Request =
 export interface HarnessModel {
   readonly id: string;
   readonly label?: string;
+
+  /**
+   * The model's context window in tokens, or undefined when the harness does not know (1.10.0).
+   *
+   * Studio used to resolve this from the id against a table of its own, which obliged it to know which
+   * models every provider has. An omitted window falls back to one neutral default.
+   */
+  readonly contextWindow?: number;
 }
 
 /**
