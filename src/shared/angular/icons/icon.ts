@@ -987,6 +987,30 @@ export class Icon {
   public static readonly INFO: Icon = new Icon('ph ph-info');
 
   /**
+   * Gets the filled information-severity icon, used where a status is stated as a solid,
+   * semantically-coloured badge rather than as body text.
+   */
+  public static readonly INFO_FILL: Icon = new Icon('ph-fill ph-info');
+
+  /**
+   * Gets the filled warning-severity icon in its circled form. The circled shape is what makes it read
+   * as one of a set of status badges rather than as an alert interrupting the row.
+   */
+  public static readonly WARNING_CIRCLE_FILL: Icon = new Icon('ph-fill ph-warning-circle');
+
+  /**
+   * Gets the filled success icon in its circled form, for a status badge stating that something is
+   * present and healthy.
+   */
+  public static readonly CHECK_CIRCLE_FILL: Icon = new Icon('ph-fill ph-check-circle');
+
+  /**
+   * Gets the filled download icon in its circled form, for a status badge stating that something is
+   * available to bring down rather than an action button that does it.
+   */
+  public static readonly DOWNLOAD_CIRCLE_FILL: Icon = new Icon('ph-fill ph-arrow-circle-down');
+
+  /**
    * Gets the hint-severity icon.
    */
   public static readonly HINT: Icon = new Icon('ph ph-lightbulb');
@@ -1257,6 +1281,12 @@ export class Icon {
    * Gets the delete (trash) icon.
    */
   public static readonly TRASH: Icon = new Icon('ph ph-trash');
+
+  /**
+   * Gets the delete icon in its lidless form, for a destructive action stated as a button beside other
+   * buttons, where the lidded bin's extra detail reads as noise at button size.
+   */
+  public static readonly TRASH_SIMPLE: Icon = new Icon('ph ph-trash-simple');
 
   /**
    * Gets the download icon, used for actions that fetch something over the network.

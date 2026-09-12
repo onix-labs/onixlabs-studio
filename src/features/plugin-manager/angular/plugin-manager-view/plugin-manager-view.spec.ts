@@ -6,17 +6,7 @@ import { ModalWindows } from '@shared/angular/services/modal-windows/modal-windo
 import { FakeModalWindows } from '@shared/angular/services/modal-windows/modal-windows.fake';
 import { PluginConsent } from '@shared/angular/services/plugins/plugin-consent';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
-import { MenuItem } from '@shared/angular/components/menu/menu';
-import { PluginBrowse } from '../plugin-browse/plugin-browse';
 
-/**
- * The protected surface these tests drive: the row menu's contents and what choosing an item does.
- * Named rather than cast inline so the reach into the component is stated once.
- */
-interface ViewInternals {
-  menuItemsFor(data: unknown): readonly MenuItem[];
-  onChosen(choice: { id: string; data: unknown }): void;
-}
 import { PluginConsentHost } from '@shared/angular/components/plugin-consent-modal/plugin-consent-host';
 import { PluginManagerView } from './plugin-manager-view';
 
@@ -147,77 +137,75 @@ describe('PluginManagerView', () => {
   }
 
   /**
-   * Runs a row action, which lives in the row's overflow menu.
+   * Clicks a row's action button.
    *
-   * ⚠️ Invokes the menu's own handler rather than clicking through the panel. The panel renders through
-   * a CDK overlay, which does not open under jsdom, so a DOM-driven version of this would be testing
-   * the overlay rather than the view. What the row offers is covered directly by
-   * `menu_offersOnlyTheActionThatApplies`; this drives what choosing it does.
-   * @param label The menu item's label.
+   * Drives the real button rather than reaching into the component: the actions are buttons in the row
+   * again, so there is no overlay in the way and no reason for the test to know anything the user does
+   * not. A missing button fails here rather than further down, because "the action was not offered" and
+   * "the action did nothing" are different defects.
+   * @param label The button's label.
    */
   function click(label: string): void {
-    const trigger: HTMLButtonElement | null = (
-      fixture.nativeElement as HTMLElement
-    ).querySelector<HTMLButtonElement>('.plugin-row__actions');
-    expect(trigger, 'no row action trigger on the row').not.toBeNull();
+    const buttons: readonly HTMLButtonElement[] = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>(
+        '.plugin-row__action button',
+      ),
+    );
+    const button: HTMLButtonElement | undefined = buttons.find(
+      (candidate: HTMLButtonElement): boolean => candidate.textContent?.trim() === label,
+    );
+    expect(button, `no row button labelled ${label}`).toBeDefined();
 
-    const view: ViewInternals = fixture.componentInstance as unknown as ViewInternals;
-    const plugin: PluginSummary = rowsShown()[0];
-    const item: MenuItem | undefined = view
-      .menuItemsFor(plugin)
-      .find((candidate: MenuItem): boolean => candidate.label === label);
-    expect(item, `no menu item labelled ${label}`).toBeDefined();
-
-    view.onChosen({ id: item?.id ?? '', data: plugin });
+    button?.click();
+    fixture.detectChanges();
     flush();
   }
 
   /**
-   * Gets the plugins the list is showing, in order.
-   * @returns Returns the summaries behind the rendered rows.
+   * Gets the label and disabled state of every row's action button, in row order.
+   * @returns Returns one entry per row.
    */
-  function rowsShown(): readonly PluginSummary[] {
-    return TestBed.inject(PluginBrowse).visible();
+  function actionButtons(): readonly { label: string; disabled: boolean }[] {
+    return Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>(
+        '.plugin-row__action button',
+      ),
+    ).map((button: HTMLButtonElement) => ({
+      label: button.textContent?.trim() ?? '',
+      disabled: button.disabled,
+    }));
   }
 
   afterEach(() => {
     TestBed.resetTestingModule();
   });
 
-  it('menu_offersOnlyTheActionThatApplies', () => {
-    render([summary()]);
-    // ⛔ The reason the actions moved into a menu: they are mutually exclusive, so a button column was
-    // mostly empty space and the one action that applied was never in the same place twice.
-    const view: ViewInternals = fixture.componentInstance as unknown as ViewInternals;
-    const labels: (plugin: PluginSummary) => readonly string[] = (
-      plugin: PluginSummary,
-    ): readonly string[] => view.menuItemsFor(plugin).map((item: MenuItem): string => item.label);
+  it('eachStateOffersTheOneActionThatAppliesToIt', () => {
+    // ⛔ One button per row, never a choice of two: Install, Update and Remove are mutually exclusive on
+    // any given plugin, so a row offering more than one of them would be offering a contradiction.
+    render([
+      summary({ id: 'a', state: 'available' }),
+      summary({ id: 'b', state: 'installed', installedVersion: '1.0.0', version: '1.0.0' }),
+      summary({ id: 'c', state: 'installed', installedVersion: '1.0.0', version: '2.0.0' }),
+      summary({ id: 'd', state: 'unavailable' }),
+    ]);
 
-    expect(labels({ ...rowsShown()[0], state: 'available' })).toEqual(['Install']);
-    expect(
-      labels({
-        ...rowsShown()[0],
-        state: 'installed',
-        installedVersion: '1.0.0',
-        version: '1.0.0',
-      }),
-    ).toEqual(['Remove']);
-    expect(
-      labels({
-        ...rowsShown()[0],
-        state: 'installed',
-        installedVersion: '1.0.0',
-        version: '2.0.0',
-      }),
-    ).toEqual(['Update', 'Remove']);
+    expect(actionButtons()).toEqual([
+      { label: 'Install', disabled: false },
+      { label: 'Remove', disabled: false },
+      { label: 'Update', disabled: false },
+      // Still offered, and still says what it would do — the state column beside it says why it cannot.
+      { label: 'Install', disabled: true },
+    ]);
   });
 
-  it('menu_withoutARow_offersNothing', () => {
-    // Asked once before a trigger supplies its row, so the absence of data must not throw.
-    render([summary()]);
-    const view: ViewInternals = fixture.componentInstance as unknown as ViewInternals;
+  it('anUpdateIsOfferedAsAnUpdateRatherThanAsARemoval', () => {
+    // 🔥 An outdated install satisfies *both* "is installed" and "has an update", and the row has one
+    // button to say it with. Offering Remove there would bury the update behind the one action nobody
+    // came for.
+    render([summary({ state: 'installed', installedVersion: '1.0.0', version: '2.0.0' })]);
 
-    expect(view.menuItemsFor(undefined)).toEqual([]);
+    expect(actionButtons()).toEqual([{ label: 'Update', disabled: false }]);
   });
 
   it('install_asksBeforeItInstallsAnything', () => {

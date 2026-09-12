@@ -65,7 +65,10 @@
         @let item = plugin(row);
         <div class="plugin-row">
           <app-icon class="plugin-row__icon" [icon]="iconFor(item)" [size]="2.5" />
-          <span class="plugin-row__name">{{ item.name }}</span>
+          <span class="plugin-row__identity">
+            <span class="plugin-row__name">{{ item.name }}</span>
+            <span class="plugin-row__description">{{ item.description }}</span>
+          </span>
           <span class="plugin-row__category">{{ categories(item) }}</span>
           <span class="plugin-row__targets">{{ languages(item) }}</span>
           <span class="plugin-row__version">
@@ -77,14 +80,48 @@
           </span>
           <span
             class="plugin-row__state"
-            [class.plugin-row__state--installed]="item.state === 'installed'"
+            [class.plugin-row__state--installed]="item.state === 'installed' && !canUpdate(item)"
+            [class.plugin-row__state--update]="canUpdate(item)"
+            [class.plugin-row__state--available]="item.state === 'available'"
             [class.plugin-row__state--busy]="item.state === 'busy'"
             [class.plugin-row__state--unavailable]="item.state === 'unavailable'"
           >
             <app-icon [icon]="stateIcon(item)" />
             {{ stateLabel(item) }}
           </span>
-          <span class="plugin-row__description">{{ item.description }}</span>
+          <span class="plugin-row__action">
+            @if (canUpdate(item)) {
+              <app-button
+                variant="solid"
+                tone="info"
+                label="Update"
+                [icon]="Icon.DOWNLOAD"
+                [disabled]="busy()"
+                (click)="update(item)"
+              />
+            } @else if (canUninstall(item)) {
+              <app-button
+                variant="solid"
+                tone="danger"
+                label="Remove"
+                [icon]="Icon.TRASH_SIMPLE"
+                [disabled]="busy()"
+                (click)="uninstall(item)"
+              />
+            } @else {
+              <!-- An unsupported plugin still shows its Install, disabled: removing the button would
+                   leave the row with no statement of what it would do, and the state column beside it
+                   already says why it cannot. -->
+              <app-button
+                variant="solid"
+                [tone]="canInstall(item) ? 'success' : 'neutral'"
+                label="Install"
+                [icon]="Icon.DOWNLOAD"
+                [disabled]="busy() || !canInstall(item)"
+                (click)="install(item)"
+              />
+            }
+          </span>
         </div>
       </ng-template>
     </app-list-view>

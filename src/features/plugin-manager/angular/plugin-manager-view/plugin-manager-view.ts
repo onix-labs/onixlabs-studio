@@ -17,8 +17,8 @@ import {
 } from '@shared/api/plugin-channels';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { Button } from '@shared/angular/components/forms/button/button';
 import { ListRow, ListView } from '@shared/angular/components/list-view/list-view';
-import { MenuChoice, MenuItem } from '@shared/angular/components/menu/menu';
 import { Panel } from '@shared/angular/components/panel-layout/panel';
 import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
 import { PluginBrowse, categoriesOf, rowIconForCategory } from '../plugin-browse/plugin-browse';
@@ -47,7 +47,7 @@ const SLOT_LABELS: Readonly<Record<PluginSlot, string>> = {
  */
 @Component({
   selector: 'app-plugin-manager-view',
-  imports: [AppIcon, ListView, PanelLayout, Panel],
+  imports: [AppIcon, Button, ListView, PanelLayout, Panel],
   templateUrl: './plugin-manager-view.html',
   styleUrl: './plugin-manager-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -249,7 +249,7 @@ export class PluginManagerView {
     if (plugin.state === 'busy') {
       return 'Working…';
     }
-    return plugin.state === 'available' ? 'Not installed' : 'Not supported here';
+    return plugin.state === 'available' ? 'Not installed' : 'Not supported';
   }
 
   /**
@@ -259,59 +259,12 @@ export class PluginManagerView {
    */
   protected stateIcon(plugin: PluginSummary): Icon {
     if (plugin.state === 'installed') {
-      return this.canUpdate(plugin) ? Icon.DOWNLOAD : Icon.CHECK;
+      return this.canUpdate(plugin) ? Icon.INFO_FILL : Icon.CHECK_CIRCLE_FILL;
     }
-    return plugin.state === 'unavailable' ? Icon.WARNING : Icon.DOWNLOAD;
-  }
-
-  /**
-   * Builds the actions that apply to a row.
-   *
-   * ⚠️ Nothing triggers these from the row any more — the overflow button was removed while the layout
-   * is being settled, so Install, Update and Remove currently have no entry point in the list.
-   *
-   * ⛔ A menu rather than the buttons this list used to carry. Install, Update and Remove are
-   * mutually exclusive on any given row, so a button column was mostly empty space that still had to be
-   * paid for in every row's width — and the one action that applies was never in the same place twice.
-   */
-  protected readonly menuItemsFor: (data: unknown) => readonly MenuItem[] = (
-    data: unknown,
-  ): readonly MenuItem[] => {
-    // ⚠️ Asked before a trigger has supplied its row, so the absence of data is ordinary rather than a
-    // fault: the menu resolves its rows once on creation and again each time it opens.
-    if (data === null || data === undefined) {
-      return [];
+    if (plugin.state === 'unavailable') {
+      return Icon.WARNING_CIRCLE_FILL;
     }
-    const plugin: PluginSummary = data as PluginSummary;
-    const busy: boolean = this.busy();
-    const items: MenuItem[] = [];
-    if (this.canUpdate(plugin)) {
-      items.push({ id: 'update', label: 'Update', icon: Icon.DOWNLOAD, disabled: busy });
-    } else if (this.canInstall(plugin)) {
-      items.push({ id: 'install', label: 'Install', icon: Icon.DOWNLOAD, disabled: busy });
-    }
-    if (this.canUninstall(plugin)) {
-      items.push({ id: 'uninstall', label: 'Remove', icon: Icon.TRASH, disabled: busy });
-    }
-    return items;
-  };
-
-  /**
-   * Runs a row's chosen menu item.
-   * @param choice The chosen item, carrying the plugin its menu opened on.
-   */
-  protected onChosen(choice: MenuChoice): void {
-    if (choice.data === null || choice.data === undefined) {
-      return;
-    }
-    const plugin: PluginSummary = choice.data as PluginSummary;
-    if (choice.id === 'install') {
-      this.install(plugin);
-    } else if (choice.id === 'update') {
-      this.update(plugin);
-    } else if (choice.id === 'uninstall') {
-      this.uninstall(plugin);
-    }
+    return Icon.DOWNLOAD_CIRCLE_FILL;
   }
 
   /**

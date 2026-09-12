@@ -138,38 +138,65 @@
 }
 
 // ---------------------------------------------------------------------------------------------
-// A row: identity and metadata on the first line, description on the second
+// A row: one line of columns, with the name and its description stacked inside the first
 // ---------------------------------------------------------------------------------------------
 
+// Named because the identity column's width is derived from both of them, and a half that silently
+// stopped being a half the next time the gap changed would be a difficult thing to notice.
+$icon-column: 2.5rem;
+$column-gap: 0.875rem;
+// Fixed, so the buttons line up down the list however wide their labels are. "Remove", "Update" and
+// "Install" are all different lengths; sizing to content would stagger them row by row and make the
+// one control in the row something to be found again on each one.
+//
+// 🔥 The width has to be measured, not picked: nothing here sets a base `font-size`, so the row runs at
+// the browser's 16px, and the button spends 16px on inline padding, 2px on its border, and 22px on the
+// icon and its gap before the label gets anything. "Remove" is the longest of the three at ~58px, so
+// anything under 6.5rem cuts it — which is exactly what 4rem did.
+$action-column: 7rem;
+
+// 🔥 The row is a single grid *row*, and that is the whole trick. It was two rows — the columns on the
+// first, the description on the second — and a column occupying only the first row has nothing to be
+// centred against: `align-items: center` centred it within a track the height of one line, while the
+// row itself was two lines tall. The name and description stack inside their own cell instead, so the
+// row has exactly one track, that cell is the tallest thing in it, and every other column centres
+// against the full height.
 .plugin-row {
   display: grid;
-  // 🔥 The shared `.list-row` is a flex container, so this grid is a flex *item* — and a flex item is
-  // shrink-to-fit by default. It never filled the row, which squeezed the fractional tracks down to
-  // nothing while the fixed ones kept their width, so the columns neither aligned nor read as muted
-  // supporting text: they were simply clipped. `min-inline-size: 0` is the other half — a grid item
-  // will not shrink below its content without it, whatever the track says.
+  // The shared `.list-row` is a flex container, so this is a flex *item*, and a flex item is
+  // shrink-to-fit by default: without these it never filled the row and the fractional tracks below
+  // collapsed to nothing.
   flex: 1 1 auto;
   min-inline-size: 0;
   align-items: center;
-  // 🔥 Every track is a fixed width or a fraction, and none is `auto`. Each row is its own grid, so a
-  // content-sized track resolves against that row's own text — which is why the columns did not line
-  // up: a long version or a wide status pushed its neighbours somewhere different on every row.
+  // 🔥 Every track is a fixed width, a percentage or a fraction, and none is `auto`. Each row is its
+  // own grid, so a content-sized track would resolve against that row's own text and the columns would
+  // land somewhere different on every row.
+  //
+  // The identity column is sized so that the *pair* — icon plus name and description — comes to half
+  // the row: a percentage track resolves against the grid's content box, so the icon's own track and
+  // the gap between them are subtracted here rather than eating into the half. The remaining columns
+  // divide what is left; `minmax(0, …)` lets the fractional ones give way first when the panel is
+  // dragged narrow, leaving the version and state legible longest.
   grid-template-columns:
-    2.5rem minmax(0, 1.6fr) minmax(0, 1fr)
-    minmax(0, 1.2fr) 8rem 9.5rem;
-  // The column gap separates the fields; the row gap separates the name from its description. The
-  // block padding is what separates one plugin from the next, which the list itself does not do.
-  gap: 0.25rem 0.875rem;
+    #{$icon-column} calc(50% - #{$icon-column} - #{$column-gap}) minmax(0, 1fr)
+    minmax(0, 1.2fr) 8rem 9.5rem #{$action-column};
+  gap: $column-gap;
+  // The list itself does not space its rows, so the gap between one plugin and the next is ours.
   padding-block: 0.5rem;
 }
 
 .plugin-row__icon {
-  // Spans both lines so the description sits beside it rather than under it, which is what makes the
-  // row read as one object rather than two stacked ones.
-  grid-row: 1 / span 2;
-  align-self: center;
   justify-self: center;
   color: var(--form-muted-foreground-color);
+}
+
+// The one cell that is two lines tall; it sets the row's height and everything else centres on it.
+.plugin-row__identity {
+  display: flex;
+  min-inline-size: 0;
+  flex-direction: column;
+  gap: 0.125rem;
 }
 
 .plugin-row__name {
@@ -180,10 +207,20 @@
 }
 
 // The name and the state carry the row; everything else is supporting text, so it is muted rather
-// than competing for the same attention.
+// than competing for the same attention. Muting is what separates them — the columns are read across
+// rows to compare plugins, so they keep the row's own text size and let the colour do the work.
 .plugin-row__category,
 .plugin-row__targets,
 .plugin-row__version {
+  overflow: hidden;
+  color: var(--form-muted-foreground-color);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// The description is the one thing that is genuinely secondary: it belongs to the name above it rather
+// than to a column being scanned, so it is the only text set smaller than the row.
+.plugin-row__description {
   overflow: hidden;
   color: var(--form-muted-foreground-color);
   font-size: 0.8125rem;
@@ -201,27 +238,44 @@
   gap: 0.3125rem;
   justify-self: start;
   color: var(--form-muted-foreground-color);
-  font-size: 0.8125rem;
   white-space: nowrap;
 
+  // The four states the badge can be in, each stated in the semantic colour that already means it
+  // everywhere else in the application rather than in a colour picked for this view.
   &--installed {
     color: var(--success-color);
   }
 
-  &--busy {
-    font-style: italic;
+  &--update {
+    color: var(--info-color);
+  }
+
+  &--available {
+    color: var(--warning-color);
   }
 
   &--unavailable {
     color: var(--danger-color);
   }
+
+  // Not a colour: the work is transient, and a colour would imply an outcome it has not reached.
+  &--busy {
+    font-style: italic;
+  }
 }
 
-.plugin-row__description {
-  grid-column: 2 / -1;
-  overflow: hidden;
-  color: var(--form-muted-foreground-color);
-  font-size: 0.8125rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+// The action is the row's one interactive element, so it is pinned to the end and given a fixed track
+// of its own: a button that moved with the text beside it would have to be found again on every row.
+.plugin-row__action {
+  display: flex;
+  justify-content: flex-end;
+
+  // The atom is built to be stretched by its call site — its inner button carries `flex: 1` — so the
+  // width is stated here rather than by reaching into the button's own styling.
+  app-button {
+    inline-size: 100%;
+    // The track is narrower than the widest label, so a label that does not fit is cut at the button's
+    // edge instead of spilling across the column beside it.
+    overflow: hidden;
+  }
 }
