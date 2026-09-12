@@ -70,6 +70,21 @@ const CATEGORY_ICONS: Readonly<Record<string, Icon>> = {
 };
 
 /**
+ * The same glyphs at the light weight, for a plugin row.
+ *
+ * ⚠️ The panel and a row deliberately differ in weight rather than in glyph: duotone reads as a set of
+ * destinations, where a list of duotone icons at row size turns into a wall of colour. Keeping the
+ * glyph means a plugin still looks like the category that filters to it.
+ */
+const ROW_ICONS: Readonly<Record<string, Icon>> = {
+  'Language Servers': Icon.LANGUAGE_SERVERS_LIGHT,
+  'Debug Adapters': Icon.DEBUG_LIGHT,
+  Decoders: Icon.DECODERS_LIGHT,
+  'Container Engines': Icon.CONTAINERS_LIGHT,
+  'AI Agents': Icon.AGENT_LIGHT,
+};
+
+/**
  * The browsing state of the Plugin Manager — what is searched for, which install states are shown,
  * which category is selected, and how the list is ordered.
  *
@@ -130,7 +145,7 @@ export class PluginBrowse {
         .map(([name, count]: [string, number]): PluginCategory => ({
           name,
           count,
-          icon: CATEGORY_ICONS[name] ?? Icon.PLUGINS,
+          icon: iconForCategory(name),
         }))
         .sort((left, right): number => left.name.localeCompare(right.name));
     },
@@ -183,6 +198,27 @@ export class PluginBrowse {
   public clearQuery(): void {
     this.query.set('');
   }
+}
+
+/**
+ * Gets the glyph that stands for a category.
+ *
+ * Exported because the list rows use it too: a plugin is drawn with the icon of the category it falls
+ * under, so the panel and the row it filters to cannot show different pictures of the same thing.
+ * @param name The category name.
+ * @returns Returns the icon, falling back to the puzzle piece for a category with no entry.
+ */
+export function iconForCategory(name: string): Icon {
+  return CATEGORY_ICONS[name] ?? Icon.PLUGINS;
+}
+
+/**
+ * Gets the glyph a plugin row is drawn with: the category's, at the light weight.
+ * @param name The category name.
+ * @returns Returns the icon, falling back to the puzzle piece for a category with no entry.
+ */
+export function rowIconForCategory(name: string): Icon {
+  return ROW_ICONS[name] ?? Icon.PLUGINS_LIGHT;
 }
 
 /**

@@ -64,7 +64,7 @@
       <ng-template let-row>
         @let item = plugin(row);
         <div class="plugin-row">
-          <app-icon class="plugin-row__icon" [icon]="Icon.WELCOME_PLUGINS" />
+          <app-icon class="plugin-row__icon" [icon]="iconFor(item)" [size]="2.5" />
           <span class="plugin-row__name">{{ item.name }}</span>
           <span class="plugin-row__category">{{ categories(item) }}</span>
           <span class="plugin-row__targets">{{ languages(item) }}</span>
@@ -85,23 +85,6 @@
             {{ stateLabel(item) }}
           </span>
           <span class="plugin-row__description">{{ item.description }}</span>
-          <!-- The row's own actions. Install, Update and Remove are mutually exclusive, so a button
-               column would be mostly empty space that every row still pays for in width — and the one
-               action that applies would never sit in the same place twice. -->
-          <button
-            type="button"
-            class="plugin-row__actions"
-            aria-label="Plugin actions"
-            [cdkMenuTriggerFor]="rowMenu.panel() ?? null"
-            [cdkMenuPosition]="rowMenu.position()"
-            [cdkMenuTriggerData]="item"
-          >
-            <app-icon [icon]="Icon.DOTS_THREE_VERTICAL" />
-          </button>
-          <app-menu #rowMenu [itemsFor]="menuItemsFor" (chosen)="onChosen($event)" />
-          @if (item.detail; as detail) {
-            <span class="plugin-row__detail">{{ detail }}</span>
-          }
         </div>
       </ng-template>
     </app-list-view>

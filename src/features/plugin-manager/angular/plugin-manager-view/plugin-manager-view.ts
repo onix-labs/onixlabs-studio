@@ -18,11 +18,10 @@ import {
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { ListRow, ListView } from '@shared/angular/components/list-view/list-view';
-import { CdkMenuTrigger } from '@angular/cdk/menu';
-import { Menu, MenuChoice, MenuItem } from '@shared/angular/components/menu/menu';
+import { MenuChoice, MenuItem } from '@shared/angular/components/menu/menu';
 import { Panel } from '@shared/angular/components/panel-layout/panel';
 import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
-import { PluginBrowse, categoriesOf } from '../plugin-browse/plugin-browse';
+import { PluginBrowse, categoriesOf, rowIconForCategory } from '../plugin-browse/plugin-browse';
 import { languageDisplayName } from '@shared/angular/services/plugins/language-names';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
 
@@ -48,7 +47,7 @@ const SLOT_LABELS: Readonly<Record<PluginSlot, string>> = {
  */
 @Component({
   selector: 'app-plugin-manager-view',
-  imports: [AppIcon, ListView, PanelLayout, Panel, Menu, CdkMenuTrigger],
+  imports: [AppIcon, ListView, PanelLayout, Panel],
   templateUrl: './plugin-manager-view.html',
   styleUrl: './plugin-manager-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -229,6 +228,16 @@ export class PluginManagerView {
   }
 
   /**
+   * Gets the glyph a row is drawn with: the icon of the category it falls under, at the light weight
+   * the rows use.
+   * @param plugin The plugin.
+   * @returns Returns the icon.
+   */
+  protected iconFor(plugin: PluginSummary): Icon {
+    return rowIconForCategory(categoriesOf(plugin)[0]);
+  }
+
+  /**
    * Gets the word shown in a row's state badge.
    * @param plugin The plugin.
    * @returns Returns the label.
@@ -256,7 +265,10 @@ export class PluginManagerView {
   }
 
   /**
-   * Builds a row's overflow menu.
+   * Builds the actions that apply to a row.
+   *
+   * ⚠️ Nothing triggers these from the row any more — the overflow button was removed while the layout
+   * is being settled, so Install, Update and Remove currently have no entry point in the list.
    *
    * ⛔ A menu rather than the buttons this list used to carry. Install, Update and Remove are
    * mutually exclusive on any given row, so a button column was mostly empty space that still had to be

@@ -183,6 +183,41 @@ export class Icon {
   public static readonly LANGUAGE_SERVERS: Icon = new Icon('ph-duotone ph-desktop-tower');
 
   /**
+   * Gets the light weight of each category's glyph, used on a plugin row.
+   *
+   * ⚠️ A parallel set rather than a weight chosen at the call site, because picking a token is how a
+   * weight is picked here — the categories panel wants the duotone family so it reads as a set of
+   * destinations, while a row wants the light one so a list of them does not turn into a wall of
+   * colour. Same glyphs, so a plugin and the category filtering to it still look like the same thing.
+   */
+  public static readonly PLUGINS_LIGHT: Icon = new Icon('ph-light ph-puzzle-piece');
+
+  /**
+   * Gets the light weight of the AI agents glyph, for a plugin row.
+   */
+  public static readonly AGENT_LIGHT: Icon = new Icon('ph-light ph-brain');
+
+  /**
+   * Gets the light weight of the container engines glyph, for a plugin row.
+   */
+  public static readonly CONTAINERS_LIGHT: Icon = new Icon('ph-light ph-shipping-container');
+
+  /**
+   * Gets the light weight of the debug adapters glyph, for a plugin row.
+   */
+  public static readonly DEBUG_LIGHT: Icon = new Icon('ph-light ph-bug');
+
+  /**
+   * Gets the light weight of the decoders glyph, for a plugin row.
+   */
+  public static readonly DECODERS_LIGHT: Icon = new Icon('ph-light ph-cpu');
+
+  /**
+   * Gets the light weight of the language servers glyph, for a plugin row.
+   */
+  public static readonly LANGUAGE_SERVERS_LIGHT: Icon = new Icon('ph-light ph-desktop-tower');
+
+  /**
    * Gets the agent content icon.
    */
   public static readonly AGENT: Icon = new Icon('ph-duotone ph-brain');
