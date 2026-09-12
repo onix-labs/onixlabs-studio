@@ -8,6 +8,7 @@ import {
   type AiModelInfo,
   modelsForKind,
   pagesFromContributions,
+  type OfferedAiProvider,
   type ProviderPage,
 } from '@shared/api/ai-types';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
@@ -35,11 +36,14 @@ export class AiProviders {
   /**
    * Gets the providers contributed by installed harnesses, in contribution order.
    */
-  public readonly contributed: Signal<readonly ContributedAiProvider[]> = computed(
-    (): readonly ContributedAiProvider[] =>
+  public readonly contributed: Signal<readonly OfferedAiProvider[]> = computed(
+    (): readonly OfferedAiProvider[] =>
       installedContributions(this.plugins.plugins(), 'agent-harness').flatMap(
-        (harness: UnkeyedPluginContribution): readonly ContributedAiProvider[] =>
-          harness.providers ?? [],
+        (harness: UnkeyedPluginContribution): readonly OfferedAiProvider[] =>
+          (harness.providers ?? []).map((provider: ContributedAiProvider): OfferedAiProvider => ({
+            ...provider,
+            harnessId: harness.id,
+          })),
       ),
   );
 
@@ -56,9 +60,8 @@ export class AiProviders {
    * @returns Returns the company name, or undefined.
    */
   public companyFor(kind: string): string | undefined {
-    return this.contributed().find(
-      (provider: ContributedAiProvider): boolean => provider.kind === kind,
-    )?.company;
+    return this.contributed().find((provider: OfferedAiProvider): boolean => provider.kind === kind)
+      ?.company;
   }
 
   /**

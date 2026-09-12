@@ -120,14 +120,27 @@ describe('AiConnectionEditor', () => {
     expect(picker()).toBeNull();
   });
 
-  it('withAHarnessInstalled_offersItAlongsideTheBuiltIn', () => {
+  it('withNothingChosen_offersAPlaceholderAndTheInstalledHarnesses', () => {
+    // ⛔ The first option used to be **Built-in**, meaning the provider compiled into Studio. Core ships
+    // none (#653), so it named something that could never run — and it was the pre-selected value on
+    // every connection, which is how a plugin could install cleanly and still do nothing (#697).
     plugins.set([harnessPlugin('onixlabs.ai-sdk-harness', 'AI SDK (out of process)')]);
     mount(connection());
 
     const labels: readonly string[] = Array.from(picker()!.querySelectorAll('option')).map(
       (option: Element): string => option.textContent?.trim() ?? '',
     );
-    expect(labels).toEqual(['Built-in', 'AI SDK (out of process)']);
+    expect(labels).toEqual(['Not set — choose a plugin', 'AI SDK (out of process)']);
+  });
+
+  it('withAHarnessChosen_offersNoWayBackToAnUnrunnableState', () => {
+    plugins.set([harnessPlugin('onixlabs.ai-sdk-harness', 'AI SDK')]);
+    mount(connection({ harnessId: 'onixlabs.ai-sdk-harness' }));
+
+    const labels: readonly string[] = Array.from(picker()!.querySelectorAll('option')).map(
+      (option: Element): string => option.textContent?.trim() ?? '',
+    );
+    expect(labels).toEqual(['AI SDK']);
   });
 
   it('choosingAHarness_namesItOnTheConnection', () => {
@@ -142,20 +155,9 @@ describe('AiConnectionEditor', () => {
     expect(update).toHaveBeenCalledWith('conn-1', { harnessId: 'onixlabs.ai-sdk-harness' });
   });
 
-  it('choosingBuiltIn_clearsTheHarnessRatherThanNamingOne', () => {
-    // Stored as null, not as the sentinel: "no harness" is an absence, and a connection carrying an
-    // empty string would be naming a harness that cannot exist.
-    plugins.set([harnessPlugin('onixlabs.ai-sdk-harness', 'AI SDK')]);
-    mount(connection({ harnessId: 'onixlabs.ai-sdk-harness' }));
-
-    choose('');
-
-    expect(update).toHaveBeenCalledWith('conn-1', { harnessId: null });
-  });
-
-  it('withTheNamedHarnessUninstalled_readsAsBuiltInWithoutRewritingTheChoice', () => {
-    // Uninstalling a plugin really does leave the connection running through core, so the picker says
-    // so. ⚠️ The stored id is deliberately NOT cleared — reinstalling restores the choice, and
+  it('withTheNamedHarnessUninstalled_readsAsNotSetWithoutRewritingTheChoice', () => {
+    // The plugin that ran it is gone, so it cannot run, and saying "not set" beats naming a plugin that
+    // is not there. ⚠️ The stored id is deliberately NOT cleared — reinstalling restores the choice, and
     // silently rewriting a user's configuration because a plugin is temporarily absent would lose it.
     plugins.set([harnessPlugin('onixlabs.ai-sdk-harness', 'AI SDK')]);
     mount(connection({ harnessId: 'onixlabs.claude-harness' }));

@@ -16,11 +16,14 @@ import { Icon } from '@shared/angular/icons/icon';
 import { SettingControl } from '../../../setting-control/setting-control';
 
 /**
- * The dropdown value standing for "no harness" — the configuration runs through the provider built
- * into Studio. An empty string rather than a plugin id, because the absence of a choice is what it
- * means; `harnessId` is stored as null.
+ * The dropdown value standing for "no harness chosen" — the configuration cannot run.
+ *
+ * ⛔ This used to be labelled **Built-in**, and to mean the provider compiled into Studio. There is no
+ * such provider any more (#653): core ships none, so a configuration left on it could never run, and
+ * the label said the opposite. It is now a placeholder that appears only when nothing is chosen, and
+ * says so.
  */
-const BUILT_IN_HARNESS: string = '';
+const NO_HARNESS: string = '';
 
 /**
  * Edits a single AI provider configuration (a connection) inside its company page's accordion. Its
@@ -172,16 +175,23 @@ export class AiConnectionEditor {
   );
 
   /**
-   * Gets the harnesses this configuration may run through, led by Studio's own.
+   * Gets the harnesses this configuration may run through.
    *
-   * ⚠️ Deliberately unfiltered. A harness manifest declares the auth kinds it claims, but that is
-   * advisory metadata that decides nothing (#678) and does not cross to the renderer at all — the
-   * contribution carries an identity, a name and a priority, and nothing else. Guessing which
-   * harnesses suit a connection from here would mean inventing a rule the contract does not state.
+   * ⛔ Installed plugins only. The list used to be led by a **Built-in** entry standing for the provider
+   * compiled into Studio; core ships none, so that entry was an option that could only ever fail, and
+   * it was the pre-selected one (#697).
+   *
+   * ⚠️ Deliberately unfiltered beyond that. A harness manifest declares the auth kinds it claims, but
+   * that is advisory metadata that decides nothing (#678) — guessing which harnesses suit a
+   * configuration from here would mean inventing a rule the contract does not state.
    */
   protected readonly harnessOptions: Signal<readonly DropdownOption[]> = computed(
     (): readonly DropdownOption[] => [
-      { value: BUILT_IN_HARNESS, label: 'Built-in' },
+      // Only when nothing is chosen, so a configuration that names a harness offers no way back to a
+      // state that cannot run.
+      ...(this.harnessValue() === NO_HARNESS
+        ? [{ value: NO_HARNESS, label: 'Not set — choose a plugin' }]
+        : []),
       ...this.harnesses().map((harness: UnkeyedPluginContribution): DropdownOption => ({
         value: harness.id,
         label: harness.displayName,
@@ -192,29 +202,29 @@ export class AiConnectionEditor {
   /**
    * Gets the harness the configuration currently runs through.
    *
-   * ⚠️ A configuration naming a harness that is no longer installed reads as Built-in rather than as
-   * a blank: uninstalling a plugin does leave the connection running through core, so this states what
-   * is actually happening. The stored `harnessId` is left alone, so reinstalling restores the choice.
+   * ⚠️ A configuration naming a harness that is no longer installed reads as not set: the plugin that
+   * ran it is gone, so it cannot run, and saying so beats naming a plugin that is not there. The stored
+   * `harnessId` is left alone, so reinstalling restores the choice.
    */
   protected readonly harnessValue: Signal<string> = computed((): string => {
     const chosen: string | null | undefined = this.connection().harnessId;
     if (chosen === null || chosen === undefined) {
-      return BUILT_IN_HARNESS;
+      return NO_HARNESS;
     }
     return this.harnesses().some(
       (harness: UnkeyedPluginContribution): boolean => harness.id === chosen,
     )
       ? chosen
-      : BUILT_IN_HARNESS;
+      : NO_HARNESS;
   });
 
   /**
-   * Points the configuration at a harness, or back at Studio's own.
-   * @param value The chosen harness id, or the built-in sentinel.
+   * Points the configuration at a harness.
+   * @param value The chosen harness id, or the placeholder when nothing is chosen.
    */
   protected onHarness(value: string): void {
-    const harnessId: string | null = value === BUILT_IN_HARNESS ? null : value;
-    this.log.info('settings.ai', 'Harness set', this.connection().id, harnessId ?? 'built-in');
+    const harnessId: string | null = value === NO_HARNESS ? null : value;
+    this.log.info('settings.ai', 'Harness set', this.connection().id, harnessId ?? 'none');
     this.connections.update(this.connection().id, { harnessId });
   }
 

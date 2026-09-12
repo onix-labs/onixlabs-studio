@@ -133,6 +133,11 @@ export class AiConnections {
       kind,
       label: method?.defaultDisplayName ?? kind,
       auth: method?.auth ?? API_KEY_AUTH,
+      // 🔑 The configuration names the plugin that will run it from the moment it exists. The page it
+      // was created from came from that plugin, so making the user then go and choose it — from a
+      // dropdown that defaulted to a "Built-in" harness which no longer exists — was asking them to
+      // repair something that was never broken until core stopped shipping a provider (#653, #697).
+      ...(method?.harnessId === undefined ? {} : { harnessId: method.harnessId }),
       ...(method?.baseUrl !== undefined ? { baseUrl: method.baseUrl } : {}),
       models,
       defaultModelId: models[0]?.id ?? '',

@@ -47,6 +47,7 @@ describe('AiConnections', () => {
 
   it('add_whenGivenAMethod_takesItsAuthLabelAndBaseUrl', () => {
     const cloud: AiConnection = service.add('ollama', {
+      harnessId: 'test.harness',
       auth: 'api-key',
       buttonLabel: 'Cloud',
       defaultDisplayName: 'Cloud',
@@ -57,6 +58,9 @@ describe('AiConnections', () => {
     expect(cloud.auth).toBe('api-key');
     expect(cloud.label).toBe('Cloud');
     expect(cloud.baseUrl).toBe('https://ollama.com');
+    // 🔑 A configuration names the plugin that will run it from the moment it exists — the page it was
+    // created from came from that plugin, so there is nothing for the user to choose afterwards (#697).
+    expect(cloud.harnessId).toBe('test.harness');
   });
 
   it('connectionsForKinds_whenCalled_filtersByKind', () => {

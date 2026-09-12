@@ -65,6 +65,7 @@ export type { AiProviderKind, AiAuthKind, AiConnection } from './ai/ai-connectio
 export { API_KEY_AUTH, NO_AUTH } from './ai/ai-connection-types';
 export type { AuthMethod, ProviderPage } from './ai/ai-provider-catalog';
 export {
+  type OfferedAiProvider,
   pagesFromContributions,
   modelsForKind,
   providerPageForKind,
