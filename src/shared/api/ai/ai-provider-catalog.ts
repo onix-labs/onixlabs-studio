@@ -13,6 +13,17 @@
 // import it.
 
 import type { ContributedAiProvider } from '../plugin-channels';
+
+/**
+ * A contributed provider together with the harness that offers it, which is what a page needs in order
+ * to point a new configuration at the plugin that will run it.
+ */
+export interface OfferedAiProvider extends ContributedAiProvider {
+  /**
+   * Gets the identifier of the harness contributing this provider.
+   */
+  readonly harnessId: string;
+}
 import type { AiModelInfo } from './ai-provider-types';
 import type { AiAuthKind, AiProviderKind } from './ai-connection-types';
 
@@ -22,6 +33,17 @@ import type { AiAuthKind, AiProviderKind } from './ai-connection-types';
  * label, and optional preset {@link baseUrl} (for a hosted tier reached over HTTP, such as Ollama Cloud).
  */
 export interface AuthMethod {
+  /**
+   * Gets the identifier of the harness that offers this method, which a configuration created through
+   * it is pointed at.
+   *
+   * ⛔ On the method rather than the page (#653). A company page can merge contributions from more than
+   * one plugin — OpenAI's subscription comes from the Codex harness and its API key from the AI SDK
+   * harness — so the page cannot say which plugin runs a configuration, and only the button the user
+   * actually pressed can.
+   */
+  readonly harnessId: string;
+
   /**
    * Gets the auth kind a configuration added through this method uses.
    */
@@ -104,7 +126,7 @@ export interface ProviderPage {
  * @returns Returns the pages, empty when nothing is installed.
  */
 export function pagesFromContributions(
-  providers: readonly ContributedAiProvider[],
+  providers: readonly OfferedAiProvider[],
 ): readonly ProviderPage[] {
   const byKind: Map<string, ProviderPage> = new Map<string, ProviderPage>();
   for (const provider of providers) {
@@ -115,6 +137,7 @@ export function pagesFromContributions(
         continue;
       }
       methods.push({
+        harnessId: provider.harnessId,
         auth: method.auth,
         buttonLabel: method.buttonLabel,
         defaultDisplayName: method.defaultDisplayName,
@@ -141,7 +164,7 @@ export function pagesFromContributions(
  * @returns Returns the models, empty when none were contributed.
  */
 export function modelsForKind(
-  providers: readonly ContributedAiProvider[],
+  providers: readonly OfferedAiProvider[],
   kind: string,
 ): readonly AiModelInfo[] {
   const seen: Set<string> = new Set<string>();
