@@ -1,4 +1,4 @@
-import { BrowserWindow, Display, Event as ElectronEvent, screen, WebContents } from 'electron';
+import { app, BrowserWindow, Display, Event as ElectronEvent, screen, WebContents } from 'electron';
 import {
   parseFeatureFlag,
   parseFeatureText,
@@ -148,6 +148,17 @@ export class WindowManager {
   private readonly options: WindowManagerOptions;
 
   /**
+   * Holds whether the application is the one the user is currently working in.
+   *
+   * 🔥 Starts true, and that is the whole safety of it. Seeding it false would mean a window shown
+   * before anything had reported activation — the first one, on an ordinary launch — came up unfocused,
+   * and a window you have to click before you can type in it is a worse bug than the one being fixed.
+   * Starting true means activation is only ever suppressed once the user has demonstrably gone
+   * somewhere else.
+   */
+  private applicationActive: boolean = true;
+
+  /**
    * Holds the pending safety-net timer that shows the main window when the renderer never speaks
    * for it, or null once it has fired or been retired.
    */
@@ -179,6 +190,16 @@ export class WindowManager {
    */
   public constructor(options: WindowManagerOptions) {
     this.options = options;
+    // ⚠️ Both events are macOS-only, so nothing maintains this elsewhere — which is why it starts
+    // true. Everywhere without them keeps the behaviour it had, and on macOS the flag only ever goes
+    // false on positive evidence that the user moved to another application.
+    app.on('did-become-active', (): void => {
+      this.applicationActive = true;
+    });
+    app.on('did-resign-active', (): void => {
+      logger.debug('WindowManager', 'application resigned active; windows will show unfocused');
+      this.applicationActive = false;
+    });
   }
 
   /**
@@ -244,9 +265,21 @@ export class WindowManager {
       this.mainStartsMaximized = false;
       window.maximize();
     }
-    logger.info('WindowManager.showWindow', 'showing window');
-    window.show();
-    window.focus();
+    // 🔥 `show()` activates the application on macOS; dropping the `focus()` that used to follow it
+    // was not enough. Studio takes a while to boot, and a user who switched to something else while it
+    // did had the window — and the application with it — yanked in front of them at the moment it
+    // finished. So a window is only shown *active* when the user is already here; when they are not,
+    // it takes its place behind whatever they moved on to and waits to be asked for.
+    //
+    // Deliberate focus requests are unaffected: a second instance launching and the dock icon both go
+    // through `focusMain`, which focuses explicitly.
+    if (this.applicationActive) {
+      logger.info('WindowManager.showWindow', 'showing window');
+      window.show();
+      return;
+    }
+    logger.info('WindowManager.showWindow', 'showing window unfocused; the user is elsewhere');
+    window.showInactive();
   }
 
   /**
@@ -488,6 +521,12 @@ export class WindowManager {
       rect,
     });
     return {
+      // 🔥 Created hidden, and shown by {@link adoptModalWindow} a moment later through the same
+      // activation-aware path every other window uses. Electron's default is `show: true`, which
+      // means the window shows itself the instant it is constructed — and on macOS that activates the
+      // application. The welcome screen is a modal opened this way during boot, so the one window
+      // that appears on a cold start was the one window nothing could stop from stealing focus.
+      show: false,
       // The modal paints this until its content renders; the opener passes the colour its panel
       // will land on, so a modal window never flashes black on the way in.
       backgroundColor: WindowManager.modalBackground(features),
@@ -553,6 +592,9 @@ export class WindowManager {
         'modal opens free-standing (no visible parent)',
       );
     }
+    // Parented first, then shown: a window that is already on screen when it is given a parent is
+    // re-ordered in front of the user, which is the jump this whole path exists to avoid.
+    this.showWindow(window);
     logger.info('WindowManager.adoptModalWindow', 'modal window adopted');
   }
 
