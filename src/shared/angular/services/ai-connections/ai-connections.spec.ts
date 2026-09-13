@@ -1,6 +1,13 @@
 import { TestBed } from '@angular/core/testing';
 
-import type { AiConnection } from '@shared/api/ai-types';
+import type {
+  AiAuthStatus,
+  AiConnection,
+  AiDiscoverModelsResult,
+  AiModelInfo,
+} from '@shared/api/ai-types';
+import type { AiClient } from '@shared/api/ai-channels';
+import { Ai } from '@shared/angular/services/ai/ai';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { AiConnections } from './ai-connections';
 
@@ -140,6 +147,100 @@ describe('AiConnections', () => {
 
     expect(current(created.id).models[0].pinned).toBe(true);
     expect(current(created.id).models[0].hidden).toBe(true);
+  });
+
+  describe('background discovery', () => {
+    let discoveries: AiConnection[];
+    let discovered: readonly AiModelInfo[];
+
+    /**
+     * Builds the service over a stub client that answers discovery with {@link discovered}.
+     * @returns Returns the service.
+     */
+    function withClient(): AiConnections {
+      discoveries = [];
+      const client: Partial<AiClient> = {
+        discoverModels: (request: {
+          connection: AiConnection;
+        }): Promise<AiDiscoverModelsResult> => {
+          discoveries.push(request.connection);
+          return Promise.resolve({
+            ok: true,
+            models: discovered,
+            added: discovered.length,
+            detail: '',
+          });
+        },
+        setConnectionKey: (): Promise<AiAuthStatus> =>
+          Promise.resolve({ available: true, detail: 'ready' } as AiAuthStatus),
+      };
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({ providers: [{ provide: Ai, useValue: { client } }] });
+      return TestBed.inject(AiConnections);
+    }
+
+    /**
+     * Lets queued promises settle.
+     */
+    async function settle(): Promise<void> {
+      for (let i: number = 0; i < 4; i += 1) {
+        await Promise.resolve();
+      }
+    }
+
+    it('add_whenTheMethodNeedsNoKey_asksThePluginForModelsAtOnce', async () => {
+      // 🔑 The seeded list is a snapshot frozen at the plugin's release; the harness knows what the
+      // provider offers today. Asking on creation is what stops a fresh install showing last
+      // generation's models until the user thinks to press Refresh.
+      discovered = [{ id: 'claude-opus-5', label: 'Opus 5', contextWindow: 1_000_000 }];
+      const connections: AiConnections = withClient();
+
+      const created: AiConnection = connections.add('anthropic', {
+        harnessId: 'test.harness',
+        auth: 'claude-login',
+        buttonLabel: 'Sign in',
+        defaultDisplayName: 'Claude',
+        hint: '',
+      });
+      await settle();
+
+      expect(discoveries.map((c: AiConnection): string => c.id)).toEqual([created.id]);
+      expect(
+        connections
+          .connections()
+          .find((c: AiConnection): boolean => c.id === created.id)
+          ?.models.map((m: AiModelInfo): string => m.id),
+      ).toEqual(['claude-opus-5']);
+    });
+
+    it('add_whenTheMethodNeedsAKey_waitsUntilOneIsStored', async () => {
+      discovered = [{ id: 'gpt-5', label: 'GPT-5', contextWindow: 400_000 }];
+      const connections: AiConnections = withClient();
+
+      const created: AiConnection = connections.add('openai', {
+        harnessId: 'test.harness',
+        auth: 'api-key',
+        buttonLabel: 'API key',
+        defaultDisplayName: 'OpenAI',
+        hint: '',
+      });
+      await settle();
+      expect(discoveries).toEqual([]);
+
+      await connections.setKey(created, 'sk-test');
+      await settle();
+
+      expect(discoveries.map((c: AiConnection): string => c.id)).toEqual([created.id]);
+    });
+
+    it('add_whenNoPluginIsNamed_doesNotAsk', async () => {
+      const connections: AiConnections = withClient();
+
+      connections.add('openai');
+      await settle();
+
+      expect(discoveries).toEqual([]);
+    });
   });
 
   it('authStatus_whenUnresolved_isPending', () => {
