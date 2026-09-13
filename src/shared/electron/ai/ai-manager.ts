@@ -30,7 +30,7 @@ import type {
   ClaudeAuthStatus,
   ClaudeLoginStatus,
 } from '@shared/api/ai-types';
-import { SEED_CONNECTIONS } from '@shared/api/ai-types';
+import { isAgentSurface, SEED_CONNECTIONS } from '@shared/api/ai-types';
 
 /**
  * The permission postures accepted from the renderer, used to validate the untrusted run request.
@@ -1839,11 +1839,7 @@ export class AiManager {
       (typeof record['owningTabId'] === 'string' ||
         record['owningTabId'] === null ||
         record['owningTabId'] === undefined) &&
-      (record['surface'] === 'editor' ||
-        record['surface'] === 'terminal' ||
-        record['surface'] === 'binary' ||
-        record['surface'] === 'project' ||
-        record['surface'] === undefined) &&
+      (record['surface'] === undefined || isAgentSurface(record['surface'])) &&
       (record['mode'] === 'agent' || record['mode'] === 'chat' || record['mode'] === undefined) &&
       (record['contextPaths'] === undefined || Array.isArray(record['contextPaths'])) &&
       (record['images'] === undefined || Array.isArray(record['images'])) &&

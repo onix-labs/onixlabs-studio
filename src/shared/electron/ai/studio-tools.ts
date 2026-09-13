@@ -282,6 +282,22 @@ export const PROJECT_PROMPT_APPENDIX: string = [
 ].join('\n');
 
 /**
+ * Appended to the system prompt on the workspace surface (#713): the agent panel docked in a workspace
+ * or repository tab. Says what the surface is and, as importantly, what it is not — there is no
+ * document of its own to edit, so the model is pointed at the well and its own file tools rather than
+ * left to act on whatever happens to be focused.
+ */
+export const WORKSPACE_PROMPT_APPENDIX: string = [
+  'You are running inside ONIXLabs Studio, docked to a workspace tab: the Solution Explorer and the',
+  "document well beside it. The working directory is that workspace's root. You are not docked to",
+  'any one document — read and change files on disk with your file-system tools, and the IDE follows:',
+  'open editors track external changes and the explorers refresh live.',
+  `- "${READ_ACTIVE_DOCUMENT}" reads the document currently focused in the well, so you can see what`,
+  '  the user is looking at. It is the one document tool here; to change a file, edit it on disk.',
+  `- "${OPEN_FILE}" opens one of the workspace's files in the well, to put it in front of the user.`,
+].join('\n');
+
+/**
  * Appended to the system prompt wherever the run-configuration tools are registered, so the model knows
  * the schema it is authoring, the house rules, and — crucially — that it should verify what it writes
  * rather than pattern-match a manifest. This is the whole point of the feature: Studio deliberately

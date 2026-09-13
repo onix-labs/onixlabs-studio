@@ -7,6 +7,10 @@ import { AgentConversationPanel } from '@shared/angular/components/panels/agent-
  * {@link AgentConversationPanel} (strip + chat + history), whose context resolves from the IDE view's
  * provided {@link import('../../../services/agent-conversations/agent-conversation-context').AGENT_CONVERSATION_CONTEXT}
  * resolver (workspace or repository). The dock chrome supplies the title bar.
+ *
+ * Runs on the `workspace` surface (#713): the model is told it stands in a workspace with a well
+ * beside it, may read the focused document and open files into the well, and is offered none of the
+ * editor's edit tools — a workspace conversation has no document of its own to act on.
  */
 @Component({
   selector: 'app-agent-panel',

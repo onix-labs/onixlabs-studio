@@ -1009,8 +1009,8 @@ export class Agent {
    * @param text The user's message.
    * @param owningTabId The identifier of the tab hosting this agent (every host passes its tab id —
    * the content host sets one on each view), so a surface's in-app tools act on that tab; absent only
-   * for hosts with no owning tab, such as the Workspace and Repository agent panels, whose editor
-   * tools fall back to the focused editor.
+   * for hosts with no owning tab, such as the Workspace and Repository agent panels, whose read tool
+   * falls back to the focused editor.
    * @param surface What this run acts on, which selects the tool set the providers expose; omitted
    * for the editor surface. The standalone agent tab passes `project`, which exposes no in-app tools.
    * @param images The images attached to the message, sent to the model alongside it.
