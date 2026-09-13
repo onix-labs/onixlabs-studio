@@ -387,6 +387,16 @@ export class SettingsView {
   protected readonly selectedSection: Signal<SettingsSectionId> = this.section.asReadonly();
 
   /**
+   * Gets the provider page the selected section names, or null when the selection is not a provider
+   * page. The pages are the open set an installed harness contributes, so the template resolves them
+   * by prefix rather than by naming each company.
+   */
+  protected readonly selectedProvider: Signal<string | null> = computed((): string | null => {
+    const section: string = this.section();
+    return section.startsWith('ai-provider-') ? section.slice('ai-provider-'.length) : null;
+  });
+
+  /**
    * Gets the breadcrumb trail shown above the content pane: the labels along the path to the selected
    * leaf (for example ["Application", "General"] or ["Artificial Intelligence", "Providers",
    * "Anthropic"]), rendered as static, non-clickable crumbs.
