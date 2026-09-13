@@ -48,8 +48,19 @@ export {
   REVEAL_IN_EXPLORER,
   AGENT_SURFACES,
   isAgentSurface,
+  LOAD_SKILL,
 } from './ai/ai-tool-surface';
 export type { AgentSurface, InsertPlacement, OpenDocumentFormat } from './ai/ai-tool-surface';
+export {
+  AGENT_SURFACE_LABELS,
+  GLOBAL_SCOPE,
+  normalizeLanguage,
+  readPromptScope,
+  scopeMatches,
+  scopeSpecificity,
+  sortByScope,
+} from './ai/ai-prompt-scope';
+export type { PromptScope } from './ai/ai-prompt-scope';
 export type {
   AiAuthSource,
   AiAuthStatus,

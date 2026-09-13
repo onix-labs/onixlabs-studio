@@ -1,0 +1,84 @@
+<div class="profiles">
+  <p class="profiles__intro">
+    Standing instructions every matching agent turn carries. The system text is added beneath
+    Studio's own instructions; the user text is added beneath each message you send. Several
+    profiles can apply at once — they stack, from the general to the specific.
+  </p>
+
+  <div class="profiles__header">
+    <h3 class="profiles__title">Prompt profiles</h3>
+    <app-button [icon]="Icon.PLUS" label="Add profile" (click)="add()" />
+  </div>
+
+  @if (profiles().length === 0) {
+    <p class="profiles__empty">
+      No profiles yet. Add one to give agents a coding style, a house tone, or a rule for a
+      particular language.
+    </p>
+  }
+
+  @for (profile of profiles(); track profile.id) {
+    <app-accordion [heading]="profile.name" [expanded]="profile.id === justCreated()">
+      <app-setting-row label="Name" description="Heads this profile's section in the prompt.">
+        <app-text-field
+          [value]="profile.name"
+          ariaLabel="Profile name"
+          (valueChange)="rename(profile.id, $event)"
+        />
+      </app-setting-row>
+
+      <app-setting-row
+        label="Enabled"
+        description="Switch off to keep the profile without applying it."
+      >
+        <app-toggle
+          [checked]="profile.enabled"
+          ariaLabel="Profile enabled"
+          (checkedChange)="setEnabled(profile.id, $event)"
+        />
+      </app-setting-row>
+
+      <app-prompt-scope-editor
+        [scope]="profile.scope"
+        (scopeChange)="setScope(profile.id, $event)"
+      />
+
+      <div class="profiles__body">
+        <span class="profiles__body-label">System prompt</span>
+        <span class="profiles__body-description">
+          Added beneath Studio's instructions for the surface. Use it to shape how the agent
+          behaves.
+        </span>
+        <app-textarea
+          [value]="profile.system"
+          [rows]="5"
+          ariaLabel="System prompt"
+          placeholder="e.g. Prefer explicit type declarations over var."
+          (valueChange)="setSystem(profile.id, $event)"
+        />
+      </div>
+
+      <div class="profiles__body">
+        <span class="profiles__body-label">User prompt</span>
+        <span class="profiles__body-description">
+          Added beneath each message you send, invisibly. Use it for standing requests about the
+          work.
+        </span>
+        <app-textarea
+          [value]="profile.user"
+          [rows]="5"
+          ariaLabel="User prompt"
+          placeholder="e.g. Write in British English."
+          (valueChange)="setUser(profile.id, $event)"
+        />
+      </div>
+
+      <app-button
+        class="profiles__delete"
+        [icon]="Icon.TRASH"
+        label="Delete profile"
+        (click)="remove(profile.id)"
+      />
+    </app-accordion>
+  }
+</div>

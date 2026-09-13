@@ -141,6 +141,23 @@ export interface AiRunOptions {
   readonly mode?: AgentMode;
 
   /**
+   * Gets the language of the document owning the run, which scopes the user's standing prompts and
+   * skills (#300, #301). Omitted when the run has no owning document.
+   */
+  readonly language?: string;
+
+  /**
+   * Gets the user's standing system-prompt text for the run, composed from the matching prompt
+   * profiles (#300). Omitted when none applies.
+   */
+  readonly systemPromptExtra?: string;
+
+  /**
+   * Gets the user's standing instructions for the run's message (#300). Omitted when none applies.
+   */
+  readonly userPromptExtra?: string;
+
+  /**
    * Gets the files and folders attached to the run's context, referenced by path for the agent to read
    * with its own file tools. Omitted when nothing is attached.
    */
@@ -265,6 +282,13 @@ export class AiRuntime {
       owningTabId: options.owningTabId ?? null,
       surface: options.surface ?? 'editor',
       mode: options.mode ?? 'agent',
+      ...(options.language === undefined ? {} : { language: options.language }),
+      ...(options.systemPromptExtra === undefined || options.systemPromptExtra.length === 0
+        ? {}
+        : { systemPromptExtra: options.systemPromptExtra }),
+      ...(options.userPromptExtra === undefined || options.userPromptExtra.length === 0
+        ? {}
+        : { userPromptExtra: options.userPromptExtra }),
       contextPaths: options.contextPaths ?? [],
       resumeSessionId: options.resumeSessionId ?? null,
       resumeSessionAt: options.resumeSessionAt ?? null,

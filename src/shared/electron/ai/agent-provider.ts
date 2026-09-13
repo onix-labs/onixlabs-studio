@@ -69,6 +69,29 @@ export interface AgentBridge {
 }
 
 /**
+ * A skill offered to a run (#301): what the model is told up front, and how the body is fetched when it
+ * asks. Progressive disclosure in two halves — the name and description are listed in the system
+ * prompt on every turn, the body only when a model decides the task calls for it.
+ */
+export interface OfferedSkill {
+  /**
+   * Gets the skill's name, which is what the model passes to load it.
+   */
+  readonly name: string;
+
+  /**
+   * Gets the description the model reads to decide whether the skill applies.
+   */
+  readonly description: string;
+
+  /**
+   * Loads the skill's instructions, and the absolute paths of any files it bundles.
+   * @returns Returns the content, or null when the skill has since gone from the library.
+   */
+  load(): Promise<{ readonly body: string; readonly files: readonly string[] } | null>;
+}
+
+/**
  * The context for a single agent run: the prompt and scope, the resolved credential, an abort signal,
  * the in-app capability bridge, the permission prompt, and the sink that streams provider-agnostic
  * events back to the renderer.
@@ -186,6 +209,32 @@ export interface AgentRunContext {
    * inspect but never edits or executes).
    */
   readonly mode: AgentMode;
+
+  /**
+   * Gets the language of the document owning this run, or null when it has none. Scopes the user's
+   * standing prompts and the skills offered (#300, #301).
+   */
+  readonly language: string | null;
+
+  /**
+   * Gets the user's standing system-prompt text for this run, or empty when no prompt profile
+   * matches (#300). Appended after Studio's own instructions by `promptForSurface`, never in place
+   * of them.
+   */
+  readonly systemPromptExtra: string;
+
+  /**
+   * Gets the user's standing instructions for the user message, or empty when no prompt profile
+   * matches (#300). Composed beneath the prompt when the turn envelope is built, so every harness
+   * receives them without the wire carrying a second field.
+   */
+  readonly userPromptExtra: string;
+
+  /**
+   * Gets the skills in scope for this run (#301): the ones a model is told about, and may load. Empty
+   * when the library has none that apply, in which case no skill tool is offered either.
+   */
+  readonly skills: readonly OfferedSkill[];
 
   /**
    * Gets the files and folders the user attached to the run's context, referenced by path for the

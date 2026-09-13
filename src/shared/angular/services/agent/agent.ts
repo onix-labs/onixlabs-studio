@@ -36,6 +36,10 @@ import {
   Notifications,
 } from '@shared/angular/services/notifications/notifications';
 import { AgentTasks } from '@shared/angular/services/agent-tasks/agent-tasks';
+import {
+  PromptProfiles,
+  ResolvedPrompts,
+} from '@shared/angular/services/prompt-profiles/prompt-profiles';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
@@ -546,6 +550,16 @@ export class Agent {
   }
 
   /**
+   * Binds the host's reading of the owning document's language, which scopes the user's standing
+   * prompts and skills for every run (#300, #301). A host with no document (the terminal, the
+   * standalone agent tab) binds nothing and its runs carry no language.
+   * @param source Returns the language, or undefined when the document has none.
+   */
+  public bindLanguage(source: () => string | undefined): void {
+    this.languageSource = source;
+  }
+
+  /**
    * Selects the model this conversation's runs go through.
    * @param id The model id.
    */
@@ -572,6 +586,18 @@ export class Agent {
    * Holds the settings service, the source of the run's permission posture and token cap.
    */
   private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds the user's prompt profiles, resolved against each run's surface and language (#300).
+   */
+  private readonly promptProfiles: PromptProfiles = inject(PromptProfiles);
+
+  /**
+   * Holds the host's reading of the owning document's language, or null for a host with no document.
+   * Bound by the host once (see {@link bindLanguage}) and read at each run start, so a document whose
+   * language changes after the panel mounted is scoped by what it is now.
+   */
+  private languageSource: (() => string | undefined) | null = null;
 
   /**
    * Holds the application-wide notification store terminal run states are raised to, so a run that
@@ -1233,9 +1259,20 @@ export class Agent {
       seed === null
         ? prompt
         : `Summary of the conversation so far, for context:\n\n${seed}\n\n---\n\n${prompt}`;
+    // The user's standing layers (#300): resolved here, where the surface and the owning document's
+    // language are both known, and threaded through the run as two strings so core applies them in
+    // one place for every harness.
+    const language: string | undefined = this.languageSource?.();
+    const standing: ResolvedPrompts = this.promptProfiles.resolve(
+      surface ?? 'editor',
+      language ?? null,
+    );
     this.busy.set(true);
     this.activeRequestId = this.runtime.run(this.provider(), runPrompt, {
       agentSessionId: this.agentSessionId,
+      ...(language === undefined ? {} : { language }),
+      systemPromptExtra: standing.system,
+      userPromptExtra: standing.user,
       workspaceRoot: this.runWorkspaceRoot(),
       model: this.model(),
       permissionPosture: this.settings.aiPermissionPosture(),

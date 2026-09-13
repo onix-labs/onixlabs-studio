@@ -263,6 +263,14 @@ export const DELETE_PATH: string = 'delete_path';
 export const REVEAL_IN_EXPLORER: string = 'reveal_in_explorer';
 
 /**
+ * The tool that loads a skill from the user's skill library (#301): the second half of progressive
+ * disclosure. Every in-scope skill's name and description are listed in the system prompt; a model
+ * that decides one applies calls this to receive its full instructions, so the cost of a skill is
+ * paid only on the turns that use it.
+ */
+export const LOAD_SKILL: string = 'load_skill';
+
+/**
  * The formats {@link OPEN_DOCUMENT} can open a document in: the markdown editor (rendered prose) or
  * the code editor (syntax-highlighted text).
  */

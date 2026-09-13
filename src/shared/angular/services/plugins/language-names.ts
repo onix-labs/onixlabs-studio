@@ -46,3 +46,14 @@ const LANGUAGE_NAMES: Readonly<Record<string, string>> = {
 export function languageDisplayName(language: string): string {
   return LANGUAGE_NAMES[language] ?? language;
 }
+
+/**
+ * Lists every language identifier with a display name, in display-name order — the set offered
+ * wherever a user scopes something to languages.
+ * @returns Returns the identifiers.
+ */
+export function knownLanguages(): readonly string[] {
+  return Object.keys(LANGUAGE_NAMES).sort((a: string, b: string): number =>
+    LANGUAGE_NAMES[a].localeCompare(LANGUAGE_NAMES[b]),
+  );
+}

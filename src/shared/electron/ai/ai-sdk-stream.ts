@@ -96,6 +96,8 @@ import {
   writeTerminalInput,
   READ_ONLY_APPENDIX,
 } from './studio-tools';
+import { skillsAppendix, withSystemPromptExtra } from './prompt-layers';
+import { createSkillTools } from './skill-tools';
 import { summarizeToolInput } from './tool-format';
 import { coarseGrantSource } from './tool-policy';
 import { logger } from '../logger';
@@ -1034,19 +1036,26 @@ export function promptForSurface(
   // instruction to ask rather than guess still applies, but naming a Studio tool it was not given
   // would point the model at something absent from its list.
   const withAsk: string = `${base}\n\n${options.nativeAsk === true ? CLARIFYING_QUESTION_APPENDIX : ASK_USER_PROMPT_APPENDIX}`;
-  // The workbench tools are registered on every surface, so every surface is told about them — except
-  // in chat mode, where they are withheld and describing them would only invite a refusal.
-  if (context.mode === 'chat') {
-    return `${withAsk}\n\n${READ_ONLY_APPENDIX}`;
-  }
-  const withWorkbench: string = `${withAsk}\n\n${WORKBENCH_PROMPT_APPENDIX}`;
-  // The run-configuration tools are registered on the workspace-scoped surfaces only, so only those
-  // are told how to author them. Kept in step with `createRunConfigurationTools` by hand, which is the
-  // cost of the guidance and the tools being two things; describing tools that are not there is the
-  // failure this condition exists to avoid.
-  return WORKSPACE_SCOPED_SURFACES.includes(surface)
-    ? `${withWorkbench}\n\n${RUN_CONFIGURATION_PROMPT_APPENDIX}`
-    : withWorkbench;
+  const studio: string = ((): string => {
+    // The workbench tools are registered on every surface, so every surface is told about them —
+    // except in chat mode, where they are withheld and describing them would only invite a refusal.
+    if (context.mode === 'chat') {
+      return `${withAsk}\n\n${READ_ONLY_APPENDIX}`;
+    }
+    const withWorkbench: string = `${withAsk}\n\n${WORKBENCH_PROMPT_APPENDIX}`;
+    // The run-configuration tools are registered on the workspace-scoped surfaces only, so only those
+    // are told how to author them. Kept in step with `createRunConfigurationTools` by hand, which is
+    // the cost of the guidance and the tools being two things; describing tools that are not there is
+    // the failure this condition exists to avoid.
+    return WORKSPACE_SCOPED_SURFACES.includes(surface)
+      ? `${withWorkbench}\n\n${RUN_CONFIGURATION_PROMPT_APPENDIX}`
+      : withWorkbench;
+  })();
+  // The user's layers come last, and in this order: the skills listing describes a tool the model
+  // holds, so it belongs with Studio's tool guidance; the standing text is the user's own voice and
+  // reads as such only once everything Studio has to say is above it.
+  const skills: string = skillsAppendix(context);
+  return withSystemPromptExtra(skills.length === 0 ? studio : `${studio}\n\n${skills}`, context);
 }
 
 /**
@@ -1063,6 +1072,8 @@ export async function toolsForSurface(context: AgentRunContext): Promise<ToolSet
   // The run-configuration tools ride on the workspace-scoped surfaces only, and decide that for
   // themselves — see createRunConfigurationTools.
   const runConfigurationTools: ToolSet = await createRunConfigurationTools(context);
+  // The skill tool rides on every surface and decides for itself whether it applies (#301).
+  const skillTools: ToolSet = await createSkillTools(context);
   const surfaceTools: ToolSet = await ((): Promise<ToolSet> => {
     switch (context.surface) {
       case 'terminal':
@@ -1081,5 +1092,11 @@ export async function toolsForSurface(context: AgentRunContext): Promise<ToolSet
         return createStudioTools(context);
     }
   })();
-  return { ...askUserTool, ...workbenchTools, ...runConfigurationTools, ...surfaceTools };
+  return {
+    ...askUserTool,
+    ...workbenchTools,
+    ...runConfigurationTools,
+    ...skillTools,
+    ...surfaceTools,
+  };
 }

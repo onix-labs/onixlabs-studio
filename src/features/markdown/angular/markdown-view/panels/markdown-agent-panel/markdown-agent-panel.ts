@@ -34,7 +34,11 @@ import { ToolPanel } from '@shared/angular/components/panels/tool-panel/tool-pan
       [flush]="true"
       (closed)="panels.close('agent')"
     >
-      <app-agent-conversation-panel [tabId]="documentId()" [context]="fileContext()" />
+      <app-agent-conversation-panel
+        [tabId]="documentId()"
+        [context]="fileContext()"
+        language="markdown"
+      />
     </app-tool-panel>
   `,
 })

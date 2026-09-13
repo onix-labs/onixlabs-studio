@@ -45,6 +45,7 @@ import type {
   AgentRunContext,
   AgentSession,
   EditDecisionOutcome,
+  OfferedSkill,
   ProviderAvailability,
 } from './agent-provider';
 import { AiAuthManager } from './ai-auth-manager';
@@ -71,6 +72,8 @@ import { sanitizeAgentShell } from '@shared/electron/shell-env';
 import { mergeModels, type ReportedModel } from './model-merge';
 import { PermissionRuleStore } from './permission-rule-store';
 import { RendererBridge } from './renderer-bridge';
+import { sanitizeLanguage, sanitizePromptExtra } from './prompt-guard';
+import type { SkillOfferer } from './skills/skill-library';
 
 /**
  * A pending permission prompt: the resolver, plus the tool and workspace the request was for so a
@@ -279,6 +282,11 @@ export class AiManager {
   private readonly bridge: RendererBridge;
 
   /**
+   * Holds the skill library, asked at each run start for the skills in scope (#301).
+   */
+  private readonly skills: SkillOfferer;
+
+  /**
    * Holds the in-app Claude login driver, which runs the CLI's own OAuth flow and streams its progress
    * to the renderer's "not signed in" modal.
    */
@@ -364,9 +372,11 @@ export class AiManager {
   /**
    * Initializes a new instance of the {@link AiManager} class.
    * @param windowGetter A function that returns the window agent events are sent to.
+   * @param skills The skill library runs draw their in-scope skills from.
    */
-  public constructor(windowGetter: () => BrowserWindow | null) {
+  public constructor(windowGetter: () => BrowserWindow | null, skills: SkillOfferer) {
     this.windowGetter = windowGetter;
+    this.skills = skills;
     this.bridge = new RendererBridge(windowGetter);
 
     // Contributed harnesses, and nothing else. `coreAgentProviders()` is empty — every provider is a
@@ -506,7 +516,7 @@ export class AiManager {
     ipcMain.handle(AiChannel.Run, (_event: IpcMainInvokeEvent, request: unknown): void => {
       logger.trace('AiManager.register', 'Run invoked');
       if (this.isRunRequest(request)) {
-        this.run(request);
+        void this.run(request);
       } else {
         logger.warn('AiManager.register', 'Rejected malformed run request');
       }
@@ -792,7 +802,7 @@ export class AiManager {
    * Starts an agent turn, streaming its events to the renderer.
    * @param request The run request.
    */
-  private run(request: AiRunRequest): void {
+  private async run(request: AiRunRequest): Promise<void> {
     logger.trace(
       'AiManager.run',
       `Run request ${request.requestId} for provider ${request.providerId}`,
@@ -874,6 +884,19 @@ export class AiManager {
     const images: readonly AiImageRef[] = provider.supportsImages
       ? this.sanitizeImages(request.images)
       : [];
+    const surface: AgentSurface = request.surface ?? 'editor';
+    const language: string | null = sanitizeLanguage(request.language);
+    // The user's layers (#300, #301). The prompt text was resolved by the renderer, which owns the
+    // profiles; the skills are resolved here, because the library is on disk and main owns it.
+    const systemPromptExtra: string = sanitizePromptExtra(request.systemPromptExtra);
+    const userPromptExtra: string = sanitizePromptExtra(request.userPromptExtra);
+    const skills: readonly OfferedSkill[] = await this.skills.offer(surface, language);
+    if (skills.length > 0) {
+      logger.debug(
+        'AiManager.run',
+        `Run ${request.requestId}: ${skills.length} skill(s) in scope for ${surface}/${language ?? '-'}`,
+      );
+    }
     logger.debug(
       'AiManager.run',
       `Run ${request.requestId}: model ${model}, mode ${mode}, posture ${permissionPosture}, surface ${request.surface ?? 'editor'}`,
@@ -911,8 +934,12 @@ export class AiManager {
       agentShell,
       claudeExecutable,
       owningTabId: request.owningTabId ?? null,
-      surface: request.surface ?? 'editor',
+      surface,
       mode,
+      language,
+      systemPromptExtra,
+      userPromptExtra,
+      skills,
       contextPaths,
       images,
       resumeSessionId:
