@@ -139,7 +139,8 @@ export const SETUP_STEPS: readonly SetupStep[] = [
     icon: Icon.SETUP_AI_PROVIDER,
     label: 'AI Provider',
     title: 'Which AI Studio talks to',
-    summary: 'A connection, a credential, and a model — verified before you leave this step.',
+    summary:
+      'A provider plugin, a way to sign in, and a credential — checked before you leave this step.',
   },
   {
     id: 'security',
