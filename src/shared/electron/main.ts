@@ -74,6 +74,13 @@ import { PrintManager } from '@shared/electron/print-manager';
 import { SecurityManager } from '@shared/electron/security-manager';
 import { hydrateLoginShellEnvironment } from '@shared/electron/shell-env';
 import { hydratePythonRuntime } from '@shared/electron/provisioning/python-runtime';
+import { SetupChannel } from '@shared/api/setup-channels';
+import type { GitIdentity, SetupProbeResult } from '@shared/api/setup-channels';
+import {
+  readGitIdentity,
+  runSetupProbes,
+  writeGitIdentity,
+} from '@shared/electron/setup/setup-probes';
 import type { GraphicsAcceleration } from '@shared/api/host';
 import { StartupPreferences, StartupPreferencesStore } from './startup-preferences';
 import { GitManager } from '@shared/electron/git-manager';
@@ -710,6 +717,9 @@ class Program {
         graphicsAcceleration: this.graphicsAcceleration,
         hardwareAccelerationEnabled: this.hardwareAccelerationEnabled,
         homeDir: os.homedir(),
+        // The escape hatch past a blocking setup wizard. It rides with the startup facts because the
+        // wizard decides whether to run before the first paint, which is too early for the bridge.
+        skipSetup: process.env['STUDIO_SKIP_SETUP'] === '1',
         // The versions ride with the startup facts because only main can read the app's own version,
         // and the About dialog needs all four together.
         versions: {
@@ -720,6 +730,33 @@ class Program {
         },
       };
     });
+
+    // The setup wizard's environment step. The probe set is fixed in the main process and takes no
+    // argument; `process.env` is the user's login-shell environment by this point, because
+    // hydrateLoginShellEnvironment applied it at startup — which is the whole point of the step, since
+    // the PATH Studio was launched with is not the one the user sees.
+    ipcMain.handle(SetupChannel.Probe, (): Promise<readonly SetupProbeResult[]> => {
+      return runSetupProbes(process.env);
+    });
+
+    ipcMain.handle(SetupChannel.GetGitIdentity, (): Promise<GitIdentity | null> => {
+      return readGitIdentity(process.env);
+    });
+
+    ipcMain.handle(
+      SetupChannel.SetGitIdentity,
+      (_event: IpcMainInvokeEvent, identity: unknown): Promise<GitIdentity | null> => {
+        // Validated here rather than trusted: the renderer is untrusted, and these two values are
+        // written into the user's global git configuration.
+        const record: Record<string, unknown> = (identity ?? {}) as Record<string, unknown>;
+        const name: unknown = record['name'];
+        const email: unknown = record['email'];
+        if (typeof name !== 'string' || typeof email !== 'string') {
+          return Promise.resolve(null);
+        }
+        return writeGitIdentity({ name: name.trim(), email: email.trim() }, process.env);
+      },
+    );
 
     ipcMain.handle(
       AppChannel.SetGraphicsAcceleration,

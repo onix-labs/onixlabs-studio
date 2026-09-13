@@ -22,6 +22,7 @@ import { RibbonStripContainer } from '@shared/angular/components/strips/ribbon-s
 import { StatusStripContainer } from '@shared/angular/components/strips/status-strip/status-strip-container/status-strip-container';
 import { TitleStripContainer } from '@shared/angular/components/strips/title-strip/title-strip-container/title-strip-container';
 import { WelcomeScreen } from '@features/welcome/angular/welcome-screen/welcome-screen';
+import { SetupWizardHost } from '@features/settings/angular/setup-wizard/setup-wizard-host';
 import { ConfigureDialogPanel } from '@features/workspace/angular/configure-dialog/configure-dialog';
 
 /**
@@ -38,6 +39,7 @@ import { ConfigureDialogPanel } from '@features/workspace/angular/configure-dial
     ModalBackdropView,
     PluginConsentHost,
     AboutHost,
+    SetupWizardHost,
     WelcomeScreen,
     ConfigureDialogPanel,
     ToastHost,

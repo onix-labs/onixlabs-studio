@@ -1258,6 +1258,91 @@ export class Icon {
    */
   public static readonly WELCOME_SETTINGS: Icon = new Icon('ph-light ph-gear-six');
 
+  // --- Setup wizard ---
+  //
+  // One icon per step of the setup wizard's rail, plus the marks its welcome step uses. They are a
+  // set at a single regular weight rather than borrowed from the tokens each subject already has:
+  // those were picked for their own surfaces and span light, regular, bold and duotone, and a rail
+  // is a column of icons read together, where a weight that changes between rows reads as a mistake.
+
+  /**
+   * Gets the icon of the setup wizard's welcome step.
+   */
+  public static readonly SETUP_WELCOME: Icon = new Icon('ph ph-house-line');
+
+  /**
+   * Gets the icon of the setup wizard's what's-new step.
+   */
+  public static readonly SETUP_WHATS_NEW: Icon = new Icon('ph ph-megaphone');
+
+  /**
+   * Gets the icon of the setup wizard's appearance step.
+   */
+  public static readonly SETUP_APPEARANCE: Icon = new Icon('ph ph-monitor');
+
+  /**
+   * Gets the icon of the setup wizard's environment step.
+   */
+  public static readonly SETUP_ENVIRONMENT: Icon = new Icon('ph ph-gear-six');
+
+  // The five plugin steps, one per contribution slot. The same glyphs the Plugin Manager's
+  // categories use, at the rail's weight, so a category installed from here is recognised there.
+
+  /**
+   * Gets the icon of the setup wizard's language servers step.
+   */
+  public static readonly SETUP_LANGUAGE_SERVERS: Icon = new Icon('ph ph-desktop-tower');
+
+  /**
+   * Gets the icon of the setup wizard's debug adapters step.
+   */
+  public static readonly SETUP_DEBUG_ADAPTERS: Icon = new Icon('ph ph-bug');
+
+  /**
+   * Gets the icon of the setup wizard's decoders step.
+   */
+  public static readonly SETUP_DECODERS: Icon = new Icon('ph ph-cpu');
+
+  /**
+   * Gets the icon of the setup wizard's container engines step.
+   */
+  public static readonly SETUP_CONTAINER_ENGINES: Icon = new Icon('ph ph-shipping-container');
+
+  /**
+   * Gets the icon of the setup wizard's AI providers step.
+   */
+  public static readonly SETUP_AI_PROVIDER: Icon = new Icon('ph ph-brain');
+
+  /**
+   * Gets the icon of the setup wizard's security step.
+   */
+  public static readonly SETUP_SECURITY: Icon = new Icon('ph ph-shield');
+
+  /**
+   * Gets the icon of the setup wizard's terminal step.
+   */
+  public static readonly SETUP_TERMINAL: Icon = new Icon('ph ph-terminal-window');
+
+  /**
+   * Gets the icon of the setup wizard's source control step.
+   */
+  public static readonly SETUP_SOURCE_CONTROL: Icon = new Icon('ph ph-git-branch');
+
+  /**
+   * Gets the mark against something the setup wizard's environment step could not find.
+   */
+  public static readonly SETUP_MISSING: Icon = new Icon('ph ph-x-circle');
+
+  /**
+   * Gets the mark against something present but incompletely set up, or that could not be checked.
+   */
+  public static readonly SETUP_WARNING: Icon = new Icon('ph ph-warning-circle');
+
+  /**
+   * Gets the arrow trailing the setup wizard's Next button.
+   */
+  public static readonly ARROW_RIGHT: Icon = new Icon('ph ph-arrow-right');
+
   // --- Status bar ---
 
   /**

@@ -73,7 +73,7 @@ describe('PluginBrowse', () => {
     browse.query.set('javascript');
     expect(browse.visible().map((p: PluginSummary): string => p.id)).toEqual(['ts']);
 
-    browse.query.set('ai agents');
+    browse.query.set('ai providers');
     expect(browse.visible().map((p: PluginSummary): string => p.id)).toEqual(['claude']);
   });
 
@@ -95,13 +95,13 @@ describe('PluginBrowse', () => {
   });
 
   it('category_narrowsToThatCategoryOnly', () => {
-    browse.category.set('AI Agents');
+    browse.category.set('AI Providers');
     expect(browse.visible().map((p: PluginSummary): string => p.id)).toEqual(['claude']);
   });
 
   it('categories_areBuiltFromWhatIsContributed_withCountsAndIcons', () => {
     expect(browse.categories()).toEqual([
-      { name: 'AI Agents', count: 1, icon: Icon.AGENT },
+      { name: 'AI Providers', count: 1, icon: Icon.AGENT },
       { name: 'Language Servers', count: 1, icon: Icon.LANGUAGE_SERVERS },
       // A plugin contributing nothing recognisable still has to appear somewhere, and still needs a
       // glyph — the puzzle piece, which is what the catalogue as a whole is drawn with.
