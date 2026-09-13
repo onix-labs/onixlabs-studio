@@ -49,6 +49,36 @@ export type PluginSlot =
   'language-server' | 'debug-adapter' | 'decoder' | 'container-engine' | 'agent-harness';
 
 /**
+ * The slots in the order the application presents them — the Plugin Manager's categories and the
+ * setup wizard's plugin steps both walk this list, so the two surfaces agree on what comes first.
+ */
+export const PLUGIN_SLOTS: readonly PluginSlot[] = [
+  'language-server',
+  'debug-adapter',
+  'decoder',
+  'container-engine',
+  'agent-harness',
+];
+
+/**
+ * The display name of each contribution slot: what the Plugin Manager's categories panel lists, and
+ * what the setup wizard names the step that installs into it.
+ *
+ * Keyed by the slot rather than derived from it so the wording is a decision made here rather than a
+ * mechanical de-kebabing — "Language Servers" reads better than "Language Server" as a category, and
+ * "AI Providers" is what the rest of the application calls what an agent harness contributes.
+ * Shared so the two surfaces cannot drift: a user who installed something under one name must find
+ * it under the same name in the other.
+ */
+export const PLUGIN_SLOT_LABELS: Readonly<Record<PluginSlot, string>> = {
+  'language-server': 'Language Servers',
+  'debug-adapter': 'Debug Adapters',
+  decoder: 'Decoders',
+  'container-engine': 'Container Engines',
+  'agent-harness': 'AI Providers',
+};
+
+/**
  * Names the slots keyed by language, as opposed to by format.
  */
 export type LanguagePluginSlot = 'language-server' | 'debug-adapter';

@@ -1,5 +1,9 @@
+import { signal, WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import type { HostEnv } from '@shared/api/host';
+import type { PluginSummary } from '@shared/api/plugin-channels';
+import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
+import { Plugins } from '@shared/angular/services/plugins/plugins';
 
 import { SetupStep, SetupWizard } from './setup-wizard';
 
@@ -45,6 +49,92 @@ function stubHostVersion(version: string | null, skipSetup: boolean = false): vo
 function build(): SetupWizard {
   TestBed.configureTestingModule({});
   return TestBed.inject(SetupWizard);
+}
+
+/**
+ * An installed harness contributing an Anthropic page, for growing an AI provider leaf.
+ */
+const CLAUDE_HARNESS: PluginSummary = {
+  id: 'test.claude-harness',
+  name: 'Claude',
+  description: 'Test harness.',
+  state: 'installed',
+  version: '1.0.0',
+  installedVersion: '1.0.0',
+  detail: null,
+  origin: null,
+  contributions: [
+    {
+      slot: 'agent-harness',
+      id: 'test.claude-harness',
+      displayName: 'Claude',
+      priority: 100,
+      providers: [
+        {
+          kind: 'anthropic',
+          company: 'Anthropic',
+          authMethods: [{ auth: 'api-key', buttonLabel: 'API Key', defaultDisplayName: 'API' }],
+        },
+      ],
+    },
+  ],
+} as unknown as PluginSummary;
+
+/**
+ * What the tree cases arrange: the plugin catalogue and the languages with an installed server,
+ * both as signals so a case can install something after the wizard has opened.
+ */
+interface Installed {
+  readonly plugins: WritableSignal<readonly PluginSummary[]>;
+  readonly languages: WritableSignal<readonly string[]>;
+  readonly loaded: WritableSignal<boolean>;
+}
+
+/**
+ * Builds the service over a stubbed catalogue, then settles its effects so the baseline is taken.
+ * @param installed What is installed.
+ * @returns Returns the service.
+ */
+function buildWith(installed: Installed): SetupWizard {
+  TestBed.configureTestingModule({
+    providers: [
+      {
+        provide: Plugins,
+        useValue: { plugins: installed.plugins, busy: signal<boolean>(false) },
+      },
+      {
+        provide: LspSettings,
+        useValue: {
+          installedLanguages: (): readonly string[] => installed.languages(),
+          catalogueLoaded: installed.loaded,
+        },
+      },
+    ],
+  });
+  const wizard: SetupWizard = TestBed.inject(SetupWizard);
+  TestBed.tick();
+  return wizard;
+}
+
+/**
+ * Arranges a catalogue with nothing installed and both catalogues loaded.
+ * @returns Returns the arrangement.
+ */
+function nothingInstalled(): Installed {
+  return {
+    plugins: signal<readonly PluginSummary[]>([]),
+    languages: signal<readonly string[]>([]),
+    loaded: signal<boolean>(true),
+  };
+}
+
+/**
+ * Reads the step identifiers in walk order.
+ * @param wizard The service.
+ * @returns Returns the identifiers.
+ */
+function ids(wizard: SetupWizard): readonly string[] {
+  return wizard.steps().map((step: SetupStep): string => step.id);
 }
 
 describe('SetupWizard', () => {
@@ -204,25 +294,147 @@ describe('SetupWizard', () => {
       expect(build().steps()[0].id).toBe('welcome');
     });
 
-    it('steps_always_giveEveryStepARailLabelATitleAndAnIcon', () => {
+    it('steps_always_giveEveryRootARailLabelATitleAndAnIcon', () => {
       // The rail shows the icon and label, the pane shows the title; a step missing any of them
       // renders blank in a place the user cannot report usefully.
       for (const step of build().steps()) {
         expect(step.label.length, `${step.id} label`).toBeGreaterThan(0);
         expect(step.title.length, `${step.id} title`).toBeGreaterThan(0);
         expect(step.summary.length, `${step.id} summary`).toBeGreaterThan(0);
-        expect(step.icon.classList.length, `${step.id} icon`).toBeGreaterThan(0);
+        expect(step.icon?.classList.length ?? 0, `${step.id} icon`).toBeGreaterThan(0);
       }
     });
 
-    it('steps_always_giveEveryStepItsOwnIcon', () => {
+    it('steps_always_giveEveryRootItsOwnIcon', () => {
       // A rail is a column of icons read together; two the same would make one step look like
       // another at a glance.
       const glyphs: readonly string[] = build()
         .steps()
-        .map((step: SetupStep): string => step.icon.classList);
+        .map((step: SetupStep): string => step.icon?.classList ?? '');
 
       expect(new Set(glyphs).size).toBe(glyphs.length);
+    });
+
+    it('steps_always_carryARootPerPluginSlotInCatalogueOrder', () => {
+      // One step per kind of plugin, under the Plugin Manager's own names, between the machine
+      // check and the settings that come after.
+      const labels: readonly string[] = build()
+        .steps()
+        .map((step: SetupStep): string => step.label);
+
+      expect(labels).toEqual([
+        'Welcome',
+        'Appearance',
+        'Environment',
+        'Language Servers',
+        'Debug Adapters',
+        'Decoders',
+        'Container Engines',
+        'AI Providers',
+        'Security',
+        'Terminal',
+        'Source Control',
+      ]);
+    });
+  });
+
+  describe('the tree', () => {
+    it('steps_whenNothingIsInstalled_carryNoLeaves', () => {
+      const wizard: SetupWizard = buildWith(nothingInstalled());
+
+      expect(wizard.steps().every((step: SetupStep): boolean => step.parentId === undefined)).toBe(
+        true,
+      );
+    });
+
+    it('steps_whenALanguageServerIsInstalled_growALeafBeneathLanguageServers', () => {
+      const installed: Installed = nothingInstalled();
+      installed.languages.set(['csharp', 'java']);
+
+      const wizard: SetupWizard = buildWith(installed);
+
+      const languageServers: number = ids(wizard).indexOf('language-server');
+      expect(ids(wizard).slice(languageServers, languageServers + 3)).toEqual([
+        'language-server',
+        'language-server/csharp',
+        'language-server/java',
+      ]);
+      const leaf: SetupStep = wizard.steps()[languageServers + 1];
+      expect(leaf.kind).toBe('language');
+      expect(leaf.parentId).toBe('language-server');
+      expect(leaf.language).toBe('csharp');
+      expect(leaf.label).toBe('C#');
+      expect(leaf.icon).toBeUndefined();
+    });
+
+    it('steps_whenAHarnessIsInstalled_growALeafPerProviderBeneathAiProviders', () => {
+      const installed: Installed = nothingInstalled();
+      installed.plugins.set([CLAUDE_HARNESS]);
+
+      const wizard: SetupWizard = buildWith(installed);
+
+      const aiProviders: number = ids(wizard).indexOf('agent-harness');
+      expect(ids(wizard)[aiProviders + 1]).toBe('agent-harness/anthropic');
+      const leaf: SetupStep = wizard.steps()[aiProviders + 1];
+      expect(leaf.kind).toBe('ai-provider');
+      expect(leaf.pageId).toBe('anthropic');
+      expect(leaf.label).toBe('Anthropic');
+    });
+
+    it('steps_whenAPluginIsInstalledDuringTheRun_growItsLeafWhileTheUserStandsOnTheRoot', () => {
+      // Installing from a root grows its leaves under the user's feet, and Next walks into them.
+      const installed: Installed = nothingInstalled();
+      const wizard: SetupWizard = buildWith(installed);
+      while (wizard.current()?.id !== 'language-server') {
+        wizard.next();
+      }
+
+      installed.languages.set(['rust']);
+
+      expect(wizard.current()?.id).toBe('language-server');
+      wizard.next();
+      expect(wizard.current()?.id).toBe('language-server/rust');
+      wizard.next();
+      expect(wizard.current()?.id).toBe('debug-adapter');
+    });
+
+    it('steps_onAnUpgrade_leaveOutLeavesThatWereAlreadyThere', () => {
+      // A language set up long ago is not something the upgrade has to say about; only what was
+      // installed during this pass is unseen.
+      localStorage.setItem(LAST_SEEN_KEY, JSON.stringify('2026.1.0-beta.4'));
+      const installed: Installed = nothingInstalled();
+      installed.languages.set(['csharp']);
+      installed.plugins.set([CLAUDE_HARNESS]);
+
+      const wizard: SetupWizard = buildWith(installed);
+
+      expect(ids(wizard)).not.toContain('language-server/csharp');
+      expect(ids(wizard)).not.toContain('agent-harness/anthropic');
+    });
+
+    it('steps_onAnUpgrade_growALeafForAPluginInstalledDuringThePass', () => {
+      localStorage.setItem(LAST_SEEN_KEY, JSON.stringify('2026.1.0-beta.4'));
+      const installed: Installed = nothingInstalled();
+      installed.languages.set(['csharp']);
+      const wizard: SetupWizard = buildWith(installed);
+
+      installed.languages.set(['csharp', 'rust']);
+
+      expect(ids(wizard)).toContain('language-server/rust');
+      expect(ids(wizard)).not.toContain('language-server/csharp');
+    });
+
+    it('steps_onAnUpgradeBeforeTheCatalogueHasLoaded_showNoLeavesRatherThanAll', () => {
+      // At a cold start neither catalogue has answered; a baseline of "nothing installed" would make
+      // every long-standing leaf look new on exactly the upgrade the delta is meant to keep short.
+      localStorage.setItem(LAST_SEEN_KEY, JSON.stringify('2026.1.0-beta.4'));
+      const installed: Installed = nothingInstalled();
+      installed.loaded.set(false);
+      installed.languages.set(['csharp']);
+
+      const wizard: SetupWizard = buildWith(installed);
+
+      expect(ids(wizard)).not.toContain('language-server/csharp');
     });
   });
 
@@ -273,7 +485,8 @@ describe('SetupWizard', () => {
         .map((step: SetupStep): string => step.id);
 
       expect(ids).toContain('environment');
-      expect(ids).toContain('tooling');
+      expect(ids).toContain('language-server');
+      expect(ids).toContain('agent-harness');
     });
 
     it('steps_onAnUpgradeAcrossAReleaseWithHighlights_leadWithWhatsNew', () => {
@@ -299,19 +512,22 @@ describe('SetupWizard', () => {
   });
 
   describe('the walked mark', () => {
-    it('furthestIndex_beforeAnyNavigation_isTheFirstStep', () => {
-      expect(build().furthestIndex()).toBe(0);
+    it('isWalked_beforeAnyNavigation_marksNothing', () => {
+      const wizard: SetupWizard = build();
+
+      expect(wizard.steps().some((step: SetupStep): boolean => wizard.isWalked(step))).toBe(false);
     });
 
-    it('furthestIndex_afterAdvancing_followsTheStep', () => {
+    it('isWalked_afterAdvancing_marksTheStepLeftBehind', () => {
       const wizard: SetupWizard = build();
 
       wizard.next();
 
-      expect(wizard.furthestIndex()).toBe(1);
+      expect(wizard.isWalked(wizard.steps()[0])).toBe(true);
+      expect(wizard.isWalked(wizard.steps()[1])).toBe(false);
     });
 
-    it('furthestIndex_afterGoingBack_holdsTheFurthestReached', () => {
+    it('isWalked_afterGoingBack_keepsTheStepsWalked', () => {
       // Going back does not un-walk the steps behind you; the rail must keep their ticks.
       const wizard: SetupWizard = build();
       wizard.next();
@@ -320,7 +536,7 @@ describe('SetupWizard', () => {
       wizard.back();
 
       expect(wizard.stepIndex()).toBe(1);
-      expect(wizard.furthestIndex()).toBe(2);
+      expect(wizard.isWalked(wizard.steps()[1])).toBe(true);
     });
   });
 

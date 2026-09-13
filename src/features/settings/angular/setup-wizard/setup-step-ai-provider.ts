@@ -3,33 +3,32 @@ import {
   Component,
   computed,
   inject,
+  input,
+  InputSignal,
   Signal,
   signal,
   WritableSignal,
 } from '@angular/core';
 import type { AiConnection, AuthMethod, ProviderPage } from '@shared/api/ai-types';
 import { providerDisplayLabel } from '@shared/api/ai-types';
-import type { PluginContribution, PluginSummary } from '@shared/api/plugin-channels';
-import { slotCandidates } from '@shared/api/plugin-channels';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Icon } from '@shared/angular/icons/icon';
 import { AiConnections } from '@shared/angular/services/ai-connections/ai-connections';
 import { AiProviders } from '@shared/angular/services/ai-providers/ai-providers';
-import { Plugins } from '@shared/angular/services/plugins/plugins';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { AiConnectionEditor } from '@features/settings/angular/settings-view/sections/ai-settings/ai-connection-editor/ai-connection-editor';
 
 /**
- * Which of the step's three stages is showing. Derived from what exists rather than counted, so that
- * installing a plugin or deleting a configuration moves the step on its own, and the stage can never
- * disagree with the state it describes.
+ * Which of the step's stages is showing. Derived from what exists rather than counted, so that
+ * deleting a configuration moves the step on its own, and the stage can never disagree with the
+ * state it describes.
  */
-type Stage = 'install' | 'choose' | 'verify';
+type Stage = 'gone' | 'choose' | 'verify';
 
 /**
  * The outcome of the last live check, remembered against the configuration it was about. A verdict
- * on one configuration is not an answer about another, so it is shown only while that one is active.
+ * on one configuration is not an answer about another, so it is shown only while that one is chosen.
  */
 interface Verdict {
   /**
@@ -49,32 +48,21 @@ interface Verdict {
 }
 
 /**
- * Tests whether a contribution is an agent harness — the slot a provider plugin fills.
- * @param contribution The contribution to test.
- * @returns Returns true for an agent harness.
- */
-function isHarness(contribution: PluginContribution): boolean {
-  return contribution.slot === 'agent-harness';
-}
-
-/**
- * The setup wizard's AI provider step, which does one job: get a single provider working.
+ * The setup wizard's step for one AI provider, which does one job: get it working.
  *
- * Studio ships no AI provider of its own (#653) — each is a plugin — so on a first run there is nothing
- * to configure until one is installed. The step therefore walks **install → choose → verify**: which
- * plugin, then which of the providers it offers and how to sign in to it, then the credential and a
- * live check that it actually answers. Install gates the choice, following the ruling every other
- * slot follows: a chooser offered before anything is installed is a dropdown with nothing in it.
+ * A leaf beneath the AI Providers step, one per provider an installed plugin offers, exactly as the
+ * settings tree grows them. It walks **choose → verify**: how to sign in — which creates the
+ * configuration the way the settings page does, so it names the plugin that runs it from the
+ * start — then the credential and a live check that the provider actually answers.
  *
- * The last part is what makes this a step rather than a form. A credential that is wrong is
+ * The check is what makes this a step rather than a form. A credential that is wrong is
  * indistinguishable from one that is right until something tries to use it, and the thing that tries
  * is the user's first question to the agent — which is exactly the wrong moment to find out. So the
  * step checks, here, and says what it found.
  *
  * The connection editor is the settings view's own, not a copy: setting a key is fiddly, provider-
  * specific work, and a second implementation of it in the wizard would be a second thing to keep
- * right. Choosing a provider creates the configuration the same way the settings page does, so the
- * configuration already names the plugin that runs it.
+ * right.
  */
 @Component({
   selector: 'app-setup-step-ai-provider',
@@ -83,78 +71,52 @@ function isHarness(contribution: PluginContribution): boolean {
   styleUrl: './setup-step-ai-provider.scss',
   template: `
     @if (!connections.isAvailable) {
-      <p class="ai__hint">Installing and checking a provider is only possible inside Studio.</p>
+      <p class="ai__hint">Checking a provider is only possible inside Studio.</p>
     }
 
     @switch (stage()) {
-      @case ('install') {
-        <p class="ai__lead">
-          Studio runs agents through provider plugins, so the stack is yours to choose. Install one
-          to continue; the rest can be added from the Plugin Manager at any time.
-        </p>
-        @if (candidates().length === 0) {
-          <p class="ai__hint">No provider plugin is available on this machine.</p>
-        } @else {
-          <ul class="ai__list">
-            @for (plugin of candidates(); track plugin.id) {
-              <li class="ai__item">
-                <span class="ai__text">
-                  <span class="ai__name">{{ plugin.name }}</span>
-                  <span class="ai__detail">{{ plugin.description }}</span>
-                </span>
-                <app-button
-                  label="Install"
-                  [disabled]="plugins.busy()"
-                  [loading]="plugins.busy() && plugin.state === 'busy'"
-                  (click)="install(plugin.id)"
-                />
-              </li>
-            }
-          </ul>
-        }
-        @if (plugins.error(); as failure) {
-          <p class="ai__error">{{ failure }}</p>
-        }
+      @case ('gone') {
+        <p class="ai__hint">The plugin that offered this provider is no longer installed.</p>
       }
       @case ('choose') {
-        @if (connections.connections().length > 0) {
-          <p class="ai__lead">Use a configuration you already have, or add another below.</p>
-          <ul class="ai__list">
-            @for (connection of connections.connections(); track connection.id) {
-              <li class="ai__item">
-                <span class="ai__text">
-                  <span class="ai__name">{{ labelFor(connection) }}</span>
-                </span>
-                <app-button label="Use" (click)="use(connection.id)" />
-              </li>
-            }
-          </ul>
-        } @else {
-          <p class="ai__lead">Choose a provider, and how you sign in to it.</p>
-        }
-        <ul class="ai__list">
-          @for (page of providers.pages(); track page.id) {
-            <li class="ai__item">
-              <span class="ai__text">
-                <span class="ai__name">{{ page.label }}</span>
-                <span class="ai__detail">{{ page.description }}</span>
-              </span>
-              <span class="ai__methods">
-                @for (method of page.methods; track method.auth) {
-                  <app-button
-                    variant="solid"
-                    [icon]="Icon.PLUS"
-                    [label]="method.buttonLabel"
-                    (click)="choose(page, method)"
-                  />
-                }
-              </span>
-            </li>
+        @if (page(); as page) {
+          @if (pageConnections().length > 0) {
+            <p class="ai__lead">Use a configuration you already have, or add another below.</p>
+            <ul class="ai__list">
+              @for (connection of pageConnections(); track connection.id) {
+                <li class="ai__item">
+                  <span class="ai__text">
+                    <span class="ai__name">{{ labelFor(connection) }}</span>
+                  </span>
+                  <app-button label="Use" (click)="use(connection.id)" />
+                </li>
+              }
+            </ul>
+          } @else {
+            <p class="ai__lead">{{ page.description }}</p>
           }
-        </ul>
+          <div class="ai__item">
+            <span class="ai__text">
+              <span class="ai__name">How you sign in</span>
+              <span class="ai__detail"
+                >Each adds a configuration; you can add more in Settings.</span
+              >
+            </span>
+            <span class="ai__methods">
+              @for (method of page.methods; track method.auth) {
+                <app-button
+                  variant="solid"
+                  [icon]="Icon.PLUS"
+                  [label]="method.buttonLabel"
+                  (click)="choose(page, method)"
+                />
+              }
+            </span>
+          </div>
+        }
       }
       @case ('verify') {
-        @if (active(); as connection) {
+        @if (chosen(); as connection) {
           <!-- The check leads, above the editor rather than below it. The editor is tall enough
                that anything after it is below the fold, and the check is the point of the step;
                the editor is there for what the check turns out to need. -->
@@ -199,19 +161,19 @@ function isHarness(contribution: PluginContribution): boolean {
 })
 export class SetupStepAiProvider {
   /**
+   * Gets the identifier of the provider page this step signs in to.
+   */
+  public readonly pageId: InputSignal<string> = input.required<string>();
+
+  /**
    * Gets the icon set, exposed for the template.
    */
   protected readonly Icon: typeof Icon = Icon;
 
   /**
-   * Holds the plugin client, exposed for the template.
+   * Holds the providers installed plugins contribute.
    */
-  protected readonly plugins: Plugins = inject(Plugins);
-
-  /**
-   * Holds the providers installed plugins contribute, exposed for the template.
-   */
-  protected readonly providers: AiProviders = inject(AiProviders);
+  private readonly providers: AiProviders = inject(AiProviders);
 
   /**
    * Holds the connection registry, exposed for the template.
@@ -224,7 +186,7 @@ export class SetupStepAiProvider {
   private readonly settings: Settings = inject(Settings);
 
   /**
-   * Holds whether the user has asked to choose again despite having an active configuration.
+   * Holds whether the user has asked to choose again despite having a chosen configuration.
    */
   private readonly choosing: WritableSignal<boolean> = signal<boolean>(false);
 
@@ -244,38 +206,55 @@ export class SetupStepAiProvider {
   protected readonly checking: Signal<boolean> = this.inFlight.asReadonly();
 
   /**
-   * Gets the active connection, or undefined when the stored identifier names none.
+   * Gets the provider page, or undefined once the plugin that offered it is gone.
    */
-  protected readonly active: Signal<AiConnection | undefined> = this.settings.aiActiveConnection;
-
-  /**
-   * Gets the provider plugins that could be installed — empty once one is, because support that
-   * exists is never advertised again.
-   */
-  protected readonly candidates: Signal<readonly PluginSummary[]> = computed(
-    (): readonly PluginSummary[] => slotCandidates(this.plugins.plugins(), isHarness),
+  protected readonly page: Signal<ProviderPage | undefined> = computed(
+    (): ProviderPage | undefined =>
+      this.providers.pages().find((page: ProviderPage): boolean => page.id === this.pageId()),
   );
 
   /**
-   * Gets the stage to show. Nothing installed offers a provider: install. No active configuration,
-   * or the user asked to choose again: choose. Otherwise: verify.
+   * Gets the configurations that belong to this provider.
+   */
+  protected readonly pageConnections: Signal<readonly AiConnection[]> = computed(
+    (): readonly AiConnection[] => {
+      const page: ProviderPage | undefined = this.page();
+      return page === undefined ? [] : this.connections.connectionsForKinds(page.kinds);
+    },
+  );
+
+  /**
+   * Gets the configuration this step is verifying: the active one, when it belongs to this provider.
+   * Another provider's active configuration is not this step's to show.
+   */
+  protected readonly chosen: Signal<AiConnection | undefined> = computed(
+    (): AiConnection | undefined => {
+      const active: AiConnection | undefined = this.settings.aiActiveConnection();
+      const page: ProviderPage | undefined = this.page();
+      return active !== undefined && page?.kinds.includes(active.kind) ? active : undefined;
+    },
+  );
+
+  /**
+   * Gets the stage to show. No page: the plugin is gone. No chosen configuration, or the user asked
+   * to choose again: choose. Otherwise: verify.
    */
   protected readonly stage: Signal<Stage> = computed((): Stage => {
-    if (this.providers.pages().length === 0) {
-      return 'install';
+    if (this.page() === undefined) {
+      return 'gone';
     }
-    if (this.active() === undefined || this.choosing()) {
+    if (this.chosen() === undefined || this.choosing()) {
       return 'choose';
     }
     return 'verify';
   });
 
   /**
-   * Gets the outcome of the last check, when it was about the configuration that is active now.
+   * Gets the outcome of the last check, when it was about the configuration chosen now.
    */
   protected readonly verdict: Signal<Verdict | null> = computed((): Verdict | null => {
     const verdict: Verdict | null = this.lastVerdict();
-    return verdict !== null && verdict.connectionId === this.active()?.id ? verdict : null;
+    return verdict !== null && verdict.connectionId === this.chosen()?.id ? verdict : null;
   });
 
   /**
@@ -292,15 +271,7 @@ export class SetupStepAiProvider {
   }
 
   /**
-   * Installs a provider plugin, through the same terms the Plugin Manager asks for.
-   * @param id The plugin identifier.
-   */
-  protected install(id: string): void {
-    void this.plugins.installWithConsent(id);
-  }
-
-  /**
-   * Creates a configuration for a provider through one of its sign-in methods and makes it the
+   * Creates a configuration for the provider through one of its sign-in methods and makes it the
    * active one.
    * @param page The provider's page.
    * @param method The sign-in method.
@@ -320,17 +291,17 @@ export class SetupStepAiProvider {
   }
 
   /**
-   * Goes back to choosing, keeping the active configuration in case the user returns to it.
+   * Goes back to choosing, keeping the chosen configuration in case the user returns to it.
    */
   protected change(): void {
     this.choosing.set(true);
   }
 
   /**
-   * Checks whether the active configuration's credential actually works, and says so.
+   * Checks whether the chosen configuration's credential actually works, and says so.
    */
   protected async verify(): Promise<void> {
-    const connection: AiConnection | undefined = this.active();
+    const connection: AiConnection | undefined = this.chosen();
     if (connection === undefined) {
       return;
     }

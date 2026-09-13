@@ -1,13 +1,15 @@
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { SetupStepAiProvider } from './setup-step-ai-provider';
+import { SetupStepCatalogue } from './setup-step-catalogue';
 import { SetupStepEnvironment } from './setup-step-environment';
+import { SetupStepLanguage } from './setup-step-language';
 import { SetupStepSettings } from './setup-step-settings';
 import { SetupStepSourceControl } from './setup-step-source-control';
-import { SetupStepTooling } from './setup-step-tooling';
 import { SetupStepTerminal } from './setup-step-terminal';
 import { SetupStepWhatsNew } from './setup-step-whats-new';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { TreeRow, TreeView } from '@shared/angular/components/tree-view/tree-view';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { Icon } from '@shared/angular/icons/icon';
@@ -22,7 +24,7 @@ import {
  * change, before they reach a tab.
  *
  * The component owns the chrome — the title, the progress rail, and Back/Next/Finish — and switches
- * on the current step's identifier to render its content. It owns none of the sequencing: which steps
+ * on the current step's kind to render its content. It owns none of the sequencing: which steps
  * run, in what order, and what completing means all belong to {@link SetupWizard}, which lives in
  * shared because the welcome screen must consult it too.
  *
@@ -38,11 +40,13 @@ import {
     ModalContent,
     Button,
     AppIcon,
+    TreeView,
     SetupStepSettings,
     SetupStepTerminal,
     SetupStepWhatsNew,
     SetupStepEnvironment,
-    SetupStepTooling,
+    SetupStepCatalogue,
+    SetupStepLanguage,
     SetupStepAiProvider,
     SetupStepSourceControl,
   ],
@@ -72,6 +76,31 @@ export class SetupWizardView {
   protected readonly version: Signal<string> = computed(
     (): string => window.host?.versions.studio ?? '',
   );
+
+  /**
+   * Gets the rail's rows: every step in walk order, a leaf indented beneath its root. A root with
+   * leaves is always expanded — the rail exists to show the road ahead, and a chevron to open would
+   * hide exactly the part of it that just appeared.
+   */
+  protected readonly rows: Signal<readonly TreeRow[]> = computed((): readonly TreeRow[] => {
+    const steps: readonly SetupStep[] = this.wizard.steps();
+    return steps.map((rung: SetupStep): TreeRow => ({
+      id: rung.id,
+      depth: rung.parentId === undefined ? 0 : 1,
+      expandable: steps.some((other: SetupStep): boolean => other.parentId === rung.id),
+      expanded: true,
+      data: rung,
+    }));
+  });
+
+  /**
+   * Reads the step a rail row stands for.
+   * @param row The row.
+   * @returns Returns the step.
+   */
+  protected stepOf(row: TreeRow): SetupStep {
+    return row.data as SetupStep;
+  }
 
   /**
    * Gets the settings each step presents, read from the same map the delta rules consult.

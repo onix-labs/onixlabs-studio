@@ -1285,15 +1285,33 @@ export class Icon {
    */
   public static readonly SETUP_ENVIRONMENT: Icon = new Icon('ph ph-gear-six');
 
-  /**
-   * Gets the icon of the setup wizard's tooling and plugins step.
-   */
-  public static readonly SETUP_TOOLING: Icon = new Icon('ph ph-wrench');
+  // The five plugin steps, one per contribution slot. The same glyphs the Plugin Manager's
+  // categories use, at the rail's weight, so a category installed from here is recognised there.
 
   /**
-   * Gets the icon of the setup wizard's AI provider step.
+   * Gets the icon of the setup wizard's language servers step.
    */
-  public static readonly SETUP_AI_PROVIDER: Icon = new Icon('ph ph-sparkle');
+  public static readonly SETUP_LANGUAGE_SERVERS: Icon = new Icon('ph ph-desktop-tower');
+
+  /**
+   * Gets the icon of the setup wizard's debug adapters step.
+   */
+  public static readonly SETUP_DEBUG_ADAPTERS: Icon = new Icon('ph ph-bug');
+
+  /**
+   * Gets the icon of the setup wizard's decoders step.
+   */
+  public static readonly SETUP_DECODERS: Icon = new Icon('ph ph-cpu');
+
+  /**
+   * Gets the icon of the setup wizard's container engines step.
+   */
+  public static readonly SETUP_CONTAINER_ENGINES: Icon = new Icon('ph ph-shipping-container');
+
+  /**
+   * Gets the icon of the setup wizard's AI providers step.
+   */
+  public static readonly SETUP_AI_PROVIDER: Icon = new Icon('ph ph-brain');
 
   /**
    * Gets the icon of the setup wizard's security step.

@@ -31,21 +31,26 @@
 
       <div class="setup__columns">
         <!-- The rail is a progress indicator, not navigation: the steps are walked in order and every
-             one is meant to be seen, so a rung is not a target. Back moves between them. -->
+             one is meant to be seen, so a row is not a target and its clicks go nowhere. It is the
+             settings view's own tree because it is the same tree — a plugin root with a leaf per
+             thing installed beneath it — and a user who set something up here finds it in Settings
+             under the same shape. -->
         <nav class="setup__rail" aria-label="Setup progress">
-          <ol class="setup__steps">
-            @for (rung of wizard.steps(); track rung.id; let index = $index) {
-              <li
-                class="setup__step"
-                [class.setup__step--current]="index === wizard.stepIndex()"
-                [class.setup__step--walked]="index < wizard.furthestIndex()"
-                [attr.aria-current]="index === wizard.stepIndex() ? 'step' : null"
+          <app-tree-view [rows]="rows()" [selectedId]="step()?.id ?? null">
+            <ng-template let-row>
+              @let rung = stepOf(row);
+              @if (rung.icon) {
+                <app-icon class="tree-icon" [icon]="rung.icon" />
+              }
+              <span
+                class="tree-name setup__step-label"
+                [class.setup__step-label--walked]="wizard.isWalked(rung)"
+                [class.setup__step-label--current]="rung.id === step()?.id"
               >
-                <app-icon class="setup__step-icon" [icon]="rung.icon" [size]="1" />
-                <span class="setup__step-label">{{ rung.label }}</span>
-              </li>
-            }
-          </ol>
+                {{ rung.label }}
+              </span>
+            </ng-template>
+          </app-tree-view>
         </nav>
 
         <div class="setup__pane">
@@ -60,7 +65,7 @@
           }
 
           <div class="setup__body">
-            @switch (step()?.id) {
+            @switch (step()?.kind) {
               @case ('welcome') {
                 <div class="setup__intro">
                   <img class="setup__logo" src="icon.svg" alt="" draggable="false" />
@@ -79,16 +84,15 @@
               @case ('whats-new') {
                 <app-setup-step-whats-new />
               }
-              @case ('appearance') {
-                <app-setup-step-settings [keys]="stepSettings['appearance']" />
-              }
-              @case ('security') {
-                <app-setup-step-settings [keys]="stepSettings['security']" />
-                <p class="setup__note">
-                  Beyond these, the agent may only write inside the workspace you have open. That
-                  boundary is not something a permission prompt can widen — it is changed in
-                  Settings, deliberately, and nowhere else.
-                </p>
+              @case ('settings') {
+                <app-setup-step-settings [keys]="stepSettings[step()?.id ?? ''] ?? []" />
+                @if (step()?.id === 'security') {
+                  <p class="setup__note">
+                    Beyond these, the agent may only write inside the workspace you have open. That
+                    boundary is not something a permission prompt can widen — it is changed in
+                    Settings, deliberately, and nowhere else.
+                  </p>
+                }
               }
               @case ('terminal') {
                 <app-setup-step-terminal />
@@ -96,18 +100,27 @@
               @case ('environment') {
                 <app-setup-step-environment />
               }
-              @case ('tooling') {
-                <app-setup-step-tooling />
+              @case ('catalogue') {
+                @if (step()?.slot; as slot) {
+                  <app-setup-step-catalogue [slot]="slot" />
+                }
+              }
+              @case ('language') {
+                @if (step()?.language; as language) {
+                  <app-setup-step-language [language]="language" />
+                }
               }
               @case ('ai-provider') {
-                <app-setup-step-ai-provider />
+                @if (step()?.pageId; as pageId) {
+                  <app-setup-step-ai-provider [pageId]="pageId" />
+                }
               }
               @case ('source-control') {
                 <app-setup-step-source-control />
               }
               @default {
-                <!-- Every step in the catalogue has a case above, so reaching this means a step was
-                     added without one. Saying so is better than an empty panel, which the user cannot
+                <!-- Every step kind has a case above, so reaching this means a kind was added
+                     without one. Saying so is better than an empty panel, which the user cannot
                      tell apart from a control that failed to load. -->
                 <p class="setup__pending">This step could not be shown.</p>
               }

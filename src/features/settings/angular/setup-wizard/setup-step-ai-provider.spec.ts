@@ -82,6 +82,7 @@ describe('SetupStepAiProvider', () => {
    */
   async function render(): Promise<void> {
     fixture = TestBed.createComponent(SetupStepAiProvider);
+    fixture.componentRef.setInput('pageId', 'anthropic');
     host = fixture.nativeElement as HTMLElement;
     fixture.detectChanges();
     await fixture.whenStable();
@@ -107,32 +108,22 @@ describe('SetupStepAiProvider', () => {
     }).compileComponents();
   });
 
-  it('render_whenNoHarnessIsInstalled_offersTheInstallablePluginsAndNothingToChoose', async () => {
-    // Install gates the choice: a provider list with nothing installed behind it would be a
-    // dropdown with nothing in it.
+  it('render_whenThePluginBehindThePageIsGone_saysSoRatherThanOfferingNothing', async () => {
+    // The step is a leaf beneath an installed plugin; if that plugin goes while the step is showing,
+    // an empty panel would be indistinguishable from a control that failed to load.
     await render();
 
-    expect(names()).toEqual(['Claude']);
-    expect(button('Install')).toBeDefined();
+    expect(host.textContent).toContain('no longer installed');
     expect(button('Subscription')).toBeUndefined();
   });
 
-  it('install_whenClicked_installsThroughTheSameConsentThePluginManagerAsks', async () => {
-    await render();
-
-    button('Install')?.click();
-
-    expect(installWithConsent).toHaveBeenCalledWith('test.claude-harness');
-  });
-
-  it('render_whenAHarnessIsInstalledAndNothingIsConfigured_offersItsProvidersAndSignInMethods', async () => {
+  it('render_whenNothingIsConfigured_offersTheSignInMethods', async () => {
     known.set([harness('installed')]);
     await render();
 
-    expect(names()).toEqual(['Anthropic']);
     expect(button('Subscription')).toBeDefined();
     expect(button('API Key')).toBeDefined();
-    expect(button('Install')).toBeUndefined();
+    expect(button('Check this provider')).toBeUndefined();
   });
 
   it('choose_whenAMethodIsClicked_createsAConfigurationNamingThePluginAndMakesItActive', async () => {
@@ -163,9 +154,9 @@ describe('SetupStepAiProvider', () => {
     button('Change')?.click();
     fixture.detectChanges();
 
-    // The configuration just made is offered back, beside the providers, rather than silently
-    // orphaned in Settings.
-    expect(names()).toEqual(['Anthropic (Anthropic API)', 'Anthropic']);
+    // The configuration just made is offered back, beside the sign-in methods, rather than
+    // silently orphaned in Settings.
+    expect(names()).toEqual(['Anthropic (Anthropic API)', 'How you sign in']);
     expect(button('Use')).toBeDefined();
     expect(button('Subscription')).toBeDefined();
   });

@@ -37,18 +37,23 @@ test.describe('setup wizard', () => {
 
     const labels: readonly string[] = await wizard.locator('.setup__step-label').allTextContents();
     // A first run has no previous version to report against, so it carries no What's New.
+    // One plugin root per slot, under the Plugin Manager's names; a fresh profile has nothing
+    // installed, so none of them has grown a leaf.
     expect(labels.map((label: string): string => label.trim())).toEqual([
       'Welcome',
       'Appearance',
       'Environment',
-      'Tooling',
-      'AI Provider',
+      'Language Servers',
+      'Debug Adapters',
+      'Decoders',
+      'Container Engines',
+      'AI Providers',
       'Security',
       'Terminal',
       'Source Control',
     ]);
 
-    await expect(wizard.locator('.setup__step--current .setup__step-label')).toHaveText('Welcome');
+    await expect(wizard.locator('.setup__step-label--current')).toHaveText('Welcome');
   });
 
   test('firstStep_offersNoWayBack', async ({ app }) => {
@@ -62,10 +67,8 @@ test.describe('setup wizard', () => {
 
     await wizard.getByRole('button', { name: 'Next' }).click();
 
-    await expect(wizard.locator('.setup__step--current .setup__step-label')).toHaveText(
-      'Appearance',
-    );
-    await expect(wizard.locator('.setup__step--walked .setup__step-label')).toHaveText('Welcome');
+    await expect(wizard.locator('.setup__step-label--current')).toHaveText('Appearance');
+    await expect(wizard.locator('.setup__step-label--walked')).toHaveText('Welcome');
   });
 
   test('back_afterAdvancing_returnsButKeepsTheStepWalked', async ({ app }) => {
@@ -74,9 +77,9 @@ test.describe('setup wizard', () => {
 
     await wizard.getByRole('button', { name: 'Back' }).click();
 
-    await expect(wizard.locator('.setup__step--current .setup__step-label')).toHaveText('Welcome');
+    await expect(wizard.locator('.setup__step-label--current')).toHaveText('Welcome');
     // Going back does not un-walk what is behind you, so the tick stays.
-    await expect(wizard.locator('.setup__step--walked')).toHaveCount(1);
+    await expect(wizard.locator('.setup__step-label--walked')).toHaveCount(1);
   });
 
   test('lastStep_offersFinishRatherThanNext', async ({ app }) => {
@@ -87,9 +90,7 @@ test.describe('setup wizard', () => {
       await next.click();
     }
 
-    await expect(wizard.locator('.setup__step--current .setup__step-label')).toHaveText(
-      'Source Control',
-    );
+    await expect(wizard.locator('.setup__step-label--current')).toHaveText('Source Control');
     await expect(wizard.getByRole('button', { name: 'Finish' })).toBeVisible();
     await expect(next).toHaveCount(0);
   });

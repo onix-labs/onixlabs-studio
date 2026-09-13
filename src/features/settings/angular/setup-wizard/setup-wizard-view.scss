@@ -48,12 +48,12 @@
 }
 
 // ---------------------------------------------------------------------------------------------
-// The step rail — the settings navigation well, with steps instead of sections
+// The step rail — the settings navigation well, with the same tree in it
 // ---------------------------------------------------------------------------------------------
 
 .setup__rail {
   display: flex;
-  flex: 0 0 12rem;
+  flex: 0 0 13rem;
   flex-direction: column;
   padding-block: 0.5rem;
   overflow: hidden;
@@ -61,50 +61,26 @@
   border-radius: calc(1rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
   background: var(--settings-nav-background-color);
+
+  // Progress, not navigation. The rows are inert to the pointer so they neither light up under it
+  // nor invite a click; the list beneath them still scrolls, since a wheel over an inert row lands
+  // on the list.
+  .tree-row {
+    pointer-events: none;
+  }
 }
 
-.setup__steps {
-  margin: 0;
-  padding: 0;
-  overflow-y: auto;
-  list-style: none;
-}
-
-// The tree row's metrics and behaviour, which is what every other list in the application uses.
-.setup__step {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  inline-size: 100%;
-  block-size: 2rem;
-  padding-inline: 0.625rem;
+// A step still ahead reads muted; one already walked, and the current one, at full strength. The
+// rail's job is to say where you are, and the accent fill the tree draws on the current row says it —
+// a second filled treatment for walked rows would compete with the one that matters.
+.setup__step-label {
   font-size: 0.8125rem;
   color: var(--settings-muted-foreground-color);
-  transition: var(--hover-transition);
-  user-select: none;
 }
 
-.setup__step-icon {
-  flex: 0 0 auto;
-}
-
-.setup__step-label {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-// A step already walked reads at full strength but keeps its plain ground: the rail's job is to say
-// where you are, and a second filled treatment would compete with the one that says it.
-.setup__step--walked {
+.setup__step-label--walked,
+.setup__step-label--current {
   color: var(--body-foreground-color);
-}
-
-// The application's selection treatment — an accent-tinted fill across the full row, exactly as the
-// trees and lists draw it. Not a saturated pill: nothing else in Studio is one.
-.setup__step--current {
-  color: var(--body-foreground-color);
-  background: color-mix(in srgb, var(--accent-color) 22%, transparent);
 }
 
 // ---------------------------------------------------------------------------------------------

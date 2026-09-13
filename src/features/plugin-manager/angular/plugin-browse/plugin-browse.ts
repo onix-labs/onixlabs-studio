@@ -1,5 +1,9 @@
 import { computed, inject, Injectable, Signal, signal, WritableSignal } from '@angular/core';
-import { type PluginContribution, type PluginSummary } from '@shared/api/plugin-channels';
+import {
+  PLUGIN_SLOT_LABELS,
+  type PluginContribution,
+  type PluginSummary,
+} from '@shared/api/plugin-channels';
 import { Icon } from '@shared/angular/icons/icon';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
 
@@ -40,21 +44,6 @@ export type PluginSort = 'name' | 'category' | 'state';
 const UNCATEGORISED: string = 'Other';
 
 /**
- * The display name of each contribution slot, which is what the categories panel lists.
- *
- * Keyed by the slot rather than derived from it so the wording is a decision made here rather than a
- * mechanical de-kebabing — "Language Servers" reads better than "Language Server" as a category, and
- * "AI Agents" is what a user calls an agent harness.
- */
-const SLOT_CATEGORIES: Readonly<Record<string, string>> = {
-  'language-server': 'Language Servers',
-  'debug-adapter': 'Debug Adapters',
-  decoder: 'Decoders',
-  'container-engine': 'Container Engines',
-  'agent-harness': 'AI Agents',
-};
-
-/**
  * The glyph shown beside each category, all duotone so the panel reads as one set.
  *
  * Keyed by the category name rather than by the slot, so the panel and this table cannot drift: a
@@ -66,7 +55,7 @@ const CATEGORY_ICONS: Readonly<Record<string, Icon>> = {
   'Debug Adapters': Icon.DEBUG,
   Decoders: Icon.DECODERS,
   'Container Engines': Icon.CONTAINERS,
-  'AI Agents': Icon.AGENT,
+  'AI Providers': Icon.AGENT,
 };
 
 /**
@@ -81,7 +70,7 @@ const ROW_ICONS: Readonly<Record<string, Icon>> = {
   'Debug Adapters': Icon.DEBUG_LIGHT,
   Decoders: Icon.DECODERS_LIGHT,
   'Container Engines': Icon.CONTAINERS_LIGHT,
-  'AI Agents': Icon.AGENT_LIGHT,
+  'AI Providers': Icon.AGENT_LIGHT,
 };
 
 /**
@@ -230,7 +219,7 @@ export function categoriesOf(plugin: PluginSummary): readonly string[] {
   const names: Set<string> = new Set<string>(
     plugin.contributions.map(
       (contribution: PluginContribution): string =>
-        SLOT_CATEGORIES[contribution.slot] ?? UNCATEGORISED,
+        PLUGIN_SLOT_LABELS[contribution.slot] ?? UNCATEGORISED,
     ),
   );
   return names.size === 0 ? [UNCATEGORISED] : [...names];
