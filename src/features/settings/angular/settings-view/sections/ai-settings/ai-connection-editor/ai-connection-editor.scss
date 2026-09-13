@@ -19,6 +19,15 @@
   gap: 0.5rem;
 }
 
+// The plugin a configuration runs through: a name, or the reason there is none.
+.conn-editor__harness-name {
+  font-size: 0.8rem;
+
+  &--problem {
+    color: var(--danger-color);
+  }
+}
+
 // A text or password field that should be comfortably wide (a key, a URL, a model id).
 .conn-editor__wide {
   min-inline-size: 18rem;

@@ -711,8 +711,8 @@ export class AiManager {
       models: connection.models,
       added: 0,
       detail:
-        'No agent plugin runs this configuration. Install one in Plugins, then choose it under ' +
-        '"Runs through".',
+        'No agent plugin runs this configuration. Install one in Plugins, then add the ' +
+        'configuration from its provider page in Settings.',
     });
   }
 
@@ -811,8 +811,8 @@ export class AiManager {
         state: 'error',
         detail:
           this.providers.size === 0
-            ? 'No AI provider is installed. Install one from the Plugin Manager, then choose it ' +
-              'under "Runs through" on a connection in Settings.'
+            ? 'No AI provider is installed. Install one from the Plugin Manager, then add a ' +
+              'configuration from its provider page in Settings.'
             : `Unknown provider: ${request.providerId}`,
       });
       return;

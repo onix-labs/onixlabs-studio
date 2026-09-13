@@ -3,7 +3,7 @@ import { signal, WritableSignal } from '@angular/core';
 import { AiConnections } from '@shared/angular/services/ai-connections/ai-connections';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
 import type { AiConnection } from '@shared/api/ai-types';
-import type { PluginSummary } from '@shared/api/plugin-channels';
+import type { ContributedAiProvider, PluginSummary } from '@shared/api/plugin-channels';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AiConnectionEditor } from './ai-connection-editor';
 
@@ -29,12 +29,14 @@ function connection(patch: Partial<AiConnection> = {}): AiConnection {
  * @param id The harness (and plugin) id.
  * @param displayName The name shown in the picker.
  * @param state The plugin's state on this machine.
+ * @param providers The provider pages the harness contributes.
  * @returns Returns the plugin summary.
  */
 function harnessPlugin(
   id: string,
   displayName: string,
   state: 'installed' | 'available' = 'installed',
+  providers: readonly ContributedAiProvider[] = [],
 ): PluginSummary {
   return {
     id,
@@ -42,7 +44,7 @@ function harnessPlugin(
     description: '',
     state,
     version: '0.1.0',
-    contributions: [{ slot: 'agent-harness', id, displayName, priority: 100 }],
+    contributions: [{ slot: 'agent-harness', id, displayName, priority: 100, providers }],
   } as unknown as PluginSummary;
 }
 
@@ -62,26 +64,23 @@ describe('AiConnectionEditor', () => {
   }
 
   /**
-   * Reads the harness picker, or null when the row is not shown.
-   * @returns Returns the dropdown element, or null.
+   * Reads what the Runs-through row says.
+   * @returns Returns the row's text.
    */
-  function picker(): HTMLSelectElement | null {
-    // Scoped to the harness row: the editor renders other dropdowns (the Claude CLI setting-control),
-    // so a bare `app-dropdown` query would find one of those and report a picker that is not there.
-    return (fixture.nativeElement as HTMLElement).querySelector(
-      '.conn-editor__harness app-dropdown select',
+  function reading(): string {
+    return (
+      (fixture.nativeElement as HTMLElement)
+        .querySelector('.conn-editor__harness-name')
+        ?.textContent?.trim() ?? ''
     );
   }
 
   /**
-   * Chooses a harness through the control, as a user does.
-   * @param value The option value to select.
+   * Reads the repair button, or null when none is offered.
+   * @returns Returns the button, or null.
    */
-  function choose(value: string): void {
-    const select: HTMLSelectElement = picker()!;
-    select.value = value;
-    select.dispatchEvent(new Event('change'));
-    fixture.detectChanges();
+  function repairButton(): HTMLButtonElement | null {
+    return (fixture.nativeElement as HTMLElement).querySelector('.conn-editor__harness button');
   }
 
   beforeEach(() => {
@@ -103,67 +102,87 @@ describe('AiConnectionEditor', () => {
     });
   });
 
-  it('withNoHarnessInstalled_doesNotOfferTheChoiceAtAll', () => {
-    // ⛔ Install, then choose. A dropdown holding only "Built-in" is not a choice, and offering the
-    // slot before anything can fill it inverts the order the Plugin Manager exists to enforce.
+  it('withTheNamedHarnessInstalled_namesItAndOffersNothingToChange', () => {
+    // ⛔ A fact, not a choice. The sign-in button that created the configuration belonged to the plugin
+    // that runs it; the picker this replaced could only hand a configuration to a plugin that does not
+    // speak its sign-in method.
+    plugins.set([
+      harnessPlugin('onixlabs.claude-harness', 'Claude'),
+      harnessPlugin('onixlabs.codex-harness', 'Codex'),
+    ]);
+    mount(connection({ harnessId: 'onixlabs.claude-harness' }));
+
+    expect(reading()).toBe('Claude');
+    expect(repairButton()).toBeNull();
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('withNothingNamedAndNothingInstalled_saysItCannotRun', () => {
     mount(connection());
 
-    expect(picker()).toBeNull();
+    expect(reading()).toContain('Not set');
+    expect(repairButton()).toBeNull();
   });
 
-  it('withAHarnessMerelyAvailable_stillDoesNotOfferIt', () => {
-    // Listed in the catalogue is not installed. Offering an uninstalled harness would let a user
-    // point a connection at something that cannot run it.
-    plugins.set([harnessPlugin('onixlabs.ai-sdk-harness', 'AI SDK', 'available')]);
-    mount(connection());
-
-    expect(picker()).toBeNull();
-  });
-
-  it('withNothingChosen_offersAPlaceholderAndTheInstalledHarnesses', () => {
-    // ⛔ The first option used to be **Built-in**, meaning the provider compiled into Studio. Core ships
-    // none (#653), so it named something that could never run — and it was the pre-selected value on
-    // every connection, which is how a plugin could install cleanly and still do nothing (#697).
-    plugins.set([harnessPlugin('onixlabs.ai-sdk-harness', 'AI SDK (out of process)')]);
-    mount(connection());
-
-    const labels: readonly string[] = Array.from(picker()!.querySelectorAll('option')).map(
-      (option: Element): string => option.textContent?.trim() ?? '',
-    );
-    expect(labels).toEqual(['Not set — choose a plugin', 'AI SDK (out of process)']);
-  });
-
-  it('withAHarnessChosen_offersNoWayBackToAnUnrunnableState', () => {
-    plugins.set([harnessPlugin('onixlabs.ai-sdk-harness', 'AI SDK')]);
-    mount(connection({ harnessId: 'onixlabs.ai-sdk-harness' }));
-
-    const labels: readonly string[] = Array.from(picker()!.querySelectorAll('option')).map(
-      (option: Element): string => option.textContent?.trim() ?? '',
-    );
-    expect(labels).toEqual(['AI SDK']);
-  });
-
-  it('choosingAHarness_namesItOnTheConnection', () => {
-    // 🔑 The whole point of the picker: `harnessId` is what makes an installed harness reachable. It
-    // existed in the type, the registry and the specs long before anything wrote it, so every
-    // connection failed `serves()` and no plugin could ever run a turn.
-    plugins.set([harnessPlugin('onixlabs.ai-sdk-harness', 'AI SDK')]);
-    mount(connection());
-
-    choose('onixlabs.ai-sdk-harness');
-
-    expect(update).toHaveBeenCalledWith('conn-1', { harnessId: 'onixlabs.ai-sdk-harness' });
-  });
-
-  it('withTheNamedHarnessUninstalled_readsAsNotSetWithoutRewritingTheChoice', () => {
-    // The plugin that ran it is gone, so it cannot run, and saying "not set" beats naming a plugin that
-    // is not there. ⚠️ The stored id is deliberately NOT cleared — reinstalling restores the choice, and
+  it('withTheNamedHarnessUninstalled_saysSoWithoutRewritingTheChoice', () => {
+    // The plugin that ran it is gone, so it cannot run, and saying so beats naming a plugin that is not
+    // there. ⚠️ The stored id is deliberately NOT cleared — reinstalling restores the choice, and
     // silently rewriting a user's configuration because a plugin is temporarily absent would lose it.
     plugins.set([harnessPlugin('onixlabs.ai-sdk-harness', 'AI SDK')]);
     mount(connection({ harnessId: 'onixlabs.claude-harness' }));
 
-    expect(picker()!.value).toBe('');
-
+    expect(reading()).toContain('no longer installed');
     expect(update).not.toHaveBeenCalled();
+  });
+
+  it('withNothingNamed_offersThePluginWhosePageHasTheSignInMethod', () => {
+    // 🔑 The one repair that is not a free choice: the same answer creating the configuration would
+    // give today, for a configuration that predates plugins naming themselves (#703).
+    plugins.set([
+      harnessPlugin('onixlabs.claude-harness', 'Claude', 'installed', [
+        {
+          kind: 'anthropic',
+          company: 'Anthropic',
+          authMethods: [
+            { auth: 'claude-login', buttonLabel: 'Sign in', defaultDisplayName: 'Claude' },
+          ],
+        },
+      ]),
+      harnessPlugin('onixlabs.codex-harness', 'Codex', 'installed', [
+        {
+          kind: 'openai',
+          company: 'OpenAI',
+          authMethods: [
+            { auth: 'codex-login', buttonLabel: 'Sign in', defaultDisplayName: 'Codex' },
+          ],
+        },
+      ]),
+    ]);
+    mount(connection());
+
+    expect(reading()).toContain('Not set');
+    expect(repairButton()?.textContent?.trim()).toBe('Use Claude');
+    repairButton()!.click();
+
+    expect(update).toHaveBeenCalledWith('conn-1', { harnessId: 'onixlabs.claude-harness' });
+  });
+
+  it('withAHarnessMerelyAvailable_offersNoRepairThroughIt', () => {
+    // Listed in the catalogue is not installed. Pointing a configuration at something that cannot run
+    // it would be the picker's mistake again.
+    plugins.set([
+      harnessPlugin('onixlabs.claude-harness', 'Claude', 'available', [
+        {
+          kind: 'anthropic',
+          company: 'Anthropic',
+          authMethods: [
+            { auth: 'claude-login', buttonLabel: 'Sign in', defaultDisplayName: 'Claude' },
+          ],
+        },
+      ]),
+    ]);
+    mount(connection());
+
+    expect(repairButton()).toBeNull();
   });
 });
