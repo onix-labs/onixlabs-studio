@@ -155,35 +155,38 @@ function isHarness(contribution: PluginContribution): boolean {
       }
       @case ('verify') {
         @if (active(); as connection) {
+          <!-- The check leads, above the editor rather than below it. The editor is tall enough
+               that anything after it is below the fold, and the check is the point of the step;
+               the editor is there for what the check turns out to need. -->
           <div class="ai__chosen">
             <span class="ai__text">
               <span class="ai__name">{{ labelFor(connection) }}</span>
-              <span class="ai__detail">The configuration the agent runs turns through.</span>
+              @if (verdict(); as verdict) {
+                <span class="ai__verdict" [class.ai__verdict--bad]="!verdict.reachable">
+                  <app-icon
+                    [icon]="verdict.reachable ? Icon.SUCCESS_FILL : Icon.WARNING_FILL"
+                    [size]="0.9"
+                  />
+                  {{ verdict.message }}
+                </span>
+              } @else {
+                <span class="ai__detail">The configuration the agent runs turns through.</span>
+              }
             </span>
-            <app-button label="Change" (click)="change()" />
+            <span class="ai__methods">
+              <app-button label="Change" (click)="change()" />
+              <app-button
+                variant="solid"
+                label="Check this provider"
+                [disabled]="!connections.isAvailable"
+                [loading]="checking()"
+                (click)="verify()"
+                tooltip="Confirm the credential works before you leave this step"
+              />
+            </span>
           </div>
 
           <app-ai-connection-editor [connection]="connection" />
-
-          <div class="ai__verify">
-            <app-button
-              variant="solid"
-              label="Check this provider"
-              [disabled]="!connections.isAvailable"
-              [loading]="checking()"
-              (click)="verify()"
-              tooltip="Confirm the credential works before you leave this step"
-            />
-            @if (verdict(); as verdict) {
-              <span class="ai__verdict" [class.ai__verdict--bad]="!verdict.reachable">
-                <app-icon
-                  [icon]="verdict.reachable ? Icon.SUCCESS_FILL : Icon.WARNING_FILL"
-                  [size]="0.9"
-                />
-                {{ verdict.message }}
-              </span>
-            }
-          </div>
         }
       }
     }

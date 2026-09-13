@@ -58,13 +58,6 @@
   gap: 0.5rem;
 }
 
-.ai__verify {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-}
-
 // The verdict is the point of the step, so it says what happened in words rather than as a colour
 // alone — a tint is a hint, and this is an answer.
 .ai__verdict {

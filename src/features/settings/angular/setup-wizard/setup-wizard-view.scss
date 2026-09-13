@@ -3,7 +3,6 @@
 // same corner treatment. It is a first impression of Studio, and a first impression that does not
 // look like the rest of Studio is worse than a plain one.
 :host {
-  --modal-panel-background: var(--settings-background-color);
   // The wizard supplies its own insets: the title bar reaches the window edges, and the rail draws
   // its own frame. Zeroing the panel's padding is the seam for that — a negative margin only shifts
   // the box up, leaving its height short by exactly the padding it failed to reclaim, which is dead
@@ -16,11 +15,18 @@
 // and this element carries this component's scope attribute rather than the host's, so the rule never
 // matches projected content. With the panel's padding zeroed above, 100% is the whole window — which
 // is also what closes the gap along the bottom edge that the padding used to leave.
+//
+// 🔥 The ground is painted HERE, not stated as `--modal-panel-background` on the host. The modal
+// carries a host's custom properties into its window as a snapshot taken when it opens, and this
+// modal opens at cold start, before the theme has resolved — so a background stated that way was
+// frozen at the dark theme's value and never followed the theme, which in light mode is dark text
+// on a dark ground. This element lives in the modal's own document and resolves the token live.
 .setup {
   display: flex;
   flex-direction: column;
   block-size: 100%;
   min-block-size: 0;
+  background: var(--settings-background-color);
 }
 
 // The window is `hiddenInset`, so it has no title bar of its own and the platform draws its controls
