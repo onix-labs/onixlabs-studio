@@ -75,7 +75,7 @@ import {
   findStackOfPanel,
   firstStackOfRole,
 } from '@shared/angular/services/dock-layout/dock-tree';
-import { Documents } from '@shared/angular/services/documents/documents';
+import { CodeDocument, Documents } from '@shared/angular/services/documents/documents';
 import { UnsavedWorkRegistry } from '@shared/angular/services/unsaved-work/unsaved-work-registry';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { LspClient } from '@shared/angular/services/lsp/lsp-client';
@@ -85,6 +85,7 @@ import { PackageModel } from '@features/workspace/angular/project/package-model'
 import { PackageExplorer } from '@features/workspace/angular/project/package-explorer';
 import { Output } from '@shared/angular/services/output/output';
 import { Repository } from '@shared/angular/services/repository/repository';
+import type { GitBranch, GitFileChange } from '@shared/angular/services/repository/repository-data';
 import { ForgeRepository } from '@shared/angular/services/forge-repository/forge-repository';
 import {
   WorkspaceSourceControlCommandHandler,
@@ -100,7 +101,12 @@ import { createMinimumHold, MinimumHold } from '@shared/angular/services/minimum
 import { Debugger } from '@shared/angular/services/debug/debugger';
 import { DebugSession } from '@features/workspace/angular/debug/debug-session';
 import { WorkspaceCapabilities } from '@shared/angular/services/workspace/workspace-capabilities';
-import { ActiveWorkspace } from '@shared/angular/services/workspace/active-workspace';
+import {
+  ActiveWorkspace,
+  WellChange,
+  WellDocument,
+  WellSourceControl,
+} from '@shared/angular/services/workspace/active-workspace';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { WorkspaceGit } from '@features/workspace/angular/workspace-git/workspace-git';
 import { Workspaces } from '@shared/angular/services/workspaces/workspaces';
@@ -451,6 +457,11 @@ export class DirectoryView implements OnInit, OnDestroy {
    * Holds this tab's scoped dock layout.
    */
   private readonly dockState: DockState = inject(DockState);
+
+  /**
+   * Holds the diff opener, reached by an agent through the published well to show a change (#713).
+   */
+  private readonly diffOpener: DiffOpener = inject(DiffOpener);
 
   /**
    * Holds this tab's scoped solution model, whose presence drives the Solution Explorer panel.
@@ -1365,6 +1376,99 @@ export class DirectoryView implements OnInit, OnDestroy {
   }
 
   /**
+   * Opens a changed file's diff into the well on an agent's behalf (#713). Only a file the repository
+   * reports as changed has a diff to show; anything else is refused with the reason rather than
+   * opened as an empty comparison.
+   * @param path The absolute path of the file.
+   * @returns Returns null when the diff was opened, or the reason it could not be.
+   */
+  private openDiffForAgent(path: string): Promise<string | null> {
+    if (!this.repository.isBound()) {
+      return Promise.resolve(
+        'This workspace is not a git repository, so there is no diff to show.',
+      );
+    }
+    const root: string = this.repository.info()?.root ?? '';
+    const relative: string = path.startsWith(root)
+      ? path.slice(root.length).replace(/^[\\/]+/, '')
+      : path;
+    const normalised: string = relative.replace(/\\/g, '/');
+    const change: GitFileChange | undefined = [
+      ...this.repository.unstaged(),
+      ...this.repository.staged(),
+      ...this.repository.conflicted(),
+    ].find((candidate: GitFileChange): boolean => candidate.path === normalised);
+    if (change === undefined) {
+      return Promise.resolve(
+        `"${normalised}" has no changes against HEAD, so there is no diff to show.`,
+      );
+    }
+    this.diffOpener.open(change);
+    return Promise.resolve(null);
+  }
+
+  /**
+   * Lists the well's documents for an agent (#713), in the well's own order where the layout has one.
+   * @returns Returns the documents.
+   */
+  private wellDocumentsForAgent(): readonly WellDocument[] {
+    const activeId: string | null = this.documents.activeDocumentId();
+    const byId: Map<string, CodeDocument> = new Map<string, CodeDocument>(
+      this.documents
+        .list()
+        .map((document: CodeDocument): [string, CodeDocument] => [document.id, document]),
+    );
+    const well: StackNode | null = firstStackOfRole(this.dockState.layout(), 'document');
+    const ordered: readonly CodeDocument[] =
+      well === null
+        ? [...byId.values()]
+        : [
+            ...well.panels
+              .map((id: string): CodeDocument | undefined => byId.get(id))
+              .filter(
+                (document: CodeDocument | undefined): document is CodeDocument =>
+                  document !== undefined,
+              ),
+            ...[...byId.values()].filter(
+              (document: CodeDocument): boolean => !well.panels.includes(document.id),
+            ),
+          ];
+    return ordered.map((document: CodeDocument): WellDocument => ({
+      path: document.filePath(),
+      name: document.fileName(),
+      language: document.language(),
+      dirty: document.dirty(),
+      active: document.id === activeId,
+    }));
+  }
+
+  /**
+   * Reads the workspace's source-control state for an agent (#713): what the sidebar shows, from the
+   * same bound repository.
+   * @returns Returns the state, or null when the folder is not a repository.
+   */
+  private sourceControlForAgent(): WellSourceControl | null {
+    if (!this.repository.isBound()) {
+      return null;
+    }
+    const branch: GitBranch | undefined = this.repository.currentBranch();
+    const change: (file: GitFileChange) => WellChange = (file: GitFileChange): WellChange => ({
+      path: file.path,
+      status: file.status,
+    });
+    return {
+      root: this.repository.info()?.root ?? this.workspace.root()?.path ?? '',
+      branch: branch?.name ?? null,
+      upstream: branch?.upstream ?? null,
+      ahead: branch?.ahead ?? 0,
+      behind: branch?.behind ?? 0,
+      staged: this.repository.staged().map(change),
+      unstaged: this.repository.unstaged().map(change),
+      conflicted: this.repository.conflicted().map(change),
+    };
+  }
+
+  /**
    * Seeds the scoped workspace from the folder stashed for this tab, when opened from the welcome
    * screen.
    */
@@ -1375,9 +1479,12 @@ export class DirectoryView implements OnInit, OnDestroy {
     // Publish this workspace's document well, so something outside the tab's injector — the agent's
     // workbench tools — can open a file into it. The opener is provided per workspace tab, so this
     // published closure is the only way to reach it from the root.
-    this.activeWorkspace.setWell(this.tabId(), (path: string): Promise<boolean> =>
-      this.fileOpener.openPath(path),
-    );
+    this.activeWorkspace.setWell(this.tabId(), {
+      open: (path: string): Promise<boolean> => this.fileOpener.openPath(path),
+      openDiff: (path: string): Promise<string | null> => this.openDiffForAgent(path),
+      documents: (): readonly WellDocument[] => this.wellDocumentsForAgent(),
+      sourceControl: (): WellSourceControl | null => this.sourceControlForAgent(),
+    });
     // Surface this workspace's well documents to the app-wide close flows for the tab's lifetime.
     this.destroyRef.onDestroy(this.unsavedWork.register(this.documents));
     // The dock context carries the VIEW scope, not the raw tab id: it feeds pop-out keybinding

@@ -6,9 +6,19 @@ import { Tab, TabType } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import {
   ActiveWorkspace,
+  WellDocument,
+  WellSourceControl,
   WorkspaceWell,
 } from '@shared/angular/services/workspace/active-workspace';
-import { OPEN_DOCUMENT, OPEN_FILE, OPEN_TERMINAL, SAVE_DOCUMENT } from '@shared/api/ai-types';
+import {
+  LIST_OPEN_DOCUMENTS,
+  OPEN_DIFF,
+  OPEN_DOCUMENT,
+  OPEN_FILE,
+  OPEN_TERMINAL,
+  READ_SOURCE_CONTROL_STATUS,
+  SAVE_DOCUMENT,
+} from '@shared/api/ai-types';
 import { WorkbenchAgentCapabilities } from './workbench-agent-capabilities';
 
 /**
@@ -49,6 +59,26 @@ class FakeActiveWorkspace {
   public well: WorkspaceWell | null = null;
 
   /**
+   * The paths whose diffs were asked for.
+   */
+  public readonly diffed: string[] = [];
+
+  /**
+   * What the well says about a diff request: null opens it, a string refuses it.
+   */
+  public diffRefusal: string | null = null;
+
+  /**
+   * The documents the well reports.
+   */
+  public documents: readonly WellDocument[] = [];
+
+  /**
+   * The source-control state the well reports.
+   */
+  public sourceControl: WellSourceControl | null = null;
+
+  /**
    * Publishes a well backed by this fake.
    * @param root The workspace root.
    */
@@ -60,6 +90,12 @@ class FakeActiveWorkspace {
         this.requested.push(path);
         return Promise.resolve(this.opens);
       },
+      openDiff: (path: string): Promise<string | null> => {
+        this.diffed.push(path);
+        return Promise.resolve(this.diffRefusal);
+      },
+      documents: (): readonly WellDocument[] => this.documents,
+      sourceControl: (): WellSourceControl | null => this.sourceControl,
     };
   }
 
@@ -207,7 +243,15 @@ describe('WorkbenchAgentCapabilities', () => {
 
   it('constructor_registersTheWorkbenchCapabilities', () => {
     expect([...runtime.capabilities.keys()].sort()).toEqual(
-      [OPEN_DOCUMENT, SAVE_DOCUMENT, OPEN_TERMINAL, OPEN_FILE].sort(),
+      [
+        OPEN_DOCUMENT,
+        SAVE_DOCUMENT,
+        OPEN_TERMINAL,
+        OPEN_FILE,
+        LIST_OPEN_DOCUMENTS,
+        OPEN_DIFF,
+        READ_SOURCE_CONTROL_STATUS,
+      ].sort(),
     );
   });
 
@@ -368,6 +412,91 @@ describe('WorkbenchAgentCapabilities', () => {
 
       expect(result['ok']).toBe(false);
       expect(workspace.requested).toEqual([]);
+    });
+  });
+
+  describe(LIST_OPEN_DOCUMENTS, () => {
+    it('reportsTheWellsDocumentsAndRoot', async () => {
+      workspace.publish('/ws');
+      workspace.documents = [
+        { path: '/ws/a.ts', name: 'a.ts', language: 'typescript', dirty: true, active: true },
+      ];
+
+      const result: Record<string, unknown> = await invoke(LIST_OPEN_DOCUMENTS, {});
+
+      expect(result['ok']).toBe(true);
+      expect(result['root']).toBe('/ws');
+      expect(result['documents']).toEqual(workspace.documents);
+    });
+
+    it('withNoWorkspaceOpen_saysSo', async () => {
+      const result: Record<string, unknown> = await invoke(LIST_OPEN_DOCUMENTS, {});
+
+      expect(result['ok']).toBe(false);
+      expect(result['error']).toContain('No workspace is open');
+    });
+  });
+
+  describe(OPEN_DIFF, () => {
+    it('resolvesTheRelativePathOpensTheDiffAndBringsTheTabForward', async () => {
+      workspace.publish('/ws');
+
+      const result: Record<string, unknown> = await invoke(OPEN_DIFF, { path: 'src/a.ts' });
+
+      expect(result['ok']).toBe(true);
+      expect(workspace.diffed).toEqual(['/ws/src/a.ts']);
+      expect(tabs.activated).toEqual(['workspace-tab']);
+    });
+
+    it('whenTheWellRefuses_reportsItsReasonAndLeavesTheTabAlone', async () => {
+      workspace.publish('/ws');
+      workspace.diffRefusal =
+        '"src/a.ts" has no changes against HEAD, so there is no diff to show.';
+
+      const result: Record<string, unknown> = await invoke(OPEN_DIFF, { path: 'src/a.ts' });
+
+      expect(result['ok']).toBe(false);
+      expect(result['error']).toContain('no changes');
+      expect(tabs.activated).toEqual([]);
+    });
+
+    it('withNoPath_isRefused', async () => {
+      workspace.publish('/ws');
+
+      const result: Record<string, unknown> = await invoke(OPEN_DIFF, {});
+
+      expect(result['ok']).toBe(false);
+      expect(workspace.diffed).toEqual([]);
+    });
+  });
+
+  describe(READ_SOURCE_CONTROL_STATUS, () => {
+    it('reportsTheWellsSourceControlState', async () => {
+      workspace.publish('/ws');
+      workspace.sourceControl = {
+        root: '/ws',
+        branch: 'main',
+        upstream: 'origin/main',
+        ahead: 1,
+        behind: 0,
+        staged: [],
+        unstaged: [{ path: 'src/a.ts', status: 'modified' }],
+        conflicted: [],
+      };
+
+      const result: Record<string, unknown> = await invoke(READ_SOURCE_CONTROL_STATUS, {});
+
+      expect(result['ok']).toBe(true);
+      expect(result['status']).toEqual(workspace.sourceControl);
+    });
+
+    it('withNoRepository_reportsNullRatherThanAnError', async () => {
+      workspace.publish('/ws');
+
+      const result: Record<string, unknown> = await invoke(READ_SOURCE_CONTROL_STATUS, {});
+
+      expect(result['ok']).toBe(true);
+      expect(result['status']).toBeNull();
     });
   });
 

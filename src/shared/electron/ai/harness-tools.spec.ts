@@ -2,8 +2,11 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   DELETE_RUN_CONFIGURATIONS,
   EDIT_ACTIVE_DOCUMENT,
+  LIST_OPEN_DOCUMENTS,
   LIST_RUN_CONFIGURATIONS,
+  OPEN_DIFF,
   OPEN_FILE,
+  READ_SOURCE_CONTROL_STATUS,
   READ_ACTIVE_DOCUMENT,
   REPLACE_ACTIVE_DOCUMENT,
   RUN_ACTIVE_DOCUMENT,
@@ -103,13 +106,33 @@ describe('describeOffer', () => {
     );
 
     expect(names(offer)).toEqual(
-      expect.arrayContaining([READ_ACTIVE_DOCUMENT, OPEN_FILE, SAVE_RUN_CONFIGURATIONS, ASK_USER]),
+      expect.arrayContaining([
+        READ_ACTIVE_DOCUMENT,
+        OPEN_FILE,
+        SAVE_RUN_CONFIGURATIONS,
+        ASK_USER,
+        LIST_OPEN_DOCUMENTS,
+        OPEN_DIFF,
+        READ_SOURCE_CONTROL_STATUS,
+      ]),
     );
     expect(names(offer)).not.toContain(EDIT_ACTIVE_DOCUMENT);
     expect(names(offer)).not.toContain(REPLACE_ACTIVE_DOCUMENT);
     expect(names(offer)).not.toContain(RUN_ACTIVE_DOCUMENT);
     expect(offer.systemPrompt).toContain('docked to a workspace tab');
     expect(offer.systemPrompt).toContain('run configurations');
+  });
+
+  it('keepsTheWorkspaceViewToolsOffTheEditorSurface', async () => {
+    // An editor tab has one document, its own; the well-wide listing and the diff belong to the tab
+    // that shows the well.
+    const offer: { tools: readonly HarnessTool[] } = await describeOffer(
+      contextFor({ surface: 'editor' }),
+    );
+
+    expect(names(offer)).not.toContain(LIST_OPEN_DOCUMENTS);
+    expect(names(offer)).not.toContain(OPEN_DIFF);
+    expect(names(offer)).not.toContain(READ_SOURCE_CONTROL_STATUS);
   });
 
   it('omitsAToolTheHarnessSaysItAlreadyHas', async () => {
