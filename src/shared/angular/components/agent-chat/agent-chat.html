@@ -204,17 +204,6 @@
             }
           </div>
         }
-        @case ('notice') {
-          <!-- Studio's own bookkeeping — a background task settling, housekeeping the harness
-               reports from a previous session. ⛔ Deliberately NOT a bubble and NOT on the agent's
-               rail: the model did not write this, and rendering it as assistant text made it
-               indistinguishable from an answer (#691). Plain text, not Markdown, because the
-               sentence is ours rather than the model's and has no formatting to honour. -->
-          <div class="agent__notice" [class.agent__unmeasured]="!isMeasured(row.id)">
-            <app-icon class="agent__notice-icon" [icon]="Icon.INFO" aria-hidden="true" />
-            <p class="agent__notice-text">{{ row.item!.text }}</p>
-          </div>
-        }
         @case ('error') {
           <!-- A failed run: the cause over the provider it went through, expandable diagnostics,
                and a one-click retry of the failed turn. -->
@@ -318,6 +307,7 @@
         <span
           class="agent__node-icon"
           [class.agent__node-icon--error]="row.item?.toolState === 'error'"
+          [class.agent__node-icon--notice]="row.kind === 'notice'"
         >
           <app-icon [icon]="row.nodeIcon" [class.agent__spin]="row.nodeSpin" />
         </span>
@@ -365,6 +355,30 @@
           }
           @case ('working') {
             <p class="agent__working" aria-live="polite">Working…</p>
+          }
+          @case ('notice') {
+            <!-- Studio's own bookkeeping — a background task settling, housekeeping the harness
+                 reports from a previous session. ⛔ NOT a bubble: the model did not write this, and
+                 rendering it as assistant text made it indistinguishable from an answer (#691). A
+                 chip on the rail like a tool call (#695), with what there is to say behind its
+                 expander; a notice with nothing behind it is the chip alone, since a caret that
+                 opens onto nothing is a promise the row cannot keep. Plain text, not Markdown: the
+                 sentence is ours rather than the model's. -->
+            @if (row.detail; as detail) {
+              <details class="agent__action agent__notice">
+                <summary class="agent__action-summary">
+                  <span class="agent__action-label">{{ row.label }}</span>
+                  <app-icon class="agent__action-caret" [icon]="Icon.CARET_DOWN" />
+                </summary>
+                <p class="agent__notice-body">{{ detail }}</p>
+              </details>
+            } @else {
+              <span class="agent__action agent__notice">
+                <span class="agent__action-summary">
+                  <span class="agent__action-label">{{ row.label }}</span>
+                </span>
+              </span>
+            }
           }
           @default {
             <!-- The raw-detail sections shared by ordinary tool rows and sub-agent lanes: the

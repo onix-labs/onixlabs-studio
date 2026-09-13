@@ -497,6 +497,53 @@ describe('AgentChat', () => {
     ).toBe('Thought process');
   });
 
+  it('notice_withDetail_rendersOnTheRailAsAChipWithTheDetailBehindItsExpander', () => {
+    // Studio's own bookkeeping reads like every other piece of machinery on the rail (#695): the
+    // title on the chip, what it has to say behind the caret, and an info node beside it — not a
+    // card standing apart from the timeline.
+    items.set([
+      { id: 'item-1', kind: 'tool', text: '', toolName: 'Bash', toolState: 'ok' },
+      {
+        id: 'item-2',
+        kind: 'notice',
+        text: 'Background task finished',
+        detail: 'Close the four resolved issues with evidence',
+        sealed: true,
+      },
+    ]);
+    fixture.detectChanges();
+
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    const disclosure: HTMLDetailsElement | null =
+      host.querySelector<HTMLDetailsElement>('details.agent__notice');
+    expect(disclosure).not.toBeNull();
+    expect(disclosure!.open).toBe(false);
+    expect(disclosure!.querySelector('.agent__action-label')?.textContent?.trim()).toBe(
+      'Background task finished',
+    );
+    expect(disclosure!.querySelector('.agent__notice-body')?.textContent?.trim()).toBe(
+      'Close the four resolved issues with evidence',
+    );
+    // On the rail: the row carries a node, and it joins the tool row above it.
+    const row: HTMLElement | null = disclosure!.closest('.agent__row');
+    expect(row?.querySelector('.agent__node-icon--notice')).not.toBeNull();
+    expect(row?.classList.contains('agent__row--up')).toBe(true);
+    expect(host.querySelector('.agent__notice-icon')).toBeNull();
+  });
+
+  it('notice_withoutDetail_rendersTheChipAloneWithNothingToExpand', () => {
+    // A caret that opens onto nothing is a promise the row cannot keep.
+    items.set([{ id: 'item-1', kind: 'notice', text: 'Stopped' }]);
+    fixture.detectChanges();
+
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    expect(host.querySelector('details.agent__notice')).toBeNull();
+    expect(host.querySelector('span.agent__notice .agent__action-label')?.textContent?.trim()).toBe(
+      'Stopped',
+    );
+    expect(host.querySelector('.agent__action-caret')).toBeNull();
+  });
+
   it('toolDetail_whenExpanded_showsTheFullInputAndOutputSections', () => {
     items.set([
       {
