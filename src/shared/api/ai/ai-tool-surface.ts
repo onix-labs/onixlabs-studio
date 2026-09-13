@@ -215,9 +215,33 @@ export type OpenDocumentFormat = 'markdown' | 'code';
 
 /**
  * Identifies what an agent run acts on: the open editor document (`editor`), the owning terminal
- * (`terminal`), the owning binary document (`binary`), the API Explorer's collections (`api`), or the
- * project as a whole (`project` — the standalone agent tab, which has no owning document and works
- * through the provider's built-in tools alone). It selects the tool set the providers expose for the
- * run.
+ * (`terminal`), the owning binary document (`binary`), the API Explorer's collections (`api`), a
+ * workspace tab and its document well (`workspace` — the agent panel docked in a workspace or
+ * repository tab, #713), or the project as a whole (`project` — the standalone agent tab, which has no
+ * owning document and works through the provider's built-in tools alone). It selects the tool set the
+ * providers expose for the run.
  */
-export type AgentSurface = 'editor' | 'terminal' | 'binary' | 'api' | 'project';
+export type AgentSurface = 'editor' | 'terminal' | 'binary' | 'api' | 'workspace' | 'project';
+
+/**
+ * Every surface, in the order they are presented to a user choosing among them. The one list the
+ * request validator and any picker read, so a surface added to the type cannot be forgotten by
+ * either — which is how `api` went unlisted by the validator for a while.
+ */
+export const AGENT_SURFACES: readonly AgentSurface[] = [
+  'editor',
+  'terminal',
+  'binary',
+  'api',
+  'workspace',
+  'project',
+];
+
+/**
+ * Determines whether a value names a surface.
+ * @param value The value to test.
+ * @returns Returns true when it is one of {@link AGENT_SURFACES}.
+ */
+export function isAgentSurface(value: unknown): value is AgentSurface {
+  return typeof value === 'string' && AGENT_SURFACES.includes(value as AgentSurface);
+}

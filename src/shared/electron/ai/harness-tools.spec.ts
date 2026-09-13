@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   DELETE_RUN_CONFIGURATIONS,
+  EDIT_ACTIVE_DOCUMENT,
   LIST_RUN_CONFIGURATIONS,
+  OPEN_FILE,
+  READ_ACTIVE_DOCUMENT,
+  REPLACE_ACTIVE_DOCUMENT,
+  RUN_ACTIVE_DOCUMENT,
   SAVE_RUN_CONFIGURATIONS,
   ASK_USER,
 } from '@shared/api/ai-types';
@@ -86,6 +91,25 @@ describe('describeOffer', () => {
 
     expect(editor.systemPrompt).toContain('run configurations');
     expect(terminal.systemPrompt).not.toContain('Run dropdown');
+  });
+
+  it('offersTheWorkspaceSurfaceAWellToReadButNoDocumentToEdit', async () => {
+    // #713. A workspace has a well but no document of its own: the read tool lets the model see what
+    // the user is looking at; the edit tools, which would act on whatever happened to be focused, are
+    // withheld. The run-configuration and workbench tools ride along, as on every workspace-scoped
+    // surface.
+    const offer: { systemPrompt: string; tools: readonly HarnessTool[] } = await describeOffer(
+      contextFor({ surface: 'workspace' }),
+    );
+
+    expect(names(offer)).toEqual(
+      expect.arrayContaining([READ_ACTIVE_DOCUMENT, OPEN_FILE, SAVE_RUN_CONFIGURATIONS, ASK_USER]),
+    );
+    expect(names(offer)).not.toContain(EDIT_ACTIVE_DOCUMENT);
+    expect(names(offer)).not.toContain(REPLACE_ACTIVE_DOCUMENT);
+    expect(names(offer)).not.toContain(RUN_ACTIVE_DOCUMENT);
+    expect(offer.systemPrompt).toContain('docked to a workspace tab');
+    expect(offer.systemPrompt).toContain('run configurations');
   });
 
   it('omitsAToolTheHarnessSaysItAlreadyHas', async () => {

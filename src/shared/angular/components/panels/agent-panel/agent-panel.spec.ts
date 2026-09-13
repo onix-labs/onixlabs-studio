@@ -1,4 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
+import { AgentChat } from '@shared/angular/components/agent-chat/agent-chat';
 import { Agent } from '@shared/angular/services/agent/agent';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
@@ -42,6 +44,17 @@ describe('AgentPanel', () => {
       '.agent__composer',
     );
     expect(composer).not.toBeNull();
+  });
+
+  it('render_whenShown_runsOnTheWorkspaceSurface', () => {
+    // 🔑 #713. The panel used to pass no surface and so ran as `editor` with no owning tab — the model
+    // was never told it stood in a workspace, and its edit tools acted on whatever happened to be
+    // focused in the well. The surface is what the chat sends with every run.
+    fixture.detectChanges();
+    const chat: AgentChat = fixture.debugElement.query(By.directive(AgentChat))
+      .componentInstance as AgentChat;
+
+    expect(chat.surface()).toBe('workspace');
   });
 
   it('render_whenAMessageIsSent_showsItInTheTranscript', () => {

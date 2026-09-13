@@ -54,6 +54,7 @@ import {
   STUDIO_PROMPT_APPENDIX,
   TERMINAL_PROMPT_APPENDIX,
   WORKBENCH_PROMPT_APPENDIX,
+  WORKSPACE_PROMPT_APPENDIX,
   openDocument,
   openFile,
   openTerminal,
@@ -228,6 +229,32 @@ function gated<TArgs>(
 }
 
 /**
+ * The surfaces that stand in a workspace and may therefore author its run configurations: an editor
+ * tab (its document belongs to the workspace), the standalone agent tab, and the workspace tab itself.
+ */
+const WORKSPACE_SCOPED_SURFACES: readonly AgentSurface[] = ['editor', 'project', 'workspace'];
+
+/**
+ * Builds the one read-only document tool, which the editor surface carries alongside its edit tools and
+ * the workspace surface carries alone (#713): seeing what the user is looking at is cheap and harmless
+ * wherever there is a well; it is editing "whichever document is focused" that a workspace conversation
+ * must not be offered.
+ * @param context The run context the tool acts through.
+ * @returns Returns the tool set holding the read tool.
+ */
+export async function createReadActiveDocumentTool(context: AgentRunContext): Promise<ToolSet> {
+  const { tool } = await import('ai');
+  const { z } = await import('zod');
+  return {
+    [READ_ACTIVE_DOCUMENT]: tool({
+      description: "Read the active editor document's full text.",
+      inputSchema: z.object({}),
+      execute: (): Promise<string> => readActiveDocument(context),
+    }),
+  };
+}
+
+/**
  * Builds the in-app editor tools every AI-SDK-backed provider exposes, bridged to the renderer through
  * the run context. A chat-mode (read-only) run carries only the read tool, matching the Claude path;
  * the mutating editor tools are auto-allowed in agent mode because the change is visible and undoable
@@ -239,13 +266,7 @@ function gated<TArgs>(
 export async function createStudioTools(context: AgentRunContext): Promise<ToolSet> {
   const { tool } = await import('ai');
   const { z } = await import('zod');
-  const readTool: ToolSet = {
-    [READ_ACTIVE_DOCUMENT]: tool({
-      description: "Read the active editor document's full text.",
-      inputSchema: z.object({}),
-      execute: (): Promise<string> => readActiveDocument(context),
-    }),
-  };
+  const readTool: ToolSet = await createReadActiveDocumentTool(context);
   if (context.mode === 'chat') {
     return readTool;
   }
@@ -473,7 +494,7 @@ export async function createWorkbenchTools(context: AgentRunContext): Promise<To
  * @returns Returns the run-configuration tool set, or an empty set where they do not belong.
  */
 export async function createRunConfigurationTools(context: AgentRunContext): Promise<ToolSet> {
-  if (context.mode === 'chat' || (context.surface !== 'editor' && context.surface !== 'project')) {
+  if (context.mode === 'chat' || !WORKSPACE_SCOPED_SURFACES.includes(context.surface)) {
     return {};
   }
   const { tool } = await import('ai');
@@ -805,6 +826,8 @@ export function promptForSurface(
         return BINARY_PROMPT_APPENDIX;
       case 'api':
         return API_PROMPT_APPENDIX;
+      case 'workspace':
+        return WORKSPACE_PROMPT_APPENDIX;
       case 'project':
         return PROJECT_PROMPT_APPENDIX;
       case 'editor':
@@ -825,7 +848,7 @@ export function promptForSurface(
   // are told how to author them. Kept in step with `createRunConfigurationTools` by hand, which is the
   // cost of the guidance and the tools being two things; describing tools that are not there is the
   // failure this condition exists to avoid.
-  return surface === 'editor' || surface === 'project'
+  return WORKSPACE_SCOPED_SURFACES.includes(surface)
     ? `${withWorkbench}\n\n${RUN_CONFIGURATION_PROMPT_APPENDIX}`
     : withWorkbench;
 }
@@ -854,6 +877,10 @@ export async function toolsForSurface(context: AgentRunContext): Promise<ToolSet
       // so a project run carries only the ask-user tool (a documented limitation of those providers).
       case 'api':
         return createApiTools(context);
+      // A workspace has a well but no document of its own: the read tool, so the model can see what
+      // the user is looking at, and none of the edit tools that would act on whatever is focused (#713).
+      case 'workspace':
+        return createReadActiveDocumentTool(context);
       case 'project':
         return Promise.resolve({});
       case 'editor':
