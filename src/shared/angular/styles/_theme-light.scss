@@ -83,8 +83,6 @@
   --settings-muted-foreground-color: var(--gray-800);
   --settings-control-background-color: var(--gray-400);
   --settings-button-background-color--hover: var(--gray-300);
-  --settings-button-border-color: var(--gray-500);
-  --settings-button-border-color--hover: var(--gray-600);
 
   --welcome-backdrop-blur: 0.75rem;
 
@@ -95,7 +93,6 @@
   // Modal panel surface: an off-white card that lifts off the page (the body surface is far darker).
   --modal-panel-background-color: var(--gray-150);
 
-  --welcome-border-color: var(--gray-400);
   --welcome-muted-foreground-color: var(--gray-800);
 
   --agent-view-surface-color: var(--gray-150);

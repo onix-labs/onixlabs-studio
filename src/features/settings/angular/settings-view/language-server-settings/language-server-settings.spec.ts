@@ -23,8 +23,7 @@ function settingsData(): LspSettingsData {
     disabledServers: [],
     javaPath: null,
     dotnetPath: null,
-    clangdPath: '/usr/bin/clangd',
-    typescriptServerPath: null,
+    serverPaths: { clangd: '/usr/bin/clangd' },
     serverArgs: {},
     languageServers: {},
   };
@@ -67,8 +66,8 @@ describe('LanguageServerSettings', () => {
               calls.push(`args:${id}:${value}`);
               return Promise.resolve();
             },
-            setClangdPath: (value: string): Promise<void> => {
-              calls.push(`clangdPath:${value}`);
+            setServerPath: (id: string, value: string): Promise<void> => {
+              calls.push(`serverPath:${id}:${value}`);
               return Promise.resolve();
             },
           },

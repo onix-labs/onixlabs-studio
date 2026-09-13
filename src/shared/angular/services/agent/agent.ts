@@ -66,6 +66,12 @@ export const STOP_SETTLE_DEADLINE_MS: number = 8_000;
 
 /**
  * Identifies the kind of transcript item.
+ *
+ * ⛔ `notice` is **not** something the agent said. It is Studio, or the harness underneath it,
+ * reporting on its own machinery — a background task settling, housekeeping from a previous session.
+ * It was written as `assistant` text until #691, which meant a sentence the model never produced was
+ * rendered in the model's voice, indistinguishable from an answer. Anything a user cannot ask the
+ * agent about, and the agent would not recognise having said, belongs here.
  */
 export type AgentItemKind =
   | 'user'
@@ -75,7 +81,8 @@ export type AgentItemKind =
   | 'permission'
   | 'input-request'
   | 'edit-decision'
-  | 'error';
+  | 'error'
+  | 'notice';
 
 /**
  * Identifies the lifecycle state of a tool item.
@@ -1786,7 +1793,7 @@ export class Agent {
       this.pushError(detail);
       this.maybePromptLogin(detail);
     } else if (state === 'aborted') {
-      this.push({ kind: 'assistant', text: '_Stopped._' });
+      this.push({ kind: 'notice', text: 'Stopped.' });
     } else if (state === 'completed') {
       // A not-signed-in turn can come back as a completed reply ("Not logged in. Please run /login")
       // rather than a hard error, so the reply is checked here too — otherwise the prompt would only
@@ -1800,7 +1807,7 @@ export class Agent {
         this.retryAfterLogin = true;
         this.needsLoginState.set(true);
       } else if (!this.producedReply()) {
-        this.push({ kind: 'assistant', text: '_The model returned no output._' });
+        this.push({ kind: 'notice', text: 'The model returned no output.' });
       }
     }
     this.notifyRunEnded(state, detail);
@@ -1959,12 +1966,15 @@ export class Agent {
     const word: string =
       status === 'completed' ? 'finished' : status === 'failed' ? 'failed' : 'was stopped';
     const note: string =
-      detail.length > 0 ? `_Background task ${word}:_ ${detail}` : `_Background task ${word}._`;
-    // Sealed: the report the agent is about to stream must start its own message. Without this the
-    // first text chunk folds into the note (same `assistant` kind, trailing item) and you get
-    // "…completed (exit code 0)The command completed." run together in one bubble — which only shows
-    // up when the agent leads with plain text, since a thinking block would break the run for you.
-    this.push({ kind: 'assistant', text: note, sealed: true });
+      detail.length > 0 ? `Background task ${word}: ${detail}` : `Background task ${word}.`;
+    // ⛔ A `notice`, NOT `assistant` (#691). The model did not write this sentence, and rendering it in
+    // the model's voice made Studio's own bookkeeping indistinguishable from an answer — worst when the
+    // harness reports housekeeping from a previous session, which names internals ("Monitor timeout",
+    // "the previous Claude Code process") that read as nonsense addressed to the user.
+    //
+    // Sealed for the same reason it always was: the report the agent is about to stream must start its
+    // own message rather than folding into this one.
+    this.push({ kind: 'notice', text: note, sealed: true });
     const tabId: string | undefined = this.lastOwningTabId;
     const label: string = this.conversationTitle();
     const watching: boolean = this.isConversationVisible(tabId);
@@ -2233,11 +2243,11 @@ export class Agent {
     const summary: string = this.compactionText.trim();
     if (state === 'error') {
       const reason: string = detail.trim().length > 0 ? detail : 'unknown error';
-      this.push({ kind: 'assistant', text: `_Compaction failed: ${reason}_` });
+      this.push({ kind: 'notice', text: `Compaction failed: ${reason}` });
     } else if (state === 'aborted') {
-      this.push({ kind: 'assistant', text: '_Compaction stopped._' });
+      this.push({ kind: 'notice', text: 'Compaction stopped.' });
     } else if (summary.length === 0) {
-      this.push({ kind: 'assistant', text: '_Compaction produced no summary._' });
+      this.push({ kind: 'notice', text: 'Compaction produced no summary.' });
     } else {
       this.sequence += 1;
       this.log.set([

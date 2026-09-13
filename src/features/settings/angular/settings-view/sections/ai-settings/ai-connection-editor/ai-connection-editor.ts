@@ -4,6 +4,9 @@ import type { AiAuthStatus, AiConnection, AiProviderKind } from '@shared/api/ai-
 import { AiConnections } from '@shared/angular/services/ai-connections/ai-connections';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { Log } from '@shared/angular/services/log/log';
+import { installedContributions, UnkeyedPluginContribution } from '@shared/api/plugin-channels';
+import { Plugins } from '@shared/angular/services/plugins/plugins';
+import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { PasswordField } from '@shared/angular/components/forms/password-field/password-field';
 import { Radio } from '@shared/angular/components/forms/radio/radio';
@@ -11,6 +14,16 @@ import { SettingRow } from '@shared/angular/components/forms/setting-row/setting
 import { Button } from '@shared/angular/components/forms/button/button';
 import { Icon } from '@shared/angular/icons/icon';
 import { SettingControl } from '../../../setting-control/setting-control';
+
+/**
+ * The dropdown value standing for "no harness chosen" — the configuration cannot run.
+ *
+ * ⛔ This used to be labelled **Built-in**, and to mean the provider compiled into Studio. There is no
+ * such provider any more (#653): core ships none, so a configuration left on it could never run, and
+ * the label said the opposite. It is now a placeholder that appears only when nothing is chosen, and
+ * says so.
+ */
+const NO_HARNESS: string = '';
 
 /**
  * Edits a single AI provider configuration (a connection) inside its company page's accordion. Its
@@ -23,7 +36,7 @@ import { SettingControl } from '../../../setting-control/setting-control';
  */
 @Component({
   selector: 'app-ai-connection-editor',
-  imports: [Button, TextField, PasswordField, Radio, SettingRow, SettingControl],
+  imports: [Button, Dropdown, TextField, PasswordField, Radio, SettingRow, SettingControl],
   templateUrl: './ai-connection-editor.html',
   styleUrls: ['./ai-connection-editor.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -48,6 +61,11 @@ export class AiConnectionEditor {
    * Holds the settings service, backing the Claude CLI rows shown for a Claude subscription.
    */
   private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds the plugin client, read for the harnesses a configuration may be pointed at.
+   */
+  private readonly pluginClient: Plugins = inject(Plugins);
 
   /**
    * Holds the structured logger.
@@ -136,6 +154,79 @@ export class AiConnectionEditor {
   protected readonly showClaudePath: Signal<boolean> = computed(
     (): boolean => this.settings.aiClaudeExecutable() === 'custom',
   );
+
+  /**
+   * Gets the harnesses installed plugins provide, in catalogue order.
+   */
+  private readonly harnesses: Signal<readonly UnkeyedPluginContribution[]> = computed(
+    (): readonly UnkeyedPluginContribution[] =>
+      installedContributions(this.pluginClient.plugins(), 'agent-harness'),
+  );
+
+  /**
+   * Gets a value indicating whether there is a harness to choose between.
+   *
+   * ⛔ The row is hidden entirely when no harness plugin is installed, rather than shown with only
+   * "Built-in" in it. A choice of one is not a choice, and offering the slot before anything can fill
+   * it inverts the order the Plugin Manager exists to enforce: install, *then* choose.
+   */
+  protected readonly showHarness: Signal<boolean> = computed(
+    (): boolean => this.harnesses().length > 0,
+  );
+
+  /**
+   * Gets the harnesses this configuration may run through.
+   *
+   * ⛔ Installed plugins only. The list used to be led by a **Built-in** entry standing for the provider
+   * compiled into Studio; core ships none, so that entry was an option that could only ever fail, and
+   * it was the pre-selected one (#697).
+   *
+   * ⚠️ Deliberately unfiltered beyond that. A harness manifest declares the auth kinds it claims, but
+   * that is advisory metadata that decides nothing (#678) — guessing which harnesses suit a
+   * configuration from here would mean inventing a rule the contract does not state.
+   */
+  protected readonly harnessOptions: Signal<readonly DropdownOption[]> = computed(
+    (): readonly DropdownOption[] => [
+      // Only when nothing is chosen, so a configuration that names a harness offers no way back to a
+      // state that cannot run.
+      ...(this.harnessValue() === NO_HARNESS
+        ? [{ value: NO_HARNESS, label: 'Not set — choose a plugin' }]
+        : []),
+      ...this.harnesses().map((harness: UnkeyedPluginContribution): DropdownOption => ({
+        value: harness.id,
+        label: harness.displayName,
+      })),
+    ],
+  );
+
+  /**
+   * Gets the harness the configuration currently runs through.
+   *
+   * ⚠️ A configuration naming a harness that is no longer installed reads as not set: the plugin that
+   * ran it is gone, so it cannot run, and saying so beats naming a plugin that is not there. The stored
+   * `harnessId` is left alone, so reinstalling restores the choice.
+   */
+  protected readonly harnessValue: Signal<string> = computed((): string => {
+    const chosen: string | null | undefined = this.connection().harnessId;
+    if (chosen === null || chosen === undefined) {
+      return NO_HARNESS;
+    }
+    return this.harnesses().some(
+      (harness: UnkeyedPluginContribution): boolean => harness.id === chosen,
+    )
+      ? chosen
+      : NO_HARNESS;
+  });
+
+  /**
+   * Points the configuration at a harness.
+   * @param value The chosen harness id, or the placeholder when nothing is chosen.
+   */
+  protected onHarness(value: string): void {
+    const harnessId: string | null = value === NO_HARNESS ? null : value;
+    this.log.info('settings.ai', 'Harness set', this.connection().id, harnessId ?? 'none');
+    this.connections.update(this.connection().id, { harnessId });
+  }
 
   /**
    * Formats a context window as a compact token count (for example `128k` or `1M`).

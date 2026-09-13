@@ -188,8 +188,8 @@ export class SettingBindings {
     switch (key) {
       case 'lsp.path.typescriptServer':
         return {
-          value: computed((): string => lsp.settings().typescriptServerPath ?? ''),
-          set: (value: unknown): void => void lsp.setTypescriptServerPath(value as string),
+          value: computed((): string => lsp.settings().serverPaths['typescript'] ?? ''),
+          set: (value: unknown): void => void lsp.setServerPath('typescript', value as string),
           disabled,
         };
       case 'lsp.path.java':
@@ -206,8 +206,8 @@ export class SettingBindings {
         };
       default:
         return {
-          value: computed((): string => lsp.settings().clangdPath ?? ''),
-          set: (value: unknown): void => void lsp.setClangdPath(value as string),
+          value: computed((): string => lsp.settings().serverPaths['clangd'] ?? ''),
+          set: (value: unknown): void => void lsp.setServerPath('clangd', value as string),
           disabled,
         };
     }

@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { logger } from '../logger';
@@ -30,6 +30,39 @@ export async function markComplete(directory: string): Promise<void> {
  */
 export function isComplete(directory: string): boolean {
   return existsSync(path.join(directory, MARKER));
+}
+
+/**
+ * Gets the versions of a component that are installed and complete, by reading the layout rather than
+ * any record of what was installed.
+ *
+ * **The directory is the ground truth.** Both provisioners lay installs out as
+ * `<root>/<id>/<version>/<platform>`, so the version is in the path and the marker proves the install
+ * finished. The install store is a convenience over this, and a convenience that can be lost: it was
+ * erased for exactly the plugins that hit #456, because a record whose install does not detect is
+ * treated as stale and forgotten (#463). A lookup that trusted only the store therefore could not heal
+ * the profiles the bug had already broken.
+ *
+ * Synchronous on purpose. Resolution is synchronous all the way down — a decoder's `resolve` is, and
+ * its consumers are — so this is asked on paths that cannot await.
+ * @param root The directory installs are rooted at, or null when provisioning is disabled.
+ * @param id The component identifier.
+ * @returns Returns the installed versions, in directory order, or nothing when none is.
+ */
+export function installedVersions(root: string | null, id: string): readonly string[] {
+  if (root === null) {
+    return [];
+  }
+  const directory: string = path.join(root, id);
+  let versions: string[];
+  try {
+    versions = readdirSync(directory);
+  } catch {
+    return [];
+  }
+  return versions.filter((version: string): boolean =>
+    isComplete(path.join(directory, version, platformKey())),
+  );
 }
 
 /**
@@ -149,18 +182,43 @@ export class ArchiveProvisioner {
 
   /**
    * Installs a provision, or reuses the cached copy.
+   *
+   * ⛔ **A failure is never cached.** The cache exists so racing callers share one download and a later
+   * ask reuses the tree already on disk — not so a transient failure becomes permanent. Caching the
+   * null made Retry a no-op: a failed download answered every later attempt without touching the
+   * network, and only restarting Studio cleared it.
    * @param provision The provisioning recipe.
    * @returns Returns the executable path, or null when the platform is unsupported or the download or
    * verification fails.
    */
   public ensure(provision: ArchiveProvision): Promise<string | null> {
     const key: string = `${provision.id} ${provision.version} ${platformKey()}`;
-    let install: Promise<string | null> | undefined = this.installs.get(key);
-    if (install === undefined) {
-      install = this.install(provision);
-      this.installs.set(key, install);
+    const cached: Promise<string | null> | undefined = this.installs.get(key);
+    if (cached !== undefined) {
+      return cached;
     }
+    const install: Promise<string | null> = this.forget(key, this.install(provision));
+    this.installs.set(key, install);
     return install;
+  }
+
+  /**
+   * Drops an install from the cache unless it produced an executable, so the next ask retries it.
+   * @param key The cache key the install is held under.
+   * @param install The install in flight.
+   * @returns Returns the install, unchanged.
+   */
+  private async forget(key: string, install: Promise<string | null>): Promise<string | null> {
+    try {
+      const result: string | null = await install;
+      if (result === null) {
+        this.installs.delete(key);
+      }
+      return result;
+    } catch (error: unknown) {
+      this.installs.delete(key);
+      throw error;
+    }
   }
 
   /**
@@ -219,7 +277,7 @@ export class ArchiveProvisioner {
         await fs.rm(directory, { recursive: true, force: true });
         return null;
       }
-      await extractArchive(archive, directory, download.archive, 0, download.members ?? []);
+      await extractArchive(archive, directory, download.archive, 0, download.members ?? [], target);
       await fs.rm(archive, { force: true });
       if (!existsSync(target)) {
         logger.warn(this.logName, `Extracted ${provision.id} but its entry point is missing`);

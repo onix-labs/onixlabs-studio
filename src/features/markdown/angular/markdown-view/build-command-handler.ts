@@ -16,7 +16,7 @@ import {
 } from '@shared/angular/services/markdown-commands/markdown-commands';
 import { MarkdownClipboard } from './markdown-clipboard';
 import { OutlineScrollSpy } from './outline-scroll-spy';
-import { toggleTaskList } from './markdown-task-list';
+import { toggleTaskList } from '@shared/angular/milkdown/markdown-task-list';
 
 /**
  * Describes the collaborators a {@link MarkdownCommandHandler} routes the ribbon's commands to. The

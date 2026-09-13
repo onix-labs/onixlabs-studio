@@ -89,8 +89,7 @@ class FakeLsp implements Bridge {
           disabledServers: [],
           javaPath: null,
           dotnetPath: null,
-          clangdPath: null,
-          typescriptServerPath: null,
+          serverPaths: {},
           serverArgs: {},
           languageServers: {},
         } as LspSettingsData as T);

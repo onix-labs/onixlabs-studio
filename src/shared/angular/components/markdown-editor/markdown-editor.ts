@@ -18,7 +18,7 @@ import {
   viewChild,
   WritableSignal,
 } from '@angular/core';
-import { Crepe } from '@milkdown/crepe';
+import type { Crepe } from '@milkdown/crepe';
 import type { Ctx } from '@milkdown/ctx';
 import { editorViewCtx, parserCtx } from '@milkdown/kit/core';
 import { type Node as ProseMirrorNode } from '@milkdown/kit/prose/model';
@@ -26,19 +26,9 @@ import { AllSelection, type Selection, TextSelection } from '@milkdown/kit/prose
 import type { EditorView } from '@milkdown/kit/prose/view';
 import type { ListenerManager } from '@milkdown/plugin-listener';
 import type { Parser } from '@milkdown/transformer';
-import { blockReorderPlugin } from '@shared/angular/milkdown/block-reorder-plugin';
-import { collapsePlugin } from '@shared/angular/milkdown/collapse-plugin';
-import { colorPreviewPlugin } from '@shared/angular/milkdown/color-preview-plugin';
-import { emojiPlugin } from '@shared/angular/milkdown/emoji-plugin';
-import { footnotePlugin } from '@shared/angular/milkdown/footnote-plugin';
-import { githubAlertPlugin } from '@shared/angular/milkdown/github-alert-plugin';
-import { htmlImagePlugin } from '@shared/angular/milkdown/html-image-plugin';
-import { fileToDataUrl, installImageResolver } from '@shared/angular/milkdown/media-source';
-import { mermaidPlugin, renderMermaidDiagram } from '@shared/angular/milkdown/mermaid-plugin';
-import { createMonacoCodeBlockPlugin } from '@shared/angular/milkdown/monaco-code-block-plugin';
-import { pasteCleanPlugin } from '@shared/angular/milkdown/paste-clean-plugin';
-import { searchPlugin } from '@shared/angular/milkdown/search-plugin';
-import { subscriptSuperscriptPlugin } from '@shared/angular/milkdown/subscript-superscript-plugin';
+import { createStudioCrepe } from '@shared/angular/milkdown/create-studio-crepe';
+import { installImageResolver } from '@shared/angular/milkdown/media-source';
+import { renderMermaidDiagram } from '@shared/angular/milkdown/mermaid-plugin';
 import { Log } from '@shared/angular/services/log/log';
 import { Milkdown } from '@shared/angular/services/milkdown/milkdown';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
@@ -91,6 +81,9 @@ const NEXT_TICK_DELAY: number = 0;
   templateUrl: './markdown-editor.html',
   styleUrl: './markdown-editor.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: {
+    '[class.markdown-editor--inset]': "variant() === 'inset'",
+  },
 })
 export class MarkdownEditor implements AfterViewInit, OnChanges, OnDestroy {
   /**
@@ -141,6 +134,16 @@ export class MarkdownEditor implements AfterViewInit, OnChanges, OnDestroy {
    * editor content (by recreating the editor) without raising {@link contentChange}.
    */
   public readonly content: InputSignal<string> = input<string>('');
+
+  /**
+   * Gets the editor's presentation variant. The default `page` is the roomy document surface the
+   * markdown tab and document well use; `inset` is the compact framed presentation for an editor
+   * embedded in other chrome (the agent composer's markdown modal): collapsed wrapper padding, a
+   * tight page gutter, and a separating fill in dark mode. The variant is a class on the host, and
+   * the global `_milkdown.scss` keys the presentation off it — consumers must not reach into the
+   * editor's DOM to restyle it.
+   */
+  public readonly variant: InputSignal<'page' | 'inset'> = input<'page' | 'inset'>('page');
 
   /**
    * Gets a value indicating whether the editor is read-only.
@@ -472,49 +475,13 @@ export class MarkdownEditor implements AfterViewInit, OnChanges, OnDestroy {
     const imageSizing: ImageSizing = this.milkdown.imageSizing();
 
     await this.zone.runOutsideAngular(async (): Promise<void> => {
-      const crepe: Crepe = new Crepe({
+      const crepe: Crepe = createStudioCrepe({
         root: container,
         defaultValue: this.content(),
-        features: {
-          [Crepe.Feature.BlockEdit]: true,
-          [Crepe.Feature.CodeMirror]: true,
-          [Crepe.Feature.Cursor]: true,
-          [Crepe.Feature.ImageBlock]: imageSizing === 'sizable',
-          [Crepe.Feature.Latex]: true,
-          [Crepe.Feature.LinkTooltip]: true,
-          [Crepe.Feature.ListItem]: true,
-          [Crepe.Feature.Placeholder]: true,
-          [Crepe.Feature.Table]: true,
-          // The app provides a fixed formatting ribbon, so Crepe's inline toolbar is redundant.
-          [Crepe.Feature.Toolbar]: false,
-        },
-        featureConfigs: {
-          [Crepe.Feature.Placeholder]: { text: 'Start writing...' },
-          [Crepe.Feature.CodeMirror]: { previewOnlyByDefault: true },
-          // Embed a pasted or dropped image as a self-contained data URL so it persists across a save
-          // and reopen; Crepe's default blob URL is discarded when the editor is torn down.
-          [Crepe.Feature.ImageBlock]: {
-            onUpload: (file: File): Promise<string> => fileToDataUrl(file),
-          },
-        },
+        resizableImages: imageSizing === 'sizable',
+        monaco: this.monaco,
+        highlighter: this.highlighter,
       });
-
-      crepe.editor.use(pasteCleanPlugin);
-      // Registered after Crepe's features have loaded, so its Monaco code_block node view overrides
-      // CodeMirror's (which stays enabled for the Latex feature that depends on it).
-      crepe.editor.use(
-        createMonacoCodeBlockPlugin({ monaco: this.monaco, highlighter: this.highlighter }),
-      );
-      crepe.editor.use(subscriptSuperscriptPlugin);
-      crepe.editor.use(htmlImagePlugin);
-      crepe.editor.use(collapsePlugin);
-      crepe.editor.use(githubAlertPlugin);
-      crepe.editor.use(colorPreviewPlugin);
-      crepe.editor.use(mermaidPlugin);
-      crepe.editor.use(footnotePlugin);
-      crepe.editor.use(emojiPlugin);
-      crepe.editor.use(blockReorderPlugin);
-      crepe.editor.use(searchPlugin);
 
       crepe.on((api: ListenerManager): void => {
         api.markdownUpdated((_ctx: Ctx, markdown: string): void => {
@@ -529,6 +496,19 @@ export class MarkdownEditor implements AfterViewInit, OnChanges, OnDestroy {
           // dropped until the content first diverges.
           if (this.postCreateMarkdown !== null) {
             if (markdown === this.postCreateMarkdown) {
+              return;
+            }
+            // A document ending in a non-paragraph block (a list, table or fence) is given an empty
+            // trailing paragraph by the editor right after creation, so the click target below the
+            // content exists. That paragraph serialises as nothing but a trailing blank line — a
+            // difference in trailing newlines only is that plumbing, not an edit, and reporting it
+            // would falsely dirty every such document the moment it is opened. The baseline follows
+            // it so the next comparison sees the settled form.
+            if (
+              this.withoutTrailingBlank(markdown) ===
+              this.withoutTrailingBlank(this.postCreateMarkdown)
+            ) {
+              this.postCreateMarkdown = markdown;
               return;
             }
             this.postCreateMarkdown = null;
@@ -934,6 +914,16 @@ export class MarkdownEditor implements AfterViewInit, OnChanges, OnDestroy {
     block.removeAttribute('contenteditable');
     block.classList.remove('editing');
     block.classList.add('rendered');
+  }
+
+  /**
+   * Normalises a serialisation's trailing blank lines to a single newline, so two serialisations can
+   * be compared for edits that markdown can actually represent.
+   * @param markdown The serialised markdown.
+   * @returns Returns the markdown with trailing newlines collapsed.
+   */
+  private withoutTrailingBlank(markdown: string): string {
+    return markdown.replace(/\n+$/, '\n');
   }
 
   /**

@@ -1,95 +1,7 @@
 import { DebugAdapterId, DebugAdapterSummary } from '@shared/api/debug-channels';
-import { debugpyInterpreter } from './debugpy-install';
 import { logger } from '../logger';
 import { contributedDebugAdapters } from '../contributions/plugins/contributed';
-import { DebugAdapterDownload, DebugAdapterProvision, DebugProvisioner } from './debug-provisioner';
-
-/**
- * The pinned netcoredbg releases. Upstream stopped publishing an osx-amd64 build after 3.1.3, and does
- * not publish osx-arm64 before 3.2.0, so the two macOS architectures are pinned to different releases;
- * every other platform tracks 3.2.0. Bump both together when updating.
- */
-const NETCOREDBG_BASE: string = 'https://github.com/Samsung/netcoredbg/releases/download';
-
-/**
- * The netcoredbg provisioning recipe: one pinned, checksum-verified archive per supported platform. The
- * executable and its managed assemblies live under a `netcoredbg/` directory inside each archive.
- */
-const NETCOREDBG_PROVISION: DebugAdapterProvision = {
-  id: 'netcoredbg',
-  version: '3.2.0-1092',
-  downloads: {
-    'darwin-arm64': {
-      url: `${NETCOREDBG_BASE}/3.2.0-1092/netcoredbg-osx-arm64.zip`,
-      sha256: 'f4fa33b3ff874910cc184b4bb3b9c56d0abdf5c6521cee0b144d7c6e4a6e59ea',
-      archive: 'zip',
-      executablePath: 'netcoredbg/netcoredbg',
-    },
-    'darwin-x64': {
-      url: `${NETCOREDBG_BASE}/3.1.3-1062/netcoredbg-osx-amd64.tar.gz`,
-      sha256: '49459b066836b6a452f418501d7ecab57bcd7e60d8464faac21ff70b496b8634',
-      archive: 'tar.gz',
-      executablePath: 'netcoredbg/netcoredbg',
-    },
-    'linux-x64': {
-      url: `${NETCOREDBG_BASE}/3.2.0-1092/netcoredbg-linux-amd64.tar.gz`,
-      sha256: '080eb3b2d2152465f599d3b33d1ee6e747794e11cc0a3773ec689f5e5f2c5afa',
-      archive: 'tar.gz',
-      executablePath: 'netcoredbg/netcoredbg',
-    },
-    'linux-arm64': {
-      url: `${NETCOREDBG_BASE}/3.2.0-1092/netcoredbg-linux-arm64.tar.gz`,
-      sha256: '065ff49badec8a695dbea2de6ab6a330c774a191e426a217ab8cc05250627ccb',
-      archive: 'tar.gz',
-      executablePath: 'netcoredbg/netcoredbg',
-    },
-    'win32-x64': {
-      url: `${NETCOREDBG_BASE}/3.2.0-1092/netcoredbg-win64.zip`,
-      sha256: '3c410a45fa502415203a94fcb88654af65bf8e3dac158a5527a722e7a6b9274a',
-      archive: 'zip',
-      executablePath: 'netcoredbg/netcoredbg.exe',
-    },
-  },
-};
-
-/**
- * js-debug (Microsoft's Node/Chrome debugger) ships as a platform-independent bundle of JavaScript, so
- * every platform downloads the same checksum-verified archive; the debug server is a script inside it,
- * run under the Node runtime.
- */
-const JS_DEBUG_BASE: string = 'https://github.com/microsoft/vscode-js-debug/releases/download';
-
-/**
- * The one js-debug archive, reused for every platform (its contents are pure JavaScript).
- */
-const JS_DEBUG_DOWNLOAD: DebugAdapterDownload = {
-  url: `${JS_DEBUG_BASE}/v1.117.0/js-debug-dap-v1.117.0.tar.gz`,
-  sha256: 'ad8d04ede9d4b75cc290fd5438a65047a06f786d04f604b6112485b36f090772',
-  archive: 'tar.gz',
-  executablePath: 'js-debug/src/dapDebugServer.js',
-};
-
-/**
- * The js-debug provisioning recipe: the same pinned, checksum-verified archive for every supported
- * platform, since the bundle is platform-independent JavaScript.
- */
-const JS_DEBUG_PROVISION: DebugAdapterProvision = {
-  id: 'js-debug',
-  version: '1.117.0',
-  downloads: {
-    'darwin-arm64': JS_DEBUG_DOWNLOAD,
-    'darwin-x64': JS_DEBUG_DOWNLOAD,
-    'linux-x64': JS_DEBUG_DOWNLOAD,
-    'linux-arm64': JS_DEBUG_DOWNLOAD,
-    'win32-x64': JS_DEBUG_DOWNLOAD,
-  },
-};
-
-/**
- * The priority given to the adapter shipped as a language's default, chosen when the user has
- * expressed no preference.
- */
-const DEFAULT_PRIORITY: number = 100;
+import { DebugAdapterLocator } from './debug-adapter-locator';
 
 /**
  * Describes how to spawn a debug adapter. The command and arguments are decided entirely by the main
@@ -140,8 +52,9 @@ export interface DebugAdapterResolution {
 }
 
 /**
- * Describes a built-in adapter in the closed catalogue: the executable to locate and how to turn its
- * resolved path into a spawn specification.
+ * Describes a registered adapter: the executable to locate and how to turn its resolved path into a
+ * spawn specification. Contributed adapters are described by exactly this shape — a manifest is turned
+ * into one of these — so a plugin's adapter is a peer of the built-in one rather than a special case.
  */
 export interface DebugAdapterCatalogueEntry {
   /**
@@ -173,103 +86,41 @@ export interface DebugAdapterCatalogueEntry {
   readonly priority: number;
 
   /**
-   * Gets the provisioning recipe for an adapter that ships as a downloadable binary, or undefined for an
-   * adapter that is not obtained that way.
-   */
-  readonly provision?: DebugAdapterProvision;
-
-  /**
-   * Locates an adapter that is neither on the PATH nor a downloadable archive — debugpy lives in a
-   * managed virtual environment, so it knows where to look for itself. Tried before the PATH search, so
-   * the copy the Plugin Manager installed wins over whatever else is on the machine.
+   * Locates the adapter inside the payload its plugin installed. Tried before the PATH search, so the
+   * copy the Plugin Manager installed wins over whatever else is on the machine.
    * @returns Returns the executable path, or null when the adapter is not installed.
    */
   readonly locate?: () => Promise<string | null>;
 
   /**
-   * Builds the spawn specification from the located executable path.
+   * Builds the spawn specification from the located executable path, or reports why the adapter cannot
+   * be started even though its payload is present — a Python adapter with no interpreter on the
+   * machine is installed and unrunnable at the same time, and those are different problems with
+   * different fixes. Mirrors the LSP layer's resolution.
    * @param binaryPath The absolute path of the located executable.
-   * @returns Returns the spawn specification.
+   * @returns Returns the resolution.
    */
-  readonly buildSpec: (binaryPath: string) => DebugAdapterSpec;
-}
-
-/**
- * The closed catalogue of built-in debug adapters. Kept closed (a fixed list, not an open `register()`)
- * to match the LSP server registry; runtime-contributed adapters are the deferred plugin epic's
- * concern. netcoredbg ships a pinned, checksum-verified download recipe ({@link NETCOREDBG_PROVISION});
- * the Node adapter (js-debug) is wired in a later phase.
- *
- * @returns Returns the catalogue entries.
- */
-export function debugAdapterCatalogue(): readonly DebugAdapterCatalogueEntry[] {
-  return [
-    {
-      id: 'netcoredbg',
-      displayName: '.NET (netcoredbg)',
-      binary: 'netcoredbg',
-      languages: ['csharp'],
-      priority: DEFAULT_PRIORITY,
-      provision: NETCOREDBG_PROVISION,
-      // netcoredbg speaks DAP over stdio in its VS Code interpreter mode. Microsoft's `vsdbg` is
-      // deliberately not offered: it is licensed only for use within the Visual Studio family, whereas
-      // netcoredbg (Samsung) is MIT-licensed.
-      buildSpec: (binaryPath: string): DebugAdapterSpec => ({
-        command: binaryPath,
-        args: ['--interpreter=vscode'],
-      }),
-    },
-    {
-      id: 'debugpy',
-      displayName: 'Python (debugpy)',
-      binary: 'debugpy',
-      languages: ['python'],
-      priority: DEFAULT_PRIORITY,
-      // debugpy is a Python package rather than a binary, so it ships no archive recipe: the Plugin
-      // Manager installs it into a managed virtual environment and this finds it there. Verified to
-      // speak DAP over stdio from `python -m debugpy.adapter`, which is how VS Code drives it too.
-      locate: (): Promise<string | null> => Promise.resolve(debugpyInterpreter()),
-      buildSpec: (interpreter: string): DebugAdapterSpec => ({
-        command: interpreter,
-        args: ['-m', 'debugpy.adapter'],
-      }),
-    },
-    {
-      id: 'js-debug',
-      displayName: 'Node (js-debug)',
-      binary: 'js-debug-dap',
-      languages: ['typescript', 'javascript'],
-      priority: DEFAULT_PRIORITY,
-      provision: JS_DEBUG_PROVISION,
-      // js-debug is a DAP *server*: run its bundled server script under the current Node runtime (Electron
-      // as Node), let it pick a free port (`0`), and connect over TCP. It hosts a parent session plus a
-      // child target session per debuggee process — the compound session handles that tree.
-      buildSpec: (serverScript: string): DebugAdapterSpec => ({
-        command: process.execPath,
-        args: [serverScript, '0', '127.0.0.1'],
-        env: { ELECTRON_RUN_AS_NODE: '1' },
-        transport: 'tcp-server',
-      }),
-    },
-  ];
+  readonly buildSpec: (binaryPath: string) => DebugAdapterResolution;
 }
 
 /**
  * Owns the catalogue of known debug adapters and turns a {@link DebugAdapterId} into a spawn
- * specification, locating each adapter's executable through the {@link DebugProvisioner}. It is the
- * single seam that the adapter catalogue, executable detection, and provisioning all sit behind, so the
- * renderer only ever names an adapter — mirroring the role `LspServerRegistry` plays for language
- * servers.
+ * specification, locating each adapter's executable through the {@link DebugAdapterLocator}. It is the
+ * single seam that the adapter catalogue and executable detection sit behind, so the renderer only ever
+ * names an adapter — mirroring the role `LspServerRegistry` plays for language servers.
+ *
+ * It never obtains an adapter. What is installed is decided by the Plugin Manager, so resolving is a
+ * question of finding what an install already put on disk.
  */
 export class DebugAdapterRegistry {
   /**
-   * Locates and installs adapter executables.
+   * Locates adapter executables already present on the machine.
    */
-  private readonly provisioner: DebugProvisioner;
+  private readonly locator: DebugAdapterLocator;
 
   /**
-   * Indexes the registered adapters by id, in registration order (the first-party catalogue first), so
-   * ties on priority break deterministically.
+   * Indexes the registered adapters by id, in registration order, so ties on priority break
+   * deterministically.
    */
   private readonly entries: Map<DebugAdapterId, DebugAdapterCatalogueEntry> = new Map<
     DebugAdapterId,
@@ -277,27 +128,22 @@ export class DebugAdapterRegistry {
   >();
 
   /**
-   * Initializes a new instance of the {@link DebugAdapterRegistry} class, seeded with the first-party
-   * catalogue.
-   * @param provisioner The provisioner used to locate adapter executables.
+   * Initializes a new instance of the {@link DebugAdapterRegistry} class.
+   *
+   * Seeded from contributions alone: **core ships no debug adapter**. An empty registry is how
+   * "nothing installed" is expressed, exactly as it is for decoders and container engines.
+   * @param locator The locator used to find adapter executables.
    */
-  public constructor(provisioner: DebugProvisioner) {
-    this.provisioner = provisioner;
-    for (const entry of debugAdapterCatalogue()) {
-      this.register(entry);
-    }
-    // Contributed plugins — sideloaded or indexed — register through the same seam a contributed
-    // adapter always would: the manifest advertises the contribution point, so it has to actually
-    // reach the registry.
+  public constructor(locator: DebugAdapterLocator) {
+    this.locator = locator;
     for (const entry of contributedDebugAdapters()) {
       this.register(entry);
     }
   }
 
   /**
-   * Registers a debug adapter, replacing any registered under the same id. This is the seam a
-   * contributed adapter arrives through; the first-party catalogue uses it too, so there is exactly one
-   * registration path.
+   * Registers a debug adapter, replacing any registered under the same id. This is the seam every
+   * adapter arrives through.
    * @param entry The catalogue entry to register.
    */
   public register(entry: DebugAdapterCatalogueEntry): void {
@@ -351,28 +197,23 @@ export class DebugAdapterRegistry {
       return { spec: null, error: null };
     }
     logger.trace('DebugAdapterRegistry', `Resolving adapter ${adapterId}`);
-    // Prefer an already-present executable (override, project-local, or PATH); otherwise download the
-    // pinned binary if the adapter ships one.
-    const located: string | null =
-      (await entry.locate?.()) ?? (await this.provisioner.locate(entry.binary, rootPath));
-    logger.debug(
-      'DebugAdapterRegistry',
-      `Located ${entry.binary}: ${located ?? 'not found, will provision if available'}`,
-    );
+    // Ask the adapter where it put itself — an installed plugin's payload, or debugpy's managed
+    // environment — and fall back to a copy already on the machine (override, project-local, or PATH).
+    // Nothing is downloaded here: an adapter arrives through an install the user asked for.
     const binaryPath: string | null =
-      located ??
-      (entry.provision !== undefined ? await this.provisioner.ensure(entry.provision) : null);
+      (await entry.locate?.()) ?? (await this.locator.locate(entry.binary, rootPath));
+    logger.debug('DebugAdapterRegistry', `Located ${entry.binary}: ${binaryPath ?? 'not found'}`);
     if (binaryPath === null) {
-      logger.warn(
-        'DebugAdapterRegistry',
-        `${entry.displayName} adapter (${entry.binary}) could not be found or installed`,
-      );
+      logger.warn('DebugAdapterRegistry', `${entry.displayName} adapter is not installed`);
+      // Resolving no longer downloads anything, so the honest answer names the one action that fixes
+      // it. Telling someone an adapter "could not be installed" would describe an attempt that this
+      // no longer makes.
       return {
         spec: null,
-        error: `The ${entry.displayName} debug adapter (${entry.binary}) could not be found or installed.`,
+        error: `The ${entry.displayName} debug adapter is not installed — install it in Plugins.`,
       };
     }
     logger.debug('DebugAdapterRegistry', `Resolved ${adapterId} to ${binaryPath}`);
-    return { spec: entry.buildSpec(binaryPath), error: null };
+    return entry.buildSpec(binaryPath);
   }
 }

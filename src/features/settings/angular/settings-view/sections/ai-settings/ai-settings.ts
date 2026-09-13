@@ -10,7 +10,7 @@ import {
   WritableSignal,
 } from '@angular/core';
 import type { AiAuthStatus, AiConnection, AuthMethod, ProviderPage } from '@shared/api/ai-types';
-import { PROVIDER_PAGES } from '@shared/api/ai-types';
+import { AiProviders } from '@shared/angular/services/ai-providers/ai-providers';
 import { AiConnections } from '@shared/angular/services/ai-connections/ai-connections';
 import { Log } from '@shared/angular/services/log/log';
 import { ShellPicker } from '@shared/angular/components/forms/shell-picker/shell-picker';
@@ -80,13 +80,14 @@ export class AiSettingsSection {
   private readonly connectionsService: AiConnections = inject(AiConnections);
 
   /**
+   * Holds the providers installed plugins contribute, which is the whole of what this branch shows.
+   */
+  private readonly providers: AiProviders = inject(AiProviders);
+
+  /**
    * Holds the settings service the agent shell persists through.
    */
   private readonly settings: Settings = inject(Settings);
-
-  /**
-   * Holds the installed-shells provider populating the agent-shell dropdown.
-   */
 
   /**
    * Holds the structured logger.
@@ -111,7 +112,7 @@ export class AiSettingsSection {
    */
   protected readonly page: Signal<ProviderPage | undefined> = computed(
     (): ProviderPage | undefined =>
-      PROVIDER_PAGES.find((page: ProviderPage): boolean => page.id === this.providerId()),
+      this.providers.pages().find((page: ProviderPage): boolean => page.id === this.providerId()),
   );
 
   /**

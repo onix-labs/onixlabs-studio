@@ -45,6 +45,7 @@ describe('AgentChat', () => {
   let rewinds: { id: string; text: string }[];
   let sentImages: (readonly AiImageRef[])[];
   let providers: WritableSignal<readonly AiProviderInfo[]>;
+  let hasNoProviders: WritableSignal<boolean>;
   let discoveredCommands: WritableSignal<readonly AiSlashCommand[]>;
   let pendingContextTokens: WritableSignal<number>;
   let contextTokens: WritableSignal<number>;
@@ -169,8 +170,10 @@ describe('AgentChat', () => {
       },
     };
 
+    hasNoProviders = signal<boolean>(false);
     const engineStub: Partial<AgentEngine> = {
       providers,
+      hasNoProviders,
       provider: signal<AiProviderId>('claude'),
       connection: (): undefined => undefined,
     };
@@ -216,6 +219,30 @@ describe('AgentChat', () => {
 
   it('should create', () => {
     expect(component).toBeTruthy();
+  });
+
+  it('emptyState_whenAProviderIsInstalled_invitesTheUserToAsk', () => {
+    fixture.detectChanges();
+
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    expect(host.querySelector('.agent__empty-caption')?.textContent?.trim()).toBe(
+      'Ask the agent anything to get started',
+    );
+    expect(host.querySelector('.agent__empty-detail')).toBeNull();
+  });
+
+  it('emptyState_whenNothingCanRunATurn_saysSoAndOffersThePluginManager', () => {
+    // Core ships no AI provider — every one is a plugin (#653) — so a fresh install has an empty
+    // transcript for a reason the ordinary "ask me anything" caption would actively misrepresent.
+    hasNoProviders.set(true);
+    fixture.detectChanges();
+
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    expect(host.querySelector('.agent__empty-caption')?.textContent?.trim()).toBe(
+      'No AI provider is installed',
+    );
+    expect(host.querySelector('.agent__empty-detail')?.textContent).toContain('Plugin Manager');
+    expect(host.querySelector('.agent__empty app-button')).not.toBeNull();
   });
 
   it('confirmChoice_whenAChoiceIsSelected_answersWithIt', () => {

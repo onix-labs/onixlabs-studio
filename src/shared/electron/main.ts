@@ -57,7 +57,7 @@ import { DebugAdapterRegistry } from './debug/debug-adapter-registry';
 import { DebugLaunchResolver } from './debug/debug-launch-resolver';
 import { DebugManager } from './debug/debug-manager';
 import { projectSystems } from './project-system/default-project-systems';
-import { DebugProvisioner } from './debug/debug-provisioner';
+import { DebugAdapterLocator } from './debug/debug-adapter-locator';
 import { LspManager } from './lsp/lsp-manager';
 import { LspServerRegistry } from './lsp/lsp-server-registry';
 import { LspSettingsManager } from './lsp/lsp-settings';
@@ -73,6 +73,7 @@ import {
 import { PrintManager } from '@shared/electron/print-manager';
 import { SecurityManager } from '@shared/electron/security-manager';
 import { hydrateLoginShellEnvironment } from '@shared/electron/shell-env';
+import { hydratePythonRuntime } from '@shared/electron/provisioning/python-runtime';
 import { SetupChannel } from '@shared/api/setup-channels';
 import type { GitIdentity, SetupProbeResult } from '@shared/api/setup-channels';
 import {
@@ -446,10 +447,7 @@ class Program {
    * each adapter's executable.
    */
   private readonly debugAdapterRegistry: DebugAdapterRegistry = new DebugAdapterRegistry(
-    new DebugProvisioner(
-      new Map<string, string>(),
-      path.join(app.getPath('userData'), 'debug-adapters'),
-    ),
+    new DebugAdapterLocator(),
   );
 
   /**
@@ -1260,6 +1258,9 @@ class Program {
     // agent's Bash and the terminal. Hydrate `process.env` before any manager reads it (the managers
     // resolve their env lazily at spawn time, and this runs ahead of every field initializer).
     hydrateLoginShellEnvironment();
+    // After the shell's PATH is in place, since that is usually the only one Python is on. Not
+    // awaited: nothing at start-up needs the answer, and a debug session is minutes away.
+    void hydratePythonRuntime();
     new Program();
   }
 }

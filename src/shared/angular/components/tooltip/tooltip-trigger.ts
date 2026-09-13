@@ -1,10 +1,10 @@
 import { ComponentPortal } from '@angular/cdk/portal';
 import {
   ConnectedPosition,
-  Overlay,
-  OverlayPositionBuilder,
+  createCloseScrollStrategy,
+  createFlexibleConnectedPositionStrategy,
+  createOverlayRef,
   OverlayRef,
-  ScrollStrategyOptions,
 } from '@angular/cdk/overlay';
 import {
   ComponentRef,
@@ -13,6 +13,7 @@ import {
   effect,
   ElementRef,
   inject,
+  Injector,
   input,
   InputSignal,
   Signal,
@@ -105,21 +106,21 @@ export class TooltipTrigger {
   private readonly element: ElementRef<HTMLElement> = inject<ElementRef<HTMLElement>>(ElementRef);
 
   /**
-   * Holds the overlay service the bubble is presented through. An overlay rather than an absolutely
-   * positioned child, because the controls that need this sit inside ribbons, strips and docked panels
-   * that clip their overflow — a bubble drawn in the flow would be cut off by its own toolbar.
+   * Holds the injector of the control this trigger sits on, which decides **which window** the bubble
+   * is drawn in and measured against.
+   *
+   * ⛔ Load-bearing, and the reason the overlay is built from `createOverlayRef` and friends rather
+   * than the `Overlay` service. Those services are `providedIn: 'root'`, so they capture the ROOT
+   * overlay container and the ROOT viewport ruler once and keep them — a bubble raised from a control
+   * inside a modal was therefore drawn in the main window, positioned against the main window's
+   * viewport. The functional API takes the injector per call, so a control in a secondary window gets
+   * that window's CDK layer (see `windowScopedCdkProviders`).
+   *
+   * An overlay rather than an absolutely positioned child, because the controls that need this sit
+   * inside ribbons, strips and docked panels that clip their overflow — a bubble drawn in the flow
+   * would be cut off by its own toolbar.
    */
-  private readonly overlay: Overlay = inject(Overlay);
-
-  /**
-   * Holds the overlay position builder.
-   */
-  private readonly positions: OverlayPositionBuilder = inject(OverlayPositionBuilder);
-
-  /**
-   * Holds the overlay scroll strategies.
-   */
-  private readonly scrollStrategies: ScrollStrategyOptions = inject(ScrollStrategyOptions);
+  private readonly injector: Injector = inject(Injector);
 
   /**
    * Gets whether the user wants icon-only controls named.
@@ -186,14 +187,13 @@ export class TooltipTrigger {
     ) {
       return;
     }
-    this.overlayRef = this.overlay.create({
-      positionStrategy: this.positions
-        .flexibleConnectedTo(this.element)
+    this.overlayRef = createOverlayRef(this.injector, {
+      positionStrategy: createFlexibleConnectedPositionStrategy(this.injector, this.element)
         .withPositions([...TOOLTIP_POSITIONS])
         .withPush(true),
       // The bubble is an annotation on a control, not a surface of its own: if the thing it names
       // scrolls away, the annotation goes with it rather than hanging in space.
-      scrollStrategy: this.scrollStrategies.close(),
+      scrollStrategy: createCloseScrollStrategy(this.injector),
       disposeOnNavigation: true,
       panelClass: 'tooltip-overlay',
     });

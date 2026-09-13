@@ -180,13 +180,13 @@ export class LanguageServerSettings {
     const settings: ReturnType<LspSettings['settings']> = this.lspSettings.settings();
     switch (this.pathOverride()) {
       case 'typescriptServer':
-        return settings.typescriptServerPath ?? '';
+        return settings.serverPaths['typescript'] ?? '';
       case 'java':
         return settings.javaPath ?? '';
       case 'dotnet':
         return settings.dotnetPath ?? '';
       case 'clangd':
-        return settings.clangdPath ?? '';
+        return settings.serverPaths['clangd'] ?? '';
       default:
         return '';
     }
@@ -223,7 +223,7 @@ export class LanguageServerSettings {
   protected setPath(value: string): void {
     switch (this.pathOverride()) {
       case 'typescriptServer':
-        void this.lspSettings.setTypescriptServerPath(value);
+        void this.lspSettings.setServerPath('typescript', value);
         break;
       case 'java':
         void this.lspSettings.setJavaPath(value);
@@ -232,7 +232,7 @@ export class LanguageServerSettings {
         void this.lspSettings.setDotnetPath(value);
         break;
       case 'clangd':
-        void this.lspSettings.setClangdPath(value);
+        void this.lspSettings.setServerPath('clangd', value);
         break;
       default:
         break;

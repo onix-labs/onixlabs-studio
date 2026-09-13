@@ -1,8 +1,54 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import type { AiConnection } from '@shared/api/ai-types';
+import type { PluginSummary } from '@shared/api/plugin-channels';
 import { Settings } from '@shared/angular/services/settings/settings';
+import { Plugins } from '@shared/angular/services/plugins/plugins';
+import { AiConnections } from '@shared/angular/services/ai-connections/ai-connections';
 import { AiSettingsSection } from './ai-settings';
+
+/**
+ * One installed harness contributing an Anthropic page with both sign-in methods.
+ *
+ * ⛔ There is no built-in page to fall back on (#653): every company page comes from an installed
+ * plugin, so a spec exercising a page has to install one.
+ */
+const INSTALLED: readonly PluginSummary[] = [
+  {
+    id: 'test.claude-harness',
+    name: 'Claude',
+    description: 'Test harness.',
+    state: 'installed',
+    version: '1.0.0',
+    installedVersion: '1.0.0',
+    installedPath: '/installed/claude',
+    detail: null,
+    origin: null,
+    contributions: [
+      {
+        slot: 'agent-harness',
+        id: 'test.claude-harness',
+        displayName: 'Claude',
+        priority: 100,
+        providers: [
+          {
+            kind: 'anthropic',
+            company: 'Anthropic',
+            description: 'Anthropic models.',
+            authMethods: [
+              {
+                auth: 'claude-login',
+                buttonLabel: 'Subscription',
+                defaultDisplayName: 'Claude',
+              },
+              { auth: 'api-key', buttonLabel: 'API Key', defaultDisplayName: 'Anthropic API' },
+            ],
+          },
+        ],
+      },
+    ],
+  } as unknown as PluginSummary,
+];
 
 describe('AiSettingsSection', () => {
   let component: AiSettingsSection;
@@ -60,6 +106,9 @@ describe('AiSettingsSection', () => {
     localStorage.clear();
     await TestBed.configureTestingModule({
       imports: [AiSettingsSection],
+      providers: [
+        { provide: Plugins, useValue: { plugins: (): readonly PluginSummary[] => INSTALLED } },
+      ],
     }).compileComponents();
 
     fixture = TestBed.createComponent(AiSettingsSection);
@@ -85,7 +134,10 @@ describe('AiSettingsSection', () => {
   });
 
   it('render_whenProviderView_rendersAnItemPerConfigurationOfThatCompany', () => {
-    // The seeds carry two anthropic configurations: the Claude subscription and the API-key connection.
+    const connections: AiConnections = TestBed.inject(AiConnections);
+    connections.add('anthropic');
+    connections.add('anthropic');
+
     show('provider', 'anthropic');
     expect(items().length).toBe(2);
     expect(addButton('Subscription')).toBeTruthy();
@@ -93,7 +145,7 @@ describe('AiSettingsSection', () => {
   });
 
   it('render_whenProviderViewHasNoConfigurations_rendersNone', () => {
-    show('provider', 'google');
+    show('provider', 'anthropic');
     expect(items().length).toBe(0);
   });
 
@@ -109,7 +161,7 @@ describe('AiSettingsSection', () => {
   });
 
   it('add_whenMethodClicked_appendsAConfigurationOfThatKindAndExpandsIt', () => {
-    show('provider', 'google');
+    show('provider', 'anthropic');
     const settings: Settings = TestBed.inject(Settings);
     const before: number = settings.aiConnections().length;
 
@@ -118,12 +170,13 @@ describe('AiSettingsSection', () => {
 
     const after: readonly AiConnection[] = settings.aiConnections();
     expect(after.length).toBe(before + 1);
-    expect(after[after.length - 1].kind).toBe('google');
+    expect(after[after.length - 1].kind).toBe('anthropic');
     // The newly-added configuration is expanded, so exactly one editor is rendered.
     expect(host.querySelectorAll('app-ai-connection-editor').length).toBe(1);
   });
 
   it('toggle_whenClicked_expandsTheConfigurationEditor', () => {
+    TestBed.inject(AiConnections).add('anthropic');
     show('provider', 'anthropic');
     expect(host.querySelectorAll('app-ai-connection-editor').length).toBe(0);
 

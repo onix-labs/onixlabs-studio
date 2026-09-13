@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import * as path from 'node:path';
 import {
+  ManifestAgentHarness,
   ManifestCommand,
   ManifestContainerEngine,
   ManifestDebugAdapter,
@@ -28,7 +29,10 @@ import {
   resolved,
   unavailable,
 } from '../../lsp/language-server-descriptor';
-import { DebugAdapterCatalogueEntry, DebugAdapterSpec } from '../../debug/debug-adapter-registry';
+import {
+  DebugAdapterCatalogueEntry,
+  DebugAdapterResolution,
+} from '../../debug/debug-adapter-registry';
 import { ArchiveDownload, ArchiveProvision } from '../../provisioning/archive-provision';
 import {
   LockfilePackage,
@@ -36,6 +40,7 @@ import {
   parseLockfileDocument,
 } from '../../provisioning/lockfile-provision';
 import { LspProvisioner } from '../../lsp/lsp-provisioner';
+import { pythonRuntime } from '../../provisioning/python-runtime';
 import { PluginContext, PluginDescriptor } from './plugin-catalogue';
 import { bundledLockfile } from './bundled-lockfiles';
 
@@ -135,13 +140,64 @@ export function validManifests(plugins: readonly LoadedPlugin[]): readonly Plugi
 }
 
 /**
+ * Looks up the version of a plugin that is actually installed on this machine, or null when none is.
+ *
+ * Takes the identifier rather than being bound to one plugin, so a single lookup serves every manifest.
+ * Takes the offered version too, so the common case — what the catalogue offers is what is installed —
+ * is answered without preferring some other copy to it.
+ */
+export type InstalledVersion = (id: string, offered: string) => string | null;
+
+/**
+ * Decides which installed version a contribution should resolve against.
+ *
+ * Pure, and separated from the disk read that feeds it, because the *order* is the part with a
+ * judgement in it and the part worth holding to by test. The caller supplies what is on disk and what
+ * was recorded; this decides.
+ *
+ * The order is what a person would do:
+ *
+ *   1. **Is the offered version installed?** Then that, and nothing else needs deciding. This is the
+ *      ordinary case, and it must win — preferring some other copy to the one the catalogue offers
+ *      would resolve an old install on a machine that is perfectly up to date.
+ *   2. **Is the recorded version installed?** Then that. The catalogue has moved ahead and the record
+ *      says which version the user actually has: #456's ordinary shape.
+ *   3. **Exactly one install, and no record naming it?** Then that one. This is the state #456 leaves
+ *      behind — the install is on disk and its record was forgotten as stale (#463) — so a lookup that
+ *      stopped at step 2 could not heal a profile the bug had already broken.
+ *
+ * ⚠️ Several installs with nothing to say which is meant is the one case that declines to answer.
+ * Pruning after an update makes it nearly unreachable, and guessing between two copies risks spawning
+ * an old binary against a new workspace; reporting nothing installed is the recoverable failure.
+ * @param versions The versions installed and complete on disk.
+ * @param offered The version the catalogue offers.
+ * @param recorded The version the install store recorded, or null when it has no record.
+ * @returns Returns the version to resolve against, or null when none can be chosen.
+ */
+export function resolveInstalledVersion(
+  versions: readonly string[],
+  offered: string,
+  recorded: string | null,
+): string | null {
+  if (versions.includes(offered)) {
+    return offered;
+  }
+  if (recorded !== null && versions.includes(recorded)) {
+    return recorded;
+  }
+  return versions.length === 1 ? versions[0] : null;
+}
+
+/**
  * Turns a manifest's provisioning into the recipe the archive provisioner installs from. The shapes
  * are deliberately the same: the manifest format was derived from this recipe, so a contributed plugin
  * installs through exactly the same path as a first-party one.
  * @param manifest The validated manifest.
+ * @param version The version to build the recipe for, defaulting to the one the manifest offers. Pass
+ * an installed version to describe an install that is already on disk rather than the one on offer.
  * @returns Returns the provisioning recipe, or null when the plugin is not archive-provisioned.
  */
-export function toProvision(manifest: PluginManifest): ArchiveProvision | null {
+export function toProvision(manifest: PluginManifest, version?: string): ArchiveProvision | null {
   if (manifest.provision.kind !== 'archive') {
     return null;
   }
@@ -156,21 +212,25 @@ export function toProvision(manifest: PluginManifest): ArchiveProvision | null {
       members: source.members,
     };
   }
-  return { id: manifest.id, version: manifest.version, downloads };
+  return { id: manifest.id, version: version ?? manifest.version, downloads };
 }
 
 /**
  * Turns a manifest's provisioning into the recipe the lockfile provisioner installs from.
  * @param manifest The validated manifest.
+ * @param version The version to build the recipe for, defaulting to the one the manifest offers.
  * @returns Returns the provisioning recipe, or null when the plugin is not npm-provisioned.
  */
-export function toTreeProvision(manifest: PluginManifest): LockfileProvision | null {
+export function toTreeProvision(
+  manifest: PluginManifest,
+  version?: string,
+): LockfileProvision | null {
   if (manifest.provision.kind !== 'npm') {
     return null;
   }
   return {
     id: manifest.id,
-    version: manifest.version,
+    version: version ?? manifest.version,
     lockfileUrl: manifest.provision.lockfileUrl,
     sha256: manifest.provision.sha256,
     executablePath: manifest.provision.executablePath,
@@ -277,10 +337,41 @@ export function toOrigin(
 
 /**
  * Binds a manifest's provisioning to the provisioner calls that serve it.
+ *
+ * **Two versions are in play, and which one each operation means is the whole of #456.** Installs are
+ * version-scoped (`<root>/<id>/<version>/<platform>`), so a catalogue that has moved ahead of what is
+ * on disk names a directory that does not exist. Asking the catalogue's version whether a plugin is
+ * installed therefore answered "no" about a plugin that was installed and perfectly runnable, and the
+ * contributed server stopped until the user accepted the update. Worse, the Plugin Manager treats a
+ * record whose install does not detect as stale and forgets it (#463) — so the answer being wrong here
+ * also erased the record of the install it was wrong about.
+ *
+ * So:
+ *
+ *   - **Running it** — `target`, `isInstalled` — means the version **on disk**. The old one keeps
+ *     working while the update is offered.
+ *   - **Installing it** — `ensure` — means the version the catalogue **offers**. That is the update.
+ *   - **Removing it** — `remove` — means the version on disk, because that is what is there to remove.
+ *     Removing the offered version deleted nothing and left the real install orphaned.
+ *   - **`supported`** is version-independent in effect: it asks whether this machine's platform is
+ *     published at all, so it is answered against what is on offer.
+ *
+ * ⚠️ The old install's directory is located by its recorded version, but the path *within* it comes
+ * from the current manifest. A plugin that moves its entry point between versions will therefore
+ * mis-resolve its predecessor — which is a reason the update offer stays prominent, not a reason to
+ * keep a copy of every manifest that has ever been installed.
  * @param manifest The validated manifest.
+ * @param localRoot The sideloaded plugin's directory, or undefined when it was not sideloaded.
+ * @param installedVersion Looks up the version actually installed. Consulted on every call rather than
+ * read once, because an install or an update lands mid-session and the descriptors built from this are
+ * built at start-up.
  * @returns Returns the operations for the manifest's provisioning kind.
  */
-export function payloadOps(manifest: PluginManifest, localRoot?: string): PayloadOps {
+export function payloadOps(
+  manifest: PluginManifest,
+  localRoot?: string,
+  installedVersion?: InstalledVersion,
+): PayloadOps {
   // A sideloaded plugin carrying its own payload is already installed, by the only definition that
   // matters: the thing to run is on disk. Answering anything else would report it missing while it
   // works, and offer an install that downloads over a payload the user put there deliberately.
@@ -298,17 +389,23 @@ export function payloadOps(manifest: PluginManifest, localRoot?: string): Payloa
       remove: (): Promise<void> => Promise.resolve(),
     };
   }
+  // The version on disk when one is recorded and differs, the offered one otherwise. Read per call:
+  // installing an update mid-session must change what resolves next, without a restart.
+  const onDisk: () => string = (): string =>
+    installedVersion?.(manifest.id, manifest.version) ?? manifest.version;
   const tree: LockfileProvision | null = toTreeProvision(manifest);
   if (tree !== null) {
+    const installedTree: () => LockfileProvision = (): LockfileProvision =>
+      toTreeProvision(manifest, onDisk()) ?? tree;
     return {
       target: (p: LspProvisioner, entryPoint?: string): string | null =>
-        p.treeTarget(tree, entryPoint),
+        p.treeTarget(installedTree(), entryPoint),
       // A tree installs anywhere provisioning is enabled; the lockfile's own `os`/`cpu` fields decide
       // what goes into it, so there is no platform for the plugin as a whole to be unsupported on.
       supported: (p: LspProvisioner): boolean => p.treeDirectory(tree) !== null,
-      isInstalled: (p: LspProvisioner): boolean => p.isTreeInstalled(tree),
+      isInstalled: (p: LspProvisioner): boolean => p.isTreeInstalled(installedTree()),
       ensure: (p: LspProvisioner): Promise<string | null> => p.ensureTree(tree),
-      remove: (p: LspProvisioner): Promise<void> => p.removeTree(tree),
+      remove: (p: LspProvisioner): Promise<void> => p.removeTree(installedTree()),
     };
   }
   const archive: ArchiveProvision | null = toProvision(manifest);
@@ -323,14 +420,16 @@ export function payloadOps(manifest: PluginManifest, localRoot?: string): Payloa
       remove: (): Promise<void> => Promise.resolve(),
     };
   }
+  const installedArchive: () => ArchiveProvision = (): ArchiveProvision =>
+    toProvision(manifest, onDisk()) ?? archive;
   return {
     // An archive names its entry point per platform, so a contribution's override does not apply.
-    target: (p: LspProvisioner): string | null => p.archiveTarget(archive),
+    target: (p: LspProvisioner): string | null => p.archiveTarget(installedArchive()),
     // An archive publishes per platform, so having no entry point here IS being unsupported.
     supported: (p: LspProvisioner): boolean => p.archiveTarget(archive) !== null,
-    isInstalled: (p: LspProvisioner): boolean => p.isArchiveInstalled(archive),
+    isInstalled: (p: LspProvisioner): boolean => p.isArchiveInstalled(installedArchive()),
     ensure: (p: LspProvisioner): Promise<string | null> => p.ensureArchive(archive),
-    remove: (p: LspProvisioner): Promise<void> => p.removeArchive(archive),
+    remove: (p: LspProvisioner): Promise<void> => p.removeArchive(installedArchive()),
   };
 }
 
@@ -375,7 +474,18 @@ export function toContributions(manifest: PluginManifest): readonly PluginContri
       priority: engine.priority,
     }),
   );
-  return [...servers, ...adapters, ...decoders, ...engines];
+  const harnesses: readonly PluginContribution[] = (manifest.contributes.agentHarnesses ?? []).map(
+    (harness: ManifestAgentHarness): PluginContribution => ({
+      slot: 'agent-harness',
+      id: harness.id,
+      displayName: harness.displayName,
+      priority: harness.priority,
+      // Straight through. The manifest reader has already refused anything malformed per field, so a
+      // provider that arrives here is one the renderer can draw a page from.
+      ...(harness.providers === undefined ? {} : { providers: harness.providers }),
+    }),
+  );
+  return [...servers, ...adapters, ...decoders, ...engines, ...harnesses];
 }
 
 /**
@@ -407,10 +517,18 @@ export function toDetail(manifest: PluginManifest): string | undefined {
  * first-party one. A sideloaded plugin is not a special case: it is a catalogue entry that happened to
  * arrive as data rather than as code.
  * @param manifest The validated manifest.
+ * @param localRoot The sideloaded plugin's directory, or undefined when it was not sideloaded.
+ * @param installedVersion Looks up the version actually installed, so a plugin whose catalogue entry
+ * has moved ahead still detects as installed and is offered the update rather than being reported
+ * missing and having its install record forgotten (#456).
  * @returns Returns the descriptor.
  */
-export function toPluginDescriptor(manifest: PluginManifest, localRoot?: string): PluginDescriptor {
-  const ops: PayloadOps = payloadOps(manifest, localRoot);
+export function toPluginDescriptor(
+  manifest: PluginManifest,
+  localRoot?: string,
+  installedVersion?: InstalledVersion,
+): PluginDescriptor {
+  const ops: PayloadOps = payloadOps(manifest, localRoot, installedVersion);
   return {
     id: manifest.id,
     name: manifest.name,
@@ -448,18 +566,33 @@ function toSpec(
       context.nodePackageServer(entryPoint);
     return resolved({ ...spec, args: [...spec.args, ...(command.args ?? [])], env: command.env });
   }
+  if (command.kind === 'python') {
+    // Python is the user's, not Studio's, so this is the one kind that can fail for a reason the
+    // plugin is not at fault for. Saying which is missing beats a spawn that fails opaquely.
+    const runtime: { command: string; args: string[] } | null = pythonRuntime(entryPoint);
+    return runtime === null
+      ? unavailable('Python 3.8+ not found — install Python, or set its path in Settings.')
+      : resolved({
+          command: runtime.command,
+          args: [...runtime.args, ...(command.args ?? [])],
+          env: command.env,
+        });
+  }
   return resolved({ command: entryPoint, args: command.args ?? [], env: command.env });
 }
 
 /**
  * Turns a manifest's language servers into descriptors the server registry can resolve.
  * @param manifest The validated manifest.
+ * @param installedVersion Looks up the version actually installed, so a server whose catalogue entry
+ * has moved ahead keeps serving from the version on disk until the update is accepted (#456).
  * @returns Returns the descriptors.
  */
 export function toLanguageServerDescriptors(
   manifest: PluginManifest,
+  installedVersion?: InstalledVersion,
 ): readonly LanguageServerDescriptor[] {
-  const ops: PayloadOps = payloadOps(manifest);
+  const ops: PayloadOps = payloadOps(manifest, undefined, installedVersion);
   return (manifest.contributes.languageServers ?? []).map(
     (server: ManifestLanguageServer): LanguageServerDescriptor => ({
       id: server.id,
@@ -469,6 +602,16 @@ export function toLanguageServerDescriptors(
       resolve: (context: LanguageServerContext): LspResolution => {
         // Never installs: a server resolves to "not installed" and the user installs it in the Plugin
         // Manager, rather than opening a file silently triggering a large download.
+        // The user's own copy wins over the installed one, so someone with their own build keeps
+        // using it rather than carrying a second. Applied here rather than in the registry because
+        // what a path *means* depends on the command's kind: an executable to spawn, or a module to
+        // run under a runtime.
+        const override: string | undefined = context.settings.get().serverPaths[server.id];
+        if (override !== undefined) {
+          return existsSync(override)
+            ? toSpec(server.command, override, context)
+            : unavailable(`${server.displayName} was not found at ${override}.`);
+        }
         const entryPoint: string | null = ops.isInstalled(context.provisioner)
           ? ops.target(context.provisioner, server.entryPoint)
           : null;
@@ -494,8 +637,9 @@ export function toLanguageServerDescriptors(
 export function toDebugAdapterEntries(
   manifest: PluginManifest,
   provisioner: () => LspProvisioner,
+  installedVersion?: InstalledVersion,
 ): readonly DebugAdapterCatalogueEntry[] {
-  const ops: PayloadOps = payloadOps(manifest);
+  const ops: PayloadOps = payloadOps(manifest, undefined, installedVersion);
   return (manifest.contributes.debugAdapters ?? []).map(
     (adapter: ManifestDebugAdapter): DebugAdapterCatalogueEntry => ({
       id: adapter.id,
@@ -509,20 +653,45 @@ export function toDebugAdapterEntries(
         Promise.resolve(
           ops.isInstalled(provisioner()) ? ops.target(provisioner(), adapter.entryPoint) : null,
         ),
-      buildSpec: (entryPoint: string): DebugAdapterSpec =>
-        adapter.command.kind === 'node'
-          ? {
+      buildSpec: (entryPoint: string): DebugAdapterResolution => {
+        if (adapter.command.kind === 'node') {
+          return {
+            spec: {
               command: process.execPath,
               args: [entryPoint, ...(adapter.command.args ?? [])],
               env: { ELECTRON_RUN_AS_NODE: '1', ...(adapter.command.env ?? {}) },
               transport: adapter.transport,
-            }
-          : {
-              command: entryPoint,
-              args: adapter.command.args ?? [],
-              env: adapter.command.env,
-              transport: adapter.transport,
             },
+            error: null,
+          };
+        }
+        if (adapter.command.kind === 'python') {
+          const python: { command: string; args: string[] } | null = pythonRuntime(entryPoint);
+          return python === null
+            ? {
+                spec: null,
+                error: `${adapter.displayName} needs Python 3.8+, which was not found on this machine.`,
+              }
+            : {
+                spec: {
+                  command: python.command,
+                  args: [...python.args, ...(adapter.command.args ?? [])],
+                  env: adapter.command.env,
+                  transport: adapter.transport,
+                },
+                error: null,
+              };
+        }
+        return {
+          spec: {
+            command: entryPoint,
+            args: adapter.command.args ?? [],
+            env: adapter.command.env,
+            transport: adapter.transport,
+          },
+          error: null,
+        };
+      },
     }),
   );
 }
@@ -554,8 +723,9 @@ export function toDecoderDescriptors(
   provisioner: () => LspProvisioner,
   nodeRuntime: (entryPoint: string) => NodeRuntimeSpec,
   localRoot?: string,
+  installedVersion?: InstalledVersion,
 ): readonly DecoderDescriptor[] {
-  const ops: PayloadOps = payloadOps(manifest, localRoot);
+  const ops: PayloadOps = payloadOps(manifest, localRoot, installedVersion);
   return (manifest.contributes.decoders ?? []).map(
     (decoder: ManifestDecoder): DecoderDescriptor => ({
       id: decoder.id,
@@ -587,6 +757,21 @@ export function toDecoderDescriptors(
             },
           };
         }
+        if (decoder.command.kind === 'python') {
+          const python: { command: string; args: string[] } | null = pythonRuntime(entryPoint);
+          return python === null
+            ? decoderUnavailable(
+                `${decoder.displayName} needs Python 3.8+, which was not found on this machine.`,
+              )
+            : {
+                available: true,
+                spec: {
+                  command: python.command,
+                  args: [...python.args, ...(decoder.command.args ?? [])],
+                  env: decoder.command.env,
+                },
+              };
+        }
         return {
           available: true,
           spec: { command: entryPoint, args: decoder.command.args ?? [], env: decoder.command.env },
@@ -615,8 +800,9 @@ export function toContainerEngineDescriptors(
   manifest: PluginManifest,
   provisioner: () => LspProvisioner,
   localRoot?: string,
+  installedVersion?: InstalledVersion,
 ): readonly ContainerEngineDescriptor[] {
-  const ops: PayloadOps = payloadOps(manifest, localRoot);
+  const ops: PayloadOps = payloadOps(manifest, localRoot, installedVersion);
   const descriptors: ContainerEngineDescriptor[] = [];
   for (const engine of manifest.contributes.containerEngines ?? []) {
     const cli: string | null = ops.isInstalled(provisioner())
@@ -643,6 +829,136 @@ export function toContainerEngineDescriptors(
     });
   }
   return descriptors;
+}
+
+/**
+ * Describes an agent harness a plugin contributes, as the registry needs it.
+ *
+ * Deliberately not a `HarnessDefinition`: that carries the connection's models and label, which belong
+ * to the connection rather than to the plugin. This is what the *manifest* knows — which connections
+ * the harness claims, and how to start it — and the registry joins the two.
+ */
+export interface ContributedHarness {
+  /**
+   * Gets the harness identifier.
+   */
+  readonly id: string;
+
+  /**
+   * Gets the display name.
+   */
+  readonly displayName: string;
+
+  /**
+   * Gets the priority among harnesses claiming the same connection, higher first.
+   */
+  readonly priority: number;
+
+  /**
+   * Gets the connection auth kinds this harness serves.
+   */
+  readonly connectionAuths: readonly string[];
+
+  /**
+   * Gets how the harness maintains a conversation, as its manifest declares.
+   *
+   * ⛔ Static rather than read from the handshake: Studio decides whether to open a live session before
+   * it has started anything, so an answer that needs a running process arrives after the question.
+   */
+  readonly sessionModel: 'live-harness' | 'stateless';
+
+  /**
+   * Gets whether the harness can expose its session to another machine, as its manifest declares.
+   */
+  readonly remoteControl: boolean;
+
+  /**
+   * Gets how to start the harness, or null when its payload is not installed.
+   *
+   * ⛔ **`env` is load-bearing, not decoration.** A `node` harness runs through the Electron binary,
+   * which is only a Node interpreter when `ELECTRON_RUN_AS_NODE` is set. Without it the same command
+   * launches Studio itself, the single-instance lock forwards the entry point to the running window,
+   * and the harness "starts" by opening its own source in an editor tab (#697). Every consumer must
+   * carry this through to the spawn.
+   * @returns Returns the spawn specification, or null.
+   */
+  spawnSpec(): {
+    command: string;
+    args: readonly string[];
+    env?: Readonly<Record<string, string>>;
+  } | null;
+}
+
+/**
+ * Turns a manifest's agent harnesses into what the provider registry needs to run them.
+ *
+ * A harness whose payload is not installed reports no spawn specification rather than being dropped, so
+ * the Plugin Manager can still list it and the registry can say plainly that it is not installed —
+ * unlike a container engine, which is dropped entirely because a selectable engine that is not there
+ * would offer a connection that cannot be made. A harness is chosen by the connection, not by the user
+ * picking from a list, so there is nothing to mis-offer.
+ * @param manifest The validated manifest.
+ * @param provisioner Gets the provisioner the plugin's install went through.
+ * @param nodeRuntime Gets how to run a JavaScript entry point under the runtime Studio ships.
+ * @param localRoot The sideloaded plugin's directory, or undefined when it was not sideloaded.
+ * @param installedVersion Looks up the version actually installed.
+ * @returns Returns the contributed harnesses.
+ */
+export function toAgentHarnesses(
+  manifest: PluginManifest,
+  provisioner: () => LspProvisioner,
+  nodeRuntime: (entryPoint: string) => NodeRuntimeSpec,
+  localRoot?: string,
+  installedVersion?: InstalledVersion,
+): readonly ContributedHarness[] {
+  const ops: PayloadOps = payloadOps(manifest, localRoot, installedVersion);
+  return (manifest.contributes.agentHarnesses ?? []).map(
+    (harness: ManifestAgentHarness): ContributedHarness => ({
+      id: harness.id,
+      displayName: harness.displayName,
+      priority: harness.priority,
+      connectionAuths: harness.connectionAuths,
+      sessionModel: harness.sessionModel ?? 'stateless',
+      remoteControl: harness.remoteControl ?? false,
+      spawnSpec: (): {
+        command: string;
+        args: readonly string[];
+        env?: Readonly<Record<string, string>>;
+      } | null => {
+        const entryPoint: string | null = ops.isInstalled(provisioner())
+          ? ops.target(provisioner(), harness.entryPoint)
+          : null;
+        if (entryPoint === null) {
+          return null;
+        }
+        if (harness.command.kind === 'node') {
+          const runtime: NodeRuntimeSpec = nodeRuntime(entryPoint);
+          return {
+            command: runtime.command,
+            args: [...runtime.args, ...(harness.command.args ?? [])],
+            // The runtime's own environment first, so a manifest cannot accidentally unset what the
+            // runtime needs to start at all — the same ordering the decoders use, for the same reason.
+            env: { ...runtime.env, ...harness.command.env },
+          };
+        }
+        if (harness.command.kind === 'python') {
+          const python: { command: string; args: string[] } | null = pythonRuntime(entryPoint);
+          return python === null
+            ? null
+            : {
+                command: python.command,
+                args: [...python.args, ...(harness.command.args ?? [])],
+                env: { ...harness.command.env },
+              };
+        }
+        return {
+          command: entryPoint,
+          args: harness.command.args ?? [],
+          env: { ...harness.command.env },
+        };
+      },
+    }),
+  );
 }
 
 /**

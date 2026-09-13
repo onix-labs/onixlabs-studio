@@ -37,20 +37,15 @@ export interface ProviderAvailability {
 }
 
 /**
- * The credential material a provider authenticates a run with. The Claude provider can use either the
- * local login or an API key; API-only providers (e.g. Vercel) require the key.
+ * The credential material a provider authenticates a run with.
+ *
+ * ⛔ One field. It used to carry `hasLocalLogin` and `hasCodexLogin` — core's reading of `~/.claude` and
+ * `~/.codex` — which made core the authority on whether two named providers were signed in, and obliged
+ * it to learn a new probe for every provider that followed (#653). A harness talks to its provider and
+ * checks its own login; the Claude harness already does exactly that before it asks for a key. What core
+ * can offer is the one credential core stores.
  */
 export interface AgentAuth {
-  /**
-   * Gets a value indicating whether a local Claude login (`~/.claude`) is present.
-   */
-  readonly hasLocalLogin: boolean;
-
-  /**
-   * Gets a value indicating whether a local Codex login (`~/.codex`) is present.
-   */
-  readonly hasCodexLogin: boolean;
-
   /**
    * Gets the available API key, or null when none is available.
    */
@@ -451,4 +446,49 @@ export interface AgentProvider {
    * @returns Returns the live session.
    */
   openSession?(context: AgentRunContext): AgentSession;
+
+  /**
+   * Asks the provider what models it can run, or omits it when it cannot say.
+   *
+   * ⛔ Returns what was *reported*, not a merged result: merging the discovered list into the
+   * connection's own, resolving each model's context window and phrasing the outcome for the settings
+   * dialog are all core's, and a provider that did them would be a provider that could disagree with
+   * another about the same model.
+   * @param auth The connection's credential, for a provider that must authenticate to ask.
+   * @param settings Settings for this discovery that are not part of the connection — today, the
+   * Claude CLI choice, which is an application-wide setting rather than a connection field and so has
+   * nowhere else to ride. Merged over the provider's own settings.
+   * @returns Returns the report, or null when discovery could not run at all.
+   */
+  discoverModels?(
+    auth: AgentAuth,
+    settings?: Readonly<Record<string, unknown>>,
+  ): Promise<AgentModelReport | null>;
+}
+
+/**
+ * What a provider reports when asked what it can run.
+ *
+ * ⛔ Two fields rather than an array, because a discovery that found nothing is the case a user actually
+ * has to act on and "no models" is not a reason. An unreachable local server, a connection with no API
+ * key and a gateway answering 403 are three different things to go and fix, and a provider is the only
+ * thing that knows which one happened.
+ */
+export interface AgentModelReport {
+  /**
+   * Gets the models reported, which may be empty.
+   *
+   * ⛔ `contextWindow` is the provider's to report (protocol 1.10.0). Core used to resolve it from the
+   * model id against a table naming `gpt-4o`, `claude-opus-4-8` and the rest — which is exactly the
+   * provider knowledge that cannot live here. Undefined falls back to one neutral default.
+   */
+  readonly models: readonly { id: string; label?: string; contextWindow?: number }[];
+
+  /**
+   * Gets why the list is empty, or null when the provider has nothing to add.
+   *
+   * ⚠️ Read only when {@link models} is empty. A provider that reported models is reporting models, and
+   * how a successful discovery reads in Settings is core's wording, decided once.
+   */
+  readonly detail: string | null;
 }

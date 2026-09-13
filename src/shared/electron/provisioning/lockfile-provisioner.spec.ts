@@ -246,6 +246,23 @@ describe('LockfileProvisioner', () => {
     expect(first).not.toBeNull();
   });
 
+  it('ensure_afterAFailure_retriesRatherThanAnsweringFromTheCache', async () => {
+    // The regression #697 hit in the field: `claude-harness` was pinned to a release asset that had not
+    // been tagged, and once the 404 was cached the null answered every later Install in under a
+    // millisecond without touching the network. Retry could not work, and only restarting Studio
+    // cleared it. The cache is for racing callers and for trees already on disk — never for failures.
+    const provision: LockfileProvision = await tree();
+    const payload: Buffer = served.get('https://registry.invalid/inner.tgz')!;
+    served.delete('https://registry.invalid/inner.tgz');
+
+    expect(await provisioner.ensure(provision)).toBeNull();
+
+    served.set('https://registry.invalid/inner.tgz', payload);
+
+    expect(await provisioner.ensure(provision)).not.toBeNull();
+    expect(provisioner.isInstalled(provision)).toBe(true);
+  });
+
   it('remove_takesTheTreeAndItsEmptyParentsWithIt', async () => {
     const provision: LockfileProvision = await tree();
     await provisioner.ensure(provision);

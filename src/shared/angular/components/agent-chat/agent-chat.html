@@ -19,7 +19,27 @@
     @if (items().length === 0) {
       <div class="agent__empty">
         <app-icon class="agent__empty-icon" [icon]="Icon.AGENT_EMPTY" aria-hidden="true" />
-        <p class="agent__empty-caption">Ask the agent anything to get started</p>
+        @if (hasNoProviders()) {
+          <!-- Nothing installed can run a turn. Studio ships no AI provider of its own — each one is
+               a plugin, so the stack is the user's choice — which makes this the first thing a fresh
+               install has to say, and saying "ask the agent anything" instead would be an invitation
+               to type into something that cannot answer. -->
+          <p class="agent__empty-caption">No AI provider is installed</p>
+          <p class="agent__empty-detail">
+            Studio runs agents through provider plugins, so you can pick your own stack. Install one
+            from the Plugin Manager — Claude, Codex, or the AI SDK for OpenAI, Google, Ollama and
+            any OpenAI-compatible endpoint — then choose it under <strong>Runs through</strong> on a
+            connection in Settings.
+          </p>
+          <app-button
+            variant="solid"
+            [icon]="Icon.WELCOME_PLUGINS"
+            label="Open Plugin Manager"
+            (click)="openPluginManager()"
+          />
+        } @else {
+          <p class="agent__empty-caption">Ask the agent anything to get started</p>
+        }
       </div>
     }
 
@@ -60,7 +80,10 @@
                   }
                 </div>
               }
-              <app-markdown-view class="agent__bubble agent__markdown" [text]="row.item!.text" />
+              <app-markdown-renderer
+                class="agent__bubble agent__markdown"
+                [text]="row.item!.text"
+              />
               <span class="agent__msg-actions">
                 <app-button
                   variant="none"
@@ -181,6 +204,17 @@
             }
           </div>
         }
+        @case ('notice') {
+          <!-- Studio's own bookkeeping — a background task settling, housekeeping the harness
+               reports from a previous session. ⛔ Deliberately NOT a bubble and NOT on the agent's
+               rail: the model did not write this, and rendering it as assistant text made it
+               indistinguishable from an answer (#691). Plain text, not Markdown, because the
+               sentence is ours rather than the model's and has no formatting to honour. -->
+          <div class="agent__notice" [class.agent__unmeasured]="!isMeasured(row.id)">
+            <app-icon class="agent__notice-icon" [icon]="Icon.INFO" aria-hidden="true" />
+            <p class="agent__notice-text">{{ row.item!.text }}</p>
+          </div>
+        }
         @case ('error') {
           <!-- A failed run: the cause over the provider it went through, expandable diagnostics,
                and a one-click retry of the failed turn. -->
@@ -292,7 +326,7 @@
       <div class="agent__row-content">
         @switch (row.kind) {
           @case ('assistant') {
-            <app-markdown-view class="agent__bubble agent__markdown" [text]="row.item!.text" />
+            <app-markdown-renderer class="agent__bubble agent__markdown" [text]="row.item!.text" />
             <span class="agent__msg-actions">
               <app-button
                 variant="none"
@@ -323,7 +357,7 @@
                 <span class="agent__lane-meta">{{ row.meta }}</span>
                 <app-icon class="agent__action-caret" [icon]="Icon.CARET_DOWN" />
               </summary>
-              <app-markdown-view
+              <app-markdown-renderer
                 class="agent__thinking-body agent__markdown"
                 [text]="row.item!.text"
               />

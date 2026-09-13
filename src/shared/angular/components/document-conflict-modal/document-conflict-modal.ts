@@ -3,89 +3,78 @@ import {
   FileConflict,
   FileConflicts,
 } from '@shared/angular/services/file-conflicts/file-conflicts';
+import { Button } from '@shared/angular/components/forms/button/button';
+import { Modal } from '@shared/angular/components/modal/modal';
+import { ModalContent } from '@shared/angular/components/modal/modal-content';
 
 /**
  * A tab-scoped keep/reload prompt shown when the file behind the active tab's document changed on
- * disk while it had unsaved edits. Mounted once over the tab content area; it renders only when the
- * active tab has a pending conflict (conflicts on inactive tabs are signalled by the tab's attention
- * dot instead).
+ * disk while it had unsaved edits. It renders only when the **active** tab has a pending conflict;
+ * conflicts on inactive tabs are signalled by the tab's attention dot instead, so switching to a tab
+ * is what raises its prompt.
+ *
+ * Presented in its own window like every other modal. It drew a hand-rolled overlay until #458 — an
+ * absolutely positioned backdrop and card inside the page, the presentation `79c16089` removed
+ * everywhere else — and was the last component doing so. That mattered beyond tidiness: it is named
+ * `*-modal`, it sits beside the real ones, and it was what the next person found when looking for an
+ * example of how Studio does modals.
+ *
+ * Deliberately **not dismissable**. The other two answers destroy something — your edits, or the
+ * agreement between the buffer and the file — so there is no third answer that means "neither", and a
+ * modal that could be waved away would leave the document in a state nothing later resolves.
  */
 @Component({
   selector: 'app-document-conflict-modal',
+  imports: [Modal, ModalContent, Button],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (conflict(); as current) {
-      <div class="overlay" role="presentation">
-        <div class="card" role="alertdialog" aria-labelledby="conflict-title">
-          <h2 class="title" id="conflict-title">File Changed on Disk</h2>
-          <p class="body">
-            <strong>{{ current.name }}</strong> was changed outside the editor, but you have unsaved
-            changes. Keep your version, or reload the version on disk (discarding your edits)?
-          </p>
-          <div class="actions">
-            <button type="button" class="btn" (click)="keep(current)">Keep my version</button>
-            <button type="button" class="btn btn--danger" (click)="reload(current)">
-              Reload from disk
-            </button>
+      <app-modal [open]="true" [dismissable]="false" [width]="28" ariaLabel="File changed on disk">
+        <ng-template appModalContent>
+          <div class="conflict">
+            <h2 class="conflict__title">File Changed on Disk</h2>
+            <p class="conflict__body">
+              <strong>{{ current.name }}</strong> was changed outside the editor, but you have
+              unsaved changes. Keep your version, or reload the version on disk (discarding your
+              edits)?
+            </p>
+            <div class="conflict__actions">
+              <app-button label="Keep my version" (click)="keep(current)" />
+              <app-button
+                variant="solid"
+                tone="danger"
+                label="Reload from disk"
+                (click)="reload(current)"
+              />
+            </div>
           </div>
-        </div>
-      </div>
+        </ng-template>
+      </app-modal>
     }
   `,
   styles: [
     `
-      .overlay {
-        position: absolute;
-        inset: 0;
-        z-index: 50;
-        display: grid;
-        place-items: center;
-        padding: 1.5rem;
-        background: rgba(0, 0, 0, 0.45);
+      .conflict {
+        display: flex;
+        flex-direction: column;
+        gap: 0.9rem;
       }
 
-      .card {
-        max-inline-size: 26rem;
-        padding: 1.25rem 1.4rem;
-        color: var(--body-foreground-color);
-        background: var(--body-background-color);
-        border: 0.0625rem solid var(--dock-border-color);
-        border-radius: calc(0.75rem * var(--border-radius-multiplier));
-        corner-shape: var(--app-corner-shape, squircle);
-        box-shadow: 0 1rem 3rem rgba(0, 0, 0, 0.4);
-      }
-
-      .title {
-        margin: 0 0 0.6rem;
+      .conflict__title {
+        margin: 0;
         font-size: 1.05rem;
       }
 
-      .body {
-        margin: 0 0 1.1rem;
+      .conflict__body {
+        margin: 0;
         line-height: 1.5;
       }
 
-      .actions {
+      .conflict__actions {
         display: flex;
         justify-content: flex-end;
         gap: 0.6rem;
-      }
-
-      .btn {
-        padding: 0.45rem 1rem;
-        font: inherit;
-        color: var(--body-foreground-color);
-        background: transparent;
-        border: 0.0625rem solid var(--dock-border-color);
-        border-radius: calc(0.5rem * var(--border-radius-multiplier));
-        corner-shape: var(--app-corner-shape, squircle);
-        cursor: default;
-      }
-
-      .btn--danger {
-        color: var(--gray-100);
-        background: var(--accent-color);
-        border-color: var(--accent-color);
+        margin-block-start: 0.4rem;
       }
     `,
   ],

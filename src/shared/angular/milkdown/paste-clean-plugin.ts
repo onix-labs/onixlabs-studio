@@ -27,7 +27,7 @@ const pasteCleanKey: PluginKey = new PluginKey('paste-clean-font-weight');
  * @param html The pasted HTML fragment.
  * @returns The HTML with stray medium font-weights stripped.
  */
-function stripMediumFontWeight(html: string): string {
+export function stripMediumFontWeight(html: string): string {
   const parsed: Document = new DOMParser().parseFromString(html, 'text/html');
   const styled: NodeListOf<HTMLElement> = parsed.body.querySelectorAll<HTMLElement>('[style]');
   for (const element of Array.from(styled)) {

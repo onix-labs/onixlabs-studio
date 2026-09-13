@@ -5,6 +5,25 @@
   gap: 0.25rem;
 }
 
+// THE STACK OF THREE. A column of exactly three small buttons is the ribbon's second idiom, next to
+// the big button, and it is meant to stand as tall as one: three rows of 1.25rem plus their gaps come
+// to 4.25rem against a 4.875rem lane, so left alone the stack floats with 0.3rem of dead space split
+// above and below it. Stretching the column hands that space to the buttons instead — each already
+// carries `flex: 1`, so the three divide the lane evenly and grow to ~1.46rem, which costs no ribbon
+// height and buys every row a bigger target.
+//
+// Keyed on the shape rather than on a modifier input, because the shape is the rule: any column that
+// IS three stacked small buttons wants this, and a flag would have to be remembered at sixteen call
+// sites and forgotten at the seventeenth. `:has` reads the third child specifically so the two lone
+// small buttons in the ribbons (Layouts' transient Return, Mission Control's) are left alone — one
+// button given `flex: 1` against a stretched column does not fill the lane, it becomes the lane, and
+// a 4.875rem-tall Return button is the bug this selector is written narrowly to avoid.
+//
+// Columns of checks and fields are untouched: they size themselves and are not this idiom.
+:host(:has(> app-ribbon-strip-button-small:nth-child(3))) {
+  align-self: stretch;
+}
+
 // Fill the group's lane height and distribute the rows with equal space around each.
 :host(.ribbon-column--spread) {
   align-self: stretch;

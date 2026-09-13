@@ -4,11 +4,17 @@ import {
   computed,
   DestroyRef,
   effect,
+  EnvironmentInjector,
   inject,
   input,
   InputSignal,
+  signal,
   Signal,
+  viewChild,
+  WritableSignal,
 } from '@angular/core';
+import { MarkdownEditor } from '@shared/angular/components/markdown-editor/markdown-editor';
+import { MarkdownToolstrip } from '@shared/angular/components/markdown-toolstrip/markdown-toolstrip';
 import { CodeDocument, Documents } from '@shared/angular/services/documents/documents';
 import { DocumentStatus } from '@shared/angular/services/document-status/document-status';
 import { MarkdownDocument } from '@features/markdown/angular/markdown-document/markdown-document';
@@ -21,19 +27,77 @@ import {
  * Represents the lean markdown surface mounted in a workspace document well: the shared
  * {@link MarkdownDocument} core. Unlike the full markdown tab view it carries no ribbon and no
  * outline/review/reader tool panels — because the well is a secondary editing surface beside the
- * workspace tree — and it shows neither a file toolstrip nor an inline status strip: the dock supplies
- * the tab header and, while this panel is the active document, it publishes its word count, read time,
- * language and encoding to the shared {@link DocumentStatus} so the well's status strip renders them.
- * The editor is fully editable, as in a tab.
+ * workspace tree — but it does mount the shared {@link MarkdownToolstrip} over the editor, so the
+ * basic formatting capabilities the ribbon would otherwise provide are still reachable here. It shows
+ * no inline status strip: the dock supplies the tab header and, while this panel is the active
+ * document, it publishes its word count, read time, language and encoding to the shared
+ * {@link DocumentStatus} so the well's status strip renders them. The editor is fully editable, as in
+ * a tab.
  */
 @Component({
   selector: 'app-markdown-document-panel',
-  imports: [MarkdownDocument],
+  imports: [MarkdownDocument, MarkdownToolstrip],
   templateUrl: './markdown-document-panel.html',
   styleUrl: './markdown-document-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class MarkdownDocumentPanel {
+  /**
+   * Holds the document core hosting the shared editor pane.
+   */
+  private readonly core: Signal<MarkdownDocument | undefined> =
+    viewChild<MarkdownDocument>(MarkdownDocument);
+
+  /**
+   * Holds the editor pane the toolstrip drives, captured once the pane's editor is ready (and again
+   * after a recreate for external content).
+   */
+  protected readonly pane: WritableSignal<MarkdownEditor | undefined> = signal<
+    MarkdownEditor | undefined
+  >(undefined);
+
+  /**
+   * Captures the ready pane for the toolstrip.
+   */
+  protected onEditorReady(): void {
+    this.pane.set(this.core()?.getPane());
+  }
+
+  /**
+   * Gets whether the backing document has a file path, and so can also be opened as its own tab.
+   */
+  protected readonly hasFilePath: Signal<boolean> = computed(
+    (): boolean => (this.document()?.filePath() ?? null) !== null,
+  );
+
+  /**
+   * Opens the well document as a standalone markdown tab, so it can be edited with the full tab
+   * chrome (ribbon and tool panels). The tab is seeded from the LIVE document — not by re-reading
+   * the file from disk — so a just-created file (still empty on disk) and unsaved edits carry over
+   * instead of opening an empty tab; a tab already showing the file is re-activated.
+   */
+  protected onOpenInTab(): void {
+    const document: CodeDocument | undefined = this.document();
+    const path: string | null = document?.filePath() ?? null;
+    if (document === undefined || path === null) {
+      return;
+    }
+    const name: string = document.fileName();
+    const separator: number = name.lastIndexOf('.');
+    // Opened through the ROOT documents service: the tab lives at the top level, outside this
+    // workspace's scoped Documents, and must be seeded where its view will look for it.
+    this.rootDocuments.openFileInfo(
+      {
+        path,
+        name,
+        extension: separator < 0 ? '' : name.slice(separator),
+        content: document.content(),
+        encoding: document.encoding(),
+        hasBom: document.hasBom(),
+      },
+      'markdown',
+    );
+  }
   /**
    * Holds the documents service backing the hosted document's content, language and encoding.
    */
@@ -43,6 +107,15 @@ export class MarkdownDocumentPanel {
    * Holds the well status strip this panel publishes to while it is the active document.
    */
   private readonly documentStatus: DocumentStatus = inject(DocumentStatus);
+
+  /**
+   * Holds the ROOT documents service, which owns the documents behind top-level editor tabs. It is
+   * resolved through the environment injector because it must NOT be the instance the ordinary
+   * `documents` field holds: the workspace view provides a scoped {@link Documents} for its well,
+   * and a top-level markdown tab's view resolves the root instance — a tab seeded into the scoped
+   * one mounts against the root one, finds nothing, and opens as an empty "New Document".
+   */
+  private readonly rootDocuments: Documents = inject(EnvironmentInjector).get(Documents);
 
   /**
    * Gets the identifier of the document this panel displays (the well panel's id).
