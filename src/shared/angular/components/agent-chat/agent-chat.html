@@ -190,14 +190,30 @@
                     : 'The summary above describes the change.'
                 }}
               </span>
-              <div class="agent__ask-actions agent__ask-actions--stack">
-                <app-button variant="solid" label="Yes" (click)="decide(row.item!, 'yes')" />
-                <app-button
-                  variant="solid"
-                  label="Yes, and automatically accept edits"
-                  (click)="decide(row.item!, 'yes-auto')"
-                />
-                <app-button label="No" (click)="decide(row.item!, 'no')" />
+              <!-- The choices as a radio list, as the ask card draws its suggested answers, rather
+                   than three stacked buttons: full-width buttons made "No" as loud as "Yes, and
+                   automatically accept edits", and side by side the long one dwarfed the short
+                   ones. Choosing a row IS the decision — there is no confirm step, because a
+                   decision prompt with a second button to press is two prompts. -->
+              <div class="agent__ask-options" role="radiogroup" aria-label="Apply this edit?">
+                @for (choice of editDecisionChoices; track choice.value) {
+                  <!-- The label wraps the radio's projected native input, associating them at
+                       runtime; the lint rule cannot see through the component boundary. -->
+                  <!-- eslint-disable-next-line @angular-eslint/template/label-has-associated-control -->
+                  <label class="agent__ask-option">
+                    <app-radio
+                      class="agent__ask-option-dial"
+                      [name]="'decision-' + row.item!.id"
+                      [checked]="false"
+                      [ariaLabel]="choice.label"
+                      (checkedChange)="$event && decide(row.item!, choice.value)"
+                    />
+                    <span class="agent__ask-option-text">
+                      <span class="agent__ask-option-label">{{ choice.label }}</span>
+                      <span class="agent__ask-option-desc">{{ choice.description }}</span>
+                    </span>
+                  </label>
+                }
               </div>
             } @else {
               <span class="agent__ask-state">{{ decisionStateLabel(row.item!) }}</span>

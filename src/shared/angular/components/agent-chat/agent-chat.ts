@@ -1474,6 +1474,25 @@ export class AgentChat implements OnInit {
    * @param item The edit-decision item.
    * @param choice The user's decision.
    */
+  /**
+   * Gets the choices an edit-decision card offers, in the order they are listed: the plain yes, the
+   * yes that stops the asking for the rest of the session, and no. Each carries the sentence that
+   * says what choosing it does, so the row reads as a consequence rather than a button label.
+   */
+  protected readonly editDecisionChoices: readonly {
+    readonly value: AiEditDecision;
+    readonly label: string;
+    readonly description: string;
+  }[] = [
+    { value: 'yes', label: 'Yes', description: 'Apply this edit.' },
+    {
+      value: 'yes-auto',
+      label: 'Yes, and automatically accept edits',
+      description: 'Apply it, and stop asking for the rest of this session.',
+    },
+    { value: 'no', label: 'No', description: 'Leave the document as it is.' },
+  ];
+
   public decide(item: AgentItem, choice: AiEditDecision): void {
     this.agent.respondEditDecision(item, choice);
   }

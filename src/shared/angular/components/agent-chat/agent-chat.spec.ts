@@ -4,6 +4,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import type {
   AgentContextRef,
   AgentSurface,
+  AiEditDecision,
   AiEffort,
   AiImageRef,
   AiPermissionRemember,
@@ -34,6 +35,7 @@ describe('AgentChat', () => {
   let removed: string[];
   let pendingInput: WritableSignal<AgentItem | undefined>;
   let inputAnswers: { id: string; answer: string | null }[];
+  let editDecisions: { id: string; choice: AiEditDecision }[];
   let items: WritableSignal<readonly AgentItem[]>;
   let running: WritableSignal<boolean>;
   let awaiting: WritableSignal<boolean>;
@@ -99,6 +101,7 @@ describe('AgentChat', () => {
     removed = [];
     pendingInput = signal<AgentItem | undefined>(undefined);
     inputAnswers = [];
+    editDecisions = [];
     items = signal<readonly AgentItem[]>([]);
     running = signal<boolean>(false);
     awaiting = signal<boolean>(false);
@@ -138,6 +141,8 @@ describe('AgentChat', () => {
         ),
       respondInput: (item: AgentItem, answer: string | null): void =>
         void inputAnswers.push({ id: item.id, answer }),
+      respondEditDecision: (item: AgentItem, choice: AiEditDecision): void =>
+        void editDecisions.push({ id: item.id, choice }),
       retry: (item: AgentItem): void => void retried.push(item.id),
       rewind: (item: AgentItem, text: string): void => void rewinds.push({ id: item.id, text }),
       provider: signal<AiProviderId>('claude'),
@@ -578,6 +583,38 @@ describe('AgentChat', () => {
       'Stopped',
     );
     expect(host.querySelector('.agent__action-caret')).toBeNull();
+  });
+
+  it('editDecision_whenPending_offersTheChoicesAsARadioList_andChoosingOneDecides', () => {
+    // Three stacked buttons made "No" as loud as "Yes, and automatically accept edits"; as a radio
+    // list each choice reads with its consequence, and choosing a row is the decision itself.
+    items.set([
+      {
+        id: 'item-1',
+        kind: 'edit-decision',
+        text: '',
+        decisionId: 'd1',
+        decisionName: 'the active document',
+        decisionDetail: '+3 lines',
+        decisionState: 'pending',
+        decisionHasDiff: true,
+      },
+    ]);
+    fixture.detectChanges();
+
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    const labels: readonly string[] = Array.from(
+      host.querySelectorAll('.agent__ask .agent__ask-option-label'),
+    ).map((label: Element): string => label.textContent?.trim() ?? '');
+    expect(labels).toEqual(['Yes', 'Yes, and automatically accept edits', 'No']);
+    expect(host.querySelectorAll('.agent__ask app-button').length).toBe(0);
+
+    const radios: HTMLInputElement[] = Array.from(
+      host.querySelectorAll<HTMLInputElement>('.agent__ask input[type="radio"]'),
+    );
+    radios[1].click();
+
+    expect(editDecisions).toEqual([{ id: 'item-1', choice: 'yes-auto' }]);
   });
 
   it('toolDetail_whenExpanded_showsTheFullInputAndOutputSections', () => {

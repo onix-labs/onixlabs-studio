@@ -452,7 +452,15 @@ $agent-node-size: 1.75rem;
 // is outlined in the accent colour, a failed run in the warning colour.
 .agent__permission,
 .agent__ask,
-.agent__error,
+.agent__error {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  max-inline-size: 48rem;
+  margin-block: 0.5rem;
+  padding: 0.8rem 1rem;
+}
+
 // Shared chrome, grouped to keep the compiled style lean: the raised surfaces share one background,
 // and the outlined surfaces share one border. The accent overrides below must stay after the border
 // group so they win at equal specificity.
@@ -514,7 +522,7 @@ $agent-node-size: 1.75rem;
 
 .agent__permission-detail {
   display: block;
-  margin-block-start: 0.25rem;
+  margin-block-start: 0.4rem;
   font-size: 0.85rem;
   word-break: break-word;
   opacity: 0.7;
@@ -582,12 +590,6 @@ $agent-node-size: 1.75rem;
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
-}
-
-// The edit-decision options stack vertically, Claude Code-style: full-width, left-aligned rows.
-.agent__ask-actions--stack {
-  flex-direction: column;
-  align-items: stretch;
 }
 
 .agent__ask-answer {
