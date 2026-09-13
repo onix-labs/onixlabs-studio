@@ -38,7 +38,7 @@ import { Radio } from '@shared/angular/components/forms/radio/radio';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { MarkdownRenderer } from '@shared/angular/components/markdown-renderer/markdown-renderer';
 import { AgentComposer } from '@shared/angular/components/agent-composer/agent-composer';
-import { friendlyToolLabel, technicalToolName } from './tool-summary';
+import { friendlyToolLabel, technicalToolName, toolNodeIcon } from './tool-summary';
 
 /**
  * How close (px) to the bottom of the message list still counts as "at the bottom" for follow-the-tail
@@ -239,6 +239,12 @@ interface TranscriptRow {
    * Gets the muted meta readout beside a thinking row's label (its word count), or undefined.
    */
   readonly meta?: string;
+
+  /**
+   * Gets what a notice row reveals behind its chip, or undefined for a notice that is its title
+   * alone and so has nothing to expand.
+   */
+  readonly detail?: string;
 
   /**
    * Gets the technical tool identifier revealed when a tool row is expanded (undefined otherwise).
@@ -721,8 +727,15 @@ export class AgentChat implements OnInit {
       const wordCountFor: (item: AgentItem | null) => string = (item: AgentItem | null): string =>
         this.wordCountFor(item);
 
+      // A notice is on the rail too (#695): Studio's own bookkeeping — a background task settling, a
+      // compaction that failed — is machinery, and machinery reads as a chip beside a node, like a
+      // tool call, not as a card standing apart from everything.
       const onRail: (kind: TranscriptRowKind) => boolean = (kind: TranscriptRowKind): boolean =>
-        kind === 'assistant' || kind === 'thinking' || kind === 'tool' || kind === 'working';
+        kind === 'assistant' ||
+        kind === 'thinking' ||
+        kind === 'tool' ||
+        kind === 'notice' ||
+        kind === 'working';
 
       // A backgrounded tool is still live: its result came back the instant it backgrounded, but the
       // work carries on until the task settles. Treating it as finished is the lie #427 exists to fix.
@@ -738,6 +751,8 @@ export class AgentChat implements OnInit {
             return thinkingLive(entry) ? Icon.SPINNER : Icon.THINKING;
           case 'working':
             return Icon.SPINNER;
+          case 'notice':
+            return Icon.INFO;
           case 'tool':
             if (entry.item?.toolState === 'running' || entry.item?.toolState === 'backgrounded') {
               return Icon.SPINNER;
@@ -746,8 +761,10 @@ export class AgentChat implements OnInit {
               return Icon.WARNING;
             }
             // A settled sub-agent (Task) row wears the sub-agent glyph, so lanes read differently
-            // from ordinary tool chips on the rail.
-            return entry.item?.agentType !== undefined ? Icon.SUBAGENT : Icon.ACTION;
+            // from ordinary tool chips on the rail; an ordinary tool wears its own, where it has one.
+            return entry.item?.agentType !== undefined
+              ? Icon.SUBAGENT
+              : toolNodeIcon(entry.item?.toolName);
           default:
             return Icon.ACTION;
         }
@@ -823,12 +840,15 @@ export class AgentChat implements OnInit {
             label:
               row.kind === 'tool'
                 ? friendlyToolLabel(row.item?.toolName)
-                : thinking(row)
-                  ? thinkingLive(row)
-                    ? 'Thinking…'
-                    : 'Thought process'
-                  : undefined,
+                : row.kind === 'notice'
+                  ? row.item?.text
+                  : thinking(row)
+                    ? thinkingLive(row)
+                      ? 'Thinking…'
+                      : 'Thought process'
+                    : undefined,
             meta: thinking(row) ? wordCountFor(row.item) : undefined,
+            detail: row.kind === 'notice' ? row.item?.detail : undefined,
             tech: row.kind === 'tool' ? technicalToolName(row.item?.toolName) : undefined,
             lane,
             // Precompute the raw payload clips (step 3) so an expanded tool row never slices strings on
@@ -1454,6 +1474,25 @@ export class AgentChat implements OnInit {
    * @param item The edit-decision item.
    * @param choice The user's decision.
    */
+  /**
+   * Gets the choices an edit-decision card offers, in the order they are listed: the plain yes, the
+   * yes that stops the asking for the rest of the session, and no. Each carries the sentence that
+   * says what choosing it does, so the row reads as a consequence rather than a button label.
+   */
+  protected readonly editDecisionChoices: readonly {
+    readonly value: AiEditDecision;
+    readonly label: string;
+    readonly description: string;
+  }[] = [
+    { value: 'yes', label: 'Yes', description: 'Apply this edit.' },
+    {
+      value: 'yes-auto',
+      label: 'Yes, and automatically accept edits',
+      description: 'Apply it, and stop asking for the rest of this session.',
+    },
+    { value: 'no', label: 'No', description: 'Leave the document as it is.' },
+  ];
+
   public decide(item: AgentItem, choice: AiEditDecision): void {
     this.agent.respondEditDecision(item, choice);
   }

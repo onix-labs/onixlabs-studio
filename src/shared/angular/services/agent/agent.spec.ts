@@ -522,11 +522,16 @@ describe('Agent', () => {
       outputFile: '/tmp/task-orphan.out',
     });
 
+    // The explanation rides the notice's detail (#695) — behind the chip's expander, never as the
+    // chip's own title and never as text the model appears to have said.
     const carrying: readonly AgentItem[] = agent
       .items()
-      .filter((i: AgentItem): boolean => i.text.includes('No completion record was found'));
+      .filter((i: AgentItem): boolean =>
+        (i.detail ?? '').includes('No completion record was found'),
+      );
     expect(carrying.length).toBe(1);
     expect(carrying[0].kind).toBe('notice');
+    expect(carrying[0].text).toBe('Background task was stopped');
     // The whole point: nothing in the transcript claims the agent said it.
     expect(
       agent
@@ -724,7 +729,7 @@ describe('Agent', () => {
       const last: AgentItem | undefined = lastItem();
       // A notice, not assistant text (#691): the model did not say "Stopped." — Studio did.
       expect(last?.kind).toBe('notice');
-      expect((last as { text?: string }).text).toBe('Stopped.');
+      expect((last as { text?: string }).text).toBe('Stopped');
     } finally {
       vi.useRealTimers();
     }
@@ -1520,7 +1525,7 @@ describe('Agent', () => {
 
     // Reporting that the model said nothing is Studio talking, so it cannot be assistant text (#691).
     expect(lastItem()?.kind).toBe('notice');
-    expect(lastItem()?.text).toBe('The model returned no output.');
+    expect(lastItem()?.text).toBe('The model returned no output');
   });
 
   it('status_whenCompletedAfterAReply_doesNotNoteEmptyOutput', () => {

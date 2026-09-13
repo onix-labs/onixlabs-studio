@@ -4,6 +4,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import type {
   AgentContextRef,
   AgentSurface,
+  AiEditDecision,
   AiEffort,
   AiImageRef,
   AiPermissionRemember,
@@ -34,6 +35,7 @@ describe('AgentChat', () => {
   let removed: string[];
   let pendingInput: WritableSignal<AgentItem | undefined>;
   let inputAnswers: { id: string; answer: string | null }[];
+  let editDecisions: { id: string; choice: AiEditDecision }[];
   let items: WritableSignal<readonly AgentItem[]>;
   let running: WritableSignal<boolean>;
   let awaiting: WritableSignal<boolean>;
@@ -99,6 +101,7 @@ describe('AgentChat', () => {
     removed = [];
     pendingInput = signal<AgentItem | undefined>(undefined);
     inputAnswers = [];
+    editDecisions = [];
     items = signal<readonly AgentItem[]>([]);
     running = signal<boolean>(false);
     awaiting = signal<boolean>(false);
@@ -138,6 +141,8 @@ describe('AgentChat', () => {
         ),
       respondInput: (item: AgentItem, answer: string | null): void =>
         void inputAnswers.push({ id: item.id, answer }),
+      respondEditDecision: (item: AgentItem, choice: AiEditDecision): void =>
+        void editDecisions.push({ id: item.id, choice }),
       retry: (item: AgentItem): void => void retried.push(item.id),
       rewind: (item: AgentItem, text: string): void => void rewinds.push({ id: item.id, text }),
       provider: signal<AiProviderId>('claude'),
@@ -448,25 +453,61 @@ describe('AgentChat', () => {
     expect(values(false)).toEqual(['once', 'session', 'always']);
   });
 
-  it('thinking_whenSettled_rendersACollapsedDisclosureWithItsWordCount', () => {
+  it('thinking_whenSettled_showsTheWordsInTheOpenWithTheirCount', () => {
+    // The words are the point of the row, so they are in the box rather than behind a caret.
     items.set([
       { id: 'item-1', kind: 'thinking', text: 'weighing the two options carefully' },
       { id: 'item-2', kind: 'assistant', text: 'Done.' },
     ]);
     fixture.detectChanges();
 
-    const disclosure: HTMLDetailsElement | null = (
-      fixture.nativeElement as HTMLElement
-    ).querySelector<HTMLDetailsElement>('.agent__thinking');
-    expect(disclosure).not.toBeNull();
-    expect(disclosure!.open).toBe(false);
-    expect(disclosure!.querySelector('.agent__action-label')?.textContent?.trim()).toBe(
-      'Thought process',
-    );
-    expect(disclosure!.querySelector('.agent__lane-meta')?.textContent?.trim()).toBe('5 words');
-    expect(disclosure!.querySelector('.agent__thinking-body')?.textContent).toContain(
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    const box: HTMLElement | null = host.querySelector<HTMLElement>('.agent__thinking');
+    expect(box).not.toBeNull();
+    expect(box!.tagName.toLowerCase()).not.toBe('details');
+    expect(box!.querySelector('.agent__action-label')?.textContent?.trim()).toBe('Thought process');
+    expect(box!.querySelector('.agent__lane-meta')?.textContent?.trim()).toBe('5 words');
+    expect(box!.querySelector('.agent__thinking-body')?.textContent).toContain(
       'weighing the two options',
     );
+    expect(box!.querySelector('.agent__action-caret')).toBeNull();
+  });
+
+  it('thinking_whenTheModelKeptItToItself_isTheLabelAloneWithNothingToOpen', () => {
+    // Reasoning the model did not surface arrives as an empty item: no words, no count, no caret —
+    // a "0 words" expander that opened onto nothing said less than the label alone does.
+    items.set([
+      { id: 'item-1', kind: 'thinking', text: '' },
+      { id: 'item-2', kind: 'assistant', text: 'Done.' },
+    ]);
+    fixture.detectChanges();
+
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    const chip: HTMLElement | null = host.querySelector<HTMLElement>('.agent__thinking--empty');
+    expect(chip).not.toBeNull();
+    expect(chip!.querySelector('.agent__action-label')?.textContent?.trim()).toBe(
+      'Thought process',
+    );
+    expect(chip!.querySelector('.agent__lane-meta')).toBeNull();
+    expect(chip!.querySelector('.agent__action-caret')).toBeNull();
+    expect(host.querySelector('.agent__thinking-body')).toBeNull();
+  });
+
+  it('toolNode_wearsTheGlyphOfWhatTheToolDoes', () => {
+    // A read and a write have a shape of their own on the rail; a command keeps the bolt.
+    items.set([
+      { id: 'item-1', kind: 'tool', text: '', toolName: 'Read', toolState: 'ok' },
+      { id: 'item-2', kind: 'tool', text: '', toolName: 'Edit', toolState: 'ok' },
+      { id: 'item-3', kind: 'tool', text: '', toolName: 'Bash', toolState: 'ok' },
+    ]);
+    fixture.detectChanges();
+
+    const glyphs: readonly string[] = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('.agent__node-icon i'),
+    ).map((icon: Element): string => icon.className);
+    expect(glyphs[0]).toContain('ph-newspaper-clipping');
+    expect(glyphs[1]).toContain('ph-pencil-simple');
+    expect(glyphs[2]).toContain('ph-lightning');
   });
 
   it('thinking_whileTheRunStreamsIt_readsAsLiveProgress', () => {
@@ -495,6 +536,85 @@ describe('AgentChat', () => {
         .querySelector('.agent__thinking .agent__action-label')
         ?.textContent?.trim(),
     ).toBe('Thought process');
+  });
+
+  it('notice_withDetail_rendersOnTheRailAsAChipWithTheDetailBehindItsExpander', () => {
+    // Studio's own bookkeeping reads like every other piece of machinery on the rail (#695): the
+    // title on the chip, what it has to say behind the caret, and an info node beside it — not a
+    // card standing apart from the timeline.
+    items.set([
+      { id: 'item-1', kind: 'tool', text: '', toolName: 'Bash', toolState: 'ok' },
+      {
+        id: 'item-2',
+        kind: 'notice',
+        text: 'Background task finished',
+        detail: 'Close the four resolved issues with evidence',
+        sealed: true,
+      },
+    ]);
+    fixture.detectChanges();
+
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    const disclosure: HTMLDetailsElement | null =
+      host.querySelector<HTMLDetailsElement>('details.agent__notice');
+    expect(disclosure).not.toBeNull();
+    expect(disclosure!.open).toBe(false);
+    expect(disclosure!.querySelector('.agent__action-label')?.textContent?.trim()).toBe(
+      'Background task finished',
+    );
+    expect(disclosure!.querySelector('.agent__notice-body')?.textContent?.trim()).toBe(
+      'Close the four resolved issues with evidence',
+    );
+    // On the rail: the row carries a node, and it joins the tool row above it.
+    const row: HTMLElement | null = disclosure!.closest('.agent__row');
+    expect(row?.querySelector('.agent__node-icon--notice')).not.toBeNull();
+    expect(row?.classList.contains('agent__row--up')).toBe(true);
+    expect(host.querySelector('.agent__notice-icon')).toBeNull();
+  });
+
+  it('notice_withoutDetail_rendersTheChipAloneWithNothingToExpand', () => {
+    // A caret that opens onto nothing is a promise the row cannot keep.
+    items.set([{ id: 'item-1', kind: 'notice', text: 'Stopped' }]);
+    fixture.detectChanges();
+
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    expect(host.querySelector('details.agent__notice')).toBeNull();
+    expect(host.querySelector('span.agent__notice .agent__action-label')?.textContent?.trim()).toBe(
+      'Stopped',
+    );
+    expect(host.querySelector('.agent__action-caret')).toBeNull();
+  });
+
+  it('editDecision_whenPending_offersTheChoicesAsARadioList_andChoosingOneDecides', () => {
+    // Three stacked buttons made "No" as loud as "Yes, and automatically accept edits"; as a radio
+    // list each choice reads with its consequence, and choosing a row is the decision itself.
+    items.set([
+      {
+        id: 'item-1',
+        kind: 'edit-decision',
+        text: '',
+        decisionId: 'd1',
+        decisionName: 'the active document',
+        decisionDetail: '+3 lines',
+        decisionState: 'pending',
+        decisionHasDiff: true,
+      },
+    ]);
+    fixture.detectChanges();
+
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    const labels: readonly string[] = Array.from(
+      host.querySelectorAll('.agent__ask .agent__ask-option-label'),
+    ).map((label: Element): string => label.textContent?.trim() ?? '');
+    expect(labels).toEqual(['Yes', 'Yes, and automatically accept edits', 'No']);
+    expect(host.querySelectorAll('.agent__ask app-button').length).toBe(0);
+
+    const radios: HTMLInputElement[] = Array.from(
+      host.querySelectorAll<HTMLInputElement>('.agent__ask input[type="radio"]'),
+    );
+    radios[1].click();
+
+    expect(editDecisions).toEqual([{ id: 'item-1', choice: 'yes-auto' }]);
   });
 
   it('toolDetail_whenExpanded_showsTheFullInputAndOutputSections', () => {

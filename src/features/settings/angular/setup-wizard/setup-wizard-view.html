@@ -85,7 +85,7 @@
                 <app-setup-step-whats-new />
               }
               @case ('settings') {
-                <app-setup-step-settings [keys]="stepSettings[step()?.id ?? ''] ?? []" />
+                <app-setup-step-settings [keys]="stepSettings[step()?.id ?? '']" />
                 @if (step()?.id === 'security') {
                   <p class="setup__note">
                     Beyond these, the agent may only write inside the workspace you have open. That

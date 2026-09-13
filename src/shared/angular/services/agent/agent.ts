@@ -203,6 +203,14 @@ export interface AgentItem {
   readonly sealed?: boolean;
 
   /**
+   * Gets what a notice has to say beyond its title, or undefined for a notice that is its title
+   * alone. A notice renders as a chip on the rail like a tool call — the title on the chip, this
+   * behind its expander — so the two are carried apart rather than joined into one sentence the view
+   * would have to split back up.
+   */
+  readonly detail?: string;
+
+  /**
    * Gets the images attached to a user message (pasted or dropped into the composer), rendered as
    * thumbnails and persisted with the transcript.
    */
@@ -1793,7 +1801,7 @@ export class Agent {
       this.pushError(detail);
       this.maybePromptLogin(detail);
     } else if (state === 'aborted') {
-      this.push({ kind: 'notice', text: 'Stopped.' });
+      this.push({ kind: 'notice', text: 'Stopped' });
     } else if (state === 'completed') {
       // A not-signed-in turn can come back as a completed reply ("Not logged in. Please run /login")
       // rather than a hard error, so the reply is checked here too — otherwise the prompt would only
@@ -1807,7 +1815,7 @@ export class Agent {
         this.retryAfterLogin = true;
         this.needsLoginState.set(true);
       } else if (!this.producedReply()) {
-        this.push({ kind: 'notice', text: 'The model returned no output.' });
+        this.push({ kind: 'notice', text: 'The model returned no output' });
       }
     }
     this.notifyRunEnded(state, detail);
@@ -1965,16 +1973,21 @@ export class Agent {
     const detail: string = summary.trim();
     const word: string =
       status === 'completed' ? 'finished' : status === 'failed' ? 'failed' : 'was stopped';
-    const note: string =
-      detail.length > 0 ? `Background task ${word}: ${detail}` : `Background task ${word}.`;
     // ⛔ A `notice`, NOT `assistant` (#691). The model did not write this sentence, and rendering it in
     // the model's voice made Studio's own bookkeeping indistinguishable from an answer — worst when the
     // harness reports housekeeping from a previous session, which names internals ("Monitor timeout",
-    // "the previous Claude Code process") that read as nonsense addressed to the user.
+    // "the previous Claude Code process") that read as nonsense addressed to the user. The title goes
+    // on the chip and the task's summary behind its expander (#695), which is how every other piece of
+    // machinery on the rail reads.
     //
     // Sealed for the same reason it always was: the report the agent is about to stream must start its
     // own message rather than folding into this one.
-    this.push({ kind: 'notice', text: note, sealed: true });
+    this.push({
+      kind: 'notice',
+      text: `Background task ${word}`,
+      ...(detail.length > 0 ? { detail } : {}),
+      sealed: true,
+    });
     const tabId: string | undefined = this.lastOwningTabId;
     const label: string = this.conversationTitle();
     const watching: boolean = this.isConversationVisible(tabId);
@@ -2243,11 +2256,11 @@ export class Agent {
     const summary: string = this.compactionText.trim();
     if (state === 'error') {
       const reason: string = detail.trim().length > 0 ? detail : 'unknown error';
-      this.push({ kind: 'notice', text: `Compaction failed: ${reason}` });
+      this.push({ kind: 'notice', text: 'Compaction failed', detail: reason });
     } else if (state === 'aborted') {
-      this.push({ kind: 'notice', text: 'Compaction stopped.' });
+      this.push({ kind: 'notice', text: 'Compaction stopped' });
     } else if (summary.length === 0) {
-      this.push({ kind: 'notice', text: 'Compaction produced no summary.' });
+      this.push({ kind: 'notice', text: 'Compaction produced no summary' });
     } else {
       this.sequence += 1;
       this.log.set([

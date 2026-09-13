@@ -257,6 +257,16 @@ export class Icon {
    */
   public static readonly ACTION: Icon = new Icon('ph ph-lightning');
 
+  /**
+   * Gets the glyph on a timeline node for a tool that reads a file or document.
+   */
+  public static readonly TOOL_READ: Icon = new Icon('ph ph-newspaper-clipping');
+
+  /**
+   * Gets the glyph on a timeline node for a tool that writes or edits a file or document.
+   */
+  public static readonly TOOL_WRITE: Icon = new Icon('ph ph-pencil-simple');
+
   // --- Ribbon: file commands ---
 
   /**
