@@ -139,6 +139,7 @@ describe('describeOffer', () => {
     expect(names(offer)).not.toContain(RUN_ACTIVE_DOCUMENT);
     expect(offer.systemPrompt).toContain('docked to a workspace tab');
     expect(offer.systemPrompt).toContain('run configurations');
+  });
 
   it('appendsTheUsersStandingSystemTextBeneathStudiosOwn', async () => {
     // #300. Append-only: the user's text follows every one of Studio's appendices, so a profile can

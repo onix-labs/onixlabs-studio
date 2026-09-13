@@ -1,4 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { AGENT_SURFACES } from '@shared/api/ai-types';
 import { PromptProfiles } from '@shared/angular/services/prompt-profiles/prompt-profiles';
 import { PromptProfilesSettings } from './prompt-profiles';
 
@@ -51,7 +52,7 @@ describe('PromptProfilesSettings', () => {
 
     const checks: NodeListOf<HTMLInputElement> =
       element().querySelectorAll<HTMLInputElement>('.scope__surface input');
-    expect(checks).toHaveLength(5);
+    expect(checks).toHaveLength(AGENT_SURFACES.length);
     expect(
       Array.from(checks).filter((check: HTMLInputElement): boolean => check.checked),
     ).toHaveLength(1);

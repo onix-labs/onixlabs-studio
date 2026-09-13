@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  AGENT_SURFACE_LABELS,
   GLOBAL_SCOPE,
   PromptScope,
   readPromptScope,
@@ -7,6 +8,26 @@ import {
   scopeSpecificity,
   sortByScope,
 } from './ai-prompt-scope';
+import { AGENT_SURFACES } from './ai-tool-surface';
+
+describe('AGENT_SURFACE_LABELS', () => {
+  it('AGENT_SURFACE_LABELS_namesEverySurfaceIncludingWorkspaces', () => {
+    // #713 gave the workspace agent panel a surface of its own; before that "Applies in" could not
+    // offer Workspaces because there was nothing to scope to, and a workspace run matched the editor
+    // box instead.
+    for (const surface of AGENT_SURFACES) {
+      expect(AGENT_SURFACE_LABELS[surface].length).toBeGreaterThan(0);
+    }
+    expect(AGENT_SURFACE_LABELS.workspace).toBe('Workspaces');
+  });
+
+  it('scopeMatches_whenScopedToWorkspaces_matchesAWorkspaceRunOnly', () => {
+    const scope: PromptScope = { surfaces: ['workspace'], languages: [] };
+
+    expect(scopeMatches(scope, 'workspace', null)).toBe(true);
+    expect(scopeMatches(scope, 'editor', 'csharp')).toBe(false);
+  });
+});
 
 describe('scopeMatches', () => {
   it('scopeMatches_whenScopeIsGlobal_matchesEverySurface', () => {
