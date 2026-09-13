@@ -13,6 +13,7 @@ import type {
 } from '@shared/api/ai-types';
 import { AgentEngine } from '../agent-engine/agent-engine';
 import { AiRuntime, AiRunOptions } from '../ai-runtime/ai-runtime';
+import { PromptProfile, PromptProfiles } from '../prompt-profiles/prompt-profiles';
 import { Notification, Notifications } from '@shared/angular/services/notifications/notifications';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { Tab } from '@shared/angular/services/tabs/tab';
@@ -54,6 +55,9 @@ describe('Agent', () => {
     runTimeoutMs: number;
     effort: AiEffort | undefined;
     remoteControl: AiRemoteControlMode | undefined;
+    language: string | undefined;
+    systemPromptExtra: string | undefined;
+    userPromptExtra: string | undefined;
   }[];
   let abortCalls: string[];
   let closeSessionCalls: string[];
@@ -147,6 +151,9 @@ describe('Agent', () => {
           runTimeoutMs: options.runTimeoutMs ?? 0,
           effort: options.effort,
           remoteControl: options.remoteControl,
+          language: options.language,
+          systemPromptExtra: options.systemPromptExtra,
+          userPromptExtra: options.userPromptExtra,
         });
         return 'run-1';
       },
@@ -184,6 +191,41 @@ describe('Agent', () => {
     agent.send('hello');
 
     expect(runCalls[0].agentSessionId).toBeTruthy();
+  });
+
+  it('send_carriesTheBoundLanguageAndTheStandingPromptsThatMatchIt', () => {
+    // #300. The layers are resolved here — the renderer owns the profiles and the host knows the
+    // owning document's language — and travel as two strings the transcript never shows.
+    const profiles: PromptProfiles = TestBed.inject(PromptProfiles);
+    const profile: PromptProfile = profiles.create('C#');
+    profiles.update(profile.id, {
+      scope: { surfaces: [], languages: ['csharp'] },
+      system: 'Explicit types.',
+      user: 'British English.',
+    });
+    agent.bindLanguage((): string => 'csharp');
+
+    agent.send('hello');
+
+    expect(runCalls[0].language).toBe('csharp');
+    expect(runCalls[0].systemPromptExtra).toBe('### C#\nExplicit types.');
+    expect(runCalls[0].userPromptExtra).toBe('### C#\nBritish English.');
+    expect(runCalls[0].prompt).toBe('hello');
+    expect(lastItem()?.kind === 'user' && lastItem()?.text).toBe('hello');
+  });
+
+  it('send_whenNoLanguageIsBound_carriesNoneAndOnlyUnscopedProfilesApply', () => {
+    const profiles: PromptProfiles = TestBed.inject(PromptProfiles);
+    profiles.update(profiles.create('Everywhere').id, { user: 'Be brief.' });
+    profiles.update(profiles.create('C#').id, {
+      scope: { surfaces: [], languages: ['csharp'] },
+      user: 'Explicit types.',
+    });
+
+    agent.send('hello');
+
+    expect(runCalls[0].language).toBeUndefined();
+    expect(runCalls[0].userPromptExtra).toBe('### Everywhere\nBe brief.');
   });
 
   it('commandsEvent_forThisConversation_populatesTheDiscoveredCommands', () => {

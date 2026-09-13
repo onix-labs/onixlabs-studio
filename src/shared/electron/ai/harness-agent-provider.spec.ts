@@ -670,6 +670,21 @@ describe('toTurnRequest', () => {
     expect(turn['setSteerHandler']).toBeUndefined();
   });
 
+  it('composesTheUsersStandingInstructionsIntoThePromptRatherThanANewField', () => {
+    // #300. Inside the prompt, not beside it: a harness that reads only the fields it has always
+    // read still delivers them, which is what spares every published plugin a release.
+    const { context } = contextFor({ userPromptExtra: '### House\nBritish English.' });
+
+    const turn: Record<string, unknown> = toTurnRequest(context) as unknown as Record<
+      string,
+      unknown
+    >;
+
+    expect(turn['prompt']).toMatch(/^do the thing\n\n---\n/);
+    expect(turn['prompt']).toMatch(/### House\nBritish English\.$/);
+    expect(turn['userPromptExtra']).toBeUndefined();
+  });
+
   it('carriesEveryFieldAHarnessNeedsToReachParityWithAnInCoreProvider', () => {
     // 🔑 Protocol 1.2.0. The envelope carried 16 of the run context's 29 fields, so a harness could not
     // see the posture it was running under, the tool policies, the attached images or context, the

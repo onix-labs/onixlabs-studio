@@ -21,6 +21,7 @@ import {
   RUN_ACTIVE_DOCUMENT,
   SAVE_RUN_CONFIGURATIONS,
   ASK_USER,
+  LOAD_SKILL,
 } from '@shared/api/ai-types';
 import type { HarnessTool } from '@shared/api/agent-protocol';
 import type { AgentRunContext } from './agent-provider';
@@ -138,6 +139,41 @@ describe('describeOffer', () => {
     expect(names(offer)).not.toContain(RUN_ACTIVE_DOCUMENT);
     expect(offer.systemPrompt).toContain('docked to a workspace tab');
     expect(offer.systemPrompt).toContain('run configurations');
+
+  it('appendsTheUsersStandingSystemTextBeneathStudiosOwn', async () => {
+    // #300. Append-only: the user's text follows every one of Studio's appendices, so a profile can
+    // add guidance but cannot strand the tool descriptions above it.
+    const offer: { systemPrompt: string } = await describeOffer(
+      contextFor({ systemPromptExtra: '### Style\nExplicit types.' }),
+    );
+
+    expect(offer.systemPrompt.endsWith('### Style\nExplicit types.')).toBe(true);
+    expect(offer.systemPrompt.indexOf('run configurations')).toBeLessThan(
+      offer.systemPrompt.indexOf('### Style'),
+    );
+  });
+
+  it('listsTheSkillsInScopeAndOffersTheToolThatLoadsThem', async () => {
+    // #301. Progressive disclosure through the seam every harness already speaks: the listing rides
+    // in the instructions, the body behind a Studio tool the harness runs like any other.
+    const offer: { systemPrompt: string; tools: readonly HarnessTool[] } = await describeOffer(
+      contextFor({
+        skills: [
+          {
+            name: 'csharp-style',
+            description: 'C# house style.',
+            load: (): Promise<null> => Promise.resolve(null),
+          },
+        ],
+      }),
+    );
+
+    expect(offer.systemPrompt).toContain('- csharp-style: C# house style.');
+    expect(names(offer)).toContain(LOAD_SKILL);
+  });
+
+  it('offersNoSkillToolWhenNothingIsInScope', async () => {
+    expect(names(await describeOffer(contextFor()))).not.toContain(LOAD_SKILL);
   });
 
   it('addressesWorkspaceTerminalsByIdAndWithholdsWritingFromAChatTurn', async () => {
