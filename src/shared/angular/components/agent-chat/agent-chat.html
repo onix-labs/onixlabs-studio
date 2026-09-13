@@ -339,19 +339,30 @@
             </span>
           }
           @case ('thinking') {
-            <!-- The turn's reasoning: default-collapsed, streaming into the disclosure while
-                       the run produces it (the summary's word count ticks up as progress). -->
-            <details class="agent__action agent__thinking">
-              <summary class="agent__action-summary">
-                <span class="agent__action-label">{{ row.label }}</span>
-                <span class="agent__lane-meta">{{ row.meta }}</span>
-                <app-icon class="agent__action-caret" [icon]="Icon.CARET_DOWN" />
-              </summary>
-              <app-markdown-renderer
-                class="agent__thinking-body agent__markdown"
-                [text]="row.item!.text"
-              />
-            </details>
+            <!-- The turn's reasoning, shown in its box rather than folded behind a caret: the
+                 words are the point of the row, and a disclosure hid them behind a click on every
+                 turn. While the run is still producing them they stream into the same box, its
+                 word count ticking up as progress. Reasoning the model kept to itself arrives as
+                 an empty item; that is the label alone, since a box with nothing in it and a caret
+                 that opens onto nothing both say less than the label does. -->
+            @if (row.item!.text.trim().length > 0) {
+              <div class="agent__action agent__thinking">
+                <span class="agent__thinking-head">
+                  <span class="agent__action-label">{{ row.label }}</span>
+                  <span class="agent__lane-meta">{{ row.meta }}</span>
+                </span>
+                <app-markdown-renderer
+                  class="agent__thinking-body agent__markdown"
+                  [text]="row.item!.text"
+                />
+              </div>
+            } @else {
+              <span class="agent__action agent__thinking agent__thinking--empty">
+                <span class="agent__action-summary">
+                  <span class="agent__action-label">{{ row.label }}</span>
+                </span>
+              </span>
+            }
           }
           @case ('working') {
             <p class="agent__working" aria-live="polite">Working…</p>

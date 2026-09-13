@@ -370,50 +370,33 @@ $agent-node-size: 1.75rem;
   letter-spacing: 0.02em;
 }
 
-// A thinking disclosure rides the action-chip chrome but reads quieter: a muted label with a live
-// word count, expanding to the reasoning itself as dim prose.
-.agent__thinking .agent__action-label {
-  color: var(--form-muted-foreground-color);
-
-  .agent__action-summary:hover & {
-    color: var(--accent-color);
-  }
+// Reasoning sits in its box in the open: the same surface and corners as a chip, a muted heading
+// line with the live word count, and the words themselves as dim prose beneath it. Quieter than an
+// answer, because it is the working rather than the result.
+.agent__thinking:not(.agent__thinking--empty) {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  box-sizing: border-box;
+  padding: 0.5rem 0.75rem 0.6rem;
+  background: var(--agent-view-surface-color);
+  border-radius: calc(0.5rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
 }
 
-// Studio's own bookkeeping, not the agent talking (#691, #695). The same chip as a tool call, so the
-// rail reads as one column of machinery, but the quietest thing on it: the node and the label carry
-// the muted foreground rather than the accent, because a background task settling is neither
-// something to act on nor something that went wrong. What a notice has to say sits behind the
-// expander as dim prose, as reasoning does.
-.agent__node-icon--notice {
-  color: var(--form-muted-foreground-color);
-}
-
-.agent__notice .agent__action-label {
-  color: var(--form-muted-foreground-color);
-
-  .agent__action-summary:hover & {
-    color: var(--accent-color);
-  }
-}
-
-// A notice with nothing behind it is a chip that opens onto nothing, so it does not pretend to.
-span.agent__notice .agent__action-summary:hover .agent__action-label {
-  color: var(--form-muted-foreground-color);
-}
-
-.agent__notice-body {
-  max-inline-size: 44rem;
-  margin: 0.4rem 0 0;
-  padding-inline-start: 0.6rem;
+.agent__thinking-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
   font-size: 0.85rem;
+}
+
+.agent__thinking .agent__action-label {
   color: var(--form-muted-foreground-color);
 }
 
 .agent__thinking-body {
   max-inline-size: 44rem;
-  margin-block-start: 0.4rem;
-  padding-inline-start: 0.6rem;
   font-size: 0.85rem;
   color: var(--form-muted-foreground-color);
 }

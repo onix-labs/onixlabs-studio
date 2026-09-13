@@ -448,25 +448,61 @@ describe('AgentChat', () => {
     expect(values(false)).toEqual(['once', 'session', 'always']);
   });
 
-  it('thinking_whenSettled_rendersACollapsedDisclosureWithItsWordCount', () => {
+  it('thinking_whenSettled_showsTheWordsInTheOpenWithTheirCount', () => {
+    // The words are the point of the row, so they are in the box rather than behind a caret.
     items.set([
       { id: 'item-1', kind: 'thinking', text: 'weighing the two options carefully' },
       { id: 'item-2', kind: 'assistant', text: 'Done.' },
     ]);
     fixture.detectChanges();
 
-    const disclosure: HTMLDetailsElement | null = (
-      fixture.nativeElement as HTMLElement
-    ).querySelector<HTMLDetailsElement>('.agent__thinking');
-    expect(disclosure).not.toBeNull();
-    expect(disclosure!.open).toBe(false);
-    expect(disclosure!.querySelector('.agent__action-label')?.textContent?.trim()).toBe(
-      'Thought process',
-    );
-    expect(disclosure!.querySelector('.agent__lane-meta')?.textContent?.trim()).toBe('5 words');
-    expect(disclosure!.querySelector('.agent__thinking-body')?.textContent).toContain(
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    const box: HTMLElement | null = host.querySelector<HTMLElement>('.agent__thinking');
+    expect(box).not.toBeNull();
+    expect(box!.tagName.toLowerCase()).not.toBe('details');
+    expect(box!.querySelector('.agent__action-label')?.textContent?.trim()).toBe('Thought process');
+    expect(box!.querySelector('.agent__lane-meta')?.textContent?.trim()).toBe('5 words');
+    expect(box!.querySelector('.agent__thinking-body')?.textContent).toContain(
       'weighing the two options',
     );
+    expect(box!.querySelector('.agent__action-caret')).toBeNull();
+  });
+
+  it('thinking_whenTheModelKeptItToItself_isTheLabelAloneWithNothingToOpen', () => {
+    // Reasoning the model did not surface arrives as an empty item: no words, no count, no caret —
+    // a "0 words" expander that opened onto nothing said less than the label alone does.
+    items.set([
+      { id: 'item-1', kind: 'thinking', text: '' },
+      { id: 'item-2', kind: 'assistant', text: 'Done.' },
+    ]);
+    fixture.detectChanges();
+
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    const chip: HTMLElement | null = host.querySelector<HTMLElement>('.agent__thinking--empty');
+    expect(chip).not.toBeNull();
+    expect(chip!.querySelector('.agent__action-label')?.textContent?.trim()).toBe(
+      'Thought process',
+    );
+    expect(chip!.querySelector('.agent__lane-meta')).toBeNull();
+    expect(chip!.querySelector('.agent__action-caret')).toBeNull();
+    expect(host.querySelector('.agent__thinking-body')).toBeNull();
+  });
+
+  it('toolNode_wearsTheGlyphOfWhatTheToolDoes', () => {
+    // A read and a write have a shape of their own on the rail; a command keeps the bolt.
+    items.set([
+      { id: 'item-1', kind: 'tool', text: '', toolName: 'Read', toolState: 'ok' },
+      { id: 'item-2', kind: 'tool', text: '', toolName: 'Edit', toolState: 'ok' },
+      { id: 'item-3', kind: 'tool', text: '', toolName: 'Bash', toolState: 'ok' },
+    ]);
+    fixture.detectChanges();
+
+    const glyphs: readonly string[] = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('.agent__node-icon i'),
+    ).map((icon: Element): string => icon.className);
+    expect(glyphs[0]).toContain('ph-newspaper-clipping');
+    expect(glyphs[1]).toContain('ph-pencil-simple');
+    expect(glyphs[2]).toContain('ph-lightning');
   });
 
   it('thinking_whileTheRunStreamsIt_readsAsLiveProgress', () => {

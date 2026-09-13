@@ -38,7 +38,7 @@ import { Radio } from '@shared/angular/components/forms/radio/radio';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { MarkdownRenderer } from '@shared/angular/components/markdown-renderer/markdown-renderer';
 import { AgentComposer } from '@shared/angular/components/agent-composer/agent-composer';
-import { friendlyToolLabel, technicalToolName } from './tool-summary';
+import { friendlyToolLabel, technicalToolName, toolNodeIcon } from './tool-summary';
 
 /**
  * How close (px) to the bottom of the message list still counts as "at the bottom" for follow-the-tail
@@ -761,8 +761,10 @@ export class AgentChat implements OnInit {
               return Icon.WARNING;
             }
             // A settled sub-agent (Task) row wears the sub-agent glyph, so lanes read differently
-            // from ordinary tool chips on the rail.
-            return entry.item?.agentType !== undefined ? Icon.SUBAGENT : Icon.ACTION;
+            // from ordinary tool chips on the rail; an ordinary tool wears its own, where it has one.
+            return entry.item?.agentType !== undefined
+              ? Icon.SUBAGENT
+              : toolNodeIcon(entry.item?.toolName);
           default:
             return Icon.ACTION;
         }
