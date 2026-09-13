@@ -24,6 +24,19 @@ test.describe('setup wizard', () => {
     return window;
   }
 
+  /**
+   * Presses Next until the last step is showing. Counted by what the rail says rather than by a fixed
+   * number of presses, so the case survives the rail growing — as it does when a plugin root gains a
+   * leaf, or a step is added.
+   * @param wizard The wizard window.
+   */
+  async function walkToTheEnd(wizard: Page): Promise<void> {
+    const labels: readonly string[] = await wizard.locator('.setup__step-label').allTextContents();
+    for (let step: number = 1; step < labels.length; step += 1) {
+      await wizard.getByRole('button', { name: 'Next' }).click();
+    }
+  }
+
   test('firstRun_showsTheWizardRatherThanTheWelcomeScreen', async ({ app }) => {
     const wizard: Page = await wizardWindow(app);
 
@@ -86,9 +99,7 @@ test.describe('setup wizard', () => {
     const wizard: Page = await wizardWindow(app);
     const next: Locator = wizard.getByRole('button', { name: 'Next' });
 
-    for (let step: number = 0; step < 7; step += 1) {
-      await next.click();
-    }
+    await walkToTheEnd(wizard);
 
     await expect(wizard.locator('.setup__step-label--current')).toHaveText('Source Control');
     await expect(wizard.getByRole('button', { name: 'Finish' })).toBeVisible();
@@ -97,9 +108,7 @@ test.describe('setup wizard', () => {
 
   test('finish_closesTheWizardAndHandsOverToTheWelcomeScreen', async ({ app }) => {
     const wizard: Page = await wizardWindow(app);
-    for (let step: number = 0; step < 7; step += 1) {
-      await wizard.getByRole('button', { name: 'Next' }).click();
-    }
+    await walkToTheEnd(wizard);
 
     await wizard.getByRole('button', { name: 'Finish' }).click();
 
