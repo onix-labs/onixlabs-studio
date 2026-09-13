@@ -144,6 +144,12 @@ export class AiConnections {
     };
     this.settings.upsertConnection(connection);
     this.log.info('AiConnections', `Connection added '${connection.id}'`, kind, connection.auth);
+    // A method that needs no key can be asked for its models straight away. The seeded list is a
+    // snapshot frozen at the plugin's release; the plugin's harness knows what the provider offers
+    // today, and nothing is lost by asking — a failure leaves the seeds in place.
+    if (method?.harnessId !== undefined && method.auth !== API_KEY_AUTH) {
+      void this.discoverQuietly(connection);
+    }
     return connection;
   }
 
@@ -228,6 +234,9 @@ export class AiConnections {
       this.putStatus(connection.id, status);
     }
     this.log.info('AiConnections', `API key stored for '${connection.id}'`);
+    // The key is what discovery was waiting for: a configuration created through an API-key method
+    // could not be asked until now.
+    void this.discoverQuietly(connection);
   }
 
   /**
@@ -284,6 +293,22 @@ export class AiConnections {
       );
     }
     return result;
+  }
+
+  /**
+   * Discovers a connection's models without anything waiting on the answer: the list updates when it
+   * arrives, and a failure is logged and otherwise leaves the connection as it was. For the moments a
+   * configuration first becomes able to answer, where the seeded list would otherwise sit until the
+   * user thought to press Refresh.
+   * @param connection The connection.
+   * @returns Resolves once discovery has settled, however it settled.
+   */
+  private async discoverQuietly(connection: AiConnection): Promise<void> {
+    try {
+      await this.discover(connection);
+    } catch (error: unknown) {
+      this.log.warn('AiConnections', `Background discovery failed for '${connection.id}'`, error);
+    }
   }
 
   /**
