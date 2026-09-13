@@ -12,30 +12,31 @@
     />
   </app-setting-row>
 
-  <!-- A fact, not a choice: the sign-in button that created the configuration belonged to the plugin
-       that runs it. Shown so a configuration that cannot run says why, with the one repair that is not
-       a free choice — pointing it at the plugin that offers its sign-in method today. -->
-  <app-setting-row
-    class="conn-editor__harness"
-    label="Runs through"
-    description="The installed plugin that runs this configuration, in its own process."
-  >
-    <span class="conn-editor__controls">
-      <span
-        class="conn-editor__harness-name"
-        [class.conn-editor__harness-name--problem]="!harness().runnable"
-        >{{ harness().text }}</span
-      >
-      @if (repair(); as target) {
-        <app-button
-          variant="solid"
-          size="small"
-          [label]="'Use ' + target.displayName"
-          (click)="applyRepair()"
-        />
-      }
-    </span>
-  </app-setting-row>
+  <!-- Shown only when the configuration cannot run. Which plugin runs it is a fact fixed when it was
+       created, so a working configuration has nothing to set here and a row saying so is noise; one
+       that cannot run says why, with the one repair that is not a free choice — pointing it at the
+       plugin that offers its sign-in method today. -->
+  @if (!harness().runnable) {
+    <app-setting-row
+      class="conn-editor__harness"
+      label="Runs through"
+      description="No installed plugin runs this configuration, so it cannot be used by an agent."
+    >
+      <span class="conn-editor__controls">
+        <span class="conn-editor__harness-name conn-editor__harness-name--problem">{{
+          harness().text
+        }}</span>
+        @if (repair(); as target) {
+          <app-button
+            variant="solid"
+            size="small"
+            [label]="'Use ' + target.displayName"
+            (click)="applyRepair()"
+          />
+        }
+      </span>
+    </app-setting-row>
+  }
 
   @if (showBaseUrl()) {
     <app-setting-row

@@ -19,13 +19,10 @@
   gap: 0.5rem;
 }
 
-// The plugin a configuration runs through: a name, or the reason there is none.
-.conn-editor__harness-name {
+// Why a configuration cannot run: no plugin named, or the named one uninstalled.
+.conn-editor__harness-name--problem {
   font-size: 0.8rem;
-
-  &--problem {
-    color: var(--danger-color);
-  }
+  color: var(--danger-color);
 }
 
 // A text or password field that should be comfortably wide (a key, a URL, a model id).

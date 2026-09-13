@@ -64,6 +64,14 @@ describe('AiConnectionEditor', () => {
   }
 
   /**
+   * Reads the Runs-through row, or null when it is not shown.
+   * @returns Returns the row, or null.
+   */
+  function row(): HTMLElement | null {
+    return (fixture.nativeElement as HTMLElement).querySelector('.conn-editor__harness');
+  }
+
+  /**
    * Reads what the Runs-through row says.
    * @returns Returns the row's text.
    */
@@ -102,18 +110,18 @@ describe('AiConnectionEditor', () => {
     });
   });
 
-  it('withTheNamedHarnessInstalled_namesItAndOffersNothingToChange', () => {
-    // ⛔ A fact, not a choice. The sign-in button that created the configuration belonged to the plugin
-    // that runs it; the picker this replaced could only hand a configuration to a plugin that does not
-    // speak its sign-in method.
+  it('withTheNamedHarnessInstalled_showsNoRowAtAll', () => {
+    // ⛔ A fact, not a choice, and not shown while it is right. The sign-in button that created the
+    // configuration belonged to the plugin that runs it; a row saying so on every working
+    // configuration is noise, and the picker this replaced could only hand a configuration to a plugin
+    // that does not speak its sign-in method.
     plugins.set([
       harnessPlugin('onixlabs.claude-harness', 'Claude'),
       harnessPlugin('onixlabs.codex-harness', 'Codex'),
     ]);
     mount(connection({ harnessId: 'onixlabs.claude-harness' }));
 
-    expect(reading()).toBe('Claude');
-    expect(repairButton()).toBeNull();
+    expect(row()).toBeNull();
     expect(update).not.toHaveBeenCalled();
   });
 

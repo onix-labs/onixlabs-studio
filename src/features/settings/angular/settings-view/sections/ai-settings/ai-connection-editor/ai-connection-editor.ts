@@ -220,10 +220,11 @@ export class AiConnectionEditor {
   /**
    * Gets what to say about the plugin the configuration runs through.
    *
-   * ⛔ Read-only, not a choice. A configuration names its harness the moment it is created — the
-   * sign-in button pressed belongs to the plugin that contributed it — so there is nothing to choose
-   * afterwards, and the picker this replaced could only ever hand a configuration to a plugin that
-   * does not speak its sign-in method. What remains is the fact, and the two ways it can be wrong.
+   * ⛔ Not a choice, and not shown while it is right. A configuration names its harness the moment it
+   * is created — the sign-in button pressed belongs to the plugin that contributed it — so there is
+   * nothing to choose afterwards, and the picker this replaced could only ever hand a configuration
+   * to a plugin that does not speak its sign-in method. A working configuration therefore shows no
+   * row at all; only the two ways it can be wrong are worth a line.
    *
    * ⚠️ A configuration naming a harness that is no longer installed says so rather than naming a
    * plugin that is not there. The stored `harnessId` is left alone, so reinstalling restores it.
