@@ -33,7 +33,9 @@ export class MenuSubject {
   /**
    * Gets the subject the menu acts on — the row the trigger sits on.
    */
-  public readonly subject: InputSignal<unknown> = input.required<unknown>({ alias: 'appMenuSubject' });
+  public readonly subject: InputSignal<unknown> = input.required<unknown>({
+    alias: 'appMenuSubject',
+  });
 
   /**
    * Holds the one context object handed to the trigger; its subject is replaced in place.
