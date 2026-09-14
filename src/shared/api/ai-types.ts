@@ -37,6 +37,9 @@ export {
   SAVE_DOCUMENT,
   OPEN_TERMINAL,
   OPEN_FILE,
+  LIST_OPEN_DOCUMENTS,
+  OPEN_DIFF,
+  READ_SOURCE_CONTROL_STATUS,
   AGENT_SURFACES,
   isAgentSurface,
 } from './ai/ai-tool-surface';

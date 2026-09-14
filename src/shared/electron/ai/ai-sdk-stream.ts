@@ -19,6 +19,9 @@ import {
   UPDATE_API_REQUEST,
   OPEN_DOCUMENT,
   OPEN_FILE,
+  LIST_OPEN_DOCUMENTS,
+  OPEN_DIFF,
+  READ_SOURCE_CONTROL_STATUS,
   OPEN_TERMINAL,
   SAVE_DOCUMENT,
   READ_BINARY_OVERVIEW,
@@ -57,6 +60,9 @@ import {
   WORKSPACE_PROMPT_APPENDIX,
   openDocument,
   openFile,
+  openDiff,
+  listOpenDocuments,
+  readSourceControlStatus,
   openTerminal,
   saveDocument,
   askUser,
@@ -250,6 +256,46 @@ export async function createReadActiveDocumentTool(context: AgentRunContext): Pr
       description: "Read the active editor document's full text.",
       inputSchema: z.object({}),
       execute: (): Promise<string> => readActiveDocument(context),
+    }),
+  };
+}
+
+/**
+ * Builds the workspace surface's tools (#713): a well to look at but no document of its own. The read
+ * tool lets the model see what the user is looking at; the listing, the diff and the source-control
+ * status let it see the workspace as the user does; none of the edit tools, which would act on
+ * whatever happened to be focused. All read-only in effect — opening a diff shows something, it
+ * changes nothing — so none is gated.
+ * @param context The run context the tools act through.
+ * @returns Returns the tool set.
+ */
+export async function createWorkspaceTools(context: AgentRunContext): Promise<ToolSet> {
+  const { tool } = await import('ai');
+  const { z } = await import('zod');
+  return {
+    ...(await createReadActiveDocumentTool(context)),
+    [LIST_OPEN_DOCUMENTS]: tool({
+      description:
+        "List the documents open in the workspace's editor well: each one's path, language, whether it is unsaved, and which one the user is looking at.",
+      inputSchema: z.object({}),
+      execute: (): Promise<string> => listOpenDocuments(context),
+    }),
+    [OPEN_DIFF]: tool({
+      description:
+        "Open a changed file's diff — working tree against HEAD — in the user's editor well, so they can review a change where it lives. Only a file the repository reports as changed has a diff to show. Prefer this to pasting a diff into the conversation.",
+      inputSchema: z.object({
+        path: z
+          .string()
+          .min(1)
+          .describe('The changed file, as an absolute path or relative to the workspace root.'),
+      }),
+      execute: (args: { path: string }): Promise<string> => openDiff(context, args.path),
+    }),
+    [READ_SOURCE_CONTROL_STATUS]: tool({
+      description:
+        "Read the workspace's source-control state as Studio shows it: the branch and how it tracks its upstream, and the staged, unstaged and conflicted files. Worktree-aware. Use it instead of running git yourself when you only need the picture.",
+      inputSchema: z.object({}),
+      execute: (): Promise<string> => readSourceControlStatus(context),
     }),
   };
 }
@@ -877,10 +923,8 @@ export async function toolsForSurface(context: AgentRunContext): Promise<ToolSet
       // so a project run carries only the ask-user tool (a documented limitation of those providers).
       case 'api':
         return createApiTools(context);
-      // A workspace has a well but no document of its own: the read tool, so the model can see what
-      // the user is looking at, and none of the edit tools that would act on whatever is focused (#713).
       case 'workspace':
-        return createReadActiveDocumentTool(context);
+        return createWorkspaceTools(context);
       case 'project':
         return Promise.resolve({});
       case 'editor':

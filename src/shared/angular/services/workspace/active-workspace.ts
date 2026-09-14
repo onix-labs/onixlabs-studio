@@ -3,11 +3,134 @@ import { Log } from '@shared/angular/services/log/log';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 
 /**
- * A workspace tab's document well, published so a global consumer can open a file into it without
- * depending on that tab's injector — the opener itself is workspace-scoped and unreachable from the
- * root.
+ * One document open in a workspace's well, as reported to an agent (#713).
  */
-export interface WorkspaceWell {
+export interface WellDocument {
+  /**
+   * Gets the document's absolute path, or null for one not yet saved.
+   */
+  readonly path: string | null;
+
+  /**
+   * Gets the document's display name.
+   */
+  readonly name: string;
+
+  /**
+   * Gets the document's language identifier.
+   */
+  readonly language: string;
+
+  /**
+   * Gets whether the document has unsaved changes.
+   */
+  readonly dirty: boolean;
+
+  /**
+   * Gets whether the document is the one the user is looking at.
+   */
+  readonly active: boolean;
+}
+
+/**
+ * One changed file in a workspace's repository, as reported to an agent.
+ */
+export interface WellChange {
+  /**
+   * Gets the path relative to the repository root.
+   */
+  readonly path: string;
+
+  /**
+   * Gets the change's status, in git's vocabulary (`modified`, `added`, `deleted`, `renamed`, …).
+   */
+  readonly status: string;
+}
+
+/**
+ * A workspace's source-control state, as reported to an agent: what the source-control sidebar shows,
+ * worktree-aware, and available to a harness that has no shell to run `git status` with.
+ */
+export interface WellSourceControl {
+  /**
+   * Gets the repository root.
+   */
+  readonly root: string;
+
+  /**
+   * Gets the current branch, or null when detached.
+   */
+  readonly branch: string | null;
+
+  /**
+   * Gets the upstream branch, or null when there is none.
+   */
+  readonly upstream: string | null;
+
+  /**
+   * Gets how many commits the branch is ahead of its upstream.
+   */
+  readonly ahead: number;
+
+  /**
+   * Gets how many commits the branch is behind its upstream.
+   */
+  readonly behind: number;
+
+  /**
+   * Gets the staged changes.
+   */
+  readonly staged: readonly WellChange[];
+
+  /**
+   * Gets the unstaged changes.
+   */
+  readonly unstaged: readonly WellChange[];
+
+  /**
+   * Gets the conflicted files.
+   */
+  readonly conflicted: readonly WellChange[];
+}
+
+/**
+ * What a workspace tab publishes about its well: the handlers a global consumer — the agent's
+ * workbench tools — reaches it through, because the services behind them are workspace-scoped and
+ * unreachable from the root.
+ */
+export interface WorkspaceWellHandlers {
+  /**
+   * Opens a file into the well, reusing its panel when the file is already open.
+   * @param path The absolute path of the file to open.
+   * @returns Returns true when the file was opened.
+   */
+  open(path: string): Promise<boolean>;
+
+  /**
+   * Opens a changed file's diff — working tree against HEAD — into the well.
+   * @param path The absolute path of the file.
+   * @returns Returns null when the diff was opened, or the reason it could not be.
+   */
+  openDiff(path: string): Promise<string | null>;
+
+  /**
+   * Lists the documents open in the well.
+   * @returns Returns the documents, in the well's order.
+   */
+  documents(): readonly WellDocument[];
+
+  /**
+   * Reads the workspace's source-control state.
+   * @returns Returns the state, or null when the folder is not a repository.
+   */
+  sourceControl(): WellSourceControl | null;
+}
+
+/**
+ * A workspace tab's document well, published so a global consumer can reach it without depending on
+ * that tab's injector.
+ */
+export interface WorkspaceWell extends WorkspaceWellHandlers {
   /**
    * Gets the id of the tab whose well this is, so a caller can bring it to the front.
    */
@@ -17,13 +140,6 @@ export interface WorkspaceWell {
    * Gets the workspace's root directory, or null when the tab has no folder open yet.
    */
   readonly root: string | null;
-
-  /**
-   * Opens a file into the well, reusing its panel when the file is already open.
-   * @param path The absolute path of the file to open.
-   * @returns Returns true when the file was opened.
-   */
-  open(path: string): Promise<boolean>;
 }
 
 /**
@@ -60,10 +176,9 @@ export class ActiveWorkspace {
   /**
    * Holds each workspace tab's document-well opener, keyed by tab id.
    */
-  private readonly wells: WritableSignal<ReadonlyMap<string, (path: string) => Promise<boolean>>> =
-    signal<ReadonlyMap<string, (path: string) => Promise<boolean>>>(
-      new Map<string, (path: string) => Promise<boolean>>(),
-    );
+  private readonly wells: WritableSignal<ReadonlyMap<string, WorkspaceWellHandlers>> = signal<
+    ReadonlyMap<string, WorkspaceWellHandlers>
+  >(new Map<string, WorkspaceWellHandlers>());
 
   /**
    * Holds the tab id of the workspace most recently published, retained after the user moves away so
@@ -88,28 +203,27 @@ export class ActiveWorkspace {
    * depend on which tab the user happened to be looking at when the agent acted.
    */
   public readonly activeWell: Signal<WorkspaceWell | null> = computed((): WorkspaceWell | null => {
-    const wells: ReadonlyMap<string, (path: string) => Promise<boolean>> = this.wells();
+    const wells: ReadonlyMap<string, WorkspaceWellHandlers> = this.wells();
     const activeTabId: string | undefined = this.tabs.activeTabId();
     const tabId: string | null =
       activeTabId !== undefined && wells.has(activeTabId) ? activeTabId : this.lastWellTabId();
-    const open: ((path: string) => Promise<boolean>) | undefined =
+    const handlers: WorkspaceWellHandlers | undefined =
       tabId === null ? undefined : wells.get(tabId);
-    return tabId === null || open === undefined
+    return tabId === null || handlers === undefined
       ? null
-      : { tabId, root: this.roots().get(tabId) ?? null, open };
+      : { tabId, root: this.roots().get(tabId) ?? null, ...handlers };
   });
 
   /**
-   * Publishes a workspace tab's document well, so a file can be opened into it from the root.
+   * Publishes a workspace tab's document well, so it can be reached from the root.
    * @param tabId The owning tab's id.
-   * @param open The opener that puts a file into the tab's well.
+   * @param handlers What the well can do.
    */
-  public setWell(tabId: string, open: (path: string) => Promise<boolean>): void {
-    const next: Map<string, (path: string) => Promise<boolean>> = new Map<
-      string,
-      (path: string) => Promise<boolean>
-    >(this.wells());
-    next.set(tabId, open);
+  public setWell(tabId: string, handlers: WorkspaceWellHandlers): void {
+    const next: Map<string, WorkspaceWellHandlers> = new Map<string, WorkspaceWellHandlers>(
+      this.wells(),
+    );
+    next.set(tabId, handlers);
     this.wells.set(next);
     this.lastWellTabId.set(tabId);
     this.log.debug('ActiveWorkspace', `Tab '${tabId}' well published`);
@@ -123,10 +237,9 @@ export class ActiveWorkspace {
     if (!this.wells().has(tabId)) {
       return;
     }
-    const next: Map<string, (path: string) => Promise<boolean>> = new Map<
-      string,
-      (path: string) => Promise<boolean>
-    >(this.wells());
+    const next: Map<string, WorkspaceWellHandlers> = new Map<string, WorkspaceWellHandlers>(
+      this.wells(),
+    );
     next.delete(tabId);
     this.wells.set(next);
     if (this.lastWellTabId() === tabId) {

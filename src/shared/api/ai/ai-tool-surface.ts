@@ -208,6 +208,26 @@ export const OPEN_TERMINAL: string = 'open_terminal';
 export const OPEN_FILE: string = 'open_file';
 
 /**
+ * The workspace-surface capability that lists the documents open in the workspace's well: what the
+ * user has in front of them, which one is active, and which are unsaved (#713).
+ */
+export const LIST_OPEN_DOCUMENTS: string = 'list_open_documents';
+
+/**
+ * The workspace-surface capability that opens a changed file's diff — working tree against HEAD —
+ * into the workspace's well (#713). The "show me what you changed" tool: a diff in the well rather
+ * than a paste in the transcript.
+ */
+export const OPEN_DIFF: string = 'open_diff';
+
+/**
+ * The workspace-surface capability that reads the workspace's source-control state: branch,
+ * ahead/behind, and the changed files, as the source-control sidebar shows them (#713). Worktree-
+ * aware, and available to a harness that has no shell to run `git status` with.
+ */
+export const READ_SOURCE_CONTROL_STATUS: string = 'read_source_control_status';
+
+/**
  * The formats {@link OPEN_DOCUMENT} can open a document in: the markdown editor (rendered prose) or
  * the code editor (syntax-highlighted text).
  */

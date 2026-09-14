@@ -7,9 +7,19 @@ import { Tab, TabType } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import {
   ActiveWorkspace,
+  WellDocument,
+  WellSourceControl,
   WorkspaceWell,
 } from '@shared/angular/services/workspace/active-workspace';
-import { OPEN_DOCUMENT, OPEN_FILE, OPEN_TERMINAL, SAVE_DOCUMENT } from '@shared/api/ai-types';
+import {
+  LIST_OPEN_DOCUMENTS,
+  OPEN_DIFF,
+  OPEN_DOCUMENT,
+  OPEN_FILE,
+  OPEN_TERMINAL,
+  READ_SOURCE_CONTROL_STATUS,
+  SAVE_DOCUMENT,
+} from '@shared/api/ai-types';
 
 /**
  * The title a document opens under when the agent supplies none.
@@ -88,6 +98,71 @@ interface OpenFileResult {
 }
 
 /**
+ * The result of listing a well's documents.
+ */
+interface ListOpenDocumentsResult {
+  /**
+   * Gets whether a well was found to list.
+   */
+  readonly ok: boolean;
+
+  /**
+   * Gets the reason there was nothing to list, when there was not.
+   */
+  readonly error?: string;
+
+  /**
+   * Gets the workspace root the well belongs to.
+   */
+  readonly root?: string | null;
+
+  /**
+   * Gets the documents, in the well's order.
+   */
+  readonly documents?: readonly WellDocument[];
+}
+
+/**
+ * The result of opening a diff into a well.
+ */
+interface OpenDiffResult {
+  /**
+   * Gets whether the diff was opened.
+   */
+  readonly ok: boolean;
+
+  /**
+   * Gets the reason it was not, when it was not.
+   */
+  readonly error?: string;
+
+  /**
+   * Gets the absolute path whose diff was opened.
+   */
+  readonly path?: string;
+}
+
+/**
+ * The result of reading a workspace's source-control state.
+ */
+interface SourceControlStatusResult {
+  /**
+   * Gets whether a well was found to ask.
+   */
+  readonly ok: boolean;
+
+  /**
+   * Gets the reason there was nothing to read, when there was not.
+   */
+  readonly error?: string;
+
+  /**
+   * Gets the state, or null when the workspace is not a repository.
+   */
+  readonly status?: WellSourceControl | null;
+}
+
+/**
  * The result of opening a terminal.
  */
 interface OpenTerminalResult {
@@ -162,6 +237,18 @@ export class WorkbenchAgentCapabilities {
     this.runtime.registerCapability(OPEN_TERMINAL, (): OpenTerminalResult => this.openTerminal());
     this.runtime.registerCapability(OPEN_FILE, (input: unknown): Promise<OpenFileResult> =>
       this.openFile(input),
+    );
+    // The workspace surface's own view of its well (#713). Registered here with the other well-based
+    // capabilities: they resolve the well the same way, and the surface that offers them is decided in
+    // the main process.
+    this.runtime.registerCapability(LIST_OPEN_DOCUMENTS, (): ListOpenDocumentsResult =>
+      this.listOpenDocuments(),
+    );
+    this.runtime.registerCapability(OPEN_DIFF, (input: unknown): Promise<OpenDiffResult> =>
+      this.openDiff(input),
+    );
+    this.runtime.registerCapability(READ_SOURCE_CONTROL_STATUS, (): SourceControlStatusResult =>
+      this.readSourceControlStatus(),
     );
     this.log.info('workbench.agent', 'Workbench agent capabilities registered');
   }
@@ -281,6 +368,61 @@ export class WorkbenchAgentCapabilities {
     this.tabs.activate(well.tabId);
     this.log.info('workbench.agent', 'Agent opened a file in the well', path);
     return { ok: true, path };
+  }
+
+  /**
+   * Lists the documents open in the active workspace's well (#713).
+   * @returns Returns the {@link ListOpenDocumentsResult}.
+   */
+  private listOpenDocuments(): ListOpenDocumentsResult {
+    const well: WorkspaceWell | null = this.workspace.activeWell();
+    if (well === null) {
+      return { ok: false, error: 'No workspace is open, so there is no document well to list.' };
+    }
+    const documents: readonly WellDocument[] = well.documents();
+    this.log.debug('workbench.agent', `Agent listed ${documents.length} well document(s)`);
+    return { ok: true, root: well.root, documents };
+  }
+
+  /**
+   * Opens a changed file's diff into the active workspace's well and brings the tab forward (#713).
+   * @param input The tool input: the path whose diff to open.
+   * @returns Returns the {@link OpenDiffResult}.
+   */
+  private async openDiff(input: unknown): Promise<OpenDiffResult> {
+    const args: { path?: unknown } = input ?? {};
+    const requested: string = typeof args.path === 'string' ? args.path.trim() : '';
+    if (requested.length === 0) {
+      return { ok: false, error: 'No path was given.' };
+    }
+    const well: WorkspaceWell | null = this.workspace.activeWell();
+    if (well === null) {
+      return {
+        ok: false,
+        error: 'No workspace is open, so there is no document well to open the diff into.',
+      };
+    }
+    const path: string = this.absolutePath(requested, well.root);
+    const refusal: string | null = await well.openDiff(path);
+    if (refusal !== null) {
+      this.log.debug('workbench.agent', `Agent diff refused: ${refusal}`);
+      return { ok: false, error: refusal };
+    }
+    this.tabs.activate(well.tabId);
+    this.log.info('workbench.agent', 'Agent opened a diff in the well', path);
+    return { ok: true, path };
+  }
+
+  /**
+   * Reads the active workspace's source-control state (#713).
+   * @returns Returns the {@link SourceControlStatusResult}.
+   */
+  private readSourceControlStatus(): SourceControlStatusResult {
+    const well: WorkspaceWell | null = this.workspace.activeWell();
+    if (well === null) {
+      return { ok: false, error: 'No workspace is open, so there is no repository to read.' };
+    }
+    return { ok: true, status: well.sourceControl() };
   }
 
   /**

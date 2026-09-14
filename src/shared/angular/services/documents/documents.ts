@@ -285,6 +285,15 @@ export class Documents implements UnsavedWorkSource {
   }
 
   /**
+   * Lists every document this registry holds, in the order they were created.
+   * @returns Returns the documents.
+   */
+  public list(): readonly CodeDocument[] {
+    this.entriesVersion();
+    return [...this.entries.values()].map((entry: DocumentEntry): CodeDocument => entry.document);
+  }
+
+  /**
    * Records that {@link entries} has gained or lost a member, so document-resolving computeds re-run.
    */
   private markEntriesChanged(): void {

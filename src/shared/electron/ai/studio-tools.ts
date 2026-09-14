@@ -17,6 +17,9 @@ import {
   LIST_RUN_CONFIGURATIONS,
   OPEN_DOCUMENT,
   OPEN_FILE,
+  LIST_OPEN_DOCUMENTS,
+  OPEN_DIFF,
+  READ_SOURCE_CONTROL_STATUS,
   OPEN_TERMINAL,
   PATCH_BINARY_BYTES,
   SAVE_DOCUMENT,
@@ -292,9 +295,15 @@ export const WORKSPACE_PROMPT_APPENDIX: string = [
   "document well beside it. The working directory is that workspace's root. You are not docked to",
   'any one document — read and change files on disk with your file-system tools, and the IDE follows:',
   'open editors track external changes and the explorers refresh live.',
+  `- "${LIST_OPEN_DOCUMENTS}" lists what the user has open in the well, which one is active, and`,
+  '  which are unsaved.',
   `- "${READ_ACTIVE_DOCUMENT}" reads the document currently focused in the well, so you can see what`,
   '  the user is looking at. It is the one document tool here; to change a file, edit it on disk.',
   `- "${OPEN_FILE}" opens one of the workspace's files in the well, to put it in front of the user.`,
+  `- "${OPEN_DIFF}" opens a changed file's diff against HEAD in the well. Use it to show the user`,
+  '  what you changed, rather than pasting a diff into the conversation.',
+  `- "${READ_SOURCE_CONTROL_STATUS}" reports the branch, how it tracks its upstream, and the staged,`,
+  '  unstaged and conflicted files — what the source-control sidebar shows.',
 ].join('\n');
 
 /**
@@ -1307,6 +1316,131 @@ export async function openFile(context: AgentRunContext, path: string): Promise<
   }
   logger.info('StudioTools', `Opened file in the well: ${opened.path ?? path}`);
   return `Opened ${opened.path ?? path} in the user's editor.`;
+}
+
+/**
+ * One well document as the renderer reports it to {@link listOpenDocuments}.
+ */
+interface ReportedDocument {
+  readonly path: string | null;
+  readonly name: string;
+  readonly language: string;
+  readonly dirty: boolean;
+  readonly active: boolean;
+}
+
+/**
+ * One changed file as the renderer reports it to {@link readSourceControlStatus}.
+ */
+interface ReportedChange {
+  readonly path: string;
+  readonly status: string;
+}
+
+/**
+ * A workspace's source-control state as the renderer reports it to {@link readSourceControlStatus}.
+ */
+interface ReportedSourceControl {
+  readonly root: string;
+  readonly branch: string | null;
+  readonly upstream: string | null;
+  readonly ahead: number;
+  readonly behind: number;
+  readonly staged: readonly ReportedChange[];
+  readonly unstaged: readonly ReportedChange[];
+  readonly conflicted: readonly ReportedChange[];
+}
+
+/**
+ * Lists the documents open in the workspace's well through the renderer bridge (#713).
+ * @param context The agent run context (carries the bridge).
+ * @returns Returns the listing, or the reason there is none.
+ */
+export async function listOpenDocuments(context: AgentRunContext): Promise<string> {
+  logger.trace('StudioTools', 'Tool invoked: list_open_documents');
+  const result: unknown = await context.bridge.request(LIST_OPEN_DOCUMENTS, {});
+  const listing: {
+    ok?: boolean;
+    error?: string;
+    root?: string | null;
+    documents?: readonly ReportedDocument[];
+  } = result ?? {};
+  if (listing.ok !== true) {
+    return listing.error ?? 'The open documents could not be listed.';
+  }
+  const documents: readonly ReportedDocument[] = listing.documents ?? [];
+  if (documents.length === 0) {
+    return 'No documents are open in the well.';
+  }
+  const lines: string[] = documents.map((document: ReportedDocument): string => {
+    const marks: string[] = [];
+    if (document.active) {
+      marks.push('active');
+    }
+    if (document.dirty) {
+      marks.push('unsaved');
+    }
+    const where: string = document.path ?? `${document.name} (not saved to disk)`;
+    return `- ${where} [${document.language}]${marks.length > 0 ? ` (${marks.join(', ')})` : ''}`;
+  });
+  return `Documents open in the well${listing.root ? ` of ${listing.root}` : ''}:\n${lines.join('\n')}`;
+}
+
+/**
+ * Opens a changed file's diff into the workspace's well through the renderer bridge (#713).
+ * @param context The agent run context (carries the bridge).
+ * @param path The absolute or workspace-relative path of the changed file.
+ * @returns Returns a confirmation, or the reason the diff was not opened.
+ */
+export async function openDiff(context: AgentRunContext, path: string): Promise<string> {
+  logger.trace('StudioTools', `Tool invoked: open_diff (${path})`);
+  const result: unknown = await context.bridge.request(OPEN_DIFF, { path });
+  const opened: { ok?: boolean; error?: string; path?: string } = result ?? {};
+  if (opened.ok !== true) {
+    logger.debug('StudioTools', `open_diff refused: ${opened.error ?? 'unknown reason'}`);
+    return opened.error ?? 'The diff could not be opened.';
+  }
+  logger.info('StudioTools', `Opened diff in the well: ${opened.path ?? path}`);
+  return `Opened the diff of ${opened.path ?? path} against HEAD in the user's editor.`;
+}
+
+/**
+ * Reads the workspace's source-control state through the renderer bridge (#713).
+ * @param context The agent run context (carries the bridge).
+ * @returns Returns the state as text, or the reason there is none.
+ */
+export async function readSourceControlStatus(context: AgentRunContext): Promise<string> {
+  logger.trace('StudioTools', 'Tool invoked: read_source_control_status');
+  const result: unknown = await context.bridge.request(READ_SOURCE_CONTROL_STATUS, {});
+  const reply: { ok?: boolean; error?: string; status?: ReportedSourceControl | null } =
+    result ?? {};
+  if (reply.ok !== true) {
+    return reply.error ?? 'The source-control state could not be read.';
+  }
+  const status: ReportedSourceControl | null | undefined = reply.status;
+  if (status === null || status === undefined) {
+    return 'This workspace is not a git repository.';
+  }
+  const section: (title: string, changes: readonly ReportedChange[]) => string = (
+    title: string,
+    changes: readonly ReportedChange[],
+  ): string =>
+    changes.length === 0
+      ? `${title}: none`
+      : `${title}:\n${changes
+          .map((change: ReportedChange): string => `- ${change.path} (${change.status})`)
+          .join('\n')}`;
+  const tracking: string =
+    status.upstream === null
+      ? 'no upstream'
+      : `tracking ${status.upstream}, ${status.ahead} ahead, ${status.behind} behind`;
+  return [
+    `Repository: ${status.root}`,
+    `Branch: ${status.branch ?? '(detached HEAD)'} — ${tracking}`,
+    section('Staged', status.staged),
+    section('Unstaged', status.unstaged),
+    section('Conflicted', status.conflicted),
+  ].join('\n');
 }
 
 /**
