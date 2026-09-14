@@ -20,6 +20,7 @@ import {
   LIST_OPEN_DOCUMENTS,
   OPEN_DIFF,
   READ_SOURCE_CONTROL_STATUS,
+  LIST_TERMINALS,
   OPEN_TERMINAL,
   PATCH_BINARY_BYTES,
   SAVE_DOCUMENT,
@@ -304,6 +305,10 @@ export const WORKSPACE_PROMPT_APPENDIX: string = [
   '  what you changed, rather than pasting a diff into the conversation.',
   `- "${READ_SOURCE_CONTROL_STATUS}" reports the branch, how it tracks its upstream, and the staged,`,
   '  unstaged and conflicted files — what the source-control sidebar shows.',
+  `- "${OPEN_TERMINAL}" opens a terminal in the workspace's terminal panel, rooted at the workspace,`,
+  `  and returns its id; "${LIST_TERMINALS}" lists the ones already there. Drive a terminal by id with`,
+  `  "${WRITE_TERMINAL_INPUT}" and read what it shows with "${READ_TERMINAL_OUTPUT}". The user is`,
+  '  watching that terminal live: prefer it to a hidden shell when they should see the command run.',
 ].join('\n');
 
 /**
@@ -502,15 +507,19 @@ export function formatAskUserAnswer(answer: string | null): string {
 }
 
 /**
- * Reads the owning terminal's recent output through the renderer bridge and renders it for the model.
+ * Reads a terminal's recent output through the renderer bridge and renders it for the model.
  * @param context The agent run context (carries the bridge and the owning terminal id).
+ * @param terminalId The terminal to read, or null for the run's owning terminal. A workspace agent
+ * has no owning terminal and names the one it opened (#713).
  * @returns Returns the recent terminal output, or a note that the terminal is unavailable.
  */
-export async function readTerminalOutput(context: AgentRunContext): Promise<string> {
-  logger.trace('StudioTools', `Tool invoked: read_terminal_output (tab=${context.owningTabId})`);
-  const result: unknown = await context.bridge.request(READ_TERMINAL_OUTPUT, {
-    tabId: context.owningTabId,
-  });
+export async function readTerminalOutput(
+  context: AgentRunContext,
+  terminalId: string | null = null,
+): Promise<string> {
+  const tabId: string | null = terminalId ?? context.owningTabId;
+  logger.trace('StudioTools', `Tool invoked: read_terminal_output (tab=${tabId})`);
+  const result: unknown = await context.bridge.request(READ_TERMINAL_OUTPUT, { tabId });
   const read: { available?: boolean; text?: string } = result ?? {};
   if (read.available !== true) {
     logger.debug('StudioTools', 'read_terminal_output: terminal unavailable');
@@ -520,10 +529,11 @@ export async function readTerminalOutput(context: AgentRunContext): Promise<stri
 }
 
 /**
- * Sends input to the owning terminal through the renderer bridge and returns the resulting output.
+ * Sends input to a terminal through the renderer bridge and returns the resulting output.
  * @param context The agent run context (carries the bridge and the owning terminal id).
  * @param text The input to send.
  * @param submit Whether to run the input as a command (append a newline). Defaults to true.
+ * @param terminalId The terminal to write to, or null for the run's owning terminal (#713).
  * @returns Returns the terminal output after the input settles, or a note that the terminal is
  * unavailable.
  */
@@ -531,13 +541,15 @@ export async function writeTerminalInput(
   context: AgentRunContext,
   text: string,
   submit: boolean = true,
+  terminalId: string | null = null,
 ): Promise<string> {
+  const tabId: string | null = terminalId ?? context.owningTabId;
   logger.trace(
     'StudioTools',
-    `Tool invoked: write_terminal_input (tab=${context.owningTabId}, submit=${submit})`,
+    `Tool invoked: write_terminal_input (tab=${tabId}, submit=${submit})`,
   );
   const result: unknown = await context.bridge.request(WRITE_TERMINAL_INPUT, {
-    tabId: context.owningTabId,
+    tabId,
     text,
     submit,
   });
@@ -546,7 +558,7 @@ export async function writeTerminalInput(
     logger.debug('StudioTools', 'write_terminal_input: terminal unavailable');
     return 'The terminal is not available.';
   }
-  logger.info('StudioTools', `Sent input to terminal (tab=${context.owningTabId})`);
+  logger.info('StudioTools', `Sent input to terminal (tab=${tabId})`);
   return write.output ?? 'Sent to the terminal.';
 }
 
@@ -1444,19 +1456,56 @@ export async function readSourceControlStatus(context: AgentRunContext): Promise
 }
 
 /**
- * Opens a new terminal tab through the renderer bridge.
+ * Opens a terminal through the renderer bridge: a top-level tab, or — for a workspace agent (#713) —
+ * one in the workspace's own terminal panel, whose id the terminal tools then address.
  * @param context The agent run context (carries the bridge).
+ * @param inWorkspace Whether the terminal belongs in the workspace's panel rather than a new tab.
  * @returns Returns a confirmation, or the reason it failed.
  */
-export async function openTerminal(context: AgentRunContext): Promise<string> {
-  logger.trace('StudioTools', 'Tool invoked: open_terminal');
-  const result: unknown = await context.bridge.request(OPEN_TERMINAL, {});
-  const opened: { ok?: boolean; id?: string } = result ?? {};
+export async function openTerminal(
+  context: AgentRunContext,
+  inWorkspace: boolean = false,
+): Promise<string> {
+  logger.trace('StudioTools', `Tool invoked: open_terminal (workspace=${inWorkspace})`);
+  const result: unknown = await context.bridge.request(OPEN_TERMINAL, { workspace: inWorkspace });
+  const opened: { ok?: boolean; id?: string; where?: string } = result ?? {};
   if (opened.ok !== true) {
     return 'The terminal could not be opened.';
   }
-  logger.info('StudioTools', `Opened terminal tab ${opened.id ?? ''}`);
-  return `Opened a new terminal tab (id ${opened.id ?? ''}) in the user's default shell.`;
+  logger.info('StudioTools', `Opened terminal ${opened.id ?? ''} (${opened.where ?? 'tab'})`);
+  return opened.where === 'workspace'
+    ? `Opened a new terminal in the workspace's terminal panel (id ${opened.id ?? ''}), rooted at the ` +
+        `workspace. Pass this id to "${READ_TERMINAL_OUTPUT}" and "${WRITE_TERMINAL_INPUT}" to drive it.`
+    : `Opened a new terminal tab (id ${opened.id ?? ''}) in the user's default shell.`;
+}
+
+/**
+ * Lists the workspace's dock terminals through the renderer bridge (#713).
+ * @param context The agent run context (carries the bridge).
+ * @returns Returns the listing, or the reason there is none.
+ */
+export async function listTerminals(context: AgentRunContext): Promise<string> {
+  logger.trace('StudioTools', 'Tool invoked: list_terminals');
+  const result: unknown = await context.bridge.request(LIST_TERMINALS, {});
+  const listing: {
+    ok?: boolean;
+    error?: string;
+    terminals?: readonly { id: string; name: string; active: boolean }[];
+  } = result ?? {};
+  if (listing.ok !== true) {
+    return listing.error ?? 'The terminals could not be listed.';
+  }
+  const terminals: readonly { id: string; name: string; active: boolean }[] =
+    listing.terminals ?? [];
+  if (terminals.length === 0) {
+    return `No terminals are open in the workspace. Open one with "${OPEN_TERMINAL}".`;
+  }
+  return `Terminals in the workspace's terminal panel:\n${terminals
+    .map(
+      (terminal: { id: string; name: string; active: boolean }): string =>
+        `- ${terminal.name} (id ${terminal.id})${terminal.active ? ' (selected)' : ''}`,
+    )
+    .join('\n')}`;
 }
 
 /**

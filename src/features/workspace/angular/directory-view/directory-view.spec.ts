@@ -4,6 +4,7 @@ import { Documents } from '@shared/angular/services/documents/documents';
 import {
   ActiveWorkspace,
   WellDocument,
+  WellTerminal,
   WorkspaceWell,
 } from '@shared/angular/services/workspace/active-workspace';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
@@ -94,6 +95,15 @@ describe('DirectoryView', () => {
       expect(listed).toEqual([
         { path: '/ws/a.ts', name: 'a.ts', language: 'typescript', dirty: true, active: true },
       ]);
+    });
+
+    it('openTerminal_createsASessionInTheDockAndListsIt', () => {
+      fixture.detectChanges();
+
+      const opened: WellTerminal = well().openTerminal();
+
+      expect(opened.id).toMatch(/^term-/);
+      expect(well().terminals()).toEqual([{ id: opened.id, name: opened.name, active: true }]);
     });
 
     it('openDiff_whenTheFolderIsNotARepository_refusesWithTheReason', async () => {

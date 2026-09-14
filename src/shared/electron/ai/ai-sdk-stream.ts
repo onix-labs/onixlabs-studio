@@ -22,6 +22,7 @@ import {
   LIST_OPEN_DOCUMENTS,
   OPEN_DIFF,
   READ_SOURCE_CONTROL_STATUS,
+  LIST_TERMINALS,
   OPEN_TERMINAL,
   SAVE_DOCUMENT,
   READ_BINARY_OVERVIEW,
@@ -62,6 +63,7 @@ import {
   openFile,
   openDiff,
   listOpenDocuments,
+  listTerminals,
   readSourceControlStatus,
   openTerminal,
   saveDocument,
@@ -296,6 +298,68 @@ export async function createWorkspaceTools(context: AgentRunContext): Promise<To
         "Read the workspace's source-control state as Studio shows it: the branch and how it tracks its upstream, and the staged, unstaged and conflicted files. Worktree-aware. Use it instead of running git yourself when you only need the picture.",
       inputSchema: z.object({}),
       execute: (): Promise<string> => readSourceControlStatus(context),
+    }),
+    ...(await createWorkspaceTerminalTools(context)),
+  };
+}
+
+/**
+ * Builds the workspace surface's terminal tools (#713): terminals as addressable things. A workspace
+ * agent has no owning terminal, so unlike the terminal surface's tools these take the id of the one
+ * to drive — the id `open_terminal` returned, or one `list_terminals` reported. `open_terminal` is
+ * re-declared here so that on this surface it lands in the workspace's own panel rather than a new
+ * tab; it overrides the workbench declaration by name. Writing stays a gated execution, as it is on
+ * the terminal surface; a chat-mode run gets only the listing and the read.
+ * @param context The run context the tools act through.
+ * @returns Returns the tool set.
+ */
+export async function createWorkspaceTerminalTools(context: AgentRunContext): Promise<ToolSet> {
+  const { tool } = await import('ai');
+  const { z } = await import('zod');
+  const idDescription: string =
+    'The id of the terminal, as returned by open_terminal or listed by list_terminals.';
+  const readTools: ToolSet = {
+    [LIST_TERMINALS]: tool({
+      description:
+        "List the terminals open in the workspace's terminal panel, with the id each one is driven by.",
+      inputSchema: z.object({}),
+      execute: (): Promise<string> => listTerminals(context),
+    }),
+    [READ_TERMINAL_OUTPUT]: tool({
+      description: 'Read the recent output currently shown in one of the workspace terminals.',
+      inputSchema: z.object({ terminalId: z.string().min(1).describe(idDescription) }),
+      execute: (args: { terminalId: string }): Promise<string> =>
+        readTerminalOutput(context, args.terminalId),
+    }),
+  };
+  if (context.mode === 'chat') {
+    return readTools;
+  }
+  return {
+    ...readTools,
+    [OPEN_TERMINAL]: tool({
+      description:
+        "Open a new terminal in the workspace's terminal panel, rooted at the workspace, where the user can watch it. Returns the id to drive it with. Use this when the user should see a command run rather than a hidden shell.",
+      inputSchema: z.object({}),
+      execute: (): Promise<string> => openTerminal(context, true),
+    }),
+    [WRITE_TERMINAL_INPUT]: tool({
+      description:
+        'Type text into one of the workspace terminals, running it as a command by default, and return the resulting output.',
+      inputSchema: z.object({
+        terminalId: z.string().min(1).describe(idDescription),
+        text: z.string().describe('The text to type into the terminal.'),
+        submit: z
+          .boolean()
+          .optional()
+          .describe('Whether to run the text as a command (append a newline). Defaults to true.'),
+      }),
+      execute: gated(
+        context,
+        WRITE_TERMINAL_INPUT,
+        (args: { terminalId: string; text: string; submit?: boolean }): Promise<string> =>
+          writeTerminalInput(context, args.text, args.submit ?? true, args.terminalId),
+      ),
     }),
   };
 }

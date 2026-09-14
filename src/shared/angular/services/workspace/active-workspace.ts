@@ -94,6 +94,26 @@ export interface WellSourceControl {
 }
 
 /**
+ * One terminal in a workspace's dock, as reported to an agent (#713).
+ */
+export interface WellTerminal {
+  /**
+   * Gets the terminal's identifier, which the terminal tools address it by.
+   */
+  readonly id: string;
+
+  /**
+   * Gets the terminal's display name.
+   */
+  readonly name: string;
+
+  /**
+   * Gets whether the terminal is the one selected in the panel.
+   */
+  readonly active: boolean;
+}
+
+/**
  * What a workspace tab publishes about its well: the handlers a global consumer — the agent's
  * workbench tools — reaches it through, because the services behind them are workspace-scoped and
  * unreachable from the root.
@@ -124,6 +144,18 @@ export interface WorkspaceWellHandlers {
    * @returns Returns the state, or null when the folder is not a repository.
    */
   sourceControl(): WellSourceControl | null;
+
+  /**
+   * Opens a new terminal in the workspace's dock, rooted at the workspace, and reveals it.
+   * @returns Returns the terminal.
+   */
+  openTerminal(): WellTerminal;
+
+  /**
+   * Lists the terminals in the workspace's dock.
+   * @returns Returns the terminals, in the panel's order.
+   */
+  terminals(): readonly WellTerminal[];
 }
 
 /**
