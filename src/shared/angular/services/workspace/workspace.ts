@@ -13,6 +13,7 @@ import {
   WorkspaceChannel,
 } from '@shared/api/workspace-channels';
 import { DirectoryWatch } from '@shared/angular/services/directory-watch/directory-watch';
+import { Documents } from '@shared/angular/services/documents/documents';
 import { Log } from '@shared/angular/services/log/log';
 import { Settings } from '@shared/angular/services/settings/settings';
 
@@ -152,6 +153,12 @@ export class Workspace {
    * the application are reflected in the tree.
    */
   private readonly directoryWatch: DirectoryWatch = inject(DirectoryWatch);
+
+  /**
+   * Holds this workspace's document model, told when a rename moves an open document's file. Scoped
+   * beside this service by the workspace tab, so the well's documents are the ones that follow.
+   */
+  private readonly documents: Documents = inject(Documents);
 
   /**
    * Holds the structured logger.
@@ -582,13 +589,23 @@ export class Workspace {
   }
 
   /**
-   * Renames a file or folder within the workspace, keeping it in the same directory.
+   * Renames a file or folder within the workspace, keeping it in the same directory. Open documents
+   * follow the rename — the file itself, or every open file beneath a renamed folder — so their tabs,
+   * watches and next saves target the new path rather than recreating the old one.
    * @param path The absolute path of the entry to rename.
    * @param name The new name (a single path segment).
    * @returns Returns the result describing success and the new path, or the failure's message.
    */
-  public rename(path: string, name: string): Promise<FileOperationResult> {
-    return this.mutate(WorkspaceChannel.Rename, this.parentDirectory(path), [path, name]);
+  public async rename(path: string, name: string): Promise<FileOperationResult> {
+    const result: FileOperationResult = await this.mutate(
+      WorkspaceChannel.Rename,
+      this.parentDirectory(path),
+      [path, name],
+    );
+    if (result.success && result.path !== undefined) {
+      this.documents.relocate(path, result.path);
+    }
+    return result;
   }
 
   /**

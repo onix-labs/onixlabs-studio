@@ -11,7 +11,7 @@
     [attr.aria-expanded]="row.expandable ? row.expanded : null"
     [attr.aria-selected]="selectedId() !== null ? row.id === selectedId() : null"
     [cdkContextMenuTriggerFor]="hasContextMenu() ? (contextMenu.panel() ?? null) : null"
-    [cdkContextMenuTriggerData]="{ $implicit: row }"
+    [appMenuSubject]="row"
     [cdkContextMenuDisabled]="!rowHasMenu(row)"
     (click)="rowClick.emit(row)"
     (dblclick)="rowDoubleClick.emit(row)"
@@ -57,6 +57,7 @@
   </div>
 }
 
-<!-- One menu shared by every row: the row it was opened on travels with the trigger's data, so the
-     items and their subject are resolved together when it opens. -->
+<!-- One menu shared by every row: the row it was opened on travels with the trigger's data (kept
+     current by appMenuSubject, since CDK builds the portal once), so the items and their subject are
+     resolved together when it opens. -->
 <app-menu #contextMenu [itemsFor]="menuItemsFor" (chosen)="onContextChoice($event)" />

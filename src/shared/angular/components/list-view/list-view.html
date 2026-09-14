@@ -21,7 +21,7 @@
       [cdkDragDisabled]="!reorderable()"
       (cdkDragStarted)="onDragStarted()"
       [cdkContextMenuTriggerFor]="hasContextMenu() ? (contextMenu.panel() ?? null) : null"
-      [cdkContextMenuTriggerData]="{ $implicit: row }"
+      [appMenuSubject]="row"
       [cdkContextMenuDisabled]="!rowHasMenu(row)"
       [attr.data-list-id]="row.id"
       [class.active]="selectedId() !== null && row.id === selectedId()"
