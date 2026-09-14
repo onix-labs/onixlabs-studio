@@ -117,10 +117,10 @@
             "isolate": true,
             "coverageReporters": ["text-summary", "html", "lcovonly"],
             "coverageThresholds": {
-              "statements": 71.0,
-              "branches": 67.1,
-              "functions": 66.5,
-              "lines": 72.1
+              "statements": 71.3,
+              "branches": 67.6,
+              "functions": 67.0,
+              "lines": 72.4
             }
           }
         }

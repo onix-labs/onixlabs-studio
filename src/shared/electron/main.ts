@@ -22,6 +22,8 @@ import { AUX_PANEL_URL, MODAL_WINDOW_URL, WindowChannel } from '@shared/api/wind
 import { AgentConversationStore } from './ai/agent-conversation-store';
 import { AgentCategoryStore } from './ai/agent-category-store';
 import { AiManager } from './ai/ai-manager';
+import { SkillHandlers } from './ai/skills/skill-handlers';
+import { SkillLibrary } from './ai/skills/skill-library';
 import { mainContributions } from '@shared/electron/contributions';
 import {
   ContributionContext,
@@ -331,10 +333,27 @@ class Program {
   );
 
   /**
+   * Owns the user's skill library (#301): a folder of `SKILL.md` folders under the user-data path,
+   * which runs draw their in-scope skills from and Settings edits.
+   */
+  private readonly skillLibrary: SkillLibrary = new SkillLibrary(
+    path.join(app.getPath('userData'), 'skills'),
+  );
+
+  /**
    * Owns the AI agent subsystem: authentication, provider runtime, and event streaming.
    */
-  private readonly aiManager: AiManager = new AiManager((): BrowserWindow | null =>
-    this.windows.main(),
+  private readonly aiManager: AiManager = new AiManager(
+    (): BrowserWindow | null => this.windows.main(),
+    this.skillLibrary,
+  );
+
+  /**
+   * Serves the skill library to the renderer.
+   */
+  private readonly skillHandlers: SkillHandlers = new SkillHandlers(
+    this.skillLibrary,
+    (): BrowserWindow | null => this.windows.main(),
   );
 
   /**
@@ -822,6 +841,7 @@ class Program {
     this.fileWatcher.register();
     this.directoryWatcher.register();
     this.aiManager.register();
+    this.skillHandlers.register();
     this.agentConversationStore.register();
     this.agentCategoryStore.register();
     this.lspSettingsManager.register();

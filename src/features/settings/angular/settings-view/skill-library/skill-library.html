@@ -1,0 +1,162 @@
+<div class="skills">
+  <p class="skills__intro">
+    Skills are named sets of instructions an agent pulls in when a task calls for them. Every skill
+    in scope is listed to the agent by name and description on each turn; the agent loads the full
+    text only when it decides the skill applies, so a long skill costs nothing until it is used.
+    Each skill is a folder holding a <code>SKILL.md</code>, which you can also edit on disk.
+  </p>
+
+  <div class="skills__header">
+    <h3 class="skills__title">Skill library</h3>
+    <span class="skills__actions">
+      <app-button
+        variant="none"
+        size="small"
+        [icon]="Icon.REFRESH"
+        [iconSpin]="loading()"
+        ariaLabel="Refresh the library"
+        tooltip="Refresh"
+        (click)="refresh()"
+      />
+      <app-button
+        variant="none"
+        size="small"
+        [icon]="Icon.FOLDER_OPEN"
+        label="Open folder"
+        (click)="openLibrary()"
+      />
+      <app-button
+        variant="none"
+        size="small"
+        [icon]="Icon.DOWNLOAD"
+        label="Import…"
+        (click)="import()"
+      />
+      <app-button [icon]="Icon.PLUS" label="Add skill" (click)="add()" />
+    </span>
+  </div>
+
+  @if (notice(); as text) {
+    <p class="skills__notice" role="status">{{ text }}</p>
+  }
+
+  @if (rows().length === 0) {
+    <p class="skills__empty">
+      No skills yet. Add one for a house style, a commit-message convention, or any guidance you
+      find yourself pasting into conversations.
+    </p>
+  }
+
+  @for (row of rows(); track row.key) {
+    <app-accordion
+      [heading]="row.stored?.name ?? (row.draft.name || 'New skill')"
+      [expanded]="row.key === justCreated()"
+    >
+      @if (row.stored?.problem; as problem) {
+        <p class="skills__problem" role="alert">Not offered to agents: {{ problem }}</p>
+      }
+
+      <app-setting-row
+        label="Name"
+        description="Lower-case letters, digits and hyphens. It is the folder's name, and what the agent asks for."
+      >
+        <app-text-field
+          [value]="row.draft.name"
+          ariaLabel="Skill name"
+          placeholder="e.g. csharp-style"
+          (valueChange)="edit(row, { name: $event })"
+        />
+      </app-setting-row>
+
+      <app-setting-row
+        label="Enabled"
+        description="Switch off to keep the skill without offering it."
+      >
+        <app-toggle
+          [checked]="row.draft.enabled"
+          ariaLabel="Skill enabled"
+          (checkedChange)="edit(row, { enabled: $event })"
+        />
+      </app-setting-row>
+
+      <app-prompt-scope-editor [scope]="row.draft.scope" (scopeChange)="setScope(row, $event)" />
+
+      <div class="skills__body">
+        <span class="skills__body-label">Description</span>
+        <span class="skills__body-description">
+          One paragraph the agent reads on every turn to decide whether this skill applies. Say what
+          kind of task it is for.
+        </span>
+        <app-textarea
+          [value]="row.draft.description"
+          [rows]="2"
+          ariaLabel="Skill description"
+          placeholder="e.g. House style for C#: explicit types, file-scoped namespaces, XML doc comments. Use when writing or reviewing C#."
+          (valueChange)="edit(row, { description: $event })"
+        />
+      </div>
+
+      <div class="skills__body">
+        <span class="skills__body-label">Instructions</span>
+        <span class="skills__body-description">
+          The Markdown the agent receives when it loads the skill. As long as it needs to be.
+        </span>
+        <app-textarea
+          [value]="row.draft.body"
+          [rows]="10"
+          ariaLabel="Skill instructions"
+          (valueChange)="edit(row, { body: $event })"
+        />
+      </div>
+
+      @if (row.stored && row.stored.files.length > 0) {
+        <div class="skills__body">
+          <span class="skills__body-label">Bundled files</span>
+          <span class="skills__body-description">
+            Beside SKILL.md in the skill's folder; the agent is told they exist when it loads the
+            skill.
+          </span>
+          <ul class="skills__files">
+            @for (file of row.stored.files; track file) {
+              <li class="skills__file">{{ file }}</li>
+            }
+          </ul>
+        </div>
+      }
+
+      @if (row.error; as error) {
+        <p class="skills__error" role="alert">{{ error }}</p>
+      }
+
+      <div class="skills__row-actions">
+        <app-button
+          variant="solid"
+          label="Save"
+          [disabled]="row.saving || !isDirty(row)"
+          [loading]="row.saving"
+          (click)="save(row)"
+        />
+        <app-button
+          [label]="row.stored ? 'Revert' : 'Discard'"
+          [disabled]="row.saving || (row.stored !== null && !isDirty(row))"
+          (click)="revert(row)"
+        />
+        @if (row.stored) {
+          <app-button
+            variant="none"
+            [icon]="Icon.FOLDER_OPEN"
+            label="Reveal in folder"
+            (click)="reveal(row)"
+          />
+          <app-button
+            class="skills__delete"
+            variant="none"
+            [icon]="Icon.TRASH"
+            label="Delete skill"
+            (click)="remove(row)"
+          />
+        }
+      </div>
+    </app-accordion>
+  }
+</div>

@@ -20,6 +20,8 @@ import { KeyboardSettingsSection } from './sections/keyboard-settings/keyboard-s
 import { SourceControlSettingsSection } from './sections/source-control-settings/source-control-settings';
 import { TerminalSettingsSection } from './sections/terminal-settings/terminal-settings';
 import { EditorProfiles } from './editor-profiles/editor-profiles';
+import { PromptProfilesSettings } from './prompt-profiles/prompt-profiles';
+import { SkillLibrarySettings } from './skill-library/skill-library';
 import { LanguageServerSettings } from './language-server-settings/language-server-settings';
 import { SettingsSection } from './settings-section/settings-section';
 import { SettingsRestart } from '@features/settings/angular/settings-restart';
@@ -44,6 +46,8 @@ type SettingsSectionId =
   | 'keyboard'
   | 'ai'
   | 'ai-security'
+  | 'ai-prompts'
+  | 'ai-skills'
   | 'mission-control'
   // One per provider an installed harness contributes, so the set is open (#653). It was seven fixed
   // literals — anthropic, openai, google, deepseek, xai, ollama, custom — which is what made the
@@ -133,6 +137,8 @@ interface SettingsTreeData {
   imports: [
     Button,
     EditorProfiles,
+    PromptProfilesSettings,
+    SkillLibrarySettings,
     LanguageServerSettings,
     AiSettingsSection,
     KeyboardSettingsSection,
@@ -254,6 +260,8 @@ export class SettingsView {
       children: [
         { id: 'ai-general', label: 'General', sectionId: 'ai' },
         { id: 'ai-security-leaf', label: 'Security & Permissions', sectionId: 'ai-security' },
+        { id: 'ai-prompts-leaf', label: 'Prompt Profiles', sectionId: 'ai-prompts' },
+        { id: 'ai-skills-leaf', label: 'Skills', sectionId: 'ai-skills' },
         { id: 'ai-mission-control', label: 'Mission Control', sectionId: 'mission-control' },
       ],
     },
@@ -377,6 +385,16 @@ export class SettingsView {
    * Gets the identifier of the section currently shown in the content pane.
    */
   protected readonly selectedSection: Signal<SettingsSectionId> = this.section.asReadonly();
+
+  /**
+   * Gets the provider page the selected section names, or null when the selection is not a provider
+   * page. The pages are the open set an installed harness contributes, so the template resolves them
+   * by prefix rather than by naming each company.
+   */
+  protected readonly selectedProvider: Signal<string | null> = computed((): string | null => {
+    const section: string = this.section();
+    return section.startsWith('ai-provider-') ? section.slice('ai-provider-'.length) : null;
+  });
 
   /**
    * Gets the breadcrumb trail shown above the content pane: the labels along the path to the selected

@@ -209,6 +209,10 @@ function contextFor(overrides: Partial<Record<string, unknown>> = {}): {
     mode: 'agent',
     surface: 'editor',
     allowedWritePaths: ['/ws'],
+    language: null,
+    systemPromptExtra: '',
+    userPromptExtra: '',
+    skills: [],
     deniedWritePaths: ['/ws/secrets'],
     allowedNetworkLocations: ['example.com'],
     deniedNetworkLocations: [],
@@ -664,6 +668,21 @@ describe('toTurnRequest', () => {
     expect(turn['emit']).toBeUndefined();
     expect(turn['requestPermission']).toBeUndefined();
     expect(turn['setSteerHandler']).toBeUndefined();
+  });
+
+  it('composesTheUsersStandingInstructionsIntoThePromptRatherThanANewField', () => {
+    // #300. Inside the prompt, not beside it: a harness that reads only the fields it has always
+    // read still delivers them, which is what spares every published plugin a release.
+    const { context } = contextFor({ userPromptExtra: '### House\nBritish English.' });
+
+    const turn: Record<string, unknown> = toTurnRequest(context) as unknown as Record<
+      string,
+      unknown
+    >;
+
+    expect(turn['prompt']).toMatch(/^do the thing\n\n---\n/);
+    expect(turn['prompt']).toMatch(/### House\nBritish English\.$/);
+    expect(turn['userPromptExtra']).toBeUndefined();
   });
 
   it('carriesEveryFieldAHarnessNeedsToReachParityWithAnInCoreProvider', () => {
