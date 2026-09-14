@@ -1,3 +1,4 @@
+import { computed, Signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { DockPanelPlaceholder } from '../../components/dock-layout/dock-panel-placeholder/dock-panel-placeholder';
 import { Icon } from '@shared/angular/icons/icon';
@@ -84,5 +85,47 @@ describe('DockPanelRegistry', () => {
     });
 
     expect(registry.get('files')?.title).toBe('Renamed');
+  });
+
+  it('update_whenPanelRegistered_patchesOnlyTheGivenFields', () => {
+    registry.update('files', { title: 'Explorer' });
+
+    const panel: DockPanel | undefined = registry.get('files');
+    expect(panel?.title).toBe('Explorer');
+    expect(panel?.icon).toBe(Icon.FILE_EXPLORER);
+    expect(panel?.ownsToolStrip).toBe(true);
+    expect(panel?.component).toBe(DockPanelPlaceholder);
+  });
+
+  it('update_whenPanelNotRegistered_isANoOp', () => {
+    registry.update('absent', { title: 'Nothing' });
+
+    expect(registry.get('absent')).toBeUndefined();
+  });
+
+  it('get_whenPanelUpdated_reRunsAComputedThatResolvedIt', () => {
+    // The dock chrome resolves panels inside computeds keyed on the layout, which a retitle does not
+    // change; the lookup itself must track the registry or a renamed document's tab never repaints.
+    const title: Signal<string> = computed((): string => registry.get('files')?.title ?? 'none');
+    expect(title()).toBe('File Explorer');
+
+    registry.update('files', { title: 'Explorer' });
+
+    expect(title()).toBe('Explorer');
+  });
+
+  it('get_whenPanelRegisteredAfterFirstRead_reRunsAComputedThatMissedIt', () => {
+    const title: Signal<string> = computed((): string => registry.get('late')?.title ?? 'none');
+    expect(title()).toBe('none');
+
+    registry.register({
+      id: 'late',
+      title: 'Late',
+      icon: Icon.CODE,
+      role: 'document',
+      component: DockPanelPlaceholder,
+    });
+
+    expect(title()).toBe('Late');
   });
 });
