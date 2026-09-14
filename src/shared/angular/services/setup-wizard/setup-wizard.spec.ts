@@ -2,6 +2,7 @@ import { signal, WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import type { HostEnv } from '@shared/api/host';
 import type { PluginSummary } from '@shared/api/plugin-channels';
+import { RELEASE_HIGHLIGHTS } from '@shared/api/release-highlights';
 import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
 
@@ -280,8 +281,9 @@ describe('SetupWizard', () => {
 
     it('steps_onAnUpgradeWithNothingToReport_omitsWhatsNew', () => {
       // An upgrade across a release nobody wrote highlights for has nothing to say, and a What's New
-      // step that renders an empty list is worse than no step at all.
-      localStorage.setItem(LAST_SEEN_KEY, JSON.stringify('2026.1.0-beta.4'));
+      // step that renders an empty list is worse than no step at all. The last release that HAS
+      // highlights is the one last seen, so whatever is newer than it (if anything) has none.
+      localStorage.setItem(LAST_SEEN_KEY, JSON.stringify(RELEASE_HIGHLIGHTS.at(-1)!.version));
 
       expect(
         build()
