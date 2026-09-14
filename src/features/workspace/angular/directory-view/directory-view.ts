@@ -61,7 +61,10 @@ import {
 import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
 import { PopoutPanels } from '@shared/angular/services/dock-layout/popout-panels';
 import { PanelPopout } from '@shared/angular/services/panel-popout/panel-popout';
-import { TerminalSessions } from '@shared/angular/services/terminal-sessions/terminal-sessions';
+import {
+  TerminalSession,
+  TerminalSessions,
+} from '@shared/angular/services/terminal-sessions/terminal-sessions';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { WorkspaceFind } from '@features/workspace/angular/workspace-find/workspace-find';
 import {
@@ -106,6 +109,7 @@ import {
   WellChange,
   WellDocument,
   WellSourceControl,
+  WellTerminal,
 } from '@shared/angular/services/workspace/active-workspace';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { WorkspaceGit } from '@features/workspace/angular/workspace-git/workspace-git';
@@ -1469,6 +1473,32 @@ export class DirectoryView implements OnInit, OnDestroy {
   }
 
   /**
+   * Opens a terminal in this workspace's dock on an agent's behalf (#713) and reveals it: the
+   * conversation and the terminal it drives are then on the same tab, where a top-level terminal tab
+   * would take the user away from both.
+   * @returns Returns the terminal.
+   */
+  private openTerminalForAgent(): WellTerminal {
+    const session: TerminalSession = this.terminalSessions.create();
+    this.dockReveal.reveal('terminal');
+    this.terminalSessions.activateAndReveal(session.id);
+    return { id: session.id, name: session.name, active: true };
+  }
+
+  /**
+   * Lists this workspace's dock terminals for an agent (#713).
+   * @returns Returns the terminals.
+   */
+  private terminalsForAgent(): readonly WellTerminal[] {
+    const activeId: string | null = this.terminalSessions.activeId();
+    return this.terminalSessions.sessions().map((session: TerminalSession): WellTerminal => ({
+      id: session.id,
+      name: session.name,
+      active: session.id === activeId,
+    }));
+  }
+
+  /**
    * Seeds the scoped workspace from the folder stashed for this tab, when opened from the welcome
    * screen.
    */
@@ -1484,6 +1514,8 @@ export class DirectoryView implements OnInit, OnDestroy {
       openDiff: (path: string): Promise<string | null> => this.openDiffForAgent(path),
       documents: (): readonly WellDocument[] => this.wellDocumentsForAgent(),
       sourceControl: (): WellSourceControl | null => this.sourceControlForAgent(),
+      openTerminal: (): WellTerminal => this.openTerminalForAgent(),
+      terminals: (): readonly WellTerminal[] => this.terminalsForAgent(),
     });
     // Surface this workspace's well documents to the app-wide close flows for the tab's lifetime.
     this.destroyRef.onDestroy(this.unsavedWork.register(this.documents));

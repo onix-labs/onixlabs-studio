@@ -9,10 +9,12 @@ import {
   ActiveWorkspace,
   WellDocument,
   WellSourceControl,
+  WellTerminal,
   WorkspaceWell,
 } from '@shared/angular/services/workspace/active-workspace';
 import {
   LIST_OPEN_DOCUMENTS,
+  LIST_TERMINALS,
   OPEN_DIFF,
   OPEN_DOCUMENT,
   OPEN_FILE,
@@ -167,14 +169,40 @@ interface SourceControlStatusResult {
  */
 interface OpenTerminalResult {
   /**
-   * Gets whether a terminal tab was opened.
+   * Gets whether a terminal was opened.
    */
   readonly ok: boolean;
 
   /**
-   * Gets the identifier of the opened tab.
+   * Gets the identifier of the opened terminal — a top-level tab's id, or a workspace terminal's
+   * session id — which the terminal tools address it by.
    */
   readonly id?: string;
+
+  /**
+   * Gets where the terminal opened: in the workspace's dock, or as a top-level tab.
+   */
+  readonly where?: 'workspace' | 'tab';
+}
+
+/**
+ * The result of listing a workspace's terminals.
+ */
+interface ListTerminalsResult {
+  /**
+   * Gets whether a workspace was found to list.
+   */
+  readonly ok: boolean;
+
+  /**
+   * Gets the reason there was nothing to list, when there was not.
+   */
+  readonly error?: string;
+
+  /**
+   * Gets the terminals.
+   */
+  readonly terminals?: readonly WellTerminal[];
 }
 
 /**
@@ -234,7 +262,9 @@ export class WorkbenchAgentCapabilities {
     this.runtime.registerCapability(SAVE_DOCUMENT, (input: unknown): Promise<SaveDocumentResult> =>
       this.saveDocument(input),
     );
-    this.runtime.registerCapability(OPEN_TERMINAL, (): OpenTerminalResult => this.openTerminal());
+    this.runtime.registerCapability(OPEN_TERMINAL, (input: unknown): OpenTerminalResult =>
+      this.openTerminal(input),
+    );
     this.runtime.registerCapability(OPEN_FILE, (input: unknown): Promise<OpenFileResult> =>
       this.openFile(input),
     );
@@ -249,6 +279,9 @@ export class WorkbenchAgentCapabilities {
     );
     this.runtime.registerCapability(READ_SOURCE_CONTROL_STATUS, (): SourceControlStatusResult =>
       this.readSourceControlStatus(),
+    );
+    this.runtime.registerCapability(LIST_TERMINALS, (): ListTerminalsResult =>
+      this.listTerminals(),
     );
     this.log.info('workbench.agent', 'Workbench agent capabilities registered');
   }
@@ -442,12 +475,35 @@ export class WorkbenchAgentCapabilities {
   }
 
   /**
-   * Opens a new terminal tab and activates it.
+   * Opens a terminal: into the active workspace's dock when the caller asks for one and a workspace
+   * is open (#713) — so the conversation and the terminal it drives share a tab — and otherwise as a
+   * top-level terminal tab.
+   * @param input The tool input: whether the terminal belongs in the workspace.
    * @returns Returns the {@link OpenTerminalResult}.
    */
-  private openTerminal(): OpenTerminalResult {
+  private openTerminal(input: unknown): OpenTerminalResult {
+    const args: { workspace?: unknown } = input ?? {};
+    const well: WorkspaceWell | null = args.workspace === true ? this.workspace.activeWell() : null;
+    if (well !== null) {
+      const terminal: WellTerminal = well.openTerminal();
+      this.tabs.activate(well.tabId);
+      this.log.info('workbench.agent', 'Agent opened a workspace terminal', terminal.id);
+      return { ok: true, id: terminal.id, where: 'workspace' };
+    }
     const tab: Tab = this.tabs.open('terminal');
     this.log.info('workbench.agent', 'Agent opened a terminal', tab.id);
-    return { ok: true, id: tab.id };
+    return { ok: true, id: tab.id, where: 'tab' };
+  }
+
+  /**
+   * Lists the active workspace's terminals (#713).
+   * @returns Returns the {@link ListTerminalsResult}.
+   */
+  private listTerminals(): ListTerminalsResult {
+    const well: WorkspaceWell | null = this.workspace.activeWell();
+    if (well === null) {
+      return { ok: false, error: 'No workspace is open, so there are no workspace terminals.' };
+    }
+    return { ok: true, terminals: well.terminals() };
   }
 }

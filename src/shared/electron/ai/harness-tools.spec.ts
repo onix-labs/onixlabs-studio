@@ -4,6 +4,10 @@ import {
   EDIT_ACTIVE_DOCUMENT,
   LIST_OPEN_DOCUMENTS,
   LIST_RUN_CONFIGURATIONS,
+  LIST_TERMINALS,
+  OPEN_TERMINAL,
+  READ_TERMINAL_OUTPUT,
+  WRITE_TERMINAL_INPUT,
   OPEN_DIFF,
   OPEN_FILE,
   READ_SOURCE_CONTROL_STATUS,
@@ -114,6 +118,10 @@ describe('describeOffer', () => {
         LIST_OPEN_DOCUMENTS,
         OPEN_DIFF,
         READ_SOURCE_CONTROL_STATUS,
+        LIST_TERMINALS,
+        READ_TERMINAL_OUTPUT,
+        WRITE_TERMINAL_INPUT,
+        OPEN_TERMINAL,
       ]),
     );
     expect(names(offer)).not.toContain(EDIT_ACTIVE_DOCUMENT);
@@ -121,6 +129,26 @@ describe('describeOffer', () => {
     expect(names(offer)).not.toContain(RUN_ACTIVE_DOCUMENT);
     expect(offer.systemPrompt).toContain('docked to a workspace tab');
     expect(offer.systemPrompt).toContain('run configurations');
+  });
+
+  it('addressesWorkspaceTerminalsByIdAndWithholdsWritingFromAChatTurn', async () => {
+    // #713 phase 3. A workspace agent has no owning terminal, so its terminal tools name the one to
+    // drive; a chat turn may look at a terminal but not type into it or open one.
+    const agent: { tools: readonly HarnessTool[] } = await describeOffer(
+      contextFor({ surface: 'workspace' }),
+    );
+    const chat: { tools: readonly HarnessTool[] } = await describeOffer(
+      contextFor({ surface: 'workspace', mode: 'chat' }),
+    );
+    const read: HarnessTool | undefined = agent.tools.find(
+      (tool: HarnessTool): boolean => tool.name === READ_TERMINAL_OUTPUT,
+    );
+
+    expect(JSON.stringify(read?.inputSchema)).toContain('terminalId');
+    expect(names(chat)).toContain(READ_TERMINAL_OUTPUT);
+    expect(names(chat)).toContain(LIST_TERMINALS);
+    expect(names(chat)).not.toContain(WRITE_TERMINAL_INPUT);
+    expect(names(chat)).not.toContain(OPEN_TERMINAL);
   });
 
   it('keepsTheWorkspaceViewToolsOffTheEditorSurface', async () => {

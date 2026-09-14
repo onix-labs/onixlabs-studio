@@ -8,10 +8,12 @@ import {
   ActiveWorkspace,
   WellDocument,
   WellSourceControl,
+  WellTerminal,
   WorkspaceWell,
 } from '@shared/angular/services/workspace/active-workspace';
 import {
   LIST_OPEN_DOCUMENTS,
+  LIST_TERMINALS,
   OPEN_DIFF,
   OPEN_DOCUMENT,
   OPEN_FILE,
@@ -79,6 +81,11 @@ class FakeActiveWorkspace {
   public sourceControl: WellSourceControl | null = null;
 
   /**
+   * The terminals the well reports, and the ones opened through it.
+   */
+  public terminals: WellTerminal[] = [];
+
+  /**
    * Publishes a well backed by this fake.
    * @param root The workspace root.
    */
@@ -96,6 +103,16 @@ class FakeActiveWorkspace {
       },
       documents: (): readonly WellDocument[] => this.documents,
       sourceControl: (): WellSourceControl | null => this.sourceControl,
+      openTerminal: (): WellTerminal => {
+        const terminal: WellTerminal = {
+          id: `term-${this.terminals.length + 1}`,
+          name: `Terminal ${this.terminals.length + 1}`,
+          active: true,
+        };
+        this.terminals.push(terminal);
+        return terminal;
+      },
+      terminals: (): readonly WellTerminal[] => this.terminals,
     };
   }
 
@@ -251,6 +268,7 @@ describe('WorkbenchAgentCapabilities', () => {
         LIST_OPEN_DOCUMENTS,
         OPEN_DIFF,
         READ_SOURCE_CONTROL_STATUS,
+        LIST_TERMINALS,
       ].sort(),
     );
   });
@@ -505,7 +523,45 @@ describe('WorkbenchAgentCapabilities', () => {
       const result: Record<string, unknown> = await invoke(OPEN_TERMINAL, {});
 
       expect(result['ok']).toBe(true);
+      expect(result['where']).toBe('tab');
       expect(tabs.opened).toEqual([{ type: 'terminal', resourceKey: undefined }]);
+    });
+
+    it('whenAskedForAWorkspaceTerminal_opensItInTheWellAndBringsTheTabForward', async () => {
+      // #713. The conversation and the terminal it drives share a tab; the id returned is the one the
+      // terminal tools address.
+      workspace.publish('/ws');
+
+      const result: Record<string, unknown> = await invoke(OPEN_TERMINAL, { workspace: true });
+
+      expect(result).toEqual({ ok: true, id: 'term-1', where: 'workspace' });
+      expect(tabs.opened).toEqual([]);
+      expect(tabs.activated).toEqual(['workspace-tab']);
+    });
+
+    it('whenAskedForAWorkspaceTerminalWithNoWorkspace_fallsBackToATab', async () => {
+      const result: Record<string, unknown> = await invoke(OPEN_TERMINAL, { workspace: true });
+
+      expect(result['where']).toBe('tab');
+      expect(tabs.opened).toHaveLength(1);
+    });
+  });
+
+  describe(LIST_TERMINALS, () => {
+    it('listsTheWellsTerminals', async () => {
+      workspace.publish('/ws');
+      await invoke(OPEN_TERMINAL, { workspace: true });
+
+      const result: Record<string, unknown> = await invoke(LIST_TERMINALS, {});
+
+      expect(result['ok']).toBe(true);
+      expect(result['terminals']).toEqual([{ id: 'term-1', name: 'Terminal 1', active: true }]);
+    });
+
+    it('withNoWorkspaceOpen_saysSo', async () => {
+      const result: Record<string, unknown> = await invoke(LIST_TERMINALS, {});
+
+      expect(result['ok']).toBe(false);
     });
   });
 });

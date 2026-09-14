@@ -40,6 +40,7 @@ export {
   LIST_OPEN_DOCUMENTS,
   OPEN_DIFF,
   READ_SOURCE_CONTROL_STATUS,
+  LIST_TERMINALS,
   AGENT_SURFACES,
   isAgentSurface,
 } from './ai/ai-tool-surface';

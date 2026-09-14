@@ -1,7 +1,23 @@
 import { describe, expect, it } from 'vitest';
-import { LIST_OPEN_DOCUMENTS, OPEN_DIFF, READ_SOURCE_CONTROL_STATUS } from '@shared/api/ai-types';
+import {
+  LIST_OPEN_DOCUMENTS,
+  LIST_TERMINALS,
+  OPEN_DIFF,
+  OPEN_TERMINAL,
+  READ_SOURCE_CONTROL_STATUS,
+  READ_TERMINAL_OUTPUT,
+  WRITE_TERMINAL_INPUT,
+} from '@shared/api/ai-types';
 import type { AgentRunContext } from './agent-provider';
-import { listOpenDocuments, openDiff, readSourceControlStatus } from './studio-tools';
+import {
+  listOpenDocuments,
+  listTerminals,
+  openDiff,
+  openTerminal,
+  readSourceControlStatus,
+  readTerminalOutput,
+  writeTerminalInput,
+} from './studio-tools';
 
 /**
  * Builds a run context whose bridge answers with a fixed result and records what it was asked.
@@ -75,6 +91,61 @@ describe('workspace studio tools', () => {
       });
 
       expect(await openDiff(context, 'src/a.ts')).toContain('no changes');
+    });
+  });
+
+  describe('openTerminal in the workspace', () => {
+    it('asksForAWorkspaceTerminalAndTellsTheModelHowToDriveIt', async () => {
+      const { context, calls } = contextWith({ ok: true, id: 'term-7', where: 'workspace' });
+
+      const text: string = await openTerminal(context, true);
+
+      expect(calls[0]).toEqual({ capability: OPEN_TERMINAL, input: { workspace: true } });
+      expect(text).toContain('term-7');
+      expect(text).toContain(READ_TERMINAL_OUTPUT);
+    });
+  });
+
+  describe('listTerminals', () => {
+    it('listsEachTerminalWithItsIdAndMarksTheSelectedOne', async () => {
+      const { context, calls } = contextWith({
+        ok: true,
+        terminals: [
+          { id: 'term-1', name: 'Terminal 1', active: false },
+          { id: 'term-2', name: 'Build', active: true },
+        ],
+      });
+
+      const text: string = await listTerminals(context);
+
+      expect(calls[0].capability).toBe(LIST_TERMINALS);
+      expect(text).toContain('- Terminal 1 (id term-1)');
+      expect(text).toContain('- Build (id term-2) (selected)');
+    });
+
+    it('whenThereAreNone_pointsAtOpenTerminal', async () => {
+      const { context } = contextWith({ ok: true, terminals: [] });
+
+      expect(await listTerminals(context)).toContain(OPEN_TERMINAL);
+    });
+  });
+
+  describe('terminal tools by id', () => {
+    it('readTerminalOutput_addressesTheNamedTerminalRatherThanTheOwningTab', async () => {
+      const { context, calls } = contextWith({ available: true, text: 'hello' });
+
+      expect(await readTerminalOutput(context, 'term-3')).toBe('hello');
+      expect(calls[0]).toEqual({ capability: READ_TERMINAL_OUTPUT, input: { tabId: 'term-3' } });
+    });
+
+    it('writeTerminalInput_addressesTheNamedTerminal', async () => {
+      const { context, calls } = contextWith({ ok: true, output: 'done' });
+
+      expect(await writeTerminalInput(context, 'ls', true, 'term-3')).toBe('done');
+      expect(calls[0]).toEqual({
+        capability: WRITE_TERMINAL_INPUT,
+        input: { tabId: 'term-3', text: 'ls', submit: true },
+      });
     });
   });
 

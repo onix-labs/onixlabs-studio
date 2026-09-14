@@ -228,6 +228,12 @@ export const OPEN_DIFF: string = 'open_diff';
 export const READ_SOURCE_CONTROL_STATUS: string = 'read_source_control_status';
 
 /**
+ * The workspace-surface capability that lists the terminals in the workspace's dock, so an agent that
+ * did not open one itself can still find one to drive (#713).
+ */
+export const LIST_TERMINALS: string = 'list_terminals';
+
+/**
  * The formats {@link OPEN_DOCUMENT} can open a document in: the markdown editor (rendered prose) or
  * the code editor (syntax-highlighted text).
  */
