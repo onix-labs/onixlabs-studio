@@ -27,6 +27,7 @@ import { CdkContextMenuTrigger } from '@angular/cdk/menu';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Icon } from '@shared/angular/icons/icon';
 import { Menu, MenuChoice, MenuItem } from '@shared/angular/components/menu/menu';
+import { MenuSubject } from '@shared/angular/components/menu/menu-subject';
 
 /**
  * Describes one row of a list: its identity and the consumer's payload, rendered through the
@@ -94,6 +95,7 @@ export interface ListMenuSelection {
     AppIcon,
     CdkContextMenuTrigger,
     Menu,
+    MenuSubject,
   ],
   templateUrl: './list-view.html',
   changeDetection: ChangeDetectionStrategy.OnPush,

@@ -20,6 +20,7 @@ import { CdkContextMenuTrigger } from '@angular/cdk/menu';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Menu, MenuChoice, MenuItem } from '@shared/angular/components/menu/menu';
+import { MenuSubject } from '@shared/angular/components/menu/menu-subject';
 
 /**
  * Specifies the base left padding of a tree row, in pixels.
@@ -122,7 +123,7 @@ export interface TreeMenuSelection {
  */
 @Component({
   selector: 'app-tree-view',
-  imports: [AppIcon, NgTemplateOutlet, ScrollingModule, CdkContextMenuTrigger, Menu],
+  imports: [AppIcon, NgTemplateOutlet, ScrollingModule, CdkContextMenuTrigger, Menu, MenuSubject],
   templateUrl: './tree-view.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
