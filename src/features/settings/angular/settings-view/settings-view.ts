@@ -20,9 +20,13 @@ import { KeyboardSettingsSection } from './sections/keyboard-settings/keyboard-s
 import { SourceControlSettingsSection } from './sections/source-control-settings/source-control-settings';
 import { TerminalSettingsSection } from './sections/terminal-settings/terminal-settings';
 import { EditorProfiles } from './editor-profiles/editor-profiles';
+import { PromptProfilesSettings } from './prompt-profiles/prompt-profiles';
+import { SkillLibrarySettings } from './skill-library/skill-library';
 import { LanguageServerSettings } from './language-server-settings/language-server-settings';
 import { SettingsSection } from './settings-section/settings-section';
 import { SettingsRestart } from '@features/settings/angular/settings-restart';
+import type { ProviderPage } from '@shared/api/ai-types';
+import { AiProviders } from '@shared/angular/services/ai-providers/ai-providers';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
@@ -42,14 +46,13 @@ type SettingsSectionId =
   | 'keyboard'
   | 'ai'
   | 'ai-security'
+  | 'ai-prompts'
+  | 'ai-skills'
   | 'mission-control'
-  | 'ai-provider-anthropic'
-  | 'ai-provider-openai'
-  | 'ai-provider-google'
-  | 'ai-provider-deepseek'
-  | 'ai-provider-xai'
-  | 'ai-provider-ollama'
-  | 'ai-provider-custom'
+  // One per provider an installed harness contributes, so the set is open (#653). It was seven fixed
+  // literals — anthropic, openai, google, deepseek, xai, ollama, custom — which is what made the
+  // Providers branch a list of companies core shipped rather than a list of what is installed.
+  | `ai-provider-${string}`
   | 'source-control'
   | 'language-servers'
   | 'security'
@@ -134,6 +137,8 @@ interface SettingsTreeData {
   imports: [
     Button,
     EditorProfiles,
+    PromptProfilesSettings,
+    SkillLibrarySettings,
     LanguageServerSettings,
     AiSettingsSection,
     KeyboardSettingsSection,
@@ -173,6 +178,11 @@ export class SettingsView {
    * Holds the language-server settings, which decide the languages the tree offers.
    */
   private readonly lspSettings: LspSettings = inject(LspSettings);
+
+  /**
+   * Holds the providers installed harnesses contribute, which the Providers branch is built from.
+   */
+  private readonly providers: AiProviders = inject(AiProviders);
 
   /**
    * Holds the identifier of the section currently shown in the content pane.
@@ -250,20 +260,9 @@ export class SettingsView {
       children: [
         { id: 'ai-general', label: 'General', sectionId: 'ai' },
         { id: 'ai-security-leaf', label: 'Security & Permissions', sectionId: 'ai-security' },
+        { id: 'ai-prompts-leaf', label: 'Prompt Profiles', sectionId: 'ai-prompts' },
+        { id: 'ai-skills-leaf', label: 'Skills', sectionId: 'ai-skills' },
         { id: 'ai-mission-control', label: 'Mission Control', sectionId: 'mission-control' },
-        {
-          id: 'ai-providers',
-          label: 'Providers',
-          children: [
-            { id: 'ai-provider-anthropic', label: 'Anthropic', sectionId: 'ai-provider-anthropic' },
-            { id: 'ai-provider-openai', label: 'OpenAI', sectionId: 'ai-provider-openai' },
-            { id: 'ai-provider-google', label: 'Google', sectionId: 'ai-provider-google' },
-            { id: 'ai-provider-deepseek', label: 'DeepSeek', sectionId: 'ai-provider-deepseek' },
-            { id: 'ai-provider-xai', label: 'xAI', sectionId: 'ai-provider-xai' },
-            { id: 'ai-provider-ollama', label: 'Ollama', sectionId: 'ai-provider-ollama' },
-            { id: 'ai-provider-custom', label: 'Custom', sectionId: 'ai-provider-custom' },
-          ],
-        },
       ],
     },
     {
@@ -308,12 +307,13 @@ export class SettingsView {
    */
   protected readonly sections: Signal<readonly SettingsNavNode[]> = computed(
     (): readonly SettingsNavNode[] => {
+      const withProviders: readonly SettingsNavNode[] = this.withProviderPages(this.staticSections);
       const languages: readonly string[] = this.lspSettings.installedLanguages();
       if (languages.length === 0) {
-        return this.staticSections;
+        return withProviders;
       }
       return [
-        ...this.staticSections,
+        ...withProviders,
         {
           id: 'language-servers',
           label: 'Language Servers',
@@ -328,6 +328,43 @@ export class SettingsView {
       ];
     },
   );
+
+  /**
+   * Puts the Providers branch into the AI section, built from the providers installed harnesses
+   * contribute.
+   *
+   * ⛔ On exactly the rule the Language Servers branch follows, and for the same reason. A company with
+   * no installed harness is not a settings page with nothing to say — it is a plugin to install, which
+   * is the Plugin Manager's business. So the branch carries a leaf per contributed provider and
+   * disappears entirely when none is installed, which is what a fresh binary now shows (#653).
+   * @param sections The static sections.
+   * @returns Returns the sections with the branch inserted, or unchanged when nothing is contributed.
+   */
+  private withProviderPages(sections: readonly SettingsNavNode[]): readonly SettingsNavNode[] {
+    const pages: readonly ProviderPage[] = this.providers.pages();
+    if (pages.length === 0) {
+      return sections;
+    }
+    return sections.map((node: SettingsNavNode): SettingsNavNode =>
+      node.id === 'ai'
+        ? {
+            ...node,
+            children: [
+              ...(node.children ?? []),
+              {
+                id: 'ai-providers',
+                label: 'Providers',
+                children: pages.map((page: ProviderPage): SettingsNavNode => ({
+                  id: `ai-provider-${page.id}`,
+                  label: page.label,
+                  sectionId: `ai-provider-${page.id}`,
+                })),
+              },
+            ],
+          }
+        : node,
+    );
+  }
 
   /**
    * Consumes a pending deep-link request (see {@link SettingsNavigation}): when another surface asks to
@@ -348,6 +385,16 @@ export class SettingsView {
    * Gets the identifier of the section currently shown in the content pane.
    */
   protected readonly selectedSection: Signal<SettingsSectionId> = this.section.asReadonly();
+
+  /**
+   * Gets the provider page the selected section names, or null when the selection is not a provider
+   * page. The pages are the open set an installed harness contributes, so the template resolves them
+   * by prefix rather than by naming each company.
+   */
+  protected readonly selectedProvider: Signal<string | null> = computed((): string | null => {
+    const section: string = this.section();
+    return section.startsWith('ai-provider-') ? section.slice('ai-provider-'.length) : null;
+  });
 
   /**
    * Gets the breadcrumb trail shown above the content pane: the labels along the path to the selected

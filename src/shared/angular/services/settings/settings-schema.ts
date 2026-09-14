@@ -111,6 +111,35 @@ interface BaseSettingDef {
   readonly description: string;
 
   /**
+   * Gets a condensed description for surfaces with less room and less of the user's attention than
+   * the settings view — the setup wizard is the one that reads it. Undefined leaves the surface to
+   * use {@link description}, which is the right answer for most settings.
+   *
+   * It exists because the two audiences differ. Someone in Settings went looking for this control and
+   * is owed everything about it; someone in the wizard is being shown it unasked, several steps from
+   * where they were going, and a paragraph they did not ask for is one they will not read. Where a
+   * setting's full text runs long enough to dominate a wizard step, this says the same thing in a
+   * sentence.
+   *
+   * The dynamic descriptions are layered on top of whichever of the two is in force, so the
+   * machine-specific part of a hint survives the shortening — that part is usually the most useful
+   * thing on the screen.
+   */
+  readonly shortDescription?: string;
+
+  /**
+   * Gets the Studio version this setting first appeared in, or undefined for one that predates the
+   * setup wizard's delta rules.
+   *
+   * It is what makes an upgrade short. A user moving between versions is shown only the steps that
+   * have something new in them, and "new" has to mean something checkable — otherwise the choice of
+   * what to re-ask decays into a hand-maintained list that nobody updates and everybody stops
+   * trusting. A setting without one is treated as pre-existing, so it is offered on a first run and
+   * never re-offered on an upgrade.
+   */
+  readonly since?: string;
+
+  /**
    * Gets the control used to render and edit the setting.
    */
   readonly control: ControlDef;

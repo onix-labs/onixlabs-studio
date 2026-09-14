@@ -164,6 +164,9 @@ export const blockReorderPlugin: $Prose = $prose((): Plugin<ReorderState> => {
     ghostWidth = sourceRect.width;
     ghostGrabOffsetY = Math.max(ZERO, Math.min(sourceRect.height, event.clientY - sourceRect.top));
 
+    // The ghost belongs in the editor's own document: pinned to the global document's body it would
+    // appear in the main window while a modal-hosted editor is dragged in another.
+    const ownerDocument: Document = view.dom.ownerDocument;
     const ghost: HTMLElement = sourceDom.cloneNode(true) as HTMLElement;
     ghost.classList.add('cdk-reorder-ghost');
     ghost.style.position = 'fixed';
@@ -172,19 +175,19 @@ export const blockReorderPlugin: $Prose = $prose((): Plugin<ReorderState> => {
     ghost.style.width = `${ghostWidth}px`;
     ghost.style.left = `${ghostLeft}px`;
     ghost.style.top = `${event.clientY - ghostGrabOffsetY}px`;
-    document.body.appendChild(ghost);
+    ownerDocument.body.appendChild(ghost);
     ghostEl = ghost;
 
     // Suppress the native drag image. Use an off-screen placeholder element so
     // the browser has something to snapshot but it never appears on screen.
     if (event.dataTransfer) {
-      const placeholder: HTMLDivElement = document.createElement('div');
+      const placeholder: HTMLDivElement = ownerDocument.createElement('div');
       placeholder.style.position = 'fixed';
       placeholder.style.top = '-9999px';
       placeholder.style.left = '-9999px';
       placeholder.style.width = '1px';
       placeholder.style.height = '1px';
-      document.body.appendChild(placeholder);
+      ownerDocument.body.appendChild(placeholder);
       event.dataTransfer.setDragImage(placeholder, DRAG_IMAGE_HOTSPOT, DRAG_IMAGE_HOTSPOT);
       // Remove the placeholder after the browser has captured the (blank) image.
       setTimeout((): void => placeholder.remove(), IMMEDIATE_TIMEOUT);
@@ -272,7 +275,7 @@ export const blockReorderPlugin: $Prose = $prose((): Plugin<ReorderState> => {
     destroyGhost();
     view.dom.closest('.milkdown')?.classList.remove(REORDERING_CLASS);
     if (onDocumentDragEnd) {
-      document.removeEventListener('dragend', onDocumentDragEnd);
+      view.dom.ownerDocument.removeEventListener('dragend', onDocumentDragEnd);
       onDocumentDragEnd = null;
     }
     // Arm the deselect window: a re-selection within it is collapsed by appendTransaction so the
@@ -321,7 +324,7 @@ export const blockReorderPlugin: $Prose = $prose((): Plugin<ReorderState> => {
     view.dom.closest('.milkdown')?.classList.add(REORDERING_CLASS);
 
     onDocumentDragEnd = (): void => cleanup(view, true);
-    document.addEventListener('dragend', onDocumentDragEnd, { once: true });
+    view.dom.ownerDocument.addEventListener('dragend', onDocumentDragEnd, { once: true });
 
     view.dispatch(
       view.state.tr.setMeta(reorderKey, { active: true, source, insertBefore: source }),
@@ -367,8 +370,10 @@ export const blockReorderPlugin: $Prose = $prose((): Plugin<ReorderState> => {
     },
 
     view(view: EditorView): PluginView {
-      // Block-plugin's grip is appended to view.dom.parentElement, so dragstart
-      // on the grip never bubbles into view.dom. Listen on document instead.
+      // Block-plugin's grip is appended to view.dom.parentElement, so dragstart on the grip never
+      // bubbles into view.dom. Listen on the editor's own document instead — the global document is
+      // the main window's, which never sees the drags of a modal-hosted editor.
+      const ownerDocument: Document = view.dom.ownerDocument;
       onDocumentDragStart = (event: DragEvent): void => {
         // After block-plugin's handler has bubbled, view.dragging is set if
         // this drag originates from the block grip.
@@ -379,17 +384,17 @@ export const blockReorderPlugin: $Prose = $prose((): Plugin<ReorderState> => {
       onDocumentDrag = (event: DragEvent): void => {
         updateGhost(event.clientY);
       };
-      document.addEventListener('dragstart', onDocumentDragStart);
-      document.addEventListener('drag', onDocumentDrag);
+      ownerDocument.addEventListener('dragstart', onDocumentDragStart);
+      ownerDocument.addEventListener('drag', onDocumentDrag);
 
       return {
         destroy(): void {
           if (onDocumentDragStart) {
-            document.removeEventListener('dragstart', onDocumentDragStart);
+            ownerDocument.removeEventListener('dragstart', onDocumentDragStart);
             onDocumentDragStart = null;
           }
           if (onDocumentDrag) {
-            document.removeEventListener('drag', onDocumentDrag);
+            ownerDocument.removeEventListener('drag', onDocumentDrag);
             onDocumentDrag = null;
           }
           destroyGhost();

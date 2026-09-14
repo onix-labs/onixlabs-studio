@@ -1,4 +1,4 @@
-import { signal, WritableSignal } from '@angular/core';
+import { computed, signal, WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 
 import type {
@@ -7,6 +7,7 @@ import type {
   AiModelInfo,
   AiRemoteControlMode,
 } from '@shared/api/ai-types';
+import { AgentControls, agentControls } from '@shared/angular/services/agent/agent-controls';
 import { AgentSessionHandle, AgentSessions } from './agent-sessions';
 
 /**
@@ -50,6 +51,7 @@ function createSession(): FakeSession {
     mode: modeState.asReadonly(),
     contextPaths: contextPaths.asReadonly(),
     hasMessages: signal<boolean>(true).asReadonly(),
+    controls: computed((): AgentControls => agentControls(running() ? 'working' : 'idle')),
     historyOpen: signal<boolean>(true).asReadonly(),
     provider: signal<string>('claude').asReadonly(),
     model: signal<string>('claude-opus-4-8').asReadonly(),

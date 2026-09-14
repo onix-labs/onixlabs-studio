@@ -28,4 +28,30 @@ describe('SettingDescriptions', () => {
   it('resolve_whenNoDynamicDescription_returnsUndefined', () => {
     expect(descriptions.resolve('application.undoStackSize')).toBeUndefined();
   });
+
+  it('resolveConcise_whenTheSettingStatesShortText_buildsOnThatInstead', () => {
+    const concise: string | undefined = descriptions.resolveConcise('display.graphicsAcceleration');
+
+    expect(concise).toContain('Leave this automatic unless the interface renders oddly');
+    // The full text's paragraph on what each level does is what the short form exists to drop.
+    expect(concise).not.toContain('drops squircle corners');
+  });
+
+  it('resolveConcise_whenTheSettingStatesShortText_keepsTheMachineSpecificHint', () => {
+    // Shortening must not be what drops the one part that is about this computer.
+    expect(descriptions.resolveConcise('display.graphicsAcceleration')).toContain(
+      'Automatic resolves to Full on this system',
+    );
+  });
+
+  it('resolveConcise_whenTheSettingStatesNoShortText_matchesTheFullResolution', () => {
+    expect(descriptions.resolveConcise('application.undoStackSize')).toBeUndefined();
+  });
+
+  it('resolveConcise_isShorterThanResolve_forASettingThatStatesBoth', () => {
+    const full: string = descriptions.resolve('display.graphicsAcceleration') ?? '';
+    const concise: string = descriptions.resolveConcise('display.graphicsAcceleration') ?? '';
+
+    expect(concise.length).toBeLessThan(full.length);
+  });
 });

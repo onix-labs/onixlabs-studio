@@ -126,11 +126,25 @@ app-markdown-editor .milkdown {
 // gets for free from its lighter surrounding chrome. Light mode already contrasts (editor
 // `--gray-100` against the panel's `--gray-150`), so it is left alone.
 //
-// This lives here, and not in `agent-chat.scss` where the frame is styled, because it cannot work
-// there: `:host-context()` compiles to a selector requiring an `[_nghost]` ANCESTOR, and modal
+// The inset variant: the compact framed presentation for an editor embedded in other chrome (the
+// agent composer's markdown modal sets `variant="inset"`). The wrapper's own padding collapses and
+// Crepe's roomy page gutter (60px/120px from the vendor reset.css) shrinks so the text sits close to
+// the frame; in dark mode the surface takes a separating fill. These rules live here, keyed on the
+// editor's own variant class, and not in any consumer's stylesheet: a consumer's `::ng-deep` cannot
+// be scoped and `:host-context()` compiles to a selector requiring an `[_nghost]` ancestor — modal
 // content renders in the modal window's document, outside the declaring component's host element
 // entirely. Global rules carry no encapsulation attributes, so they reach both documents.
-[data-theme-mode='dark'] .agent__md-editor {
+app-markdown-editor.markdown-editor--inset {
+  .editor-wrapper {
+    padding: 0;
+  }
+
+  .milkdown .ProseMirror {
+    padding: 0.75rem 1rem;
+  }
+}
+
+[data-theme-mode='dark'] app-markdown-editor.markdown-editor--inset {
   .milkdown {
     --crepe-color-background: var(--gray-950) !important;
   }
@@ -368,6 +382,13 @@ app-markdown-editor .milkdown .ProseMirror {
     border-radius: 9999px !important;
     corner-shape: var(--app-corner-shape, squircle);
     margin: 2em 0 !important;
+    cursor: default;
+  }
+
+  // The selected divider shows the accent, so the selection Backspace/Delete will act on is visible
+  // (clicking the rule selects it via the divider-select plugin).
+  hr.ProseMirror-selectednode {
+    background: var(--focus-ring-color) !important;
   }
 
   img {

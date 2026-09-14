@@ -148,6 +148,18 @@
   opacity: 0.7;
 }
 
+// The no-provider state's explanation, which the ordinary empty state has no equivalent of: it has to
+// say what a provider is and where to get one, so it runs wider and sits quieter than the caption it
+// follows.
+.agent__empty-detail {
+  max-inline-size: 28rem;
+  margin: 0;
+  color: var(--form-muted-foreground-color);
+  font-size: 0.85rem;
+  line-height: 1.6;
+  opacity: 0.7;
+}
+
 .agent__message {
   display: flex;
   // The bubble's top edge lines up with the top of the avatar rather than centring against it.
@@ -358,20 +370,33 @@ $agent-node-size: 1.75rem;
   letter-spacing: 0.02em;
 }
 
-// A thinking disclosure rides the action-chip chrome but reads quieter: a muted label with a live
-// word count, expanding to the reasoning itself as dim prose.
+// Reasoning sits in its box in the open: the same surface and corners as a chip, a muted heading
+// line with the live word count, and the words themselves as dim prose beneath it. Quieter than an
+// answer, because it is the working rather than the result.
+.agent__thinking:not(.agent__thinking--empty) {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  box-sizing: border-box;
+  padding: 0.5rem 0.75rem 0.6rem;
+  background: var(--agent-view-surface-color);
+  border-radius: calc(0.5rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+}
+
+.agent__thinking-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+}
+
 .agent__thinking .agent__action-label {
   color: var(--form-muted-foreground-color);
-
-  .agent__action-summary:hover & {
-    color: var(--accent-color);
-  }
 }
 
 .agent__thinking-body {
   max-inline-size: 44rem;
-  margin-block-start: 0.4rem;
-  padding-inline-start: 0.6rem;
   font-size: 0.85rem;
   color: var(--form-muted-foreground-color);
 }
@@ -432,7 +457,7 @@ $agent-node-size: 1.75rem;
   flex-direction: column;
   gap: 0.6rem;
   max-inline-size: 48rem;
-  margin-block: 0.5rem;
+  margin-block-end: 0.85rem;
   padding: 0.8rem 1rem;
 }
 
@@ -497,7 +522,7 @@ $agent-node-size: 1.75rem;
 
 .agent__permission-detail {
   display: block;
-  margin-block-start: 0.25rem;
+  margin-block-start: 0.4rem;
   font-size: 0.85rem;
   word-break: break-word;
   opacity: 0.7;
@@ -565,12 +590,6 @@ $agent-node-size: 1.75rem;
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
-}
-
-// The edit-decision options stack vertically, Claude Code-style: full-width, left-aligned rows.
-.agent__ask-actions--stack {
-  flex-direction: column;
-  align-items: stretch;
 }
 
 .agent__ask-answer {
@@ -693,7 +712,7 @@ $agent-node-size: 1.75rem;
   // Trim the trailing margin only at the bubble's true end. Prose renders one wrapper per markdown
   // block (that granularity is what lets a settled block's DOM survive a streaming flush), so a bare
   // `p:last-child` would match the last paragraph of EVERY wrapper and cram all paragraphs together.
-  .markdown-view__prose:last-child p:last-child {
+  .markdown-renderer__prose:last-child p:last-child {
     margin-block-end: 0;
   }
 

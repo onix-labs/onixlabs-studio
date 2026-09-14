@@ -45,6 +45,23 @@ const DEFAULT_WIDTH_REM: number = 28;
 const MAX_WINDOW_FRACTION: number = 0.9;
 
 /**
+ * Matches the text-entry controls a freshly opened dialog gives keyboard focus to: enabled text-like
+ * inputs and text areas, in document order. See {@link Modal.focusInitial}.
+ */
+const INITIAL_FOCUS_SELECTOR: string = [
+  'input:not([type])',
+  'input[type="text"]',
+  'input[type="search"]',
+  'input[type="email"]',
+  'input[type="url"]',
+  'input[type="number"]',
+  'input[type="password"]',
+  'textarea',
+]
+  .map((selector: string): string => `${selector}:not([disabled]):not([readonly])`)
+  .join(', ');
+
+/**
  * Represents a reusable modal: a dialog presented in its own operating-system window, above the
  * window that raised it and with that window dimmed behind it.
  *
@@ -352,6 +369,10 @@ export class Modal implements OnDestroy {
     if (!this.expandable()) {
       window.view.requestAnimationFrame(measure);
     }
+    // Keyboard focus lands in the dialog as it opens, so a prompt can be answered by typing rather
+    // than by finding its field with the mouse first. Deferred a frame: the window has only just been
+    // shown, and focus given before it can take it is lost.
+    window.view.requestAnimationFrame((): void => this.focusInitial(window));
 
     window.onClosed((): void => {
       observer?.disconnect();
@@ -370,6 +391,36 @@ export class Modal implements OnDestroy {
     });
 
     return { window, host, observer, lower };
+  }
+
+  /**
+   * Gives keyboard focus to the control a freshly opened dialog is for: the first text-entry field
+   * in its content, with what it holds selected so a prefilled name (a rename's current name) is
+   * replaced by typing rather than appended to. A dialog with no text field — a confirmation, a
+   * picker — is left alone; its buttons are reached by Tab as before, and none is favoured.
+   *
+   * Only text-like inputs qualify. A checkbox or radio first in the content is a setting, not the
+   * thing the dialog opened to collect, and focusing it would put the first keypress somewhere
+   * surprising. A freestanding modal is exempt: it is a surface (the welcome screen), not a prompt.
+   * @param window The modal window whose content has been mounted.
+   */
+  private focusInitial(window: ModalWindow): void {
+    if (this.presented?.window !== window || this.freestanding()) {
+      // Closed before the frame arrived, or a freestanding modal — the welcome screen, the setup
+      // wizard — which is a surface in its own right rather than a prompt, and keeps its own focus.
+      return;
+    }
+    const target: HTMLElement | null =
+      window.contentHost.querySelector<HTMLElement>(INITIAL_FOCUS_SELECTOR);
+    if (target === null) {
+      return;
+    }
+    target.focus();
+    // The control belongs to another window's document, so its class cannot be tested against this
+    // window's HTMLInputElement; the capability is what matters.
+    if ('select' in target && typeof target.select === 'function') {
+      (target as HTMLInputElement).select();
+    }
   }
 
   /**

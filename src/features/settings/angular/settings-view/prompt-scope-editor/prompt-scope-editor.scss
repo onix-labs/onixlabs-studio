@@ -1,0 +1,18 @@
+:host {
+  display: contents;
+}
+
+.scope__surfaces {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.scope__surface {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  cursor: default;
+  user-select: none;
+}

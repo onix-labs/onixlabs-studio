@@ -223,6 +223,28 @@ export interface AiRunRequest {
   readonly mode?: AgentMode;
 
   /**
+   * Gets the language of the document owning this run (a Monaco identifier such as `csharp` or
+   * `markdown`), which scopes the user's standing prompts and skills (#300, #301). Absent for a run
+   * with no owning document, or one whose surface has no language.
+   */
+  readonly language?: string;
+
+  /**
+   * Gets the user's standing system-prompt text for this run, already resolved by the renderer from
+   * the prompt profiles whose scope matches it (#300). Appended after Studio's own instructions —
+   * never in place of them — so a user's text can add guidance but cannot strand the tool-use rules.
+   * Absent when no profile matches.
+   */
+  readonly systemPromptExtra?: string;
+
+  /**
+   * Gets the user's standing instructions for this run's user message (#300), resolved as
+   * {@link systemPromptExtra} is. Composed into the prompt the model receives, beneath the message
+   * the user typed; the transcript shows only what they typed. Absent when no profile matches.
+   */
+  readonly userPromptExtra?: string;
+
+  /**
    * Gets the files and folders the user attached to the run's context, referenced by path for the
    * agent to read with its own file tools. Empty or absent when nothing is attached.
    */

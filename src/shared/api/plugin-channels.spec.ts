@@ -4,6 +4,7 @@ import {
   PluginContribution,
   PluginState,
   PluginSummary,
+  slotCandidates,
 } from './plugin-channels';
 
 /**
@@ -112,5 +113,92 @@ describe('installedContributions', (): void => {
     ];
 
     expect(installedContributions(unsupported, 'language-server')).toEqual([]);
+  });
+});
+
+describe('slotCandidates', (): void => {
+  /**
+   * Matches a language server serving a language.
+   * @param language The language identifier.
+   * @returns Returns the predicate.
+   */
+  function serving(language: string): (contribution: PluginContribution) => boolean {
+    return (contribution: PluginContribution): boolean =>
+      contribution.slot === 'language-server' && contribution.languages.includes(language);
+  }
+
+  it('offersThePluginsThatCouldFillTheSlot', () => {
+    const plugins: readonly PluginSummary[] = [
+      plugin('pyright', 'available', [server('pyright', ['python'])]),
+      plugin('ty', 'available', [server('ty', ['python'])]),
+      plugin('zls', 'available', [server('zls', ['zig'])]),
+    ];
+
+    expect(
+      slotCandidates(plugins, serving('python')).map((p: PluginSummary): string => p.id),
+    ).toEqual(['pyright', 'ty']);
+  });
+
+  it('offersNothingOnceSomethingAlreadyFillsTheSlot', () => {
+    const plugins: readonly PluginSummary[] = [
+      plugin('pyright', 'installed', [server('pyright', ['python'])]),
+      plugin('ty', 'available', [server('ty', ['python'])]),
+    ];
+
+    // Support that exists is never advertised again — offering a second Python server to someone who
+    // already has one is not an offer, it is noise.
+    expect(slotCandidates(plugins, serving('python'))).toEqual([]);
+  });
+
+  it('doesNotOfferAPluginThatPublishesNoBuildForThisPlatform', () => {
+    const plugins: readonly PluginSummary[] = [
+      plugin('podman-engine', 'unavailable', [server('podman', ['python'])]),
+    ];
+
+    // `unavailable` means the publisher ships nothing for this machine, so offering it would offer an
+    // install the Plugin Manager refuses. Podman on an Intel Mac is the live case.
+    expect(slotCandidates(plugins, serving('python'))).toEqual([]);
+  });
+
+  it('doesNotOfferAPluginThatIsAlreadyInstalling', () => {
+    const plugins: readonly PluginSummary[] = [
+      plugin('pyright', 'busy', [server('pyright', ['python'])]),
+    ];
+
+    expect(slotCandidates(plugins, serving('python'))).toEqual([]);
+  });
+
+  it('keepsCatalogueOrderSoTheFirstCandidateIsTheDefault', () => {
+    const plugins: readonly PluginSummary[] = [
+      plugin('ty', 'available', [server('ty', ['python'])]),
+      plugin('pyright', 'available', [server('pyright', ['python'])]),
+    ];
+
+    // Every caller offers exactly one — `candidates[0]` — so the order this returns decides which
+    // implementation a user is offered for a language.
+    expect(slotCandidates(plugins, serving('python'))[0].id).toBe('ty');
+  });
+
+  it('matchesAnUnkeyedSlotWithNoKeyToAskAbout', () => {
+    const engine: PluginContribution = {
+      slot: 'container-engine',
+      id: 'docker',
+      displayName: 'Docker',
+      priority: 100,
+    };
+    const plugins: readonly PluginSummary[] = [plugin('docker-engine', 'available', [engine])];
+
+    // A container engine is keyed by nothing at all, which is why the predicate takes a contribution
+    // rather than a slot and a key.
+    expect(
+      slotCandidates(
+        plugins,
+        (contribution: PluginContribution): boolean => contribution.slot === 'container-engine',
+      ).map((p: PluginSummary): string => p.id),
+    ).toEqual(['docker-engine']);
+  });
+
+  it('offersNothingWhenNoPluginFillsTheSlotAtAll', () => {
+    expect(slotCandidates([], serving('python'))).toEqual([]);
   });
 });

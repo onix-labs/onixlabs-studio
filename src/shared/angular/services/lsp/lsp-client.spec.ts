@@ -89,8 +89,7 @@ class FakeLsp implements Bridge {
           disabledServers: [],
           javaPath: null,
           dotnetPath: null,
-          clangdPath: null,
-          typescriptServerPath: null,
+          serverPaths: {},
           serverArgs: {},
           languageServers: {},
         } as LspSettingsData as T);
@@ -645,6 +644,54 @@ describe('LspClient', () => {
 
     expect(diagnostics.emitted).toHaveLength(0);
     expect(lsp.notificationsTo('didClose')).toHaveLength(1);
+  });
+
+  it('syncDocument_whenTheDocumentMovesToANewPath_closesTheOldUriAndOpensTheNew', async () => {
+    // A rename (#718) or save-as re-syncs the same document under a new path. Tracking it twice left
+    // the old URI open on the server, and closeDocument then closed the stale one first.
+    const client: LspClient = build();
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/root/a.ts',
+      languageId: 'typescript',
+      content: 'const a = 1;',
+    });
+    await flush();
+
+    client.syncDocument({
+      documentId: 'doc-1',
+      path: '/root/b.ts',
+      languageId: 'typescript',
+      content: 'const a = 1;',
+    });
+    await flush();
+
+    expect(
+      lsp
+        .notificationsTo('didClose')
+        .map(
+          (n: { params: unknown }): unknown => (n.params as { textDocument: unknown }).textDocument,
+        ),
+    ).toEqual([{ uri: 'file:///root/a.ts' }]);
+    expect(
+      lsp
+        .notificationsTo('didOpen')
+        .map(
+          (n: { params: unknown }): unknown =>
+            (n.params as { textDocument: { uri: string } }).textDocument.uri,
+        ),
+    ).toEqual(['file:///root/a.ts', 'file:///root/b.ts']);
+
+    client.closeDocument('doc-1');
+    await flush();
+
+    expect(
+      lsp
+        .notificationsTo('didClose')
+        .map(
+          (n: { params: unknown }): unknown => (n.params as { textDocument: unknown }).textDocument,
+        ),
+    ).toEqual([{ uri: 'file:///root/a.ts' }, { uri: 'file:///root/b.ts' }]);
   });
 
   it('restart_withOpenDocument_stopsStartsAfreshAndReopensTheDocument', async () => {

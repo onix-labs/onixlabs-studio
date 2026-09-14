@@ -23,21 +23,13 @@ interface FakeStore {
  * @param options The initial blob and environment fakes.
  * @returns Returns the store and a reader for the current blob.
  */
-function fakeStore(options?: {
-  initialBlob?: string | null;
-  hasLocalLogin?: boolean;
-  hasCodexLogin?: boolean;
-  envKey?: string | null;
-}): FakeStore {
+function fakeStore(options?: { initialBlob?: string | null }): FakeStore {
   let blob: string | null = options?.initialBlob ?? null;
   const ports: CredentialStorePorts = {
     load: (): string | null => blob,
     save: (plaintext: string | null): void => {
       blob = plaintext;
     },
-    hasLocalLogin: (): boolean => options?.hasLocalLogin ?? false,
-    hasCodexLogin: (): boolean => options?.hasCodexLogin ?? false,
-    envKey: (): string | null => options?.envKey ?? null,
   };
   return { store: new CredentialStore(ports), blob: (): string | null => blob };
 }
@@ -133,7 +125,7 @@ describe('CredentialStore keys', () => {
 
 describe('CredentialStore resolution', () => {
   it('apiKey_resolvesFromTheStoredKeyOnly', () => {
-    const { store } = fakeStore({ hasLocalLogin: true, envKey: 'sk-env' });
+    const { store } = fakeStore();
     store.setKey('openai', 'sk-openai');
 
     expect(store.resolveCredentialFor('openai', 'api-key')).toEqual({
@@ -146,21 +138,16 @@ describe('CredentialStore resolution', () => {
     });
   });
 
-  it('claudeLogin_prefersLocalLoginThenStoredThenEnv', () => {
-    expect(
-      fakeStore({ hasLocalLogin: true }).store.resolveCredentialFor('claude', 'claude-login'),
-    ).toEqual({ source: 'local-login', apiKey: null });
-
-    const stored: FakeStore = fakeStore({ envKey: 'sk-env' });
+  it('anUnknownAuthKind_resolvesFromAStoredKeyAndOtherwiseDefersToThePlugin', () => {
+    // Every auth kind but `api-key` and `none` belongs to a provider's plugin now (#653). Core neither
+    // knows nor probes how that provider signs in — it offers the one credential it holds, and reports
+    // nothing when it holds none, leaving the harness to use its own login.
+    const stored: FakeStore = fakeStore();
     stored.store.setKey('claude', 'sk-stored');
     expect(stored.store.resolveCredentialFor('claude', 'claude-login')).toEqual({
       source: 'api-key',
       apiKey: 'sk-stored',
     });
-
-    expect(
-      fakeStore({ envKey: 'sk-env' }).store.resolveCredentialFor('claude', 'claude-login'),
-    ).toEqual({ source: 'api-key', apiKey: 'sk-env' });
 
     expect(fakeStore().store.resolveCredentialFor('claude', 'claude-login')).toEqual({
       source: 'none',
@@ -175,15 +162,13 @@ describe('CredentialStore resolution', () => {
     });
   });
 
-  it('authFor_carriesLocalLoginAndTheResolvedKey', () => {
-    const { store } = fakeStore({ hasLocalLogin: true, hasCodexLogin: true });
+  it('authFor_carriesTheResolvedKeyAndNothingElse', () => {
+    // ⛔ It used to carry `hasLocalLogin` and `hasCodexLogin` too, which made core the authority on
+    // whether two named providers were signed in. A harness checks its own login (#653).
+    const { store } = fakeStore();
     store.setKey('openai', 'sk-openai');
 
-    expect(store.authFor('openai', 'api-key')).toEqual({
-      hasLocalLogin: true,
-      hasCodexLogin: true,
-      apiKey: 'sk-openai',
-    });
+    expect(store.authFor('openai', 'api-key')).toEqual({ apiKey: 'sk-openai' });
   });
 });
 

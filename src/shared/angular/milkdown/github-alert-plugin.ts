@@ -164,21 +164,27 @@ export const remarkGithubAlert: $Remark<'remarkGithubAlert', undefined> = $remar
           // If there's content after the marker on the same line, or on subsequent lines
           const remainingText: string = text.slice(match[0].length).trim();
 
+          // The line break separating the marker from the body arrives as a break node right after
+          // the marker text. It is part of the marker syntax, not of the body: kept, it renders a
+          // leading hard break inside the alert and serialises an extra blank quote line, mutating
+          // the document on every open/save cycle.
+          const bodyChildren: Paragraph['children'] = paragraphChildren.slice(SKIP_FIRST);
+          while (bodyChildren.length > FIRST_INDEX && bodyChildren[0].type === 'break') {
+            bodyChildren.shift();
+          }
+
           if (remainingText) {
             // There's content after the marker
             const newParagraph: Paragraph = {
               type: 'paragraph',
-              children: [
-                { type: 'text', value: remainingText },
-                ...paragraphChildren.slice(SKIP_FIRST),
-              ],
+              children: [{ type: 'text', value: remainingText }, ...bodyChildren],
             };
             newContent.push(newParagraph);
-          } else if (paragraphChildren.length > SKIP_FIRST) {
+          } else if (bodyChildren.length > FIRST_INDEX) {
             // The marker was alone but there's more in the paragraph
             const newParagraph: Paragraph = {
               type: 'paragraph',
-              children: [...paragraphChildren.slice(SKIP_FIRST)],
+              children: bodyChildren,
             };
             newContent.push(newParagraph);
           }
@@ -271,9 +277,11 @@ export const alertBlockNode: $Node = $node('alert_block', (): NodeSchema => ({
       // Open a blockquote
       state.openNode('blockquote');
 
-      // Add the alert marker as the first paragraph
+      // Add the alert marker as the first paragraph. Emitted as a raw html node: a text node would
+      // have its bracket escaped by the stringifier (`\[!NOTE]`), which GitHub renders as literal
+      // text instead of an alert.
       state.openNode('paragraph');
-      state.addNode('text', undefined, `[!${alertType}]`);
+      state.addNode('html', undefined, `[!${alertType}]`);
       state.closeNode();
 
       // Add the content

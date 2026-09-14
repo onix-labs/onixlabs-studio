@@ -23,7 +23,13 @@
 
 // A terminal tab: the shared tool-strip button (with its shared --active toggle state) plus a name and
 // inline close affordance.
+//
+// Its height is the control height rather than the tool-strip's own 1.5rem, because the New Terminal
+// button at the end of the strip is a button atom and sits at `--control-height`. The strip reads as
+// one row of controls, so the odd one out has to be brought up to the others rather than left a
+// quarter-rem short.
 .terminal-panel__tab {
+  block-size: var(--control-height);
   white-space: nowrap;
 }
 
@@ -72,12 +78,6 @@
 // dark terminal content; give it a solid panel-surface fill so the terminal never reads through it.
 app-panel-status {
   background: var(--dock-tab-background-color--active);
-}
-
-app-terminal {
-  display: block;
-  block-size: 100%;
-  inline-size: 100%;
 }
 
 .terminal-panel__empty {

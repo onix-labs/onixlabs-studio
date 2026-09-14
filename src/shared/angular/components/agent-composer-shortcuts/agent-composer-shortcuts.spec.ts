@@ -3,6 +3,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import {
   AgentComposerShortcuts,
   COMPOSER_SHORTCUT_GROUPS,
+  localiseModifiers,
   ComposerShortcut,
   ComposerShortcutGroup,
 } from './agent-composer-shortcuts';
@@ -28,6 +29,28 @@ function allShortcuts(): readonly ComposerShortcut[] {
     (group: ComposerShortcutGroup): readonly ComposerShortcut[] => group.shortcuts,
   );
 }
+
+describe('localiseModifiers', () => {
+  it('drawsAltAsOptionOnMacOS_andLeavesItAsAltElsewhere', () => {
+    const groups: readonly ComposerShortcutGroup[] = [
+      { title: 'T', shortcuts: [{ keys: ['Alt', '↑'], description: 'd' }] },
+    ];
+    expect(localiseModifiers(groups, true)[0].shortcuts[0].keys).toEqual(['⌥', '↑']);
+    expect(localiseModifiers(groups, false)[0].shortcuts[0].keys).toEqual(['Alt', '↑']);
+  });
+
+  it('theHistoryChordIsAdvertisedOnAlt_notShift', () => {
+    // Shift+arrows belongs to text selection; the menu must not promise it to recall.
+    const recall: readonly ComposerShortcut[] = allShortcuts().filter(
+      (shortcut: ComposerShortcut): boolean =>
+        /previous message|next message/.test(shortcut.description),
+    );
+    expect(recall.map((shortcut: ComposerShortcut): readonly string[] => shortcut.keys)).toEqual([
+      ['Alt', '↑'],
+      ['Alt', '↓'],
+    ]);
+  });
+});
 
 describe('AgentComposerShortcuts', () => {
   it('render_beforeOpening_isAnIconButtonNamingItself', () => {
@@ -66,11 +89,11 @@ describe('AgentComposerShortcuts', () => {
     }
     // History recall is the chord the arrows were freed from, so it has to be advertised as one.
     expect(allShortcuts()).toContainEqual({
-      keys: ['⇧', '↑'],
+      keys: ['Alt', '↑'],
       description: 'for the previous message',
     });
     expect(allShortcuts()).toContainEqual({
-      keys: ['⇧', '↓'],
+      keys: ['Alt', '↓'],
       description: 'for the next message',
     });
   });

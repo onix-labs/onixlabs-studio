@@ -8,7 +8,11 @@ import { LockfileProvision } from '../../provisioning/lockfile-provision';
 import { LspProvisioner } from '../../lsp/lsp-provisioner';
 import { DecoderDescriptor, DecoderResolution } from '../../decoders/decoder-descriptor';
 import { LanguageServerDescriptor, LspResolution } from '../../lsp/language-server-descriptor';
-import { DebugAdapterCatalogueEntry, DebugAdapterSpec } from '../../debug/debug-adapter-registry';
+import {
+  DebugAdapterCatalogueEntry,
+  DebugAdapterResolution,
+} from '../../debug/debug-adapter-registry';
+import { setPythonRuntimeForTesting } from '../../provisioning/python-runtime';
 import {
   discoverPlugins,
   LoadedPlugin,
@@ -16,6 +20,9 @@ import {
   NodeRuntimeSpec,
   payloadOps,
   PayloadOps,
+  resolveInstalledVersion,
+  toAgentHarnesses,
+  ContributedHarness,
   toContainerEngineDescriptors,
   toDebugAdapterEntries,
   toDecoderDescriptors,
@@ -26,6 +33,7 @@ import {
   validManifests,
 } from './plugin-loader';
 import { ContainerEngineDescriptor } from '../containers/container-engine';
+import { PluginDescriptor } from './plugin-catalogue';
 
 /**
  * Builds a well-formed manifest for a sideloaded plugin.
@@ -318,7 +326,7 @@ describe('plugin loader', () => {
       );
       const resolveContext: Parameters<LanguageServerDescriptor['resolve']>[0] = {
         rootPath: '/w',
-        settings: { get: (): never => ({}) as never } as never,
+        settings: { get: (): never => ({ serverPaths: {} }) as never } as never,
         provisioner: stubProvisioner('/tree'),
         nodePackageServer: (entry: string) => ({
           command: '/electron',
@@ -374,17 +382,13 @@ describe('plugin loader', () => {
       // showed "Not supported here" for a plugin that installs perfectly well.
       const descriptor: ReturnType<typeof toPluginDescriptor> = toPluginDescriptor(multiServer());
 
-      expect(descriptor.supported?.({ provisioner: stubProvisioner('/tree') } as never)).not.toBe(
-        false,
-      );
+      expect(descriptor.supported?.({ provisioner: stubProvisioner('/tree') })).not.toBe(false);
     });
 
     it('isNotReportedInstalledMerelyBecauseItHasNoEntryPoint', async () => {
       const descriptor: ReturnType<typeof toPluginDescriptor> = toPluginDescriptor(multiServer());
 
-      expect(await descriptor.detect?.({ provisioner: stubProvisioner(null) } as never)).toBe(
-        false,
-      );
+      expect(await descriptor.detect?.({ provisioner: stubProvisioner(null) })).toBe(false);
     });
   });
 
@@ -455,10 +459,11 @@ describe('plugin loader', () => {
      */
     function context(
       installedPath: string | null,
+      serverPaths: Record<string, string> = {},
     ): Parameters<LanguageServerDescriptor['resolve']>[0] {
       return {
         rootPath: '/w',
-        settings: { get: (): never => ({}) as never } as never,
+        settings: { get: (): never => ({ serverPaths }) as never } as never,
         provisioner: stubProvisioner(installedPath),
         nodePackageServer: (entry: string) => ({
           command: '/electron',
@@ -468,6 +473,40 @@ describe('plugin loader', () => {
         installedPath: (): string | null => installedPath,
       };
     }
+
+    it('runsTheUsersOwnCopyInPreferenceToTheInstalledOne', async () => {
+      writePlugin('zls', manifest());
+      const descriptors: readonly LanguageServerDescriptor[] = toLanguageServerDescriptors(
+        validManifests(discoverPlugins(root))[0],
+      );
+      const own: string = path.join(root, 'my-zls');
+      writeFileSync(own, '');
+
+      const resolution: LspResolution = await descriptors[0].resolve(
+        context('/installed/zls', { zls: own }),
+      );
+
+      // Someone with their own build keeps using it rather than carrying a second copy — and the
+      // override is honoured for a *contributed* server, which is the point: the set of servers is
+      // open, so the override cannot be a field per server.
+      expect(resolution.spec?.command).toBe(own);
+    });
+
+    it('saysWhereItLookedWhenTheOverridePathIsWrong', async () => {
+      writePlugin('zls', manifest());
+      const descriptors: readonly LanguageServerDescriptor[] = toLanguageServerDescriptors(
+        validManifests(discoverPlugins(root))[0],
+      );
+
+      const resolution: LspResolution = await descriptors[0].resolve(
+        context('/installed/zls', { zls: '/nowhere/zls' }),
+      );
+
+      // Falling back to the installed copy would silently ignore what the user asked for, which is
+      // how someone spends an afternoon wondering why their build is not being used.
+      expect(resolution.spec).toBeNull();
+      expect(resolution.error).toContain('/nowhere/zls');
+    });
 
     it('resolvesAnExecutableCommandToTheProvisionedBinary', async () => {
       writePlugin('zls', manifest());
@@ -590,10 +629,10 @@ describe('plugin loader', () => {
         languages: ['zig'],
         command: { kind: 'executable', args: ['--dap'] },
       });
-      const spec: DebugAdapterSpec = entries[0].buildSpec('/installed/dbg');
+      const resolution: DebugAdapterResolution = entries[0].buildSpec('/installed/dbg');
 
-      expect(spec.command).toBe('/installed/dbg');
-      expect(spec.args).toEqual(['--dap']);
+      expect(resolution.spec?.command).toBe('/installed/dbg');
+      expect(resolution.spec?.args).toEqual(['--dap']);
     });
 
     it('spawnsANodeAdapterUnderTheBundledRuntime', () => {
@@ -604,12 +643,46 @@ describe('plugin loader', () => {
         command: { kind: 'node', args: ['0', '127.0.0.1'] },
         transport: 'tcp-server',
       });
-      const spec: DebugAdapterSpec = entries[0].buildSpec('/installed/server.js');
+      const resolution: DebugAdapterResolution = entries[0].buildSpec('/installed/server.js');
 
-      expect(spec.command).toBe(process.execPath);
-      expect(spec.args).toEqual(['/installed/server.js', '0', '127.0.0.1']);
-      expect(spec.env?.['ELECTRON_RUN_AS_NODE']).toBe('1');
-      expect(spec.transport).toBe('tcp-server');
+      expect(resolution.spec?.command).toBe(process.execPath);
+      expect(resolution.spec?.args).toEqual(['/installed/server.js', '0', '127.0.0.1']);
+      expect(resolution.spec?.env?.['ELECTRON_RUN_AS_NODE']).toBe('1');
+      expect(resolution.spec?.transport).toBe('tcp-server');
+    });
+
+    it('spawnsAPythonAdapterUnderTheDetectedInterpreter', () => {
+      setPythonRuntimeForTesting('/usr/bin/python3');
+      const entries: readonly DebugAdapterCatalogueEntry[] = entriesFor({
+        id: 'debugpy',
+        displayName: 'Python (debugpy)',
+        languages: ['python'],
+        command: { kind: 'python' },
+      });
+      const resolution: DebugAdapterResolution = entries[0].buildSpec('/installed/adapter.py');
+
+      // Run as a script rather than through `-m`: an entry point that expects that arranges its own
+      // imports, so nothing has to be said here about packages or import paths.
+      expect(resolution.spec?.command).toBe('/usr/bin/python3');
+      expect(resolution.spec?.args).toEqual(['/installed/adapter.py']);
+      expect(resolution.error).toBeNull();
+    });
+
+    it('saysPythonIsMissingRatherThanReportingTheAdapterAbsent', () => {
+      setPythonRuntimeForTesting(null);
+      const entries: readonly DebugAdapterCatalogueEntry[] = entriesFor({
+        id: 'debugpy',
+        displayName: 'Python (debugpy)',
+        languages: ['python'],
+        command: { kind: 'python' },
+      });
+      const resolution: DebugAdapterResolution = entries[0].buildSpec('/installed/adapter.py');
+
+      // Installed and unrunnable at once: the payload is there, the interpreter it needs is not, and
+      // those have different fixes. Reporting it "not installed" would send the user to reinstall
+      // something that is already present.
+      expect(resolution.spec).toBeNull();
+      expect(resolution.error).toContain('Python 3.8+');
     });
 
     it('contributesNoAdaptersWhenTheManifestDeclaresNone', () => {
@@ -659,6 +732,29 @@ describe('a sideloaded plugin carrying its own payload', () => {
         ],
       },
       requires: [],
+    };
+  }
+
+  /**
+   * Builds a manifest contributing one Node-run agent harness.
+   * @returns Returns the manifest.
+   */
+  function harnessManifest(): PluginManifest {
+    return {
+      ...decoderManifest(),
+      id: 'local.harness',
+      name: 'Local Harness',
+      contributes: {
+        agentHarnesses: [
+          {
+            id: 'local.harness',
+            displayName: 'Local Harness',
+            priority: 100,
+            connectionAuths: ['api-key'],
+            command: { kind: 'node' },
+          },
+        ],
+      },
     };
   }
 
@@ -714,8 +810,8 @@ describe('a sideloaded plugin carrying its own payload', () => {
     );
     // The Plugin Manager and the decoder registry must agree: one saying "not installed" while the
     // other happily runs it is how a working plugin ends up offering an install that must fail.
-    expect(await descriptor.detect?.({ provisioner: nothingDownloaded } as never)).toBe(true);
-    expect(descriptor.supported?.({ provisioner: nothingDownloaded } as never)).toBe(true);
+    expect(await descriptor.detect?.({ provisioner: nothingDownloaded })).toBe(true);
+    expect(descriptor.supported?.({ provisioner: nothingDownloaded })).toBe(true);
   });
 
   it('toDecoderDescriptors_resolvesTheLocalPayload', () => {
@@ -737,6 +833,61 @@ describe('a sideloaded plugin carrying its own payload', () => {
       expect(resolution.spec.args).toEqual([path.join(root, 'payload', 'main.js')]);
       expect(resolution.spec.env).toEqual({ ELECTRON_RUN_AS_NODE: '1' });
     }
+  });
+
+  it('toAgentHarnesses_runsTheEntryPointUnderTheRuntimeEnvironment', () => {
+    // 🔥🔥 The defect that made every harness unrunnable (#697). A `node` harness is started through
+    // the Electron binary, which is a Node interpreter only while `ELECTRON_RUN_AS_NODE` is set.
+    // `spawnSpec` built `{ command, args }` and dropped the runtime's environment, so the same command
+    // launched Studio instead — the single-instance lock handed the entry point to the running window,
+    // and "starting the harness" opened its own source in an editor tab.
+    mkdirSync(path.join(root, 'payload'), { recursive: true });
+    writeFileSync(path.join(root, 'payload', 'main.js'), '', 'utf8');
+    const harnesses: readonly ContributedHarness[] = toAgentHarnesses(
+      harnessManifest(),
+      (): LspProvisioner => nothingDownloaded,
+      (entryPoint: string): NodeRuntimeSpec => ({
+        command: '/runtime',
+        args: [entryPoint],
+        env: { ELECTRON_RUN_AS_NODE: '1' },
+      }),
+      root,
+    );
+
+    expect(harnesses[0].spawnSpec()?.env?.['ELECTRON_RUN_AS_NODE']).toBe('1');
+  });
+
+  it('toAgentHarnesses_letsTheManifestAddToTheRuntimeEnvironmentButNotUnsetIt', () => {
+    // A manifest may need its own variables, but it must not be able to remove what the runtime needs
+    // to start at all — so the runtime's environment is applied first, as it is for decoders.
+    mkdirSync(path.join(root, 'payload'), { recursive: true });
+    writeFileSync(path.join(root, 'payload', 'main.js'), '', 'utf8');
+    const manifest: PluginManifest = harnessManifest();
+    const harnesses: readonly ContributedHarness[] = toAgentHarnesses(
+      {
+        ...manifest,
+        contributes: {
+          agentHarnesses: [
+            {
+              ...manifest.contributes.agentHarnesses![0],
+              command: { kind: 'node', env: { HARNESS_EXTRA: 'yes' } },
+            },
+          ],
+        },
+      },
+      (): LspProvisioner => nothingDownloaded,
+      (entryPoint: string): NodeRuntimeSpec => ({
+        command: '/runtime',
+        args: [entryPoint],
+        env: { ELECTRON_RUN_AS_NODE: '1' },
+      }),
+      root,
+    );
+
+    expect(harnesses[0].spawnSpec()?.env).toEqual({
+      ELECTRON_RUN_AS_NODE: '1',
+      HARNESS_EXTRA: 'yes',
+    });
   });
 
   it('toDecoderDescriptors_isUnavailableWithNeitherPayloadNorDownload', () => {
@@ -819,5 +970,225 @@ describe('a sideloaded plugin carrying its own payload', () => {
     );
 
     expect(descriptors).toEqual([]);
+  });
+});
+
+describe('an install older than the catalogue offers (#456)', () => {
+  // Installs are version-scoped, so which version a resolution asks about decides whether it finds
+  // anything at all. These stubs therefore record the version rather than ignoring it — a stub that
+  // answers the same for every version cannot fail the way the application did.
+
+  /**
+   * Builds a provisioner that reports an install for exactly one version, and records every version it
+   * was asked about, in call order.
+   * @param present The version that is on disk.
+   * @param asked Collects the versions the code under test asks about.
+   * @returns Returns the stub.
+   */
+  function versionedProvisioner(present: string, asked: string[]): LspProvisioner {
+    const seen: (provision: ArchiveProvision | LockfileProvision) => string = (
+      provision: ArchiveProvision | LockfileProvision,
+    ): string => {
+      asked.push(provision.version);
+      return provision.version;
+    };
+    return {
+      isArchiveInstalled: (p: ArchiveProvision): boolean => seen(p) === present,
+      archiveTarget: (p: ArchiveProvision): string | null =>
+        seen(p) === present ? `/installed/${p.version}/zls` : null,
+      removeArchive: (p: ArchiveProvision): Promise<void> => {
+        seen(p);
+        return Promise.resolve();
+      },
+      ensureArchive: (p: ArchiveProvision): Promise<string | null> => {
+        seen(p);
+        return Promise.resolve(`/installed/${p.version}/zls`);
+      },
+      isTreeInstalled: (p: LockfileProvision): boolean => seen(p) === present,
+      treeDirectory: (p: LockfileProvision): string | null => `/installed/${p.version}`,
+      treeTarget: (p: LockfileProvision, entryPoint?: string): string | null => {
+        const relative: string | undefined = entryPoint ?? p.executablePath;
+        return seen(p) === present && relative !== undefined
+          ? path.join(`/installed/${p.version}`, relative)
+          : null;
+      },
+      removeTree: (p: LockfileProvision): Promise<void> => {
+        seen(p);
+        return Promise.resolve();
+      },
+      pruneOtherVersions: (): Promise<void> => Promise.resolve(),
+    } as unknown as LspProvisioner;
+  }
+
+  /**
+   * Writes the manifest to a directory and loads it back through the real validator, so these tests
+   * exercise the shape the application actually resolves.
+   * @param directory The directory to write into.
+   * @param overrides Fields to replace on the standard manifest.
+   * @returns Returns the validated manifest.
+   */
+  function load(directory: string, overrides: Record<string, unknown> = {}): PluginManifest {
+    mkdirSync(path.join(directory, 'zls'), { recursive: true });
+    writeFileSync(
+      path.join(directory, 'zls', MANIFEST_FILE),
+      JSON.stringify(manifest({ version: '2.0.0', ...overrides })),
+      'utf8',
+    );
+    const loaded: readonly PluginManifest[] = validManifests(discoverPlugins(directory));
+    return loaded[0];
+  }
+
+  let root: string;
+
+  beforeEach(() => {
+    root = mkdtempSync(path.join(tmpdir(), 'studio-456-'));
+  });
+
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it('payloadOps_reportsInstalledAgainstTheVersionOnDiskNotTheOneOffered', () => {
+    const asked: string[] = [];
+    const ops: PayloadOps = payloadOps(load(root), undefined, (): string => '1.0.0');
+
+    // The catalogue offers 2.0.0; 1.0.0 is what is on disk. Before the fix this asked about 2.0.0,
+    // found nothing, and reported a perfectly runnable plugin as not installed.
+    expect(ops.isInstalled(versionedProvisioner('1.0.0', asked))).toBe(true);
+    expect(asked).toEqual(['1.0.0']);
+  });
+
+  it('payloadOps_resolvesTheEntryPointInsideTheInstalledVersionsDirectory', () => {
+    const ops: PayloadOps = payloadOps(load(root), undefined, (): string => '1.0.0');
+
+    expect(ops.target(versionedProvisioner('1.0.0', []))).toBe('/installed/1.0.0/zls');
+  });
+
+  it('payloadOps_installsTheOfferedVersionRatherThanTheOneAlreadyThere', async () => {
+    const asked: string[] = [];
+    const ops: PayloadOps = payloadOps(load(root), undefined, (): string => '1.0.0');
+
+    // Installing is the one operation that must mean the *new* version: it is the update.
+    await expect(ops.ensure(versionedProvisioner('1.0.0', asked))).resolves.toBe(
+      '/installed/2.0.0/zls',
+    );
+    expect(asked).toEqual(['2.0.0']);
+  });
+
+  it('payloadOps_removesTheVersionThatIsActuallyOnDisk', async () => {
+    const asked: string[] = [];
+    const ops: PayloadOps = payloadOps(load(root), undefined, (): string => '1.0.0');
+
+    // Removing the offered version deleted nothing and orphaned the real install on disk forever.
+    await ops.remove(versionedProvisioner('1.0.0', asked));
+
+    expect(asked).toEqual(['1.0.0']);
+  });
+
+  it('payloadOps_readsTheInstalledVersionOnEveryCallSoAnUpdateTakesEffectWithoutARestart', () => {
+    let installed: string = '1.0.0';
+    const ops: PayloadOps = payloadOps(load(root), undefined, (): string => installed);
+
+    expect(ops.target(versionedProvisioner('1.0.0', []))).toBe('/installed/1.0.0/zls');
+
+    // The user accepts the update mid-session. Descriptors are built once at start-up, so a version
+    // captured at construction would keep resolving the superseded install until Studio restarted.
+    installed = '2.0.0';
+
+    expect(ops.target(versionedProvisioner('2.0.0', []))).toBe('/installed/2.0.0/zls');
+  });
+
+  it('payloadOps_fallsBackToTheOfferedVersionWhenNothingIsRecorded', () => {
+    const asked: string[] = [];
+    const ops: PayloadOps = payloadOps(load(root), undefined, (): null => null);
+
+    // A plugin Studio has never installed has no record to resolve against, and the offered version is
+    // the only version there is.
+    expect(ops.isInstalled(versionedProvisioner('2.0.0', asked))).toBe(true);
+    expect(asked).toEqual(['2.0.0']);
+  });
+
+  it('payloadOps_scopesAnNpmTreeByTheInstalledVersionToo', () => {
+    const npm: PluginManifest = load(root, {
+      provision: {
+        kind: 'npm',
+        lockfileUrl: 'https://example.com/zls.lock.json',
+        sha256: 'd'.repeat(64),
+        executablePath: 'node_modules/a/bin/run',
+      },
+    });
+    const ops: PayloadOps = payloadOps(npm, undefined, (): string => '1.0.0');
+
+    // The npm layout is version-scoped in exactly the same way, so it has exactly the same defect.
+    expect(ops.target(versionedProvisioner('1.0.0', []))).toBe(
+      path.join('/installed/1.0.0', 'node_modules/a/bin/run'),
+    );
+  });
+
+  it('toLanguageServerDescriptors_keepsServingFromTheOldVersionWhileTheUpdateIsOffered', async () => {
+    const descriptors: readonly LanguageServerDescriptor[] = toLanguageServerDescriptors(
+      load(root),
+      (): string => '1.0.0',
+    );
+    const resolution: LspResolution = await descriptors[0].resolve({
+      provisioner: versionedProvisioner('1.0.0', []),
+      settings: { get: (): { serverPaths: Record<string, string> } => ({ serverPaths: {} }) },
+      nodePackageServer: (entry: string): { command: string; args: string[] } => ({
+        command: 'node',
+        args: [entry],
+      }),
+    } as never);
+
+    // The symptom this whole issue is about: the server kept running instead of reporting itself
+    // uninstalled the moment the catalogue moved ahead.
+    expect(resolution.spec?.command).toBe('/installed/1.0.0/zls');
+  });
+
+  it('toPluginDescriptor_detectsAnOlderInstallSoItsRecordIsNotForgottenAsStale', async () => {
+    const descriptor: PluginDescriptor = toPluginDescriptor(
+      load(root),
+      undefined,
+      (): string => '1.0.0',
+    );
+
+    // The Plugin Manager forgets a record whose install does not detect (#463). Answering this against
+    // the catalogue's version therefore did not merely stop the server: it erased the record of the
+    // install it was wrong about, which is what the update offer is computed from.
+    await expect(
+      descriptor.detect({ provisioner: versionedProvisioner('1.0.0', []) }),
+    ).resolves.toBe(true);
+  });
+});
+
+describe('resolveInstalledVersion', () => {
+  it('prefersTheOfferedVersionWhenItIsTheOneInstalled', () => {
+    // The ordinary case, and it must win: preferring another copy would resolve an old install on a
+    // machine that is perfectly up to date.
+    expect(resolveInstalledVersion(['1.0.0', '2.0.0'], '2.0.0', '1.0.0')).toBe('2.0.0');
+  });
+
+  it('fallsBackToTheRecordedVersionWhenTheCatalogueHasMovedAhead', () => {
+    expect(resolveInstalledVersion(['1.0.0'], '2.0.0', '1.0.0')).toBe('1.0.0');
+  });
+
+  it('resolvesALoneInstallThatNoRecordNames', () => {
+    // The state #456 leaves behind: the install is on disk and its record was forgotten as stale
+    // (#463). Stopping at the record would leave every already-broken profile broken.
+    expect(resolveInstalledVersion(['1.0.0'], '2.0.0', null)).toBe('1.0.0');
+  });
+
+  it('ignoresARecordNamingAVersionThatIsNotOnDisk', () => {
+    // A record can outlive the directory it describes — removed by hand, or a failed prune.
+    expect(resolveInstalledVersion(['1.0.0'], '3.0.0', '2.0.0')).toBe('1.0.0');
+  });
+
+  it('declinesToGuessBetweenSeveralInstallsWithNoRecord', () => {
+    // Guessing risks spawning an old binary against a new workspace. Reporting nothing installed is
+    // the recoverable failure: the user is offered the install and gets a known-good copy.
+    expect(resolveInstalledVersion(['1.0.0', '1.5.0'], '2.0.0', null)).toBeNull();
+  });
+
+  it('resolvesNothingWhenNothingIsInstalled', () => {
+    expect(resolveInstalledVersion([], '2.0.0', '1.0.0')).toBeNull();
   });
 });

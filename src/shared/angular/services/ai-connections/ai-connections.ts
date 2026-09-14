@@ -8,24 +8,11 @@ import type {
   AiProviderKind,
   AuthMethod,
 } from '@shared/api/ai-types';
-import { DEFAULT_CONNECTION_ID, SEED_CONNECTIONS } from '@shared/api/ai-types';
+import { API_KEY_AUTH } from '@shared/api/ai-types';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { Ai } from '@shared/angular/services/ai/ai';
 import { Log } from '@shared/angular/services/log/log';
-
-/**
- * The default human-readable label for a new connection of each kind.
- */
-const KIND_LABELS: Readonly<Record<AiProviderKind, string>> = {
-  anthropic: 'Anthropic',
-  openai: 'OpenAI',
-  xai: 'xAI (Grok)',
-  google: 'Google (Gemini)',
-  deepseek: 'DeepSeek',
-  ollama: 'Ollama (local)',
-  'openai-compatible': 'OpenAI-compatible',
-  custom: 'Custom',
-};
+import { AiProviders } from '@shared/angular/services/ai-providers/ai-providers';
 
 /**
  * The context window applied to a manually-added model until the user edits it or discovery refines it.
@@ -56,6 +43,12 @@ export class AiConnections {
    * Holds the settings service (the persisted connection collection).
    */
   private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds the providers installed plugins contribute, read for the models a new configuration starts
+   * with — which is the plugin's to say, not core's.
+   */
+  private readonly providers: AiProviders = inject(AiProviders);
 
   /**
    * Holds the AI IPC client, or undefined outside Electron.
@@ -130,17 +123,33 @@ export class AiConnections {
    * @returns Returns the created connection.
    */
   public add(kind: AiProviderKind, method?: AuthMethod): AiConnection {
+    // ⛔ Every fallback here is generic. It used to read a company name out of a `KIND_LABELS` table and
+    // default the auth to `none` for `ollama` and an API key for everything else — core knowing two
+    // specific providers by name, in the one place a configuration is created (#653). The method comes
+    // from a contributed page, and the kind is the only honest label when it somehow does not.
+    const models: readonly AiModelInfo[] = this.providers.modelsFor(kind);
     const connection: AiConnection = {
       id: this.uniqueId(kind),
       kind,
-      label: method?.defaultDisplayName ?? KIND_LABELS[kind],
-      auth: method?.auth ?? (kind === 'ollama' ? 'none' : 'api-key'),
+      label: method?.defaultDisplayName ?? kind,
+      auth: method?.auth ?? API_KEY_AUTH,
+      // 🔑 The configuration names the plugin that will run it from the moment it exists. The page it
+      // was created from came from that plugin, so making the user then go and choose it — from a
+      // dropdown that defaulted to a "Built-in" harness which no longer exists — was asking them to
+      // repair something that was never broken until core stopped shipping a provider (#653, #697).
+      ...(method?.harnessId === undefined ? {} : { harnessId: method.harnessId }),
       ...(method?.baseUrl !== undefined ? { baseUrl: method.baseUrl } : {}),
-      models: [],
-      defaultModelId: '',
+      models,
+      defaultModelId: models[0]?.id ?? '',
     };
     this.settings.upsertConnection(connection);
     this.log.info('AiConnections', `Connection added '${connection.id}'`, kind, connection.auth);
+    // A method that needs no key can be asked for its models straight away. The seeded list is a
+    // snapshot frozen at the plugin's release; the plugin's harness knows what the provider offers
+    // today, and nothing is lost by asking — a failure leaves the seeds in place.
+    if (method?.harnessId !== undefined && method.auth !== API_KEY_AUTH) {
+      void this.discoverQuietly(connection);
+    }
     return connection;
   }
 
@@ -175,30 +184,6 @@ export class AiConnections {
   public remove(id: string): void {
     this.log.info('AiConnections', `Connection removed '${id}'`);
     this.settings.removeConnection(id);
-  }
-
-  /**
-   * Restores the default connections: every seeded connection is reset to its shipped definition (added
-   * back when removed, or overwritten when edited) and placed first, in their canonical order; the
-   * user's own connections are kept, after them. When the active connection no longer resolves (for
-   * example it was a removed seed), selection returns to the default connection.
-   */
-  public restoreDefaults(): void {
-    const seedIds: Set<string> = new Set<string>(
-      SEED_CONNECTIONS.map((connection: AiConnection): string => connection.id),
-    );
-    const custom: readonly AiConnection[] = this.connections().filter(
-      (connection: AiConnection): boolean => !seedIds.has(connection.id),
-    );
-    const restored: readonly AiConnection[] = [...SEED_CONNECTIONS, ...custom];
-    this.settings.setAiConnections(restored);
-    this.log.info('AiConnections', 'Default connections restored');
-
-    const active: string = this.settings.aiActiveConnectionId();
-    if (!restored.some((connection: AiConnection): boolean => connection.id === active)) {
-      this.settings.setActiveConnection(DEFAULT_CONNECTION_ID);
-    }
-    void this.refreshAllAuth();
   }
 
   /**
@@ -249,6 +234,9 @@ export class AiConnections {
       this.putStatus(connection.id, status);
     }
     this.log.info('AiConnections', `API key stored for '${connection.id}'`);
+    // The key is what discovery was waiting for: a configuration created through an API-key method
+    // could not be asked until now.
+    void this.discoverQuietly(connection);
   }
 
   /**
@@ -305,6 +293,22 @@ export class AiConnections {
       );
     }
     return result;
+  }
+
+  /**
+   * Discovers a connection's models without anything waiting on the answer: the list updates when it
+   * arrives, and a failure is logged and otherwise leaves the connection as it was. For the moments a
+   * configuration first becomes able to answer, where the seeded list would otherwise sit until the
+   * user thought to press Refresh.
+   * @param connection The connection.
+   * @returns Resolves once discovery has settled, however it settled.
+   */
+  private async discoverQuietly(connection: AiConnection): Promise<void> {
+    try {
+      await this.discover(connection);
+    } catch (error: unknown) {
+      this.log.warn('AiConnections', `Background discovery failed for '${connection.id}'`, error);
+    }
   }
 
   /**

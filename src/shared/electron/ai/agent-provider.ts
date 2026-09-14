@@ -37,20 +37,15 @@ export interface ProviderAvailability {
 }
 
 /**
- * The credential material a provider authenticates a run with. The Claude provider can use either the
- * local login or an API key; API-only providers (e.g. Vercel) require the key.
+ * The credential material a provider authenticates a run with.
+ *
+ * ⛔ One field. It used to carry `hasLocalLogin` and `hasCodexLogin` — core's reading of `~/.claude` and
+ * `~/.codex` — which made core the authority on whether two named providers were signed in, and obliged
+ * it to learn a new probe for every provider that followed (#653). A harness talks to its provider and
+ * checks its own login; the Claude harness already does exactly that before it asks for a key. What core
+ * can offer is the one credential core stores.
  */
 export interface AgentAuth {
-  /**
-   * Gets a value indicating whether a local Claude login (`~/.claude`) is present.
-   */
-  readonly hasLocalLogin: boolean;
-
-  /**
-   * Gets a value indicating whether a local Codex login (`~/.codex`) is present.
-   */
-  readonly hasCodexLogin: boolean;
-
   /**
    * Gets the available API key, or null when none is available.
    */
@@ -71,6 +66,29 @@ export interface AgentBridge {
    * @returns Returns the capability's result.
    */
   request(capability: string, input: unknown, timeoutMs?: number): Promise<unknown>;
+}
+
+/**
+ * A skill offered to a run (#301): what the model is told up front, and how the body is fetched when it
+ * asks. Progressive disclosure in two halves — the name and description are listed in the system
+ * prompt on every turn, the body only when a model decides the task calls for it.
+ */
+export interface OfferedSkill {
+  /**
+   * Gets the skill's name, which is what the model passes to load it.
+   */
+  readonly name: string;
+
+  /**
+   * Gets the description the model reads to decide whether the skill applies.
+   */
+  readonly description: string;
+
+  /**
+   * Loads the skill's instructions, and the absolute paths of any files it bundles.
+   * @returns Returns the content, or null when the skill has since gone from the library.
+   */
+  load(): Promise<{ readonly body: string; readonly files: readonly string[] } | null>;
 }
 
 /**
@@ -191,6 +209,32 @@ export interface AgentRunContext {
    * inspect but never edits or executes).
    */
   readonly mode: AgentMode;
+
+  /**
+   * Gets the language of the document owning this run, or null when it has none. Scopes the user's
+   * standing prompts and the skills offered (#300, #301).
+   */
+  readonly language: string | null;
+
+  /**
+   * Gets the user's standing system-prompt text for this run, or empty when no prompt profile
+   * matches (#300). Appended after Studio's own instructions by `promptForSurface`, never in place
+   * of them.
+   */
+  readonly systemPromptExtra: string;
+
+  /**
+   * Gets the user's standing instructions for the user message, or empty when no prompt profile
+   * matches (#300). Composed beneath the prompt when the turn envelope is built, so every harness
+   * receives them without the wire carrying a second field.
+   */
+  readonly userPromptExtra: string;
+
+  /**
+   * Gets the skills in scope for this run (#301): the ones a model is told about, and may load. Empty
+   * when the library has none that apply, in which case no skill tool is offered either.
+   */
+  readonly skills: readonly OfferedSkill[];
 
   /**
    * Gets the files and folders the user attached to the run's context, referenced by path for the
@@ -375,6 +419,15 @@ export interface AgentSession {
   panicStop?(): void;
 
   /**
+   * Registers a listener for the session ending on its own — its harness died between turns, or a
+   * panic stop escalated to closing it — so the manager can tell the renderer, whose task registry has
+   * nothing left to settle it. Fires at most once, and not for a close the manager itself requested.
+   * Optional: a provider that only ever ends when closed has nothing to report.
+   * @param listener Invoked with why the session ended.
+   */
+  onEnded?(listener: (reason: string) => void): void;
+
+  /**
    * Ends the session and releases its resources (the harness subprocess).
    */
   close(): Promise<void>;
@@ -451,4 +504,49 @@ export interface AgentProvider {
    * @returns Returns the live session.
    */
   openSession?(context: AgentRunContext): AgentSession;
+
+  /**
+   * Asks the provider what models it can run, or omits it when it cannot say.
+   *
+   * ⛔ Returns what was *reported*, not a merged result: merging the discovered list into the
+   * connection's own, resolving each model's context window and phrasing the outcome for the settings
+   * dialog are all core's, and a provider that did them would be a provider that could disagree with
+   * another about the same model.
+   * @param auth The connection's credential, for a provider that must authenticate to ask.
+   * @param settings Settings for this discovery that are not part of the connection — today, the
+   * Claude CLI choice, which is an application-wide setting rather than a connection field and so has
+   * nowhere else to ride. Merged over the provider's own settings.
+   * @returns Returns the report, or null when discovery could not run at all.
+   */
+  discoverModels?(
+    auth: AgentAuth,
+    settings?: Readonly<Record<string, unknown>>,
+  ): Promise<AgentModelReport | null>;
+}
+
+/**
+ * What a provider reports when asked what it can run.
+ *
+ * ⛔ Two fields rather than an array, because a discovery that found nothing is the case a user actually
+ * has to act on and "no models" is not a reason. An unreachable local server, a connection with no API
+ * key and a gateway answering 403 are three different things to go and fix, and a provider is the only
+ * thing that knows which one happened.
+ */
+export interface AgentModelReport {
+  /**
+   * Gets the models reported, which may be empty.
+   *
+   * ⛔ `contextWindow` is the provider's to report (protocol 1.10.0). Core used to resolve it from the
+   * model id against a table naming `gpt-4o`, `claude-opus-4-8` and the rest — which is exactly the
+   * provider knowledge that cannot live here. Undefined falls back to one neutral default.
+   */
+  readonly models: readonly { id: string; label?: string; contextWindow?: number }[];
+
+  /**
+   * Gets why the list is empty, or null when the provider has nothing to add.
+   *
+   * ⚠️ Read only when {@link models} is empty. A provider that reported models is reporting models, and
+   * how a successful discovery reads in Settings is core's wording, decided once.
+   */
+  readonly detail: string | null;
 }

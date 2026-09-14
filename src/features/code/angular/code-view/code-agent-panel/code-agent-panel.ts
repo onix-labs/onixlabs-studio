@@ -75,6 +75,14 @@ export class CodeAgentPanel {
   );
 
   /**
+   * Gets the language of this tab's document, so the agent's standing prompts and skills are scoped
+   * to it (#300, #301).
+   */
+  protected readonly language: Signal<string | undefined> = computed((): string | undefined =>
+    this.documents.get(this.tabId())?.language(),
+  );
+
+  /**
    * Hides the agent panel, leaving its conversation mounted so it can be reopened.
    */
   protected onClose(): void {

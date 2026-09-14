@@ -37,8 +37,30 @@ export {
   SAVE_DOCUMENT,
   OPEN_TERMINAL,
   OPEN_FILE,
+  LIST_OPEN_DOCUMENTS,
+  OPEN_DIFF,
+  READ_SOURCE_CONTROL_STATUS,
+  LIST_TERMINALS,
+  CREATE_FILE,
+  CREATE_FOLDER,
+  RENAME_PATH,
+  DELETE_PATH,
+  REVEAL_IN_EXPLORER,
+  AGENT_SURFACES,
+  isAgentSurface,
+  LOAD_SKILL,
 } from './ai/ai-tool-surface';
 export type { AgentSurface, InsertPlacement, OpenDocumentFormat } from './ai/ai-tool-surface';
+export {
+  AGENT_SURFACE_LABELS,
+  GLOBAL_SCOPE,
+  normalizeLanguage,
+  readPromptScope,
+  scopeMatches,
+  scopeSpecificity,
+  sortByScope,
+} from './ai/ai-prompt-scope';
+export type { PromptScope } from './ai/ai-prompt-scope';
 export type {
   AiAuthSource,
   AiAuthStatus,
@@ -62,10 +84,12 @@ export {
   DEFAULT_CLAUDE_EXECUTABLE,
 } from './ai/ai-provider-types';
 export type { AiProviderKind, AiAuthKind, AiConnection } from './ai/ai-connection-types';
+export { API_KEY_AUTH, NO_AUTH } from './ai/ai-connection-types';
 export type { AuthMethod, ProviderPage } from './ai/ai-provider-catalog';
 export {
-  COMPANY_LABELS,
-  PROVIDER_PAGES,
+  type OfferedAiProvider,
+  pagesFromContributions,
+  modelsForKind,
   providerPageForKind,
   providerDisplayLabel,
 } from './ai/ai-provider-catalog';
@@ -73,9 +97,7 @@ export type { ClaudeAuthStatus, ClaudeLoginPhase, ClaudeLoginStatus } from './ai
 export type { AiDiscoverModelsRequest, AiDiscoverModelsResult } from './ai/ai-discovery-types';
 export {
   SEED_CONNECTIONS,
-  CLAUDE_CONNECTION_ID,
   ANTHROPIC_KEY_CONNECTION_ID,
-  OLLAMA_CONNECTION_ID,
   DEFAULT_CONNECTION_ID,
 } from './ai/ai-seed-connections';
 export type {

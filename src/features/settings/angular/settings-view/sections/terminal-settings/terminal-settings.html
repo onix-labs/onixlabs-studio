@@ -2,8 +2,8 @@
   label="Default shell"
   description="The shell a new terminal starts with. Choose from the shells installed on your system, or use the system default."
 >
-  <app-dropdown
-    [options]="shellOptions()"
+  <app-shell-picker
+    defaultLabel="System default"
     [value]="defaultShell()"
     (valueChange)="onChange($event)"
   />

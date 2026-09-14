@@ -1,4 +1,4 @@
-import { Signal, signal, WritableSignal } from '@angular/core';
+import { computed, Signal, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import type {
@@ -10,6 +10,11 @@ import type {
   AiRemoteControlMode,
 } from '@shared/api/ai-types';
 import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine';
+import {
+  AgentControls,
+  agentControls,
+  agentPhase,
+} from '@shared/angular/services/agent/agent-controls';
 import { AgentSessions } from '@shared/angular/services/agent-sessions/agent-sessions';
 import { AppMenu } from '@shared/angular/services/app-menu/app-menu';
 import { MenuContribution, MenuEntry } from '@shared/angular/services/app-menu/app-menu-model';
@@ -73,6 +78,7 @@ describe('AgentRibbon', () => {
   let remoteControlChoices: boolean[];
   let running: WritableSignal<boolean>;
   let hasMessages: WritableSignal<boolean>;
+  let awaiting: WritableSignal<boolean>;
   let remoteControlEnabled: WritableSignal<boolean>;
   let historyOpen: WritableSignal<boolean>;
   let mode: WritableSignal<AgentMode>;
@@ -139,6 +145,7 @@ describe('AgentRibbon', () => {
     clearedContexts = 0;
     contextRefs = signal<readonly AgentContextRef[]>([]);
     hasSelection = signal<boolean>(false);
+    awaiting = signal<boolean>(false);
     windows = new FakeModalWindows();
     const engineStub: Partial<AgentEngine> = {
       providers: signal<readonly AiProviderInfo[]>(PROVIDERS),
@@ -146,6 +153,9 @@ describe('AgentRibbon', () => {
     const sessionsStub: Partial<AgentSessions> = {
       isRunning: running,
       hasMessages,
+      controls: computed((): AgentControls =>
+        agentControls(agentPhase(hasMessages(), running(), awaiting())),
+      ),
       historyOpen,
       mode,
       contextPaths: contextRefs,
@@ -370,6 +380,35 @@ describe('AgentRibbon', () => {
     fixture.detectChanges();
 
     expect(button('Compact').disabled).toBe(true);
+  });
+
+  it('engineAndAttachments_whileWorking_areDisabled_andStopIsTheOnlyActionLeft', () => {
+    // A model or mode change is bound at the next turn and an attachment rides the next turn's
+    // context, so while a run is in flight they would be promises the running turn cannot keep.
+    running.set(true);
+    hasSelection.set(true);
+    fixture.detectChanges();
+
+    expect(field('Provider and model').disabled).toBe(true);
+    expect(field('Mode').disabled).toBe(true);
+    expect(button('File').disabled).toBe(true);
+    expect(button('Folder').disabled).toBe(true);
+    expect(button('Selection').disabled).toBe(true);
+    expect(button('New Chat').disabled).toBe(true);
+    expect(button('Compact').disabled).toBe(true);
+    expect(button('Stop').disabled).toBe(false);
+    expect(button('Remote Control').disabled).toBe(false);
+  });
+
+  it('whileWaitingOnTheUser_theControlsAreAsWhenWorking', () => {
+    running.set(true);
+    awaiting.set(true);
+    fixture.detectChanges();
+
+    expect(button('Stop').disabled).toBe(false);
+    expect(button('New Chat').disabled).toBe(true);
+    expect(field('Provider and model').disabled).toBe(true);
+    expect(button('File').disabled).toBe(true);
   });
 
   it('compact_whenChatEmpty_isDisabled', () => {

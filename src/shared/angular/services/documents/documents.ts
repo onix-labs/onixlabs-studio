@@ -1,5 +1,8 @@
 import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { FileInfo } from '@shared/api/file-channels';
+import { Icon } from '@shared/angular/icons/icon';
+import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
+import { DockPanelRegistry } from '@shared/angular/services/dock-layout/dock-panel-registry';
 import { Log } from '@shared/angular/services/log/log';
 import { FileConflicts } from '../file-conflicts/file-conflicts';
 import { FileSystem } from '../file-system/file-system';
@@ -169,6 +172,13 @@ export class Documents implements UnsavedWorkSource {
   private readonly recentItems: RecentItems = inject(RecentItems);
 
   /**
+   * Holds the dock panel registry a well document's tab is registered with. A well document has no
+   * top-level tab; its dock panel is the tab whose title follows the file. The root model resolves
+   * the root registry, which holds no well documents, so its lookups simply miss.
+   */
+  private readonly dockPanels: DockPanelRegistry = inject(DockPanelRegistry);
+
+  /**
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
@@ -282,6 +292,15 @@ export class Documents implements UnsavedWorkSource {
     // is created (entries are materialised lazily, after the tab is already active).
     this.entriesVersion();
     return this.entries.get(id)?.document;
+  }
+
+  /**
+   * Lists every document this registry holds, in the order they were created.
+   * @returns Returns the documents.
+   */
+  public list(): readonly CodeDocument[] {
+    this.entriesVersion();
+    return [...this.entries.values()].map((entry: DocumentEntry): CodeDocument => entry.document);
   }
 
   /**
@@ -467,6 +486,62 @@ export class Documents implements UnsavedWorkSource {
       }
     }
     return undefined;
+  }
+
+  /**
+   * Follows a rename on disk: every open document backed by the renamed path — the file itself, or
+   * any file beneath a renamed folder — is re-bound to where its file now lives, so its tab title,
+   * its watch and the next save all target the new path rather than recreating the old one.
+   *
+   * The language is re-detected only when the file's extension changed: a folder rename, or a rename
+   * that keeps the extension, must not undo a syntax the user chose by hand.
+   * @param fromPath The absolute path the entry had before the rename.
+   * @param toPath The absolute path it has now.
+   * @returns Returns the ids of the documents that moved, so callers can sweep state keyed on the path.
+   */
+  public relocate(fromPath: string, toPath: string): readonly string[] {
+    const moved: string[] = [];
+    for (const [id, entry] of this.entries) {
+      const current: string | null = entry.filePath();
+      if (current === null) {
+        continue;
+      }
+      const relocated: string | null = this.relocatePath(current, fromPath, toPath);
+      if (relocated === null) {
+        continue;
+      }
+      const extensionChanged: boolean = this.extname(current) !== this.extname(relocated);
+      entry.filePath.set(relocated);
+      entry.fileName.set(this.basename(relocated));
+      if (extensionChanged) {
+        this.redetectLanguage(id, entry);
+      }
+      this.syncTab(id);
+      this.watchEntry(id);
+      this.log.info('Documents', `Relocated '${entry.fileName()}'`, id, current, relocated);
+      moved.push(id);
+    }
+    return moved;
+  }
+
+  /**
+   * Maps a document's path through a rename: the renamed entry itself, or a descendant of a renamed
+   * folder, lands under the new path; anything else is untouched. Descendants are matched on a
+   * separator boundary, so renaming `/ws/src` leaves `/ws/src-old/a.ts` alone.
+   * @param current The document's current path.
+   * @param fromPath The renamed entry's old path.
+   * @param toPath The renamed entry's new path.
+   * @returns Returns the document's new path, or null when the rename does not touch it.
+   */
+  private relocatePath(current: string, fromPath: string, toPath: string): string | null {
+    if (current === fromPath) {
+      return toPath;
+    }
+    const separator: string = current.charAt(fromPath.length);
+    if ((separator === '/' || separator === '\\') && current.startsWith(fromPath)) {
+      return `${toPath}${current.slice(fromPath.length)}`;
+    }
+    return null;
   }
 
   /**
@@ -717,7 +792,9 @@ export class Documents implements UnsavedWorkSource {
   }
 
   /**
-   * Reflects a document's file name and dirty state onto its owning tab.
+   * Reflects a document's file name and dirty state onto its owning tab. A well document has no
+   * top-level tab; its dock panel is the tab, and only its title is reflected there — the panel's
+   * dirty marker reads the document's own signal.
    * @param id The owning tab identifier.
    */
   private syncTab(id: string): void {
@@ -725,13 +802,14 @@ export class Documents implements UnsavedWorkSource {
     if (entry === undefined) {
       return;
     }
+    const fileName: string = entry.fileName();
     const tab: Tab | undefined = this.tabs
       .tabs()
       .find((candidate: Tab): boolean => candidate.id === id);
     if (tab === undefined) {
+      this.syncWellPanel(id, entry);
       return;
     }
-    const fileName: string = entry.fileName();
     const dirty: boolean = entry.document.dirty();
     if (tab.title !== fileName) {
       this.tabs.rename(id, fileName);
@@ -739,6 +817,39 @@ export class Documents implements UnsavedWorkSource {
     if ((tab.dirty ?? false) !== dirty) {
       this.tabs.setDirty(id, dirty);
     }
+  }
+
+  /**
+   * Reflects a well document's file name onto its dock panel's title. Leaves the registry alone when
+   * the title already matches, since a patch re-runs every computed that resolves panels.
+   * @param id The well document identifier.
+   * @param entry The document's entry.
+   */
+  private syncWellPanel(id: string, entry: DocumentEntry): void {
+    const panel: DockPanel | undefined = this.dockPanels.get(id);
+    if (panel === undefined || panel.title === entry.fileName()) {
+      return;
+    }
+    this.dockPanels.update(id, { title: entry.fileName() });
+  }
+
+  /**
+   * Re-detects a document's language after its extension changed, and — for a well document — swaps
+   * its dock panel's icon and tool-strip ownership to match: a rename across the markdown boundary
+   * swaps the editor beneath the tab, so the tab must swap with it.
+   * @param id The document identifier.
+   * @param entry The document's entry, already re-pointed at its new path.
+   */
+  private redetectLanguage(id: string, entry: DocumentEntry): void {
+    entry.language.set(this.monaco.getLanguageForFileName(entry.fileName()));
+    if (this.dockPanels.get(id) === undefined) {
+      return;
+    }
+    const markdown: boolean = entry.language() === 'markdown';
+    this.dockPanels.update(id, {
+      icon: markdown ? Icon.MARKDOWN : Icon.CODE,
+      ownsToolStrip: markdown,
+    });
   }
 
   /**

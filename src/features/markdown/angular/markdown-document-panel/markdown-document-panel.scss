@@ -12,6 +12,10 @@
   min-height: 0;
 }
 
+.document-panel__toolstrip {
+  border-block-end: 0.0625rem solid var(--dock-border-color);
+}
+
 .document-panel__editor {
   flex: 1 1 auto;
   min-height: 0;

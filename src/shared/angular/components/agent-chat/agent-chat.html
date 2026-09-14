@@ -19,7 +19,27 @@
     @if (items().length === 0) {
       <div class="agent__empty">
         <app-icon class="agent__empty-icon" [icon]="Icon.AGENT_EMPTY" aria-hidden="true" />
-        <p class="agent__empty-caption">Ask the agent anything to get started</p>
+        @if (hasNoProviders()) {
+          <!-- Nothing installed can run a turn. Studio ships no AI provider of its own — each one is
+               a plugin, so the stack is the user's choice — which makes this the first thing a fresh
+               install has to say, and saying "ask the agent anything" instead would be an invitation
+               to type into something that cannot answer. -->
+          <p class="agent__empty-caption">No AI provider is installed</p>
+          <p class="agent__empty-detail">
+            Studio runs agents through provider plugins, so you can pick your own stack. Install one
+            from the Plugin Manager — Claude, Codex, or the AI SDK for OpenAI, Google, Ollama and
+            any OpenAI-compatible endpoint — then add a configuration from its provider page under
+            <strong>Settings › Artificial Intelligence › Providers</strong>.
+          </p>
+          <app-button
+            variant="solid"
+            [icon]="Icon.WELCOME_PLUGINS"
+            label="Open Plugin Manager"
+            (click)="openPluginManager()"
+          />
+        } @else {
+          <p class="agent__empty-caption">Ask the agent anything to get started</p>
+        }
       </div>
     }
 
@@ -60,7 +80,10 @@
                   }
                 </div>
               }
-              <app-markdown-view class="agent__bubble agent__markdown" [text]="row.item!.text" />
+              <app-markdown-renderer
+                class="agent__bubble agent__markdown"
+                [text]="row.item!.text"
+              />
               <span class="agent__msg-actions">
                 <app-button
                   variant="none"
@@ -167,14 +190,30 @@
                     : 'The summary above describes the change.'
                 }}
               </span>
-              <div class="agent__ask-actions agent__ask-actions--stack">
-                <app-button variant="solid" label="Yes" (click)="decide(row.item!, 'yes')" />
-                <app-button
-                  variant="solid"
-                  label="Yes, and automatically accept edits"
-                  (click)="decide(row.item!, 'yes-auto')"
-                />
-                <app-button label="No" (click)="decide(row.item!, 'no')" />
+              <!-- The choices as a radio list, as the ask card draws its suggested answers, rather
+                   than three stacked buttons: full-width buttons made "No" as loud as "Yes, and
+                   automatically accept edits", and side by side the long one dwarfed the short
+                   ones. Choosing a row IS the decision — there is no confirm step, because a
+                   decision prompt with a second button to press is two prompts. -->
+              <div class="agent__ask-options" role="radiogroup" aria-label="Apply this edit?">
+                @for (choice of editDecisionChoices; track choice.value) {
+                  <!-- The label wraps the radio's projected native input, associating them at
+                       runtime; the lint rule cannot see through the component boundary. -->
+                  <!-- eslint-disable-next-line @angular-eslint/template/label-has-associated-control -->
+                  <label class="agent__ask-option">
+                    <app-radio
+                      class="agent__ask-option-dial"
+                      [name]="'decision-' + row.item!.id"
+                      [checked]="false"
+                      [ariaLabel]="choice.label"
+                      (checkedChange)="$event && decide(row.item!, choice.value)"
+                    />
+                    <span class="agent__ask-option-text">
+                      <span class="agent__ask-option-label">{{ choice.label }}</span>
+                      <span class="agent__ask-option-desc">{{ choice.description }}</span>
+                    </span>
+                  </label>
+                }
               </div>
             } @else {
               <span class="agent__ask-state">{{ decisionStateLabel(row.item!) }}</span>
@@ -284,6 +323,7 @@
         <span
           class="agent__node-icon"
           [class.agent__node-icon--error]="row.item?.toolState === 'error'"
+          [class.agent__node-icon--notice]="row.kind === 'notice'"
         >
           <app-icon [icon]="row.nodeIcon" [class.agent__spin]="row.nodeSpin" />
         </span>
@@ -292,7 +332,7 @@
       <div class="agent__row-content">
         @switch (row.kind) {
           @case ('assistant') {
-            <app-markdown-view class="agent__bubble agent__markdown" [text]="row.item!.text" />
+            <app-markdown-renderer class="agent__bubble agent__markdown" [text]="row.item!.text" />
             <span class="agent__msg-actions">
               <app-button
                 variant="none"
@@ -315,22 +355,57 @@
             </span>
           }
           @case ('thinking') {
-            <!-- The turn's reasoning: default-collapsed, streaming into the disclosure while
-                       the run produces it (the summary's word count ticks up as progress). -->
-            <details class="agent__action agent__thinking">
-              <summary class="agent__action-summary">
-                <span class="agent__action-label">{{ row.label }}</span>
-                <span class="agent__lane-meta">{{ row.meta }}</span>
-                <app-icon class="agent__action-caret" [icon]="Icon.CARET_DOWN" />
-              </summary>
-              <app-markdown-view
-                class="agent__thinking-body agent__markdown"
-                [text]="row.item!.text"
-              />
-            </details>
+            <!-- The turn's reasoning, shown in its box rather than folded behind a caret: the
+                 words are the point of the row, and a disclosure hid them behind a click on every
+                 turn. While the run is still producing them they stream into the same box, its
+                 word count ticking up as progress. Reasoning the model kept to itself arrives as
+                 an empty item; that is the label alone, since a box with nothing in it and a caret
+                 that opens onto nothing both say less than the label does. -->
+            @if (row.item!.text.trim().length > 0) {
+              <div class="agent__action agent__thinking">
+                <span class="agent__thinking-head">
+                  <span class="agent__action-label">{{ row.label }}</span>
+                  <span class="agent__lane-meta">{{ row.meta }}</span>
+                </span>
+                <app-markdown-renderer
+                  class="agent__thinking-body agent__markdown"
+                  [text]="row.item!.text"
+                />
+              </div>
+            } @else {
+              <span class="agent__action agent__thinking agent__thinking--empty">
+                <span class="agent__action-summary">
+                  <span class="agent__action-label">{{ row.label }}</span>
+                </span>
+              </span>
+            }
           }
           @case ('working') {
             <p class="agent__working" aria-live="polite">Working…</p>
+          }
+          @case ('notice') {
+            <!-- Studio's own bookkeeping — a background task settling, housekeeping the harness
+                 reports from a previous session. ⛔ NOT a bubble: the model did not write this, and
+                 rendering it as assistant text made it indistinguishable from an answer (#691). A
+                 chip on the rail like a tool call (#695), with what there is to say behind its
+                 expander; a notice with nothing behind it is the chip alone, since a caret that
+                 opens onto nothing is a promise the row cannot keep. Plain text, not Markdown: the
+                 sentence is ours rather than the model's. -->
+            @if (row.detail; as detail) {
+              <details class="agent__action agent__notice">
+                <summary class="agent__action-summary">
+                  <span class="agent__action-label">{{ row.label }}</span>
+                  <app-icon class="agent__action-caret" [icon]="Icon.CARET_DOWN" />
+                </summary>
+                <p class="agent__notice-body">{{ detail }}</p>
+              </details>
+            } @else {
+              <span class="agent__action agent__notice">
+                <span class="agent__action-summary">
+                  <span class="agent__action-label">{{ row.label }}</span>
+                </span>
+              </span>
+            }
           }
           @default {
             <!-- The raw-detail sections shared by ordinary tool rows and sub-agent lanes: the

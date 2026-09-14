@@ -10,12 +10,24 @@ import {
   READ_BINARY_BYTES,
   READ_BINARY_DISASSEMBLY,
   CREATE_API_REQUEST,
+  DELETE_RUN_CONFIGURATIONS,
   LIST_API_REQUESTS,
+  LIST_RUN_CONFIGURATIONS,
+  SAVE_RUN_CONFIGURATIONS,
   SEND_API_REQUEST,
   SET_API_VARIABLE,
   UPDATE_API_REQUEST,
   OPEN_DOCUMENT,
   OPEN_FILE,
+  LIST_OPEN_DOCUMENTS,
+  OPEN_DIFF,
+  READ_SOURCE_CONTROL_STATUS,
+  LIST_TERMINALS,
+  CREATE_FILE,
+  CREATE_FOLDER,
+  RENAME_PATH,
+  DELETE_PATH,
+  REVEAL_IN_EXPLORER,
   OPEN_TERMINAL,
   SAVE_DOCUMENT,
   READ_BINARY_OVERVIEW,
@@ -37,17 +49,32 @@ import {
   ASK_USER_PROMPT_APPENDIX,
   API_PROMPT_APPENDIX,
   BINARY_PROMPT_APPENDIX,
+  CLARIFYING_QUESTION_APPENDIX,
   createApiRequest,
+  deleteRunConfigurations,
   listApiRequests,
+  listRunConfigurations,
+  saveRunConfigurations,
   sendApiRequest,
   setApiVariable,
   updateApiRequest,
   PROJECT_PROMPT_APPENDIX,
+  RUN_CONFIGURATION_PROMPT_APPENDIX,
   STUDIO_PROMPT_APPENDIX,
   TERMINAL_PROMPT_APPENDIX,
   WORKBENCH_PROMPT_APPENDIX,
+  WORKSPACE_PROMPT_APPENDIX,
   openDocument,
   openFile,
+  openDiff,
+  listOpenDocuments,
+  listTerminals,
+  createFile,
+  createFolder,
+  renamePath,
+  deletePath,
+  revealInExplorer,
+  readSourceControlStatus,
   openTerminal,
   saveDocument,
   askUser,
@@ -69,7 +96,9 @@ import {
   writeTerminalInput,
   READ_ONLY_APPENDIX,
 } from './studio-tools';
-import { formatToolInput, formatToolOutput, summarizeToolInput } from './tool-format';
+import { skillsAppendix, withSystemPromptExtra } from './prompt-layers';
+import { createSkillTools } from './skill-tools';
+import { summarizeToolInput } from './tool-format';
 import { coarseGrantSource } from './tool-policy';
 import { logger } from '../logger';
 
@@ -135,34 +164,6 @@ export function describeRunError(error: unknown): string {
     }
   }
   return 'The run failed with an unspecified error.';
-}
-
-/**
- * Drives an AI-SDK `fullStream` to completion, mapping each part to the shared event protocol and
- * stopping early when the run is aborted. Critically, an `error` part is thrown rather than ignored:
- * the SDK reports request/stream failures (an unreachable server, an unknown model, a refused
- * connection) as a part, not an exception, so swallowing it would end a failed run silently.
- * @param stream The SDK `fullStream`.
- * @param context The run context to emit through.
- */
-export async function consumeAgentStream(
-  stream: AsyncIterable<StreamPart>,
-  context: AgentRunContext,
-): Promise<void> {
-  for await (const part of stream) {
-    if (context.signal.aborted) {
-      return;
-    }
-    if (part.type === 'error') {
-      logger.error(
-        'ai-sdk-stream',
-        `Stream reported an error for run ${context.requestId}`,
-        part.error,
-      );
-      throw new Error(describeRunError(part.error));
-    }
-    mapStreamPart(part, context);
-  }
 }
 
 /**
@@ -248,6 +249,210 @@ function gated<TArgs>(
 }
 
 /**
+ * The surfaces that stand in a workspace and may therefore author its run configurations: an editor
+ * tab (its document belongs to the workspace), the standalone agent tab, and the workspace tab itself.
+ */
+const WORKSPACE_SCOPED_SURFACES: readonly AgentSurface[] = ['editor', 'project', 'workspace'];
+
+/**
+ * Builds the one read-only document tool, which the editor surface carries alongside its edit tools and
+ * the workspace surface carries alone (#713): seeing what the user is looking at is cheap and harmless
+ * wherever there is a well; it is editing "whichever document is focused" that a workspace conversation
+ * must not be offered.
+ * @param context The run context the tool acts through.
+ * @returns Returns the tool set holding the read tool.
+ */
+export async function createReadActiveDocumentTool(context: AgentRunContext): Promise<ToolSet> {
+  const { tool } = await import('ai');
+  const { z } = await import('zod');
+  return {
+    [READ_ACTIVE_DOCUMENT]: tool({
+      description: "Read the active editor document's full text.",
+      inputSchema: z.object({}),
+      execute: (): Promise<string> => readActiveDocument(context),
+    }),
+  };
+}
+
+/**
+ * Builds the workspace surface's tools (#713): a well to look at but no document of its own. The read
+ * tool lets the model see what the user is looking at; the listing, the diff and the source-control
+ * status let it see the workspace as the user does; none of the edit tools, which would act on
+ * whatever happened to be focused. All read-only in effect — opening a diff shows something, it
+ * changes nothing — so none is gated.
+ * @param context The run context the tools act through.
+ * @returns Returns the tool set.
+ */
+export async function createWorkspaceTools(context: AgentRunContext): Promise<ToolSet> {
+  const { tool } = await import('ai');
+  const { z } = await import('zod');
+  return {
+    ...(await createReadActiveDocumentTool(context)),
+    [LIST_OPEN_DOCUMENTS]: tool({
+      description:
+        "List the documents open in the workspace's editor well: each one's path, language, whether it is unsaved, and which one the user is looking at.",
+      inputSchema: z.object({}),
+      execute: (): Promise<string> => listOpenDocuments(context),
+    }),
+    [OPEN_DIFF]: tool({
+      description:
+        "Open a changed file's diff — working tree against HEAD — in the user's editor well, so they can review a change where it lives. Only a file the repository reports as changed has a diff to show. Prefer this to pasting a diff into the conversation.",
+      inputSchema: z.object({
+        path: z
+          .string()
+          .min(1)
+          .describe('The changed file, as an absolute path or relative to the workspace root.'),
+      }),
+      execute: (args: { path: string }): Promise<string> => openDiff(context, args.path),
+    }),
+    [READ_SOURCE_CONTROL_STATUS]: tool({
+      description:
+        "Read the workspace's source-control state as Studio shows it: the branch and how it tracks its upstream, and the staged, unstaged and conflicted files. Worktree-aware. Use it instead of running git yourself when you only need the picture.",
+      inputSchema: z.object({}),
+      execute: (): Promise<string> => readSourceControlStatus(context),
+    }),
+    ...(await createWorkspaceTerminalTools(context)),
+    ...(await createWorkspaceTreeTools(context)),
+  };
+}
+
+/**
+ * Builds the workspace surface's tree tools (#713 phase 4): the Explorer's own operations, offered to
+ * the agent so the Explorer reflects what it does and, for a harness with no file tools, so it can
+ * make files at all. The mutations are gated like every other mutating Studio tool and confined to
+ * the workspace and the run's allowed write paths before the renderer is asked; a chat turn gets
+ * only the reveal, which changes nothing.
+ * @param context The run context the tools act through.
+ * @returns Returns the tool set.
+ */
+export async function createWorkspaceTreeTools(context: AgentRunContext): Promise<ToolSet> {
+  const { tool } = await import('ai');
+  const { z } = await import('zod');
+  const pathOf: string = 'An absolute path, or one relative to the workspace root.';
+  const reveal: ToolSet = {
+    [REVEAL_IN_EXPLORER]: tool({
+      description:
+        'Expand the Explorer to a file or folder and select it, so the user is looking at what you are talking about. It only reveals — it does not open the file.',
+      inputSchema: z.object({ path: z.string().min(1).describe(pathOf) }),
+      execute: (args: { path: string }): Promise<string> => revealInExplorer(context, args.path),
+    }),
+  };
+  if (context.mode === 'chat') {
+    return reveal;
+  }
+  return {
+    ...reveal,
+    [CREATE_FILE]: tool({
+      description:
+        "Create a file in the workspace, optionally with content, and open it in the user's editor. The Explorer shows it at once. Fails if the file exists; use your edit tools to change an existing file.",
+      inputSchema: z.object({
+        path: z.string().min(1).describe(pathOf),
+        content: z
+          .string()
+          .optional()
+          .describe('The full content to write. Omit for an empty file.'),
+      }),
+      execute: gated(
+        context,
+        CREATE_FILE,
+        (args: { path: string; content?: string }): Promise<string> =>
+          createFile(context, args.path, args.content),
+      ),
+    }),
+    [CREATE_FOLDER]: tool({
+      description: 'Create a folder in the workspace. The Explorer shows it at once.',
+      inputSchema: z.object({ path: z.string().min(1).describe(pathOf) }),
+      execute: gated(context, CREATE_FOLDER, (args: { path: string }): Promise<string> =>
+        createFolder(context, args.path),
+      ),
+    }),
+    [RENAME_PATH]: tool({
+      description:
+        'Rename a file or folder in place. Give the new name only, not a path; to move an entry use your own file tools.',
+      inputSchema: z.object({
+        path: z.string().min(1).describe(pathOf),
+        name: z.string().min(1).describe('The new name: a single path segment.'),
+      }),
+      execute: gated(
+        context,
+        RENAME_PATH,
+        (args: { path: string; name: string }): Promise<string> =>
+          renamePath(context, args.path, args.name),
+      ),
+    }),
+    [DELETE_PATH]: tool({
+      description:
+        "Delete a file or folder, to the operating system's trash where the platform allows it. The result says whether it went to the trash or was removed permanently.",
+      inputSchema: z.object({ path: z.string().min(1).describe(pathOf) }),
+      execute: gated(context, DELETE_PATH, (args: { path: string }): Promise<string> =>
+        deletePath(context, args.path),
+      ),
+    }),
+  };
+}
+
+/**
+ * Builds the workspace surface's terminal tools (#713): terminals as addressable things. A workspace
+ * agent has no owning terminal, so unlike the terminal surface's tools these take the id of the one
+ * to drive — the id `open_terminal` returned, or one `list_terminals` reported. `open_terminal` is
+ * re-declared here so that on this surface it lands in the workspace's own panel rather than a new
+ * tab; it overrides the workbench declaration by name. Writing stays a gated execution, as it is on
+ * the terminal surface; a chat-mode run gets only the listing and the read.
+ * @param context The run context the tools act through.
+ * @returns Returns the tool set.
+ */
+export async function createWorkspaceTerminalTools(context: AgentRunContext): Promise<ToolSet> {
+  const { tool } = await import('ai');
+  const { z } = await import('zod');
+  const idDescription: string =
+    'The id of the terminal, as returned by open_terminal or listed by list_terminals.';
+  const readTools: ToolSet = {
+    [LIST_TERMINALS]: tool({
+      description:
+        "List the terminals open in the workspace's terminal panel, with the id each one is driven by.",
+      inputSchema: z.object({}),
+      execute: (): Promise<string> => listTerminals(context),
+    }),
+    [READ_TERMINAL_OUTPUT]: tool({
+      description: 'Read the recent output currently shown in one of the workspace terminals.',
+      inputSchema: z.object({ terminalId: z.string().min(1).describe(idDescription) }),
+      execute: (args: { terminalId: string }): Promise<string> =>
+        readTerminalOutput(context, args.terminalId),
+    }),
+  };
+  if (context.mode === 'chat') {
+    return readTools;
+  }
+  return {
+    ...readTools,
+    [OPEN_TERMINAL]: tool({
+      description:
+        "Open a new terminal in the workspace's terminal panel, rooted at the workspace, where the user can watch it. Returns the id to drive it with. Use this when the user should see a command run rather than a hidden shell.",
+      inputSchema: z.object({}),
+      execute: (): Promise<string> => openTerminal(context, true),
+    }),
+    [WRITE_TERMINAL_INPUT]: tool({
+      description:
+        'Type text into one of the workspace terminals, running it as a command by default, and return the resulting output.',
+      inputSchema: z.object({
+        terminalId: z.string().min(1).describe(idDescription),
+        text: z.string().describe('The text to type into the terminal.'),
+        submit: z
+          .boolean()
+          .optional()
+          .describe('Whether to run the text as a command (append a newline). Defaults to true.'),
+      }),
+      execute: gated(
+        context,
+        WRITE_TERMINAL_INPUT,
+        (args: { terminalId: string; text: string; submit?: boolean }): Promise<string> =>
+          writeTerminalInput(context, args.text, args.submit ?? true, args.terminalId),
+      ),
+    }),
+  };
+}
+
+/**
  * Builds the in-app editor tools every AI-SDK-backed provider exposes, bridged to the renderer through
  * the run context. A chat-mode (read-only) run carries only the read tool, matching the Claude path;
  * the mutating editor tools are auto-allowed in agent mode because the change is visible and undoable
@@ -259,13 +464,7 @@ function gated<TArgs>(
 export async function createStudioTools(context: AgentRunContext): Promise<ToolSet> {
   const { tool } = await import('ai');
   const { z } = await import('zod');
-  const readTool: ToolSet = {
-    [READ_ACTIVE_DOCUMENT]: tool({
-      description: "Read the active editor document's full text.",
-      inputSchema: z.object({}),
-      execute: (): Promise<string> => readActiveDocument(context),
-    }),
-  };
+  const readTool: ToolSet = await createReadActiveDocumentTool(context);
   if (context.mode === 'chat') {
     return readTool;
   }
@@ -474,6 +673,105 @@ export async function createWorkbenchTools(context: AgentRunContext): Promise<To
         "Open a new terminal tab in the user's default shell. It spawns a real shell, so do not open one speculatively.",
       inputSchema: z.object({}),
       execute: gated(context, OPEN_TERMINAL, (): Promise<string> => openTerminal(context)),
+    }),
+  };
+}
+
+/**
+ * Builds the run-configuration tools: reading the open workspace's Run dropdown, and authoring it.
+ *
+ * Registered on the **workspace-scoped** surfaces only — the IDE views (`editor`) and the standalone
+ * agent tab (`project`). A terminal- or binary- or API-docked agent is deliberately confined to its own
+ * surface, and authoring the workspace's launch configuration is not that surface's business.
+ *
+ * ⚠️ These were the one part of the Claude provider's tool set that had no equivalent here, which meant
+ * an agent on any other connection simply could not author a run configuration. Moving the Claude
+ * harness out of core made that gap load-bearing rather than merely untidy: a harness asks core for the
+ * tools, so a tool core does not describe is a tool nobody gets.
+ * @param context The run context the tools act through.
+ * @returns Returns the run-configuration tool set, or an empty set where they do not belong.
+ */
+export async function createRunConfigurationTools(context: AgentRunContext): Promise<ToolSet> {
+  if (context.mode === 'chat' || !WORKSPACE_SCOPED_SURFACES.includes(context.surface)) {
+    return {};
+  }
+  const { tool } = await import('ai');
+  const { z } = await import('zod');
+  // Declared once and used by both the create and the update tool, so the two cannot drift into
+  // describing different shapes of the same thing.
+  const configuration: ReturnType<typeof z.object> = z.object({
+    id: z.string().min(1).describe('Stable, unique, kebab-case identifier for the configuration.'),
+    name: z
+      .string()
+      .min(1)
+      .describe('Display name shown in the Run dropdown, written for a human.'),
+    providerKind: z
+      .string()
+      .optional()
+      .describe(
+        'The ecosystem that runs it: dotnet, node, jvm, cpp, rust, go — or "compound" for a configuration with members.',
+      ),
+    mode: z
+      .enum(['run', 'debug'])
+      .optional()
+      .describe('Whether it launches normally ("run", the default) or under the debugger.'),
+    program: z
+      .string()
+      .optional()
+      .describe(
+        'The command or executable to launch. When set it wins; otherwise the command is derived from providerKind and id.',
+      ),
+    args: z.array(z.string()).optional().describe('Arguments passed to the program.'),
+    cwd: z
+      .string()
+      .optional()
+      .describe('Working directory to launch in; defaults to the workspace root.'),
+    env: z
+      .record(z.string(), z.string())
+      .optional()
+      .describe('Environment variables to launch with.'),
+    members: z
+      .array(z.string())
+      .optional()
+      .describe(
+        'For a compound: the ids of the configurations to start in parallel. Every id must exist.',
+      ),
+  });
+  return {
+    // Listing is a read, so it runs without prompting — the agent can see what exists before deciding
+    // whether to amend it, which is what stops it duplicating entries.
+    [LIST_RUN_CONFIGURATIONS]: tool({
+      description:
+        "List the open workspace's run configurations (the entries in its Run dropdown, stored in .studio/workspace.json).",
+      inputSchema: z.object({}),
+      execute: (): Promise<string> => listRunConfigurations(context),
+    }),
+    [SAVE_RUN_CONFIGURATIONS]: tool({
+      description:
+        "Create or update the open workspace's run configurations. Entries are matched by id: a known id is replaced, a new id is added. A configuration with `members` is a compound that starts those configurations in parallel.",
+      inputSchema: z.object({
+        configurations: z
+          .array(configuration)
+          .min(1)
+          .describe('The configurations to create or update.'),
+      }),
+      execute: gated(
+        context,
+        SAVE_RUN_CONFIGURATIONS,
+        (args: { configurations: unknown[] }): Promise<string> =>
+          saveRunConfigurations(context, args.configurations),
+      ),
+    }),
+    [DELETE_RUN_CONFIGURATIONS]: tool({
+      description: 'Delete run configurations from the open workspace by id.',
+      inputSchema: z.object({
+        ids: z.array(z.string().min(1)).min(1).describe('The ids of the configurations to delete.'),
+      }),
+      execute: gated(
+        context,
+        DELETE_RUN_CONFIGURATIONS,
+        (args: { ids: string[] }): Promise<string> => deleteRunConfigurations(context, args.ids),
+      ),
     }),
   };
 }
@@ -713,7 +1011,10 @@ export async function createBinaryTools(context: AgentRunContext): Promise<ToolS
  * @param context The run context (carries the surface and mode).
  * @returns Returns the prompt appendix text.
  */
-export function promptForSurface(context: AgentRunContext): string {
+export function promptForSurface(
+  context: AgentRunContext,
+  options: { readonly nativeAsk?: boolean } = {},
+): string {
   const surface: AgentSurface = context.surface;
   const base: string = ((): string => {
     switch (surface) {
@@ -723,18 +1024,38 @@ export function promptForSurface(context: AgentRunContext): string {
         return BINARY_PROMPT_APPENDIX;
       case 'api':
         return API_PROMPT_APPENDIX;
+      case 'workspace':
+        return WORKSPACE_PROMPT_APPENDIX;
       case 'project':
         return PROJECT_PROMPT_APPENDIX;
       case 'editor':
         return STUDIO_PROMPT_APPENDIX;
     }
   })();
-  const withAsk: string = `${base}\n\n${ASK_USER_PROMPT_APPENDIX}`;
-  // The workbench tools are registered on every surface, so every surface is told about them — except
-  // in chat mode, where they are withheld and describing them would only invite a refusal.
-  return context.mode === 'chat'
-    ? `${withAsk}\n\n${READ_ONLY_APPENDIX}`
-    : `${withAsk}\n\n${WORKBENCH_PROMPT_APPENDIX}`;
+  // A caller whose model has its own clarifying-question tool gets the tool-agnostic wording: the
+  // instruction to ask rather than guess still applies, but naming a Studio tool it was not given
+  // would point the model at something absent from its list.
+  const withAsk: string = `${base}\n\n${options.nativeAsk === true ? CLARIFYING_QUESTION_APPENDIX : ASK_USER_PROMPT_APPENDIX}`;
+  const studio: string = ((): string => {
+    // The workbench tools are registered on every surface, so every surface is told about them —
+    // except in chat mode, where they are withheld and describing them would only invite a refusal.
+    if (context.mode === 'chat') {
+      return `${withAsk}\n\n${READ_ONLY_APPENDIX}`;
+    }
+    const withWorkbench: string = `${withAsk}\n\n${WORKBENCH_PROMPT_APPENDIX}`;
+    // The run-configuration tools are registered on the workspace-scoped surfaces only, so only those
+    // are told how to author them. Kept in step with `createRunConfigurationTools` by hand, which is
+    // the cost of the guidance and the tools being two things; describing tools that are not there is
+    // the failure this condition exists to avoid.
+    return WORKSPACE_SCOPED_SURFACES.includes(surface)
+      ? `${withWorkbench}\n\n${RUN_CONFIGURATION_PROMPT_APPENDIX}`
+      : withWorkbench;
+  })();
+  // The user's layers come last, and in this order: the skills listing describes a tool the model
+  // holds, so it belongs with Studio's tool guidance; the standing text is the user's own voice and
+  // reads as such only once everything Studio has to say is above it.
+  const skills: string = skillsAppendix(context);
+  return withSystemPromptExtra(skills.length === 0 ? studio : `${studio}\n\n${skills}`, context);
 }
 
 /**
@@ -748,6 +1069,11 @@ export async function toolsForSurface(context: AgentRunContext): Promise<ToolSet
   const askUserTool: ToolSet = await createAskUserTool(context);
   // The workbench tools ride on every surface — see createWorkbenchTools.
   const workbenchTools: ToolSet = await createWorkbenchTools(context);
+  // The run-configuration tools ride on the workspace-scoped surfaces only, and decide that for
+  // themselves — see createRunConfigurationTools.
+  const runConfigurationTools: ToolSet = await createRunConfigurationTools(context);
+  // The skill tool rides on every surface and decides for itself whether it applies (#301).
+  const skillTools: ToolSet = await createSkillTools(context);
   const surfaceTools: ToolSet = await ((): Promise<ToolSet> => {
     switch (context.surface) {
       case 'terminal':
@@ -758,83 +1084,19 @@ export async function toolsForSurface(context: AgentRunContext): Promise<ToolSet
       // so a project run carries only the ask-user tool (a documented limitation of those providers).
       case 'api':
         return createApiTools(context);
+      case 'workspace':
+        return createWorkspaceTools(context);
       case 'project':
         return Promise.resolve({});
       case 'editor':
         return createStudioTools(context);
     }
   })();
-  return { ...askUserTool, ...workbenchTools, ...surfaceTools };
-}
-
-/**
- * Maps a single Vercel AI SDK `fullStream` part to the shared event protocol, emitting through the run
- * context. Shared by every AI-SDK-backed provider so the stream-to-event translation lives in one
- * place.
- * @param part The stream part.
- * @param context The run context to emit through.
- */
-export function mapStreamPart(part: StreamPart, context: AgentRunContext): void {
-  const requestId: string = context.requestId;
-  switch (part.type) {
-    case 'text-delta':
-      context.emit({ requestId, kind: 'text', delta: part.text ?? part.delta ?? '' });
-      break;
-    case 'reasoning-delta':
-      context.emit({ requestId, kind: 'thinking', delta: part.text ?? part.delta ?? '' });
-      break;
-    case 'tool-call': {
-      const input: string | undefined = formatToolInput(part.input);
-      context.emit({
-        requestId,
-        kind: 'tool-start',
-        toolId: part.toolCallId ?? '',
-        name: part.toolName ?? 'tool',
-        detail: typeof part.input === 'string' ? part.input : summarizeToolInput(part.input),
-        ...(input === undefined ? {} : { input }),
-      });
-      break;
-    }
-    case 'tool-result': {
-      const output: string | undefined = formatToolOutput(part.output);
-      context.emit({
-        requestId,
-        kind: 'tool-end',
-        toolId: part.toolCallId ?? '',
-        ok: true,
-        detail: 'done',
-        ...(output === undefined ? {} : { output }),
-      });
-      break;
-    }
-    case 'tool-error':
-      context.emit({
-        requestId,
-        kind: 'tool-end',
-        toolId: part.toolCallId ?? '',
-        ok: false,
-        detail: part.errorText ?? 'failed',
-        ...(part.errorText === undefined || part.errorText.length === 0
-          ? {}
-          : { output: part.errorText }),
-      });
-      break;
-    case 'finish': {
-      // The terminal `finish` part carries the run's cumulative usage; the AI-SDK providers do not
-      // report a cost, so it is left unknown.
-      const usage: StreamPart['totalUsage'] = part.totalUsage;
-      if (usage !== undefined) {
-        context.emit({
-          requestId,
-          kind: 'usage',
-          inputTokens: usage.inputTokens ?? 0,
-          outputTokens: usage.outputTokens ?? 0,
-          costUsd: null,
-        });
-      }
-      break;
-    }
-    default:
-      break;
-  }
+  return {
+    ...askUserTool,
+    ...workbenchTools,
+    ...runConfigurationTools,
+    ...skillTools,
+    ...surfaceTools,
+  };
 }

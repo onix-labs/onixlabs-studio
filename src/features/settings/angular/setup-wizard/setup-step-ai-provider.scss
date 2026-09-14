@@ -1,0 +1,92 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+// The same row the tooling step draws, so the two steps that install things read as one surface.
+.ai__list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ai__item,
+.ai__chosen {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-block: 0.6rem;
+}
+
+.ai__item:not(:first-child) {
+  border-block-start: 0.0625rem solid var(--settings-border-color);
+}
+
+// The chosen configuration heads the verify stage, and is framed below so the editor reads as
+// belonging to it rather than as a second, unrelated form.
+.ai__chosen {
+  border-block-end: 0.0625rem solid var(--settings-border-color);
+}
+
+.ai__text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-inline-size: 0;
+}
+
+.ai__name {
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.ai__detail {
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--settings-muted-foreground-color);
+}
+
+// A provider's sign-in methods sit together at the row's trailing end, as the settings page draws
+// them, so a provider with two ways in is one row rather than two.
+.ai__methods {
+  display: flex;
+  flex: none;
+  gap: 0.5rem;
+}
+
+// The verdict is the point of the step, so it says what happened in words rather than as a colour
+// alone — a tint is a hint, and this is an answer.
+.ai__verdict {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--success-color, #34d399);
+}
+
+.ai__verdict--bad {
+  color: var(--danger-color, #f87171);
+}
+
+.ai__lead,
+.ai__note,
+.ai__hint,
+.ai__error {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--settings-muted-foreground-color);
+}
+
+.ai__lead {
+  font-size: 0.85rem;
+}
+
+.ai__error {
+  color: var(--danger-color, #f87171);
+}

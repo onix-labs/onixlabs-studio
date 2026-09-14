@@ -8,104 +8,71 @@ import { type AuthContext, type AuthStrategy, strategyFor } from './auth-strateg
 function context(overrides?: Partial<AuthContext>): AuthContext {
   return {
     storedKey: null,
-    hasLocalLogin: false,
-    hasCodexLogin: false,
-    envKey: null,
     ...overrides,
   };
 }
 
 describe('strategyFor', () => {
-  it('returnsTheStrategyMatchingTheKind', () => {
+  it('returnsTheStrategyMatchingTheKindsCoreOwns', () => {
     expect(strategyFor('api-key').kind).toBe('api-key');
     expect(strategyFor('none').kind).toBe('none');
-    expect(strategyFor('claude-login').kind).toBe('claude-login');
-    expect(strategyFor('codex-login').kind).toBe('codex-login');
+  });
+
+  it('anyOtherKind_fallsBackToTheProviderLoginStrategyRatherThanUndefined', () => {
+    // 🔥 The auth kind is open now (#653), so anything an installed plugin names arrives here. Indexing
+    // straight into the table returned `undefined`, and the first thing anyone would have noticed is
+    // `undefined.resolve` part way through a run — the worst possible place to discover it.
+    for (const kind of ['claude-login', 'codex-login', 'some-plugins-oauth', '']) {
+      expect(strategyFor(kind).kind).toBe('provider-login');
+    }
   });
 });
 
-describe('claude-login strategy', () => {
+describe('provider-login strategy', () => {
   const strategy: AuthStrategy = strategyFor('claude-login');
 
-  it('resolvesLocalLoginFirst', () => {
-    expect(strategy.resolve(context({ hasLocalLogin: true, storedKey: 'k', envKey: 'e' }))).toEqual(
-      {
-        source: 'local-login',
-        apiKey: null,
-      },
-    );
-  });
-
-  it('fallsBackToStoredThenEnvThenNone', () => {
-    expect(strategy.resolve(context({ storedKey: 'stored', envKey: 'env' }))).toEqual({
+  it('resolvesAStoredKeyWhenTheUserSetOne', () => {
+    // An API key is core's to hold whatever the provider is, so a user who pastes one still gets it
+    // used — even for a subscription configuration whose plugin would otherwise sign itself in.
+    expect(strategy.resolve(context({ storedKey: 'stored' }))).toEqual({
       source: 'api-key',
       apiKey: 'stored',
     });
-    expect(strategy.resolve(context({ envKey: 'env' }))).toEqual({
-      source: 'api-key',
-      apiKey: 'env',
-    });
+  });
+
+  it('resolvesNothingOtherwise_leavingTheLoginToThePlugin', () => {
+    // ⛔ Core does not probe `~/.claude` or `~/.codex` any more. Reporting "no credential" is what lets
+    // the harness fall through to its own login, which is the only thing that can actually check it.
     expect(strategy.resolve(context())).toEqual({ source: 'none', apiKey: null });
   });
 
-  it('statusReportsTheActiveSourceAndStoredFlag', () => {
-    expect(strategy.status(context({ hasLocalLogin: true, storedKey: 'k' }))).toMatchObject({
-      source: 'local-login',
-      available: true,
-      hasStoredKey: true,
-    });
-    expect(strategy.status(context({ envKey: 'env' }))).toMatchObject({
-      source: 'api-key',
+  it('statusIsAvailableWithoutAKey_becauseCoreCannotKnowOtherwise', () => {
+    // A false "not signed in" is worse than a vague "ask the plugin": it sends the user to fix a
+    // credential that is already working.
+    expect(strategy.status(context())).toMatchObject({
+      source: 'none',
       available: true,
       hasStoredKey: false,
     });
-    expect(strategy.status(context())).toMatchObject({ source: 'none', available: false });
+    expect(strategy.status(context({ storedKey: 'stored' }))).toMatchObject({
+      source: 'api-key',
+      available: true,
+      hasStoredKey: true,
+    });
   });
-});
 
-describe('codex-login strategy', () => {
-  const strategy: AuthStrategy = strategyFor('codex-login');
-
-  it('resolvesLocalCodexLoginFirst', () => {
-    expect(strategy.resolve(context({ hasCodexLogin: true, storedKey: 'k', envKey: 'e' }))).toEqual(
-      { source: 'local-login', apiKey: null },
+  it('neverSurfacesTheKeyInTheStatus', () => {
+    expect(Object.values(strategy.status(context({ storedKey: 'sk-secret' })))).not.toContain(
+      'sk-secret',
     );
-  });
-
-  it('fallsBackToStoredKeyOnly_ignoringTheAnthropicEnvKey', () => {
-    // The env key is Anthropic-specific and must not leak into a Codex connection; the Codex runtime
-    // picks up its own OPENAI_API_KEY, so only an explicitly stored key is surfaced.
-    expect(strategy.resolve(context({ storedKey: 'stored', envKey: 'env' }))).toEqual({
-      source: 'api-key',
-      apiKey: 'stored',
-    });
-    expect(strategy.resolve(context({ envKey: 'env' }))).toEqual({ source: 'none', apiKey: null });
-    expect(strategy.resolve(context())).toEqual({ source: 'none', apiKey: null });
-  });
-
-  it('statusReportsTheActiveSourceAndStoredFlag', () => {
-    expect(strategy.status(context({ hasCodexLogin: true, storedKey: 'k' }))).toMatchObject({
-      source: 'local-login',
-      available: true,
-      hasStoredKey: true,
-    });
-    expect(strategy.status(context({ storedKey: 'k' }))).toMatchObject({
-      source: 'api-key',
-      available: true,
-      hasStoredKey: true,
-    });
-    expect(strategy.status(context())).toMatchObject({ source: 'none', available: false });
   });
 });
 
 describe('api-key strategy', () => {
   const strategy: AuthStrategy = strategyFor('api-key');
 
-  it('resolvesTheStoredKeyOnly_ignoringLocalLoginAndEnv', () => {
-    expect(strategy.resolve(context({ hasLocalLogin: true, envKey: 'env' }))).toEqual({
-      source: 'none',
-      apiKey: null,
-    });
+  it('resolvesTheStoredKeyOnly', () => {
+    expect(strategy.resolve(context())).toEqual({ source: 'none', apiKey: null });
     expect(strategy.resolve(context({ storedKey: 'stored' }))).toEqual({
       source: 'api-key',
       apiKey: 'stored',

@@ -1,17 +1,5 @@
 import { PluginContribution, PluginOrigin } from '@shared/api/plugin-channels';
 import {
-  DebugAdapterCatalogueEntry,
-  debugAdapterCatalogue,
-} from '../../debug/debug-adapter-registry';
-import { DebugAdapterProvision, DebugProvisioner } from '../../debug/debug-provisioner';
-import {
-  DEBUGPY_VERSION,
-  installDebugpy,
-  isDebugpyInstalled,
-  uninstallDebugpy,
-} from '../../debug/debugpy-install';
-import {
-  CLANGD_PROVISION,
   TYPESCRIPT_PROVISION,
   TYPESCRIPT_SERVER_PROVISION,
 } from '../../lsp/language-server-downloads';
@@ -21,7 +9,6 @@ import {
   KOTLIN_LS_VERSION,
   LspProvisioner,
   ROSLYN_VERSION,
-  RUST_ANALYZER_VERSION,
 } from '../../lsp/lsp-provisioner';
 import { ArchiveProvision } from '../../provisioning/archive-provision';
 
@@ -35,11 +22,6 @@ export interface PluginContext {
    * Gets the provisioner that downloads language servers and detects the runtimes some of them need.
    */
   readonly provisioner: LspProvisioner;
-
-  /**
-   * Gets the provisioner that downloads debug adapters.
-   */
-  readonly debugProvisioner: DebugProvisioner;
 }
 
 /**
@@ -189,63 +171,20 @@ function archivePlugin(
 }
 
 /**
- * Looks up a first-party debug adapter's pinned provisioning recipe from the adapter catalogue, so the
- * pinned URL and checksum are declared once and the plugin entry cannot drift from what the registry
- * actually spawns.
- * @param adapterId The adapter identifier.
- * @returns Returns the provisioning recipe, or undefined when the adapter ships none.
- */
-function adapterProvision(adapterId: string): DebugAdapterProvision | undefined {
-  return debugAdapterCatalogue().find(
-    (entry: DebugAdapterCatalogueEntry): boolean => entry.id === adapterId,
-  )?.provision;
-}
-
-/**
- * Builds the descriptor for a debug adapter Studio downloads, wiring it to the adapter's own recipe.
- * @param id The plugin (and adapter) identifier.
- * @param name The display name.
- * @param description The one-line description.
- * @param languages The languages the adapter debugs.
- * @returns Returns the descriptor.
- */
-function adapterPlugin(
-  id: string,
-  name: string,
-  description: string,
-  languages: readonly string[],
-): PluginDescriptor {
-  const provision: DebugAdapterProvision | undefined = adapterProvision(id);
-  return {
-    id,
-    name,
-    description,
-    version: provision?.version ?? 'unknown',
-    contributions: [{ slot: 'debug-adapter', id, displayName: name, languages, priority: 100 }],
-    detect: (context: PluginContext): Promise<boolean> =>
-      provision === undefined
-        ? Promise.resolve(false)
-        : context.debugProvisioner.isProvisioned(provision),
-    install: (context: PluginContext): Promise<string | null> =>
-      provision === undefined ? Promise.resolve(null) : context.debugProvisioner.ensure(provision),
-    uninstall: (context: PluginContext): Promise<void> =>
-      provision === undefined
-        ? Promise.resolve()
-        : context.debugProvisioner.removeProvisioned(provision),
-  };
-}
-
-/**
  * The plugins that need code to install — the part of the **available** layer a manifest cannot
  * describe.
  *
  * It is deliberately short, and getting shorter. Everything a pinned archive and an entry point can
  * express now lives in the curated index as data (`curated-plugins.json`), because a list of downloads
  * expressed as TypeScript is a list of downloads that needs a release to change. What is left is what
- * genuinely resists description: a server built from source with the user's toolchain, one installed
- * into a managed language environment, one whose start-up traffic is computed from the workspace, and
- * the two that honour a path the user configured in Settings. Those are not oversights in the manifest
+ * genuinely resists description: a server built from source with the user's toolchain, and servers
+ * whose start-up traffic is computed from the workspace. Those are not oversights in the manifest
  * format — they are the line where description stops and execution begins.
+ *
+ * Honouring a path the user configured is no longer on that list. It used to keep two servers here,
+ * and it was never really about them: an override belongs to the *settings*, which is core's, not to
+ * the description of a plugin. It is keyed by server id now, so a contributed server can be overridden
+ * too.
  *
  * Being in this list means the Plugin Manager offers the plugin; it says nothing about whether it is
  * present. What is *installed* is decided per machine by each descriptor's `detect`, and only installed
@@ -290,27 +229,6 @@ export function pluginCatalogue(): readonly PluginDescriptor[] {
         await context.provisioner.removeArchive(TYPESCRIPT_SERVER_PROVISION);
         await context.provisioner.removeArchive(TYPESCRIPT_PROVISION);
       },
-    },
-    archivePlugin(
-      'clangd',
-      'clangd',
-      'C and C++ language support, from the LLVM project.',
-      CLANGD_PROVISION,
-      [languageServer('clangd', 'clangd', ['cpp', 'c'], 100)],
-      'A large download — it carries the Clang toolchain headers.',
-    ),
-    {
-      id: 'rust-analyzer',
-      name: 'rust-analyzer',
-      description: 'Rust language support.',
-      version: RUST_ANALYZER_VERSION,
-      contributions: [languageServer('rust', 'rust-analyzer', ['rust'], 100)],
-      detect: (context: PluginContext): Promise<boolean> =>
-        Promise.resolve(context.provisioner.isProvisioned('rust-analyzer', RUST_ANALYZER_VERSION)),
-      install: (context: PluginContext): Promise<string | null> =>
-        context.provisioner.ensureRustAnalyzer(),
-      uninstall: (context: PluginContext): Promise<void> =>
-        context.provisioner.removeProvisioned('rust-analyzer', RUST_ANALYZER_VERSION),
     },
     {
       id: 'jdtls',
@@ -374,31 +292,5 @@ export function pluginCatalogue(): readonly PluginDescriptor[] {
         await context.provisioner.removeGoBuildCache();
       },
     },
-    {
-      id: 'debugpy',
-      name: 'Python Debugger (debugpy)',
-      description: 'Debug Python projects.',
-      version: DEBUGPY_VERSION,
-      contributions: [
-        {
-          slot: 'debug-adapter',
-          id: 'debugpy',
-          displayName: 'Python (debugpy)',
-          languages: ['python'],
-          priority: 100,
-        },
-      ],
-      detail: 'Installed into its own environment, so it needs Python 3.8+ to install.',
-      detect: (): Promise<boolean> => Promise.resolve(isDebugpyInstalled()),
-      install: (): Promise<string | null> => installDebugpy(),
-      uninstall: (): Promise<void> => uninstallDebugpy(),
-    },
-    adapterPlugin('netcoredbg', '.NET Debugger (netcoredbg)', 'Debug .NET projects.', ['csharp']),
-    adapterPlugin(
-      'js-debug',
-      'Node Debugger (js-debug)',
-      "Debug Node projects with Microsoft's js-debug.",
-      ['typescript', 'javascript'],
-    ),
   ];
 }

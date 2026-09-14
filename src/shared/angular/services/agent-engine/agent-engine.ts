@@ -1,6 +1,7 @@
 import { computed, effect, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import type { AiConnection, AiModelInfo, AiProviderId, AiProviderInfo } from '@shared/api/ai-types';
 import { providerDisplayLabel } from '@shared/api/ai-types';
+import { AiProviders } from '@shared/angular/services/ai-providers/ai-providers';
 import { AiRuntime } from '../ai-runtime/ai-runtime';
 import { Log } from '@shared/angular/services/log/log';
 import { Settings } from '@shared/angular/services/settings/settings';
@@ -31,6 +32,11 @@ export class AgentEngine {
   private readonly log: Log = inject(Log);
 
   /**
+   * Holds the providers installed plugins contribute, read for the company half of a picker label.
+   */
+  private readonly catalogue: AiProviders = inject(AiProviders);
+
+  /**
    * Holds the registered providers and their availability.
    */
   private readonly providerList: WritableSignal<readonly AiProviderInfo[]> = signal<
@@ -41,6 +47,26 @@ export class AgentEngine {
    * Gets the registered providers and their availability.
    */
   public readonly providers: Signal<readonly AiProviderInfo[]> = this.providerList.asReadonly();
+
+  /**
+   * Holds whether the providers have been asked for at least once.
+   */
+  private readonly loaded: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Gets whether nothing can run a turn: the providers have loaded, and there are none.
+   *
+   * ⚠️ **Both halves are load-bearing.** An empty list means two different things a fraction of a
+   * second apart — "not asked yet" and "there is nothing" — and a surface that read only the length
+   * would show "install a provider" for a moment on every start-up, including to users who have one.
+   *
+   * 🔑 It reports "no provider" rather than "no connection", and the distinction is the point since
+   * core stopped shipping providers (#653): a fresh install has connections, and none of them can run
+   * until a provider plugin is installed and the connection names it.
+   */
+  public readonly hasNoProviders: Signal<boolean> = computed(
+    (): boolean => this.loaded() && this.providerList().length === 0,
+  );
 
   /**
    * Gets the selected connection id (persisted via {@link Settings}).
@@ -106,9 +132,17 @@ export class AgentEngine {
       );
       return connection === undefined
         ? info
-        : { ...info, label: providerDisplayLabel(connection.kind, connection.label) };
+        : {
+            ...info,
+            label: providerDisplayLabel(
+              this.catalogue.companyFor(connection.kind),
+              connection.kind,
+              connection.label,
+            ),
+          };
     });
     this.providerList.set(providers);
+    this.loaded.set(true);
     this.log.debug('AgentEngine', `Loaded ${providers.length} providers`);
     const current: AiProviderId = this.provider();
     const currentAvailable: boolean = providers.some(

@@ -2,7 +2,13 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { ArchiveProvision, everyPlatform, platformKey } from './archive-provision';
-import { ArchiveProvisioner, isComplete, markComplete, pruneVersions } from './archive-provisioner';
+import {
+  ArchiveProvisioner,
+  installedVersions,
+  isComplete,
+  markComplete,
+  pruneVersions,
+} from './archive-provisioner';
 
 /**
  * Builds a provision whose single archive serves every platform, so the tests do not depend on which
@@ -110,6 +116,26 @@ describe('ArchiveProvisioner', () => {
     expect(provisioner.isInstalled(provision())).toBe(false);
   });
 
+  it('ensure_afterAFailure_downloadsAgainRatherThanAnsweringFromTheCache', async () => {
+    // The cache exists so racing callers share one download, not so one failure becomes permanent. When
+    // a null was cached, a plugin whose payload was briefly unreachable could not be installed again
+    // without restarting Studio — the Install button reported the same failure without a request going
+    // out. See the same fix in `LockfileProvisioner`, which is where #697 found it.
+    let attempts: number = 0;
+    vi.stubGlobal('fetch', (): Promise<Response> => {
+      attempts += 1;
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+    try {
+      expect(await provisioner.ensure(provision())).toBeNull();
+      expect(await provisioner.ensure(provision())).toBeNull();
+
+      expect(attempts).toBe(2);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('disabledProvisioning_installsNothing', async () => {
     const disabled: ArchiveProvisioner = new ArchiveProvisioner(null, 'Test');
 
@@ -183,6 +209,44 @@ describe('ArchiveProvisioner', () => {
 
     it('doesNothingWhenProvisioningIsDisabled', async () => {
       await expect(pruneVersions(null, 'demo', '1.0.0', 'Test')).resolves.toBeUndefined();
+    });
+  });
+  describe('installedVersions', () => {
+    /**
+     * Creates an install directory for a version, optionally marked complete.
+     * @param version The version to create.
+     * @param complete Whether to write the completion marker.
+     */
+    function install(version: string, complete: boolean): void {
+      const directory: string = path.join(root, 'demo', version, platformKey());
+      mkdirSync(directory, { recursive: true });
+      if (complete) {
+        writeFileSync(path.join(directory, '.studio-install-complete'), 'x');
+      }
+    }
+
+    it('readsTheVersionsOutOfTheLayoutWithNoRecordInvolved', () => {
+      // The directory is the ground truth: a profile whose install record was forgotten as stale
+      // (#463) still has this, which is what lets #456 heal rather than merely stop recurring.
+      install('1.0.0', true);
+      install('2.0.0', true);
+
+      expect([...installedVersions(root, 'demo')].sort()).toEqual(['1.0.0', '2.0.0']);
+    });
+
+    it('ignoresAnInstallThatNeverCompleted', () => {
+      // An interrupted download leaves a directory behind, and a directory is not an install.
+      install('1.0.0', false);
+
+      expect(installedVersions(root, 'demo')).toEqual([]);
+    });
+
+    it('findsNothingForAComponentThatWasNeverInstalled', () => {
+      expect(installedVersions(root, 'absent')).toEqual([]);
+    });
+
+    it('findsNothingWhenProvisioningIsDisabled', () => {
+      expect(installedVersions(null, 'demo')).toEqual([]);
     });
   });
 });

@@ -46,6 +46,22 @@ export class SettingsStore {
   }
 
   /**
+   * Removes the value stored under the given key, if any.
+   *
+   * Deliberately distinct from writing a null: a key that is *absent* returns the caller's fallback,
+   * which is what a one-time migration needs when it has taken ownership of what used to live there.
+   * @param key The key to remove.
+   */
+  public remove(key: string): void {
+    try {
+      globalThis.localStorage?.removeItem(key);
+    } catch (error: unknown) {
+      // Same contract as writing: persistence is best-effort and never throws at the caller.
+      this.log.error('SettingsStore', `Failed to remove '${key}'`, error);
+    }
+  }
+
+  /**
    * Subscribes to changes ANOTHER window makes to the given key, so per-window state read once at
    * boot (the theme, the settings map) can follow live edits made elsewhere — a pop-out window
    * following the main window's appearance. The browser fires the `storage` event only in the

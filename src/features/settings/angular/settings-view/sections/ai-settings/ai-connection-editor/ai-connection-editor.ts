@@ -1,9 +1,18 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
 import type { InputSignal, Signal, WritableSignal } from '@angular/core';
-import type { AiAuthStatus, AiConnection, AiProviderKind } from '@shared/api/ai-types';
+import type {
+  AiAuthStatus,
+  AiConnection,
+  AiProviderKind,
+  AuthMethod,
+  ProviderPage,
+} from '@shared/api/ai-types';
 import { AiConnections } from '@shared/angular/services/ai-connections/ai-connections';
+import { AiProviders } from '@shared/angular/services/ai-providers/ai-providers';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { Log } from '@shared/angular/services/log/log';
+import { installedContributions, UnkeyedPluginContribution } from '@shared/api/plugin-channels';
+import { Plugins } from '@shared/angular/services/plugins/plugins';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { PasswordField } from '@shared/angular/components/forms/password-field/password-field';
 import { Radio } from '@shared/angular/components/forms/radio/radio';
@@ -11,6 +20,21 @@ import { SettingRow } from '@shared/angular/components/forms/setting-row/setting
 import { Button } from '@shared/angular/components/forms/button/button';
 import { Icon } from '@shared/angular/icons/icon';
 import { SettingControl } from '../../../setting-control/setting-control';
+
+/**
+ * What the editor says about the plugin a configuration runs through.
+ */
+export interface HarnessReading {
+  /**
+   * Gets the text shown: the plugin's name, or why there is none.
+   */
+  readonly text: string;
+
+  /**
+   * Gets whether the configuration can run as it stands.
+   */
+  readonly runnable: boolean;
+}
 
 /**
  * Edits a single AI provider configuration (a connection) inside its company page's accordion. Its
@@ -48,6 +72,17 @@ export class AiConnectionEditor {
    * Holds the settings service, backing the Claude CLI rows shown for a Claude subscription.
    */
   private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds the plugin client, read for the harnesses installed on this machine.
+   */
+  private readonly pluginClient: Plugins = inject(Plugins);
+
+  /**
+   * Holds the provider pages installed harnesses contribute, read to find the plugin a configuration's
+   * sign-in method belongs to.
+   */
+  private readonly providers: AiProviders = inject(AiProviders);
 
   /**
    * Holds the structured logger.
@@ -136,6 +171,103 @@ export class AiConnectionEditor {
   protected readonly showClaudePath: Signal<boolean> = computed(
     (): boolean => this.settings.aiClaudeExecutable() === 'custom',
   );
+
+  /**
+   * Gets the harnesses installed plugins provide, in catalogue order.
+   */
+  private readonly harnesses: Signal<readonly UnkeyedPluginContribution[]> = computed(
+    (): readonly UnkeyedPluginContribution[] =>
+      installedContributions(this.pluginClient.plugins(), 'agent-harness'),
+  );
+
+  /**
+   * Gets the installed harness the configuration names, or undefined when it names none or names one
+   * that is no longer installed.
+   */
+  private readonly namedHarness: Signal<UnkeyedPluginContribution | undefined> = computed(
+    (): UnkeyedPluginContribution | undefined => {
+      const chosen: string | null | undefined = this.connection().harnessId;
+      return chosen === null || chosen === undefined
+        ? undefined
+        : this.harnesses().find(
+            (harness: UnkeyedPluginContribution): boolean => harness.id === chosen,
+          );
+    },
+  );
+
+  /**
+   * Gets the installed harness whose provider page offers this configuration's sign-in method — the
+   * plugin that would be named if the configuration were created now. Undefined when no installed
+   * plugin offers that method for that company.
+   */
+  private readonly methodHarness: Signal<UnkeyedPluginContribution | undefined> = computed(
+    (): UnkeyedPluginContribution | undefined => {
+      const current: AiConnection = this.connection();
+      const page: ProviderPage | undefined = this.providers
+        .pages()
+        .find((candidate: ProviderPage): boolean => candidate.kinds.includes(current.kind));
+      const method: AuthMethod | undefined = page?.methods.find(
+        (candidate: AuthMethod): boolean => candidate.auth === current.auth,
+      );
+      return method === undefined
+        ? undefined
+        : this.harnesses().find(
+            (harness: UnkeyedPluginContribution): boolean => harness.id === method.harnessId,
+          );
+    },
+  );
+
+  /**
+   * Gets what to say about the plugin the configuration runs through.
+   *
+   * ⛔ Not a choice, and not shown while it is right. A configuration names its harness the moment it
+   * is created — the sign-in button pressed belongs to the plugin that contributed it — so there is
+   * nothing to choose afterwards, and the picker this replaced could only ever hand a configuration
+   * to a plugin that does not speak its sign-in method. A working configuration therefore shows no
+   * row at all; only the two ways it can be wrong are worth a line.
+   *
+   * ⚠️ A configuration naming a harness that is no longer installed says so rather than naming a
+   * plugin that is not there. The stored `harnessId` is left alone, so reinstalling restores it.
+   */
+  protected readonly harness: Signal<HarnessReading> = computed((): HarnessReading => {
+    const named: UnkeyedPluginContribution | undefined = this.namedHarness();
+    if (named !== undefined) {
+      return { text: named.displayName, runnable: true };
+    }
+    const chosen: string | null | undefined = this.connection().harnessId;
+    return {
+      text:
+        chosen === null || chosen === undefined
+          ? 'Not set — no plugin runs this configuration.'
+          : `The plugin that ran this configuration is no longer installed (${chosen}).`,
+      runnable: false,
+    };
+  });
+
+  /**
+   * Gets the installed plugin the configuration can be pointed at to make it runnable, or undefined
+   * when it already is, or when nothing installed offers its sign-in method.
+   *
+   * 🔑 The one repair that is not a free choice: it is the same answer creating the configuration
+   * would give today, offered to a configuration that predates plugins naming themselves (#703) or
+   * whose plugin was replaced by another offering the same method.
+   */
+  protected readonly repair: Signal<UnkeyedPluginContribution | undefined> = computed(
+    (): UnkeyedPluginContribution | undefined =>
+      this.harness().runnable ? undefined : this.methodHarness(),
+  );
+
+  /**
+   * Points the configuration at the plugin that offers its sign-in method.
+   */
+  protected applyRepair(): void {
+    const target: UnkeyedPluginContribution | undefined = this.repair();
+    if (target === undefined) {
+      return;
+    }
+    this.log.info('settings.ai', 'Harness repaired', this.connection().id, target.id);
+    this.connections.update(this.connection().id, { harnessId: target.id });
+  }
 
   /**
    * Formats a context window as a compact token count (for example `128k` or `1M`).

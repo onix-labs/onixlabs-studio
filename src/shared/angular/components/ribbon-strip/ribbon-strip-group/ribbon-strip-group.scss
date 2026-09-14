@@ -28,7 +28,11 @@
   display: flex;
   align-items: center;
   gap: 0.25rem;
-  padding: 0.25rem;
+  // Block and inline are tuned separately: only the block padding is part of the strip's height, and
+  // it is trimmed under the inline padding, which is the air between the lane's controls and the
+  // group border. Do not collapse the two back into one shorthand.
+  padding-block: 0.1875rem;
+  padding-inline: 0.25rem;
   block-size: var(--ribbon-content-height);
   box-sizing: content-box;
   overflow: visible;
@@ -37,7 +41,10 @@
 .ribbon-group__title {
   display: flex;
   justify-content: center;
-  padding: 0.2rem;
+  // The band is a full-width centred 0.5rem line, so its inline padding buys nothing visually while
+  // its block padding is pure strip height — hence the split, and hence only the block half trimmed.
+  padding-block: 0.125rem;
+  padding-inline: 0.2rem;
   background: var(--ribbon-group-title-background-color);
   // Rounds itself into the group's bottom corners, which the group's own clip used to do for it.
   // One radius smaller than the group's, so the band follows the inside of the border rather than

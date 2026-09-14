@@ -116,17 +116,42 @@ export class LockfileProvisioner {
 
   /**
    * Installs a provision, or reuses the cached copy.
+   *
+   * ⛔ **A failure is never cached.** The cache exists so racing callers share one download and a later
+   * ask reuses the tree already on disk — not so a transient failure becomes permanent. Caching the
+   * null made Retry a no-op: a 404 on an untagged release answered every later attempt in under a
+   * millisecond without touching the network, and only restarting Studio cleared it.
    * @param provision The provisioning recipe.
    * @returns Returns the entry point path, or null when the install failed.
    */
   public ensure(provision: LockfileProvision): Promise<string | null> {
     const key: string = `${provision.id} ${provision.version} ${platformKey()}`;
-    let install: Promise<string | null> | undefined = this.installs.get(key);
-    if (install === undefined) {
-      install = this.install(provision);
-      this.installs.set(key, install);
+    const cached: Promise<string | null> | undefined = this.installs.get(key);
+    if (cached !== undefined) {
+      return cached;
     }
+    const install: Promise<string | null> = this.forget(key, this.install(provision));
+    this.installs.set(key, install);
     return install;
+  }
+
+  /**
+   * Drops an install from the cache unless it produced a tree, so the next ask retries it.
+   * @param key The cache key the install is held under.
+   * @param install The install in flight.
+   * @returns Returns the install, unchanged.
+   */
+  private async forget(key: string, install: Promise<string | null>): Promise<string | null> {
+    try {
+      const result: string | null = await install;
+      if (result === null) {
+        this.installs.delete(key);
+      }
+      return result;
+    } catch (error: unknown) {
+      this.installs.delete(key);
+      throw error;
+    }
   }
 
   /**

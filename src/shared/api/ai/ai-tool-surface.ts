@@ -208,6 +208,69 @@ export const OPEN_TERMINAL: string = 'open_terminal';
 export const OPEN_FILE: string = 'open_file';
 
 /**
+ * The workspace-surface capability that lists the documents open in the workspace's well: what the
+ * user has in front of them, which one is active, and which are unsaved (#713).
+ */
+export const LIST_OPEN_DOCUMENTS: string = 'list_open_documents';
+
+/**
+ * The workspace-surface capability that opens a changed file's diff — working tree against HEAD —
+ * into the workspace's well (#713). The "show me what you changed" tool: a diff in the well rather
+ * than a paste in the transcript.
+ */
+export const OPEN_DIFF: string = 'open_diff';
+
+/**
+ * The workspace-surface capability that reads the workspace's source-control state: branch,
+ * ahead/behind, and the changed files, as the source-control sidebar shows them (#713). Worktree-
+ * aware, and available to a harness that has no shell to run `git status` with.
+ */
+export const READ_SOURCE_CONTROL_STATUS: string = 'read_source_control_status';
+
+/**
+ * The workspace-surface capability that lists the terminals in the workspace's dock, so an agent that
+ * did not open one itself can still find one to drive (#713).
+ */
+export const LIST_TERMINALS: string = 'list_terminals';
+
+/**
+ * The workspace-surface capability that creates a file in the workspace, optionally with content,
+ * and puts it in front of the user (#713). The tree's own New File, with the Explorer reflecting it —
+ * and, for a harness with no file tools of its own, the one way to write a file at all.
+ */
+export const CREATE_FILE: string = 'create_file';
+
+/**
+ * The workspace-surface capability that creates a folder in the workspace (#713).
+ */
+export const CREATE_FOLDER: string = 'create_folder';
+
+/**
+ * The workspace-surface capability that renames a file or folder in place (#713).
+ */
+export const RENAME_PATH: string = 'rename_path';
+
+/**
+ * The workspace-surface capability that deletes a file or folder, to the operating system's trash
+ * where the platform allows it (#713).
+ */
+export const DELETE_PATH: string = 'delete_path';
+
+/**
+ * The workspace-surface capability that reveals a file or folder in the Explorer (#713): expands
+ * the tree down to it and selects it, so the user is looking at what the agent is talking about.
+ */
+export const REVEAL_IN_EXPLORER: string = 'reveal_in_explorer';
+
+/**
+ * The tool that loads a skill from the user's skill library (#301): the second half of progressive
+ * disclosure. Every in-scope skill's name and description are listed in the system prompt; a model
+ * that decides one applies calls this to receive its full instructions, so the cost of a skill is
+ * paid only on the turns that use it.
+ */
+export const LOAD_SKILL: string = 'load_skill';
+
+/**
  * The formats {@link OPEN_DOCUMENT} can open a document in: the markdown editor (rendered prose) or
  * the code editor (syntax-highlighted text).
  */
@@ -215,9 +278,33 @@ export type OpenDocumentFormat = 'markdown' | 'code';
 
 /**
  * Identifies what an agent run acts on: the open editor document (`editor`), the owning terminal
- * (`terminal`), the owning binary document (`binary`), the API Explorer's collections (`api`), or the
- * project as a whole (`project` — the standalone agent tab, which has no owning document and works
- * through the provider's built-in tools alone). It selects the tool set the providers expose for the
- * run.
+ * (`terminal`), the owning binary document (`binary`), the API Explorer's collections (`api`), a
+ * workspace tab and its document well (`workspace` — the agent panel docked in a workspace or
+ * repository tab, #713), or the project as a whole (`project` — the standalone agent tab, which has no
+ * owning document and works through the provider's built-in tools alone). It selects the tool set the
+ * providers expose for the run.
  */
-export type AgentSurface = 'editor' | 'terminal' | 'binary' | 'api' | 'project';
+export type AgentSurface = 'editor' | 'terminal' | 'binary' | 'api' | 'workspace' | 'project';
+
+/**
+ * Every surface, in the order they are presented to a user choosing among them. The one list the
+ * request validator and any picker read, so a surface added to the type cannot be forgotten by
+ * either — which is how `api` went unlisted by the validator for a while.
+ */
+export const AGENT_SURFACES: readonly AgentSurface[] = [
+  'editor',
+  'terminal',
+  'binary',
+  'api',
+  'workspace',
+  'project',
+];
+
+/**
+ * Determines whether a value names a surface.
+ * @param value The value to test.
+ * @returns Returns true when it is one of {@link AGENT_SURFACES}.
+ */
+export function isAgentSurface(value: unknown): value is AgentSurface {
+  return typeof value === 'string' && AGENT_SURFACES.includes(value as AgentSurface);
+}

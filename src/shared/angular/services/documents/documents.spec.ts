@@ -2,6 +2,9 @@ import { computed, Signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 
 import { FileInfo } from '@shared/api/file-channels';
+import { DockPanelPlaceholder } from '@shared/angular/components/dock-layout/dock-panel-placeholder/dock-panel-placeholder';
+import { Icon } from '@shared/angular/icons/icon';
+import { DockPanelRegistry } from '@shared/angular/services/dock-layout/dock-panel-registry';
 import { FileSystem } from '../file-system/file-system';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
@@ -266,5 +269,143 @@ describe('Documents', () => {
     expect(language()).toBe('plaintext');
     documents.setLanguage(tab.id, 'typescript');
     expect(language()).toBe('typescript');
+  });
+
+  describe('relocate', () => {
+    it('whenTheFileItselfIsRenamed_reboundsTheDocumentToTheNewPath', () => {
+      // #718: a rename in the Explorer or by an agent left the open document on the old path, so
+      // the well tab kept its old title and the next save recreated the old file.
+      const id: string = documents.createWellDocument(SAMPLE_FILE);
+
+      const moved: readonly string[] = documents.relocate('/ws/main.ts', '/ws/entry.ts');
+
+      expect(moved).toEqual([id]);
+      expect(documents.get(id)?.filePath()).toBe('/ws/entry.ts');
+      expect(documents.get(id)?.fileName()).toBe('entry.ts');
+      expect(documents.findIdByPath('/ws/entry.ts')).toBe(id);
+      expect(documents.findIdByPath('/ws/main.ts')).toBeUndefined();
+    });
+
+    it('whenTheFileIsRenamed_followsItOnTheTopLevelTab', () => {
+      const tab: Tab = documents.openFileInfo(SAMPLE_FILE, 'code');
+
+      documents.relocate('/ws/main.ts', '/ws/entry.ts');
+
+      expect(tabs.tabs().find((candidate: Tab): boolean => candidate.id === tab.id)?.title).toBe(
+        'entry.ts',
+      );
+    });
+
+    it('whenTheFileIsRenamed_keepsItsContentAndDirtyState', () => {
+      const id: string = documents.createWellDocument(SAMPLE_FILE);
+      documents.setContent(id, 'edited');
+
+      documents.relocate('/ws/main.ts', '/ws/entry.ts');
+
+      expect(documents.get(id)?.content()).toBe('edited');
+      expect(documents.get(id)?.dirty()).toBe(true);
+    });
+
+    it('whenAFolderIsRenamed_movesEveryOpenDocumentBeneathIt', () => {
+      const inside: string = documents.createWellDocument({
+        ...SAMPLE_FILE,
+        path: '/ws/src/app/main.ts',
+      });
+      const deeper: string = documents.createWellDocument({
+        ...SAMPLE_FILE,
+        path: '/ws/src/app/lib/util.ts',
+        name: 'util.ts',
+      });
+      const outside: string = documents.createWellDocument({
+        ...SAMPLE_FILE,
+        path: '/ws/src/other.ts',
+        name: 'other.ts',
+      });
+
+      const moved: readonly string[] = documents.relocate('/ws/src/app', '/ws/src/core');
+
+      expect(moved).toEqual([inside, deeper]);
+      expect(documents.get(inside)?.filePath()).toBe('/ws/src/core/main.ts');
+      expect(documents.get(deeper)?.filePath()).toBe('/ws/src/core/lib/util.ts');
+      expect(documents.get(outside)?.filePath()).toBe('/ws/src/other.ts');
+    });
+
+    it('whenAFolderIsRenamed_leavesASiblingSharingThePrefixAlone', () => {
+      // '/ws/src-old' starts with '/ws/src' but is not inside it.
+      const sibling: string = documents.createWellDocument({
+        ...SAMPLE_FILE,
+        path: '/ws/src-old/main.ts',
+      });
+
+      const moved: readonly string[] = documents.relocate('/ws/src', '/ws/source');
+
+      expect(moved).toEqual([]);
+      expect(documents.get(sibling)?.filePath()).toBe('/ws/src-old/main.ts');
+    });
+
+    it('whenTheExtensionChanges_redetectsTheLanguage', () => {
+      const id: string = documents.createWellDocument(SAMPLE_FILE);
+      expect(documents.get(id)?.language()).toBe('typescript');
+
+      documents.relocate('/ws/main.ts', '/ws/notes.md');
+
+      expect(documents.get(id)?.language()).toBe('markdown');
+    });
+
+    it('whenTheExtensionIsKept_preservesALanguageChosenByHand', () => {
+      // A folder rename, or a rename that keeps the extension, must not undo the user's syntax pick.
+      const id: string = documents.createWellDocument(SAMPLE_FILE);
+      documents.setLanguage(id, 'javascript');
+
+      documents.relocate('/ws', '/workspace');
+
+      expect(documents.get(id)?.filePath()).toBe('/workspace/main.ts');
+      expect(documents.get(id)?.language()).toBe('javascript');
+    });
+
+    it('whenNoOpenDocumentIsAffected_returnsNothing', () => {
+      documents.createWellDocument(SAMPLE_FILE);
+
+      expect(documents.relocate('/ws/README.md', '/ws/READ.md')).toEqual([]);
+    });
+
+    it('whenAWellDocumentIsRenamed_retitlesItsDockPanel', () => {
+      // A well document has no top-level tab; its dock panel is the tab whose title must follow.
+      const registry: DockPanelRegistry = TestBed.inject(DockPanelRegistry);
+      const id: string = documents.createWellDocument(SAMPLE_FILE);
+      registry.register({
+        id,
+        title: 'main.ts',
+        icon: Icon.CODE,
+        role: 'document',
+        component: DockPanelPlaceholder,
+      });
+      const title: Signal<string> = computed((): string => registry.get(id)?.title ?? 'none');
+      expect(title()).toBe('main.ts');
+
+      documents.relocate('/ws/main.ts', '/ws/entry.ts');
+
+      expect(title()).toBe('entry.ts');
+      expect(registry.get(id)?.icon).toBe(Icon.CODE);
+      expect(registry.get(id)?.ownsToolStrip).toBeUndefined();
+    });
+
+    it('whenAWellDocumentCrossesTheMarkdownBoundary_swapsItsPanelIconAndToolStrip', () => {
+      const registry: DockPanelRegistry = TestBed.inject(DockPanelRegistry);
+      const id: string = documents.createWellDocument(SAMPLE_FILE);
+      registry.register({
+        id,
+        title: 'main.ts',
+        icon: Icon.CODE,
+        role: 'document',
+        component: DockPanelPlaceholder,
+      });
+
+      documents.relocate('/ws/main.ts', '/ws/notes.md');
+
+      expect(registry.get(id)?.title).toBe('notes.md');
+      expect(registry.get(id)?.icon).toBe(Icon.MARKDOWN);
+      expect(registry.get(id)?.ownsToolStrip).toBe(true);
+    });
   });
 });

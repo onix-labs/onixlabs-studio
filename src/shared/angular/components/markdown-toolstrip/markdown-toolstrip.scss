@@ -1,0 +1,27 @@
+// The strip owns the TEXT SIZE of what it hosts, exactly as the explorer tool strips do and for the
+// same reason: it is dense chrome, and a button that inherited the ambient body size would draw its
+// icon oversized. Stating 0.8rem here keeps these buttons the same size as the Solution and File
+// Explorer strips'.
+:host {
+  display: block;
+  flex: 0 0 auto;
+  font-size: 0.8rem;
+}
+
+.markdown-toolstrip {
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+  padding: 0.25rem 0.5rem;
+}
+
+.markdown-toolstrip__divider {
+  inline-size: 0.0625rem;
+  block-size: 1rem;
+  margin-inline: 0.25rem;
+  background: var(--dock-border-color);
+}
+
+.markdown-toolstrip__spacer {
+  margin-inline-start: auto;
+}

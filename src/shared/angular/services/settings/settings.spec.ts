@@ -134,7 +134,7 @@ describe('Settings', () => {
   it('ai_whenDefaulted_usesClaudeConnectionPromptAndNoCap', () => {
     const service: Settings = TestBed.inject(Settings);
 
-    expect(service.aiActiveConnectionId()).toBe('claude');
+    expect(service.aiActiveConnectionId()).toBe('');
     expect(service.aiPermissionPosture()).toBe('prompt');
     expect(service.aiTokenCap()).toBe(0);
   });
@@ -180,27 +180,25 @@ describe('Settings', () => {
     expect(service.aiPermissionPosture()).toBe('prompt');
   });
 
-  it('connections_whenDefaulted_seedTheBuiltInsWithClaudeActive', () => {
+  it('connections_whenDefaulted_areEmptyWithNothingActive', () => {
+    // ⛔ A fresh install seeds nothing (#653). It used to seed claude, codex, vercel and ollama, so the
+    // binary shipped configurations for providers it had no way to run. A provider exists because a
+    // plugin contributed its page and the user created a configuration from it.
     const service: Settings = TestBed.inject(Settings);
 
-    expect(service.aiConnections().map((c: AiConnection): string => c.id)).toEqual([
-      'claude',
-      'codex',
-      'vercel',
-      'ollama',
-    ]);
-    expect(service.aiActiveConnectionId()).toBe('claude');
-    expect(service.aiActiveConnection()?.kind).toBe('anthropic');
+    expect(service.aiConnections()).toEqual([]);
+    expect(service.aiActiveConnectionId()).toBe('');
+    expect(service.aiActiveConnection()).toBeUndefined();
   });
 
   it('upsertConnection_whenNew_appendsAndWhenExisting_replaces', () => {
     const service: Settings = TestBed.inject(Settings);
 
     service.upsertConnection(connection('my-openai'));
-    expect(service.aiConnections()).toHaveLength(5);
+    expect(service.aiConnections()).toHaveLength(1);
 
     service.upsertConnection({ ...connection('my-openai'), label: 'Renamed' });
-    expect(service.aiConnections()).toHaveLength(5);
+    expect(service.aiConnections()).toHaveLength(1);
     expect(
       service.aiConnections().find((c: AiConnection): boolean => c.id === 'my-openai')?.label,
     ).toBe('Renamed');
@@ -208,6 +206,7 @@ describe('Settings', () => {
 
   it('setActiveConnection_andSetConnectionModel_roundTrip', () => {
     const service: Settings = TestBed.inject(Settings);
+    service.upsertConnection({ ...connection('ollama'), kind: 'ollama', auth: 'none' });
 
     service.setActiveConnection('ollama');
     service.setConnectionModel('ollama', 'qwen3:8b');
@@ -228,7 +227,7 @@ describe('Settings', () => {
     expect(service.aiConnections().some((c: AiConnection): boolean => c.id === 'my-openai')).toBe(
       false,
     );
-    expect(service.aiActiveConnectionId()).toBe('claude');
+    expect(service.aiActiveConnectionId()).toBe('');
     expect(service.connectionModelFor('my-openai')).toBe('');
   });
 
@@ -240,8 +239,9 @@ describe('Settings', () => {
 
     const service: Settings = TestBed.inject(Settings);
 
+    // The old choice still carries forward, even though nothing is seeded to match it yet: the id is
+    // remembered so that creating that configuration later restores the user's selection.
     expect(service.aiActiveConnectionId()).toBe('ollama');
-    expect(service.aiActiveConnection()?.id).toBe('ollama');
     expect(service.connectionModelFor('ollama')).toBe('qwen3:8b');
   });
 

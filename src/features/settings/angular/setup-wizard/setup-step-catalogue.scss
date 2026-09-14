@@ -1,0 +1,68 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.catalogue__list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.catalogue__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-block: 0.6rem;
+}
+
+.catalogue__item:not(:first-child) {
+  border-block-start: 0.0625rem solid var(--settings-border-color);
+}
+
+.catalogue__text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-inline-size: 0;
+}
+
+.catalogue__name {
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.catalogue__detail {
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--settings-muted-foreground-color);
+}
+
+// The list is the scrolling part, so the filter stays put above it.
+.catalogue__filter {
+  flex: none;
+}
+
+// A plain word rather than a disabled button: there is no action here, and a greyed-out control
+// invites a click that does nothing.
+.catalogue__state {
+  flex: none;
+  font-size: 0.75rem;
+  color: var(--settings-muted-foreground-color);
+}
+
+.catalogue__empty,
+.catalogue__error {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--settings-muted-foreground-color);
+}
+
+.catalogue__error {
+  color: var(--danger-color, #f87171);
+}

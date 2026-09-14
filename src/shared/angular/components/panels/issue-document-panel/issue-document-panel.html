@@ -71,7 +71,7 @@
 
     <section class="issue__body">
       @if (hasBody()) {
-        <app-markdown-view [text]="issue.body" />
+        <app-markdown-renderer [text]="issue.body" />
       } @else {
         <p class="issue__empty">No description was given.</p>
       }
@@ -93,7 +93,7 @@
               <strong>{{ comment.author }}</strong>
               <span class="issue__comment-date">{{ formatDate(comment.createdAt) }}</span>
             </header>
-            <app-markdown-view [text]="comment.body" />
+            <app-markdown-renderer [text]="comment.body" />
           </article>
         }
       }

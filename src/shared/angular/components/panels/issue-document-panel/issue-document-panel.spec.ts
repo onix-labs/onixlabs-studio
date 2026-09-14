@@ -159,7 +159,7 @@ describe('IssueDocumentPanel', () => {
 
     // The asterisks are markup, not text: shown as source they would be the author's formatting
     // leaking onto the page.
-    expect(host.querySelector('app-markdown-view')).not.toBeNull();
+    expect(host.querySelector('app-markdown-renderer')).not.toBeNull();
     expect(host.textContent).not.toContain('**reproduce**');
   });
 

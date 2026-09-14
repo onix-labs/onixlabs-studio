@@ -51,8 +51,7 @@ describe('LspSettings', () => {
       disabledServers: ['java'],
       javaPath: null,
       dotnetPath: null,
-      clangdPath: null,
-      typescriptServerPath: null,
+      serverPaths: {},
       serverArgs: {},
       languageServers: {},
     };
@@ -142,28 +141,35 @@ describe('LspSettings', () => {
     expect(setCalls.at(-1)?.dotnetPath).toBe('/usr/local/share/dotnet/dotnet');
   });
 
-  it('setClangdPath_trimsAndStoresThePath', async () => {
+  it('setServerPath_trimsAndStoresThePath', async () => {
     const service: LspSettings = TestBed.inject(LspSettings);
     await service.refresh();
-    await service.setClangdPath('  /usr/bin/clangd  ');
+    await service.setServerPath('clangd', '  /usr/bin/clangd  ');
 
-    expect(setCalls.at(-1)?.clangdPath).toBe('/usr/bin/clangd');
+    expect(setCalls.at(-1)?.serverPaths).toEqual({ clangd: '/usr/bin/clangd' });
   });
 
-  it('setTypescriptServerPath_blank_clearsTheOverride', async () => {
+  it('setServerPath_blank_removesTheEntryRatherThanStoringAnEmptyOne', async () => {
     const service: LspSettings = TestBed.inject(LspSettings);
     await service.refresh();
-    await service.setTypescriptServerPath('  ');
+    await service.setServerPath('clangd', '/usr/bin/clangd');
+    await service.setServerPath('clangd', '  ');
 
-    expect(setCalls.at(-1)?.typescriptServerPath).toBeNull();
+    // Removed, not blanked: an empty string is a path nobody meant, and "no override" is the absence
+    // of an entry everywhere else that reads the map.
+    expect(setCalls.at(-1)?.serverPaths).toEqual({});
   });
 
-  it('setTypescriptServerPath_trimsAndStoresThePath', async () => {
+  it('setServerPath_keepsOtherServersUntouched', async () => {
     const service: LspSettings = TestBed.inject(LspSettings);
     await service.refresh();
-    await service.setTypescriptServerPath('  /srv/tsls/lib/cli.mjs  ');
+    await service.setServerPath('clangd', '/usr/bin/clangd');
+    await service.setServerPath('typescript', '  /srv/tsls/lib/cli.mjs  ');
 
-    expect(setCalls.at(-1)?.typescriptServerPath).toBe('/srv/tsls/lib/cli.mjs');
+    expect(setCalls.at(-1)?.serverPaths).toEqual({
+      clangd: '/usr/bin/clangd',
+      typescript: '/srv/tsls/lib/cli.mjs',
+    });
   });
 
   it('setServerArgs_splitsOnWhitespaceAndStores', async () => {

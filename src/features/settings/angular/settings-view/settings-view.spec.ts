@@ -1,4 +1,7 @@
+import { signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import type { ProviderPage } from '@shared/api/ai-types';
+import { AiProviders } from '@shared/angular/services/ai-providers/ai-providers';
 
 import { Theme } from '@shared/angular/services/theme/theme';
 import { SettingsView } from './settings-view';
@@ -22,6 +25,33 @@ describe('SettingsView', () => {
 
   it('should create', () => {
     expect(component).toBeTruthy();
+  });
+
+  it('render_whenAProviderPageIsSelected_showsItWhateverItsKind', async () => {
+    // The provider pages are the open set an installed harness contributes (#653). The template once
+    // enumerated seven companies, so a plugin bringing an eighth got an empty page for it.
+    const providers: AiProviders = TestBed.inject(AiProviders);
+    Object.defineProperty(providers, 'pages', {
+      value: signal<readonly ProviderPage[]>([
+        {
+          id: 'echo',
+          label: 'Echo',
+          kinds: ['echo'],
+          createKind: 'echo',
+          methods: [],
+          description: 'Echoes prompts back.',
+        },
+      ]),
+    });
+    (component as unknown as { section: WritableSignal<string> }).section.set('ai-provider-echo');
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const page: HTMLElement | null = (fixture.nativeElement as HTMLElement).querySelector(
+      'app-ai-settings',
+    );
+    expect(page).not.toBeNull();
+    expect(page?.textContent).toContain('Echoes prompts back.');
   });
 
   /**

@@ -1,9 +1,12 @@
 import {
+  EDIT_ACTIVE_DOCUMENT,
+  INSERT_ACTIVE_DOCUMENT,
   READ_ACTIVE_DOCUMENT,
   READ_TERMINAL_OUTPUT,
   REPLACE_ACTIVE_DOCUMENT,
   WRITE_TERMINAL_INPUT,
 } from '@shared/api/ai-types';
+import { Icon } from '@shared/angular/icons/icon';
 
 /**
  * The label shown for a tool call whose name has no friendlier mapping — the agent did something we
@@ -37,6 +40,23 @@ const TOOL_LABELS: Readonly<Record<string, string>> = {
 };
 
 /**
+ * Maps a tool's name to the glyph its timeline node wears, for the tools whose action has a shape
+ * of its own — reading, and writing. Everything else, a command included, keeps the generic action
+ * glyph: a lightning bolt says "did something", and that is exactly as much as is known.
+ */
+const TOOL_ICONS: Readonly<Record<string, Icon>> = {
+  Read: Icon.TOOL_READ,
+  Write: Icon.TOOL_WRITE,
+  Edit: Icon.TOOL_WRITE,
+  MultiEdit: Icon.TOOL_WRITE,
+  NotebookEdit: Icon.TOOL_WRITE,
+  [READ_ACTIVE_DOCUMENT]: Icon.TOOL_READ,
+  [REPLACE_ACTIVE_DOCUMENT]: Icon.TOOL_WRITE,
+  [EDIT_ACTIVE_DOCUMENT]: Icon.TOOL_WRITE,
+  [INSERT_ACTIVE_DOCUMENT]: Icon.TOOL_WRITE,
+};
+
+/**
  * Studio's own in-app capabilities, shown in their `mcp:` form when a tool row is expanded so the
  * technical detail reflects that they are the app's MCP tools rather than model built-ins.
  */
@@ -57,6 +77,15 @@ export function friendlyToolLabel(toolName: string | undefined): string {
     return GENERIC_LABEL;
   }
   return TOOL_LABELS[toolName] ?? GENERIC_LABEL;
+}
+
+/**
+ * Gets the glyph a settled tool call's timeline node wears.
+ * @param toolName The tool's name as surfaced by the provider, or undefined.
+ * @returns Returns the tool's own glyph, or the generic action glyph when it has none.
+ */
+export function toolNodeIcon(toolName: string | undefined): Icon {
+  return toolName === undefined ? Icon.ACTION : (TOOL_ICONS[toolName] ?? Icon.ACTION);
 }
 
 /**

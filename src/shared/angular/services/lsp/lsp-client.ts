@@ -871,6 +871,10 @@ export class LspClient implements OnDestroy {
     const key: string = normalise(state.path);
     const existing: TrackedDocument | undefined = this.tracked.get(key);
     if (existing === undefined) {
+      // The document may have moved (save-as, a rename in the Explorer or by an agent): the server
+      // must be told the old URI closed, or it keeps both open — and the eventual close finds the
+      // stale registration first and leaves the live one behind.
+      this.closeDocument(state.documentId);
       const tracked: TrackedDocument = {
         documentId: state.documentId,
         uri: pathToUri(state.path),

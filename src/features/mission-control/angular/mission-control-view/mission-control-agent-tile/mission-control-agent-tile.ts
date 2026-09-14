@@ -23,6 +23,7 @@ import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { PulseDot } from '@shared/angular/components/pulse-dot/pulse-dot';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
+import { ScopedOutlet } from '@shared/angular/components/scoped-outlet/scoped-outlet';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { NgTemplateOutlet } from '@angular/common';
 import { Icon } from '@shared/angular/icons/icon';
@@ -53,6 +54,7 @@ import { MissionControlTiles } from '../mission-control-tiles';
     Modal,
     ModalContent,
     NgTemplateOutlet,
+    ScopedOutlet,
   ],
   templateUrl: './mission-control-agent-tile.html',
   styleUrl: './mission-control-agent-tile.scss',

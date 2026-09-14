@@ -45,7 +45,38 @@ export enum PluginChannel {
  * plugin fills them. Kept a closed union deliberately — a new slot is a change to the application's
  * own surface, not something a plugin may invent.
  */
-export type PluginSlot = 'language-server' | 'debug-adapter' | 'decoder' | 'container-engine';
+export type PluginSlot =
+  'language-server' | 'debug-adapter' | 'decoder' | 'container-engine' | 'agent-harness';
+
+/**
+ * The slots in the order the application presents them — the Plugin Manager's categories and the
+ * setup wizard's plugin steps both walk this list, so the two surfaces agree on what comes first.
+ */
+export const PLUGIN_SLOTS: readonly PluginSlot[] = [
+  'language-server',
+  'debug-adapter',
+  'decoder',
+  'container-engine',
+  'agent-harness',
+];
+
+/**
+ * The display name of each contribution slot: what the Plugin Manager's categories panel lists, and
+ * what the setup wizard names the step that installs into it.
+ *
+ * Keyed by the slot rather than derived from it so the wording is a decision made here rather than a
+ * mechanical de-kebabing — "Language Servers" reads better than "Language Server" as a category, and
+ * "AI Providers" is what the rest of the application calls what an agent harness contributes.
+ * Shared so the two surfaces cannot drift: a user who installed something under one name must find
+ * it under the same name in the other.
+ */
+export const PLUGIN_SLOT_LABELS: Readonly<Record<PluginSlot, string>> = {
+  'language-server': 'Language Servers',
+  'debug-adapter': 'Debug Adapters',
+  decoder: 'Decoders',
+  'container-engine': 'Container Engines',
+  'agent-harness': 'AI Providers',
+};
 
 /**
  * Names the slots keyed by language, as opposed to by format.
@@ -82,12 +113,111 @@ export interface FormatPluginContribution extends FormatSlotEntry {
  * A container engine is chosen once for the application, so it carries neither `languages` nor
  * `formats` — the distinction the slot contract draws between a keyed slot and a plain one, surfaced
  * here rather than papered over with an array that would have nothing to put in it.
+ *
+ * An agent harness is here for a different reason: it *is* keyed, but by the AI connection it serves,
+ * and a connection is user-created data rather than a vocabulary the application owns. There is no
+ * fixed key set to declare, so it carries none — which the manifest states instead, as the auth kinds
+ * the harness claims.
  */
 export interface UnkeyedPluginContribution extends SlotEntry {
   /**
    * Gets the unkeyed slot this implementation fills.
    */
-  readonly slot: 'container-engine';
+  readonly slot: 'container-engine' | 'agent-harness';
+
+  /**
+   * Gets the AI providers an agent harness offers, or undefined when it offers none.
+   *
+   * ⛔ Carried on the contribution rather than through a channel of its own. The renderer already
+   * receives every installed contribution to draw the Plugin Manager and the harness picker, so the
+   * settings catalogue rides the same list — and cannot disagree with which harnesses are installed,
+   * which is the failure a second channel would eventually produce (#653).
+   */
+  readonly providers?: readonly ContributedAiProvider[];
+}
+
+/**
+ * An AI provider an installed harness offers: the company page Settings draws, how to sign in to it,
+ * and the models a new configuration starts with.
+ *
+ * This is the renderer-facing mirror of the manifest's `ManifestAiProvider`, declared here because
+ * `shared/api` is what both compilations share and the renderer must not import the manifest reader.
+ */
+export interface ContributedAiProvider {
+  /**
+   * Gets the provider family key, matched against a connection's `kind`.
+   */
+  readonly kind: string;
+
+  /**
+   * Gets the company name shown as the page title and in the agent picker's label.
+   */
+  readonly company: string;
+
+  /**
+   * Gets the sentence shown under the page title, or undefined for none.
+   */
+  readonly description?: string;
+
+  /**
+   * Gets the ways to sign in, each an add-button on the page.
+   */
+  readonly authMethods: readonly ContributedAiAuthMethod[];
+
+  /**
+   * Gets the models a new configuration starts with, or undefined for none.
+   */
+  readonly models?: readonly ContributedAiModel[];
+}
+
+/**
+ * One way to sign in to a contributed provider.
+ */
+export interface ContributedAiAuthMethod {
+  /**
+   * Gets the auth kind a configuration created this way uses.
+   */
+  readonly auth: string;
+
+  /**
+   * Gets the add-button's label.
+   */
+  readonly buttonLabel: string;
+
+  /**
+   * Gets the display name a configuration created this way is given.
+   */
+  readonly defaultDisplayName: string;
+
+  /**
+   * Gets the explanatory line shown with the button, or undefined for none.
+   */
+  readonly hint?: string;
+
+  /**
+   * Gets the endpoint a configuration created this way is preset with, or undefined for none.
+   */
+  readonly baseUrl?: string;
+}
+
+/**
+ * A model a contributed provider starts with.
+ */
+export interface ContributedAiModel {
+  /**
+   * Gets the model identifier.
+   */
+  readonly id: string;
+
+  /**
+   * Gets the display name.
+   */
+  readonly label: string;
+
+  /**
+   * Gets the context window in tokens.
+   */
+  readonly contextWindow: number;
 }
 
 /**
@@ -234,7 +364,7 @@ export function installedContributions(
 ): readonly FormatPluginContribution[];
 export function installedContributions(
   plugins: readonly PluginSummary[],
-  slot: 'container-engine',
+  slot: 'container-engine' | 'agent-harness',
 ): readonly UnkeyedPluginContribution[];
 export function installedContributions(
   plugins: readonly PluginSummary[],
@@ -244,6 +374,50 @@ export function installedContributions(
     .filter((plugin: PluginSummary): boolean => plugin.state === 'installed')
     .flatMap((plugin: PluginSummary): readonly PluginContribution[] => plugin.contributions)
     .filter((contribution: PluginContribution): boolean => contribution.slot === slot);
+}
+
+/**
+ * Describes which contributions fill the slot being asked about.
+ *
+ * A predicate rather than a slot and a key, because the three slots are not keyed the same way and
+ * {@link installedContributions}' overloads exist precisely to say so: a language server is keyed by
+ * language, a decoder by binary format, and a container engine by nothing at all. Flattening that into
+ * one signature would mean inventing a key for the slot that has none.
+ */
+export type ContributionMatch = (contribution: PluginContribution) => boolean;
+
+/**
+ * Gets the plugins that could fill a slot but are not installed — what to offer a user who has just
+ * run into the gap.
+ *
+ * The counterpart of {@link installedContributions}, and the answer to the same question from the
+ * other side. Three prompts each computed this for their own slot before #657, with three
+ * implementations that agreed by coincidence rather than by construction.
+ *
+ * **Nothing is offered once something already fills the slot.** Support that exists is never advertised
+ * again, whether the user installed it a moment ago or a year ago.
+ *
+ * ⚠️ Only `available` plugins are candidates, deliberately narrower than "not installed". A plugin can
+ * also be `unavailable` — its publisher ships no build for this platform — and offering one is offering
+ * an install the Plugin Manager will refuse. `podman-engine` on an Intel Mac is the live example.
+ * @param plugins The known plugins.
+ * @param matches Tests whether a contribution fills the slot in question.
+ * @returns Returns the installable candidates in catalogue order, or nothing when the slot is filled.
+ */
+export function slotCandidates(
+  plugins: readonly PluginSummary[],
+  matches: ContributionMatch,
+): readonly PluginSummary[] {
+  const fills: (plugin: PluginSummary) => boolean = (plugin: PluginSummary): boolean =>
+    plugin.contributions.some(matches);
+  if (
+    plugins.some((plugin: PluginSummary): boolean => plugin.state === 'installed' && fills(plugin))
+  ) {
+    return [];
+  }
+  return plugins.filter(
+    (plugin: PluginSummary): boolean => plugin.state === 'available' && fills(plugin),
+  );
 }
 
 /**

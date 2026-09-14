@@ -13,6 +13,7 @@ import type {
 } from '@shared/api/ai-types';
 import { AgentEngine } from '../agent-engine/agent-engine';
 import { AiRuntime, AiRunOptions } from '../ai-runtime/ai-runtime';
+import { PromptProfile, PromptProfiles } from '../prompt-profiles/prompt-profiles';
 import { Notification, Notifications } from '@shared/angular/services/notifications/notifications';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { Tab } from '@shared/angular/services/tabs/tab';
@@ -54,11 +55,15 @@ describe('Agent', () => {
     runTimeoutMs: number;
     effort: AiEffort | undefined;
     remoteControl: AiRemoteControlMode | undefined;
+    language: string | undefined;
+    systemPromptExtra: string | undefined;
+    userPromptExtra: string | undefined;
   }[];
   let abortCalls: string[];
   let closeSessionCalls: string[];
   let remoteControlCalls: { agentSessionId: string; mode: AiRemoteControlMode }[];
   let stopAgentCalls: string[];
+  let stopTaskCalls: { agentSessionId: string; taskId: string }[];
   let steerCalls: { requestId: string; text: string }[];
   let steerResult: boolean;
   let permissionReplies: { permissionId: string; granted: boolean; remember?: string }[];
@@ -99,6 +104,7 @@ describe('Agent', () => {
     closeSessionCalls = [];
     remoteControlCalls = [];
     stopAgentCalls = [];
+    stopTaskCalls = [];
     steerCalls = [];
     steerResult = false;
     permissionReplies = [];
@@ -113,6 +119,7 @@ describe('Agent', () => {
       | 'closeSession'
       | 'setSessionRemoteControl'
       | 'stopAgent'
+      | 'stopTask'
       | 'listProviders'
       | 'respondPermission'
       | 'respondInput'
@@ -126,6 +133,8 @@ describe('Agent', () => {
       setSessionRemoteControl: (agentSessionId: string, mode: AiRemoteControlMode): void =>
         void remoteControlCalls.push({ agentSessionId, mode }),
       stopAgent: (agentSessionId: string): void => void stopAgentCalls.push(agentSessionId),
+      stopTask: (agentSessionId: string, taskId: string): void =>
+        void stopTaskCalls.push({ agentSessionId, taskId }),
       onEvent: (listener: (event: AiEvent) => void): (() => void) => {
         fireEvent = listener;
         return (): void => undefined;
@@ -147,6 +156,9 @@ describe('Agent', () => {
           runTimeoutMs: options.runTimeoutMs ?? 0,
           effort: options.effort,
           remoteControl: options.remoteControl,
+          language: options.language,
+          systemPromptExtra: options.systemPromptExtra,
+          userPromptExtra: options.userPromptExtra,
         });
         return 'run-1';
       },
@@ -173,6 +185,10 @@ describe('Agent', () => {
     TestBed.configureTestingModule({
       providers: [Agent, { provide: AiRuntime, useValue: runtimeStub }],
     });
+    // ⚠️ Nothing is seeded any more (#653), so a fresh profile has no active connection until the
+    // engine's async provider load picks one. These tests run synchronously against a stubbed
+    // `listProviders`, so the selection is made explicit rather than raced for.
+    TestBed.inject(Settings).setActiveConnection('claude');
     agent = TestBed.inject(Agent);
   });
 
@@ -180,6 +196,41 @@ describe('Agent', () => {
     agent.send('hello');
 
     expect(runCalls[0].agentSessionId).toBeTruthy();
+  });
+
+  it('send_carriesTheBoundLanguageAndTheStandingPromptsThatMatchIt', () => {
+    // #300. The layers are resolved here — the renderer owns the profiles and the host knows the
+    // owning document's language — and travel as two strings the transcript never shows.
+    const profiles: PromptProfiles = TestBed.inject(PromptProfiles);
+    const profile: PromptProfile = profiles.create('C#');
+    profiles.update(profile.id, {
+      scope: { surfaces: [], languages: ['csharp'] },
+      system: 'Explicit types.',
+      user: 'British English.',
+    });
+    agent.bindLanguage((): string => 'csharp');
+
+    agent.send('hello');
+
+    expect(runCalls[0].language).toBe('csharp');
+    expect(runCalls[0].systemPromptExtra).toBe('### C#\nExplicit types.');
+    expect(runCalls[0].userPromptExtra).toBe('### C#\nBritish English.');
+    expect(runCalls[0].prompt).toBe('hello');
+    expect(lastItem()?.kind === 'user' && lastItem()?.text).toBe('hello');
+  });
+
+  it('send_whenNoLanguageIsBound_carriesNoneAndOnlyUnscopedProfilesApply', () => {
+    const profiles: PromptProfiles = TestBed.inject(PromptProfiles);
+    profiles.update(profiles.create('Everywhere').id, { user: 'Be brief.' });
+    profiles.update(profiles.create('C#').id, {
+      scope: { surfaces: [], languages: ['csharp'] },
+      user: 'Explicit types.',
+    });
+
+    agent.send('hello');
+
+    expect(runCalls[0].language).toBeUndefined();
+    expect(runCalls[0].userPromptExtra).toBe('### Everywhere\nBe brief.');
   });
 
   it('commandsEvent_forThisConversation_populatesTheDiscoveredCommands', () => {
@@ -418,7 +469,7 @@ describe('Agent', () => {
         .items()
         .some(
           (i: AgentItem): boolean =>
-            i.kind === 'assistant' && i.text.includes('Background task finished'),
+            i.kind === 'notice' && i.text.includes('Background task finished'),
         ),
     ).toBe(false);
   });
@@ -477,9 +528,14 @@ describe('Agent', () => {
     const assistants: readonly AgentItem[] = agent
       .items()
       .filter((i: AgentItem): boolean => i.kind === 'assistant');
-    const note: AgentItem | undefined = assistants.find((i: AgentItem): boolean =>
-      i.text.includes('Background task finished'),
-    );
+    // ⛔ The note is a `notice`, not assistant text (#691) — Studio's bookkeeping is not something the
+    // model said. It must still be sealed, so the report the agent streams next starts its own item.
+    const note: AgentItem | undefined = agent
+      .items()
+      .find(
+        (i: AgentItem): boolean =>
+          i.kind === 'notice' && i.text.includes('Background task finished'),
+      );
     expect(note).toBeDefined();
     expect(note?.text.includes('The suite passed.')).toBe(false);
     expect(
@@ -488,6 +544,47 @@ describe('Agent', () => {
           i.text === 'The suite passed.' && !i.text.includes('Background task'),
       ),
     ).toBe(true);
+  });
+
+  it('backgroundTask_isNeverAssistantContent_howeverLongTheHarnessesExplanationIs', () => {
+    // 🔥 #691. The harness reports its own housekeeping through this channel — a background shell
+    // orphaned by a previous process exit arrives as a settled task whose summary is a paragraph of
+    // internals ("Monitor timeout", "agent teardown", "the previous Claude Code process"). Written as
+    // assistant text it read as the model addressing the user about things the user cannot act on and
+    // the model never said. The kind is the fix: a notice is Studio talking about itself.
+    agent.send('go');
+    const sessionId: string | undefined = runCalls[0].agentSessionId;
+    const orphan: string =
+      'No completion record was found for this background shell command from the previous session. ' +
+      'It may have been stopped (via the UI, Monitor timeout, or agent teardown — these leave no ' +
+      'transcript marker), or it may have been running when the previous Claude Code process exited.';
+
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'background-task',
+      agentSessionId: sessionId ?? null,
+      taskId: 'task-orphan',
+      status: 'stopped',
+      summary: orphan,
+      outputFile: '/tmp/task-orphan.out',
+    });
+
+    // The explanation rides the notice's detail (#695) — behind the chip's expander, never as the
+    // chip's own title and never as text the model appears to have said.
+    const carrying: readonly AgentItem[] = agent
+      .items()
+      .filter((i: AgentItem): boolean =>
+        (i.detail ?? '').includes('No completion record was found'),
+      );
+    expect(carrying.length).toBe(1);
+    expect(carrying[0].kind).toBe('notice');
+    expect(carrying[0].text).toBe('Background task was stopped');
+    // The whole point: nothing in the transcript claims the agent said it.
+    expect(
+      agent
+        .items()
+        .some((i: AgentItem): boolean => i.kind === 'assistant' && i.text.includes(orphan)),
+    ).toBe(false);
   });
 
   it('backgroundTask_withReportingOff_notesItButLeavesTheConversationIdle', () => {
@@ -515,7 +612,7 @@ describe('Agent', () => {
         .items()
         .some(
           (i: AgentItem): boolean =>
-            i.kind === 'assistant' && i.text.includes('Background task finished'),
+            i.kind === 'notice' && i.text.includes('Background task finished'),
         ),
     ).toBe(true);
     // Anything the harness says anyway is still filtered out, as before.
@@ -677,8 +774,9 @@ describe('Agent', () => {
 
       expect(agent.isRunning()).toBe(false);
       const last: AgentItem | undefined = lastItem();
-      expect(last?.kind).toBe('assistant');
-      expect((last as { text?: string }).text).toBe('_Stopped._');
+      // A notice, not assistant text (#691): the model did not say "Stopped." — Studio did.
+      expect(last?.kind).toBe('notice');
+      expect((last as { text?: string }).text).toBe('Stopped');
     } finally {
       vi.useRealTimers();
     }
@@ -695,11 +793,273 @@ describe('Agent', () => {
 
       vi.advanceTimersByTime(8_100);
 
-      // The deadline found the turn already landed and did nothing — no second "_Stopped._".
+      // The deadline found the turn already landed and did nothing — no second "Stopped." notice.
       expect(agent.items().length).toBe(itemsAfterStatus);
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('stopTask_whenTheProviderSettlesIt_leavesNothingBehind', () => {
+    vi.useFakeTimers();
+    try {
+      agent.send('go');
+      const sessionId: string | undefined = runCalls[0].agentSessionId;
+      fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+      startTask(sessionId, 'task-1', { toolId: 'tool-1' });
+
+      agent.stopTask('task-1');
+      expect(stopTaskCalls).toEqual([{ agentSessionId: sessionId, taskId: 'task-1' }]);
+      fireEvent({
+        requestId: 'run-1',
+        kind: 'background-task',
+        agentSessionId: sessionId ?? null,
+        taskId: 'task-1',
+        status: 'stopped',
+        summary: 'sleep 90',
+        outputFile: '/tmp/task-1.out',
+      });
+      const itemsAfterSettle: number = agent.items().length;
+
+      vi.advanceTimersByTime(8_100);
+
+      // The deadline found the task already settled and said nothing more.
+      expect(agent.tasks()).toEqual([]);
+      expect(agent.items().length).toBe(itemsAfterSettle);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('stopTask_whenTheProviderNeverAnswers_untracksTheTaskAndSaysSo', () => {
+    // #709: seven presses of Stop over six seconds, each forwarded, none answered — and the row stayed
+    // in the tasks menu forever. A Stop that changes nothing on screen is a broken button.
+    vi.useFakeTimers();
+    try {
+      agent.send('go');
+      const sessionId: string | undefined = runCalls[0].agentSessionId;
+      fireEvent({
+        requestId: 'run-1',
+        kind: 'tool-start',
+        toolId: 'tool-1',
+        name: 'Bash',
+        detail: 'sleep 90',
+      });
+      startTask(sessionId, 'task-1', { toolId: 'tool-1' });
+      fireEvent({ requestId: 'run-1', kind: 'tool-end', toolId: 'tool-1', ok: true, detail: '' });
+      fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+
+      agent.stopTask('task-1');
+      agent.stopTask('task-1');
+      expect(agent.tasks().length).toBe(1);
+
+      vi.advanceTimersByTime(8_100);
+
+      expect(agent.tasks()).toEqual([]);
+      const notice: AgentItem | undefined = agent
+        .items()
+        .find(
+          (i: AgentItem): boolean => i.kind === 'notice' && i.text === 'Background task untracked',
+        );
+      expect(notice).toBeDefined();
+      expect((notice as { detail?: string }).detail).toContain('no longer tracking');
+      // The second press restarted nothing: one untrack, one notice.
+      expect(
+        agent
+          .items()
+          .filter(
+            (i: AgentItem): boolean =>
+              i.kind === 'notice' && i.text === 'Background task untracked',
+          ).length,
+      ).toBe(1);
+      expect(
+        agent.items().find((i: AgentItem): boolean => i.kind === 'tool' && i.toolId === 'tool-1'),
+      ).toMatchObject({ toolState: 'error' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('backgroundTask_whenStopped_doesNotAdoptATurnThatIsNotComing', () => {
+    // The CLI acknowledges a stop and goes quiet — no report-back. Adopting one anyway held the
+    // conversation "Working…" forever after every Stop.
+    agent.send('go');
+    const sessionId: string | undefined = runCalls[0].agentSessionId;
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+    startTask(sessionId, 'task-1');
+
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'background-task',
+      agentSessionId: sessionId ?? null,
+      taskId: 'task-1',
+      status: 'stopped',
+      summary: 'sleep 300',
+      outputFile: '/tmp/task-1.out',
+    });
+
+    expect(agent.tasks()).toEqual([]);
+    expect(agent.isRunning()).toBe(false);
+    expect(
+      agent
+        .items()
+        .some((i: AgentItem): boolean => i.kind === 'notice' && i.text.includes('was stopped')),
+    ).toBe(true);
+  });
+
+  it('backgroundTask_whenTheReportBackNeverStarts_releasesTheAdoptedTurn', () => {
+    vi.useFakeTimers();
+    try {
+      agent.send('go');
+      const sessionId: string | undefined = runCalls[0].agentSessionId;
+      fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+      fireEvent({
+        requestId: 'run-1',
+        kind: 'background-task',
+        agentSessionId: sessionId ?? null,
+        taskId: 'task-1',
+        status: 'completed',
+        summary: 'done',
+        outputFile: '/tmp/task-1.out',
+      });
+      expect(agent.isRunning()).toBe(true);
+
+      vi.advanceTimersByTime(15_100);
+
+      // Nothing arrived under the adopted id: the conversation is idle again, not "Working" for good.
+      expect(agent.isRunning()).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('backgroundTask_whenTheReportBackBegins_theAdoptionOutlivesItsDeadline', () => {
+    vi.useFakeTimers();
+    try {
+      agent.send('go');
+      const sessionId: string | undefined = runCalls[0].agentSessionId;
+      fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+      fireEvent({
+        requestId: 'run-1',
+        kind: 'background-task',
+        agentSessionId: sessionId ?? null,
+        taskId: 'task-1',
+        status: 'completed',
+        summary: 'done',
+        outputFile: '/tmp/task-1.out',
+      });
+      fireEvent({
+        requestId: 'run-1',
+        kind: 'text',
+        delta: 'The task finished with',
+        messageUuid: 'm1',
+      });
+
+      vi.advanceTimersByTime(15_100);
+
+      // A report that has begun ends the way every turn does — on its status, however long it takes.
+      expect(agent.isRunning()).toBe(true);
+      fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+      expect(agent.isRunning()).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('phase_followsTheConversation_emptyWorkingWaitingIdle', () => {
+    // The one signal every control is enabled from (agent-controls.ts). Each transition here is a
+    // column of the table.
+    expect(agent.phase()).toBe('empty');
+    expect(agent.controls().newChat).toBe(false);
+
+    agent.send('hi');
+    expect(agent.phase()).toBe('working');
+    expect(agent.controls().stop).toBe(true);
+    expect(agent.controls().engine).toBe(false);
+
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'permission',
+      permissionId: 'p1',
+      name: 'Write',
+      detail: 'x',
+      hasWorkspace: true,
+    });
+    expect(agent.phase()).toBe('waiting');
+    expect(agent.controls().stop).toBe(true);
+    expect(agent.controls().attach).toBe(false);
+
+    const prompt: AgentItem | undefined = agent
+      .items()
+      .find((i: AgentItem): boolean => i.kind === 'permission' && i.permissionId === 'p1');
+    agent.respondPermission(prompt!, false);
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+    expect(agent.phase()).toBe('idle');
+    expect(agent.controls().newChat).toBe(true);
+    expect(agent.controls().compact).toBe(true);
+    expect(agent.controls().stop).toBe(false);
+  });
+
+  it('stopTask_forATaskThisConversationIsNotRunning_asksNothing', () => {
+    agent.send('go');
+    agent.stopTask('ghost');
+    expect(stopTaskCalls).toEqual([]);
+  });
+
+  it('sessionEnded_untracksEveryTaskTheSessionWasRunning', () => {
+    // A task cannot outlive its session. When the session is reaped, evicted or stopped, whatever is
+    // still listed will never settle through the lifecycle — so it leaves the menu with a warning
+    // rather than sitting there as running forever.
+    agent.send('go');
+    const sessionId: string | undefined = runCalls[0].agentSessionId;
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+    startTask(sessionId, 'task-1');
+    startTask(sessionId, 'task-2', { skipTranscript: true });
+    expect(agent.tasks().length).toBe(2);
+
+    // Another conversation's session ending is not this one's business.
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'session-ended',
+      agentSessionId: 'someone-else',
+      reason: 'idle',
+    });
+    expect(agent.tasks().length).toBe(2);
+
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'session-ended',
+      agentSessionId: sessionId ?? '',
+      reason: 'idle',
+    });
+
+    expect(agent.tasks()).toEqual([]);
+    const notice: AgentItem | undefined = agent
+      .items()
+      .find(
+        (i: AgentItem): boolean => i.kind === 'notice' && i.text === 'Background tasks untracked',
+      );
+    expect(notice).toBeDefined();
+    // The ambient task left silently: only the visible one is named.
+    expect((notice as { detail?: string }).detail).toContain('doing task-1');
+    expect((notice as { detail?: string }).detail).not.toContain('doing task-2');
+    expect((notice as { detail?: string }).detail).toContain('idle');
+  });
+
+  it('sessionEnded_withNoTasks_saysNothing', () => {
+    agent.send('go');
+    const sessionId: string | undefined = runCalls[0].agentSessionId;
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+    const before: number = agent.items().length;
+
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'session-ended',
+      agentSessionId: sessionId ?? '',
+      reason: 'idle',
+    });
+
+    expect(agent.items().length).toBe(before);
   });
 
   it('setRemoteControlEnabled_whileBusy_stillReAimsTheLiveSession', () => {
@@ -1472,8 +1832,9 @@ describe('Agent', () => {
 
     fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
 
-    expect(lastItem()?.kind).toBe('assistant');
-    expect(lastItem()?.text).toBe('_The model returned no output._');
+    // Reporting that the model said nothing is Studio talking, so it cannot be assistant text (#691).
+    expect(lastItem()?.kind).toBe('notice');
+    expect(lastItem()?.text).toBe('The model returned no output');
   });
 
   it('status_whenCompletedAfterAReply_doesNotNoteEmptyOutput', () => {

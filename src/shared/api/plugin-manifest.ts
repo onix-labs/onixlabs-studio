@@ -59,8 +59,40 @@ import { DECODER_FORMATS } from './decoder-protocol';
  * `1.6.0` added the optional `members` to a download (#596), for an upstream that publishes one archive
  * holding more than the thing being contributed. Adds only: a download naming none still extracts the
  * whole archive, exactly as before.
+ *
+ * `1.7.0` added the `python` command kind (#649), for a payload distributed as Python source. Unlike
+ * `node`, it runs under an interpreter found on the machine rather than one Studio ships, so a plugin
+ * using it should also declare `requires` — Python is the user's, and may be absent.
+ *
+ * `1.8.0` added the `gz` archive kind (#651), for a publisher that ships a single compressed binary
+ * rather than a one-entry tarball. It has nothing inside to name, so the download's `executablePath`
+ * says where the decompressed file lands rather than where to find it.
+ *
+ * `1.9.0` added the `agentHarnesses` contribution point (#653), the fifth slot, and the first whose
+ * payload is a **peer** rather than a tool: a harness runs an agent turn and stops mid-way to ask the
+ * user for permission, where every other point answers a question or transforms bytes. It is keyed by
+ * the AI connection's authentication kind, because which harness runs a turn is a property of the
+ * connection the user picked. Adds only, on the same terms as every minor before it.
+ *
+ * `1.10.0` added an agent harness's optional `sessionModel`. ⛔ It has to be declared statically rather
+ * than read from the handshake, because Studio decides whether to *open a live session* before it has
+ * started anything — a value that only exists once a process has spoken arrives after the decision it
+ * informs. Absent means `stateless`, which is what every harness can serve, so every 1.9.0 manifest
+ * still validates and still means what it meant.
+ *
+ * `1.11.0` added an agent harness's optional `remoteControl`, static for the same reason: the control
+ * is drawn in the agent ribbon from what `listProviders` reported at start-up. Absent means false,
+ * which is the conservative answer — a control not offered is a gap, where one offered and unhonoured
+ * is a control that lies.
+ *
+ * `1.12.0` adds an agent harness's optional `providers`: the company pages Settings draws, the sign-in
+ * methods each offers, and the models a new configuration starts with. Core used to hardcode all three
+ * — `PROVIDER_PAGES` named Anthropic, OpenAI, Google, DeepSeek, xAI and Ollama and `SEED_CONNECTIONS`
+ * carried their model ids — so a binary shipped provider pages for agents it had no way to run (#653).
+ * Declared on the harness rather than through a seam of its own, because the plugin that runs Claude is
+ * the plugin that knows Anthropic.
  */
-export const PLUGIN_API_VERSION: string = '1.6.0';
+export const PLUGIN_API_VERSION: string = '1.12.0';
 
 /**
  * Matches a plain three-part semver. Deliberately strict and deliberately local: the rule below is the
@@ -143,7 +175,7 @@ const PLATFORMS: readonly string[] = ['darwin', 'linux', 'win32'];
 /**
  * The archive kinds the provisioner can extract.
  */
-const ARCHIVE_KINDS: readonly string[] = ['tar.gz', 'zip'];
+const ARCHIVE_KINDS: readonly string[] = ['tar.gz', 'zip', 'gz'];
 
 /**
  * Describes one platform's download: where it comes from, what it must hash to, and what to run inside
@@ -164,7 +196,7 @@ export interface ManifestDownload {
   /**
    * Gets the archive kind.
    */
-  readonly archive: 'tar.gz' | 'zip';
+  readonly archive: 'tar.gz' | 'zip' | 'gz';
 
   /**
    * Gets the executable or entry point's path within the extracted tree.
@@ -258,13 +290,17 @@ export type ManifestProvision = ManifestArchiveProvision | ManifestNpmProvision;
  *
  * `executable` runs the provisioned entry point directly. `node` runs it as JavaScript under the
  * runtime Studio ships, so a plugin distributed as a JavaScript bundle needs no Node on the machine.
- * Those are the only two shapes the first-party catalogue uses.
+ * `python` runs it as Python under an interpreter found on the machine.
+ *
+ * The asymmetry between `node` and `python` is not an oversight: Studio *is* a Node runtime, so it can
+ * promise one; it ships no Python, so a `python` plugin depends on the user having one and should say
+ * so in `requires`. A payload that must bring its own runtime is not expressible here at all.
  */
 export interface ManifestCommand {
   /**
    * Gets how the entry point is run.
    */
-  readonly kind: 'executable' | 'node';
+  readonly kind: 'executable' | 'node' | 'python';
 
   /**
    * Gets the arguments passed to it, or undefined for none.
@@ -396,6 +432,180 @@ export interface ManifestContainerEngine {
    * undefined to use the provision's. See {@link ManifestLanguageServer.entryPoint}.
    */
   readonly entryPoint?: string;
+}
+
+/**
+ * Describes an agent harness a plugin contributes (#653).
+ *
+ * The fifth contribution point, and the first whose payload is a **peer** rather than a tool: a language
+ * server answers questions about a file and a decoder turns bytes into a listing, but a harness runs an
+ * agent turn and stops mid-way to ask the user for permission. Studio speaks the agent protocol to it,
+ * exactly as it speaks LSP to a language server.
+ *
+ * Keyed by the **connection** it serves, because which harness runs a turn is a property of the AI
+ * connection the user picked, not of a language or a file format. A connection an installed harness
+ * claims is run by it; every other connection falls through to the in-core adapter, which is why an
+ * OpenAI-compatible endpoint needs no harness at all.
+ */
+export interface ManifestAgentHarness {
+  /**
+   * Gets the identifier the harness is registered under.
+   */
+  readonly id: string;
+
+  /**
+   * Gets the display name, which is what the surface calls the harness.
+   */
+  readonly displayName: string;
+
+  /**
+   * Gets the priority used to pick among harnesses claiming the same connection, higher first.
+   */
+  readonly priority: number;
+
+  /**
+   * Gets the authentication kinds of the connections this harness serves.
+   *
+   * A closed set of strings the manifest matches against `AiConnection.auth`. Deliberately not a
+   * pattern or an expression: a harness declares which connections it is *for*, and anything richer
+   * would be a rule Studio has to evaluate on a plugin's behalf.
+   */
+  readonly connectionAuths: readonly string[];
+
+  /**
+   * Gets how the harness is started. Its stdin and stdout carry the agent protocol.
+   */
+  readonly command: ManifestCommand;
+
+  /**
+   * Gets this contribution's own entry point within the installed payload, or undefined to use the
+   * provision's. See {@link ManifestLanguageServer.entryPoint}.
+   */
+  readonly entryPoint?: string;
+
+  /**
+   * Gets how the harness maintains a conversation, defaulting to `stateless`.
+   *
+   * ⛔ Declared here rather than read from the handshake, and the reason is a chicken-and-egg: Studio
+   * decides whether to *open a session* before it has started anything, so a value only known after a
+   * process has spoken arrives too late. Reading it from the handshake gave a harness a transient first
+   * turn and live ones thereafter, which is worse than either.
+   *
+   * ⚠️ The handshake still declares it, and a harness that contradicts its own manifest is refused
+   * rather than reconciled: Studio has already committed to holding a process open on the manifest's
+   * word, and a `stateless` harness held open would accumulate turns it cannot relate to each other.
+   */
+  readonly sessionModel?: 'live-harness' | 'stateless';
+
+  /**
+   * Gets whether the harness can expose its session to another machine, defaulting to false.
+   *
+   * ⛔ Static for the same reason as {@link sessionModel}: the control appears in the agent ribbon,
+   * built from what `listProviders` reported at start-up, so an answer that needs a running process
+   * arrives long after the control has already been drawn or withheld.
+   */
+  readonly remoteControl?: boolean;
+
+  /**
+   * Gets the providers this harness offers, which is what Settings draws its company pages from.
+   * Absent contributes none, which is correct for a harness that only runs connections another plugin
+   * defines.
+   *
+   * ⛔ Declared on the harness rather than through a contribution point of its own. A plugin that runs
+   * Claude is the same plugin that knows Anthropic's name, its sign-in methods and its models, and a
+   * second seam would let the two disagree — a page offering a sign-in no installed harness can serve.
+   */
+  readonly providers?: readonly ManifestAiProvider[];
+}
+
+/**
+ * A provider a harness offers: the company page Settings shows, the ways to sign in to it, and the
+ * models it starts with.
+ *
+ * ⛔ This is the whole of what core used to hardcode (#653). `PROVIDER_PAGES` named Anthropic, OpenAI,
+ * Google, DeepSeek, xAI and Ollama; `SEED_CONNECTIONS` carried their model ids. Both shipped in the
+ * binary, so core could not stop offering providers it had no way to run.
+ */
+export interface ManifestAiProvider {
+  /**
+   * Gets the provider family key, matched against `AiConnection.kind` (for example `anthropic`).
+   */
+  readonly kind: string;
+
+  /**
+   * Gets the company name shown as the settings page title and in the agent picker's label.
+   */
+  readonly company: string;
+
+  /**
+   * Gets the sentence shown under the page title, or undefined for none.
+   */
+  readonly description?: string;
+
+  /**
+   * Gets the ways to sign in to this provider, each an add-button on its page. Empty offers no way to
+   * create a configuration, which is a page worth nothing — so a provider declaring none is refused.
+   */
+  readonly authMethods: readonly ManifestAiAuthMethod[];
+
+  /**
+   * Gets the models a new configuration starts with, or undefined for none. A starting point only: the
+   * user may add, remove or rediscover them.
+   */
+  readonly models?: readonly ManifestAiModel[];
+}
+
+/**
+ * One way to sign in to a provider, rendered as an add-button on its settings page.
+ */
+export interface ManifestAiAuthMethod {
+  /**
+   * Gets the auth kind a configuration created this way uses.
+   *
+   * `api-key` and `none` are the two core acts on itself — it stores a key, or it stores nothing.
+   * Anything else names a sign-in the plugin performs, and core neither probes nor interprets it.
+   */
+  readonly auth: string;
+
+  /**
+   * Gets the add-button's label (for example `Subscription`).
+   */
+  readonly buttonLabel: string;
+
+  /**
+   * Gets the display name a configuration created this way is given.
+   */
+  readonly defaultDisplayName: string;
+
+  /**
+   * Gets the explanatory line shown with the button, or undefined for none.
+   */
+  readonly hint?: string;
+
+  /**
+   * Gets the endpoint a configuration created this way is preset with, or undefined for none.
+   */
+  readonly baseUrl?: string;
+}
+
+/**
+ * A model a provider starts with.
+ */
+export interface ManifestAiModel {
+  /**
+   * Gets the model identifier, as the harness would be asked to run it.
+   */
+  readonly id: string;
+
+  /**
+   * Gets the display name.
+   */
+  readonly label: string;
+
+  /**
+   * Gets the context window in tokens.
+   */
+  readonly contextWindow: number;
 }
 
 /**
@@ -534,6 +744,11 @@ export interface ManifestContributions {
    * Gets the container engines contributed.
    */
   readonly containerEngines?: readonly ManifestContainerEngine[];
+
+  /**
+   * Gets the agent harnesses contributed.
+   */
+  readonly agentHarnesses?: readonly ManifestAgentHarness[];
 }
 
 /**
@@ -766,8 +981,8 @@ function readCommand(value: unknown, path: string, errors: Errors): ManifestComm
     return null;
   }
   const kind: unknown = source['kind'];
-  if (kind !== 'executable' && kind !== 'node') {
-    errors.add(`${path}.kind`, "must be 'executable' or 'node'");
+  if (kind !== 'executable' && kind !== 'node' && kind !== 'python') {
+    errors.add(`${path}.kind`, "must be 'executable', 'node' or 'python'");
     return null;
   }
   const args: unknown = source['args'];
@@ -1079,18 +1294,92 @@ function readContributions(value: unknown, errors: Errors): ManifestContribution
       });
     },
   );
+  const agentHarnesses: ManifestAgentHarness[] = [];
+  readContributionList(
+    source['agentHarnesses'],
+    'contributes.agentHarnesses',
+    errors,
+    (entry: Record<string, unknown>, path: string): void => {
+      const command: ManifestCommand | null = readCommand(
+        entry['command'],
+        `${path}.command`,
+        errors,
+      );
+      agentHarnesses.push({
+        id: readId(entry, 'id', `${path}.`, errors),
+        displayName: readString(entry, 'displayName', `${path}.`, errors),
+        priority: readPriority(entry, path, errors),
+        connectionAuths: readAuths(entry['connectionAuths'], `${path}.connectionAuths`, errors),
+        command: command ?? { kind: 'executable' },
+        entryPoint: readEntryPoint(entry, 'entryPoint', `${path}.`, errors),
+        sessionModel: readSessionModel(entry['sessionModel'], `${path}.sessionModel`, errors),
+        remoteControl: readFlag(entry['remoteControl'], `${path}.remoteControl`, errors),
+        providers: readAiProviders(entry['providers'], `${path}.providers`, errors),
+      });
+    },
+  );
   if (
     languageServers.length === 0 &&
     debugAdapters.length === 0 &&
     decoders.length === 0 &&
-    containerEngines.length === 0
+    containerEngines.length === 0 &&
+    agentHarnesses.length === 0
   ) {
     errors.add(
       'contributes',
-      'must contribute at least one language server, debug adapter, decoder or container engine',
+      'must contribute at least one language server, debug adapter, decoder, container engine or agent harness',
     );
   }
-  return { languageServers, debugAdapters, decoders, containerEngines };
+  return { languageServers, debugAdapters, decoders, containerEngines, agentHarnesses };
+}
+
+/**
+ * Reads an optional boolean capability, defaulting to false.
+ *
+ * Absent means false because the conservative answer is "cannot": a capability Studio does not offer is
+ * a missing control, where one offered and unhonoured is a control that lies.
+ * @param value The declared value, or undefined.
+ * @param path The dotted path, for error messages.
+ * @param errors The failure collector.
+ * @returns Returns the flag.
+ */
+function readFlag(value: unknown, path: string, errors: Errors): boolean {
+  if (value === undefined) {
+    return false;
+  }
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  errors.add(path, 'must be a boolean');
+  return false;
+}
+
+/**
+ * Reads a harness's session model, defaulting to `stateless`.
+ *
+ * Absent means `stateless` because that is the conservative answer: Studio runs a transient process per
+ * turn, which every harness can serve. A harness that keeps state has to say so, since being held open
+ * is a thing done *to* it.
+ * @param value The declared value, or undefined.
+ * @param path The dotted path, for error messages.
+ * @param errors The failure collector.
+ * @returns Returns the session model.
+ */
+function readSessionModel(
+  value: unknown,
+  path: string,
+  errors: Errors,
+): 'live-harness' | 'stateless' {
+  if (value === undefined) {
+    return 'stateless';
+  }
+  if (value === 'live-harness' || value === 'stateless') {
+    return value;
+  }
+  // Refused rather than defaulted. Silently reading an unknown value as `stateless` would turn a typo
+  // into a harness that never gets the session it was written to need, with nothing to point at.
+  errors.add(path, "must be 'live-harness' or 'stateless'");
+  return 'stateless';
 }
 
 /**
@@ -1226,6 +1515,129 @@ function readFormats(value: unknown, path: string, errors: Errors): readonly str
     return [];
   }
   return keys;
+}
+
+/**
+ * Validates the connection authentication kinds a harness serves.
+ *
+ * ⚠️ Deliberately **not** checked against a closed list, unlike a decoder's formats. A connection's
+ * `auth` is user-editable data rather than a vocabulary Studio owns, and a harness published for an
+ * auth kind Studio has not shipped yet is a harness waiting for it, not a broken manifest. The cost of
+ * being wrong is symmetrical to the decoder case and lands the other way: an unmatched harness simply
+ * never claims a connection, and the in-core adapter serves it exactly as it does today.
+ * @param value The candidate array.
+ * @param path The dotted path for failures.
+ * @param errors The failure collector.
+ * @returns Returns the auth kinds, or an empty array when invalid.
+ */
+function readAuths(value: unknown, path: string, errors: Errors): readonly string[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    errors.add(path, 'must be a non-empty array of connection auth kinds');
+    return [];
+  }
+  if (!value.every((entry: unknown): boolean => typeof entry === 'string' && entry.length > 0)) {
+    errors.add(path, 'must contain only non-empty auth kinds');
+    return [];
+  }
+  return value as readonly string[];
+}
+
+/**
+ * Validates the providers a harness offers — the company pages Settings draws (#653).
+ *
+ * ⛔ Refuses rather than repairs, like every other reader here. A page is a thing the user creates
+ * configurations from, so a half-understood one produces a button that makes a connection nothing can
+ * run; saying which field is wrong costs a plugin its page and nothing else.
+ * @param value The candidate list.
+ * @param path The dotted path for failures.
+ * @param errors The failure collector.
+ * @returns Returns the providers, or undefined when none are declared.
+ */
+function readAiProviders(
+  value: unknown,
+  path: string,
+  errors: Errors,
+): readonly ManifestAiProvider[] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const providers: ManifestAiProvider[] = [];
+  readContributionList(value, path, errors, (entry: Record<string, unknown>, at: string): void => {
+    const methods: readonly ManifestAiAuthMethod[] = readAiAuthMethods(
+      entry['authMethods'],
+      `${at}.authMethods`,
+      errors,
+    );
+    providers.push({
+      kind: readId(entry, 'kind', `${at}.`, errors),
+      company: readString(entry, 'company', `${at}.`, errors),
+      description: readOptionalString(entry, 'description', `${at}.`, errors),
+      authMethods: methods,
+      models: readAiModels(entry['models'], `${at}.models`, errors),
+    });
+  });
+  return providers;
+}
+
+/**
+ * Validates the sign-in methods a provider offers.
+ * @param value The candidate list.
+ * @param path The dotted path for failures.
+ * @param errors The failure collector.
+ * @returns Returns the methods, empty when the list is missing or wrong.
+ */
+function readAiAuthMethods(
+  value: unknown,
+  path: string,
+  errors: Errors,
+): readonly ManifestAiAuthMethod[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    // A page with no way to add a configuration is a page that does nothing.
+    errors.add(path, 'must be a non-empty array of authentication methods');
+    return [];
+  }
+  const methods: ManifestAiAuthMethod[] = [];
+  readContributionList(value, path, errors, (entry: Record<string, unknown>, at: string): void => {
+    methods.push({
+      auth: readId(entry, 'auth', `${at}.`, errors),
+      buttonLabel: readString(entry, 'buttonLabel', `${at}.`, errors),
+      defaultDisplayName: readString(entry, 'defaultDisplayName', `${at}.`, errors),
+      hint: readOptionalString(entry, 'hint', `${at}.`, errors),
+      baseUrl: readOptionalString(entry, 'baseUrl', `${at}.`, errors),
+    });
+  });
+  return methods;
+}
+
+/**
+ * Validates the models a provider starts with.
+ * @param value The candidate list.
+ * @param path The dotted path for failures.
+ * @param errors The failure collector.
+ * @returns Returns the models, or undefined when none are declared.
+ */
+function readAiModels(
+  value: unknown,
+  path: string,
+  errors: Errors,
+): readonly ManifestAiModel[] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const models: ManifestAiModel[] = [];
+  readContributionList(value, path, errors, (entry: Record<string, unknown>, at: string): void => {
+    const window: unknown = entry['contextWindow'];
+    if (typeof window !== 'number' || !Number.isFinite(window) || window <= 0) {
+      errors.add(`${at}.contextWindow`, 'must be a positive number of tokens');
+      return;
+    }
+    models.push({
+      id: readString(entry, 'id', `${at}.`, errors),
+      label: readString(entry, 'label', `${at}.`, errors),
+      contextWindow: window,
+    });
+  });
+  return models;
 }
 
 /**

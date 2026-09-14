@@ -17,6 +17,15 @@ import {
   LIST_RUN_CONFIGURATIONS,
   OPEN_DOCUMENT,
   OPEN_FILE,
+  LIST_OPEN_DOCUMENTS,
+  OPEN_DIFF,
+  READ_SOURCE_CONTROL_STATUS,
+  LIST_TERMINALS,
+  CREATE_FILE,
+  CREATE_FOLDER,
+  RENAME_PATH,
+  DELETE_PATH,
+  REVEAL_IN_EXPLORER,
   OPEN_TERMINAL,
   PATCH_BINARY_BYTES,
   SAVE_DOCUMENT,
@@ -37,6 +46,7 @@ import {
 } from '@shared/api/ai-types';
 import { logger } from '@shared/electron/logger';
 import type { AgentRunContext } from './agent-provider';
+import { isWriteDenied, isWriteWithinRoots } from './write-confinement';
 
 /**
  * The fully-qualified name the read tool is exposed under to the Claude Agent SDK
@@ -282,6 +292,37 @@ export const PROJECT_PROMPT_APPENDIX: string = [
 ].join('\n');
 
 /**
+ * Appended to the system prompt on the workspace surface (#713): the agent panel docked in a workspace
+ * or repository tab. Says what the surface is and, as importantly, what it is not — there is no
+ * document of its own to edit, so the model is pointed at the well and its own file tools rather than
+ * left to act on whatever happens to be focused.
+ */
+export const WORKSPACE_PROMPT_APPENDIX: string = [
+  'You are running inside ONIXLabs Studio, docked to a workspace tab: the Solution Explorer and the',
+  "document well beside it. The working directory is that workspace's root. You are not docked to",
+  'any one document — read and change files on disk with your file-system tools, and the IDE follows:',
+  'open editors track external changes and the explorers refresh live.',
+  `- "${LIST_OPEN_DOCUMENTS}" lists what the user has open in the well, which one is active, and`,
+  '  which are unsaved.',
+  `- "${READ_ACTIVE_DOCUMENT}" reads the document currently focused in the well, so you can see what`,
+  '  the user is looking at. It is the one document tool here; to change a file, edit it on disk.',
+  `- "${OPEN_FILE}" opens one of the workspace's files in the well, to put it in front of the user.`,
+  `- "${OPEN_DIFF}" opens a changed file's diff against HEAD in the well. Use it to show the user`,
+  '  what you changed, rather than pasting a diff into the conversation.',
+  `- "${READ_SOURCE_CONTROL_STATUS}" reports the branch, how it tracks its upstream, and the staged,`,
+  '  unstaged and conflicted files — what the source-control sidebar shows.',
+  `- "${CREATE_FILE}", "${CREATE_FOLDER}", "${RENAME_PATH}" and "${DELETE_PATH}" act on the tree the`,
+  '  way the Explorer does, so it reflects them at once; a created file opens in the well. They are',
+  "  confined to the workspace and the user's allowed write paths. Use your own file tools for the",
+  `  contents of existing files. "${REVEAL_IN_EXPLORER}" expands the tree to a file or folder and`,
+  '  selects it, to point the user at what you are talking about.',
+  `- "${OPEN_TERMINAL}" opens a terminal in the workspace's terminal panel, rooted at the workspace,`,
+  `  and returns its id; "${LIST_TERMINALS}" lists the ones already there. Drive a terminal by id with`,
+  `  "${WRITE_TERMINAL_INPUT}" and read what it shows with "${READ_TERMINAL_OUTPUT}". The user is`,
+  '  watching that terminal live: prefer it to a hidden shell when they should see the command run.',
+].join('\n');
+
+/**
  * Appended to the system prompt wherever the run-configuration tools are registered, so the model knows
  * the schema it is authoring, the house rules, and — crucially — that it should verify what it writes
  * rather than pattern-match a manifest. This is the whole point of the feature: Studio deliberately
@@ -477,15 +518,19 @@ export function formatAskUserAnswer(answer: string | null): string {
 }
 
 /**
- * Reads the owning terminal's recent output through the renderer bridge and renders it for the model.
+ * Reads a terminal's recent output through the renderer bridge and renders it for the model.
  * @param context The agent run context (carries the bridge and the owning terminal id).
+ * @param terminalId The terminal to read, or null for the run's owning terminal. A workspace agent
+ * has no owning terminal and names the one it opened (#713).
  * @returns Returns the recent terminal output, or a note that the terminal is unavailable.
  */
-export async function readTerminalOutput(context: AgentRunContext): Promise<string> {
-  logger.trace('StudioTools', `Tool invoked: read_terminal_output (tab=${context.owningTabId})`);
-  const result: unknown = await context.bridge.request(READ_TERMINAL_OUTPUT, {
-    tabId: context.owningTabId,
-  });
+export async function readTerminalOutput(
+  context: AgentRunContext,
+  terminalId: string | null = null,
+): Promise<string> {
+  const tabId: string | null = terminalId ?? context.owningTabId;
+  logger.trace('StudioTools', `Tool invoked: read_terminal_output (tab=${tabId})`);
+  const result: unknown = await context.bridge.request(READ_TERMINAL_OUTPUT, { tabId });
   const read: { available?: boolean; text?: string } = result ?? {};
   if (read.available !== true) {
     logger.debug('StudioTools', 'read_terminal_output: terminal unavailable');
@@ -495,10 +540,11 @@ export async function readTerminalOutput(context: AgentRunContext): Promise<stri
 }
 
 /**
- * Sends input to the owning terminal through the renderer bridge and returns the resulting output.
+ * Sends input to a terminal through the renderer bridge and returns the resulting output.
  * @param context The agent run context (carries the bridge and the owning terminal id).
  * @param text The input to send.
  * @param submit Whether to run the input as a command (append a newline). Defaults to true.
+ * @param terminalId The terminal to write to, or null for the run's owning terminal (#713).
  * @returns Returns the terminal output after the input settles, or a note that the terminal is
  * unavailable.
  */
@@ -506,13 +552,15 @@ export async function writeTerminalInput(
   context: AgentRunContext,
   text: string,
   submit: boolean = true,
+  terminalId: string | null = null,
 ): Promise<string> {
+  const tabId: string | null = terminalId ?? context.owningTabId;
   logger.trace(
     'StudioTools',
-    `Tool invoked: write_terminal_input (tab=${context.owningTabId}, submit=${submit})`,
+    `Tool invoked: write_terminal_input (tab=${tabId}, submit=${submit})`,
   );
   const result: unknown = await context.bridge.request(WRITE_TERMINAL_INPUT, {
-    tabId: context.owningTabId,
+    tabId,
     text,
     submit,
   });
@@ -521,7 +569,7 @@ export async function writeTerminalInput(
     logger.debug('StudioTools', 'write_terminal_input: terminal unavailable');
     return 'The terminal is not available.';
   }
-  logger.info('StudioTools', `Sent input to terminal (tab=${context.owningTabId})`);
+  logger.info('StudioTools', `Sent input to terminal (tab=${tabId})`);
   return write.output ?? 'Sent to the terminal.';
 }
 
@@ -1294,19 +1342,341 @@ export async function openFile(context: AgentRunContext, path: string): Promise<
 }
 
 /**
- * Opens a new terminal tab through the renderer bridge.
+ * One well document as the renderer reports it to {@link listOpenDocuments}.
+ */
+interface ReportedDocument {
+  readonly path: string | null;
+  readonly name: string;
+  readonly language: string;
+  readonly dirty: boolean;
+  readonly active: boolean;
+}
+
+/**
+ * One changed file as the renderer reports it to {@link readSourceControlStatus}.
+ */
+interface ReportedChange {
+  readonly path: string;
+  readonly status: string;
+}
+
+/**
+ * A workspace's source-control state as the renderer reports it to {@link readSourceControlStatus}.
+ */
+interface ReportedSourceControl {
+  readonly root: string;
+  readonly branch: string | null;
+  readonly upstream: string | null;
+  readonly ahead: number;
+  readonly behind: number;
+  readonly staged: readonly ReportedChange[];
+  readonly unstaged: readonly ReportedChange[];
+  readonly conflicted: readonly ReportedChange[];
+}
+
+/**
+ * Lists the documents open in the workspace's well through the renderer bridge (#713).
  * @param context The agent run context (carries the bridge).
+ * @returns Returns the listing, or the reason there is none.
+ */
+export async function listOpenDocuments(context: AgentRunContext): Promise<string> {
+  logger.trace('StudioTools', 'Tool invoked: list_open_documents');
+  const result: unknown = await context.bridge.request(LIST_OPEN_DOCUMENTS, {});
+  const listing: {
+    ok?: boolean;
+    error?: string;
+    root?: string | null;
+    documents?: readonly ReportedDocument[];
+  } = result ?? {};
+  if (listing.ok !== true) {
+    return listing.error ?? 'The open documents could not be listed.';
+  }
+  const documents: readonly ReportedDocument[] = listing.documents ?? [];
+  if (documents.length === 0) {
+    return 'No documents are open in the well.';
+  }
+  const lines: string[] = documents.map((document: ReportedDocument): string => {
+    const marks: string[] = [];
+    if (document.active) {
+      marks.push('active');
+    }
+    if (document.dirty) {
+      marks.push('unsaved');
+    }
+    const where: string = document.path ?? `${document.name} (not saved to disk)`;
+    return `- ${where} [${document.language}]${marks.length > 0 ? ` (${marks.join(', ')})` : ''}`;
+  });
+  return `Documents open in the well${listing.root ? ` of ${listing.root}` : ''}:\n${lines.join('\n')}`;
+}
+
+/**
+ * Opens a changed file's diff into the workspace's well through the renderer bridge (#713).
+ * @param context The agent run context (carries the bridge).
+ * @param path The absolute or workspace-relative path of the changed file.
+ * @returns Returns a confirmation, or the reason the diff was not opened.
+ */
+export async function openDiff(context: AgentRunContext, path: string): Promise<string> {
+  logger.trace('StudioTools', `Tool invoked: open_diff (${path})`);
+  const result: unknown = await context.bridge.request(OPEN_DIFF, { path });
+  const opened: { ok?: boolean; error?: string; path?: string } = result ?? {};
+  if (opened.ok !== true) {
+    logger.debug('StudioTools', `open_diff refused: ${opened.error ?? 'unknown reason'}`);
+    return opened.error ?? 'The diff could not be opened.';
+  }
+  logger.info('StudioTools', `Opened diff in the well: ${opened.path ?? path}`);
+  return `Opened the diff of ${opened.path ?? path} against HEAD in the user's editor.`;
+}
+
+/**
+ * Reads the workspace's source-control state through the renderer bridge (#713).
+ * @param context The agent run context (carries the bridge).
+ * @returns Returns the state as text, or the reason there is none.
+ */
+export async function readSourceControlStatus(context: AgentRunContext): Promise<string> {
+  logger.trace('StudioTools', 'Tool invoked: read_source_control_status');
+  const result: unknown = await context.bridge.request(READ_SOURCE_CONTROL_STATUS, {});
+  const reply: { ok?: boolean; error?: string; status?: ReportedSourceControl | null } =
+    result ?? {};
+  if (reply.ok !== true) {
+    return reply.error ?? 'The source-control state could not be read.';
+  }
+  const status: ReportedSourceControl | null | undefined = reply.status;
+  if (status === null || status === undefined) {
+    return 'This workspace is not a git repository.';
+  }
+  const section: (title: string, changes: readonly ReportedChange[]) => string = (
+    title: string,
+    changes: readonly ReportedChange[],
+  ): string =>
+    changes.length === 0
+      ? `${title}: none`
+      : `${title}:\n${changes
+          .map((change: ReportedChange): string => `- ${change.path} (${change.status})`)
+          .join('\n')}`;
+  const tracking: string =
+    status.upstream === null
+      ? 'no upstream'
+      : `tracking ${status.upstream}, ${status.ahead} ahead, ${status.behind} behind`;
+  return [
+    `Repository: ${status.root}`,
+    `Branch: ${status.branch ?? '(detached HEAD)'} — ${tracking}`,
+    section('Staged', status.staged),
+    section('Unstaged', status.unstaged),
+    section('Conflicted', status.conflicted),
+  ].join('\n');
+}
+
+/**
+ * Decides whether a tree mutation may touch a path, applying the run's write confinement (#307) before
+ * the renderer is asked: the workspace root and the allowed write paths bound it, and the denied
+ * paths win. A boundary rather than a prompt — the same rule a harness applies to its own file tools,
+ * so a workspace tool cannot be a way around it.
+ * @param context The agent run context.
+ * @param target The absolute or workspace-relative path.
+ * @returns Returns null when the write may proceed, or the refusal to report to the model.
+ */
+function refuseOutsideConfinement(context: AgentRunContext, target: string): string | null {
+  const base: string | null = context.workspaceRoot;
+  if (base === null) {
+    return 'No workspace is open, so there is nothing to act on.';
+  }
+  const roots: readonly string[] = [base, ...context.allowedWritePaths];
+  if (!isWriteWithinRoots(target, roots)) {
+    return (
+      `Blocked: "${target}" is outside the agent's allowed write area (the workspace root and the ` +
+      'allowed write paths). This is a fixed safety boundary.'
+    );
+  }
+  if (isWriteDenied(target, context.deniedWritePaths, base)) {
+    return `Blocked: "${target}" is on the denied write paths and cannot be changed.`;
+  }
+  return null;
+}
+
+/**
+ * Runs one tree mutation through the renderer bridge and phrases its outcome.
+ * @param context The agent run context.
+ * @param capability The capability to invoke.
+ * @param input The capability input.
+ * @param success Phrases a successful outcome from the reported path and trash flag.
+ * @returns Returns the confirmation, or the reason the mutation did not happen.
+ */
+async function mutateTree(
+  context: AgentRunContext,
+  capability: string,
+  input: Record<string, unknown>,
+  success: (path: string, trashed: boolean) => string,
+): Promise<string> {
+  const result: unknown = await context.bridge.request(capability, input);
+  const outcome: { ok?: boolean; error?: string; path?: string; trashed?: boolean } = result ?? {};
+  if (outcome.ok !== true) {
+    logger.debug('StudioTools', `${capability} refused: ${outcome.error ?? 'unknown reason'}`);
+    return outcome.error ?? 'The operation could not be completed.';
+  }
+  logger.info('StudioTools', `${capability}: ${outcome.path ?? ''}`);
+  const requested: unknown = input['path'];
+  return success(
+    outcome.path ?? (typeof requested === 'string' ? requested : ''),
+    outcome.trashed === true,
+  );
+}
+
+/**
+ * Creates a file in the workspace through the renderer bridge (#713), confined as a write.
+ * @param context The agent run context.
+ * @param path The absolute or workspace-relative path.
+ * @param content The content to write, or undefined for an empty file.
+ * @returns Returns a confirmation, or the reason the file was not created.
+ */
+export async function createFile(
+  context: AgentRunContext,
+  path: string,
+  content?: string,
+): Promise<string> {
+  logger.trace('StudioTools', `Tool invoked: create_file (${path})`);
+  const refusal: string | null = refuseOutsideConfinement(context, path);
+  if (refusal !== null) {
+    return refusal;
+  }
+  return mutateTree(
+    context,
+    CREATE_FILE,
+    { path, ...(content === undefined ? {} : { content }) },
+    (created: string): string => `Created ${created} and opened it in the user's editor.`,
+  );
+}
+
+/**
+ * Creates a folder in the workspace through the renderer bridge (#713), confined as a write.
+ * @param context The agent run context.
+ * @param path The absolute or workspace-relative path.
+ * @returns Returns a confirmation, or the reason the folder was not created.
+ */
+export async function createFolder(context: AgentRunContext, path: string): Promise<string> {
+  logger.trace('StudioTools', `Tool invoked: create_folder (${path})`);
+  const refusal: string | null = refuseOutsideConfinement(context, path);
+  if (refusal !== null) {
+    return refusal;
+  }
+  return mutateTree(
+    context,
+    CREATE_FOLDER,
+    { path },
+    (created: string): string => `Created the folder ${created}.`,
+  );
+}
+
+/**
+ * Renames a file or folder through the renderer bridge (#713), confined as a write.
+ * @param context The agent run context.
+ * @param path The absolute or workspace-relative path of the entry.
+ * @param name The new name, a single path segment.
+ * @returns Returns a confirmation, or the reason the entry was not renamed.
+ */
+export async function renamePath(
+  context: AgentRunContext,
+  path: string,
+  name: string,
+): Promise<string> {
+  logger.trace('StudioTools', `Tool invoked: rename_path (${path} -> ${name})`);
+  const refusal: string | null = refuseOutsideConfinement(context, path);
+  if (refusal !== null) {
+    return refusal;
+  }
+  return mutateTree(
+    context,
+    RENAME_PATH,
+    { path, name },
+    (renamed: string): string => `Renamed to ${renamed}.`,
+  );
+}
+
+/**
+ * Deletes a file or folder through the renderer bridge (#713), confined as a write.
+ * @param context The agent run context.
+ * @param path The absolute or workspace-relative path of the entry.
+ * @returns Returns a confirmation saying where the entry went, or the reason it was not deleted.
+ */
+export async function deletePath(context: AgentRunContext, path: string): Promise<string> {
+  logger.trace('StudioTools', `Tool invoked: delete_path (${path})`);
+  const refusal: string | null = refuseOutsideConfinement(context, path);
+  if (refusal !== null) {
+    return refusal;
+  }
+  return mutateTree(context, DELETE_PATH, { path }, (deleted: string, trashed: boolean): string =>
+    trashed
+      ? `Moved ${deleted} to the trash.`
+      : `Deleted ${deleted} permanently — this platform offered no trash to move it to.`,
+  );
+}
+
+/**
+ * Reveals a file or folder in the Explorer through the renderer bridge (#713).
+ * @param context The agent run context.
+ * @param path The absolute or workspace-relative path of the entry.
+ * @returns Returns a confirmation, or the reason it was not revealed.
+ */
+export async function revealInExplorer(context: AgentRunContext, path: string): Promise<string> {
+  logger.trace('StudioTools', `Tool invoked: reveal_in_explorer (${path})`);
+  return mutateTree(
+    context,
+    REVEAL_IN_EXPLORER,
+    { path },
+    (revealed: string): string => `Revealed ${revealed} in the Explorer.`,
+  );
+}
+
+/**
+ * Opens a terminal through the renderer bridge: a top-level tab, or — for a workspace agent (#713) —
+ * one in the workspace's own terminal panel, whose id the terminal tools then address.
+ * @param context The agent run context (carries the bridge).
+ * @param inWorkspace Whether the terminal belongs in the workspace's panel rather than a new tab.
  * @returns Returns a confirmation, or the reason it failed.
  */
-export async function openTerminal(context: AgentRunContext): Promise<string> {
-  logger.trace('StudioTools', 'Tool invoked: open_terminal');
-  const result: unknown = await context.bridge.request(OPEN_TERMINAL, {});
-  const opened: { ok?: boolean; id?: string } = result ?? {};
+export async function openTerminal(
+  context: AgentRunContext,
+  inWorkspace: boolean = false,
+): Promise<string> {
+  logger.trace('StudioTools', `Tool invoked: open_terminal (workspace=${inWorkspace})`);
+  const result: unknown = await context.bridge.request(OPEN_TERMINAL, { workspace: inWorkspace });
+  const opened: { ok?: boolean; id?: string; where?: string } = result ?? {};
   if (opened.ok !== true) {
     return 'The terminal could not be opened.';
   }
-  logger.info('StudioTools', `Opened terminal tab ${opened.id ?? ''}`);
-  return `Opened a new terminal tab (id ${opened.id ?? ''}) in the user's default shell.`;
+  logger.info('StudioTools', `Opened terminal ${opened.id ?? ''} (${opened.where ?? 'tab'})`);
+  return opened.where === 'workspace'
+    ? `Opened a new terminal in the workspace's terminal panel (id ${opened.id ?? ''}), rooted at the ` +
+        `workspace. Pass this id to "${READ_TERMINAL_OUTPUT}" and "${WRITE_TERMINAL_INPUT}" to drive it.`
+    : `Opened a new terminal tab (id ${opened.id ?? ''}) in the user's default shell.`;
+}
+
+/**
+ * Lists the workspace's dock terminals through the renderer bridge (#713).
+ * @param context The agent run context (carries the bridge).
+ * @returns Returns the listing, or the reason there is none.
+ */
+export async function listTerminals(context: AgentRunContext): Promise<string> {
+  logger.trace('StudioTools', 'Tool invoked: list_terminals');
+  const result: unknown = await context.bridge.request(LIST_TERMINALS, {});
+  const listing: {
+    ok?: boolean;
+    error?: string;
+    terminals?: readonly { id: string; name: string; active: boolean }[];
+  } = result ?? {};
+  if (listing.ok !== true) {
+    return listing.error ?? 'The terminals could not be listed.';
+  }
+  const terminals: readonly { id: string; name: string; active: boolean }[] =
+    listing.terminals ?? [];
+  if (terminals.length === 0) {
+    return `No terminals are open in the workspace. Open one with "${OPEN_TERMINAL}".`;
+  }
+  return `Terminals in the workspace's terminal panel:\n${terminals
+    .map(
+      (terminal: { id: string; name: string; active: boolean }): string =>
+        `- ${terminal.name} (id ${terminal.id})${terminal.active ? ' (selected)' : ''}`,
+    )
+    .join('\n')}`;
 }
 
 /**

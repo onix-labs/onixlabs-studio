@@ -227,7 +227,10 @@ export const subscriptMark: $Mark = $mark('subscript', (): MarkSchema => ({
   toMarkdown: {
     match: (mark: Mark): boolean => mark.type.name === 'subscript',
     runner: (state: SerializerState, mark: Mark, node: ProseMirrorNode): void => {
-      state.withMark(mark, 'text', undefined, {
+      // Serialised as a raw html node: a text node here would have its angle brackets escaped by the
+      // stringifier (`\<sub>`), which the parser no longer recognises as a tag — the mark would be
+      // lost the next time the document is opened.
+      state.withMark(mark, 'html', undefined, {
         value: `<sub>${node.text ?? ''}</sub>`,
       });
     },
@@ -258,7 +261,8 @@ export const superscriptMark: $Mark = $mark('superscript', (): MarkSchema => ({
   toMarkdown: {
     match: (mark: Mark): boolean => mark.type.name === 'superscript',
     runner: (state: SerializerState, mark: Mark, node: ProseMirrorNode): void => {
-      state.withMark(mark, 'text', undefined, {
+      // Serialised as a raw html node, exactly as the subscript mark is; see the note there.
+      state.withMark(mark, 'html', undefined, {
         value: `<sup>${node.text ?? ''}</sup>`,
       });
     },

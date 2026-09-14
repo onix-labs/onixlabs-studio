@@ -6,6 +6,7 @@ import {
   FileOperationResult,
   WorkspaceChannel,
 } from '@shared/api/workspace-channels';
+import { Documents } from '@shared/angular/services/documents/documents';
 import { Workspace } from './workspace';
 
 /**
@@ -272,6 +273,42 @@ describe('Workspace mutations', () => {
     expect(callsTo(WorkspaceChannel.ReadDirectory).map((c: BridgeCall) => c.args[0])).toContain(
       '/ws',
     );
+  });
+
+  it('rename_whenTheFileIsOpen_movesItsDocumentToTheNewPath', async () => {
+    // #718: the Explorer's Rename… and an agent's rename_path both come through here, and nothing
+    // told the well's document model the path had changed — the tab kept its old title and the next
+    // save recreated the old file.
+    const documents: Documents = TestBed.inject(Documents);
+    const id: string = documents.createWellDocument({
+      path: '/ws/README.md',
+      name: 'README.md',
+      extension: '.md',
+      content: '# ws',
+    });
+    result = { success: true, path: '/ws/READ.md' };
+    await service.openFolder();
+
+    await service.rename('/ws/README.md', 'READ.md');
+
+    expect(documents.get(id)?.filePath()).toBe('/ws/READ.md');
+    expect(documents.get(id)?.fileName()).toBe('READ.md');
+  });
+
+  it('rename_whenItFails_leavesTheOpenDocumentWhereItWas', async () => {
+    const documents: Documents = TestBed.inject(Documents);
+    const id: string = documents.createWellDocument({
+      path: '/ws/README.md',
+      name: 'README.md',
+      extension: '.md',
+      content: '# ws',
+    });
+    result = { success: false, error: 'Invalid name' };
+    await service.openFolder();
+
+    await service.rename('/ws/README.md', '');
+
+    expect(documents.get(id)?.filePath()).toBe('/ws/README.md');
   });
 
   it('delete_derivesTheDirectoryToRefreshFromTheEntrysOwnPath', async () => {

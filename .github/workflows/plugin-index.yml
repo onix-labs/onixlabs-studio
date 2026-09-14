@@ -1,0 +1,100 @@
+# Curated plugin index — verifies that every pinned download still exists and still hashes to what the
+# index claims.
+#
+# This is the one thing no unit or end-to-end test can cover. A manifest is entirely a set of claims
+# about *external* artifacts, so a test that stubs the artifact tests everything except the claim. The
+# failure it catches is real and silent: an upstream project deletes a release, retags an asset, or
+# rebuilds it non-reproducibly, and nobody finds out until a user clicks Install.
+#
+# Deliberately NOT part of the pull-request gate. It downloads hundreds of megabytes from five
+# third-party hosts, and a third-party outage must never be able to block a merge. It runs here on a
+# schedule instead, and again as a required job before a release is tagged (see release.yml).
+#
+# `--all` rather than this runner's platform: the index pins per-platform downloads, so a single-platform
+# run would leave most of the pins unverified.
+name: Plugin index
+
+on:
+  schedule:
+    # Weekly, Monday 07:00 UTC — an hour after CodeQL, so the two do not contend for runners.
+    - cron: '0 7 * * 1'
+  workflow_dispatch:
+  # Changing what the index pins is exactly when the pins are worth checking, and this is cheap enough
+  # to run on a diff that touches them.
+  pull_request:
+    paths:
+      - 'src/shared/electron/contributions/plugins/curated-plugins.json'
+      - 'scripts/verify-plugin-index.mjs'
+      - '.github/workflows/plugin-index.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify pinned downloads
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node (version from .nvmrc)
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
+      # Retried once, because a host being briefly unreachable is not the failure this watches for and
+      # must not read as a compromised artifact. Two consecutive failures is the signal.
+      - name: Verify every pinned download
+        id: verify
+        shell: bash
+        run: |
+          if node scripts/verify-plugin-index.mjs --all; then
+            exit 0
+          fi
+          echo "::warning::First pass failed; retrying once in 60s in case a host was briefly unreachable."
+          sleep 60
+          node scripts/verify-plugin-index.mjs --all
+
+  # A red tick on a scheduled run is a red tick nobody watches, so a genuine failure is raised where it
+  # will be seen. Only on the schedule: a pull-request failure already annotates the diff, and a manual
+  # run is being watched by the person who started it.
+  report:
+    name: Raise an issue on failure
+    needs: verify
+    if: failure() && github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      # One open issue at a time. A pin that has rotted stays rotten until somebody fixes it, and a
+      # weekly reminder in a new issue each time is how a real signal becomes noise people filter.
+      - name: Open or update the report
+        shell: bash
+        run: |
+          title='[Plugins] A pinned download in the curated index no longer verifies'
+          existing=$(gh issue list --repo "$REPO" --state open --search "$title in:title" \
+            --json number --jq '.[0].number // empty')
+          body=$(printf '%s\n' \
+            'The scheduled verification of the curated plugin index failed twice in a row.' \
+            '' \
+            "Run: $RUN" \
+            '' \
+            'This means an upstream artifact no longer matches what `curated-plugins.json` pins — the' \
+            'asset was deleted, retagged, or rebuilt non-reproducibly. Installing that plugin will fail' \
+            'SHA-256 verification for every user until the index is corrected.' \
+            '' \
+            'Reproduce locally with `npm run verify:plugin-index -- --all`, then repin the affected' \
+            'entry (recompute the hash) or drop it from the index.')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --repo "$REPO" --body "$body"
+          else
+            gh issue create --repo "$REPO" --title "$title" \
+              --label bug --label area:plugins --body "$body"
+          fi

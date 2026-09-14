@@ -4,6 +4,7 @@ import {
   LanguagePluginSlot,
   PluginContribution,
   PluginSummary,
+  slotCandidates,
 } from '@shared/api/plugin-channels';
 import { Log } from '@shared/angular/services/log/log';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
@@ -112,32 +113,20 @@ export class LanguageSupportPrompt {
   }
 
   /**
-   * Gets the plugins that would provide a slot for a language but are not installed. Returns nothing
-   * when the language already has an installed implementation, so support that exists is never
-   * advertised again.
+   * Gets the plugins that would provide a slot for a language but are not installed.
    * @param language The language identifier.
    * @param slot The slot to look for.
    * @returns Returns the uninstalled plugins providing the language, in catalogue order.
    */
   private uninstalledFor(language: string, slot: LanguagePluginSlot): readonly PluginSummary[] {
-    const serves: (plugin: PluginSummary) => boolean = (plugin: PluginSummary): boolean =>
-      plugin.contributions.some(
-        (contribution: PluginContribution): boolean =>
-          // Narrowed rather than compared directly: `slot` is a variable, and comparing the union's
-          // discriminant against a variable does not narrow it — only a literal does.
-          isLanguageContribution(contribution) &&
-          contribution.slot === slot &&
-          contribution.languages.includes(language),
-      );
-    const all: readonly PluginSummary[] = this.plugins.plugins();
-    const installed: boolean = all.some(
-      (plugin: PluginSummary): boolean => plugin.state === 'installed' && serves(plugin),
-    );
-    if (installed) {
-      return [];
-    }
-    return all.filter(
-      (plugin: PluginSummary): boolean => plugin.state === 'available' && serves(plugin),
+    return slotCandidates(
+      this.plugins.plugins(),
+      (contribution: PluginContribution): boolean =>
+        // Narrowed rather than compared directly: `slot` is a variable, and comparing the union's
+        // discriminant against a variable does not narrow it — only a literal does.
+        isLanguageContribution(contribution) &&
+        contribution.slot === slot &&
+        contribution.languages.includes(language),
     );
   }
 }

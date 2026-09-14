@@ -29,7 +29,8 @@ import {
   GLOBAL_CONVERSATION_CONTEXT,
 } from '@shared/angular/services/agent-conversations/agent-conversation-context';
 import { ProjectModel } from '@shared/api/project-system';
-import { DirectoryListing } from '@shared/api/workspace-channels';
+import { DirectoryListing, FileOperationResult } from '@shared/api/workspace-channels';
+import type { FileWriteResult } from '@shared/api/file-channels';
 import { RepositoryInfo, SourceControlClient } from '@shared/api/source-control-channels';
 import { SourceControl } from '@shared/angular/services/source-control/source-control';
 import { Icon } from '@shared/angular/icons/icon';
@@ -61,7 +62,10 @@ import {
 import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
 import { PopoutPanels } from '@shared/angular/services/dock-layout/popout-panels';
 import { PanelPopout } from '@shared/angular/services/panel-popout/panel-popout';
-import { TerminalSessions } from '@shared/angular/services/terminal-sessions/terminal-sessions';
+import {
+  TerminalSession,
+  TerminalSessions,
+} from '@shared/angular/services/terminal-sessions/terminal-sessions';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { WorkspaceFind } from '@features/workspace/angular/workspace-find/workspace-find';
 import {
@@ -75,7 +79,8 @@ import {
   findStackOfPanel,
   firstStackOfRole,
 } from '@shared/angular/services/dock-layout/dock-tree';
-import { Documents } from '@shared/angular/services/documents/documents';
+import { CodeDocument, Documents } from '@shared/angular/services/documents/documents';
+import { FileSystem } from '@shared/angular/services/file-system/file-system';
 import { UnsavedWorkRegistry } from '@shared/angular/services/unsaved-work/unsaved-work-registry';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { LspClient } from '@shared/angular/services/lsp/lsp-client';
@@ -85,6 +90,7 @@ import { PackageModel } from '@features/workspace/angular/project/package-model'
 import { PackageExplorer } from '@features/workspace/angular/project/package-explorer';
 import { Output } from '@shared/angular/services/output/output';
 import { Repository } from '@shared/angular/services/repository/repository';
+import type { GitBranch, GitFileChange } from '@shared/angular/services/repository/repository-data';
 import { ForgeRepository } from '@shared/angular/services/forge-repository/forge-repository';
 import {
   WorkspaceSourceControlCommandHandler,
@@ -100,7 +106,13 @@ import { createMinimumHold, MinimumHold } from '@shared/angular/services/minimum
 import { Debugger } from '@shared/angular/services/debug/debugger';
 import { DebugSession } from '@features/workspace/angular/debug/debug-session';
 import { WorkspaceCapabilities } from '@shared/angular/services/workspace/workspace-capabilities';
-import { ActiveWorkspace } from '@shared/angular/services/workspace/active-workspace';
+import {
+  ActiveWorkspace,
+  WellChange,
+  WellDocument,
+  WellSourceControl,
+  WellTerminal,
+} from '@shared/angular/services/workspace/active-workspace';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { WorkspaceGit } from '@features/workspace/angular/workspace-git/workspace-git';
 import { Workspaces } from '@shared/angular/services/workspaces/workspaces';
@@ -451,6 +463,16 @@ export class DirectoryView implements OnInit, OnDestroy {
    * Holds this tab's scoped dock layout.
    */
   private readonly dockState: DockState = inject(DockState);
+
+  /**
+   * Holds the diff opener, reached by an agent through the published well to show a change (#713).
+   */
+  private readonly diffOpener: DiffOpener = inject(DiffOpener);
+
+  /**
+   * Holds the file system, which writes the content of a file an agent creates (#713).
+   */
+  private readonly fileSystem: FileSystem = inject(FileSystem);
 
   /**
    * Holds this tab's scoped solution model, whose presence drives the Solution Explorer panel.
@@ -1365,6 +1387,238 @@ export class DirectoryView implements OnInit, OnDestroy {
   }
 
   /**
+   * Opens a changed file's diff into the well on an agent's behalf (#713). Only a file the repository
+   * reports as changed has a diff to show; anything else is refused with the reason rather than
+   * opened as an empty comparison.
+   * @param path The absolute path of the file.
+   * @returns Returns null when the diff was opened, or the reason it could not be.
+   */
+  private openDiffForAgent(path: string): Promise<string | null> {
+    if (!this.repository.isBound()) {
+      return Promise.resolve(
+        'This workspace is not a git repository, so there is no diff to show.',
+      );
+    }
+    const root: string = this.repository.info()?.root ?? '';
+    const relative: string = path.startsWith(root)
+      ? path.slice(root.length).replace(/^[\\/]+/, '')
+      : path;
+    const normalised: string = relative.replace(/\\/g, '/');
+    const change: GitFileChange | undefined = [
+      ...this.repository.unstaged(),
+      ...this.repository.staged(),
+      ...this.repository.conflicted(),
+    ].find((candidate: GitFileChange): boolean => candidate.path === normalised);
+    if (change === undefined) {
+      return Promise.resolve(
+        `"${normalised}" has no changes against HEAD, so there is no diff to show.`,
+      );
+    }
+    this.diffOpener.open(change);
+    return Promise.resolve(null);
+  }
+
+  /**
+   * Lists the well's documents for an agent (#713), in the well's own order where the layout has one.
+   * @returns Returns the documents.
+   */
+  private wellDocumentsForAgent(): readonly WellDocument[] {
+    const activeId: string | null = this.documents.activeDocumentId();
+    const byId: Map<string, CodeDocument> = new Map<string, CodeDocument>(
+      this.documents
+        .list()
+        .map((document: CodeDocument): [string, CodeDocument] => [document.id, document]),
+    );
+    const well: StackNode | null = firstStackOfRole(this.dockState.layout(), 'document');
+    const ordered: readonly CodeDocument[] =
+      well === null
+        ? [...byId.values()]
+        : [
+            ...well.panels
+              .map((id: string): CodeDocument | undefined => byId.get(id))
+              .filter(
+                (document: CodeDocument | undefined): document is CodeDocument =>
+                  document !== undefined,
+              ),
+            ...[...byId.values()].filter(
+              (document: CodeDocument): boolean => !well.panels.includes(document.id),
+            ),
+          ];
+    return ordered.map((document: CodeDocument): WellDocument => ({
+      path: document.filePath(),
+      name: document.fileName(),
+      language: document.language(),
+      dirty: document.dirty(),
+      active: document.id === activeId,
+    }));
+  }
+
+  /**
+   * Reads the workspace's source-control state for an agent (#713): what the sidebar shows, from the
+   * same bound repository.
+   * @returns Returns the state, or null when the folder is not a repository.
+   */
+  private sourceControlForAgent(): WellSourceControl | null {
+    if (!this.repository.isBound()) {
+      return null;
+    }
+    const branch: GitBranch | undefined = this.repository.currentBranch();
+    const change: (file: GitFileChange) => WellChange = (file: GitFileChange): WellChange => ({
+      path: file.path,
+      status: file.status,
+    });
+    return {
+      root: this.repository.info()?.root ?? this.workspace.root()?.path ?? '',
+      branch: branch?.name ?? null,
+      upstream: branch?.upstream ?? null,
+      ahead: branch?.ahead ?? 0,
+      behind: branch?.behind ?? 0,
+      staged: this.repository.staged().map(change),
+      unstaged: this.repository.unstaged().map(change),
+      conflicted: this.repository.conflicted().map(change),
+    };
+  }
+
+  /**
+   * Opens a terminal in this workspace's dock on an agent's behalf (#713) and reveals it: the
+   * conversation and the terminal it drives are then on the same tab, where a top-level terminal tab
+   * would take the user away from both.
+   * @returns Returns the terminal.
+   */
+  private openTerminalForAgent(): WellTerminal {
+    const session: TerminalSession = this.terminalSessions.create();
+    this.dockReveal.reveal('terminal');
+    this.terminalSessions.activateAndReveal(session.id);
+    return { id: session.id, name: session.name, active: true };
+  }
+
+  /**
+   * Lists this workspace's dock terminals for an agent (#713).
+   * @returns Returns the terminals.
+   */
+  private terminalsForAgent(): readonly WellTerminal[] {
+    const activeId: string | null = this.terminalSessions.activeId();
+    return this.terminalSessions.sessions().map((session: TerminalSession): WellTerminal => ({
+      id: session.id,
+      name: session.name,
+      active: session.id === activeId,
+    }));
+  }
+
+  /**
+   * Creates a file on an agent's behalf (#713): the tree's own New File, then the content when there
+   * is any, then the file revealed in the Explorer and opened in the well — so the user sees what
+   * was made where it was made.
+   * @param path The absolute path of the file.
+   * @param content The content to write, or null for an empty file.
+   * @returns Returns null when the file was created, or the reason it could not be.
+   */
+  private async createFileForAgent(path: string, content: string | null): Promise<string | null> {
+    const created: FileOperationResult = await this.workspace.createFile(
+      this.parentOf(path),
+      this.nameOf(path),
+    );
+    if (!created.success) {
+      return created.error ?? 'The file could not be created.';
+    }
+    if (content !== null && content.length > 0) {
+      const written: FileWriteResult = await this.fileSystem.write(created.path ?? path, content);
+      if (!written.success) {
+        return written.error ?? 'The file was created but its content could not be written.';
+      }
+    }
+    await this.workspace.revealPath(created.path ?? path);
+    await this.fileOpener.openPath(created.path ?? path);
+    return null;
+  }
+
+  /**
+   * Creates a folder on an agent's behalf (#713) and reveals it.
+   * @param path The absolute path of the folder.
+   * @returns Returns null when the folder was created, or the reason it could not be.
+   */
+  private async createFolderForAgent(path: string): Promise<string | null> {
+    const created: FileOperationResult = await this.workspace.createFolder(
+      this.parentOf(path),
+      this.nameOf(path),
+    );
+    if (!created.success) {
+      return created.error ?? 'The folder could not be created.';
+    }
+    await this.workspace.revealPath(created.path ?? path);
+    return null;
+  }
+
+  /**
+   * Renames an entry on an agent's behalf (#713) and reveals the result.
+   * @param path The absolute path of the entry.
+   * @param name The new name.
+   * @returns Returns the new path, or the reason the entry could not be renamed.
+   */
+  private async renameForAgent(
+    path: string,
+    name: string,
+  ): Promise<{ readonly path: string | null; readonly error: string | null }> {
+    const renamed: FileOperationResult = await this.workspace.rename(path, name);
+    if (!renamed.success) {
+      return { path: null, error: renamed.error ?? 'The entry could not be renamed.' };
+    }
+    if (renamed.path !== undefined) {
+      await this.workspace.revealPath(renamed.path);
+    }
+    return { path: renamed.path ?? null, error: null };
+  }
+
+  /**
+   * Deletes an entry on an agent's behalf (#713).
+   * @param path The absolute path of the entry.
+   * @returns Returns whether it went to the trash, or the reason it could not be deleted.
+   */
+  private async deleteForAgent(
+    path: string,
+  ): Promise<{ readonly trashed: boolean; readonly error: string | null }> {
+    const deleted: FileOperationResult = await this.workspace.delete(path);
+    return deleted.success
+      ? { trashed: deleted.trashed === true, error: null }
+      : { trashed: false, error: deleted.error ?? 'The entry could not be deleted.' };
+  }
+
+  /**
+   * Reveals an entry in the Explorer on an agent's behalf (#713).
+   * @param path The absolute path of the entry.
+   * @returns Returns true when the entry lies within the workspace and was revealed.
+   */
+  private async revealForAgent(path: string): Promise<boolean> {
+    const root: string | undefined = this.workspace.root()?.path;
+    if (root === undefined || !path.startsWith(root) || path.length <= root.length) {
+      return false;
+    }
+    await this.workspace.revealPath(path);
+    this.dockReveal.reveal('files');
+    return true;
+  }
+
+  /**
+   * Gets the directory an absolute path sits in.
+   * @param path The absolute path.
+   * @returns Returns the parent directory.
+   */
+  private parentOf(path: string): string {
+    const cut: number = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
+    return cut <= 0 ? path : path.slice(0, cut);
+  }
+
+  /**
+   * Gets the last segment of an absolute path.
+   * @param path The absolute path.
+   * @returns Returns the name.
+   */
+  private nameOf(path: string): string {
+    const cut: number = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
+    return cut < 0 ? path : path.slice(cut + 1);
+  }
+
+  /**
    * Seeds the scoped workspace from the folder stashed for this tab, when opened from the welcome
    * screen.
    */
@@ -1375,9 +1629,27 @@ export class DirectoryView implements OnInit, OnDestroy {
     // Publish this workspace's document well, so something outside the tab's injector — the agent's
     // workbench tools — can open a file into it. The opener is provided per workspace tab, so this
     // published closure is the only way to reach it from the root.
-    this.activeWorkspace.setWell(this.tabId(), (path: string): Promise<boolean> =>
-      this.fileOpener.openPath(path),
-    );
+    this.activeWorkspace.setWell(this.tabId(), {
+      open: (path: string): Promise<boolean> => this.fileOpener.openPath(path),
+      openDiff: (path: string): Promise<string | null> => this.openDiffForAgent(path),
+      documents: (): readonly WellDocument[] => this.wellDocumentsForAgent(),
+      sourceControl: (): WellSourceControl | null => this.sourceControlForAgent(),
+      openTerminal: (): WellTerminal => this.openTerminalForAgent(),
+      terminals: (): readonly WellTerminal[] => this.terminalsForAgent(),
+      createFile: (path: string, content: string | null): Promise<string | null> =>
+        this.createFileForAgent(path, content),
+      createFolder: (path: string): Promise<string | null> => this.createFolderForAgent(path),
+      rename: (
+        path: string,
+        name: string,
+      ): Promise<{ readonly path: string | null; readonly error: string | null }> =>
+        this.renameForAgent(path, name),
+      delete: (
+        path: string,
+      ): Promise<{ readonly trashed: boolean; readonly error: string | null }> =>
+        this.deleteForAgent(path),
+      reveal: (path: string): Promise<boolean> => this.revealForAgent(path),
+    });
     // Surface this workspace's well documents to the app-wide close flows for the tab's lifetime.
     this.destroyRef.onDestroy(this.unsavedWork.register(this.documents));
     // The dock context carries the VIEW scope, not the raw tab id: it feeds pop-out keybinding

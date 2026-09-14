@@ -122,7 +122,8 @@ describe('workbench studio tools', () => {
 
       const text: string = await openTerminal(context);
 
-      expect(calls[0]).toEqual({ capability: OPEN_TERMINAL, input: {} });
+      // A plain open asks for a tab, never a workspace terminal (#713).
+      expect(calls[0]).toEqual({ capability: OPEN_TERMINAL, input: { workspace: false } });
       expect(text).toContain('tab-4');
     });
   });

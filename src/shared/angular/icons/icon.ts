@@ -165,6 +165,59 @@ export class Icon {
   public static readonly AI_MODELS: Icon = new Icon('ph-duotone ph-cpu');
 
   /**
+   * Gets the Plugins content icon, which also stands for every category at once.
+   */
+  public static readonly PLUGINS: Icon = new Icon('ph-duotone ph-puzzle-piece');
+
+  /**
+   * Gets the decoders category icon.
+   *
+   * ⚠️ The same glyph as {@link AI_MODELS} and deliberately a separate token: a decoder category is not
+   * a model manager, and a shared token would make renaming one rename the other.
+   */
+  public static readonly DECODERS: Icon = new Icon('ph-duotone ph-cpu');
+
+  /**
+   * Gets the language servers category icon.
+   */
+  public static readonly LANGUAGE_SERVERS: Icon = new Icon('ph-duotone ph-desktop-tower');
+
+  /**
+   * Gets the light weight of each category's glyph, used on a plugin row.
+   *
+   * ⚠️ A parallel set rather than a weight chosen at the call site, because picking a token is how a
+   * weight is picked here — the categories panel wants the duotone family so it reads as a set of
+   * destinations, while a row wants the light one so a list of them does not turn into a wall of
+   * colour. Same glyphs, so a plugin and the category filtering to it still look like the same thing.
+   */
+  public static readonly PLUGINS_LIGHT: Icon = new Icon('ph-light ph-puzzle-piece');
+
+  /**
+   * Gets the light weight of the AI agents glyph, for a plugin row.
+   */
+  public static readonly AGENT_LIGHT: Icon = new Icon('ph-light ph-brain');
+
+  /**
+   * Gets the light weight of the container engines glyph, for a plugin row.
+   */
+  public static readonly CONTAINERS_LIGHT: Icon = new Icon('ph-light ph-shipping-container');
+
+  /**
+   * Gets the light weight of the debug adapters glyph, for a plugin row.
+   */
+  public static readonly DEBUG_LIGHT: Icon = new Icon('ph-light ph-bug');
+
+  /**
+   * Gets the light weight of the decoders glyph, for a plugin row.
+   */
+  public static readonly DECODERS_LIGHT: Icon = new Icon('ph-light ph-cpu');
+
+  /**
+   * Gets the light weight of the language servers glyph, for a plugin row.
+   */
+  public static readonly LANGUAGE_SERVERS_LIGHT: Icon = new Icon('ph-light ph-desktop-tower');
+
+  /**
    * Gets the agent content icon.
    */
   public static readonly AGENT: Icon = new Icon('ph-duotone ph-brain');
@@ -203,6 +256,16 @@ export class Icon {
    * Gets the generic action glyph shown on an agent tool-call timeline node.
    */
   public static readonly ACTION: Icon = new Icon('ph ph-lightning');
+
+  /**
+   * Gets the glyph on a timeline node for a tool that reads a file or document.
+   */
+  public static readonly TOOL_READ: Icon = new Icon('ph ph-newspaper-clipping');
+
+  /**
+   * Gets the glyph on a timeline node for a tool that writes or edits a file or document.
+   */
+  public static readonly TOOL_WRITE: Icon = new Icon('ph ph-pencil-simple');
 
   // --- Ribbon: file commands ---
 
@@ -279,9 +342,19 @@ export class Icon {
   public static readonly UNDO: Icon = new Icon('ph ph-arrow-u-up-left');
 
   /**
+   * Gets the bold undo glyph used by the markdown tool strip.
+   */
+  public static readonly UNDO_BOLD: Icon = new Icon('ph-bold ph-arrow-u-up-left');
+
+  /**
    * Gets the redo icon.
    */
   public static readonly REDO: Icon = new Icon('ph ph-arrow-u-down-right');
+
+  /**
+   * Gets the bold redo glyph used by the markdown tool strip.
+   */
+  public static readonly REDO_BOLD: Icon = new Icon('ph-bold ph-arrow-u-down-right');
 
   /**
    * Gets the find/search icon.
@@ -348,9 +421,19 @@ export class Icon {
   public static readonly BOLD: Icon = new Icon('ph ph-text-b');
 
   /**
+   * Gets the bold-weight variant of the bold-formatting glyph, used by the markdown tool strip.
+   */
+  public static readonly BOLD_BOLD: Icon = new Icon('ph-bold ph-text-b');
+
+  /**
    * Gets the italic icon.
    */
   public static readonly ITALIC: Icon = new Icon('ph ph-text-italic');
+
+  /**
+   * Gets the bold italic-formatting glyph used by the markdown tool strip.
+   */
+  public static readonly ITALIC_BOLD: Icon = new Icon('ph-bold ph-text-italic');
 
   /**
    * Gets the strikethrough icon.
@@ -358,9 +441,19 @@ export class Icon {
   public static readonly STRIKETHROUGH: Icon = new Icon('ph ph-text-strikethrough');
 
   /**
+   * Gets the bold strikethrough-formatting glyph used by the markdown tool strip.
+   */
+  public static readonly STRIKETHROUGH_BOLD: Icon = new Icon('ph-bold ph-text-strikethrough');
+
+  /**
    * Gets the inline-code icon.
    */
   public static readonly CODE_INLINE: Icon = new Icon('ph ph-code');
+
+  /**
+   * Gets the bold inline-code glyph used by the markdown tool strip.
+   */
+  public static readonly CODE_INLINE_BOLD: Icon = new Icon('ph-bold ph-code');
 
   /**
    * Gets the align-left icon.
@@ -383,9 +476,19 @@ export class Icon {
   public static readonly TABLE: Icon = new Icon('ph-duotone ph-grid-nine');
 
   /**
+   * Gets the bold table glyph used by the markdown tool strip.
+   */
+  public static readonly TABLE_BOLD: Icon = new Icon('ph-bold ph-grid-nine');
+
+  /**
    * Gets the horizontal-divider icon.
    */
   public static readonly DIVIDER: Icon = new Icon('ph ph-minus');
+
+  /**
+   * Gets the bold divider glyph used by the markdown tool strip.
+   */
+  public static readonly DIVIDER_BOLD: Icon = new Icon('ph-bold ph-minus');
 
   /**
    * Gets the image icon, shown on the markdown Insert group's Image button.
@@ -402,6 +505,11 @@ export class Icon {
    * pull request or issue on its forge).
    */
   public static readonly OPEN_EXTERNAL: Icon = new Icon('ph ph-arrow-square-out');
+
+  /**
+   * Gets the bold open-external glyph used by the markdown tool strip's open-in-tab button.
+   */
+  public static readonly OPEN_EXTERNAL_BOLD: Icon = new Icon('ph-bold ph-arrow-square-out');
 
   /**
    * Gets the math icon, shown on the markdown Insert group's Math button.
@@ -464,14 +572,29 @@ export class Icon {
   public static readonly BULLET_LIST: Icon = new Icon('ph ph-list-bullets');
 
   /**
+   * Gets the bold bullet-list glyph used by the markdown tool strip.
+   */
+  public static readonly BULLET_LIST_BOLD: Icon = new Icon('ph-bold ph-list-bullets');
+
+  /**
    * Gets the numbered-list icon.
    */
   public static readonly NUMBERED_LIST: Icon = new Icon('ph ph-list-numbers');
 
   /**
+   * Gets the bold numbered-list glyph used by the markdown tool strip.
+   */
+  public static readonly NUMBERED_LIST_BOLD: Icon = new Icon('ph-bold ph-list-numbers');
+
+  /**
    * Gets the task-list icon.
    */
   public static readonly TASK_LIST: Icon = new Icon('ph ph-list-checks');
+
+  /**
+   * Gets the bold task-list glyph used by the markdown tool strip.
+   */
+  public static readonly TASK_LIST_BOLD: Icon = new Icon('ph-bold ph-list-checks');
 
   // --- Ribbon: build and source control ---
 
@@ -874,6 +997,30 @@ export class Icon {
   public static readonly INFO: Icon = new Icon('ph ph-info');
 
   /**
+   * Gets the filled information-severity icon, used where a status is stated as a solid,
+   * semantically-coloured badge rather than as body text.
+   */
+  public static readonly INFO_FILL: Icon = new Icon('ph-fill ph-info');
+
+  /**
+   * Gets the filled warning-severity icon in its circled form. The circled shape is what makes it read
+   * as one of a set of status badges rather than as an alert interrupting the row.
+   */
+  public static readonly WARNING_CIRCLE_FILL: Icon = new Icon('ph-fill ph-warning-circle');
+
+  /**
+   * Gets the filled success icon in its circled form, for a status badge stating that something is
+   * present and healthy.
+   */
+  public static readonly CHECK_CIRCLE_FILL: Icon = new Icon('ph-fill ph-check-circle');
+
+  /**
+   * Gets the filled download icon in its circled form, for a status badge stating that something is
+   * available to bring down rather than an action button that does it.
+   */
+  public static readonly DOWNLOAD_CIRCLE_FILL: Icon = new Icon('ph-fill ph-arrow-circle-down');
+
+  /**
    * Gets the hint-severity icon.
    */
   public static readonly HINT: Icon = new Icon('ph ph-lightbulb');
@@ -1121,6 +1268,91 @@ export class Icon {
    */
   public static readonly WELCOME_SETTINGS: Icon = new Icon('ph-light ph-gear-six');
 
+  // --- Setup wizard ---
+  //
+  // One icon per step of the setup wizard's rail, plus the marks its welcome step uses. They are a
+  // set at a single regular weight rather than borrowed from the tokens each subject already has:
+  // those were picked for their own surfaces and span light, regular, bold and duotone, and a rail
+  // is a column of icons read together, where a weight that changes between rows reads as a mistake.
+
+  /**
+   * Gets the icon of the setup wizard's welcome step.
+   */
+  public static readonly SETUP_WELCOME: Icon = new Icon('ph ph-house-line');
+
+  /**
+   * Gets the icon of the setup wizard's what's-new step.
+   */
+  public static readonly SETUP_WHATS_NEW: Icon = new Icon('ph ph-megaphone');
+
+  /**
+   * Gets the icon of the setup wizard's appearance step.
+   */
+  public static readonly SETUP_APPEARANCE: Icon = new Icon('ph ph-monitor');
+
+  /**
+   * Gets the icon of the setup wizard's environment step.
+   */
+  public static readonly SETUP_ENVIRONMENT: Icon = new Icon('ph ph-gear-six');
+
+  // The five plugin steps, one per contribution slot. The same glyphs the Plugin Manager's
+  // categories use, at the rail's weight, so a category installed from here is recognised there.
+
+  /**
+   * Gets the icon of the setup wizard's language servers step.
+   */
+  public static readonly SETUP_LANGUAGE_SERVERS: Icon = new Icon('ph ph-desktop-tower');
+
+  /**
+   * Gets the icon of the setup wizard's debug adapters step.
+   */
+  public static readonly SETUP_DEBUG_ADAPTERS: Icon = new Icon('ph ph-bug');
+
+  /**
+   * Gets the icon of the setup wizard's decoders step.
+   */
+  public static readonly SETUP_DECODERS: Icon = new Icon('ph ph-cpu');
+
+  /**
+   * Gets the icon of the setup wizard's container engines step.
+   */
+  public static readonly SETUP_CONTAINER_ENGINES: Icon = new Icon('ph ph-shipping-container');
+
+  /**
+   * Gets the icon of the setup wizard's AI providers step.
+   */
+  public static readonly SETUP_AI_PROVIDER: Icon = new Icon('ph ph-brain');
+
+  /**
+   * Gets the icon of the setup wizard's security step.
+   */
+  public static readonly SETUP_SECURITY: Icon = new Icon('ph ph-shield');
+
+  /**
+   * Gets the icon of the setup wizard's terminal step.
+   */
+  public static readonly SETUP_TERMINAL: Icon = new Icon('ph ph-terminal-window');
+
+  /**
+   * Gets the icon of the setup wizard's source control step.
+   */
+  public static readonly SETUP_SOURCE_CONTROL: Icon = new Icon('ph ph-git-branch');
+
+  /**
+   * Gets the mark against something the setup wizard's environment step could not find.
+   */
+  public static readonly SETUP_MISSING: Icon = new Icon('ph ph-x-circle');
+
+  /**
+   * Gets the mark against something present but incompletely set up, or that could not be checked.
+   */
+  public static readonly SETUP_WARNING: Icon = new Icon('ph ph-warning-circle');
+
+  /**
+   * Gets the arrow trailing the setup wizard's Next button.
+   */
+  public static readonly ARROW_RIGHT: Icon = new Icon('ph ph-arrow-right');
+
   // --- Status bar ---
 
   /**
@@ -1144,6 +1376,12 @@ export class Icon {
    * Gets the delete (trash) icon.
    */
   public static readonly TRASH: Icon = new Icon('ph ph-trash');
+
+  /**
+   * Gets the delete icon in its lidless form, for a destructive action stated as a button beside other
+   * buttons, where the lidded bin's extra detail reads as noise at button size.
+   */
+  public static readonly TRASH_SIMPLE: Icon = new Icon('ph ph-trash-simple');
 
   /**
    * Gets the download icon, used for actions that fetch something over the network.
@@ -1219,9 +1457,25 @@ export class Icon {
   public static readonly MINUS_SQUARE: Icon = new Icon('ph ph-minus-square');
 
   /**
+   * Gets the duotone plus-square glyph used by the explorer tool strips' expand-all button.
+   */
+  public static readonly PLUS_SQUARE_DUOTONE: Icon = new Icon('ph-duotone ph-plus-square');
+
+  /**
+   * Gets the duotone minus-square glyph used by the explorer tool strips' collapse-all button.
+   */
+  public static readonly MINUS_SQUARE_DUOTONE: Icon = new Icon('ph-duotone ph-minus-square');
+
+  /**
    * Gets the three-dots glyph used to open an overflow menu of further actions.
    */
   public static readonly DOTS_THREE: Icon = new Icon('ph ph-dots-three');
+
+  /**
+   * Gets the bold three-dots glyph used by the explorer tool strips' more-actions menu button, where
+   * the regular weight reads too faint beside the strips' duotone icons.
+   */
+  public static readonly DOTS_THREE_BOLD: Icon = new Icon('ph-bold ph-dots-three');
 
   /**
    * Gets the vertical three-dots glyph used for a row's overflow menu. Regular weight, as its

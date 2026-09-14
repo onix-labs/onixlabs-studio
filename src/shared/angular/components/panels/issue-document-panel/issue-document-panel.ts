@@ -11,7 +11,7 @@ import { ForgeIssue, ForgeIssueComment } from '@shared/api/forge-types';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
-import { MarkdownView } from '@shared/angular/components/markdown-view/markdown-view';
+import { MarkdownRenderer } from '@shared/angular/components/markdown-renderer/markdown-renderer';
 import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
 import { IssueAgentConfirm } from '@shared/angular/components/panels/issue-agent-confirm/issue-agent-confirm';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
@@ -32,7 +32,7 @@ import { Shell } from '@shared/angular/services/shell/shell';
  */
 @Component({
   selector: 'app-issue-document-panel',
-  imports: [AppIcon, Button, MarkdownView, PanelToolbar, IssueAgentConfirm],
+  imports: [AppIcon, Button, MarkdownRenderer, PanelToolbar, IssueAgentConfirm],
   templateUrl: './issue-document-panel.html',
   styleUrl: './issue-document-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

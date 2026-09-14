@@ -14,7 +14,11 @@
 .ribbon {
   display: flex;
   align-items: stretch;
-  padding: 0.5rem;
+  // Asymmetric on purpose, and not to be evened back up: the block padding is the strip's cheapest
+  // height, so it is tuned down independently of the inline padding, which sets how far the first
+  // group stands off the window edge and is unrelated to how tall the strip is.
+  padding-block: 0.25rem;
+  padding-inline: 0.5rem;
   // The active ribbon fills this width and its overflow wrapper moves groups that do not fit into a
   // dropdown (clipping is handled inside that wrapper, so the strip never scrolls). Overflow stays
   // visible here so the overflow flyout, which drops below the strip, is not clipped. Alignment of the

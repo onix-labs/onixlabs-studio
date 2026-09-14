@@ -1,9 +1,10 @@
 import { CdkMenu, CdkMenuTrigger } from '@angular/cdk/menu';
 import { ConnectedPosition } from '@angular/cdk/overlay';
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { MENU_POSITIONS } from '@shared/angular/components/menu/menu-position';
 import { Icon } from '@shared/angular/icons/icon';
+import { Studio } from '@shared/angular/services/studio/studio';
 
 /**
  * Describes one shortcut the composer answers to: the keys it is pressed with, and what pressing them
@@ -45,14 +46,38 @@ export interface ComposerShortcutGroup {
  * or moved there belongs here in the same change, since this menu is the only place the shortcuts are
  * advertised.
  */
+/**
+ * Renders the modifier keys the way the platform names them: the list is written with `Alt`, which
+ * macOS calls Option and draws as ⌥ — the same convention the keybindings service uses.
+ * @param groups The groups as written.
+ * @param isMac Whether the platform is macOS.
+ * @returns Returns the groups with their modifiers localised.
+ */
+export function localiseModifiers(
+  groups: readonly ComposerShortcutGroup[],
+  isMac: boolean,
+): readonly ComposerShortcutGroup[] {
+  if (!isMac) {
+    return groups;
+  }
+  return groups.map((group: ComposerShortcutGroup): ComposerShortcutGroup => ({
+    ...group,
+    shortcuts: group.shortcuts.map((shortcut: ComposerShortcut): ComposerShortcut => ({
+      ...shortcut,
+      keys: shortcut.keys.map((key: string): string => (key === 'Alt' ? '⌥' : key)),
+    })),
+  }));
+}
+
 export const COMPOSER_SHORTCUT_GROUPS: readonly ComposerShortcutGroup[] = [
   {
     title: 'Composer',
     shortcuts: [
       { keys: ['↵'], description: 'to send' },
       { keys: ['⇧', '↵'], description: 'for a new line' },
-      { keys: ['⇧', '↑'], description: 'for the previous message' },
-      { keys: ['⇧', '↓'], description: 'for the next message' },
+      // Alt, not Shift: Shift+arrows extends the selection, which the composer must not take.
+      { keys: ['Alt', '↑'], description: 'for the previous message' },
+      { keys: ['Alt', '↓'], description: 'for the next message' },
       { keys: ['/'], description: 'for the command palette' },
       { keys: ['@'], description: 'to attach a file' },
       { keys: ['Esc'], description: 'to stop editing a message' },
@@ -94,7 +119,10 @@ export class AgentComposerShortcuts {
   /**
    * Gets the shortcut groups listed by the menu.
    */
-  protected readonly groups: readonly ComposerShortcutGroup[] = COMPOSER_SHORTCUT_GROUPS;
+  protected readonly groups: readonly ComposerShortcutGroup[] = localiseModifiers(
+    COMPOSER_SHORTCUT_GROUPS,
+    inject(Studio).platform === 'darwin',
+  );
 
   /**
    * Gets the position that opens the menu upward from the button, their leading edges aligned. The

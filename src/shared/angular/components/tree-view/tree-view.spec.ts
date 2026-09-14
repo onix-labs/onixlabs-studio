@@ -164,7 +164,7 @@ class MenuHost {
 
   public readonly menuFor: (row: TreeRow) => readonly MenuItem[] = (
     row: TreeRow,
-  ): readonly MenuItem[] => [{ id: `act:${row.id}`, label: `Act on ${row.id}` }];
+  ): readonly MenuItem[] => [{ id: `act:${row.id}`, label: `Act on ${String(row.data)}` }];
 
   public onChoice(selection: TreeMenuSelection): void {
     this.chosen.push(selection);
@@ -268,6 +268,34 @@ describe('TreeView context menu', () => {
     fixture.detectChanges();
 
     expect(menuItems()).toHaveLength(0);
+  });
+
+  it('contextMenu_whenTheRowChangesUnderATriggerThatAlreadyOpened_actsOnTheCurrentRow', () => {
+    // CDK builds a trigger's panel portal on its first open and keeps it, so data bound at that
+    // moment would be the data every later open saw. A row's view outlives its data — kept by a
+    // surviving id here, recycled by virtual scrolling in the Explorer — so after renaming
+    // `README.md` the next right-click offered to rename `README.md` again (#718).
+    rightClick(0);
+    expect(menuItems().map((b: HTMLButtonElement): string => b.textContent?.trim() ?? '')).toEqual([
+      'Act on alpha',
+    ]);
+    document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    fixture.detectChanges();
+
+    component.rows.set([
+      { ...makeRow('alpha', 0, false, false), data: 'alpha-renamed' },
+      makeRow('beta', 0, false, false),
+    ]);
+    fixture.detectChanges();
+    rightClick(0);
+
+    expect(menuItems().map((b: HTMLButtonElement): string => b.textContent?.trim() ?? '')).toEqual([
+      'Act on alpha-renamed',
+    ]);
+    menuItems()[0].click();
+    fixture.detectChanges();
+    expect(component.chosen[0].row.data).toBe('alpha-renamed');
   });
 });
 

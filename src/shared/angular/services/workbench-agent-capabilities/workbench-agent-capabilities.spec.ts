@@ -6,9 +6,26 @@ import { Tab, TabType } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import {
   ActiveWorkspace,
+  WellDocument,
+  WellSourceControl,
+  WellTerminal,
   WorkspaceWell,
 } from '@shared/angular/services/workspace/active-workspace';
-import { OPEN_DOCUMENT, OPEN_FILE, OPEN_TERMINAL, SAVE_DOCUMENT } from '@shared/api/ai-types';
+import {
+  CREATE_FILE,
+  CREATE_FOLDER,
+  DELETE_PATH,
+  LIST_OPEN_DOCUMENTS,
+  LIST_TERMINALS,
+  OPEN_DIFF,
+  OPEN_DOCUMENT,
+  OPEN_FILE,
+  OPEN_TERMINAL,
+  READ_SOURCE_CONTROL_STATUS,
+  RENAME_PATH,
+  REVEAL_IN_EXPLORER,
+  SAVE_DOCUMENT,
+} from '@shared/api/ai-types';
 import { WorkbenchAgentCapabilities } from './workbench-agent-capabilities';
 
 /**
@@ -49,6 +66,41 @@ class FakeActiveWorkspace {
   public well: WorkspaceWell | null = null;
 
   /**
+   * The paths whose diffs were asked for.
+   */
+  public readonly diffed: string[] = [];
+
+  /**
+   * What the well says about a diff request: null opens it, a string refuses it.
+   */
+  public diffRefusal: string | null = null;
+
+  /**
+   * The documents the well reports.
+   */
+  public documents: readonly WellDocument[] = [];
+
+  /**
+   * The source-control state the well reports.
+   */
+  public sourceControl: WellSourceControl | null = null;
+
+  /**
+   * The terminals the well reports, and the ones opened through it.
+   */
+  public terminals: WellTerminal[] = [];
+
+  /**
+   * The tree operations asked of the well, in order.
+   */
+  public readonly tree: { op: string; path: string; extra?: string | null }[] = [];
+
+  /**
+   * What the well says about a tree operation: null succeeds, a string refuses.
+   */
+  public treeRefusal: string | null = null;
+
+  /**
    * Publishes a well backed by this fake.
    * @param root The workspace root.
    */
@@ -59,6 +111,53 @@ class FakeActiveWorkspace {
       open: (path: string): Promise<boolean> => {
         this.requested.push(path);
         return Promise.resolve(this.opens);
+      },
+      openDiff: (path: string): Promise<string | null> => {
+        this.diffed.push(path);
+        return Promise.resolve(this.diffRefusal);
+      },
+      documents: (): readonly WellDocument[] => this.documents,
+      sourceControl: (): WellSourceControl | null => this.sourceControl,
+      openTerminal: (): WellTerminal => {
+        const terminal: WellTerminal = {
+          id: `term-${this.terminals.length + 1}`,
+          name: `Terminal ${this.terminals.length + 1}`,
+          active: true,
+        };
+        this.terminals.push(terminal);
+        return terminal;
+      },
+      terminals: (): readonly WellTerminal[] => this.terminals,
+      createFile: (path: string, content: string | null): Promise<string | null> => {
+        this.tree.push({ op: 'createFile', path, extra: content });
+        return Promise.resolve(this.treeRefusal);
+      },
+      createFolder: (path: string): Promise<string | null> => {
+        this.tree.push({ op: 'createFolder', path });
+        return Promise.resolve(this.treeRefusal);
+      },
+      rename: (
+        path: string,
+        name: string,
+      ): Promise<{ path: string | null; error: string | null }> => {
+        this.tree.push({ op: 'rename', path, extra: name });
+        return Promise.resolve(
+          this.treeRefusal === null
+            ? { path: `${path.slice(0, path.lastIndexOf('/') + 1)}${name}`, error: null }
+            : { path: null, error: this.treeRefusal },
+        );
+      },
+      delete: (path: string): Promise<{ trashed: boolean; error: string | null }> => {
+        this.tree.push({ op: 'delete', path });
+        return Promise.resolve(
+          this.treeRefusal === null
+            ? { trashed: true, error: null }
+            : { trashed: false, error: this.treeRefusal },
+        );
+      },
+      reveal: (path: string): Promise<boolean> => {
+        this.tree.push({ op: 'reveal', path });
+        return Promise.resolve(this.treeRefusal === null);
       },
     };
   }
@@ -207,7 +306,21 @@ describe('WorkbenchAgentCapabilities', () => {
 
   it('constructor_registersTheWorkbenchCapabilities', () => {
     expect([...runtime.capabilities.keys()].sort()).toEqual(
-      [OPEN_DOCUMENT, SAVE_DOCUMENT, OPEN_TERMINAL, OPEN_FILE].sort(),
+      [
+        OPEN_DOCUMENT,
+        SAVE_DOCUMENT,
+        OPEN_TERMINAL,
+        OPEN_FILE,
+        LIST_OPEN_DOCUMENTS,
+        OPEN_DIFF,
+        READ_SOURCE_CONTROL_STATUS,
+        LIST_TERMINALS,
+        CREATE_FILE,
+        CREATE_FOLDER,
+        RENAME_PATH,
+        DELETE_PATH,
+        REVEAL_IN_EXPLORER,
+      ].sort(),
     );
   });
 
@@ -371,12 +484,217 @@ describe('WorkbenchAgentCapabilities', () => {
     });
   });
 
+  describe(LIST_OPEN_DOCUMENTS, () => {
+    it('reportsTheWellsDocumentsAndRoot', async () => {
+      workspace.publish('/ws');
+      workspace.documents = [
+        { path: '/ws/a.ts', name: 'a.ts', language: 'typescript', dirty: true, active: true },
+      ];
+
+      const result: Record<string, unknown> = await invoke(LIST_OPEN_DOCUMENTS, {});
+
+      expect(result['ok']).toBe(true);
+      expect(result['root']).toBe('/ws');
+      expect(result['documents']).toEqual(workspace.documents);
+    });
+
+    it('withNoWorkspaceOpen_saysSo', async () => {
+      const result: Record<string, unknown> = await invoke(LIST_OPEN_DOCUMENTS, {});
+
+      expect(result['ok']).toBe(false);
+      expect(result['error']).toContain('No workspace is open');
+    });
+  });
+
+  describe(OPEN_DIFF, () => {
+    it('resolvesTheRelativePathOpensTheDiffAndBringsTheTabForward', async () => {
+      workspace.publish('/ws');
+
+      const result: Record<string, unknown> = await invoke(OPEN_DIFF, { path: 'src/a.ts' });
+
+      expect(result['ok']).toBe(true);
+      expect(workspace.diffed).toEqual(['/ws/src/a.ts']);
+      expect(tabs.activated).toEqual(['workspace-tab']);
+    });
+
+    it('whenTheWellRefuses_reportsItsReasonAndLeavesTheTabAlone', async () => {
+      workspace.publish('/ws');
+      workspace.diffRefusal =
+        '"src/a.ts" has no changes against HEAD, so there is no diff to show.';
+
+      const result: Record<string, unknown> = await invoke(OPEN_DIFF, { path: 'src/a.ts' });
+
+      expect(result['ok']).toBe(false);
+      expect(result['error']).toContain('no changes');
+      expect(tabs.activated).toEqual([]);
+    });
+
+    it('withNoPath_isRefused', async () => {
+      workspace.publish('/ws');
+
+      const result: Record<string, unknown> = await invoke(OPEN_DIFF, {});
+
+      expect(result['ok']).toBe(false);
+      expect(workspace.diffed).toEqual([]);
+    });
+  });
+
+  describe(READ_SOURCE_CONTROL_STATUS, () => {
+    it('reportsTheWellsSourceControlState', async () => {
+      workspace.publish('/ws');
+      workspace.sourceControl = {
+        root: '/ws',
+        branch: 'main',
+        upstream: 'origin/main',
+        ahead: 1,
+        behind: 0,
+        staged: [],
+        unstaged: [{ path: 'src/a.ts', status: 'modified' }],
+        conflicted: [],
+      };
+
+      const result: Record<string, unknown> = await invoke(READ_SOURCE_CONTROL_STATUS, {});
+
+      expect(result['ok']).toBe(true);
+      expect(result['status']).toEqual(workspace.sourceControl);
+    });
+
+    it('withNoRepository_reportsNullRatherThanAnError', async () => {
+      workspace.publish('/ws');
+
+      const result: Record<string, unknown> = await invoke(READ_SOURCE_CONTROL_STATUS, {});
+
+      expect(result['ok']).toBe(true);
+      expect(result['status']).toBeNull();
+    });
+  });
+
+  describe('tree operations', () => {
+    it('createFile_resolvesTheRelativePathPassesTheContentAndBringsTheTabForward', async () => {
+      workspace.publish('/ws');
+
+      const result: Record<string, unknown> = await invoke(CREATE_FILE, {
+        path: 'src/new.ts',
+        content: 'export {};',
+      });
+
+      expect(result).toEqual({ ok: true, path: '/ws/src/new.ts' });
+      expect(workspace.tree).toEqual([
+        { op: 'createFile', path: '/ws/src/new.ts', extra: 'export {};' },
+      ]);
+      expect(tabs.activated).toEqual(['workspace-tab']);
+    });
+
+    it('createFile_withoutContent_asksForAnEmptyFile', async () => {
+      workspace.publish('/ws');
+
+      await invoke(CREATE_FILE, { path: 'empty.txt' });
+
+      expect(workspace.tree[0].extra).toBeNull();
+    });
+
+    it('renamePath_refusesANameThatIsAPath', async () => {
+      workspace.publish('/ws');
+
+      const result: Record<string, unknown> = await invoke(RENAME_PATH, {
+        path: 'a.ts',
+        name: 'sub/b.ts',
+      });
+
+      expect(result['ok']).toBe(false);
+      expect(workspace.tree).toEqual([]);
+    });
+
+    it('renamePath_reportsTheNewPath', async () => {
+      workspace.publish('/ws');
+
+      const result: Record<string, unknown> = await invoke(RENAME_PATH, {
+        path: 'a.ts',
+        name: 'b.ts',
+      });
+
+      expect(result).toEqual({ ok: true, path: '/ws/b.ts' });
+    });
+
+    it('deletePath_reportsWhetherTheEntryWasTrashed', async () => {
+      workspace.publish('/ws');
+
+      const result: Record<string, unknown> = await invoke(DELETE_PATH, { path: 'a.ts' });
+
+      expect(result).toEqual({ ok: true, path: '/ws/a.ts', trashed: true });
+    });
+
+    it('anyTreeOperation_surfacesTheWellsRefusal', async () => {
+      workspace.publish('/ws');
+      workspace.treeRefusal = 'Already exists.';
+
+      const result: Record<string, unknown> = await invoke(CREATE_FOLDER, { path: 'src' });
+
+      expect(result).toEqual({ ok: false, error: 'Already exists.' });
+    });
+
+    it('revealInExplorer_whenOutsideTheWorkspace_saysSo', async () => {
+      workspace.publish('/ws');
+      workspace.treeRefusal = 'outside';
+
+      const result: Record<string, unknown> = await invoke(REVEAL_IN_EXPLORER, { path: '/etc' });
+
+      expect(result['ok']).toBe(false);
+      expect(result['error']).toContain('not inside');
+    });
+
+    it('anyTreeOperation_withNoWorkspaceOpen_isRefused', async () => {
+      const result: Record<string, unknown> = await invoke(DELETE_PATH, { path: 'a.ts' });
+
+      expect(result['ok']).toBe(false);
+      expect(result['error']).toContain('No workspace');
+    });
+  });
+
   describe(OPEN_TERMINAL, () => {
     it('opensATerminalTab', async () => {
       const result: Record<string, unknown> = await invoke(OPEN_TERMINAL, {});
 
       expect(result['ok']).toBe(true);
+      expect(result['where']).toBe('tab');
       expect(tabs.opened).toEqual([{ type: 'terminal', resourceKey: undefined }]);
+    });
+
+    it('whenAskedForAWorkspaceTerminal_opensItInTheWellAndBringsTheTabForward', async () => {
+      // #713. The conversation and the terminal it drives share a tab; the id returned is the one the
+      // terminal tools address.
+      workspace.publish('/ws');
+
+      const result: Record<string, unknown> = await invoke(OPEN_TERMINAL, { workspace: true });
+
+      expect(result).toEqual({ ok: true, id: 'term-1', where: 'workspace' });
+      expect(tabs.opened).toEqual([]);
+      expect(tabs.activated).toEqual(['workspace-tab']);
+    });
+
+    it('whenAskedForAWorkspaceTerminalWithNoWorkspace_fallsBackToATab', async () => {
+      const result: Record<string, unknown> = await invoke(OPEN_TERMINAL, { workspace: true });
+
+      expect(result['where']).toBe('tab');
+      expect(tabs.opened).toHaveLength(1);
+    });
+  });
+
+  describe(LIST_TERMINALS, () => {
+    it('listsTheWellsTerminals', async () => {
+      workspace.publish('/ws');
+      await invoke(OPEN_TERMINAL, { workspace: true });
+
+      const result: Record<string, unknown> = await invoke(LIST_TERMINALS, {});
+
+      expect(result['ok']).toBe(true);
+      expect(result['terminals']).toEqual([{ id: 'term-1', name: 'Terminal 1', active: true }]);
+    });
+
+    it('withNoWorkspaceOpen_saysSo', async () => {
+      const result: Record<string, unknown> = await invoke(LIST_TERMINALS, {});
+
+      expect(result['ok']).toBe(false);
     });
   });
 });

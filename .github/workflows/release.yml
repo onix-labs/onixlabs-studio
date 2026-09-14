@@ -24,6 +24,39 @@ permissions:
   contents: read
 
 jobs:
+  # A release must not ship an index it has not verified. Every entry in `curated-plugins.json` is a
+  # claim about an external artifact — this URL exists, its bytes hash to this — and nothing in the
+  # normal gate can check that, because a test that stubs the artifact tests everything except the
+  # claim. If an upstream asset has been deleted or retagged since the last release, the build will
+  # succeed and the install will fail SHA-256 verification on the user's machine.
+  #
+  # Runs beside the build rather than before it, so hundreds of megabytes of downloads do not
+  # serialise ahead of packaging; `release` needs both, so a rotten pin still stops the tag.
+  plugin-index:
+    name: Verify the curated plugin index
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node (version from .nvmrc)
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
+      # `--all`, not this runner's platform: the index pins per-platform downloads, and a release ships
+      # every platform. Retried once so a briefly unreachable host does not fail a release.
+      - name: Verify every pinned download
+        shell: bash
+        run: |
+          if node scripts/verify-plugin-index.mjs --all; then
+            exit 0
+          fi
+          echo "::warning::First pass failed; retrying once in 60s in case a host was briefly unreachable."
+          sleep 60
+          node scripts/verify-plugin-index.mjs --all
+
   build:
     name: Build (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
@@ -182,7 +215,7 @@ jobs:
 
   release:
     name: Tag and draft the release
-    needs: build
+    needs: [build, plugin-index]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

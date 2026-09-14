@@ -7,9 +7,26 @@ import { Tab, TabType } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import {
   ActiveWorkspace,
+  WellDocument,
+  WellSourceControl,
+  WellTerminal,
   WorkspaceWell,
 } from '@shared/angular/services/workspace/active-workspace';
-import { OPEN_DOCUMENT, OPEN_FILE, OPEN_TERMINAL, SAVE_DOCUMENT } from '@shared/api/ai-types';
+import {
+  CREATE_FILE,
+  CREATE_FOLDER,
+  DELETE_PATH,
+  LIST_OPEN_DOCUMENTS,
+  LIST_TERMINALS,
+  OPEN_DIFF,
+  OPEN_DOCUMENT,
+  OPEN_FILE,
+  OPEN_TERMINAL,
+  READ_SOURCE_CONTROL_STATUS,
+  RENAME_PATH,
+  REVEAL_IN_EXPLORER,
+  SAVE_DOCUMENT,
+} from '@shared/api/ai-types';
 
 /**
  * The title a document opens under when the agent supplies none.
@@ -88,18 +105,134 @@ interface OpenFileResult {
 }
 
 /**
- * The result of opening a terminal.
+ * The result of listing a well's documents.
  */
-interface OpenTerminalResult {
+interface ListOpenDocumentsResult {
   /**
-   * Gets whether a terminal tab was opened.
+   * Gets whether a well was found to list.
    */
   readonly ok: boolean;
 
   /**
-   * Gets the identifier of the opened tab.
+   * Gets the reason there was nothing to list, when there was not.
+   */
+  readonly error?: string;
+
+  /**
+   * Gets the workspace root the well belongs to.
+   */
+  readonly root?: string | null;
+
+  /**
+   * Gets the documents, in the well's order.
+   */
+  readonly documents?: readonly WellDocument[];
+}
+
+/**
+ * The result of opening a diff into a well.
+ */
+interface OpenDiffResult {
+  /**
+   * Gets whether the diff was opened.
+   */
+  readonly ok: boolean;
+
+  /**
+   * Gets the reason it was not, when it was not.
+   */
+  readonly error?: string;
+
+  /**
+   * Gets the absolute path whose diff was opened.
+   */
+  readonly path?: string;
+}
+
+/**
+ * The result of reading a workspace's source-control state.
+ */
+interface SourceControlStatusResult {
+  /**
+   * Gets whether a well was found to ask.
+   */
+  readonly ok: boolean;
+
+  /**
+   * Gets the reason there was nothing to read, when there was not.
+   */
+  readonly error?: string;
+
+  /**
+   * Gets the state, or null when the workspace is not a repository.
+   */
+  readonly status?: WellSourceControl | null;
+}
+
+/**
+ * The result of opening a terminal.
+ */
+interface OpenTerminalResult {
+  /**
+   * Gets whether a terminal was opened.
+   */
+  readonly ok: boolean;
+
+  /**
+   * Gets the identifier of the opened terminal — a top-level tab's id, or a workspace terminal's
+   * session id — which the terminal tools address it by.
    */
   readonly id?: string;
+
+  /**
+   * Gets where the terminal opened: in the workspace's dock, or as a top-level tab.
+   */
+  readonly where?: 'workspace' | 'tab';
+}
+
+/**
+ * The result of a mutation of the workspace tree: a create, rename or delete.
+ */
+interface TreeMutationResult {
+  /**
+   * Gets whether the mutation happened.
+   */
+  readonly ok: boolean;
+
+  /**
+   * Gets the reason it did not, when it did not.
+   */
+  readonly error?: string;
+
+  /**
+   * Gets the absolute path the mutation produced or acted on.
+   */
+  readonly path?: string;
+
+  /**
+   * Gets whether a delete moved the entry to the trash rather than removing it permanently.
+   */
+  readonly trashed?: boolean;
+}
+
+/**
+ * The result of listing a workspace's terminals.
+ */
+interface ListTerminalsResult {
+  /**
+   * Gets whether a workspace was found to list.
+   */
+  readonly ok: boolean;
+
+  /**
+   * Gets the reason there was nothing to list, when there was not.
+   */
+  readonly error?: string;
+
+  /**
+   * Gets the terminals.
+   */
+  readonly terminals?: readonly WellTerminal[];
 }
 
 /**
@@ -159,9 +292,44 @@ export class WorkbenchAgentCapabilities {
     this.runtime.registerCapability(SAVE_DOCUMENT, (input: unknown): Promise<SaveDocumentResult> =>
       this.saveDocument(input),
     );
-    this.runtime.registerCapability(OPEN_TERMINAL, (): OpenTerminalResult => this.openTerminal());
+    this.runtime.registerCapability(OPEN_TERMINAL, (input: unknown): OpenTerminalResult =>
+      this.openTerminal(input),
+    );
     this.runtime.registerCapability(OPEN_FILE, (input: unknown): Promise<OpenFileResult> =>
       this.openFile(input),
+    );
+    // The workspace surface's own view of its well (#713). Registered here with the other well-based
+    // capabilities: they resolve the well the same way, and the surface that offers them is decided in
+    // the main process.
+    this.runtime.registerCapability(LIST_OPEN_DOCUMENTS, (): ListOpenDocumentsResult =>
+      this.listOpenDocuments(),
+    );
+    this.runtime.registerCapability(OPEN_DIFF, (input: unknown): Promise<OpenDiffResult> =>
+      this.openDiff(input),
+    );
+    this.runtime.registerCapability(READ_SOURCE_CONTROL_STATUS, (): SourceControlStatusResult =>
+      this.readSourceControlStatus(),
+    );
+    this.runtime.registerCapability(LIST_TERMINALS, (): ListTerminalsResult =>
+      this.listTerminals(),
+    );
+    // Acting on the tree (#713 phase 4): the Explorer's own operations, reached through the well so
+    // the Explorer reflects them, and confined by the main process to the open workspace.
+    this.runtime.registerCapability(CREATE_FILE, (input: unknown): Promise<TreeMutationResult> =>
+      this.createFile(input),
+    );
+    this.runtime.registerCapability(CREATE_FOLDER, (input: unknown): Promise<TreeMutationResult> =>
+      this.createFolder(input),
+    );
+    this.runtime.registerCapability(RENAME_PATH, (input: unknown): Promise<TreeMutationResult> =>
+      this.renamePath(input),
+    );
+    this.runtime.registerCapability(DELETE_PATH, (input: unknown): Promise<TreeMutationResult> =>
+      this.deletePath(input),
+    );
+    this.runtime.registerCapability(
+      REVEAL_IN_EXPLORER,
+      (input: unknown): Promise<TreeMutationResult> => this.revealInExplorer(input),
     );
     this.log.info('workbench.agent', 'Workbench agent capabilities registered');
   }
@@ -284,6 +452,189 @@ export class WorkbenchAgentCapabilities {
   }
 
   /**
+   * Lists the documents open in the active workspace's well (#713).
+   * @returns Returns the {@link ListOpenDocumentsResult}.
+   */
+  private listOpenDocuments(): ListOpenDocumentsResult {
+    const well: WorkspaceWell | null = this.workspace.activeWell();
+    if (well === null) {
+      return { ok: false, error: 'No workspace is open, so there is no document well to list.' };
+    }
+    const documents: readonly WellDocument[] = well.documents();
+    this.log.debug('workbench.agent', `Agent listed ${documents.length} well document(s)`);
+    return { ok: true, root: well.root, documents };
+  }
+
+  /**
+   * Opens a changed file's diff into the active workspace's well and brings the tab forward (#713).
+   * @param input The tool input: the path whose diff to open.
+   * @returns Returns the {@link OpenDiffResult}.
+   */
+  private async openDiff(input: unknown): Promise<OpenDiffResult> {
+    const args: { path?: unknown } = input ?? {};
+    const requested: string = typeof args.path === 'string' ? args.path.trim() : '';
+    if (requested.length === 0) {
+      return { ok: false, error: 'No path was given.' };
+    }
+    const well: WorkspaceWell | null = this.workspace.activeWell();
+    if (well === null) {
+      return {
+        ok: false,
+        error: 'No workspace is open, so there is no document well to open the diff into.',
+      };
+    }
+    const path: string = this.absolutePath(requested, well.root);
+    const refusal: string | null = await well.openDiff(path);
+    if (refusal !== null) {
+      this.log.debug('workbench.agent', `Agent diff refused: ${refusal}`);
+      return { ok: false, error: refusal };
+    }
+    this.tabs.activate(well.tabId);
+    this.log.info('workbench.agent', 'Agent opened a diff in the well', path);
+    return { ok: true, path };
+  }
+
+  /**
+   * Reads the active workspace's source-control state (#713).
+   * @returns Returns the {@link SourceControlStatusResult}.
+   */
+  private readSourceControlStatus(): SourceControlStatusResult {
+    const well: WorkspaceWell | null = this.workspace.activeWell();
+    if (well === null) {
+      return { ok: false, error: 'No workspace is open, so there is no repository to read.' };
+    }
+    return { ok: true, status: well.sourceControl() };
+  }
+
+  /**
+   * Resolves the well and the absolute path a tree operation acts on.
+   * @param input The tool input.
+   * @returns Returns the well and path, or the refusal to report.
+   */
+  private resolveTreeTarget(
+    input: unknown,
+  ): { readonly well: WorkspaceWell; readonly path: string } | { readonly error: string } {
+    const args: { path?: unknown } = input ?? {};
+    const requested: string = typeof args.path === 'string' ? args.path.trim() : '';
+    if (requested.length === 0) {
+      return { error: 'No path was given.' };
+    }
+    const well: WorkspaceWell | null = this.workspace.activeWell();
+    if (well === null) {
+      return { error: 'No workspace is open.' };
+    }
+    return { well, path: this.absolutePath(requested, well.root) };
+  }
+
+  /**
+   * Creates a file in the active workspace (#713).
+   * @param input The tool input: the path, and optionally the content.
+   * @returns Returns the {@link TreeMutationResult}.
+   */
+  private async createFile(input: unknown): Promise<TreeMutationResult> {
+    const target: { well: WorkspaceWell; path: string } | { error: string } =
+      this.resolveTreeTarget(input);
+    if ('error' in target) {
+      return { ok: false, error: target.error };
+    }
+    const args: { content?: unknown } = input ?? {};
+    const content: string | null = typeof args.content === 'string' ? args.content : null;
+    const refusal: string | null = await target.well.createFile(target.path, content);
+    if (refusal !== null) {
+      return { ok: false, error: refusal };
+    }
+    this.tabs.activate(target.well.tabId);
+    this.log.info('workbench.agent', 'Agent created a file', target.path);
+    return { ok: true, path: target.path };
+  }
+
+  /**
+   * Creates a folder in the active workspace (#713).
+   * @param input The tool input: the path.
+   * @returns Returns the {@link TreeMutationResult}.
+   */
+  private async createFolder(input: unknown): Promise<TreeMutationResult> {
+    const target: { well: WorkspaceWell; path: string } | { error: string } =
+      this.resolveTreeTarget(input);
+    if ('error' in target) {
+      return { ok: false, error: target.error };
+    }
+    const refusal: string | null = await target.well.createFolder(target.path);
+    if (refusal !== null) {
+      return { ok: false, error: refusal };
+    }
+    this.log.info('workbench.agent', 'Agent created a folder', target.path);
+    return { ok: true, path: target.path };
+  }
+
+  /**
+   * Renames an entry in the active workspace (#713).
+   * @param input The tool input: the path and the new name.
+   * @returns Returns the {@link TreeMutationResult}.
+   */
+  private async renamePath(input: unknown): Promise<TreeMutationResult> {
+    const target: { well: WorkspaceWell; path: string } | { error: string } =
+      this.resolveTreeTarget(input);
+    if ('error' in target) {
+      return { ok: false, error: target.error };
+    }
+    const args: { name?: unknown } = input ?? {};
+    const name: string = typeof args.name === 'string' ? args.name.trim() : '';
+    if (name.length === 0 || /[\\/]/.test(name)) {
+      return { ok: false, error: 'The new name must be a single path segment.' };
+    }
+    const renamed: { path: string | null; error: string | null } = await target.well.rename(
+      target.path,
+      name,
+    );
+    if (renamed.error !== null) {
+      return { ok: false, error: renamed.error };
+    }
+    this.log.info('workbench.agent', 'Agent renamed an entry', target.path, name);
+    return { ok: true, path: renamed.path ?? undefined };
+  }
+
+  /**
+   * Deletes an entry in the active workspace (#713).
+   * @param input The tool input: the path.
+   * @returns Returns the {@link TreeMutationResult}.
+   */
+  private async deletePath(input: unknown): Promise<TreeMutationResult> {
+    const target: { well: WorkspaceWell; path: string } | { error: string } =
+      this.resolveTreeTarget(input);
+    if ('error' in target) {
+      return { ok: false, error: target.error };
+    }
+    const deleted: { trashed: boolean; error: string | null } = await target.well.delete(
+      target.path,
+    );
+    if (deleted.error !== null) {
+      return { ok: false, error: deleted.error };
+    }
+    this.log.info('workbench.agent', 'Agent deleted an entry', target.path, deleted.trashed);
+    return { ok: true, path: target.path, trashed: deleted.trashed };
+  }
+
+  /**
+   * Reveals an entry in the active workspace's Explorer (#713).
+   * @param input The tool input: the path.
+   * @returns Returns the {@link TreeMutationResult}.
+   */
+  private async revealInExplorer(input: unknown): Promise<TreeMutationResult> {
+    const target: { well: WorkspaceWell; path: string } | { error: string } =
+      this.resolveTreeTarget(input);
+    if ('error' in target) {
+      return { ok: false, error: target.error };
+    }
+    const revealed: boolean = await target.well.reveal(target.path);
+    if (!revealed) {
+      return { ok: false, error: `"${target.path}" is not inside the open workspace.` };
+    }
+    this.tabs.activate(target.well.tabId);
+    return { ok: true, path: target.path };
+  }
+
+  /**
    * Resolves a requested path against the workspace root, so a model that names a file the way the
    * repository does (`src/app/main.ts`) reaches the same file as one that gives a full path.
    * @param requested The requested path, absolute or workspace-relative.
@@ -300,12 +651,35 @@ export class WorkbenchAgentCapabilities {
   }
 
   /**
-   * Opens a new terminal tab and activates it.
+   * Opens a terminal: into the active workspace's dock when the caller asks for one and a workspace
+   * is open (#713) — so the conversation and the terminal it drives share a tab — and otherwise as a
+   * top-level terminal tab.
+   * @param input The tool input: whether the terminal belongs in the workspace.
    * @returns Returns the {@link OpenTerminalResult}.
    */
-  private openTerminal(): OpenTerminalResult {
+  private openTerminal(input: unknown): OpenTerminalResult {
+    const args: { workspace?: unknown } = input ?? {};
+    const well: WorkspaceWell | null = args.workspace === true ? this.workspace.activeWell() : null;
+    if (well !== null) {
+      const terminal: WellTerminal = well.openTerminal();
+      this.tabs.activate(well.tabId);
+      this.log.info('workbench.agent', 'Agent opened a workspace terminal', terminal.id);
+      return { ok: true, id: terminal.id, where: 'workspace' };
+    }
     const tab: Tab = this.tabs.open('terminal');
     this.log.info('workbench.agent', 'Agent opened a terminal', tab.id);
-    return { ok: true, id: tab.id };
+    return { ok: true, id: tab.id, where: 'tab' };
+  }
+
+  /**
+   * Lists the active workspace's terminals (#713).
+   * @returns Returns the {@link ListTerminalsResult}.
+   */
+  private listTerminals(): ListTerminalsResult {
+    const well: WorkspaceWell | null = this.workspace.activeWell();
+    if (well === null) {
+      return { ok: false, error: 'No workspace is open, so there are no workspace terminals.' };
+    }
+    return { ok: true, terminals: well.terminals() };
   }
 }

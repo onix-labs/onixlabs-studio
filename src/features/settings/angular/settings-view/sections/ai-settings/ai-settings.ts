@@ -10,14 +10,12 @@ import {
   WritableSignal,
 } from '@angular/core';
 import type { AiAuthStatus, AiConnection, AuthMethod, ProviderPage } from '@shared/api/ai-types';
-import { PROVIDER_PAGES } from '@shared/api/ai-types';
-import { ShellInfo } from '@shared/api/terminal-channels';
+import { AiProviders } from '@shared/angular/services/ai-providers/ai-providers';
 import { AiConnections } from '@shared/angular/services/ai-connections/ai-connections';
 import { Log } from '@shared/angular/services/log/log';
-import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
+import { ShellPicker } from '@shared/angular/components/forms/shell-picker/shell-picker';
 import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
 import { Settings } from '@shared/angular/services/settings/settings';
-import { TerminalShells } from '@shared/angular/services/terminal-shells/terminal-shells';
 import { SettingControl } from '../../setting-control/setting-control';
 import { AiConnectionEditor } from './ai-connection-editor/ai-connection-editor';
 import { AiRemoteNotifications } from './ai-remote-notifications/ai-remote-notifications';
@@ -46,7 +44,7 @@ export type AiSettingsView = 'general' | 'security' | 'provider';
   selector: 'app-ai-settings',
   imports: [
     Button,
-    Dropdown,
+    ShellPicker,
     SettingRow,
     SettingControl,
     AiConnectionEditor,
@@ -82,32 +80,19 @@ export class AiSettingsSection {
   private readonly connectionsService: AiConnections = inject(AiConnections);
 
   /**
+   * Holds the providers installed plugins contribute, which is the whole of what this branch shows.
+   */
+  private readonly providers: AiProviders = inject(AiProviders);
+
+  /**
    * Holds the settings service the agent shell persists through.
    */
   private readonly settings: Settings = inject(Settings);
 
   /**
-   * Holds the installed-shells provider populating the agent-shell dropdown.
-   */
-  private readonly terminalShells: TerminalShells = inject(TerminalShells);
-
-  /**
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
-
-  /**
-   * Gets the agent-shell dropdown options: a leading "Default login shell" entry (the empty value,
-   * inheriting the startup-hydrated environment) followed by each installed shell.
-   */
-  protected readonly shellOptions: Signal<readonly DropdownOption[]> = computed(
-    (): readonly DropdownOption[] => [
-      { value: '', label: 'Default login shell' },
-      ...this.terminalShells
-        .shells()
-        .map((shell: ShellInfo): DropdownOption => ({ value: shell.path, label: shell.name })),
-    ],
-  );
 
   /**
    * Gets the persisted agent shell (the empty string for the default login shell).
@@ -127,7 +112,7 @@ export class AiSettingsSection {
    */
   protected readonly page: Signal<ProviderPage | undefined> = computed(
     (): ProviderPage | undefined =>
-      PROVIDER_PAGES.find((page: ProviderPage): boolean => page.id === this.providerId()),
+      this.providers.pages().find((page: ProviderPage): boolean => page.id === this.providerId()),
   );
 
   /**

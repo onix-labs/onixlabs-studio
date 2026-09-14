@@ -1,104 +1,36 @@
-// The default connections seeded for a fresh install and used as the migration target for users
-// upgrading from the old `{provider, models}` settings. Their ids match the old provider ids
-// (`claude`, `vercel`, `ollama`) so a user's previous provider and per-provider model choices carry
-// over one-to-one onto these connections. This is DATA, not a runtime source of truth — the user may
-// relabel, retune, or remove these once the connection-manager UI lands.
+// What a fresh install starts with, which is now **nothing**.
 //
-// NOTE: the model lists here intentionally mirror the main-process catalogues in
-// `src/shared/electron/ai/models.ts`. That duplication is transient: a later phase deletes `models.ts`
-// as the runtime source of truth and points the adapters at each connection's own list, at which point
-// these seeds become the single origin of the bundled catalogue.
+// ⛔ This file used to seed four connections — Claude, Codex, an Anthropic API key and Ollama — each
+// with a hardcoded model list (`claude-opus-4-8`, `gpt-5.6-sol`, `qwen3:8b`). That made a fresh binary
+// ship configurations for providers it had no way to run, which is the inverse of what #653 set out to
+// deliver: a binary with no AI providers in core, where installing a plugin is what makes a provider
+// available at all.
+//
+// A configuration is created by the user from a company page, and a company page exists only because an
+// installed harness contributes it (manifest 1.12.0). So an empty list here is not a gap to be filled
+// later — it is the whole point, and anything added back is core shipping a provider again.
 
 import type { AiConnection } from './ai-connection-types';
-import type { AiModelInfo } from './ai-provider-types';
 
 /**
- * The Anthropic models seeded for the Claude connections, in display order (most to least capable).
- */
-const ANTHROPIC_SEED_MODELS: readonly AiModelInfo[] = [
-  { id: 'claude-opus-4-8', label: 'Opus 4.8', contextWindow: 1_000_000 },
-  { id: 'claude-sonnet-4-6', label: 'Sonnet 4.6', contextWindow: 1_000_000 },
-  { id: 'claude-haiku-4-5', label: 'Haiku 4.5', contextWindow: 200_000 },
-];
-
-/**
- * The OpenAI Codex models seeded for the Codex connection, in display order. Best-guess defaults the
- * user can retune once model discovery lands; Codex runs OpenAI models through the `codex` CLI.
- */
-const CODEX_SEED_MODELS: readonly AiModelInfo[] = [
-  { id: 'gpt-5.6-sol', label: 'GPT-5.6-Sol', contextWindow: 1_050_000 },
-];
-
-/**
- * The local Ollama models seeded for the Ollama connection, in display order.
- */
-const OLLAMA_SEED_MODELS: readonly AiModelInfo[] = [
-  { id: 'qwen3:8b', label: 'Qwen3 8B', contextWindow: 40_960 },
-  { id: 'qwen2.5-coder:14b', label: 'Qwen2.5 Coder 14B', contextWindow: 32_768 },
-  { id: 'qwen2.5-coder:7b', label: 'Qwen2.5 Coder 7B', contextWindow: 32_768 },
-];
-
-/**
- * The id of the seeded Claude (local-login) connection — the default active connection.
- */
-export const CLAUDE_CONNECTION_ID: string = 'claude';
-
-/**
- * The id of the seeded OpenAI Codex (local-login) connection — the second live-harness agent.
- */
-export const CODEX_CONNECTION_ID: string = 'codex';
-
-/**
- * The id of the seeded Anthropic-API-key connection (formerly the "Vercel" provider).
+ * The connection id a pre-connections upgrade migrates its single stored Anthropic key onto.
+ *
+ * ⚠️ Kept only for that migration. It names no connection this build creates — the key is carried
+ * forward under this id so a user who later creates an Anthropic configuration through the plugin finds
+ * their key already there, rather than silently losing it on upgrade.
  */
 export const ANTHROPIC_KEY_CONNECTION_ID: string = 'vercel';
 
 /**
- * The id of the seeded local Ollama connection.
+ * The connection active by default, which is none.
+ *
+ * Empty rather than a provider's name: with nothing seeded there is nothing to be active until the user
+ * creates a configuration, and naming an absent one would have the picker claim a selection it cannot
+ * resolve.
  */
-export const OLLAMA_CONNECTION_ID: string = 'ollama';
+export const DEFAULT_CONNECTION_ID: string = '';
 
 /**
- * The id of the connection active by default (the Claude local-login connection).
+ * The connections a fresh install starts with: none. See the note at the top of this file.
  */
-export const DEFAULT_CONNECTION_ID: string = CLAUDE_CONNECTION_ID;
-
-/**
- * The connections seeded on a fresh install (and the migration target for users upgrading from before
- * connections were configurable), mirroring the three providers that existed then. These are ordinary
- * defaults, not privileged: the user can edit, reorder, or remove any of them like any other.
- */
-export const SEED_CONNECTIONS: readonly AiConnection[] = [
-  {
-    id: CLAUDE_CONNECTION_ID,
-    kind: 'anthropic',
-    label: 'Claude',
-    auth: 'claude-login',
-    models: ANTHROPIC_SEED_MODELS,
-    defaultModelId: 'claude-opus-4-8',
-  },
-  {
-    id: CODEX_CONNECTION_ID,
-    kind: 'openai',
-    label: 'Codex',
-    auth: 'codex-login',
-    models: CODEX_SEED_MODELS,
-    defaultModelId: 'gpt-5.6-sol',
-  },
-  {
-    id: ANTHROPIC_KEY_CONNECTION_ID,
-    kind: 'anthropic',
-    label: 'API Key',
-    auth: 'api-key',
-    models: ANTHROPIC_SEED_MODELS,
-    defaultModelId: 'claude-opus-4-8',
-  },
-  {
-    id: OLLAMA_CONNECTION_ID,
-    kind: 'ollama',
-    label: 'Local',
-    auth: 'none',
-    models: OLLAMA_SEED_MODELS,
-    defaultModelId: 'qwen3:8b',
-  },
-];
+export const SEED_CONNECTIONS: readonly AiConnection[] = [];

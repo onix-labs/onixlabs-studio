@@ -42,8 +42,8 @@
       label="Agent shell"
       description="The shell whose profile the agent sources its environment (PATH, tokens) from. Choose an installed shell, or use the default login shell."
     >
-      <app-dropdown
-        [options]="shellOptions()"
+      <app-shell-picker
+        defaultLabel="Default login shell"
         [value]="agentShell()"
         (valueChange)="onAgentShellChange($event)"
       />

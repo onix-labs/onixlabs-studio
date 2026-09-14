@@ -20,11 +20,24 @@ let storedChoice: string | null;
 // comes from an injected discovery environment, and *which* engines exist from an injected catalogue,
 // so neither depends on what happens to be installed on the machine running the suite.
 vi.mock('electron', () => ({ app: { getPath: (): string => tmpdir() } }));
-vi.mock('node:fs', () => ({
-  existsSync: (file: string): boolean => present.has(file),
-  readFileSync: (): string => JSON.stringify({ engine: storedChoice }),
-  writeFileSync: (): void => undefined,
-}));
+// Mocked under BOTH shapes on purpose. A consumer anywhere in the module graph may reach for `node:fs`
+// as named imports or as a default one (`import fs from 'node:fs'`), and vitest serves a mock only in
+// the shape it was given: a named-only mock makes a default import fail the whole file with
+// `No "default" export is defined on the "node:fs" mock`, which is what a dependency bump changing one
+// import style deep in the graph did to these twelve tests.
+// ⚠️ No object spread in here: the factory is hoisted above esbuild's helper definitions, so a spread
+// fails the whole file with `TypeError: __spreadValues is not a function`. Spell both shapes out.
+vi.mock('node:fs', () => {
+  const existsSync: (file: string) => boolean = (file: string): boolean => present.has(file);
+  const readFileSync: () => string = (): string => JSON.stringify({ engine: storedChoice });
+  const writeFileSync: () => void = (): void => undefined;
+  return {
+    existsSync,
+    readFileSync,
+    writeFileSync,
+    default: { existsSync, readFileSync, writeFileSync },
+  };
+});
 
 /**
  * The choice store's path, as the module resolves it.

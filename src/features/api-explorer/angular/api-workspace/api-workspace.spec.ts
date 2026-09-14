@@ -295,31 +295,82 @@ describe('ApiWorkspace', () => {
     ).toBe(false);
   });
 
-  it('persist_thenRestore_bringsBackTheCollectionsAndTheActiveEnvironment', () => {
+  it('aSecondUntitledWorkspaceSharesNothingWithTheFirst', () => {
     const environment: ApiEnvironment = workspace.addEnvironment('Staging', [
       newField('base_url', 'https://s.test'),
     ]);
     workspace.activateEnvironment(environment.id);
     const saved: ApiRequest = request({ name: 'Kept', url: '{{base_url}}/kept' });
 
-    // A second instance reads the same store, standing in for reopening the tab.
-    const restored: ApiWorkspace = TestBed.runInInjectionContext(
+    // A second instance stands in for a second untitled tab. Both used to read and write one global
+    // store key, so this request and this environment appeared in both — and edits in the second
+    // replaced what the first had (#417).
+    const second: ApiWorkspace = TestBed.runInInjectionContext(
       (): ApiWorkspace => new ApiWorkspace(),
     );
 
-    expect(restored.request(saved.id)?.name).toBe('Kept');
-    expect(restored.activeEnvironmentId()).toBe(environment.id);
-    expect(restored.substitute('{{base_url}}/x')).toBe('https://s.test/x');
+    expect(second.request(saved.id)).toBeUndefined();
+    expect(second.activeEnvironmentId()).not.toBe(environment.id);
+    expect(second.substitute('{{base_url}}/x')).not.toBe('https://s.test/x');
+
+    // And the first is untouched by the second existing.
+    expect(workspace.request(saved.id)?.name).toBe('Kept');
+  });
+
+  it('adoptsTheSharedScratchFromAnOlderBuild_thenLeavesNoneForTheNextTab', () => {
+    // The one-time migration. A profile upgrading from before #417 has a document under the old global
+    // key; the first untitled tab opened keeps it, so nobody loses work to the fix.
+    globalThis.localStorage?.setItem(
+      'api-explorer.workspace',
+      JSON.stringify({
+        kind: 'onixlabs.studio.api',
+        version: 1,
+        folders: [{ id: 'legacy', parentId: null, name: 'From an older build' }],
+        requests: [],
+        environments: [],
+        activeEnvironmentId: null,
+      }),
+    );
+
+    const first: ApiWorkspace = TestBed.runInInjectionContext(
+      (): ApiWorkspace => new ApiWorkspace(),
+    );
+    expect(first.folders().map((folder: ApiFolder): string => folder.name)).toContain(
+      'From an older build',
+    );
+    // Adopted, not edited — it should not immediately ask to be saved.
+    expect(first.dirty()).toBe(false);
+
+    // And it is taken, not shared: the next tab gets a workspace of its own.
+    const second: ApiWorkspace = TestBed.runInInjectionContext(
+      (): ApiWorkspace => new ApiWorkspace(),
+    );
+    expect(second.folders().map((folder: ApiFolder): string => folder.name)).not.toContain(
+      'From an older build',
+    );
+    expect(globalThis.localStorage?.getItem('api-explorer.workspace')).toBeNull();
+  });
+
+  it('aFreshUntitledWorkspaceIsSeededButNotDirty', () => {
+    const fresh: ApiWorkspace = TestBed.runInInjectionContext(
+      (): ApiWorkspace => new ApiWorkspace(),
+    );
+
+    // Seeded so there is something to send on first open, but the seed is not the user's work: a
+    // workspace that arrived dirty would ask to be saved before it had been touched.
+    expect(fresh.folders().length).toBeGreaterThan(0);
+    expect(fresh.dirty()).toBe(false);
   });
 
   describe('as a document', () => {
-    it('untitled_isNeverDirtyAndKeepsAutoSavingToTheStore', () => {
+    it('untitled_becomesDirtyOnEdit_soClosingItOffersToSaveIt', () => {
       request({ name: 'Scratch' });
 
-      // Nothing to be out of step with: an untitled workspace is already in the store, so prompting
-      // to save it would be nagging about work that cannot be lost.
+      // An untitled workspace is unsaved work like any other document. It used to auto-save to a
+      // shared session key instead, which is what made every untitled tab the same workspace (#417);
+      // with that gone, the close prompt is what stands between a scratch workspace and being lost.
       expect(workspace.filePath()).toBeNull();
-      expect(workspace.dirty()).toBe(false);
+      expect(workspace.dirty()).toBe(true);
       expect(workspace.documentName()).toBe('Untitled');
     });
 
