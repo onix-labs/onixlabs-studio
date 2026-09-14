@@ -347,7 +347,7 @@ describe('AgentComposer', () => {
     expect(component.draft()).toBe('Yes and check the tests too');
   });
 
-  it('historyKeys_whenShiftArrowUpAndDown_walkSentPromptsAndRestoreTheDraft', () => {
+  it('historyKeys_whenAltArrowUpAndDown_walkSentPromptsAndRestoreTheDraft', () => {
     items.set([
       { id: 'item-1', kind: 'user', text: 'first prompt' },
       { id: 'item-2', kind: 'assistant', text: 'reply' },
@@ -355,7 +355,7 @@ describe('AgentComposer', () => {
     ]);
     const area: HTMLTextAreaElement = document.createElement('textarea');
     const key: (name: string) => KeyboardEvent = (name: string): KeyboardEvent => {
-      const event: KeyboardEvent = new KeyboardEvent('keydown', { key: name, shiftKey: true });
+      const event: KeyboardEvent = new KeyboardEvent('keydown', { key: name, altKey: true });
       Object.defineProperty(event, 'target', { value: area });
       return event;
     };
@@ -394,13 +394,32 @@ describe('AgentComposer', () => {
     expect(component.draft()).toBe('line one\nline two');
   });
 
-  it('historyKeys_whenShiftArrowUpFromTheEndOfAMultiLineDraft_stillRecalls', () => {
+  it('historyKeys_whenShiftArrowUp_leaveTheDraftAlone_soSelectingUpwardsStillWorks', () => {
+    // Shift+arrows extends a textarea selection line by line. Recall lived there once, and selecting
+    // the paragraph above replaced the draft with the previous message instead.
+    items.set([{ id: 'item-1', kind: 'user', text: 'first prompt' }]);
+    component.onInput('a draft\nbeing selected');
+    const area: HTMLTextAreaElement = document.createElement('textarea');
+    const event: KeyboardEvent = new KeyboardEvent('keydown', {
+      key: 'ArrowUp',
+      shiftKey: true,
+      cancelable: true,
+    });
+    Object.defineProperty(event, 'target', { value: area });
+
+    component.onKeydown(event);
+
+    expect(component.draft()).toBe('a draft\nbeing selected');
+    expect(event.defaultPrevented).toBe(false);
+  });
+
+  it('historyKeys_whenAltArrowUpFromTheEndOfAMultiLineDraft_stillRecalls', () => {
     items.set([{ id: 'item-1', kind: 'user', text: 'previous' }]);
     const area: HTMLTextAreaElement = document.createElement('textarea');
     area.value = 'line one\nline two';
     area.setSelectionRange(area.value.length, area.value.length);
     component.onInput(area.value);
-    const event: KeyboardEvent = new KeyboardEvent('keydown', { key: 'ArrowUp', shiftKey: true });
+    const event: KeyboardEvent = new KeyboardEvent('keydown', { key: 'ArrowUp', altKey: true });
     Object.defineProperty(event, 'target', { value: area });
 
     component.onKeydown(event);

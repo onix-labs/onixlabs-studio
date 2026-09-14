@@ -1334,7 +1334,12 @@ export class AgentComposer {
 
   /**
    * Handles composer key presses: sends on Enter (Shift+Enter inserts a newline), and recalls the
-   * sent-prompt history on Shift+ArrowUp/Shift+ArrowDown.
+   * sent-prompt history on Alt+ArrowUp/Alt+ArrowDown (Option on macOS).
+   *
+   * ⛔ Not Shift: Shift+arrows is how a textarea extends a selection line by line, and taking it
+   * turned "select the paragraph above" into "replace my draft with the previous message". Alt is
+   * free in a plain textarea (macOS only nudges the caret to a paragraph edge with it), and it is not
+   * one of the editing chords the menu guards.
    *
    * The bare arrows are left to the text area. A prompt is often several lines long, and a key that
    * usually moves the caret but sometimes replaces the whole draft is worse than either behaviour on
@@ -1373,7 +1378,7 @@ export class AgentComposer {
       this.cancelEdit();
       return;
     }
-    if (event.shiftKey && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
+    if (event.altKey && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
       this.onHistoryKey(event);
       return;
     }
@@ -1385,8 +1390,8 @@ export class AgentComposer {
   }
 
   /**
-   * Recalls previously sent prompts into the composer, shell-style: Shift+ArrowUp steps to older
-   * prompts, Shift+ArrowDown back to newer ones, and stepping past the most recent restores whatever
+   * Recalls previously sent prompts into the composer, shell-style: Alt+ArrowUp steps to older
+   * prompts, Alt+ArrowDown back to newer ones, and stepping past the most recent restores whatever
    * draft was being written when navigation began.
    *
    * The chord is asked for explicitly, so recall engages wherever the caret is; the caret's line only
