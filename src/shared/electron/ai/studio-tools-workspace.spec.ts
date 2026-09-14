@@ -1,21 +1,28 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CREATE_FILE,
   LIST_OPEN_DOCUMENTS,
   LIST_TERMINALS,
   OPEN_DIFF,
   OPEN_TERMINAL,
   READ_SOURCE_CONTROL_STATUS,
   READ_TERMINAL_OUTPUT,
+  RENAME_PATH,
   WRITE_TERMINAL_INPUT,
 } from '@shared/api/ai-types';
 import type { AgentRunContext } from './agent-provider';
 import {
+  createFile,
+  createFolder,
+  deletePath,
   listOpenDocuments,
   listTerminals,
   openDiff,
   openTerminal,
   readSourceControlStatus,
   readTerminalOutput,
+  renamePath,
+  revealInExplorer,
   writeTerminalInput,
 } from './studio-tools';
 
@@ -146,6 +153,99 @@ describe('workspace studio tools', () => {
         capability: WRITE_TERMINAL_INPUT,
         input: { tabId: 'term-3', text: 'ls', submit: true },
       });
+    });
+  });
+
+  describe('tree tools', () => {
+    /**
+     * Builds a context confined to a workspace, with the bridge answering as given.
+     * @param result The bridge's answer.
+     * @param overrides Confinement fields to set.
+     * @returns Returns the context and calls.
+     */
+    function confined(
+      result: unknown,
+      overrides: Partial<Record<string, unknown>> = {},
+    ): { context: AgentRunContext; calls: { capability: string; input: unknown }[] } {
+      const built: { context: AgentRunContext; calls: { capability: string; input: unknown }[] } =
+        contextWith(result);
+      Object.assign(built.context, {
+        workspaceRoot: '/ws',
+        allowedWritePaths: [],
+        deniedWritePaths: [],
+        ...overrides,
+      });
+      return built;
+    }
+
+    it('createFile_passesThePathAndContentThroughAndConfirms', async () => {
+      const { context, calls } = confined({ ok: true, path: '/ws/src/new.ts' });
+
+      const text: string = await createFile(context, 'src/new.ts', 'export {};');
+
+      expect(calls[0]).toEqual({
+        capability: CREATE_FILE,
+        input: { path: 'src/new.ts', content: 'export {};' },
+      });
+      expect(text).toContain('/ws/src/new.ts');
+    });
+
+    it('createFile_refusesAPathOutsideTheWorkspaceWithoutAskingTheRenderer', async () => {
+      // ⛔ The confinement is a boundary, not a prompt (#307): the same rule a harness applies to its
+      // own file tools, so a workspace tool cannot be a way around it.
+      const { context, calls } = confined({ ok: true });
+
+      const text: string = await createFile(context, '/etc/hosts');
+
+      expect(text).toContain('Blocked');
+      expect(calls).toEqual([]);
+    });
+
+    it('createFile_allowsAnAllowedWritePathAndRefusesADeniedOne', async () => {
+      const { context, calls } = confined(
+        { ok: true, path: '/elsewhere/a.txt' },
+        { allowedWritePaths: ['/elsewhere'], deniedWritePaths: ['.git'] },
+      );
+
+      expect(await createFile(context, '/elsewhere/a.txt')).toContain('/elsewhere/a.txt');
+      expect(await createFile(context, '.git/config')).toContain('denied');
+      expect(calls).toHaveLength(1);
+    });
+
+    it('createFile_withNoWorkspace_saysSo', async () => {
+      const { context } = confined({ ok: true }, { workspaceRoot: null });
+
+      expect(await createFile(context, 'a.txt')).toContain('No workspace is open');
+    });
+
+    it('renamePath_passesTheNewNameThrough', async () => {
+      const { context, calls } = confined({ ok: true, path: '/ws/b.ts' });
+
+      expect(await renamePath(context, 'a.ts', 'b.ts')).toContain('/ws/b.ts');
+      expect(calls[0]).toEqual({ capability: RENAME_PATH, input: { path: 'a.ts', name: 'b.ts' } });
+    });
+
+    it('deletePath_saysWhetherTheEntryWentToTheTrash', async () => {
+      const trashed: { context: AgentRunContext } = confined({
+        ok: true,
+        path: '/ws/a.ts',
+        trashed: true,
+      });
+      const removed: { context: AgentRunContext } = confined({
+        ok: true,
+        path: '/ws/a.ts',
+        trashed: false,
+      });
+
+      expect(await deletePath(trashed.context, 'a.ts')).toContain('trash');
+      expect(await deletePath(removed.context, 'a.ts')).toContain('permanently');
+    });
+
+    it('createFolder_andReveal_surfaceARefusalReason', async () => {
+      const { context } = confined({ ok: false, error: 'Already exists.' });
+
+      expect(await createFolder(context, 'src')).toBe('Already exists.');
+      expect(await revealInExplorer(context, 'src')).toBe('Already exists.');
     });
   });
 

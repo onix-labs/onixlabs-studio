@@ -23,6 +23,11 @@ import {
   OPEN_DIFF,
   READ_SOURCE_CONTROL_STATUS,
   LIST_TERMINALS,
+  CREATE_FILE,
+  CREATE_FOLDER,
+  RENAME_PATH,
+  DELETE_PATH,
+  REVEAL_IN_EXPLORER,
   OPEN_TERMINAL,
   SAVE_DOCUMENT,
   READ_BINARY_OVERVIEW,
@@ -64,6 +69,11 @@ import {
   openDiff,
   listOpenDocuments,
   listTerminals,
+  createFile,
+  createFolder,
+  renamePath,
+  deletePath,
+  revealInExplorer,
   readSourceControlStatus,
   openTerminal,
   saveDocument,
@@ -300,6 +310,82 @@ export async function createWorkspaceTools(context: AgentRunContext): Promise<To
       execute: (): Promise<string> => readSourceControlStatus(context),
     }),
     ...(await createWorkspaceTerminalTools(context)),
+    ...(await createWorkspaceTreeTools(context)),
+  };
+}
+
+/**
+ * Builds the workspace surface's tree tools (#713 phase 4): the Explorer's own operations, offered to
+ * the agent so the Explorer reflects what it does and, for a harness with no file tools, so it can
+ * make files at all. The mutations are gated like every other mutating Studio tool and confined to
+ * the workspace and the run's allowed write paths before the renderer is asked; a chat turn gets
+ * only the reveal, which changes nothing.
+ * @param context The run context the tools act through.
+ * @returns Returns the tool set.
+ */
+export async function createWorkspaceTreeTools(context: AgentRunContext): Promise<ToolSet> {
+  const { tool } = await import('ai');
+  const { z } = await import('zod');
+  const pathOf: string = 'An absolute path, or one relative to the workspace root.';
+  const reveal: ToolSet = {
+    [REVEAL_IN_EXPLORER]: tool({
+      description:
+        'Expand the Explorer to a file or folder and select it, so the user is looking at what you are talking about. It only reveals — it does not open the file.',
+      inputSchema: z.object({ path: z.string().min(1).describe(pathOf) }),
+      execute: (args: { path: string }): Promise<string> => revealInExplorer(context, args.path),
+    }),
+  };
+  if (context.mode === 'chat') {
+    return reveal;
+  }
+  return {
+    ...reveal,
+    [CREATE_FILE]: tool({
+      description:
+        "Create a file in the workspace, optionally with content, and open it in the user's editor. The Explorer shows it at once. Fails if the file exists; use your edit tools to change an existing file.",
+      inputSchema: z.object({
+        path: z.string().min(1).describe(pathOf),
+        content: z
+          .string()
+          .optional()
+          .describe('The full content to write. Omit for an empty file.'),
+      }),
+      execute: gated(
+        context,
+        CREATE_FILE,
+        (args: { path: string; content?: string }): Promise<string> =>
+          createFile(context, args.path, args.content),
+      ),
+    }),
+    [CREATE_FOLDER]: tool({
+      description: 'Create a folder in the workspace. The Explorer shows it at once.',
+      inputSchema: z.object({ path: z.string().min(1).describe(pathOf) }),
+      execute: gated(context, CREATE_FOLDER, (args: { path: string }): Promise<string> =>
+        createFolder(context, args.path),
+      ),
+    }),
+    [RENAME_PATH]: tool({
+      description:
+        'Rename a file or folder in place. Give the new name only, not a path; to move an entry use your own file tools.',
+      inputSchema: z.object({
+        path: z.string().min(1).describe(pathOf),
+        name: z.string().min(1).describe('The new name: a single path segment.'),
+      }),
+      execute: gated(
+        context,
+        RENAME_PATH,
+        (args: { path: string; name: string }): Promise<string> =>
+          renamePath(context, args.path, args.name),
+      ),
+    }),
+    [DELETE_PATH]: tool({
+      description:
+        "Delete a file or folder, to the operating system's trash where the platform allows it. The result says whether it went to the trash or was removed permanently.",
+      inputSchema: z.object({ path: z.string().min(1).describe(pathOf) }),
+      execute: gated(context, DELETE_PATH, (args: { path: string }): Promise<string> =>
+        deletePath(context, args.path),
+      ),
+    }),
   };
 }
 

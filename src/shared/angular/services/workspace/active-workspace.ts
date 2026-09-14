@@ -156,6 +156,47 @@ export interface WorkspaceWellHandlers {
    * @returns Returns the terminals, in the panel's order.
    */
   terminals(): readonly WellTerminal[];
+
+  /**
+   * Creates a file in the workspace, writes its content when given, reveals it in the Explorer and
+   * opens it in the well.
+   * @param path The absolute path of the file to create.
+   * @param content The content to write, or null for an empty file.
+   * @returns Returns null when the file was created, or the reason it could not be.
+   */
+  createFile(path: string, content: string | null): Promise<string | null>;
+
+  /**
+   * Creates a folder in the workspace and reveals it in the Explorer.
+   * @param path The absolute path of the folder to create.
+   * @returns Returns null when the folder was created, or the reason it could not be.
+   */
+  createFolder(path: string): Promise<string | null>;
+
+  /**
+   * Renames a file or folder in place.
+   * @param path The absolute path of the entry.
+   * @param name The new name, a single path segment.
+   * @returns Returns the new absolute path, or the reason the entry could not be renamed.
+   */
+  rename(
+    path: string,
+    name: string,
+  ): Promise<{ readonly path: string | null; readonly error: string | null }>;
+
+  /**
+   * Deletes a file or folder, to the operating system's trash where the platform allows it.
+   * @param path The absolute path of the entry.
+   * @returns Returns whether it went to the trash, or the reason it could not be deleted.
+   */
+  delete(path: string): Promise<{ readonly trashed: boolean; readonly error: string | null }>;
+
+  /**
+   * Reveals a file or folder in the Explorer: expands the tree down to it and selects it.
+   * @param path The absolute path of the entry.
+   * @returns Returns true when the entry lies within the workspace and was revealed.
+   */
+  reveal(path: string): Promise<boolean>;
 }
 
 /**

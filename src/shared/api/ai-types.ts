@@ -41,6 +41,11 @@ export {
   OPEN_DIFF,
   READ_SOURCE_CONTROL_STATUS,
   LIST_TERMINALS,
+  CREATE_FILE,
+  CREATE_FOLDER,
+  RENAME_PATH,
+  DELETE_PATH,
+  REVEAL_IN_EXPLORER,
   AGENT_SURFACES,
   isAgentSurface,
 } from './ai/ai-tool-surface';
