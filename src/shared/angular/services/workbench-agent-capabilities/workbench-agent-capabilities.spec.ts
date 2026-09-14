@@ -12,6 +12,9 @@ import {
   WorkspaceWell,
 } from '@shared/angular/services/workspace/active-workspace';
 import {
+  CREATE_FILE,
+  CREATE_FOLDER,
+  DELETE_PATH,
   LIST_OPEN_DOCUMENTS,
   LIST_TERMINALS,
   OPEN_DIFF,
@@ -19,6 +22,8 @@ import {
   OPEN_FILE,
   OPEN_TERMINAL,
   READ_SOURCE_CONTROL_STATUS,
+  RENAME_PATH,
+  REVEAL_IN_EXPLORER,
   SAVE_DOCUMENT,
 } from '@shared/api/ai-types';
 import { WorkbenchAgentCapabilities } from './workbench-agent-capabilities';
@@ -86,6 +91,16 @@ class FakeActiveWorkspace {
   public terminals: WellTerminal[] = [];
 
   /**
+   * The tree operations asked of the well, in order.
+   */
+  public readonly tree: { op: string; path: string; extra?: string | null }[] = [];
+
+  /**
+   * What the well says about a tree operation: null succeeds, a string refuses.
+   */
+  public treeRefusal: string | null = null;
+
+  /**
    * Publishes a well backed by this fake.
    * @param root The workspace root.
    */
@@ -113,6 +128,37 @@ class FakeActiveWorkspace {
         return terminal;
       },
       terminals: (): readonly WellTerminal[] => this.terminals,
+      createFile: (path: string, content: string | null): Promise<string | null> => {
+        this.tree.push({ op: 'createFile', path, extra: content });
+        return Promise.resolve(this.treeRefusal);
+      },
+      createFolder: (path: string): Promise<string | null> => {
+        this.tree.push({ op: 'createFolder', path });
+        return Promise.resolve(this.treeRefusal);
+      },
+      rename: (
+        path: string,
+        name: string,
+      ): Promise<{ path: string | null; error: string | null }> => {
+        this.tree.push({ op: 'rename', path, extra: name });
+        return Promise.resolve(
+          this.treeRefusal === null
+            ? { path: `${path.slice(0, path.lastIndexOf('/') + 1)}${name}`, error: null }
+            : { path: null, error: this.treeRefusal },
+        );
+      },
+      delete: (path: string): Promise<{ trashed: boolean; error: string | null }> => {
+        this.tree.push({ op: 'delete', path });
+        return Promise.resolve(
+          this.treeRefusal === null
+            ? { trashed: true, error: null }
+            : { trashed: false, error: this.treeRefusal },
+        );
+      },
+      reveal: (path: string): Promise<boolean> => {
+        this.tree.push({ op: 'reveal', path });
+        return Promise.resolve(this.treeRefusal === null);
+      },
     };
   }
 
@@ -269,6 +315,11 @@ describe('WorkbenchAgentCapabilities', () => {
         OPEN_DIFF,
         READ_SOURCE_CONTROL_STATUS,
         LIST_TERMINALS,
+        CREATE_FILE,
+        CREATE_FOLDER,
+        RENAME_PATH,
+        DELETE_PATH,
+        REVEAL_IN_EXPLORER,
       ].sort(),
     );
   });
@@ -515,6 +566,88 @@ describe('WorkbenchAgentCapabilities', () => {
 
       expect(result['ok']).toBe(true);
       expect(result['status']).toBeNull();
+    });
+  });
+
+  describe('tree operations', () => {
+    it('createFile_resolvesTheRelativePathPassesTheContentAndBringsTheTabForward', async () => {
+      workspace.publish('/ws');
+
+      const result: Record<string, unknown> = await invoke(CREATE_FILE, {
+        path: 'src/new.ts',
+        content: 'export {};',
+      });
+
+      expect(result).toEqual({ ok: true, path: '/ws/src/new.ts' });
+      expect(workspace.tree).toEqual([
+        { op: 'createFile', path: '/ws/src/new.ts', extra: 'export {};' },
+      ]);
+      expect(tabs.activated).toEqual(['workspace-tab']);
+    });
+
+    it('createFile_withoutContent_asksForAnEmptyFile', async () => {
+      workspace.publish('/ws');
+
+      await invoke(CREATE_FILE, { path: 'empty.txt' });
+
+      expect(workspace.tree[0].extra).toBeNull();
+    });
+
+    it('renamePath_refusesANameThatIsAPath', async () => {
+      workspace.publish('/ws');
+
+      const result: Record<string, unknown> = await invoke(RENAME_PATH, {
+        path: 'a.ts',
+        name: 'sub/b.ts',
+      });
+
+      expect(result['ok']).toBe(false);
+      expect(workspace.tree).toEqual([]);
+    });
+
+    it('renamePath_reportsTheNewPath', async () => {
+      workspace.publish('/ws');
+
+      const result: Record<string, unknown> = await invoke(RENAME_PATH, {
+        path: 'a.ts',
+        name: 'b.ts',
+      });
+
+      expect(result).toEqual({ ok: true, path: '/ws/b.ts' });
+    });
+
+    it('deletePath_reportsWhetherTheEntryWasTrashed', async () => {
+      workspace.publish('/ws');
+
+      const result: Record<string, unknown> = await invoke(DELETE_PATH, { path: 'a.ts' });
+
+      expect(result).toEqual({ ok: true, path: '/ws/a.ts', trashed: true });
+    });
+
+    it('anyTreeOperation_surfacesTheWellsRefusal', async () => {
+      workspace.publish('/ws');
+      workspace.treeRefusal = 'Already exists.';
+
+      const result: Record<string, unknown> = await invoke(CREATE_FOLDER, { path: 'src' });
+
+      expect(result).toEqual({ ok: false, error: 'Already exists.' });
+    });
+
+    it('revealInExplorer_whenOutsideTheWorkspace_saysSo', async () => {
+      workspace.publish('/ws');
+      workspace.treeRefusal = 'outside';
+
+      const result: Record<string, unknown> = await invoke(REVEAL_IN_EXPLORER, { path: '/etc' });
+
+      expect(result['ok']).toBe(false);
+      expect(result['error']).toContain('not inside');
+    });
+
+    it('anyTreeOperation_withNoWorkspaceOpen_isRefused', async () => {
+      const result: Record<string, unknown> = await invoke(DELETE_PATH, { path: 'a.ts' });
+
+      expect(result['ok']).toBe(false);
+      expect(result['error']).toContain('No workspace');
     });
   });
 

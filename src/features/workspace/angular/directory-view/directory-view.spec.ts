@@ -106,6 +106,12 @@ describe('DirectoryView', () => {
       expect(well().terminals()).toEqual([{ id: opened.id, name: opened.name, active: true }]);
     });
 
+    it('reveal_whenThePathIsOutsideTheWorkspace_refuses', async () => {
+      fixture.detectChanges();
+
+      expect(await well().reveal('/somewhere/else')).toBe(false);
+    });
+
     it('openDiff_whenTheFolderIsNotARepository_refusesWithTheReason', async () => {
       fixture.detectChanges();
 

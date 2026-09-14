@@ -21,6 +21,11 @@ import {
   OPEN_DIFF,
   READ_SOURCE_CONTROL_STATUS,
   LIST_TERMINALS,
+  CREATE_FILE,
+  CREATE_FOLDER,
+  RENAME_PATH,
+  DELETE_PATH,
+  REVEAL_IN_EXPLORER,
   OPEN_TERMINAL,
   PATCH_BINARY_BYTES,
   SAVE_DOCUMENT,
@@ -41,6 +46,7 @@ import {
 } from '@shared/api/ai-types';
 import { logger } from '@shared/electron/logger';
 import type { AgentRunContext } from './agent-provider';
+import { isWriteDenied, isWriteWithinRoots } from './write-confinement';
 
 /**
  * The fully-qualified name the read tool is exposed under to the Claude Agent SDK
@@ -305,6 +311,11 @@ export const WORKSPACE_PROMPT_APPENDIX: string = [
   '  what you changed, rather than pasting a diff into the conversation.',
   `- "${READ_SOURCE_CONTROL_STATUS}" reports the branch, how it tracks its upstream, and the staged,`,
   '  unstaged and conflicted files — what the source-control sidebar shows.',
+  `- "${CREATE_FILE}", "${CREATE_FOLDER}", "${RENAME_PATH}" and "${DELETE_PATH}" act on the tree the`,
+  '  way the Explorer does, so it reflects them at once; a created file opens in the well. They are',
+  "  confined to the workspace and the user's allowed write paths. Use your own file tools for the",
+  `  contents of existing files. "${REVEAL_IN_EXPLORER}" expands the tree to a file or folder and`,
+  '  selects it, to point the user at what you are talking about.',
   `- "${OPEN_TERMINAL}" opens a terminal in the workspace's terminal panel, rooted at the workspace,`,
   `  and returns its id; "${LIST_TERMINALS}" lists the ones already there. Drive a terminal by id with`,
   `  "${WRITE_TERMINAL_INPUT}" and read what it shows with "${READ_TERMINAL_OUTPUT}". The user is`,
@@ -1453,6 +1464,166 @@ export async function readSourceControlStatus(context: AgentRunContext): Promise
     section('Unstaged', status.unstaged),
     section('Conflicted', status.conflicted),
   ].join('\n');
+}
+
+/**
+ * Decides whether a tree mutation may touch a path, applying the run's write confinement (#307) before
+ * the renderer is asked: the workspace root and the allowed write paths bound it, and the denied
+ * paths win. A boundary rather than a prompt — the same rule a harness applies to its own file tools,
+ * so a workspace tool cannot be a way around it.
+ * @param context The agent run context.
+ * @param target The absolute or workspace-relative path.
+ * @returns Returns null when the write may proceed, or the refusal to report to the model.
+ */
+function refuseOutsideConfinement(context: AgentRunContext, target: string): string | null {
+  const base: string | null = context.workspaceRoot;
+  if (base === null) {
+    return 'No workspace is open, so there is nothing to act on.';
+  }
+  const roots: readonly string[] = [base, ...context.allowedWritePaths];
+  if (!isWriteWithinRoots(target, roots)) {
+    return (
+      `Blocked: "${target}" is outside the agent's allowed write area (the workspace root and the ` +
+      'allowed write paths). This is a fixed safety boundary.'
+    );
+  }
+  if (isWriteDenied(target, context.deniedWritePaths, base)) {
+    return `Blocked: "${target}" is on the denied write paths and cannot be changed.`;
+  }
+  return null;
+}
+
+/**
+ * Runs one tree mutation through the renderer bridge and phrases its outcome.
+ * @param context The agent run context.
+ * @param capability The capability to invoke.
+ * @param input The capability input.
+ * @param success Phrases a successful outcome from the reported path and trash flag.
+ * @returns Returns the confirmation, or the reason the mutation did not happen.
+ */
+async function mutateTree(
+  context: AgentRunContext,
+  capability: string,
+  input: Record<string, unknown>,
+  success: (path: string, trashed: boolean) => string,
+): Promise<string> {
+  const result: unknown = await context.bridge.request(capability, input);
+  const outcome: { ok?: boolean; error?: string; path?: string; trashed?: boolean } = result ?? {};
+  if (outcome.ok !== true) {
+    logger.debug('StudioTools', `${capability} refused: ${outcome.error ?? 'unknown reason'}`);
+    return outcome.error ?? 'The operation could not be completed.';
+  }
+  logger.info('StudioTools', `${capability}: ${outcome.path ?? ''}`);
+  const requested: unknown = input['path'];
+  return success(
+    outcome.path ?? (typeof requested === 'string' ? requested : ''),
+    outcome.trashed === true,
+  );
+}
+
+/**
+ * Creates a file in the workspace through the renderer bridge (#713), confined as a write.
+ * @param context The agent run context.
+ * @param path The absolute or workspace-relative path.
+ * @param content The content to write, or undefined for an empty file.
+ * @returns Returns a confirmation, or the reason the file was not created.
+ */
+export async function createFile(
+  context: AgentRunContext,
+  path: string,
+  content?: string,
+): Promise<string> {
+  logger.trace('StudioTools', `Tool invoked: create_file (${path})`);
+  const refusal: string | null = refuseOutsideConfinement(context, path);
+  if (refusal !== null) {
+    return refusal;
+  }
+  return mutateTree(
+    context,
+    CREATE_FILE,
+    { path, ...(content === undefined ? {} : { content }) },
+    (created: string): string => `Created ${created} and opened it in the user's editor.`,
+  );
+}
+
+/**
+ * Creates a folder in the workspace through the renderer bridge (#713), confined as a write.
+ * @param context The agent run context.
+ * @param path The absolute or workspace-relative path.
+ * @returns Returns a confirmation, or the reason the folder was not created.
+ */
+export async function createFolder(context: AgentRunContext, path: string): Promise<string> {
+  logger.trace('StudioTools', `Tool invoked: create_folder (${path})`);
+  const refusal: string | null = refuseOutsideConfinement(context, path);
+  if (refusal !== null) {
+    return refusal;
+  }
+  return mutateTree(
+    context,
+    CREATE_FOLDER,
+    { path },
+    (created: string): string => `Created the folder ${created}.`,
+  );
+}
+
+/**
+ * Renames a file or folder through the renderer bridge (#713), confined as a write.
+ * @param context The agent run context.
+ * @param path The absolute or workspace-relative path of the entry.
+ * @param name The new name, a single path segment.
+ * @returns Returns a confirmation, or the reason the entry was not renamed.
+ */
+export async function renamePath(
+  context: AgentRunContext,
+  path: string,
+  name: string,
+): Promise<string> {
+  logger.trace('StudioTools', `Tool invoked: rename_path (${path} -> ${name})`);
+  const refusal: string | null = refuseOutsideConfinement(context, path);
+  if (refusal !== null) {
+    return refusal;
+  }
+  return mutateTree(
+    context,
+    RENAME_PATH,
+    { path, name },
+    (renamed: string): string => `Renamed to ${renamed}.`,
+  );
+}
+
+/**
+ * Deletes a file or folder through the renderer bridge (#713), confined as a write.
+ * @param context The agent run context.
+ * @param path The absolute or workspace-relative path of the entry.
+ * @returns Returns a confirmation saying where the entry went, or the reason it was not deleted.
+ */
+export async function deletePath(context: AgentRunContext, path: string): Promise<string> {
+  logger.trace('StudioTools', `Tool invoked: delete_path (${path})`);
+  const refusal: string | null = refuseOutsideConfinement(context, path);
+  if (refusal !== null) {
+    return refusal;
+  }
+  return mutateTree(context, DELETE_PATH, { path }, (deleted: string, trashed: boolean): string =>
+    trashed
+      ? `Moved ${deleted} to the trash.`
+      : `Deleted ${deleted} permanently — this platform offered no trash to move it to.`,
+  );
+}
+
+/**
+ * Reveals a file or folder in the Explorer through the renderer bridge (#713).
+ * @param context The agent run context.
+ * @param path The absolute or workspace-relative path of the entry.
+ * @returns Returns a confirmation, or the reason it was not revealed.
+ */
+export async function revealInExplorer(context: AgentRunContext, path: string): Promise<string> {
+  logger.trace('StudioTools', `Tool invoked: reveal_in_explorer (${path})`);
+  return mutateTree(
+    context,
+    REVEAL_IN_EXPLORER,
+    { path },
+    (revealed: string): string => `Revealed ${revealed} in the Explorer.`,
+  );
 }
 
 /**

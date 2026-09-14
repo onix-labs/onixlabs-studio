@@ -29,7 +29,8 @@ import {
   GLOBAL_CONVERSATION_CONTEXT,
 } from '@shared/angular/services/agent-conversations/agent-conversation-context';
 import { ProjectModel } from '@shared/api/project-system';
-import { DirectoryListing } from '@shared/api/workspace-channels';
+import { DirectoryListing, FileOperationResult } from '@shared/api/workspace-channels';
+import type { FileWriteResult } from '@shared/api/file-channels';
 import { RepositoryInfo, SourceControlClient } from '@shared/api/source-control-channels';
 import { SourceControl } from '@shared/angular/services/source-control/source-control';
 import { Icon } from '@shared/angular/icons/icon';
@@ -79,6 +80,7 @@ import {
   firstStackOfRole,
 } from '@shared/angular/services/dock-layout/dock-tree';
 import { CodeDocument, Documents } from '@shared/angular/services/documents/documents';
+import { FileSystem } from '@shared/angular/services/file-system/file-system';
 import { UnsavedWorkRegistry } from '@shared/angular/services/unsaved-work/unsaved-work-registry';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { LspClient } from '@shared/angular/services/lsp/lsp-client';
@@ -466,6 +468,11 @@ export class DirectoryView implements OnInit, OnDestroy {
    * Holds the diff opener, reached by an agent through the published well to show a change (#713).
    */
   private readonly diffOpener: DiffOpener = inject(DiffOpener);
+
+  /**
+   * Holds the file system, which writes the content of a file an agent creates (#713).
+   */
+  private readonly fileSystem: FileSystem = inject(FileSystem);
 
   /**
    * Holds this tab's scoped solution model, whose presence drives the Solution Explorer panel.
@@ -1499,6 +1506,119 @@ export class DirectoryView implements OnInit, OnDestroy {
   }
 
   /**
+   * Creates a file on an agent's behalf (#713): the tree's own New File, then the content when there
+   * is any, then the file revealed in the Explorer and opened in the well — so the user sees what
+   * was made where it was made.
+   * @param path The absolute path of the file.
+   * @param content The content to write, or null for an empty file.
+   * @returns Returns null when the file was created, or the reason it could not be.
+   */
+  private async createFileForAgent(path: string, content: string | null): Promise<string | null> {
+    const created: FileOperationResult = await this.workspace.createFile(
+      this.parentOf(path),
+      this.nameOf(path),
+    );
+    if (!created.success) {
+      return created.error ?? 'The file could not be created.';
+    }
+    if (content !== null && content.length > 0) {
+      const written: FileWriteResult = await this.fileSystem.write(created.path ?? path, content);
+      if (!written.success) {
+        return written.error ?? 'The file was created but its content could not be written.';
+      }
+    }
+    await this.workspace.revealPath(created.path ?? path);
+    await this.fileOpener.openPath(created.path ?? path);
+    return null;
+  }
+
+  /**
+   * Creates a folder on an agent's behalf (#713) and reveals it.
+   * @param path The absolute path of the folder.
+   * @returns Returns null when the folder was created, or the reason it could not be.
+   */
+  private async createFolderForAgent(path: string): Promise<string | null> {
+    const created: FileOperationResult = await this.workspace.createFolder(
+      this.parentOf(path),
+      this.nameOf(path),
+    );
+    if (!created.success) {
+      return created.error ?? 'The folder could not be created.';
+    }
+    await this.workspace.revealPath(created.path ?? path);
+    return null;
+  }
+
+  /**
+   * Renames an entry on an agent's behalf (#713) and reveals the result.
+   * @param path The absolute path of the entry.
+   * @param name The new name.
+   * @returns Returns the new path, or the reason the entry could not be renamed.
+   */
+  private async renameForAgent(
+    path: string,
+    name: string,
+  ): Promise<{ readonly path: string | null; readonly error: string | null }> {
+    const renamed: FileOperationResult = await this.workspace.rename(path, name);
+    if (!renamed.success) {
+      return { path: null, error: renamed.error ?? 'The entry could not be renamed.' };
+    }
+    if (renamed.path !== undefined) {
+      await this.workspace.revealPath(renamed.path);
+    }
+    return { path: renamed.path ?? null, error: null };
+  }
+
+  /**
+   * Deletes an entry on an agent's behalf (#713).
+   * @param path The absolute path of the entry.
+   * @returns Returns whether it went to the trash, or the reason it could not be deleted.
+   */
+  private async deleteForAgent(
+    path: string,
+  ): Promise<{ readonly trashed: boolean; readonly error: string | null }> {
+    const deleted: FileOperationResult = await this.workspace.delete(path);
+    return deleted.success
+      ? { trashed: deleted.trashed === true, error: null }
+      : { trashed: false, error: deleted.error ?? 'The entry could not be deleted.' };
+  }
+
+  /**
+   * Reveals an entry in the Explorer on an agent's behalf (#713).
+   * @param path The absolute path of the entry.
+   * @returns Returns true when the entry lies within the workspace and was revealed.
+   */
+  private async revealForAgent(path: string): Promise<boolean> {
+    const root: string | undefined = this.workspace.root()?.path;
+    if (root === undefined || !path.startsWith(root) || path.length <= root.length) {
+      return false;
+    }
+    await this.workspace.revealPath(path);
+    this.dockReveal.reveal('files');
+    return true;
+  }
+
+  /**
+   * Gets the directory an absolute path sits in.
+   * @param path The absolute path.
+   * @returns Returns the parent directory.
+   */
+  private parentOf(path: string): string {
+    const cut: number = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
+    return cut <= 0 ? path : path.slice(0, cut);
+  }
+
+  /**
+   * Gets the last segment of an absolute path.
+   * @param path The absolute path.
+   * @returns Returns the name.
+   */
+  private nameOf(path: string): string {
+    const cut: number = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
+    return cut < 0 ? path : path.slice(cut + 1);
+  }
+
+  /**
    * Seeds the scoped workspace from the folder stashed for this tab, when opened from the welcome
    * screen.
    */
@@ -1516,6 +1636,19 @@ export class DirectoryView implements OnInit, OnDestroy {
       sourceControl: (): WellSourceControl | null => this.sourceControlForAgent(),
       openTerminal: (): WellTerminal => this.openTerminalForAgent(),
       terminals: (): readonly WellTerminal[] => this.terminalsForAgent(),
+      createFile: (path: string, content: string | null): Promise<string | null> =>
+        this.createFileForAgent(path, content),
+      createFolder: (path: string): Promise<string | null> => this.createFolderForAgent(path),
+      rename: (
+        path: string,
+        name: string,
+      ): Promise<{ readonly path: string | null; readonly error: string | null }> =>
+        this.renameForAgent(path, name),
+      delete: (
+        path: string,
+      ): Promise<{ readonly trashed: boolean; readonly error: string | null }> =>
+        this.deleteForAgent(path),
+      reveal: (path: string): Promise<boolean> => this.revealForAgent(path),
     });
     // Surface this workspace's well documents to the app-wide close flows for the tab's lifetime.
     this.destroyRef.onDestroy(this.unsavedWork.register(this.documents));

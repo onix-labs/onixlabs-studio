@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  CREATE_FILE,
+  CREATE_FOLDER,
+  DELETE_PATH,
   DELETE_RUN_CONFIGURATIONS,
   EDIT_ACTIVE_DOCUMENT,
   LIST_OPEN_DOCUMENTS,
@@ -12,6 +15,8 @@ import {
   OPEN_FILE,
   READ_SOURCE_CONTROL_STATUS,
   READ_ACTIVE_DOCUMENT,
+  RENAME_PATH,
+  REVEAL_IN_EXPLORER,
   REPLACE_ACTIVE_DOCUMENT,
   RUN_ACTIVE_DOCUMENT,
   SAVE_RUN_CONFIGURATIONS,
@@ -149,6 +154,33 @@ describe('describeOffer', () => {
     expect(names(chat)).toContain(LIST_TERMINALS);
     expect(names(chat)).not.toContain(WRITE_TERMINAL_INPUT);
     expect(names(chat)).not.toContain(OPEN_TERMINAL);
+  });
+
+  it('offersTheTreeToolsOnTheWorkspaceSurfaceAndOnlyTheRevealToAChatTurn', async () => {
+    // #713 phase 4. Acting on the tree is a mutation like any other; a chat turn may point the user
+    // at a file but not make, rename or remove one.
+    const agent: { tools: readonly HarnessTool[] } = await describeOffer(
+      contextFor({ surface: 'workspace' }),
+    );
+    const chat: { tools: readonly HarnessTool[] } = await describeOffer(
+      contextFor({ surface: 'workspace', mode: 'chat' }),
+    );
+
+    expect(names(agent)).toEqual(
+      expect.arrayContaining([
+        CREATE_FILE,
+        CREATE_FOLDER,
+        RENAME_PATH,
+        DELETE_PATH,
+        REVEAL_IN_EXPLORER,
+      ]),
+    );
+    expect(names(chat)).toContain(REVEAL_IN_EXPLORER);
+    expect(names(chat)).not.toContain(CREATE_FILE);
+    expect(names(chat)).not.toContain(DELETE_PATH);
+    expect(names(await describeOffer(contextFor({ surface: 'editor' })))).not.toContain(
+      CREATE_FILE,
+    );
   });
 
   it('keepsTheWorkspaceViewToolsOffTheEditorSurface', async () => {

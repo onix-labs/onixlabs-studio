@@ -234,6 +234,35 @@ export const READ_SOURCE_CONTROL_STATUS: string = 'read_source_control_status';
 export const LIST_TERMINALS: string = 'list_terminals';
 
 /**
+ * The workspace-surface capability that creates a file in the workspace, optionally with content,
+ * and puts it in front of the user (#713). The tree's own New File, with the Explorer reflecting it —
+ * and, for a harness with no file tools of its own, the one way to write a file at all.
+ */
+export const CREATE_FILE: string = 'create_file';
+
+/**
+ * The workspace-surface capability that creates a folder in the workspace (#713).
+ */
+export const CREATE_FOLDER: string = 'create_folder';
+
+/**
+ * The workspace-surface capability that renames a file or folder in place (#713).
+ */
+export const RENAME_PATH: string = 'rename_path';
+
+/**
+ * The workspace-surface capability that deletes a file or folder, to the operating system's trash
+ * where the platform allows it (#713).
+ */
+export const DELETE_PATH: string = 'delete_path';
+
+/**
+ * The workspace-surface capability that reveals a file or folder in the Explorer (#713): expands
+ * the tree down to it and selects it, so the user is looking at what the agent is talking about.
+ */
+export const REVEAL_IN_EXPLORER: string = 'reveal_in_explorer';
+
+/**
  * The formats {@link OPEN_DOCUMENT} can open a document in: the markdown editor (rendered prose) or
  * the code editor (syntax-highlighted text).
  */
