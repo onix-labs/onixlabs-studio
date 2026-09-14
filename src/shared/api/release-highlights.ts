@@ -74,6 +74,45 @@ export const RELEASE_HIGHLIGHTS: readonly ReleaseHighlights[] = [
       },
     ],
   },
+  {
+    version: '2026.1.0-beta.5',
+    headlines: [
+      {
+        title: 'Every AI provider is a plugin',
+        detail:
+          'Claude, Codex and the AI SDK each run out of process as a plugin you install from the ' +
+          'Plugin Manager; Studio ships with none built in, and a configuration names the plugin ' +
+          'that runs it.',
+      },
+      {
+        title: 'A setup wizard on first launch and after an upgrade',
+        detail:
+          'It walks what is installed — languages, AI providers, engines — one step per category, ' +
+          'and shows what changed since the version you last ran.',
+      },
+      {
+        title: 'A workspace agent that can act like the Explorer',
+        detail:
+          'The agent docked in a workspace can open files and diffs, read source control, drive ' +
+          'the terminal panel, and create, rename or delete entries in the tree. Standing prompt ' +
+          'profiles and a skill library scope instructions by surface and language.',
+      },
+      {
+        title: 'Background tasks report back, and Stop always lands',
+        detail:
+          'A task that finishes while the conversation is idle is now reported with the agent’s ' +
+          'own follow-up; stopping one settles it within a second, and a task Studio can no longer ' +
+          'reach is untracked with a note rather than listed forever.',
+      },
+      {
+        title: 'Markdown editing in the well',
+        detail:
+          'A formatting toolstrip, open-in-tab, selectable dividers, stable GitHub alerts and ' +
+          'sub/superscript, and mermaid 12 with its new layout engine. Previous messages recall on ' +
+          'Alt+Up/Down (Option on macOS), giving Shift+Up/Down back to selecting text.',
+      },
+    ],
+  },
 ];
 
 /**
