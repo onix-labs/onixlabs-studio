@@ -1,4 +1,4 @@
-import { signal, WritableSignal } from '@angular/core';
+import { computed, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import type {
@@ -8,6 +8,11 @@ import type {
   AiRemoteControlMode,
 } from '@shared/api/ai-types';
 import { Agent } from '@shared/angular/services/agent/agent';
+import {
+  AgentControls,
+  agentControls,
+  agentPhase,
+} from '@shared/angular/services/agent/agent-controls';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
 import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine';
 import { AgentToolStrip } from './agent-tool-strip';
@@ -92,6 +97,9 @@ describe('AgentToolStrip', () => {
       isRunning: running,
       historyOpen,
       hasMessages,
+      controls: computed((): AgentControls =>
+        agentControls(agentPhase(hasMessages(), running(), false)),
+      ),
       newChat: (): void => void (newChats += 1),
       stop: (): void => undefined,
       compact: (): void => undefined,
@@ -154,6 +162,22 @@ describe('AgentToolStrip', () => {
 
   it('stop_whenNotRunning_isDisabled', () => {
     expect(button('Stop').disabled).toBe(true);
+  });
+
+  it('engineAndAttachments_whileRunning_areDisabled_andStopIsTheOnlyActionLeft', () => {
+    // The same table the ribbon reads: while a run is in flight only Stop (and Remote Control) act.
+    running.set(true);
+    fixture.detectChanges();
+
+    expect(
+      host.querySelector<HTMLSelectElement>('select[aria-label="Provider and model"]')?.disabled,
+    ).toBe(true);
+    expect(button('Attach file').disabled).toBe(true);
+    expect(button('Add folder').disabled).toBe(true);
+    expect(button('Attach selection').disabled).toBe(true);
+    expect(button('New chat').disabled).toBe(true);
+    expect(button('Compact conversation').disabled).toBe(true);
+    expect(button('Stop').disabled).toBe(false);
   });
 
   it('history_whenClicked_togglesTheHistoryList', () => {

@@ -1,10 +1,11 @@
+<!-- Every enablement here comes from the one table in agent-controls.ts, shared with the ribbon. -->
 <div class="strip">
   <app-button
     variant="none"
     [icon]="Icon.CHAT_NEW"
     ariaLabel="New chat"
     tooltip="New chat"
-    [disabled]="!conversation.hasMessages()"
+    [disabled]="!controls().newChat"
     (click)="conversation.newChat()"
   />
   <app-button
@@ -13,7 +14,7 @@
     [icon]="Icon.STOP"
     ariaLabel="Stop"
     tooltip="Stop"
-    [disabled]="!conversation.isRunning()"
+    [disabled]="!controls().stop"
     (click)="conversation.stop()"
   />
   <app-button
@@ -21,7 +22,7 @@
     [icon]="Icon.COMPACT"
     ariaLabel="Compact conversation"
     tooltip="Compact conversation"
-    [disabled]="conversation.isRunning() || !conversation.hasMessages()"
+    [disabled]="!controls().compact"
     (click)="conversation.compact()"
   />
 
@@ -36,6 +37,7 @@
       [pressed]="remoteControlEnabled()"
       [ariaLabel]="remoteControlLabel()"
       [tooltip]="remoteControlLabel()"
+      [disabled]="!controls().remoteControl"
       (click)="onRemoteControlToggle()"
     />
   }
@@ -47,6 +49,7 @@
     [fullWidth]="true"
     [options]="engineOptions()"
     [value]="engineSelection()"
+    [disabled]="!controls().engine"
     (valueChange)="onEngine($event)"
   />
 
@@ -55,6 +58,7 @@
     [icon]="Icon.ATTACH"
     ariaLabel="Attach file"
     tooltip="Attach file"
+    [disabled]="!controls().attach"
     (click)="conversation.attachFile()"
   />
   <app-button
@@ -62,6 +66,7 @@
     [icon]="Icon.FOLDER_PLUS"
     ariaLabel="Add folder"
     tooltip="Add folder"
+    [disabled]="!controls().attach"
     (click)="conversation.attachFolder()"
   />
   <app-button
@@ -69,7 +74,7 @@
     [icon]="Icon.SELECTION"
     ariaLabel="Attach selection"
     tooltip="Attach selection"
-    [disabled]="!hasSelection()"
+    [disabled]="!controls().attach || !hasSelection()"
     (click)="conversation.attachSelection()"
   />
 

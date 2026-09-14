@@ -1,22 +1,24 @@
+<!-- Every enablement here comes from the one table in agent-controls.ts, shared with the docked
+     panel's tool strip; the scroll jumps alone key on hasMessages, since they only move the view. -->
 <app-ribbon-overflow>
   <app-ribbon-strip-group title="Session">
     <app-ribbon-strip-button
       [icon]="Icon.CHAT_NEW"
       label="New Chat"
-      [disabled]="!hasMessages()"
+      [disabled]="!controls().newChat"
       (action)="newChat()"
     />
     <app-ribbon-strip-button
       [icon]="Icon.STOP"
       label="Stop"
       tone="danger"
-      [disabled]="!isRunning()"
+      [disabled]="!controls().stop"
       (action)="stop()"
     />
     <app-ribbon-strip-button
       [icon]="Icon.COMPACT"
       label="Compact"
-      [disabled]="isRunning() || !hasMessages()"
+      [disabled]="!controls().compact"
       (action)="compact()"
     />
     <!-- Remote Control is on or off; how much a peer may do once on is the global posture, set in
@@ -27,6 +29,7 @@
         label="Remote Control"
         [toggle]="true"
         [pressed]="remoteControlEnabled()"
+        [disabled]="!controls().remoteControl"
         (action)="onRemoteControlToggle()"
       />
     }
@@ -77,24 +80,36 @@
         label="Provider and model"
         [options]="engineOptions()"
         [value]="engineSelection()"
+        [disabled]="!controls().engine"
         (changed)="onEngine($event)"
       />
       <app-ribbon-strip-field
         label="Mode"
         [options]="modeLabels"
         [value]="modeLabel()"
+        [disabled]="!controls().engine"
         (changed)="onModeLabel($event)"
       />
     </app-ribbon-strip-column>
   </app-ribbon-strip-group>
 
   <app-ribbon-strip-group title="Attachments">
-    <app-ribbon-strip-button [icon]="Icon.ATTACH" label="File" (action)="attachFile()" />
-    <app-ribbon-strip-button [icon]="Icon.FOLDER_PLUS" label="Folder" (action)="attachFolder()" />
+    <app-ribbon-strip-button
+      [icon]="Icon.ATTACH"
+      label="File"
+      [disabled]="!controls().attach"
+      (action)="attachFile()"
+    />
+    <app-ribbon-strip-button
+      [icon]="Icon.FOLDER_PLUS"
+      label="Folder"
+      [disabled]="!controls().attach"
+      (action)="attachFolder()"
+    />
     <app-ribbon-strip-button
       [icon]="Icon.SELECTION"
       label="Selection"
-      [disabled]="!hasSelection()"
+      [disabled]="!controls().attach || !hasSelection()"
       (action)="attachSelection()"
     />
   </app-ribbon-strip-group>

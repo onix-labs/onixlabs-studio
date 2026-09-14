@@ -42,6 +42,7 @@ import {
   ConversationContextResolver,
   GLOBAL_CONVERSATION_CONTEXT,
 } from '@shared/angular/services/agent-conversations/agent-conversation-context';
+import { AgentControls } from '@shared/angular/services/agent/agent-controls';
 import { AgentSessionHandle } from '@shared/angular/services/agent-sessions/agent-sessions';
 
 /**
@@ -147,6 +148,11 @@ export class AgentConversation implements AgentSessionHandle {
    * Gets a value indicating whether a run is in flight (part of {@link AgentSessionHandle}).
    */
   public readonly isRunning: Signal<boolean> = this.agent.isRunning;
+
+  /**
+   * Gets which of this conversation's controls are enabled (part of {@link AgentSessionHandle}).
+   */
+  public readonly controls: Signal<AgentControls> = this.agent.controls;
 
   /**
    * Gets the connection this conversation's runs go through (part of {@link AgentSessionHandle}).
