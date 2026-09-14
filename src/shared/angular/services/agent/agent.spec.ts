@@ -992,7 +992,7 @@ describe('Agent', () => {
     const prompt: AgentItem | undefined = agent
       .items()
       .find((i: AgentItem): boolean => i.kind === 'permission' && i.permissionId === 'p1');
-    agent.respondPermission(prompt as AgentItem, false);
+    agent.respondPermission(prompt!, false);
     fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
     expect(agent.phase()).toBe('idle');
     expect(agent.controls().newChat).toBe(true);
