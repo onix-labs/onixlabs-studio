@@ -1,3 +1,4 @@
+import { AgentControls, agentControls } from '@shared/angular/services/agent/agent-controls';
 import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import type {
   AgentContextRef,
@@ -67,6 +68,11 @@ export interface AgentSessionHandle {
    * transcript (such as New and Compact) can disable on an empty conversation.
    */
   readonly hasMessages: Signal<boolean>;
+
+  /**
+   * Gets which of the conversation's controls are enabled, from the shared table.
+   */
+  readonly controls: Signal<AgentControls>;
 
   /**
    * Gets a value indicating whether the conversation-history list is shown.
@@ -257,6 +263,14 @@ export class AgentSessions {
    */
   public readonly hasMessages: Signal<boolean> = computed(
     (): boolean => this.activeSession()?.hasMessages() ?? false,
+  );
+
+  /**
+   * Gets which of the active agent tab's controls are enabled. With no tab active the conversation is
+   * as good as empty, so the controls are the empty phase's.
+   */
+  public readonly controls: Signal<AgentControls> = computed(
+    (): AgentControls => this.activeSession()?.controls() ?? agentControls('empty'),
   );
 
   /**

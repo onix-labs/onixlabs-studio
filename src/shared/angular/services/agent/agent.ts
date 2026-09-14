@@ -7,6 +7,7 @@ import {
   Signal,
   WritableSignal,
 } from '@angular/core';
+import { AgentControls, AgentPhase, agentControls, agentPhase } from './agent-controls';
 import type {
   AgentContextRef,
   AgentMode,
@@ -1013,6 +1014,22 @@ export class Agent {
           (item.kind === 'permission' && item.permissionState === 'pending') ||
           (item.kind === 'edit-decision' && item.decisionState === 'pending'),
       ) || this.pendingInput() !== undefined,
+  );
+
+  /**
+   * Gets the conversation's phase — empty, idle, working, or waiting on the user — which is what every
+   * control's enablement is derived from.
+   */
+  public readonly phase: Signal<AgentPhase> = computed((): AgentPhase =>
+    agentPhase(this.hasMessages(), this.isRunning(), this.awaitingDecision()),
+  );
+
+  /**
+   * Gets which of this conversation's controls are enabled, from the one table both the ribbon and the
+   * tool strip read.
+   */
+  public readonly controls: Signal<AgentControls> = computed((): AgentControls =>
+    agentControls(this.phase()),
   );
 
   /**

@@ -15,6 +15,7 @@ import {
   engineOptionValue,
 } from '@shared/angular/services/agent-engine/engine-options';
 import { AgentSessions } from '@shared/angular/services/agent-sessions/agent-sessions';
+import { AgentControls } from '@shared/angular/services/agent/agent-controls';
 import { EditorCommands } from '@shared/angular/services/editor-commands/editor-commands';
 import { contributeFeatureMenu } from '@shared/angular/services/app-menu/contribute-feature-menu';
 import { MENU_SEPARATOR, MenuContribution } from '@shared/angular/services/app-menu/app-menu-model';
@@ -92,6 +93,11 @@ export class AgentRibbon {
    * transcript controls (New, Compact).
    */
   protected readonly hasMessages: Signal<boolean> = this.sessions.hasMessages;
+
+  /**
+   * Gets which controls are enabled, from the table shared with the docked panel's tool strip.
+   */
+  protected readonly controls: Signal<AgentControls> = this.sessions.controls;
 
   /**
    * Gets a value indicating whether the active tab's conversation-history list is shown.

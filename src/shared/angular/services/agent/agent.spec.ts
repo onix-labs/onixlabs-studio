@@ -966,6 +966,40 @@ describe('Agent', () => {
     }
   });
 
+  it('phase_followsTheConversation_emptyWorkingWaitingIdle', () => {
+    // The one signal every control is enabled from (agent-controls.ts). Each transition here is a
+    // column of the table.
+    expect(agent.phase()).toBe('empty');
+    expect(agent.controls().newChat).toBe(false);
+
+    agent.send('hi');
+    expect(agent.phase()).toBe('working');
+    expect(agent.controls().stop).toBe(true);
+    expect(agent.controls().engine).toBe(false);
+
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'permission',
+      permissionId: 'p1',
+      name: 'Write',
+      detail: 'x',
+      hasWorkspace: true,
+    });
+    expect(agent.phase()).toBe('waiting');
+    expect(agent.controls().stop).toBe(true);
+    expect(agent.controls().attach).toBe(false);
+
+    const prompt: AgentItem | undefined = agent
+      .items()
+      .find((i: AgentItem): boolean => i.kind === 'permission' && i.permissionId === 'p1');
+    agent.respondPermission(prompt!, false);
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+    expect(agent.phase()).toBe('idle');
+    expect(agent.controls().newChat).toBe(true);
+    expect(agent.controls().compact).toBe(true);
+    expect(agent.controls().stop).toBe(false);
+  });
+
   it('stopTask_forATaskThisConversationIsNotRunning_asksNothing', () => {
     agent.send('go');
     agent.stopTask('ghost');

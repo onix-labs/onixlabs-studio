@@ -12,6 +12,7 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { Agent } from '@shared/angular/services/agent/agent';
+import { AgentControls } from '@shared/angular/services/agent/agent-controls';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
 import { AgentEngine } from '@shared/angular/services/agent-engine/agent-engine';
 import {
@@ -51,6 +52,11 @@ export class AgentToolStrip {
    * Holds the conversation this strip drives (New Chat, Stop, History).
    */
   protected readonly conversation: AgentConversation = inject(AgentConversation);
+
+  /**
+   * Gets which controls are enabled, from the table shared with the ribbon.
+   */
+  protected readonly controls: Signal<AgentControls> = this.conversation.controls;
 
   /**
    * Holds this conversation's agent session, whose own provider/model the fields drive.
