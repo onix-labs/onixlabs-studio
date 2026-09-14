@@ -346,3 +346,144 @@ describe('Modal', () => {
     expect(component.dismissed).toBe(0);
   });
 });
+
+/**
+ * A host whose dialog collects a name — a checkbox first, then the field the dialog is for, then
+ * its buttons — so where the opening focus lands can be observed.
+ */
+@Component({
+  imports: [Modal, ModalContent],
+  template: `
+    <app-modal [open]="open()" ariaLabel="Name prompt">
+      <ng-template appModalContent>
+        <label><input type="checkbox" class="probe-option" /> Option</label>
+        <input type="text" class="probe-name" value="README.md" />
+        <input type="text" class="probe-second" value="other" />
+        <button type="button" class="probe-cancel">Cancel</button>
+      </ng-template>
+    </app-modal>
+  `,
+})
+class PromptHost {
+  public readonly open: WritableSignal<boolean> = signal<boolean>(false);
+}
+
+/**
+ * A host presenting a freestanding surface with a search field — the welcome screen's shape.
+ */
+@Component({
+  imports: [Modal, ModalContent],
+  template: `
+    <app-modal [open]="open()" [freestanding]="true" ariaLabel="Welcome">
+      <ng-template appModalContent>
+        <input type="search" class="probe-search" />
+      </ng-template>
+    </app-modal>
+  `,
+})
+class SurfaceHost {
+  public readonly open: WritableSignal<boolean> = signal<boolean>(false);
+}
+
+/**
+ * A host whose dialog only confirms — buttons and no field.
+ */
+@Component({
+  imports: [Modal, ModalContent],
+  template: `
+    <app-modal [open]="open()" ariaLabel="Confirm">
+      <ng-template appModalContent>
+        <button type="button" class="probe-cancel">Cancel</button>
+        <button type="button" class="probe-confirm">Delete</button>
+      </ng-template>
+    </app-modal>
+  `,
+})
+class ConfirmHost {
+  public readonly open: WritableSignal<boolean> = signal<boolean>(false);
+}
+
+describe('Modal opening focus', () => {
+  let windows: FakeModalWindows;
+  let frames: FrameRequestCallback[];
+
+  beforeEach(async () => {
+    windows = new FakeModalWindows();
+    frames = [];
+    // The modal defers focus by a frame of the dialog's own window; the fake's window is this one.
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation(
+      (callback: FrameRequestCallback): number => frames.push(callback),
+    );
+    await TestBed.configureTestingModule({
+      imports: [PromptHost, SurfaceHost, ConfirmHost],
+      providers: [{ provide: ModalWindows, useValue: windows }],
+    }).compileComponents();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  /**
+   * Runs every frame callback queued so far, as the window's next frame would.
+   */
+  function nextFrame(): void {
+    const pending: FrameRequestCallback[] = frames.splice(0);
+    for (const callback of pending) {
+      callback(0);
+    }
+  }
+
+  it('open_whenTheDialogHasATextField_focusesItAndSelectsItsValue', () => {
+    // A rename prompt that opens without focus has to be found with the mouse before it can be
+    // answered, and its prefilled name has to be cleared by hand before a new one can be typed.
+    const fixture: ComponentFixture<PromptHost> = TestBed.createComponent(PromptHost);
+    fixture.detectChanges();
+    fixture.componentInstance.open.set(true);
+    fixture.detectChanges();
+
+    nextFrame();
+
+    const name: HTMLInputElement | null | undefined =
+      windows.contentHost?.querySelector<HTMLInputElement>('.probe-name');
+    expect(document.activeElement).toBe(name);
+    expect(name?.selectionStart).toBe(0);
+    expect(name?.selectionEnd).toBe('README.md'.length);
+  });
+
+  it('open_whenTheDialogOnlyConfirms_favoursNoButton', () => {
+    const fixture: ComponentFixture<ConfirmHost> = TestBed.createComponent(ConfirmHost);
+    fixture.detectChanges();
+    fixture.componentInstance.open.set(true);
+    fixture.detectChanges();
+
+    nextFrame();
+
+    expect(windows.contentHost?.contains(document.activeElement)).toBe(false);
+  });
+
+  it('open_whenTheModalIsFreestanding_leavesFocusAlone', () => {
+    // The welcome screen is a surface in its own right, not a prompt; landing in its search box on
+    // launch would put an accent ring where nothing was asked for.
+    const fixture: ComponentFixture<SurfaceHost> = TestBed.createComponent(SurfaceHost);
+    fixture.detectChanges();
+    fixture.componentInstance.open.set(true);
+    fixture.detectChanges();
+
+    nextFrame();
+
+    expect(document.activeElement?.classList.contains('probe-search') ?? false).toBe(false);
+  });
+
+  it('open_whenClosedBeforeTheFrame_focusesNothing', () => {
+    const fixture: ComponentFixture<PromptHost> = TestBed.createComponent(PromptHost);
+    fixture.detectChanges();
+    fixture.componentInstance.open.set(true);
+    fixture.detectChanges();
+    fixture.componentInstance.open.set(false);
+    fixture.detectChanges();
+
+    expect((): void => nextFrame()).not.toThrow();
+    expect(document.activeElement?.classList.contains('probe-name') ?? false).toBe(false);
+  });
+});
