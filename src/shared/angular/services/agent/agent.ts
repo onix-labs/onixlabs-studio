@@ -69,6 +69,22 @@ export const STREAM_FLUSH_MS: number = 33;
 export const STOP_SETTLE_DEADLINE_MS: number = 8_000;
 
 /**
+ * How long a task Stop waits for the provider to settle the task before the renderer stops tracking
+ * it, in milliseconds. A harness that heard the stop answers within a second; one that did not — dead,
+ * wedged, or a provider that never answered `task.stop` — never will, and a task that cannot be
+ * stopped and cannot be dismissed is a row in the tasks menu that lies forever.
+ */
+export const TASK_STOP_DEADLINE_MS: number = STOP_SETTLE_DEADLINE_MS;
+
+/**
+ * How long an adopted report-back turn may go without a single event before the adoption is given
+ * up, in milliseconds. The CLI starts its report within a second of a task settling; a report that
+ * has not begun after this long is not coming, and holding the conversation "Working" for it is the
+ * hang the adoption was meant to cure.
+ */
+export const ADOPTION_DEADLINE_MS: number = 15_000;
+
+/**
  * Identifies the kind of transcript item.
  *
  * ⛔ `notice` is **not** something the agent said. It is Studio, or the harness underneath it,
@@ -874,6 +890,22 @@ export class Agent {
   public readonly tasks: Signal<readonly AgentTask[]> = this.taskState.asReadonly();
 
   /**
+   * Holds the watch over an adopted report-back turn that has yet to produce an event, or null.
+   */
+  private adoptionWatch: {
+    readonly requestId: string;
+    readonly timer: ReturnType<typeof setTimeout>;
+  } | null = null;
+
+  /**
+   * Holds the deadline armed for each task Stop still awaiting the provider's settle, by task id.
+   */
+  private readonly pendingTaskStops: Map<string, ReturnType<typeof setTimeout>> = new Map<
+    string,
+    ReturnType<typeof setTimeout>
+  >();
+
+  /**
    * Gets the count of live tasks the transcript does not hide, which is what a status surface counts.
    * Ambient housekeeping tasks stay in {@link tasks} but are deliberately not advertised.
    */
@@ -1021,6 +1053,11 @@ export class Agent {
     this.destroyRef.onDestroy(unregisterTasks);
     this.destroyRef.onDestroy((): void => {
       unsubscribe();
+      for (const pending of this.pendingTaskStops.values()) {
+        clearTimeout(pending);
+      }
+      this.pendingTaskStops.clear();
+      this.clearAdoptionWatch();
       // Tie the live session's teardown to the host's lifetime (#327): closing the tab ends its agent's
       // held-open session.
       this.runtime.closeSession(this.agentSessionId);
@@ -1386,12 +1423,83 @@ export class Agent {
   }
 
   /**
-   * Asks the provider to stop one of this conversation's background tasks. The harness settles it as
-   * `stopped` through the ordinary lifecycle events, so the task leaves {@link tasks} on its own.
+   * Asks the provider to stop one of this conversation's background tasks. A harness that hears it
+   * settles the task as `stopped` through the ordinary lifecycle events, and the task leaves
+   * {@link tasks} on its own. One that does not answer within {@link TASK_STOP_DEADLINE_MS} is not
+   * waited on any longer: the task is untracked with a warning, because a Stop that changes nothing
+   * on screen is indistinguishable from a broken button — which is what it was (#709).
    * @param taskId The task to stop.
    */
   public stopTask(taskId: string): void {
+    if (!this.tasks().some((task: AgentTask): boolean => task.taskId === taskId)) {
+      return;
+    }
+    this.logger.info('Agent.task', `stop requested task=${taskId}`);
     this.runtime.stopTask(this.agentSessionId, taskId);
+    if (this.pendingTaskStops.has(taskId)) {
+      // A second press restarts nothing: the first deadline already stands.
+      return;
+    }
+    this.pendingTaskStops.set(
+      taskId,
+      setTimeout((): void => {
+        this.pendingTaskStops.delete(taskId);
+        if (this.tasks().some((task: AgentTask): boolean => task.taskId === taskId)) {
+          this.untrackTasks(
+            [taskId],
+            'the provider did not confirm the stop',
+            'Background task untracked',
+          );
+        }
+      }, TASK_STOP_DEADLINE_MS),
+    );
+  }
+
+  /**
+   * Stops tracking tasks the provider can no longer settle — one whose Stop went unanswered, or every
+   * task of a session that has ended. They leave {@link tasks} (and so the tasks menu), their cards
+   * resolve as errors, and the transcript and log both say what happened: the work may still be
+   * running somewhere, but Studio can no longer see it.
+   * @param taskIds The tasks to untrack.
+   * @param why Why Studio is giving up on them, for the log and the note.
+   * @param title The notice's title.
+   */
+  private untrackTasks(taskIds: readonly string[], why: string, title: string): void {
+    const named: readonly AgentTask[] = this.tasks().filter((task: AgentTask): boolean =>
+      taskIds.includes(task.taskId),
+    );
+    if (named.length === 0) {
+      return;
+    }
+    for (const task of named) {
+      const pending: ReturnType<typeof setTimeout> | undefined = this.pendingTaskStops.get(
+        task.taskId,
+      );
+      if (pending !== undefined) {
+        clearTimeout(pending);
+        this.pendingTaskStops.delete(task.taskId);
+      }
+      this.logger.warn(
+        'Agent.task',
+        `untracked task=${task.taskId} (${why}); it may still be running but is no longer tracked by Studio`,
+        task.description,
+      );
+      this.settleTask(task.taskId, 'untracked');
+    }
+    const listed: string = named
+      .filter((task: AgentTask): boolean => !task.skipTranscript)
+      .map((task: AgentTask): string => task.description)
+      .join('; ');
+    if (listed.length === 0) {
+      // Ambient housekeeping never earned a place in the transcript; it leaves as quietly as it ran.
+      return;
+    }
+    this.push({
+      kind: 'notice',
+      text: title,
+      detail: `${listed} — ${why}. It may still be running, but Studio is no longer tracking it.`,
+      sealed: true,
+    });
   }
 
   /**
@@ -1677,9 +1785,22 @@ export class Agent {
         // not get a note or a notification. It still leaves the registry above.
         if (event.skipTranscript !== true) {
           this.onBackgroundTask(event.status, event.summary, event.requestId);
-        } else {
+        } else if (event.status !== 'stopped') {
           this.adoptReportBackTurn(event.requestId);
         }
+      }
+      return;
+    }
+    // The provider session ended — reaped, evicted, closed, or stopped — and took its tasks with it. Any
+    // still listed will never settle through the lifecycle now; drop them rather than list them as
+    // running forever with a Stop that reaches nothing.
+    if (event.kind === 'session-ended') {
+      if (event.agentSessionId === this.agentSessionId && this.tasks().length > 0) {
+        this.untrackTasks(
+          this.tasks().map((task: AgentTask): string => task.taskId),
+          `the agent session ended (${event.reason})`,
+          'Background tasks untracked',
+        );
       }
       return;
     }
@@ -1711,6 +1832,10 @@ export class Agent {
     }
     if (event.requestId !== this.activeRequestId) {
       return;
+    }
+    if (this.adoptionWatch?.requestId === event.requestId) {
+      // The report-back has begun; the turn now ends the way every turn does, on its status.
+      this.clearAdoptionWatch();
     }
     // Anything other than a text delta must land AFTER whatever streamed text is buffered, so the
     // transcript order matches arrival order.
@@ -2006,7 +2131,11 @@ export class Agent {
     summary: string,
     requestId: string,
   ): void {
-    this.adoptReportBackTurn(requestId);
+    // A task the user stopped gets no report: the CLI acknowledges the stop and goes quiet. Adopting a
+    // turn it will never start left the conversation "Working…" for good.
+    if (status !== 'stopped') {
+      this.adoptReportBackTurn(requestId);
+    }
     const detail: string = summary.trim();
     const word: string =
       status === 'completed' ? 'finished' : status === 'failed' ? 'failed' : 'was stopped';
@@ -2123,9 +2252,15 @@ export class Agent {
    */
   private settleTask(
     taskId: string,
-    status: 'completed' | 'failed' | 'stopped' | 'killed',
+    status: 'completed' | 'failed' | 'stopped' | 'killed' | 'untracked',
     toolId?: string,
   ): void {
+    // A settle the provider reported clears any Stop deadline still armed for the task.
+    const pending: ReturnType<typeof setTimeout> | undefined = this.pendingTaskStops.get(taskId);
+    if (pending !== undefined) {
+      clearTimeout(pending);
+      this.pendingTaskStops.delete(taskId);
+    }
     const settled: AgentTask | undefined = this.taskState().find(
       (task: AgentTask): boolean => task.taskId === taskId,
     );
@@ -2172,6 +2307,34 @@ export class Agent {
     this.flushStream();
     this.activeRequestId = requestId;
     this.busy.set(true);
+    // Bounded: the report is expected within a second, and one that never starts must not hold the
+    // conversation "Working" forever. The first event under the adopted id clears the watch.
+    this.clearAdoptionWatch();
+    this.adoptionWatch = {
+      requestId,
+      timer: setTimeout((): void => {
+        this.adoptionWatch = null;
+        if (this.activeRequestId !== requestId) {
+          return;
+        }
+        this.logger.warn(
+          'Agent.task',
+          `no report-back arrived for adopted turn ${requestId} within ${ADOPTION_DEADLINE_MS}ms; releasing it`,
+        );
+        this.activeRequestId = null;
+        this.busy.set(false);
+      }, ADOPTION_DEADLINE_MS),
+    };
+  }
+
+  /**
+   * Stands down the watch over an adopted turn, if one is armed.
+   */
+  private clearAdoptionWatch(): void {
+    if (this.adoptionWatch !== null) {
+      clearTimeout(this.adoptionWatch.timer);
+      this.adoptionWatch = null;
+    }
   }
 
   /**

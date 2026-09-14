@@ -419,6 +419,15 @@ export interface AgentSession {
   panicStop?(): void;
 
   /**
+   * Registers a listener for the session ending on its own — its harness died between turns, or a
+   * panic stop escalated to closing it — so the manager can tell the renderer, whose task registry has
+   * nothing left to settle it. Fires at most once, and not for a close the manager itself requested.
+   * Optional: a provider that only ever ends when closed has nothing to report.
+   * @param listener Invoked with why the session ended.
+   */
+  onEnded?(listener: (reason: string) => void): void;
+
+  /**
    * Ends the session and releases its resources (the harness subprocess).
    */
   close(): Promise<void>;

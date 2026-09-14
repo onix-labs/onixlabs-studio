@@ -296,6 +296,34 @@ export interface AiSessionEvent extends AiEventBase {
 }
 
 /**
+ * Reports that a conversation's held-open provider session has ended — reaped after sitting idle,
+ * evicted when its harness died, closed by a panic stop, or dropped to reopen — so state the renderer
+ * keeps on the session's behalf can be reconciled. The one thing that state is today: the background
+ * tasks the session was running. A task cannot outlive its session, so any still listed when this
+ * arrives will never settle through the ordinary lifecycle; the renderer untracks them and says so.
+ *
+ * ⛔ Emitted by Studio's own session manager, never by a harness: a harness does not know when Studio
+ * decides its session is over. Session-level like {@link AiBackgroundTaskEvent}, keyed by the agent
+ * session id rather than any turn.
+ */
+export interface AiSessionEndedEvent extends AiEventBase {
+  /**
+   * Gets the discriminator.
+   */
+  readonly kind: 'session-ended';
+
+  /**
+   * Gets the conversation (agent session) whose provider session ended.
+   */
+  readonly agentSessionId: string;
+
+  /**
+   * Gets why it ended, for the log and the note — `idle`, `evicted`, `closed`, `stopped`, `reopened`.
+   */
+  readonly reason: string;
+}
+
+/**
  * Reports a change in the run's lifecycle.
  */
 export interface AiStatusEvent extends AiEventBase {
@@ -640,6 +668,7 @@ export type AiEvent =
   | AiInputDismissedEvent
   | AiEditDecisionEvent
   | AiSessionEvent
+  | AiSessionEndedEvent
   | AiStatusEvent
   | AiUsageEvent
   | AiCommandsEvent
