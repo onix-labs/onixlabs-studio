@@ -154,10 +154,25 @@ class ScriptedHarness {
   }
 
   /**
-   * Registers the close handler, which this fake never fires.
+   * Holds the close handler, fired only by {@link die}.
    */
-  public onClose(): void {
-    // The scripted harness never ends on its own.
+  private closeHandler: ((reason: string) => void) | null = null;
+
+  /**
+   * Registers the close handler.
+   * @param handler The handler.
+   */
+  public onClose(handler: (reason: string) => void): void {
+    this.closeHandler = handler;
+  }
+
+  /**
+   * Ends the harness of its own accord, as a crashed process would.
+   * @param reason Why.
+   */
+  public die(reason: string): void {
+    this.closed = true;
+    this.closeHandler?.(reason);
   }
 
   /**
@@ -173,6 +188,14 @@ class ScriptedHarness {
    */
   private emit(message: unknown): void {
     this.lines?.(JSON.stringify(message));
+  }
+
+  /**
+   * Pushes a message at the provider from a test, between turns.
+   * @param message The message.
+   */
+  public push(message: unknown): void {
+    this.emit(message);
   }
 
   /**
@@ -902,6 +925,73 @@ describe('HarnessAgentSession', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('onEnded_isToldWhenTheHarnessDiesBetweenTurns', async () => {
+    // A task the session was running cannot outlive its harness, and nothing else in Studio watches the
+    // process between turns: this is the only way the renderer's task registry hears the session is gone.
+    const session: AgentSession = provider.openSession(contextFor().context);
+    const reasons: string[] = [];
+    session.onEnded?.((reason: string): void => void reasons.push(reason));
+    await session.turn(contextFor().context);
+
+    harness.die('exit code 137');
+
+    expect(reasons).toEqual(['the harness ended: exit code 137']);
+    expect(session.alive).toBe(false);
+  });
+
+  it('onEnded_isToldWhenAPanicStopEscalatesToClosingTheSession', async () => {
+    vi.useFakeTimers();
+    try {
+      harness.settlesTurns = false;
+      const session: AgentSession = provider.openSession(contextFor().context);
+      const reasons: string[] = [];
+      session.onEnded?.((reason: string): void => void reasons.push(reason));
+      void session.turn(contextFor().context);
+      await vi.advanceTimersByTimeAsync(0);
+
+      session.panicStop?.();
+      await vi.advanceTimersByTimeAsync(6_000);
+
+      expect(reasons).toEqual(['stopped']);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('onEnded_isNotToldOfACloseStudioAskedFor', async () => {
+    // Whoever closed it has already accounted for it; reporting it again would untrack twice.
+    const session: AgentSession = provider.openSession(contextFor().context);
+    const reasons: string[] = [];
+    session.onEnded?.((reason: string): void => void reasons.push(reason));
+    await session.turn(contextFor().context);
+
+    await session.close();
+    harness.die('closed by Studio');
+
+    expect(reasons).toEqual([]);
+  });
+
+  it('auditsFromTheHarnessBetweenTurns_landOnTheLastTurnRatherThanBeingDiscarded', async () => {
+    // The report-back turn the CLI runs after a task settles executes tools under the last turn's id.
+    const recorded: string[] = [];
+    const session: AgentSession = provider.openSession(contextFor().context);
+    await session.turn(
+      contextFor({
+        recordAudit: (name: string): void => void recorded.push(name),
+      }).context,
+    );
+
+    harness.push({
+      type: 'audit',
+      requestId: 'r1',
+      name: 'Bash',
+      detail: 'cat out.txt',
+      source: 'policy',
+    });
+
+    expect(recorded).toEqual(['Bash']);
   });
 
   it('closeEndsTheProcessAndIsIdempotent', async () => {

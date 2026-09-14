@@ -142,6 +142,21 @@ export class HarnessHost {
   private readonly turns: Map<string, HarnessTurnHandlers> = new Map<string, HarnessTurnHandlers>();
 
   /**
+   * Holds the handlers of the most recently settled turn, so what the harness says between turns still
+   * has somewhere to go.
+   *
+   * 🔥 A held-open harness keeps talking after a turn settles: a background task that finishes while
+   * the conversation is idle, the report-back turn the CLI then starts on its own, the `stopped`
+   * acknowledgement for a task the user cancelled, a message a remote peer typed. The harness stamps
+   * all of it with the id of the last turn it ran — the only id it has — and that turn's handlers were
+   * deleted the moment it settled, so every one of those messages was dropped here without a trace.
+   * That is why a task settling while idle was never reported and why Stop could not settle it (#709):
+   * the harness answered; nobody was listening.
+   */
+  private idle: { readonly requestId: string; readonly handlers: HarnessTurnHandlers } | null =
+    null;
+
+  /**
    * Holds the settlers for each in-flight turn, by run id.
    */
   private readonly settlers: Map<string, (error: string | null) => void> = new Map<
@@ -166,6 +181,11 @@ export class HarnessHost {
    * Holds why the harness ended, or null while it is alive.
    */
   private closedReason: string | null = null;
+
+  /**
+   * Holds the listeners told when the harness ends, however it ended.
+   */
+  private readonly closeListeners: ((reason: string) => void)[] = [];
 
   /**
    * Holds the sink executed actions are recorded to.
@@ -207,6 +227,19 @@ export class HarnessHost {
   }
 
   /**
+   * Registers a listener for the harness ending — its process exiting, or {@link close} being called.
+   * A listener registered after the end is told at once.
+   * @param listener Invoked with the reason, once.
+   */
+  public onClosed(listener: (reason: string) => void): void {
+    if (this.closedReason !== null) {
+      listener(this.closedReason);
+      return;
+    }
+    this.closeListeners.push(listener);
+  }
+
+  /**
    * Performs the handshake, resolving once the harness declares itself ready.
    *
    * A harness whose protocol version this build cannot honour is **refused here**, before it is ever
@@ -244,6 +277,10 @@ export class HarnessHost {
       this.settlers.set(turn.requestId, (error: string | null): void => {
         this.turns.delete(turn.requestId);
         this.settlers.delete(turn.requestId);
+        // The settled turn's handlers stay on as the session's idle handlers: anything the harness says
+        // between turns arrives under this id. A failed turn qualifies too — the harness may be alive
+        // and still running a task the turn launched.
+        this.idle = { requestId: turn.requestId, handlers };
         if (error === null) {
           resolve();
         } else {
@@ -446,9 +483,9 @@ export class HarnessHost {
         this.handleReady(message.capabilities);
         break;
       case 'event':
-        this.turns
-          .get((message.event as { requestId?: string }).requestId ?? '')
-          ?.onEvent(message.event);
+        this.handlersFor((message.event as { requestId?: string }).requestId ?? '')?.onEvent(
+          message.event,
+        );
         break;
       case 'request':
         this.handleRequest(message.callId, message.requestId, message.request);
@@ -514,9 +551,12 @@ export class HarnessHost {
    * @param request The question.
    */
   private handleRequest(callId: string, requestId: string, request: unknown): void {
-    const handlers: HarnessTurnHandlers | undefined = this.turns.get(requestId);
+    // The idle handlers answer too: the report-back turn the CLI starts when a task settles runs
+    // tools of its own, and its permission prompts belong in front of the conversation that adopted
+    // it, not refused as coming from nowhere.
+    const handlers: HarnessTurnHandlers | undefined = this.handlersFor(requestId);
     if (handlers === undefined) {
-      // A question about a turn that is not running cannot be put to the user meaningfully, and
+      // A question about a turn this host never ran cannot be put to the user meaningfully, and
       // leaving the harness blocked forever is worse than refusing it.
       logger.warn('HarnessHost', `Refusing a request for unknown run '${requestId}'`);
       this.post({ type: 'answer', callId, answer: refusalFor(request) });
@@ -537,6 +577,20 @@ export class HarnessHost {
       .onRequest(request, call.dismiss.signal)
       .then((answer: HarnessAnswer): void => call.settle(answer))
       .catch((): void => this.refuse(callId, call));
+  }
+
+  /**
+   * Resolves the handlers a message for a run should reach: the turn's own while it is in flight, and
+   * the idle handlers once it has settled, so the session's between-turn traffic lands in the
+   * conversation that last spoke to it. A discovery is never idle traffic — its id was never a turn's.
+   * @param requestId The run id the message carries.
+   * @returns Returns the handlers, or undefined for a run this host never ran.
+   */
+  private handlersFor(requestId: string): HarnessTurnHandlers | undefined {
+    return (
+      this.turns.get(requestId) ??
+      (this.idle?.requestId === requestId ? this.idle.handlers : undefined)
+    );
   }
 
   /**
@@ -601,10 +655,16 @@ export class HarnessHost {
     for (const settle of [...this.settlers.values()]) {
       settle(`The harness ended: ${reason}`);
     }
+    // Nothing more will arrive between turns from a harness that has ended. Cleared after the settlers,
+    // which each install themselves as the idle handlers.
+    this.idle = null;
     // A discovery whose harness has gone will never answer on its own, and a settings dialog waiting
     // forever is the same failure as a turn stuck "Working".
     for (const resolve of [...this.discoveries.values()]) {
       resolve(null);
+    }
+    for (const listener of this.closeListeners.splice(0)) {
+      listener(reason);
     }
   }
 }

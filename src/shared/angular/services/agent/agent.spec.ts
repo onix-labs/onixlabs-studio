@@ -63,6 +63,7 @@ describe('Agent', () => {
   let closeSessionCalls: string[];
   let remoteControlCalls: { agentSessionId: string; mode: AiRemoteControlMode }[];
   let stopAgentCalls: string[];
+  let stopTaskCalls: { agentSessionId: string; taskId: string }[];
   let steerCalls: { requestId: string; text: string }[];
   let steerResult: boolean;
   let permissionReplies: { permissionId: string; granted: boolean; remember?: string }[];
@@ -103,6 +104,7 @@ describe('Agent', () => {
     closeSessionCalls = [];
     remoteControlCalls = [];
     stopAgentCalls = [];
+    stopTaskCalls = [];
     steerCalls = [];
     steerResult = false;
     permissionReplies = [];
@@ -117,6 +119,7 @@ describe('Agent', () => {
       | 'closeSession'
       | 'setSessionRemoteControl'
       | 'stopAgent'
+      | 'stopTask'
       | 'listProviders'
       | 'respondPermission'
       | 'respondInput'
@@ -130,6 +133,8 @@ describe('Agent', () => {
       setSessionRemoteControl: (agentSessionId: string, mode: AiRemoteControlMode): void =>
         void remoteControlCalls.push({ agentSessionId, mode }),
       stopAgent: (agentSessionId: string): void => void stopAgentCalls.push(agentSessionId),
+      stopTask: (agentSessionId: string, taskId: string): void =>
+        void stopTaskCalls.push({ agentSessionId, taskId }),
       onEvent: (listener: (event: AiEvent) => void): (() => void) => {
         fireEvent = listener;
         return (): void => undefined;
@@ -793,6 +798,234 @@ describe('Agent', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('stopTask_whenTheProviderSettlesIt_leavesNothingBehind', () => {
+    vi.useFakeTimers();
+    try {
+      agent.send('go');
+      const sessionId: string | undefined = runCalls[0].agentSessionId;
+      fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+      startTask(sessionId, 'task-1', { toolId: 'tool-1' });
+
+      agent.stopTask('task-1');
+      expect(stopTaskCalls).toEqual([{ agentSessionId: sessionId, taskId: 'task-1' }]);
+      fireEvent({
+        requestId: 'run-1',
+        kind: 'background-task',
+        agentSessionId: sessionId ?? null,
+        taskId: 'task-1',
+        status: 'stopped',
+        summary: 'sleep 90',
+        outputFile: '/tmp/task-1.out',
+      });
+      const itemsAfterSettle: number = agent.items().length;
+
+      vi.advanceTimersByTime(8_100);
+
+      // The deadline found the task already settled and said nothing more.
+      expect(agent.tasks()).toEqual([]);
+      expect(agent.items().length).toBe(itemsAfterSettle);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('stopTask_whenTheProviderNeverAnswers_untracksTheTaskAndSaysSo', () => {
+    // #709: seven presses of Stop over six seconds, each forwarded, none answered — and the row stayed
+    // in the tasks menu forever. A Stop that changes nothing on screen is a broken button.
+    vi.useFakeTimers();
+    try {
+      agent.send('go');
+      const sessionId: string | undefined = runCalls[0].agentSessionId;
+      fireEvent({
+        requestId: 'run-1',
+        kind: 'tool-start',
+        toolId: 'tool-1',
+        name: 'Bash',
+        detail: 'sleep 90',
+      });
+      startTask(sessionId, 'task-1', { toolId: 'tool-1' });
+      fireEvent({ requestId: 'run-1', kind: 'tool-end', toolId: 'tool-1', ok: true, detail: '' });
+      fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+
+      agent.stopTask('task-1');
+      agent.stopTask('task-1');
+      expect(agent.tasks().length).toBe(1);
+
+      vi.advanceTimersByTime(8_100);
+
+      expect(agent.tasks()).toEqual([]);
+      const notice: AgentItem | undefined = agent
+        .items()
+        .find(
+          (i: AgentItem): boolean => i.kind === 'notice' && i.text === 'Background task untracked',
+        );
+      expect(notice).toBeDefined();
+      expect((notice as { detail?: string }).detail).toContain('no longer tracking');
+      // The second press restarted nothing: one untrack, one notice.
+      expect(
+        agent
+          .items()
+          .filter(
+            (i: AgentItem): boolean =>
+              i.kind === 'notice' && i.text === 'Background task untracked',
+          ).length,
+      ).toBe(1);
+      expect(
+        agent.items().find((i: AgentItem): boolean => i.kind === 'tool' && i.toolId === 'tool-1'),
+      ).toMatchObject({ toolState: 'error' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('backgroundTask_whenStopped_doesNotAdoptATurnThatIsNotComing', () => {
+    // The CLI acknowledges a stop and goes quiet — no report-back. Adopting one anyway held the
+    // conversation "Working…" forever after every Stop.
+    agent.send('go');
+    const sessionId: string | undefined = runCalls[0].agentSessionId;
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+    startTask(sessionId, 'task-1');
+
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'background-task',
+      agentSessionId: sessionId ?? null,
+      taskId: 'task-1',
+      status: 'stopped',
+      summary: 'sleep 300',
+      outputFile: '/tmp/task-1.out',
+    });
+
+    expect(agent.tasks()).toEqual([]);
+    expect(agent.isRunning()).toBe(false);
+    expect(
+      agent
+        .items()
+        .some((i: AgentItem): boolean => i.kind === 'notice' && i.text.includes('was stopped')),
+    ).toBe(true);
+  });
+
+  it('backgroundTask_whenTheReportBackNeverStarts_releasesTheAdoptedTurn', () => {
+    vi.useFakeTimers();
+    try {
+      agent.send('go');
+      const sessionId: string | undefined = runCalls[0].agentSessionId;
+      fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+      fireEvent({
+        requestId: 'run-1',
+        kind: 'background-task',
+        agentSessionId: sessionId ?? null,
+        taskId: 'task-1',
+        status: 'completed',
+        summary: 'done',
+        outputFile: '/tmp/task-1.out',
+      });
+      expect(agent.isRunning()).toBe(true);
+
+      vi.advanceTimersByTime(15_100);
+
+      // Nothing arrived under the adopted id: the conversation is idle again, not "Working" for good.
+      expect(agent.isRunning()).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('backgroundTask_whenTheReportBackBegins_theAdoptionOutlivesItsDeadline', () => {
+    vi.useFakeTimers();
+    try {
+      agent.send('go');
+      const sessionId: string | undefined = runCalls[0].agentSessionId;
+      fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+      fireEvent({
+        requestId: 'run-1',
+        kind: 'background-task',
+        agentSessionId: sessionId ?? null,
+        taskId: 'task-1',
+        status: 'completed',
+        summary: 'done',
+        outputFile: '/tmp/task-1.out',
+      });
+      fireEvent({
+        requestId: 'run-1',
+        kind: 'text',
+        delta: 'The task finished with',
+        messageUuid: 'm1',
+      });
+
+      vi.advanceTimersByTime(15_100);
+
+      // A report that has begun ends the way every turn does — on its status, however long it takes.
+      expect(agent.isRunning()).toBe(true);
+      fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+      expect(agent.isRunning()).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('stopTask_forATaskThisConversationIsNotRunning_asksNothing', () => {
+    agent.send('go');
+    agent.stopTask('ghost');
+    expect(stopTaskCalls).toEqual([]);
+  });
+
+  it('sessionEnded_untracksEveryTaskTheSessionWasRunning', () => {
+    // A task cannot outlive its session. When the session is reaped, evicted or stopped, whatever is
+    // still listed will never settle through the lifecycle — so it leaves the menu with a warning
+    // rather than sitting there as running forever.
+    agent.send('go');
+    const sessionId: string | undefined = runCalls[0].agentSessionId;
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+    startTask(sessionId, 'task-1');
+    startTask(sessionId, 'task-2', { skipTranscript: true });
+    expect(agent.tasks().length).toBe(2);
+
+    // Another conversation's session ending is not this one's business.
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'session-ended',
+      agentSessionId: 'someone-else',
+      reason: 'idle',
+    });
+    expect(agent.tasks().length).toBe(2);
+
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'session-ended',
+      agentSessionId: sessionId ?? '',
+      reason: 'idle',
+    });
+
+    expect(agent.tasks()).toEqual([]);
+    const notice: AgentItem | undefined = agent
+      .items()
+      .find(
+        (i: AgentItem): boolean => i.kind === 'notice' && i.text === 'Background tasks untracked',
+      );
+    expect(notice).toBeDefined();
+    // The ambient task left silently: only the visible one is named.
+    expect((notice as { detail?: string }).detail).toContain('doing task-1');
+    expect((notice as { detail?: string }).detail).not.toContain('doing task-2');
+    expect((notice as { detail?: string }).detail).toContain('idle');
+  });
+
+  it('sessionEnded_withNoTasks_saysNothing', () => {
+    agent.send('go');
+    const sessionId: string | undefined = runCalls[0].agentSessionId;
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+    const before: number = agent.items().length;
+
+    fireEvent({
+      requestId: 'run-1',
+      kind: 'session-ended',
+      agentSessionId: sessionId ?? '',
+      reason: 'idle',
+    });
+
+    expect(agent.items().length).toBe(before);
   });
 
   it('setRemoteControlEnabled_whileBusy_stillReAimsTheLiveSession', () => {

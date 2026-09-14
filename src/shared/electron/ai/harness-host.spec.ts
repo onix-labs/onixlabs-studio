@@ -211,6 +211,131 @@ describe('HarnessHost', () => {
     expect(second).toHaveLength(1);
   });
 
+  it('event_afterTheTurnSettles_stillReachesThatTurnsHandlers', () => {
+    // #709: a held-open harness keeps talking after a turn settles — a background task finishing while
+    // the conversation is idle, the report-back turn the CLI then starts, a `stopped` acknowledgement —
+    // and stamps all of it with the last turn's id. Deleting the handlers at settle dropped every one of
+    // those messages on the floor: the task was never reported and Stop could not settle it.
+    const seen: unknown[] = [];
+    void host.runTurn(
+      { requestId: 'r1' },
+      {
+        onEvent: (event: unknown): void => void seen.push(event),
+        onRequest: (): Promise<HarnessAnswer> => neverAnswers(),
+      },
+    );
+    transport.emit({ type: 'turn.completed', requestId: 'r1', sessionId: 's1' });
+
+    transport.emit({
+      type: 'event',
+      event: { requestId: 'r1', kind: 'background-task', taskId: 't1', status: 'completed' },
+    });
+
+    expect(seen).toHaveLength(1);
+  });
+
+  it('event_afterALaterTurnSettles_reachesTheLaterTurn_notTheEarlierOne', () => {
+    const first: unknown[] = [];
+    const second: unknown[] = [];
+    void host.runTurn(
+      { requestId: 'r1' },
+      {
+        onEvent: (event: unknown): void => void first.push(event),
+        onRequest: (): Promise<HarnessAnswer> => neverAnswers(),
+      },
+    );
+    transport.emit({ type: 'turn.completed', requestId: 'r1', sessionId: 's1' });
+    void host.runTurn(
+      { requestId: 'r2' },
+      {
+        onEvent: (event: unknown): void => void second.push(event),
+        onRequest: (): Promise<HarnessAnswer> => neverAnswers(),
+      },
+    );
+    transport.emit({ type: 'turn.completed', requestId: 'r2', sessionId: 's1' });
+
+    // The harness only ever stamps between-turn traffic with the id of the last turn it ran.
+    transport.emit({ type: 'event', event: { requestId: 'r2', kind: 'text', delta: 'later' } });
+    transport.emit({ type: 'event', event: { requestId: 'r1', kind: 'text', delta: 'stale' } });
+
+    expect(second).toHaveLength(1);
+    expect(first).toEqual([]);
+  });
+
+  it('event_afterAFailedTurn_stillReachesItsHandlers', () => {
+    // A failed turn's harness may be alive and still running a task the turn launched.
+    const seen: unknown[] = [];
+    host
+      .runTurn(
+        { requestId: 'r1' },
+        {
+          onEvent: (event: unknown): void => void seen.push(event),
+          onRequest: (): Promise<HarnessAnswer> => neverAnswers(),
+        },
+      )
+      .catch((): void => undefined);
+    transport.emit({ type: 'turn.failed', requestId: 'r1', error: 'model refused' });
+
+    transport.emit({ type: 'event', event: { requestId: 'r1', kind: 'text', delta: 'late' } });
+
+    expect(seen).toHaveLength(1);
+  });
+
+  it('request_afterTheTurnSettles_isPutToThatTurnsHandlersRatherThanRefused', async () => {
+    // The report-back turn the CLI starts on its own runs tools; its permission prompts belong in front
+    // of the conversation that adopted the turn, not refused as coming from nowhere.
+    void host.runTurn(
+      { requestId: 'r1' },
+      {
+        onEvent: (): void => undefined,
+        onRequest: (): Promise<HarnessAnswer> =>
+          Promise.resolve({ kind: 'permission', granted: true }),
+      },
+    );
+    transport.emit({ type: 'turn.completed', requestId: 'r1', sessionId: 's1' });
+
+    transport.emit({
+      type: 'request',
+      callId: 'c9',
+      requestId: 'r1',
+      request: { kind: 'permission', name: 'Bash', detail: 'cat out.txt' },
+    });
+    await Promise.resolve();
+
+    expect(transport.sent.at(-1)).toEqual({
+      type: 'answer',
+      callId: 'c9',
+      answer: { kind: 'permission', granted: true },
+    });
+  });
+
+  it('event_afterTheHarnessEnds_hasNowhereToGo', () => {
+    const seen: unknown[] = [];
+    void host.runTurn(
+      { requestId: 'r1' },
+      {
+        onEvent: (event: unknown): void => void seen.push(event),
+        onRequest: (): Promise<HarnessAnswer> => neverAnswers(),
+      },
+    );
+    transport.emit({ type: 'turn.completed', requestId: 'r1', sessionId: 's1' });
+    transport.end('exited');
+
+    transport.emit({ type: 'event', event: { requestId: 'r1', kind: 'text', delta: 'ghost' } });
+
+    expect(seen).toEqual([]);
+  });
+
+  it('onClosed_isToldWhenTheHarnessEnds_andAtOnceIfItAlreadyHas', () => {
+    const reasons: string[] = [];
+    host.onClosed((reason: string): void => void reasons.push(reason));
+
+    transport.end('exit code 1');
+    host.onClosed((reason: string): void => void reasons.push(`late: ${reason}`));
+
+    expect(reasons).toEqual(['exit code 1', 'late: exit code 1']);
+  });
+
   it('request_answersUnderTheCallIdItWasAskedWith', async () => {
     void host.runTurn(
       { requestId: 'r1' },

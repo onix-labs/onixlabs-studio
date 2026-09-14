@@ -381,6 +381,14 @@ export class HarnessAgentSession implements AgentSession {
   private readonly inFlight: string[] = [];
 
   /**
+   * Holds the context of the most recently settled turn, which the harness keeps attributing its
+   * between-turn work to — the tools a report-back turn runs after a background task settles. Its audit
+   * records land on that context rather than being discarded as belonging to a run this session "is not
+   * running". Mirrors `HarnessHost`'s idle handlers.
+   */
+  private idleContext: AgentRunContext | null = null;
+
+  /**
    * Holds the session id the harness reported, or null before it has.
    */
   private sessionId: string | null = null;
@@ -389,6 +397,13 @@ export class HarnessAgentSession implements AgentSession {
    * Holds whether the session has been closed.
    */
   private closed: boolean = false;
+
+  /**
+   * Holds the listeners told when the session ends on its own, and whether they have been.
+   */
+  private readonly endedListeners: ((reason: string) => void)[] = [];
+
+  private endedReported: boolean = false;
 
   /**
    * Initializes a new instance of the {@link HarnessAgentSession} class.
@@ -457,6 +472,7 @@ export class HarnessAgentSession implements AgentSession {
       context.signal.removeEventListener('abort', abort);
       context.setSteerHandler(null);
       this.contexts.delete(context.requestId);
+      this.idleContext = context;
       const at: number = this.inFlight.indexOf(context.requestId);
       if (at >= 0) {
         this.inFlight.splice(at, 1);
@@ -544,8 +560,34 @@ export class HarnessAgentSession implements AgentSession {
         `${this.definition.label} did not settle ${this.inFlight.length} turn(s)` +
           `${asked ? '' : " and does not answer 'panic'"}; closing the session`,
       );
+      // Reported before closing: the manager did not ask for this close, and the renderer's task
+      // registry needs to hear that the session — and every task it was running — is gone.
+      this.reportEnded('stopped');
       void this.close();
     }, PANIC_CLOSE_GRACE_MS);
+  }
+
+  /**
+   * Registers a listener for the session ending on its own: the harness process exiting between
+   * turns, or a panic stop escalating to a close. A close the manager asked for is not reported.
+   * @param listener Invoked with the reason, once.
+   */
+  public onEnded(listener: (reason: string) => void): void {
+    this.endedListeners.push(listener);
+  }
+
+  /**
+   * Tells the listeners the session ended, once.
+   * @param reason Why it ended.
+   */
+  private reportEnded(reason: string): void {
+    if (this.endedReported) {
+      return;
+    }
+    this.endedReported = true;
+    for (const listener of this.endedListeners.splice(0)) {
+      listener(reason);
+    }
   }
 
   /**
@@ -612,7 +654,9 @@ export class HarnessAgentSession implements AgentSession {
     const host: HarnessHost = new HarnessHost(
       this.definition.connect(),
       (requestId: string, name: string, detail: string, source: string): void => {
-        const context: AgentRunContext | undefined = this.contexts.get(requestId);
+        const context: AgentRunContext | undefined =
+          this.contexts.get(requestId) ??
+          (this.idleContext?.requestId === requestId ? this.idleContext : undefined);
         if (context === undefined) {
           logger.warn(
             'HarnessAgentSession',
@@ -624,6 +668,13 @@ export class HarnessAgentSession implements AgentSession {
       },
     );
     this.host = host;
+    // The harness ending of its own accord — a crash between turns, most likely — is the session
+    // ending; one Studio closed has already been accounted for by whoever closed it.
+    host.onClosed((reason: string): void => {
+      if (!this.closed) {
+        this.reportEnded(`the harness ended: ${reason}`);
+      }
+    });
     const capabilities: HarnessCapabilities | null = await host.initialize(
       this.definition.settings,
     );

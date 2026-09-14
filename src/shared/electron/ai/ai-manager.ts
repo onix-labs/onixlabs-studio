@@ -198,6 +198,12 @@ interface LiveSessionEntry {
    * least-recently-used session.
    */
   lastActivity: number;
+
+  /**
+   * The id of the last run dispatched into the session, so the `session-ended` event it leaves behind
+   * carries a run id like every other event.
+   */
+  lastRequestId: string;
 }
 
 /**
@@ -1059,7 +1065,7 @@ export class AiManager {
         'AiManager.dispatchLive',
         `Dropping ${existing.session.alive ? 'incompatible' : 'dead'} live session ${key} to reopen`,
       );
-      this.dropSession(key, existing);
+      this.dropSession(key, existing, 'reopened');
     }
     // No compatible live session, so open one. The opening context carries any `resumeSessionId` (a
     // restored / rewound / post-restart turn), which the provider turns into the SDK `resume` at open —
@@ -1081,8 +1087,17 @@ export class AiManager {
       lifetimeMs: this.reapLifetimeMs(request),
       reapTimer: null,
       lastActivity: Date.now(),
+      lastRequestId: context.requestId,
     };
     this.liveSessions.set(key, entry);
+    // A session that ends on its own — harness crashed between turns, panic stop escalated — leaves
+    // the registry the same way as one this manager ended, so the renderer hears about it either way.
+    session.onEnded?.((reason: string): void => {
+      if (this.liveSessions.get(key) === entry) {
+        logger.info('AiManager.dispatchLive', `Live session ${key} ended on its own: ${reason}`);
+        this.endSession(key, entry, reason);
+      }
+    });
     // Memory-pressure valve: keep at most MAX_LIVE_SESSIONS open, reaping the least-recently-used.
     this.reapOverflow(key);
     return this.runLiveTurn(key, entry, context);
@@ -1104,6 +1119,7 @@ export class AiManager {
   ): Promise<void> {
     this.clearReap(entry);
     entry.lastActivity = Date.now();
+    entry.lastRequestId = context.requestId;
     return this.trackLiveTurn(key, entry.session, entry.session.turn(context)).finally((): void => {
       // Idle again: re-arm the reap for whichever entry is still registered (a failed turn was evicted).
       const current: LiveSessionEntry | undefined = this.liveSessions.get(key);
@@ -1144,8 +1160,7 @@ export class AiManager {
       // Reap only if still the registered session (a turn or close may have replaced it meanwhile).
       if (this.liveSessions.get(key) === entry) {
         logger.info('AiManager.armReap', `Idle-reaping live session ${key}`);
-        this.liveSessions.delete(key);
-        void entry.session.close();
+        this.endSession(key, entry, 'idle');
       }
     }, entry.lifetimeMs);
   }
@@ -1187,7 +1202,7 @@ export class AiManager {
         'AiManager.reapOverflow',
         `Live session cap (${MAX_LIVE_SESSIONS}) exceeded; reaping least-recently-used session ${oldestKey}`,
       );
-      this.dropSession(oldestKey, oldest);
+      this.dropSession(oldestKey, oldest, 'evicted');
     }
   }
 
@@ -1196,10 +1211,34 @@ export class AiManager {
    * @param key The conversation's live-session key.
    * @param entry The live session entry.
    */
-  private dropSession(key: string, entry: LiveSessionEntry): void {
+  private dropSession(key: string, entry: LiveSessionEntry, reason: string = 'closed'): void {
+    this.endSession(key, entry, reason);
+  }
+
+  /**
+   * Ends a live session however it is leaving — reaped, evicted, closed, dropped to reopen — and tells
+   * the renderer so, under the conversation's id.
+   *
+   * 🔑 The renderer holds state on the session's behalf that only the session can settle: the
+   * background tasks it was running. Every path that closed a session used to do so silently, and a
+   * task the session died under stayed listed as running forever, with a Stop that could reach nothing.
+   * One exit, one event, so no future path can forget to say the session is gone.
+   * @param key The conversation's live-session key (its agent session id).
+   * @param entry The live session entry.
+   * @param reason Why it ended, for the log and the renderer's note.
+   */
+  private endSession(key: string, entry: LiveSessionEntry, reason: string): void {
     this.clearReap(entry);
-    this.liveSessions.delete(key);
+    if (this.liveSessions.get(key) === entry) {
+      this.liveSessions.delete(key);
+    }
     void entry.session.close();
+    this.emit({
+      requestId: entry.lastRequestId,
+      kind: 'session-ended',
+      agentSessionId: key,
+      reason,
+    });
   }
 
   /**
@@ -1216,10 +1255,12 @@ export class AiManager {
   private trackLiveTurn(key: string, session: AgentSession, turn: Promise<void>): Promise<void> {
     return turn.catch((error: unknown): never => {
       logger.warn('AiManager', 'Live session turn failed; evicting session', error);
-      if (this.liveSessions.get(key)?.session === session) {
-        this.liveSessions.delete(key);
+      const entry: LiveSessionEntry | undefined = this.liveSessions.get(key);
+      if (entry?.session === session) {
+        this.endSession(key, entry, 'evicted');
+      } else {
+        void session.close();
       }
-      void session.close();
       throw error;
     });
   }
