@@ -38,15 +38,21 @@ describe('restoreOverrides', () => {
     expect(restoreOverrides(legacy)).toEqual({ 'textEditor.global.fontSize': 14 });
   });
 
-  it('legacyProfileAwareTextEditor_splitsGlobalFromProfiles', () => {
+  it('legacyProfileAwareTextEditor_keepsGlobalAndDropsTheRetiredProfiles', () => {
     const legacy: Record<string, unknown> = {
       textEditor: { global: { fontSize: 16 }, profiles: [{ id: 'x' }] },
     };
 
-    expect(restoreOverrides(legacy)).toEqual({
+    expect(restoreOverrides(legacy)).toEqual({ 'textEditor.global.fontSize': 16 });
+  });
+
+  it('flatProfiles_areDroppedFromAnAlreadyFlatStore', () => {
+    const flat: Record<string, unknown> = {
       'textEditor.global.fontSize': 16,
       'textEditor.profiles': [{ id: 'x' }],
-    });
+    };
+
+    expect(restoreOverrides(flat)).toEqual({ 'textEditor.global.fontSize': 16 });
   });
 
   it('oldProviderChoice_carriesForwardOntoTheActiveConnection', () => {

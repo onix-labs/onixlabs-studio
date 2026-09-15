@@ -19,9 +19,9 @@ import { AiSettingsSection } from './sections/ai-settings/ai-settings';
 import { KeyboardSettingsSection } from './sections/keyboard-settings/keyboard-settings';
 import { SourceControlSettingsSection } from './sections/source-control-settings/source-control-settings';
 import { TerminalSettingsSection } from './sections/terminal-settings/terminal-settings';
-import { EditorProfiles } from './editor-profiles/editor-profiles';
 import { PromptProfilesSettings } from './prompt-profiles/prompt-profiles';
 import { SkillLibrarySettings } from './skill-library/skill-library';
+import { LanguageEditorOverrides } from './language-editor-overrides/language-editor-overrides';
 import { LanguageServerSettings } from './language-server-settings/language-server-settings';
 import { SettingsSection } from './settings-section/settings-section';
 import { SettingsRestart } from '@features/settings/angular/settings-restart';
@@ -54,7 +54,7 @@ type SettingsSectionId =
   // Providers branch a list of companies core shipped rather than a list of what is installed.
   | `ai-provider-${string}`
   | 'source-control'
-  | 'language-servers'
+  | 'language-providers'
   | 'security'
   | 'workspaces';
 
@@ -87,7 +87,7 @@ interface SettingsNavNode {
   readonly sectionId?: SettingsSectionId;
 
   /**
-   * Gets the language a leaf configures, for the Language Servers branch whose leaves all share one
+   * Gets the language a leaf configures, for the Language Providers branch whose leaves all share one
    * section and differ only by the language they are about. Absent everywhere else.
    */
   readonly language?: string;
@@ -124,7 +124,7 @@ interface SettingsTreeData {
   readonly sectionId?: SettingsSectionId;
 
   /**
-   * Gets the language the row configures, for a Language Servers leaf.
+   * Gets the language the row configures, for a Language Providers leaf.
    */
   readonly language?: string;
 }
@@ -136,9 +136,9 @@ interface SettingsTreeData {
   selector: 'app-settings-view',
   imports: [
     Button,
-    EditorProfiles,
     PromptProfilesSettings,
     SkillLibrarySettings,
+    LanguageEditorOverrides,
     LanguageServerSettings,
     AiSettingsSection,
     KeyboardSettingsSection,
@@ -191,7 +191,7 @@ export class SettingsView {
     signal<SettingsSectionId>('appearance');
 
   /**
-   * Holds the language whose server settings are on show. Every Language Servers leaf shares one
+   * Holds the language whose server settings are on show. Every Language Providers leaf shares one
    * section, differing only in the language it is about, so the selected language is tracked here
    * rather than encoded in a section id per language.
    */
@@ -298,42 +298,61 @@ export class SettingsView {
   ];
 
   /**
-   * Gets the navigation tree, with the Language Servers branch built from what is installed.
+   * Gets the navigation tree, with the AI Providers and Language Providers branches built from what is
+   * installed.
+   */
+  protected readonly sections: Signal<readonly SettingsNavNode[]> = computed(
+    (): readonly SettingsNavNode[] =>
+      this.withLanguageProviderPages(this.withProviderPages(this.staticSections)),
+  );
+
+  /**
+   * Puts the Language Providers branch into the Text Editor section, built from the languages the
+   * installed server plugins serve.
    *
    * The branch carries a leaf per language that has an installed server, rather than one page listing
    * every server Studio knows about. A language nobody has installed support for is not a setting with
    * nothing to say — it is a plugin to install, which is the Plugin Manager's business — so it does not
-   * appear here at all, and the branch itself disappears when nothing is installed.
+   * appear here at all, and the branch itself disappears when nothing is installed. Each leaf carries
+   * both halves of what Studio does for a language: which server serves it, and how the editor behaves
+   * in its files.
+   * @param sections The sections.
+   * @returns Returns the sections with the branch inserted, or unchanged when nothing is installed.
    */
-  protected readonly sections: Signal<readonly SettingsNavNode[]> = computed(
-    (): readonly SettingsNavNode[] => {
-      const withProviders: readonly SettingsNavNode[] = this.withProviderPages(this.staticSections);
-      const languages: readonly string[] = this.lspSettings.installedLanguages();
-      if (languages.length === 0) {
-        return withProviders;
-      }
-      return [
-        ...withProviders,
-        {
-          id: 'language-servers',
-          label: 'Language Servers',
-          icon: Icon.CODE_INLINE,
-          children: languages.map((language: string): SettingsNavNode => ({
-            id: `language-servers-${language}`,
-            label: languageDisplayName(language),
-            sectionId: 'language-servers',
-            language,
-          })),
-        },
-      ];
-    },
-  );
+  private withLanguageProviderPages(
+    sections: readonly SettingsNavNode[],
+  ): readonly SettingsNavNode[] {
+    const languages: readonly string[] = this.lspSettings.installedLanguages();
+    if (languages.length === 0) {
+      return sections;
+    }
+    return sections.map((node: SettingsNavNode): SettingsNavNode =>
+      node.id === 'text-editor'
+        ? {
+            ...node,
+            children: [
+              ...(node.children ?? []),
+              {
+                id: 'language-providers',
+                label: 'Language Providers',
+                children: languages.map((language: string): SettingsNavNode => ({
+                  id: `language-providers-${language}`,
+                  label: languageDisplayName(language),
+                  sectionId: 'language-providers',
+                  language,
+                })),
+              },
+            ],
+          }
+        : node,
+    );
+  }
 
   /**
    * Puts the Providers branch into the AI section, built from the providers installed harnesses
    * contribute.
    *
-   * ⛔ On exactly the rule the Language Servers branch follows, and for the same reason. A company with
+   * ⛔ On exactly the rule the Language Providers branch follows, and for the same reason. A company with
    * no installed harness is not a settings page with nothing to say — it is a plugin to install, which
    * is the Plugin Manager's business. So the branch carries a leaf per contributed provider and
    * disappears entirely when none is installed, which is what a fresh binary now shows (#653).
@@ -421,11 +440,11 @@ export class SettingsView {
    * Gets the id of the selected navigation row: the leaf whose content is on show, or null when none.
    */
   protected readonly selectedRowId: Signal<string | null> = computed((): string | null => {
-    // The Language Servers leaves all show the same section and differ only by language, so the
+    // The Language Providers leaves all show the same section and differ only by language, so the
     // selected row is the one whose language matches rather than simply the first leaf found.
     const language: string = this.selectedLanguage();
-    if (this.section() === 'language-servers' && language !== '') {
-      return `language-servers-${language}`;
+    if (this.section() === 'language-providers' && language !== '') {
+      return `language-providers-${language}`;
     }
     const path: readonly SettingsNavNode[] | null = this.pathToSection(this.section());
     return path === null ? null : path[path.length - 1].id;

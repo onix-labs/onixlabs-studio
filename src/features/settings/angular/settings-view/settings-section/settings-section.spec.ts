@@ -115,7 +115,7 @@ describe('SettingsSection', () => {
   });
 
   it('render_whenSectionHasCustomSettings_skipsThem', async () => {
-    // The Text Editor section has 15 global scalar settings plus a custom "profiles" entry, which is
+    // The Text Editor section has 15 global scalar settings plus a custom "language overrides" entry, which is
     // rendered by a bespoke host rather than this component.
     const element: HTMLElement = await render('text-editor');
     expect(element.querySelectorAll('app-setting-row').length).toBe(15);

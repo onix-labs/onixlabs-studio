@@ -1151,12 +1151,6 @@ export class Icon {
   public static readonly SKILL: Icon = new Icon('ph ph-sparkle');
 
   /**
-   * Gets the icon heading each language profile in the Language Profiles list (regular weight matches
-   * the accordion caret).
-   */
-  public static readonly LANGUAGE_PROFILE: Icon = new Icon('ph ph-file-code');
-
-  /**
    * Gets the light-theme icon.
    */
   public static readonly THEME_LIGHT: Icon = new Icon('ph ph-sun');
