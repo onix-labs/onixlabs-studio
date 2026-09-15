@@ -5,7 +5,6 @@ import type {
   MarkdownEditorSettings,
   SettingsOverrides,
   TextEditorSettings,
-  TextEditorSettingsWithProfiles,
   WorkspacesSettings,
 } from './settings';
 
@@ -14,6 +13,23 @@ import type {
  * settings persisted by an earlier version can be migrated forward.
  */
 type LegacyTextEditorSettings = Partial<TextEditorSettings>;
+
+/**
+ * Defines the legacy profile-aware text editor format: global settings beside a list of named,
+ * many-language profiles. The profiles were retired for per-language overrides and are dropped rather
+ * than carried forward, so only the global half is typed here.
+ */
+interface LegacyProfileAwareTextEditorSettings {
+  /**
+   * Gets the global default text editor settings.
+   */
+  readonly global: Partial<TextEditorSettings>;
+
+  /**
+   * Gets the retired profile list, read for its presence only.
+   */
+  readonly profiles: readonly unknown[];
+}
 
 /**
  * Defines the legacy persisted settings shape (nested section objects) accepted by the migration path.
@@ -33,7 +49,7 @@ interface LegacyAppSettings {
   /**
    * Gets the persisted text editor settings, in either the legacy flat or the profile-aware format.
    */
-  readonly textEditor?: LegacyTextEditorSettings | TextEditorSettingsWithProfiles;
+  readonly textEditor?: LegacyTextEditorSettings | LegacyProfileAwareTextEditorSettings;
 
   /**
    * Gets the persisted markdown editor settings, if any.
@@ -112,6 +128,11 @@ function migrateAiConnections(overrides: SettingsOverrides): SettingsOverrides {
   delete result['ai.provider'];
   delete result['ai.models'];
 
+  // Named, many-language editor profiles were retired for per-language overrides edited on each
+  // language's page. They are dropped rather than expanded: the shape (first matching profile wins)
+  // had no faithful per-language equivalent worth preserving.
+  delete result['textEditor.profiles'];
+
   return result;
 }
 
@@ -121,8 +142,8 @@ function migrateAiConnections(overrides: SettingsOverrides): SettingsOverrides {
  * @returns Returns true when the settings use the profile-aware format; otherwise, false.
  */
 function isProfileAwareFormat(
-  settings: LegacyTextEditorSettings | TextEditorSettingsWithProfiles | undefined,
-): settings is TextEditorSettingsWithProfiles {
+  settings: LegacyTextEditorSettings | LegacyProfileAwareTextEditorSettings | undefined,
+): settings is LegacyProfileAwareTextEditorSettings {
   return settings !== undefined && 'global' in settings && 'profiles' in settings;
 }
 
@@ -150,11 +171,10 @@ function migrateLegacy(legacy: LegacyAppSettings): SettingsOverrides {
   putAll('application', legacy.application);
   putAll('appearance', legacy.appearance);
 
-  const textEditor: LegacyTextEditorSettings | TextEditorSettingsWithProfiles | undefined =
+  const textEditor: LegacyTextEditorSettings | LegacyProfileAwareTextEditorSettings | undefined =
     legacy.textEditor;
   if (isProfileAwareFormat(textEditor)) {
     putAll('textEditor.global', textEditor.global);
-    put('textEditor.profiles', textEditor.profiles);
   } else {
     putAll('textEditor.global', textEditor);
   }

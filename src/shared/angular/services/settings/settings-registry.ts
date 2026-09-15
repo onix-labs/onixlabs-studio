@@ -13,10 +13,10 @@ import type {
   CurrentLineHighlightStyle,
   CursorBlinkingStyle,
   CursorSmoothCaretAnimation,
-  EditorProfile,
   FileExplorerExpandAll,
   ImageAlignment,
   ImageSizing,
+  LanguageOverrides,
   MarginSize,
   PrintMargin,
   RibbonAlignment,
@@ -79,7 +79,7 @@ export interface SettingsValues {
   readonly 'textEditor.global.fontSize': number;
   readonly 'textEditor.global.lineHeight': number;
   readonly 'textEditor.global.braceStyle': BraceStyle;
-  readonly 'textEditor.profiles': readonly EditorProfile[];
+  readonly 'textEditor.languageOverrides': LanguageOverrides;
 
   readonly 'markdownEditor.fontFamily': string;
   readonly 'markdownEditor.monospaceFontFamily': string;
@@ -575,11 +575,12 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
         default: true,
       },
       {
-        key: 'textEditor.profiles',
-        title: 'Language profiles',
-        description: 'Per-language overrides of the global editor settings.',
-        control: { kind: 'custom', component: 'editor-profiles' },
-        default: [],
+        key: 'textEditor.languageOverrides',
+        title: 'Language overrides',
+        description:
+          'Per-language overrides of the global editor settings, edited on each language page under Language Providers.',
+        control: { kind: 'custom', component: 'language-editor-overrides' },
+        default: {},
       },
     ],
   },

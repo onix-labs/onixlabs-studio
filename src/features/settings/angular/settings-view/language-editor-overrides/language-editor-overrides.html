@@ -1,0 +1,56 @@
+<section class="language-editor-overrides">
+  <header class="language-editor-overrides__header">
+    <h3 class="language-editor-overrides__title">Editor</h3>
+    <p class="language-editor-overrides__subtitle">
+      How the text editor behaves in {{ languageName() }} files. Tick Override to give
+      {{ languageName() }} its own value; untick to follow the global setting.
+    </p>
+  </header>
+
+  @for (setting of overridable; track setting.key) {
+    <app-setting-row [label]="setting.title" [description]="setting.description">
+      <span class="override">
+        <!-- The label wraps the checkbox's projected native input, associating them at runtime; the
+             lint rule cannot see through the component boundary to verify this statically. -->
+        <!-- eslint-disable-next-line @angular-eslint/template/label-has-associated-control -->
+        <label class="override__check">
+          <app-checkbox
+            [checked]="isOverridden(setting)"
+            (checkedChange)="onOverrideToggle(setting, $event)"
+          />
+          <span>Override</span>
+        </label>
+
+        @switch (setting.control.kind) {
+          @case ('toggle') {
+            <app-toggle
+              [checked]="$any(resolved(setting))"
+              [disabled]="!isOverridden(setting)"
+              [ariaLabel]="setting.title + ' for ' + languageName()"
+              (checkedChange)="onOverrideValue(setting, $event)"
+            />
+          }
+          @case ('number') {
+            <app-number-field
+              [min]="numberMin(setting)"
+              [max]="numberMax(setting)"
+              [value]="$any(resolved(setting))"
+              [disabled]="!isOverridden(setting)"
+              (valueChange)="onOverrideValue(setting, $event)"
+            />
+          }
+          @case ('select') {
+            <app-dropdown
+              [options]="selectOptions(setting)"
+              [value]="resolvedString(setting)"
+              [fullWidth]="true"
+              [disabled]="!isOverridden(setting)"
+              [ariaLabel]="setting.title + ' for ' + languageName()"
+              (valueChange)="onOverrideValue(setting, $event)"
+            />
+          }
+        }
+      </span>
+    </app-setting-row>
+  }
+</section>

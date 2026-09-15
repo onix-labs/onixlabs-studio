@@ -2,7 +2,7 @@ import { ApplicationRef } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 
 import type { AiConnection } from '@shared/api/ai-types';
-import { EditorProfile, Settings, TextEditorSettings } from './settings';
+import { Settings, TextEditorSettings } from './settings';
 
 /**
  * Builds a minimal user connection for the connection-management tests.
@@ -55,37 +55,30 @@ describe('Settings', () => {
     expect(service.globalTextEditor().fontSize).toBe(18);
   });
 
-  it('createProfile_whenCalled_addsProfileWithGeneratedId', () => {
+  it('setLanguageOverride_whenCalled_recordsTheFieldUnderTheLanguage', () => {
     const service: Settings = TestBed.inject(Settings);
 
-    const profile: EditorProfile = service.createProfile('TS', ['typescript'], { wordWrap: true });
+    service.setLanguageOverride('typescript', 'wordWrap', true);
 
-    expect(service.profiles()).toContain(profile);
-    expect(profile.id).toBeTruthy();
+    expect(service.languageOverrides()).toEqual({ typescript: { wordWrap: true } });
   });
 
-  it('updateProfile_whenCalled_appliesUpdates', () => {
+  it('clearLanguageOverride_whenLastFieldCleared_dropsTheLanguage', () => {
     const service: Settings = TestBed.inject(Settings);
-    const profile: EditorProfile = service.createProfile('TS', ['typescript']);
+    service.setLanguageOverride('typescript', 'wordWrap', true);
+    service.setLanguageOverride('typescript', 'tabSize', 2);
 
-    service.updateProfile(profile.id, { name: 'TypeScript' });
+    service.clearLanguageOverride('typescript', 'wordWrap');
+    expect(service.languageOverrides()).toEqual({ typescript: { tabSize: 2 } });
 
-    expect(service.profiles()[0]?.name).toBe('TypeScript');
+    service.clearLanguageOverride('typescript', 'tabSize');
+    expect(service.languageOverrides()).toEqual({});
   });
 
-  it('deleteProfile_whenCalled_removesProfile', () => {
-    const service: Settings = TestBed.inject(Settings);
-    const profile: EditorProfile = service.createProfile('TS', ['typescript']);
-
-    service.deleteProfile(profile.id);
-
-    expect(service.profiles()).toHaveLength(0);
-  });
-
-  it('resolveSettingsForLanguage_whenProfileMatches_mergesOverGlobal', () => {
+  it('resolveSettingsForLanguage_whenOverridden_mergesOverGlobal', () => {
     const service: Settings = TestBed.inject(Settings);
     service.updateTextEditorSettings({ wordWrap: false, fontSize: 14 });
-    service.createProfile('TS', ['typescript'], { wordWrap: true });
+    service.setLanguageOverride('typescript', 'wordWrap', true);
 
     const resolved: TextEditorSettings = service.resolveSettingsForLanguage('typescript');
 
@@ -93,7 +86,7 @@ describe('Settings', () => {
     expect(resolved.fontSize).toBe(14);
   });
 
-  it('resolveSettingsForLanguage_whenNoProfileMatches_returnsGlobal', () => {
+  it('resolveSettingsForLanguage_whenNothingOverridden_returnsGlobal', () => {
     const service: Settings = TestBed.inject(Settings);
 
     const resolved: TextEditorSettings = service.resolveSettingsForLanguage('python');
@@ -121,14 +114,14 @@ describe('Settings', () => {
     expect(TestBed.inject(Settings).undoStackSize()).toBe(250);
   });
 
-  it('settings_whenLegacyTextEditorFormatPersisted_migratesToProfileAware', () => {
+  it('settings_whenLegacyTextEditorFormatPersisted_migratesToGlobalKeys', () => {
     localStorage.setItem('settings', JSON.stringify({ textEditor: { wordWrap: true } }));
 
     const service: Settings = TestBed.inject(Settings);
 
     expect(service.globalTextEditor().wordWrap).toBe(true);
     expect(service.globalTextEditor().showLineNumbers).toBe(true);
-    expect(service.profiles()).toHaveLength(0);
+    expect(service.languageOverrides()).toEqual({});
   });
 
   it('ai_whenDefaulted_usesClaudeConnectionPromptAndNoCap', () => {

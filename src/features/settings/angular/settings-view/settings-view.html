@@ -44,7 +44,6 @@
         }
         @case ('text-editor') {
           <app-settings-section sectionId="text-editor" />
-          <app-editor-profiles />
         }
         @case ('markdown') {
           <app-settings-section sectionId="markdown" />
@@ -73,8 +72,15 @@
         @case ('mission-control') {
           <app-settings-section sectionId="mission-control" />
         }
-        @case ('language-servers') {
+        @case ('language-providers') {
+          <!-- One language's page: which server serves it, then how the editor behaves in its files.
+               The server half is the same component the setup wizard shows, so it carries no editor
+               rows of its own. -->
           <app-language-server-settings
+            [language]="activeLanguage()"
+            [languageName]="activeLanguageName()"
+          />
+          <app-language-editor-overrides
             [language]="activeLanguage()"
             [languageName]="activeLanguageName()"
           />
