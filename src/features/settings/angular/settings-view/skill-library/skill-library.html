@@ -90,7 +90,7 @@
         </span>
         <app-textarea
           [value]="row.draft.description"
-          [rows]="2"
+          [rows]="4"
           ariaLabel="Skill description"
           placeholder="e.g. House style for C#: explicit types, file-scoped namespaces, XML doc comments. Use when writing or reviewing C#."
           (valueChange)="edit(row, { description: $event })"
@@ -102,9 +102,9 @@
         <span class="skills__body-description">
           The Markdown the agent receives when it loads the skill. As long as it needs to be.
         </span>
-        <app-textarea
+        <app-markdown-field
           [value]="row.draft.body"
-          [rows]="10"
+          [minRows]="10"
           ariaLabel="Skill instructions"
           (valueChange)="edit(row, { body: $event })"
         />

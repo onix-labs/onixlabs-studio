@@ -13,6 +13,7 @@ import { Accordion } from '@shared/angular/components/forms/accordion/accordion'
 import { Button } from '@shared/angular/components/forms/button/button';
 import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
+import { MarkdownField } from '@shared/angular/components/forms/markdown-field/markdown-field';
 import { Textarea } from '@shared/angular/components/forms/textarea/textarea';
 import { Toggle } from '@shared/angular/components/forms/toggle/toggle';
 import { Icon } from '@shared/angular/icons/icon';
@@ -63,7 +64,16 @@ export interface SkillRow {
  */
 @Component({
   selector: 'app-skill-library',
-  imports: [Accordion, Button, SettingRow, TextField, Textarea, Toggle, PromptScopeEditor],
+  imports: [
+    Accordion,
+    Button,
+    MarkdownField,
+    SettingRow,
+    TextField,
+    Textarea,
+    Toggle,
+    PromptScopeEditor,
+  ],
   templateUrl: './skill-library.html',
   styleUrls: ['../sections/section.scss', './skill-library.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
