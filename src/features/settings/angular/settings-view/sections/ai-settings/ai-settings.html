@@ -104,35 +104,21 @@
           </p>
         }
 
-        <ul class="ai-connections__list">
+        <div class="ai-connections__list">
           @for (connection of pageConnections(); track connection.id) {
-            <li class="ai-connections__item">
-              <button
-                type="button"
-                class="ai-connections__toggle"
-                [attr.aria-expanded]="isExpanded(connection.id)"
-                (click)="toggle(connection.id)"
-              >
-                <app-icon
-                  class="ai-connections__status"
-                  [class.ai-connections__status--ok]="status(connection.id).available"
-                  [icon]="status(connection.id).available ? Icon.SUCCESS_FILL : Icon.WARNING_FILL"
-                />
-                <span class="ai-connections__label">{{ connection.label }}</span>
-                <app-icon
-                  class="ai-connections__chevron"
-                  [class.ai-connections__chevron--open]="isExpanded(connection.id)"
-                  [icon]="Icon.CARET_DOWN"
-                />
-              </button>
-              @if (isExpanded(connection.id)) {
-                <div class="ai-connections__body">
-                  <app-ai-connection-editor [connection]="connection" />
-                </div>
-              }
-            </li>
+            <app-accordion
+              [heading]="connection.label"
+              [icon]="status(connection.id).available ? Icon.SUCCESS_FILL : Icon.WARNING_FILL"
+              [iconColor]="
+                status(connection.id).available ? 'var(--success-color)' : 'var(--warning-color)'
+              "
+              [expanded]="isExpanded(connection.id)"
+              (expandedChange)="setExpanded(connection.id, $event)"
+            >
+              <app-ai-connection-editor [connection]="connection" />
+            </app-accordion>
           }
-        </ul>
+        </div>
       </div>
     </section>
   }

@@ -68,6 +68,11 @@
   --form-on-accent-color: var(--gray-100);
   --form-muted-foreground-color: var(--gray-550);
 
+  // Accordion header: rests a half-step lighter than the settings page, so the row reads as raised,
+  // and lifts to the tone a form control reaches on hover.
+  --accordion-header-background-color: var(--gray-750);
+  --accordion-header-background-color--hover: var(--form-control-background-color--hover);
+
   // Dropdown picker menu (rendered by the customizable-select popup). Hover reaches for the accent.
   --dropdown-menu-background-color: var(--gray-800);
   --dropdown-menu-foreground-color: var(--gray-100);

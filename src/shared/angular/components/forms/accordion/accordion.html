@@ -5,8 +5,11 @@
     [attr.aria-expanded]="expanded()"
     (click)="toggle()"
   >
-    <app-icon [icon]="expanded() ? Icon.CARET_DOWN : Icon.CARET_RIGHT" />
-    <span>{{ heading() }}</span>
+    @if (icon(); as icon) {
+      <app-icon class="accordion__icon" [icon]="icon" [color]="iconColor()" />
+    }
+    <span class="accordion__heading">{{ heading() }}</span>
+    <app-icon class="accordion__caret" [icon]="Icon.CARET_DOWN" [rotation]="expanded() ? 180 : 0" />
   </button>
   @if (expanded()) {
     <div class="accordion__body">

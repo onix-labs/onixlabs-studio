@@ -31,6 +31,17 @@ export class Accordion {
   public readonly heading: InputSignal<string> = input.required<string>();
 
   /**
+   * Gets the icon shown ahead of the heading, or undefined for none.
+   */
+  public readonly icon: InputSignal<Icon | undefined> = input<Icon | undefined>(undefined);
+
+  /**
+   * Gets the colour of the leading icon (any value {@link AppIcon} accepts), or undefined to inherit
+   * the header's muted glyph colour.
+   */
+  public readonly iconColor: InputSignal<string | undefined> = input<string | undefined>(undefined);
+
+  /**
    * Gets or sets a value indicating whether the panel is expanded.
    */
   public readonly expanded: ModelSignal<boolean> = model<boolean>(false);

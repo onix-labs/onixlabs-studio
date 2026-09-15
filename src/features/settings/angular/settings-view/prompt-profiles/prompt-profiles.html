@@ -18,7 +18,11 @@
   }
 
   @for (profile of profiles(); track profile.id) {
-    <app-accordion [heading]="profile.name" [expanded]="profile.id === justCreated()">
+    <app-accordion
+      [heading]="profile.name"
+      [icon]="Icon.PROMPT_PROFILE"
+      [expanded]="profile.id === justCreated()"
+    >
       <app-setting-row label="Name" description="Heads this profile's section in the prompt.">
         <app-text-field
           [value]="profile.name"
@@ -73,12 +77,9 @@
         />
       </div>
 
-      <app-button
-        class="profiles__delete"
-        [icon]="Icon.TRASH"
-        label="Delete profile"
-        (click)="remove(profile.id)"
-      />
+      <div class="profiles__footer">
+        <app-button [icon]="Icon.TRASH" label="Delete profile" (click)="remove(profile.id)" />
+      </div>
     </app-accordion>
   }
 </div>

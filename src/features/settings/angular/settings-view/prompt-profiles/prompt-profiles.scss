@@ -48,6 +48,10 @@
   color: var(--settings-muted-foreground-color);
 }
 
-.profiles__delete {
+// The destructive action sits alone at the foot of the profile, on the right, as it does in every
+// other collapsible editor.
+.profiles__footer {
+  display: flex;
+  justify-content: flex-end;
   margin-block-start: 0.5rem;
 }

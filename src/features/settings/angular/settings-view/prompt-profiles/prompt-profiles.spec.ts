@@ -1,5 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { AGENT_SURFACES } from '@shared/api/ai-types';
+import { AGENT_SURFACE_LABELS, AGENT_SURFACES } from '@shared/api/ai-types';
 import { PromptProfiles } from '@shared/angular/services/prompt-profiles/prompt-profiles';
 import { PromptProfilesSettings } from './prompt-profiles';
 
@@ -42,7 +42,7 @@ describe('PromptProfilesSettings', () => {
     expect(element().querySelector('app-textarea')).not.toBeNull();
   });
 
-  it('render_whenProfileExists_showsItsSurfacesAsCheckboxes', async () => {
+  it('render_whenProfileExists_showsItsSurfacesInTheScopePicker', async () => {
     service.update(service.create('One').id, { scope: { surfaces: ['terminal'], languages: [] } });
     fixture.detectChanges();
     await fixture.whenStable();
@@ -50,12 +50,16 @@ describe('PromptProfilesSettings', () => {
     fixture.detectChanges();
     await fixture.whenStable();
 
-    const checks: NodeListOf<HTMLInputElement> =
-      element().querySelectorAll<HTMLInputElement>('.scope__surface input');
-    expect(checks).toHaveLength(AGENT_SURFACES.length);
-    expect(
-      Array.from(checks).filter((check: HTMLInputElement): boolean => check.checked),
-    ).toHaveLength(1);
+    // The surfaces picker is the first multi-select in the profile; its face names what is ticked.
+    const faces: NodeListOf<HTMLButtonElement> = element().querySelectorAll<HTMLButtonElement>(
+      'app-multi-select .multi-select',
+    );
+    expect(faces).toHaveLength(2);
+    expect(faces[0].textContent?.trim()).toBe(AGENT_SURFACE_LABELS.terminal);
+
+    faces[0].click();
+    TestBed.tick();
+    expect(document.querySelectorAll('.multi-select__option')).toHaveLength(AGENT_SURFACES.length);
   });
 
   it('delete_removesTheProfile', async () => {
@@ -66,7 +70,7 @@ describe('PromptProfilesSettings', () => {
     fixture.detectChanges();
     await fixture.whenStable();
 
-    element().querySelector<HTMLButtonElement>('.profiles__delete button')?.click();
+    element().querySelector<HTMLButtonElement>('.profiles__footer button')?.click();
     fixture.detectChanges();
 
     expect(service.profiles()).toHaveLength(0);

@@ -14,32 +14,44 @@
   align-items: center;
   gap: 0.5rem;
   inline-size: 100%;
-  padding: 0.5rem 0.7rem;
+  padding: 0.75rem;
   font: inherit;
   font-size: 0.85rem;
   font-weight: 500;
   text-align: start;
   color: inherit;
-  background: var(--form-control-background-color);
+  background: var(--accordion-header-background-color);
   border: none;
   cursor: default;
   transition: background-color 150ms ease-in-out;
 
   &:hover {
-    background: var(--form-control-background-color--hover);
+    background: var(--accordion-header-background-color--hover);
   }
 
   &:focus-visible {
     outline: var(--focus-ring-width) solid var(--focus-ring-color);
     outline-offset: -0.125rem;
   }
+}
 
-  .ti {
-    font-size: 1rem;
-    color: var(--form-muted-foreground-color);
-  }
+// Leading icon and trailing caret bracket the heading, which takes the remaining width and truncates
+// rather than wrapping so the caret stays flush with the right edge.
+.accordion__icon,
+.accordion__caret {
+  flex-shrink: 0;
+  font-size: 1rem;
+  color: var(--form-muted-foreground-color);
+}
+
+.accordion__heading {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .accordion__body {
-  padding: 0.4rem 0.7rem 0.7rem;
+  padding: 0.4rem 0.75rem 0.75rem;
 }
