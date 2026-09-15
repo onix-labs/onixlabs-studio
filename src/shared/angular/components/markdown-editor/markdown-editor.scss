@@ -7,10 +7,27 @@
   // part of the page. Built from the shared gray primitives and switched on the resolved theme.
   --markdown-editor-background: var(--gray-100);
 
-  display: block;
+  // The width is stated, not left to the content, so the editor fills whatever it is dropped into.
+  // `.editor-scroll` below is an inline-size container, which puts size containment on its inline
+  // axis: its width can only come from an ancestor, never from what it holds. As a plain block that
+  // ancestor is this host, filled by its own parent. But a host placed as a flex item — the composer's
+  // markdown modal, a form field — is sized from its content by default, and the contained content
+  // reports zero, so the whole editor collapsed to 0px wide: present, focusable, and impossible to
+  // click or type into. Stating the width, and growing as a flex item, closes that off in every
+  // container rather than asking each call site to know about the containment.
+  inline-size: 100%;
+  flex: 1 1 auto;
   block-size: 100%;
   min-inline-size: 0;
   min-block-size: 0;
+  // A column whose one child, the scroll box, flexes to the host's height. Stated the same way as the
+  // width, and for the same kind of reason: `.editor-scroll` asks for 100% of this host, which only
+  // resolves when the host's height is definite — true in the markdown tab, where the host takes a
+  // definite 100% of its pane, but not when the host is itself a flexed child sized by its content
+  // (a form field, a modal). Flexing the scroll box along this column fills the host whichever way
+  // the host was sized, and bounds it so a long document scrolls inside rather than overflowing.
+  display: flex;
+  flex-direction: column;
 }
 
 :host-context([data-theme-mode='dark']) {
@@ -21,8 +38,13 @@
 // editor's own available width (independent of the window and any tool panel) via the @container
 // rules below, shrinking gracefully when a panel narrows it.
 .editor-scroll {
+  // Stated for the same reason as the host's: an inline-size container cannot size itself from its
+  // content, so it takes the host's width whether the host lays it out as a block or a flex item.
+  inline-size: 100%;
   block-size: 100%;
+  flex: 1 1 auto;
   min-inline-size: 0;
+  min-block-size: 0;
   overflow: auto;
   background: var(--markdown-editor-background);
   container-type: inline-size;

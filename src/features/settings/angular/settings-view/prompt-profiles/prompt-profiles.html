@@ -50,14 +50,13 @@
       <div class="profiles__body">
         <span class="profiles__body-label">System prompt</span>
         <span class="profiles__body-description">
-          Added beneath Studio's instructions for the surface. Use it to shape how the agent
-          behaves.
+          Markdown, added beneath Studio's instructions for the surface. Use it to shape how the
+          agent behaves — for example, prefer explicit type declarations over var.
         </span>
-        <app-textarea
+        <app-markdown-field
           [value]="profile.system"
-          [rows]="5"
+          [minRows]="5"
           ariaLabel="System prompt"
-          placeholder="e.g. Prefer explicit type declarations over var."
           (valueChange)="setSystem(profile.id, $event)"
         />
       </div>
@@ -65,14 +64,13 @@
       <div class="profiles__body">
         <span class="profiles__body-label">User prompt</span>
         <span class="profiles__body-description">
-          Added beneath each message you send, invisibly. Use it for standing requests about the
-          work.
+          Markdown, added beneath each message you send, invisibly. Use it for standing requests
+          about the work — for example, write in British English.
         </span>
-        <app-textarea
+        <app-markdown-field
           [value]="profile.user"
-          [rows]="5"
+          [minRows]="5"
           ariaLabel="User prompt"
-          placeholder="e.g. Write in British English."
           (valueChange)="setUser(profile.id, $event)"
         />
       </div>

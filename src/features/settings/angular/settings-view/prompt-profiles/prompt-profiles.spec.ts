@@ -1,11 +1,23 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { afterAll, beforeAll, describe, expect, it, beforeEach, afterEach } from 'vitest';
 import { AGENT_SURFACE_LABELS, AGENT_SURFACES } from '@shared/api/ai-types';
 import { PromptProfiles } from '@shared/angular/services/prompt-profiles/prompt-profiles';
+import { drainMilkdownTimers } from '@shared/angular/testing/drain-milkdown-timers';
+import { stubCrepeEnvironment } from '@shared/angular/testing/stub-crepe-environment';
 import { PromptProfilesSettings } from './prompt-profiles';
 
 describe('PromptProfilesSettings', () => {
   let fixture: ComponentFixture<PromptProfilesSettings>;
   let service: PromptProfiles;
+
+  // An expanded profile mounts two markdown fields, each a Crepe editor: jsdom needs the browser
+  // surface Crepe reaches for, and the watchdogs Crepe arms must fire before the environment goes.
+  beforeAll(stubCrepeEnvironment);
+  afterAll(drainMilkdownTimers);
+
+  afterEach(() => {
+    fixture.destroy();
+  });
 
   beforeEach(async () => {
     localStorage.clear();
@@ -39,7 +51,7 @@ describe('PromptProfilesSettings', () => {
 
     expect(service.profiles()).toHaveLength(1);
     expect(element().querySelectorAll('app-accordion')).toHaveLength(1);
-    expect(element().querySelector('app-textarea')).not.toBeNull();
+    expect(element().querySelectorAll('app-markdown-field')).toHaveLength(2);
   });
 
   it('render_whenProfileExists_showsItsSurfacesInTheScopePicker', async () => {
