@@ -43,14 +43,22 @@ export class PluginsContribution implements MainContribution {
       pluginContext,
       pluginStore(),
     );
+    // Every state change — an action starting as well as finishing — pushes the refreshed list, so a
+    // view shows a plugin as busy for as long as its install runs rather than only learning it is
+    // installed once the download is over.
+    this.manager.onChanged((): void => {
+      void this.list().then((plugins: readonly PluginSummary[]): void =>
+        context.send(PluginChannel.Changed, plugins),
+      );
+    });
     context.handle(PluginChannel.List, (): Promise<readonly PluginSummary[]> => this.list());
     context.handle(
       PluginChannel.Install,
-      (_event: unknown, id: unknown): Promise<PluginActionResult> => this.act(id, true, context),
+      (_event: unknown, id: unknown): Promise<PluginActionResult> => this.act(id, true),
     );
     context.handle(
       PluginChannel.Uninstall,
-      (_event: unknown, id: unknown): Promise<PluginActionResult> => this.act(id, false, context),
+      (_event: unknown, id: unknown): Promise<PluginActionResult> => this.act(id, false),
     );
     // The revision in force this launch, not the one on disk: a fetched index takes effect at the next
     // start, so this is what the running build's catalogue actually is — which is what a bug report needs.
@@ -89,26 +97,18 @@ export class PluginsContribution implements MainContribution {
   }
 
   /**
-   * Runs an install or uninstall for a plugin named by the renderer, and pushes the refreshed list so
-   * every open view reflects the change without polling.
+   * Runs an install or uninstall for a plugin named by the renderer. The refreshed list reaches every
+   * open view through the manager's change listener, as the action starts and again as it ends, so
+   * nothing is pushed here.
    * @param id The plugin identifier from the renderer.
    * @param installing True to install, false to uninstall.
-   * @param context The contribution context, used to push the change.
    * @returns Returns the outcome.
    */
-  private async act(
-    id: unknown,
-    installing: boolean,
-    context: ContributionContext,
-  ): Promise<PluginActionResult> {
+  private act(id: unknown, installing: boolean): Promise<PluginActionResult> {
     if (typeof id !== 'string' || this.manager === null) {
-      return { success: false, state: 'unavailable', error: 'Unknown plugin.' };
+      return Promise.resolve({ success: false, state: 'unavailable', error: 'Unknown plugin.' });
     }
-    const result: PluginActionResult = installing
-      ? await this.manager.install(id)
-      : await this.manager.uninstall(id);
-    context.send(PluginChannel.Changed, await this.list());
-    return result;
+    return installing ? this.manager.install(id) : this.manager.uninstall(id);
   }
 }
 

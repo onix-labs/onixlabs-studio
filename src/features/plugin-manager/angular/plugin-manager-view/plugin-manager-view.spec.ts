@@ -199,6 +199,22 @@ describe('PluginManagerView', () => {
     ]);
   });
 
+  it('aBusyPlugin_showsAProgressBarInPlaceOfItsButton', () => {
+    // The work has no known length, and a merely-disabled button reads as nothing happening. Only the
+    // busy row swaps; its neighbours keep their buttons.
+    render([
+      summary({ id: 'a', name: 'clangd', state: 'busy' }),
+      summary({ id: 'b', state: 'available' }),
+    ]);
+
+    const bars: NodeListOf<Element> = (fixture.nativeElement as HTMLElement).querySelectorAll(
+      '.plugin-row__action app-progress-bar',
+    );
+    expect(bars).toHaveLength(1);
+    expect(bars[0].getAttribute('aria-label')).toBe('Working on clangd');
+    expect(actionButtons()).toEqual([{ label: 'Install', disabled: false }]);
+  });
+
   it('anUpdateIsOfferedAsAnUpdateRatherThanAsARemoval', () => {
     // 🔥 An outdated install satisfies *both* "is installed" and "has an update", and the row has one
     // button to say it with. Offering Remove there would bury the update behind the one action nobody

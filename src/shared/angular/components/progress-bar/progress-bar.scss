@@ -1,0 +1,84 @@
+// The bar wears the button's footprint — the same height, padding, radius and corner shape, and the
+// same solid tone fill — so it can stand in for the button it replaces without the row moving. Over
+// the fill, diagonal stripes slide continuously: the conventional "busy, no idea how long" signal.
+:host {
+  --progress-bar-color: var(--accent-color);
+  --progress-bar-stripe: rgba(255, 255, 255, 0.18);
+  --progress-bar-stripe-size: 1rem;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  inline-size: 100%;
+  block-size: var(--control-height);
+  padding: 0 0.5rem;
+  overflow: hidden;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--gray-100);
+  background-color: var(--progress-bar-color);
+  background-image: linear-gradient(
+    45deg,
+    var(--progress-bar-stripe) 25%,
+    transparent 25%,
+    transparent 50%,
+    var(--progress-bar-stripe) 50%,
+    var(--progress-bar-stripe) 75%,
+    transparent 75%,
+    transparent
+  );
+  background-size: var(--progress-bar-stripe-size) var(--progress-bar-stripe-size);
+  border: 0.0625rem solid var(--progress-bar-color);
+  border-radius: calc(0.5rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  animation: progress-bar-stripes 1s linear infinite;
+
+  @media (prefers-reduced-motion: reduce) {
+    // Still says "busy" without moving: the stripes stand still and the whole bar breathes instead.
+    animation: progress-bar-breathe 1.4s ease-in-out infinite;
+  }
+}
+
+:host(.progress-bar--success) {
+  --progress-bar-color: var(--success-color);
+}
+
+:host(.progress-bar--warning) {
+  --progress-bar-color: var(--warning-color);
+}
+
+:host(.progress-bar--danger) {
+  --progress-bar-color: var(--danger-color);
+}
+
+:host(.progress-bar--info) {
+  --progress-bar-color: var(--info-color);
+}
+
+// The label, on one line, cut at the bar's edge rather than growing it — as a button's label is.
+.progress-bar__label {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+// Sliding the stripe pattern by one tile per cycle loops seamlessly.
+@keyframes progress-bar-stripes {
+  from {
+    background-position: var(--progress-bar-stripe-size) 0;
+  }
+  to {
+    background-position: 0 0;
+  }
+}
+
+@keyframes progress-bar-breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}

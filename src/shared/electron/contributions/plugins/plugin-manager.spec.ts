@@ -107,6 +107,35 @@ describe('PluginManager', () => {
     expect((await only(manager)).state).toBe('installed');
   });
 
+  it('install_tellsListenersAsItStartsWhileThePluginReadsBusy_andAgainWhenItEnds', async () => {
+    // The busy state is only worth having if someone can see it: the listener fires with the plugin
+    // still marked busy at the start, and once more after it is cleared at the end.
+    let finish: (path: string) => void = (): void => undefined;
+    const descriptorWithSlowInstall: PluginDescriptor = {
+      ...descriptor('demo', (): boolean => false),
+      install: (): Promise<string | null> =>
+        new Promise<string | null>((resolve: (path: string) => void): void => {
+          finish = resolve;
+        }),
+    };
+    const manager: PluginManager = new PluginManager([descriptorWithSlowInstall], context, store);
+    const seen: Promise<PluginSummary['state']>[] = [];
+    manager.onChanged((): void => {
+      seen.push(
+        only(manager).then((summary: PluginSummary): PluginSummary['state'] => summary.state),
+      );
+    });
+
+    const installing: Promise<PluginActionResult> = manager.install('demo');
+    expect(seen).toHaveLength(1);
+    expect(await seen[0]).toBe('busy');
+
+    finish('/installed/demo');
+    await installing;
+    expect(seen).toHaveLength(2);
+    expect(await seen[1]).not.toBe('busy');
+  });
+
   it('uninstall_forgetsTheRecordAndReportsAvailable', async () => {
     let present: boolean = true;
     const manager: PluginManager = new PluginManager(

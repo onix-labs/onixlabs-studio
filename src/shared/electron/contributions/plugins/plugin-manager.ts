@@ -32,6 +32,11 @@ export class PluginManager {
   private readonly busy: Set<string> = new Set<string>();
 
   /**
+   * Holds the listeners told when a plugin's state changes: an action starting or finishing.
+   */
+  private readonly listeners: Set<() => void> = new Set<() => void>();
+
+  /**
    * Initializes a new instance of the {@link PluginManager} class.
    * @param descriptors The available plugins.
    * @param context The surface descriptors detect and install themselves through.
@@ -50,6 +55,36 @@ export class PluginManager {
     );
     this.context = context;
     this.store = store;
+  }
+
+  /**
+   * Registers a listener told whenever a plugin's state changes — when an install or uninstall
+   * starts, so the plugin reads as busy for as long as it is, and again when it finishes. Without the
+   * first of those the busy state existed only inside an action nobody could observe: the list was
+   * pushed once the work was over, by which time busy had already been cleared, so no view ever saw
+   * a plugin installing.
+   * @param listener The listener.
+   * @returns Returns a function that removes the listener.
+   */
+  public onChanged(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return (): void => void this.listeners.delete(listener);
+  }
+
+  /**
+   * Marks a plugin busy, or clears it, telling the listeners either way.
+   * @param id The plugin identifier.
+   * @param busy Whether an action is now in flight for it.
+   */
+  private setBusy(id: string, busy: boolean): void {
+    if (busy) {
+      this.busy.add(id);
+    } else {
+      this.busy.delete(id);
+    }
+    for (const listener of this.listeners) {
+      listener();
+    }
   }
 
   /**
@@ -85,7 +120,7 @@ export class PluginManager {
     if (this.busy.has(id)) {
       return { success: false, state: 'busy', error: `${descriptor.name} is already installing.` };
     }
-    this.busy.add(id);
+    this.setBusy(id, true);
     try {
       logger.info('PluginManager', `Installing ${id}`);
       const installedPath: string | null = await descriptor.install(this.context);
@@ -113,7 +148,7 @@ export class PluginManager {
       logger.error('PluginManager', `Install threw for ${id}`, error);
       return { success: false, state: 'available', error: `${descriptor.name} failed to install.` };
     } finally {
-      this.busy.delete(id);
+      this.setBusy(id, false);
     }
   }
 
@@ -130,7 +165,7 @@ export class PluginManager {
     if (this.busy.has(id)) {
       return { success: false, state: 'busy', error: `${descriptor.name} is busy.` };
     }
-    this.busy.add(id);
+    this.setBusy(id, true);
     try {
       logger.info('PluginManager', `Uninstalling ${id}`);
       await descriptor.uninstall(this.context);
@@ -144,7 +179,7 @@ export class PluginManager {
         error: `${descriptor.name} could not be removed.`,
       };
     } finally {
-      this.busy.delete(id);
+      this.setBusy(id, false);
     }
   }
 

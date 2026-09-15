@@ -21,6 +21,7 @@ import { Button } from '@shared/angular/components/forms/button/button';
 import { ListRow, ListView } from '@shared/angular/components/list-view/list-view';
 import { Panel } from '@shared/angular/components/panel-layout/panel';
 import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
+import { ProgressBar } from '@shared/angular/components/progress-bar/progress-bar';
 import { PluginBrowse, categoriesOf, rowIconForCategory } from '../plugin-browse/plugin-browse';
 import { languageDisplayName } from '@shared/angular/services/plugins/language-names';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
@@ -47,7 +48,7 @@ const SLOT_LABELS: Readonly<Record<PluginSlot, string>> = {
  */
 @Component({
   selector: 'app-plugin-manager-view',
-  imports: [AppIcon, Button, ListView, PanelLayout, Panel],
+  imports: [AppIcon, Button, ListView, PanelLayout, Panel, ProgressBar],
   templateUrl: './plugin-manager-view.html',
   styleUrl: './plugin-manager-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

@@ -268,7 +268,11 @@ $action-column: 7rem;
 // of its own: a button that moved with the text beside it would have to be found again on every row.
 .plugin-row__action {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
+  // Holds the button's height while a progress bar stands in for it, so a row does not shrink and the
+  // list does not shift as installs start and finish.
+  min-block-size: var(--control-height);
 
   // The atom is built to be stretched by its call site — its inner button carries `flex: 1` — so the
   // width is stated here rather than by reaching into the button's own styling.

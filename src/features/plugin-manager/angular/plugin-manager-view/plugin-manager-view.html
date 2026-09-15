@@ -90,7 +90,12 @@
             {{ stateLabel(item) }}
           </span>
           <span class="plugin-row__action">
-            @if (canUpdate(item)) {
+            <!-- While this plugin is being installed, updated or removed its button gives way to an
+                 indeterminate bar: the work has no known length, and a merely-disabled button reads as
+                 nothing happening. The other rows keep their buttons, disabled by busy(). -->
+            @if (item.state === 'busy') {
+              <app-progress-bar [ariaLabel]="'Working on ' + item.name" />
+            } @else if (canUpdate(item)) {
               <app-button
                 variant="solid"
                 tone="info"
