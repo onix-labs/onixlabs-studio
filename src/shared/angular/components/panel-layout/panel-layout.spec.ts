@@ -151,6 +151,47 @@ describe('PanelLayout', () => {
     expect(wrapperOf(host, 'right').style.width).toBe('512px');
   });
 
+  it('edgeSizes_whenTheLayoutIsShort_holdABottomStackBackSoTheMainAreaKeepsItsMinimum', async () => {
+    // jsdom has no ResizeObserver; stand one in that hands its callback back so the test can report
+    // a height, as the platform would after layout.
+    const captured: { notify: ResizeObserverCallback | null } = { notify: null };
+    class FakeResizeObserver {
+      public constructor(callback: ResizeObserverCallback) {
+        captured.notify = callback;
+      }
+      public observe(): void {
+        // Nothing to watch under jsdom.
+      }
+      public disconnect(): void {
+        // Nothing to release under jsdom.
+      }
+    }
+    const original: typeof ResizeObserver | undefined = globalThis.ResizeObserver;
+    globalThis.ResizeObserver = FakeResizeObserver as unknown as typeof ResizeObserver;
+    try {
+      const { fixture, host } = await createHost('layout-short-spec');
+      TestBed.inject(PanelArrangements).move('layout-short-spec', 'side', 'bottom');
+      await fixture.whenStable();
+
+      // Unmeasured, the stack renders at its 200px default: only the viewport bounds it.
+      expect(wrapperOf(host, 'bottom').style.height).toBe('200px');
+
+      // A 260px layout has 140px to spare once the main area keeps its 120px minimum.
+      const layout: HTMLElement = host.querySelector<HTMLElement>('app-panel-layout')!;
+      Object.defineProperty(layout, 'clientHeight', { value: 260, configurable: true });
+      captured.notify?.([], {} as unknown as ResizeObserver);
+      await fixture.whenStable();
+
+      expect(wrapperOf(host, 'bottom').style.height).toBe('140px');
+    } finally {
+      if (original === undefined) {
+        delete (globalThis as { ResizeObserver?: typeof ResizeObserver }).ResizeObserver;
+      } else {
+        globalThis.ResizeObserver = original;
+      }
+    }
+  });
+
   it('grip_whileDragged_carriesTheActiveClass', async () => {
     const { fixture, host } = await createHost();
     const grip: HTMLElement = wrapperOf(host, 'right').querySelector<HTMLElement>(
