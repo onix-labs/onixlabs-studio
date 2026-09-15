@@ -11,7 +11,7 @@ import { Accordion } from '@shared/angular/components/forms/accordion/accordion'
 import { Button } from '@shared/angular/components/forms/button/button';
 import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
-import { Textarea } from '@shared/angular/components/forms/textarea/textarea';
+import { MarkdownField } from '@shared/angular/components/forms/markdown-field/markdown-field';
 import { Toggle } from '@shared/angular/components/forms/toggle/toggle';
 import { Icon } from '@shared/angular/icons/icon';
 import { Log } from '@shared/angular/services/log/log';
@@ -29,7 +29,7 @@ import { PromptScopeEditor } from '../prompt-scope-editor/prompt-scope-editor';
  */
 @Component({
   selector: 'app-prompt-profiles',
-  imports: [Accordion, Button, SettingRow, TextField, Textarea, Toggle, PromptScopeEditor],
+  imports: [Accordion, Button, MarkdownField, SettingRow, TextField, Toggle, PromptScopeEditor],
   templateUrl: './prompt-profiles.html',
   styleUrls: ['../sections/section.scss', './prompt-profiles.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,

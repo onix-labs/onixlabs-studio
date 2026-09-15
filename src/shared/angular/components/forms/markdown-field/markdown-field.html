@@ -1,0 +1,52 @@
+<!-- The inline editor, framed as a form control. -->
+<div class="markdown-field__frame">
+  <app-markdown-editor
+    variant="inset"
+    [content]="value()"
+    [readOnly]="disabled()"
+    (contentChange)="onChange($event)"
+  />
+</div>
+
+<!-- Room to write: the same text in a window of its own, expandable to the screen, as the agent
+     composer offers. Edits there are a draft until applied. -->
+<div class="markdown-field__actions">
+  <app-button
+    variant="outline"
+    [icon]="Icon.MARKDOWN_FILL"
+    label="Edit"
+    [ariaLabel]="'Edit ' + (ariaLabel() ?? 'in a window')"
+    tooltip="Edit in a window"
+    [disabled]="disabled()"
+    (click)="openModal()"
+  />
+</div>
+
+<app-modal
+  [open]="modalOpen()"
+  [width]="50"
+  [height]="37.5"
+  [expandable]="true"
+  [ariaLabel]="modalTitle()"
+  (dismiss)="cancelModal()"
+>
+  <ng-template appModalContent>
+    <div class="markdown-field__modal">
+      <h2 class="markdown-field__modal-title">{{ modalTitle() }}</h2>
+      @if (modalOpen()) {
+        <div class="markdown-field__modal-editor">
+          <app-markdown-editor
+            variant="inset"
+            [content]="draftSeed()"
+            [isActive]="true"
+            (contentChange)="onDraftChange($event)"
+          />
+        </div>
+      }
+      <div class="markdown-field__modal-actions">
+        <app-button label="Cancel" (click)="cancelModal()" />
+        <app-button variant="solid" [icon]="Icon.CHECK" label="Apply" (click)="applyModal()" />
+      </div>
+    </div>
+  </ng-template>
+</app-modal>
