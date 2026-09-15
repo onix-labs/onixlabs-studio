@@ -50,6 +50,7 @@
   @for (row of rows(); track row.key) {
     <app-accordion
       [heading]="row.stored?.name ?? (row.draft.name || 'New skill')"
+      [icon]="Icon.SKILL"
       [expanded]="row.key === justCreated()"
     >
       @if (row.stored?.problem; as problem) {

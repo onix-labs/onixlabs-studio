@@ -73,11 +73,11 @@ describe('AiSettingsSection', () => {
   }
 
   /**
-   * Gets the connection-list item elements.
+   * Gets the connection-list item elements (one accordion per configuration).
    * @returns Returns the item elements.
    */
   function items(): HTMLElement[] {
-    return Array.from(host.querySelectorAll<HTMLElement>('.ai-connections__item'));
+    return Array.from(host.querySelectorAll<HTMLElement>('.ai-connections__list app-accordion'));
   }
 
   /**
@@ -180,8 +180,9 @@ describe('AiSettingsSection', () => {
     show('provider', 'anthropic');
     expect(host.querySelectorAll('app-ai-connection-editor').length).toBe(0);
 
-    const toggle: HTMLButtonElement | null =
-      host.querySelector<HTMLButtonElement>('.ai-connections__toggle');
+    const toggle: HTMLButtonElement | null = host.querySelector<HTMLButtonElement>(
+      '.ai-connections__list app-accordion .accordion__header',
+    );
     toggle?.click();
     fixture.detectChanges();
 

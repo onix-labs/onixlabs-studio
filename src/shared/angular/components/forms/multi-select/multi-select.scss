@@ -1,0 +1,176 @@
+:host {
+  display: inline-flex;
+}
+
+// Stretch to the container width; the face drops its content-width floor so it can fill (or shrink).
+:host(.multi-select--full) {
+  display: flex;
+}
+
+:host(.multi-select--full) .multi-select {
+  flex: 1;
+  min-inline-size: 0;
+  max-inline-size: none;
+}
+
+// The face is drawn to the same recipe as the single-select dropdown, so the two sit in one strip
+// without a seam: the same height, padding, border, radius and caret.
+.multi-select {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-inline-size: 9rem;
+  // A long selection truncates rather than growing the face across the row.
+  max-inline-size: 18rem;
+  block-size: var(--control-height);
+  padding: 0 0.45rem;
+  font: inherit;
+  font-size: 0.8rem;
+  color: inherit;
+  background: var(--form-control-background-color);
+  border: 0.0625rem solid var(--form-control-border-color);
+  border-radius: calc(0.4rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  cursor: default;
+  transition: border-color 150ms ease-in-out;
+
+  &:hover {
+    border-color: var(--form-control-border-color--hover);
+  }
+
+  // Form controls signal focus by recolouring their border to the accent, not with an outline ring.
+  &:focus-visible {
+    outline: none;
+    border-color: var(--accent-color);
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+}
+
+// The selection (or placeholder) on a single line, truncated with an ellipsis so it cannot grow the
+// face's height. Shrinks within the flex row, leaving the caret visible.
+.multi-select__label {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-align: start;
+}
+
+// The placeholder reads as a hint rather than a value.
+.multi-select--empty .multi-select__label {
+  color: var(--form-muted-foreground-color);
+}
+
+// The caret points down when closed and flips up while the panel is open, as the dropdown's does.
+.multi-select__caret {
+  flex: none;
+  color: var(--form-muted-foreground-color);
+
+  .multi-select--open & {
+    rotate: 180deg;
+  }
+}
+
+// The panel, rendered through the CDK overlay to the dropdown popup's recipe. Its minimum width is
+// the face's, set inline when it opens, so a short option list still lines up under the control.
+.multi-select__panel {
+  display: flex;
+  flex-direction: column;
+  margin-block: 0.25rem;
+  padding: 0.375rem;
+  background: var(--dropdown-menu-background-color);
+  border: 0.0625rem solid var(--dropdown-menu-border-color);
+  border-radius: calc(0.5rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  box-shadow: 0 0.25rem 0.75rem rgba(0, 0, 0, 0.3);
+
+  // Cap the visible row count; extra rows remain reachable via scroll and keyboard.
+  max-block-size: calc(var(--dropdown-menu-max-items, 16) * 1lh + 1.5rem);
+  overflow-y: auto;
+}
+
+// A row: a tick box and its label, highlighted as a whole on hover or keyboard focus. Ticking is
+// reported through the row's aria-checked, which the CDK maintains.
+.multi-select__option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  inline-size: 100%;
+  padding: 0.25rem 0.5rem;
+  font: inherit;
+  font-size: 0.8rem;
+  color: var(--dropdown-menu-foreground-color);
+  text-align: start;
+  background: none;
+  border: none;
+  border-radius: calc(0.25rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  cursor: default;
+  transition:
+    background 100ms ease-in-out,
+    color 100ms ease-in-out;
+
+  &:hover,
+  &:focus-visible {
+    outline: none;
+    background: var(--dropdown-menu-item-background-color--hover);
+    color: var(--dropdown-menu-item-foreground-color--hover);
+  }
+
+  &[aria-disabled='true'] {
+    opacity: 0.4;
+  }
+}
+
+// The tick box, drawn to the checkbox atom's recipe (a bordered square, the tick as two borders of a
+// rotated box) so a ticked row reads exactly like a ticked checkbox elsewhere. Decorative: the row
+// itself carries the checked state.
+.multi-select__box {
+  position: relative;
+  flex: none;
+  inline-size: 1rem;
+  block-size: 1rem;
+  background: var(--form-control-background-color);
+  border: 0.0625rem solid var(--form-control-border-color);
+  border-radius: calc(0.3rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  transition:
+    background-color 150ms ease-in-out,
+    border-color 150ms ease-in-out;
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset-block-start: 0.12rem;
+    inset-inline-start: 0.3rem;
+    inline-size: 0.26rem;
+    block-size: 0.52rem;
+    border-inline-end: 0.13rem solid var(--form-on-accent-color);
+    border-block-end: 0.13rem solid var(--form-on-accent-color);
+    transform: rotate(45deg) scale(0);
+    transition: transform 150ms ease-in-out;
+  }
+}
+
+.multi-select__option[aria-checked='true'] .multi-select__box {
+  background: var(--accent-color);
+  border-color: var(--accent-color);
+
+  &::before {
+    transform: rotate(45deg) scale(1.2);
+  }
+}
+
+.multi-select__option-label {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}

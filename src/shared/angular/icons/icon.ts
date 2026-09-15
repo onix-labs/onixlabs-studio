@@ -1140,6 +1140,23 @@ export class Icon {
   public static readonly KEYBOARD: Icon = new Icon('ph ph-keyboard');
 
   /**
+   * Gets the icon heading each prompt profile in the Prompt Profiles list (regular weight matches
+   * the accordion caret).
+   */
+  public static readonly PROMPT_PROFILE: Icon = new Icon('ph ph-chat-text');
+
+  /**
+   * Gets the icon heading each skill in the Skills list (regular weight matches the accordion caret).
+   */
+  public static readonly SKILL: Icon = new Icon('ph ph-sparkle');
+
+  /**
+   * Gets the icon heading each language profile in the Language Profiles list (regular weight matches
+   * the accordion caret).
+   */
+  public static readonly LANGUAGE_PROFILE: Icon = new Icon('ph ph-file-code');
+
+  /**
    * Gets the light-theme icon.
    */
   public static readonly THEME_LIGHT: Icon = new Icon('ph ph-sun');

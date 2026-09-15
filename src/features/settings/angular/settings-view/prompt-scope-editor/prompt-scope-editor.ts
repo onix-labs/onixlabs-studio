@@ -12,38 +12,48 @@ import {
   AgentSurface,
   PromptScope,
 } from '@shared/api/ai-types';
-import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
-import { LanguageSelect } from '@shared/angular/components/forms/language-select/language-select';
+import {
+  MultiSelect,
+  MultiSelectItem,
+} from '@shared/angular/components/forms/multi-select/multi-select';
 import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
-import { knownLanguages } from '@shared/angular/services/plugins/language-names';
+import {
+  knownLanguages,
+  languageDisplayName,
+} from '@shared/angular/services/plugins/language-names';
 
 /**
  * Edits a {@link PromptScope}: which surfaces, and which editor languages, a prompt profile or a skill
  * applies to. Shared by both editors so the two features cannot drift in how a scope is described —
- * the same checkboxes, the same wording about what "none ticked" means.
+ * the same pickers, the same wording about what "nothing ticked" means.
  */
 @Component({
   selector: 'app-prompt-scope-editor',
-  imports: [Checkbox, LanguageSelect, SettingRow],
+  imports: [MultiSelect, SettingRow],
   templateUrl: './prompt-scope-editor.html',
   styleUrl: './prompt-scope-editor.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class PromptScopeEditor {
   /**
-   * Gets the surfaces a scope may name, in display order.
+   * Gets the surfaces a scope may name, in display order, each under its display name.
    */
-  protected readonly surfaces: readonly AgentSurface[] = AGENT_SURFACES;
+  protected readonly surfaceOptions: readonly MultiSelectItem[] = AGENT_SURFACES.map(
+    (surface: AgentSurface): MultiSelectItem => ({
+      value: surface,
+      label: AGENT_SURFACE_LABELS[surface],
+    }),
+  );
 
   /**
-   * Gets the display name of each surface.
+   * Gets the languages offered, each under its display name.
    */
-  protected readonly labels: Readonly<Record<AgentSurface, string>> = AGENT_SURFACE_LABELS;
-
-  /**
-   * Gets the language identifiers offered.
-   */
-  protected readonly languageOptions: readonly string[] = knownLanguages();
+  protected readonly languageOptions: readonly MultiSelectItem[] = knownLanguages().map(
+    (language: string): MultiSelectItem => ({
+      value: language,
+      label: languageDisplayName(language),
+    }),
+  );
 
   /**
    * Gets or sets the scope being edited.
@@ -56,28 +66,12 @@ export class PromptScopeEditor {
   public readonly disabled: InputSignal<boolean> = input<boolean>(false);
 
   /**
-   * Determines whether a surface is in the scope.
-   * @param surface The surface.
-   * @returns Returns true when it is named.
+   * Sets the surfaces. The picker reports values in option order, which is {@link AGENT_SURFACES}
+   * order, so the scope's surfaces stay canonically ordered without a re-sort here.
+   * @param surfaces The selected surfaces.
    */
-  protected has(surface: AgentSurface): boolean {
-    return this.scope().surfaces.includes(surface);
-  }
-
-  /**
-   * Adds or removes a surface.
-   * @param surface The surface.
-   * @param on Whether it should be in the scope.
-   */
-  protected toggle(surface: AgentSurface, on: boolean): void {
-    const current: PromptScope = this.scope();
-    const surfaces: readonly AgentSurface[] = on
-      ? AGENT_SURFACES.filter(
-          (candidate: AgentSurface): boolean =>
-            candidate === surface || current.surfaces.includes(candidate),
-        )
-      : current.surfaces.filter((candidate: AgentSurface): boolean => candidate !== surface);
-    this.scope.set({ ...current, surfaces });
+  protected onSurfaces(surfaces: readonly string[]): void {
+    this.scope.set({ ...this.scope(), surfaces: surfaces as readonly AgentSurface[] });
   }
 
   /**

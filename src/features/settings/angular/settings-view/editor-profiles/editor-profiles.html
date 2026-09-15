@@ -10,11 +10,16 @@
   </div>
 
   @for (profile of profiles(); track profile.id) {
-    <app-accordion [heading]="profile.name">
-      <app-setting-row label="Languages" description="Languages this profile applies to.">
-        <app-language-select
-          [languages]="languageOptions"
+    <app-accordion [heading]="profile.name" [icon]="Icon.LANGUAGE_PROFILE">
+      <app-setting-row
+        label="Languages"
+        description="Languages this profile applies to. A profile with none chosen applies nowhere."
+      >
+        <app-multi-select
+          [options]="languageOptions"
           [value]="profile.languages"
+          placeholder="No languages"
+          ariaLabel="Languages this profile applies to"
           (valueChange)="onLanguagesChange(profile.id, $event)"
         />
       </app-setting-row>
@@ -61,12 +66,13 @@
         </div>
       }
 
-      <app-button
-        class="profiles__delete"
-        [icon]="Icon.TRASH"
-        label="Delete profile"
-        (click)="deleteProfile(profile.id)"
-      />
+      <div class="profiles__footer">
+        <app-button
+          [icon]="Icon.TRASH"
+          label="Delete profile"
+          (click)="deleteProfile(profile.id)"
+        />
+      </div>
     </app-accordion>
   }
 </div>

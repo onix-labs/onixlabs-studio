@@ -3,7 +3,10 @@ import { Log } from '@shared/angular/services/log/log';
 import { Accordion } from '@shared/angular/components/forms/accordion/accordion';
 import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
 import { Dropdown } from '@shared/angular/components/forms/dropdown/dropdown';
-import { LanguageSelect } from '@shared/angular/components/forms/language-select/language-select';
+import {
+  MultiSelect,
+  MultiSelectItem,
+} from '@shared/angular/components/forms/multi-select/multi-select';
 import { NumberField } from '@shared/angular/components/forms/number-field/number-field';
 import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
 import { Toggle } from '@shared/angular/components/forms/toggle/toggle';
@@ -15,6 +18,7 @@ import {
 import { findSection } from '@shared/angular/services/settings/settings-registry';
 import { ChoiceOption, SettingDef } from '@shared/angular/services/settings/settings-schema';
 import { Icon } from '@shared/angular/icons/icon';
+import { languageDisplayName } from '@shared/angular/services/plugins/language-names';
 import { Button } from '@shared/angular/components/forms/button/button';
 
 /**
@@ -27,7 +31,7 @@ import { Button } from '@shared/angular/components/forms/button/button';
  */
 @Component({
   selector: 'app-editor-profiles',
-  imports: [Button, SettingRow, Toggle, Checkbox, Dropdown, NumberField, Accordion, LanguageSelect],
+  imports: [Button, SettingRow, Toggle, Checkbox, Dropdown, NumberField, Accordion, MultiSelect],
   templateUrl: './editor-profiles.html',
   styleUrls: ['../sections/section.scss', './editor-profiles.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -66,9 +70,9 @@ export class EditorProfiles {
   ).filter((setting: SettingDef): boolean => setting.profileOverridable === true);
 
   /**
-   * Gets the language identifiers offered when assigning languages to a profile.
+   * Gets the languages offered when assigning languages to a profile, each under its display name.
    */
-  protected readonly languageOptions: readonly string[] = [
+  protected readonly languageOptions: readonly MultiSelectItem[] = [
     'typescript',
     'javascript',
     'json',
@@ -84,7 +88,10 @@ export class EditorProfiles {
     'sql',
     'yaml',
     'shell',
-  ];
+  ].map((language: string): MultiSelectItem => ({
+    value: language,
+    label: languageDisplayName(language),
+  }));
 
   /**
    * Creates a new, empty editor profile.

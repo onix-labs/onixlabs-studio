@@ -22,7 +22,7 @@ import { AiRemoteNotifications } from './ai-remote-notifications/ai-remote-notif
 import { AiToolPolicies } from './ai-tool-policies/ai-tool-policies';
 import { AiNetworkLocations } from './ai-network-locations/ai-network-locations';
 import { AiWritePaths } from './ai-write-paths/ai-write-paths';
-import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { Accordion } from '@shared/angular/components/forms/accordion/accordion';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { Icon } from '@shared/angular/icons/icon';
 
@@ -43,6 +43,7 @@ export type AiSettingsView = 'general' | 'security' | 'provider';
 @Component({
   selector: 'app-ai-settings',
   imports: [
+    Accordion,
     Button,
     ShellPicker,
     SettingRow,
@@ -52,7 +53,6 @@ export type AiSettingsView = 'general' | 'security' | 'provider';
     AiToolPolicies,
     AiNetworkLocations,
     AiWritePaths,
-    AppIcon,
   ],
   templateUrl: './ai-settings.html',
   styleUrls: ['../section.scss', './ai-settings.scss'],
@@ -147,14 +147,17 @@ export class AiSettingsSection {
   }
 
   /**
-   * Toggles a configuration's expanded state.
+   * Records a configuration's expanded state, as reported by its accordion.
    * @param id The connection id.
+   * @param expanded True when the configuration is expanded.
    */
-  protected toggle(id: string): void {
+  protected setExpanded(id: string, expanded: boolean): void {
     this.expandedIds.update((current: ReadonlySet<string>): ReadonlySet<string> => {
       const next: Set<string> = new Set<string>(current);
-      if (!next.delete(id)) {
+      if (expanded) {
         next.add(id);
+      } else {
+        next.delete(id);
       }
       return next;
     });
