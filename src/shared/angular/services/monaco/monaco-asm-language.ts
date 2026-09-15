@@ -1,4 +1,5 @@
 import type * as MonacoApi from 'monaco-editor';
+import { inRealm } from './monaco-realm';
 
 /**
  * Specifies the Monaco language identifier for disassembled machine code.
@@ -43,8 +44,13 @@ const ASM_GRAMMAR: MonacoApi.languages.IMonarchLanguage = {
  * Registers the `asm` language and its Monarch grammar with Monaco, so the disassembly editor renders
  * syntax-highlighted assembly. Idempotent and a no-op when Monaco has not loaded.
  * @param monaco The loaded Monaco namespace, or undefined when it has not loaded yet.
+ * @param realm The window the instance was loaded into, when it is not this one: the grammar's
+ * regular expressions are rebuilt there, since Monaco refuses another window's.
  */
-export function registerAsmLanguage(monaco: typeof MonacoApi | undefined): void {
+export function registerAsmLanguage(
+  monaco: typeof MonacoApi | undefined,
+  realm: Window | undefined = undefined,
+): void {
   if (monaco === undefined) {
     return;
   }
@@ -58,5 +64,8 @@ export function registerAsmLanguage(monaco: typeof MonacoApi | undefined): void 
     return;
   }
   monaco.languages.register({ id: ASM_LANGUAGE_ID });
-  monaco.languages.setMonarchTokensProvider(ASM_LANGUAGE_ID, ASM_GRAMMAR);
+  monaco.languages.setMonarchTokensProvider(
+    ASM_LANGUAGE_ID,
+    realm === undefined ? ASM_GRAMMAR : inRealm(ASM_GRAMMAR, realm),
+  );
 }

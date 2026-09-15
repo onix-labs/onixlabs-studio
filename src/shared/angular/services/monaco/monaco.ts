@@ -85,6 +85,17 @@ interface MonacoTypescriptContribution {
 }
 
 /**
+ * Resolves a path under the application's served assets to an absolute URL, against the main
+ * document's base. A child window's document is `about:blank`, so a relative asset path handed to it
+ * (a script, a worker) would resolve against nothing; the main document is where the assets live.
+ * @param path The asset path, relative to the application root.
+ * @returns Returns the absolute URL.
+ */
+function assetUrl(path: string): string {
+  return new URL(path, document.baseURI).href;
+}
+
+/**
  * Loads and configures Monaco for the code editor: bootstraps the AMD loader, wires the worker
  * environment, registers the application's themes (built from the `--gray-*` palette), and exposes
  * language detection and default editor options derived from settings.
@@ -123,6 +134,20 @@ export class Monaco {
   private loadPromise: Promise<void> | null = null;
 
   /**
+   * Holds the Monaco instance loaded into each child window, by window, so a window asks for it once
+   * and every fence in that window shares it. Weak, so a closed window's entry goes with it.
+   */
+  private readonly childLoads: WeakMap<Window, Promise<typeof MonacoApi>> = new WeakMap<
+    Window,
+    Promise<typeof MonacoApi>
+  >();
+
+  /**
+   * Holds the loaded child-window instances, so a theme change reaches every window's editors.
+   */
+  private readonly childInstances: Set<typeof MonacoApi> = new Set<typeof MonacoApi>();
+
+  /**
    * Holds predicates that suppress the heuristic semantic tokens for the models they own. A language
    * server registers one (via {@link suppressHeuristicTokensWhen}) so its accurate tokens are never
    * second-guessed by the heuristic for documents it serves.
@@ -143,6 +168,43 @@ export class Monaco {
   public ensureLoaded(): Promise<void> {
     this.loadPromise ??= this.load();
     return this.loadPromise;
+  }
+
+  /**
+   * Ensures Monaco is loaded into the window that owns a document, and returns that window's
+   * instance.
+   *
+   * Monaco is not multi-window aware: it settles focus — and with it the caret, the selection colour
+   * and whether its keybindings fire at all — against the document it was loaded into, and the
+   * `monaco-editor` build exposes no way to register another window. So an editor created in a child
+   * window (a modal, a popped-out panel) with the main window's instance is forever "unfocused":
+   * hidden caret, inactive selection, Home/End/undo dead. The remedy is an instance per window, each
+   * loaded into its own document, so that every window's editors resolve focus natively. For the main
+   * document this is {@link ensureLoaded}; a child window gets its own loader, worker environment,
+   * themes and languages, once, and shares them across its editors.
+   * @param ownerDocument The document the editor will be created in.
+   * @returns Returns a promise that resolves to the Monaco namespace loaded into that document's
+   * window.
+   */
+  public async ensureLoadedIn(ownerDocument: Document): Promise<typeof MonacoApi> {
+    if (ownerDocument === document) {
+      await this.ensureLoaded();
+      const main: typeof MonacoApi | undefined = window.monaco;
+      if (main === undefined) {
+        throw new Error('Monaco did not load into the main window.');
+      }
+      return main;
+    }
+    const target: Window | null = ownerDocument.defaultView;
+    if (target === null) {
+      throw new Error('The document has no window to load Monaco into.');
+    }
+    let load: Promise<typeof MonacoApi> | undefined = this.childLoads.get(target);
+    if (load === undefined) {
+      load = this.loadIntoChild(target);
+      this.childLoads.set(target, load);
+    }
+    return load;
   }
 
   /**
@@ -241,6 +303,9 @@ export class Monaco {
    */
   public refreshThemes(): void {
     defineThemes(window.monaco, this.settings.textEditorAccentSelection());
+    for (const instance of this.childInstances) {
+      defineThemes(instance, this.settings.textEditorAccentSelection());
+    }
   }
 
   /**
@@ -334,53 +399,97 @@ export class Monaco {
    * @returns Returns the worker URL.
    */
   private resolveWorkerUrl(this: void, _moduleId: string, label: string): string {
+    // Absolute against the application's own base, not the requesting window's: a child window's
+    // document is `about:blank`, against which a relative worker path resolves to nothing.
     if (label === 'json') {
-      return './vs/language/json/json.worker.js';
+      return assetUrl('./vs/language/json/json.worker.js');
     }
     if (label === 'css' || label === 'scss' || label === 'less') {
-      return './vs/language/css/css.worker.js';
+      return assetUrl('./vs/language/css/css.worker.js');
     }
     if (label === 'html' || label === 'handlebars' || label === 'razor') {
-      return './vs/language/html/html.worker.js';
+      return assetUrl('./vs/language/html/html.worker.js');
     }
     if (label === 'typescript' || label === 'javascript') {
-      return './vs/language/typescript/ts.worker.js';
+      return assetUrl('./vs/language/typescript/ts.worker.js');
     }
-    return './vs/editor/editor.worker.js';
+    return assetUrl('./vs/editor/editor.worker.js');
   }
 
   /**
    * Injects the Monaco AMD loader script and resolves once the editor module has loaded.
    * @returns Returns a promise that resolves when Monaco is on `window.monaco`.
    */
-  private loadScript(): Promise<void> {
-    return new Promise<void>((resolve: () => void, reject: (reason: Error) => void): void => {
-      if (window.monaco !== undefined) {
-        resolve();
-        return;
-      }
+  private async loadScript(): Promise<void> {
+    if (window.monaco !== undefined) {
+      return;
+    }
+    window.monaco = await this.loadInto(window);
+  }
 
-      const script: HTMLScriptElement = document.createElement('script');
-      script.src = './vs/loader.js';
-      script.async = true;
-      script.onload = (): void => {
-        const loader: {
-          config: (config: { paths: { vs: string } }) => void;
-          (modules: readonly string[], callback: (monaco: typeof MonacoApi) => void): void;
-        } = (window as unknown as { require: typeof loader }).require;
-        loader.config({ paths: { vs: './vs' } });
-        loader(['vs/editor/editor.main'], (monaco: typeof MonacoApi): void => {
-          window.monaco = monaco;
-          resolve();
-        });
-      };
-      script.onerror = (): void => {
-        const error: Error = new Error('Failed to load the Monaco editor loader.');
-        this.log.error('Monaco', 'Failed to load the Monaco editor loader', error);
-        reject(error);
-      };
-      document.head.appendChild(script);
+  /**
+   * Loads a Monaco instance of its own into a child window and prepares it as the main window's is:
+   * the worker environment, the themes, and the languages the application adds. The instance is
+   * forgotten when the window goes, so a reopened modal loads afresh into its new window.
+   * @param target The child window.
+   * @returns Returns a promise that resolves to the instance loaded into the window.
+   */
+  private async loadIntoChild(target: Window): Promise<typeof MonacoApi> {
+    const monaco: typeof MonacoApi = await this.loadInto(target);
+    target.monaco = monaco;
+    try {
+      defineThemes(monaco, this.settings.textEditorAccentSelection());
+      registerAsmLanguage(monaco, target);
+      registerBraceFolding(monaco);
+    } catch (error: unknown) {
+      // A fence would otherwise fall silently back to its placeholder, with nothing to say why.
+      this.log.error(
+        'Monaco',
+        'Failed to prepare Monaco in a child window',
+        error instanceof Error ? `${error.message}\n${error.stack ?? ''}` : String(error),
+      );
+      throw error;
+    }
+    this.childInstances.add(monaco);
+    target.addEventListener('pagehide', (): void => {
+      this.childInstances.delete(monaco);
+      this.childLoads.delete(target);
     });
+    this.log.info('Monaco', 'Monaco editor initialized in a child window');
+    return monaco;
+  }
+
+  /**
+   * Injects the Monaco AMD loader into a window's document and resolves with the editor module once
+   * it has loaded there. Every URL is absolute against the application's base, since a child window's
+   * document has none of its own to resolve a relative one against.
+   * @param target The window to load into.
+   * @returns Returns a promise that resolves to the Monaco namespace loaded into the window.
+   */
+  private loadInto(target: Window): Promise<typeof MonacoApi> {
+    return new Promise<typeof MonacoApi>(
+      (resolve: (monaco: typeof MonacoApi) => void, reject: (reason: Error) => void): void => {
+        target.MonacoEnvironment = { getWorkerUrl: this.resolveWorkerUrl };
+        const targetDocument: Document = target.document;
+        const script: HTMLScriptElement = targetDocument.createElement('script');
+        script.src = assetUrl('./vs/loader.js');
+        script.async = true;
+        script.onload = (): void => {
+          const loader: {
+            config: (config: { paths: { vs: string } }) => void;
+            (modules: readonly string[], callback: (monaco: typeof MonacoApi) => void): void;
+          } = (target as unknown as { require: typeof loader }).require;
+          loader.config({ paths: { vs: assetUrl('./vs') } });
+          loader(['vs/editor/editor.main'], resolve);
+        };
+        script.onerror = (): void => {
+          const error: Error = new Error('Failed to load the Monaco editor loader.');
+          this.log.error('Monaco', 'Failed to load the Monaco editor loader', error);
+          reject(error);
+        };
+        targetDocument.head.appendChild(script);
+      },
+    );
   }
 
   /**
