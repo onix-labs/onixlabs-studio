@@ -524,6 +524,14 @@ export function buildOptions(
     ...(open.effort !== null && open.effort !== 'minimal'
       ? { effort: open.effort as Options['effort'] }
       : {}),
+    // 🔥 Claude Code's thinking display defaults to `omitted`: the model thinks, and the block arrives
+    // with its signature and NO text — so every "Thought process" row Studio rendered was empty (#711).
+    // `summarized` is the API's summary of the reasoning, not the full trace; there is no cost or
+    // privacy trade-off in it, which is why this is not a setting. `adaptive` is already the default
+    // where a model supports it, and the CLI accepts it for one that does not: probed 2026-09-16
+    // against Haiku 4.5 — the only listed model without `supportsAdaptiveThinking` — and the summary
+    // arrived, so it is not gated on the model.
+    thinking: { type: 'adaptive', display: 'summarized' },
     cwd: open.workspaceRoot ?? homedir(),
     ...(open.allowedWritePaths.length > 0
       ? { additionalDirectories: [...open.allowedWritePaths] }
