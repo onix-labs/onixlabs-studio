@@ -11,7 +11,7 @@
 .property-grid {
   // The frame. Cell rules are drawn by the cells themselves; clipping to the rounded frame is what
   // stops the first and last of them poking out of its corners.
-  --property-grid-line: var(--body-border-color);
+  --property-grid-line: var(--dock-border-color);
 
   display: flex;
   flex-direction: column;
