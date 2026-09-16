@@ -16,7 +16,14 @@
 //     their completion is not emitted explicitly the renderer that adopted them spins forever.
 //   - **the stream can end underneath an adopted turn.** Then no `result` is ever coming, and the
 //     same spinner problem appears with nothing at all to settle it.
+//   - **not every `result` answers the turn Studio is awaiting.** A session resumed after the
+//     harness died mid-task replays the orphaned task's stop as a turn of its own — a
+//     `task_notification` followed by a `result` — before the queued prompt has been so much as
+//     echoed. Settling on that result answers the user's message with nothing (#722). Studio's turns
+//     are stamped with a uuid the CLI echoes back on the frames that answer them, and the pump
+//     settles only on a result that is, or could be, the awaited turn's own.
 
+import { randomUUID } from 'node:crypto';
 import { basename } from 'node:path';
 import { homedir } from 'node:os';
 import type {
@@ -186,9 +193,33 @@ export class Session {
   private readonly liveTasks: Map<string, LiveTask> = new Map<string, LiveTask>();
 
   /**
+   * Holds every task this session has seen start, settled or not.
+   *
+   * Distinct from {@link liveTasks}, which a terminal `task_updated` prunes an instant before the
+   * `task_notification` for the same task arrives — so "live" cannot tell a task that just finished
+   * from one this session never knew about.
+   */
+  private readonly seenTasks: Set<string> = new Set<string>();
+
+  /**
    * Holds the pump, so teardown can wait for it.
    */
   private pumpDone: Promise<void> | null = null;
+
+  /**
+   * Holds the uuid stamped on the awaited turn's prompt, or null when nothing is awaited.
+   *
+   * The CLI echoes it as `user_message_uuid` on the first assistant message and on the `result` of
+   * the turn that consumed the prompt, which is what lets the pump tell that result from one the CLI
+   * produced on its own account.
+   */
+  private awaitedUuid: string | null = null;
+
+  /**
+   * Holds whether the CLI has acknowledged the awaited prompt — an assistant message stamped with its
+   * uuid has arrived — so an unstamped `result` after that point is trusted as the turn's own.
+   */
+  private acknowledged: boolean = false;
 
   /**
    * Settles the turn Studio is awaiting, or null when nothing is.
@@ -339,7 +370,10 @@ export class Session {
     // claude.ai-side, so a toggle lands on the held-open session rather than waiting for a reopen
     // that never comes.
     this.setRemoteControl(turn.remoteControl);
-    this.pending.push(this.turnMessage(turn));
+    const uuid: ReturnType<typeof randomUUID> = randomUUID();
+    this.awaitedUuid = uuid;
+    this.acknowledged = false;
+    this.pending.push({ ...this.turnMessage(turn), uuid });
     this.wake?.();
     return new Promise<void>((resolve: () => void): void => {
       this.settle = (): void => {
@@ -698,6 +732,7 @@ export class Session {
     switch (subtype) {
       case 'task_started': {
         const started: SDKTaskStartedMessage = message as SDKTaskStartedMessage;
+        this.seenTasks.add(started.task_id);
         this.liveTasks.set(started.task_id, {
           description: started.description,
           ...(started.tool_use_id === undefined ? {} : { toolId: started.tool_use_id }),
@@ -727,8 +762,17 @@ export class Session {
       }
       case 'task_notification': {
         const settled: SDKTaskNotificationMessage = message as SDKTaskNotificationMessage;
+        if (!this.seenTasks.has(settled.task_id)) {
+          // A task this session never saw start: the CLI replaying, on resume, the stop of one the
+          // previous session was killed underneath. Studio untracked it and said so when that session
+          // ended (#709), so this is history rather than news — and adopting it would have the pump
+          // owe a terminal status for a turn nothing is showing.
+          note(`session: dropped a replayed notification for unknown task ${settled.task_id}`);
+          break;
+        }
         // Pruned before emitting, so a consumer reacting to the settle never observes a stale live
         // entry for a task that has just finished.
+        this.seenTasks.delete(settled.task_id);
         this.liveTasks.delete(settled.task_id);
         emitBackgroundTask(this.sink, settled);
         // The CLI answers a settled task with a report-back turn of its own, which the renderer
@@ -776,7 +820,22 @@ export class Session {
         translate(this.sink, message, this.usage);
         // Mirror to claude.ai when bridged. Best-effort.
         this.bridge?.forward(message);
+        if (
+          message.type === 'assistant' &&
+          this.awaitedUuid !== null &&
+          stampedUuids(message).includes(this.awaitedUuid)
+        ) {
+          this.acknowledged = true;
+        }
         if (message.type === 'result' && this.pending.length === 0) {
+          if (this.settle !== null && !this.answersAwaitedTurn(message)) {
+            // 🔥 A result while a turn is awaited that cannot be that turn's: the stop of a task
+            // orphaned by a crash, replayed on resume as a zero-turn result before the prompt has
+            // been echoed (#722). Settling on it would answer the user with nothing. The turn's own
+            // result is still coming, stamped with its uuid.
+            note('session: ignored a result that does not answer the awaited turn');
+            continue;
+          }
           // A Studio-initiated turn is awaited by a run, which emits the terminal status that clears
           // the renderer's spinner. A turn nothing is awaiting has no run behind it, so unless its
           // completion is emitted here the renderer that adopted it spins forever. Two kinds reach
@@ -821,12 +880,36 @@ export class Session {
   }
 
   /**
+   * Decides whether a result is the awaited turn's own, so settling on it answers the prompt.
+   *
+   * Stamped results are exact: the CLI echoes the prompt's uuid, so a result naming other uuids — or
+   * none of ours — answers something else. An unstamped result is one the CLI minted for itself — the
+   * resume-replayed stop of an orphaned task, or the report-back turn it runs when a background task
+   * settles — unless the prompt has already been acknowledged, after which the turn is ours whatever
+   * the frame carries. An error is always taken, so a turn that fails before the model speaks does
+   * not hang. Probed 2026-09-16: a normal turn, a local slash command (`/cost`, zero turns) and an
+   * API error all come back stamped; the replayed stop and the report-back turn do not.
+   * @param message The result.
+   * @returns Returns true when the result settles the awaited turn.
+   */
+  private answersAwaitedTurn(message: SDKMessage): boolean {
+    const stamped: readonly string[] = stampedUuids(message);
+    if (stamped.length > 0) {
+      return this.awaitedUuid !== null && stamped.includes(this.awaitedUuid);
+    }
+    const result: { is_error?: boolean } = message as never;
+    return this.acknowledged || result.is_error === true;
+  }
+
+  /**
    * Settles the turn Studio is awaiting, if any.
    */
   private settleTurn(): void {
     const settle: (() => void) | null = this.settle;
     this.settle = null;
     this.fail = null;
+    this.awaitedUuid = null;
+    this.acknowledged = false;
     settle?.();
   }
 
@@ -838,6 +921,22 @@ export class Session {
     const fail: ((error: string) => void) | null = this.fail;
     this.settle = null;
     this.fail = null;
+    this.awaitedUuid = null;
+    this.acknowledged = false;
     fail?.(error);
   }
+}
+
+/**
+ * Reads the prompt uuids a frame is stamped with: `user_message_uuids` where the producer sends it,
+ * else the single `user_message_uuid`, else nothing.
+ * @param message The SDK message.
+ * @returns Returns the stamped uuids, empty when the frame carries none.
+ */
+function stampedUuids(message: SDKMessage): readonly string[] {
+  const frame: { user_message_uuid?: unknown; user_message_uuids?: unknown } = message as never;
+  if (Array.isArray(frame.user_message_uuids)) {
+    return frame.user_message_uuids.filter((id: unknown): id is string => typeof id === 'string');
+  }
+  return typeof frame.user_message_uuid === 'string' ? [frame.user_message_uuid] : [];
 }
