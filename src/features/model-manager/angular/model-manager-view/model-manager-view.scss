@@ -21,7 +21,7 @@
   justify-content: space-between;
   gap: 1rem;
   padding: 0.85rem 1.25rem;
-  border-block-end: 1px solid var(--form-border-color);
+  border-block-end: 1px solid var(--form-control-border-color);
 }
 
 .model-manager__runtime-state {
@@ -84,7 +84,7 @@
 .model-manager__progress {
   flex: none;
   padding: 0.6rem 1.25rem 0.75rem;
-  border-block-end: 1px solid var(--form-border-color);
+  border-block-end: 1px solid var(--form-control-border-color);
 }
 
 .model-manager__progress-head {
@@ -108,7 +108,7 @@
 .model-manager__progress-track {
   block-size: 0.3rem;
   overflow: hidden;
-  background-color: var(--form-border-color);
+  background-color: var(--form-control-border-color);
   border-radius: calc(0.15rem * var(--border-radius-multiplier, 1));
 }
 
@@ -217,7 +217,7 @@
   padding: 0.05rem 0.4rem;
   font-size: 0.7rem;
   border-radius: calc(0.25rem * var(--border-radius-multiplier, 1));
-  background-color: var(--form-border-color);
+  background-color: var(--form-control-border-color);
   color: var(--form-muted-foreground-color);
 
   &--curated {
