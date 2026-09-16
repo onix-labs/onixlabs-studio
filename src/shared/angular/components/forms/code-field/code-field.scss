@@ -1,0 +1,54 @@
+// The field: the framed editor, filling whatever width its caller gives it.
+:host {
+  display: block;
+  inline-size: 100%;
+}
+
+// Filling its box: a column so the frame stretches down it, taking all the height the caller lays
+// out. The frame's flexed size is definite, so the editor's own 100% resolves against it.
+:host(.code-field--fill) {
+  display: flex;
+  flex-direction: column;
+  block-size: 100%;
+  min-block-size: 0;
+
+  .code-field__frame {
+    flex: 1 1 auto;
+    min-block-size: 0;
+  }
+}
+
+:host(.code-field--disabled) .code-field__frame {
+  opacity: 0.4;
+}
+
+// The same chrome the textarea wears, drawn around the editor, so a code field and a plain one read
+// as the same kind of control. Sizing to content, the frame's height is bound from the template —
+// the content's height held between the row bounds — so the editor inside, which fills its host,
+// takes exactly that.
+.code-field__frame {
+  overflow: hidden;
+  background: var(--form-control-background-color);
+  border: 0.0625rem solid var(--form-control-border-color);
+  border-radius: calc(0.4rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  transition: border-color 150ms ease-in-out;
+
+  &:hover {
+    border-color: var(--form-control-border-color--hover);
+  }
+
+  // Focus lives on Monaco's hidden textarea inside; the frame answers it as a textarea's border does
+  // its own focus.
+  &:focus-within {
+    border-color: var(--accent-color);
+  }
+}
+
+// A read-only field is a viewer, not an input: it does not light up on hover or focus.
+:host(.code-field--read-only) .code-field__frame {
+  &:hover,
+  &:focus-within {
+    border-color: var(--form-control-border-color);
+  }
+}

@@ -25,6 +25,7 @@ import { TextField } from '@shared/angular/components/forms/text-field/text-fiel
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { DockContainer } from '@shared/angular/components/dock-layout/dock-container/dock-container';
+import { Diagnostics } from '@shared/angular/services/diagnostics/diagnostics';
 import { DOCK_BLUEPRINT } from '@shared/angular/services/dock-layout/dock-blueprint';
 import { DockAutoHide } from '@shared/angular/services/dock-layout/dock-auto-hide';
 import { DockDrag } from '@shared/angular/services/dock-layout/dock-drag';
@@ -91,6 +92,9 @@ import { ApiWorkspace } from '../api-workspace/api-workspace';
     ApiWorkspace,
     ApiPrompts,
     ApiRequestOpener,
+    // The diagnostics the well's status strip counts: this tab's own, so a request body's JSON or XML
+    // problems are counted here and nowhere else, as a workspace tab's are.
+    Diagnostics,
     // The agent's in-app tools, registered against this tab's workspace for as long as it is open.
     ApiAgentCapabilities,
     // The dock framework, instantiated per dock-hosting view.

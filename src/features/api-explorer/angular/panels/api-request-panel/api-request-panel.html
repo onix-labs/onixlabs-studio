@@ -20,237 +20,277 @@
     />
   </app-panel-toolbar>
 
-  <div class="request">
-    <!-- The send bar: the method and the address it is sent to. -->
-    <div class="request__bar">
-      <app-dropdown
-        class="request__method"
-        [options]="methodOptions"
-        [value]="request.method"
-        ariaLabel="HTTP method"
-        (valueChange)="update({ method: $any($event) })"
-      />
-      <app-text-field
-        class="request__url"
-        [value]="request.url"
-        placeholder="https://api.example.com/resource"
-        ariaLabel="Request URL"
-        (valueChange)="update({ url: $event })"
-        (enter)="send()"
-      />
-    </div>
-
-    @if (resolvedUrl(); as resolved) {
-      <p class="request__resolved" title="The URL after variable substitution">→ {{ resolved }}</p>
-    }
-
-    <!-- The request's sections, mirroring the tabs a person expects on a request. -->
-    <div class="request__sections" role="tablist">
-      @for (item of sections; track item.id) {
-        <button
-          type="button"
-          role="tab"
-          class="request__section"
-          [class.request__section--active]="section() === item.id"
-          [attr.aria-selected]="section() === item.id"
-          (click)="section.set(item.id)"
-        >
-          {{ item.label }}
-        </button>
-      }
-    </div>
-
-    <div class="request__body">
-      @switch (section()) {
-        @case ('params') {
-          <app-property-grid
-            [rows]="request.params"
-            nameHeader="Parameter"
-            valueHeader="Value"
-            ariaLabel="Query parameters"
-            (rowChange)="updateField('params', $event)"
-            (add)="addField('params', $event)"
-            (remove)="removeField('params', $event)"
+  <!-- The request above its response, split by the shared panel layout so the divider between them
+       drags and the split is remembered across requests. Each half fills its pane; the body editor
+       and the response body take whatever height their pane has. The split waits for the panel to
+       have a height, so the response pane's default is a share of it. -->
+  @if (responseDefaultSize(); as responseSize) {
+    <app-panel-layout class="request" layoutKey="api-request">
+      <div main class="request__editor">
+        <!-- The send bar: the method and the address it is sent to. -->
+        <div class="request__bar">
+          <app-dropdown
+            class="request__method"
+            [options]="methodOptions"
+            [value]="request.method"
+            ariaLabel="HTTP method"
+            (valueChange)="update({ method: $any($event) })"
           />
-        }
-
-        @case ('headers') {
-          <app-property-grid
-            [rows]="request.headers"
-            nameHeader="Header"
-            valueHeader="Value"
-            ariaLabel="Request headers"
-            (rowChange)="updateField('headers', $event)"
-            (add)="addField('headers', $event)"
-            (remove)="removeField('headers', $event)"
+          <app-text-field
+            class="request__url"
+            [value]="request.url"
+            placeholder="https://api.example.com/resource"
+            ariaLabel="Request URL"
+            (valueChange)="update({ url: $event })"
+            (enter)="send()"
           />
-        }
+        </div>
 
-        @case ('auth') {
-          <div class="request__form">
-            <app-dropdown
-              [options]="authOptions"
-              [value]="request.auth.kind"
-              ariaLabel="Authentication scheme"
-              (valueChange)="setAuthKind($event)"
-            />
-
-            @switch (request.auth.kind) {
-              @case ('bearer') {
-                <app-text-field
-                  [value]="$any(request.auth).token"
-                  placeholder="Token"
-                  ariaLabel="Bearer token"
-                  (valueChange)="updateAuth({ token: $event })"
-                />
-              }
-              @case ('basic') {
-                <app-text-field
-                  [value]="$any(request.auth).username"
-                  placeholder="Username"
-                  ariaLabel="Username"
-                  (valueChange)="updateAuth({ username: $event })"
-                />
-                <app-password-field
-                  [value]="$any(request.auth).password"
-                  placeholder="Password"
-                  (valueChange)="updateAuth({ password: $event })"
-                />
-              }
-              @case ('api-key') {
-                <app-text-field
-                  [value]="$any(request.auth).key"
-                  placeholder="Key"
-                  ariaLabel="API key name"
-                  (valueChange)="updateAuth({ key: $event })"
-                />
-                <app-text-field
-                  [value]="$any(request.auth).value"
-                  placeholder="Value"
-                  ariaLabel="API key value"
-                  (valueChange)="updateAuth({ value: $event })"
-                />
-                <app-dropdown
-                  [options]="apiKeyInOptions"
-                  [value]="$any(request.auth).in"
-                  ariaLabel="Where the key is sent"
-                  (valueChange)="updateAuth({ in: $event })"
-                />
-              }
-            }
-          </div>
-        }
-
-        @case ('body') {
-          <div class="request__form">
-            <app-dropdown
-              [options]="bodyKindOptions"
-              [value]="request.body.kind"
-              ariaLabel="Body kind"
-              (valueChange)="setBodyKind($event)"
-            />
-
-            @switch (request.body.kind) {
-              @case ('none') {
-                <p class="request__hint">This request is sent without a body.</p>
-              }
-              @case ('form') {
-                <ng-container *ngTemplateOutlet="bodyFields"></ng-container>
-              }
-              @case ('urlencoded') {
-                <ng-container *ngTemplateOutlet="bodyFields"></ng-container>
-              }
-              @default {
-                <app-textarea
-                  [value]="request.body.text"
-                  [rows]="12"
-                  placeholder="Request body"
-                  ariaLabel="Request body"
-                  (valueChange)="
-                    update({
-                      body: { kind: request.body.kind, text: $event, fields: request.body.fields },
-                    })
-                  "
-                />
-              }
-            }
-          </div>
-        }
-
-        @case ('tests') {
-          <p class="request__hint">
-            Assertions against the response are not in this spike. The seam is the outcome the
-            engine already returns — status, headers, body and timings — so a test script would run
-            over that rather than over the socket.
+        @if (resolvedUrl(); as resolved) {
+          <p class="request__resolved" title="The URL after variable substitution">
+            → {{ resolved }}
           </p>
         }
 
-        @case ('settings') {
-          <div class="request__form">
-            <app-textarea
-              [value]="request.description"
-              [rows]="6"
-              placeholder="What this endpoint does, what it expects, what it returns…"
-              ariaLabel="Request description"
-              (valueChange)="update({ description: $event })"
-            />
-            <p class="request__hint">
-              The agent writes here when it adds an endpoint, so the explanation stays with the
-              request. Timeout and redirect handling are fixed in this spike.
-            </p>
-          </div>
-        }
-      }
-    </div>
-
-    <!-- The response. Absent until the request has been sent at least once. -->
-    <div class="request__response">
-      @if (sending()) {
-        <p class="request__hint">
-          <app-icon [icon]="Icon.SPINNER" />
-          Sending…
-        </p>
-      } @else if (outcome(); as outcome) {
-        @if (outcome.kind === 'failure') {
-          <p class="request__failure">
-            <app-icon [icon]="outcome.cancelled ? Icon.STOP : Icon.WARNING" />
-            {{ outcome.cancelled ? 'Cancelled' : outcome.message }}
-          </p>
-        } @else if (response(); as response) {
-          <div class="request__summary">
-            <span class="request__status" [attr.data-tone]="statusTone(response.status)">
-              {{ response.status }} {{ response.statusText }}
-            </span>
-            <span class="request__metric">{{ response.timings.totalMs | number: '1.0-0' }} ms</span>
-            <span class="request__metric">{{ formatSize(response.sizeBytes) }}</span>
-            @if (response.redirected) {
-              <span class="request__metric" [title]="response.finalUrl">redirected</span>
-            }
+        <!-- The request's sections, mirroring the tabs a person expects on a request. -->
+        <div class="request__sections" role="tablist">
+          @for (item of sections; track item.id) {
             <button
               type="button"
-              class="request__toggle"
-              (click)="showResponseHeaders.set(!showResponseHeaders())"
+              role="tab"
+              class="request__section"
+              [class.request__section--active]="section() === item.id"
+              [attr.aria-selected]="section() === item.id"
+              (click)="section.set(item.id)"
             >
-              {{ showResponseHeaders() ? 'Body' : 'Headers' }}
+              {{ item.label }}
             </button>
-          </div>
-
-          @if (showResponseHeaders()) {
-            <dl class="request__headers">
-              @for (entry of headerEntries(response); track entry[0]) {
-                <dt>{{ entry[0] }}</dt>
-                <dd>{{ entry[1] }}</dd>
-              }
-            </dl>
-          } @else {
-            <pre class="request__payload">{{ prettyBody(response) }}</pre>
           }
-        }
-      } @else {
-        <p class="request__hint">Send the request to see its response.</p>
-      }
-    </div>
-  </div>
+        </div>
+
+        <div class="request__body">
+          @switch (section()) {
+            @case ('params') {
+              <app-property-grid
+                [rows]="request.params"
+                nameHeader="Parameter"
+                valueHeader="Value"
+                ariaLabel="Query parameters"
+                (rowChange)="updateField('params', $event)"
+                (add)="addField('params', $event)"
+                (remove)="removeField('params', $event)"
+              />
+            }
+
+            @case ('headers') {
+              <app-property-grid
+                [rows]="request.headers"
+                nameHeader="Header"
+                valueHeader="Value"
+                ariaLabel="Request headers"
+                (rowChange)="updateField('headers', $event)"
+                (add)="addField('headers', $event)"
+                (remove)="removeField('headers', $event)"
+              />
+            }
+
+            @case ('auth') {
+              <div class="request__form">
+                <app-dropdown
+                  [options]="authOptions"
+                  [value]="request.auth.kind"
+                  ariaLabel="Authentication scheme"
+                  (valueChange)="setAuthKind($event)"
+                />
+
+                @switch (request.auth.kind) {
+                  @case ('bearer') {
+                    <app-text-field
+                      [value]="$any(request.auth).token"
+                      placeholder="Token"
+                      ariaLabel="Bearer token"
+                      (valueChange)="updateAuth({ token: $event })"
+                    />
+                  }
+                  @case ('basic') {
+                    <app-text-field
+                      [value]="$any(request.auth).username"
+                      placeholder="Username"
+                      ariaLabel="Username"
+                      (valueChange)="updateAuth({ username: $event })"
+                    />
+                    <app-password-field
+                      [value]="$any(request.auth).password"
+                      placeholder="Password"
+                      (valueChange)="updateAuth({ password: $event })"
+                    />
+                  }
+                  @case ('api-key') {
+                    <app-text-field
+                      [value]="$any(request.auth).key"
+                      placeholder="Key"
+                      ariaLabel="API key name"
+                      (valueChange)="updateAuth({ key: $event })"
+                    />
+                    <app-text-field
+                      [value]="$any(request.auth).value"
+                      placeholder="Value"
+                      ariaLabel="API key value"
+                      (valueChange)="updateAuth({ value: $event })"
+                    />
+                    <app-dropdown
+                      [options]="apiKeyInOptions"
+                      [value]="$any(request.auth).in"
+                      ariaLabel="Where the key is sent"
+                      (valueChange)="updateAuth({ in: $event })"
+                    />
+                  }
+                }
+              </div>
+            }
+
+            @case ('body') {
+              <div class="request__form request__form--fill">
+                <app-dropdown
+                  [options]="bodyKindOptions"
+                  [value]="request.body.kind"
+                  ariaLabel="Body kind"
+                  (valueChange)="setBodyKind($event)"
+                />
+
+                @switch (request.body.kind) {
+                  @case ('none') {
+                    <p class="request__hint">This request is sent without a body.</p>
+                  }
+                  @case ('form') {
+                    <ng-container *ngTemplateOutlet="bodyFields"></ng-container>
+                  }
+                  @case ('urlencoded') {
+                    <ng-container *ngTemplateOutlet="bodyFields"></ng-container>
+                  }
+                  @default {
+                    <!-- The raw body, coloured as the kind it is sent as (JSON, XML, or plain text) and
+                       filling the rest of the pane. The problems Monaco marks in it are counted in the
+                       well's status strip. -->
+                    <app-code-field
+                      [value]="request.body.text"
+                      [language]="bodyLanguage(request.body.kind)"
+                      [fill]="true"
+                      ariaLabel="Request body"
+                      (valueChange)="
+                        update({
+                          body: {
+                            kind: request.body.kind,
+                            text: $event,
+                            fields: request.body.fields,
+                          },
+                        })
+                      "
+                      (markersChange)="onBodyMarkers($event)"
+                    />
+                  }
+                }
+              </div>
+            }
+
+            @case ('tests') {
+              <p class="request__hint">
+                Assertions against the response are not in this spike. The seam is the outcome the
+                engine already returns — status, headers, body and timings — so a test script would
+                run over that rather than over the socket.
+              </p>
+            }
+
+            @case ('settings') {
+              <div class="request__form">
+                <app-textarea
+                  [value]="request.description"
+                  [rows]="6"
+                  placeholder="What this endpoint does, what it expects, what it returns…"
+                  ariaLabel="Request description"
+                  (valueChange)="update({ description: $event })"
+                />
+                <p class="request__hint">
+                  The agent writes here when it adds an endpoint, so the explanation stays with the
+                  request. Timeout and redirect handling are fixed in this spike.
+                </p>
+              </div>
+            }
+          }
+        </div>
+      </div>
+
+      <!-- The response, in a pane of its own beneath the request. Collapsed until the request has
+         been sent at least once, so the request has the whole panel until there is a response. -->
+      <app-panel
+        panelId="response"
+        defaultEdge="bottom"
+        [allowedEdges]="responseEdges"
+        [visible]="responseVisible()"
+        [defaultSize]="responseSize"
+        [minSize]="120"
+        [maxSize]="900"
+      >
+        <div class="request__response" role="region" aria-label="Response">
+          @if (sending()) {
+            <p class="request__hint">
+              <app-icon [icon]="Icon.SPINNER" />
+              Sending…
+            </p>
+          } @else if (outcome(); as outcome) {
+            @if (outcome.kind === 'failure') {
+              <p class="request__failure">
+                <app-icon [icon]="outcome.cancelled ? Icon.STOP : Icon.WARNING" />
+                {{ outcome.cancelled ? 'Cancelled' : outcome.message }}
+              </p>
+            } @else if (response(); as response) {
+              <div class="request__summary">
+                <span class="request__status" [attr.data-tone]="statusTone(response.status)">
+                  {{ response.status }} {{ response.statusText }}
+                </span>
+                <span class="request__metric">
+                  {{ response.timings.totalMs | number: '1.0-0' }} ms
+                </span>
+                <span class="request__metric">{{ formatSize(response.sizeBytes) }}</span>
+                @if (response.redirected) {
+                  <span class="request__metric" [title]="response.finalUrl">redirected</span>
+                }
+                <button
+                  type="button"
+                  class="request__toggle"
+                  (click)="showResponseHeaders.set(!showResponseHeaders())"
+                >
+                  {{ showResponseHeaders() ? 'Body' : 'Headers' }}
+                </button>
+              </div>
+
+              @if (showResponseHeaders()) {
+                <dl class="request__headers">
+                  @for (entry of headerEntries(response); track entry[0]) {
+                    <dt>{{ entry[0] }}</dt>
+                    <dd>{{ entry[1] }}</dd>
+                  }
+                </dl>
+              } @else {
+                <!-- The body, coloured as the content type the server declared, read-only, filling the
+                   rest of the pane. -->
+                <app-code-field
+                  class="request__payload"
+                  [value]="prettyBody(response)"
+                  [language]="responseLanguage(response)"
+                  [readOnly]="true"
+                  [fill]="true"
+                  ariaLabel="Response body"
+                />
+              }
+            }
+          } @else {
+            <p class="request__hint">Send the request to see its response.</p>
+          }
+        </div>
+      </app-panel>
+    </app-panel-layout>
+  }
 
   <!-- The form and url-encoded bodies are the same name/value list, so they share one grid. -->
   <ng-template #bodyFields>

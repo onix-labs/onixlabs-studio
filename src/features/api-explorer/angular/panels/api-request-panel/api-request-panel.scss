@@ -1,9 +1,8 @@
 // One request open in the API well: the panel's own tool strip (its name and Send), then the request
-// and its response in one scroll rather than two independently-scrolling halves — at this scale one
-// scroll is easier to reason about than a splitter, and a real splitter here should be the shared
-// `app-panel-layout` rather than a hand-rolled one.
+// over its response in the shared panel layout, so the two halves split at a divider the user can drag
+// and each fills its pane. The body editor and the response body take whatever height they are given.
 
-// The tool strip is chrome and stays put; everything below it scrolls.
+// The tool strip is chrome and stays put; the layout below it takes the rest.
 :host {
   display: flex;
   flex-direction: column;
@@ -12,13 +11,20 @@
 }
 
 .request {
-  display: flex;
   flex: 1 1 auto;
+  min-block-size: 0;
+}
+
+// The request half: the send bar and section tabs at their natural height, the section's content
+// taking the rest.
+.request__editor {
+  display: flex;
   flex-direction: column;
   gap: 0.6rem;
+  block-size: 100%;
   min-block-size: 0;
   padding: 0.75rem;
-  overflow-y: auto;
+  overflow: hidden;
 }
 
 // The request's name lives in the tool strip, sized so a long name has room without crowding Send.
@@ -77,11 +83,37 @@
   }
 }
 
+// The active section's content: fills the request half and scrolls when a grid outgrows it.
+.request__body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-block-size: 0;
+  overflow: auto;
+}
+
 .request__form {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
   max-inline-size: 40rem;
+}
+
+// The body section: its kind picker at the form's width, and the raw-body editor beneath it filling
+// the rest of the pane at full width.
+.request__form--fill {
+  flex: 1 1 auto;
+  min-block-size: 0;
+  max-inline-size: none;
+
+  > :not(app-code-field) {
+    max-inline-size: 40rem;
+  }
+
+  > app-code-field {
+    flex: 1 1 auto;
+    min-block-size: 0;
+  }
 }
 
 .request__hint {
@@ -90,12 +122,15 @@
   color: var(--form-muted-foreground-color);
 }
 
+// The response half: the summary at its natural height, the headers or body taking the rest.
 .request__response {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  padding-block-start: 0.5rem;
-  border-block-start: 0.0625rem solid var(--body-border-color);
+  block-size: 100%;
+  min-block-size: 0;
+  padding: 0.75rem;
+  overflow: hidden;
 }
 
 .request__summary {
@@ -150,9 +185,13 @@
 
 .request__headers {
   display: grid;
+  flex: 1 1 auto;
   grid-template-columns: auto 1fr;
+  align-content: start;
   gap: 0.15rem 0.75rem;
   margin: 0;
+  min-block-size: 0;
+  overflow: auto;
   font-family: 'JetBrains Mono', ui-monospace, monospace;
   font-size: 0.6875rem;
 
@@ -166,15 +205,8 @@
   }
 }
 
+// The response body fills what the summary leaves of the pane.
 .request__payload {
-  margin: 0;
-  padding: 0.5rem;
-  max-block-size: 24rem;
-  overflow: auto;
-  font-family: 'JetBrains Mono', ui-monospace, monospace;
-  font-size: 0.6875rem;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  background: var(--agent-view-surface-color, rgba(0, 0, 0, 0.2));
-  border-radius: calc(0.5rem * var(--border-radius-multiplier));
+  flex: 1 1 auto;
+  min-block-size: 0;
 }

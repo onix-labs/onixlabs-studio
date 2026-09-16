@@ -5,6 +5,7 @@ import {
   Component,
   computed,
   contentChildren,
+  DestroyRef,
   ElementRef,
   inject,
   input,
@@ -35,6 +36,13 @@ import {
  * The smallest main-axis length, in pixels, a divider drag can squeeze a stacked panel to.
  */
 const MINIMUM_STACK_LENGTH: number = 60;
+
+/**
+ * The least height, in pixels, the main area keeps when a top or bottom stack is sized: a stack
+ * whose stored or default height would leave less than this is held back, so a layout in a short
+ * pane never has its centre squeezed to nothing.
+ */
+const MINIMUM_MAIN_LENGTH: number = 120;
 
 /**
  * Represents the shared panel layout: a central main area surrounded by edge-docked {@link Panel}s.
@@ -128,6 +136,13 @@ export class PanelLayout implements PanelLayoutContext {
   private readonly localArrangement: WritableSignal<PanelArrangement> = signal<PanelArrangement>(
     {},
   );
+
+  /**
+   * Holds the layout's own height in pixels as last observed, or null before it has been measured
+   * (and under a test runner with no resize observer), in which case the top and bottom stacks are
+   * bounded by the viewport alone.
+   */
+  private readonly hostHeight: WritableSignal<number | null> = signal<number | null>(null);
 
   /**
    * Holds the main-axis flex shares of the layout's panels. Deliberately not persisted: the
@@ -327,6 +342,18 @@ export class PanelLayout implements PanelLayoutContext {
     this.drag.attach(this.elementRef.nativeElement, (panelId: string, edge: PanelEdge): void =>
       this.onDrop(panelId, edge),
     );
+
+    // Follow the layout's own height, so a top or bottom stack is bounded by the pane the layout is
+    // actually in and not only by the viewport: a layout in a short well would otherwise let a
+    // stack sized for a tall one cover its centre.
+    if (typeof ResizeObserver !== 'undefined') {
+      const host: HTMLElement = this.elementRef.nativeElement;
+      const observer: ResizeObserver = new ResizeObserver((): void => {
+        this.hostHeight.set(host.clientHeight > 0 ? host.clientHeight : null);
+      });
+      observer.observe(host);
+      inject(DestroyRef).onDestroy((): void => observer.disconnect());
+    }
   }
 
   /**
@@ -580,17 +607,24 @@ export class PanelLayout implements PanelLayoutContext {
   /**
    * Clamps a top or bottom stack's shared height to its bounds: no member is squeezed below its
    * minimum nor stretched past its maximum, and the stack never takes more than half the viewport
-   * height so the main content keeps its place. The minimum wins when the bounds conflict. The
-   * stylesheet mirrors the half-viewport cap, so a stored size that outgrows a later, smaller
-   * window still renders clamped. (Left and right columns clamp per panel via {@link clampPanelWidth}.)
+   * height, nor more of the layout's own height than leaves the main area its minimum, so the main
+   * content keeps its place. The minimum wins when the bounds conflict. The stylesheet mirrors the
+   * half-viewport cap, so a stored size that outgrows a later, smaller window still renders clamped.
+   * (Left and right columns clamp per panel via {@link clampPanelWidth}.)
    * @param members The edge's visible panels.
    * @param size The candidate height.
    * @returns Returns the clamped height.
    */
   private clampEdgeSize(members: readonly Panel[], size: number): number {
     const low: number = Math.max(0, ...members.map((panel: Panel): number => panel.minSize()));
+    const hostHeight: number | null = this.hostHeight();
+    const room: number =
+      hostHeight === null
+        ? Number.POSITIVE_INFINITY
+        : Math.max(0, hostHeight - MINIMUM_MAIN_LENGTH);
     const high: number = Math.min(
       window.innerHeight / 2,
+      room,
       ...members.map((panel: Panel): number => panel.maxSize()),
     );
     return Math.max(low, Math.min(high, size));
