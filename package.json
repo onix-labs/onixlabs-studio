@@ -83,7 +83,7 @@
     "prosemirror-search": "^1.1.1",
     "remark-gemoji": "^8.0.0",
     "rxjs": "~7.8.0",
-    "systeminformation": "^5.33.10",
+    "systeminformation": "^5.33.12",
     "tslib": "^2.3.0",
     "vscode-jsonrpc": "^9.0.2",
     "vscode-languageserver-protocol": "^3.18.3",
