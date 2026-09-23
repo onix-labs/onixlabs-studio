@@ -564,7 +564,16 @@ function toSpec(
     // bundle needs no Node on the machine.
     const spec: ReturnType<LanguageServerContext['nodePackageServer']> =
       context.nodePackageServer(entryPoint);
-    return resolved({ ...spec, args: [...spec.args, ...(command.args ?? [])], env: command.env });
+    return resolved({
+      ...spec,
+      args: [...spec.args, ...(command.args ?? [])],
+      // The runtime's own environment first, so a manifest cannot accidentally unset what the runtime
+      // needs to start at all — the same ordering the decoders and harnesses use, for the same reason.
+      // Replacing it instead drops `ELECTRON_RUN_AS_NODE`, and the Electron binary then launches a
+      // second Studio, which hands the entry point to the running one as a file to open — the server
+      // never starts and the user gets its launcher script in a tab.
+      env: { ...spec.env, ...command.env },
+    });
   }
   if (command.kind === 'python') {
     // Python is the user's, not Studio's, so this is the one kind that can fail for a reason the
@@ -575,7 +584,7 @@ function toSpec(
       : resolved({
           command: runtime.command,
           args: [...runtime.args, ...(command.args ?? [])],
-          env: command.env,
+          env: { ...command.env },
         });
   }
   return resolved({ command: entryPoint, args: command.args ?? [], env: command.env });

@@ -548,6 +548,44 @@ describe('plugin loader', () => {
       );
       expect(resolution.spec?.command).toBe('/electron');
       expect(resolution.spec?.args).toEqual(['/installed/server.js', '--stdio', '--extra']);
+      // The runtime is the Electron binary, which is a Node interpreter only while this is set. A
+      // manifest that declares no environment of its own must not blank it: without it the spawn
+      // launches a second Studio, whose argv the running instance opens as a document — the server
+      // never starts and the user gets its launcher script in a tab.
+      expect(resolution.spec?.env?.['ELECTRON_RUN_AS_NODE']).toBe('1');
+    });
+
+    it('keepsTheRuntimeEnvironmentWhenAManifestDeclaresItsOwn', async () => {
+      writePlugin(
+        'jsonls',
+        manifest({
+          id: 'jsonls',
+          contributes: {
+            languageServers: [
+              {
+                id: 'jsonls',
+                displayName: 'JSON',
+                languages: ['json'],
+                command: { kind: 'node', env: { NODE_OPTIONS: '--max-old-space-size=4096' } },
+              },
+            ],
+          },
+        }),
+      );
+      const descriptors: readonly LanguageServerDescriptor[] = toLanguageServerDescriptors(
+        validManifests(discoverPlugins(root))[0],
+      );
+
+      const resolution: LspResolution = await descriptors[0].resolve(
+        context('/installed/server.js'),
+      );
+
+      // A manifest adds to the runtime's environment rather than replacing it, so a plugin cannot
+      // unset what the runtime needs to start at all.
+      expect(resolution.spec?.env).toEqual({
+        ELECTRON_RUN_AS_NODE: '1',
+        NODE_OPTIONS: '--max-old-space-size=4096',
+      });
     });
 
     it('reportsNotInstalledRatherThanSpawningNothing', async () => {
