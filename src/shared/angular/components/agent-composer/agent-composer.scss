@@ -81,7 +81,7 @@
   align-items: center;
   gap: 0.35rem;
   min-inline-size: 0;
-  // Low band (0–33%): plenty of headroom, shown in the success colour. Warn/high override below.
+  // Low band (0–49%): plenty of headroom, shown in the success colour. Warn/high override below.
   color: var(--success-color);
 }
 

@@ -355,14 +355,17 @@ export class AgentComposer {
   });
 
   /**
-   * Gets the meter's fill level, driving its colour across three even bands as the window fills — a
-   * visible cue to compact: `ok` (success) at 0–33%, `warn` (warning) at 34–66%, `high` (error) at
-   * 67–100%.
+   * Gets the meter's fill level, driving its colour as the window fills — a visible cue to compact:
+   * `ok` (success) at 0–49%, `warn` (warning) at 50–74%, `high` (error) at 75–100%.
+   *
+   * The bands are deliberately uneven. Headroom is only worth warning about once it is half spent, and
+   * the last quarter is where a turn starts risking a truncated window, so the red band is narrow and
+   * late rather than a third of the meter.
    */
   protected readonly contextLevel: Signal<'ok' | 'warn' | 'high'> = computed(
     (): 'ok' | 'warn' | 'high' => {
       const percent: number = this.contextPercent();
-      return percent >= 67 ? 'high' : percent >= 34 ? 'warn' : 'ok';
+      return percent >= 75 ? 'high' : percent >= 50 ? 'warn' : 'ok';
     },
   );
 

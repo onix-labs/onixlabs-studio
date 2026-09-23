@@ -481,26 +481,26 @@ describe('AgentComposer', () => {
     expect(context().classList.contains('agent__context--high')).toBe(true);
   });
 
-  it('contextMeter_colourBands_switchAtTheThirdsBoundaries', () => {
+  it('contextMeter_colourBands_switchAtHalfAndThreeQuarters', () => {
     contextWindow.set(100);
     const context: () => HTMLElement = (): HTMLElement =>
       (fixture.nativeElement as HTMLElement).querySelector('.agent__context')!;
 
-    contextTokens.set(33); // still success at 33%.
+    contextTokens.set(49); // still success at 49%.
     fixture.detectChanges();
     expect(context().classList.contains('agent__context--warn')).toBe(false);
     expect(context().classList.contains('agent__context--high')).toBe(false);
 
-    contextTokens.set(34); // crosses into warning at 34%.
+    contextTokens.set(50); // crosses into warning at 50%.
     fixture.detectChanges();
     expect(context().classList.contains('agent__context--warn')).toBe(true);
 
-    contextTokens.set(66); // still warning at 66%.
+    contextTokens.set(74); // still warning at 74%.
     fixture.detectChanges();
     expect(context().classList.contains('agent__context--warn')).toBe(true);
     expect(context().classList.contains('agent__context--high')).toBe(false);
 
-    contextTokens.set(67); // crosses into error at 67%.
+    contextTokens.set(75); // crosses into error at 75%.
     fixture.detectChanges();
     expect(context().classList.contains('agent__context--high')).toBe(true);
   });
