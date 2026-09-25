@@ -8,6 +8,7 @@ export type TabType =
   | 'code'
   | 'markdown'
   | 'binary'
+  | 'image'
   | 'terminal'
   | 'agent'
   | 'containers'
@@ -111,6 +112,7 @@ export const TAB_TYPE_METADATA: Readonly<Record<TabType, TabTypeMetadata>> = {
   code: { label: 'Code', icon: Icon.CODE },
   markdown: { label: 'Markdown', icon: Icon.MARKDOWN },
   binary: { label: 'Binary', icon: Icon.BINARY },
+  image: { label: 'Image', icon: Icon.IMAGE_FILE },
   terminal: { label: 'Terminal', icon: Icon.TERMINAL },
   agent: { label: 'Agent', icon: Icon.AGENT },
   containers: { label: 'Containers', icon: Icon.CONTAINERS },

@@ -51,6 +51,19 @@ describe('Keybindings', () => {
     window.localStorage.removeItem('settings');
   });
 
+  it('matches_testsAnEventAgainstACommandsEffectiveChordWithoutAScope', (): void => {
+    expect(keybindings.matches(modEvent('s'), 'code.save')).toBe(true);
+    expect(keybindings.matches(modEvent('s', { shiftKey: true }), 'code.save')).toBe(false);
+    expect(keybindings.matches(modEvent('s'), 'unknown.command')).toBe(false);
+    expect(keybindings.matches(new KeyboardEvent('keydown', { key: 'Control' }), 'code.save')).toBe(
+      false,
+    );
+
+    keybindings.setOverride('code.save', 'Mod+Alt+P');
+    expect(keybindings.matches(modEvent('p', { altKey: true }), 'code.save')).toBe(true);
+    expect(keybindings.matches(modEvent('s'), 'code.save')).toBe(false);
+  });
+
   it('dispatch_whenChordMatchesActiveScope_invokesCommand', (): void => {
     const calls: string[] = [];
     keybindings.register('tab-1', [

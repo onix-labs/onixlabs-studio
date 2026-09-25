@@ -1,0 +1,28 @@
+// The strip owns the TEXT SIZE of what it hosts, as the markdown well's strip does and for the same
+// reason: it is dense chrome, and a button that inherited the ambient body size would draw its icon
+// oversized.
+:host {
+  display: block;
+  flex: 0 0 auto;
+  font-size: 0.8rem;
+}
+
+.image-toolstrip {
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+  padding: 0.25rem 0.5rem;
+  overflow-x: auto;
+}
+
+.image-toolstrip__divider {
+  flex: 0 0 auto;
+  inline-size: 0.0625rem;
+  block-size: 1rem;
+  margin-inline: 0.25rem;
+  background: var(--dock-border-color);
+}
+
+.image-toolstrip__spacer {
+  margin-inline-start: auto;
+}

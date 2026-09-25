@@ -310,6 +310,21 @@ export class Keybindings {
   }
 
   /**
+   * Determines whether a key event presses a catalogued command's effective chord — its user override
+   * when one is set, else its default. For a surface that handles its own chords while it has focus
+   * rather than registering a scope: an image in a workspace's document well cannot register under
+   * the workspace tab's scope without displacing the workspace's own accelerators.
+   * @param event The keyboard event to test.
+   * @param id The catalogued command identifier.
+   * @returns Returns true when the event presses the command's chord; false otherwise, including when
+   * the command is not catalogued.
+   */
+  public matches(event: KeyboardEvent, id: string): boolean {
+    const chord: string | null = this.chordFromEvent(event);
+    return chord !== null && this.catalogueById.has(id) && this.effectiveChord(id) === chord;
+  }
+
+  /**
    * Persists a chord override for a command, replacing its default. The chord is validated first; an
    * invalid chord is rejected and reported instead of applied.
    * @param id The catalogued command identifier.

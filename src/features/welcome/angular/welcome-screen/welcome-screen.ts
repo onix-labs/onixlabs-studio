@@ -154,6 +154,7 @@ export class WelcomeScreen {
     { id: 'directories', label: 'Workspaces', icon: Icon.FOLDER, kind: 'directory' },
     { id: 'markdown', label: 'Markdown', icon: Icon.MARKDOWN, kind: 'markdown' },
     { id: 'code', label: 'Code', icon: Icon.CODE, kind: 'code' },
+    { id: 'images', label: 'Images', icon: Icon.IMAGE_FILE, kind: 'image' },
     { id: 'binary', label: 'Binary', icon: Icon.BINARY, kind: 'binary' },
     { id: 'api', label: 'APIs', icon: Icon.API_EXPLORER, kind: 'api' },
   ];
@@ -303,6 +304,8 @@ export class WelcomeScreen {
         return Icon.CODE;
       case 'binary':
         return Icon.BINARY;
+      case 'image':
+        return Icon.IMAGE_FILE;
       case 'api':
         return Icon.API_EXPLORER;
     }
@@ -553,6 +556,7 @@ export class WelcomeScreen {
       case 'markdown':
       case 'code':
       case 'binary':
+      case 'image':
       case 'api':
         // Every file kind re-opens through the same door: the opener routes it by name, so an API
         // document lands in an API Explorer tab exactly as it did when it was first opened.

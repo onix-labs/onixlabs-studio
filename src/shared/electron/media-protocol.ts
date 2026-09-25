@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { extname, isAbsolute, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { protocol } from 'electron';
+import { IMAGE_MIME_TYPES } from '@shared/api/image-formats';
 import { logger } from './logger';
 
 /**
@@ -15,20 +16,10 @@ export const MEDIA_SCHEME: string = 'studio-media';
 
 /**
  * The image file extensions this protocol is willing to serve. Restricting the loader to images keeps
- * it from becoming a general-purpose reader of arbitrary files off disk.
+ * it from becoming a general-purpose reader of arbitrary files off disk. The map is shared with the
+ * file classifier, so every file that opens in the image viewer is one this protocol will serve.
  */
-const IMAGE_EXTENSIONS: ReadonlyMap<string, string> = new Map<string, string>([
-  ['.png', 'image/png'],
-  ['.jpg', 'image/jpeg'],
-  ['.jpeg', 'image/jpeg'],
-  ['.gif', 'image/gif'],
-  ['.webp', 'image/webp'],
-  ['.avif', 'image/avif'],
-  ['.bmp', 'image/bmp'],
-  ['.ico', 'image/x-icon'],
-  ['.svg', 'image/svg+xml'],
-  ['.apng', 'image/apng'],
-]);
+const IMAGE_EXTENSIONS: ReadonlyMap<string, string> = IMAGE_MIME_TYPES;
 
 /**
  * Serves local image files to the renderer over the {@link MEDIA_SCHEME} protocol, resolving each

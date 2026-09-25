@@ -40,6 +40,9 @@
         {{ document.readMinutes }} min read
       </button>
     }
+    @for (detail of document.details ?? []; track detail.title) {
+      <span class="dock-status-strip__segment" [title]="detail.title">{{ detail.text }}</span>
+    }
     <button type="button" class="dock-status-strip__segment" title="Language mode">
       {{ document.language }}
     </button>
