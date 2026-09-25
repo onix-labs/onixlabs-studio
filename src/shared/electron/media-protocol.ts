@@ -30,12 +30,22 @@ export class MediaProtocol {
    * Registers the media scheme as privileged. Must run before the app is ready (a privileged scheme
    * cannot be declared once the protocol layer has started), so the renderer may load it as a
    * standard, secure, fetchable image source.
+   *
+   * It is CORS-enabled so the image viewer can read an image's pixels back. The scheme is its own
+   * origin, so an image drawn from it would otherwise taint the canvas it is drawn into, and every
+   * edit, save and export — all of which encode that canvas — would be refused.
    */
   public static registerScheme(): void {
     protocol.registerSchemesAsPrivileged([
       {
         scheme: MEDIA_SCHEME,
-        privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true },
+        privileges: {
+          standard: true,
+          secure: true,
+          supportFetchAPI: true,
+          stream: true,
+          corsEnabled: true,
+        },
       },
     ]);
     logger.debug('media', `Registered ${MEDIA_SCHEME} scheme as privileged`);
@@ -65,7 +75,11 @@ export class MediaProtocol {
     logger.trace('media', `Serving media ${resolved.path} (${resolved.mime})`);
     try {
       const data: Buffer = await readFile(resolved.path);
-      return new Response(new Uint8Array(data), { headers: { 'content-type': resolved.mime } });
+      // Any origin may read the pixels: the scheme only ever serves images, and only to Studio's own
+      // renderer, which could already display them. Without this, a canvas drawn from one is tainted.
+      return new Response(new Uint8Array(data), {
+        headers: { 'content-type': resolved.mime, 'access-control-allow-origin': '*' },
+      });
     } catch (error: unknown) {
       logger.debug('media', `Media resource unreadable: ${resolved.path}`, error);
       return new Response('Not found', { status: 404 });

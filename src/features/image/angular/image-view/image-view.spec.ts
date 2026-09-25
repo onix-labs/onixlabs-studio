@@ -4,6 +4,7 @@ import { Bridge } from '@shared/api/bridge';
 import { WorkspaceChannel } from '@shared/api/workspace-channels';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { provideKeybindingCatalogue } from '@shared/angular/services/keybindings/keybinding-catalogue';
+import { Notifications } from '@shared/angular/services/notifications/notifications';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { ImageDocument, ImageDocuments } from '../image-document/image-document';
 import { ImageRaster } from '../image-raster/image-raster';
@@ -68,6 +69,7 @@ describe('ImageView', () => {
   let fixture: ComponentFixture<ImageView>;
   let view: ImageView;
   let tab: Tab;
+  let raster: FakeImageRaster;
 
   /**
    * Opens an image in a tab and mounts its view.
@@ -102,10 +104,11 @@ describe('ImageView', () => {
 
   beforeEach(async () => {
     (window as unknown as { bridge: Bridge }).bridge = fakeBridge();
+    raster = new FakeImageRaster();
     await TestBed.configureTestingModule({
       imports: [ImageView],
       providers: [
-        { provide: ImageRaster, useValue: new FakeImageRaster() },
+        { provide: ImageRaster, useValue: raster },
         provideKeybindingCatalogue(IMAGE_KEYBINDINGS),
       ],
     }).compileComponents();
@@ -186,6 +189,23 @@ describe('ImageView', () => {
 
     expect(document().size()).toEqual({ width: 30, height: 40 });
     expect(document().dirty()).toBe(true);
+  });
+
+  it('rotate_whenTheEditFails_reportsItRatherThanDoingNothing', async () => {
+    await mount('/pictures/photo.png');
+    vi.spyOn(raster, 'objectUrl').mockRejectedValue(
+      new Error('Tainted canvases may not be exported.'),
+    );
+
+    view.rotate(true);
+    await flush();
+
+    expect(document().dirty()).toBe(false);
+    expect(TestBed.inject(Notifications).history()[0]).toMatchObject({
+      severity: 'error',
+      title: 'Could not edit photo.png',
+      detail: 'Tainted canvases may not be exported.',
+    });
   });
 
   it('crop_appliesTheDrawnRectangleAndClosesTheTool', async () => {

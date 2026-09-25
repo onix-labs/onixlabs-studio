@@ -39,6 +39,9 @@ export class ImageRaster {
    */
   public async decode(url: string): Promise<Raster> {
     const image: HTMLImageElement = new Image();
+    // Fetched in CORS mode (the media protocol allows it), so a canvas the image is drawn into stays
+    // untainted and can be encoded. Without it, every edit, save and export is refused.
+    image.crossOrigin = 'anonymous';
     image.decoding = 'async';
     image.src = url;
     await image.decode();

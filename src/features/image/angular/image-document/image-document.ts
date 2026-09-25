@@ -89,6 +89,11 @@ export const EXPORT_EXTENSIONS: Readonly<Record<EncodableImageType, string>> = {
 export type ImageSaveResult = 'saved' | 'needs-export' | 'failed';
 
 /**
+ * Describes how an interactive export ended: written, cancelled at the save dialog, or failed.
+ */
+export type ImageExportOutcome = 'exported' | 'cancelled' | 'failed';
+
+/**
  * Describes how an image is exported.
  */
 export interface ImageExportOptions {
@@ -683,25 +688,24 @@ export class ImageDocuments implements UnsavedWorkSource {
    * Asks where to export an image, then exports it there.
    * @param document The document to export.
    * @param options The format, quality and scale to export at.
-   * @returns Returns true when the image was exported; false when cancelled or the write failed.
+   * @returns Returns how the export ended, so a cancelled dialog is not reported as a failure.
    */
   public async exportInteractive(
     document: ImageDocument,
     options: ImageExportOptions,
-  ): Promise<boolean> {
+  ): Promise<ImageExportOutcome> {
     const target: string | null = await this.fileSystem.saveDialog(
       withExtension(document.path, EXPORT_EXTENSIONS[options.type]),
     );
     if (target === null) {
-      return false;
+      return 'cancelled';
     }
-    const exported: boolean = await document.exportTo(target, options);
-    if (exported) {
+    if (await document.exportTo(target, options)) {
       this.log.info('image.document', `Exported ${document.fileName}`, target);
-    } else {
-      this.log.error('image.document', `Failed to export ${document.fileName}`, target);
+      return 'exported';
     }
-    return exported;
+    this.log.error('image.document', `Failed to export ${document.fileName}`, target);
+    return 'failed';
   }
 
   /**
@@ -745,13 +749,21 @@ export class ImageDocuments implements UnsavedWorkSource {
     if (document === undefined) {
       return true;
     }
-    const result: ImageSaveResult = await document.save();
+    let result: ImageSaveResult;
+    try {
+      result = await document.save();
+    } catch (error: unknown) {
+      // Encoding the edited canvas can throw; a save that could not happen is a failed save.
+      this.log.error('image.document', 'Failed to encode image for saving', document.path, error);
+      return false;
+    }
     if (result === 'needs-export') {
-      return this.exportInteractive(document, {
+      const outcome: ImageExportOutcome = await this.exportInteractive(document, {
         type: 'image/png',
         quality: 1,
         scalePercent: 100,
       });
+      return outcome === 'exported';
     }
     if (result === 'failed') {
       this.log.error('image.document', 'Failed to save image', document.path);

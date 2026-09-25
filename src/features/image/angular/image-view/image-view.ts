@@ -29,6 +29,7 @@ import { Icon } from '@shared/angular/icons/icon';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { Log } from '@shared/angular/services/log/log';
+import { Notifications } from '@shared/angular/services/notifications/notifications';
 import {
   createViewInjectorRegistrar,
   ViewInjectorRegistrar,
@@ -37,6 +38,7 @@ import {
   ImageDocument,
   ImageDocuments,
   ImageExportOptions,
+  ImageExportOutcome,
 } from '../image-document/image-document';
 import {
   clampEdge,
@@ -208,6 +210,11 @@ export class ImageView implements OnInit, OnDestroy {
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds the notifications service a failed edit is reported through.
+   */
+  private readonly notifications: Notifications = inject(Notifications);
 
   /**
    * Holds the view's host element, focused so its chords apply.
@@ -610,8 +617,11 @@ export class ImageView implements OnInit, OnDestroy {
       quality: this.exportQuality() / 100,
       scalePercent: this.exportScale(),
     };
-    if (await this.documents.exportInteractive(document, options)) {
+    const outcome: ImageExportOutcome = await this.documents.exportInteractive(document, options);
+    if (outcome === 'exported') {
       this.cancelTool();
+    } else if (outcome === 'failed') {
+      this.reportFailure(`Could not export ${document.fileName}`);
     }
   }
 
@@ -632,7 +642,9 @@ export class ImageView implements OnInit, OnDestroy {
       }
       return;
     }
-    await this.documents.save(document.path);
+    if (!(await this.documents.save(document.path))) {
+      this.reportFailure(`Could not save ${document.fileName}`);
+    }
   }
 
   /**
@@ -879,9 +891,24 @@ export class ImageView implements OnInit, OnDestroy {
     if (document === undefined) {
       return;
     }
-    run(document).catch((error: unknown): void =>
-      this.log.error('image.view', 'Image edit failed', document.path, error),
-    );
+    run(document).catch((error: unknown): void => {
+      this.log.error('image.view', 'Image edit failed', document.path, error);
+      this.reportFailure(`Could not edit ${document.fileName}`, error);
+    });
+  }
+
+  /**
+   * Reports a failed edit, save or export to the user. Logging alone is not enough: without a
+   * report, the button that failed simply appears to do nothing.
+   * @param title The notification's title.
+   * @param error The error behind the failure, when there is one.
+   */
+  private reportFailure(title: string, error?: unknown): void {
+    this.notifications.notify({
+      severity: 'error',
+      title,
+      detail: error instanceof Error ? error.message : 'See the log for details.',
+    });
   }
 
   /**

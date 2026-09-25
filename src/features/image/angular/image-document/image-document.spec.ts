@@ -231,7 +231,7 @@ describe('ImageDocuments', () => {
         quality: 0.8,
         scalePercent: 100,
       }),
-    ).toBe(false);
+    ).toBe('cancelled');
     expect(writes).toEqual([]);
   });
 
