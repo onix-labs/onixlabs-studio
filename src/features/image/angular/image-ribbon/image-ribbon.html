@@ -1,0 +1,150 @@
+<app-ribbon-overflow>
+  <app-ribbon-strip-group title="File">
+    <app-ribbon-strip-button
+      [icon]="Icon.SAVE"
+      label="Save"
+      [disabled]="!dirty()"
+      (action)="view()?.save()"
+    />
+    <app-ribbon-strip-button
+      [icon]="Icon.EXPORT"
+      label="Export As"
+      [toggle]="true"
+      [pressed]="tool() === 'export'"
+      [disabled]="view() === undefined"
+      (action)="view()?.toggleTool('export')"
+    />
+  </app-ribbon-strip-group>
+
+  <app-ribbon-strip-group title="Edit">
+    <app-ribbon-strip-column>
+      <app-ribbon-strip-button-small
+        [icon]="Icon.UNDO"
+        label="Undo"
+        [disabled]="!canUndo()"
+        (action)="view()?.undo()"
+      />
+      <app-ribbon-strip-button-small
+        [icon]="Icon.REDO"
+        label="Redo"
+        [disabled]="!canRedo()"
+        (action)="view()?.redo()"
+      />
+    </app-ribbon-strip-column>
+    <app-ribbon-strip-column>
+      <app-ribbon-strip-button-small
+        [icon]="Icon.ROTATE_COUNTER_CLOCKWISE"
+        label="Rotate Left"
+        [disabled]="!canEdit()"
+        (action)="view()?.rotate(false)"
+      />
+      <app-ribbon-strip-button-small
+        [icon]="Icon.ROTATE_CLOCKWISE"
+        label="Rotate Right"
+        [disabled]="!canEdit()"
+        (action)="view()?.rotate(true)"
+      />
+    </app-ribbon-strip-column>
+    <app-ribbon-strip-column>
+      <app-ribbon-strip-button-small
+        [icon]="Icon.FLIP_HORIZONTAL"
+        label="Flip Horizontal"
+        [disabled]="!canEdit()"
+        (action)="view()?.flip('horizontal')"
+      />
+      <app-ribbon-strip-button-small
+        [icon]="Icon.FLIP_VERTICAL"
+        label="Flip Vertical"
+        [disabled]="!canEdit()"
+        (action)="view()?.flip('vertical')"
+      />
+    </app-ribbon-strip-column>
+    <app-ribbon-strip-button
+      [icon]="Icon.CROP"
+      label="Crop"
+      [toggle]="true"
+      [pressed]="tool() === 'crop'"
+      [disabled]="!canEdit()"
+      (action)="view()?.toggleTool('crop')"
+    />
+    <app-ribbon-strip-button
+      [icon]="Icon.RESIZE"
+      label="Resize"
+      [toggle]="true"
+      [pressed]="tool() === 'resize'"
+      [disabled]="!canEdit()"
+      (action)="view()?.toggleTool('resize')"
+    />
+  </app-ribbon-strip-group>
+
+  <app-ribbon-strip-group title="View">
+    <app-ribbon-strip-column>
+      <app-ribbon-strip-button-small
+        [icon]="Icon.ZOOM_IN"
+        label="Zoom In"
+        (action)="view()?.zoomIn()"
+      />
+      <app-ribbon-strip-button-small
+        [icon]="Icon.ZOOM_OUT"
+        label="Zoom Out"
+        (action)="view()?.zoomOut()"
+      />
+    </app-ribbon-strip-column>
+    <app-ribbon-strip-column>
+      <app-ribbon-strip-button-small
+        [icon]="Icon.ZOOM_ACTUAL"
+        label="Actual Size"
+        (action)="view()?.actualSize()"
+      />
+      <app-ribbon-strip-button-small
+        [icon]="Icon.ZOOM_FIT"
+        label="Fit to Window"
+        [toggle]="true"
+        [pressed]="fitted()"
+        (action)="view()?.fit()"
+      />
+    </app-ribbon-strip-column>
+  </app-ribbon-strip-group>
+
+  <app-ribbon-strip-group title="Background">
+    <app-ribbon-strip-column>
+      <app-ribbon-strip-button-small
+        [icon]="Icon.CHECKERBOARD"
+        label="Checkerboard"
+        [toggle]="true"
+        [pressed]="background() === 'checker'"
+        (action)="setBackground('checker')"
+      />
+      <app-ribbon-strip-button-small
+        [icon]="Icon.BACKGROUND_LIGHT"
+        label="Light"
+        [toggle]="true"
+        [pressed]="background() === 'light'"
+        (action)="setBackground('light')"
+      />
+      <app-ribbon-strip-button-small
+        [icon]="Icon.BACKGROUND_DARK"
+        label="Dark"
+        [toggle]="true"
+        [pressed]="background() === 'dark'"
+        (action)="setBackground('dark')"
+      />
+    </app-ribbon-strip-column>
+  </app-ribbon-strip-group>
+
+  <app-ribbon-strip-group title="Open">
+    <app-ribbon-strip-button
+      [icon]="Icon.BINARY"
+      label="Binary Editor"
+      [disabled]="view() === undefined"
+      (action)="view()?.openInBinaryEditor()"
+    />
+    @if (isVector()) {
+      <app-ribbon-strip-button
+        [icon]="Icon.OPEN_SOURCE"
+        label="Source"
+        (action)="view()?.openSource()"
+      />
+    }
+  </app-ribbon-strip-group>
+</app-ribbon-overflow>

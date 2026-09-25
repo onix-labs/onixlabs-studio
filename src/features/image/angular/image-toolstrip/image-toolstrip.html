@@ -1,0 +1,167 @@
+<div class="image-toolstrip">
+  @if (view(); as image) {
+    <app-button
+      variant="none"
+      [icon]="Icon.SAVE"
+      ariaLabel="Save"
+      tooltip="Save"
+      [disabled]="!(document()?.dirty() ?? false)"
+      (click)="image.save()"
+    />
+    <app-button
+      variant="none"
+      [icon]="Icon.UNDO"
+      ariaLabel="Undo"
+      tooltip="Undo"
+      [disabled]="!(document()?.canUndo() ?? false)"
+      (click)="image.undo()"
+    />
+    <app-button
+      variant="none"
+      [icon]="Icon.REDO"
+      ariaLabel="Redo"
+      tooltip="Redo"
+      [disabled]="!(document()?.canRedo() ?? false)"
+      (click)="image.redo()"
+    />
+    <span class="image-toolstrip__divider" aria-hidden="true"></span>
+    <app-button
+      variant="none"
+      [icon]="Icon.ZOOM_OUT"
+      ariaLabel="Zoom Out"
+      tooltip="Zoom Out"
+      (click)="image.zoomOut()"
+    />
+    <app-button
+      variant="none"
+      [icon]="Icon.ZOOM_IN"
+      ariaLabel="Zoom In"
+      tooltip="Zoom In"
+      (click)="image.zoomIn()"
+    />
+    <app-button
+      variant="none"
+      [icon]="Icon.ZOOM_ACTUAL"
+      ariaLabel="Actual Size"
+      tooltip="Actual Size"
+      (click)="image.actualSize()"
+    />
+    <app-button
+      variant="none"
+      [icon]="Icon.ZOOM_FIT"
+      ariaLabel="Fit to Window"
+      tooltip="Fit to Window"
+      [pressed]="image.isFitted()"
+      (click)="image.fit()"
+    />
+    <span class="image-toolstrip__divider" aria-hidden="true"></span>
+    <app-button
+      variant="none"
+      [icon]="Icon.CHECKERBOARD"
+      ariaLabel="Checkerboard Background"
+      tooltip="Checkerboard Background"
+      [pressed]="background() === 'checker'"
+      (click)="setBackground('checker')"
+    />
+    <app-button
+      variant="none"
+      [icon]="Icon.BACKGROUND_LIGHT"
+      ariaLabel="Light Background"
+      tooltip="Light Background"
+      [pressed]="background() === 'light'"
+      (click)="setBackground('light')"
+    />
+    <app-button
+      variant="none"
+      [icon]="Icon.BACKGROUND_DARK"
+      ariaLabel="Dark Background"
+      tooltip="Dark Background"
+      [pressed]="background() === 'dark'"
+      (click)="setBackground('dark')"
+    />
+    <span class="image-toolstrip__divider" aria-hidden="true"></span>
+    <app-button
+      variant="none"
+      [icon]="Icon.ROTATE_COUNTER_CLOCKWISE"
+      ariaLabel="Rotate Left"
+      tooltip="Rotate Left"
+      [disabled]="!canEdit()"
+      (click)="image.rotate(false)"
+    />
+    <app-button
+      variant="none"
+      [icon]="Icon.ROTATE_CLOCKWISE"
+      ariaLabel="Rotate Right"
+      tooltip="Rotate Right"
+      [disabled]="!canEdit()"
+      (click)="image.rotate(true)"
+    />
+    <app-button
+      variant="none"
+      [icon]="Icon.FLIP_HORIZONTAL"
+      ariaLabel="Flip Horizontal"
+      tooltip="Flip Horizontal"
+      [disabled]="!canEdit()"
+      (click)="image.flip('horizontal')"
+    />
+    <app-button
+      variant="none"
+      [icon]="Icon.FLIP_VERTICAL"
+      ariaLabel="Flip Vertical"
+      tooltip="Flip Vertical"
+      [disabled]="!canEdit()"
+      (click)="image.flip('vertical')"
+    />
+    <app-button
+      variant="none"
+      [icon]="Icon.CROP"
+      ariaLabel="Crop"
+      tooltip="Crop"
+      [disabled]="!canEdit()"
+      [pressed]="image.tool() === 'crop'"
+      (click)="image.toggleTool('crop')"
+    />
+    <app-button
+      variant="none"
+      [icon]="Icon.RESIZE"
+      ariaLabel="Resize"
+      tooltip="Resize"
+      [disabled]="!canEdit()"
+      [pressed]="image.tool() === 'resize'"
+      (click)="image.toggleTool('resize')"
+    />
+    <span class="image-toolstrip__divider" aria-hidden="true"></span>
+    <app-button
+      variant="none"
+      [icon]="Icon.EXPORT"
+      ariaLabel="Export As"
+      tooltip="Export As…"
+      [pressed]="image.tool() === 'export'"
+      (click)="image.toggleTool('export')"
+    />
+    <span class="image-toolstrip__spacer"></span>
+    @if (document()?.isVector) {
+      <app-button
+        variant="none"
+        [icon]="Icon.OPEN_SOURCE"
+        ariaLabel="Open Source"
+        tooltip="Open Source"
+        (click)="image.openSource()"
+      />
+    }
+    <app-button
+      variant="none"
+      [icon]="Icon.BINARY"
+      ariaLabel="Open in Binary Editor"
+      tooltip="Open in Binary Editor"
+      (click)="image.openInBinaryEditor()"
+    />
+    <app-button
+      variant="none"
+      [icon]="Icon.OPEN_EXTERNAL_BOLD"
+      ariaLabel="Open in Tab"
+      tooltip="Open in Tab"
+      (click)="openInTab.emit()"
+    />
+  }
+</div>

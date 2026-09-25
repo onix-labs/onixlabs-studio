@@ -2,6 +2,21 @@ import { computed, inject, Service, signal, Signal, WritableSignal } from '@angu
 import { Log } from '@shared/angular/services/log/log';
 
 /**
+ * Describes one plain fact shown on the well status strip: its text and the tooltip explaining it.
+ */
+export interface StatusDetail {
+  /**
+   * Gets the segment's text (for example "640 × 480").
+   */
+  readonly text: string;
+
+  /**
+   * Gets the segment's tooltip (for example "Pixel dimensions").
+   */
+  readonly title: string;
+}
+
+/**
  * Describes the status a document contributes to the well status strip. Every field beyond the
  * language is optional because different surfaces publish different shapes: a code document publishes
  * its caret position, end-of-line sequence and encoding, while a prose (markdown) document publishes
@@ -53,7 +68,14 @@ export interface DocumentStatusInfo {
   readonly linesRemoved?: number;
 
   /**
-   * Gets the document's language identifier (for example "csharp").
+   * Gets facts about the document that are neither text positions nor settings — an image's pixel
+   * dimensions, file size and zoom — each shown as its own plain segment before the language.
+   */
+  readonly details?: readonly StatusDetail[];
+
+  /**
+   * Gets the document's language identifier (for example "csharp"), or its format for a document
+   * that is not text (for example "PNG").
    */
   readonly language: string;
 

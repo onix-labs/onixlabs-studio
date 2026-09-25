@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { ApiExplorerStatus } from '@features/api-explorer/angular/api-explorer-status/api-explorer-status';
 import { BinaryStatusStrip } from '@features/binary/angular/binary-status/binary-status-strip';
 import { CodeStatusStrip } from '@features/code/angular/code-status/code-status-strip';
+import { ImageStatusStrip } from '@features/image/angular/image-status/image-status-strip';
 import { MarkdownStatusStrip } from '@features/markdown/angular/markdown-status/markdown-status-strip';
 import { TerminalStatusStrip } from '@features/terminal/angular/terminal-status/terminal-status-strip';
 import { DirectoryStatusStrip } from '@features/workspace/angular/directory-status/directory-status-strip';
@@ -39,6 +40,7 @@ describe('status strip contract', () => {
     ['markdown', MarkdownStatusStrip],
     ['terminal', TerminalStatusStrip],
     ['binary', BinaryStatusStrip],
+    ['image', ImageStatusStrip],
     ['api-explorer', ApiExplorerStatus],
     ['workspace', DirectoryStatusStrip],
   ];

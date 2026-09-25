@@ -21,6 +21,7 @@ import { featureContributions } from '@shared/app/feature-contributions';
 import { CoreMenu } from '@shared/angular/services/app-menu/core-menu';
 import { provideAgentFeature } from '@features/agent/angular/agent.feature';
 import { provideBinaryFeature } from '@features/binary/angular/binary.feature';
+import { provideImageFeature } from '@features/image/angular/image.feature';
 import { provideCodeFeature } from '@features/code/angular/code.feature';
 import { provideMarkdownFeature } from '@features/markdown/angular/markdown.feature';
 import { provideMissionControlFeature } from '@features/mission-control/angular/mission-control.feature';
@@ -89,6 +90,9 @@ export const config: ApplicationConfig = {
     provideMarkdownFeature(),
     // Stand up the binary feature: register its hex-editor tab view + ribbon with the shell.
     provideBinaryFeature(),
+    // Stand up the image feature: register its viewer tab view + ribbon, and the image opener the
+    // file opener routes images through (as a tab, or into a workspace's document well).
+    provideImageFeature(),
     // Stand up the repository feature: register its source-control view + ribbon with the shell.
     // Stand up the workspace feature: register its directory (IDE) view + ribbon with the shell.
     provideWorkspaceFeature(),

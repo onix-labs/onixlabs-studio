@@ -33,9 +33,10 @@ export enum WorkspaceChannel {
   WriteBytes = 'workspace:write-bytes',
 
   /**
-   * Rewrites a file from a list of spans, for saving binary/hex edits that insert or delete bytes
-   * (invoke). Honoured only for trusted paths or files within an open workspace. The file is streamed
-   * to a temporary file and atomically renamed, so its length may change.
+   * Rewrites a file from a list of spans, for saving binary/hex edits that insert or delete bytes and
+   * for writing an edited or exported image (invoke). Honoured only for trusted paths or files within
+   * an open workspace. The file is streamed to a temporary file and atomically renamed, so its length
+   * may change; a write made only of added bytes may create the file.
    */
   WritePieces = 'workspace:write-pieces',
 
@@ -226,9 +227,11 @@ export interface BinarySpan {
 
 /**
  * Describes the outcome of a combined open request: a directory to open as the workspace, a text
- * file to open in an editor, or a binary file that is recognised but not opened as text.
+ * file to open in an editor, an image to open in the image viewer (decided by extension, so an SVG is
+ * an image even though it is text), or a binary file that is recognised but not opened as text.
  */
 export type OpenSelection =
   | { readonly kind: 'directory'; readonly directory: DirectoryListing }
   | { readonly kind: 'file'; readonly file: FileInfo }
+  | { readonly kind: 'image'; readonly path: string }
   | { readonly kind: 'binary'; readonly path: string };

@@ -145,6 +145,11 @@ export class Icon {
   public static readonly BINARY: Icon = new Icon('ph-duotone ph-binary');
 
   /**
+   * Gets the image content icon, shown on image tabs, image well documents and the welcome filter.
+   */
+  public static readonly IMAGE_FILE: Icon = new Icon('ph-duotone ph-image');
+
+  /**
    * Gets the terminal content icon.
    */
   public static readonly TERMINAL: Icon = new Icon('ph-duotone ph-terminal-window');
@@ -1493,6 +1498,85 @@ export class Icon {
    * horizontal counterpart is: the same glyph turned on its side must not read as a heavier one.
    */
   public static readonly DOTS_THREE_VERTICAL: Icon = new Icon('ph ph-dots-three-vertical');
+
+  // --- Image viewer ---
+
+  /**
+   * Gets the zoom-in icon shown on the image viewer's View group.
+   */
+  public static readonly ZOOM_IN: Icon = new Icon('ph-duotone ph-magnifying-glass-plus');
+
+  /**
+   * Gets the zoom-out icon shown on the image viewer's View group.
+   */
+  public static readonly ZOOM_OUT: Icon = new Icon('ph-duotone ph-magnifying-glass-minus');
+
+  /**
+   * Gets the fit-to-window icon shown on the image viewer's View group.
+   */
+  public static readonly ZOOM_FIT: Icon = new Icon('ph-duotone ph-corners-in');
+
+  /**
+   * Gets the actual-size (1:1) icon shown on the image viewer's View group.
+   */
+  public static readonly ZOOM_ACTUAL: Icon = new Icon('ph-duotone ph-number-square-one');
+
+  /**
+   * Gets the checkerboard icon shown on the image viewer's background choice for transparency.
+   */
+  public static readonly CHECKERBOARD: Icon = new Icon('ph-duotone ph-checkerboard');
+
+  /**
+   * Gets the light-background icon shown on the image viewer's background choice.
+   */
+  public static readonly BACKGROUND_LIGHT: Icon = new Icon('ph-duotone ph-sun');
+
+  /**
+   * Gets the dark-background icon shown on the image viewer's background choice.
+   */
+  public static readonly BACKGROUND_DARK: Icon = new Icon('ph-duotone ph-moon');
+
+  /**
+   * Gets the rotate-clockwise icon shown on the image viewer's Edit group.
+   */
+  public static readonly ROTATE_CLOCKWISE: Icon = new Icon('ph-duotone ph-arrow-clockwise');
+
+  /**
+   * Gets the rotate-counter-clockwise icon shown on the image viewer's Edit group.
+   */
+  public static readonly ROTATE_COUNTER_CLOCKWISE: Icon = new Icon(
+    'ph-duotone ph-arrow-counter-clockwise',
+  );
+
+  /**
+   * Gets the flip-horizontal icon shown on the image viewer's Edit group.
+   */
+  public static readonly FLIP_HORIZONTAL: Icon = new Icon('ph-duotone ph-flip-horizontal');
+
+  /**
+   * Gets the flip-vertical icon shown on the image viewer's Edit group.
+   */
+  public static readonly FLIP_VERTICAL: Icon = new Icon('ph-duotone ph-flip-vertical');
+
+  /**
+   * Gets the crop icon shown on the image viewer's Edit group.
+   */
+  public static readonly CROP: Icon = new Icon('ph-duotone ph-crop');
+
+  /**
+   * Gets the resize icon shown on the image viewer's Edit group.
+   */
+  public static readonly RESIZE: Icon = new Icon('ph-duotone ph-resize');
+
+  /**
+   * Gets the export icon shown on the image viewer's Export As action.
+   */
+  public static readonly EXPORT: Icon = new Icon('ph-duotone ph-export');
+
+  /**
+   * Gets the open-source icon shown on the image viewer's action that opens an SVG as text.
+   */
+  public static readonly OPEN_SOURCE: Icon = new Icon('ph-duotone ph-file-code');
 
   /**
    * Initialises a new instance of the {@link Icon} class.

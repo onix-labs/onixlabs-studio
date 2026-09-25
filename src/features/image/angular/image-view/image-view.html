@@ -1,0 +1,155 @@
+<div class="image-view">
+  <!-- The open tool's own strip: what it needs entered, and its Apply and Cancel. Viewing needs no
+       strip, so the image has the whole of its host until a tool is opened. -->
+  @switch (tool()) {
+    @case ('crop') {
+      <app-panel-toolbar class="image-view__tool" role="group" aria-label="Crop">
+        <span class="image-view__hint">
+          @if (cropRect(); as rect) {
+            {{ rect.width }} × {{ rect.height }} at {{ rect.x }}, {{ rect.y }}
+          } @else {
+            Drag over the image to choose the area to keep
+          }
+        </span>
+        <span class="panel-toolbar__spacer"></span>
+        <app-button variant="outline" label="Cancel" (click)="cancelTool()" />
+        <app-button
+          variant="solid"
+          label="Crop"
+          [disabled]="cropRect() === null"
+          (click)="applyCrop()"
+        />
+      </app-panel-toolbar>
+    }
+    @case ('resize') {
+      <app-panel-toolbar class="image-view__tool" role="group" aria-label="Resize">
+        <app-dropdown
+          ariaLabel="Unit"
+          [options]="resizeUnits"
+          [value]="resizeUnit()"
+          (valueChange)="onResizeUnit($event)"
+        />
+        @if (resizeUnit() === 'px') {
+          <span class="image-view__label">Width</span>
+          <app-number-field
+            [value]="resizeWidth()"
+            [min]="1"
+            (valueChange)="onResizeWidth($event)"
+          />
+          <span class="image-view__label">Height</span>
+          <app-number-field
+            [value]="resizeHeight()"
+            [min]="1"
+            (valueChange)="onResizeHeight($event)"
+          />
+          <!-- The checkbox atom renders the native input inside its own template; the lint rule
+               cannot see through the component boundary to verify this statically. -->
+          <!-- eslint-disable-next-line @angular-eslint/template/label-has-associated-control -->
+          <label class="image-view__check">
+            <app-checkbox [checked]="resizeLocked()" (checkedChange)="resizeLocked.set($event)" />
+            Keep aspect ratio
+          </label>
+        } @else {
+          <span class="image-view__label">Scale</span>
+          <app-number-field
+            [value]="resizePercent()"
+            [min]="1"
+            [max]="1000"
+            (valueChange)="resizePercent.set($event)"
+          />
+          <span class="image-view__hint">
+            % — {{ resizeTarget().width }} × {{ resizeTarget().height }}
+          </span>
+        }
+        <span class="panel-toolbar__spacer"></span>
+        <app-button variant="outline" label="Cancel" (click)="cancelTool()" />
+        <app-button variant="solid" label="Resize" (click)="applyResize()" />
+      </app-panel-toolbar>
+    }
+    @case ('export') {
+      <app-panel-toolbar class="image-view__tool" role="group" aria-label="Export">
+        <span class="image-view__label">Format</span>
+        <app-dropdown
+          ariaLabel="Format"
+          [options]="exportFormats"
+          [value]="exportType()"
+          (valueChange)="onExportType($event)"
+        />
+        @if (exportIsLossy()) {
+          <span class="image-view__label">Quality</span>
+          <app-slider
+            class="image-view__quality"
+            ariaLabel="Quality"
+            [min]="1"
+            [max]="100"
+            [value]="exportQuality()"
+            (valueChange)="exportQuality.set($event)"
+          />
+          <span class="image-view__hint">{{ exportQuality() }}%</span>
+        }
+        <span class="image-view__label">Scale</span>
+        <app-number-field
+          [value]="exportScale()"
+          [min]="1"
+          [max]="1000"
+          (valueChange)="exportScale.set($event)"
+        />
+        @if (exportSize(); as size) {
+          <span class="image-view__hint">% — {{ size.width }} × {{ size.height }}</span>
+        }
+        <span class="panel-toolbar__spacer"></span>
+        <app-button variant="outline" label="Cancel" (click)="cancelTool()" />
+        <app-button
+          variant="solid"
+          label="Export…"
+          [disabled]="document()?.busy() ?? true"
+          (click)="applyExport()"
+        />
+      </app-panel-toolbar>
+    }
+  }
+
+  <div
+    #viewport
+    class="image-view__viewport"
+    [class.image-view__viewport--cropping]="tool() === 'crop'"
+    (pointerdown)="onPointerDown($event)"
+    (pointermove)="onPointerMove($event)"
+    (pointerup)="onPointerUp($event)"
+    (pointercancel)="onPointerUp($event)"
+    (wheel)="onWheel($event)"
+  >
+    @if (document(); as image) {
+      @if (image.loadError()) {
+        <p class="image-view__message">{{ image.fileName }} could not be displayed.</p>
+      } @else {
+        <div class="image-view__canvas">
+          <div
+            #stage
+            class="image-view__stage"
+            [class]="'image-view__stage--' + background()"
+            [style.width.px]="stageSize()?.width"
+            [style.height.px]="stageSize()?.height"
+          >
+            <img
+              class="image-view__image"
+              [class.image-view__image--pixelated]="scale() >= 4"
+              [src]="image.displayUrl()"
+              [alt]="image.fileName"
+              draggable="false"
+            />
+            @if (cropBox(); as box) {
+              <div
+                class="image-view__crop"
+                [style.left.px]="box.x"
+                [style.top.px]="box.y"
+                [style.width.px]="box.width"
+                [style.height.px]="box.height"
+              ></div>
+            }
+          </div>
+        </div>
+      }
+    }
+  </div>
+</div>

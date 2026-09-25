@@ -1,19 +1,25 @@
-import { inject } from '@angular/core';
+import { Component, inject } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { API_DOCUMENT_KIND } from '@shared/api/api-client-types';
 import { Bridge } from '@shared/api/bridge';
+import { FileChannel, FileInfo } from '@shared/api/file-channels';
 import { DirectoryListing, OpenSelection, WorkspaceChannel } from '@shared/api/workspace-channels';
 import { StackNode } from '@shared/angular/services/dock-layout/dock-node';
+import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { DockState } from '@shared/angular/services/dock-layout/dock-state';
+import { DockTabContext } from '@shared/angular/services/dock-layout/dock-tab-context';
 import {
   findPrimaryStack,
   findStackOfPanel,
   firstStackOfRole,
 } from '@shared/angular/services/dock-layout/dock-tree';
+import { Icon } from '@shared/angular/icons/icon';
+import { RecentItem, RecentItems } from '@shared/angular/services/recent-items/recent-items';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { Workspaces } from '../workspaces/workspaces';
 import { BINARY_FILE_OPENER, BinaryFileOpener } from './binary-file-opener';
+import { IMAGE_FILE_OPENER, ImageFileOpener } from './image-file-opener';
 import { FileOpener } from './file-opener';
 
 /**
@@ -48,6 +54,32 @@ let nextSelection: OpenSelection | null;
 let nextListing: DirectoryListing | null;
 
 /**
+ * Holds the file the fake bridge's file-read call resolves with; tests mutate it.
+ */
+let nextFileInfo: FileInfo | null;
+
+/**
+ * Stands in for the image feature's well panel component.
+ */
+@Component({ selector: 'app-fake-image-panel', template: '' })
+class FakeImagePanel {}
+
+/**
+ * Records what the fake image opener was asked to do.
+ */
+interface ImageOpenerCalls {
+  /**
+   * Gets the paths opened as tabs.
+   */
+  readonly tabs: string[];
+
+  /**
+   * Gets the well panels released.
+   */
+  readonly released: string[];
+}
+
+/**
  * Builds a fake transport whose open/open-file/reopen-file channels resolve with
  * {@link nextSelection} and whose reopen-folder channel resolves with {@link nextListing}.
  */
@@ -64,6 +96,9 @@ function fakeBridge(): Bridge {
       if (channel === (WorkspaceChannel.ReopenFolder as string)) {
         return Promise.resolve(nextListing as T);
       }
+      if (channel === (FileChannel.Read as string)) {
+        return Promise.resolve(nextFileInfo as T);
+      }
       return Promise.resolve(null as T);
     },
     send: (): void => undefined,
@@ -76,6 +111,7 @@ describe('FileOpener', () => {
   let tabs: Tabs;
   let workspaces: Workspaces;
   let dockState: DockState;
+  let imageCalls: ImageOpenerCalls;
 
   /**
    * Returns the panels currently open in the document well.
@@ -88,6 +124,8 @@ describe('FileOpener', () => {
   beforeEach(() => {
     nextSelection = null;
     nextListing = null;
+    nextFileInfo = null;
+    imageCalls = { tabs: [], released: [] };
     (window as unknown as { bridge: Bridge }).bridge = fakeBridge();
     TestBed.configureTestingModule({
       providers: [
@@ -104,6 +142,31 @@ describe('FileOpener', () => {
                 tabRegistry.activate(tab.id);
                 return tabRegistry.get(tab.id) ?? tab;
               },
+            };
+          },
+        },
+        // A stand-in for the image feature's contributed opener: an image tab titled with the file's
+        // base name, and a well panel whose release is recorded.
+        {
+          provide: IMAGE_FILE_OPENER,
+          useFactory: (): ImageFileOpener => {
+            const tabRegistry: Tabs = inject(Tabs);
+            return {
+              open: (path: string): Tab => {
+                imageCalls.tabs.push(path);
+                const tab: Tab = tabRegistry.open('image', path);
+                tabRegistry.rename(tab.id, path.split('/').pop() ?? path);
+                tabRegistry.activate(tab.id);
+                return tabRegistry.get(tab.id) ?? tab;
+              },
+              wellPanel: (path: string, ownerTabId: string): DockPanel => ({
+                id: `image-well:${ownerTabId}:${path}`,
+                title: path.split('/').pop() ?? path,
+                icon: Icon.IMAGE_FILE,
+                role: 'document',
+                component: FakeImagePanel,
+              }),
+              releaseWellPanel: (panelId: string): void => void imageCalls.released.push(panelId),
             };
           },
         },
@@ -279,6 +342,78 @@ describe('FileOpener', () => {
     expect(tabs.tabs()).toHaveLength(0);
   });
 
+  it('openInteractive_whenImageChosen_opensAnImageTabAndRecordsIt', async () => {
+    nextSelection = { kind: 'image', path: '/pictures/photo.png' };
+    expect(await opener.openInteractive()).toBe(true);
+    expect(tabs.activeTab()?.type).toBe('image');
+    expect(imageCalls.tabs).toEqual(['/pictures/photo.png']);
+    const recent: RecentItem | undefined = TestBed.inject(RecentItems).items()[0];
+    expect(recent?.kind).toBe('image');
+    expect(recent?.path).toBe('/pictures/photo.png');
+  });
+
+  it('openPath_whenImageOpenedInAWorkspace_placesItInTheWellNotATab', async () => {
+    TestBed.inject(DockTabContext).setTabId('ws-tab');
+    nextSelection = { kind: 'image', path: '/ws/logo.svg' };
+    expect(await opener.openPath('/ws/logo.svg')).toBe(true);
+    expect(wellPanels()).toEqual(['image-well:ws-tab:/ws/logo.svg']);
+    expect(tabs.tabs()).toHaveLength(0);
+  });
+
+  it('openPath_whenImageAlreadyInTheWell_reusesItsPanel', async () => {
+    TestBed.inject(DockTabContext).setTabId('ws-tab');
+    nextSelection = { kind: 'image', path: '/ws/logo.svg' };
+    await opener.openPath('/ws/logo.svg');
+    await opener.openPath('/ws/logo.svg');
+    expect(wellPanels()).toHaveLength(1);
+  });
+
+  it('openPath_whenImagePanelClosed_releasesItsDocument', async () => {
+    TestBed.inject(DockTabContext).setTabId('ws-tab');
+    nextSelection = { kind: 'image', path: '/ws/logo.svg' };
+    await opener.openPath('/ws/logo.svg');
+    TestBed.tick();
+    expect(imageCalls.released).toEqual([]);
+
+    dockState.removeFromLayout('image-well:ws-tab:/ws/logo.svg');
+    TestBed.tick();
+
+    expect(imageCalls.released).toEqual(['image-well:ws-tab:/ws/logo.svg']);
+  });
+
+  it('openPath_whenImageOpenedOutsideAWorkspace_fallsBackToATab', async () => {
+    nextSelection = { kind: 'image', path: '/ws/logo.png' };
+    expect(await opener.openPath('/ws/logo.png')).toBe(true);
+    expect(tabs.activeTab()?.type).toBe('image');
+    expect(wellPanels()).toHaveLength(0);
+  });
+
+  it('openAsBinary_opensTheFileInTheBinaryEditorWhateverItsType', () => {
+    expect(opener.openAsBinary('/ws/logo.png')).toBe(true);
+    expect(tabs.activeTab()?.type).toBe('binary');
+  });
+
+  it('openAsText_outsideAWorkspace_opensACodeTab', async () => {
+    nextFileInfo = { path: '/ws/logo.svg', name: 'logo.svg', extension: '.svg', content: '<svg/>' };
+    expect(await opener.openAsText('/ws/logo.svg')).toBe(true);
+    expect(tabs.activeTab()?.type).toBe('code');
+    expect(wellPanels()).toHaveLength(0);
+  });
+
+  it('openAsText_insideAWorkspace_opensTheSourceInTheWell', async () => {
+    TestBed.inject(DockTabContext).setTabId('ws-tab');
+    nextFileInfo = { path: '/ws/logo.svg', name: 'logo.svg', extension: '.svg', content: '<svg/>' };
+    expect(await opener.openAsText('/ws/logo.svg')).toBe(true);
+    expect(wellPanels()).toHaveLength(1);
+    expect(tabs.tabs()).toHaveLength(0);
+  });
+
+  it('openAsText_whenUnreadable_opensNothing', async () => {
+    nextFileInfo = null;
+    expect(await opener.openAsText('/ws/missing.svg')).toBe(false);
+    expect(tabs.tabs()).toHaveLength(0);
+  });
+
   it('reopenDirectory_whenTrustedFolder_opensAWorkspaceTab', async () => {
     nextListing = ROOT_LISTING;
     expect(await opener.reopenDirectory('/ws')).toBe(true);
@@ -290,5 +425,31 @@ describe('FileOpener', () => {
     nextListing = null;
     expect(await opener.reopenDirectory('/blocked')).toBe(false);
     expect(tabs.tabs()).toHaveLength(0);
+  });
+});
+
+describe('FileOpener without the image feature', () => {
+  afterEach(() => {
+    delete (window as unknown as { bridge?: unknown }).bridge;
+  });
+
+  it('openInteractive_whenImageChosen_fallsBackToTheBinaryEditor', async () => {
+    nextSelection = { kind: 'image', path: '/pictures/photo.png' };
+    (window as unknown as { bridge: Bridge }).bridge = fakeBridge();
+    TestBed.configureTestingModule({
+      providers: [
+        {
+          provide: BINARY_FILE_OPENER,
+          useFactory: (): BinaryFileOpener => {
+            const tabRegistry: Tabs = inject(Tabs);
+            return { open: (path: string): Tab => tabRegistry.open('binary', path) };
+          },
+        },
+      ],
+    });
+    const opener: FileOpener = TestBed.inject(FileOpener);
+
+    expect(await opener.openInteractive()).toBe(true);
+    expect(TestBed.inject(Tabs).activeTab()?.type).toBe('binary');
   });
 });
