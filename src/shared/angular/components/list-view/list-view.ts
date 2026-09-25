@@ -16,6 +16,7 @@ import {
   inject,
   input,
   InputSignal,
+  linkedSignal,
   output,
   OutputEmitterRef,
   signal,
@@ -28,6 +29,10 @@ import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Icon } from '@shared/angular/icons/icon';
 import { Menu, MenuChoice, MenuItem } from '@shared/angular/components/menu/menu';
 import { MenuSubject } from '@shared/angular/components/menu/menu-subject';
+import {
+  RowEditField,
+  RowEditSelection,
+} from '@shared/angular/components/row-edit-field/row-edit-field';
 
 /**
  * Describes one row of a list: its identity and the consumer's payload, rendered through the
@@ -77,6 +82,21 @@ export interface ListMenuSelection {
 }
 
 /**
+ * A committed in-place edit: the row that was being named, and the name it was given.
+ */
+export interface ListEdit {
+  /**
+   * Gets the row that was being edited.
+   */
+  readonly row: ListRow;
+
+  /**
+   * Gets the trimmed name the edit committed, never empty and never the name it started from.
+   */
+  readonly value: string;
+}
+
+/**
  * A reusable flat-list presenter, the tree view's sibling for non-hierarchical row surfaces —
  * history lists, result lists, and the like. It owns the structural concerns — the scrolling row
  * list, hover and selection chrome (the same accent-tinted fill the tree uses), focus, keyboard
@@ -84,6 +104,11 @@ export interface ListMenuSelection {
  * projects a row-content template (`<ng-template let-row>`) that renders each row's content.
  * Clicking a row (or pressing Enter/Space on it) emits {@link rowClick}; the consumer decides what
  * that means. The selected row is kept scrolled into view.
+ *
+ * A row can be named in place exactly as a tree row can: the consumer names it in {@link editingId},
+ * the content template is told through its `editing` context value, an inline field follows the
+ * content, and the list reports {@link editCommit} or {@link editCancel} for the consumer to act on
+ * and clear {@link editingId}.
  */
 @Component({
   selector: 'app-list-view',
@@ -96,6 +121,7 @@ export interface ListMenuSelection {
     CdkContextMenuTrigger,
     Menu,
     MenuSubject,
+    RowEditField,
   ],
   templateUrl: './list-view.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -179,6 +205,39 @@ export class ListView {
   };
 
   /**
+   * Gets the id of the row being named in place, or null when no row is.
+   */
+  public readonly editingId: InputSignal<string | null> = input<string | null>(null);
+
+  /**
+   * Gets the name the edited row starts from — its current name for a rename, empty for a placeholder.
+   */
+  public readonly editValue: InputSignal<string> = input<string>('');
+
+  /**
+   * Gets what the edited row's field selects when it opens: the whole name, or a file name's stem.
+   */
+  public readonly editSelection: InputSignal<RowEditSelection> = input<RowEditSelection>('all');
+
+  /**
+   * Emits the edited row with the name it was given, when the edit commits something to apply.
+   */
+  public readonly editCommit: OutputEmitterRef<ListEdit> = output<ListEdit>();
+
+  /**
+   * Emits the edited row when the edit is abandoned, or committed with nothing to apply.
+   */
+  public readonly editCancel: OutputEmitterRef<ListRow> = output<ListRow>();
+
+  /**
+   * Holds the name being typed into the edited row, reset whenever a new edit begins.
+   */
+  protected readonly editDraft: WritableSignal<string> = linkedSignal<string>((): string => {
+    this.editingId();
+    return this.editValue();
+  });
+
+  /**
    * Holds the projected row-content template, rendered for each row with the row as its implicit
    * context value.
    */
@@ -251,6 +310,24 @@ export class ListView {
   }
 
   /**
+   * Gets whether a row is the one being named in place.
+   * @param row The row to test.
+   * @returns Returns true when the row is being edited; otherwise, false.
+   */
+  protected isEditing(row: ListRow): boolean {
+    return row.id === this.editingId();
+  }
+
+  /**
+   * Reports a committed edit with the row it was made on.
+   * @param row The row that was edited.
+   * @param value The trimmed name it was given.
+   */
+  protected onEditCommit(row: ListRow, value: string): void {
+    this.editCommit.emit({ row, value });
+  }
+
+  /**
    * Gets whether a row has any context-menu items, which is what decides whether right-clicking it
    * opens anything.
    *
@@ -262,7 +339,9 @@ export class ListView {
    * @returns Returns true when the row has at least one item; otherwise, false.
    */
   protected rowHasMenu(row: ListRow): boolean {
-    return this.menuItemsFor(row).length > 0;
+    // A row being named offers no menu: its commands would act on the entry as it was before the name
+    // being typed.
+    return !this.isEditing(row) && this.menuItemsFor(row).length > 0;
   }
 
   /**

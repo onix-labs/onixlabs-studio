@@ -10,17 +10,23 @@ import {
   inject,
   input,
   InputSignal,
+  linkedSignal,
   output,
   OutputEmitterRef,
   Signal,
   TemplateRef,
   viewChild,
+  WritableSignal,
 } from '@angular/core';
 import { CdkContextMenuTrigger } from '@angular/cdk/menu';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Menu, MenuChoice, MenuItem } from '@shared/angular/components/menu/menu';
 import { MenuSubject } from '@shared/angular/components/menu/menu-subject';
+import {
+  RowEditField,
+  RowEditSelection,
+} from '@shared/angular/components/row-edit-field/row-edit-field';
 
 /**
  * Specifies the base left padding of a tree row, in pixels.
@@ -108,6 +114,21 @@ export interface TreeMenuSelection {
 }
 
 /**
+ * A committed in-place edit: the row that was being named, and the name it was given.
+ */
+export interface TreeEdit {
+  /**
+   * Gets the row that was being edited.
+   */
+  readonly row: TreeRow;
+
+  /**
+   * Gets the trimmed name the edit committed, never empty and never the name it started from.
+   */
+  readonly value: string;
+}
+
+/**
  * A reusable tree presenter for hierarchical row surfaces — file trees, solution trees, change
  * lists, and the like. It owns the structural concerns — the flat list of indented rows, the
  * expand/collapse chevron, hover and selection chrome (a full-width fill with an inset accent bar),
@@ -120,10 +141,25 @@ export interface TreeMenuSelection {
  * {@link virtual} rendering: only the rows in the scrollport get DOM, so an expanded multi-thousand
  * -file solution costs dozens of nodes rather than thousands. Size-to-content consumers (dialogs,
  * sidebars) keep the plain list, which needs no bounded height.
+ *
+ * A row can also be named in place — renamed, or named for the first time as a placeholder for
+ * something about to be created. The consumer names the row in {@link editingId}; the row keeps the
+ * consumer's content but gains an inline field after it (the content template is told through its
+ * `editing` context value, so it can drop the label and decorations the field replaces), and the tree
+ * reports {@link editCommit} or {@link editCancel}. The consumer owns the edit's lifetime: it clears
+ * {@link editingId} when either arrives.
  */
 @Component({
   selector: 'app-tree-view',
-  imports: [AppIcon, NgTemplateOutlet, ScrollingModule, CdkContextMenuTrigger, Menu, MenuSubject],
+  imports: [
+    AppIcon,
+    NgTemplateOutlet,
+    ScrollingModule,
+    CdkContextMenuTrigger,
+    Menu,
+    MenuSubject,
+    RowEditField,
+  ],
   templateUrl: './tree-view.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -209,6 +245,57 @@ export class TreeView {
   };
 
   /**
+   * Gets the id of the row being named in place, or null when no row is.
+   */
+  public readonly editingId: InputSignal<string | null> = input<string | null>(null);
+
+  /**
+   * Gets the name the edited row starts from — its current name for a rename, empty for a placeholder.
+   */
+  public readonly editValue: InputSignal<string> = input<string>('');
+
+  /**
+   * Gets what the edited row's field selects when it opens: the whole name, or a file name's stem.
+   */
+  public readonly editSelection: InputSignal<RowEditSelection> = input<RowEditSelection>('all');
+
+  /**
+   * Emits the edited row with the name it was given, when the edit commits something to apply.
+   */
+  public readonly editCommit: OutputEmitterRef<TreeEdit> = output<TreeEdit>();
+
+  /**
+   * Emits the edited row when the edit is abandoned, or committed with nothing to apply.
+   */
+  public readonly editCancel: OutputEmitterRef<TreeRow> = output<TreeRow>();
+
+  /**
+   * Holds the name being typed into the edited row, reset whenever a new edit begins. Held here rather
+   * than in the field, because a virtual scroller rebuilds a row that scrolls out and back, and the
+   * draft should survive that.
+   */
+  protected readonly editDraft: WritableSignal<string> = linkedSignal<string>((): string => {
+    this.editingId();
+    return this.editValue();
+  });
+
+  /**
+   * Holds the number of edits begun so far, the source of {@link editSession}'s values.
+   */
+  private editsBegun: number = 0;
+
+  /**
+   * Gets a number that changes whenever a new edit begins, keying the edit field so each edit gets a
+   * field of its own rather than one a recycled row carried over from an edit that already ended.
+   */
+  protected readonly editSession: Signal<number> = computed((): number => {
+    this.editingId();
+    this.editValue();
+    this.editsBegun += 1;
+    return this.editsBegun;
+  });
+
+  /**
    * Holds the projected row-content template, rendered for each row with the row as its implicit
    * context value.
    */
@@ -235,11 +322,12 @@ export class TreeView {
    * Initializes a new instance of the {@link TreeView} class, keeping the selected row scrolled into
    * view: whenever the selection (or the row set it lives in) changes after render, the selected
    * row is brought into the scrollport — so selection driven from outside (an explorer following the
-   * active document) is always visible.
+   * active document) is always visible. A row being edited takes precedence over the selection, since
+   * it is where the user is typing.
    */
   public constructor() {
     afterRenderEffect((): void => {
-      const id: string | null = this.selectedId();
+      const id: string | null = this.editingId() ?? this.selectedId();
       const rows: readonly TreeRow[] = this.rows();
       if (id === null) {
         return;
@@ -299,6 +387,24 @@ export class TreeView {
   }
 
   /**
+   * Gets whether a row is the one being named in place.
+   * @param row The row to test.
+   * @returns Returns true when the row is being edited; otherwise, false.
+   */
+  protected isEditing(row: TreeRow): boolean {
+    return row.id === this.editingId();
+  }
+
+  /**
+   * Reports a committed edit with the row it was made on.
+   * @param row The row that was edited.
+   * @param value The trimmed name it was given.
+   */
+  protected onEditCommit(row: TreeRow, value: string): void {
+    this.editCommit.emit({ row, value });
+  }
+
+  /**
    * Tracks a virtual row by its stable identity.
    * @param _index The row's index.
    * @param row The row.
@@ -321,7 +427,9 @@ export class TreeView {
    * @returns Returns true when the row has at least one item; otherwise, false.
    */
   protected rowHasMenu(row: TreeRow): boolean {
-    return this.menuItemsFor(row).length > 0;
+    // A row being named offers no menu: its commands would act on the entry as it was before the name
+    // being typed, or — for a placeholder — on nothing at all.
+    return !this.isEditing(row) && this.menuItemsFor(row).length > 0;
   }
 
   /**

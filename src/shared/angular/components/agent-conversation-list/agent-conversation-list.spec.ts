@@ -15,6 +15,7 @@ describe('AgentConversationList', () => {
   let summaries: WritableSignal<readonly AgentConversationSummary[]>;
   let categories: WritableSignal<readonly AgentCategory[]>;
   let opened: string[];
+  let renamed: { id: string; title: string }[];
   let windows: FakeModalWindows;
 
   const SUMMARY: AgentConversationSummary = {
@@ -64,6 +65,7 @@ describe('AgentConversationList', () => {
 
   beforeEach(async () => {
     opened = [];
+    renamed = [];
     windows = new FakeModalWindows();
     summaries = signal<readonly AgentConversationSummary[]>([]);
     categories = signal<readonly AgentCategory[]>([]);
@@ -75,7 +77,10 @@ describe('AgentConversationList', () => {
         return Promise.resolve();
       },
       refresh: (): Promise<void> => Promise.resolve(),
-      rename: (): Promise<void> => Promise.resolve(),
+      rename: (id: string, title: string): Promise<void> => {
+        renamed.push({ id, title });
+        return Promise.resolve();
+      },
       setCategory: (): Promise<void> => Promise.resolve(),
       duplicate: (): Promise<void> => Promise.resolve(),
       delete: (): Promise<void> => Promise.resolve(),
@@ -265,6 +270,88 @@ describe('AgentConversationList', () => {
       'Delete conversations?',
     );
     expect(content.querySelector('.history__modal-body')?.textContent).toContain('1 conversation');
+  });
+
+  /**
+   * Chooses Rename from a conversation row's overflow menu, as opening the menu on that row and
+   * picking the item would, and settles the render.
+   * @param summary The conversation.
+   * @param rowId The id of the row the menu was opened on.
+   * @returns Returns a promise that resolves once the row's field has rendered.
+   */
+  async function rename(summary: AgentConversationSummary, rowId: string): Promise<void> {
+    const list: { onOpenMenu(s: AgentConversationSummary, r: string): void; onRename(): void } =
+      fixture.componentInstance as unknown as {
+        onOpenMenu(s: AgentConversationSummary, r: string): void;
+        onRename(): void;
+      };
+    list.onOpenMenu(summary, rowId);
+    list.onRename();
+    fixture.detectChanges();
+    await fixture.whenStable();
+  }
+
+  /**
+   * Gets the in-place rename field's input, if a row is being renamed.
+   * @returns Returns the input, or null.
+   */
+  function renameField(): HTMLInputElement | null {
+    return host.querySelector<HTMLInputElement>('app-row-edit-field input');
+  }
+
+  it('rename_turnsTheConversationsRowIntoAFieldSeededWithItsTitle', async () => {
+    summaries.set([SUMMARY]);
+    fixture.detectChanges();
+
+    await rename(SUMMARY, 'c1');
+
+    expect(renameField()?.value).toBe('From east to west');
+    // The title, chips and actions give way to the field; nothing asks in a window.
+    expect(host.querySelector('.history__leaf')).toBeNull();
+    expect(windows.openCount).toBe(0);
+  });
+
+  it('rename_ofAFiledConversation_editsOnlyTheRowItWasChosenOn', async () => {
+    // Filed under a category, a conversation has two rows; only the one the menu opened on edits.
+    categories.set([{ id: 'k1', name: 'Keep', sortOrder: 0, createdAt: 0 }]);
+    summaries.set([{ ...SUMMARY, categoryId: 'k1' }]);
+    fixture.detectChanges();
+    host.querySelectorAll<HTMLElement>('.tree-row')[2]?.click();
+    fixture.detectChanges();
+
+    await rename({ ...SUMMARY, categoryId: 'k1' }, 'k1:c1');
+
+    expect(host.querySelectorAll('app-row-edit-field').length).toBe(1);
+    expect(host.querySelector('[data-tree-id="k1:c1"] app-row-edit-field')).not.toBeNull();
+  });
+
+  it('rename_whenCommitted_retitlesTheConversation', async () => {
+    summaries.set([SUMMARY]);
+    fixture.detectChanges();
+    await rename(SUMMARY, 'c1');
+
+    const input: HTMLInputElement = renameField()!;
+    input.value = 'From west to east';
+    input.dispatchEvent(new Event('input'));
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(renamed).toEqual([{ id: 'c1', title: 'From west to east' }]);
+    expect(renameField()).toBeNull();
+  });
+
+  it('rename_whenCancelled_leavesTheTitleAlone', async () => {
+    summaries.set([SUMMARY]);
+    fixture.detectChanges();
+    await rename(SUMMARY, 'c1');
+
+    renameField()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    fixture.detectChanges();
+
+    expect(renamed).toEqual([]);
+    expect(renameField()).toBeNull();
+    expect(host.querySelector('.history__leaf')?.textContent).toContain('From east to west');
   });
 
   it('modal_whenClosed_doesNotRenderItsContent', () => {

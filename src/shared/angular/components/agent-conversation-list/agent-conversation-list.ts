@@ -26,7 +26,7 @@ import { HighlightedText } from '@shared/angular/components/highlighted-text/hig
 import { MenuPointerGuard } from '@shared/angular/components/menu/menu-pointer-guard';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
-import { TreeRow, TreeView } from '@shared/angular/components/tree-view/tree-view';
+import { TreeEdit, TreeRow, TreeView } from '@shared/angular/components/tree-view/tree-view';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigger';
 
@@ -220,6 +220,13 @@ export class AgentConversationList {
     signal<AgentConversationSummary | null>(null);
 
   /**
+   * Holds the id of the row the overflow menu was opened on. A conversation filed under a category
+   * appears twice — under All Conversations and under its category — so the conversation alone does not
+   * say which of its rows a rename should turn into a field.
+   */
+  private menuRowId: string | null = null;
+
+  /**
    * Holds the id of the conversation being dragged, or null when no drag is in progress.
    */
   private readonly draggingId: WritableSignal<string | null> = signal<string | null>(null);
@@ -230,15 +237,15 @@ export class AgentConversationList {
   protected readonly dropTargetId: WritableSignal<string | null> = signal<string | null>(null);
 
   /**
-   * Holds the conversation being renamed, or null when the rename modal is closed.
+   * Holds the conversation being renamed in place and the row its title is typed into, or null when
+   * none is.
    */
-  protected readonly renameTarget: WritableSignal<AgentConversationSummary | null> =
-    signal<AgentConversationSummary | null>(null);
-
-  /**
-   * Holds the edited title in the rename modal.
-   */
-  protected readonly renameValue: WritableSignal<string> = signal<string>('');
+  protected readonly renameTarget: WritableSignal<{
+    readonly summary: AgentConversationSummary;
+    readonly rowId: string;
+  } | null> = signal<{ readonly summary: AgentConversationSummary; readonly rowId: string } | null>(
+    null,
+  );
 
   /**
    * Holds the category being edited (id null for a new category), or null when the editor is closed.
@@ -625,11 +632,13 @@ export class AgentConversationList {
   }
 
   /**
-   * Records the conversation an overflow menu targets as it opens.
+   * Records the conversation an overflow menu targets, and the row it was opened on, as it opens.
    * @param summary The conversation.
+   * @param rowId The id of the row the menu was opened on.
    */
-  protected onOpenMenu(summary: AgentConversationSummary): void {
+  protected onOpenMenu(summary: AgentConversationSummary, rowId: string): void {
     this.menuTarget.set(summary);
+    this.menuRowId = rowId;
   }
 
   /**
@@ -643,31 +652,34 @@ export class AgentConversationList {
   }
 
   /**
-   * Opens the rename modal for the targeted conversation.
+   * Turns the row the overflow menu was opened on into a field seeded with the conversation's title.
    */
   protected onRename(): void {
-    const target: AgentConversationSummary | null = this.menuTarget();
-    if (target === null) {
+    const summary: AgentConversationSummary | null = this.menuTarget();
+    const rowId: string | null = this.menuRowId;
+    if (summary === null || rowId === null) {
       return;
     }
-    this.renameTarget.set(target);
-    this.renameValue.set(target.title);
+    this.renameTarget.set({ summary, rowId });
   }
 
   /**
-   * Commits the rename, then closes the modal.
+   * Retitles the conversation being edited with the title its row was given, then ends the edit.
+   * @param commit The edited row and the trimmed title it was given.
+   * @returns Returns a promise that resolves once the rename has been applied.
    */
-  protected async onConfirmRename(): Promise<void> {
-    const target: AgentConversationSummary | null = this.renameTarget();
-    const title: string = this.renameValue().trim();
-    this.renameTarget.set(null);
-    if (target !== null && title.length > 0) {
-      await this.conversation.rename(target.id, title);
+  protected async onCommitRename(commit: TreeEdit): Promise<void> {
+    const target: { readonly summary: AgentConversationSummary; readonly rowId: string } | null =
+      this.renameTarget();
+    if (commit.row.id !== target?.rowId) {
+      return;
     }
+    this.renameTarget.set(null);
+    await this.conversation.rename(target.summary.id, commit.value);
   }
 
   /**
-   * Closes the rename modal without renaming.
+   * Ends the rename without renaming — abandoned, or committed with no new title to apply.
    */
   protected onCancelRename(): void {
     this.renameTarget.set(null);

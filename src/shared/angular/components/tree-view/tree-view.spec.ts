@@ -1,7 +1,7 @@
 import { ApplicationRef, Component, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { MenuItem } from '@shared/angular/components/menu/menu';
-import { TreeMenuSelection, TreeRow, TreeView } from './tree-view';
+import { TreeEdit, TreeMenuSelection, TreeRow, TreeView } from './tree-view';
 
 /**
  * Builds a tree row with the given identity, depth, and expansion state, carrying its id as the
@@ -352,5 +352,131 @@ describe('TreeView context menu suppression', () => {
     // An empty panel on a row nothing can be done to reads as a bug rather than as an answer.
     rightClick(1);
     expect(document.querySelectorAll('.app-menu-panel')).toHaveLength(0);
+  });
+});
+
+/**
+ * Hosts the tree with one row named in place, a template that drops its label while its row is being
+ * edited, and a context menu, so a test can tell what an editing row still answers.
+ */
+@Component({
+  imports: [TreeView],
+  template: `
+    <app-tree-view
+      [rows]="rows()"
+      [editingId]="editingId()"
+      editValue="beta.ts"
+      editSelection="stem"
+      [contextMenuFor]="menuFor"
+      (rowClick)="clicked.push($event)"
+      (editCommit)="committed.push($event)"
+      (editCancel)="cancelled.push($event)"
+    >
+      <ng-template let-row let-editing="editing">
+        <span class="probe-icon"></span>
+        @if (!editing) {
+          <span class="probe-label">{{ row.data }}</span>
+        }
+      </ng-template>
+    </app-tree-view>
+  `,
+})
+class EditHost {
+  public readonly rows: WritableSignal<readonly TreeRow[]> = signal<readonly TreeRow[]>([
+    makeRow('alpha', 0, false, false),
+    makeRow('beta', 0, false, false),
+  ]);
+  public readonly editingId: WritableSignal<string | null> = signal<string | null>('beta');
+  public readonly clicked: TreeRow[] = [];
+  public readonly committed: TreeEdit[] = [];
+  public readonly cancelled: TreeRow[] = [];
+
+  public readonly menuFor: (row: TreeRow) => readonly MenuItem[] = (
+    row: TreeRow,
+  ): readonly MenuItem[] => [{ id: `act:${row.id}`, label: 'Act' }];
+}
+
+describe('TreeView in-place edit', () => {
+  let fixture: ComponentFixture<EditHost>;
+  let component: EditHost;
+  let host: HTMLElement;
+
+  beforeEach(async () => {
+    fixture = TestBed.createComponent(EditHost);
+    component = fixture.componentInstance;
+    host = fixture.nativeElement as HTMLElement;
+    fixture.detectChanges();
+    await fixture.whenStable();
+  });
+
+  /**
+   * Gets the rendered row elements.
+   * @returns Returns the rows.
+   */
+  function rows(): HTMLElement[] {
+    return Array.from(host.querySelectorAll<HTMLElement>('.tree-row'));
+  }
+
+  /**
+   * Gets the edit field's input, if a row is being edited.
+   * @returns Returns the input, or null.
+   */
+  function field(): HTMLInputElement | null {
+    return host.querySelector<HTMLInputElement>('app-row-edit-field input');
+  }
+
+  it('editingId_rendersAFieldOnlyOnThatRow_inPlaceOfTheLabelTheTemplateDrops', () => {
+    const [alpha, beta] = rows();
+
+    expect(alpha.querySelector('app-row-edit-field')).toBeNull();
+    expect(beta.querySelector('app-row-edit-field')).not.toBeNull();
+    expect(beta.querySelector('.probe-label')).toBeNull();
+    expect(beta.querySelector('.probe-icon')).not.toBeNull();
+    expect(field()?.value).toBe('beta.ts');
+  });
+
+  it('editingId_opensTheFieldFocusedWithTheStemSelected', () => {
+    expect(document.activeElement).toBe(field());
+    expect([field()?.selectionStart, field()?.selectionEnd]).toEqual([0, 4]);
+  });
+
+  it('enter_emitsEditCommitWithTheRow_andDoesNotActivateIt', () => {
+    const input: HTMLInputElement = field()!;
+    input.value = 'gamma.ts';
+    input.dispatchEvent(new Event('input'));
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+
+    expect(
+      component.committed.map((edit: TreeEdit): string => `${edit.row.id}:${edit.value}`),
+    ).toEqual(['beta:gamma.ts']);
+    expect(component.clicked).toEqual([]);
+  });
+
+  it('escape_emitsEditCancelWithTheRow', () => {
+    field()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+
+    expect(component.cancelled.map((row: TreeRow): string => row.id)).toEqual(['beta']);
+    expect(component.committed).toEqual([]);
+  });
+
+  it('clickingTheField_doesNotClickTheRow', () => {
+    field()!.click();
+
+    expect(component.clicked).toEqual([]);
+  });
+
+  it('contextMenu_onTheEditingRow_doesNotOpen', () => {
+    rows()[1].dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    fixture.detectChanges();
+
+    expect(document.querySelectorAll('.app-menu-panel__item').length).toBe(0);
+  });
+
+  it('editingId_whenCleared_putsTheLabelBack', () => {
+    component.editingId.set(null);
+    fixture.detectChanges();
+
+    expect(field()).toBeNull();
+    expect(rows()[1].querySelector('.probe-label')?.textContent).toBe('beta');
   });
 });

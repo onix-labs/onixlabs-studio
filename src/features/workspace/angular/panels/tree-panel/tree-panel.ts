@@ -30,8 +30,9 @@ import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { MenuItem } from '@shared/angular/components/menu/menu';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
-import { TextField } from '@shared/angular/components/forms/text-field/text-field';
+import { RowEditSelection } from '@shared/angular/components/row-edit-field/row-edit-field';
 import {
+  TreeEdit,
   TreeMenuSelection,
   TreeRow,
   TreeView,
@@ -51,18 +52,24 @@ const ACTION_RENAME: string = 'rename';
 const ACTION_DELETE: string = 'delete';
 
 /**
- * Which naming operation an open name prompt is collecting a name for.
+ * Identifies the placeholder row a create is named in. Never a path — a NUL cannot occur in one — so it
+ * cannot collide with an entry in the tree.
  */
-type NamePromptKind = 'new-file' | 'new-folder' | 'rename';
+const PLACEHOLDER_ID: string = '\u0000new-entry';
 
 /**
- * A naming operation awaiting the name the user is typing.
+ * Which naming operation a row is being edited for.
  */
-interface NamePrompt {
+export type NameEditKind = 'new-file' | 'new-folder' | 'rename';
+
+/**
+ * A naming operation in progress: a row of the tree being named in place.
+ */
+export interface NameEdit {
   /**
    * Gets which operation the name is for.
    */
-  readonly kind: NamePromptKind;
+  readonly kind: NameEditKind;
 
   /**
    * Gets the directory a create happens in, or the absolute path of the entry a rename renames.
@@ -70,9 +77,20 @@ interface NamePrompt {
   readonly target: string;
 
   /**
-   * Gets the prompt's heading.
+   * Gets the id of the row being edited: the entry's own row for a rename, the placeholder for a create.
    */
-  readonly title: string;
+  readonly rowId: string;
+
+  /**
+   * Gets the name the edit starts from: the entry's name for a rename, empty for a create.
+   */
+  readonly initial: string;
+
+  /**
+   * Gets what the field selects when it opens: a file's stem, or the whole of a folder's name (a dot
+   * in a folder's name does not start an extension).
+   */
+  readonly selection: RowEditSelection;
 }
 
 /**
@@ -84,20 +102,13 @@ interface NamePrompt {
  * Each row also carries the commands a file tree is expected to offer — opening, the two path copies,
  * revealing, and the three writes (new, rename, delete). The writes run through {@link Workspace},
  * which confines them to the workspace root in the main process; a delete goes to the operating
- * system's trash, and the confirmation says so.
+ * system's trash, and the confirmation says so. The three naming writes are typed into the tree itself:
+ * a rename turns the entry's row into a field, and a create opens a placeholder row, first among the
+ * target directory's children, that becomes the new entry once it is named.
  */
 @Component({
   selector: 'app-tree-panel',
-  imports: [
-    Button,
-    AppIcon,
-    TreeView,
-    ExplorerToolbar,
-    HighlightedText,
-    Modal,
-    ModalContent,
-    TextField,
-  ],
+  imports: [Button, AppIcon, TreeView, ExplorerToolbar, HighlightedText, Modal, ModalContent],
   templateUrl: './tree-panel.html',
   styleUrl: './tree-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -150,14 +161,9 @@ export class TreePanel {
   private readonly notifications: Notifications = inject(Notifications);
 
   /**
-   * Holds the open name prompt, or null when none is open.
+   * Holds the naming operation in progress, or null when no row is being named.
    */
-  public readonly prompt: WritableSignal<NamePrompt | null> = signal<NamePrompt | null>(null);
-
-  /**
-   * Holds the name being typed into the open prompt.
-   */
-  public readonly promptName: WritableSignal<string> = signal<string>('');
+  public readonly editing: WritableSignal<NameEdit | null> = signal<NameEdit | null>(null);
 
   /**
    * Holds the entry awaiting a delete confirmation, or null when none is pending.
@@ -166,25 +172,23 @@ export class TreePanel {
     signal<WorkspaceTreeNode | null>(null);
 
   /**
-   * Gets whether the open prompt has a name worth submitting. A name is trimmed before it is used, so
-   * whitespace alone is nothing; the main process still has the final say on what is a valid segment.
+   * Gets the workspace's visible rows mapped to tree rows for the shared {@link TreeView}, with a create's
+   * placeholder row spliced in while one is being named.
    */
-  protected readonly canSubmitPrompt: Signal<boolean> = computed(
-    (): boolean => this.promptName().trim().length > 0,
-  );
-
-  /**
-   * Gets the workspace's visible rows mapped to tree rows for the shared {@link TreeView}.
-   */
-  protected readonly rows: Signal<readonly TreeRow[]> = computed((): readonly TreeRow[] =>
-    this.workspace.rows().map((row: WorkspaceTreeRow): TreeRow => ({
+  protected readonly rows: Signal<readonly TreeRow[]> = computed((): readonly TreeRow[] => {
+    const rows: TreeRow[] = this.workspace.rows().map((row: WorkspaceTreeRow): TreeRow => ({
       id: row.node.path,
       depth: row.depth,
       expandable: row.node.type === 'directory',
       expanded: row.expanded,
       data: row.node,
-    })),
-  );
+    }));
+    const edit: NameEdit | null = this.editing();
+    if (edit === null || edit.kind === 'rename') {
+      return rows;
+    }
+    return this.withPlaceholder(rows, edit);
+  });
 
   /**
    * Gets the active search query, bound to the toolbar's search box.
@@ -309,10 +313,10 @@ export class TreePanel {
         void this.fileOpener.openPath(node.path);
         return;
       case ACTION_NEW_FILE:
-        this.openPrompt('new-file', this.directoryFor(node), 'New file');
+        void this.beginCreate('new-file', this.directoryFor(node));
         return;
       case ACTION_NEW_FOLDER:
-        this.openPrompt('new-folder', this.directoryFor(node), 'New folder');
+        void this.beginCreate('new-folder', this.directoryFor(node));
         return;
       case ACTION_COPY_PATH:
         void navigator.clipboard.writeText(node.path).catch((): void => undefined);
@@ -326,8 +330,13 @@ export class TreePanel {
         void this.shell.revealPath(node.path);
         return;
       case ACTION_RENAME:
-        this.openPrompt('rename', node.path, `Rename “${node.name}”`);
-        this.promptName.set(node.name);
+        this.editing.set({
+          kind: 'rename',
+          target: node.path,
+          rowId: node.path,
+          initial: node.name,
+          selection: node.type === 'file' ? 'stem' : 'all',
+        });
         return;
       case ACTION_DELETE:
         this.deleteTarget.set(node);
@@ -338,51 +347,108 @@ export class TreePanel {
   }
 
   /**
-   * Opens the name prompt for a naming operation, starting from an empty name.
-   * @param kind The operation the name is for.
-   * @param target The directory to create in, or the entry to rename.
-   * @param title The prompt's heading.
+   * Begins a create: opens the target directory when it is closed, so the new entry has somewhere to
+   * appear, then opens a placeholder row in it to be named.
+   * @param kind Whether a file or a folder is being created.
+   * @param directory The directory to create in.
+   * @returns Returns a promise that resolves once the placeholder is being edited.
    */
-  private openPrompt(kind: NamePromptKind, target: string, title: string): void {
-    this.promptName.set('');
-    this.prompt.set({ kind, target, title });
+  private async beginCreate(kind: 'new-file' | 'new-folder', directory: string): Promise<void> {
+    const row: WorkspaceTreeRow | undefined = this.workspace
+      .rows()
+      .find((candidate: WorkspaceTreeRow): boolean => candidate.node.path === directory);
+    if (row !== undefined && !row.expanded) {
+      await this.workspace.toggleDirectory(directory);
+    }
+    this.editing.set({
+      kind,
+      target: directory,
+      rowId: PLACEHOLDER_ID,
+      initial: '',
+      selection: 'all',
+    });
   }
 
   /**
-   * Closes the name prompt without acting on it.
+   * Splices a create's placeholder row into the tree: first among the target directory's children, or
+   * first in the tree when the target is the workspace root (which is not itself a row). First rather
+   * than in name order, because a row that re-sorted as its name was typed would move under the cursor.
+   * @param rows The tree's rows.
+   * @param edit The create in progress.
+   * @returns Returns the rows with the placeholder in place, or unchanged when the target directory
+   * is not among them.
    */
-  public cancelPrompt(): void {
-    this.prompt.set(null);
+  private withPlaceholder(rows: TreeRow[], edit: NameEdit): readonly TreeRow[] {
+    let index: number = 0;
+    let depth: number = 0;
+    if (edit.target !== this.workspace.root()?.path) {
+      const parent: number = rows.findIndex((row: TreeRow): boolean => row.id === edit.target);
+      if (parent < 0) {
+        return rows;
+      }
+      index = parent + 1;
+      depth = rows[parent].depth + 1;
+    }
+    const placeholder: WorkspaceTreeNode = {
+      name: '',
+      path: PLACEHOLDER_ID,
+      type: edit.kind === 'new-folder' ? 'directory' : 'file',
+      expanded: false,
+      loading: false,
+      children: null,
+    };
+    rows.splice(index, 0, {
+      id: PLACEHOLDER_ID,
+      depth,
+      expandable: false,
+      expanded: false,
+      data: placeholder,
+    });
+    return rows;
   }
 
   /**
-   * Runs the open name prompt's operation with the typed name, then closes it.
+   * Ends the naming operation without acting on it — the edit was abandoned, or committed with no new
+   * name to apply. A create's placeholder row goes with it.
+   */
+  public onEditCancel(): void {
+    this.editing.set(null);
+  }
+
+  /**
+   * Runs the naming operation with the name the row was given, then ends it.
    *
-   * The prompt closes whether or not the write succeeded: a failure is reported as a notification, and
-   * holding the dialog open over a name the main process has already rejected would leave the user
-   * retyping into a box with no indication of which part it objected to.
+   * The row returns to showing the entry whether or not the write succeeded: a failure is reported as a
+   * notification, and holding the field open over a name the main process has already rejected would
+   * leave the user retyping into a box with no indication of which part it objected to. A success
+   * selects the entry under its new name, since the one that was selected no longer exists.
+   * @param commit The edited row and the trimmed name it was given.
    * @returns Returns a promise that resolves once the operation has been attempted.
    */
-  public async submitPrompt(): Promise<void> {
-    const prompt: NamePrompt | null = this.prompt();
-    const name: string = this.promptName().trim();
-    if (prompt === null || name.length === 0) {
+  public async onEditCommit(commit: TreeEdit): Promise<void> {
+    const edit: NameEdit | null = this.editing();
+    if (commit.row.id !== edit?.rowId) {
       return;
     }
-    this.prompt.set(null);
+    this.editing.set(null);
+    const name: string = commit.value;
     const result: FileOperationResult =
-      prompt.kind === 'rename'
-        ? await this.workspace.rename(prompt.target, name)
-        : prompt.kind === 'new-folder'
-          ? await this.workspace.createFolder(prompt.target, name)
-          : await this.workspace.createFile(prompt.target, name);
+      edit.kind === 'rename'
+        ? await this.workspace.rename(edit.target, name)
+        : edit.kind === 'new-folder'
+          ? await this.workspace.createFolder(edit.target, name)
+          : await this.workspace.createFile(edit.target, name);
     if (!result.success) {
-      this.report(this.promptFailureTitle(prompt.kind), result.error);
+      this.report(this.editFailureTitle(edit.kind), result.error);
       return;
     }
+    if (result.path === undefined) {
+      return;
+    }
+    this.workspace.select(result.path);
     // A newly created file is what the user is about to type into, so open it; a new folder and a
     // rename have nothing to open.
-    if (prompt.kind === 'new-file' && result.path !== undefined) {
+    if (edit.kind === 'new-file') {
       void this.fileOpener.openPath(result.path);
     }
   }
@@ -392,7 +458,7 @@ export class TreePanel {
    * @param kind The operation that failed.
    * @returns Returns the notification title.
    */
-  private promptFailureTitle(kind: NamePromptKind): string {
+  private editFailureTitle(kind: NameEditKind): string {
     switch (kind) {
       case 'rename':
         return 'Could not rename';
@@ -448,7 +514,7 @@ export class TreePanel {
   }
 
   /**
-   * Reports a failed write as a notification, since the dialog it came from has already closed.
+   * Reports a failed write as a notification, since the row or dialog it came from has already closed.
    * @param title The notification's headline.
    * @param detail The failure's message, when the main process gave one.
    */

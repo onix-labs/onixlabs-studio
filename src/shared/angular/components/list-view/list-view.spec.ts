@@ -1,9 +1,9 @@
-import { CdkDragDrop, CdkDragSortEvent } from '@angular/cdk/drag-drop';
+import { CdkDrag, CdkDragDrop, CdkDragSortEvent } from '@angular/cdk/drag-drop';
 import { ApplicationRef, Component, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { MenuItem } from '@shared/angular/components/menu/menu';
-import { ListMenuSelection, ListReorder, ListRow, ListView } from './list-view';
+import { ListEdit, ListMenuSelection, ListReorder, ListRow, ListView } from './list-view';
 
 /**
  * Builds a list row carrying its id as the payload the projected template renders.
@@ -442,5 +442,97 @@ describe('ListView context menu suppression', () => {
     // An empty panel on a row nothing can be done to reads as a bug rather than as an answer.
     rightClick(1);
     expect(document.querySelectorAll('.app-menu-panel')).toHaveLength(0);
+  });
+});
+
+/**
+ * Hosts a reorderable list with one row named in place, and a template that drops its label while its
+ * row is being edited.
+ */
+@Component({
+  imports: [ListView],
+  template: `
+    <app-list-view
+      [rows]="rows()"
+      [reorderable]="true"
+      [editingId]="editingId()"
+      editValue="Second"
+      (rowClick)="clicked.push($event)"
+      (editCommit)="committed.push($event)"
+      (editCancel)="cancelled.push($event)"
+    >
+      <ng-template let-row let-editing="editing">
+        @if (!editing) {
+          <span class="probe-label">{{ row.data }}</span>
+        }
+      </ng-template>
+    </app-list-view>
+  `,
+})
+class EditHost {
+  public readonly rows: WritableSignal<readonly ListRow[]> = signal<readonly ListRow[]>([
+    makeRow('one'),
+    makeRow('two'),
+  ]);
+  public readonly editingId: WritableSignal<string | null> = signal<string | null>('two');
+  public readonly clicked: ListRow[] = [];
+  public readonly committed: ListEdit[] = [];
+  public readonly cancelled: ListRow[] = [];
+}
+
+describe('ListView in-place edit', () => {
+  let fixture: ComponentFixture<EditHost>;
+  let component: EditHost;
+  let host: HTMLElement;
+
+  beforeEach(async () => {
+    fixture = TestBed.createComponent(EditHost);
+    component = fixture.componentInstance;
+    host = fixture.nativeElement as HTMLElement;
+    fixture.detectChanges();
+    await fixture.whenStable();
+  });
+
+  /**
+   * Gets the edit field's input, if a row is being edited.
+   * @returns Returns the input, or null.
+   */
+  function field(): HTMLInputElement | null {
+    return host.querySelector<HTMLInputElement>('app-row-edit-field input');
+  }
+
+  it('editingId_rendersAFieldOnThatRow_openFocusedWithTheWholeNameSelected', () => {
+    const rows: HTMLElement[] = Array.from(host.querySelectorAll<HTMLElement>('.list-row'));
+
+    expect(rows[1].querySelector('.probe-label')).toBeNull();
+    expect(field()?.value).toBe('Second');
+    expect(document.activeElement).toBe(field());
+    expect([field()?.selectionStart, field()?.selectionEnd]).toEqual([0, 6]);
+  });
+
+  it('editingRow_cannotBeDragged', () => {
+    const drags: CdkDrag[] = fixture.debugElement
+      .queryAll(By.directive(CdkDrag))
+      .map((element) => element.injector.get(CdkDrag));
+
+    expect(drags.map((drag: CdkDrag): boolean => drag.disabled)).toEqual([false, true]);
+  });
+
+  it('enter_emitsEditCommitWithTheRow_andDoesNotActivateIt', () => {
+    const input: HTMLInputElement = field()!;
+    input.value = 'Deuxième';
+    input.dispatchEvent(new Event('input'));
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+
+    expect(
+      component.committed.map((edit: ListEdit): string => `${edit.row.id}:${edit.value}`),
+    ).toEqual(['two:Deuxième']);
+    expect(component.clicked).toEqual([]);
+  });
+
+  it('escape_emitsEditCancelWithTheRow', () => {
+    field()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+
+    expect(component.cancelled.map((row: ListRow): string => row.id)).toEqual(['two']);
   });
 });
