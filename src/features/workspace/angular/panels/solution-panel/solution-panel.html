@@ -14,10 +14,15 @@
     [selectedId]="selectedKey()"
     [virtual]="true"
     [contextMenuFor]="contextMenuFor"
+    [editingId]="renameTarget()?.key ?? null"
+    [editValue]="renameTarget()?.label ?? ''"
     (rowClick)="onRowClick($event)"
     (contextMenuSelect)="onContextAction($event)"
+    (editCommit)="commitRename($event)"
+    (editCancel)="cancelRename()"
   >
-    <ng-template let-row>
+    <!-- A solution folder being renamed keeps its icon; the tree's field takes the place of the rest. -->
+    <ng-template let-row let-editing="editing">
       @let r = rowOf(row);
       <app-icon
         class="tree-icon"
@@ -25,16 +30,18 @@
         [class.tree-icon--project]="r.kind === 'project' || r.kind === 'solution'"
         [icon]="iconFor(r)"
       />
-      <span class="tree-name" [class.bold]="r.kind === 'solution'">
-        <app-highlighted-text [text]="r.label" [query]="query()" />
-      </span>
+      @if (!editing) {
+        <span class="tree-name" [class.bold]="r.kind === 'solution'">
+          <app-highlighted-text [text]="r.label" [query]="query()" />
+        </span>
 
-      @if (statusFor(r.path); as status) {
-        <span class="tree-status">{{ statusLetter(status) }}</span>
-      }
+        @if (statusFor(r.path); as status) {
+          <span class="tree-status">{{ statusLetter(status) }}</span>
+        }
 
-      @if (r.loading) {
-        <app-icon class="tree-loading" [icon]="Icon.SPINNER" />
+        @if (r.loading) {
+          <app-icon class="tree-loading" [icon]="Icon.SPINNER" />
+        }
       }
     </ng-template>
   </app-tree-view>
@@ -62,37 +69,6 @@
     <div class="solution-panel__confirm-actions">
       <app-button label="Cancel" (click)="cancelProjectActionRestart()" />
       <app-button variant="solid" label="Stop & Restart" (click)="confirmProjectActionRestart()" />
-    </div>
-  </ng-template>
-</app-modal>
-
-<!-- Names a solution folder. A folder here is a grouping the solution file declares rather than a
-     directory, so the rename rewrites that declaration and every one nested beneath it. -->
-<app-modal
-  [open]="renameTarget() !== null"
-  [width]="24"
-  ariaLabel="Rename Folder"
-  (dismiss)="cancelRename()"
->
-  <ng-template appModalContent>
-    <h2 class="solution-panel__confirm-title">Rename “{{ renameTarget()?.label }}”</h2>
-    <app-text-field
-      class="solution-panel__rename-input"
-      placeholder="Name"
-      ariaLabel="Name"
-      [value]="renameName()"
-      (valueChange)="renameName.set($event)"
-      (enter)="submitRename()"
-      (escape)="cancelRename()"
-    />
-    <div class="solution-panel__confirm-actions">
-      <app-button label="Cancel" (click)="cancelRename()" />
-      <app-button
-        variant="solid"
-        label="Save"
-        [disabled]="!canSubmitRename()"
-        (click)="submitRename()"
-      />
     </div>
   </ng-template>
 </app-modal>

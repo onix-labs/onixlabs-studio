@@ -1,0 +1,8 @@
+// Takes the label's place in the row: the rest of the row's width, at the label's text size, so the name
+// stays where it was when editing starts.
+:host {
+  display: flex;
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  font-size: 1rem;
+}

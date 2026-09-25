@@ -24,9 +24,26 @@ export type TextFieldKind = 'text' | 'search';
  * Names how much chrome a text field draws. `outline` is the ordinary boxed field; `none` draws no
  * box at all and fills whatever it is placed in, for a field that is already inside a container that
  * frames it — a grid cell, most obviously, where a box inside a box reads as a form rather than a
- * grid. It still takes the accent on focus, so the cell being edited is unmistakable.
+ * grid. It still takes the accent on focus, so the cell being edited is unmistakable. `inline` stands
+ * in for a label inside a row that is being renamed: it takes the width the label had and the text
+ * size around it, with a hairline accent box so the row reads as being edited rather than selected.
  */
-export type TextFieldVariant = 'outline' | 'none';
+export type TextFieldVariant = 'outline' | 'none' | 'inline';
+
+/**
+ * A run of characters to select, by the start and end offsets the platform's selection range takes.
+ */
+export interface TextFieldSelection {
+  /**
+   * Gets the offset of the first selected character.
+   */
+  readonly start: number;
+
+  /**
+   * Gets the offset just past the last selected character.
+   */
+  readonly end: number;
+}
 
 /**
  * Represents a single-line text input field.
@@ -45,6 +62,7 @@ export type TextFieldVariant = 'outline' | 'none';
   host: {
     '[class.text-field--search]': "kind() === 'search'",
     '[class.text-field--seamless]': "variant() === 'none'",
+    '[class.text-field--inline]': "variant() === 'inline'",
   },
 })
 export class TextField {
@@ -107,11 +125,17 @@ export class TextField {
 
   /**
    * Moves focus to the field and selects what it holds, for a caller that opens straight into it.
+   * @param selection The run to select instead of the whole value — a file name's stem, so typing
+   * replaces the name and keeps its extension — or omitted to select everything.
    */
-  public focus(): void {
+  public focus(selection?: TextFieldSelection): void {
     const element: HTMLInputElement | undefined = this.control()?.nativeElement;
     element?.focus();
-    element?.select();
+    if (selection === undefined) {
+      element?.select();
+    } else {
+      element?.setSelectionRange(selection.start, selection.end);
+    }
   }
 
   /**

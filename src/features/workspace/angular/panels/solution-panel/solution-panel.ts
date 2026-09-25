@@ -26,7 +26,6 @@ import { ExplorerToolbar } from '@shared/angular/components/explorer-toolbar/exp
 import { HighlightedText } from '@shared/angular/components/highlighted-text/highlighted-text';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
-import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { MenuItem } from '@shared/angular/components/menu/menu';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
@@ -35,6 +34,7 @@ import { Shell } from '@shared/angular/services/shell/shell';
 import { OPEN_FOLDER_LABEL, REVEAL_LABEL } from '@shared/angular/services/shell/shell-labels';
 import { BuildRunner } from '@shared/angular/services/tasks/build-runner';
 import {
+  TreeEdit,
   TreeMenuSelection,
   TreeRow,
   TreeView,
@@ -112,16 +112,7 @@ interface PendingProjectAction {
  */
 @Component({
   selector: 'app-solution-panel',
-  imports: [
-    AppIcon,
-    TreeView,
-    ExplorerToolbar,
-    HighlightedText,
-    Modal,
-    ModalContent,
-    Button,
-    TextField,
-  ],
+  imports: [AppIcon, TreeView, ExplorerToolbar, HighlightedText, Modal, ModalContent, Button],
   templateUrl: './solution-panel.html',
   styleUrl: './solution-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -173,16 +164,11 @@ export class SolutionPanel {
   private readonly buildRunner: BuildRunner = inject(BuildRunner);
 
   /**
-   * Holds the solution-folder row whose rename prompt is open, or null when none is.
+   * Holds the solution-folder row being renamed in place, or null when none is.
    */
   public readonly renameTarget: WritableSignal<SolutionRow | null> = signal<SolutionRow | null>(
     null,
   );
-
-  /**
-   * Holds the name being typed into the rename prompt.
-   */
-  public readonly renameName: WritableSignal<string> = signal<string>('');
 
   /**
    * Holds the notification sink a refused rename is reported through.
@@ -268,56 +254,64 @@ export class SolutionPanel {
   };
 
   /**
-   * Opens the rename prompt for a solution folder, starting from its current name so the common edit
+   * Turns a solution folder's row into a field seeded with its current name, so the common edit
    * (adjusting a word) does not begin with retyping the whole thing.
    * @param row The solution-folder row to rename.
    */
-  private openRenamePrompt(row: SolutionRow): void {
+  private beginRename(row: SolutionRow): void {
     this.log.info('workspace.solution', 'Rename solution folder', row.key);
-    this.renameName.set(row.label);
     this.renameTarget.set(row);
   }
 
   /**
-   * Closes the rename prompt without acting on it.
+   * Ends the rename without acting on it — abandoned, or committed with no new name to apply.
    */
   public cancelRename(): void {
     this.renameTarget.set(null);
   }
 
   /**
-   * Renames the solution folder the prompt is open on, then closes it.
+   * Renames the solution folder being edited to the name its row was given, then ends the edit.
    *
-   * The prompt closes whether or not the write took: a refusal is reported as a notification, and
-   * holding the dialog open over a name the main process has already rejected would leave the user
-   * retyping into a box that does not say which part it objected to.
+   * The row returns to showing the folder whether or not the write took: a refusal is reported as a
+   * notification, and holding the field open over a name the main process has already rejected would
+   * leave the user retyping into a box that does not say which part it objected to. A name with a path
+   * separator is refused here, before the write: a solution folder is one segment of a declared path,
+   * and a slash would silently nest it instead.
+   * @param commit The edited row and the trimmed name it was given.
    * @returns Returns a promise that resolves once the rename has been attempted.
    */
-  public async submitRename(): Promise<void> {
+  public async commitRename(commit: TreeEdit): Promise<void> {
     const row: SolutionRow | null = this.renameTarget();
-    const name: string = this.renameName().trim();
-    if (row === null || name.length === 0) {
+    if (commit.row.id !== row?.key) {
       return;
     }
     this.renameTarget.set(null);
-    const result: ProjectOperationResult = await this.solution.renameSolutionFolder(row, name);
+    if (/[/\\]/.test(commit.value)) {
+      this.reportRenameFailure('A folder name cannot contain a slash.');
+      return;
+    }
+    const result: ProjectOperationResult = await this.solution.renameSolutionFolder(
+      row,
+      commit.value,
+    );
     if (!result.success) {
-      this.log.warn('workspace.solution', 'Could not rename folder', result.error);
-      this.notifications.notify({
-        severity: 'error',
-        title: 'Could not rename folder',
-        detail: result.error,
-      });
+      this.reportRenameFailure(result.error);
     }
   }
 
   /**
-   * Gets a value indicating whether the rename prompt's name is submittable.
+   * Reports a rename that did not take, since the row it was typed into has already closed.
+   * @param detail Why it did not take, when that is known.
    */
-  protected readonly canSubmitRename: Signal<boolean> = computed((): boolean => {
-    const name: string = this.renameName().trim();
-    return name.length > 0 && !/[/\\]/.test(name);
-  });
+  private reportRenameFailure(detail: string | undefined): void {
+    this.log.warn('workspace.solution', 'Could not rename folder', detail);
+    this.notifications.notify({
+      severity: 'error',
+      title: 'Could not rename folder',
+      detail,
+    });
+  }
 
   /**
    * Builds the capability-action items for a project row: the verbs its project system declares,
@@ -511,7 +505,7 @@ export class SolutionPanel {
       return;
     }
     if (selection.itemId === ACTION_RENAME_FOLDER) {
-      this.openRenamePrompt(row);
+      this.beginRename(row);
       return;
     }
     const path: string | null = this.pathFor(row);

@@ -62,8 +62,16 @@
     <p class="history__empty">No conversations yet.</p>
   }
 
-  <app-tree-view [rows]="rows()" [selectedId]="activeId()" (rowClick)="onRowClick($event)">
-    <ng-template let-row>
+  <app-tree-view
+    [rows]="rows()"
+    [selectedId]="activeId()"
+    [editingId]="renameTarget()?.rowId ?? null"
+    [editValue]="renameTarget()?.summary?.title ?? ''"
+    (rowClick)="onRowClick($event)"
+    (editCommit)="onCommitRename($event)"
+    (editCancel)="onCancelRename()"
+  >
+    <ng-template let-row let-editing="editing">
       @let data = dataOf(row);
       @if (data.kind === 'node') {
         <span
@@ -83,6 +91,15 @@
           <span class="history__node-name">{{ data.node.name }}</span>
           <span class="history__count">{{ data.node.items.length }}</span>
         </span>
+      } @else if (editing) {
+        <!-- A conversation being retitled keeps its checkbox; the tree's field takes the place of its
+             title, chips and actions until the edit ends. -->
+        <app-checkbox
+          class="history__check"
+          [checked]="isChecked(data.item.summary.id)"
+          (checkedChange)="onToggle(data.item.summary.id, $event)"
+          (click)="$event.stopPropagation()"
+        />
       } @else {
         <span
           class="history__leaf"
@@ -115,7 +132,7 @@
             class="history__overflow tree-row-action"
             aria-label="Conversation actions"
             [appTooltip]="'Conversation actions'"
-            (click)="$event.stopPropagation(); onOpenMenu(data.item.summary)"
+            (click)="$event.stopPropagation(); onOpenMenu(data.item.summary, row.id)"
             [cdkMenuTriggerFor]="itemMenu"
           >
             <app-icon [icon]="Icon.DOTS_THREE_VERTICAL" />
@@ -239,36 +256,6 @@
     </button>
   </div>
 </ng-template>
-
-<!-- Rename conversation modal. -->
-<app-modal
-  [open]="renameTarget() !== null"
-  [dismissable]="true"
-  [width]="26"
-  ariaLabel="Rename conversation"
-  (dismiss)="onCancelRename()"
->
-  <ng-template appModalContent>
-    <h2 class="history__modal-title">Rename conversation</h2>
-    <app-text-field
-      class="history__modal-input"
-      placeholder="Conversation title"
-      ariaLabel="Conversation title"
-      [value]="renameValue()"
-      (valueChange)="renameValue.set($event)"
-      (enter)="onConfirmRename()"
-    />
-    <div class="history__modal-actions">
-      <app-button label="Cancel" (click)="onCancelRename()" />
-      <app-button
-        variant="solid"
-        label="Rename"
-        [disabled]="renameValue().trim().length === 0"
-        (click)="onConfirmRename()"
-      />
-    </div>
-  </ng-template>
-</app-modal>
 
 <!-- Category editor modal. -->
 <app-modal

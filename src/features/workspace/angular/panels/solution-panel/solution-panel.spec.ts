@@ -403,57 +403,77 @@ describe('SolutionPanel', () => {
       expect(shell.revealed).toEqual(['/root/A/Sub']);
     });
 
-    it('onContextAction_rename_opensThePromptSeededWithTheCurrentName', () => {
+    /**
+     * Commits the folder being renamed with a name, as the tree reports it.
+     * @param row The row the edit was made on.
+     * @param value The trimmed name.
+     * @returns Returns a promise that resolves once the rename has been attempted.
+     */
+    function commit(row: SolutionRow, value: string): Promise<void> {
+      return component.commitRename({ row: treeRow(row), value });
+    }
+
+    it('onContextAction_rename_editsTheFoldersOwnRow', () => {
       solution.model.set(renameableModel());
       const row: SolutionRow = makeRow({ key: '/Core', kind: 'folder', label: 'Core', path: null });
       component.onContextAction({ itemId: 'rename-folder', row: treeRow(row) });
 
-      // Seeded rather than blank: the common edit adjusts a word rather than replacing the name.
+      // The row's field is seeded with the label, not blank: the common edit adjusts a word.
       expect(component.renameTarget()?.key).toBe('/Core');
-      expect(component.renameName()).toBe('Core');
+      expect(component.renameTarget()?.label).toBe('Core');
     });
 
-    it('submitRename_renamesTheFolderAndClosesThePrompt', async () => {
+    it('commitRename_renamesTheFolderAndEndsTheEdit', async () => {
       solution.model.set(renameableModel());
       const row: SolutionRow = makeRow({ key: '/Core', kind: 'folder', label: 'Core', path: null });
       component.onContextAction({ itemId: 'rename-folder', row: treeRow(row) });
-      component.renameName.set('Kernel');
-      await component.submitRename();
+      await commit(row, 'Kernel');
 
       expect(solution.renames).toEqual([{ key: '/Core', name: 'Kernel' }]);
       expect(component.renameTarget()).toBeNull();
     });
 
-    it('submitRename_trimsTheNameBeforeRenaming', async () => {
+    it('commitRename_forARowThatIsNotTheOneBeingEdited_doesNothing', async () => {
       solution.model.set(renameableModel());
       const row: SolutionRow = makeRow({ key: '/Core', kind: 'folder', label: 'Core', path: null });
+      const other: SolutionRow = makeRow({
+        key: '/Tests',
+        kind: 'folder',
+        label: 'Tests',
+        path: null,
+      });
       component.onContextAction({ itemId: 'rename-folder', row: treeRow(row) });
-      component.renameName.set('  Kernel  ');
-      await component.submitRename();
-
-      expect(solution.renames).toEqual([{ key: '/Core', name: 'Kernel' }]);
-    });
-
-    it('submitRename_anEmptyName_doesNothingAndLeavesThePromptOpen', async () => {
-      solution.model.set(renameableModel());
-      const row: SolutionRow = makeRow({ key: '/Core', kind: 'folder', label: 'Core', path: null });
-      component.onContextAction({ itemId: 'rename-folder', row: treeRow(row) });
-      component.renameName.set('   ');
-      await component.submitRename();
+      await commit(other, 'Kernel');
 
       expect(solution.renames).toEqual([]);
-      expect(component.renameTarget()).not.toBeNull();
+      expect(component.renameTarget()?.key).toBe('/Core');
     });
 
-    it('submitRename_aRefusedRename_reportsTheReason', async () => {
-      // A refusal is the main process's answer, not something the dialog can pre-empt: it closes and
-      // says why, rather than holding the user over a box that does not name the objection.
+    it('commitRename_aNameWithASlash_isRefusedBeforeTheWrite', async () => {
+      // A slash would nest the folder under a new one rather than rename it.
+      solution.model.set(renameableModel());
+      const row: SolutionRow = makeRow({ key: '/Core', kind: 'folder', label: 'Core', path: null });
+      component.onContextAction({ itemId: 'rename-folder', row: treeRow(row) });
+      await commit(row, 'Core/Kernel');
+
+      expect(solution.renames).toEqual([]);
+      expect(notifications.notified).toEqual([
+        {
+          severity: 'error',
+          title: 'Could not rename folder',
+          detail: 'A folder name cannot contain a slash.',
+        },
+      ]);
+    });
+
+    it('commitRename_aRefusedRename_reportsTheReason', async () => {
+      // A refusal is the main process's answer, not something the field can pre-empt: the edit ends
+      // and says why, rather than holding the user over a box that does not name the objection.
       solution.model.set(renameableModel());
       solution.renameResult = { success: false, error: "A folder named 'Tests' is already here." };
       const row: SolutionRow = makeRow({ key: '/Core', kind: 'folder', label: 'Core', path: null });
       component.onContextAction({ itemId: 'rename-folder', row: treeRow(row) });
-      component.renameName.set('Tests');
-      await component.submitRename();
+      await commit(row, 'Tests');
 
       expect(notifications.notified).toEqual([
         {
@@ -465,7 +485,7 @@ describe('SolutionPanel', () => {
       expect(component.renameTarget()).toBeNull();
     });
 
-    it('cancelRename_closesThePromptWithoutRenaming', () => {
+    it('cancelRename_endsTheEditWithoutRenaming', () => {
       solution.model.set(renameableModel());
       const row: SolutionRow = makeRow({ key: '/Core', kind: 'folder', label: 'Core', path: null });
       component.onContextAction({ itemId: 'rename-folder', row: treeRow(row) });
