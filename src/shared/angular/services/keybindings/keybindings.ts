@@ -100,10 +100,12 @@ export class Keybindings {
   private readonly log: Log = inject(Log);
 
   /**
-   * Holds the feature-contributed keybinding catalogue entries.
+   * Holds the feature-contributed keybinding catalogue entries: those provided at the composition
+   * root, followed by any a lazily-loaded feature {@link contribute}s once its chunk resolves.
    */
-  private readonly catalogueEntries: readonly KeybindingCatalogueEntry[] =
-    inject(KEYBINDING_CATALOGUE, { optional: true }) ?? [];
+  private readonly catalogueEntries: KeybindingCatalogueEntry[] = [
+    ...(inject(KEYBINDING_CATALOGUE, { optional: true }) ?? []),
+  ];
 
   /**
    * Holds each catalogued binding and its owning entry, keyed by command id.
@@ -112,6 +114,12 @@ export class Keybindings {
     string,
     { readonly entry: KeybindingCatalogueEntry; readonly binding: CatalogueBinding }
   > = new Map<string, { entry: KeybindingCatalogueEntry; binding: CatalogueBinding }>();
+
+  /**
+   * Bumps whenever a lazily-loaded feature contributes a catalogue entry, so computed surfaces
+   * re-derive from the non-reactive {@link catalogueEntries} and {@link catalogueById}.
+   */
+  private readonly catalogueVersion: WritableSignal<number> = signal<number>(0);
 
   /**
    * Holds each scope's registered bindings, in registration order, keyed by the owning tab id.
@@ -149,12 +157,15 @@ export class Keybindings {
    * the Keyboard settings section's model.
    */
   public readonly resolvedCatalogue: Signal<readonly ResolvedBinding[]> = computed(
-    (): readonly ResolvedBinding[] =>
-      this.catalogueEntries.flatMap((entry: KeybindingCatalogueEntry): readonly ResolvedBinding[] =>
-        entry.bindings.map((binding: CatalogueBinding): ResolvedBinding =>
-          this.resolve(binding, entry),
-        ),
-      ),
+    (): readonly ResolvedBinding[] => {
+      this.catalogueVersion();
+      return this.catalogueEntries.flatMap(
+        (entry: KeybindingCatalogueEntry): readonly ResolvedBinding[] =>
+          entry.bindings.map((binding: CatalogueBinding): ResolvedBinding =>
+            this.resolve(binding, entry),
+          ),
+      );
+    },
   );
 
   /**
@@ -163,6 +174,7 @@ export class Keybindings {
    * collision by registration order, so a conflict is surfaced as a warning rather than blocking.
    */
   public readonly conflictedIds: Signal<ReadonlySet<string>> = computed((): ReadonlySet<string> => {
+    this.catalogueVersion();
     const conflicted: Set<string> = new Set<string>();
     for (const entry of this.catalogueEntries) {
       const byChord: Map<string, string[]> = new Map<string, string[]>();
@@ -186,6 +198,7 @@ export class Keybindings {
   public readonly activeBindings: Signal<readonly ResolvedBinding[]> = computed(
     (): readonly ResolvedBinding[] => {
       this.scopesVersion();
+      this.catalogueVersion();
       const scopes: string[] = [];
       const active: string | null = this.activeScope();
       if (active !== null) {
@@ -212,10 +225,29 @@ export class Keybindings {
    */
   public constructor() {
     for (const entry of this.catalogueEntries) {
-      for (const binding of entry.bindings) {
-        this.catalogueById.set(binding.id, { entry, binding });
-      }
+      this.index(entry);
     }
+  }
+
+  /**
+   * Adds a catalogue entry after start-up, for a feature contributed lazily — its chunk resolves after
+   * bootstrap, so it cannot reach the `KEYBINDING_CATALOGUE` multi-provider. The entry then behaves
+   * exactly as a root-provided one: its ids register, resolve overrides and appear in the
+   * discoverability surfaces. Contributing the same entry again is ignored.
+   * @param entry The catalogue entry the feature contributes.
+   */
+  public contribute(entry: KeybindingCatalogueEntry): void {
+    if (this.catalogueEntries.includes(entry)) {
+      return;
+    }
+    this.catalogueEntries.push(entry);
+    this.index(entry);
+    this.catalogueVersion.update((version: number): number => version + 1);
+    this.log.info(
+      'Keybindings',
+      `Catalogue contributed for '${entry.view}'`,
+      entry.bindings.length,
+    );
   }
 
   /**
@@ -446,6 +478,16 @@ export class Keybindings {
       parts.push(key);
     }
     return parts.join('+');
+  }
+
+  /**
+   * Indexes a catalogue entry's bindings by command id.
+   * @param entry The catalogue entry to index.
+   */
+  private index(entry: KeybindingCatalogueEntry): void {
+    for (const binding of entry.bindings) {
+      this.catalogueById.set(binding.id, { entry, binding });
+    }
   }
 
   /**

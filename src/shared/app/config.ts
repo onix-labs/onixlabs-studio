@@ -17,7 +17,11 @@ import { Printing } from '@shared/angular/services/printing/printing';
 import { SetupWizard } from '@shared/angular/services/setup-wizard/setup-wizard';
 import { Theme } from '@shared/angular/services/theme/theme';
 import { FeatureDescriptor, FeatureRegistry } from '@shared/angular/services/feature-registry';
-import { featureContributions } from '@shared/app/feature-contributions';
+import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
+import {
+  featureContributions,
+  registerFeatureContribution,
+} from '@shared/app/feature-contributions';
 import { CoreMenu } from '@shared/angular/services/app-menu/core-menu';
 import { provideAgentFeature } from '@features/agent/angular/agent.feature';
 import { provideBinaryFeature } from '@features/binary/angular/binary.feature';
@@ -101,15 +105,17 @@ export const config: ApplicationConfig = {
     // Stand up the settings feature: register its full-bleed view (chrome opts out of ribbon+status).
     provideSettingsFeature(),
     // The one-time renderer lazy-load driver (the analog of the main process's contribution registry):
-    // resolve every lazily-contributed feature and register its descriptor with the shell. A feature
+    // resolve every lazily-contributed feature and register its descriptor (and any keybinding
+    // catalogue entry it carries) with the shell. A feature
     // added this way touches no shell component — only its own slice and the featureContributions
     // manifest. Registration is fire-and-forget: the FeatureRegistry is signal-backed, so the shell
     // lights the feature up when its chunk resolves, even after first paint.
     provideAppInitializer((): void => {
       const registry: FeatureRegistry = inject(FeatureRegistry);
+      const keybindings: Keybindings = inject(Keybindings);
       for (const load of featureContributions) {
         void load().then((module: { descriptor: FeatureDescriptor }): void =>
-          registry.register(module.descriptor),
+          registerFeatureContribution(module.descriptor, registry, keybindings),
         );
       }
     }),

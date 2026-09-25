@@ -1,4 +1,5 @@
-import { FeatureDescriptor } from '@shared/angular/services/feature-registry';
+import { FeatureDescriptor, FeatureRegistry } from '@shared/angular/services/feature-registry';
+import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 
 /**
  * The renderer analog of the main process's `mainContributions` manifest: the list of lazily-loaded
@@ -26,3 +27,23 @@ export const featureContributions: readonly (() => Promise<{ descriptor: Feature
   (): Promise<{ descriptor: FeatureDescriptor }> =>
     import('@features/system-monitor/angular/system-monitor.feature'),
 ];
+
+/**
+ * Registers one resolved lazy contribution with the shell: its keybinding catalogue entry first, then
+ * the descriptor itself. The order matters — the shell mounts the feature's view as soon as the
+ * descriptor lands, and the view registers its accelerators on activation, which the catalogue would
+ * skip as unknown ids if the entry were not already in it.
+ * @param descriptor The descriptor the contribution's thunk resolved to.
+ * @param registry The feature registry the shell renders from.
+ * @param keybindings The keybinding service the catalogue entry is contributed to.
+ */
+export function registerFeatureContribution(
+  descriptor: FeatureDescriptor,
+  registry: FeatureRegistry,
+  keybindings: Keybindings,
+): void {
+  if (descriptor.keybindings !== undefined) {
+    keybindings.contribute(descriptor.keybindings);
+  }
+  registry.register(descriptor);
+}

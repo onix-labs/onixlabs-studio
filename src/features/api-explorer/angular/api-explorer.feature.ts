@@ -2,6 +2,7 @@ import { FeatureDescriptor } from '@shared/angular/services/feature-registry';
 import { ApiExplorerRibbon } from './api-explorer-ribbon/api-explorer-ribbon';
 import { ApiExplorerStatus } from './api-explorer-status/api-explorer-status';
 import { ApiExplorerView } from './api-explorer-view/api-explorer-view';
+import { API_EXPLORER_KEYBINDINGS } from './api-explorer-keybindings';
 
 /**
  * Describes the API Explorer feature's contribution to the application shell: a tab for building and
@@ -19,4 +20,5 @@ export const descriptor: FeatureDescriptor = {
   view: ApiExplorerView,
   ribbon: ApiExplorerRibbon,
   status: ApiExplorerStatus,
+  keybindings: API_EXPLORER_KEYBINDINGS,
 };

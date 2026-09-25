@@ -1,4 +1,5 @@
 import { Type } from '@angular/core';
+import { KeybindingCatalogueEntry } from '@shared/angular/services/keybindings/keybinding-catalogue';
 
 /**
  * Describes the inputs every feature view component receives when the shell mounts it. A feature
@@ -113,4 +114,12 @@ export interface FeatureDescriptor {
    * {@link DEFAULT_FEATURE_CHROME} (both strips visible).
    */
   readonly chrome?: Partial<FeatureChrome>;
+
+  /**
+   * Gets the keybinding catalogue entry for a feature contributed lazily, if any. A lazy feature's
+   * chunk resolves after bootstrap, so it cannot reach the root `KEYBINDING_CATALOGUE` multi-provider
+   * the eagerly-wired features use; the `featureContributions` driver contributes this entry instead,
+   * before it registers the descriptor. Eagerly-wired features leave it unset.
+   */
+  readonly keybindings?: KeybindingCatalogueEntry;
 }

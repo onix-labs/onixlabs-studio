@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 
-import { provideKeybindingCatalogue } from './keybinding-catalogue';
+import { KeybindingCatalogueEntry, provideKeybindingCatalogue } from './keybinding-catalogue';
 import { Keybindings, ResolvedBinding } from './keybindings';
 import { Settings } from '@shared/angular/services/settings/settings';
 
@@ -17,6 +17,17 @@ function modEvent(
 ): KeyboardEvent {
   return new KeyboardEvent('keydown', { key, ctrlKey: true, ...modifiers });
 }
+
+/**
+ * Stands in for the catalogue entry a lazily-loaded feature contributes after start-up.
+ */
+const LAZY_ENTRY: KeybindingCatalogueEntry = {
+  view: 'API Explorer',
+  bindings: [
+    { id: 'api.save', description: 'Save', chord: 'Mod+S' },
+    { id: 'api.saveAs', description: 'Save As', chord: 'Mod+Shift+S' },
+  ],
+};
 
 describe('Keybindings', () => {
   let keybindings: Keybindings;
@@ -242,6 +253,69 @@ describe('Keybindings', () => {
       .map((binding: ResolvedBinding): string => binding.view);
 
     expect(views).toEqual(['Code Editor', 'Code Editor', 'Terminal']);
+  });
+
+  it('contribute_afterStartUp_addsTheEntryToTheCatalogue', (): void => {
+    keybindings.contribute(LAZY_ENTRY);
+
+    const views: string[] = keybindings
+      .resolvedCatalogue()
+      .map((binding: ResolvedBinding): string => binding.view);
+    expect(views).toEqual([
+      'Code Editor',
+      'Code Editor',
+      'Terminal',
+      'API Explorer',
+      'API Explorer',
+    ]);
+  });
+
+  it('contribute_letsItsIdsRegisterAndDispatch', (): void => {
+    const calls: string[] = [];
+    keybindings.register('tab-1', [
+      { id: 'api.save', command: (): void => void calls.push('early') },
+    ]);
+    expect(keybindings.dispatch(modEvent('s'))).toBe(false);
+
+    keybindings.contribute(LAZY_ENTRY);
+    keybindings.register('tab-1', [
+      { id: 'api.save', command: (): void => void calls.push('save') },
+      { id: 'api.saveAs', command: (): void => void calls.push('saveAs') },
+    ]);
+
+    expect(keybindings.dispatch(modEvent('s'))).toBe(true);
+    expect(keybindings.dispatch(modEvent('s', { shiftKey: true }))).toBe(true);
+    expect(calls).toEqual(['save', 'saveAs']);
+    expect(
+      keybindings.activeBindings().map((binding: ResolvedBinding): string => binding.id),
+    ).toEqual(['api.save', 'api.saveAs']);
+  });
+
+  it('contribute_appliesAnOverridePersistedBeforeTheEntryArrived', (): void => {
+    TestBed.inject(Settings).set('keyboard.overrides', { 'api.save': 'Mod+Alt+P' });
+
+    keybindings.contribute(LAZY_ENTRY);
+
+    expect(keybindings.matches(modEvent('p', { altKey: true }), 'api.save')).toBe(true);
+    const resolved: ResolvedBinding | undefined = keybindings
+      .resolvedCatalogue()
+      .find((binding: ResolvedBinding): boolean => binding.id === 'api.save');
+    expect(resolved?.overridden).toBe(true);
+  });
+
+  it('contribute_whenTheEntryIsAlreadyCatalogued_isIgnored', (): void => {
+    keybindings.contribute(LAZY_ENTRY);
+    keybindings.contribute(LAZY_ENTRY);
+
+    expect(keybindings.resolvedCatalogue()).toHaveLength(5);
+  });
+
+  it('contribute_surfacesConflictsWithinTheContributedEntry', (): void => {
+    keybindings.contribute(LAZY_ENTRY);
+
+    keybindings.setOverride('api.saveAs', 'Mod+S');
+
+    expect(keybindings.conflictedIds()).toEqual(new Set(['api.save', 'api.saveAs']));
   });
 
   it('formatChord_offMac_usesCtrlStyle', (): void => {
