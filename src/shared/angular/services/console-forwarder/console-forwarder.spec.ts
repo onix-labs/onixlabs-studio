@@ -37,6 +37,35 @@ describe('ConsoleForwarder', () => {
     forwarder?.restore();
     forwarder = null;
     delete (window as { bridge?: unknown }).bridge;
+    delete (window as { host?: unknown }).host;
+  });
+
+  it('belowTheFloor_isNeitherSerializedNorForwarded', () => {
+    (window as { host?: unknown }).host = { logFloor: 'info' };
+    const native: (...args: unknown[]) => void = console.debug;
+    console.debug = (): void => {
+      // Silence the native output; only the forwarding is under test.
+    };
+    try {
+      setup();
+      let serialized: number = 0;
+      console.debug('dropped', {
+        toJSON: (): string => {
+          serialized += 1;
+          return 'detail';
+        },
+      });
+      console.info('kept');
+
+      expect(serialized).toBe(0);
+      expect(sent).toEqual([
+        { channel: LogChannel.Write, entry: { level: 'info', message: 'kept' } },
+      ]);
+    } finally {
+      forwarder?.restore();
+      forwarder = null;
+      console.debug = native;
+    }
   });
 
   it('interceptedConsole_stillCallsTheNativeMethod', () => {

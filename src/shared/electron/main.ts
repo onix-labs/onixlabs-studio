@@ -54,7 +54,15 @@ import { DirectoryWatcher } from '@shared/electron/directory-watcher';
 import { FileManager } from '@shared/electron/file-manager';
 import { FileWatcher } from '@shared/electron/file-watcher';
 import { Logger, logger as appLogger } from '@shared/electron/logger';
-import { consoleLevelToSeverity } from '@shared/api/log-channels';
+import {
+  consoleLevelToSeverity,
+  LOG_LEVEL_ENVIRONMENT_VARIABLE,
+  LOG_LEVEL_SETTINGS,
+  LogChannel,
+  LogLevelSetting,
+  resolveLogFloor,
+  Severity,
+} from '@shared/api/log-channels';
 import { DebugAdapterRegistry } from './debug/debug-adapter-registry';
 import { DebugLaunchResolver } from './debug/debug-launch-resolver';
 import { DebugManager } from './debug/debug-manager';
@@ -553,6 +561,16 @@ class Program {
     // this early), and the STUDIO_DISABLE_GPU diagnostic switch forces it off regardless.
     const startupPreferences: StartupPreferences = StartupPreferencesStore.read();
     this.graphicsAcceleration = startupPreferences.graphicsAcceleration;
+    // The log floor is applied as early as the preferences can be read: everything logged from here
+    // on is filtered by it. A packaged build defaults to info, which drops the trace and debug
+    // records that are nineteen in twenty of what would otherwise be written.
+    const logFloor: Severity = resolveLogFloor(
+      process.env[LOG_LEVEL_ENVIRONMENT_VARIABLE],
+      startupPreferences.logLevel,
+      app.isPackaged,
+    );
+    this.logger.setFloor(logFloor);
+    this.logger.info('startup', `Log level: ${logFloor}`);
     // An unpersisted level is accelerated: the renderer completes the migration and may then ask for
     // a relaunch, which is the right way round — a first launch should not start degraded.
     const wantsAcceleration: boolean = this.graphicsAcceleration !== 'off';
@@ -735,6 +753,8 @@ class Program {
         gpuRendering: this.gpuRendering,
         graphicsAcceleration: this.graphicsAcceleration,
         hardwareAccelerationEnabled: this.hardwareAccelerationEnabled,
+        // The renderer filters before it forwards, so it needs the floor before its first log.
+        logFloor: this.logger.severityFloor,
         homeDir: os.homedir(),
         // The escape hatch past a blocking setup wizard. It rides with the startup facts because the
         // wizard decides whether to run before the first paint, which is too early for the bridge.
@@ -788,6 +808,29 @@ class Program {
         // its rendering policy. Left at the startup value it would come back at the old level.
         this.graphicsAcceleration = level;
         StartupPreferencesStore.write({ graphicsAcceleration: level });
+      },
+    );
+
+    ipcMain.handle(
+      LogChannel.SetLevel,
+      (_event: IpcMainInvokeEvent, setting: unknown): Severity => {
+        if (!LOG_LEVEL_SETTINGS.includes(setting as LogLevelSetting)) {
+          return this.logger.severityFloor;
+        }
+        const level: LogLevelSetting = setting as LogLevelSetting;
+        if (StartupPreferencesStore.read().logLevel !== level) {
+          StartupPreferencesStore.write({ logLevel: level });
+        }
+        const floor: Severity = resolveLogFloor(
+          process.env[LOG_LEVEL_ENVIRONMENT_VARIABLE],
+          level,
+          app.isPackaged,
+        );
+        if (floor !== this.logger.severityFloor) {
+          this.logger.setFloor(floor);
+          this.logger.info('logging', `Log level: ${floor}`);
+        }
+        return floor;
       },
     );
 

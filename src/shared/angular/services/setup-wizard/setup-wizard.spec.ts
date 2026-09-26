@@ -38,6 +38,7 @@ function stubHostVersion(version: string | null, skipSetup: boolean = false): vo
         graphicsAcceleration: 'full',
         hardwareAccelerationEnabled: true,
       },
+      logFloor: 'trace',
     } satisfies HostEnv,
   });
 }

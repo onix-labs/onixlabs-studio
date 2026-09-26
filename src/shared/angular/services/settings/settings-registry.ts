@@ -6,6 +6,7 @@ import type {
   ClaudeExecutableMode,
 } from '@shared/api/ai-types';
 import { DEFAULT_CONNECTION_ID, SEED_CONNECTIONS } from '@shared/api/ai-types';
+import type { LogLevelSetting } from '@shared/api/log-channels';
 import type {
   ApplicationMenuAppearance,
   ApplicationMenuMode,
@@ -56,6 +57,7 @@ export interface SettingsValues {
   readonly 'application.menuMode': ApplicationMenuMode;
   readonly 'application.menuAppearance': ApplicationMenuAppearance;
   readonly 'application.showWindowLock': boolean;
+  readonly 'application.logLevel': LogLevelSetting;
 
   readonly 'accessibility.showTooltips': boolean;
 
@@ -307,6 +309,28 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           ],
         },
         default: 'regular',
+      },
+      {
+        key: 'application.logLevel',
+        title: 'Log level',
+        description:
+          'The least severe records Studio writes to its logs. Automatic keeps Info and above in ' +
+          'a release build and everything in a development build. Choose Trace or Debug while ' +
+          'investigating a problem, then set it back: those levels write many times more and ' +
+          'rotate the logs away sooner. The STUDIO_LOG_LEVEL environment variable overrides this ' +
+          'for a launch.',
+        control: {
+          kind: 'select',
+          options: [
+            { value: 'auto', label: 'Automatic' },
+            { value: 'trace', label: 'Trace' },
+            { value: 'debug', label: 'Debug' },
+            { value: 'info', label: 'Info' },
+            { value: 'warning', label: 'Warning' },
+            { value: 'error', label: 'Error' },
+          ],
+        },
+        default: 'auto',
       },
     ],
   },

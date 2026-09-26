@@ -2,10 +2,12 @@ import { Service } from '@angular/core';
 import { Bridge } from '@shared/api/bridge';
 import {
   LogChannel,
+  LogLevelSetting,
   LogQuery,
   LogRecord,
   LogSession,
   MAX_LOG_MESSAGE_LENGTH,
+  meetsFloor,
   Severity,
 } from '@shared/api/log-channels';
 import { appendDetails } from '@shared/api/log-format';
@@ -20,6 +22,10 @@ import { appendDetails } from '@shared/api/log-format';
  * automatically as a baseline (with a coarse `console` source), while this service is adopted at call
  * sites that want a meaningful source and an explicit severity. Outside Electron the bridge is absent
  * and every method degrades to a safe no-op.
+ *
+ * A record below the severity floor is dropped before its message is built or sent, so a suppressed
+ * trace costs a comparison. The floor starts at the one the main process resolved for this launch
+ * and follows the log level setting through {@link setLevel}.
  */
 @Service()
 export class Log {
@@ -34,6 +40,12 @@ export class Log {
    * open costs no record IPC at all.
    */
   private recordListeners: number = 0;
+
+  /**
+   * Holds the minimum severity forwarded: the floor the main process resolved when this window opened,
+   * or `trace` outside Electron. A record below it is dropped before its message is built or sent.
+   */
+  private floor: Severity = window.host?.logFloor ?? 'trace';
 
   /**
    * Records a trace-severity log.
@@ -84,6 +96,35 @@ export class Log {
    */
   public error(source: string, message: string, ...details: unknown[]): void {
     this.emit('error', source, message, details);
+  }
+
+  /**
+   * Determines whether a severity is recorded at the current floor, so a caller can skip building an
+   * expensive diagnostic that would only be dropped.
+   * @param severity The severity to test.
+   * @returns Returns true when records of the severity are kept.
+   */
+  public enabled(severity: Severity): boolean {
+    return meetsFloor(severity, this.floor);
+  }
+
+  /**
+   * Chooses the log level: the main process persists the choice, applies it, and replies with the
+   * floor now in force, which this window adopts. The reply is what counts, not the choice — the
+   * `STUDIO_LOG_LEVEL` environment variable overrides the setting for a launch. A no-op outside
+   * Electron.
+   * @param setting The log-level choice.
+   * @returns Returns a promise resolving once the floor is in force.
+   */
+  public async setLevel(setting: LogLevelSetting): Promise<void> {
+    if (this.bridge === undefined) {
+      return;
+    }
+    try {
+      this.floor = await this.bridge.invoke<Severity>(LogChannel.SetLevel, setting);
+    } catch {
+      // A failed change leaves the current floor in force.
+    }
   }
 
   /**
@@ -166,7 +207,7 @@ export class Log {
     message: string,
     details: readonly unknown[],
   ): void {
-    if (this.bridge === undefined) {
+    if (this.bridge === undefined || !this.enabled(severity)) {
       return;
     }
     try {

@@ -50,6 +50,7 @@ function withHost(platform: string, arch: string): void {
       graphicsAcceleration: 'auto',
       hardwareAccelerationEnabled: true,
     },
+    logFloor: 'trace',
   };
   (window as unknown as { host?: HostEnv }).host = host;
 }

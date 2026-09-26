@@ -51,6 +51,14 @@ export enum LogChannel {
    * {@link LogSession} array.
    */
   Sessions = 'log:sessions',
+
+  /**
+   * Chooses the log level (renderer→main, request/reply). The payload is a {@link LogLevelSetting};
+   * the main process persists it for the next launch, applies it now, and replies with the
+   * {@link Severity} floor now in force — which the `STUDIO_LOG_LEVEL` environment variable can
+   * override, so the renderer adopts the reply rather than assuming its choice took.
+   */
+  SetLevel = 'log:set-level',
 }
 
 /**
@@ -76,6 +84,59 @@ export type Severity = 'trace' | 'debug' | 'info' | 'warning' | 'error';
  * Holds every {@link Severity} in ascending order of severity, for validation and filter ordering.
  */
 export const SEVERITIES: readonly Severity[] = ['trace', 'debug', 'info', 'warning', 'error'];
+
+/**
+ * Names the user's log-level choice: a {@link Severity} floor, or `auto` for the build's default —
+ * `info` in a packaged build, `trace` in development.
+ */
+export type LogLevelSetting = 'auto' | Severity;
+
+/**
+ * Holds every accepted {@link LogLevelSetting}, for validation on the receiving side.
+ */
+export const LOG_LEVEL_SETTINGS: readonly LogLevelSetting[] = ['auto', ...SEVERITIES];
+
+/**
+ * Names the environment variable that overrides the log level for one launch, whatever the setting
+ * says — for debugging a build whose settings cannot be reached, or before they have loaded.
+ */
+export const LOG_LEVEL_ENVIRONMENT_VARIABLE: string = 'STUDIO_LOG_LEVEL';
+
+/**
+ * Determines whether a record of one severity clears a floor.
+ * @param severity The record's severity.
+ * @param floor The minimum severity recorded.
+ * @returns Returns true when the record is at or above the floor.
+ */
+export function meetsFloor(severity: Severity, floor: Severity): boolean {
+  return SEVERITIES.indexOf(severity) >= SEVERITIES.indexOf(floor);
+}
+
+/**
+ * Resolves the log floor in force: the environment variable when it names a severity, else the
+ * user's setting, else the build's default (`info` packaged, `trace` in development, which keeps a
+ * development run's output exactly as it was).
+ * @param environment The value of {@link LOG_LEVEL_ENVIRONMENT_VARIABLE}, if set. Case-insensitive,
+ * and `warn` is accepted for `warning`.
+ * @param setting The persisted setting, or null when none has been persisted.
+ * @param packaged Whether this is a packaged build.
+ * @returns Returns the severity floor.
+ */
+export function resolveLogFloor(
+  environment: string | undefined,
+  setting: LogLevelSetting | null,
+  packaged: boolean,
+): Severity {
+  const named: string = (environment ?? '').trim().toLowerCase();
+  const overridden: string = named === 'warn' ? 'warning' : named;
+  if (SEVERITIES.includes(overridden as Severity)) {
+    return overridden as Severity;
+  }
+  if (setting !== null && setting !== 'auto') {
+    return setting;
+  }
+  return packaged ? 'info' : 'trace';
+}
 
 /**
  * Names the process a {@link LogRecord} originated in.
