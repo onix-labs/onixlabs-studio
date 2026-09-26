@@ -1,5 +1,5 @@
 {
-  "revision": 22,
+  "revision": 23,
   "plugins": [
     {
       "id": "pyright",
@@ -386,7 +386,7 @@
           {
             "id": "vscode-css-language-server",
             "displayName": "CSS Language Server",
-            "languages": ["css", "scss"],
+            "languages": ["css", "scss", "less"],
             "priority": 100,
             "entryPoint": "node_modules/vscode-langservers-extracted/bin/vscode-css-language-server",
             "command": {

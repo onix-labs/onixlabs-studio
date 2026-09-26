@@ -572,6 +572,8 @@ export class TreePanel {
       case 'md':
         return Icon.FILE_MARKDOWN;
       case 'scss':
+      case 'sass':
+      case 'less':
       case 'css':
         return Icon.FILE_STYLESHEET;
       case 'html':
