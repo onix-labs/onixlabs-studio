@@ -76,6 +76,7 @@ import { DockState } from '@shared/angular/services/dock-layout/dock-state';
 import { DockTabContext } from '@shared/angular/services/dock-layout/dock-tab-context';
 import {
   collectPanelIds,
+  findNode,
   findStackOfPanel,
   firstStackOfRole,
 } from '@shared/angular/services/dock-layout/dock-tree';
@@ -905,11 +906,68 @@ export class DirectoryView implements OnInit, OnDestroy {
    * {@link Documents} instance's well to the directory ribbon's Save and Save All.
    */
   private readonly documentHandler: WorkspaceDocumentCommandHandler = {
-    canSave: computed((): boolean => this.documents.activeDocumentId() !== null),
-    hasUnsavedChanges: computed((): boolean => this.documents.dirtyCount() > 0),
-    save: (): void => void this.documents.saveActive(),
-    saveAll: (): void => void this.documents.saveAll(),
+    canSave: computed((): boolean => {
+      const panel: DockPanel | undefined = this.activeSelfSavingPanel();
+      return panel === undefined
+        ? this.documents.activeDocumentId() !== null
+        : panel.dirty?.() === true;
+    }),
+    hasUnsavedChanges: computed(
+      (): boolean =>
+        this.documents.dirtyCount() > 0 ||
+        this.selfSavingPanels().some((panel: DockPanel): boolean => panel.dirty?.() === true),
+    ),
+    save: (): void => void this.saveActive(),
+    saveAll: (): void => void this.saveAll(),
   };
+
+  /**
+   * Gets the panels showing in this tab — docked, floated or popped out — that save their own
+   * document rather than through this view's text {@link Documents} (an image in the well). A closed
+   * panel stays registered, so presence is what keeps a discarded image from reading as unsaved.
+   */
+  private readonly selfSavingPanels: Signal<readonly DockPanel[]> = computed(
+    (): readonly DockPanel[] => {
+      const present: ReadonlySet<string> = new Set<string>([
+        ...collectPanelIds(this.dockState.layout()),
+        ...this.dockFloating.floats().map((float: FloatWindow): string => float.panelId),
+      ]);
+      return this.registry
+        .list()
+        .filter(
+          (panel: DockPanel): boolean =>
+            panel.save !== undefined &&
+            (present.has(panel.id) || this.popoutPanels.isPopped(panel.id)),
+        );
+    },
+  );
+
+  /**
+   * Gets the self-saving panel Save acts on, or undefined when Save should fall to the active text
+   * document. A focused document well decides it by its active panel. With focus elsewhere (a tool
+   * panel), the active text document keeps precedence, as it always has; only when there is none does
+   * Save fall to the first well's active panel.
+   */
+  private readonly activeSelfSavingPanel: Signal<DockPanel | undefined> = computed(
+    (): DockPanel | undefined => {
+      const layout: DockNode = this.dockState.layout();
+      const focusedId: string | null = this.dockFocus.focusedStackId();
+      const focused: DockNode | null = focusedId === null ? null : findNode(layout, focusedId);
+      let well: StackNode | null;
+      if (focused?.kind === 'stack' && focused.role === 'document') {
+        well = focused;
+      } else if (this.documents.activeDocumentId() === null) {
+        well = firstStackOfRole(layout, 'document');
+      } else {
+        return undefined;
+      }
+      const panel: DockPanel | undefined =
+        well?.active === null || well?.active === undefined
+          ? undefined
+          : this.registry.get(well.active);
+      return panel?.save === undefined ? undefined : panel;
+    },
+  );
 
   /**
    * Holds the source-control command handler this tab registers while active, exposing the workspace's
@@ -1231,7 +1289,7 @@ export class DirectoryView implements OnInit, OnDestroy {
       if (this.isActive()) {
         this.keybindings.register(this.viewScope(), [
           { id: 'workspace.findInFiles', command: (): void => this.revealSearch() },
-          { id: 'workspace.saveAll', command: (): void => void this.documents.saveAll() },
+          { id: 'workspace.saveAll', command: (): void => void this.saveAll() },
         ]);
         this.workspaceFind.register(this.revealSearchHandler);
         this.workspaceDocuments.register(this.documentHandler);
@@ -1267,6 +1325,35 @@ export class DirectoryView implements OnInit, OnDestroy {
         untracked((): void => this.dockState.tabInto(anchor.id, 'worktrees'));
       }
     });
+  }
+
+  /**
+   * Saves the active well document, whatever kind it is: a self-saving panel (an image) through its
+   * own save, otherwise the active text document.
+   * @returns Returns true when the document was saved.
+   */
+  private saveActive(): Promise<boolean> {
+    const panel: DockPanel | undefined = this.activeSelfSavingPanel();
+    return panel?.save === undefined ? this.documents.saveActive() : panel.save();
+  }
+
+  /**
+   * Saves every unsaved document in this tab: the text documents, then each self-saving panel with
+   * unsaved changes (an edited image). Sequenced, as the text saves are, because either kind can open
+   * a save dialog — an untitled file, or an image whose format cannot be written back.
+   * @returns Returns true when everything was saved (false when any save failed or was cancelled).
+   */
+  private async saveAll(): Promise<boolean> {
+    let saved: boolean = await this.documents.saveAll();
+    const dirty: readonly DockPanel[] = untracked((): readonly DockPanel[] =>
+      this.selfSavingPanels().filter((panel: DockPanel): boolean => panel.dirty?.() === true),
+    );
+    for (const panel of dirty) {
+      if (panel.save !== undefined && !(await panel.save())) {
+        saved = false;
+      }
+    }
+    return saved;
   }
 
   /**

@@ -46,6 +46,9 @@ export class ImageOpener implements ImageFileOpener {
       ownsToolStrip: true,
       dirty: document.dirty,
       confirmClose: (): Promise<boolean> => this.documents.confirmClose(id),
+      // The workspace's Save and Save All reach the image through this; its text documents do not
+      // hold it.
+      save: (): Promise<boolean> => this.documents.save(path),
     };
   }
 
