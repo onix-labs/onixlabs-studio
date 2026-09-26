@@ -22,9 +22,10 @@ describe('Log', () => {
 
   /**
    * Installs a recording bridge on the window and resolves the service.
+   * @param reply The value every request/reply call resolves to.
    * @returns Returns the resolved {@link Log} instance.
    */
-  function setup(): Log {
+  function setup(reply: unknown = []): Log {
     sent = [];
     invoked = [];
     subscribed = null;
@@ -34,7 +35,7 @@ describe('Log', () => {
       },
       invoke: <T>(channel: string, ...args: unknown[]): Promise<T> => {
         invoked.push({ channel, args });
-        return Promise.resolve([] as unknown as T);
+        return Promise.resolve(reply as T);
       },
       on: (channel: string, listener: (...args: unknown[]) => void): (() => void) => {
         subscribed = { channel, listener };
@@ -49,6 +50,44 @@ describe('Log', () => {
 
   afterEach(() => {
     delete (window as { bridge?: unknown }).bridge;
+    delete (window as { host?: unknown }).host;
+  });
+
+  it('belowTheFloor_neitherBuildsNorSendsTheRecord', () => {
+    (window as { host?: unknown }).host = { logFloor: 'info' };
+    const log: Log = setup();
+    let serialized: number = 0;
+    const detail: { toJSON: () => string } = {
+      toJSON: (): string => {
+        serialized += 1;
+        return 'detail';
+      },
+    };
+
+    log.trace('Src', 'dropped', detail);
+    log.debug('Src', 'dropped', detail);
+    log.info('Src', 'kept');
+
+    expect(serialized).toBe(0);
+    expect(sent.map((entry: { input: StructuredLogInput }): string => entry.input.message)).toEqual(
+      ['kept'],
+    );
+    expect(log.enabled('debug')).toBe(false);
+    expect(log.enabled('warning')).toBe(true);
+  });
+
+  it('setLevel_asksTheMainProcess_andAdoptsTheFloorItReplies', async () => {
+    // The environment variable can override the choice, so the reply, not the choice, is adopted.
+    const log: Log = setup('warning');
+
+    await log.setLevel('trace');
+    log.info('Src', 'dropped');
+    log.warn('Src', 'kept');
+
+    expect(invoked).toEqual([{ channel: LogChannel.SetLevel, args: ['trace'] }]);
+    expect(sent.map((entry: { input: StructuredLogInput }): string => entry.input.message)).toEqual(
+      ['kept'],
+    );
   });
 
   it('info_sendsAnInfoSeverityStructuredLog', () => {

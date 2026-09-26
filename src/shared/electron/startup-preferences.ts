@@ -2,6 +2,7 @@ import { app } from 'electron';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { GraphicsAcceleration } from '@shared/api/host';
+import { LOG_LEVEL_SETTINGS, LogLevelSetting } from '@shared/api/log-channels';
 import { logger } from './logger';
 
 /**
@@ -20,6 +21,13 @@ export interface StartupPreferences {
    * pre-merge settings (see `display-policy.ts`) and write the result back.
    */
   readonly graphicsAcceleration: GraphicsAcceleration | null;
+
+  /**
+   * Gets the log-level choice, or null when none has been persisted. It lives here because the main
+   * process's logger has to apply it before any window exists, and records a great deal before one
+   * does.
+   */
+  readonly logLevel: LogLevelSetting | null;
 }
 
 /**
@@ -42,6 +50,7 @@ interface LegacyStartupPreferences {
  */
 const DEFAULT_STARTUP_PREFERENCES: StartupPreferences = {
   graphicsAcceleration: null,
+  logLevel: null,
 };
 
 /**
@@ -78,10 +87,11 @@ export class StartupPreferencesStore {
       ) as Partial<StartupPreferences> & LegacyStartupPreferences;
       const preferences: StartupPreferences = {
         graphicsAcceleration: StartupPreferencesStore.level(parsed),
+        logLevel: StartupPreferencesStore.logLevel(parsed),
       };
       logger.debug(
         'StartupPreferences',
-        `Read startup preferences (graphicsAcceleration: ${preferences.graphicsAcceleration ?? 'unset'})`,
+        `Read startup preferences (graphicsAcceleration: ${preferences.graphicsAcceleration ?? 'unset'}, logLevel: ${preferences.logLevel ?? 'unset'})`,
       );
       return preferences;
     } catch (error: unknown) {
@@ -108,11 +118,25 @@ export class StartupPreferencesStore {
   }
 
   /**
-   * Persists the given startup preferences, silently ignoring write failures (persistence is
-   * best-effort and must never crash the app).
-   * @param preferences The startup preferences to persist.
+   * Extracts the log-level choice from a parsed preferences file.
+   * @param parsed The parsed preferences file.
+   * @returns Returns the choice, or null when the file names none this process can trust.
    */
-  public static write(preferences: StartupPreferences): void {
+  private static logLevel(parsed: Partial<StartupPreferences>): LogLevelSetting | null {
+    const level: unknown = parsed.logLevel;
+    return typeof level === 'string' && LOG_LEVEL_SETTINGS.includes(level as LogLevelSetting)
+      ? (level as LogLevelSetting)
+      : null;
+  }
+
+  /**
+   * Persists changes to the startup preferences, merged over what is already persisted so writing one
+   * preference never resets another. Write failures are silently ignored (persistence is best-effort
+   * and must never crash the app).
+   * @param changes The preferences to change.
+   */
+  public static write(changes: Partial<StartupPreferences>): void {
+    const preferences: StartupPreferences = { ...StartupPreferencesStore.read(), ...changes };
     try {
       fs.writeFileSync(StartupPreferencesStore.filePath(), JSON.stringify(preferences, null, 2));
       logger.debug('StartupPreferences', 'Persisted startup preferences');

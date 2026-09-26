@@ -1,6 +1,12 @@
-import { Service } from '@angular/core';
+import { inject, Service } from '@angular/core';
 import { Bridge } from '@shared/api/bridge';
-import { LogChannel, LogLevel, MAX_LOG_MESSAGE_LENGTH } from '@shared/api/log-channels';
+import {
+  consoleLevelToSeverity,
+  LogChannel,
+  LogLevel,
+  MAX_LOG_MESSAGE_LENGTH,
+} from '@shared/api/log-channels';
+import { Log } from '@shared/angular/services/log/log';
 
 /**
  * Names the console method a forwarded entry originates from; identical to the log level it is
@@ -21,6 +27,12 @@ export class ConsoleForwarder {
    * Holds the IPC bridge to the main-process logger, or undefined outside Electron.
    */
   private readonly bridge: Bridge | undefined = window.bridge;
+
+  /**
+   * Holds the structured logging client, whose severity floor decides which console entries are
+   * worth serialising and forwarding at all.
+   */
+  private readonly log: Log = inject(Log);
 
   /**
    * Holds each intercepted method's native implementation, for pass-through and {@link restore}.
@@ -74,12 +86,17 @@ export class ConsoleForwarder {
 
   /**
    * Forwards one console entry over the bridge, guarding against recursion and never letting a
-   * forwarding failure surface to the caller — logging must not be able to break the app.
+   * forwarding failure surface to the caller — logging must not be able to break the app. An entry
+   * below the log floor is not serialised or sent; the native console output has already happened.
    * @param level The console severity.
    * @param args The console call's arguments.
    */
   private forward(level: LogLevel, args: readonly unknown[]): void {
-    if (this.forwarding || this.bridge === undefined) {
+    if (
+      this.forwarding ||
+      this.bridge === undefined ||
+      !this.log.enabled(consoleLevelToSeverity(level))
+    ) {
       return;
     }
     this.forwarding = true;

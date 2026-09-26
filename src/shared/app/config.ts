@@ -12,6 +12,7 @@ import { Display } from '@shared/angular/services/display/display';
 import { provideUnsavedWork } from '@shared/angular/services/unsaved-work/unsaved-work';
 import { Documents } from '@shared/angular/services/documents/documents';
 import { Lifecycle } from '@shared/angular/services/lifecycle/lifecycle';
+import { LogLevelPreference } from '@shared/angular/services/log/log-level-preference';
 import { OpenWith } from '@shared/angular/services/open-with/open-with';
 import { Printing } from '@shared/angular/services/printing/printing';
 import { SetupWizard } from '@shared/angular/services/setup-wizard/setup-wizard';
@@ -122,6 +123,10 @@ export const config: ApplicationConfig = {
     // Contribute the text-document store to the unsaved-work seam the lifecycle walks at close
     // time; features with their own document models (binary) contribute themselves alongside.
     provideUnsavedWork(Documents),
+    // Apply the log level setting to the logging floor at start-up and whenever it changes.
+    provideAppInitializer((): void => {
+      inject(LogLevelPreference);
+    }),
     // Instantiate the lifecycle service at start-up so it answers the main process's window-close
     // requests (confirming/saving unsaved work) for the whole session.
     provideAppInitializer((): void => {
