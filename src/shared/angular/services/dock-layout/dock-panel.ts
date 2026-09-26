@@ -53,4 +53,13 @@ export interface DockPanel {
    * @returns Returns a promise resolving true to close, or false to keep the panel open.
    */
   confirmClose?(): Promise<boolean>;
+
+  /**
+   * Saves the panel's document, for a panel whose document the host's own document store does not
+   * hold (an image in a workspace's well), so the host's Save and Save All still reach it. Absent for
+   * tool panels and for documents the host already saves through its store.
+   * @returns Returns a promise resolving true when the document was saved; false when the save failed
+   * or was cancelled.
+   */
+  save?(): Promise<boolean>;
 }

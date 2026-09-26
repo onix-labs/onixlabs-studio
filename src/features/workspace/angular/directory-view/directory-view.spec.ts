@@ -1,4 +1,15 @@
+import { Component, input, InputSignal, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { Mock } from 'vitest';
+import { Icon } from '@shared/angular/icons/icon';
+import { DockFocus } from '@shared/angular/services/dock-layout/dock-focus';
+import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
+import { StackNode } from '@shared/angular/services/dock-layout/dock-node';
+import { firstStackOfRole } from '@shared/angular/services/dock-layout/dock-tree';
+import { provideKeybindingCatalogue } from '@shared/angular/services/keybindings/keybinding-catalogue';
+import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
+import { WorkspaceDocumentCommands } from '@features/workspace/angular/workspace-document-commands/workspace-document-commands';
+import { WORKSPACE_KEYBINDINGS } from '@features/workspace/angular/workspace-keybindings';
 import { DirectoryListing } from '@shared/api/workspace-channels';
 import { Documents } from '@shared/angular/services/documents/documents';
 import {
@@ -24,6 +35,14 @@ const ROOT_LISTING: DirectoryListing = {
   entries: [{ name: 'README.md', path: '/ws/README.md', type: 'file' }],
 };
 
+/**
+ * Stands in for the component of a panel that saves its own document (an image in the well).
+ */
+@Component({ selector: 'app-stub-self-saving-panel', template: '' })
+class StubSelfSavingPanel {
+  public readonly panel: InputSignal<DockPanel | undefined> = input<DockPanel>();
+}
+
 describe('DirectoryView', () => {
   let component: DirectoryView;
   let fixture: ComponentFixture<DirectoryView>;
@@ -31,6 +50,7 @@ describe('DirectoryView', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [DirectoryView],
+      providers: [provideKeybindingCatalogue(WORKSPACE_KEYBINDINGS)],
     }).compileComponents();
 
     fixture = TestBed.createComponent(DirectoryView);
@@ -116,6 +136,124 @@ describe('DirectoryView', () => {
       fixture.detectChanges();
 
       expect(await well().openDiff('/ws/a.ts')).toContain('not a git repository');
+    });
+  });
+
+  describe('saving panels that hold their own document (#760)', () => {
+    let registry: DockPanelRegistry;
+    let dockState: DockState;
+    let documents: Documents;
+    let commands: WorkspaceDocumentCommands;
+    let dirty: WritableSignal<boolean>;
+    let save: Mock<() => Promise<boolean>>;
+
+    /**
+     * Activates the view and puts a self-saving panel (standing in for an edited image) in its well.
+     */
+    beforeEach((): void => {
+      fixture.componentRef.setInput('isActive', true);
+      fixture.detectChanges();
+      registry = fixture.debugElement.injector.get(DockPanelRegistry);
+      dockState = fixture.debugElement.injector.get(DockState);
+      documents = fixture.debugElement.injector.get(Documents);
+      commands = TestBed.inject(WorkspaceDocumentCommands);
+      dirty = signal<boolean>(true);
+      save = vi.fn((): Promise<boolean> => {
+        dirty.set(false);
+        return Promise.resolve(true);
+      });
+      registry.register({
+        id: 'image-well:tab-1:/ws/shot.png',
+        title: 'shot.png',
+        icon: Icon.IMAGE_FILE,
+        role: 'document',
+        component: StubSelfSavingPanel,
+        dirty,
+        save,
+      });
+      dockState.tabInto(wellId(), 'image-well:tab-1:/ws/shot.png');
+    });
+
+    /**
+     * Gets the id of the view's document well.
+     * @returns Returns the well's stack id.
+     */
+    function wellId(): string {
+      const well: StackNode | null = firstStackOfRole(dockState.layout(), 'document');
+      if (well === null) {
+        throw new Error('The view has no document well');
+      }
+      return well.id;
+    }
+
+    it('hasUnsavedChanges_countsAnEditedPanelInTheLayoutOnly', (): void => {
+      expect(commands.hasUnsavedChanges()).toBe(true);
+
+      // Closing the panel leaves it registered; it must stop counting once it has left the layout.
+      dockState.removeFromLayout('image-well:tab-1:/ws/shot.png');
+
+      expect(commands.hasUnsavedChanges()).toBe(false);
+    });
+
+    it('saveAll_savesTheTextDocumentsAndTheEditedPanel', async (): Promise<void> => {
+      const saveAllText: Mock<() => Promise<boolean>> = vi
+        .spyOn(documents, 'saveAll')
+        .mockResolvedValue(true);
+
+      commands.saveAll();
+      await fixture.whenStable();
+
+      expect(saveAllText).toHaveBeenCalledOnce();
+      expect(save).toHaveBeenCalledOnce();
+    });
+
+    it('saveAll_skipsAPanelWithNothingToSave', async (): Promise<void> => {
+      dirty.set(false);
+
+      commands.saveAll();
+      await fixture.whenStable();
+
+      expect(save).not.toHaveBeenCalled();
+    });
+
+    it('save_whenTheFocusedWellShowsTheEditedPanel_savesIt', async (): Promise<void> => {
+      const saveText: Mock<() => Promise<boolean>> = vi
+        .spyOn(documents, 'saveActive')
+        .mockResolvedValue(true);
+      fixture.debugElement.injector.get(DockFocus).focus(wellId());
+
+      expect(commands.canSave()).toBe(true);
+      commands.save();
+      await fixture.whenStable();
+
+      expect(save).toHaveBeenCalledOnce();
+      expect(saveText).not.toHaveBeenCalled();
+      expect(commands.canSave()).toBe(false);
+    });
+
+    it('save_whenFocusIsOnAToolAndATextDocumentIsActive_savesTheTextDocument', (): void => {
+      const saveText: Mock<() => Promise<boolean>> = vi
+        .spyOn(documents, 'saveActive')
+        .mockResolvedValue(true);
+      documents.setActiveDocument('doc-1');
+      fixture.debugElement.injector.get(DockFocus).focus('not-a-well');
+
+      commands.save();
+
+      expect(saveText).toHaveBeenCalledOnce();
+      expect(save).not.toHaveBeenCalled();
+    });
+
+    it('saveAllChord_withFocusOutsideTheWell_savesTheEditedPanel', async (): Promise<void> => {
+      fixture.debugElement.injector.get(DockFocus).focus('not-a-well');
+
+      const handled: boolean = TestBed.inject(Keybindings).dispatch(
+        new KeyboardEvent('keydown', { key: 's', ctrlKey: true }),
+      );
+      await fixture.whenStable();
+
+      expect(handled).toBe(true);
+      expect(save).toHaveBeenCalledOnce();
     });
   });
 
