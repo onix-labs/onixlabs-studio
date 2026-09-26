@@ -41,6 +41,7 @@ import { PanelPopout } from '@shared/angular/services/panel-popout/panel-popout'
 import { TerminalSessions } from '@shared/angular/services/terminal-sessions/terminal-sessions';
 import { StackNode } from '@shared/angular/services/dock-layout/dock-node';
 import { firstStackOfRole } from '@shared/angular/services/dock-layout/dock-tree';
+import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { Log } from '@shared/angular/services/log/log';
 import { ApiFiles, OpenApiDocument } from '@shared/angular/services/api-files/api-files';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
@@ -255,6 +256,11 @@ export class ApiExplorerView implements OnInit, OnDestroy, ApiExplorerCommandHan
   private readonly unsavedWork: UnsavedWorkRegistry = inject(UnsavedWorkRegistry);
 
   /**
+   * Holds the keyboard accelerator router this tab registers its save chords with while active.
+   */
+  private readonly keybindings: Keybindings = inject(Keybindings);
+
+  /**
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
@@ -279,6 +285,22 @@ export class ApiExplorerView implements OnInit, OnDestroy, ApiExplorerCommandHan
         }
         this.tabs.setDirty(tabId, dirty);
       });
+    });
+
+    // Register the save accelerators while active, so Cmd/Ctrl+S saves this document exactly as the
+    // ribbon's Save does. Bound only while active, so background tabs do not intercept the chord.
+    effect((): void => {
+      const tabId: string = this.tabId();
+      if (this.isActive()) {
+        untracked((): void =>
+          this.keybindings.register(tabId, [
+            { id: 'api.save', command: (): void => this.saveDocument() },
+            { id: 'api.saveAs', command: (): void => this.saveDocumentAs() },
+          ]),
+        );
+      } else {
+        untracked((): void => this.keybindings.deactivate(tabId));
+      }
     });
   }
 
@@ -314,11 +336,12 @@ export class ApiExplorerView implements OnInit, OnDestroy, ApiExplorerCommandHan
   }
 
   /**
-   * Releases the ribbon's command registration and the unsaved-work source, so the ribbon and the
-   * close flows of a closed tab drive nothing.
+   * Releases the ribbon's command registration, the save accelerators and the unsaved-work source, so
+   * the ribbon, the keyboard and the close flows of a closed tab drive nothing.
    */
   public ngOnDestroy(): void {
     this.commands.clear(this);
+    this.keybindings.forget(this.tabId());
     this.releaseUnsavedWork?.();
   }
 
