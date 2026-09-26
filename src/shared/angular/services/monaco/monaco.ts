@@ -21,6 +21,7 @@ import {
 } from './monaco-heuristic-tokens';
 import { defineThemes } from './monaco-themes';
 import { registerAsmLanguage } from './monaco-asm-language';
+import { registerScssLanguage } from './monaco-scss-language';
 import { registerBraceFolding } from './monaco-folding';
 
 // Re-exported so consumers keep importing these from `./monaco` (the split is internal): `LanguageInfo`
@@ -82,6 +83,45 @@ interface MonacoTypescriptContribution {
    * Gets the JavaScript language service defaults.
    */
   readonly javascriptDefaults: MonacoDiagnosticsDefaults;
+}
+
+/**
+ * A minimal view of a stylesheet language's service defaults, exposing only its options. Monaco's
+ * types declare `languages.css` a deprecated stub in favour of a top-level `css` namespace, but the AMD
+ * build the application loads assigns the real contribution there, so this typed shape reaches it.
+ */
+interface MonacoStylesheetDefaults {
+  /**
+   * Gets the language's options.
+   */
+  readonly options: Readonly<Record<string, unknown>>;
+
+  /**
+   * Sets the language's options.
+   * @param options The options, replacing the current ones.
+   */
+  setOptions(options: Readonly<Record<string, unknown>>): void;
+}
+
+/**
+ * The shape of Monaco's CSS language contribution used to disable the built-in diagnostics of CSS,
+ * SCSS and Less, which share one worker.
+ */
+interface MonacoCssContribution {
+  /**
+   * Gets the CSS language service defaults.
+   */
+  readonly cssDefaults: MonacoStylesheetDefaults;
+
+  /**
+   * Gets the SCSS language service defaults.
+   */
+  readonly scssDefaults: MonacoStylesheetDefaults;
+
+  /**
+   * Gets the Less language service defaults.
+   */
+  readonly lessDefaults: MonacoStylesheetDefaults;
 }
 
 /**
@@ -247,15 +287,31 @@ export class Monaco {
 
   /**
    * Disables Monaco's built-in diagnostics for a language, so a language server can be the sole
-   * source of that language's diagnostics. Only TypeScript and JavaScript have a built-in Monaco
-   * diagnostics worker; other languages have none, so this is a no-op for them. The change is global
-   * (Monaco's language defaults are process-wide) and idempotent, and only takes effect once Monaco
-   * has loaded.
+   * source of that language's diagnostics. TypeScript and JavaScript have a built-in diagnostics
+   * worker, as do CSS, SCSS and Less; other languages have none, so this is a no-op for them. The
+   * change is global (Monaco's language defaults are process-wide) and idempotent, and only takes
+   * effect once Monaco has loaded.
    * @param languageId The Monaco language identifier whose built-in diagnostics are disabled.
    */
   public suppressBuiltInDiagnostics(languageId: string): void {
     const monaco: typeof MonacoApi | undefined = window.monaco;
     if (monaco === undefined) {
+      return;
+    }
+    const css: Partial<MonacoCssContribution> | undefined = (
+      monaco.languages as unknown as { css?: Partial<MonacoCssContribution> }
+    ).css;
+    const stylesheet: MonacoStylesheetDefaults | undefined =
+      languageId === 'css'
+        ? css?.cssDefaults
+        : languageId === 'scss'
+          ? css?.scssDefaults
+          : languageId === 'less'
+            ? css?.lessDefaults
+            : undefined;
+    if (stylesheet !== undefined) {
+      // Only validation goes: the other options (lint rules, custom data) are carried over.
+      stylesheet.setOptions({ ...stylesheet.options, validate: false });
       return;
     }
     const typescript: MonacoTypescriptContribution | undefined = (
@@ -385,6 +441,7 @@ export class Monaco {
     await this.loadScript();
     defineThemes(window.monaco, this.settings.textEditorAccentSelection());
     registerAsmLanguage(window.monaco);
+    registerScssLanguage(window.monaco);
     registerBraceFolding(window.monaco);
     this.registerHeuristicSemanticTokens();
     this.loadedSignal.set(true);
@@ -440,6 +497,7 @@ export class Monaco {
     try {
       defineThemes(monaco, this.settings.textEditorAccentSelection());
       registerAsmLanguage(monaco, target);
+      registerScssLanguage(monaco, target);
       registerBraceFolding(monaco);
     } catch (error: unknown) {
       // A fence would otherwise fall silently back to its placeholder, with nothing to say why.
