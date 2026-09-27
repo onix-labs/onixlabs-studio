@@ -499,20 +499,23 @@
 }
 
 // The filter pills sit on their own row beneath the title and search field, spread to fill the width.
+// The row never wraps: at the modal's full width the seven pills fit with ~30px to spare (measured), and
+// a narrower window truncates the labels rather than stranding the last pill on a row of its own.
 .welcome__filters {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   justify-content: space-between;
-  gap: 0.3rem;
+  gap: 0.15rem;
 }
 
 .welcome__filter {
   display: inline-flex;
-  flex: none;
+  flex: 0 1 auto;
   align-items: center;
-  gap: 0.3rem;
-  padding: 0.32rem 0.55rem;
+  gap: 0.25rem;
+  min-inline-size: 0;
+  padding: 0.32rem 0.4rem;
   font: inherit;
   font-size: 0.76rem;
   font-weight: 500;
@@ -528,6 +531,12 @@
 
   i {
     font-size: 0.9rem;
+  }
+
+  span {
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   &:hover {
