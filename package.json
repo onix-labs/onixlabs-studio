@@ -58,7 +58,7 @@
     "ai": "^7.0.107",
     "node-pty": "^1.1.0",
     "systeminformation": "^5.33.12",
-    "vscode-jsonrpc": "^9.0.2",
+    "vscode-jsonrpc": "^9.0.3",
     "zod": "^4.6.5"
   },
   "devDependencies": {
