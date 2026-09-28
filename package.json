@@ -97,7 +97,7 @@
     "diff": "^9.0.0",
     "disassembler": "^0.3.0-beta",
     "dompurify": "^3.4.15",
-    "electron": "^42.11.6",
+    "electron": "^42.11.8",
     "electron-builder": "^26.15.3",
     "esbuild": "^0.28.2",
     "eslint": "^10.10.0",
