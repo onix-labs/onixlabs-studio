@@ -112,7 +112,7 @@
 
     @if (isDocuments()) {
       <!-- Document wells have no title bar; these right-aligned controls are the compass drag
-           handle and the document picker. -->
+           handle, the document picker, and close-all. -->
       <div class="dock-tab-group__strip-controls">
         <div
           class="dock-tab-group__handle"
@@ -134,6 +134,17 @@
         >
           <app-icon [icon]="Icon.CARET_DOWN_BOLD" />
         </button>
+        <button
+          type="button"
+          class="dock-tab-group__close-all-button"
+          title="Close All"
+          aria-label="Close All"
+          [appTooltip]="'Close All'"
+          (mousedown)="$event.stopPropagation()"
+          (click)="closeAll()"
+        >
+          <app-icon [icon]="Icon.CLOSE_BOLD" />
+        </button>
       </div>
 
       <app-menu
@@ -141,6 +152,7 @@
         [items]="documentItems()"
         placement="down-end"
         (selected)="activate($event)"
+        (actioned)="close($event.id)"
       />
     }
   </div>

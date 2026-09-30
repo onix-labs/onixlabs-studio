@@ -159,16 +159,17 @@
   align-self: stretch;
   gap: 0.125rem;
   margin-inline-start: auto;
-  padding-inline-start: 0.25rem;
+  padding-inline: 0.25rem;
 }
 
 .dock-tab-group__handle,
-.dock-tab-group__menu-button {
+.dock-tab-group__menu-button,
+.dock-tab-group__close-all-button {
   display: flex;
   align-items: center;
   justify-content: center;
   padding-inline: 0.25rem;
-  font-size: 1.25rem;
+  font-size: 0.875rem;
   color: var(--dock-tab-foreground-color);
   background: transparent;
   border: none;

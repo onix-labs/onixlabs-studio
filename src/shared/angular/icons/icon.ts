@@ -74,6 +74,12 @@ export class Icon {
   public static readonly CLOSE: Icon = new Icon('ph ph-x');
 
   /**
+   * Gets the bold close icon, used on the document well's close-all button beside its grip and
+   * document-list caret.
+   */
+  public static readonly CLOSE_BOLD: Icon = new Icon('ph-bold ph-x');
+
+  /**
    * Gets the expand icon shown on a modal's expand-to-fill control. Same weight as {@link CLOSE}.
    */
   public static readonly ARROWS_OUT: Icon = new Icon('ph ph-arrows-out-simple');

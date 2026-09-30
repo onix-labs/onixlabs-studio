@@ -4,6 +4,7 @@ import { Icon } from '@shared/angular/icons/icon';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { SettingsStore } from '@shared/angular/services/settings-store/settings-store';
 import { DOCK_BLUEPRINT, DockBlueprint } from './dock-blueprint';
+import { DockPanel } from './dock-panel';
 import { DockNode, isSplitNode, isStackNode, mkSplit, mkStack, StackNode } from './dock-node';
 import { DockState } from './dock-state';
 import { findStackOfPanel, firstStackOfRole } from './dock-tree';
@@ -345,17 +346,43 @@ describe('DockState', () => {
 describe('DockState close guard', () => {
   let confirmResult: boolean;
   let confirmCalls: number;
+  let cancelledPanel: string | null;
 
   /**
-   * Builds a dock whose document well holds one document panel with a controllable close guard.
+   * Builds a guarded document panel whose guard answers {@link confirmResult}, except the panel named
+   * by {@link cancelledPanel}, which always cancels.
+   * @param id The identifier of the panel.
+   * @returns Returns the panel.
+   */
+  function guardedDocument(id: string): DockPanel {
+    return {
+      id,
+      title: `${id}.ts`,
+      icon: Icon.CODE,
+      role: 'document',
+      component: PersistStubPanel,
+      confirmClose: (): Promise<boolean> => {
+        confirmCalls += 1;
+        return Promise.resolve(id !== cancelledPanel && confirmResult);
+      },
+    };
+  }
+
+  /**
+   * Builds a dock whose document well holds three document panels with controllable close guards.
    * @returns Returns the injected dock state.
    */
   function create(): DockState {
     confirmCalls = 0;
+    cancelledPanel = null;
     const blueprint: DockBlueprint = {
       key: 'guard',
       createLayout: (): DockNode =>
-        mkSplit('row', [mkStack('tool', ['explorer']), mkStack('document', ['doc-1'])], [1, 2]),
+        mkSplit(
+          'row',
+          [mkStack('tool', ['explorer']), mkStack('document', ['doc-1', 'doc-2', 'doc-3'])],
+          [1, 2],
+        ),
       panels: [
         {
           id: 'explorer',
@@ -364,17 +391,9 @@ describe('DockState close guard', () => {
           role: 'tool',
           component: PersistStubPanel,
         },
-        {
-          id: 'doc-1',
-          title: 'a.ts',
-          icon: Icon.CODE,
-          role: 'document',
-          component: PersistStubPanel,
-          confirmClose: (): Promise<boolean> => {
-            confirmCalls += 1;
-            return Promise.resolve(confirmResult);
-          },
-        },
+        guardedDocument('doc-1'),
+        guardedDocument('doc-2'),
+        guardedDocument('doc-3'),
       ],
     };
     TestBed.configureTestingModule({
@@ -401,6 +420,32 @@ describe('DockState close guard', () => {
     await dock.requestClose('doc-1');
 
     expect(findStackOfPanel(dock.layout(), 'doc-1')).not.toBeNull();
+  });
+
+  it('requestCloseAll_whenEveryGuardAllows_closesEveryPanel', async () => {
+    confirmResult = true;
+    const dock: DockState = create();
+
+    await dock.requestCloseAll(['doc-1', 'doc-2', 'doc-3']);
+
+    expect(confirmCalls).toBe(3);
+    for (const id of ['doc-1', 'doc-2', 'doc-3']) {
+      expect(findStackOfPanel(dock.layout(), id)).toBeNull();
+    }
+  });
+
+  it('requestCloseAll_whenAGuardCancels_stopsAndKeepsThatPanelAndTheRest', async () => {
+    confirmResult = true;
+    const dock: DockState = create();
+    cancelledPanel = 'doc-2';
+
+    await dock.requestCloseAll(['doc-1', 'doc-2', 'doc-3']);
+
+    // doc-3 is never asked: the cancel ends the run.
+    expect(confirmCalls).toBe(2);
+    expect(findStackOfPanel(dock.layout(), 'doc-1')).toBeNull();
+    expect(findStackOfPanel(dock.layout(), 'doc-2')).not.toBeNull();
+    expect(findStackOfPanel(dock.layout(), 'doc-3')).not.toBeNull();
   });
 });
 
