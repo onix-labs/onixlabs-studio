@@ -143,6 +143,70 @@
   box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.25);
 }
 
+// Every row wraps its item so a trailing action can sit beside it. Without one the item simply fills
+// the row and keeps its own hover surface.
+.app-menu-panel__row {
+  display: flex;
+  align-items: center;
+  border-radius: calc(0.375rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  transition: var(--hover-transition);
+
+  > .app-menu-panel__item {
+    flex: 1;
+    min-inline-size: 0;
+  }
+}
+
+// A row with an action carries the hover surface itself, so hovering anywhere on it — the action
+// included — highlights the whole row rather than the item alone.
+.app-menu-panel__row--with-action {
+  padding-inline-end: 0.25rem;
+
+  &:hover,
+  &:has(:focus-visible) {
+    background: var(--menu-item-background-color--hover);
+  }
+
+  > .app-menu-panel__item {
+    &:hover,
+    &:focus-visible {
+      background: transparent;
+    }
+  }
+}
+
+// The trailing action: hidden until its row is hovered or focused, so a list of rows does not read as
+// a column of buttons.
+.app-menu-panel__item-action {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  inline-size: 1.5rem;
+  block-size: 1.5rem;
+  font: inherit;
+  font-size: 1rem;
+  color: inherit;
+  background: transparent;
+  border: none;
+  border-radius: calc(0.375rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  cursor: default;
+  opacity: 0;
+  transition: var(--hover-transition);
+
+  .app-menu-panel__row:hover &,
+  .app-menu-panel__row:has(:focus-visible) & {
+    opacity: 1;
+  }
+
+  &:hover {
+    background: var(--title-strip-tab-close-button-background-color--hover);
+    color: var(--title-strip-tab-close-button-foreground-color--hover);
+  }
+}
+
 .app-menu-panel__item {
   display: flex;
   align-items: center;

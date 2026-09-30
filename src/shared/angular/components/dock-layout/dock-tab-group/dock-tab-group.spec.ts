@@ -1,4 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { MockInstance, vi } from 'vitest';
 import { DOCK_BLUEPRINT } from '../../../services/dock-layout/dock-blueprint';
 import { TEST_DOCK_BLUEPRINT } from '../../../services/dock-layout/dock-test-blueprint';
 import { DockDrag } from '../../../services/dock-layout/dock-drag';
@@ -208,6 +209,59 @@ describe('DockTabGroup', () => {
     const element: HTMLElement = fixture.nativeElement as HTMLElement;
     expect(element.querySelector('app-dock-tool-strip')).not.toBeNull();
     expect(element.classList.contains('dock-tab-group--panel-strip')).toBe(false);
+  });
+
+  it('closeAll_whenCloseAllClicked_closesEveryDocumentInTheWellInTabOrder', () => {
+    const registry: DockPanelRegistry = TestBed.inject(DockPanelRegistry);
+    for (const id of ['doc-a', 'doc-b']) {
+      registry.register({
+        id,
+        title: id,
+        icon: Icon.CODE,
+        role: 'document',
+        component: DockPanelPlaceholder,
+      });
+    }
+    const closeAll: MockInstance = vi
+      .spyOn(TestBed.inject(DockState), 'requestCloseAll')
+      .mockResolvedValue();
+    render(mkStack('document', ['doc-a', 'doc-b']));
+
+    const element: HTMLElement = fixture.nativeElement as HTMLElement;
+    element.querySelector<HTMLButtonElement>('button[aria-label="Close All"]')?.click();
+
+    expect(closeAll).toHaveBeenCalledWith(['doc-a', 'doc-b']);
+  });
+
+  it('close_whenADocumentListRowsCloseClicked_closesThatDocument', () => {
+    const registry: DockPanelRegistry = TestBed.inject(DockPanelRegistry);
+    for (const id of ['doc-a', 'doc-b']) {
+      registry.register({
+        id,
+        title: id,
+        icon: Icon.CODE,
+        role: 'document',
+        component: DockPanelPlaceholder,
+      });
+    }
+    const close: MockInstance = vi
+      .spyOn(TestBed.inject(DockState), 'requestClose')
+      .mockResolvedValue(true);
+    render(mkStack('document', ['doc-a', 'doc-b']));
+
+    const element: HTMLElement = fixture.nativeElement as HTMLElement;
+    element.querySelector<HTMLButtonElement>('button[aria-label="Documents"]')?.click();
+    fixture.detectChanges();
+    document.querySelector<HTMLButtonElement>('button[aria-label="Close doc-b"]')?.click();
+
+    expect(close).toHaveBeenCalledWith('doc-b');
+  });
+
+  it('render_whenToolRole_omitsTheCloseAllButton', () => {
+    render(mkStack('tool', ['output', 'errors']));
+
+    const element: HTMLElement = fixture.nativeElement as HTMLElement;
+    expect(element.querySelector('button[aria-label="Close All"]')).toBeNull();
   });
 
   it('render_whenStackHasAnActivePanel_marksTheActiveTab', () => {

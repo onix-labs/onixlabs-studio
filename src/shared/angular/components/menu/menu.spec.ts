@@ -2,6 +2,7 @@ import { CdkMenuTrigger } from '@angular/cdk/menu';
 import { Component, TemplateRef } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
+import { Icon } from '@shared/angular/icons/icon';
 
 import { Menu, MenuItem } from './menu';
 import { MENU_POSITIONS } from './menu-position';
@@ -19,7 +20,13 @@ import { MENU_POSITIONS } from './menu-position';
     >
       Open
     </button>
-    <app-menu #menu [items]="items" placement="up-end" (selected)="chosen.push($event)" />
+    <app-menu
+      #menu
+      [items]="items"
+      placement="up-end"
+      (selected)="chosen.push($event)"
+      (actioned)="actioned.push($event.id)"
+    />
   `,
 })
 class HostComponent {
@@ -28,6 +35,7 @@ class HostComponent {
     { id: 'b', label: 'Bravo', active: true },
   ];
   public readonly chosen: string[] = [];
+  public readonly actioned: string[] = [];
 }
 
 describe('Menu', () => {
@@ -235,6 +243,71 @@ describe('Menu', () => {
       fixture.detectChanges();
 
       expect(host.chosen).toEqual(['nested']);
+    });
+  });
+
+  describe('actions', () => {
+    /**
+     * Reads the trailing action buttons rendered across every open panel.
+     * @returns Returns the rendered action buttons.
+     */
+    function actions(): readonly HTMLButtonElement[] {
+      return Array.from(
+        document.querySelectorAll<HTMLButtonElement>('.app-menu-panel__item-action'),
+      );
+    }
+
+    it('render_aRowWithoutAnAction_drawsNoActionButton', () => {
+      open();
+
+      expect(actions()).toEqual([]);
+    });
+
+    it('render_aRowWithAnAction_namesTheButtonForItsRow', () => {
+      host.items = [{ id: 'a', label: 'a.ts', action: { icon: Icon.CLOSE, label: 'Close' } }];
+      fixture.detectChanges();
+      open();
+
+      expect(actions().map((a: HTMLButtonElement): string | null => a.ariaLabel)).toEqual([
+        'Close a.ts',
+      ]);
+    });
+
+    it('click_anAction_emitsItsRowWithoutSelectingItOrClosingTheMenu', () => {
+      host.items = [
+        { id: 'a', label: 'a.ts', action: { icon: Icon.CLOSE, label: 'Close' } },
+        { id: 'b', label: 'b.ts', action: { icon: Icon.CLOSE, label: 'Close' } },
+      ];
+      fixture.detectChanges();
+      open();
+
+      actions()[1].click();
+      fixture.detectChanges();
+
+      expect(host.actioned).toEqual(['b']);
+      expect(host.chosen).toEqual([]);
+      // The menu stays open so the next row can be acted on in turn.
+      expect(document.querySelectorAll('.app-menu-panel').length).toBe(1);
+    });
+
+    it('delete_onARowWithAnAction_emitsTheAction', () => {
+      host.items = [{ id: 'a', label: 'a.ts', action: { icon: Icon.CLOSE, label: 'Close' } }];
+      fixture.detectChanges();
+      open();
+
+      rows()[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }));
+      fixture.detectChanges();
+
+      expect(host.actioned).toEqual(['a']);
+    });
+
+    it('delete_onARowWithoutAnAction_emitsNothing', () => {
+      open();
+
+      rows()[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }));
+      fixture.detectChanges();
+
+      expect(host.actioned).toEqual([]);
     });
   });
 });

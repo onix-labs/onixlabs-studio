@@ -195,7 +195,7 @@ export class DockTabGroup {
   );
 
   /**
-   * Gets the panels held by the stack as document-picker menu items.
+   * Gets the panels held by the stack as document-picker menu items, each carrying a close action.
    */
   protected readonly documentItems: Signal<readonly MenuItem[]> = computed(
     (): readonly MenuItem[] =>
@@ -203,6 +203,7 @@ export class DockTabGroup {
         id: panel.id,
         label: panel.title,
         icon: panel.icon,
+        action: { icon: Icon.CLOSE, label: 'Close' },
       })),
   );
 
@@ -459,6 +460,14 @@ export class DockTabGroup {
    */
   protected close(panelId: string): void {
     void this.dockState.requestClose(panelId);
+  }
+
+  /**
+   * Closes every document in the well, in tab order, prompting for each one with unsaved changes. A
+   * cancelled prompt stops the run and leaves the remaining documents open.
+   */
+  protected closeAll(): void {
+    void this.dockState.requestCloseAll(this.panels().map((panel: DockPanel): string => panel.id));
   }
 
   /**
