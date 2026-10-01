@@ -5,6 +5,7 @@ import {
   DELETE_RUN_CONFIGURATIONS,
   LIST_RUN_CONFIGURATIONS,
   SAVE_RUN_CONFIGURATIONS,
+  UNSCOPED_BRIDGE_REQUEST,
 } from '@shared/api/ai-types';
 import { RunConfiguration } from '@shared/api/studio';
 import { AiCapability, AiRuntime } from '@shared/angular/services/ai-runtime/ai-runtime';
@@ -46,6 +47,7 @@ describe('AgentRunConfigurationCapabilities', () => {
   let configurations: WritableSignal<readonly RunConfiguration[]>;
   let root: WritableSignal<string | null>;
   let saved: (readonly RunConfiguration[])[];
+  let background: Map<string, readonly RunConfiguration[]>;
 
   /**
    * Invokes a registered capability with the given input.
@@ -56,7 +58,7 @@ describe('AgentRunConfigurationCapabilities', () => {
   async function call<T>(name: string, input: unknown = {}): Promise<T> {
     const handler: AiCapability | undefined = registered.get(name);
     expect(handler).toBeDefined();
-    return (await handler!(input)) as T;
+    return (await handler!(input, UNSCOPED_BRIDGE_REQUEST)) as T;
   }
 
   beforeEach(() => {
@@ -71,11 +73,19 @@ describe('AgentRunConfigurationCapabilities', () => {
         return (): void => undefined;
       },
     };
+    background = new Map<string, readonly RunConfiguration[]>();
     const studioStub: Partial<StudioConfig> = {
       runConfigurations: configurations.asReadonly(),
-      saveRunConfigurations: (next: readonly RunConfiguration[]): Promise<void> => {
-        saved.push(next);
-        configurations.set(next);
+      // The focused root reads and writes the live snapshot; any other root is its own file.
+      loadRunConfigurations: (at: string): Promise<readonly RunConfiguration[]> =>
+        Promise.resolve(at === root() ? configurations() : (background.get(at) ?? [])),
+      saveRunConfigurationsFor: (at: string, next: readonly RunConfiguration[]): Promise<void> => {
+        if (at === root()) {
+          saved.push(next);
+          configurations.set(next);
+        } else {
+          background.set(at, next);
+        }
         return Promise.resolve();
       },
     };
@@ -211,5 +221,22 @@ describe('AgentRunConfigurationCapabilities', () => {
     expect(result.ok).toBe(false);
     expect(result.error).toContain('api');
     expect(saved).toEqual([]);
+  });
+
+  it('save_fromAnAgentInABackgroundWorkspace_writesItsOwnWorkspaceNotTheFocusedOne', async () => {
+    configurations.set([config('focused', 'Focused')]);
+    const handler: AiCapability | undefined = registered.get(SAVE_RUN_CONFIGURATIONS);
+
+    const result: WriteResult = (await handler!(
+      { configurations: [config('api', 'API')] },
+      { owningTabId: 'tab-b', surface: 'workspace', workspaceRoot: '/background' },
+    )) as WriteResult;
+
+    expect(result.ok).toBe(true);
+    expect(background.get('/background')?.map((c: RunConfiguration): string => c.id)).toEqual([
+      'api',
+    ]);
+    expect(configurations().map((c: RunConfiguration): string => c.id)).toEqual(['focused']);
+    expect(saved).toHaveLength(0);
   });
 });

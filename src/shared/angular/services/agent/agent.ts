@@ -45,6 +45,7 @@ import { Settings } from '@shared/angular/services/settings/settings';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
+import { AGENT_RUN_OWNER } from './agent-run-owner';
 import { AGENT_WORKSPACE_ROOT } from './agent-workspace-root';
 import { isNotLoggedInReply, looksLikeAuthFailure } from './auth-failure';
 
@@ -598,6 +599,14 @@ export class Agent {
     AGENT_WORKSPACE_ROOT,
     { optional: true },
   );
+
+  /**
+   * Holds the host's run-owner resolver, when the host provides one (see {@link AGENT_RUN_OWNER}); it
+   * overrides whatever owner a caller passes, so every way into this agent names the same owner.
+   */
+  private readonly runOwnerResolver: (() => string) | null = inject(AGENT_RUN_OWNER, {
+    optional: true,
+  });
 
   /**
    * Holds the settings service, the source of the run's permission posture and token cap.
@@ -1343,7 +1352,7 @@ export class Agent {
       },
       runTimeoutMs: this.settings.aiRunTimeoutMinutes() * 60_000,
       agentSessionLifetimeMs: this.settings.aiAgentSessionLifetimeMinutes() * 60_000,
-      owningTabId,
+      owningTabId: this.runOwnerResolver?.() ?? owningTabId,
       surface,
       mode: this.modeState(),
       ...(this.effortState() === null ? {} : { effort: this.effortState()! }),

@@ -193,6 +193,24 @@ export const OPEN_DOCUMENT: string = 'open_document';
 export const SAVE_DOCUMENT: string = 'save_document';
 
 /**
+ * The in-app capability that reads the live text of a document opened by {@link OPEN_DOCUMENT},
+ * including any edits the user has made to it since.
+ */
+export const READ_DOCUMENT: string = 'read_document';
+
+/**
+ * The in-app capability that applies a string-anchored edit to a document opened by
+ * {@link OPEN_DOCUMENT}, so a revision lands in the tab the user is already reading rather than in a
+ * second one.
+ */
+export const EDIT_DOCUMENT: string = 'edit_document';
+
+/**
+ * The in-app capability that replaces the whole text of a document opened by {@link OPEN_DOCUMENT}.
+ */
+export const REPLACE_DOCUMENT: string = 'replace_document';
+
+/**
  * The in-app capability that opens a new terminal tab.
  */
 export const OPEN_TERMINAL: string = 'open_terminal';

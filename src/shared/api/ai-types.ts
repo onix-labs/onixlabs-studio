@@ -35,6 +35,9 @@ export {
   SET_API_VARIABLE,
   OPEN_DOCUMENT,
   SAVE_DOCUMENT,
+  READ_DOCUMENT,
+  EDIT_DOCUMENT,
+  REPLACE_DOCUMENT,
   OPEN_TERMINAL,
   OPEN_FILE,
   LIST_OPEN_DOCUMENTS,
@@ -131,8 +134,10 @@ export type {
   AiBackgroundTaskEvent,
   AiEvent,
 } from './ai/ai-event-types';
+export { UNSCOPED_BRIDGE_REQUEST } from './ai/ai-bridge-types';
 export type {
   AiBridgeRequest,
+  AiBridgeScope,
   AiBridgeReply,
   AiPermissionReply,
   AiPermissionRemember,

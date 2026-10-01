@@ -16,6 +16,9 @@ import {
   InsertPlacement,
   LIST_RUN_CONFIGURATIONS,
   OPEN_DOCUMENT,
+  READ_DOCUMENT,
+  EDIT_DOCUMENT,
+  REPLACE_DOCUMENT,
   OPEN_FILE,
   LIST_OPEN_DOCUMENTS,
   OPEN_DIFF,
@@ -531,10 +534,10 @@ export async function readTerminalOutput(
   const tabId: string | null = terminalId ?? context.owningTabId;
   logger.trace('StudioTools', `Tool invoked: read_terminal_output (tab=${tabId})`);
   const result: unknown = await context.bridge.request(READ_TERMINAL_OUTPUT, { tabId });
-  const read: { available?: boolean; text?: string } = result ?? {};
+  const read: { available?: boolean; text?: string; error?: string } = result ?? {};
   if (read.available !== true) {
     logger.debug('StudioTools', 'read_terminal_output: terminal unavailable');
-    return 'The terminal is not available.';
+    return read.error ?? 'The terminal is not available.';
   }
   return read.text ?? '';
 }
@@ -564,10 +567,10 @@ export async function writeTerminalInput(
     text,
     submit,
   });
-  const write: { ok?: boolean; output?: string } = result ?? {};
+  const write: { ok?: boolean; output?: string; error?: string } = result ?? {};
   if (write.ok !== true) {
     logger.debug('StudioTools', 'write_terminal_input: terminal unavailable');
-    return 'The terminal is not available.';
+    return write.error ?? 'The terminal is not available.';
   }
   logger.info('StudioTools', `Sent input to terminal (tab=${tabId})`);
   return write.output ?? 'Sent to the terminal.';
@@ -1242,6 +1245,8 @@ export async function sendApiRequest(context: AgentRunContext, id: string): Prom
 export const WORKBENCH_PROMPT_APPENDIX: string = [
   'Whatever else you are docked to, you can put a document in front of the user as its own tab:',
   `- "${OPEN_DOCUMENT}" opens a new markdown or code tab and fills it with your content.`,
+  `- "${READ_DOCUMENT}", "${EDIT_DOCUMENT}" and "${REPLACE_DOCUMENT}" read and revise a document you`,
+  '  opened, by the id it returned — including any edits the user has made to it since.',
   `- "${SAVE_DOCUMENT}" offers to save one of those documents through the save dialog.`,
   `- "${OPEN_FILE}" opens one of the user's own workspace files in their editor.`,
   `- "${OPEN_TERMINAL}" opens a new terminal tab.`,
@@ -1263,6 +1268,10 @@ export const WORKBENCH_PROMPT_APPENDIX: string = [
   'conversation beats quoting it, and beats naming a path the user then has to go and find. Say what',
   'to look at once it is open — the place in it, and what is worth noticing.',
   'Say what you opened and why, briefly, rather than repeating the content you just put in the tab.',
+  'When the user asks for changes to a document you already opened, revise THAT document — do not',
+  `open a second tab with the new version. Read it first with "${READ_DOCUMENT}" (the user may have`,
+  `edited it), then prefer "${EDIT_DOCUMENT}" for targeted changes and "${REPLACE_DOCUMENT}" only for a`,
+  'rewrite. Open a new document only when the user asks for a separate one.',
 ].join('\n');
 
 /**
@@ -1297,7 +1306,78 @@ export async function openDocument(
   return (
     `Opened "${opened.title ?? title}" in a new ${format} tab (id ${opened.id ?? ''}). ` +
     'It is unsaved — the user can read it in the editor and decide whether to keep it. ' +
-    `Pass that id to ${SAVE_DOCUMENT} if they ask you to save it.`
+    `To revise it, pass that id to ${EDIT_DOCUMENT} or ${REPLACE_DOCUMENT} rather than opening ` +
+    `another tab; pass it to ${SAVE_DOCUMENT} if they ask you to save it.`
+  );
+}
+
+/**
+ * Reads a document the agent opened, by id, through the renderer bridge.
+ * @param context The agent run context (carries the bridge).
+ * @param id The identifier returned when the document was opened.
+ * @returns Returns the document's live text, or the reason it could not be read.
+ */
+export async function readDocument(context: AgentRunContext, id: string): Promise<string> {
+  logger.trace('StudioTools', `Tool invoked: read_document (${id})`);
+  const result: unknown = await context.bridge.request(READ_DOCUMENT, { id });
+  const read: { available?: boolean; text?: string; detail?: string } = result ?? {};
+  if (read.available !== true) {
+    return read.detail ?? 'The document could not be read.';
+  }
+  return read.text ?? '';
+}
+
+/**
+ * Applies a string-anchored edit to a document the agent opened, by id, through the renderer bridge.
+ * @param context The agent run context (carries the bridge).
+ * @param id The identifier returned when the document was opened.
+ * @param oldString The exact text to replace (must match once, unless replacing all).
+ * @param newString The replacement text (empty deletes the matched text).
+ * @param replaceAll Whether to replace every occurrence instead of requiring a unique match.
+ * @returns Returns a short confirmation, or the reason the edit was not applied.
+ */
+export async function editDocument(
+  context: AgentRunContext,
+  id: string,
+  oldString: string,
+  newString: string,
+  replaceAll: boolean = false,
+): Promise<string> {
+  logger.trace('StudioTools', `Tool invoked: edit_document (${id}, replaceAll=${replaceAll})`);
+  const result: unknown = await context.bridge.request(EDIT_DOCUMENT, {
+    id,
+    oldString,
+    newString,
+    replaceAll,
+  });
+  const edit: { ok?: boolean; detail?: string } = result ?? {};
+  if (edit.ok === true) {
+    logger.info('StudioTools', `Edited agent document ${id}`);
+  }
+  return edit.detail ?? (edit.ok === true ? 'The edit was applied.' : 'The edit was not applied.');
+}
+
+/**
+ * Replaces the whole text of a document the agent opened, by id, through the renderer bridge.
+ * @param context The agent run context (carries the bridge).
+ * @param id The identifier returned when the document was opened.
+ * @param text The new full text.
+ * @returns Returns a short confirmation, or the reason the document was not updated.
+ */
+export async function replaceDocument(
+  context: AgentRunContext,
+  id: string,
+  text: string,
+): Promise<string> {
+  logger.trace('StudioTools', `Tool invoked: replace_document (${id})`);
+  const result: unknown = await context.bridge.request(REPLACE_DOCUMENT, { id, text });
+  const replace: { ok?: boolean; detail?: string } = result ?? {};
+  if (replace.ok === true) {
+    logger.info('StudioTools', `Replaced agent document ${id}`);
+  }
+  return (
+    replace.detail ??
+    (replace.ok === true ? 'The document was updated.' : 'The document was not updated.')
   );
 }
 

@@ -25,6 +25,8 @@ import {
   RENAME_PATH,
   REVEAL_IN_EXPLORER,
   SAVE_DOCUMENT,
+  type AiBridgeScope,
+  UNSCOPED_BRIDGE_REQUEST,
 } from '@shared/api/ai-types';
 import { WorkbenchAgentCapabilities } from './workbench-agent-capabilities';
 
@@ -32,19 +34,23 @@ import { WorkbenchAgentCapabilities } from './workbench-agent-capabilities';
  * A stand-in runtime capturing the capabilities registered against it.
  */
 class FakeRuntime {
-  public readonly capabilities: Map<string, (input: unknown) => unknown> = new Map<
-    string,
-    (input: unknown) => unknown
-  >();
+  public readonly capabilities: Map<string, (input: unknown, scope?: AiBridgeScope) => unknown> =
+    new Map<string, (input: unknown, scope?: AiBridgeScope) => unknown>();
 
   /**
-   * Records a capability and returns its release.
+   * Records a capability and returns its release. A call that names no scope is unscoped, as a
+   * request from an older main process would be.
    * @param name The capability name.
    * @param handler The handler.
    * @returns Returns the release function.
    */
-  public registerCapability(name: string, handler: (input: unknown) => unknown): () => void {
-    this.capabilities.set(name, handler);
+  public registerCapability(
+    name: string,
+    handler: (input: unknown, scope: AiBridgeScope) => unknown,
+  ): () => void {
+    this.capabilities.set(name, (input: unknown, scope?: AiBridgeScope): unknown =>
+      handler(input, scope ?? UNSCOPED_BRIDGE_REQUEST),
+    );
     return (): void => undefined;
   }
 }
@@ -106,8 +112,11 @@ class FakeActiveWorkspace {
    */
   public publish(root: string | null): void {
     this.well = {
+      scope: 'workspace-tab',
       tabId: 'workspace-tab',
       root,
+      rootPath: (): string | null => root,
+      activeDocumentId: (): string | null => null,
       open: (path: string): Promise<boolean> => {
         this.requested.push(path);
         return Promise.resolve(this.opens);
@@ -163,10 +172,17 @@ class FakeActiveWorkspace {
   }
 
   /**
-   * Resolves the published well.
+   * The scopes the well was resolved for, in order.
+   */
+  public readonly resolvedFor: AiBridgeScope[] = [];
+
+  /**
+   * Resolves the published well for a run.
+   * @param scope The run's scope.
    * @returns Returns the well, or null.
    */
-  public activeWell(): WorkspaceWell | null {
+  public wellForRun(scope: AiBridgeScope): WorkspaceWell | null {
+    this.resolvedFor.push(scope);
     return this.well;
   }
 }

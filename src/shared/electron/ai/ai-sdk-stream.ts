@@ -18,6 +18,9 @@ import {
   SET_API_VARIABLE,
   UPDATE_API_REQUEST,
   OPEN_DOCUMENT,
+  READ_DOCUMENT,
+  EDIT_DOCUMENT,
+  REPLACE_DOCUMENT,
   OPEN_FILE,
   LIST_OPEN_DOCUMENTS,
   OPEN_DIFF,
@@ -65,6 +68,9 @@ import {
   WORKBENCH_PROMPT_APPENDIX,
   WORKSPACE_PROMPT_APPENDIX,
   openDocument,
+  readDocument,
+  editDocument,
+  replaceDocument,
   openFile,
   openDiff,
   listOpenDocuments,
@@ -623,7 +629,7 @@ export async function createWorkbenchTools(context: AgentRunContext): Promise<To
   return {
     [OPEN_DOCUMENT]: tool({
       description:
-        'Open a new tab containing a document you have written — a report, a design note, a draft file — and show it to the user. The document opens UNSAVED and touches nothing on disk, so opening one is free and reversible. Use it instead of pasting anything long into the conversation. Returns an id to pass to save_document.',
+        'Open a new tab containing a document you have written — a report, a design note, a draft file — and show it to the user. The document opens UNSAVED and touches nothing on disk, so opening one is free and reversible. Use it instead of pasting anything long into the conversation. To change it later, revise it with edit_document or replace_document rather than opening another. Returns the id those tools and save_document take.',
       inputSchema: z.object({
         format: z
           .enum(['markdown', 'code'])
@@ -645,6 +651,51 @@ export async function createWorkbenchTools(context: AgentRunContext): Promise<To
         language?: string;
       }): Promise<string> =>
         openDocument(context, args.format, args.title, args.content, args.language),
+    }),
+    // Not gated, like open_document: the target is the agent's own unsaved draft, so revising it is
+    // no more consequential than having written it — and the renderer refuses any other document.
+    [READ_DOCUMENT]: tool({
+      description:
+        'Read the current text of a document you opened with open_document, including any edits the user has made to it since. Read it before revising it.',
+      inputSchema: z.object({
+        id: z.string().min(1).describe('The id returned by open_document.'),
+      }),
+      execute: (args: { id: string }): Promise<string> => readDocument(context, args.id),
+    }),
+    [EDIT_DOCUMENT]: tool({
+      description:
+        'Revise a document you opened with open_document, in place in its tab: replace one exact occurrence of a string (or every occurrence with replace_all). Use this — not a new open_document — when the user asks for changes to a document you already opened. The old string must match uniquely; include surrounding context to disambiguate.',
+      inputSchema: z.object({
+        id: z.string().min(1).describe('The id returned by open_document.'),
+        old_string: z
+          .string()
+          .min(1)
+          .describe('The exact text to replace; must match the document verbatim.'),
+        new_string: z.string().describe('The replacement text (empty deletes the matched text).'),
+        replace_all: z
+          .boolean()
+          .optional()
+          .describe(
+            'Whether to replace every occurrence instead of requiring a unique match. Defaults to false.',
+          ),
+      }),
+      execute: (args: {
+        id: string;
+        old_string: string;
+        new_string: string;
+        replace_all?: boolean;
+      }): Promise<string> =>
+        editDocument(context, args.id, args.old_string, args.new_string, args.replace_all ?? false),
+    }),
+    [REPLACE_DOCUMENT]: tool({
+      description:
+        'Replace the whole text of a document you opened with open_document, in place in its tab. Prefer edit_document for targeted changes; use this for a rewrite.',
+      inputSchema: z.object({
+        id: z.string().min(1).describe('The id returned by open_document.'),
+        text: z.string().describe('The new full text of the document.'),
+      }),
+      execute: (args: { id: string; text: string }): Promise<string> =>
+        replaceDocument(context, args.id, args.text),
     }),
     [SAVE_DOCUMENT]: tool({
       description:
