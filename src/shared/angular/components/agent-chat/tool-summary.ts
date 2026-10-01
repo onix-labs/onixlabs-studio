@@ -1,9 +1,12 @@
 import {
   EDIT_ACTIVE_DOCUMENT,
+  EDIT_DOCUMENT,
   INSERT_ACTIVE_DOCUMENT,
   READ_ACTIVE_DOCUMENT,
+  READ_DOCUMENT,
   READ_TERMINAL_OUTPUT,
   REPLACE_ACTIVE_DOCUMENT,
+  REPLACE_DOCUMENT,
   WRITE_TERMINAL_INPUT,
 } from '@shared/api/ai-types';
 import { Icon } from '@shared/angular/icons/icon';
@@ -37,6 +40,9 @@ const TOOL_LABELS: Readonly<Record<string, string>> = {
   [REPLACE_ACTIVE_DOCUMENT]: 'Updating the current document',
   [READ_TERMINAL_OUTPUT]: 'Reading the terminal',
   [WRITE_TERMINAL_INPUT]: 'Running a terminal command',
+  [READ_DOCUMENT]: 'Reading its document',
+  [EDIT_DOCUMENT]: 'Revising its document',
+  [REPLACE_DOCUMENT]: 'Rewriting its document',
 };
 
 /**
@@ -54,6 +60,9 @@ const TOOL_ICONS: Readonly<Record<string, Icon>> = {
   [REPLACE_ACTIVE_DOCUMENT]: Icon.TOOL_WRITE,
   [EDIT_ACTIVE_DOCUMENT]: Icon.TOOL_WRITE,
   [INSERT_ACTIVE_DOCUMENT]: Icon.TOOL_WRITE,
+  [READ_DOCUMENT]: Icon.TOOL_READ,
+  [EDIT_DOCUMENT]: Icon.TOOL_WRITE,
+  [REPLACE_DOCUMENT]: Icon.TOOL_WRITE,
 };
 
 /**

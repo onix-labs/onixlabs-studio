@@ -17,6 +17,7 @@ import {
 import { ConversationContext } from '@shared/api/agent-conversation-channels';
 import { Log } from '@shared/angular/services/log/log';
 import { Agent } from '@shared/angular/services/agent/agent';
+import { AGENT_RUN_OWNER } from '@shared/angular/services/agent/agent-run-owner';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
 import {
   AgentHostRegistrar,
@@ -113,6 +114,7 @@ import {
   WellDocument,
   WellSourceControl,
   WellTerminal,
+  WorkspaceWellHandlers,
 } from '@shared/angular/services/workspace/active-workspace';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { WorkspaceGit } from '@features/workspace/angular/workspace-git/workspace-git';
@@ -308,6 +310,15 @@ const PANEL_ANCHORS: Readonly<Record<string, readonly string[]>> = {
     AgentConversation,
     { provide: AGENT_CONVERSATION_KIND, useValue: 'workspace' },
     {
+      // Every run of this view's agent is owned by the view's scope — the key its well is published
+      // under — so the agent's tools act on THIS workspace, whichever tab the user is looking at.
+      provide: AGENT_RUN_OWNER,
+      useFactory: (): (() => string) => {
+        const context: DockTabContext = inject(DockTabContext);
+        return (): string => context.tabId();
+      },
+    },
+    {
       // Scope agent conversations docked in this IDE to the open workspace root (or the global bucket
       // when the tab has no folder open yet). Resolved lazily so it tracks the workspace loading.
       provide: AGENT_CONVERSATION_CONTEXT,
@@ -420,7 +431,9 @@ export class DirectoryView implements OnInit, OnDestroy {
    */
   private readonly agentHost: AgentHostRegistrar = createAgentHostRegistrar({
     isActive: this.isActive,
-    surface: 'editor',
+    // The same surface the docked agent panel runs on (#713): a turn sent from Mission Control's tile
+    // drives this same agent, and must be offered this workspace's tools rather than an editor's.
+    surface: 'workspace',
     // Mission Control shows the open folder's branch beside this column's title. Read through a
     // closure because this tab's git state is constructed after this field initializer runs.
     branch: (): string | null => this.workspaceGit.branch(),
@@ -1706,6 +1719,32 @@ export class DirectoryView implements OnInit, OnDestroy {
   }
 
   /**
+   * Holds what this view publishes about its well (see {@link ngOnInit}). One object for the view's
+   * lifetime, so teardown can clear exactly what this view published and nothing a successor did.
+   */
+  private readonly wellHandlers: WorkspaceWellHandlers = {
+    rootPath: (): string | null => this.workspace.root()?.path ?? null,
+    activeDocumentId: (): string | null => this.documents.activeDocumentId(),
+    open: (path: string): Promise<boolean> => this.fileOpener.openPath(path),
+    openDiff: (path: string): Promise<string | null> => this.openDiffForAgent(path),
+    documents: (): readonly WellDocument[] => this.wellDocumentsForAgent(),
+    sourceControl: (): WellSourceControl | null => this.sourceControlForAgent(),
+    openTerminal: (): WellTerminal => this.openTerminalForAgent(),
+    terminals: (): readonly WellTerminal[] => this.terminalsForAgent(),
+    createFile: (path: string, content: string | null): Promise<string | null> =>
+      this.createFileForAgent(path, content),
+    createFolder: (path: string): Promise<string | null> => this.createFolderForAgent(path),
+    rename: (
+      path: string,
+      name: string,
+    ): Promise<{ readonly path: string | null; readonly error: string | null }> =>
+      this.renameForAgent(path, name),
+    delete: (path: string): Promise<{ readonly trashed: boolean; readonly error: string | null }> =>
+      this.deleteForAgent(path),
+    reveal: (path: string): Promise<boolean> => this.revealForAgent(path),
+  };
+
+  /**
    * Seeds the scoped workspace from the folder stashed for this tab, when opened from the welcome
    * screen.
    */
@@ -1715,28 +1754,10 @@ export class DirectoryView implements OnInit, OnDestroy {
     this.documents.setOwningTab(this.tabId());
     // Publish this workspace's document well, so something outside the tab's injector — the agent's
     // workbench tools — can open a file into it. The opener is provided per workspace tab, so this
-    // published closure is the only way to reach it from the root.
-    this.activeWorkspace.setWell(this.tabId(), {
-      open: (path: string): Promise<boolean> => this.fileOpener.openPath(path),
-      openDiff: (path: string): Promise<string | null> => this.openDiffForAgent(path),
-      documents: (): readonly WellDocument[] => this.wellDocumentsForAgent(),
-      sourceControl: (): WellSourceControl | null => this.sourceControlForAgent(),
-      openTerminal: (): WellTerminal => this.openTerminalForAgent(),
-      terminals: (): readonly WellTerminal[] => this.terminalsForAgent(),
-      createFile: (path: string, content: string | null): Promise<string | null> =>
-        this.createFileForAgent(path, content),
-      createFolder: (path: string): Promise<string | null> => this.createFolderForAgent(path),
-      rename: (
-        path: string,
-        name: string,
-      ): Promise<{ readonly path: string | null; readonly error: string | null }> =>
-        this.renameForAgent(path, name),
-      delete: (
-        path: string,
-      ): Promise<{ readonly trashed: boolean; readonly error: string | null }> =>
-        this.deleteForAgent(path),
-      reveal: (path: string): Promise<boolean> => this.revealForAgent(path),
-    });
+    // published closure is the only way to reach it from the root. Keyed by the VIEW scope: a
+    // worktree container's sub-views share a tab, and each must keep its own well — its agent runs
+    // with this scope as its owner and must reach this well, not a sibling checkout's.
+    this.activeWorkspace.setWell(this.viewScope(), this.tabId(), this.wellHandlers);
     // Surface this workspace's well documents to the app-wide close flows for the tab's lifetime.
     this.destroyRef.onDestroy(this.unsavedWork.register(this.documents));
     // The dock context carries the VIEW scope, not the raw tab id: it feeds pop-out keybinding
@@ -1776,8 +1797,10 @@ export class DirectoryView implements OnInit, OnDestroy {
     // whole tab closing should drop the entry.
     if (this.checkoutId() === null) {
       this.activeWorkspace.clearRoot(this.tabId());
-      this.activeWorkspace.clearWell(this.tabId());
     }
+    // The well is keyed by this view's own scope, so every view clears its own — identity-checked,
+    // so a successor that already republished under the same scope keeps its well.
+    this.activeWorkspace.clearWell(this.viewScope(), this.wellHandlers);
     this.workspaceGit.dispose();
     if (this.repository.isBound()) {
       void this.repository.close();

@@ -1,4 +1,5 @@
 import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
+import type { AiBridgeScope } from '@shared/api/ai-types';
 import { Log } from '@shared/angular/services/log/log';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 
@@ -120,6 +121,19 @@ export interface WellTerminal {
  */
 export interface WorkspaceWellHandlers {
   /**
+   * Reads the workspace's root directory.
+   * @returns Returns the root, or null when the view has no folder open yet.
+   */
+  rootPath(): string | null;
+
+  /**
+   * Reads which of the well's documents the user is looking at, so an agent docked in this workspace
+   * reads THIS workspace's focused document rather than whichever editor is focused app-wide.
+   * @returns Returns the document's id, or null when the well is empty.
+   */
+  activeDocumentId(): string | null;
+
+  /**
    * Opens a file into the well, reusing its panel when the file is already open.
    * @param path The absolute path of the file to open.
    * @returns Returns true when the file was opened.
@@ -205,6 +219,12 @@ export interface WorkspaceWellHandlers {
  */
 export interface WorkspaceWell extends WorkspaceWellHandlers {
   /**
+   * Gets the well's key: the publishing view's scope id — the tab id, or the tab id qualified by the
+   * checkout for a worktree sub-view. An agent docked in the workspace runs with this as its owner.
+   */
+  readonly scope: string;
+
+  /**
    * Gets the id of the tab whose well this is, so a caller can bring it to the front.
    */
   readonly tabId: string;
@@ -213,6 +233,21 @@ export interface WorkspaceWell extends WorkspaceWellHandlers {
    * Gets the workspace's root directory, or null when the tab has no folder open yet.
    */
   readonly root: string | null;
+}
+
+/**
+ * A well as published: its handlers and the top-level tab it lives in.
+ */
+interface PublishedWell {
+  /**
+   * Gets the id of the top-level tab the well lives in.
+   */
+  readonly tabId: string;
+
+  /**
+   * Gets what the well can do.
+   */
+  readonly handlers: WorkspaceWellHandlers;
 }
 
 /**
@@ -247,17 +282,19 @@ export class ActiveWorkspace {
   >(new Map<string, string | null>());
 
   /**
-   * Holds each workspace tab's document-well opener, keyed by tab id.
+   * Holds each workspace view's published well, keyed by the view's scope id — NOT the tab id: a
+   * worktree container hosts one view per checkout in a single tab, and keying by tab let each
+   * sub-view overwrite the others, so one checkout's agent acted on another's well.
    */
-  private readonly wells: WritableSignal<ReadonlyMap<string, WorkspaceWellHandlers>> = signal<
-    ReadonlyMap<string, WorkspaceWellHandlers>
-  >(new Map<string, WorkspaceWellHandlers>());
+  private readonly wells: WritableSignal<ReadonlyMap<string, PublishedWell>> = signal<
+    ReadonlyMap<string, PublishedWell>
+  >(new Map<string, PublishedWell>());
 
   /**
-   * Holds the tab id of the workspace most recently published, retained after the user moves away so
-   * a consumer that is not itself a workspace tab still resolves one.
+   * Holds the scope of the well most recently published, retained after the user moves away so a
+   * consumer that is not itself in a workspace still resolves one.
    */
-  private readonly lastWellTabId: WritableSignal<string | null> = signal<string | null>(null);
+  private readonly lastWellScope: WritableSignal<string | null> = signal<string | null>(null);
 
   /**
    * Gets the active tab's workspace root, or null when the active tab has none.
@@ -272,55 +309,132 @@ export class ActiveWorkspace {
    * one most recently active.
    *
    * The fallback is what makes this usable from somewhere that is not itself a workspace — an agent
-   * docked to a terminal, say, whose active tab has no well of its own. Without it, the answer would
-   * depend on which tab the user happened to be looking at when the agent acted.
+   * docked to a terminal tab, say, whose active tab has no well of its own.
+   *
+   * ⛔ NOT for an agent docked IN a workspace: resolve that agent's well with {@link wellForRun}. This
+   * follows the user's focus, so an agent in a background workspace reading it reaches the foreground
+   * workspace's documents and terminals — the isolation bug this seam once had.
    */
   public readonly activeWell: Signal<WorkspaceWell | null> = computed((): WorkspaceWell | null => {
-    const wells: ReadonlyMap<string, WorkspaceWellHandlers> = this.wells();
+    const wells: ReadonlyMap<string, PublishedWell> = this.wells();
     const activeTabId: string | undefined = this.tabs.activeTabId();
-    const tabId: string | null =
-      activeTabId !== undefined && wells.has(activeTabId) ? activeTabId : this.lastWellTabId();
-    const handlers: WorkspaceWellHandlers | undefined =
-      tabId === null ? undefined : wells.get(tabId);
-    return tabId === null || handlers === undefined
-      ? null
-      : { tabId, root: this.roots().get(tabId) ?? null, ...handlers };
+    const last: string | null = this.lastWellScope();
+    const lastWell: PublishedWell | undefined = last === null ? undefined : wells.get(last);
+    if (activeTabId !== undefined) {
+      // Prefer the sub-view the user last touched within the active tab, then any of its views.
+      if (last !== null && lastWell?.tabId === activeTabId) {
+        return this.project(last, lastWell);
+      }
+      const inTab: [string, PublishedWell] | undefined = [...wells.entries()]
+        .reverse()
+        .find(([, well]: [string, PublishedWell]): boolean => well.tabId === activeTabId);
+      if (inTab !== undefined) {
+        return this.project(inTab[0], inTab[1]);
+      }
+    }
+    return last === null || lastWell === undefined ? null : this.project(last, lastWell);
   });
 
   /**
-   * Publishes a workspace tab's document well, so it can be reached from the root.
-   * @param tabId The owning tab's id.
-   * @param handlers What the well can do.
+   * Resolves the well a run acts on, from the run's own trusted scope rather than the user's focus.
+   *
+   * - A run whose owner IS a well (an agent docked in a workspace) gets that well and nothing else.
+   * - A `workspace`-surface run that owns no well gets null — never a borrowed one.
+   * - Any other run gets the well whose root it is acting within, when one is open.
+   * - Failing that, and only when `fallback` is set, the {@link activeWell} — for an agent outside any
+   *   workspace (a terminal or agent tab) opening a file somewhere the user can see it.
+   * @param scope The run's bridge scope.
+   * @param fallback Whether to fall back to the focused workspace when the run belongs to none.
+   * @returns Returns the well, or null when the run has none.
    */
-  public setWell(tabId: string, handlers: WorkspaceWellHandlers): void {
-    const next: Map<string, WorkspaceWellHandlers> = new Map<string, WorkspaceWellHandlers>(
-      this.wells(),
-    );
-    next.set(tabId, handlers);
-    this.wells.set(next);
-    this.lastWellTabId.set(tabId);
-    this.log.debug('ActiveWorkspace', `Tab '${tabId}' well published`);
+  public wellForRun(scope: AiBridgeScope, fallback: boolean = true): WorkspaceWell | null {
+    const wells: ReadonlyMap<string, PublishedWell> = this.wells();
+    if (scope.owningTabId !== null) {
+      const owned: PublishedWell | undefined = wells.get(scope.owningTabId);
+      if (owned !== undefined) {
+        return this.project(scope.owningTabId, owned);
+      }
+    }
+    if (scope.surface === 'workspace') {
+      this.log.warn('ActiveWorkspace', 'Workspace run owns no published well', scope.owningTabId);
+      return null;
+    }
+    if (scope.workspaceRoot !== null) {
+      const byRoot: [string, PublishedWell] | undefined = [...wells.entries()].find(
+        ([, well]: [string, PublishedWell]): boolean =>
+          well.handlers.rootPath() === scope.workspaceRoot,
+      );
+      if (byRoot !== undefined) {
+        return this.project(byRoot[0], byRoot[1]);
+      }
+    }
+    return fallback ? this.activeWell() : null;
   }
 
   /**
-   * Drops a tab's published well when the tab closes.
-   * @param tabId The owning tab's id.
+   * Finds the well whose dock holds a terminal, so a terminal tool can refuse a terminal that belongs
+   * to another workspace.
+   * @param terminalId The terminal's id.
+   * @returns Returns the owning well, or null when the terminal is in no workspace (a top-level tab).
    */
-  public clearWell(tabId: string): void {
-    if (!this.wells().has(tabId)) {
+  public wellOwningTerminal(terminalId: string): WorkspaceWell | null {
+    for (const [scope, well] of this.wells()) {
+      if (
+        well.handlers
+          .terminals()
+          .some((terminal: WellTerminal): boolean => terminal.id === terminalId)
+      ) {
+        return this.project(scope, well);
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Publishes a workspace view's document well, so it can be reached from the root.
+   * @param scope The publishing view's scope id (the well's key).
+   * @param tabId The owning top-level tab's id.
+   * @param handlers What the well can do.
+   */
+  public setWell(scope: string, tabId: string, handlers: WorkspaceWellHandlers): void {
+    const next: Map<string, PublishedWell> = new Map<string, PublishedWell>(this.wells());
+    next.set(scope, { tabId, handlers });
+    this.wells.set(next);
+    this.lastWellScope.set(scope);
+    this.log.debug('ActiveWorkspace', `Well '${scope}' published (tab '${tabId}')`);
+  }
+
+  /**
+   * Drops a view's published well when the view is torn down. Identity-checked, so a predecessor
+   * destroyed after its successor published under the same scope does not take the successor's well
+   * with it.
+   * @param scope The view's scope id.
+   * @param handlers The handlers the view published, or undefined to drop whatever is there.
+   */
+  public clearWell(scope: string, handlers?: WorkspaceWellHandlers): void {
+    const current: PublishedWell | undefined = this.wells().get(scope);
+    if (current === undefined || (handlers !== undefined && current.handlers !== handlers)) {
       return;
     }
-    const next: Map<string, WorkspaceWellHandlers> = new Map<string, WorkspaceWellHandlers>(
-      this.wells(),
-    );
-    next.delete(tabId);
+    const next: Map<string, PublishedWell> = new Map<string, PublishedWell>(this.wells());
+    next.delete(scope);
     this.wells.set(next);
-    if (this.lastWellTabId() === tabId) {
+    if (this.lastWellScope() === scope) {
       // Fall back to any remaining workspace rather than to nothing, so closing one of two open
       // workspaces still leaves somewhere to open into.
-      this.lastWellTabId.set([...next.keys()].at(-1) ?? null);
+      this.lastWellScope.set([...next.keys()].at(-1) ?? null);
     }
-    this.log.debug('ActiveWorkspace', `Tab '${tabId}' well cleared`);
+    this.log.debug('ActiveWorkspace', `Well '${scope}' cleared`);
+  }
+
+  /**
+   * Projects a published well into the {@link WorkspaceWell} consumers see.
+   * @param scope The well's key.
+   * @param well The published well.
+   * @returns Returns the projected well.
+   */
+  private project(scope: string, well: PublishedWell): WorkspaceWell {
+    return { scope, tabId: well.tabId, root: well.handlers.rootPath(), ...well.handlers };
   }
 
   /**

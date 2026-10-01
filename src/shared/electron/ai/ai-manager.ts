@@ -960,8 +960,15 @@ export class AiManager {
       auth: this.authForConnection(connection.id),
       signal: controller.signal,
       bridge: {
+        // ⛔ The scope is stamped HERE, from the run's request, so every provider — the AI-SDK path and
+        // a harness plugin alike — reaches the renderer as the run it is. Tool input cannot override
+        // it; it is what keeps a workspace's agent inside its own workspace.
         request: (capability: string, input: unknown, timeoutMs?: number): Promise<unknown> =>
-          this.bridge.request(capability, input, timeoutMs),
+          this.bridge.request(capability, input, timeoutMs, {
+            owningTabId: request.owningTabId ?? null,
+            surface,
+            workspaceRoot: request.workspaceRoot ?? null,
+          }),
       },
       requestPermission: (name: string, detail: string, cancel?: AbortSignal): Promise<boolean> =>
         this.requestPermission(

@@ -1,13 +1,17 @@
 import { inject, Service } from '@angular/core';
 import {
+  type AiBridgeScope,
   CANCEL_EDIT_PREVIEW,
   COMMIT_EDIT_PREVIEW,
   EDIT_ACTIVE_DOCUMENT,
+  EDIT_DOCUMENT,
   INSERT_ACTIVE_DOCUMENT,
   InsertPlacement,
   PREVIEW_ACTIVE_DOCUMENT_EDIT,
   READ_ACTIVE_DOCUMENT,
+  READ_DOCUMENT,
   REPLACE_ACTIVE_DOCUMENT,
+  REPLACE_DOCUMENT,
   RUN_ACTIVE_DOCUMENT,
   SET_ACTIVE_DOCUMENT_LANGUAGE,
 } from '@shared/api/ai-types';
@@ -21,9 +25,20 @@ import { Terminals } from '@shared/angular/services/terminals/terminals';
 import { RunFileTaskProvider } from '@shared/angular/services/tasks/providers/run-file-task-provider';
 import { Task } from '@shared/angular/services/tasks/task';
 import { resolveLanguageId } from '@shared/angular/services/monaco/monaco-languages';
+import { WorkbenchAgentCapabilities } from '@shared/angular/services/workbench-agent-capabilities/workbench-agent-capabilities';
+import {
+  ActiveWorkspace,
+  WorkspaceWell,
+} from '@shared/angular/services/workspace/active-workspace';
 import { AgentEditPreview } from '../agent-edit-preview/agent-edit-preview';
 import { EditOutcome, resolveEdit, resolveInsert } from './document-edit';
 import { parseRunOutput, RunOutputParse } from './run-output';
+
+/**
+ * The id an empty workspace well targets: no editor registers under it, so a read or edit reports
+ * that no document is open instead of reaching the app-wide focused editor.
+ */
+const NO_DOCUMENT: string = '';
 
 /**
  * The prefix the code view derives a tab's run-terminal session id from (mirrors
@@ -98,6 +113,26 @@ interface ReadResult {
    * Gets the document text (empty when none was available).
    */
   readonly text: string;
+}
+
+/**
+ * The result of reading a document the agent opened.
+ */
+interface DocumentReadResult {
+  /**
+   * Gets a value indicating whether the document was read.
+   */
+  readonly available: boolean;
+
+  /**
+   * Gets the document's live text (empty when it was not read).
+   */
+  readonly text: string;
+
+  /**
+   * Gets why the document was not read, when it was not.
+   */
+  readonly detail?: string;
 }
 
 /**
@@ -262,6 +297,17 @@ export class AgentEditorCapabilities {
   private runCounter: number = 0;
 
   /**
+   * Holds the workbench capabilities, which know which run opened which agent document.
+   */
+  private readonly workbench: WorkbenchAgentCapabilities = inject(WorkbenchAgentCapabilities);
+
+  /**
+   * Holds the seam that resolves a workspace run's own well, so its "active document" is the one
+   * focused in THAT workspace rather than whichever editor is focused app-wide.
+   */
+  private readonly workspace: ActiveWorkspace = inject(ActiveWorkspace);
+
+  /**
    * Holds the edit-preview diff surface (the staged change shown in the document well).
    */
   private readonly preview: AgentEditPreview = inject(AgentEditPreview);
@@ -281,20 +327,25 @@ export class AgentEditorCapabilities {
    * capabilities.
    */
   public constructor() {
-    this.runtime.registerCapability(READ_ACTIVE_DOCUMENT, (input: unknown): ReadResult =>
-      this.readActive(input),
+    this.runtime.registerCapability(
+      READ_ACTIVE_DOCUMENT,
+      (input: unknown, scope: AiBridgeScope): ReadResult => this.readActive(input, scope),
     );
-    this.runtime.registerCapability(REPLACE_ACTIVE_DOCUMENT, (input: unknown): ReplaceResult =>
-      this.replaceActive(input),
+    this.runtime.registerCapability(
+      REPLACE_ACTIVE_DOCUMENT,
+      (input: unknown, scope: AiBridgeScope): ReplaceResult => this.replaceActive(input, scope),
     );
-    this.runtime.registerCapability(EDIT_ACTIVE_DOCUMENT, (input: unknown): EditResult =>
-      this.editActive(input),
+    this.runtime.registerCapability(
+      EDIT_ACTIVE_DOCUMENT,
+      (input: unknown, scope: AiBridgeScope): EditResult => this.editActive(input, scope),
     );
-    this.runtime.registerCapability(INSERT_ACTIVE_DOCUMENT, (input: unknown): EditResult =>
-      this.insertActive(input),
+    this.runtime.registerCapability(
+      INSERT_ACTIVE_DOCUMENT,
+      (input: unknown, scope: AiBridgeScope): EditResult => this.insertActive(input, scope),
     );
-    this.runtime.registerCapability(PREVIEW_ACTIVE_DOCUMENT_EDIT, (input: unknown): PreviewResult =>
-      this.previewEdit(input),
+    this.runtime.registerCapability(
+      PREVIEW_ACTIVE_DOCUMENT_EDIT,
+      (input: unknown, scope: AiBridgeScope): PreviewResult => this.previewEdit(input, scope),
     );
     this.runtime.registerCapability(COMMIT_EDIT_PREVIEW, (input: unknown): EditResult =>
       this.commitPreview(input),
@@ -302,11 +353,29 @@ export class AgentEditorCapabilities {
     this.runtime.registerCapability(CANCEL_EDIT_PREVIEW, (input: unknown): void => {
       this.cancelPreview(input);
     });
-    this.runtime.registerCapability(SET_ACTIVE_DOCUMENT_LANGUAGE, (input: unknown): EditResult =>
-      this.setActiveLanguage(input),
+    this.runtime.registerCapability(
+      SET_ACTIVE_DOCUMENT_LANGUAGE,
+      (input: unknown, scope: AiBridgeScope): EditResult => this.setActiveLanguage(input, scope),
     );
-    this.runtime.registerCapability(RUN_ACTIVE_DOCUMENT, (input: unknown): Promise<RunResult> =>
-      this.runActiveDocument(input),
+    this.runtime.registerCapability(
+      RUN_ACTIVE_DOCUMENT,
+      (input: unknown, scope: AiBridgeScope): Promise<RunResult> =>
+        this.runActiveDocument(input, scope),
+    );
+    // Revising a document the agent opened (open_document), by the id it was given — so a second
+    // draft lands in the tab the user is already reading instead of in a new one.
+    this.runtime.registerCapability(
+      READ_DOCUMENT,
+      (input: unknown, scope: AiBridgeScope): DocumentReadResult =>
+        this.readOwnedDocument(input, scope),
+    );
+    this.runtime.registerCapability(
+      EDIT_DOCUMENT,
+      (input: unknown, scope: AiBridgeScope): EditResult => this.editOwnedDocument(input, scope),
+    );
+    this.runtime.registerCapability(
+      REPLACE_DOCUMENT,
+      (input: unknown, scope: AiBridgeScope): EditResult => this.replaceOwnedDocument(input, scope),
     );
     this.log.info('agent.editor-capabilities', 'Registered agent editor capabilities');
   }
@@ -318,9 +387,10 @@ export class AgentEditorCapabilities {
    * resolve. Changing it re-highlights the editor and updates the language picker (both read the
    * document's language signal).
    * @param input The capability input.
+   * @param scope The run the request comes from.
    * @returns Returns the {@link EditResult}.
    */
-  private setActiveLanguage(input: unknown): EditResult {
+  private setActiveLanguage(input: unknown, scope: AiBridgeScope): EditResult {
     const requested: string | null = this.extractString(input, 'language');
     if (requested === null) {
       return { ok: false, detail: 'No language was provided.' };
@@ -332,7 +402,8 @@ export class AgentEditorCapabilities {
         detail: `Unknown language "${requested}". Use a Monaco language id such as typescript, python, or csharp.`,
       };
     }
-    const tabId: string | null = this.extractTabId(input) ?? this.documents.activeDocumentId();
+    const tabId: string | null =
+      this.targetTabId(input, scope) ?? this.documents.activeDocumentId();
     if (tabId === null || this.documents.get(tabId) === undefined) {
       return { ok: false, detail: 'No code document is open in the editor.' };
     }
@@ -353,11 +424,13 @@ export class AgentEditorCapabilities {
    * per-command exit). The sentinel is POSIX-shell syntax (bash/zsh/sh); on a non-POSIX shell it will
    * not match, and the run returns its output with an unknown exit status once the timeout elapses.
    * @param input The capability input: the owning `tabId` and an optional `timeoutSeconds`.
+   * @param scope The run the request comes from.
    * @returns Returns the {@link RunResult}.
    */
-  private async runActiveDocument(input: unknown): Promise<RunResult> {
+  private async runActiveDocument(input: unknown, scope: AiBridgeScope): Promise<RunResult> {
     this.log.trace('agent.editor-capabilities', 'Run active document invoked');
-    const tabId: string | null = this.extractTabId(input) ?? this.documents.activeDocumentId();
+    const tabId: string | null =
+      this.targetTabId(input, scope) ?? this.documents.activeDocumentId();
     const codeDocument: CodeDocument | undefined =
       tabId === null ? undefined : this.documents.get(tabId);
     if (tabId === null || codeDocument === undefined) {
@@ -481,14 +554,15 @@ export class AgentEditorCapabilities {
    * (markdown has no diff editor), and the outcome is held until committed or cancelled.
    * @param input The capability input: the operation (`edit`/`insert`/`replace`) with its fields,
    * plus the owning `tabId`.
+   * @param scope The run the request comes from.
    * @returns Returns the {@link PreviewResult}.
    */
-  private previewEdit(input: unknown): PreviewResult {
+  private previewEdit(input: unknown, scope: AiBridgeScope): PreviewResult {
     const resolve: ((source: string) => EditOutcome) | null = this.resolverFor(input);
     if (resolve === null) {
       return { available: false, detail: 'The edit input was malformed.' };
     }
-    const target: EditTarget | null = this.resolveTarget(this.extractTabId(input));
+    const target: EditTarget | null = this.resolveTarget(this.targetTabId(input, scope));
     if (target === null) {
       return { available: false, detail: 'No active document is open in the editor.' };
     }
@@ -624,16 +698,17 @@ export class AgentEditorCapabilities {
    * Applies a string-anchored edit from an `{ oldString, newString, replaceAll, tabId }` input to the
    * targeted editor's document.
    * @param input The capability input.
+   * @param scope The run the request comes from.
    * @returns Returns the {@link EditResult}.
    */
-  private editActive(input: unknown): EditResult {
+  private editActive(input: unknown, scope: AiBridgeScope): EditResult {
     const oldString: string | null = this.extractString(input, 'oldString');
     const newString: string | null = this.extractString(input, 'newString');
     if (oldString === null || newString === null) {
       return { ok: false, detail: 'The edit input was malformed.' };
     }
     const replaceAll: boolean = this.extractBoolean(input, 'replaceAll');
-    return this.applyToTarget(input, (source: string): EditOutcome =>
+    return this.applyToTarget(input, scope, (source: string): EditOutcome =>
       resolveEdit(source, oldString, newString, replaceAll),
     );
   }
@@ -642,16 +717,17 @@ export class AgentEditorCapabilities {
    * Applies an insert from a `{ text, placement, anchor, tabId }` input to the targeted editor's
    * document.
    * @param input The capability input.
+   * @param scope The run the request comes from.
    * @returns Returns the {@link EditResult}.
    */
-  private insertActive(input: unknown): EditResult {
+  private insertActive(input: unknown, scope: AiBridgeScope): EditResult {
     const text: string | null = this.extractString(input, 'text');
     const placement: string | null = this.extractString(input, 'placement');
     if (text === null || !this.isPlacement(placement)) {
       return { ok: false, detail: 'The insert input was malformed.' };
     }
     const anchor: string | null = this.extractString(input, 'anchor');
-    return this.applyToTarget(input, (source: string): EditOutcome =>
+    return this.applyToTarget(input, scope, (source: string): EditOutcome =>
       resolveInsert(source, text, placement, anchor ?? undefined),
     );
   }
@@ -661,10 +737,15 @@ export class AgentEditorCapabilities {
    * one for an unscoped run), runs the resolver against its source, and applies a successful outcome.
    * @param input The capability input, carrying the owning `tabId` when scoped.
    * @param resolve Resolves the operation against the document source.
+   * @param scope The run the request comes from.
    * @returns Returns the {@link EditResult}.
    */
-  private applyToTarget(input: unknown, resolve: (source: string) => EditOutcome): EditResult {
-    const target: EditTarget | null = this.resolveTarget(this.extractTabId(input));
+  private applyToTarget(
+    input: unknown,
+    scope: AiBridgeScope,
+    resolve: (source: string) => EditOutcome,
+  ): EditResult {
+    const target: EditTarget | null = this.resolveTarget(this.targetTabId(input, scope));
     if (target === null) {
       return { ok: false, detail: 'No active document is open in the editor.' };
     }
@@ -776,11 +857,12 @@ export class AgentEditorCapabilities {
    * or code); otherwise (the standalone agent) falls back to the active markdown editor's live source,
    * then the active code editor.
    * @param input The capability input, carrying the owning `tabId`.
+   * @param scope The run the request comes from.
    * @returns Returns the {@link ReadResult}.
    */
-  private readActive(input: unknown): ReadResult {
+  private readActive(input: unknown, scope: AiBridgeScope): ReadResult {
     this.log.trace('agent.editor-capabilities', 'Read active document invoked');
-    const tabId: string | null = this.extractTabId(input);
+    const tabId: string | null = this.targetTabId(input, scope);
     if (tabId !== null) {
       const markdown: string | null = this.markdownCommands.readDocument(tabId);
       if (markdown !== null) {
@@ -802,15 +884,16 @@ export class AgentEditorCapabilities {
    * replaces that tab's editor (markdown text is parsed as markdown); otherwise (the standalone agent)
    * falls back to the active markdown editor, then the active code editor.
    * @param input The capability input.
+   * @param scope The run the request comes from.
    * @returns Returns the {@link ReplaceResult}.
    */
-  private replaceActive(input: unknown): ReplaceResult {
+  private replaceActive(input: unknown, scope: AiBridgeScope): ReplaceResult {
     this.log.info('agent.editor-capabilities', 'Replace active document invoked');
     const text: string | null = this.extractText(input);
     if (text === null) {
       return { ok: false };
     }
-    const tabId: string | null = this.extractTabId(input);
+    const tabId: string | null = this.targetTabId(input, scope);
     if (tabId !== null) {
       if (this.markdownCommands.replaceDocument(tabId, text)) {
         return { ok: true };
@@ -821,6 +904,139 @@ export class AgentEditorCapabilities {
       return { ok: true };
     }
     return { ok: this.editorCommands.replaceActiveText(text) };
+  }
+
+  /**
+   * Reads a document the agent opened, from a `{ id }` input.
+   * @param input The capability input.
+   * @param scope The run the request comes from.
+   * @returns Returns the {@link DocumentReadResult}.
+   */
+  private readOwnedDocument(input: unknown, scope: AiBridgeScope): DocumentReadResult {
+    const id: string = this.extractString(input, 'id') ?? '';
+    const refusal: string | null = this.workbench.refuseDocument(id, scope);
+    if (refusal !== null) {
+      return { available: false, text: '', detail: refusal };
+    }
+    return { available: true, text: this.ownedTarget(id).source };
+  }
+
+  /**
+   * Applies a string-anchored edit to a document the agent opened, from an
+   * `{ id, oldString, newString, replaceAll }` input. Applied straight away, never previewed: the
+   * document is the agent's own unsaved draft, as freely revisable as it was to open.
+   * @param input The capability input.
+   * @param scope The run the request comes from.
+   * @returns Returns the {@link EditResult}.
+   */
+  private editOwnedDocument(input: unknown, scope: AiBridgeScope): EditResult {
+    const oldString: string | null = this.extractString(input, 'oldString');
+    const newString: string | null = this.extractString(input, 'newString');
+    if (oldString === null || newString === null) {
+      return { ok: false, detail: 'The edit input was malformed.' };
+    }
+    const replaceAll: boolean = this.extractBoolean(input, 'replaceAll');
+    return this.applyToOwned(input, scope, (source: string): EditOutcome =>
+      resolveEdit(source, oldString, newString, replaceAll),
+    );
+  }
+
+  /**
+   * Replaces the whole text of a document the agent opened, from an `{ id, text }` input.
+   * @param input The capability input.
+   * @param scope The run the request comes from.
+   * @returns Returns the {@link EditResult}.
+   */
+  private replaceOwnedDocument(input: unknown, scope: AiBridgeScope): EditResult {
+    const text: string | null = this.extractText(input);
+    if (text === null) {
+      return { ok: false, detail: 'The replace input was malformed.' };
+    }
+    return this.applyToOwned(input, scope, (): EditOutcome => ({
+      ok: true,
+      text,
+      detail: 'The document was updated.',
+    }));
+  }
+
+  /**
+   * Checks the run owns the document named by the input, then resolves and applies an operation to
+   * it.
+   * @param input The capability input, carrying the document `id`.
+   * @param scope The run the request comes from.
+   * @param resolve Resolves the operation against the document source.
+   * @returns Returns the {@link EditResult}.
+   */
+  private applyToOwned(
+    input: unknown,
+    scope: AiBridgeScope,
+    resolve: (source: string) => EditOutcome,
+  ): EditResult {
+    const id: string = this.extractString(input, 'id') ?? '';
+    const refusal: string | null = this.workbench.refuseDocument(id, scope);
+    if (refusal !== null) {
+      return { ok: false, detail: refusal };
+    }
+    const target: EditTarget = this.ownedTarget(id);
+    const outcome: EditOutcome = resolve(target.source);
+    if (!outcome.ok) {
+      return { ok: false, detail: outcome.detail };
+    }
+    const applied: boolean = target.apply(outcome);
+    this.log.info('agent.editor-capabilities', 'Revised an agent document', {
+      id,
+      kind: target.kind,
+      applied,
+    });
+    return applied
+      ? { ok: true, detail: outcome.detail }
+      : { ok: false, detail: 'The document is no longer open.' };
+  }
+
+  /**
+   * Resolves the editing surface of a document the agent opened: its live editor when its tab is
+   * mounted (so the change is undoable there and keeps the user's own edits), and otherwise the
+   * document store the tab will read when it does mount.
+   * @param id The document's id.
+   * @returns Returns the {@link EditTarget}.
+   */
+  private ownedTarget(id: string): EditTarget {
+    const live: EditTarget | null = this.resolveTarget(id);
+    if (live !== null) {
+      return live;
+    }
+    return {
+      source: this.documents.get(id)?.content() ?? '',
+      kind: 'code',
+      apply: (outcome: EditOutcome): boolean => {
+        if (this.documents.get(id) === undefined) {
+          return false;
+        }
+        this.documents.setContent(id, outcome.text);
+        return true;
+      },
+    };
+  }
+
+  /**
+   * Resolves the editor a run's "active document" tools target. A run docked in a workspace targets
+   * the document focused in ITS well — never the app-wide focused editor, which may be in another
+   * workspace. A run with an owner otherwise targets that owner; an unscoped request keeps whatever
+   * tab id its input carries (null falls back to the focused editor, for the standalone agent).
+   * @param input The capability input, carrying the owning `tabId` when scoped.
+   * @param scope The run the request comes from.
+   * @returns Returns the tab or document id to target, or null for the focused editor.
+   */
+  private targetTabId(input: unknown, scope: AiBridgeScope): string | null {
+    if (scope.owningTabId === null) {
+      return this.extractTabId(input);
+    }
+    const well: WorkspaceWell | null = this.workspace.wellForRun(scope, false);
+    if (well !== null && well.scope === scope.owningTabId) {
+      // An empty well targets nothing rather than falling through to another workspace's editor.
+      return well.activeDocumentId() ?? NO_DOCUMENT;
+    }
+    return scope.owningTabId;
   }
 
   /**

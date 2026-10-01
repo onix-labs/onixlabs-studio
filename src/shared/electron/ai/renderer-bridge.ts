@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { BrowserWindow, ipcMain, IpcMainEvent } from 'electron';
-import type { AiBridgeReply } from '@shared/api/ai-types';
+import type { AiBridgeReply, AiBridgeScope } from '@shared/api/ai-types';
 import { AiChannel } from '@shared/api/ai-channels';
 import { logger } from '../logger';
 
@@ -87,12 +87,15 @@ export class RendererBridge {
    * @param timeoutMs How long to wait for the reply before failing; defaults to
    * {@link REQUEST_TIMEOUT_MS}. A long-running capability (e.g. running a file and awaiting its exit)
    * passes a larger value so it is not cut short by the default.
+   * @param scope The run the request comes from, stamped by the caller from the run's own request so
+   * the renderer resolves the agent's own workspace rather than the focused one.
    * @returns Returns the capability's result, or rejects on error, timeout, or absent window.
    */
   public request(
     capability: string,
     input: unknown,
     timeoutMs: number = REQUEST_TIMEOUT_MS,
+    scope?: AiBridgeScope,
   ): Promise<unknown> {
     const window: BrowserWindow | null = this.windowGetter();
     if (window === null) {
@@ -112,7 +115,12 @@ export class RendererBridge {
           reject(new Error(`The capability "${capability}" timed out.`));
         }, timeoutMs);
         this.pending.set(requestId, { resolve, reject, timer });
-        window.webContents.send(AiChannel.BridgeRequest, { requestId, capability, input });
+        window.webContents.send(AiChannel.BridgeRequest, {
+          requestId,
+          capability,
+          input,
+          ...(scope === undefined ? {} : { scope }),
+        });
       },
     );
   }

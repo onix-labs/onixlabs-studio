@@ -1,6 +1,46 @@
 // Shared AI-agent bridge contract (main-process capability requests and the renderer's replies),
 // platform-neutral (types only) so both the Electron back-end and the Angular front-end can import it.
 
+import type { AgentSurface } from './ai-tool-surface';
+
+/**
+ * Says which run a capability request comes from: the tab (or workspace view) the agent is docked
+ * to, its surface, and the workspace it acts within.
+ *
+ * ⛔ Stamped by the main process from the run's own request, NEVER from tool input. The model and a
+ * harness plugin decide what goes in `input`; they cannot decide this. It is what lets a renderer
+ * capability resolve "this agent's workspace" rather than "whichever workspace is focused" — the
+ * difference between workspace isolation and an agent in one workspace reading another's terminals.
+ */
+export interface AiBridgeScope {
+  /**
+   * Gets the id the run's agent is docked to: a tab id, or — for an agent docked in a workspace — the
+   * workspace view's scope id (the tab id, qualified by the checkout for a worktree sub-view). Null
+   * when the run named no owner.
+   */
+  readonly owningTabId: string | null;
+
+  /**
+   * Gets the surface the run acts on.
+   */
+  readonly surface: AgentSurface;
+
+  /**
+   * Gets the workspace root the run acts within, or null for none.
+   */
+  readonly workspaceRoot: string | null;
+}
+
+/**
+ * The scope a capability sees when a request carries none — a renderer talking to an older main
+ * process, or a test. It owns nothing, so nothing scoped resolves through it.
+ */
+export const UNSCOPED_BRIDGE_REQUEST: AiBridgeScope = {
+  owningTabId: null,
+  surface: 'project',
+  workspaceRoot: null,
+};
+
 /**
  * A request from the main process for the renderer to fulfil an in-app capability (read/write a
  * document, etc.). Correlated with its reply by {@link requestId}.
@@ -20,6 +60,11 @@ export interface AiBridgeRequest {
    * Gets the capability's input.
    */
   readonly input: unknown;
+
+  /**
+   * Gets the run the request comes from (see {@link AiBridgeScope}).
+   */
+  readonly scope?: AiBridgeScope;
 }
 
 /**

@@ -5,6 +5,7 @@ import type {
   AgentMode,
   AgentSurface,
   AiBridgeRequest,
+  AiBridgeScope,
   AiConnection,
   AiEditDecision,
   AiEffort,
@@ -19,14 +20,19 @@ import type {
   ClaudeExecutableChoice,
   ClaudeLoginStatus,
 } from '@shared/api/ai-types';
+import { UNSCOPED_BRIDGE_REQUEST } from '@shared/api/ai-types';
 import { Ai } from '@shared/angular/services/ai/ai';
 import { Log } from '@shared/angular/services/log/log';
 
 /**
  * A renderer-side in-app capability the agent can invoke through the bridge. Receives the request's
- * input and returns the result directly or as a promise (the runtime awaits it either way).
+ * input and the run it comes from, and returns the result directly or as a promise (the runtime awaits
+ * it either way).
+ *
+ * ⛔ Resolve "which workspace / which terminal / which document" from `scope`, never from what is
+ * focused: the agent asking may be docked in a workspace the user is not looking at.
  */
-export type AiCapability = (input: unknown) => unknown;
+export type AiCapability = (input: unknown, scope: AiBridgeScope) => unknown;
 
 /**
  * The optional per-run settings for an agent turn. Omitted values fall back to safe defaults (no
@@ -489,7 +495,10 @@ export class AiRuntime {
       return;
     }
     try {
-      const result: unknown = await handler(request.input);
+      const result: unknown = await handler(
+        request.input,
+        request.scope ?? UNSCOPED_BRIDGE_REQUEST,
+      );
       this.api?.respondBridge({ requestId: request.requestId, ok: true, result });
     } catch (error: unknown) {
       this.log.error('AiRuntime', `Capability '${request.capability}' failed`, error);
