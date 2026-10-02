@@ -9,6 +9,7 @@ import {
   ForgeRepositoryRef,
   ForgeResult,
   ForgeWorkflowRun,
+  ForgeWorkItem,
 } from '@shared/api/forge-types';
 import type { IpcMainInvokeEvent } from 'electron';
 import {
@@ -78,6 +79,13 @@ class FakeProvider implements ForgeProvider {
   ): Promise<ForgeResult<readonly ForgeIssueComment[]>> {
     this.listed.push(repository);
     this.commentedOn.push(issueNumber);
+    return Promise.resolve({ ok: true, value: [] });
+  }
+
+  public listWorkItems(
+    repository: ForgeRepositoryRef,
+  ): Promise<ForgeResult<readonly ForgeWorkItem[]>> {
+    this.listed.push(repository);
     return Promise.resolve({ ok: true, value: [] });
   }
 
@@ -233,6 +241,7 @@ describe('ForgeContribution', () => {
         ForgeChannel.Detect,
         ForgeChannel.Issues,
         ForgeChannel.IssueComments,
+        ForgeChannel.WorkItems,
         ForgeChannel.PullRequests,
         ForgeChannel.SetToken,
         ForgeChannel.WorkflowRuns,
@@ -340,9 +349,10 @@ describe('ForgeContribution', () => {
 
     await fake.invoke(ForgeChannel.PullRequests, { ...REPOSITORY });
     await fake.invoke(ForgeChannel.Issues, { ...REPOSITORY });
+    await fake.invoke(ForgeChannel.WorkItems, { ...REPOSITORY });
     await fake.invoke(ForgeChannel.WorkflowRuns, { ...REPOSITORY });
 
-    expect(provider.listed).toEqual([REPOSITORY, REPOSITORY, REPOSITORY]);
+    expect(provider.listed).toEqual([REPOSITORY, REPOSITORY, REPOSITORY, REPOSITORY]);
   });
 
   it('listingChannels_refuseAMalformedReference_withoutReachingTheProvider', async () => {

@@ -19,9 +19,17 @@ import { RibbonStripOverflow } from '@shared/angular/components/ribbon-strip/rib
 import { AgentRemoteModal } from '@shared/angular/components/agent-remote-modal/agent-remote-modal';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { contributeFeatureMenu } from '@shared/angular/services/app-menu/contribute-feature-menu';
-import { MENU_SEPARATOR, MenuContribution } from '@shared/angular/services/app-menu/app-menu-model';
+import {
+  MENU_SEPARATOR,
+  MenuContribution,
+  MenuEntry,
+} from '@shared/angular/services/app-menu/app-menu-model';
 import { Log } from '@shared/angular/services/log/log';
-import { MissionControl } from '@features/mission-control/angular/mission-control/mission-control';
+import {
+  MissionControl,
+  MissionControlFace,
+} from '@features/mission-control/angular/mission-control/mission-control';
+import { MissionControlWorkItems } from '@features/mission-control/angular/hierarchy/work-items';
 
 /**
  * One of the Permissions group's three buttons: a permission posture, the glyph that stands for it and
@@ -45,6 +53,34 @@ interface PostureChoice {
 }
 
 /**
+ * One of the Show group's buttons: a face of Mission Control.
+ */
+interface FaceChoice {
+  /**
+   * Gets the face the button shows.
+   */
+  readonly value: MissionControlFace;
+
+  /**
+   * Gets the button's label.
+   */
+  readonly label: string;
+
+  /**
+   * Gets the button's glyph.
+   */
+  readonly icon: Icon;
+}
+
+/**
+ * The faces in ribbon order.
+ */
+const FACES: readonly FaceChoice[] = [
+  { value: 'agents', label: 'Agents', icon: Icon.MISSION_CONTROL_AGENTS },
+  { value: 'hierarchy', label: 'Hierarchy', icon: Icon.MISSION_CONTROL_HIERARCHY },
+];
+
+/**
  * The permission postures in ribbon order, from the most careful to the most permissive.
  */
 const POSTURES: readonly PostureChoice[] = [
@@ -54,7 +90,9 @@ const POSTURES: readonly PostureChoice[] = [
 ];
 
 /**
- * The contextual ribbon shown while the Mission Control tab is active. The Agents group acts on every
+ * The contextual ribbon shown while the Mission Control tab is active. The Show group switches between
+ * Mission Control's faces — the live agents, or the open projects' work-item hierarchy — and the
+ * group after it carries the face's own commands. The Agents group acts on every
  * live agent at once through {@link AgentHosts} — currently Stop All, which aborts each running one.
  * The View group resets the column widths and toggles which run states are shown — empty, idle, working
  * — via the shared {@link MissionControl} state.
@@ -96,6 +134,11 @@ export class MissionControlRibbon {
   private readonly agentHosts: AgentHosts = inject(AgentHosts);
 
   /**
+   * Holds the open projects' work items, which the Hierarchy group refreshes.
+   */
+  private readonly workItems: MissionControlWorkItems = inject(MissionControlWorkItems);
+
+  /**
    * Holds the settings service backing the permission posture.
    */
   private readonly settings: Settings = inject(Settings);
@@ -104,6 +147,21 @@ export class MissionControlRibbon {
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Gets the faces offered by the Show group, in ribbon order.
+   */
+  protected readonly faces: readonly FaceChoice[] = FACES;
+
+  /**
+   * Gets the face on show.
+   */
+  protected readonly face: Signal<MissionControlFace> = this.missionControl.face;
+
+  /**
+   * Gets whether the hierarchy lists standalone issues.
+   */
+  protected readonly showStandalone: Signal<boolean> = this.missionControl.showStandalone;
 
   /**
    * Gets the postures offered by the Permissions group, in ribbon order.
@@ -186,6 +244,29 @@ export class MissionControlRibbon {
         id: 'view',
         label: 'View',
         items: [
+          ...FACES.map((choice: FaceChoice): MenuEntry => ({
+            id: `mc.face.${choice.value}`,
+            label: choice.label,
+            kind: 'checkbox',
+            checked: this.face() === choice.value,
+            run: (): void => this.onFace(choice.value),
+          })),
+          MENU_SEPARATOR,
+          {
+            id: 'mc.refreshHierarchy',
+            label: 'Refresh Hierarchy',
+            enabled: this.face() === 'hierarchy',
+            run: (): void => this.onRefreshHierarchy(),
+          },
+          {
+            id: 'mc.showStandalone',
+            label: 'Show Standalone Issues',
+            kind: 'checkbox',
+            checked: this.showStandalone(),
+            enabled: this.face() === 'hierarchy',
+            run: (): void => this.onToggleShowStandalone(),
+          },
+          MENU_SEPARATOR,
           {
             id: 'mc.hideEmpty',
             label: 'Hide Empty',
@@ -213,6 +294,35 @@ export class MissionControlRibbon {
       },
     ],
   );
+
+  /**
+   * Shows a face of Mission Control.
+   * @param face The face to show.
+   */
+  protected onFace(face: MissionControlFace): void {
+    if (this.missionControl.face() === face) {
+      return;
+    }
+    this.log.info('mission-control.ribbon', 'Face changed', { face });
+    this.missionControl.setFace(face);
+  }
+
+  /**
+   * Re-reads every open project's work-item hierarchy now, rather than at the next poll.
+   */
+  protected onRefreshHierarchy(): void {
+    this.log.info('mission-control.ribbon', 'Refresh hierarchy requested');
+    this.workItems.refreshAll();
+  }
+
+  /**
+   * Toggles whether the hierarchy lists standalone issues.
+   */
+  protected onToggleShowStandalone(): void {
+    const next: boolean = !this.missionControl.showStandalone();
+    this.log.info('mission-control.ribbon', 'Toggled Show Standalone', { shown: next });
+    this.missionControl.setShowStandalone(next);
+  }
 
   /**
    * Stops every running agent across all live hosts.

@@ -8,6 +8,7 @@ import {
   ForgeResult,
   ForgeRunStatus,
   ForgeWorkflowRun,
+  ForgeWorkItem,
 } from '@shared/api/forge-types';
 import { ForgeFetch, ForgeProvider, ForgeResponse, ForgeTokenResolver } from './forge-provider';
 import { Clock, EtagCache, RateLimitLedger } from './forge-budget';
@@ -23,6 +24,31 @@ const PUBLIC_API_ORIGIN: string = 'https://api.github.com';
  * at what is open, not a browser, and paging would cost rate-limit budget for rows nobody scrolls to.
  */
 const PAGE_SIZE: number = 50;
+
+/**
+ * How many entries a page of the work-item listing asks for: GitHub's maximum, because that listing
+ * reads every page and fewer, larger pages spend less of the budget.
+ */
+const WORK_ITEM_PAGE_SIZE: number = 100;
+
+/**
+ * The most pages the work-item listing reads. A ceiling rather than "until done", so a repository with
+ * tens of thousands of open issues cannot drain the rate limit in one refresh; at 100 per page this
+ * covers a thousand open issues and pull requests, far beyond any hierarchy a person steers.
+ */
+const WORK_ITEM_MAX_PAGES: number = 10;
+
+/**
+ * The author associations whose issues are trusted as instructions. Anyone else's issue is untrusted
+ * input: on a public repository anybody can open one.
+ */
+const TRUSTED_ASSOCIATIONS: readonly string[] = ['OWNER', 'MEMBER', 'COLLABORATOR'];
+
+/**
+ * Matches the path of an issue's API URL, capturing its owner, repository and number. Anchored at the
+ * end only, because the origin differs between github.com and an Enterprise host.
+ */
+const ISSUE_URL_PATH: RegExp = /\/repos\/([^/]+)\/([^/]+)\/issues\/(\d+)$/;
 
 /**
  * The API version header GitHub asks integrations to pin, so a future default change cannot silently
@@ -68,6 +94,11 @@ interface RawIssue {
   readonly closed_at?: unknown;
   readonly comments?: unknown;
   readonly milestone?: { readonly title?: unknown } | null;
+  readonly type?: { readonly name?: unknown } | null;
+  readonly parent_issue_url?: unknown;
+  readonly sub_issues_summary?: { readonly total?: unknown; readonly completed?: unknown };
+  readonly issue_dependencies_summary?: { readonly blocked_by?: unknown };
+  readonly author_association?: unknown;
 }
 
 /**
@@ -359,6 +390,46 @@ export class GitHubForge implements ForgeProvider {
   }
 
   /**
+   * Lists every open issue in a repository as a node of its work-item hierarchy.
+   *
+   * GitHub's issue objects already carry each issue's parent and a summary of its sub-issues, so one
+   * listing builds the whole tree — no request per parent, and no GraphQL, which would forfeit the
+   * entity-tag cache that makes an unchanged page free to re-read. Pages are read oldest first, so a
+   * newly opened issue lands on the last page and leaves every earlier page's tag valid.
+   *
+   * @param repository The repository to read.
+   * @returns Returns the work items, or the reason they could not be read.
+   */
+  public async listWorkItems(
+    repository: ForgeRepositoryRef,
+  ): Promise<ForgeResult<readonly ForgeWorkItem[]>> {
+    const base: string = `/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/issues?state=open&sort=created&direction=asc&per_page=${WORK_ITEM_PAGE_SIZE}`;
+    const items: ForgeWorkItem[] = [];
+    for (let page: number = 1; page <= WORK_ITEM_MAX_PAGES; page++) {
+      const result: ForgeResult<unknown> = await this.get(repository.host, `${base}&page=${page}`);
+      if (!result.ok) {
+        // A partial hierarchy is worse than none: a missing page would orphan its children and show
+        // them as roots, which reads as a real (and wrong) structure.
+        return result;
+      }
+      const raw: readonly RawIssue[] = Array.isArray(result.value)
+        ? (result.value as readonly RawIssue[])
+        : [];
+      for (const issue of raw) {
+        if (issue.pull_request === undefined) {
+          items.push(toWorkItem(issue, repository));
+        }
+      }
+      // A short page is the last one. Counted before pull requests are dropped, since the page size
+      // applies to the unfiltered listing.
+      if (raw.length < WORK_ITEM_PAGE_SIZE) {
+        break;
+      }
+    }
+    return { ok: true, value: items };
+  }
+
+  /**
    * Lists an issue's comments, oldest first.
    *
    * Its own request, because the issues endpoint carries only how many there are. That count is on
@@ -626,6 +697,58 @@ export class GitHubForge implements ForgeProvider {
       return { ok: false, error: messageOf(error), unauthorized: false };
     }
   }
+}
+
+/**
+ * Maps a raw issue onto a work-item node.
+ * @param issue The raw issue.
+ * @param repository The repository it was listed from, which decides whether its parent is local.
+ * @returns Returns the work item.
+ */
+function toWorkItem(issue: RawIssue, repository: ForgeRepositoryRef): ForgeWorkItem {
+  const type: string = asString(issue.type?.name);
+  return {
+    number: asNumber(issue.number),
+    title: asString(issue.title, '(untitled)'),
+    url: asString(issue.html_url),
+    labels: (issue.labels ?? [])
+      .map((label: { readonly name?: unknown }): string => asString(label.name))
+      .filter((name: string): boolean => name.length > 0),
+    type: type.length === 0 ? null : type,
+    assignees: (issue.assignees ?? [])
+      .map((user: RawUser): string => asString(user.login))
+      .filter((login: string): boolean => login.length > 0),
+    parent: parentNumber(asString(issue.parent_issue_url), repository),
+    children: {
+      total: asNumber(issue.sub_issues_summary?.total),
+      completed: asNumber(issue.sub_issues_summary?.completed),
+    },
+    blockedBy: asNumber(issue.issue_dependencies_summary?.blocked_by),
+    authorTrusted: TRUSTED_ASSOCIATIONS.includes(asString(issue.author_association)),
+    updatedAt: asString(issue.updated_at),
+  };
+}
+
+/**
+ * Reads the parent's number out of an issue's `parent_issue_url`, when the parent is in the same
+ * repository. A parent in another repository yields null: the hierarchy is read one repository at a
+ * time, so a foreign parent could never be placed and the child is shown as a root instead.
+ * @param url The parent's API URL, or an empty string when the issue has none.
+ * @param repository The repository the child was listed from.
+ * @returns Returns the parent's number, or null.
+ */
+export function parentNumber(url: string, repository: ForgeRepositoryRef): number | null {
+  const match: RegExpExecArray | null = ISSUE_URL_PATH.exec(url);
+  if (match === null) {
+    return null;
+  }
+  const [, owner, name, number] = match;
+  // GitHub treats owners and names case-insensitively, and a remote URL may spell them differently
+  // from the API's canonical casing. Neither can contain a character that needs decoding.
+  const sameRepository: boolean =
+    owner.toLowerCase() === repository.owner.toLowerCase() &&
+    name.toLowerCase() === repository.name.toLowerCase();
+  return sameRepository ? Number(number) : null;
 }
 
 /**

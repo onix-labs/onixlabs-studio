@@ -6,6 +6,7 @@ import {
   ForgeRepositoryRef,
   ForgeResult,
   ForgeWorkflowRun,
+  ForgeWorkItem,
 } from '@shared/api/forge-types';
 
 /**
@@ -112,6 +113,17 @@ export interface ForgeProvider {
    * @returns Returns the issues, or the reason they could not be read.
    */
   listIssues(repository: ForgeRepositoryRef): Promise<ForgeResult<readonly ForgeIssue[]>>;
+
+  /**
+   * Lists every open issue in a repository as a node of its work-item hierarchy: each with its parent
+   * and a summary of its children. Pull requests are excluded, as for {@link listIssues}.
+   *
+   * Unlike the panel's listings this reads every page, up to a ceiling, because a hierarchy missing
+   * its oldest epics is wrong rather than merely shorter.
+   * @param repository The repository to read.
+   * @returns Returns the work items, or the reason they could not be read.
+   */
+  listWorkItems(repository: ForgeRepositoryRef): Promise<ForgeResult<readonly ForgeWorkItem[]>>;
 
   /**
    * Lists an issue's comments, oldest first.

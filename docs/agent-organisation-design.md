@@ -70,11 +70,16 @@ interface WorkItem {
 - **`WorkItemSource`** is the seam: `tree(project)`, `children(key)` (for closed children fetched when
   a node expands), and later the writes (§6.4). GitHub is the first source and is built on
   `ForgeProvider`. Linear, Jira or a local `.studio/` plan file can implement it later.
+  - _As built in P1:_ the read is `ForgeProvider.listWorkItems` (every open issue, paginated oldest
+    first up to 10 pages of 100, with parent and child summary), and the tree is built in the
+    renderer by `buildWorkItemTree`. The seam stays a forge method until a second source exists, so
+    its shape comes from two real implementations rather than one guessed one.
 - **Level** is resolved by a configurable mapping: the GitHub issue `type` when the organisation uses
   issue types, otherwise labels (`initiative`, `epic`, `feature`), otherwise depth. This repository
   uses the `epic` / `feature` labels today.
-- **Progress is derived, never reported.** A leaf is 0 or 1 by state. A parent is the mean of its
-  children, falling back to `sub_issues_summary` for children that haven't been loaded. Agents cannot
+- **Progress is derived, never reported.** An open leaf is 0; closing it completes it. A parent is
+  (closed children + the progress of each open child) ÷ all children, where closed children are known
+  only from `sub_issues_summary` because only open issues are listed. Agents cannot
   write a percentage.
 
 ### 4.2 Agents and roles
@@ -268,22 +273,22 @@ snapshots, not per-token events. Forge polling uses the ETag cache, which keeps 
 
 ## 10. Housekeeping found along the way
 
-- The ESLint feature-isolation rule (`eslint.config.js`) doesn't list `mission-control`, `api-explorer`,
-  `binary`, `containers`, `image`, `model-manager`, `plugin-manager` or `system-monitor`, and names a
-  `repository` feature that no longer exists. P1 fixes the list, because Mission Control is where this
-  epic lives.
+- The ESLint feature-isolation rule (`eslint.config.js`) didn't list `mission-control`, `api-explorer`,
+  `binary`, `containers`, `image`, `model-manager`, `plugin-manager` or `system-monitor`, and named a
+  `repository` feature that no longer exists. P1 derives the list from `src/features` instead, so it
+  can't drift again. None of the eight newly covered features was importing a sibling.
 
 ## 11. Phases
 
-| Phase   | Builds                                                                                 |
-| ------- | -------------------------------------------------------------------------------------- |
-| P0 #789 | This note                                                                              |
-| P1 #795 | `WorkItemSource` + GitHub hierarchy (pagination, hierarchy fields); Hierarchy face     |
-| P2 #790 | Roles, roster, assignment; `OrgAgents` hosting                                         |
-| P3 #791 | `OrganisationManager`, organisation tools, waking, limits, branch policy and checkouts |
-| P4 #792 | Chat face                                                                              |
-| P5 #793 | _Needs you_ and Overview; spend                                                        |
-| P6 #794 | Board face                                                                             |
+| Phase   | Builds                                                                                       |
+| ------- | -------------------------------------------------------------------------------------------- |
+| P0 #789 | This note                                                                                    |
+| P1 #795 | GitHub hierarchy read (pagination, hierarchy fields); open-projects registry; Hierarchy face |
+| P2 #790 | Roles, roster, assignment; `OrgAgents` hosting                                               |
+| P3 #791 | `OrganisationManager`, organisation tools, waking, limits, branch policy and checkouts       |
+| P4 #792 | Chat face                                                                                    |
+| P5 #793 | _Needs you_ and Overview; spend                                                              |
+| P6 #794 | Board face                                                                                   |
 
 ## 12. Open questions
 

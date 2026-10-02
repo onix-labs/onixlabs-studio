@@ -11,7 +11,11 @@ import {
   SettingsKey,
   SettingsValues,
 } from '@shared/angular/services/settings/settings-registry';
-import { MissionControl } from '@features/mission-control/angular/mission-control/mission-control';
+import {
+  MissionControl,
+  MissionControlFace,
+} from '@features/mission-control/angular/mission-control/mission-control';
+import { MissionControlWorkItems } from '@features/mission-control/angular/hierarchy/work-items';
 import { MissionControlRibbon } from './mission-control-ribbon';
 
 /**
@@ -44,6 +48,8 @@ describe('MissionControlRibbon', () => {
   let remoteCapable: WritableSignal<readonly AgentHost[]>;
   let allRemote: WritableSignal<boolean>;
   let posture: WritableSignal<AiPermissionPosture>;
+  let face: WritableSignal<MissionControlFace>;
+  let showStandalone: WritableSignal<boolean>;
   let calls: string[];
 
   beforeEach(() => {
@@ -54,12 +60,24 @@ describe('MissionControlRibbon', () => {
     remoteCapable = signal<readonly AgentHost[]>([]);
     allRemote = signal<boolean>(false);
     posture = signal<AiPermissionPosture>('prompt');
+    face = signal<MissionControlFace>('agents');
+    showStandalone = signal<boolean>(false);
     calls = [];
 
     const missionControlStub: Partial<MissionControl> = {
       hideEmpty: hideEmpty.asReadonly(),
       hideIdle: hideIdle.asReadonly(),
       hideWorking: hideWorking.asReadonly(),
+      face: face.asReadonly(),
+      showStandalone: showStandalone.asReadonly(),
+      setFace: (value: MissionControlFace): void => {
+        calls.push(`setFace:${value}`);
+        face.set(value);
+      },
+      setShowStandalone: (value: boolean): void => {
+        calls.push(`setShowStandalone:${value}`);
+        showStandalone.set(value);
+      },
       resetWidths: (): void => void calls.push('resetWidths'),
       setHideEmpty: (value: boolean): void => {
         calls.push(`setHideEmpty:${value}`);
@@ -105,6 +123,10 @@ describe('MissionControlRibbon', () => {
         { provide: MissionControl, useValue: missionControlStub },
         { provide: AgentHosts, useValue: agentHostsStub },
         { provide: Settings, useValue: settingsStub },
+        {
+          provide: MissionControlWorkItems,
+          useValue: { refreshAll: (): void => void calls.push('refreshAll') },
+        },
       ],
     });
     fixture = TestBed.createComponent(MissionControlRibbon);
@@ -300,6 +322,55 @@ describe('MissionControlRibbon', () => {
       'setHideIdle:true',
       'setHideWorking:true',
     ]);
+  });
+
+  it('faces_areRadioButtons_pressingExactlyTheOneOnShow', () => {
+    fixture.detectChanges();
+
+    expect(button('Agents').getAttribute('aria-pressed')).toBe('true');
+    expect(button('Hierarchy').getAttribute('aria-pressed')).toBe('false');
+
+    button('Hierarchy').click();
+    button('Hierarchy').click();
+    fixture.detectChanges();
+
+    // Pressing the face already on show is a no-op: there is no "off" to fall back to.
+    expect(calls).toEqual(['setFace:hierarchy']);
+    expect(button('Hierarchy').getAttribute('aria-pressed')).toBe('true');
+    expect(button('Agents').getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('hierarchyFace_swapsTheAgentFiltersForItsOwnCommands', () => {
+    face.set('hierarchy');
+    fixture.detectChanges();
+
+    expect(host.textContent).not.toContain('Hide Idle');
+
+    button('Refresh').click();
+    button('Standalone Issues').click();
+    fixture.detectChanges();
+
+    expect(calls).toEqual(['refreshAll', 'setShowStandalone:true']);
+    expect(button('Standalone Issues').getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('agentsFace_hasNoHierarchyCommands', () => {
+    fixture.detectChanges();
+
+    expect(host.textContent).not.toContain('Standalone Issues');
+  });
+
+  it('menu_switchesFace_andRunsTheHierarchyCommands', () => {
+    fixture.detectChanges();
+    TestBed.tick();
+    const menu: AppMenu = TestBed.inject(AppMenu);
+
+    menu.dispatch('mc.face.hierarchy');
+    TestBed.tick();
+    menu.dispatch('mc.refreshHierarchy');
+    menu.dispatch('mc.showStandalone');
+
+    expect(calls).toEqual(['setFace:hierarchy', 'refreshAll', 'setShowStandalone:true']);
   });
 
   it('menu_whenRemoteControlIsChosen_opensTheConfirmationRatherThanFlipping', () => {

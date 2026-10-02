@@ -1,4 +1,6 @@
 // @ts-check
+const fs = require('node:fs');
+const path = require('node:path');
 // ESLint flat config — enforces the baseline rules from docs/code-quality.md.
 const eslint = require('@eslint/js');
 const tseslint = require('typescript-eslint');
@@ -8,16 +10,15 @@ const angular = require('angular-eslint');
 // @shared/* and its own @features/<self>/*, never a sibling feature; deleting a
 // feature folder must remove the feature cleanly. Promote any shared surface to
 // @shared rather than cross-importing. One flat-config block is generated per feature.
-const FEATURES = [
-  'agent',
-  'code',
-  'markdown',
-  'repository',
-  'settings',
-  'terminal',
-  'welcome',
-  'workspace',
-];
+//
+// The features are read from src/features rather than listed, because a hand-kept list drifts: it
+// once named a feature that no longer existed and missed eight that did, which left those eight
+// free to import their siblings.
+const FEATURES = fs
+  .readdirSync(path.join(__dirname, 'src', 'features'), { withFileTypes: true })
+  .filter((entry) => entry.isDirectory())
+  .map((entry) => entry.name)
+  .sort();
 
 const featureBoundaries = FEATURES.map((self) => {
   const siblings = FEATURES.filter((feature) => feature !== self);

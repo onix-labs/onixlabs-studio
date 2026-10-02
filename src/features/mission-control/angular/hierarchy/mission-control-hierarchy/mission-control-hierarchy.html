@@ -1,0 +1,83 @@
+<!-- The column header shares the rows' grid, so its labels sit over their cells whatever the depth. -->
+<div class="mch__header" aria-hidden="true">
+  <span class="mch__name">Work item</span>
+  <span class="mch__level">Level</span>
+  <span class="mch__progress">Progress</span>
+  <span class="mch__updated">Updated</span>
+</div>
+
+@if (projects().length === 0) {
+  <div class="mch__empty">
+    <p class="mch__empty-title">No projects open</p>
+    <p class="mch__empty-text">
+      Open a folder whose git remote is on GitHub, and its epics and their sub-issues appear here.
+    </p>
+  </div>
+} @else {
+  <app-tree-view
+    class="mch__tree"
+    [rows]="rows()"
+    [selectedId]="selectedId()"
+    [virtual]="true"
+    (rowClick)="onRowClick($event)"
+    (rowDoubleClick)="onRowOpen($event)"
+  >
+    <ng-template let-row>
+      @let data = dataOf(row);
+      @switch (data.kind) {
+        @case ('project') {
+          <app-icon class="tree-icon tree-icon--project" [icon]="Icon.FORGE_PROJECT" />
+          <span class="tree-name bold mch__name">
+            {{ data.project.repository.owner }}/{{ data.project.repository.name }}
+          </span>
+          @if (data.loading) {
+            <app-icon class="tree-loading" [icon]="Icon.REFRESH" aria-label="Refreshing" />
+          }
+          @if (data.count > 0) {
+            <span class="tree-count">{{ data.count }}</span>
+          }
+        }
+        @case ('item') {
+          @let node = data.node;
+          <span class="mch__name mch__item">
+            <app-icon class="tree-icon" [icon]="levelIcon(node.level)" />
+            <span class="mch__number">#{{ node.item.number }}</span>
+            <span class="tree-name">{{ node.item.title }}</span>
+            @if (!node.item.authorTrusted) {
+              <app-icon
+                class="mch__flag mch__flag--untrusted"
+                [icon]="Icon.WORK_ITEM_UNTRUSTED"
+                appTooltip="Filed by someone outside the repository. Agents treat it as untrusted input."
+              />
+            }
+            @if (node.item.blockedBy > 0) {
+              <app-icon
+                class="mch__flag mch__flag--blocked"
+                [icon]="Icon.WORK_ITEM_BLOCKED"
+                [appTooltip]="
+                  'Blocked by ' +
+                  node.item.blockedBy +
+                  ' open issue' +
+                  (node.item.blockedBy === 1 ? '' : 's')
+                "
+              />
+            }
+          </span>
+          <span class="mch__level">{{ levelLabel(node.level) }}</span>
+          <span class="mch__progress">
+            <app-meter
+              [value]="node.progress"
+              [tone]="toneOf(node)"
+              [ariaLabel]="'Progress of #' + node.item.number"
+            />
+            <span class="mch__percent">{{ percent(node.progress) }}%</span>
+          </span>
+          <span class="mch__updated">{{ updated(node) }}</span>
+        }
+        @case ('status') {
+          <span class="mch__status" [class.mch__status--failed]="data.failed">{{ data.text }}</span>
+        }
+      }
+    </ng-template>
+  </app-tree-view>
+}

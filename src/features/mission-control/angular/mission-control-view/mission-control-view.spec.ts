@@ -11,7 +11,10 @@ import {
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { TileScrollMode } from '@shared/angular/services/settings/settings-registry';
+import { ForgeProject } from '@shared/angular/services/forge-projects/forge-projects';
 import { MissionControlView } from './mission-control-view';
+import { MissionControl } from '../mission-control/mission-control';
+import { MissionControlWorkItems } from '../hierarchy/work-items';
 
 /**
  * The view internals the tests reach into. `injectorFor` and `tileInputs` are protected on the
@@ -44,8 +47,10 @@ function makeHost(id: string): AgentHost {
 describe('MissionControlView', () => {
   let fixture: ComponentFixture<MissionControlView>;
   let view: ViewInternals;
+  let watching: boolean[];
 
   beforeEach(() => {
+    watching = [];
     const hosts: WritableSignal<readonly AgentHost[]> = signal<readonly AgentHost[]>([]);
     const scrollMode: WritableSignal<TileScrollMode> = signal<TileScrollMode>('into-view');
     TestBed.configureTestingModule({
@@ -53,6 +58,13 @@ describe('MissionControlView', () => {
       providers: [
         { provide: AgentHosts, useValue: { hosts } },
         { provide: Settings, useValue: { missionControlTileScrollMode: scrollMode } },
+        {
+          provide: MissionControlWorkItems,
+          useValue: {
+            projects: signal<readonly ForgeProject[]>([]),
+            setWatching: (value: boolean): void => void watching.push(value),
+          },
+        },
       ],
     });
     // Created but never change-detected: the constructor's logic runs without mounting the tile tree
@@ -99,5 +111,32 @@ describe('MissionControlView', () => {
 
     fixture.componentRef.setInput('isActive', true);
     expect(view.tileInputs()).toEqual({ active: true });
+  });
+
+  it('watchesTheHierarchy_onlyWhileItsFaceIsUpAndTheTabIsActive', () => {
+    TestBed.tick();
+    expect(watching.at(-1)).toBe(false);
+
+    TestBed.inject(MissionControl).setFace('hierarchy');
+    TestBed.tick();
+    expect(watching.at(-1)).toBe(false);
+
+    fixture.componentRef.setInput('isActive', true);
+    TestBed.tick();
+    expect(watching.at(-1)).toBe(true);
+
+    TestBed.inject(MissionControl).setFace('agents');
+    TestBed.tick();
+    expect(watching.at(-1)).toBe(false);
+  });
+
+  it('stopsWatching_whenDestroyed', () => {
+    TestBed.inject(MissionControl).setFace('hierarchy');
+    fixture.componentRef.setInput('isActive', true);
+    TestBed.tick();
+
+    fixture.destroy();
+
+    expect(watching.at(-1)).toBe(false);
   });
 });

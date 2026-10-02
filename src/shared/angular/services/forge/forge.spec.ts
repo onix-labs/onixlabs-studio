@@ -94,11 +94,13 @@ describe('Forge', () => {
 
       await forge.pullRequests(REPOSITORY);
       await forge.issues(REPOSITORY);
+      await forge.workItems(REPOSITORY);
       await forge.workflowRuns(REPOSITORY);
 
       expect(invocations.map((call: Invocation): string => call.channel)).toEqual([
         ForgeChannel.PullRequests,
         ForgeChannel.Issues,
+        ForgeChannel.WorkItems,
         ForgeChannel.WorkflowRuns,
       ]);
       expect(invocations.every((call: Invocation): boolean => call.args[0] === REPOSITORY)).toBe(

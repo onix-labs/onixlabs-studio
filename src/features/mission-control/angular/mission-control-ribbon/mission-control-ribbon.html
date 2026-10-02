@@ -1,4 +1,17 @@
 <app-ribbon-overflow>
+  <!-- The faces are radio buttons: one is always pressed, and pressing another moves there. -->
+  <app-ribbon-strip-group title="Show">
+    @for (choice of faces; track choice.value) {
+      <app-ribbon-strip-button
+        [icon]="choice.icon"
+        [label]="choice.label"
+        [toggle]="true"
+        [pressed]="face() === choice.value"
+        (action)="onFace(choice.value)"
+      />
+    }
+  </app-ribbon-strip-group>
+
   <app-ribbon-strip-group title="Agents">
     <app-ribbon-strip-button
       [icon]="Icon.STOP"
@@ -24,36 +37,57 @@
   <!-- Reset Widths leads as the large button: it is the group's one command, and the only control here
        that does something rather than filter. The three toggles beside it are the run-state filters —
        empty, idle, working — which partition every column, so they read as one set and compose. -->
-  <app-ribbon-strip-group title="View">
-    <app-ribbon-strip-button
-      [icon]="Icon.LAYOUT_SPLIT"
-      label="Reset Widths"
-      (action)="onResetLayout()"
-    />
-    <app-ribbon-strip-column>
-      <app-ribbon-strip-button-small
-        [icon]="Icon.HIDE_EMPTY"
-        label="Hide Empty"
-        [toggle]="true"
-        [pressed]="hideEmpty()"
-        (action)="onToggleHideEmpty()"
+  @if (face() === 'hierarchy') {
+    <!-- The Hierarchy face's commands take the View group's place: the agent-column filters below
+         mean nothing to a tree of work items. -->
+    <app-ribbon-strip-group title="Hierarchy">
+      <app-ribbon-strip-button
+        [icon]="Icon.REFRESH"
+        label="Refresh"
+        (action)="onRefreshHierarchy()"
       />
-      <app-ribbon-strip-button-small
-        [icon]="Icon.HIDE_IDLE"
-        label="Hide Idle"
-        [toggle]="true"
-        [pressed]="hideIdle()"
-        (action)="onToggleHideIdle()"
+      <app-ribbon-strip-column>
+        <app-ribbon-strip-button-small
+          [icon]="Icon.SHOW_STANDALONE"
+          label="Standalone Issues"
+          [toggle]="true"
+          [pressed]="showStandalone()"
+          (action)="onToggleShowStandalone()"
+        />
+      </app-ribbon-strip-column>
+    </app-ribbon-strip-group>
+  } @else {
+    <app-ribbon-strip-group title="View">
+      <app-ribbon-strip-button
+        [icon]="Icon.LAYOUT_SPLIT"
+        label="Reset Widths"
+        (action)="onResetLayout()"
       />
-      <app-ribbon-strip-button-small
-        [icon]="Icon.HIDE_WORKING"
-        label="Hide Working"
-        [toggle]="true"
-        [pressed]="hideWorking()"
-        (action)="onToggleHideWorking()"
-      />
-    </app-ribbon-strip-column>
-  </app-ribbon-strip-group>
+      <app-ribbon-strip-column>
+        <app-ribbon-strip-button-small
+          [icon]="Icon.HIDE_EMPTY"
+          label="Hide Empty"
+          [toggle]="true"
+          [pressed]="hideEmpty()"
+          (action)="onToggleHideEmpty()"
+        />
+        <app-ribbon-strip-button-small
+          [icon]="Icon.HIDE_IDLE"
+          label="Hide Idle"
+          [toggle]="true"
+          [pressed]="hideIdle()"
+          (action)="onToggleHideIdle()"
+        />
+        <app-ribbon-strip-button-small
+          [icon]="Icon.HIDE_WORKING"
+          label="Hide Working"
+          [toggle]="true"
+          [pressed]="hideWorking()"
+          (action)="onToggleHideWorking()"
+        />
+      </app-ribbon-strip-column>
+    </app-ribbon-strip-group>
+  }
 
   <!-- How much an agent may do without you. The posture is three stacked buttons rather than a
        field — one is always pressed, and pressing one moves the posture there, so they read as the
