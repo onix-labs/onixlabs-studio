@@ -63,6 +63,16 @@ export class Icon {
   public static readonly MISSION_CONTROL_HIERARCHY: Icon = new Icon('ph-duotone ph-tree-view');
 
   /**
+   * Gets the icon of Mission Control's Team face: each project's named agents.
+   */
+  public static readonly MISSION_CONTROL_TEAM: Icon = new Icon('ph-duotone ph-users-three');
+
+  /**
+   * Gets the icon of hiring a named agent onto a project's team.
+   */
+  public static readonly HIRE_AGENT: Icon = new Icon('ph-duotone ph-user-plus');
+
+  /**
    * Gets the icon of the Hierarchy face's toggle listing standalone issues — the open issues outside
    * any initiative, which float free of the tree.
    */

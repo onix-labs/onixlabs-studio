@@ -13,6 +13,7 @@ import {
   InputSignal,
   Signal,
   Type,
+  untracked,
   viewChild,
 } from '@angular/core';
 import { Settings } from '@shared/angular/services/settings/settings';
@@ -32,6 +33,7 @@ import { MissionControlTiles } from './mission-control-tiles';
 import { MissionControl, MissionControlFace } from '../mission-control/mission-control';
 import { MissionControlHierarchy } from '../hierarchy/mission-control-hierarchy/mission-control-hierarchy';
 import { MissionControlWorkItems } from '../hierarchy/work-items';
+import { MissionControlTeam } from '../organisation/mission-control-team/mission-control-team';
 
 /**
  * The Mission Control feature view: a single place to manage every live agent. A left
@@ -50,7 +52,14 @@ import { MissionControlWorkItems } from '../hierarchy/work-items';
  */
 @Component({
   selector: 'app-mission-control-view',
-  imports: [NgComponentOutlet, PanelLayout, Panel, MissionControlPanel, MissionControlHierarchy],
+  imports: [
+    NgComponentOutlet,
+    PanelLayout,
+    Panel,
+    MissionControlPanel,
+    MissionControlHierarchy,
+    MissionControlTeam,
+  ],
   templateUrl: './mission-control-view.html',
   styleUrl: './mission-control-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -184,6 +193,19 @@ export class MissionControlView {
         this.observedRow = row;
       }
       this.tiles.refreshSpacer();
+    });
+
+    // A face that opened an agent's chat asked for its tile; answer once the tile has rendered.
+    afterRenderEffect((): void => {
+      const hostId: string | null = this.missionControl.revealRequest();
+      if (hostId === null || this.face() !== 'agents') {
+        return;
+      }
+      this.hosts();
+      untracked((): void => {
+        this.tiles.reveal(hostId);
+        this.missionControl.clearRevealRequest();
+      });
     });
 
     // The hierarchy is read only while someone can see it: this view stays mounted while its tab is in

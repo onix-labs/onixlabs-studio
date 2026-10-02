@@ -52,23 +52,23 @@ describe('ForgeProjects', () => {
   });
 
   it('listsPublishedProjects_inPublicationOrder', () => {
-    projects.publish(STUDIO, '/dev/studio');
-    projects.publish(POWER_C, '/dev/power-c');
+    projects.publish(STUDIO, '/dev/studio', 'tab-1');
+    projects.publish(POWER_C, '/dev/power-c', 'tab-1');
 
     expect(roots(projects)).toEqual(['/dev/studio', '/dev/power-c']);
   });
 
   it('listsARepositoryOnce_whenSeveralWorkspacesPublishIt', () => {
     // A worktree container's checkouts are one project, named by the first to publish it.
-    projects.publish(STUDIO, '/dev/studio/a');
-    projects.publish({ ...STUDIO, owner: 'ONIX-Labs' }, '/dev/studio/b');
+    projects.publish(STUDIO, '/dev/studio/a', 'tab-1');
+    projects.publish({ ...STUDIO, owner: 'ONIX-Labs' }, '/dev/studio/b', 'tab-1');
 
     expect(roots(projects)).toEqual(['/dev/studio/a']);
   });
 
   it('keepsAProjectListed_untilItsLastPublicationIsWithdrawn', () => {
-    const first: () => void = projects.publish(STUDIO, '/dev/studio/a');
-    const second: () => void = projects.publish(STUDIO, '/dev/studio/b');
+    const first: () => void = projects.publish(STUDIO, '/dev/studio/a', 'tab-1');
+    const second: () => void = projects.publish(STUDIO, '/dev/studio/b', 'tab-1');
 
     first();
     expect(roots(projects)).toEqual(['/dev/studio/b']);
@@ -78,8 +78,8 @@ describe('ForgeProjects', () => {
   });
 
   it('withdrawsOnlyItsOwnPublication', () => {
-    const studio: () => void = projects.publish(STUDIO, '/dev/studio');
-    projects.publish(POWER_C, '/dev/power-c');
+    const studio: () => void = projects.publish(STUDIO, '/dev/studio', 'tab-1');
+    projects.publish(POWER_C, '/dev/power-c', 'tab-1');
 
     studio();
     studio();
@@ -88,10 +88,10 @@ describe('ForgeProjects', () => {
   });
 
   it('keepsTheListIdentical_whenAPublicationChangesNothingVisible', () => {
-    projects.publish(STUDIO, '/dev/studio/a');
+    projects.publish(STUDIO, '/dev/studio/a', 'tab-1');
     const before: readonly ForgeProject[] = projects.projects();
 
-    projects.publish(STUDIO, '/dev/studio/b');
+    projects.publish(STUDIO, '/dev/studio/b', 'tab-1');
 
     expect(projects.projects()).toBe(before);
   });

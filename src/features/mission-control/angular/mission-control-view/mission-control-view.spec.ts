@@ -139,4 +139,15 @@ describe('MissionControlView', () => {
 
     expect(watching.at(-1)).toBe(false);
   });
+
+  it('answersARevealRequest_onceTheAgentsFaceHasRendered', () => {
+    const missionControl: MissionControl = TestBed.inject(MissionControl);
+    missionControl.setFace('team');
+
+    missionControl.revealHost('agent-host-9');
+    TestBed.tick();
+
+    expect(missionControl.face()).toBe('agents');
+    expect(missionControl.revealRequest()).toBeNull();
+  });
 });

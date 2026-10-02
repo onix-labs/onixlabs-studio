@@ -1341,7 +1341,7 @@ export class DirectoryView implements OnInit, OnDestroy {
       const reference: ForgeRepositoryRef | null = this.forgeRepository.repositoryRef();
       const root: string | null = this.workspace.root()?.path ?? null;
       if (reference !== null && root !== null) {
-        onCleanup(this.forgeProjects.publish(reference, root));
+        onCleanup(this.forgeProjects.publish(reference, root, this.viewScope()));
       }
     });
 

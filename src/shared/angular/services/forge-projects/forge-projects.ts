@@ -22,6 +22,13 @@ export interface ForgeProject {
    * Gets the root of the first open workspace that published the project.
    */
   readonly root: string;
+
+  /**
+   * Gets the view scope of that workspace — the key its document well is published under — which an
+   * agent working on the project names as its run owner, so its tools act on this workspace rather
+   * than whichever one has focus.
+   */
+  readonly scope: string;
 }
 
 /**
@@ -95,12 +102,13 @@ export class ForgeProjects {
    * Publishes a workspace's repository as an open project.
    * @param repository The repository the workspace's remotes name.
    * @param root The workspace's root folder.
+   * @param scope The workspace's view scope.
    * @returns Returns a function that withdraws this publication, called when the workspace closes or
    * its remotes stop naming the repository.
    */
-  public publish(repository: ForgeRepositoryRef, root: string): () => void {
+  public publish(repository: ForgeRepositoryRef, root: string, scope: string): () => void {
     const publication: Publication = {
-      project: { key: projectKey(repository), repository, root },
+      project: { key: projectKey(repository), repository, root, scope },
     };
     this.publications.update((current: readonly Publication[]): readonly Publication[] => [
       ...current,

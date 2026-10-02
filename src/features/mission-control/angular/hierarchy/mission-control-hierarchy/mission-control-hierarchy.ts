@@ -7,10 +7,16 @@ import {
   signal,
   WritableSignal,
 } from '@angular/core';
+import { Avatar } from '@shared/angular/components/avatar/avatar';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { MenuItem } from '@shared/angular/components/menu/menu';
 import { Meter, MeterTone } from '@shared/angular/components/meter/meter';
 import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigger';
-import { TreeRow, TreeView } from '@shared/angular/components/tree-view/tree-view';
+import {
+  TreeMenuSelection,
+  TreeRow,
+  TreeView,
+} from '@shared/angular/components/tree-view/tree-view';
 import { Icon } from '@shared/angular/icons/icon';
 import { ForgeProject } from '@shared/angular/services/forge-projects/forge-projects';
 import { Log } from '@shared/angular/services/log/log';
@@ -18,6 +24,18 @@ import { Shell } from '@shared/angular/services/shell/shell';
 import { MissionControl } from '../../mission-control/mission-control';
 import { MissionControlWorkItems, ProjectWorkItems } from '../work-items';
 import { WorkItemLevel, WorkItemNode } from '../work-item-tree';
+import { MissionControlOrganisations } from '../../organisation/organisations';
+import { OrganisationAgent } from '@shared/api/organisation';
+
+/**
+ * The prefix of an Assign submenu item's identifier; the agent's identifier follows it.
+ */
+const ASSIGN_PREFIX: string = 'assign:';
+
+/**
+ * The identifier of the menu item that unassigns everyone from a work item.
+ */
+const UNASSIGN_ALL: string = 'unassign-all';
 
 /**
  * A project heading its work-item tree.
@@ -52,6 +70,11 @@ export interface ItemRowData {
    * Discriminates the row.
    */
   readonly kind: 'item';
+
+  /**
+   * Gets the project the item belongs to.
+   */
+  readonly project: ForgeProject;
 
   /**
    * Gets the node.
@@ -162,7 +185,7 @@ export function ago(iso: string, now: number): string {
  */
 @Component({
   selector: 'app-mission-control-hierarchy',
-  imports: [AppIcon, Meter, TooltipTrigger, TreeView],
+  imports: [AppIcon, Avatar, Meter, TooltipTrigger, TreeView],
   templateUrl: './mission-control-hierarchy.html',
   styleUrl: './mission-control-hierarchy.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -177,6 +200,11 @@ export class MissionControlHierarchy {
    * Holds Mission Control's shared view state, for the standalone-issues toggle.
    */
   private readonly missionControl: MissionControl = inject(MissionControl);
+
+  /**
+   * Holds every open project's organisation, for who is assigned to what.
+   */
+  private readonly organisations: MissionControlOrganisations = inject(MissionControlOrganisations);
 
   /**
    * Holds the shell, which opens an item on the forge.
@@ -319,6 +347,85 @@ export class MissionControlHierarchy {
   }
 
   /**
+   * Gets the named agents assigned to a work item.
+   * @param data The item's row.
+   * @returns Returns the agents, in roster order.
+   */
+  protected assigneesOf(data: ItemRowData): readonly OrganisationAgent[] {
+    return this.organisations.assignedTo(data.project.key, data.node.item.number);
+  }
+
+  /**
+   * Names a work item's assignees, for the column's tooltip.
+   * @param data The item's row.
+   * @returns Returns the names, comma-separated.
+   */
+  protected assigneeNames(data: ItemRowData): string {
+    return this.assigneesOf(data)
+      .map((agent: OrganisationAgent): string => agent.name)
+      .join(', ');
+  }
+
+  /**
+   * Builds a row's context menu: a work item offers its project's agents to assign. Bound as a value,
+   * because the tree calls it with `this` unbound.
+   */
+  protected readonly menuFor: (row: TreeRow) => readonly MenuItem[] = (
+    row: TreeRow,
+  ): readonly MenuItem[] => {
+    const data: HierarchyRowData = this.dataOf(row);
+    if (data.kind !== 'item') {
+      return [];
+    }
+    const agents: readonly OrganisationAgent[] = this.organisations.stateFor(data.project.key)
+      .organisation.agents;
+    const assigned: ReadonlySet<string> = new Set<string>(
+      this.assigneesOf(data).map((agent: OrganisationAgent): string => agent.id),
+    );
+    return [
+      {
+        id: 'assign',
+        label: 'Assign',
+        icon: Icon.HIRE_AGENT,
+        disabled: agents.length === 0,
+        children: agents.map((agent: OrganisationAgent): MenuItem => ({
+          id: `${ASSIGN_PREFIX}${agent.id}`,
+          label: agent.name,
+          checked: assigned.has(agent.id),
+        })),
+      },
+      { id: UNASSIGN_ALL, label: 'Unassign Everyone', disabled: assigned.size === 0 },
+    ];
+  };
+
+  /**
+   * Acts on a row's context-menu choice. Choosing an agent already assigned to the item takes it off;
+   * choosing another moves that agent onto it.
+   * @param selection The choice and the row it was made on.
+   */
+  protected onMenu(selection: TreeMenuSelection): void {
+    const data: HierarchyRowData = this.dataOf(selection.row);
+    if (data.kind !== 'item') {
+      return;
+    }
+    const number: number = data.node.item.number;
+    if (selection.itemId === UNASSIGN_ALL) {
+      for (const agent of this.assigneesOf(data)) {
+        this.organisations.assign(data.project, agent.id, null);
+      }
+      return;
+    }
+    if (selection.itemId.startsWith(ASSIGN_PREFIX)) {
+      const agentId: string = selection.itemId.slice(ASSIGN_PREFIX.length);
+      const current: number | null = this.organisations.agentState(
+        data.project.key,
+        agentId,
+      ).workItem;
+      this.organisations.assign(data.project, agentId, current === number ? null : number);
+    }
+  }
+
+  /**
    * Opens a work item on the forge.
    * @param row The row double-clicked.
    */
@@ -388,7 +495,7 @@ export class MissionControlHierarchy {
         const id: string = `item:${project.key}#${node.item.number}`;
         const expandable: boolean = node.children.length > 0;
         const expanded: boolean = expandable && !collapsed.has(id);
-        const data: ItemRowData = { kind: 'item', node };
+        const data: ItemRowData = { kind: 'item', project, node };
         rows.push({ id, depth, expandable, expanded, data });
         if (expanded) {
           walk(node.children, depth + 1);

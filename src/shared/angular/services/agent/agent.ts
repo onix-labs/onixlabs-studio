@@ -578,6 +578,17 @@ export class Agent {
   }
 
   /**
+   * Binds the host's standing brief: a system-prompt layer that leads every run, ahead of the user's
+   * prompt profiles. The agent organisation (#788) binds a named agent's role brief here, so every
+   * turn knows the job it was hired for. Read at each run start, so a brief edited mid-conversation
+   * takes effect on the next turn.
+   * @param source Returns the brief, or null when there is none.
+   */
+  public bindStandingBrief(source: () => string | null): void {
+    this.standingBriefSource = source;
+  }
+
+  /**
    * Selects the model this conversation's runs go through.
    * @param id The model id.
    */
@@ -624,6 +635,11 @@ export class Agent {
    * language changes after the panel mounted is scoped by what it is now.
    */
   private languageSource: (() => string | undefined) | null = null;
+
+  /**
+   * Holds the host's standing brief, or null for a host with none (see {@link bindStandingBrief}).
+   */
+  private standingBriefSource: (() => string | null) | null = null;
 
   /**
    * Holds the application-wide notification store terminal run states are raised to, so a run that
@@ -1330,11 +1346,15 @@ export class Agent {
       surface ?? 'editor',
       language ?? null,
     );
+    const brief: string = this.standingBriefSource?.()?.trim() ?? '';
+    const system: string = [brief, standing.system]
+      .filter((layer: string): boolean => layer.length > 0)
+      .join('\n\n');
     this.busy.set(true);
     this.activeRequestId = this.runtime.run(this.provider(), runPrompt, {
       agentSessionId: this.agentSessionId,
       ...(language === undefined ? {} : { language }),
-      systemPromptExtra: standing.system,
+      systemPromptExtra: system,
       userPromptExtra: standing.user,
       workspaceRoot: this.runWorkspaceRoot(),
       model: this.model(),

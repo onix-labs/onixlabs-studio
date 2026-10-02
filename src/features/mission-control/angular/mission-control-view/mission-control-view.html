@@ -2,6 +2,8 @@
   <div main class="mc-main">
     @if (face() === 'hierarchy') {
       <app-mission-control-hierarchy />
+    } @else if (face() === 'team') {
+      <app-mission-control-team />
     } @else if (hosts().length === 0) {
       <div class="mc-empty">
         <p class="mc-empty__title">No active agents</p>

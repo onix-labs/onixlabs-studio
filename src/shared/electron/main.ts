@@ -96,6 +96,7 @@ import { StartupPreferences, StartupPreferencesStore } from './startup-preferenc
 import { GitManager } from '@shared/electron/git-manager';
 import { SearchManager } from '@shared/electron/search-manager';
 import { StudioStore } from '@shared/electron/studio/studio-store';
+import { OrganisationStore } from '@shared/electron/organisation/organisation-store';
 import { WorktreeManager } from '@shared/electron/worktree/worktree-manager';
 import { TerminalManager } from '@shared/electron/terminal-manager';
 import { TrustedPaths } from './trusted-paths';
@@ -389,6 +390,13 @@ class Program {
    * {@link workspaceContext} tracks.
    */
   private readonly studioStore: StudioStore = new StudioStore(this.workspaceContext);
+
+  /**
+   * Reads and writes each project's agent organisation (epic #788), confined to the same open roots.
+   */
+  private readonly organisationStore: OrganisationStore = new OrganisationStore(
+    (root: string): boolean => this.workspaceContext.isRoot(root),
+  );
 
   /**
    * Handles workspace (open folder) and directory operations on behalf of the renderer.
@@ -878,6 +886,7 @@ class Program {
     this.workspaceManager.register();
     this.searchManager.register();
     this.studioStore.register();
+    this.organisationStore.register(ipcMain);
     this.worktreeManager.register();
     this.decoderHost.register();
     this.binaryAssembler.register();

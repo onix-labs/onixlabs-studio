@@ -2,6 +2,7 @@
 <div class="mch__header" aria-hidden="true">
   <span class="mch__name">Work item</span>
   <span class="mch__level">Level</span>
+  <span class="mch__team">Team</span>
   <span class="mch__progress">Progress</span>
   <span class="mch__updated">Updated</span>
 </div>
@@ -19,6 +20,8 @@
     [rows]="rows()"
     [selectedId]="selectedId()"
     [virtual]="true"
+    [contextMenuFor]="menuFor"
+    (contextMenuSelect)="onMenu($event)"
     (rowClick)="onRowClick($event)"
     (rowDoubleClick)="onRowOpen($event)"
   >
@@ -64,6 +67,18 @@
             }
           </span>
           <span class="mch__level">{{ levelLabel(node.level) }}</span>
+          @let assignees = assigneesOf(data);
+          <span
+            class="mch__team"
+            [appTooltip]="assignees.length === 0 ? undefined : assigneeNames(data)"
+          >
+            @for (agent of assignees.slice(0, 3); track agent.id) {
+              <app-avatar size="small" [name]="agent.name" [seed]="agent.id" />
+            }
+            @if (assignees.length > 3) {
+              <span class="mch__more">+{{ assignees.length - 3 }}</span>
+            }
+          </span>
           <span class="mch__progress">
             <app-meter
               [value]="node.progress"
