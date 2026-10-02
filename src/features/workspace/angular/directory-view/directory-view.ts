@@ -4,6 +4,7 @@ import {
   computed,
   DestroyRef,
   effect,
+  EffectCleanupRegisterFn,
   inject,
   input,
   InputSignal,
@@ -29,6 +30,7 @@ import {
   ConversationContextResolver,
   GLOBAL_CONVERSATION_CONTEXT,
 } from '@shared/angular/services/agent-conversations/agent-conversation-context';
+import { ForgeRepositoryRef } from '@shared/api/forge-types';
 import { ProjectModel } from '@shared/api/project-system';
 import { DirectoryListing, FileOperationResult } from '@shared/api/workspace-channels';
 import type { FileWriteResult } from '@shared/api/file-channels';
@@ -94,6 +96,7 @@ import { Output } from '@shared/angular/services/output/output';
 import { Repository } from '@shared/angular/services/repository/repository';
 import type { GitBranch, GitFileChange } from '@shared/angular/services/repository/repository-data';
 import { ForgeRepository } from '@shared/angular/services/forge-repository/forge-repository';
+import { ForgeProjects } from '@shared/angular/services/forge-projects/forge-projects';
 import {
   WorkspaceSourceControlCommandHandler,
   WorkspaceSourceControlCommands,
@@ -692,6 +695,12 @@ export class DirectoryView implements OnInit, OnDestroy {
    * then.
    */
   private readonly forgeRepository: ForgeRepository = inject(ForgeRepository);
+
+  /**
+   * Holds the app-wide registry of open projects, which this workspace publishes its forge repository
+   * to so the organisation views can list it.
+   */
+  private readonly forgeProjects: ForgeProjects = inject(ForgeProjects);
 
   /**
    * Gets whether each panel that depends on something existing actually has it: a Solution Explorer
@@ -1319,6 +1328,21 @@ export class DirectoryView implements OnInit, OnDestroy {
     // being alive says nothing about anyone looking at it.
     effect((): void => {
       this.forgeRepository.setActive(this.isActive());
+    });
+
+    // Publish this workspace's forge repository as an open project, for the organisation views in
+    // Mission Control. The remotes decide which repository it is, so detection re-runs when they
+    // change; detection parses the remote URL in main and never reaches the forge itself.
+    effect((): void => {
+      this.repository.remotes();
+      untracked((): void => void this.forgeRepository.detect());
+    });
+    effect((onCleanup: EffectCleanupRegisterFn): void => {
+      const reference: ForgeRepositoryRef | null = this.forgeRepository.repositoryRef();
+      const root: string | null = this.workspace.root()?.path ?? null;
+      if (reference !== null && root !== null) {
+        onCleanup(this.forgeProjects.publish(reference, root));
+      }
     });
 
     // Keep the Worktrees panel present while this view belongs to a container: every preset apply

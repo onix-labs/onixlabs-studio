@@ -6,9 +6,10 @@ import {
   ForgeRepositoryRef,
   ForgeResult,
   ForgeWorkflowRun,
+  ForgeWorkItem,
 } from '@shared/api/forge-types';
 import { ForgeFetch, ForgeResponse } from './forge-provider';
-import { GitHubForge, mapRunStatus, rollUpChecks } from './github-forge';
+import { GitHubForge, mapRunStatus, parentNumber, rollUpChecks } from './github-forge';
 
 /**
  * The repository every test reads.
@@ -212,6 +213,42 @@ describe('mapRunStatus', () => {
     expect(mapRunStatus('completed', 'cancelled')).toBe('cancelled');
     expect(mapRunStatus('completed', 'skipped')).toBe('cancelled');
     expect(mapRunStatus('completed', 'timed_out')).toBe('failed');
+  });
+});
+
+describe('parentNumber', () => {
+  it('readsTheParentsNumber_whenItIsInTheSameRepository', () => {
+    expect(
+      parentNumber('https://api.github.com/repos/onix-labs/onixlabs-studio/issues/788', REPOSITORY),
+    ).toBe(788);
+  });
+
+  it('matchesTheRepositoryCaseInsensitively', () => {
+    // A remote URL may spell the owner differently from the API's canonical casing.
+    expect(
+      parentNumber('https://api.github.com/repos/ONIX-Labs/OnixLabs-Studio/issues/7', REPOSITORY),
+    ).toBe(7);
+  });
+
+  it('readsAnEnterpriseHostsUrl', () => {
+    expect(
+      parentNumber('https://git.example.com/api/v3/repos/onix-labs/onixlabs-studio/issues/3', {
+        ...REPOSITORY,
+        host: 'git.example.com',
+      }),
+    ).toBe(3);
+  });
+
+  it('returnsNull_forAParentInAnotherRepository', () => {
+    // The hierarchy is read one repository at a time, so a foreign parent could never be placed.
+    expect(
+      parentNumber('https://api.github.com/repos/onix-labs/elsewhere/issues/5', REPOSITORY),
+    ).toBeNull();
+  });
+
+  it('returnsNull_whenThereIsNoParent', () => {
+    expect(parentNumber('', REPOSITORY)).toBeNull();
+    expect(parentNumber('https://api.github.com/repos/a/b/pulls/5', REPOSITORY)).toBeNull();
   });
 });
 
@@ -581,6 +618,169 @@ describe('GitHubForge', () => {
       expect(
         result.ok === true && result.value.map((issue: ForgeIssue): number => issue.number),
       ).toEqual([12]);
+    });
+  });
+
+  describe('listWorkItems', () => {
+    /**
+     * Builds a raw page of issues numbered from a starting point.
+     * @param from The first issue number.
+     * @param count How many issues the page holds.
+     * @returns Returns the raw page.
+     */
+    function page(from: number, count: number): readonly unknown[] {
+      return Array.from({ length: count }, (_value: unknown, index: number) => ({
+        number: from + index,
+        title: `Issue ${from + index}`,
+      }));
+    }
+
+    it('mapsTheHierarchyFields', async () => {
+      const { forge, http } = setup([
+        {
+          match: '/issues',
+          status: 200,
+          body: [
+            {
+              number: 789,
+              title: 'P0 — Design note',
+              html_url: 'https://github.com/onix-labs/onixlabs-studio/issues/789',
+              labels: [{ name: 'feature' }, { name: 'area:agent' }],
+              assignees: [{ login: 'matthew' }],
+              type: { name: 'Task' },
+              parent_issue_url: 'https://api.github.com/repos/onix-labs/onixlabs-studio/issues/788',
+              sub_issues_summary: { total: 3, completed: 1, percent_completed: 33 },
+              issue_dependencies_summary: { blocked_by: 2 },
+              author_association: 'OWNER',
+              updated_at: '2026-10-02T10:00:00Z',
+              body: 'Not carried: a hierarchy reads every open issue at once.',
+            },
+          ],
+        },
+      ]);
+
+      const result: ForgeResult<readonly ForgeWorkItem[]> = await forge.listWorkItems(REPOSITORY);
+
+      expect(result).toEqual({
+        ok: true,
+        value: [
+          {
+            number: 789,
+            title: 'P0 — Design note',
+            url: 'https://github.com/onix-labs/onixlabs-studio/issues/789',
+            labels: ['feature', 'area:agent'],
+            type: 'Task',
+            assignees: ['matthew'],
+            parent: 788,
+            children: { total: 3, completed: 1 },
+            blockedBy: 2,
+            authorTrusted: true,
+            updatedAt: '2026-10-02T10:00:00Z',
+          },
+        ],
+      });
+      // Oldest first, so a newly opened issue lands on the last page and every earlier page's entity
+      // tag stays valid.
+      expect(http.urls[0]).toContain('state=open&sort=created&direction=asc&per_page=100&page=1');
+    });
+
+    it('survivesFieldsTheApiOmits', async () => {
+      const { forge } = setup([{ match: '/issues', status: 200, body: [{ number: 1 }] }]);
+
+      const result: ForgeResult<readonly ForgeWorkItem[]> = await forge.listWorkItems(REPOSITORY);
+
+      expect(result.ok === true && result.value[0]).toEqual({
+        number: 1,
+        title: '(untitled)',
+        url: '',
+        labels: [],
+        type: null,
+        assignees: [],
+        parent: null,
+        children: { total: 0, completed: 0 },
+        blockedBy: 0,
+        authorTrusted: false,
+        updatedAt: '',
+      });
+    });
+
+    it('distrustsAnIssueFiledByAnyoneOutsideTheRepository', async () => {
+      // On a public repository anybody can open an issue; an agent must not take its body as orders.
+      const { forge } = setup([
+        {
+          match: '/issues',
+          status: 200,
+          body: ['OWNER', 'MEMBER', 'COLLABORATOR', 'CONTRIBUTOR', 'NONE', 'FIRST_TIMER'].map(
+            (association: string, index: number) => ({
+              number: index + 1,
+              author_association: association,
+            }),
+          ),
+        },
+      ]);
+
+      const result: ForgeResult<readonly ForgeWorkItem[]> = await forge.listWorkItems(REPOSITORY);
+
+      expect(
+        result.ok === true &&
+          result.value.map((item: ForgeWorkItem): boolean => item.authorTrusted),
+      ).toEqual([true, true, true, false, false, false]);
+    });
+
+    it('readsEveryPage_untilAShortOne', async () => {
+      const { forge, http } = setup([
+        { match: '&page=1', status: 200, body: page(1, 100) },
+        { match: '&page=2', status: 200, body: page(101, 100) },
+        { match: '&page=3', status: 200, body: page(201, 7) },
+      ]);
+
+      const result: ForgeResult<readonly ForgeWorkItem[]> = await forge.listWorkItems(REPOSITORY);
+
+      expect(result.ok === true && result.value.length).toBe(207);
+      expect(http.urls).toHaveLength(3);
+    });
+
+    it('countsAPageBeforeDroppingPullRequests', async () => {
+      // A full page that happens to be half pull requests is still a full page: there may be more.
+      const full: readonly unknown[] = page(1, 100).map((issue: unknown, index: number) =>
+        index % 2 === 0 ? issue : { ...(issue as object), pull_request: {} },
+      );
+      const { forge, http } = setup([
+        { match: '&page=1', status: 200, body: full },
+        { match: '&page=2', status: 200, body: [] },
+      ]);
+
+      const result: ForgeResult<readonly ForgeWorkItem[]> = await forge.listWorkItems(REPOSITORY);
+
+      expect(result.ok === true && result.value.length).toBe(50);
+      expect(http.urls).toHaveLength(2);
+    });
+
+    it('stopsAtThePageCeiling', async () => {
+      // A repository with tens of thousands of open issues must not drain the budget in one refresh.
+      const { forge, http } = setup([{ match: '/issues', status: 200, body: page(1, 100) }]);
+
+      const result: ForgeResult<readonly ForgeWorkItem[]> = await forge.listWorkItems(REPOSITORY);
+
+      expect(http.urls).toHaveLength(10);
+      expect(result.ok === true && result.value.length).toBe(1000);
+    });
+
+    it('failsTheWholeListing_whenAnyPageFails', async () => {
+      // A missing page would orphan its children and show them as roots: a wrong structure, not a
+      // shorter one.
+      const { forge } = setup([
+        { match: '&page=1', status: 200, body: page(1, 100) },
+        { match: '&page=2', status: 500, body: {} },
+      ]);
+
+      const result: ForgeResult<readonly ForgeWorkItem[]> = await forge.listWorkItems(REPOSITORY);
+
+      expect(result).toEqual({
+        ok: false,
+        error: 'GitHub returned HTTP 500.',
+        unauthorized: false,
+      });
     });
   });
 

@@ -10,6 +10,7 @@ import {
   ForgeRepositoryRef,
   ForgeResult,
   ForgeWorkflowRun,
+  ForgeWorkItem,
 } from '@shared/api/forge-types';
 
 /**
@@ -132,6 +133,20 @@ export class Forge implements ForgeClient {
     return (
       this.bridge?.invoke<ForgeResult<readonly ForgeIssue[]>>(ForgeChannel.Issues, repository) ??
       Promise.resolve(UNAVAILABLE_RESULT)
+    );
+  }
+
+  /**
+   * Lists every open issue as a node of the repository's work-item hierarchy.
+   * @param repository The repository to read.
+   * @returns Returns the work items, or the reason they could not be read.
+   */
+  public workItems(repository: ForgeRepositoryRef): Promise<ForgeResult<readonly ForgeWorkItem[]>> {
+    return (
+      this.bridge?.invoke<ForgeResult<readonly ForgeWorkItem[]>>(
+        ForgeChannel.WorkItems,
+        repository,
+      ) ?? Promise.resolve(UNAVAILABLE_RESULT)
     );
   }
 

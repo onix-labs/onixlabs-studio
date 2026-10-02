@@ -12,6 +12,12 @@ export const DEFAULT_TILE_WIDTH: number = 420;
 export const MIN_TILE_WIDTH: number = 240;
 
 /**
+ * Names the faces Mission Control can show: the live agents as columns, or the open projects' work-item
+ * hierarchy (epic #788).
+ */
+export type MissionControlFace = 'agents' | 'hierarchy';
+
+/**
  * The Mission Control feature's shared view state: the per-tile width overrides the user sets by
  * dragging (keyed so a tile keeps its width while the view is open) and which run states are shown.
  * A root singleton — Mission Control is a singleton tab, and the view, tiles, and contextual ribbon
@@ -26,6 +32,19 @@ export class MissionControl {
   private readonly widthMap: WritableSignal<ReadonlyMap<string, number>> = signal<
     ReadonlyMap<string, number>
   >(new Map<string, number>());
+
+  /**
+   * Holds the face on show.
+   */
+  private readonly faceState: WritableSignal<MissionControlFace> =
+    signal<MissionControlFace>('agents');
+
+  /**
+   * Holds whether the hierarchy lists standalone issues: open issues with no parent and no children.
+   * Off by default — they are the bugs and one-off requests that sit outside any initiative, and on a
+   * busy repository they would bury the epics the face is for.
+   */
+  private readonly showStandaloneState: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
    * Holds whether empty agent tiles (no conversation, not running) are hidden.
@@ -70,6 +89,32 @@ export class MissionControl {
    * Gets the set of host ids the user has manually hidden.
    */
   public readonly hiddenHosts: Signal<ReadonlySet<string>> = this.hiddenHostsState.asReadonly();
+
+  /**
+   * Gets the face on show.
+   */
+  public readonly face: Signal<MissionControlFace> = this.faceState.asReadonly();
+
+  /**
+   * Gets whether the hierarchy lists standalone issues.
+   */
+  public readonly showStandalone: Signal<boolean> = this.showStandaloneState.asReadonly();
+
+  /**
+   * Shows a face.
+   * @param face The face to show.
+   */
+  public setFace(face: MissionControlFace): void {
+    this.faceState.set(face);
+  }
+
+  /**
+   * Sets whether the hierarchy lists standalone issues.
+   * @param value Whether to list them.
+   */
+  public setShowStandalone(value: boolean): void {
+    this.showStandaloneState.set(value);
+  }
 
   /**
    * Gets the width, in pixels, a tile should render at: the user's override for that key, or the

@@ -221,6 +221,91 @@ export interface ForgeIssue {
 }
 
 /**
+ * Summarises an issue's children: how many sub-issues it has, and how many of those are closed.
+ */
+export interface ForgeChildSummary {
+  /**
+   * Gets how many sub-issues the issue has, open or closed.
+   */
+  readonly total: number;
+
+  /**
+   * Gets how many of those sub-issues are closed.
+   */
+  readonly completed: number;
+}
+
+/**
+ * Describes an open issue as a node of the repository's work-item hierarchy (epic #788).
+ *
+ * Deliberately narrower than {@link ForgeIssue}: no body and no comment count, because the hierarchy
+ * is read for a whole repository at once and lists every open issue, and a body is the one field large
+ * enough to make that payload matter. A reader that wants the body opens the issue.
+ */
+export interface ForgeWorkItem {
+  /**
+   * Gets the issue number.
+   */
+  readonly number: number;
+
+  /**
+   * Gets the issue title.
+   */
+  readonly title: string;
+
+  /**
+   * Gets the web URL, for opening it in a browser.
+   */
+  readonly url: string;
+
+  /**
+   * Gets the issue's label names, which is where a repository without issue types says what level an
+   * item is (`epic`, `feature`, …).
+   */
+  readonly labels: readonly string[];
+
+  /**
+   * Gets the name of the issue's type (`Bug`, `Feature`, `Task`, …), or null when the repository's
+   * organisation does not use issue types.
+   */
+  readonly type: string | null;
+
+  /**
+   * Gets the logins of the accounts the issue is assigned to.
+   */
+  readonly assignees: readonly string[];
+
+  /**
+   * Gets the number of the issue's parent in the same repository, or null when it has none — or when
+   * its parent lives in another repository, which this hierarchy does not cross.
+   */
+  readonly parent: number | null;
+
+  /**
+   * Gets the summary of the issue's sub-issues, open and closed. Closed children are not listed (the
+   * listing is open issues only), so this is what a parent's progress is derived from.
+   */
+  readonly children: ForgeChildSummary;
+
+  /**
+   * Gets how many open issues block this one.
+   */
+  readonly blockedBy: number;
+
+  /**
+   * Gets a value indicating whether the issue's author is the repository's owner, a member of its
+   * organisation, or a collaborator. An issue filed by anyone else is untrusted input: on a public
+   * repository anybody can open one, and an agent must not take its body as instructions.
+   */
+  readonly authorTrusted: boolean;
+
+  /**
+   * Gets when the issue was last touched, as an ISO 8601 timestamp.
+   */
+  readonly updatedAt: string;
+}
+
+/**
  * Describes one comment on an issue.
  */
 export interface ForgeIssueComment {

@@ -1,0 +1,35 @@
+// A thin track, its fill growing from the leading edge. The track is the fill's own colour, faded, so a
+// tone change recolours both and an empty meter still reads as a meter rather than as a gap.
+:host {
+  --meter-color: var(--accent-color);
+
+  display: block;
+  inline-size: 100%;
+  block-size: 0.375rem;
+  overflow: hidden;
+  background-color: color-mix(in srgb, var(--meter-color) 22%, transparent);
+  border-radius: calc(0.1875rem * var(--border-radius-multiplier));
+}
+
+:host(.meter--success) {
+  --meter-color: var(--success-color);
+}
+
+:host(.meter--warning) {
+  --meter-color: var(--warning-color);
+}
+
+:host(.meter--danger) {
+  --meter-color: var(--danger-color);
+}
+
+:host(.meter--info) {
+  --meter-color: var(--info-color);
+}
+
+.meter__fill {
+  display: block;
+  block-size: 100%;
+  background-color: var(--meter-color);
+  border-radius: inherit;
+}

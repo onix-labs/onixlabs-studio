@@ -14,6 +14,7 @@ import {
   ForgeRepositoryRef,
   ForgeResult,
   ForgeWorkflowRun,
+  ForgeWorkItem,
 } from './forge-types';
 
 /**
@@ -57,6 +58,11 @@ export enum ForgeChannel {
    * Lists one issue's comments (invoke).
    */
   IssueComments = 'forge:issue-comments',
+
+  /**
+   * Lists every open issue as a node of the repository's work-item hierarchy (invoke).
+   */
+  WorkItems = 'forge:work-items',
 
   /**
    * Lists a repository's recent CI/CD workflow runs (invoke).
@@ -117,6 +123,13 @@ export interface ForgeClient {
    * @returns Returns the issues, or the reason they could not be read.
    */
   issues(repository: ForgeRepositoryRef): Promise<ForgeResult<readonly ForgeIssue[]>>;
+
+  /**
+   * Lists every open issue as a node of the repository's work-item hierarchy.
+   * @param repository The repository to read.
+   * @returns Returns the work items, or the reason they could not be read.
+   */
+  workItems(repository: ForgeRepositoryRef): Promise<ForgeResult<readonly ForgeWorkItem[]>>;
 
   /**
    * Lists an issue's comments, oldest first.

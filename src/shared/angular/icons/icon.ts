@@ -53,6 +53,58 @@ export class Icon {
   public static readonly HIDE_WORKING: Icon = new Icon('ph-duotone ph-play-circle');
 
   /**
+   * Gets the icon of Mission Control's Agents face: the live agents as columns.
+   */
+  public static readonly MISSION_CONTROL_AGENTS: Icon = new Icon('ph-duotone ph-robot');
+
+  /**
+   * Gets the icon of Mission Control's Hierarchy face: the open projects' work-item trees.
+   */
+  public static readonly MISSION_CONTROL_HIERARCHY: Icon = new Icon('ph-duotone ph-tree-view');
+
+  /**
+   * Gets the icon of the Hierarchy face's toggle listing standalone issues — the open issues outside
+   * any initiative, which float free of the tree.
+   */
+  public static readonly SHOW_STANDALONE: Icon = new Icon('ph-duotone ph-circles-three');
+
+  /**
+   * Gets the icon of a project — a repository on a forge — heading its work-item tree.
+   */
+  public static readonly FORGE_PROJECT: Icon = new Icon('ph-duotone ph-github-logo');
+
+  /**
+   * Gets the icon of an initiative: the broadest level of the work-item hierarchy.
+   */
+  public static readonly WORK_ITEM_INITIATIVE: Icon = new Icon('ph-duotone ph-flag-banner');
+
+  /**
+   * Gets the icon of an epic: a body of work made of features.
+   */
+  public static readonly WORK_ITEM_EPIC: Icon = new Icon('ph-duotone ph-stack');
+
+  /**
+   * Gets the icon of a feature: one deliverable piece of an epic.
+   */
+  public static readonly WORK_ITEM_FEATURE: Icon = new Icon('ph-duotone ph-puzzle-piece');
+
+  /**
+   * Gets the icon of a task: the narrowest level, a single piece of work.
+   */
+  public static readonly WORK_ITEM_TASK: Icon = new Icon('ph-duotone ph-check-square');
+
+  /**
+   * Gets the icon marking a work item filed by someone outside the repository, whose body an agent
+   * must treat as untrusted input.
+   */
+  public static readonly WORK_ITEM_UNTRUSTED: Icon = new Icon('ph-duotone ph-shield-warning');
+
+  /**
+   * Gets the icon marking a work item that other open issues block.
+   */
+  public static readonly WORK_ITEM_BLOCKED: Icon = new Icon('ph-duotone ph-prohibit');
+
+  /**
    * Gets the icon marking a shown agent on Mission Control's per-agent hide toggle.
    */
   public static readonly AGENT_VISIBLE: Icon = new Icon('ph-duotone ph-eye');

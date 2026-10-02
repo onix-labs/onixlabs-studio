@@ -5,6 +5,7 @@ import {
   Component,
   computed,
   DestroyRef,
+  effect,
   ElementRef,
   inject,
   Injector,
@@ -28,6 +29,9 @@ import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layou
 import { MissionControlPanel } from './mission-control-panel/mission-control-panel';
 import { MissionControlAgentTile } from './mission-control-agent-tile/mission-control-agent-tile';
 import { MissionControlTiles } from './mission-control-tiles';
+import { MissionControl, MissionControlFace } from '../mission-control/mission-control';
+import { MissionControlHierarchy } from '../hierarchy/mission-control-hierarchy/mission-control-hierarchy';
+import { MissionControlWorkItems } from '../hierarchy/work-items';
 
 /**
  * The Mission Control feature view: a single place to manage every live agent. A left
@@ -39,10 +43,14 @@ import { MissionControlTiles } from './mission-control-tiles';
  * injector that provides those instances (and the host handle), so the tile drives the very same session
  * as the origin rather than a copy. A view-scoped {@link MissionControlTiles} registry lets the rail
  * scroll a tile into view.
+ *
+ * The main area shows one of Mission Control's faces (epic #788): the agent columns, or the open
+ * projects' work-item {@link MissionControlHierarchy}. The rail stays beside either, because the agents
+ * waiting on the user matter whatever face is up.
  */
 @Component({
   selector: 'app-mission-control-view',
-  imports: [NgComponentOutlet, PanelLayout, Panel, MissionControlPanel],
+  imports: [NgComponentOutlet, PanelLayout, Panel, MissionControlPanel, MissionControlHierarchy],
   templateUrl: './mission-control-view.html',
   styleUrl: './mission-control-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -64,6 +72,16 @@ export class MissionControlView {
    * Holds the settings service, so the trailing spacer follows the scroll-mode setting.
    */
   private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds Mission Control's shared view state, which says which face is up.
+   */
+  private readonly missionControl: MissionControl = inject(MissionControl);
+
+  /**
+   * Holds the open projects' work items, which are read only while the Hierarchy face is on screen.
+   */
+  private readonly workItems: MissionControlWorkItems = inject(MissionControlWorkItems);
 
   /**
    * Holds the view's injector, the parent of each tile's per-host injector.
@@ -125,6 +143,11 @@ export class MissionControlView {
   public readonly isActive: InputSignal<boolean> = input<boolean>(false);
 
   /**
+   * Gets the face on show.
+   */
+  protected readonly face: Signal<MissionControlFace> = this.missionControl.face;
+
+  /**
    * Gets the live agent hosts, one column each.
    */
   protected readonly hosts: Signal<readonly AgentHost[]> = this.agentHosts.hosts;
@@ -163,7 +186,16 @@ export class MissionControlView {
       this.tiles.refreshSpacer();
     });
 
-    inject(DestroyRef).onDestroy((): void => this.teardownRow());
+    // The hierarchy is read only while someone can see it: this view stays mounted while its tab is in
+    // the background, so being alive says nothing about being looked at.
+    effect((): void => {
+      this.workItems.setWatching(this.isActive() && this.face() === 'hierarchy');
+    });
+
+    inject(DestroyRef).onDestroy((): void => {
+      this.teardownRow();
+      this.workItems.setWatching(false);
+    });
   }
 
   /**

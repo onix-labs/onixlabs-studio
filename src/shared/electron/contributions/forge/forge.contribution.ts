@@ -13,6 +13,7 @@ import {
   ForgeRepositoryRef,
   ForgeResult,
   ForgeWorkflowRun,
+  ForgeWorkItem,
 } from '@shared/api/forge-types';
 import { ContributionContext, MainContribution } from '../main-contribution';
 import { detectForge } from './forge-detection';
@@ -152,6 +153,16 @@ export class ForgeContribution implements MainContribution {
       ): Promise<ForgeResult<readonly ForgeIssueComment[]>> =>
         this.list(repository, (provider: ForgeProvider, target: ForgeRepositoryRef) =>
           provider.listIssueComments(target, asIssueNumber(issueNumber)),
+        ),
+    );
+    context.handle(
+      ForgeChannel.WorkItems,
+      (
+        _event: IpcMainInvokeEvent,
+        repository: unknown,
+      ): Promise<ForgeResult<readonly ForgeWorkItem[]>> =>
+        this.list(repository, (provider: ForgeProvider, target: ForgeRepositoryRef) =>
+          provider.listWorkItems(target),
         ),
     );
     context.handle(
