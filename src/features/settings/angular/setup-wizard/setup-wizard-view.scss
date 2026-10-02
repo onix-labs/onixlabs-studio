@@ -183,8 +183,21 @@
 }
 
 .setup__actions {
-  display: flex;
-  justify-content: flex-end;
+  // Back and Next (or Finish) are one pair, so they are one width whatever their labels: equal grid
+  // columns, each as wide as the wider button and never narrower than 5rem. A flex basis cannot do
+  // this — a flex item will not shrink below its content, so "Next →" outgrew a 4rem Back.
+  //
+  // The footer hugs its buttons at the pane's end rather than spanning the pane, which is what makes
+  // the equal columns as wide as the wider button rather than half the pane each.
+  display: grid;
+  grid-auto-columns: minmax(5rem, 1fr);
+  grid-auto-flow: column;
+  align-self: flex-end;
   gap: 0.5rem;
   flex: none;
+}
+
+// Back's label, projected after its arrow, set as the button sets its own label.
+.setup__action-label {
+  line-height: 1;
 }
