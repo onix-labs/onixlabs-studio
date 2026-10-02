@@ -1,0 +1,130 @@
+// The Team face: one section per open project — its roster as a list, and a row to hire into it.
+:host {
+  display: flex;
+  flex-direction: column;
+  block-size: 100%;
+  min-inline-size: 0;
+}
+
+.mct__projects {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 1.25rem;
+  min-block-size: 0;
+  padding: 0.75rem 0;
+  overflow-y: auto;
+}
+
+.mct__project {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.mct__header {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding-inline: 0.75rem;
+  font-weight: 600;
+}
+
+.mct__title {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mct__list {
+  display: block;
+}
+
+.mct__name {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mct__role,
+.mct__assignment,
+.mct__presence {
+  flex: 0 0 auto;
+  font-size: 0.8rem;
+  color: var(--form-muted-foreground-color);
+}
+
+.mct__role {
+  inline-size: 11rem;
+}
+
+.mct__assignment {
+  inline-size: 6rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.mct__presence {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  inline-size: 5rem;
+
+  &[data-status='working'] {
+    color: var(--accent-color);
+  }
+}
+
+.mct__hire {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.75rem;
+}
+
+.mct__hire-name {
+  flex: 1 1 12rem;
+  max-inline-size: 18rem;
+}
+
+.mct__hire-role {
+  flex: 0 0 13rem;
+}
+
+.mct__status {
+  margin: 0;
+  padding-inline: 0.75rem;
+  font-size: 0.82rem;
+  font-style: italic;
+  color: var(--form-muted-foreground-color);
+}
+
+.mct__empty {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 2rem;
+  text-align: center;
+  color: var(--view-placeholder-color, var(--gray-500));
+}
+
+.mct__empty-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.mct__empty-text {
+  margin: 0;
+  max-inline-size: 24rem;
+  font-size: 0.85rem;
+}
+
+.mct__chat {
+  flex: 0 0 auto;
+}

@@ -12,10 +12,10 @@ export const DEFAULT_TILE_WIDTH: number = 420;
 export const MIN_TILE_WIDTH: number = 240;
 
 /**
- * Names the faces Mission Control can show: the live agents as columns, or the open projects' work-item
- * hierarchy (epic #788).
+ * Names the faces Mission Control can show (epic #788): the live agents as columns, the open projects'
+ * work-item hierarchy, or each project's team of named agents.
  */
-export type MissionControlFace = 'agents' | 'hierarchy';
+export type MissionControlFace = 'agents' | 'hierarchy' | 'team';
 
 /**
  * The Mission Control feature's shared view state: the per-tile width overrides the user sets by
@@ -45,6 +45,12 @@ export class MissionControl {
    * busy repository they would bury the epics the face is for.
    */
   private readonly showStandaloneState: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds the id of the agent host whose tile should be scrolled into view once the Agents face has
+   * rendered, or null when none is waiting.
+   */
+  private readonly revealState: WritableSignal<string | null> = signal<string | null>(null);
 
   /**
    * Holds whether empty agent tiles (no conversation, not running) are hidden.
@@ -99,6 +105,28 @@ export class MissionControl {
    * Gets whether the hierarchy lists standalone issues.
    */
   public readonly showStandalone: Signal<boolean> = this.showStandaloneState.asReadonly();
+
+  /**
+   * Gets the id of the agent host whose tile is waiting to be scrolled into view, or null.
+   */
+  public readonly revealRequest: Signal<string | null> = this.revealState.asReadonly();
+
+  /**
+   * Shows the Agents face and asks for one host's tile to be scrolled into view once it renders. The
+   * request outlives the face that made it, which is torn down by the switch.
+   * @param hostId The host whose tile to reveal.
+   */
+  public revealHost(hostId: string): void {
+    this.revealState.set(hostId);
+    this.faceState.set('agents');
+  }
+
+  /**
+   * Clears a reveal request once it has been answered.
+   */
+  public clearRevealRequest(): void {
+    this.revealState.set(null);
+  }
 
   /**
    * Shows a face.

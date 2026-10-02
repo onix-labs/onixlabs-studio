@@ -3,6 +3,7 @@
 // letting the name take the rest, so the columns line up at every depth.
 :host {
   --mch-level-width: 5.5rem;
+  --mch-team-width: 4.5rem;
   --mch-progress-width: 8.5rem;
   --mch-updated-width: 5rem;
 
@@ -62,6 +63,23 @@
 .mch__level {
   flex: 0 0 var(--mch-level-width);
   font-size: 0.8rem;
+  color: var(--form-muted-foreground-color);
+}
+
+.mch__team {
+  display: flex;
+  flex: 0 0 var(--mch-team-width);
+  align-items: center;
+  gap: 0.125rem;
+
+  app-avatar + app-avatar {
+    margin-inline-start: -0.3rem;
+  }
+}
+
+.mch__more {
+  margin-inline-start: 0.2rem;
+  font-size: 0.72rem;
   color: var(--form-muted-foreground-color);
 }
 

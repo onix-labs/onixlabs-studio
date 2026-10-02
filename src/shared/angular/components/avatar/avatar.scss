@@ -1,0 +1,73 @@
+// A monogram on a disc. The disc is the hue faded and the letters the hue at full strength, so it reads
+// in either theme without a per-theme pair of colours.
+:host {
+  --avatar-color: var(--accent-color);
+  --avatar-size: 1.5rem;
+
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  inline-size: var(--avatar-size);
+  block-size: var(--avatar-size);
+  border-radius: 50%;
+  background-color: color-mix(in srgb, var(--avatar-color) 24%, transparent);
+  color: var(--avatar-color);
+  font-size: calc(var(--avatar-size) * 0.42);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  user-select: none;
+}
+
+:host(.avatar--small) {
+  --avatar-size: 1.125rem;
+}
+
+:host([data-hue='blue']) {
+  --avatar-color: var(--accent-blue);
+}
+
+:host([data-hue='orange']) {
+  --avatar-color: var(--accent-orange);
+}
+
+:host([data-hue='emerald']) {
+  --avatar-color: var(--accent-emerald);
+}
+
+:host([data-hue='magenta']) {
+  --avatar-color: var(--accent-magenta);
+}
+
+:host([data-hue='cyan']) {
+  --avatar-color: var(--accent-cyan);
+}
+
+:host([data-hue='coral']) {
+  --avatar-color: var(--accent-coral);
+}
+
+:host([data-hue='violet']) {
+  --avatar-color: var(--accent-violet);
+}
+
+:host([data-hue='yellow']) {
+  --avatar-color: var(--accent-yellow);
+}
+
+:host([data-hue='teal']) {
+  --avatar-color: var(--accent-teal);
+}
+
+:host([data-hue='pink']) {
+  --avatar-color: var(--accent-pink);
+}
+
+:host([data-hue='indigo']) {
+  --avatar-color: var(--accent-indigo);
+}
+
+:host([data-hue='mint']) {
+  --avatar-color: var(--accent-mint);
+}

@@ -125,6 +125,15 @@ label or a comment) is a later option.
 | Assignments, dispatches, reports, messages, spend | `userData/organisation/<project-id>/`                                        | Per-user runtime state                                    |
 | Each agent's transcript                           | `AgentConversationStore`, under a new context kind `organisation:<agent-id>` | Reuses persistence, search and the conversation list      |
 
+_As built in P2:_ assignments and each agent's current conversation live in a git-ignored
+`.studio/organisation.user.json`, beside `workspace.user.json`, rather than under `userData`: they
+belong to the project on this machine, and the existing `.studio/*.user.json` ignore already covers
+them. Dispatches, reports, messages and spend are still for `userData` (P3 onwards). A named agent's
+transcript is an ordinary `workspace` conversation of its project, so it appears in the project's
+history; no new context kind was needed. Both files are read and written by a core main-process
+`OrganisationStore`, confined to open roots and parsing every payload, which `OrganisationManager`
+grows out of in P3.
+
 The main process is the authority. A new **`OrganisationManager`** in main owns the state, validates
 every change and enforces the limits (§6.3). The renderer is untrusted (non-negotiable 3) and only
 renders the state and hosts sessions.
@@ -143,6 +152,13 @@ per named agent, in a child injector per agent. This is the same pattern as
 - registers with `AgentHosts`, so Mission Control, permission prompts, remote control and _stop all_
   work unchanged;
 - is created when main dispatches to it and disposed when its assignment ends.
+
+_As built in P2:_ `MissionControlOrgAgents` hosts a named agent when the user opens its chat from the
+Team face, and lets it go when its project closes or it leaves the roster. Its run owner is the
+project workspace's view scope (so its tools act on that workspace's well), its workspace root the
+project root (checkouts arrive in P3), and its role brief, name and assignment reach every turn through
+a new `Agent.bindStandingBrief` layer that leads the user's prompt profiles. A `readonly` role starts
+in chat mode; enforcing isolation is main's job and lands with P3.
 
 Main never trusts the renderer to start the right turn. `OrganisationManager` records the dispatch,
 then asks the renderer over a bridge capability to start it. `AiManager.run` checks that the run's
@@ -284,7 +300,7 @@ snapshots, not per-token events. Forge polling uses the ETag cache, which keeps 
 | ------- | -------------------------------------------------------------------------------------------- |
 | P0 #789 | This note                                                                                    |
 | P1 #795 | GitHub hierarchy read (pagination, hierarchy fields); open-projects registry; Hierarchy face |
-| P2 #790 | Roles, roster, assignment; `OrgAgents` hosting                                               |
+| P2 #790 | Roles, roster, assignment; named-agent hosting; Team face; assignment from the Hierarchy     |
 | P3 #791 | `OrganisationManager`, organisation tools, waking, limits, branch policy and checkouts       |
 | P4 #792 | Chat face                                                                                    |
 | P5 #793 | _Needs you_ and Overview; spend                                                              |

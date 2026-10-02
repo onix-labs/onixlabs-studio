@@ -1,11 +1,44 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { Forge } from '@shared/angular/services/forge/forge';
-import { ForgeProjects } from '@shared/angular/services/forge-projects/forge-projects';
+import {
+  ForgeProject,
+  ForgeProjects,
+} from '@shared/angular/services/forge-projects/forge-projects';
 import { Shell } from '@shared/angular/services/shell/shell';
 import { ForgeRepositoryRef, ForgeResult, ForgeWorkItem } from '@shared/api/forge-types';
 import { MissionControl } from '../../mission-control/mission-control';
 import { MissionControlWorkItems } from '../work-items';
+import { MissionControlOrganisations } from '../../organisation/organisations';
+import { OrganisationFiles } from '@shared/angular/services/organisation-files/organisation-files';
+import { OrganisationSnapshot } from '@shared/api/organisation-channels';
+import {
+  Organisation,
+  OrganisationAgent,
+  OrganisationUser,
+  parseOrganisation,
+} from '@shared/api/organisation';
+import { MenuItem } from '@shared/angular/components/menu/menu';
+import { TreeMenuSelection, TreeRow } from '@shared/angular/components/tree-view/tree-view';
+
+/**
+ * The hierarchy internals the menu tests reach into (protected on the component).
+ */
+interface HierarchyInternals {
+  readonly rows: () => readonly TreeRow[];
+  readonly menuFor: (row: TreeRow) => readonly MenuItem[];
+  onMenu(selection: TreeMenuSelection): void;
+}
+
+/**
+ * The roster the tests' project employs.
+ */
+const ROSTER: Organisation = parseOrganisation({
+  agents: [
+    { id: 'ada', name: 'Ada Lovelace', roleId: 'engineer' },
+    { id: 'grace', name: 'Grace Hopper', roleId: 'tester' },
+  ],
+});
 import { ago, MissionControlHierarchy } from './mission-control-hierarchy';
 
 /**
@@ -109,7 +142,7 @@ describe('MissionControlHierarchy', () => {
    * Opens the project, reads its work items and renders.
    */
   async function load(): Promise<void> {
-    projects.publish(STUDIO, '/dev/studio');
+    projects.publish(STUDIO, '/dev/studio', 'tab-1');
     TestBed.tick();
     workItems.setWatching(true);
     await fixture.whenStable();
@@ -126,6 +159,17 @@ describe('MissionControlHierarchy', () => {
           useValue: {
             workItems: (): Promise<ForgeResult<readonly ForgeWorkItem[]>> =>
               Promise.resolve(answer),
+          },
+        },
+        {
+          provide: OrganisationFiles,
+          useValue: {
+            load: (): Promise<OrganisationSnapshot | null> =>
+              Promise.resolve({ organisation: ROSTER, user: { agents: [] } }),
+            save: (_root: string, organisation: Organisation): Promise<Organisation | null> =>
+              Promise.resolve(organisation),
+            saveUser: (_root: string, user: OrganisationUser): Promise<OrganisationUser | null> =>
+              Promise.resolve(user),
           },
         },
         {
@@ -225,5 +269,71 @@ describe('MissionControlHierarchy', () => {
     await load();
 
     expect(rows()[1]).toBe('No epics. 2 standalone issues are hidden.');
+  });
+
+  describe('assignment', () => {
+    const epicId: string = 'item:github:github.com/onix-labs/onixlabs-studio#788';
+    let hierarchy: HierarchyInternals;
+    let organisations: MissionControlOrganisations;
+
+    /**
+     * Gets a row by its id.
+     * @param id The row's id.
+     * @returns Returns the row.
+     */
+    function treeRow(id: string): TreeRow {
+      return hierarchy.rows().find((candidate: TreeRow): boolean => candidate.id === id)!;
+    }
+
+    beforeEach(async () => {
+      await load();
+      hierarchy = fixture.componentInstance as unknown as HierarchyInternals;
+      organisations = TestBed.inject(MissionControlOrganisations);
+    });
+
+    it('offersTheProjectsAgents_onAWorkItem_andNothingOnAProject', () => {
+      const menu: readonly MenuItem[] = hierarchy.menuFor(treeRow(epicId));
+
+      expect(menu[0].children?.map((item: MenuItem): string => item.label)).toEqual([
+        'Ada Lovelace',
+        'Grace Hopper',
+      ]);
+      expect(menu[1].disabled).toBe(true);
+      expect(hierarchy.menuFor(hierarchy.rows()[0])).toEqual([]);
+    });
+
+    it('assigns_showsTheAssignee_andTogglesThemOff', () => {
+      const project: ForgeProject = projects.projects()[0];
+      hierarchy.onMenu({ itemId: 'assign:ada', row: treeRow(epicId) });
+      fixture.detectChanges();
+
+      expect(
+        organisations
+          .assignedTo(project.key, 788)
+          .map((agent: OrganisationAgent): string => agent.id),
+      ).toEqual(['ada']);
+      expect(row(epicId).querySelector('app-avatar')?.textContent).toBe('AL');
+      expect(hierarchy.menuFor(treeRow(epicId))[0].children?.[0].checked).toBe(true);
+
+      hierarchy.onMenu({ itemId: 'assign:ada', row: treeRow(epicId) });
+
+      expect(organisations.assignedTo(project.key, 788)).toEqual([]);
+    });
+
+    it('unassignsEveryone', () => {
+      const project: ForgeProject = projects.projects()[0];
+      hierarchy.onMenu({ itemId: 'assign:ada', row: treeRow(epicId) });
+      hierarchy.onMenu({ itemId: 'assign:grace', row: treeRow(epicId) });
+
+      hierarchy.onMenu({ itemId: 'unassign-all', row: treeRow(epicId) });
+
+      expect(organisations.assignedTo(project.key, 788)).toEqual([]);
+    });
+
+    it('ignoresAChoiceOnARowThatIsNotAWorkItem', () => {
+      expect((): void =>
+        hierarchy.onMenu({ itemId: 'assign:ada', row: hierarchy.rows()[0] }),
+      ).not.toThrow();
+    });
   });
 });

@@ -1,0 +1,99 @@
+@if (projects().length === 0) {
+  <div class="mct__empty">
+    <p class="mct__empty-title">No projects open</p>
+    <p class="mct__empty-text">
+      Open a folder whose git remote is on GitHub to hire its team of named agents.
+    </p>
+  </div>
+} @else {
+  <div class="mct__projects">
+    @for (project of projects(); track project.key) {
+      @let state = organisations.stateFor(project.key);
+      @let draft = draftFor(project);
+      <section class="mct__project" [attr.aria-label]="project.repository.name + ' team'">
+        <header class="mct__header">
+          <app-icon class="tree-icon tree-icon--project" [icon]="Icon.FORGE_PROJECT" />
+          <span class="mct__title">
+            {{ project.repository.owner }}/{{ project.repository.name }}
+          </span>
+          @if (state.organisation.agents.length > 0) {
+            <span class="tree-count">{{ state.organisation.agents.length }}</span>
+          }
+        </header>
+
+        @if (!state.loaded) {
+          <p class="mct__status">Reading the team&hellip;</p>
+        } @else {
+          <app-list-view
+            class="mct__list"
+            [rows]="rowsFor(project)"
+            [selectedId]="selectedId()"
+            emptyText="Nobody on the team yet. Hire an agent below."
+            [contextMenuFor]="menuFor"
+            [editingId]="editingId()"
+            [editValue]="editValue()"
+            (rowClick)="selectedId.set($event.id)"
+            (contextMenuSelect)="onMenu($event)"
+            (editCommit)="onRename($event)"
+            (editCancel)="editingId.set(null)"
+          >
+            <ng-template let-row let-editing="editing">
+              @let member = dataOf(row);
+              <app-avatar [name]="member.agent.name" [seed]="member.agent.id" />
+              @if (!editing) {
+                <span class="mct__name">{{ member.agent.name }}</span>
+                <span class="mct__role">{{ member.roleTitle }}</span>
+                <span class="mct__assignment">
+                  {{ member.workItem === null ? 'Unassigned' : '#' + member.workItem }}
+                </span>
+                <span class="mct__presence" [attr.data-status]="member.status">
+                  @if (member.status === 'working') {
+                    <app-pulse-dot tone="accent" [pulse]="true" />
+                    Working
+                  } @else if (member.status === 'idle') {
+                    Idle
+                  } @else {
+                    Away
+                  }
+                </span>
+                <app-button
+                  class="mct__chat"
+                  variant="none"
+                  size="small"
+                  [icon]="Icon.MISSION_CONTROL_AGENTS"
+                  label="Chat"
+                  [ariaLabel]="'Open a chat with ' + member.agent.name"
+                  (click)="$event.stopPropagation(); openChat(project, member.agent)"
+                />
+              }
+            </ng-template>
+          </app-list-view>
+
+          <div class="mct__hire">
+            <app-text-field
+              class="mct__hire-name"
+              placeholder="Name"
+              ariaLabel="Name of the agent to hire"
+              [value]="draft.name"
+              (valueChange)="setDraft(project, { name: $event })"
+              (enter)="onHire(project)"
+            />
+            <app-dropdown
+              class="mct__hire-role"
+              [options]="roleOptions(project)"
+              [value]="draft.roleId"
+              ariaLabel="Role of the agent to hire"
+              (valueChange)="setDraft(project, { roleId: $event })"
+            />
+            <app-button
+              [icon]="Icon.HIRE_AGENT"
+              label="Hire"
+              [disabled]="draft.name.trim().length === 0"
+              (click)="onHire(project)"
+            />
+          </div>
+        }
+      </section>
+    }
+  </div>
+}

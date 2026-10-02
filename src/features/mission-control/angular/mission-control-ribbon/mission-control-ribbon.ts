@@ -78,6 +78,7 @@ interface FaceChoice {
 const FACES: readonly FaceChoice[] = [
   { value: 'agents', label: 'Agents', icon: Icon.MISSION_CONTROL_AGENTS },
   { value: 'hierarchy', label: 'Hierarchy', icon: Icon.MISSION_CONTROL_HIERARCHY },
+  { value: 'team', label: 'Team', icon: Icon.MISSION_CONTROL_TEAM },
 ];
 
 /**

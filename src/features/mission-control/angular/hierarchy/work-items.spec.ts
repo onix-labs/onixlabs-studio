@@ -93,7 +93,7 @@ describe('MissionControlWorkItems', () => {
   });
 
   it('readsNothing_whileNothingWatches', () => {
-    projects.publish(STUDIO, '/dev/studio');
+    projects.publish(STUDIO, '/dev/studio', 'tab-1');
     TestBed.tick();
 
     expect(forge.reads).toEqual([]);
@@ -101,7 +101,7 @@ describe('MissionControlWorkItems', () => {
   });
 
   it('readsEveryProject_whenWatchingStarts_andBuildsItsTree', async () => {
-    projects.publish(STUDIO, '/dev/studio');
+    projects.publish(STUDIO, '/dev/studio', 'tab-1');
     TestBed.tick();
 
     workItems.setWatching(true);
@@ -116,14 +116,14 @@ describe('MissionControlWorkItems', () => {
   it('readsAProjectThatOpens_whileWatching', () => {
     workItems.setWatching(true);
 
-    projects.publish(STUDIO, '/dev/studio');
+    projects.publish(STUDIO, '/dev/studio', 'tab-1');
     TestBed.tick();
 
     expect(forge.reads).toEqual([STUDIO]);
   });
 
   it('rereadsOnATimer_onlyWhileWatching', async () => {
-    projects.publish(STUDIO, '/dev/studio');
+    projects.publish(STUDIO, '/dev/studio', 'tab-1');
     TestBed.tick();
     workItems.setWatching(true);
     await forge.answer({ ok: true, value: [] });
@@ -138,7 +138,7 @@ describe('MissionControlWorkItems', () => {
   });
 
   it('neverStacksReads_forOneProject', () => {
-    projects.publish(STUDIO, '/dev/studio');
+    projects.publish(STUDIO, '/dev/studio', 'tab-1');
     TestBed.tick();
     workItems.setWatching(true);
 
@@ -149,7 +149,7 @@ describe('MissionControlWorkItems', () => {
   });
 
   it('keepsTheLastTree_whenARereadFails', async () => {
-    projects.publish(STUDIO, '/dev/studio');
+    projects.publish(STUDIO, '/dev/studio', 'tab-1');
     TestBed.tick();
     workItems.setWatching(true);
     await forge.answer({ ok: true, value: [item(1)] });
@@ -162,7 +162,7 @@ describe('MissionControlWorkItems', () => {
   });
 
   it('reportsAnUnauthorizedFailure', async () => {
-    projects.publish(STUDIO, '/dev/studio');
+    projects.publish(STUDIO, '/dev/studio', 'tab-1');
     TestBed.tick();
     workItems.setWatching(true);
 
@@ -172,7 +172,7 @@ describe('MissionControlWorkItems', () => {
   });
 
   it('leavesARateLimitedProjectAlone_untilTheLimitLifts', async () => {
-    projects.publish(STUDIO, '/dev/studio');
+    projects.publish(STUDIO, '/dev/studio', 'tab-1');
     TestBed.tick();
     workItems.setWatching(true);
     await forge.answer({
@@ -190,7 +190,7 @@ describe('MissionControlWorkItems', () => {
   });
 
   it('forgetsAProjectThatCloses_evenMidRead', async () => {
-    const withdraw: () => void = projects.publish(STUDIO, '/dev/studio');
+    const withdraw: () => void = projects.publish(STUDIO, '/dev/studio', 'tab-1');
     TestBed.tick();
     workItems.setWatching(true);
 

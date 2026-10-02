@@ -9,7 +9,6 @@ import {
   serializeWorkspace,
   STUDIO_DIR,
   STUDIO_USER_FILE,
-  STUDIO_USER_IGNORE,
   STUDIO_WORKSPACE_FILE,
   StudioSnapshot,
   StudioUser,
@@ -17,6 +16,7 @@ import {
 } from '@shared/api/studio';
 import { WorkspaceContext } from '../workspace-context';
 import { logger } from '../logger';
+import { writeStudioFile } from './studio-files';
 
 /**
  * Reads and writes a workspace's `.studio` persistence on behalf of the renderer, confined to open
@@ -127,48 +127,13 @@ export class StudioStore {
   }
 
   /**
-   * Atomically writes a studio file: ensures the `.studio` directory exists, seeds the root
-   * `.gitignore`, writes to a temporary sibling, then renames it over the target so a reader never sees
-   * a partial file.
+   * Atomically writes a studio file into the root's `.studio` folder.
    * @param root The workspace root.
    * @param file The studio file name.
    * @param contents The file contents.
    */
-  private async write(root: string, file: string, contents: string): Promise<void> {
-    const directory: string = path.join(root, STUDIO_DIR);
-    await fs.mkdir(directory, { recursive: true });
-    await this.seedGitignore(root);
-    const target: string = path.join(directory, file);
-    const temporary: string = `${target}.${process.pid}.tmp`;
-    logger.trace('StudioStore.write', `Atomically writing ${target} via ${temporary}`);
-    await fs.writeFile(temporary, contents, 'utf8');
-    await fs.rename(temporary, target);
-  }
-
-  /**
-   * Ensures the root `.gitignore` ignores the per-developer studio file, appending the pattern when it
-   * is absent and leaving the file untouched when it is already present. A missing `.gitignore` is
-   * created with just the pattern.
-   * @param root The workspace root.
-   */
-  private async seedGitignore(root: string): Promise<void> {
-    const gitignore: string = path.join(root, '.gitignore');
-    let existing: string;
-    try {
-      existing = await fs.readFile(gitignore, 'utf8');
-    } catch {
-      logger.debug('StudioStore.seedGitignore', `Creating ${gitignore} with studio ignore pattern`);
-      await fs.writeFile(gitignore, `${STUDIO_USER_IGNORE}\n`, 'utf8');
-      return;
-    }
-    const present: boolean = existing
-      .split(/\r?\n/)
-      .some((line: string): boolean => line.trim() === STUDIO_USER_IGNORE);
-    if (present) {
-      return;
-    }
-    const separator: string = existing.length === 0 || existing.endsWith('\n') ? '' : '\n';
-    await fs.appendFile(gitignore, `${separator}${STUDIO_USER_IGNORE}\n`, 'utf8');
+  private write(root: string, file: string, contents: string): Promise<void> {
+    return writeStudioFile(root, file, contents);
   }
 
   /**

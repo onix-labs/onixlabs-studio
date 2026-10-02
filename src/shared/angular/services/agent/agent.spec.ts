@@ -219,6 +219,29 @@ describe('Agent', () => {
     expect(lastItem()?.kind === 'user' && lastItem()?.text).toBe('hello');
   });
 
+  it('send_leadsTheSystemLayerWithTheBoundStandingBrief', () => {
+    // #788. A named agent's role brief comes first, then the user's own profiles.
+    const profiles: PromptProfiles = TestBed.inject(PromptProfiles);
+    profiles.update(profiles.create('House style').id, { system: 'British English.' });
+    agent.bindStandingBrief((): string | null => '  You are a tester.  ');
+
+    agent.send('hello');
+
+    expect(runCalls[0].systemPromptExtra).toBe(
+      'You are a tester.\n\n### House style\nBritish English.',
+    );
+  });
+
+  it('send_whenTheStandingBriefIsEmpty_carriesOnlyTheProfiles', () => {
+    const profiles: PromptProfiles = TestBed.inject(PromptProfiles);
+    profiles.update(profiles.create('House style').id, { system: 'British English.' });
+    agent.bindStandingBrief((): string | null => null);
+
+    agent.send('hello');
+
+    expect(runCalls[0].systemPromptExtra).toBe('### House style\nBritish English.');
+  });
+
   it('send_whenNoLanguageIsBound_carriesNoneAndOnlyUnscopedProfilesApply', () => {
     const profiles: PromptProfiles = TestBed.inject(PromptProfiles);
     profiles.update(profiles.create('Everywhere').id, { user: 'Be brief.' });
