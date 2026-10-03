@@ -35,7 +35,8 @@
              settings view's own tree because it is the same tree — a plugin root with a leaf per
              thing installed beneath it — and a user who set something up here finds it in Settings
              under the same shape. -->
-        <nav class="setup__rail" aria-label="Setup progress">
+        <!-- The scrollbar floats over the rows, so the current step's fill reaches the rail's edge. -->
+        <nav class="setup__rail" aria-label="Setup progress" appOverlayScrollbar=".tree-list">
           <app-tree-view [rows]="rows()" [selectedId]="step()?.id ?? null">
             <ng-template let-row>
               @let rung = stepOf(row);
@@ -128,11 +129,17 @@
           </div>
 
           <footer class="setup__actions">
-            <app-button label="Back" [disabled]="!wizard.canGoBack()" (click)="wizard.back()" />
+            <!-- Back mirrors Next: the same arrow at the same size, leading where Next's trails. Both
+                 are projected, so the two glyphs match; the label is projected too, after the arrow. -->
+            <app-button size="large" [disabled]="!wizard.canGoBack()" (click)="wizard.back()">
+              <app-icon [icon]="Icon.ARROW_LEFT" [size]="0.85" />
+              <span class="setup__action-label">Back</span>
+            </app-button>
             <!-- The arrow is projected rather than passed as the button's icon, which leads the
                  label; an arrow that says "onwards" has to trail it. -->
             <app-button
               variant="solid"
+              size="large"
               [label]="wizard.isLastStep() ? 'Finish' : 'Next'"
               (click)="wizard.next()"
             >

@@ -79,6 +79,17 @@
   padding: 0;
 }
 
+// A screen's primary actions: taller, and more room around the label, so they read as the way on.
+:host(.button--large) .button {
+  gap: 0.45rem;
+  block-size: calc(var(--control-height) + 0.5rem);
+  padding: 0 1rem;
+}
+
+:host(.button--large.button--icon-only) .button {
+  padding: 0;
+}
+
 // Tone: repoints the local tone variables off the accent onto a state colour. Only the four state
 // tones carry a class (the accent tone is the default and adds none), so these never touch an
 // ordinary button. Each builds the same tinted-fill / brighter-border surface the accent does, from

@@ -103,3 +103,45 @@ select:focus-visible {
   background: var(--scrollbar-thumb-hover-color);
   background-clip: padding-box;
 }
+
+// The overlay scrollbar (`appOverlayScrollbar`): where a row's full-width fill has to reach the edge,
+// the native bar is hidden — it would take its width out of the content — and a thumb of the same
+// look floats over the content instead, revealed the same way. Global because the thumb is added to
+// the host by a directive, outside any component's style scope.
+.overlay-scrollbar {
+  position: relative;
+}
+
+.overlay-scrollbar__scroller {
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+.overlay-scrollbar__thumb {
+  position: absolute;
+  inset-inline-end: 0.1875rem;
+  z-index: 1;
+  inline-size: 0.25rem;
+  border-radius: 1rem;
+  background: var(--scrollbar-thumb-color);
+  opacity: 0;
+  transition: opacity 150ms ease-in-out;
+
+  &:hover {
+    background: var(--scrollbar-thumb-hover-color);
+  }
+
+  // Wider than drawn, so a slim pill is still easy to grab.
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0 -0.25rem;
+  }
+}
+
+.overlay-scrollbar__thumb--shown {
+  opacity: 1;
+}

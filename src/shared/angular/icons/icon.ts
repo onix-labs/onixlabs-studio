@@ -1371,9 +1371,14 @@ export class Icon {
   public static readonly SETUP_WARNING: Icon = new Icon('ph ph-warning-circle');
 
   /**
+   * Gets the arrow leading the setup wizard's Back button, mirroring Next's.
+   */
+  public static readonly ARROW_LEFT: Icon = new Icon('ph-bold ph-arrow-left');
+
+  /**
    * Gets the arrow trailing the setup wizard's Next button.
    */
-  public static readonly ARROW_RIGHT: Icon = new Icon('ph ph-arrow-right');
+  public static readonly ARROW_RIGHT: Icon = new Icon('ph-bold ph-arrow-right');
 
   // --- Status bar ---
 
