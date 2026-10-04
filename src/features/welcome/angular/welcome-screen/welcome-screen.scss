@@ -100,9 +100,10 @@
 
 // ── The section tabs ───────────────────────────────────────────────────────────────────────────
 // Drawn like the document well's tabs (see dock-tab-group.scss) and sharing their geometry
-// (`--dock-panel-radius`, `--dock-panel-foot-radius`, `--tab-foot-*`): rounded on top, the active one
-// outlined in the accent with two concave feet flaring into the panel's border, so the tab and its
-// content read as one shape. Inactive tabs are quiet charcoal labels with a faint edge.
+// (`--dock-panel-radius`, `--dock-panel-foot-radius`, `--tab-foot-*`): an inactive tab is a plain
+// label — no fill, no edge — that turns accent on hover; the active one is outlined in the accent, its
+// text and icon accent too, with two concave feet flaring into the panel's border so the tab and its
+// content read as one shape.
 .welcome__tabs {
   position: relative;
   z-index: 1;
@@ -119,8 +120,10 @@
   align-items: center;
   gap: 0.6rem;
   min-inline-size: 0;
-  // Every tab overlaps the panel's top border by its own, so the active tab's open bottom sits on the
-  // panel with no seam and all tabs share one height.
+  // ⛔ No bottom border on any tab, and a 1px overlap of the panel: the active tab's fill then covers
+  // the panel's top border beneath it, and its feet — anchored to the tab's true bottom — land on that
+  // border. A transparent bottom border instead let the panel's line show through across the tab and
+  // lifted the feet 1px off the border, so they never met it.
   margin-block-end: -0.0625rem;
   padding: 0.7rem 1rem;
   font: inherit;
@@ -128,18 +131,15 @@
   font-weight: 500;
   text-align: start;
   color: var(--wl-muted);
-  background: rgba(255, 255, 255, 0.025);
-  border: 0.0625rem solid var(--wl-border);
-  border-block-end-color: transparent;
+  background: transparent;
+  border: 0.0625rem solid transparent;
+  border-block-end: none;
   border-radius: var(--dock-panel-radius) var(--dock-panel-radius) 0 0;
   cursor: default;
-  transition:
-    color 120ms ease,
-    background 120ms ease;
+  transition: color 120ms ease;
 
   &:hover {
-    color: var(--wl-text);
-    background: rgba(255, 255, 255, 0.05);
+    color: var(--accent-color);
   }
 
   &:focus-visible {
@@ -160,12 +160,12 @@
   white-space: nowrap;
 }
 
-// The active tab: the accent outline, a soft accent wash INSIDE the tab that fades into the panel's
-// own top, and the feet. The wash ends on exactly the panel's top colour, so there is no line where
-// the tab meets its content.
+// The active tab: the accent outline, accent text and icon, a soft accent wash INSIDE the tab that ends
+// on exactly the panel's top colour (so there is no line where the tab meets its content), and the
+// feet.
 .welcome__tab--active {
   z-index: 1;
-  color: var(--wl-text);
+  color: var(--accent-color);
   background:
     linear-gradient(
       180deg,
@@ -174,21 +174,6 @@
     ),
     var(--wl-panel);
   border-color: var(--accent-color);
-  border-block-end-color: transparent;
-
-  &:hover {
-    background:
-      linear-gradient(
-        180deg,
-        rgba(var(--accent-color-rgb), 0.26) 0%,
-        rgba(var(--accent-color-rgb), 0.1) 100%
-      ),
-      var(--wl-panel);
-  }
-
-  .welcome__tab-icon {
-    color: var(--accent-color);
-  }
 
   // The two outward-flaring feet that join the tab to the panel's border, as the document tabs do.
   &::before,
@@ -237,8 +222,9 @@
 }
 
 // The content panel: the accent edge continuing from the active tab, a faint accent wash at its top
-// that the active tab's own wash runs into, and the panel colour beneath. Its start corner squares off
-// while the first tab is active, so the tab's edge runs straight down into the panel's.
+// that the active tab's own wash runs into, a soft accent glow rising from the middle of its bottom
+// edge, and the panel colour beneath. Its start corner squares off while the first tab is active, so
+// the tab's edge runs straight down into the panel's.
 .welcome__panel {
   // Sections adapt to the panel's width, not the window's.
   container: welcome-panel / inline-size;
@@ -252,6 +238,7 @@
   padding: 1.25rem;
   background:
     linear-gradient(180deg, rgba(var(--accent-color-rgb), 0.1) 0, transparent 12rem),
+    radial-gradient(60% 55% at 50% 100%, rgba(var(--accent-color-rgb), 0.2), transparent 100%),
     var(--wl-panel);
   border: 0.0625rem solid var(--accent-color);
   border-radius: var(--dock-panel-radius);
@@ -276,16 +263,7 @@
 // The light theme keeps the tab and panel geometry, with lighter washes so the accent still reads as
 // an edge rather than a fill.
 :host-context([data-theme-mode='light']) {
-  .welcome__tab {
-    background: transparent;
-
-    &:hover {
-      background: var(--gray-200);
-    }
-  }
-
-  .welcome__tab--active,
-  .welcome__tab--active:hover {
+  .welcome__tab--active {
     background:
       linear-gradient(
         180deg,
@@ -305,6 +283,7 @@
   .welcome__panel {
     background:
       linear-gradient(180deg, rgba(var(--accent-color-rgb), 0.04) 0, transparent 12rem),
+      radial-gradient(60% 55% at 50% 100%, rgba(var(--accent-color-rgb), 0.08), transparent 100%),
       var(--wl-panel);
   }
 }
