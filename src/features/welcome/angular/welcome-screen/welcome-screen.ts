@@ -45,6 +45,12 @@ interface SectionTab {
    * Gets the tab's icon.
    */
   readonly icon: Icon;
+
+  /**
+   * Gets a value indicating whether the section is shown. A section still being built is kept, whole
+   * and tested, but left out of the tab strip until there is something real behind it.
+   */
+  readonly shown: boolean;
 }
 
 /**
@@ -81,11 +87,26 @@ export class WelcomeScreen {
    * Gets the section tabs, in order.
    */
   protected readonly sections: readonly SectionTab[] = [
-    { id: 'get-started', label: 'Get Started', icon: Icon.WELCOME_GET_STARTED },
-    { id: 'create', label: 'Create Something', icon: Icon.WELCOME_PROJECT },
-    { id: 'source-control', label: 'Source Control', icon: Icon.WELCOME_SOURCE_CONTROL },
-    { id: 'tools', label: 'Tools', icon: Icon.WELCOME_TOOLS },
+    { id: 'get-started', label: 'Get Started', icon: Icon.WELCOME_GET_STARTED, shown: true },
+    // ⚠️ Hidden, not removed: Create Something has no project generator behind it yet, and Source
+    // Control has no version-control or hosting plugins. Each is designed and tested, and shows again
+    // when its own branch makes it real.
+    { id: 'create', label: 'Create Something', icon: Icon.WELCOME_PROJECT, shown: false },
+    {
+      id: 'source-control',
+      label: 'Source Control',
+      icon: Icon.WELCOME_SOURCE_CONTROL,
+      shown: false,
+    },
+    { id: 'tools', label: 'Tools', icon: Icon.WELCOME_TOOLS, shown: true },
   ];
+
+  /**
+   * Gets the sections in the tab strip.
+   */
+  protected readonly shownSections: readonly SectionTab[] = this.sections.filter(
+    (tab: SectionTab): boolean => tab.shown,
+  );
 
   /**
    * Holds the tab registry the welcome actions open into.
@@ -173,6 +194,15 @@ export class WelcomeScreen {
   );
 
   /**
+   * Determines whether a section is shown.
+   * @param section The section.
+   * @returns Returns true when it is in the tab strip.
+   */
+  protected isShown(section: WelcomeSection): boolean {
+    return this.shownSections.some((tab: SectionTab): boolean => tab.id === section);
+  }
+
+  /**
    * Shows a section.
    * @param section The section.
    */
@@ -187,7 +217,7 @@ export class WelcomeScreen {
    * @param index The index of the tab the key was pressed on.
    */
   protected onTabKeydown(event: KeyboardEvent, index: number): void {
-    const last: number = this.sections.length - 1;
+    const last: number = this.shownSections.length - 1;
     const target: number | null = ((): number | null => {
       switch (event.key) {
         case 'ArrowRight':
@@ -206,7 +236,7 @@ export class WelcomeScreen {
       return;
     }
     event.preventDefault();
-    this.show(this.sections[target].id);
+    this.show(this.shownSections[target].id);
     const strip: Element | null = (event.currentTarget as HTMLElement).parentElement;
     strip?.querySelectorAll<HTMLElement>('[role="tab"]')[target]?.focus();
   }

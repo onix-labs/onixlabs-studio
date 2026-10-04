@@ -30,7 +30,7 @@
     <!-- The sections share one tab strip, drawn like the document tabs: the active tab is outlined in
          the accent and flares into the panel beneath it, so tab and panel read as one shape. -->
     <div class="welcome__tabs" role="tablist" aria-label="Welcome">
-      @for (tab of sections; track tab.id; let index = $index) {
+      @for (tab of shownSections; track tab.id; let index = $index) {
         <button
           type="button"
           class="welcome__tab"
@@ -64,11 +64,15 @@
         (openTab)="create($event)"
         (opened)="opened()"
       />
-      <app-welcome-create [hidden]="section() !== 'create'" />
-      <app-welcome-source-control
-        [hidden]="section() !== 'source-control'"
-        (openTab)="create($event)"
-      />
+      @if (isShown('create')) {
+        <app-welcome-create [hidden]="section() !== 'create'" />
+      }
+      @if (isShown('source-control')) {
+        <app-welcome-source-control
+          [hidden]="section() !== 'source-control'"
+          (openTab)="create($event)"
+        />
+      }
       <app-welcome-tools [hidden]="section() !== 'tools'" (openTab)="create($event)" />
     </section>
   </ng-template>
