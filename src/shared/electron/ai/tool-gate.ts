@@ -13,17 +13,21 @@ import { coarseGrantSource } from './tool-policy';
  * @param context The run context (carries the posture and the permission round-trip).
  * @param name The tool name shown on the permission prompt.
  * @param execute The gated executor.
+ * @param describe Says what the call will do, for the prompt and the audit record; omitted to
+ * summarise the input generically, which knows the common keys (a path, a command) but not a tool's
+ * own.
  * @returns Returns the wrapped executor.
  */
 export function gated<TArgs>(
   context: AgentRunContext,
   name: string,
   execute: (args: TArgs) => Promise<string>,
+  describe?: (args: TArgs) => string,
 ): (args: TArgs) => Promise<string> {
   return async (args: TArgs): Promise<string> => {
     // Per-tool default policy (#309), consulted ahead of the posture: `deny` refuses, `allow` runs
     // without prompting, and an unset tool (or `ask`) falls through to the posture/prompt below.
-    const detail: string = summarizeToolInput(args);
+    const detail: string = describe?.(args) ?? summarizeToolInput(args);
     const policy: AiToolPolicy = context.toolPolicies[name] ?? 'ask';
     if (policy === 'deny') {
       logger.debug('tool-gate.gated', `Tool "${name}" refused by Deny policy`);

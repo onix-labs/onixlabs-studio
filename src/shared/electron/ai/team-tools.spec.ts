@@ -15,6 +15,7 @@ import type { AgentRunContext } from './agent-provider';
 vi.mock('electron', () => ({ app: { isPackaged: false } }));
 
 const { describeOffer, invokeTool } = await import('./harness-tools');
+const { describeStart } = await import('./team-tools');
 
 /**
  * The team tool names, for picking them out of an offer.
@@ -38,6 +39,7 @@ interface Recording {
   readonly context: AgentRunContext;
   readonly requests: { capability: string; input: unknown; timeoutMs?: number }[];
   readonly prompts: string[];
+  readonly details: string[];
   readonly audits: string[];
 }
 
@@ -53,6 +55,7 @@ function contextFor(
 ): Recording {
   const requests: { capability: string; input: unknown; timeoutMs?: number }[] = [];
   const prompts: string[] = [];
+  const details: string[] = [];
   const audits: string[] = [];
   const context: AgentRunContext = {
     requestId: 'r1',
@@ -74,12 +77,13 @@ function contextFor(
     },
     emit: (): void => undefined,
     recordAudit: (name: string): void => void audits.push(name),
-    requestPermission: (name: string): Promise<boolean> => {
+    requestPermission: (name: string, detail: string): Promise<boolean> => {
       prompts.push(name);
+      details.push(detail);
       return Promise.resolve(options.grant ?? true);
     },
   } as unknown as AgentRunContext;
-  return { context, requests, prompts, audits };
+  return { context, requests, prompts, details, audits };
 }
 
 /**
@@ -144,7 +148,7 @@ describe('team tools', () => {
   });
 
   it('askTheUserBeforeStartingAWorker_withALongTimeout', async () => {
-    const { context, requests, prompts, audits } = contextFor('lead');
+    const { context, requests, prompts, details, audits } = contextFor('lead');
 
     const outcome: { result: string | null; error: string | null } = await invokeTool(
       context,
@@ -154,6 +158,8 @@ describe('team tools', () => {
 
     expect(outcome.result).toBe('Done.');
     expect(prompts).toEqual([TEAM_START_WORKER]);
+    // The prompt says what the user is approving, not just the tool's name.
+    expect(details).toEqual(['"Schema" on agent/schema from main — Add it.']);
     expect(audits).toEqual([TEAM_START_WORKER]);
     expect(requests).toHaveLength(1);
     expect(requests[0].capability).toBe(TEAM_START_WORKER);
@@ -164,6 +170,18 @@ describe('team tools', () => {
       base: 'main',
     });
     expect(requests[0].timeoutMs).toBeGreaterThan(60_000);
+  });
+
+  it('describeStart_boundsALongBrief_andOmitsAMissingBase', () => {
+    const detail: string = describeStart({
+      title: 'T',
+      task: `${'word '.repeat(100)}`,
+      branch: 'b',
+    });
+
+    expect(detail.startsWith('"T" on b — word word')).toBe(true);
+    expect(detail.endsWith('…')).toBe(true);
+    expect(detail).not.toContain('from');
   });
 
   it('startNoWorker_whenTheUserDeclines', async () => {

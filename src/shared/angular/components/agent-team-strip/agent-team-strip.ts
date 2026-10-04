@@ -88,18 +88,16 @@ export class AgentTeamStrip {
   }
 
   /**
-   * Gets the line beneath a worker's title: what it waits on, else what it reported, else its branch.
+   * Gets the line beneath a worker's title: what it waits on, else what it reported, else nothing —
+   * the title line already carries its state and branch.
    * @param worker The worker.
-   * @returns Returns the line.
+   * @returns Returns the line, or null for none.
    */
-  protected detail(worker: TeamWorkerView): string {
+  protected detail(worker: TeamWorkerView): string | null {
     if (worker.pending !== null) {
       return `Waiting on you for ${describeRequest(worker.pending)}`;
     }
-    if (worker.summary !== null) {
-      return worker.summary;
-    }
-    return worker.branch;
+    return worker.summary;
   }
 
   /**

@@ -21,7 +21,9 @@
               {{ worker.title }}
               <span class="team__meta">{{ display(worker).label }} · {{ worker.branch }}</span>
             </span>
-            <span class="team__detail" [title]="detail(worker)">{{ detail(worker) }}</span>
+            @if (detail(worker); as line) {
+              <span class="team__detail" [title]="line">{{ line }}</span>
+            }
           </span>
           <span class="team__actions">
             @if (isPermission(worker)) {

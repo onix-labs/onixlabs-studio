@@ -69,6 +69,27 @@ export const WORKER_PROMPT_APPENDIX: string = [
 const START_WORKER_TIMEOUT_MS: number = 10 * 60_000;
 
 /**
+ * The most of a worker's task shown on the prompt that asks the user to start it.
+ */
+const START_PROMPT_TASK_CHARS: number = 160;
+
+/**
+ * Says what starting a worker will do, for the prompt that asks the user: which task, on which branch,
+ * from which base, and the start of the brief — enough to approve or refuse it without opening
+ * anything.
+ * @param args The lead's request.
+ * @returns Returns the description.
+ */
+export function describeStart(args: StartWorkerInput): string {
+  const task: string = args.task.trim().replace(/\s+/g, ' ');
+  const brief: string =
+    task.length > START_PROMPT_TASK_CHARS ? `${task.slice(0, START_PROMPT_TASK_CHARS - 1)}…` : task;
+  const base: string =
+    args.base === undefined || args.base.length === 0 ? '' : ` from ${args.base}`;
+  return `"${args.title}" on ${args.branch}${base} — ${brief}`;
+}
+
+/**
  * Asks the renderer's team to fulfil a request and turns its answer into what the model is told. A
  * renderer that does not answer — no team hosts this agent, an older build — is reported as such
  * rather than as success.
@@ -188,8 +209,12 @@ async function leadTools(context: AgentRunContext): Promise<ToolSet> {
       }),
       // ⛔ Gated: the one team action put to the user. Each worker is a clone, a branch and a paid
       // agent running unattended, and approving it is the user's bound on the team.
-      execute: gated(context, TEAM_START_WORKER, (args: StartWorkerInput): Promise<string> =>
-        ask(context, TEAM_START_WORKER, args, START_WORKER_TIMEOUT_MS),
+      execute: gated(
+        context,
+        TEAM_START_WORKER,
+        (args: StartWorkerInput): Promise<string> =>
+          ask(context, TEAM_START_WORKER, args, START_WORKER_TIMEOUT_MS),
+        describeStart,
       ),
     }),
     [TEAM_WORKER_STATUS]: tool({

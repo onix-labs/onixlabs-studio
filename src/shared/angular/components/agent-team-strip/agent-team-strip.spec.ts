@@ -102,6 +102,8 @@ describe('AgentTeamStrip', () => {
     expect(rows).toHaveLength(2);
     expect(rows[0].textContent).toContain('Task w1');
     expect(rows[0].textContent).toContain('Working · agent/w1');
+    // The branch is on the title line; a worker with nothing to report shows no second line.
+    expect(rows[0].querySelector('.team__detail')).toBeNull();
     expect(rows[1].textContent).toContain('Done');
     expect(rows[1].textContent).toContain('Added it.');
     // A finished worker cannot be stopped.
