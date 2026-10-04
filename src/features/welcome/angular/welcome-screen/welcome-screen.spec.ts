@@ -2,20 +2,9 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { ModalWindows } from '@shared/angular/services/modal-windows/modal-windows';
 import { FakeModalWindows } from '@shared/angular/services/modal-windows/modal-windows.fake';
-import { RecentItem, RecentItems } from '@shared/angular/services/recent-items/recent-items';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { WelcomeModal } from '@shared/angular/services/welcome-modal/welcome-modal';
 import { WelcomeScreen } from './welcome-screen';
-
-/**
- * Exposes the protected members exercised by the missing-item tests.
- */
-interface WelcomeInternals {
-  openRecent(item: RecentItem): Promise<void>;
-  missingItem(): RecentItem | null;
-  removeMissing(): void;
-  dismissMissing(): void;
-}
 
 describe('WelcomeScreen', () => {
   let fixture: ComponentFixture<WelcomeScreen>;
@@ -23,8 +12,6 @@ describe('WelcomeScreen', () => {
   let host: HTMLElement;
   let tabs: Tabs;
   let modal: WelcomeModal;
-  let recentItems: RecentItems;
-  let internals: WelcomeInternals;
 
   beforeEach(async () => {
     windows = new FakeModalWindows();
@@ -36,8 +23,6 @@ describe('WelcomeScreen', () => {
     fixture = TestBed.createComponent(WelcomeScreen);
     tabs = TestBed.inject(Tabs);
     modal = TestBed.inject(WelcomeModal);
-    recentItems = TestBed.inject(RecentItems);
-    internals = fixture.componentInstance as unknown as WelcomeInternals;
     await fixture.whenStable();
     // The welcome cold-starts into its own window; its content renders into that window's host, so
     // the content queries below run against it rather than the (empty) component element.
@@ -45,70 +30,130 @@ describe('WelcomeScreen', () => {
   });
 
   /**
-   * Records a recent item and returns it, so a test can drive an open of a known entry. Outside
-   * Electron the bridge is absent, so re-opening any such item fails — standing in for a moved file.
+   * Gets the section tabs.
+   * @returns Returns them, in order.
    */
-  function seedRecent(): RecentItem {
-    recentItems.record('/gone/report.md', 'report.md', 'markdown');
-    return recentItems.items()[0];
+  function sectionTabs(): HTMLButtonElement[] {
+    return Array.from(host.querySelectorAll<HTMLButtonElement>('.welcome__tab'));
   }
-
-  it('should create', () => {
-    expect(fixture.componentInstance).toBeTruthy();
-  });
 
   /**
-   * Clicks the accordion header of the group with the given title and lets the window's content
-   * settle.
-   * @param title The group title.
+   * Gets the section tab with the given label.
+   * @param label The tab's label.
+   * @returns Returns the tab.
    */
-  async function clickGroupHeader(title: string): Promise<void> {
-    Array.from(host.querySelectorAll<HTMLButtonElement>('.welcome__group-header'))
-      .find(
-        (header: HTMLButtonElement): boolean =>
-          header.textContent?.trim().startsWith(title) ?? false,
-      )
-      ?.click();
-    await fixture.whenStable();
+  function sectionTab(label: string): HTMLButtonElement {
+    const tab: HTMLButtonElement | undefined = sectionTabs().find(
+      (candidate: HTMLButtonElement): boolean => candidate.textContent?.trim() === label,
+    );
+    if (tab === undefined) {
+      throw new Error(`No section tab "${label}"`);
+    }
+    return tab;
   }
 
-  it('body_groupsAreGetStartedThenToolsThenRecentItems', () => {
-    const titles: (string | undefined)[] = Array.from(
-      host.querySelectorAll<HTMLElement>('.welcome__group-title'),
-    ).map((heading: HTMLElement): string | undefined => heading.textContent?.trim());
-    expect(titles).toEqual(['Get Started', 'Tools', 'Recent Items']);
+  /**
+   * Gets the section element that is showing.
+   * @returns Returns its tag name.
+   */
+  function shownSection(): string {
+    const shown: Element[] = Array.from(host.querySelectorAll('.welcome__panel > *:not([hidden])'));
+    expect(shown).toHaveLength(1);
+    return shown[0].tagName.toLowerCase();
+  }
+
+  it('tabs_areTheFourSections_inOrder', () => {
+    expect(sectionTabs().map((tab: HTMLButtonElement): string => tab.textContent.trim())).toEqual([
+      'Get Started',
+      'Create Something',
+      'Source Control',
+      'Tools',
+    ]);
   });
 
-  it('accordion_opensGetStartedByDefaultAndOnlyOneGroupAtATime', async () => {
-    // Get Started open: its actions show. Tools collapsed: its actions are absent.
-    expect(host.textContent).toContain('New Terminal');
-    expect(host.textContent).not.toContain('Containers');
-
-    // Opening Tools collapses Get Started.
-    await clickGroupHeader('Tools');
-    expect(host.textContent).toContain('Containers');
-    expect(host.textContent).toContain('AI Model Manager');
-    expect(host.textContent).not.toContain('New Terminal');
-
-    // Clicking the open group collapses it — both closed.
-    await clickGroupHeader('Tools');
-    expect(host.textContent).not.toContain('Containers');
-    expect(host.textContent).not.toContain('New Terminal');
+  it('opensOnGetStarted', () => {
+    expect(sectionTab('Get Started').getAttribute('aria-selected')).toBe('true');
+    expect(shownSection()).toBe('app-welcome-get-started');
   });
 
-  it('tools_settingsActionOpensTheSettingsTab', async () => {
-    await clickGroupHeader('Tools');
+  it('clickingATab_showsItsSection_andMarksItActive', async () => {
+    sectionTab('Tools').click();
+    await fixture.whenStable();
+
+    expect(sectionTab('Tools').classList).toContain('welcome__tab--active');
+    expect(sectionTab('Tools').getAttribute('aria-selected')).toBe('true');
+    expect(sectionTab('Get Started').getAttribute('aria-selected')).toBe('false');
+    expect(shownSection()).toBe('app-welcome-tools');
+  });
+
+  it('everySectionStaysMounted_soItKeepsWhatTheUserWasDoing', async () => {
+    sectionTab('Create Something').click();
+    await fixture.whenStable();
+
+    expect(host.querySelectorAll('.welcome__panel > *')).toHaveLength(4);
+    expect(shownSection()).toBe('app-welcome-create');
+  });
+
+  it('arrowKeys_moveBetweenTabs_andWrap', async () => {
+    sectionTab('Get Started').dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }),
+    );
+    await fixture.whenStable();
+    expect(shownSection()).toBe('app-welcome-tools');
+
+    sectionTab('Tools').dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }),
+    );
+    await fixture.whenStable();
+    expect(shownSection()).toBe('app-welcome-get-started');
+
+    sectionTab('Get Started').dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'End', bubbles: true }),
+    );
+    await fixture.whenStable();
+    expect(shownSection()).toBe('app-welcome-tools');
+  });
+
+  it('onlyTheActiveTab_isInTheTabOrder', () => {
+    expect(
+      sectionTabs().map((tab: HTMLButtonElement): string | null => tab.getAttribute('tabindex')),
+    ).toEqual(['0', '-1', '-1', '-1']);
+  });
+
+  it('newProject_showsCreateSomething', async () => {
     Array.from(host.querySelectorAll<HTMLButtonElement>('.welcome__action'))
-      .find((action: HTMLButtonElement): boolean => action.textContent?.trim() === 'Settings')
+      .find((action: HTMLButtonElement): boolean => action.textContent?.trim() === 'New Project')
       ?.click();
-    expect(tabs.tabs().some((tab): boolean => tab.type === 'settings')).toBe(true);
+    await fixture.whenStable();
+
+    expect(shownSection()).toBe('app-welcome-create');
   });
 
-  it('coldStart_whenNoTabs_isVisibleWithItsGlow', () => {
-    // Shown by having opened its (freestanding) window; its glow renders in that window's content.
+  it('aToolCard_opensItsTab_andStepsAside', async () => {
+    sectionTab('Tools').click();
+    await fixture.whenStable();
+    Array.from(host.querySelectorAll<HTMLButtonElement>('.welcome__tool'))
+      .find((card: HTMLButtonElement): boolean => card.textContent?.includes('Settings') ?? false)
+      ?.click();
+    await fixture.whenStable();
+
+    expect(tabs.tabs().some((tab): boolean => tab.type === 'settings')).toBe(true);
+    expect(windows.openWindows).toBe(0);
+  });
+
+  it('aGetStartedAction_opensItsTab', async () => {
+    Array.from(host.querySelectorAll<HTMLButtonElement>('.welcome__action'))
+      .find((action: HTMLButtonElement): boolean => action.textContent?.trim() === 'New Terminal')
+      ?.click();
+    await fixture.whenStable();
+
+    expect(tabs.tabs().some((tab): boolean => tab.type === 'terminal')).toBe(true);
+  });
+
+  it('coldStart_whenNoTabs_isVisible_withNoGlow', () => {
     expect(windows.openWindows).toBe(1);
-    expect(host.querySelector('.welcome__glow')).not.toBeNull();
-    expect(host.querySelectorAll('.welcome__glow-blob').length).toBe(2);
+    // Blue is an interaction colour now, not a background: the window carries no glow.
+    expect(host.querySelector('.welcome__glow')).toBeNull();
   });
 
   it('withTabs_whenModalClosed_isNotVisible', async () => {
@@ -118,53 +163,16 @@ describe('WelcomeScreen', () => {
     expect(windows.openWindows).toBe(0);
   });
 
-  it('withTabs_whenModalOpen_isVisibleAndLooksTheSame', async () => {
+  it('summonedAgain_opensOnGetStartedWhateverWasShownLast', async () => {
+    sectionTab('Tools').click();
     tabs.open('terminal');
+    await fixture.whenStable();
+    expect(windows.openWindows).toBe(0);
+
     modal.open();
     await fixture.whenStable();
+    host = windows.contentHost!;
 
-    // Summoned over tabs it is the same window with the same treatment; only its role differs.
-    const content: HTMLElement = windows.contentHost!;
-    expect(windows.openWindows).toBe(1);
-    expect(content.querySelector('.welcome__glow')).not.toBeNull();
-    expect(content.querySelectorAll('.welcome__glow-blob').length).toBe(2);
-  });
-
-  it('openRecent_whenItemCannotBeOpened_promptsWithItsChoices', async () => {
-    const item: RecentItem = seedRecent();
-
-    await internals.openRecent(item);
-    await fixture.whenStable();
-
-    // The missing-item prompt is a nested modal, so it opens its own window over the welcome's; its
-    // content is the most recently opened host.
-    expect(internals.missingItem()).toBe(item);
-    const prompt: HTMLElement = windows.contentHost!;
-    expect(prompt.querySelector('.welcome__confirm-message')).not.toBeNull();
-    expect(prompt.querySelectorAll('.welcome__confirm-actions--stack app-button').length).toBe(3);
-  });
-
-  it('removeMissing_whenPrompted_forgetsTheItemAndDismisses', async () => {
-    const item: RecentItem = seedRecent();
-    await internals.openRecent(item);
-
-    internals.removeMissing();
-
-    expect(internals.missingItem()).toBeNull();
-    expect(recentItems.items().some((entry: RecentItem): boolean => entry.path === item.path)).toBe(
-      false,
-    );
-  });
-
-  it('dismissMissing_whenPrompted_keepsTheItemButHidesThePrompt', async () => {
-    const item: RecentItem = seedRecent();
-    await internals.openRecent(item);
-
-    internals.dismissMissing();
-
-    expect(internals.missingItem()).toBeNull();
-    expect(recentItems.items().some((entry: RecentItem): boolean => entry.path === item.path)).toBe(
-      true,
-    );
+    expect(sectionTab('Get Started').getAttribute('aria-selected')).toBe('true');
   });
 });

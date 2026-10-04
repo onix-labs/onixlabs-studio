@@ -5,16 +5,19 @@ import { modalWindow } from './helpers';
 /**
  * Opens the Containers tab from the welcome screen.
  *
- * Not `openTabFromWelcome`, which clicks an action directly: the welcome screen is a single-open
- * accordion with Get Started open, and Containers lives under Tools — so the group has to be expanded
- * before its actions exist in the DOM at all.
+ * Not `openTabFromWelcome`, which clicks an action directly: the welcome screen opens on its Get
+ * Started section, and Containers is a card in the Tools section — so that tab is chosen first. The
+ * card is found by its title, since "Containers" is also one of its topic chips.
  * @param app The Electron application.
  * @param page The main window.
  */
 async function openContainers(app: ElectronApplication, page: Page): Promise<void> {
   const welcome: Page = await modalWindow(app);
-  await welcome.getByRole('button', { name: 'Tools' }).click();
-  await welcome.getByText('Containers', { exact: true }).click();
+  await welcome.getByRole('tab', { name: 'Tools' }).click();
+  await welcome
+    .locator('.welcome__tool')
+    .filter({ has: welcome.locator('.welcome__tool-title', { hasText: /^Containers$/ }) })
+    .click();
   await expect(page.locator('app-containers-view')).toBeVisible();
 }
 

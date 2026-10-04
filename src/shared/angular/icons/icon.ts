@@ -1290,6 +1290,132 @@ export class Icon {
    */
   public static readonly WELCOME_SETTINGS: Icon = new Icon('ph-light ph-gear-six');
 
+  // --- Welcome screen: tabs, Create Something, Source Control ---
+  //
+  // The welcome screen draws every glyph at the light weight, so a row of actions, a rail of steps or a
+  // list of repositories reads as one set. These are the ones its sections need beyond the actions
+  // above.
+
+  /**
+   * Gets the light-weight icon of the welcome screen's Get Started tab.
+   */
+  public static readonly WELCOME_GET_STARTED: Icon = new Icon('ph-light ph-house');
+
+  /**
+   * Gets the light-weight icon of the welcome screen's Tools tab.
+   */
+  public static readonly WELCOME_TOOLS: Icon = new Icon('ph-light ph-wrench');
+
+  /**
+   * Gets the light-weight chevron trailing each welcome action and card.
+   */
+  public static readonly WELCOME_CHEVRON: Icon = new Icon('ph-light ph-caret-right');
+
+  /**
+   * Gets the light-weight link glyph leading the clone-by-URL field.
+   */
+  public static readonly WELCOME_LINK: Icon = new Icon('ph-light ph-link');
+
+  /**
+   * Gets the light-weight download glyph on the Clone Repository action.
+   */
+  public static readonly WELCOME_CLONE: Icon = new Icon('ph-light ph-download-simple');
+
+  /**
+   * Gets the light-weight plus glyph that adds a source-control account.
+   */
+  public static readonly WELCOME_ADD: Icon = new Icon('ph-light ph-plus');
+
+  /**
+   * Gets the light-weight icon of a public repository.
+   */
+  public static readonly WELCOME_REPOSITORY: Icon = new Icon('ph-light ph-book-open');
+
+  /**
+   * Gets the light-weight icon of a private repository.
+   */
+  public static readonly WELCOME_REPOSITORY_PRIVATE: Icon = new Icon('ph-light ph-lock-simple');
+
+  /**
+   * Gets the light-weight icon of the repository browser's All Repositories view.
+   */
+  public static readonly WELCOME_REPOSITORIES: Icon = new Icon('ph-light ph-stack');
+
+  /**
+   * Gets the light-weight icon of the repository browser's Starred view.
+   */
+  public static readonly WELCOME_STARRED: Icon = new Icon('ph-light ph-star');
+
+  /**
+   * Gets the light-weight icon of the repository browser's Recent view.
+   */
+  public static readonly WELCOME_RECENT: Icon = new Icon('ph-light ph-clock');
+
+  /**
+   * Gets the light-weight icon of the repository browser's Forks view.
+   */
+  public static readonly WELCOME_FORKS: Icon = new Icon('ph-light ph-git-fork');
+
+  /**
+   * Gets the light-weight icon of the repository browser's Archived view.
+   */
+  public static readonly WELCOME_ARCHIVED: Icon = new Icon('ph-light ph-archive');
+
+  /**
+   * Gets the light-weight refresh glyph of the repository browser.
+   */
+  public static readonly WELCOME_REFRESH: Icon = new Icon('ph-light ph-arrows-clockwise');
+
+  /**
+   * Gets the thin glyph shown large in the repository browser's empty state.
+   */
+  public static readonly WELCOME_REPOSITORIES_EMPTY: Icon = new Icon('ph-thin ph-git-branch');
+
+  /**
+   * Gets the light-weight paperclip on the project wizard's Add Context action.
+   */
+  public static readonly WELCOME_ATTACH: Icon = new Icon('ph-light ph-paperclip');
+
+  /**
+   * Gets the light-weight icon of the project wizard's Use a Template action.
+   */
+  public static readonly WELCOME_TEMPLATE: Icon = new Icon('ph-light ph-file-text');
+
+  /**
+   * Gets the light-weight send glyph on the project wizard's Generate Plan action.
+   */
+  public static readonly WELCOME_GENERATE: Icon = new Icon('ph-light ph-paper-plane-right');
+
+  /**
+   * Gets the light-weight icon of the AI agent service example project.
+   */
+  public static readonly WELCOME_EXAMPLE_AGENT: Icon = new Icon('ph-light ph-chat-circle-dots');
+
+  /**
+   * Gets the light-weight icon of the data platform example project.
+   */
+  public static readonly WELCOME_EXAMPLE_DATA: Icon = new Icon('ph-light ph-graph');
+
+  /**
+   * Gets the light-weight icon of the workflow automation example project.
+   */
+  public static readonly WELCOME_EXAMPLE_WORKFLOW: Icon = new Icon('ph-light ph-stack-simple');
+
+  /**
+   * Gets the light-weight icon of the web application example project.
+   */
+  public static readonly WELCOME_EXAMPLE_WEB: Icon = new Icon('ph-light ph-globe');
+
+  /**
+   * Gets the light-weight icon of the service mesh node example project.
+   */
+  public static readonly WELCOME_EXAMPLE_SERVICE: Icon = new Icon('ph-light ph-cloud');
+
+  /**
+   * Gets the light-weight icon of the start-from-a-template example card.
+   */
+  public static readonly WELCOME_EXAMPLE_TEMPLATE: Icon = new Icon('ph-light ph-code');
+
   // --- Setup wizard ---
   //
   // One icon per step of the setup wizard's rail, plus the marks its welcome step uses. They are a

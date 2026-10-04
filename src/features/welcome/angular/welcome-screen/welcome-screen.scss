@@ -2,172 +2,78 @@
   display: contents;
 }
 
-// Theme the reusable modal for the welcome presentation. The welcome screen follows the app's selected
-// accent: `--wl-accent` (and its RGB triplet) alias `--accent-color`/`--accent-color-rgb`, so every
-// accent-tinted glow, border and focus ring below tracks the user's chosen colour. This block is the
-// dark treatment (the default); a clean light-mode variant re-tunes the neutrals below via
-// :host-context([data-theme-mode='light']). `--body-foreground-color` and
-// `--welcome-muted-foreground-color` are overridden too, so the modal chrome (close button, focus
-// rings) and any inherited defaults adopt the same palette. All of these inherit down into the
-// projected content and into the modal component.
+// Theme the reusable modal for the welcome presentation, and set the palette every section draws
+// with (`--wl-*`). The window itself is a calm charcoal: blue is an interaction colour here, not a
+// background, so it lives on the active tab, its panel, and the controls — never as a glow across the
+// window. `--wl-accent` follows the app's chosen accent. This block is the dark treatment; a light
+// variant re-tunes the neutrals below via :host-context([data-theme-mode='light']).
 .welcome-modal {
-  // Follow the app accent, plus a fixed set of neutrals for the dark treatment.
   --wl-accent: var(--accent-color);
   --wl-accent-rgb: var(--accent-color-rgb);
-  --wl-text: #f4f4fa;
-  --wl-muted: #b7b7cc;
-  --wl-faint: #7c7c95;
+  --wl-text: #f2f3f7;
+  --wl-muted: #b4b7c6;
+  --wl-faint: #7d8193;
   --wl-surface: rgba(255, 255, 255, 0.035);
-  --wl-surface-hover: rgba(255, 255, 255, 0.07);
-  --wl-surface-border: rgba(255, 255, 255, 0.08);
+  --wl-surface-hover: rgba(255, 255, 255, 0.06);
+  --wl-surface-border: rgba(255, 255, 255, 0.09);
   --wl-border: rgba(255, 255, 255, 0.08);
+  // The panel colour the active tab and its content share, so the two read as one shape.
+  --wl-panel: #1d2026;
 
   // Pin the inherited foregrounds to the fixed palette within the welcome.
   --body-foreground-color: var(--wl-text);
   --welcome-muted-foreground-color: var(--wl-muted);
 
-  // Modal presentation: a wide, solid dark panel with a soft internal glow, over a dark backdrop.
   --modal-fade-duration: 280ms;
-  // Keep the welcome's own backdrop blur (the ambient cold-start scene zeroes it out below) rather
-  // than the global modal default.
   --modal-backdrop-blur: var(--welcome-backdrop-blur);
   --modal-panel-inline-size: min(63rem, 100%);
   --modal-panel-radius: 2rem;
-  --modal-panel-background:
-    radial-gradient(130% 90% at 88% -12%, rgba(var(--accent-color-rgb), 0.16), transparent 55%),
-    linear-gradient(158deg, var(--gray-900) 0%, var(--gray-950) 62%);
+  --modal-panel-background: linear-gradient(170deg, #26292f 0%, #1a1c21 55%, #16181c 100%);
   --modal-panel-backdrop-filter: none;
-  --modal-panel-border-color: rgba(var(--accent-color-rgb), 0.35);
+  --modal-panel-border-color: rgba(255, 255, 255, 0.1);
   --modal-panel-shadow: 0 2rem 4.5rem rgba(0, 0, 0, 0.6);
   --modal-backdrop-color: color-mix(in srgb, var(--gray-950) 55%, transparent);
 }
 
-// Light-mode variant (see resources/img.png): a clean, near-white card with dark text and thin gray
-// borders, not a dark hero. The accent only survives in the logo, the active filter pill, and a faint
-// corner glow on the canvas. Additive over the dark defaults above — :host-context outranks each base
-// rule — so the dark design is untouched.
+// Light-mode variant: a clean near-white window with dark text and thin gray borders. The accent keeps
+// the same job it has in the dark treatment — the active tab, its panel's edge, the controls.
 :host-context([data-theme-mode='light']) {
   .welcome-modal {
     --wl-text: var(--gray-900);
     --wl-muted: var(--gray-700);
     --wl-faint: var(--gray-600);
-    // Cards and the search box are the panel colour, defined by their border (as in the reference).
     --wl-surface: transparent;
-    --wl-surface-hover: rgba(var(--accent-color-rgb), 0.1);
+    --wl-surface-hover: var(--gray-200);
     --wl-surface-border: var(--gray-300);
     --wl-border: var(--gray-300);
+    --wl-panel: #ffffff;
 
-    // A clean near-white panel with a soft, diffuse shadow; no gradient or glow on the panel itself.
-    // The border keeps the app accent so the panel edge reads coloured (as in the dark treatment).
     --modal-panel-background: var(--gray-100);
-    --modal-panel-border-color: rgba(var(--accent-color-rgb), 0.45);
+    --modal-panel-border-color: var(--gray-300);
     --modal-panel-shadow: 0 1.5rem 3.5rem rgba(30, 27, 60, 0.12);
-
-    // Light scrim when summoned over content (translucent so the blur reads).
     --modal-backdrop-color: color-mix(in srgb, var(--gray-150) 72%, transparent);
   }
-
-  // Faintly-gray canvas for the cold-start scene; the corner blooms supply the only accent tint.
-  // Dial the corner blooms down to a faint tint on the light canvas.
-  .welcome__glow-blob--a {
-    background: radial-gradient(
-      circle at center,
-      rgba(var(--wl-accent-rgb), 0.16),
-      transparent 68%
-    );
-  }
-
-  .welcome__glow-blob--b {
-    background: radial-gradient(
-      circle at center,
-      rgba(var(--accent-color-rgb), 0.1),
-      transparent 70%
-    );
-  }
-
-  // The recent-list surface (a translucent white on dark) becomes the plain panel colour on light.
-  .welcome__recent {
-    background: transparent;
-  }
-
-  // Row and (inactive) filter-pill hovers lift via --wl-surface, which is transparent on the light
-  // card — so give them an explicit subtle-gray hover. The active filter pill keeps its accent fill.
-  .welcome__recent-row:hover,
-  .welcome__filter:not(.welcome__filter--active):hover,
-  .welcome__filter:not(.welcome__filter--active):focus-visible {
-    background: var(--gray-200);
-  }
 }
 
-// A calm, static accent glow projected behind the panel. Shown (faded in) only in the ambient
-// cold-start scene; purely decorative.
-.welcome__glow {
-  // Fixed, not absolute: the glow belongs to the WINDOW, and bleeds to all four edges. Positioned
-  // against the content it would be clipped to the panel's padded box, which reads as a rectangle
-  // of tint floating inside the window instead of a bloom across it.
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  overflow: hidden;
-  // Decorative only: it sits behind the content, and must never take a click meant for an action
-  // beneath it.
-  pointer-events: none;
-  transition: opacity 280ms ease;
-
-  @starting-style {
-    opacity: 0;
-  }
-}
-
-.welcome__glow-blob {
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(6rem);
-}
-
-// A large accent bloom top-right, and a softer one drifting up from the lower edge.
-.welcome__glow-blob--a {
-  inline-size: 46rem;
-  block-size: 46rem;
-  inset-block-start: -15rem;
-  inset-inline-end: -12rem;
-  background: radial-gradient(
-    circle at center,
-    rgba(var(--accent-color-rgb), 0.5),
-    transparent 68%
-  );
-}
-
-.welcome__glow-blob--b {
-  inline-size: 40rem;
-  block-size: 40rem;
-  inset-block-end: -18rem;
-  inset-inline-start: 24%;
-  background: radial-gradient(
-    circle at center,
-    rgba(var(--accent-color-rgb), 0.32),
-    transparent 70%
-  );
-}
-
-// Logo on the left, identity text beside it.
+// The identity, centred over the tabs.
 .welcome__header {
   position: relative;
-  z-index: 1;
   display: flex;
+  flex: none;
   align-items: center;
   justify-content: center;
-  gap: 1.15rem;
-  // The welcome window has no title bar, and its identity block is where a user reaches for one:
-  // the whole header moves the window. Nothing in it is interactive, so nothing needs to opt out.
+  gap: 1.1rem;
+  padding-block-end: 1.1rem;
+  // The welcome window has no title bar, and its identity block is where a user reaches for one: the
+  // whole header moves the window. Nothing in it is interactive, so nothing needs to opt out.
   -webkit-app-region: drag;
   user-select: none;
 }
 
 .welcome__logo {
   flex: none;
-  inline-size: 6rem;
-  block-size: 6rem;
+  inline-size: 4.75rem;
+  block-size: 4.75rem;
   user-select: none;
 }
 
@@ -180,7 +86,7 @@
 
 .welcome__title {
   margin: 0;
-  font-size: 1.9rem;
+  font-size: 1.85rem;
   font-weight: 500;
   letter-spacing: -0.01em;
   color: var(--wl-text);
@@ -192,575 +98,221 @@
   color: var(--wl-faint);
 }
 
-// The body: a fixed-width column of grouped actions on the left, recent items filling the right.
-.welcome__body {
+// ── The section tabs ───────────────────────────────────────────────────────────────────────────
+// Drawn like the document well's tabs (see dock-tab-group.scss) and sharing their geometry
+// (`--dock-panel-radius`, `--dock-panel-foot-radius`, `--tab-foot-*`): rounded on top, the active one
+// outlined in the accent with two concave feet flaring into the panel's border, so the tab and its
+// content read as one shape. Inactive tabs are quiet charcoal labels with a faint edge.
+.welcome__tabs {
   position: relative;
   z-index: 1;
-  flex: 1;
-  display: grid;
-  grid-template-columns: 22rem 1fr;
-  gap: 1.5rem;
-  margin-block-start: 1rem;
-  min-block-size: 0;
-}
-
-// The left column stacks the action groups (Get Started, Tools, …). It is not a scroll container, so
-// an action's hover scale and glow are never clipped.
-.welcome__left {
-  display: flex;
-  flex-direction: column;
-  gap: 1.25rem;
-}
-
-// A titled group of actions; also the shape of the recent-items column. In the left column the groups
-// are a single-open accordion (see --open); the recent column is a plain grid item.
-.welcome__group {
   display: flex;
   flex: none;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-// The expanded accordion group takes the left column's slack so its actions fill the space.
-.welcome__group--open {
-  flex: 1;
-  min-block-size: 0;
-}
-
-// The right-hand recent column fills the body height so its list scrolls internally.
-.welcome__group--recent {
-  min-inline-size: 0;
-  min-block-size: 0;
-}
-
-// The accordion header: the group's title and a caret that turns to point down when open. Bespoke to
-// the welcome surface, like the rest of this screen.
-.welcome__group-header {
-  display: flex;
-  flex: none;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  inline-size: 100%;
-  padding: 0.2rem 0.15rem;
-  font: inherit;
-  text-align: start;
-  color: inherit;
-  background: transparent;
-  border: none;
-  cursor: default;
-
-  &:hover,
-  &:focus-visible {
-    outline: none;
-
-    .welcome__group-title,
-    .welcome__group-caret {
-      color: var(--wl-text);
-    }
-  }
-}
-
-.welcome__group-caret {
-  flex: none;
-  font-size: 0.9rem;
-  color: var(--wl-muted);
-  transition: color 120ms ease;
-}
-
-// A small, quiet section heading (Get Started / Tools / Recent Items), aligned across both columns.
-.welcome__group-title {
-  margin: 0;
-  font-size: 0.8rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--wl-muted);
-  transition: color 120ms ease;
-}
-
-// The open group's actions fill the remaining height; the buttons share it equally.
-.welcome__actions {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
+  align-items: flex-end;
   gap: 0.35rem;
-  min-block-size: 0;
 }
 
-// Each action is a compact row — an icon and a label — kept small so many actions fit; the row lifts
-// to an accent-tinted wash on hover.
-.welcome__action {
+.welcome__tab {
   position: relative;
-  // Share the open group's height equally so the actions fill the available space.
-  flex: 1 1 0;
   display: flex;
+  flex: 0 1 12.5rem;
   align-items: center;
   gap: 0.6rem;
-  inline-size: 100%;
-  padding: 0.5rem 0.65rem;
+  min-inline-size: 0;
+  // Every tab overlaps the panel's top border by its own, so the active tab's open bottom sits on the
+  // panel with no seam and all tabs share one height.
+  margin-block-end: -0.0625rem;
+  padding: 0.7rem 1rem;
   font: inherit;
+  font-size: 0.9rem;
+  font-weight: 500;
   text-align: start;
-  color: inherit;
-  background: var(--wl-surface);
-  border: 0.0625rem solid var(--wl-surface-border);
-  border-radius: calc(0.55rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
+  color: var(--wl-muted);
+  background: rgba(255, 255, 255, 0.025);
+  border: 0.0625rem solid var(--wl-border);
+  border-block-end-color: transparent;
+  border-radius: var(--dock-panel-radius) var(--dock-panel-radius) 0 0;
   cursor: default;
   transition:
-    background 150ms ease,
-    border-color 150ms ease,
-    box-shadow 150ms ease,
-    transform 150ms ease;
+    color 120ms ease,
+    background 120ms ease;
 
-  &:hover,
+  &:hover {
+    color: var(--wl-text);
+    background: rgba(255, 255, 255, 0.05);
+  }
+
   &:focus-visible {
-    // Lift above its neighbours so the scale and glow are never covered by the next row.
-    z-index: 1;
-    background: rgba(var(--accent-color-rgb), 0.25);
-    border-color: rgba(var(--accent-color-rgb), 1);
-    box-shadow: 0 0 2rem -0.25rem rgba(var(--accent-color-rgb), 1);
-    outline: none;
-    transform: scale(1.03);
-
-    .welcome__action-icon,
-    .welcome__action-label {
-      color: var(--accent-color);
-    }
+    outline: 0.125rem solid rgba(var(--accent-color-rgb), 0.7);
+    outline-offset: -0.25rem;
   }
 }
 
-.welcome__action-icon {
+.welcome__tab-icon {
   flex: none;
-  font-size: 1.2rem;
-  color: var(--wl-text);
-  transition: color 150ms ease;
+  font-size: 1.25rem;
 }
 
-.welcome__action-label {
+.welcome__tab-label {
   min-inline-size: 0;
-  font-size: 0.85rem;
-  font-weight: 500;
-  color: var(--wl-text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  transition: color 150ms ease;
 }
 
-// The recent-items panel framing the right-hand column; fills the column so its list scrolls within.
-.welcome__recent {
+// The active tab: the accent outline, a soft accent wash INSIDE the tab that fades into the panel's
+// own top, and the feet. The wash ends on exactly the panel's top colour, so there is no line where
+// the tab meets its content.
+.welcome__tab--active {
+  z-index: 1;
+  color: var(--wl-text);
+  background:
+    linear-gradient(
+      180deg,
+      rgba(var(--accent-color-rgb), 0.26) 0%,
+      rgba(var(--accent-color-rgb), 0.1) 100%
+    ),
+    var(--wl-panel);
+  border-color: var(--accent-color);
+  border-block-end-color: transparent;
+
+  &:hover {
+    background:
+      linear-gradient(
+        180deg,
+        rgba(var(--accent-color-rgb), 0.26) 0%,
+        rgba(var(--accent-color-rgb), 0.1) 100%
+      ),
+      var(--wl-panel);
+  }
+
+  .welcome__tab-icon {
+    color: var(--accent-color);
+  }
+
+  // The two outward-flaring feet that join the tab to the panel's border, as the document tabs do.
+  &::before,
+  &::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    box-sizing: content-box;
+    block-size: var(--dock-panel-foot-radius);
+    inline-size: var(--dock-panel-foot-radius);
+    margin-inline: -0.125rem;
+    background:
+      linear-gradient(rgba(var(--accent-color-rgb), 0.1), rgba(var(--accent-color-rgb), 0.1)),
+      var(--wl-panel);
+    corner-shape: var(--tab-foot-corner-shape, superellipse(-2.3));
+  }
+
+  &::before {
+    left: calc(-1 * var(--dock-panel-foot-radius) + var(--tab-foot-reach, 0.0625rem));
+    mask: radial-gradient(
+      circle at top left,
+      transparent var(--dock-panel-foot-radius),
+      #000 var(--dock-panel-foot-radius)
+    );
+    border-start-start-radius: var(--dock-panel-foot-radius);
+    border-block-start: 0.0625rem solid var(--accent-color);
+    border-inline-start: 0.0625rem solid var(--accent-color);
+  }
+
+  &::after {
+    right: calc(-1 * var(--dock-panel-foot-radius) + var(--tab-foot-reach, 0.0625rem));
+    mask: radial-gradient(
+      circle at top right,
+      transparent var(--dock-panel-foot-radius),
+      #000 var(--dock-panel-foot-radius)
+    );
+    border-start-end-radius: var(--dock-panel-foot-radius);
+    border-block-start: 0.0625rem solid var(--accent-color);
+    border-inline-end: 0.0625rem solid var(--accent-color);
+  }
+
+  // The first tab meets the panel's straight start edge, so it has no outward start-side foot.
+  &:first-child::before {
+    display: none;
+  }
+}
+
+// The content panel: the accent edge continuing from the active tab, a faint accent wash at its top
+// that the active tab's own wash runs into, and the panel colour beneath. Its start corner squares off
+// while the first tab is active, so the tab's edge runs straight down into the panel's.
+.welcome__panel {
+  // Sections adapt to the panel's width, not the window's.
+  container: welcome-panel / inline-size;
+
+  position: relative;
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 0.75rem;
-  // A zero min lets long rows truncate, and the inner list bind and scroll, rather than growing modal.
-  min-inline-size: 0;
+  inline-size: 100%;
   min-block-size: 0;
-  padding: 1.1rem 1.15rem;
-  background: rgba(255, 255, 255, 0.02);
-  border: 0.0625rem solid var(--wl-border);
-  border-radius: calc(1rem * var(--border-radius-multiplier));
+  padding: 1.25rem;
+  background:
+    linear-gradient(180deg, rgba(var(--accent-color-rgb), 0.1) 0, transparent 12rem),
+    var(--wl-panel);
+  border: 0.0625rem solid var(--accent-color);
+  border-radius: var(--dock-panel-radius);
   corner-shape: var(--app-corner-shape, squircle);
 }
 
-// The always-open search field and Clear pill share the top row.
-.welcome__recent-head {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
+.welcome__panel--first {
+  border-start-start-radius: 0;
 }
 
-// The search field fills the remaining width, with a trailing magnifier.
-.welcome__searchbox {
-  display: flex;
-  flex: 1 1 auto;
-  align-items: center;
-  gap: 0.4rem;
-  min-inline-size: 0;
-  padding-inline: 0.75rem;
-  background: var(--wl-surface);
-  border: 0.0625rem solid var(--wl-surface-border);
-  border-radius: 999px;
-  transition: border-color 120ms ease;
-
-  &:focus-within {
-    border-color: rgba(var(--accent-color-rgb), 0.6);
-  }
-}
-
-.welcome__searchbox-input {
-  flex: 1 1 auto;
-  min-inline-size: 0;
-  padding-block: 0.45rem;
-  font: inherit;
-  font-size: 0.85rem;
-  color: var(--wl-text);
-  background: transparent;
-  border: none;
-
-  &::placeholder {
-    color: var(--wl-faint);
-  }
-
-  &:focus-visible {
-    outline: none;
-  }
-}
-
-.welcome__searchbox-icon {
-  flex: none;
-  font-size: 1rem;
-  color: var(--wl-faint);
-}
-// ── Bespoke controls ──────────────────────────────────────────────────────────────────────────
-// The search box, the Clear pill and the filter pills below are DELIBERATELY not `app-text-field`,
-// `app-button` and `app-button-group`. The welcome screen is the application's one bespoke surface,
-// drawn to its own palette (`--wl-*`) and geometry; the shared controls would either look wrong here
-// or have to be overridden from this stylesheet, which is precisely the drift they exist to prevent.
-// Everywhere else in the application, the atoms are the only way a control is drawn.
-
-// The search field fills the remaining width, with a trailing magnifier.
-.welcome__searchbox {
-  display: flex;
-  flex: 1 1 auto;
-  align-items: center;
-  gap: 0.4rem;
-  min-inline-size: 0;
-  padding-inline: 0.75rem;
-  background: var(--wl-surface);
-  border: 0.0625rem solid var(--wl-surface-border);
-  border-radius: 999px;
-  transition: border-color 120ms ease;
-
-  &:focus-within {
-    border-color: rgba(var(--accent-color-rgb), 0.6);
-  }
-}
-
-.welcome__searchbox-input {
-  flex: 1 1 auto;
-  min-inline-size: 0;
-  padding-block: 0.45rem;
-  font: inherit;
-  font-size: 0.85rem;
-  color: var(--wl-text);
-  background: transparent;
-  border: none;
-
-  &::placeholder {
-    color: var(--wl-faint);
-  }
-
-  &:focus-visible {
-    outline: none;
-  }
-}
-
-.welcome__searchbox-icon {
-  flex: none;
-  font-size: 1rem;
-  color: var(--wl-faint);
-}
-
-// A pill beside the search field that clears the whole recent-items history (after confirmation).
-// Mirrors the search box's pill shape and surface so the header row reads as one control cluster.
-.welcome__clear {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.45rem 0.85rem;
-  font: inherit;
-  font-size: 0.8rem;
-  font-weight: 500;
-  white-space: nowrap;
-  color: var(--wl-muted);
-  background: var(--wl-surface);
-  border: 0.0625rem solid var(--wl-surface-border);
-  border-radius: 999px;
-  cursor: default;
-  transition:
-    background 120ms ease,
-    border-color 120ms ease,
-    color 120ms ease;
-
-  i {
-    font-size: 0.9rem;
-  }
-
-  &:hover,
-  &:focus-visible {
-    outline: none;
-    color: var(--accent-color);
-    background: rgba(var(--accent-color-rgb), 0.12);
-    border-color: rgba(var(--accent-color-rgb), 0.6);
-  }
-}
-
-// The filter pills sit on their own row beneath the title and search field, spread to fill the width.
-// The row never wraps: at the modal's full width the seven pills fit with ~30px to spare (measured), and
-// a narrower window truncates the labels rather than stranding the last pill on a row of its own.
-.welcome__filters {
-  display: flex;
-  flex-wrap: nowrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.15rem;
-}
-
-.welcome__filter {
-  display: inline-flex;
-  flex: 0 1 auto;
-  align-items: center;
-  gap: 0.25rem;
-  min-inline-size: 0;
-  padding: 0.32rem 0.4rem;
-  font: inherit;
-  font-size: 0.76rem;
-  font-weight: 500;
-  white-space: nowrap;
-  color: var(--wl-muted);
-  background: transparent;
-  border: none;
-  border-radius: 999px;
-  cursor: default;
-  transition:
-    background 120ms ease,
-    color 120ms ease;
-
-  i {
-    font-size: 0.9rem;
-  }
-
-  span {
-    min-inline-size: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  &:hover {
-    color: var(--wl-text);
-    background: var(--wl-surface);
-  }
-
-  &:focus-visible {
-    outline: none;
-    color: var(--wl-text);
-    background: var(--wl-surface);
-  }
-}
-
-.welcome__filter--active {
-  color: #fff;
-  background: var(--accent-color);
-
-  &:hover,
-  &:focus-visible {
-    color: #fff;
-    background: var(--accent-color);
-  }
-}
-
-.welcome__recent-list {
-  display: flex;
-  flex: 1 1 0;
-  flex-direction: column;
-  gap: 0.15rem;
-  margin: 0;
-  padding: 0;
-  // Fill the available height and scroll internally, so adding items never grows the modal. A zero
-  // flex-basis keeps the list from contributing its content height to the panel's intrinsic size.
+// Each section fills the panel; the hidden ones stay mounted but out of the layout. Explicit, because
+// a section's own `:host { display: block }` would otherwise outrank the `hidden` attribute.
+.welcome__panel > * {
+  flex: 1;
   min-block-size: 0;
-  overflow-y: auto;
-  list-style: none;
 }
 
-.welcome__recent-row {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding-inline-end: 0.35rem;
-  border-radius: calc(0.6rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-  transition: background 120ms ease;
-
-  &:hover {
-    background: var(--wl-surface);
-  }
-}
-
-// The name/detail region is the click target; the trailing pin and menu are separate controls.
-.welcome__recent-open {
-  display: flex;
-  flex: 1 1 auto;
-  align-items: center;
-  gap: 0.75rem;
-  min-inline-size: 0;
-  padding: 0.5rem;
-  font: inherit;
-  text-align: start;
-  color: inherit;
-  background: transparent;
-  border: none;
-  border-radius: inherit;
-  cursor: default;
-
-  &:focus-visible {
-    outline: none;
-  }
-}
-
-.welcome__recent-icon {
-  display: grid;
-  flex: none;
-  place-items: center;
-  inline-size: 2.25rem;
-  block-size: 2.25rem;
-  font-size: 1.15rem;
-  color: var(--wl-muted);
-  background: var(--wl-surface);
-  border: 0.0625rem solid var(--wl-surface-border);
-  border-radius: calc(0.55rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-}
-
-.welcome__recent-text {
-  display: flex;
-  flex-direction: column;
-  gap: 0.1rem;
-  min-inline-size: 0;
-}
-
-// The name and path truncate on the left (keeping the meaningful end, e.g. the file name) via an
-// RTL layout direction, left-aligned so the LTR text still reads normally.
-.welcome__recent-name {
-  overflow: hidden;
-  font-size: 0.9rem;
-  font-weight: 500;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  direction: rtl;
-  text-align: left;
-  color: var(--wl-text);
-}
-
-.welcome__recent-detail {
-  overflow: hidden;
-  font-size: 0.76rem;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  direction: rtl;
-  text-align: left;
-  color: var(--wl-faint);
-}
-
-.welcome__recent-time {
-  flex: none;
-  font-size: 0.78rem;
-  white-space: nowrap;
-  color: var(--wl-faint);
-}
-
-.welcome__recent-menu {
-  display: grid;
-  flex: none;
-  place-items: center;
-  inline-size: 1.75rem;
-  block-size: 1.75rem;
-  font-size: 0.95rem;
-  color: var(--wl-faint);
-  background: transparent;
-  border: none;
-  border-radius: calc(0.4rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-  cursor: default;
-  transition:
-    background 120ms ease,
-    color 120ms ease;
-
-  &:hover,
-  &:focus-visible {
-    outline: none;
-    color: var(--wl-text);
-    background: var(--wl-surface-hover);
-  }
-}
-
-// The overflow menu is only a template holder; keep its host out of the row's flex flow.
-.welcome__recent app-menu {
+.welcome__panel > [hidden] {
   display: none;
 }
 
-// The empty state fills the panel and sits centred.
-.welcome__recent-empty {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.4rem;
-  text-align: center;
-  color: var(--wl-faint);
+// The light theme keeps the tab and panel geometry, with lighter washes so the accent still reads as
+// an edge rather than a fill.
+:host-context([data-theme-mode='light']) {
+  .welcome__tab {
+    background: transparent;
 
-  i {
-    opacity: 0.7;
+    &:hover {
+      background: var(--gray-200);
+    }
+  }
+
+  .welcome__tab--active,
+  .welcome__tab--active:hover {
+    background:
+      linear-gradient(
+        180deg,
+        rgba(var(--accent-color-rgb), 0.12) 0%,
+        rgba(var(--accent-color-rgb), 0.04) 100%
+      ),
+      var(--wl-panel);
+  }
+
+  .welcome__tab--active::before,
+  .welcome__tab--active::after {
+    background:
+      linear-gradient(rgba(var(--accent-color-rgb), 0.04), rgba(var(--accent-color-rgb), 0.04)),
+      var(--wl-panel);
+  }
+
+  .welcome__panel {
+    background:
+      linear-gradient(180deg, rgba(var(--accent-color-rgb), 0.04) 0, transparent 12rem),
+      var(--wl-panel);
   }
 }
 
-.welcome__recent-empty-title {
-  margin: 0.2rem 0 0;
-  font-size: 0.9rem;
-  font-weight: 500;
-  color: var(--wl-muted);
-}
-
-.welcome__recent-empty-hint {
-  margin: 0;
-  font-size: 0.78rem;
-  opacity: 0.8;
-}
-
-// Honour reduced-motion: the glow appears without a fade. (The modal honours reduced-motion itself.)
-@media (prefers-reduced-motion: reduce) {
-  .welcome__glow--active {
-    transition: none;
+// A narrow window lets the tabs share the width and drops their labels' extra padding.
+@media (max-width: 52rem) {
+  .welcome__tab {
+    flex: 1 1 0;
+    padding-inline: 0.75rem;
   }
-}
-
-// The clear-recent-items confirmation. It is declared inside the welcome screen's own content, so it
-// is raised from the welcome window and takes the welcome's panel treatment with it — the dialog
-// looks like it belongs to the window it opened over, in both themes.
-.welcome__confirm-title {
-  margin: 0 0 0.6rem;
-  font-size: 1.05rem;
-  font-weight: 600;
-  color: var(--body-foreground-color);
-}
-
-.welcome__confirm-message {
-  margin: 0 0 1.3rem;
-  font-size: 0.9rem;
-  line-height: 1.5;
-  color: var(--form-muted-foreground-color);
-}
-
-// Stacks the dialog's actions in a single full-width column, for a prompt whose buttons carry longer
-// labels than a two-button confirmation can sit side by side (here: Locate / Remove / Cancel).
-.welcome__confirm-actions--stack {
-  grid-auto-flow: row;
-  inline-size: auto;
-  margin-inline-start: 0;
-}
-
-// Equal-width buttons, sized to the wider of the two and kept to the trailing edge: `1fr` columns in
-// a shrink-to-fit grid all take the width of the widest, and the auto inline margin holds the row
-// where a right-aligned flex row used to sit.
-.welcome__confirm-actions {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: 1fr;
-  gap: 0.6rem;
-  inline-size: fit-content;
-  margin-inline-start: auto;
 }

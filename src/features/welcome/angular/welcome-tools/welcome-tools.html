@@ -1,0 +1,32 @@
+<div class="tools">
+  <header class="tools__head">
+    <h2 class="tools__title">Tools</h2>
+    <p class="tools__description">Access and manage the tools available in ONIXLabs Studio.</p>
+  </header>
+
+  <div class="tools__grid">
+    @for (tool of tools; track tool.title) {
+      <button
+        type="button"
+        class="welcome__tool"
+        [class.welcome__tool--unavailable]="tool.opens === null"
+        [appTooltip]="tool.opens === null ? 'Coming soon' : ''"
+        (click)="open(tool)"
+      >
+        <span class="welcome__tool-tile" [attr.data-tint]="tool.tint">
+          <app-icon [icon]="tool.icon" [rotation]="tool.icon === Icon.WELCOME_SETTINGS ? 30 : 0" />
+        </span>
+        <span class="welcome__tool-text">
+          <span class="welcome__tool-title">{{ tool.title }}</span>
+          <span class="welcome__tool-description">{{ tool.description }}</span>
+          <span class="welcome__tool-topics">
+            @for (topic of tool.topics; track topic) {
+              <span class="welcome__tool-topic">{{ topic }}</span>
+            }
+          </span>
+        </span>
+        <app-icon class="welcome__tool-chevron" [icon]="Icon.WELCOME_CHEVRON" />
+      </button>
+    }
+  </div>
+</div>

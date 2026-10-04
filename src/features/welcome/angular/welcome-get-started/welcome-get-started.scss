@@ -1,0 +1,340 @@
+@use '../welcome' as *;
+
+:host {
+  display: block;
+  block-size: 100%;
+  min-block-size: 0;
+}
+
+// Two columns: the actions at a fixed width on the left, recent items filling the right.
+.start {
+  display: grid;
+  grid-template-columns: minmax(16rem, 21rem) minmax(0, 1fr);
+  gap: 1.5rem;
+  block-size: 100%;
+  min-block-size: 0;
+}
+
+.start__column {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-inline-size: 0;
+  min-block-size: 0;
+}
+
+.start__title {
+  @include section-title;
+}
+
+// The actions share the column's height, so eight of them fill it without scrolling at full size and
+// shrink together when the window is smaller.
+.start__actions {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-block-size: 0;
+}
+
+.welcome__action {
+  @include card;
+  @include card-hover;
+
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  gap: 0.7rem;
+  max-block-size: 3.25rem;
+  min-block-size: 2.25rem;
+  padding: 0 0.85rem;
+
+  &:hover .welcome__action-chevron,
+  &:focus-visible .welcome__action-chevron {
+    color: var(--wl-text);
+    transform: translateX(0.125rem);
+  }
+}
+
+// An action with nothing behind it yet reads as quieter, so the screen does not promise it.
+.welcome__action--unavailable {
+  opacity: 0.55;
+}
+
+.welcome__action-icon {
+  flex: none;
+  font-size: 1.25rem;
+  color: var(--wl-text);
+}
+
+.welcome__action-label {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  font-size: 0.86rem;
+  font-weight: 500;
+  color: var(--wl-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.welcome__action-chevron {
+  flex: none;
+  font-size: 0.95rem;
+  color: var(--wl-faint);
+  transition:
+    color 120ms ease,
+    transform 120ms ease;
+}
+
+// The recent-items panel fills its column, so its list scrolls within it.
+.welcome__recent {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-inline-size: 0;
+  min-block-size: 0;
+  padding: 1rem;
+  background: rgba(255, 255, 255, 0.015);
+  border: 0.0625rem solid var(--wl-border);
+  border-radius: calc(0.75rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+}
+
+.welcome__recent-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.welcome__searchbox {
+  @include field;
+
+  flex: 1 1 auto;
+}
+
+.welcome__clear {
+  @include secondary-button;
+
+  flex: none;
+  padding-block: 0.45rem;
+
+  i {
+    font-size: 0.9rem;
+  }
+}
+
+// The filter pills wrap rather than truncate: seven labels are worth reading in full, and a second
+// row costs less than an ellipsis on "Workspaces".
+.welcome__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.welcome__filter {
+  @include pill;
+}
+
+.welcome__filter--active {
+  @include pill-active;
+}
+
+.welcome__recent-list {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin: 0;
+  padding: 0;
+  min-block-size: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.welcome__recent-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-inline-end: 0.35rem;
+  border-radius: calc(0.55rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  transition: background 120ms ease;
+
+  &:hover {
+    background: var(--wl-surface);
+  }
+}
+
+// The name/detail region is the click target; the trailing pin and menu are separate controls.
+.welcome__recent-open {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 0.75rem;
+  min-inline-size: 0;
+  padding: 0.5rem;
+  font: inherit;
+  text-align: start;
+  color: inherit;
+  background: transparent;
+  border: none;
+  border-radius: inherit;
+  cursor: default;
+
+  &:focus-visible {
+    outline: none;
+  }
+}
+
+.welcome__recent-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  inline-size: 2.25rem;
+  block-size: 2.25rem;
+  font-size: 1.15rem;
+  color: var(--wl-muted);
+  background: var(--wl-surface);
+  border: 0.0625rem solid var(--wl-surface-border);
+  border-radius: calc(0.55rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+}
+
+.welcome__recent-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-inline-size: 0;
+}
+
+// The name and path truncate on the left (keeping the meaningful end, e.g. the file name) via an RTL
+// layout direction, left-aligned so the LTR text still reads normally.
+.welcome__recent-name,
+.welcome__recent-detail {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
+}
+
+.welcome__recent-name {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--wl-text);
+}
+
+.welcome__recent-detail {
+  font-size: 0.76rem;
+  color: var(--wl-faint);
+}
+
+.welcome__recent-time {
+  flex: none;
+  font-size: 0.78rem;
+  white-space: nowrap;
+  color: var(--wl-faint);
+}
+
+.welcome__recent-menu {
+  display: grid;
+  flex: none;
+  place-items: center;
+  inline-size: 1.75rem;
+  block-size: 1.75rem;
+  font-size: 0.95rem;
+  color: var(--wl-faint);
+  background: transparent;
+  border: none;
+  border-radius: calc(0.4rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  cursor: default;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
+
+  &:hover,
+  &:focus-visible {
+    outline: none;
+    color: var(--wl-text);
+    background: var(--wl-surface-hover);
+  }
+}
+
+// The overflow menu is only a template holder; keep its host out of the row's flex flow.
+.welcome__recent app-menu {
+  display: none;
+}
+
+.welcome__recent-empty {
+  @include empty-state;
+}
+
+.welcome__recent-empty-title {
+  @include empty-title;
+}
+
+.welcome__recent-empty-hint {
+  @include empty-hint;
+}
+
+// The confirmations are raised from the welcome window and take its panel treatment with them, so a
+// dialog looks like it belongs to the window it opened over, in both themes.
+.welcome__confirm-title {
+  margin: 0 0 0.6rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--body-foreground-color);
+}
+
+.welcome__confirm-message {
+  margin: 0 0 1.3rem;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--form-muted-foreground-color);
+}
+
+// Equal-width buttons, sized to the widest and kept to the trailing edge.
+.welcome__confirm-actions {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 0.6rem;
+  inline-size: fit-content;
+  margin-inline-start: auto;
+}
+
+// A prompt whose buttons carry longer labels stacks them in one full-width column.
+.welcome__confirm-actions--stack {
+  grid-auto-flow: row;
+  inline-size: auto;
+  margin-inline-start: 0;
+}
+
+// Light theme: the cards and fields are the panel colour, defined by their border, so their hover
+// needs an explicit fill.
+:host-context([data-theme-mode='light']) {
+  .welcome__recent {
+    background: transparent;
+  }
+
+  .welcome__recent-row:hover,
+  .welcome__filter:not(.welcome__filter--active):hover {
+    background: var(--gray-200);
+  }
+}
+
+// At a narrow window the columns stack, the actions first.
+@container welcome-panel (max-width: 44rem) {
+  .start {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(14rem, 1fr);
+  }
+
+  .start__actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
