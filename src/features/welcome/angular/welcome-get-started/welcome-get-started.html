@@ -21,7 +21,16 @@
 
   <section class="start__column start__column--recent" aria-label="Recent items">
     <div class="welcome__recent">
+      <!-- One row: what kind of item to show, the search, and Clear. -->
       <div class="welcome__recent-head">
+        <app-dropdown
+          class="welcome__recent-filter"
+          ariaLabel="Show"
+          [fullWidth]="true"
+          [options]="filterOptions"
+          [value]="activeFilter()"
+          (valueChange)="activeFilter.set($event)"
+        />
         <div class="welcome__searchbox">
           <app-icon [icon]="Icon.SEARCH" />
           <input
@@ -37,22 +46,6 @@
           <button type="button" class="welcome__clear" (click)="requestClearRecent()">
             <app-icon [icon]="Icon.TRASH" />
             <span>Clear</span>
-          </button>
-        }
-      </div>
-
-      <div class="welcome__filters" role="tablist" aria-label="Filter recent items">
-        @for (filter of filters; track filter.id) {
-          <button
-            type="button"
-            class="welcome__filter"
-            [class.welcome__filter--active]="activeFilter() === filter.id"
-            role="tab"
-            [attr.aria-selected]="activeFilter() === filter.id"
-            (click)="activeFilter.set(filter.id)"
-          >
-            <app-icon [icon]="filter.icon" />
-            <span>{{ filter.label }}</span>
           </button>
         }
       </div>

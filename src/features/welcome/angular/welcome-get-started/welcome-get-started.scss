@@ -126,10 +126,30 @@
   // The search box and the Clear button share one height, set here rather than left to each one's
   // padding, which put them a pixel or two apart.
   --recent-head-height: 2.25rem;
+  // The dropdown atom sizes itself from the shared control height; give it the row's.
+  --control-height: var(--recent-head-height);
 
   display: flex;
   align-items: center;
   gap: 0.6rem;
+}
+
+// The shared dropdown atom, drawn in the welcome palette: its face matches the search box and Clear
+// beside it, and its list matches the panel, in both themes.
+.welcome__recent-filter {
+  --form-control-background-color: var(--wl-surface);
+  --form-control-border-color: var(--wl-surface-border);
+  --form-control-border-color--hover: rgba(var(--accent-color-rgb), 0.55);
+  --form-muted-foreground-color: var(--wl-muted);
+  --dropdown-menu-background-color: var(--wl-panel);
+  --dropdown-menu-border-color: var(--wl-border);
+  --dropdown-menu-foreground-color: var(--wl-text);
+  --dropdown-menu-item-background-color--hover: rgba(var(--accent-color-rgb), 0.25);
+  --dropdown-menu-item-foreground-color--hover: var(--wl-text);
+
+  flex: 0 0 9.5rem;
+  min-inline-size: 0;
+  color: var(--wl-text);
 }
 
 .welcome__searchbox {
@@ -153,22 +173,6 @@
   i {
     font-size: 0.9rem;
   }
-}
-
-// The filter pills wrap rather than truncate: seven labels are worth reading in full, and a second
-// row costs less than an ellipsis on "Workspaces".
-.welcome__filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-}
-
-.welcome__filter {
-  @include pill;
-}
-
-.welcome__filter--active {
-  @include pill-active;
 }
 
 .welcome__recent-list {
@@ -320,8 +324,7 @@
     background: transparent;
   }
 
-  .welcome__recent-row:hover,
-  .welcome__filter:not(.welcome__filter--active):hover {
+  .welcome__recent-row:hover {
     background: var(--gray-200);
   }
 }

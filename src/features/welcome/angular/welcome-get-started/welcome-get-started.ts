@@ -22,12 +22,13 @@ import { TabType } from '@shared/angular/services/tabs/tab';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigger';
 
 /**
- * Describes a recent-items filter pill.
+ * Describes a recent-items filter.
  */
 interface RecentFilter {
   /**
@@ -36,17 +37,12 @@ interface RecentFilter {
   readonly id: string;
 
   /**
-   * Gets the pill's label.
+   * Gets the filter's label.
    */
   readonly label: string;
 
   /**
-   * Gets the pill's icon.
-   */
-  readonly icon: Icon;
-
-  /**
-   * Gets the recent-item kind this pill shows, or null for the "all" pill.
+   * Gets the recent-item kind this filter shows, or null for everything.
    */
   readonly kind: RecentKind | null;
 }
@@ -81,7 +77,7 @@ interface StartAction {
  */
 @Component({
   selector: 'app-welcome-get-started',
-  imports: [AppIcon, Button, Modal, ModalContent, TooltipTrigger],
+  imports: [AppIcon, Button, Dropdown, Modal, ModalContent, TooltipTrigger],
   templateUrl: './welcome-get-started.html',
   styleUrl: './welcome-get-started.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -148,20 +144,27 @@ export class WelcomeGetStarted {
   ];
 
   /**
-   * Gets the recent-items filter pills.
+   * Gets the recent-items filters.
    */
   protected readonly filters: readonly RecentFilter[] = [
-    { id: 'all', label: 'Everything', icon: Icon.GRID_DOTS, kind: null },
-    { id: 'directories', label: 'Workspaces', icon: Icon.FOLDER, kind: 'directory' },
-    { id: 'markdown', label: 'Markdown', icon: Icon.MARKDOWN, kind: 'markdown' },
-    { id: 'code', label: 'Code', icon: Icon.CODE, kind: 'code' },
-    { id: 'images', label: 'Images', icon: Icon.IMAGE_FILE, kind: 'image' },
-    { id: 'binary', label: 'Binary', icon: Icon.BINARY, kind: 'binary' },
-    { id: 'api', label: 'APIs', icon: Icon.API_EXPLORER, kind: 'api' },
+    { id: 'all', label: 'Everything', kind: null },
+    { id: 'directories', label: 'Workspaces', kind: 'directory' },
+    { id: 'markdown', label: 'Markdown', kind: 'markdown' },
+    { id: 'code', label: 'Code', kind: 'code' },
+    { id: 'images', label: 'Images', kind: 'image' },
+    { id: 'binary', label: 'Binary', kind: 'binary' },
+    { id: 'api', label: 'APIs', kind: 'api' },
   ];
 
   /**
-   * Holds the currently selected filter pill.
+   * Gets the filters as the dropdown lists them.
+   */
+  protected readonly filterOptions: readonly DropdownOption[] = this.filters.map(
+    (filter: RecentFilter): DropdownOption => ({ value: filter.id, label: filter.label }),
+  );
+
+  /**
+   * Holds the currently selected filter.
    */
   protected readonly activeFilter: WritableSignal<string> = signal<string>('all');
 

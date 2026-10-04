@@ -117,9 +117,11 @@ describe('WelcomeGetStarted', () => {
     await fixture.whenStable();
     expect(host.querySelectorAll('.welcome__recent-row')).toHaveLength(2);
 
-    Array.from(host.querySelectorAll<HTMLButtonElement>('.welcome__filter'))
-      .find((filter: HTMLButtonElement): boolean => filter.textContent?.trim() === 'Code')
-      ?.click();
+    const filter: HTMLSelectElement = host.querySelector<HTMLSelectElement>(
+      '.welcome__recent-filter select',
+    )!;
+    filter.value = 'code';
+    filter.dispatchEvent(new Event('change'));
     await fixture.whenStable();
     expect(host.querySelectorAll('.welcome__recent-row')).toHaveLength(1);
 
