@@ -373,6 +373,14 @@ checkout (one click from the row).
 are serialised so concurrent calls cannot overrun it. The live-session valve no longer reaps a
 session with a turn in flight.
 
+**Wake-ups wait for the lead.** A report is never folded into a turn the lead is running: in a real
+two-worker round, the second report steered into the lead's turn was never acted on. Reports wait
+until the lead is between turns and are delivered together.
+
+**Verified in the app** with real Claude (Haiku) on a fixture repository: one worker; then two in
+parallel, each claiming its file on the board, each commit's permission answered from the lead's
+strip, and the lead reading the board and reporting both.
+
 **Not yet built.**
 
 - Run-root validation in main (§9) and caller identity beyond the stamped workspace root — callers
