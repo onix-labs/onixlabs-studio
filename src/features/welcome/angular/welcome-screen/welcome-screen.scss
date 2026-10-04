@@ -136,7 +136,10 @@
   background: transparent;
   border: 0.0625rem solid transparent;
   border-block-end: none;
+  // The document tabs' own radius and corner shape: squircle, or round when the user's UI settings
+  // choose it. Without the shape the same radius draws a plain round corner, which reads wider.
   border-radius: var(--dock-panel-radius) var(--dock-panel-radius) 0 0;
+  corner-shape: var(--app-corner-shape, squircle);
   cursor: default;
   transition: color 120ms ease;
 
