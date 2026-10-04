@@ -9,44 +9,56 @@
 .tools {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
   block-size: 100%;
   min-block-size: 0;
 }
 
-.tools__title {
-  @include lead-title;
-}
-
-.tools__description {
-  @include lead-description;
-}
-
-// Two columns of three; the rows share the height so the grid fills the panel.
+// Two columns of three; the rows share the height so the grid fills the panel. Not a scroll container,
+// so a card's hover lift and glow are never clipped.
 .tools__grid {
   display: grid;
   flex: 1;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   grid-auto-rows: minmax(0, 1fr);
-  gap: 0.75rem;
+  gap: var(--welcome-panel-padding, 1.25rem);
   min-block-size: 0;
-  overflow-y: auto;
 }
 
+// A tool card: its accent tile, its name and what it is for, centred in the card's height.
 .welcome__tool {
   @include card;
-  @include card-hover;
 
+  position: relative;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 1rem;
-  min-block-size: 7rem;
   padding: 1rem;
+  transition:
+    background 150ms ease,
+    border-color 150ms ease,
+    box-shadow 150ms ease,
+    transform 150ms ease;
 
-  &:hover .welcome__tool-chevron,
-  &:focus-visible .welcome__tool-chevron {
-    color: var(--wl-text);
-    transform: translateX(0.125rem);
+  // The Get Started actions' hover: an accent wash, edge and glow, a slight lift, and the title and
+  // chevron turning accent.
+  &:hover,
+  &:focus-visible {
+    // Lift above its neighbours so the scale and glow are never covered by the next card.
+    z-index: 1;
+    outline: none;
+    background: rgba(var(--accent-color-rgb), 0.25);
+    border-color: rgba(var(--accent-color-rgb), 1);
+    box-shadow: 0 0 2rem -0.25rem rgba(var(--accent-color-rgb), 1);
+    transform: scale(1.03);
+
+    .welcome__tool-title,
+    .welcome__tool-chevron {
+      color: var(--accent-color);
+    }
+
+    .welcome__tool-chevron {
+      transform: translateX(0.125rem);
+    }
   }
 }
 
@@ -54,42 +66,19 @@
   opacity: 0.55;
 }
 
-// The icon sits on a tinted tile: the one place the Tools section uses colour, so six cards can be
-// told apart without reading them.
+// The icon on an accent tile: glyph and edge in the accent, over a faint accent wash.
 .welcome__tool-tile {
-  --tile-rgb: var(--accent-color-rgb);
-
   display: grid;
   flex: none;
   place-items: center;
   inline-size: 3.25rem;
   block-size: 3.25rem;
   font-size: 1.7rem;
-  color: rgb(var(--tile-rgb));
-  background: rgba(var(--tile-rgb), 0.12);
-  border: 0.0625rem solid rgba(var(--tile-rgb), 0.3);
+  color: var(--accent-color);
+  background: rgba(var(--accent-color-rgb), 0.12);
+  border: 0.0625rem solid rgba(var(--accent-color-rgb), 0.6);
   border-radius: calc(0.7rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
-
-  &[data-tint='violet'] {
-    --tile-rgb: 167, 139, 250;
-  }
-
-  &[data-tint='teal'] {
-    --tile-rgb: 45, 212, 191;
-  }
-
-  &[data-tint='amber'] {
-    --tile-rgb: 251, 146, 60;
-  }
-
-  &[data-tint='rose'] {
-    --tile-rgb: 244, 114, 182;
-  }
-
-  &[data-tint='slate'] {
-    --tile-rgb: 203, 213, 225;
-  }
 }
 
 .welcome__tool-text {
@@ -104,6 +93,7 @@
   font-size: 1rem;
   font-weight: 600;
   color: var(--wl-text);
+  transition: color 150ms ease;
 }
 
 .welcome__tool-description {
@@ -112,38 +102,18 @@
   color: var(--wl-muted);
 }
 
-.welcome__tool-topics {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.3rem;
-  margin-block-start: 0.35rem;
-}
-
-.welcome__tool-topic {
-  padding: 0.15rem 0.55rem;
-  font-size: 0.7rem;
-  color: var(--wl-muted);
-  border: 0.0625rem solid var(--wl-surface-border);
-  border-radius: 999px;
-}
-
 .welcome__tool-chevron {
   flex: none;
   font-size: 1rem;
   color: var(--wl-faint);
   transition:
-    color 120ms ease,
-    transform 120ms ease;
+    color 150ms ease,
+    transform 150ms ease;
 }
 
-// A narrow window drops to one column and hides the chips, which are the least needed detail.
+// A narrow window drops to one column.
 @container welcome-panel (max-width: 44rem) {
   .tools__grid {
     grid-template-columns: minmax(0, 1fr);
-    grid-auto-rows: auto;
-  }
-
-  .welcome__tool-topics {
-    display: none;
   }
 }

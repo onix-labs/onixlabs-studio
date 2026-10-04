@@ -31,16 +31,6 @@ interface ToolCard {
   readonly icon: Icon;
 
   /**
-   * Gets the colour the icon's tile is tinted with, so six cards can be told apart at a glance.
-   */
-  readonly tint: 'blue' | 'violet' | 'teal' | 'amber' | 'rose' | 'slate';
-
-  /**
-   * Gets the things the tool covers, shown as quiet chips.
-   */
-  readonly topics: readonly string[];
-
-  /**
    * Gets the tab the tool opens, or null for a tool that does not exist yet.
    */
   readonly opens: TabType | null;
@@ -82,48 +72,36 @@ export class WelcomeTools {
       description:
         'Build, run and manage containerised applications with Docker and compatible runtimes.',
       icon: Icon.WELCOME_CONTAINERS,
-      tint: 'blue',
-      topics: ['Containers', 'Images', 'Volumes', 'Networks'],
       opens: 'containers',
     },
     {
       title: 'Orchestration',
       description: 'Manage distributed services and deployments across your environments.',
       icon: Icon.WELCOME_ORCHESTRATION,
-      tint: 'violet',
-      topics: ['Kubernetes', 'Compose', 'Deployments'],
       opens: null,
     },
     {
       title: 'AI Model Manager',
       description: 'Install, configure and manage AI models and inference endpoints.',
       icon: Icon.WELCOME_AI_MODELS,
-      tint: 'teal',
-      topics: ['Models', 'Endpoints', 'Local & Cloud'],
       opens: 'model-manager',
     },
     {
       title: 'System Monitor',
       description: 'Watch system resources, Studio’s processes and its logs.',
       icon: Icon.WELCOME_SYSTEM_MONITOR,
-      tint: 'amber',
-      topics: ['CPU / Memory', 'Processes', 'Logs'],
       opens: 'system-monitor',
     },
     {
       title: 'Plugin Manager',
       description: 'Discover, install and manage the plugins that extend ONIXLabs Studio.',
       icon: Icon.WELCOME_PLUGINS,
-      tint: 'rose',
-      topics: ['Installed', 'Available', 'Updates'],
       opens: 'plugin-manager',
     },
     {
       title: 'Settings',
       description: 'Configure Studio’s preferences, providers and appearance.',
       icon: Icon.WELCOME_SETTINGS,
-      tint: 'slate',
-      topics: ['Preferences', 'Providers', 'Appearance'],
       opens: 'settings',
     },
   ];
