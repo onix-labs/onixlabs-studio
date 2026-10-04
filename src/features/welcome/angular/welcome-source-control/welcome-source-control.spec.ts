@@ -72,11 +72,15 @@ describe('WelcomeSourceControl', () => {
       { id: 'gh', host: 'GitHub', login: 'matthew' },
       { id: 'gl', host: 'GitLab', login: 'matthew' },
     ]);
+    // Fixed, distinct update times: the list sorts on them, and stamping each with Date.now() let two
+    // land a millisecond apart and swap.
+    const now: number = Date.now();
+    const hour: number = 60 * 60 * 1000;
     internals.repositories.set([
-      repository('aero', { starred: true }),
-      repository('stride', { private: true }),
-      repository('infra', { accountId: 'gl', fork: true }),
-      repository('old', { archived: true, updatedAt: Date.now() - 90 * 24 * 60 * 60 * 1000 }),
+      repository('aero', { starred: true, updatedAt: now - hour }),
+      repository('stride', { private: true, updatedAt: now - 2 * hour }),
+      repository('infra', { accountId: 'gl', fork: true, updatedAt: now - 3 * hour }),
+      repository('old', { archived: true, updatedAt: now - 90 * 24 * hour }),
     ]);
     await fixture.whenStable();
   }
