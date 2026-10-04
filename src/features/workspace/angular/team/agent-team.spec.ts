@@ -29,11 +29,34 @@ import { AgentTeam } from './agent-team';
  * A stand-in for a checkout's live agent: just what the team reads and calls.
  */
 interface FakeAgent {
+  /**
+   * Gets the agent's transcript, which a test fills with pending requests or messages.
+   */
   readonly items: WritableSignal<readonly AgentItem[]>;
+
+  /**
+   * Gets whether the agent is running a turn.
+   */
   readonly isRunning: WritableSignal<boolean>;
+
+  /**
+   * Records the messages sent to the agent.
+   */
   readonly send: Mock;
+
+  /**
+   * Records the modes the agent is set to.
+   */
   readonly setMode: Mock;
+
+  /**
+   * Records stops.
+   */
   readonly stop: Mock;
+
+  /**
+   * Records permission answers.
+   */
   readonly respondPermission: Mock;
 }
 
@@ -56,21 +79,57 @@ function fakeAgent(): FakeAgent {
  * A stand-in for the tab's worktree session: a container of checkouts, each with its agent.
  */
 class FakeSession {
+  /**
+   * Gets whether the tab is a container.
+   */
   public readonly isContainer: WritableSignal<boolean> = signal<boolean>(true);
+
+  /**
+   * Holds each checkout's path, by id; the lead's checkout `c1` to begin with.
+   */
   public readonly paths: Map<string, string> = new Map<string, string>([['c1', '/repo/c1']]);
+  /**
+   * Holds each checkout's branch, by id.
+   */
   public readonly branches: Map<string, string> = new Map<string, string>([['c1', 'main']]);
+  /**
+   * Holds each checkout's agent, by id.
+   */
   public readonly agentMap: WritableSignal<ReadonlyMap<string, Agent>> = signal<
     ReadonlyMap<string, Agent>
   >(new Map<string, Agent>());
+  /**
+   * Gets each checkout's agent, as the session publishes them.
+   */
   public readonly agents: Signal<ReadonlyMap<string, Agent>> = this.agentMap.asReadonly();
+
+  /**
+   * Bumps when the branches change, so {@link takenBranches} re-reads them.
+   */
   public readonly branchSignal: WritableSignal<number> = signal<number>(0);
+  /**
+   * Gets the branches the checkouts hold.
+   */
   public readonly takenBranches: Signal<ReadonlySet<string>> = computed((): ReadonlySet<string> => {
     this.branchSignal();
     return new Set<string>(this.branches.values());
   });
+  /**
+   * Holds an outcome {@link add} returns instead of making a checkout, or null to make one.
+   */
   public addResult: WorktreeOutcome<WorktreeCheckoutInfo> | null = null;
+  /**
+   * Holds whether loading a checkout registers an agent for it at once, as a mounted view would.
+   */
   public registerOnLoad: boolean = true;
+
+  /**
+   * Holds the agents made for checkouts as they load, by id.
+   */
   public readonly created: Map<string, FakeAgent> = new Map<string, FakeAgent>();
+  /**
+   * Makes a checkout, as a clone would.
+   */
   public readonly add: Mock = vi.fn(
     (options: WorktreeAddOptions): Promise<WorktreeOutcome<WorktreeCheckoutInfo>> => {
       if (this.addResult !== null) {
@@ -87,6 +146,9 @@ class FakeSession {
       });
     },
   );
+  /**
+   * Loads a checkout's view in the background, registering its agent when {@link registerOnLoad}.
+   */
   public readonly ensureLoaded: Mock = vi.fn((id: string): void => {
     if (this.registerOnLoad) {
       const agent: FakeAgent = fakeAgent();
@@ -94,18 +156,36 @@ class FakeSession {
       this.register(id, agent);
     }
   });
+  /**
+   * Records the checkouts shown.
+   */
   public readonly activate: Mock = vi.fn();
 
+  /**
+   * Registers a checkout's agent.
+   * @param id The checkout id.
+   * @param agent The agent.
+   */
   public register(id: string, agent: FakeAgent): void {
     const next: Map<string, Agent> = new Map<string, Agent>(this.agentMap());
     next.set(id, agent as unknown as Agent);
     this.agentMap.set(next);
   }
 
+  /**
+   * Gets a checkout's path.
+   * @param id The checkout id.
+   * @returns Returns the path, or null.
+   */
   public pathOf(id: string): string | null {
     return this.paths.get(id) ?? null;
   }
 
+  /**
+   * Finds the checkout at a path.
+   * @param path The path.
+   * @returns Returns the checkout id, or null.
+   */
   public checkoutAt(path: string | null): string | null {
     for (const [id, candidate] of this.paths) {
       if (candidate === path) {

@@ -13,18 +13,19 @@ for, not something every workspace becomes.
 
 ## 2. Decisions taken
 
-| # | Decision |
-|---|---|
-| D1 | **One conversation.** The user talks to the lead only. No group chat, no private DMs, no agent-to-agent conversation. |
-| D2 | **Provider-agnostic.** Lead and workers may be any provider plugin that meets the requirements in §6. Nothing depends on a provider's own subagents or teams. |
-| D3 | **Studio hosts the workers.** No standard for lead → worker delegation exists (§11), so Studio builds the team layer, using MCP for the lead's tools and borrowing state names from MCP Tasks / A2A. |
-| D4 | **Workers coordinate through a board and the lead only.** Workers do not message each other. |
-| D5 | **Isolation is a seam.** Git worktrees first; containers later (through the container-engine plugins, #592); remote workers possible. A worker's contract is identical on every backend. |
-| D6 | **Workflow policy is the user's.** Branch targets (main, epic, sprint branches), PR shape and who merges (the user or agents) are configured — prompt layers for policy, settings for capabilities — never decided by Studio. |
-| D7 | **Team host first, ACP after.** The team host is built on the existing harnesses; an ACP harness plugin follows to widen the provider set. |
-| D8 | **Codex moves to the app-server.** `codex-harness` switches from `@openai/codex-sdk` to the Codex app-server, so Codex can route approvals and take Studio's tools. |
-| D9 | **Unattended workers are opt-in.** A provider that cannot route permission requests to Studio may work only when the user enables it for that provider; such workers are labelled *unattended*, write only inside their isolation root, and never push or merge themselves. |
-| D10 | **First version: Claude lead; Claude and Codex workers.** Two providers from day one keep the design honest. |
+| #   | Decision                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| D1  | **One conversation.** The user talks to the lead only. No group chat, no private DMs, no agent-to-agent conversation.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| D2  | **Provider-agnostic.** Lead and workers may be any provider plugin that meets the requirements in §6. Nothing depends on a provider's own subagents or teams.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| D3  | **Studio hosts the workers.** No standard for lead → worker delegation exists (§11), so Studio builds the team layer, using MCP for the lead's tools and borrowing state names from MCP Tasks / A2A.                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| D4  | **Workers coordinate through a board and the lead only.** Workers do not message each other.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| D5  | **Isolation is a seam.** Studio's existing worktree containers first (#351: each checkout a full clone with its own view and agent); containers later (through the container-engine plugins, #592); remote workers possible. A worker's contract is identical on every backend.                                                                                                                                                                                                                                                                                                                                                                  |
+| D6  | **Workflow policy is the user's.** Branch targets (main, epic, sprint branches), PR shape and who merges (the user or agents) are configured — prompt layers for policy, settings for capabilities — never decided by Studio.                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| D7  | **Team host first, ACP after.** The team host is built on the existing harnesses; an ACP harness plugin follows to widen the provider set.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| D8  | **Codex moves to the app-server — later.** `codex-harness` switches from `@openai/codex-sdk` to the Codex app-server, so Codex can route approvals and take Studio's tools. Deferred on 2026-10-04: the spike is proven with Claude first, and does not touch the Codex plugin.                                                                                                                                                                                                                                                                                                                                                                  |
+| D9  | **Unattended workers are opt-in.** A provider that cannot route permission requests to Studio may work only when the user enables it for that provider; such workers are labelled _unattended_, write only inside their isolation root, and never push or merge themselves.                                                                                                                                                                                                                                                                                                                                                                      |
+| D10 | **First version: Claude lead and Claude workers** (narrowed 2026-10-04 from Claude and Codex workers). Nothing in the team host is Claude-specific; Codex joins when D8 lands.                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| D11 | **Workers are checkouts of a worktree container** (2026-10-04, while building). Studio already has the container model of #351 — each checkout a full clone on its own branch, with its own kept-alive view, documents, terminals and agent — and its deferred orchestrator (#367) is this design's lead. A worker is a new checkout whose own agent is briefed, rather than a `git worktree` under `.studio/worktrees` hosted headlessly as the retired spike did. It matches "every engineer has their own machine" better, keeps one worktree concept in the product, and lets the user step into any worker's checkout and see what it sees. |
 
 ## 3. How it plays out
 
@@ -50,7 +51,7 @@ not a feature.
    ```
 
 2. **The lead starts workers.** Each gets one task, its own isolated checkout and its own branch. An
-   *in flight* list appears under the conversation:
+   _in flight_ list appears under the conversation:
 
    ```
    ● #789  settings schema   Claude   agent/789-settings   working · 2m ago
@@ -93,16 +94,16 @@ A worker is an ordinary agent session that Studio hosts:
 
 Named after MCP Tasks / A2A so that a future adoption of either is a mapping, not a redesign:
 
-| State | Meaning |
-|---|---|
-| `queued` | Waiting on other workers (`after`) or on a concurrency limit |
-| `starting` | Preparing its checkout and session |
-| `working` | Running a turn |
-| `input_required` | Waiting on the user (a permission or a question) |
-| `idle` | Between turns, task not complete — the lead can instruct it further |
-| `completed` | Reported done, with a summary and (optionally) a PR |
-| `failed` | Its session failed or it reported it cannot finish |
-| `cancelled` | Stopped by the lead or the user |
+| State            | Meaning                                                             |
+| ---------------- | ------------------------------------------------------------------- |
+| `queued`         | Waiting on other workers (`after`) or on a concurrency limit        |
+| `starting`       | Preparing its checkout and session                                  |
+| `working`        | Running a turn                                                      |
+| `input_required` | Waiting on the user (a permission or a question)                    |
+| `idle`           | Between turns, task not complete — the lead can instruct it further |
+| `completed`      | Reported done, with a summary and (optionally) a PR                 |
+| `failed`         | Its session failed or it reported it cannot finish                  |
+| `cancelled`      | Stopped by the lead or the user                                     |
 
 ### 4.4 The board
 
@@ -132,45 +133,45 @@ reach the same tools through a Studio MCP endpoint (phase T6).
 
 **Lead tools**
 
-| Tool | Input | Result |
-|---|---|---|
-| `start_worker` | `task`, `title?`, `issue?`, `base?`, `branch?`, `provider?`, `model?`, `after?: workerId[]` | worker id, branch, state |
-| `worker_status` | `workerId?` | state, branch, last activity, pending request, summary, PR |
-| `instruct_worker` | `workerId`, `text` | delivered / refused (worker busy or finished) |
-| `stop_worker` | `workerId` | final state |
-| `read_board` | `since?` | entries |
-| `post_to_board` | `kind`, `text` | entry |
+| Tool              | Input                                                                                       | Result                                                     |
+| ----------------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| `start_worker`    | `task`, `title?`, `issue?`, `base?`, `branch?`, `provider?`, `model?`, `after?: workerId[]` | worker id, branch, state                                   |
+| `worker_status`   | `workerId?`                                                                                 | state, branch, last activity, pending request, summary, PR |
+| `instruct_worker` | `workerId`, `text`                                                                          | delivered / refused (worker busy or finished)              |
+| `stop_worker`     | `workerId`                                                                                  | final state                                                |
+| `read_board`      | `since?`                                                                                    | entries                                                    |
+| `post_to_board`   | `kind`, `text`                                                                              | entry                                                      |
 
 **Worker tools**
 
-| Tool | Input | Result |
-|---|---|---|
-| `read_board` | `since?` | entries |
-| `post_to_board` | `kind`, `text` | entry |
-| `complete` | `summary`, `pullRequest?` | ends the task; wakes the lead |
-| `fail` | `reason` | ends the task; wakes the lead |
+| Tool            | Input                     | Result                        |
+| --------------- | ------------------------- | ----------------------------- |
+| `read_board`    | `since?`                  | entries                       |
+| `post_to_board` | `kind`, `text`            | entry                         |
+| `complete`      | `summary`, `pullRequest?` | ends the task; wakes the lead |
+| `fail`          | `reason`                  | ends the task; wakes the lead |
 
 Questions to the user go through the provider's own ask-the-user tool, or Studio's `ask_user`; both
 already reach Studio as requests.
 
 ## 6. Providers
 
-| Need | Lead | Worker |
-|---|---|---|
-| Accepts Studio's tools (tool request or MCP) | required | required (board, `complete`) |
-| Long-lived session, multi-turn | required | required |
-| Runs in a working directory Studio chooses | — | required |
-| Edits files and runs a shell | — | required |
-| Routes permission requests to Studio | required | required, unless the user has opted the provider in as unattended (D9) |
-| Cancellable | required | required |
+| Need                                         | Lead     | Worker                                                                 |
+| -------------------------------------------- | -------- | ---------------------------------------------------------------------- |
+| Accepts Studio's tools (tool request or MCP) | required | required (board, `complete`)                                           |
+| Long-lived session, multi-turn               | required | required                                                               |
+| Runs in a working directory Studio chooses   | —        | required                                                               |
+| Edits files and runs a shell                 | —        | required                                                               |
+| Routes permission requests to Studio         | required | required, unless the user has opted the provider in as unattended (D9) |
+| Cancellable                                  | required | required                                                               |
 
 Today's harnesses:
 
-| Harness | Lead | Worker | Work needed |
-|---|---|---|---|
-| Claude (`claude-harness`) | ✅ | ✅ | set `permissionMode` explicitly — since SDK 0.3.286 an unset mode can start in `auto`, bypassing `canUseTool` |
-| Codex (`codex-harness`) | ❌ (`approvalPolicy: 'never'`, no Studio tools) | unattended only | move to the app-server (D8): approvals over JSON-RPC, MCP tools, resume, interrupt |
-| AI SDK (`ai-sdk-harness`) | ❌ (stateless) | ❌ (no shell, no history) | none planned |
+| Harness                   | Lead                                            | Worker                    | Work needed                                                                                                   |
+| ------------------------- | ----------------------------------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Claude (`claude-harness`) | ✅                                              | ✅                        | set `permissionMode` explicitly — since SDK 0.3.286 an unset mode can start in `auto`, bypassing `canUseTool` |
+| Codex (`codex-harness`)   | ❌ (`approvalPolicy: 'never'`, no Studio tools) | unattended only           | move to the app-server (D8): approvals over JSON-RPC, MCP tools, resume, interrupt                            |
+| AI SDK (`ai-sdk-harness`) | ❌ (stateless)                                  | ❌ (no shell, no history) | none planned                                                                                                  |
 
 Providers' own subagents and teams are not used. Claude's Agent Teams do not spawn in SDK sessions
 (per its docs, 2026-10-04 — contradicting spike #429, to be re-tested); Claude's worktree subagents
@@ -193,6 +194,10 @@ the UI.
 
 ### 7.2 Worktrees
 
+> **Superseded by D11** for the spike: workers are checkouts of a worktree container (full clones),
+> not `git worktree`s. As built, see §16. The points below on bases, tracking and never removing
+> unpushed work still hold.
+
 - Created under `<project>/.studio/worktrees/<dir>`, ignored by git and by the file watcher.
 - The branch is cut from the base the lead names; Studio never chooses a base on its own.
 - Created with `--no-track`; pushing sets the upstream.
@@ -213,7 +218,7 @@ HTTP transport or A2A (§11). Neither is designed in detail here.
 **Policy** — how the user's team works — lives in the prompt layers (system and user prompts):
 branch naming, where PRs target, review expectations, who merges. Studio ships no opinion.
 
-**Capabilities** — what agents are *able* to do — are settings, enforced by Studio:
+**Capabilities** — what agents are _able_ to do — are settings, enforced by Studio:
 
 - whether agents may push; whether they may open PRs; whether they may merge, and into which branch
   patterns; other forge writes;
@@ -241,9 +246,9 @@ is a hard boundary, overridable only through configuration, never per action.
 
 ## 10. UI
 
-- **The workspace agent panel** keeps its single conversation. When the lead has workers, an *in
-  flight* list sits beneath the transcript: title, provider, branch, state, last activity, and a
-  *needs you* marker.
+- **The workspace agent panel** keeps its single conversation. When the lead has workers, an _in
+  flight_ list sits beneath the transcript: title, provider, branch, state, last activity, and a
+  _needs you_ marker.
 - **A worker's transcript** opens read-only from its row. The user does not converse with workers
   (D1); to redirect one, they tell the lead.
 - **Cards** for workers' permission requests and questions appear in the conversation, attributed to
@@ -254,12 +259,12 @@ is a hard boundary, overridable only through configuration, never per action.
 
 ## 11. Standards
 
-| Standard | Used for | Notes |
-|---|---|---|
-| **MCP** | The lead's and workers' team tools | State names borrowed from the Tasks extension; no client implements Tasks yet |
-| **ACP** (Agent Client Protocol) | Hosting third-party agents (T7) | One harness plugin reaches Gemini, Goose, Cline, Cursor, Copilot, and Claude/Codex through adapters. Its draft Subagent Sessions RFD (`unstable_subagents`) is agent-spawned, so it is mirrored, not depended on |
-| **A2A** | Possibly, remote workers | Stable (v1.0.1) but barely adopted by coding agents |
-| **AGENTS.md** | Worker briefs | Repo conventions reach every worker the same way |
+| Standard                        | Used for                           | Notes                                                                                                                                                                                                            |
+| ------------------------------- | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **MCP**                         | The lead's and workers' team tools | State names borrowed from the Tasks extension; no client implements Tasks yet                                                                                                                                    |
+| **ACP** (Agent Client Protocol) | Hosting third-party agents (T7)    | One harness plugin reaches Gemini, Goose, Cline, Cursor, Copilot, and Claude/Codex through adapters. Its draft Subagent Sessions RFD (`unstable_subagents`) is agent-spawned, so it is mirrored, not depended on |
+| **A2A**                         | Possibly, remote workers           | Stable (v1.0.1) but barely adopted by coding agents                                                                                                                                                              |
+| **AGENTS.md**                   | Worker briefs                      | Repo conventions reach every worker the same way                                                                                                                                                                 |
 
 ## 12. What exists, and what must change first
 
@@ -271,13 +276,13 @@ On `main` today:
 
 Gaps the team would hit:
 
-| Gap | Where | Fix |
-|---|---|---|
+| Gap                                                                    | Where                                   | Fix                                                                                                           |
+| ---------------------------------------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
 | A ninth live session evicts the least-recently-used one, even mid-task | `ai-manager.ts` `MAX_LIVE_SESSIONS = 8` | Workers' sessions are pinned while not terminal; the concurrency cap and the live-session cap are one setting |
-| Run roots are not validated | `AiManager.isRunRequest` | §9 |
-| No caller identity in the bridge scope | `AiBridgeScope` | Add `agentSessionId`, stamped in main |
-| Codex cannot lead or ask | `codex-harness` | D8 |
-| Spend is unknown for providers that report tokens only | spend tracking | Estimate from a price table, marked as an estimate |
+| Run roots are not validated                                            | `AiManager.isRunRequest`                | §9                                                                                                            |
+| No caller identity in the bridge scope                                 | `AiBridgeScope`                         | Add `agentSessionId`, stamped in main                                                                         |
+| Codex cannot lead or ask                                               | `codex-harness`                         | D8                                                                                                            |
+| Spend is unknown for providers that report tokens only                 | spend tracking                          | Estimate from a price table, marked as an estimate                                                            |
 
 ## 13. Carried forward from the spike
 
@@ -310,17 +315,17 @@ chat, DMs, `org_message`; the wake and catch-up machinery.
 
 ## 14. Phases
 
-| Phase | Scope | Depends on |
-|---|---|---|
-| **T0** | This note | — |
-| **T1** | Foundations: run-root validation in main; `agentSessionId`; session pinning and one concurrency setting; reachability spec | — |
-| **T2** | Isolation seam + worktree backend (create, list, remove, prune); branch from the lead's base | T1 |
-| **T3** | Team host: workers, states, board, lead wakes, tools; capability settings (push / PR / merge / unattended / caps) | T1, T2 |
-| **T4** | UI: in-flight list, worker transcript, cards in the lead's conversation | T3 |
-| **T5** | Codex harness on the app-server: approvals, Studio tools, commit-in-worktree test | — (parallel with T1–T4) |
-| **T6** | Studio MCP endpoint (stdio / HTTP) for leads that cannot request Studio's tools | T3 |
-| **T7** | ACP harness plugin | T6 |
-| Later | Container backend; remote workers | T2 |
+| Phase  | Scope                                                                                                                      | Depends on              |
+| ------ | -------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
+| **T0** | This note                                                                                                                  | —                       |
+| **T1** | Foundations: run-root validation in main; `agentSessionId`; session pinning and one concurrency setting; reachability spec | —                       |
+| **T2** | Isolation seam + worktree backend (create, list, remove, prune); branch from the lead's base                               | T1                      |
+| **T3** | Team host: workers, states, board, lead wakes, tools; capability settings (push / PR / merge / unattended / caps)          | T1, T2                  |
+| **T4** | UI: in-flight list, worker transcript, cards in the lead's conversation                                                    | T3                      |
+| **T5** | Codex harness on the app-server: approvals, Studio tools, commit-in-worktree test                                          | — (parallel with T1–T4) |
+| **T6** | Studio MCP endpoint (stdio / HTTP) for leads that cannot request Studio's tools                                            | T3                      |
+| **T7** | ACP harness plugin                                                                                                         | T6                      |
+| Later  | Container backend; remote workers                                                                                          | T2                      |
 
 The first usable release is T1–T5: a Claude lead with Claude and Codex workers in worktrees.
 
@@ -335,3 +340,45 @@ The first usable release is T1–T5: a Claude lead with Claude and Codex workers
 5. **Worker-to-lead questions.** Is `instruct_worker` enough in one direction, or does a worker need a
    way to ask the lead (rather than the user) something mid-task?
 6. **Agent Teams in SDK sessions.** Re-test to settle the contradiction with spike #429.
+
+## 16. As built in the spike (2026-10-04)
+
+Branch `spike/788-agent-teams`. Claude only (D10); `plugins/codex-harness` untouched.
+
+**Where a team lives.** In a worktree container (#351). Promote a repository first (ribbon ▸
+Promote); every checkout's agent is then a potential lead, offered the lead's tools. A team is one per
+container tab, held in memory for the tab's life.
+
+**What a lead does.** `start_worker` (gated: the user is asked, through the ordinary permission card,
+before each worker starts) clones a new checkout on the worker's branch — from the named base, read
+from the clone's source as `origin/<base>`, created `--no-track` — opens that checkout's view in the
+background without switching to it, and sends the task to the agent that view already has, as its
+first message. `worker_status`, `instruct_worker` and `stop_worker` act on the lead's own workers.
+
+**What a worker does.** Its role is `worker` because the team started its checkout; it is offered the
+board and `complete_task` / `fail_task`. Its own conversation is its checkout's ordinary agent panel —
+the user can step into it, see its files and terminals, and talk to it.
+
+**Waking the lead.** On `complete_task`, `fail_task`, the user stopping a worker, and — added while
+building — a worker whose turn ends without reporting either. The last closes the hole the retired
+spike fell into: a worker that errors or simply stops is never silent. Messages to a lead start
+`[Team]`; to a worker, `[Lead]`.
+
+**The panel.** Above the lead's transcript, a _Workers_ strip: one row per worker — state, branch,
+what it waits on the user for — with Allow/Deny in place for a pending permission, and buttons to
+open the worker's checkout or stop it. A worker's questions and edit decisions are answered in its own
+checkout (one click from the row).
+
+**Limits.** Four running workers per container (`MAX_ACTIVE_WORKERS`), a fixed bound for now. Starts
+are serialised so concurrent calls cannot overrun it. The live-session valve no longer reaps a
+session with a turn in flight.
+
+**Not yet built.**
+
+- Run-root validation in main (§9) and caller identity beyond the stamped workspace root — callers
+  are identified by their checkout's root, which main stamps from the run's own request.
+- Capability settings (push / PR / merge / unattended / caps) — policy is prompt-only for now.
+- Any persistence: closing the container tab ends the team (checkouts, branches and conversations
+  remain).
+- Removing a finished worker's checkout — the user removes it from the Worktrees panel.
+- The reachability spec (§13).
