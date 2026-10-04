@@ -71,6 +71,7 @@ import { sanitizeWritePaths } from './write-confinement';
 import { sanitizeAgentShell } from '@shared/electron/shell-env';
 import { mergeModels, type ReportedModel } from './model-merge';
 import { PermissionRuleStore } from './permission-rule-store';
+import { pickReapVictim } from './live-session-reap';
 import { RendererBridge } from './renderer-bridge';
 import { sanitizeLanguage, sanitizePromptExtra } from './prompt-guard';
 import type { SkillOfferer } from './skills/skill-library';
@@ -198,6 +199,13 @@ interface LiveSessionEntry {
    * least-recently-used session.
    */
   lastActivity: number;
+
+  /**
+   * How many turns are running in the session right now. The memory-pressure valve never reaps a
+   * session with a turn in flight: closing it would kill work the user (or a team's lead) is waiting
+   * on, where reaping an idle one costs only a cold-start resume on its next turn.
+   */
+  turnsInFlight: number;
 
   /**
    * The id of the last run dispatched into the session, so the `session-ended` event it leaves behind
@@ -1094,6 +1102,7 @@ export class AiManager {
       lifetimeMs: this.reapLifetimeMs(request),
       reapTimer: null,
       lastActivity: Date.now(),
+      turnsInFlight: 0,
       lastRequestId: context.requestId,
     };
     this.liveSessions.set(key, entry);
@@ -1127,7 +1136,9 @@ export class AiManager {
     this.clearReap(entry);
     entry.lastActivity = Date.now();
     entry.lastRequestId = context.requestId;
+    entry.turnsInFlight += 1;
     return this.trackLiveTurn(key, entry.session, entry.session.turn(context)).finally((): void => {
+      entry.turnsInFlight -= 1;
       // Idle again: re-arm the reap for whichever entry is still registered (a failed turn was evicted).
       const current: LiveSessionEntry | undefined = this.liveSessions.get(key);
       if (current !== undefined) {
@@ -1186,23 +1197,23 @@ export class AiManager {
   /**
    * Reaps the least-recently-used live sessions until at most {@link MAX_LIVE_SESSIONS} remain — the
    * memory-pressure safety valve (#328), applied even under an indefinite lifetime. The just-opened
-   * session (identified by key) is never the victim.
+   * session (identified by key) is never the victim, and neither is a session with a turn in flight
+   * (#788): an agent team runs several sessions at once, and the valve evicting one mid-task would
+   * end a worker's run under it. When every other session is busy the cap is exceeded until one
+   * settles, which the next opening reaps.
    * @param keepKey The key of the session that must stay open (the one just opened).
    */
   private reapOverflow(keepKey: string): void {
     while (this.liveSessions.size > MAX_LIVE_SESSIONS) {
-      let oldestKey: string | null = null;
-      let oldest: LiveSessionEntry | null = null;
-      for (const [entryKey, entry] of this.liveSessions) {
-        if (entryKey === keepKey) {
-          continue;
-        }
-        if (oldest === null || entry.lastActivity < oldest.lastActivity) {
-          oldestKey = entryKey;
-          oldest = entry;
-        }
-      }
-      if (oldestKey === null || oldest === null) {
+      const oldestKey: string | null = pickReapVictim(this.liveSessions, keepKey);
+      const oldest: LiveSessionEntry | undefined =
+        oldestKey === null ? undefined : this.liveSessions.get(oldestKey);
+      if (oldestKey === null || oldest === undefined) {
+        logger.info(
+          'AiManager.reapOverflow',
+          `Live session cap (${MAX_LIVE_SESSIONS}) exceeded with every other session busy; ` +
+            `holding ${this.liveSessions.size} open until one settles`,
+        );
         return;
       }
       logger.debug(

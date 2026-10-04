@@ -260,6 +260,7 @@ export class WorktreeOperations {
     const branch: string | undefined = isSafeOperand(record['branch'])
       ? record['branch']
       : undefined;
+    const base: string | undefined = isSafeOperand(record['base']) ? record['base'] : undefined;
     const alias: string | undefined =
       typeof record['alias'] === 'string' && record['alias'].length > 0
         ? record['alias']
@@ -294,8 +295,10 @@ export class WorktreeOperations {
     if (branch !== undefined) {
       const switched: GitResult = await this.git(directory, ['checkout', branch]);
       if (!switched.success) {
-        const created: GitResult = await this.git(directory, ['checkout', '-b', branch]);
+        const created: GitResult = await this.createBranch(directory, branch, base);
         if (!created.success) {
+          // The clone is already on disk; leave nothing half-made behind for the panel to list.
+          await fs.rm(directory, { recursive: true, force: true });
           return worktreeError(
             `The branch could not be checked out: ${created.error ?? 'unknown error'}`,
           );
@@ -609,6 +612,37 @@ export class WorktreeOperations {
     const result: GitResult = await this.git(directory, ['remote', 'get-url', 'origin']);
     const origin: string = result.success ? (result.stdout ?? '') : '';
     return origin.length > 0 ? origin : null;
+  }
+
+  /**
+   * Creates and checks out a new branch in a fresh clone, from a base when one is named.
+   * @param directory The clone's directory.
+   * @param branch The branch to create.
+   * @param base The branch to start from, or undefined for the clone's current head.
+   * @returns Returns the result of the checkout that created it.
+   */
+  private async createBranch(
+    directory: string,
+    branch: string,
+    base: string | undefined,
+  ): Promise<GitResult> {
+    if (base === undefined) {
+      return this.git(directory, ['checkout', '-b', branch]);
+    }
+    // The source's copy of the base first: a fresh clone holds its source's branches as
+    // `origin/*` and only the default one locally. `--no-track`, so the new branch does not adopt
+    // its base as upstream — pushing it must create its own branch, never update the base.
+    const fromSource: GitResult = await this.git(directory, [
+      'checkout',
+      '--no-track',
+      '-b',
+      branch,
+      `origin/${base}`,
+    ]);
+    if (fromSource.success) {
+      return fromSource;
+    }
+    return this.git(directory, ['checkout', '--no-track', '-b', branch, base]);
   }
 
   /**

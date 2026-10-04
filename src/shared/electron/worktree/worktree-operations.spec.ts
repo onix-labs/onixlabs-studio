@@ -252,6 +252,60 @@ describe('WorktreeOperations', () => {
       expect((await operations.describe(container))?.checkouts).toHaveLength(1);
     });
 
+    it('startsANewBranchFromTheNamedBase_withoutTrackingIt', GIT_TEST_TIMEOUT, async () => {
+      const { root, descriptor } = await promoteFixture();
+      const first: string = path.join(root, descriptor.checkouts[0].id);
+      // A base the source has but the clone does not hold locally: only `origin/release` exists there.
+      await git(first, 'checkout', '-b', 'release');
+      await fs.writeFile(path.join(first, 'RELEASE.md'), 'release\n', 'utf8');
+      await git(first, 'add', '.');
+      await git(
+        first,
+        '-c',
+        'user.email=spec@studio',
+        '-c',
+        'user.name=Spec',
+        'commit',
+        '-m',
+        'release',
+      );
+      await git(first, 'checkout', 'main');
+
+      const outcome: WorktreeOutcome<WorktreeCheckoutInfo> = await operations.addCheckout(root, {
+        branch: 'agent/from-release',
+        base: 'release',
+      });
+
+      expect(outcome.ok).toBe(true);
+      if (!outcome.ok) {
+        return;
+      }
+      expect(outcome.value.branch).toBe('agent/from-release');
+      expect(await fs.readFile(path.join(outcome.value.path, 'RELEASE.md'), 'utf8')).toBe(
+        'release\n',
+      );
+      // No upstream: pushing the worker's branch must never update its base.
+      const config: string = await fs.readFile(
+        path.join(outcome.value.path, '.git', 'config'),
+        'utf8',
+      );
+      expect(config).not.toContain('[branch "agent/from-release"]');
+    });
+
+    it('refusesABaseThatDoesNotExist_andLeavesNoCloneBehind', GIT_TEST_TIMEOUT, async () => {
+      const { root } = await promoteFixture();
+
+      const outcome: WorktreeOutcome<WorktreeCheckoutInfo> = await operations.addCheckout(root, {
+        branch: 'agent/orphan',
+        base: 'no-such-branch',
+      });
+
+      expect(outcome.ok).toBe(false);
+      // Only the container meta and the first checkout remain.
+      expect(await fs.readdir(root)).toHaveLength(2);
+      expect((await operations.describe(root))?.checkouts).toHaveLength(1);
+    });
+
     it('refusesContainersWithNothingToCloneFrom', async () => {
       const container: string = path.join(base, 'empty');
       await fs.mkdir(path.join(container, STUDIO_DIR), { recursive: true });

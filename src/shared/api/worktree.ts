@@ -170,6 +170,14 @@ export interface WorktreeAddOptions {
   readonly branch?: string;
 
   /**
+   * Gets the branch a NEW {@link branch} starts from, or undefined to start it from the clone's
+   * default. Read from the clone's source first (`origin/<base>`), so it names a branch the source
+   * has; ignored when {@link branch} already exists, which is checked out as it is. An agent team's
+   * lead names it (#788): where work branches from is the user's policy, never Studio's choice.
+   */
+  readonly base?: string;
+
+  /**
    * Gets the display alias to register, or undefined to label by branch alone.
    */
   readonly alias?: string;
