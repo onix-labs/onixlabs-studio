@@ -19,6 +19,8 @@
   --wl-border: rgba(255, 255, 255, 0.08);
   // The panel colour the active tab and its content share, so the two read as one shape.
   --wl-panel: #1d2026;
+  // The panel's padding, which the sections also use as the gap between their columns.
+  --welcome-panel-padding: 1.25rem;
 
   // Pin the inherited foregrounds to the fixed palette within the welcome.
   --body-foreground-color: var(--wl-text);
@@ -235,7 +237,7 @@
   flex-direction: column;
   inline-size: 100%;
   min-block-size: 0;
-  padding: 1.25rem;
+  padding: var(--welcome-panel-padding);
   background:
     linear-gradient(180deg, rgba(var(--accent-color-rgb), 0.1) 0, transparent 12rem),
     radial-gradient(60% 55% at 50% 100%, rgba(var(--accent-color-rgb), 0.2), transparent 100%),

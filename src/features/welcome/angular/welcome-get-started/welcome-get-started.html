@@ -1,6 +1,7 @@
 <div class="start">
-  <section class="start__column" aria-labelledby="start-actions-title">
-    <h2 class="start__title" id="start-actions-title">Get Started</h2>
+  <!-- No visible headings: the tab already names the section, and the two columns explain
+       themselves. Each column keeps an accessible name. -->
+  <section class="start__column" aria-label="Get started">
     <div class="start__actions">
       @for (action of actions; track action.label) {
         <button
@@ -19,7 +20,6 @@
   </section>
 
   <section class="start__column start__column--recent" aria-label="Recent items">
-    <h2 class="start__title">Recent Items</h2>
     <div class="welcome__recent">
       <div class="welcome__recent-head">
         <div class="welcome__searchbox">

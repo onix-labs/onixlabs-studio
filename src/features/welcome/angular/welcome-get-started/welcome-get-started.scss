@@ -6,11 +6,12 @@
   min-block-size: 0;
 }
 
-// Two columns: the actions at a fixed width on the left, recent items filling the right.
+// Two columns: the actions at a fixed width on the left, recent items filling the right. The gap
+// between them matches the panel's inline padding, so the three gutters read as one rhythm.
 .start {
   display: grid;
-  grid-template-columns: minmax(16rem, 21rem) minmax(0, 1fr);
-  gap: 1.5rem;
+  grid-template-columns: minmax(14rem, 19rem) minmax(0, 1fr);
+  gap: var(--welcome-panel-padding, 1.25rem);
   block-size: 100%;
   min-block-size: 0;
 }
@@ -23,12 +24,8 @@
   min-block-size: 0;
 }
 
-.start__title {
-  @include section-title;
-}
-
-// The actions share the column's height, so eight of them fill it without scrolling at full size and
-// shrink together when the window is smaller.
+// The actions share the column's height equally and stretch to fill it, shrinking together when the
+// window is smaller.
 .start__actions {
   display: flex;
   flex: 1;
@@ -45,7 +42,6 @@
   flex: 1 1 0;
   align-items: center;
   gap: 0.7rem;
-  max-block-size: 3.25rem;
   min-block-size: 2.25rem;
   padding: 0 0.85rem;
 
