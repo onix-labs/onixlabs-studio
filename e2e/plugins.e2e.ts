@@ -12,7 +12,7 @@ import { modalWindow } from './helpers';
  */
 async function openPlugins(app: ElectronApplication, page: Page): Promise<void> {
   const welcome: Page = await modalWindow(app);
-  await welcome.getByRole('tab', { name: 'Tools' }).click();
+  await welcome.getByRole('tab', { name: 'Tools & Settings' }).click();
   await welcome.locator('.welcome__tool', { hasText: 'Plugin Manager' }).click();
   await expect(page.locator('app-plugin-manager-view')).toBeVisible();
 }

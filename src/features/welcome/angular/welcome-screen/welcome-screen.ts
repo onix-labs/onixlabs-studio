@@ -98,7 +98,7 @@ export class WelcomeScreen {
       icon: Icon.WELCOME_SOURCE_CONTROL,
       shown: false,
     },
-    { id: 'tools', label: 'Tools', icon: Icon.WELCOME_TOOLS, shown: true },
+    { id: 'tools', label: 'Tools & Settings', icon: Icon.WELCOME_TOOLS, shown: true },
   ];
 
   /**

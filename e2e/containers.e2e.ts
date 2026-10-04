@@ -13,7 +13,7 @@ import { modalWindow } from './helpers';
  */
 async function openContainers(app: ElectronApplication, page: Page): Promise<void> {
   const welcome: Page = await modalWindow(app);
-  await welcome.getByRole('tab', { name: 'Tools' }).click();
+  await welcome.getByRole('tab', { name: 'Tools & Settings' }).click();
   await welcome
     .locator('.welcome__tool')
     .filter({ has: welcome.locator('.welcome__tool-title', { hasText: /^Containers$/ }) })

@@ -65,7 +65,7 @@ describe('WelcomeScreen', () => {
   it('tabs_areTheShownSections_inOrder', () => {
     expect(sectionTabs().map((tab: HTMLButtonElement): string => tab.textContent.trim())).toEqual([
       'Get Started',
-      'Tools',
+      'Tools & Settings',
     ]);
   });
 
@@ -82,17 +82,17 @@ describe('WelcomeScreen', () => {
   });
 
   it('clickingATab_showsItsSection_andMarksItActive', async () => {
-    sectionTab('Tools').click();
+    sectionTab('Tools & Settings').click();
     await fixture.whenStable();
 
-    expect(sectionTab('Tools').classList).toContain('welcome__tab--active');
-    expect(sectionTab('Tools').getAttribute('aria-selected')).toBe('true');
+    expect(sectionTab('Tools & Settings').classList).toContain('welcome__tab--active');
+    expect(sectionTab('Tools & Settings').getAttribute('aria-selected')).toBe('true');
     expect(sectionTab('Get Started').getAttribute('aria-selected')).toBe('false');
     expect(shownSection()).toBe('app-welcome-tools');
   });
 
   it('everyShownSectionStaysMounted_soItKeepsWhatTheUserWasDoing', async () => {
-    sectionTab('Tools').click();
+    sectionTab('Tools & Settings').click();
     await fixture.whenStable();
 
     expect(host.querySelectorAll('.welcome__panel > *')).toHaveLength(2);
@@ -106,7 +106,7 @@ describe('WelcomeScreen', () => {
     await fixture.whenStable();
     expect(shownSection()).toBe('app-welcome-tools');
 
-    sectionTab('Tools').dispatchEvent(
+    sectionTab('Tools & Settings').dispatchEvent(
       new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }),
     );
     await fixture.whenStable();
@@ -126,7 +126,7 @@ describe('WelcomeScreen', () => {
   });
 
   it('aToolCard_opensItsTab_andStepsAside', async () => {
-    sectionTab('Tools').click();
+    sectionTab('Tools & Settings').click();
     await fixture.whenStable();
     Array.from(host.querySelectorAll<HTMLButtonElement>('.welcome__tool'))
       .find((card: HTMLButtonElement): boolean => card.textContent?.includes('Settings') ?? false)
@@ -160,7 +160,7 @@ describe('WelcomeScreen', () => {
   });
 
   it('summonedAgain_opensOnGetStartedWhateverWasShownLast', async () => {
-    sectionTab('Tools').click();
+    sectionTab('Tools & Settings').click();
     tabs.open('terminal');
     await fixture.whenStable();
     expect(windows.openWindows).toBe(0);
