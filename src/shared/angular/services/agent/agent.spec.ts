@@ -58,6 +58,7 @@ describe('Agent', () => {
     language: string | undefined;
     systemPromptExtra: string | undefined;
     userPromptExtra: string | undefined;
+    team: string | undefined;
   }[];
   let abortCalls: string[];
   let closeSessionCalls: string[];
@@ -159,6 +160,7 @@ describe('Agent', () => {
           language: options.language,
           systemPromptExtra: options.systemPromptExtra,
           userPromptExtra: options.userPromptExtra,
+          team: options.team,
         });
         return 'run-1';
       },
@@ -217,6 +219,29 @@ describe('Agent', () => {
     expect(runCalls[0].userPromptExtra).toBe('### C#\nBritish English.');
     expect(runCalls[0].prompt).toBe('hello');
     expect(lastItem()?.kind === 'user' && lastItem()?.text).toBe('hello');
+  });
+
+  it('send_carriesTheBoundTeamRole_readAtEachRunStart', () => {
+    // #788. The role decides the team tools main offers, so it is read per run: a checkout that
+    // becomes a worker mid-conversation has its next turn offered the worker's tools.
+    let role: 'lead' | 'worker' | null = null;
+    agent.bindTeamRole((): 'lead' | 'worker' | null => role);
+
+    agent.send('first');
+    fireEvent({ requestId: 'run-1', kind: 'status', state: 'completed', detail: '' });
+    role = 'worker';
+    agent.send('second');
+
+    expect(runCalls[0].team).toBeUndefined();
+    expect(runCalls[1].team).toBe('worker');
+    expect(agent.teamRole()).toBe('worker');
+  });
+
+  it('send_withNoTeamRoleBound_carriesNone', () => {
+    agent.send('hello');
+
+    expect(runCalls[0].team).toBeUndefined();
+    expect(agent.teamRole()).toBeNull();
   });
 
   it('send_whenNoLanguageIsBound_carriesNoneAndOnlyUnscopedProfilesApply', () => {

@@ -1,4 +1,5 @@
 import { normalizeLanguage } from '@shared/api/ai-types';
+import { AGENT_TEAM_ROLES, AgentTeamRole } from '@shared/api/ai/ai-team-tools';
 
 /**
  * The most characters either standing-prompt layer may carry (#300). The renderer composes the text
@@ -36,4 +37,13 @@ export function sanitizeLanguage(value: unknown): string | null {
   }
   const language: string = normalizeLanguage(value);
   return LANGUAGE_PATTERN.test(language) ? language : null;
+}
+
+/**
+ * Reads the run's team role out of an untrusted run request (#788).
+ * @param value The value the renderer sent.
+ * @returns Returns the role, or null for anything that is not one — an agent in no team.
+ */
+export function sanitizeTeamRole(value: unknown): AgentTeamRole | null {
+  return AGENT_TEAM_ROLES.includes(value as AgentTeamRole) ? (value as AgentTeamRole) : null;
 }

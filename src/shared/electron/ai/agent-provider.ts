@@ -12,6 +12,7 @@ import type {
   AiToolPolicy,
   ClaudeExecutableChoice,
 } from '@shared/api/ai-types';
+import type { AgentTeamRole } from '@shared/api/ai/ai-team-tools';
 import type { AuditGrantSource } from './agent-audit-log';
 
 /**
@@ -203,6 +204,12 @@ export interface AgentRunContext {
    * document (`editor`) or the owning terminal (`terminal`).
    */
   readonly surface: AgentSurface;
+
+  /**
+   * Gets the part the run's agent plays in a team, or null for an agent in none; decides whether the
+   * team tools are offered (#788).
+   */
+  readonly team: AgentTeamRole | null;
 
   /**
    * Gets how much autonomy the agent runs with: `agent` (full tools) or `chat` (read-only — it may

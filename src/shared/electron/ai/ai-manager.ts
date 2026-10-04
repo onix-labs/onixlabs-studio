@@ -31,6 +31,7 @@ import type {
   ClaudeLoginStatus,
 } from '@shared/api/ai-types';
 import { isAgentSurface, SEED_CONNECTIONS } from '@shared/api/ai-types';
+import type { AgentTeamRole } from '@shared/api/ai/ai-team-tools';
 
 /**
  * The permission postures accepted from the renderer, used to validate the untrusted run request.
@@ -73,7 +74,7 @@ import { mergeModels, type ReportedModel } from './model-merge';
 import { PermissionRuleStore } from './permission-rule-store';
 import { pickReapVictim } from './live-session-reap';
 import { RendererBridge } from './renderer-bridge';
-import { sanitizeLanguage, sanitizePromptExtra } from './prompt-guard';
+import { sanitizeLanguage, sanitizePromptExtra, sanitizeTeamRole } from './prompt-guard';
 import type { SkillOfferer } from './skills/skill-library';
 
 /**
@@ -182,6 +183,12 @@ interface LiveSessionEntry {
    * The agent shell the session was opened for.
    */
   readonly agentShell: string | null;
+
+  /**
+   * The team role the session was opened for (#788): it decides the tools offered, so a change
+   * reopens the session.
+   */
+  readonly team: AgentTeamRole | null;
 
   /**
    * How long the session may sit idle before idle-reap closes it, in milliseconds, or 0 for never
@@ -899,6 +906,7 @@ export class AiManager {
       ? this.sanitizeImages(request.images)
       : [];
     const surface: AgentSurface = request.surface ?? 'editor';
+    const team: AgentTeamRole | null = sanitizeTeamRole(request.team);
     const language: string | null = sanitizeLanguage(request.language);
     // The user's layers (#300, #301). The prompt text was resolved by the renderer, which owns the
     // profiles; the skills are resolved here, because the library is on disk and main owns it.
@@ -949,6 +957,7 @@ export class AiManager {
       claudeExecutable,
       owningTabId: request.owningTabId ?? null,
       surface,
+      team,
       mode,
       language,
       systemPromptExtra,
@@ -1099,6 +1108,7 @@ export class AiManager {
       workspaceRoot: context.workspaceRoot,
       mode: context.mode,
       agentShell: context.agentShell,
+      team: context.team,
       lifetimeMs: this.reapLifetimeMs(request),
       reapTimer: null,
       lastActivity: Date.now(),
@@ -1301,7 +1311,8 @@ export class AiManager {
       entry.surface === context.surface &&
       entry.workspaceRoot === context.workspaceRoot &&
       entry.mode === context.mode &&
-      entry.agentShell === context.agentShell
+      entry.agentShell === context.agentShell &&
+      entry.team === context.team
     );
   }
 

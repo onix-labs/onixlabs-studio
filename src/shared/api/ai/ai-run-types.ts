@@ -2,6 +2,7 @@
 // and the Angular front-end can import it.
 
 import { AgentSurface } from './ai-tool-surface';
+import { AgentTeamRole } from './ai-team-tools';
 import {
   AiEffort,
   AiProviderId,
@@ -215,6 +216,12 @@ export interface AiRunRequest {
    * `editor` when absent.
    */
   readonly surface?: AgentSurface;
+
+  /**
+   * Gets the part the run's agent plays in a team (#788), or undefined for an agent in none. Decides
+   * the team tools the run is offered, so a change reopens a held-open session.
+   */
+  readonly team?: AgentTeamRole;
 
   /**
    * Gets how much autonomy the agent runs with. Defaults to `agent` (full tools) when absent; `chat`

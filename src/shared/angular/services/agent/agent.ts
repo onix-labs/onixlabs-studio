@@ -28,6 +28,7 @@ import type {
   AiTaskStartedEvent,
   AiTaskUpdatedEvent,
 } from '@shared/api/ai-types';
+import type { AgentTeamRole } from '@shared/api/ai/ai-team-tools';
 import { AiRuntime } from '../ai-runtime/ai-runtime';
 import { AgentEngine } from '../agent-engine/agent-engine';
 import { Log } from '@shared/angular/services/log/log';
@@ -578,6 +579,24 @@ export class Agent {
   }
 
   /**
+   * Binds the part this agent plays in a team (#788), which decides the team tools its runs are
+   * offered. Read at each run start, so a change takes effect on the next turn (reopening a held-open
+   * session, whose tools were bound when it opened).
+   * @param source Returns the part, or null for none.
+   */
+  public bindTeamRole(source: () => AgentTeamRole | null): void {
+    this.teamRoleSource = source;
+  }
+
+  /**
+   * Gets the part this agent plays in a team right now, or null for none.
+   * @returns Returns the role.
+   */
+  public teamRole(): AgentTeamRole | null {
+    return this.teamRoleSource?.() ?? null;
+  }
+
+  /**
    * Selects the model this conversation's runs go through.
    * @param id The model id.
    */
@@ -624,6 +643,11 @@ export class Agent {
    * language changes after the panel mounted is scoped by what it is now.
    */
   private languageSource: (() => string | undefined) | null = null;
+
+  /**
+   * Holds the host's team role, or null for a host in no team (see {@link bindTeamRole}).
+   */
+  private teamRoleSource: (() => AgentTeamRole | null) | null = null;
 
   /**
    * Holds the application-wide notification store terminal run states are raised to, so a run that
@@ -1330,6 +1354,7 @@ export class Agent {
       surface ?? 'editor',
       language ?? null,
     );
+    const team: AgentTeamRole | null = this.teamRole();
     this.busy.set(true);
     this.activeRequestId = this.runtime.run(this.provider(), runPrompt, {
       agentSessionId: this.agentSessionId,
@@ -1354,6 +1379,7 @@ export class Agent {
       agentSessionLifetimeMs: this.settings.aiAgentSessionLifetimeMinutes() * 60_000,
       owningTabId: this.runOwnerResolver?.() ?? owningTabId,
       surface,
+      ...(team === null ? {} : { team }),
       mode: this.modeState(),
       ...(this.effortState() === null ? {} : { effort: this.effortState()! }),
       ...(this.remoteControl() === 'off' ? {} : { remoteControl: this.remoteControl() }),

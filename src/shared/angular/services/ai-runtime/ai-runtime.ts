@@ -21,6 +21,7 @@ import type {
   ClaudeLoginStatus,
 } from '@shared/api/ai-types';
 import { UNSCOPED_BRIDGE_REQUEST } from '@shared/api/ai-types';
+import type { AgentTeamRole } from '@shared/api/ai/ai-team-tools';
 import { Ai } from '@shared/angular/services/ai/ai';
 import { Log } from '@shared/angular/services/log/log';
 
@@ -139,6 +140,12 @@ export interface AiRunOptions {
    * when omitted.
    */
   readonly surface?: AgentSurface;
+
+  /**
+   * Gets the part the run's agent plays in a team (#788), which decides the team tools it is offered.
+   * Omitted for an agent in none.
+   */
+  readonly team?: AgentTeamRole;
 
   /**
    * Gets how much autonomy the agent runs with. Defaults to `agent` (full tools); `chat` runs
@@ -287,6 +294,7 @@ export class AiRuntime {
       ...(options.remoteControl === undefined ? {} : { remoteControl: options.remoteControl }),
       owningTabId: options.owningTabId ?? null,
       surface: options.surface ?? 'editor',
+      ...(options.team === undefined ? {} : { team: options.team }),
       mode: options.mode ?? 'agent',
       ...(options.language === undefined ? {} : { language: options.language }),
       ...(options.systemPromptExtra === undefined || options.systemPromptExtra.length === 0
