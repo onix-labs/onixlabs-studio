@@ -10,7 +10,7 @@
 // between them matches the panel's inline padding, so the three gutters read as one rhythm.
 .start {
   display: grid;
-  grid-template-columns: minmax(13rem, 18rem) minmax(0, 1fr);
+  grid-template-columns: minmax(12rem, 17rem) minmax(0, 1fr);
   gap: var(--welcome-panel-padding, 1.25rem);
   block-size: 100%;
   min-block-size: 0;
@@ -123,6 +123,10 @@
 }
 
 .welcome__recent-head {
+  // The search box and the Clear button share one height, set here rather than left to each one's
+  // padding, which put them a pixel or two apart.
+  --recent-head-height: 2.25rem;
+
   display: flex;
   align-items: center;
   gap: 0.6rem;
@@ -132,13 +136,19 @@
   @include field;
 
   flex: 1 1 auto;
+  block-size: var(--recent-head-height);
+
+  input {
+    padding-block: 0;
+  }
 }
 
 .welcome__clear {
   @include secondary-button;
 
   flex: none;
-  padding-block: 0.45rem;
+  block-size: var(--recent-head-height);
+  padding-block: 0;
 
   i {
     font-size: 0.9rem;

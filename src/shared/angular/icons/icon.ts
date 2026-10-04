@@ -1347,6 +1347,16 @@ export class Icon {
   public static readonly WELCOME_STARRED: Icon = new Icon('ph-light ph-star');
 
   /**
+   * Gets the regular-weight outline star on a recent item that is not starred.
+   */
+  public static readonly WELCOME_STAR: Icon = new Icon('ph ph-star');
+
+  /**
+   * Gets the filled star on a starred recent item.
+   */
+  public static readonly WELCOME_STAR_FILLED: Icon = new Icon('ph-fill ph-star');
+
+  /**
    * Gets the light-weight icon of the repository browser's Recent view.
    */
   public static readonly WELCOME_RECENT: Icon = new Icon('ph-light ph-clock');

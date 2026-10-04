@@ -71,8 +71,8 @@
               <span class="welcome__recent-time">{{ relativeTime(item.openedAt) }}</span>
               <app-button
                 [pressed]="item.pinned"
-                [ariaLabel]="item.pinned ? 'Unpin item' : 'Pin item'"
-                [icon]="item.pinned ? Icon.PIN_FILLED : Icon.PIN"
+                [ariaLabel]="item.pinned ? 'Unstar item' : 'Star item'"
+                [icon]="item.pinned ? Icon.WELCOME_STAR_FILLED : Icon.WELCOME_STAR"
                 variant="none"
                 size="small"
                 (click)="togglePin(item)"

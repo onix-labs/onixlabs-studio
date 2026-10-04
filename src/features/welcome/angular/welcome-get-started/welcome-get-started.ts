@@ -82,7 +82,7 @@ const ROW_ACTION_REMOVE: string = 'remove';
 /**
  * The welcome screen's Get Started section: "I already know what I want to work on". The ways in on
  * the left — open something, or start a new file, terminal, agent or explorer — and the recent items
- * on the right, which can be filtered, searched, pinned, re-opened, removed, or revealed in the file
+ * on the right, which can be filtered, searched, starred, re-opened, removed, or revealed in the file
  * manager.
  *
  * It does not dismiss the welcome screen itself: it reports what happened, and the screen decides.
@@ -410,11 +410,12 @@ export class WelcomeGetStarted {
   }
 
   /**
-   * Toggles whether a recent item is pinned.
+   * Toggles whether a recent item is starred. The row shows a star; the registry still calls it a pin,
+   * which keeps every starred item at the top of the list.
    * @param item The recent item to pin or unpin.
    */
   protected togglePin(item: RecentItem): void {
-    this.log.debug('welcome', `Toggle pin (${item.pinned ? 'unpin' : 'pin'})`, item.path);
+    this.log.debug('welcome', `Toggle star (${item.pinned ? 'unstar' : 'star'})`, item.path);
     this.recentItems.togglePin(item.path);
   }
 
