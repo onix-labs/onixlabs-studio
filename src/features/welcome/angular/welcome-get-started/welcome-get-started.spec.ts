@@ -26,6 +26,8 @@ describe('WelcomeGetStarted', () => {
   let newProjects: number;
 
   beforeEach(async () => {
+    // Recent items persist to local storage, so one test's items would otherwise outlive it.
+    localStorage.clear();
     windows = new FakeModalWindows();
     await TestBed.configureTestingModule({
       imports: [WelcomeGetStarted],
@@ -130,6 +132,20 @@ describe('WelcomeGetStarted', () => {
     expect(host.querySelector('.welcome__recent-empty-title')?.textContent).toContain(
       'No matching items',
     );
+  });
+
+  it('aRecentItem_offersItsActionsInline_andRemoveForgetsIt', async () => {
+    recentItems.record('/a/notes.md', 'notes.md', 'markdown');
+    await fixture.whenStable();
+    const row: HTMLElement = host.querySelector<HTMLElement>('.welcome__recent-row')!;
+
+    // No overflow menu: the row carries its commands as buttons.
+    expect(row.querySelector('app-menu')).toBeNull();
+    expect(row.querySelector('button[aria-label="Show in Finder"]')).not.toBeNull();
+    row.querySelector<HTMLButtonElement>('button[aria-label="Remove item"]')!.click();
+    await fixture.whenStable();
+
+    expect(recentItems.items()).toEqual([]);
   });
 
   it('openRecent_whenItemCannotBeOpened_promptsWithItsChoices', async () => {

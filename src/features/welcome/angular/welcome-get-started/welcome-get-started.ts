@@ -1,4 +1,3 @@
-import { CdkMenuTrigger } from '@angular/cdk/menu';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -23,7 +22,6 @@ import { TabType } from '@shared/angular/services/tabs/tab';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
-import { Menu, MenuItem } from '@shared/angular/components/menu/menu';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigger';
@@ -74,12 +72,6 @@ interface StartAction {
 }
 
 /**
- * The ids emitted by the per-row overflow menu.
- */
-const ROW_ACTION_REVEAL: string = 'reveal';
-const ROW_ACTION_REMOVE: string = 'remove';
-
-/**
  * The welcome screen's Get Started section: "I already know what I want to work on". The ways in on
  * the left — open something, or start a new file, terminal, agent or explorer — and the recent items
  * on the right, which can be filtered, searched, starred, re-opened, removed, or revealed in the file
@@ -89,7 +81,7 @@ const ROW_ACTION_REMOVE: string = 'remove';
  */
 @Component({
   selector: 'app-welcome-get-started',
-  imports: [AppIcon, Button, Modal, ModalContent, Menu, CdkMenuTrigger, TooltipTrigger],
+  imports: [AppIcon, Button, Modal, ModalContent, TooltipTrigger],
   templateUrl: './welcome-get-started.html',
   styleUrl: './welcome-get-started.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -166,14 +158,6 @@ export class WelcomeGetStarted {
     { id: 'images', label: 'Images', icon: Icon.IMAGE_FILE, kind: 'image' },
     { id: 'binary', label: 'Binary', icon: Icon.BINARY, kind: 'binary' },
     { id: 'api', label: 'APIs', icon: Icon.API_EXPLORER, kind: 'api' },
-  ];
-
-  /**
-   * Gets the actions shown in each row's overflow menu.
-   */
-  protected readonly rowMenuItems: readonly MenuItem[] = [
-    { id: ROW_ACTION_REVEAL, label: 'Show in Finder', icon: Icon.FOLDER_OPEN },
-    { id: ROW_ACTION_REMOVE, label: 'Remove Item', icon: Icon.TRASH },
   ];
 
   /**
@@ -420,18 +404,21 @@ export class WelcomeGetStarted {
   }
 
   /**
-   * Handles a selection from a row's overflow menu.
-   * @param item The row the menu belongs to.
-   * @param action The id of the chosen action.
+   * Shows a recent item in the file manager.
+   * @param item The recent item.
    */
-  protected onRowAction(item: RecentItem, action: string): void {
-    if (action === ROW_ACTION_REMOVE) {
-      this.log.info('welcome', 'Remove recent item', item.path);
-      this.recentItems.remove(item.path);
-    } else if (action === ROW_ACTION_REVEAL) {
-      this.log.info('welcome', 'Reveal recent item in file manager', item.path);
-      void this.shell.revealPath(item.path);
-    }
+  protected reveal(item: RecentItem): void {
+    this.log.info('welcome', 'Reveal recent item in file manager', item.path);
+    void this.shell.revealPath(item.path);
+  }
+
+  /**
+   * Removes a recent item from the list. The file or folder itself is untouched.
+   * @param item The recent item.
+   */
+  protected remove(item: RecentItem): void {
+    this.log.info('welcome', 'Remove recent item', item.path);
+    this.recentItems.remove(item.path);
   }
 
   /**

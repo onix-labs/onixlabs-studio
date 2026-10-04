@@ -77,21 +77,23 @@
                 size="small"
                 (click)="togglePin(item)"
               />
-              <button
-                type="button"
-                class="welcome__recent-menu"
-                aria-label="More actions"
-                [appTooltip]="'More actions'"
-                [cdkMenuTriggerFor]="rowMenu.panel() ?? null"
-                [cdkMenuPosition]="rowMenu.position()"
-              >
-                <app-icon [icon]="Icon.DOTS_THREE_VERTICAL" />
-              </button>
-              <app-menu
-                #rowMenu
-                placement="down-end"
-                [items]="rowMenuItems"
-                (selected)="onRowAction(item, $event)"
+              <!-- Its two other actions sit inline rather than behind a menu: two commands are quicker
+                   to reach as buttons than a menu is to open. -->
+              <app-button
+                ariaLabel="Show in Finder"
+                tooltip="Show in Finder"
+                [icon]="Icon.FOLDER_OPEN"
+                variant="none"
+                size="small"
+                (click)="reveal(item)"
+              />
+              <app-button
+                ariaLabel="Remove item"
+                tooltip="Remove from recent items"
+                [icon]="Icon.TRASH"
+                variant="none"
+                size="small"
+                (click)="remove(item)"
               />
             </li>
           }
