@@ -120,15 +120,6 @@ describe('WelcomeScreen', () => {
     ).toEqual(['0', '-1', '-1', '-1']);
   });
 
-  it('newProject_showsCreateSomething', async () => {
-    Array.from(host.querySelectorAll<HTMLButtonElement>('.welcome__action'))
-      .find((action: HTMLButtonElement): boolean => action.textContent?.trim() === 'New Project')
-      ?.click();
-    await fixture.whenStable();
-
-    expect(shownSection()).toBe('app-welcome-create');
-  });
-
   it('aToolCard_opensItsTab_andStepsAside', async () => {
     sectionTab('Tools').click();
     await fixture.whenStable();

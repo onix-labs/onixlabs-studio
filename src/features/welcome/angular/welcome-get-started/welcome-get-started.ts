@@ -64,7 +64,7 @@ interface StartAction {
   /**
    * Gets what the action does: a tab to open, or one of the actions that is not a plain tab.
    */
-  readonly run: TabType | 'open' | 'project' | 'unavailable';
+  readonly run: TabType | 'open' | 'unavailable';
 }
 
 /**
@@ -100,11 +100,6 @@ export class WelcomeGetStarted {
   public readonly opened: OutputEmitterRef<void> = output<void>();
 
   /**
-   * Emits when the user asks for a new project, which the Create Something section handles.
-   */
-  public readonly newProject: OutputEmitterRef<void> = output<void>();
-
-  /**
    * Holds the opener that routes a chosen file or folder to the right surface.
    */
   private readonly fileOpener: FileOpener = inject(FileOpener);
@@ -134,7 +129,6 @@ export class WelcomeGetStarted {
    */
   protected readonly actions: readonly StartAction[] = [
     { label: 'Open Directory or File', icon: Icon.WELCOME_DIRECTORY, run: 'open' },
-    { label: 'New Project', icon: Icon.WELCOME_PROJECT, run: 'project' },
     { label: 'New Code File', icon: Icon.WELCOME_CODE, run: 'code' },
     { label: 'New Markdown File', icon: Icon.WELCOME_MARKDOWN, run: 'markdown' },
     { label: 'New Terminal', icon: Icon.WELCOME_TERMINAL, run: 'terminal' },
@@ -234,10 +228,6 @@ export class WelcomeGetStarted {
     switch (action.run) {
       case 'open':
         void this.openFiles();
-        return;
-      case 'project':
-        this.log.info('welcome', 'New project requested; showing Create Something');
-        this.newProject.emit();
         return;
       case 'unavailable':
         // No feature behind this action yet; it is sketched here to shape the screen.

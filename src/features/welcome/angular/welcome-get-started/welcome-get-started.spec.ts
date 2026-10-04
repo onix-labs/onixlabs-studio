@@ -23,7 +23,6 @@ describe('WelcomeGetStarted', () => {
   let recentItems: RecentItems;
   let internals: GetStartedInternals;
   let opened: TabType[];
-  let newProjects: number;
 
   beforeEach(async () => {
     // Recent items persist to local storage, so one test's items would otherwise outlive it.
@@ -38,9 +37,7 @@ describe('WelcomeGetStarted', () => {
     recentItems = TestBed.inject(RecentItems);
     internals = fixture.componentInstance as unknown as GetStartedInternals;
     opened = [];
-    newProjects = 0;
     fixture.componentInstance.openTab.subscribe((type: TabType): void => void opened.push(type));
-    fixture.componentInstance.newProject.subscribe((): void => void (newProjects += 1));
     await fixture.whenStable();
     host = fixture.nativeElement as HTMLElement;
   });
@@ -65,14 +62,13 @@ describe('WelcomeGetStarted', () => {
       ?.click();
   }
 
-  it('actions_areTheEightWaysIn_inOrder', () => {
+  it('actions_areTheSevenWaysIn_inOrder', () => {
     expect(
       Array.from(host.querySelectorAll<HTMLElement>('.welcome__action-label')).map(
         (label: HTMLElement): string => label.textContent.trim(),
       ),
     ).toEqual([
       'Open Directory or File',
-      'New Project',
       'New Code File',
       'New Markdown File',
       'New Terminal',
@@ -89,11 +85,8 @@ describe('WelcomeGetStarted', () => {
     expect(opened).toEqual(['agent', 'api-explorer']);
   });
 
-  it('newProject_asksForTheCreateSection', () => {
-    clickAction('New Project');
-
-    expect(newProjects).toBe(1);
-    expect(opened).toEqual([]);
+  it('hasNoNewProjectAction_becauseCreateSomethingIsItsOwnTab', () => {
+    expect(host.textContent).not.toContain('New Project');
   });
 
   it('anActionWithNothingBehindIt_doesNothing_andLooksIt', () => {

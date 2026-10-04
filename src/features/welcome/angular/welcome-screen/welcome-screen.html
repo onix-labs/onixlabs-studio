@@ -63,7 +63,6 @@
         [hidden]="section() !== 'get-started'"
         (openTab)="create($event)"
         (opened)="opened()"
-        (newProject)="show('create')"
       />
       <app-welcome-create [hidden]="section() !== 'create'" />
       <app-welcome-source-control
