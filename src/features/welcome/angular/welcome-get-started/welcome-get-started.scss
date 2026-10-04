@@ -10,7 +10,7 @@
 // between them matches the panel's inline padding, so the three gutters read as one rhythm.
 .start {
   display: grid;
-  grid-template-columns: minmax(14rem, 19rem) minmax(0, 1fr);
+  grid-template-columns: minmax(13rem, 18rem) minmax(0, 1fr);
   gap: var(--welcome-panel-padding, 1.25rem);
   block-size: 100%;
   min-block-size: 0;
@@ -36,19 +36,41 @@
 
 .welcome__action {
   @include card;
-  @include card-hover;
 
+  position: relative;
   display: flex;
   flex: 1 1 0;
   align-items: center;
   gap: 0.7rem;
   min-block-size: 2.25rem;
   padding: 0 0.85rem;
+  transition:
+    background 150ms ease,
+    border-color 150ms ease,
+    box-shadow 150ms ease,
+    transform 150ms ease;
 
-  &:hover .welcome__action-chevron,
-  &:focus-visible .welcome__action-chevron {
-    color: var(--wl-text);
-    transform: translateX(0.125rem);
+  // The original welcome screen's hover, kept on purpose: the row lifts to an accent wash with an
+  // accent edge and glow, grows slightly, and its icon, label and chevron turn accent.
+  &:hover,
+  &:focus-visible {
+    // Lift above its neighbours so the scale and glow are never covered by the next row.
+    z-index: 1;
+    outline: none;
+    background: rgba(var(--accent-color-rgb), 0.25);
+    border-color: rgba(var(--accent-color-rgb), 1);
+    box-shadow: 0 0 2rem -0.25rem rgba(var(--accent-color-rgb), 1);
+    transform: scale(1.03);
+
+    .welcome__action-icon,
+    .welcome__action-label,
+    .welcome__action-chevron {
+      color: var(--accent-color);
+    }
+
+    .welcome__action-chevron {
+      transform: translateX(0.125rem);
+    }
   }
 }
 
@@ -61,6 +83,7 @@
   flex: none;
   font-size: 1.25rem;
   color: var(--wl-text);
+  transition: color 150ms ease;
 }
 
 .welcome__action-label {
@@ -72,6 +95,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  transition: color 150ms ease;
 }
 
 .welcome__action-chevron {
