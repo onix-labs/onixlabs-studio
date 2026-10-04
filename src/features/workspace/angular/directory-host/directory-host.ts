@@ -21,6 +21,8 @@ import { Worktrees } from '@shared/angular/services/worktree/worktrees';
 import { Log } from '@shared/angular/services/log/log';
 import { DirectoryView } from '@features/workspace/angular/directory-view/directory-view';
 import { WorktreeSession } from '@features/workspace/angular/worktree/worktree-session';
+import { AgentTeam } from '@features/workspace/angular/team/agent-team';
+import { AGENT_TEAM_VIEW } from '@shared/angular/services/agent-team/agent-team-view';
 
 /**
  * A checkout sub-view the host has materialised: the checkout id and the root listing its
@@ -56,7 +58,10 @@ interface LoadedCheckout {
   templateUrl: './directory-host.html',
   styleUrl: './directory-host.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  providers: [WorktreeSession],
+  // The team (#788) lives beside the session it builds on: one per tab, shared by every checkout's
+  // view, so any checkout's agent can lead and every worker it starts is one of the same container's
+  // checkouts. The agent panel sees it through the shared view token.
+  providers: [WorktreeSession, AgentTeam, { provide: AGENT_TEAM_VIEW, useExisting: AgentTeam }],
 })
 export class DirectoryHost implements OnInit, OnDestroy {
   /**
@@ -165,6 +170,26 @@ export class DirectoryHost implements OnInit, OnDestroy {
         return;
       }
       untracked((): void => void this.loadCheckout(id));
+    });
+
+    // The tab's agent team is created with the host, so its tools are answerable from the start.
+    inject(AgentTeam);
+
+    // Materialise the checkouts the team asked for in the background (#788): a worker's view, and so
+    // its agent, must exist for it to start work, but the user stays where they are.
+    effect((): void => {
+      const wanted: readonly string[] = this.session.wanted();
+      if (this.phase() !== 'container') {
+        return;
+      }
+      const loaded: ReadonlySet<string> = new Set<string>(
+        this.loaded().map((entry: LoadedCheckout): string => entry.id),
+      );
+      for (const id of wanted) {
+        if (!loaded.has(id)) {
+          untracked((): void => void this.loadCheckout(id));
+        }
+      }
     });
 
     // When the active checkout disappears from the registry (it was removed), fall back to the

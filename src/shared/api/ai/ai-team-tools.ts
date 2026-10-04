@@ -241,6 +241,13 @@ export interface FailTaskInput {
 }
 
 /**
+ * The most workers a container runs at once (#788): those not yet completed, failed or cancelled.
+ * Each is a held-open session, and the main process keeps eight; this leaves room for the lead and the
+ * user's other agents. A fixed bound for the spike, to become a setting.
+ */
+export const MAX_ACTIVE_WORKERS: number = 4;
+
+/**
  * The longest title accepted, in characters.
  */
 export const MAX_TEAM_TITLE: number = 80;

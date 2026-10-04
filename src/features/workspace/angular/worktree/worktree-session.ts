@@ -7,6 +7,7 @@ import {
   WorktreeOutcome,
   worktreeError,
 } from '@shared/api/worktree';
+import type { Agent } from '@shared/angular/services/agent/agent';
 import { Log } from '@shared/angular/services/log/log';
 import { Worktrees } from '@shared/angular/services/worktree/worktrees';
 
@@ -81,9 +82,34 @@ export class WorktreeSession {
   >(new Map<string, Signal<boolean>>());
 
   /**
+   * Holds each materialised checkout's live agent, keyed by checkout id. Registered by the checkout's
+   * sub-view, so a team (#788) can brief and direct the agent a checkout already has rather than
+   * starting one of its own.
+   */
+  private readonly agentSignal: WritableSignal<ReadonlyMap<string, Agent>> = signal<
+    ReadonlyMap<string, Agent>
+  >(new Map<string, Agent>());
+
+  /**
+   * Holds the checkouts asked to materialise without being shown, in request order.
+   */
+  private readonly wantedSignal: WritableSignal<readonly string[]> = signal<readonly string[]>([]);
+
+  /**
    * Gets the container root path, or null while the tab is an ordinary workspace.
    */
   public readonly root: Signal<string | null> = this.rootSignal.asReadonly();
+
+  /**
+   * Gets each materialised checkout's live agent, keyed by checkout id.
+   */
+  public readonly agents: Signal<ReadonlyMap<string, Agent>> = this.agentSignal.asReadonly();
+
+  /**
+   * Gets the checkouts asked to materialise in the background; the host loads each without
+   * activating it.
+   */
+  public readonly wanted: Signal<readonly string[]> = this.wantedSignal.asReadonly();
 
   /**
    * Gets a value indicating whether this tab hosts a worktree container.
@@ -214,6 +240,68 @@ export class WorktreeSession {
         this.activitySignal.set(current);
       }
     };
+  }
+
+  /**
+   * Registers a materialised checkout's live agent.
+   * @param id The checkout id.
+   * @param agent The checkout view's agent.
+   * @returns Returns a disposer that unregisters it (called on sub-view destroy).
+   */
+  public registerAgent(id: string, agent: Agent): () => void {
+    const next: Map<string, Agent> = new Map<string, Agent>(this.agentSignal());
+    next.set(id, agent);
+    this.agentSignal.set(next);
+    return (): void => {
+      const current: Map<string, Agent> = new Map<string, Agent>(this.agentSignal());
+      if (current.get(id) === agent) {
+        current.delete(id);
+        this.agentSignal.set(current);
+      }
+    };
+  }
+
+  /**
+   * Asks the host to materialise a checkout's sub-view without switching to it, so its agent can
+   * start work in the background. A no-op for a checkout already asked for; the host ignores one
+   * that is already loaded.
+   * @param id The checkout id.
+   */
+  public ensureLoaded(id: string): void {
+    if (!this.wantedSignal().includes(id)) {
+      this.wantedSignal.set([...this.wantedSignal(), id]);
+    }
+  }
+
+  /**
+   * Gets a checkout's directory, from the last-read descriptor.
+   * @param id The checkout id.
+   * @returns Returns the absolute path, or null for an unknown checkout.
+   */
+  public pathOf(id: string): string | null {
+    return (
+      this.descriptorSignal()?.checkouts.find(
+        (checkout: WorktreeCheckoutInfo): boolean => checkout.id === id,
+      )?.path ?? null
+    );
+  }
+
+  /**
+   * Finds the checkout whose directory a path names.
+   * @param path An absolute path, typically a run's stamped workspace root.
+   * @returns Returns the checkout id, or null when no checkout of this container lives there.
+   */
+  public checkoutAt(path: string | null): string | null {
+    if (path === null) {
+      return null;
+    }
+    const wanted: string = trimTrailingSeparators(path);
+    return (
+      this.descriptorSignal()?.checkouts.find(
+        (checkout: WorktreeCheckoutInfo): boolean =>
+          trimTrailingSeparators(checkout.path) === wanted,
+      )?.id ?? null
+    );
   }
 
   /**
@@ -364,4 +452,14 @@ export class WorktreeSession {
       this.busySignal.set(null);
     }
   }
+}
+
+/**
+ * Drops trailing path separators, so `/a/b/` and `/a/b` compare equal.
+ * @param path The path.
+ * @returns Returns the path without trailing separators (a bare root is kept).
+ */
+function trimTrailingSeparators(path: string): string {
+  const trimmed: string = path.replace(/[\\/]+$/, '');
+  return trimmed.length === 0 ? path : trimmed;
 }

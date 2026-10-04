@@ -6,6 +6,7 @@ import { AgentConversation } from '@shared/angular/services/agent-conversation/a
 import { Log } from '@shared/angular/services/log/log';
 import { AgentChat } from '@shared/angular/components/agent-chat/agent-chat';
 import { AgentToolStrip } from '@shared/angular/components/agent-tool-strip/agent-tool-strip';
+import { AgentTeamStrip } from '@shared/angular/components/agent-team-strip/agent-team-strip';
 import { AgentConversationList } from '@shared/angular/components/agent-conversation-list/agent-conversation-list';
 
 /**
@@ -23,7 +24,7 @@ import { AgentConversationList } from '@shared/angular/components/agent-conversa
  */
 @Component({
   selector: 'app-agent-conversation-panel',
-  imports: [AgentToolStrip, AgentChat, AgentConversationList],
+  imports: [AgentToolStrip, AgentTeamStrip, AgentChat, AgentConversationList],
   templateUrl: './agent-conversation-panel.html',
   styleUrl: './agent-conversation-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

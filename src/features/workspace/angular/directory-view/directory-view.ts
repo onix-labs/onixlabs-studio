@@ -129,6 +129,8 @@ import {
   SourceControlCommands,
 } from '@shared/angular/services/source-control-commands/source-control-commands';
 import { WorktreeSession } from '@features/workspace/angular/worktree/worktree-session';
+import { AgentTeam } from '@features/workspace/angular/team/agent-team';
+import type { AgentTeamRole } from '@shared/api/ai/ai-team-tools';
 import {
   createViewInjectorRegistrar,
   ViewInjectorRegistrar,
@@ -402,6 +404,12 @@ export class DirectoryView implements OnInit, OnDestroy {
    * the active-checkout selection, and host root-ownership claims.
    */
   private readonly worktreeSession: WorktreeSession = inject(WorktreeSession);
+
+  /**
+   * Holds the tab's agent team (#788), provided by a hosting {@link DirectoryHost}; null for a view
+   * mounted without one (a spec, a pop-out).
+   */
+  private readonly team: AgentTeam | null = inject(AgentTeam, { optional: true });
 
   /**
    * Holds the structured logger.
@@ -1770,6 +1778,14 @@ export class DirectoryView implements OnInit, OnDestroy {
       this.destroyRef.onDestroy(
         this.worktreeSession.registerAgentActivity(checkout, this.agent.isRunning),
       );
+      // The checkout's agent is what a team briefs and directs (#788): registered so a lead's tools
+      // can reach it, and told at each run whether it is leading or working, which decides the team
+      // tools it is offered.
+      this.destroyRef.onDestroy(this.worktreeSession.registerAgent(checkout, this.agent));
+      const team: AgentTeam | null = this.team;
+      if (team !== null) {
+        this.agent.bindTeamRole((): AgentTeamRole | null => team.roleOf(checkout));
+      }
     }
     const initial: DirectoryListing | null =
       this.listing() ?? this.workspaces.takeInitial(this.tabId()) ?? null;

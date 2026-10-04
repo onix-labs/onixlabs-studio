@@ -1,0 +1,72 @@
+@if (workers().length > 0) {
+  <section class="team" aria-label="Workers">
+    <p class="team__heading">
+      <app-icon [icon]="Icon.SUBAGENT" aria-hidden="true" />
+      <span>Workers</span>
+      @if (waiting() > 0) {
+        <span class="team__waiting">{{ waiting() }} need{{ waiting() === 1 ? 's' : '' }} you</span>
+      }
+    </p>
+    <ul class="team__list">
+      @for (worker of workers(); track worker.id) {
+        <li class="team__row" [class.team__row--waiting]="worker.pending !== null">
+          <app-icon
+            class="team__state"
+            [class.team__state--spin]="display(worker).spin"
+            [icon]="display(worker).icon"
+            [attr.aria-label]="display(worker).label"
+          />
+          <span class="team__text">
+            <span class="team__title">
+              {{ worker.title }}
+              <span class="team__meta">{{ display(worker).label }} · {{ worker.branch }}</span>
+            </span>
+            <span class="team__detail" [title]="detail(worker)">{{ detail(worker) }}</span>
+          </span>
+          <span class="team__actions">
+            @if (isPermission(worker)) {
+              <app-button
+                variant="solid"
+                size="small"
+                label="Allow"
+                [ariaLabel]="'Allow ' + worker.title"
+                (click)="respond(worker, true)"
+              />
+              <app-button
+                size="small"
+                label="Deny"
+                [ariaLabel]="'Deny ' + worker.title"
+                (click)="respond(worker, false)"
+              />
+            }
+            @if (worker.agent !== null) {
+              <app-button
+                variant="none"
+                size="small"
+                [icon]="Icon.OPEN_EXTERNAL"
+                [ariaLabel]="'Open ' + worker.title"
+                [tooltip]="
+                  worker.pending !== null && !isPermission(worker)
+                    ? 'Open its checkout to answer'
+                    : 'Open its checkout and conversation'
+                "
+                (click)="open(worker)"
+              />
+            }
+            @if (isActive(worker)) {
+              <app-button
+                variant="none"
+                size="small"
+                tone="danger"
+                [icon]="Icon.STOP"
+                [ariaLabel]="'Stop ' + worker.title"
+                tooltip="Stop this worker"
+                (click)="stop(worker)"
+              />
+            }
+          </span>
+        </li>
+      }
+    </ul>
+  </section>
+}
