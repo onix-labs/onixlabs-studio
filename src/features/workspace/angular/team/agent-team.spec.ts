@@ -459,6 +459,29 @@ describe('AgentTeam', () => {
     expect((await call(TEAM_COMPLETE_TASK, { summary: 'Again' }, checkout)).ok).toBe(false);
   });
 
+  it('reportsWhileTheLeadIsMidTurn_areHeldUntilItsTurnEnds_andDeliveredTogether', async () => {
+    // Found in a real round: two workers finishing together, the second report steered into the
+    // lead's running turn and never acted on. A report now waits for the lead to be between turns.
+    const first: { checkout: string } = await start('Multiply', 'agent/multiply');
+    const second: { checkout: string } = await start('Farewell', 'agent/farewell');
+    lead.isRunning.set(true);
+
+    await call(TEAM_COMPLETE_TASK, { summary: 'Multiply added.' }, first.checkout);
+    await call(TEAM_COMPLETE_TASK, { summary: 'Farewell added.' }, second.checkout);
+    TestBed.tick();
+    expect(lead.send).not.toHaveBeenCalled();
+
+    lead.isRunning.set(false);
+    TestBed.tick();
+
+    expect(lead.send).toHaveBeenCalledTimes(1);
+    const wake: string = lead.send.mock.calls[0][0] as string;
+    expect(wake).toContain('Multiply added.');
+    expect(wake).toContain('Farewell added.');
+    TestBed.tick();
+    expect(lead.send).toHaveBeenCalledTimes(1);
+  });
+
   it('failTask_recordsTheReason_andWakesTheLead', async () => {
     const { checkout } = await start();
 

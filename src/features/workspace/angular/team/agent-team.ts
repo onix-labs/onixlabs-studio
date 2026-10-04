@@ -178,6 +178,12 @@ export class AgentTeam implements AgentTeamView {
   private readonly lastSeen: Map<string, TeamWorkerState> = new Map<string, TeamWorkerState>();
 
   /**
+   * Holds the messages waiting for each lead to finish its turn, keyed by the lead's checkout.
+   */
+  private readonly pendingWakesSignal: WritableSignal<ReadonlyMap<string, readonly string[]>> =
+    signal<ReadonlyMap<string, readonly string[]>>(new Map<string, readonly string[]>());
+
+  /**
    * Holds the chain that serialises worker starts: each clones and registers a checkout, and two
    * racing would both pass the limit and branch checks before either landed.
    */
@@ -228,6 +234,19 @@ export class AgentTeam implements AgentTeamView {
     effect((): void => {
       const views: readonly TeamWorkerView[] = this.workers();
       untracked((): void => this.noticeStops(views));
+    });
+
+    // Deliver what is waiting for each lead once it is between turns. Tracks each waiting lead's
+    // running state, so a lead finishing its turn is what delivers the next message.
+    effect((): void => {
+      const pending: ReadonlyMap<string, readonly string[]> = this.pendingWakesSignal();
+      const agents: ReadonlyMap<string, Agent> = this.session.agents();
+      for (const [leadId, messages] of pending) {
+        const lead: Agent | undefined = agents.get(leadId);
+        if (lead !== undefined && messages.length > 0 && !lead.isRunning()) {
+          untracked((): void => this.deliverWakes(leadId, lead));
+        }
+      }
     });
   }
 
@@ -636,18 +655,45 @@ export class AgentTeam implements AgentTeamView {
   }
 
   /**
-   * Wakes a worker's lead with a message from the team. Sent as the lead's next turn — or folded into
-   * the turn it is running, where its provider allows — so the lead hears it whatever it is doing.
+   * Wakes a worker's lead with a message from the team, as its next turn.
+   *
+   * ⛔ Never into a turn the lead is running. Folding a message into a running turn (steering) was
+   * tried, and in a real round two workers finishing together lost the second report: the lead's turn
+   * ended answering the first and never acted on the other. So a message waits until the lead is
+   * between turns, and everything that arrived meanwhile is delivered together, as one turn.
    * @param record The worker the message is about.
    * @param text The message.
    */
   private wakeLead(record: WorkerRecord, text: string): void {
+    const next: Map<string, readonly string[]> = new Map<string, readonly string[]>(
+      this.pendingWakesSignal(),
+    );
+    next.set(record.leadCheckoutId, [...(next.get(record.leadCheckoutId) ?? []), text]);
+    this.pendingWakesSignal.set(next);
     const lead: Agent | undefined = this.session.agents().get(record.leadCheckoutId);
     if (lead === undefined) {
-      this.log.warn('workspace.team', 'Lead not loaded; message not delivered', record.id);
+      this.log.warn('workspace.team', 'Lead not loaded; message held', record.id);
+    } else if (!lead.isRunning()) {
+      this.deliverWakes(record.leadCheckoutId, lead);
+    }
+  }
+
+  /**
+   * Sends a lead everything waiting for it, as one message.
+   * @param leadId The lead's checkout.
+   * @param lead The lead's agent, between turns.
+   */
+  private deliverWakes(leadId: string, lead: Agent): void {
+    const messages: readonly string[] = this.pendingWakesSignal().get(leadId) ?? [];
+    if (messages.length === 0) {
       return;
     }
-    lead.send(text, undefined, TEAM_SURFACE);
+    const next: Map<string, readonly string[]> = new Map<string, readonly string[]>(
+      this.pendingWakesSignal(),
+    );
+    next.delete(leadId);
+    this.pendingWakesSignal.set(next);
+    lead.send(messages.join('\n\n'), undefined, TEAM_SURFACE);
   }
 
   /**
