@@ -362,7 +362,7 @@ describe('SetupWizard', () => {
         'Decoders',
         'Container Engines',
         'Version Control',
-        'Hosting',
+        'Code Hosting',
         'Security',
         'Terminal',
         'Summary',

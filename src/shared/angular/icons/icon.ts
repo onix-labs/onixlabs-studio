@@ -1510,7 +1510,7 @@ export class Icon {
   /**
    * Gets the setup wizard's hosting plugin step: where repositories are hosted (#820).
    */
-  public static readonly SETUP_HOSTING: Icon = new Icon('ph ph-cloud');
+  public static readonly SETUP_HOSTING: Icon = new Icon('ph ph-git-pull-request');
 
   /**
    * Gets the mark against something the setup wizard's summary could not find.

@@ -85,7 +85,7 @@ export const PLUGIN_SLOT_LABELS: Readonly<Record<PluginSlot, string>> = {
   decoder: 'Decoders',
   'container-engine': 'Container Engines',
   'version-control': 'Version Control',
-  hosting: 'Hosting',
+  hosting: 'Code Hosting',
   'agent-harness': 'AI Providers',
 };
 
