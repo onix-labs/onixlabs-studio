@@ -82,7 +82,7 @@ describe('SetupStepCatalogue', () => {
 
   it('render_listsOnlyThePluginsInTheSlot_withWhatIsNotInstalledFirst', async () => {
     // The list exists to be acted on, so the actionable rows lead it; but the installed one stays,
-    // because a filter that hides half its subject is a filter that lies.
+    // because whether it is already there is as much the answer as an Install button.
     await render('language-server');
 
     expect(names()).toEqual(['rust-analyzer', 'pyright']);

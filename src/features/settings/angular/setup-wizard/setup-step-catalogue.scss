@@ -42,11 +42,6 @@
   color: var(--settings-muted-foreground-color);
 }
 
-// The list is the scrolling part, so the filter stays put above it.
-.catalogue__filter {
-  flex: none;
-}
-
 // A plain word rather than a disabled button: there is no action here, and a greyed-out control
 // invites a click that does nothing.
 .catalogue__state {
