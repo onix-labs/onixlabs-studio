@@ -83,6 +83,33 @@ const CLAUDE_HARNESS: PluginSummary = {
 } as unknown as PluginSummary;
 
 /**
+ * Builds an installed version-control plugin declaring the given capabilities.
+ * @param capabilities What the system says it supports.
+ * @returns Returns the plugin summary.
+ */
+function versionControl(capabilities: readonly string[]): PluginSummary {
+  return {
+    id: 'onixlabs.git',
+    name: 'Git',
+    description: 'Git.',
+    state: 'installed',
+    version: '0.1.0',
+    installedVersion: '0.1.0',
+    detail: null,
+    origin: null,
+    contributions: [
+      {
+        slot: 'version-control',
+        id: 'onixlabs.git',
+        displayName: 'Git',
+        priority: 100,
+        capabilities,
+      },
+    ],
+  } as unknown as PluginSummary;
+}
+
+/**
  * What the tree cases arrange: the plugin catalogue and the languages with an installed server,
  * both as signals so a case can install something after the wizard has opened.
  */
@@ -338,7 +365,6 @@ describe('SetupWizard', () => {
         'Environment',
         'Security',
         'Terminal',
-        'Source Control',
       ]);
     });
   });
@@ -384,6 +410,46 @@ describe('SetupWizard', () => {
       expect(leaf.kind).toBe('ai-provider');
       expect(leaf.pageId).toBe('anthropic');
       expect(leaf.label).toBe('Anthropic');
+    });
+
+    it('steps_whenAVersionControlSystemIsInstalled_growItsIdentityAndGitHubBeneathIt', () => {
+      // Who commits are from belongs to the system that makes them, as a provider's sign-in belongs
+      // beneath AI Providers; there is no separate Source Control step to find it in.
+      const installed: Installed = nothingInstalled();
+      installed.plugins.set([versionControl(['stagingArea', 'identity'])]);
+
+      const wizard: SetupWizard = buildWith(installed);
+
+      const root: number = ids(wizard).indexOf('version-control');
+      expect(ids(wizard).slice(root, root + 3)).toEqual([
+        'version-control',
+        'version-control/onixlabs.git',
+        'version-control/github',
+      ]);
+      const identity: SetupStep = wizard.steps()[root + 1];
+      expect(identity.kind).toBe('commit-identity');
+      expect(identity.label).toBe('Git');
+      expect(wizard.steps()[root + 2].kind).toBe('forge');
+      expect(ids(wizard)).not.toContain('source-control');
+    });
+
+    it('steps_whenTheSystemHasNoIdentity_growNoIdentityStep', () => {
+      // A system without committer identity (a future SVN plugin, say) is not asked for one.
+      const installed: Installed = nothingInstalled();
+      installed.plugins.set([versionControl(['stagingArea'])]);
+
+      const wizard: SetupWizard = buildWith(installed);
+
+      expect(ids(wizard)).not.toContain('version-control/onixlabs.git');
+      expect(ids(wizard)).toContain('version-control/github');
+    });
+
+    it('steps_whenNoVersionControlIsInstalled_askNeitherIdentityNorGitHub', () => {
+      const wizard: SetupWizard = buildWith(nothingInstalled());
+
+      expect(
+        ids(wizard).filter((id: string): boolean => id.startsWith('version-control/')),
+      ).toEqual([]);
     });
 
     it('steps_whenAPluginIsInstalledDuringTheRun_growItsLeafWhileTheUserStandsOnTheRoot', () => {

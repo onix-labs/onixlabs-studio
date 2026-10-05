@@ -1492,11 +1492,6 @@ export class Icon {
   public static readonly SETUP_TERMINAL: Icon = new Icon('ph ph-terminal-window');
 
   /**
-   * Gets the icon of the setup wizard's source control step.
-   */
-  public static readonly SETUP_SOURCE_CONTROL: Icon = new Icon('ph ph-git-branch');
-
-  /**
    * Gets the setup wizard's version-control plugin step: the tool that reads repositories, apart from
    * the Source Control step's identity and accounts (#818).
    */

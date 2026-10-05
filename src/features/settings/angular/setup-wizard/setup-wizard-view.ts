@@ -5,7 +5,8 @@ import { SetupStepCatalogue } from './setup-step-catalogue';
 import { SetupStepEnvironment } from './setup-step-environment';
 import { SetupStepLanguage } from './setup-step-language';
 import { SetupStepSettings } from './setup-step-settings';
-import { SetupStepSourceControl } from './setup-step-source-control';
+import { SetupStepCommitIdentity } from './setup-step-commit-identity';
+import { SetupStepForge } from './setup-step-forge';
 import { SetupStepTerminal } from './setup-step-terminal';
 import { SetupStepWhatsNew } from './setup-step-whats-new';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
@@ -50,7 +51,8 @@ import {
     SetupStepCatalogue,
     SetupStepLanguage,
     SetupStepAiProvider,
-    SetupStepSourceControl,
+    SetupStepCommitIdentity,
+    SetupStepForge,
   ],
   templateUrl: './setup-wizard-view.html',
   styleUrl: './setup-wizard-view.scss',

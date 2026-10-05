@@ -1,6 +1,7 @@
 import { FormatSlotEntry } from './format-slot';
 import { LanguageSlotEntry } from './language-slot';
 import { SlotEntry } from './slot';
+import type { VersionControlCapability } from './version-control-protocol';
 
 // Shared plugin contract used between the Electron main process and the renderer. Keep this module
 // platform-neutral (no Node or DOM dependencies) so both compilation targets can import it.
@@ -141,6 +142,13 @@ export interface UnkeyedPluginContribution extends SlotEntry {
    * which is the failure a second channel would eventually produce (#653).
    */
   readonly providers?: readonly ContributedAiProvider[];
+
+  /**
+   * Gets what a version-control system says it supports, or undefined for any other slot. Carried for
+   * the same reason as {@link providers}: the setup wizard grows a step for a system's committer
+   * identity only when the system has one to set.
+   */
+  readonly capabilities?: readonly VersionControlCapability[];
 }
 
 /**

@@ -116,8 +116,13 @@
                   <app-setup-step-ai-provider [pageId]="pageId" />
                 }
               }
-              @case ('source-control') {
-                <app-setup-step-source-control />
+              @case ('commit-identity') {
+                @if (step(); as identityStep) {
+                  <app-setup-step-commit-identity [systemName]="identityStep.label" />
+                }
+              }
+              @case ('forge') {
+                <app-setup-step-forge />
               }
               @default {
                 <!-- Every step kind has a case above, so reaching this means a kind was added

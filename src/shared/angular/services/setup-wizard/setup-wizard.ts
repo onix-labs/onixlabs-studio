@@ -10,7 +10,13 @@ import {
 } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
 import type { ProviderPage } from '@shared/api/ai-types';
-import { PLUGIN_SLOT_LABELS, PLUGIN_SLOTS, type PluginSlot } from '@shared/api/plugin-channels';
+import {
+  installedContributions,
+  PLUGIN_SLOT_LABELS,
+  PLUGIN_SLOTS,
+  type PluginSlot,
+  type UnkeyedPluginContribution,
+} from '@shared/api/plugin-channels';
 import { highlightsBetween, ReleaseHighlights } from '@shared/api/release-highlights';
 import { isNewerStudioVersion } from '@shared/api/studio-version';
 import { AiProviders } from '@shared/angular/services/ai-providers/ai-providers';
@@ -42,8 +48,8 @@ export type SetupMode = 'first-run' | 'upgrade';
  * renders it. The service is deliberately ignorant of the components: it lives in shared, and they
  * live in the settings feature.
  *
- * A `catalogue` step installs plugins into one slot; a `language` or `ai-provider` step configures
- * one thing such a plugin brought, and exists only while it is installed.
+ * A `catalogue` step installs plugins into one slot; a `language`, `ai-provider`, `commit-identity`
+ * or `forge` step configures one thing such a plugin brought, and exists only while it is installed.
  */
 export type SetupStepKind =
   | 'welcome'
@@ -53,8 +59,9 @@ export type SetupStepKind =
   | 'catalogue'
   | 'language'
   | 'ai-provider'
-  | 'terminal'
-  | 'source-control';
+  | 'commit-identity'
+  | 'forge'
+  | 'terminal';
 
 /**
  * Describes one step of the setup sequence: what it is called, the sentence that says why the user
@@ -264,14 +271,6 @@ export const SETUP_STEPS: readonly SetupStep[] = [
     summary:
       'The shell new terminals start with, and the one the agent takes its environment from.',
   },
-  {
-    id: 'source-control',
-    kind: 'source-control',
-    icon: Icon.SETUP_SOURCE_CONTROL,
-    label: 'Source Control',
-    title: 'Source control',
-    summary: 'Who your commits are attributed to, and how Studio reaches your forge.',
-  },
 ];
 
 /**
@@ -393,6 +392,7 @@ export class SetupWizard {
    * sit beneath.
    */
   private readonly leaves: Signal<readonly SetupStep[]> = computed((): readonly SetupStep[] => [
+    ...this.versionControlLeaves(),
     ...this.lspSettings.installedLanguages().map((language: string): SetupStep => ({
       id: `language-server/${language}`,
       kind: 'language',
@@ -412,6 +412,47 @@ export class SetupWizard {
       summary: 'A way to sign in, a credential, and a check that it answers — before you leave.',
     })),
   ]);
+
+  /**
+   * Gets the leaves beneath Version Control: a commit-identity step per installed system that has an
+   * identity to set, named for the system, and — while any system is installed — the GitHub step.
+   *
+   * ⚠️ The GitHub step is interim. A forge is where a repository is hosted, not version control; it
+   * moves to a Hosting root of its own, a leaf per hosting plugin, once that seam exists (#819, #820).
+   * @returns Returns the leaves, in walk order.
+   */
+  private versionControlLeaves(): readonly SetupStep[] {
+    const systems: readonly UnkeyedPluginContribution[] = installedContributions(
+      this.plugins.plugins(),
+      'version-control',
+    );
+    const identities: readonly SetupStep[] = systems
+      .filter((system: UnkeyedPluginContribution): boolean =>
+        (system.capabilities ?? []).includes('identity'),
+      )
+      .map((system: UnkeyedPluginContribution): SetupStep => ({
+        id: `version-control/${system.id}`,
+        kind: 'commit-identity',
+        parentId: 'version-control',
+        label: system.displayName,
+        title: `Who your ${system.displayName} commits are from`,
+        summary: 'The name and email address your commits are attributed to.',
+      }));
+    if (systems.length === 0) {
+      return identities;
+    }
+    return [
+      ...identities,
+      {
+        id: 'version-control/github',
+        kind: 'forge',
+        parentId: 'version-control',
+        label: 'GitHub',
+        title: 'Sign in to GitHub',
+        summary: 'Pull requests, issues and workflow runs for the repositories you open.',
+      },
+    ];
+  }
 
   /**
    * Gets the steps this run presents, in walk order: each root followed by its leaves.
