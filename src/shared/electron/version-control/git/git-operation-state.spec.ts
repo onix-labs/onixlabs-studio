@@ -1,5 +1,6 @@
-import { GitOperationState } from '../api/source-control-channels';
-import { blobSpec, classifyOperation, INDEX_REVISION, OperationProbe } from './git-manager';
+import { describe, expect, it } from 'vitest';
+import { VcsOperationState } from '@shared/api/version-control-protocol';
+import { classifyOperation, OperationProbe } from './git-operation-state';
 
 /**
  * Builds a probe of a repository with nothing in flight, overridden per test with the state files the
@@ -24,40 +25,14 @@ function probe(overrides: Partial<OperationProbe> = {}): OperationProbe {
   };
 }
 
-describe('git-manager', () => {
-  describe('blobSpec', () => {
-    it('joinsARealRevisionToItsPath', () => {
-      expect(blobSpec('HEAD', 'README.md')).toBe('HEAD:README.md');
-      expect(blobSpec('abc123', 'src/app/main.ts')).toBe('abc123:src/app/main.ts');
-    });
-
-    it('keepsARevisionExpressionIntact', () => {
-      // A commit's diff reads its parent as `<hash>^` when the parent is not named outright.
-      expect(blobSpec('abc123^', 'README.md')).toBe('abc123^:README.md');
-    });
-
-    it('doesNotDoubleTheSeparator_whenTheRevisionIsTheIndex', () => {
-      // The index blob is `:path` — the revision is the empty name before the colon, so writing the
-      // colon again yields `::path`, which git rejects as an ambiguous argument. That rejection was
-      // indistinguishable from an absent blob, so every working-tree diff silently lost the side that
-      // came from the index: unstaged files read as wholly added, staged ones as wholly deleted.
-      expect(blobSpec(INDEX_REVISION, 'README.md')).toBe(':README.md');
-      expect(blobSpec(INDEX_REVISION, 'README.md')).not.toBe('::README.md');
-    });
-
-    it('leavesAPathWithColonsAlone_soOnlyTheSeparatorIsAdded', () => {
-      // The path is git's operand, not part of the revision expression; nothing here rewrites it.
-      expect(blobSpec('HEAD', 'weird:name.ts')).toBe('HEAD:weird:name.ts');
-    });
-  });
-
+describe('git-operation-state', () => {
   describe('classifyOperation', () => {
     it('reportsNothingInFlight_whenGitLeftNoStateFiles', () => {
       expect(classifyOperation(probe())).toEqual({ kind: null });
     });
 
     it('readsAMerge_andNamesWhatIsBeingMergedFromItsMessage', () => {
-      const state: GitOperationState = classifyOperation(
+      const state: VcsOperationState = classifyOperation(
         probe({ mergeHead: true, mergeMessage: "Merge branch 'topic' into main" }),
       );
 
@@ -68,7 +43,7 @@ describe('git-manager', () => {
     it('readsAMergeWithNoNameToGive_withoutInventingOne', () => {
       // The message is git's prose, not a contract. A line that names nothing yields no target, and
       // the panel says a merge is in flight without claiming to know what it is merging.
-      const state: GitOperationState = classifyOperation(
+      const state: VcsOperationState = classifyOperation(
         probe({ mergeHead: true, mergeMessage: 'Merge made by the ort strategy' }),
       );
 
@@ -79,7 +54,7 @@ describe('git-manager', () => {
     it('readsASquashMerge_whichHasNoMergeHeadToRecogniseItBy', () => {
       // The distinction is not cosmetic: `git merge --abort` and `--continue` both refuse here,
       // because as far as git is concerned no merge is in progress at all.
-      const state: GitOperationState = classifyOperation(
+      const state: VcsOperationState = classifyOperation(
         probe({ squashMessage: true, mergeMessage: "Squashed commit of 'topic'" }),
       );
 
@@ -94,7 +69,7 @@ describe('git-manager', () => {
     });
 
     it('readsARebase_withItsBranchTargetAndProgress', () => {
-      const state: GitOperationState = classifyOperation(
+      const state: VcsOperationState = classifyOperation(
         probe({
           rebaseMerge: true,
           headName: 'refs/heads/feature/thing',
@@ -116,7 +91,7 @@ describe('git-manager', () => {
     it('readsARebaseFromTheOlderBackend_whoseFilesAreNamedDifferently', () => {
       // `rebase-apply` is the patch-applying backend; the caller reads `next`/`last` into the same
       // fields, so the classifier needs to know nothing about which backend ran.
-      const state: GitOperationState = classifyOperation(
+      const state: VcsOperationState = classifyOperation(
         probe({ rebaseApply: true, headName: 'refs/heads/topic', step: '1', total: '3' }),
       );
 
@@ -140,7 +115,7 @@ describe('git-manager', () => {
     });
 
     it('omitsProgress_whenTheCountersAreMissingOrUnreadable', () => {
-      const state: GitOperationState = classifyOperation(
+      const state: VcsOperationState = classifyOperation(
         probe({ rebaseMerge: true, step: '', total: 'not-a-number' }),
       );
 

@@ -22,10 +22,11 @@ import { Icon } from '@shared/angular/icons/icon';
 import { TreeMenuSelection, TreeRow } from '@shared/angular/components/tree-view/tree-view';
 import { MenuItem } from '@shared/angular/components/menu/menu';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
-import { ParsedRefs, ParsedStatus } from '@shared/angular/services/source-control/git-output';
 import {
   FileDiff,
   MutationResult,
+  ParsedRefs,
+  ParsedStatus,
   PushTarget,
   SourceControlProvider,
 } from '@shared/angular/services/source-control/source-control-provider';

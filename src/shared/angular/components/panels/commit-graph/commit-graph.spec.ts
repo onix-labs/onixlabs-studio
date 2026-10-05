@@ -1,13 +1,14 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Icon } from '@shared/angular/icons/icon';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
-import { ParsedRefs, ParsedStatus } from '@shared/angular/services/source-control/git-output';
-import { GitOperationState } from '@shared/api/source-control-channels';
 import {
   FileDiff,
   MutationResult,
+  ParsedRefs,
+  ParsedStatus,
   SourceControlProvider,
 } from '@shared/angular/services/source-control/source-control-provider';
+import { GitOperationState } from '@shared/api/source-control-channels';
 import { SourceControlProviders } from '@shared/angular/services/source-control/source-control-providers';
 import { Repository, WORKING_NODE_ID } from '@shared/angular/services/repository/repository';
 import {

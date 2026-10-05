@@ -4,8 +4,10 @@ import { Log } from '@shared/angular/services/log/log';
 import { DirectoryWatch } from '@shared/angular/services/directory-watch/directory-watch';
 import { SourceControl } from '@shared/angular/services/source-control/source-control';
 import { GitChangeStatus } from '@shared/angular/services/repository/repository-data';
-import { ParsedStatus } from '@shared/angular/services/source-control/git-output';
-import { SourceControlProvider } from '@shared/angular/services/source-control/source-control-provider';
+import {
+  ParsedStatus,
+  SourceControlProvider,
+} from '@shared/angular/services/source-control/source-control-provider';
 import { SourceControlProviders } from '@shared/angular/services/source-control/source-control-providers';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 

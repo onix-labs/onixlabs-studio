@@ -1,11 +1,8 @@
 import { TestBed } from '@angular/core/testing';
 
 import { Bridge } from '@shared/api/bridge';
-import {
-  GitRunResult,
-  RepositoryInfo,
-  SourceControlChannel,
-} from '@shared/api/source-control-channels';
+import { RepositoryInfo, SourceControlChannel } from '@shared/api/source-control-channels';
+import { VersionControlResponse } from '@shared/api/version-control-protocol';
 import { SourceControl } from './source-control';
 
 /**
@@ -47,114 +44,45 @@ describe('SourceControl', () => {
     expect(service.client).toBeUndefined();
   });
 
-  it('openRepository_whenInvoked_forwardsAndReturnsTheRepository', async () => {
+  it('resolveRepository_forwardsTheFolderAndReturnsTheRepository', async () => {
     const info: RepositoryInfo = { root: '/repos/studio', name: 'studio' };
     stubBridge(info);
     const service: SourceControl = TestBed.inject(SourceControl);
 
-    const result: RepositoryInfo | null | undefined = await service.client?.openRepository();
+    const result: RepositoryInfo | null | undefined =
+      await service.client?.resolveRepository('/repos/studio/src');
 
-    expect(calls).toEqual([{ channel: SourceControlChannel.OpenRepository, args: [] }]);
+    expect(calls).toEqual([
+      { channel: SourceControlChannel.ResolveRepository, args: ['/repos/studio/src'] },
+    ]);
     expect(result).toEqual(info);
   });
 
-  it('readOperations_whenInvoked_forwardTheirArguments', async () => {
-    stubBridge({ success: true, stdout: '' });
+  it('closeRepository_forwardsTheRoot', async () => {
+    stubBridge(undefined);
     const service: SourceControl = TestBed.inject(SourceControl);
 
-    await service.client?.status('/r');
-    await service.client?.log('/r', 250);
-    await service.client?.readBlob('/r', 'HEAD', 'src/app.ts');
+    await service.client?.closeRepository('/repos/studio');
 
     expect(calls).toEqual([
-      { channel: SourceControlChannel.Status, args: ['/r'] },
-      { channel: SourceControlChannel.Log, args: ['/r', 250] },
-      { channel: SourceControlChannel.ReadBlob, args: ['/r', 'HEAD', 'src/app.ts'] },
+      { channel: SourceControlChannel.CloseRepository, args: ['/repos/studio'] },
     ]);
   });
 
-  it('mutations_whenInvoked_forwardTheirArguments', async () => {
-    stubBridge({ success: true });
+  it('request_forwardsTheRootOperationAndParameters', async () => {
+    const answer: VersionControlResponse<'log'> = { id: 0, ok: true, result: [] };
+    stubBridge(answer);
     const service: SourceControl = TestBed.inject(SourceControl);
 
-    await service.client?.stage('/r', ['a.ts', 'b.ts']);
-    await service.client?.commit('/r', 'feat: message');
-    await service.client?.push('/r', 'origin', 'main', true);
+    const result: VersionControlResponse<'log'> | undefined = await service.client?.request(
+      '/repos/studio',
+      'log',
+      { limit: 10 },
+    );
 
     expect(calls).toEqual([
-      { channel: SourceControlChannel.Stage, args: ['/r', ['a.ts', 'b.ts']] },
-      { channel: SourceControlChannel.Commit, args: ['/r', 'feat: message'] },
-      { channel: SourceControlChannel.Push, args: ['/r', 'origin', 'main', true] },
+      { channel: SourceControlChannel.Request, args: ['/repos/studio', 'log', { limit: 10 }] },
     ]);
-  });
-
-  it('branchMutations_whenInvoked_forwardTheirArguments', async () => {
-    stubBridge({ success: true });
-    const service: SourceControl = TestBed.inject(SourceControl);
-
-    await service.client?.deleteBranch('/r', 'develop', false);
-    await service.client?.renameBranch('/r', 'develop', 'renamed');
-    await service.client?.setUpstream('/r', 'develop', 'origin/develop');
-    await service.client?.setUpstream('/r', 'develop', null);
-
-    expect(calls).toEqual([
-      { channel: SourceControlChannel.DeleteBranch, args: ['/r', 'develop', false] },
-      { channel: SourceControlChannel.RenameBranch, args: ['/r', 'develop', 'renamed'] },
-      { channel: SourceControlChannel.SetUpstream, args: ['/r', 'develop', 'origin/develop'] },
-      // Null is the clear, and travels as itself rather than being dropped.
-      { channel: SourceControlChannel.SetUpstream, args: ['/r', 'develop', null] },
-    ]);
-  });
-
-  it('remoteMutations_whenInvoked_forwardTheirArguments', async () => {
-    stubBridge({ success: true });
-    const service: SourceControl = TestBed.inject(SourceControl);
-
-    await service.client?.fetchRemote('/r', 'origin');
-    await service.client?.pruneRemote('/r', 'origin');
-    await service.client?.addRemote('/r', 'upstream', 'https://example.com/u.git');
-    await service.client?.removeRemote('/r', 'upstream');
-    await service.client?.checkoutTracking('/r', 'origin/release', 'release');
-
-    expect(calls).toEqual([
-      { channel: SourceControlChannel.FetchRemote, args: ['/r', 'origin'] },
-      { channel: SourceControlChannel.PruneRemote, args: ['/r', 'origin'] },
-      {
-        channel: SourceControlChannel.AddRemote,
-        args: ['/r', 'upstream', 'https://example.com/u.git'],
-      },
-      { channel: SourceControlChannel.RemoveRemote, args: ['/r', 'upstream'] },
-      { channel: SourceControlChannel.CheckoutTracking, args: ['/r', 'origin/release', 'release'] },
-    ]);
-  });
-
-  it('tagMutations_whenInvoked_forwardTheirArguments', async () => {
-    stubBridge({ success: true });
-    const service: SourceControl = TestBed.inject(SourceControl);
-
-    await service.client?.createTag('/r', 'v1.0.0', 'abc123');
-    await service.client?.createTag('/r', 'v1.1.0', 'abc123', 'Release');
-    await service.client?.deleteTag('/r', 'v1.0.0');
-    await service.client?.deleteRemoteTag('/r', 'origin', 'v1.0.0');
-    await service.client?.pushTag('/r', 'origin', 'v1.1.0');
-    await service.client?.pushAllTags('/r', 'origin');
-
-    expect(calls).toEqual([
-      // A tag with no message stays lightweight, and the undefined travels rather than being dropped.
-      { channel: SourceControlChannel.CreateTag, args: ['/r', 'v1.0.0', 'abc123', undefined] },
-      { channel: SourceControlChannel.CreateTag, args: ['/r', 'v1.1.0', 'abc123', 'Release'] },
-      { channel: SourceControlChannel.DeleteTag, args: ['/r', 'v1.0.0'] },
-      { channel: SourceControlChannel.DeleteRemoteTag, args: ['/r', 'origin', 'v1.0.0'] },
-      { channel: SourceControlChannel.PushTag, args: ['/r', 'origin', 'v1.1.0'] },
-      { channel: SourceControlChannel.PushAllTags, args: ['/r', 'origin'] },
-    ]);
-  });
-
-  it('operations_whenTheBridgeResolves_passTheResultThroughUnchanged', async () => {
-    const outcome: GitRunResult = { success: false, error: 'not a repository' };
-    stubBridge(outcome);
-    const service: SourceControl = TestBed.inject(SourceControl);
-
-    await expect(service.client?.fetch('/r')).resolves.toEqual(outcome);
+    expect(result).toEqual(answer);
   });
 });

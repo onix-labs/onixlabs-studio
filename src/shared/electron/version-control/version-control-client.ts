@@ -13,6 +13,7 @@ import {
 import { logger } from '../logger';
 import { pidJournal } from '../pid-journal';
 import { VersionControlSpec } from './version-control-descriptor';
+import { VersionControlEndpoint } from './version-control-endpoint';
 
 /**
  * Specifies how long the initialize handshake may take. A plugin that cannot say what it is promptly
@@ -40,7 +41,7 @@ interface Pending {
  * resolves — to the plugin's answer, or to a failure saying why there was none — so a plugin that dies,
  * hangs or answers a question nobody asked costs the caller one failed operation and nothing more.
  */
-export class VersionControlClient {
+export class VersionControlClient implements VersionControlEndpoint {
   /**
    * Holds the plugin's identifier, for logging.
    */

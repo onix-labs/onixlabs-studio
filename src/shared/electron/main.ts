@@ -93,7 +93,11 @@ import {
 } from '@shared/electron/setup/setup-probes';
 import type { GraphicsAcceleration } from '@shared/api/host';
 import { StartupPreferences, StartupPreferencesStore } from './startup-preferences';
-import { GitManager } from '@shared/electron/git-manager';
+import { VersionControlHost } from '@shared/electron/version-control/version-control-host';
+import { VersionControlManager } from '@shared/electron/version-control/version-control-manager';
+import { coreGitDescriptor } from '@shared/electron/version-control/git/core-git';
+import { contributedVersionControl } from '@shared/electron/contributions/plugins/contributed';
+import type { NodeRuntimeSpec } from '@shared/electron/contributions/plugins/plugin-loader';
 import { SearchManager } from '@shared/electron/search-manager';
 import { StudioStore } from '@shared/electron/studio/studio-store';
 import { WorktreeManager } from '@shared/electron/worktree/worktree-manager';
@@ -319,13 +323,6 @@ class Program {
   private readonly codeRunner: CodeRunner = new CodeRunner();
 
   /**
-   * Runs git safely on behalf of the renderer's source-control surfaces.
-   */
-  private readonly gitManager: GitManager = new GitManager((): BrowserWindow | null =>
-    this.windows.main(),
-  );
-
-  /**
    * Watches open documents on disk and notifies the renderer when they change.
    */
   private readonly fileWatcher: FileWatcher = new FileWatcher((): BrowserWindow | null =>
@@ -352,6 +349,27 @@ class Program {
    * Tracks the open workspace roots and confines filesystem operations (and agent runs) to them.
    */
   private readonly workspaceContext: WorkspaceContext = new WorkspaceContext();
+
+  /**
+   * Hosts the version-control plugins (#815, #816): picks the one serving each repository, confines
+   * every request to an open repository or workspace, and refuses what a plugin does not support.
+   * Core's own git answers until it moves into the Git plugin (#817).
+   */
+  private readonly versionControlHost: VersionControlHost = new VersionControlHost({
+    descriptors: () => [
+      ...contributedVersionControl(versionControlNodeRuntime),
+      coreGitDescriptor(),
+    ],
+    roots: this.workspaceContext,
+    executableFor: (): null => null,
+  });
+
+  /**
+   * Serves the renderer's source-control surfaces over the version-control host.
+   */
+  private readonly versionControlManager: VersionControlManager = new VersionControlManager(
+    this.versionControlHost,
+  );
 
   /**
    * Owns the AI agent subsystem: authentication, provider runtime, and event streaming. Declared after
@@ -408,6 +426,7 @@ class Program {
   private readonly worktreeManager: WorktreeManager = new WorktreeManager(
     this.workspaceContext,
     this.trustedPaths,
+    this.versionControlHost,
   );
 
   /**
@@ -876,7 +895,7 @@ class Program {
     this.fileManager.register();
     this.menuManager.register();
     this.codeRunner.register();
-    this.gitManager.register();
+    this.versionControlManager.register();
     this.workspaceManager.register();
     this.searchManager.register();
     this.studioStore.register();
@@ -1211,6 +1230,7 @@ class Program {
     this.terminalManager.disposeAll();
     this.codeRunner.dispose();
     this.decoderHost.dispose();
+    this.versionControlManager.dispose();
     this.fileWatcher.disposeAll();
     this.directoryWatcher.disposeAll();
     this.aiManager.disposeAll();
@@ -1328,6 +1348,17 @@ class Program {
     void hydratePythonRuntime();
     new Program();
   }
+}
+
+/**
+ * Builds how to run a version-control plugin's JavaScript entry point: through the Electron binary in
+ * Node mode, as decoders and harnesses are, so a plugin shipped as a bundle needs no Node on the
+ * machine.
+ * @param entryPoint The entry point to run.
+ * @returns Returns the command, arguments and environment.
+ */
+function versionControlNodeRuntime(entryPoint: string): NodeRuntimeSpec {
+  return { command: process.execPath, args: [entryPoint], env: { ELECTRON_RUN_AS_NODE: '1' } };
 }
 
 Program.run();

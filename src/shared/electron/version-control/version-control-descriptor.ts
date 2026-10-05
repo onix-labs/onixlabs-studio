@@ -2,6 +2,7 @@ import type {
   VersionControlCapability,
   VersionControlExecutableMode,
 } from '@shared/api/version-control-protocol';
+import type { VersionControlEndpoint } from './version-control-endpoint';
 
 /**
  * Describes how to spawn a version-control plugin.
@@ -28,6 +29,14 @@ export interface VersionControlSpec {
  */
 export type VersionControlResolution =
   | { readonly available: true; readonly spec: VersionControlSpec }
+  | {
+      readonly available: true;
+      /**
+       * Creates an endpoint running inside the main process rather than a process to spawn — core's
+       * own git until it moves into a plugin (#817).
+       */
+      readonly create: () => VersionControlEndpoint;
+    }
   | { readonly available: false; readonly reason: string };
 
 /**

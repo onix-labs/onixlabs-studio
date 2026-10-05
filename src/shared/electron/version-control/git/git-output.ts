@@ -1,87 +1,48 @@
 import {
-  GitBranch,
-  GitChangeStatus,
-  GitCommit,
-  GitFileChange,
-  GitRef,
-  GitRemote,
-  GitRemoteBranch,
-  GitStash,
-  GitTag,
-} from '../repository/repository-data';
+  VcsBranch,
+  VcsChangeStatus,
+  VcsCommit,
+  VcsFileChange,
+  VcsRef,
+  VcsRefs,
+  VcsRemote,
+  VcsRemoteBranch,
+  VcsStash,
+  VcsStatus,
+  VcsTag,
+} from '@shared/api/version-control-protocol';
+
+// Parsers for git's machine-readable output, turning it into the version-control protocol's types
+// (#816). They lived in the renderer while the main process returned raw output; behind the protocol,
+// parsing is the plugin's job, so nothing on Studio's side of the seam reads porcelain.
 
 /**
- * The unit separator git is asked to put between fields (`%x1f` / `%1f`).
+ * The ASCII unit separator, used between fields of the custom `log`, `for-each-ref` and stash formats.
  */
-const US: string = '\x1f';
+export const US: string = '\x1f';
 
 /**
- * The record separator git is asked to put between commits (`%x1e`).
+ * The ASCII record separator, used between records of the custom `log` format.
  */
-const RS: string = '\x1e';
+export const RS: string = '\x1e';
 
 /**
- * The NUL byte git uses to separate entries under `-z`.
+ * The NUL character that delimits `-z` output.
  */
 const NUL: string = '\0';
 
 /**
- * Describes a repository's working-tree status parsed from `git status --porcelain=v2 --branch`.
- */
-export interface ParsedStatus {
-  /**
-   * Gets the current branch name, or null when the head is detached.
-   */
-  readonly branch: string | null;
-
-  /**
-   * Gets the upstream branch name, or null when there is none.
-   */
-  readonly upstream: string | null;
-
-  /**
-   * Gets the number of commits ahead of the upstream.
-   */
-  readonly ahead: number;
-
-  /**
-   * Gets the number of commits behind the upstream.
-   */
-  readonly behind: number;
-
-  /**
-   * Gets the staged changes (index versus HEAD).
-   */
-  readonly staged: readonly GitFileChange[];
-
-  /**
-   * Gets the unstaged changes (working tree versus index), including untracked files.
-   */
-  readonly unstaged: readonly GitFileChange[];
-
-  /**
-   * Gets the paths left conflicted by an unfinished merge or rebase.
-   *
-   * Kept apart from the other two rather than folded into them, because a conflicted path is not a
-   * change waiting to be staged: git reports it instead of a staged or unstaged entry, it cannot be
-   * committed as it stands, and staging it is what marks it resolved.
-   */
-  readonly conflicted: readonly GitFileChange[];
-}
-
-/**
- * Maps a porcelain status letter to the application's change status.
+ * Maps a porcelain status letter to a change status.
  * @param letter The git status letter (M, A, D, R, C, …).
  * @returns Returns the mapped change status.
  */
-function mapStatus(letter: string): GitChangeStatus {
+function mapStatus(letter: string): VcsChangeStatus {
   switch (letter) {
     case 'A':
       return 'added';
     case 'D':
       return 'deleted';
     case 'R':
-      return 'renamed';
     case 'C':
       return 'renamed';
     default:
@@ -90,52 +51,46 @@ function mapStatus(letter: string): GitChangeStatus {
 }
 
 /**
- * Builds a working-tree file change with a diff target, defaulting line tallies to zero (porcelain
- * status does not carry them).
+ * Builds a working-tree file change, with line tallies of zero (porcelain status does not carry them).
  * @param path The file path.
  * @param status The change status.
- * @param staged Whether the change is staged.
  * @param previousPath The pre-rename path, when renamed.
  * @param untracked Whether the file is untracked (a `?` entry).
  * @returns Returns the file change.
  */
-function workingChange(
+function change(
   path: string,
-  status: GitChangeStatus,
-  staged: boolean,
+  status: VcsChangeStatus,
   previousPath?: string,
   untracked?: boolean,
-): GitFileChange {
+): VcsFileChange {
   return {
     path,
-    previousPath,
     status,
     additions: 0,
     deletions: 0,
-    language: '',
-    original: '',
-    modified: '',
-    target: { kind: 'working', staged },
-    untracked,
+    ...(previousPath === undefined ? {} : { previousPath }),
+    ...(untracked === true ? { untracked } : {}),
   };
 }
 
 /**
- * Parses `git status --porcelain=v2 --branch -z` output into the branch header and the staged and
- * unstaged changes. The NUL-delimited stream interleaves header lines, ordinary/rename entries (whose
- * rename form carries a second, separately-delimited path), and untracked entries.
+ * Parses `git status --porcelain=v2 --branch -z` output into the branch header and the staged,
+ * unstaged and conflicted changes. The NUL-delimited stream interleaves header lines, ordinary and
+ * rename entries (whose rename form carries a second, separately-delimited path), unmerged entries and
+ * untracked entries.
  * @param output The raw command output.
- * @returns Returns the parsed status.
+ * @returns Returns the status.
  */
-export function parseStatus(output: string): ParsedStatus {
+export function parseStatus(output: string): VcsStatus {
   const tokens: string[] = output.split(NUL).filter((token: string): boolean => token.length > 0);
   let branch: string | null = null;
   let upstream: string | null = null;
   let ahead: number = 0;
   let behind: number = 0;
-  const staged: GitFileChange[] = [];
-  const unstaged: GitFileChange[] = [];
-  const conflicted: GitFileChange[] = [];
+  const staged: VcsFileChange[] = [];
+  const unstaged: VcsFileChange[] = [];
+  const conflicted: VcsFileChange[] = [];
 
   for (let index: number = 0; index < tokens.length; index++) {
     const token: string = tokens[index];
@@ -169,29 +124,24 @@ export function parseStatus(output: string): ParsedStatus {
         previousPath = tokens[index + 1];
         index += 1;
       }
-      const stagedLetter: string = xy[0];
-      const worktreeLetter: string = xy[1];
-      if (stagedLetter !== '.') {
-        staged.push(workingChange(path, mapStatus(stagedLetter), true, previousPath));
+      if (!xy.startsWith('.')) {
+        staged.push(change(path, mapStatus(xy[0]), previousPath));
       }
-      if (worktreeLetter !== '.') {
-        unstaged.push(workingChange(path, mapStatus(worktreeLetter), false, previousPath));
+      if (xy[1] !== '.') {
+        unstaged.push(change(path, mapStatus(xy[1]), previousPath));
       }
       continue;
     }
 
     if (token.startsWith('u ')) {
-      // Unmerged entries carry 10 metadata fields before the path: the XY code, the submodule field,
-      // three stage modes plus the worktree mode, and the three stage object names. Git reports a
-      // conflicted path as one of these INSTEAD of an ordinary or rename entry, so nothing here can
-      // also appear as staged or unstaged.
-      const parts: string[] = token.split(' ');
-      conflicted.push(workingChange(parts.slice(10).join(' '), 'conflicted', false));
+      // Unmerged entries carry 10 metadata fields before the path. Git reports a conflicted path as
+      // one of these INSTEAD of an ordinary or rename entry, so nothing here is also staged or unstaged.
+      conflicted.push(change(token.split(' ').slice(10).join(' '), 'conflicted'));
       continue;
     }
 
     if (token.startsWith('? ')) {
-      unstaged.push(workingChange(token.slice(2), 'added', false, undefined, true));
+      unstaged.push(change(token.slice(2), 'added', undefined, true));
     }
     // '! ' (ignored) entries are skipped: the panel shows what git is tracking, not what it is not.
   }
@@ -202,15 +152,11 @@ export function parseStatus(output: string): ParsedStatus {
 /**
  * Parses a `%D` ref-decoration string (for example `HEAD -> main, origin/main, tag: v1.0`) into refs.
  * @param decoration The decoration string.
- * @returns Returns the parsed refs.
+ * @returns Returns the refs.
  */
-function parseDecorations(decoration: string): GitRef[] {
-  const trimmed: string = decoration.trim();
-  if (trimmed.length === 0) {
-    return [];
-  }
-  const refs: GitRef[] = [];
-  for (const raw of trimmed.split(', ')) {
+function parseDecorations(decoration: string): VcsRef[] {
+  const refs: VcsRef[] = [];
+  for (const raw of decoration.trim().split(', ')) {
     const part: string = raw.trim();
     if (part.length === 0) {
       continue;
@@ -232,17 +178,22 @@ function parseDecorations(decoration: string): GitRef[] {
 }
 
 /**
- * Parses the custom-format `git log` output into commits with parents, refs, and metadata. The files
- * of each commit are loaded separately, so they start empty.
+ * The `git log` format {@link parseLog} reads: hash, short hash, parents, author, email, ISO date,
+ * decorations, subject and body, unit-separated, each record ended by a record separator.
+ */
+export const LOG_FORMAT: string = '%H%x1f%h%x1f%P%x1f%an%x1f%ae%x1f%aI%x1f%D%x1f%s%x1f%b%x1e';
+
+/**
+ * Parses `git log` output in {@link LOG_FORMAT} into commits.
  * @param output The raw command output.
  * @returns Returns the commits, newest first.
  */
-export function parseLog(output: string): GitCommit[] {
+export function parseLog(output: string): VcsCommit[] {
   return output
     .split(RS)
     .map((record: string): string => record.replace(/^\r?\n/, ''))
     .filter((record: string): boolean => record.trim().length > 0)
-    .map((record: string): GitCommit => {
+    .map((record: string): VcsCommit => {
       const f: string[] = record.split(US);
       const parents: string[] = (f[2] ?? '').trim().length > 0 ? f[2].trim().split(' ') : [];
       return {
@@ -252,11 +203,9 @@ export function parseLog(output: string): GitCommit[] {
         author: f[3] ?? '',
         email: f[4] ?? '',
         isoDate: f[5] ?? '',
-        relativeDate: f[6] ?? '',
-        refs: parseDecorations(f[7] ?? ''),
-        summary: f[8] ?? '',
-        body: (f[9] ?? '').trim(),
-        files: [],
+        refs: parseDecorations(f[6] ?? ''),
+        summary: f[7] ?? '',
+        body: (f[8] ?? '').trim(),
       };
     });
 }
@@ -276,34 +225,21 @@ function parseTrack(track: string): { ahead: number; behind: number } {
 }
 
 /**
- * Describes the refs parsed from `git for-each-ref`: local branches, grouped remotes, and tags.
+ * The `git for-each-ref` format {@link parseRefs} reads.
  */
-export interface ParsedRefs {
-  /**
-   * Gets the local branches.
-   */
-  readonly branches: readonly GitBranch[];
-
-  /**
-   * Gets the remotes, grouped by remote name.
-   */
-  readonly remotes: readonly GitRemote[];
-
-  /**
-   * Gets the tags.
-   */
-  readonly tags: readonly GitTag[];
-}
+export const REFS_FORMAT: string =
+  '%(refname)%1f%(objectname)%1f%(HEAD)%1f%(upstream:short)%1f%(upstream:track)';
 
 /**
- * Parses the custom-format `git for-each-ref` output into local branches, remotes, and tags.
+ * Parses `git for-each-ref` output in {@link REFS_FORMAT} into local branches, remotes and tags. The
+ * remotes carry no URL yet; {@link mergeRemoteUrls} fills it from `git remote -v`.
  * @param output The raw command output.
- * @returns Returns the parsed refs.
+ * @returns Returns the refs.
  */
-export function parseRefs(output: string): ParsedRefs {
-  const branches: GitBranch[] = [];
-  const tags: GitTag[] = [];
-  const remoteBranches: Map<string, GitRemoteBranch[]> = new Map<string, GitRemoteBranch[]>();
+export function parseRefs(output: string): VcsRefs {
+  const branches: VcsBranch[] = [];
+  const tags: VcsTag[] = [];
+  const remoteBranches: Map<string, VcsRemoteBranch[]> = new Map<string, VcsRemoteBranch[]>();
 
   for (const line of output.split('\n')) {
     if (line.trim().length === 0) {
@@ -311,13 +247,13 @@ export function parseRefs(output: string): ParsedRefs {
     }
     const [refName, objectName, head, upstreamShort, track]: string[] = line.split(US);
     if (refName.startsWith('refs/heads/')) {
-      const name: string = refName.slice('refs/heads/'.length);
       const counts: { ahead: number; behind: number } = parseTrack(track ?? '');
       branches.push({
-        name,
+        name: refName.slice('refs/heads/'.length),
         current: head === '*',
-        upstream:
-          upstreamShort !== undefined && upstreamShort.length > 0 ? upstreamShort : undefined,
+        ...(upstreamShort !== undefined && upstreamShort.length > 0
+          ? { upstream: upstreamShort }
+          : {}),
         ahead: counts.ahead,
         behind: counts.behind,
         tip: objectName,
@@ -325,7 +261,7 @@ export function parseRefs(output: string): ParsedRefs {
     } else if (refName.startsWith('refs/remotes/')) {
       const short: string = refName.slice('refs/remotes/'.length);
       const remoteName: string = short.split('/')[0];
-      const list: GitRemoteBranch[] = remoteBranches.get(remoteName) ?? [];
+      const list: VcsRemoteBranch[] = remoteBranches.get(remoteName) ?? [];
       // The tip is kept, not dropped: a row that cannot name a commit cannot navigate to one.
       list.push({ name: short, commit: objectName });
       remoteBranches.set(remoteName, list);
@@ -334,10 +270,8 @@ export function parseRefs(output: string): ParsedRefs {
     }
   }
 
-  const remotes: GitRemote[] = [...remoteBranches.entries()].map(
-    // The URL is not in `for-each-ref` output at all; {@link mergeRemoteUrls} fills it from
-    // `git remote -v`, which is also what surfaces a remote that has no fetched branches.
-    ([name, list]: [string, GitRemoteBranch[]]): GitRemote => ({ name, url: '', branches: list }),
+  const remotes: VcsRemote[] = [...remoteBranches.entries()].map(
+    ([name, list]: [string, VcsRemoteBranch[]]): VcsRemote => ({ name, url: '', branches: list }),
   );
   return { branches, remotes, tags };
 }
@@ -347,21 +281,14 @@ export function parseRefs(output: string): ParsedRefs {
  *
  * Each remote appears twice, once for fetch and once for push, and the two can differ (a fork's push
  * URL against an upstream's fetch URL). The fetch URL wins: it names the repository the branches and
- * pull requests being read actually come from, which is what the forge detection needs.
- *
+ * pull requests being read actually come from, which is what forge detection needs.
  * @param output The raw command output.
  * @returns Returns the URL by remote name.
  */
 export function parseRemoteUrls(output: string): ReadonlyMap<string, string> {
   const urls: Map<string, string> = new Map<string, string>();
   for (const line of output.split('\n')) {
-    const trimmed: string = line.trim();
-    if (trimmed.length === 0) {
-      continue;
-    }
-    // `origin\thttps://host/owner/repo.git (fetch)` — name and URL are tab-separated, the direction
-    // follows in parentheses.
-    const match: RegExpMatchArray | null = /^(\S+)\s+(\S+)\s+\((fetch|push)\)$/.exec(trimmed);
+    const match: RegExpMatchArray | null = /^(\S+)\s+(\S+)\s+\((fetch|push)\)$/.exec(line.trim());
     if (match === null) {
       continue;
     }
@@ -377,24 +304,22 @@ export function parseRemoteUrls(output: string): ReadonlyMap<string, string> {
  * Fills in each remote's URL, and adds any configured remote that has no remote-tracking branches yet.
  *
  * A freshly-cloned or newly-added remote has no `refs/remotes/*` entries until something is fetched, so
- * refs alone would omit it entirely — which would leave a repository with a perfectly good remote
- * looking like it had none.
- *
+ * refs alone would omit it entirely — leaving a repository with a perfectly good remote looking like it
+ * had none.
  * @param remotes The remotes parsed from refs.
  * @param urls The URL by remote name.
  * @returns Returns the merged remotes, in configuration order with ref-only remotes appended.
  */
 export function mergeRemoteUrls(
-  remotes: readonly GitRemote[],
+  remotes: readonly VcsRemote[],
   urls: ReadonlyMap<string, string>,
-): readonly GitRemote[] {
-  const byName: Map<string, GitRemote> = new Map<string, GitRemote>(
-    remotes.map((remote: GitRemote): [string, GitRemote] => [remote.name, remote]),
+): readonly VcsRemote[] {
+  const byName: Map<string, VcsRemote> = new Map<string, VcsRemote>(
+    remotes.map((remote: VcsRemote): [string, VcsRemote] => [remote.name, remote]),
   );
-  const merged: GitRemote[] = [];
+  const merged: VcsRemote[] = [];
   for (const [name, url] of urls) {
-    const existing: GitRemote | undefined = byName.get(name);
-    merged.push({ name, url, branches: existing?.branches ?? [] });
+    merged.push({ name, url, branches: byName.get(name)?.branches ?? [] });
     byName.delete(name);
   }
   // Anything left had tracking branches but no configured URL — a stale `refs/remotes` entry for a
@@ -404,19 +329,30 @@ export function mergeRemoteUrls(
 }
 
 /**
- * Parses the custom-format `git stash list` output into stash entries.
+ * The `git stash list` format {@link parseStashes} reads.
+ *
+ * ⚠️ `%x1f`, not `%1f`: `stash list` takes `log`'s format codes, where a byte is written in hex after
+ * `%x`. `%1f` is `for-each-ref`'s spelling, and here it printed literally — so until #816 every stash
+ * showed no message and no branch.
+ */
+export const STASH_FORMAT: string = '%gd%x1f%H%x1f%s';
+
+/**
+ * Parses `git stash list` output in {@link STASH_FORMAT} into stash entries. Their files are not
+ * listed by this command and start empty.
  * @param output The raw command output.
  * @returns Returns the stashes, newest first.
  */
-export function parseStashes(output: string): GitStash[] {
+export function parseStashes(output: string): VcsStash[] {
   return output
     .split('\n')
     .filter((line: string): boolean => line.trim().length > 0)
-    .map((line: string, index: number): GitStash => {
+    .map((line: string, position: number): VcsStash => {
       const [selector, , message]: string[] = line.split(US);
       const branchMatch: RegExpMatchArray | null = /\bon ([^:]+):/i.exec(message ?? '');
+      const indexMatch: RegExpMatchArray | null = /\{(\d+)\}/.exec(selector ?? '');
       return {
-        index: parseStashIndex(selector, index),
+        index: indexMatch !== null ? Number.parseInt(indexMatch[1], 10) : position,
         message: message ?? '',
         branch: branchMatch !== null ? branchMatch[1].trim() : '',
         files: [],
@@ -425,53 +361,23 @@ export function parseStashes(output: string): GitStash[] {
 }
 
 /**
- * Extracts the numeric index from a stash selector (for example `stash@{2}`), falling back to the
- * entry's position.
- * @param selector The stash selector.
- * @param fallback The fallback index.
- * @returns Returns the stash index.
- */
-function parseStashIndex(selector: string, fallback: number): number {
-  const match: RegExpMatchArray | null = /\{(\d+)\}/.exec(selector ?? '');
-  return match !== null ? Number.parseInt(match[1], 10) : fallback;
-}
-
-/**
- * Parses `git diff-tree --name-status -r -z` output into the files changed by a commit, attaching a
- * commit diff target so each file's contents can be loaded lazily.
+ * Parses `git diff-tree --name-status -r -z` output into the files a commit changed.
  * @param output The raw command output.
- * @param hash The commit hash.
- * @param parent The commit's first-parent hash, or null for a root commit.
  * @returns Returns the changed files.
  */
-export function parseCommitFiles(
-  output: string,
-  hash: string,
-  parent: string | null,
-): GitFileChange[] {
+export function parseCommitFiles(output: string): VcsFileChange[] {
   const tokens: string[] = output.split(NUL).filter((token: string): boolean => token.length > 0);
-  const files: GitFileChange[] = [];
+  const files: VcsFileChange[] = [];
   for (let index: number = 0; index < tokens.length; index++) {
-    const code: string = tokens[index];
-    const letter: string = code[0];
+    const letter: string = tokens[index][0];
     const renamed: boolean = letter === 'R' || letter === 'C';
     const previousPath: string | undefined = renamed ? tokens[index + 1] : undefined;
-    const path: string = renamed ? tokens[index + 2] : tokens[index + 1];
+    const path: string | undefined = renamed ? tokens[index + 2] : tokens[index + 1];
     index += renamed ? 2 : 1;
     if (path === undefined) {
       break;
     }
-    files.push({
-      path,
-      previousPath,
-      status: mapStatus(letter),
-      additions: 0,
-      deletions: 0,
-      language: '',
-      original: '',
-      modified: '',
-      target: { kind: 'commit', hash, parent },
-    });
+    files.push(change(path, mapStatus(letter), previousPath));
   }
   return files;
 }
