@@ -93,7 +93,7 @@ export class WorktreeOperations {
 
   /**
    * Resolves what a directory is: a worktree container (its `.studio/worktree.json` exists), a
-   * workspace (a `.git` is present), or a plain folder. Container wins over repository so a
+   * workspace (a repository an installed version-control plugin recognises), or a plain folder. Container wins over repository so a
    * container is never mistaken for the repository its checkouts clone.
    * @param target The candidate directory path, honoured only when trusted or within an open root.
    * @returns Returns the kind, or null when the path is denied or not a directory.
@@ -112,7 +112,7 @@ export class WorktreeOperations {
     if (await this.exists(path.join(root, STUDIO_DIR, WORKTREE_CONFIG_FILE))) {
       return 'worktree';
     }
-    if (await this.exists(path.join(root, '.git'))) {
+    if (this.versionControl.pluginFor(root) !== null) {
       return 'workspace';
     }
     return 'folder';
@@ -157,8 +157,8 @@ export class WorktreeOperations {
     if (await this.exists(path.join(resolved, STUDIO_DIR, WORKTREE_CONFIG_FILE))) {
       return worktreeError('The workspace is already a worktree container.');
     }
-    if (!(await this.exists(path.join(resolved, '.git')))) {
-      return worktreeError('The workspace is not a git repository.');
+    if (this.versionControl.pluginFor(resolved) === null) {
+      return worktreeError('The workspace is not a repository an installed plugin recognises.');
     }
 
     const id: string = mintCheckoutId();

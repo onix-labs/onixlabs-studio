@@ -119,6 +119,7 @@ function plugin(
     priority,
     markers: [marker],
     metadataDirectories: [marker],
+    metadataSignals: [],
     capabilities,
     executableModes: ['installed', 'custom'],
     resolve: () =>
@@ -421,5 +422,29 @@ describe('VersionControlHost', () => {
 
     expect(vcs.preferredPlugin()?.id).toBe('high');
     expect(host([], [], fakeClient([])).preferredPlugin()).toBeNull();
+  });
+
+  it('metadataPolicies_mergeSignalsPerDirectory_andAnUnsignalledPluginForwardsEverything', () => {
+    const git: VersionControlDescriptor = {
+      ...plugin('git', '.git'),
+      metadataSignals: ['HEAD', 'refs/**'],
+    };
+    const gitExtra: VersionControlDescriptor = {
+      ...plugin('git-extra', '.git'),
+      metadataSignals: ['index'],
+    };
+    const svn: VersionControlDescriptor = plugin('svn', '.svn');
+
+    expect(host([git, gitExtra, svn], [], fakeClient([])).metadataPolicies()).toEqual(
+      new Map<string, readonly string[]>([
+        ['.git', ['HEAD', 'refs/**', 'index']],
+        ['.svn', []],
+      ]),
+    );
+    expect(
+      host([git, plugin('raw', '.git')], [], fakeClient([]))
+        .metadataPolicies()
+        .get('.git'),
+    ).toEqual([]);
   });
 });

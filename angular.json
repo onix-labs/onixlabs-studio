@@ -114,6 +114,7 @@
         "test": {
           "builder": "@angular/build:unit-test",
           "options": {
+            "include": ["**/*.spec.ts", "../plugins/*/src/**/*.spec.ts"],
             "isolate": true,
             "coverageReporters": ["text-summary", "html", "lcovonly"],
             "coverageThresholds": {

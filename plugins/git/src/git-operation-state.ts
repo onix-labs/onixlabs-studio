@@ -1,6 +1,6 @@
 import { readFile, stat } from 'node:fs/promises';
 import * as path from 'node:path';
-import { VcsOperationState } from '@shared/api/version-control-protocol';
+import { VcsOperationState } from './protocol';
 
 // Reading which multi-step operation (merge, rebase, cherry-pick, revert) a git repository is in the
 // middle of, from the state files git leaves in its git directory. Moved from `GitManager` (#816).

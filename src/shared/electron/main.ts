@@ -86,16 +86,15 @@ import { hydrateLoginShellEnvironment } from '@shared/electron/shell-env';
 import { hydratePythonRuntime } from '@shared/electron/provisioning/python-runtime';
 import { SetupChannel } from '@shared/api/setup-channels';
 import type { GitIdentity, SetupProbeResult } from '@shared/api/setup-channels';
-import {
-  readGitIdentity,
-  runSetupProbes,
-  writeGitIdentity,
-} from '@shared/electron/setup/setup-probes';
+import { runSetupProbes } from '@shared/electron/setup/setup-probes';
 import type { GraphicsAcceleration } from '@shared/api/host';
 import { StartupPreferences, StartupPreferencesStore } from './startup-preferences';
 import { VersionControlHost } from '@shared/electron/version-control/version-control-host';
 import { VersionControlManager } from '@shared/electron/version-control/version-control-manager';
-import { coreGitDescriptor } from '@shared/electron/version-control/git/core-git';
+import { VersionControlSetup } from '@shared/electron/version-control/version-control-setup';
+import { VersionControlSettings } from '@shared/electron/version-control/version-control-settings';
+import type { VersionControlExecutableChoice } from '@shared/api/version-control-protocol';
+import type { MetadataPolicies } from '@shared/electron/directory-watch-filter';
 import { contributedVersionControl } from '@shared/electron/contributions/plugins/contributed';
 import type { NodeRuntimeSpec } from '@shared/electron/contributions/plugins/plugin-loader';
 import { SearchManager } from '@shared/electron/search-manager';
@@ -335,6 +334,9 @@ class Program {
    */
   private readonly directoryWatcher: DirectoryWatcher = new DirectoryWatcher(
     (): BrowserWindow | null => this.windows.main(),
+    // Read lazily, per event: the host is declared after this field, and the policies follow whatever
+    // version-control plugins are installed.
+    (): MetadataPolicies => this.versionControlHost.metadataPolicies(),
   );
 
   /**
@@ -351,23 +353,36 @@ class Program {
   private readonly workspaceContext: WorkspaceContext = new WorkspaceContext();
 
   /**
-   * Hosts the version-control plugins (#815, #816): picks the one serving each repository, confines
+   * Hosts the version-control plugins (#815–#817): picks the one serving each repository, confines
    * every request to an open repository or workspace, and refuses what a plugin does not support.
-   * Core's own git answers until it moves into the Git plugin (#817).
+   * Core runs no version-control tool of its own — Git is a plugin.
    */
   private readonly versionControlHost: VersionControlHost = new VersionControlHost({
-    descriptors: () => [
-      ...contributedVersionControl(versionControlNodeRuntime),
-      coreGitDescriptor(),
-    ],
+    descriptors: () => contributedVersionControl(versionControlNodeRuntime),
     roots: this.workspaceContext,
-    executableFor: (): null => null,
+    executableFor: (pluginId: string): VersionControlExecutableChoice | null =>
+      this.versionControlSettings.executableFor(pluginId),
   });
+
+  /**
+   * Holds which tool each version-control plugin runs, as chosen in Settings.
+   */
+  private readonly versionControlSettings: VersionControlSettings = new VersionControlSettings(
+    path.join(app.getPath('userData'), 'version-control.json'),
+  );
 
   /**
    * Serves the renderer's source-control surfaces over the version-control host.
    */
   private readonly versionControlManager: VersionControlManager = new VersionControlManager(
+    this.versionControlHost,
+    this.versionControlSettings,
+  );
+
+  /**
+   * Answers the setup wizard's version-control questions through the installed plugin.
+   */
+  private readonly versionControlSetup: VersionControlSetup = new VersionControlSetup(
     this.versionControlHost,
   );
 
@@ -795,12 +810,15 @@ class Program {
     // argument; `process.env` is the user's login-shell environment by this point, because
     // hydrateLoginShellEnvironment applied it at startup — which is the whole point of the step, since
     // the PATH Studio was launched with is not the one the user sees.
-    ipcMain.handle(SetupChannel.Probe, (): Promise<readonly SetupProbeResult[]> => {
-      return runSetupProbes(process.env);
-    });
+    // Git's two rows come from the installed version-control plugin, which core asks rather than
+    // running git itself (#817).
+    ipcMain.handle(SetupChannel.Probe, async (): Promise<readonly SetupProbeResult[]> => [
+      ...(await runSetupProbes(process.env)),
+      ...(await this.versionControlSetup.probe()),
+    ]);
 
     ipcMain.handle(SetupChannel.GetGitIdentity, (): Promise<GitIdentity | null> => {
-      return readGitIdentity(process.env);
+      return this.versionControlSetup.getIdentity();
     });
 
     ipcMain.handle(
@@ -814,7 +832,7 @@ class Program {
         if (typeof name !== 'string' || typeof email !== 'string') {
           return Promise.resolve(null);
         }
-        return writeGitIdentity({ name: name.trim(), email: email.trim() }, process.env);
+        return this.versionControlSetup.setIdentity({ name: name.trim(), email: email.trim() });
       },
     );
 

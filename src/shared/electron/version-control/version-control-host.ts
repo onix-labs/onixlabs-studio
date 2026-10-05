@@ -34,6 +34,11 @@ const REQUEST_TIMEOUT_MS: number = 60_000;
 const NETWORK_TIMEOUT_MS: number = 15 * 60_000;
 
 /**
+ * Specifies how long computed metadata policies are reused before being recomputed.
+ */
+const POLICY_CACHE_MS: number = 2_000;
+
+/**
  * The part of the open-workspace registry a request's paths are checked against.
  */
 export interface VersionControlRoots {
@@ -97,6 +102,18 @@ export interface VersionControlHostOptions {
 }
 
 /**
+ * Describes what a plugin can do, or why it cannot be asked.
+ */
+export type PluginDescription =
+  | {
+      readonly ok: true;
+      readonly pluginId: string;
+      readonly description: VersionControlDescription;
+      readonly capabilities: readonly VersionControlCapability[];
+    }
+  | { readonly ok: false; readonly error: string };
+
+/**
  * Describes a repository the host has opened.
  */
 export interface OpenedRepository {
@@ -157,6 +174,11 @@ export class VersionControlHost {
   >();
 
   /**
+   * Holds the most recent metadata policies and when they were computed.
+   */
+  private policies: { at: number; value: ReadonlyMap<string, readonly string[]> } | null = null;
+
+  /**
    * Holds the open repository roots, each with an open count.
    */
   private readonly repositories: Map<string, number> = new Map<string, number>();
@@ -189,16 +211,29 @@ export class VersionControlHost {
   }
 
   /**
-   * Gets the highest-priority installed plugin, for an operation with no repository to recognise yet
-   * (a clone with no existing checkout to ask).
-   * @returns Returns the plugin, or null when none is installed.
+   * Gets the plugin to ask when there is no repository to recognise yet (a clone with no existing
+   * checkout, the setup wizard): the highest-priority installed one, else the highest-priority one the
+   * index offers — whose answer then says it is not installed.
+   * @returns Returns the plugin, or null when none is contributed at all.
    */
   public preferredPlugin(): VersionControlDescriptor | null {
+    const order: readonly VersionControlDescriptor[] = this.preferredOrder();
     return (
-      [...this.options.descriptors()].sort(
-        (a: VersionControlDescriptor, b: VersionControlDescriptor): number =>
-          b.priority - a.priority,
-      )[0] ?? null
+      order.find(
+        (descriptor: VersionControlDescriptor): boolean => descriptor.resolve().available,
+      ) ??
+      order[0] ??
+      null
+    );
+  }
+
+  /**
+   * Gets every contributed plugin, highest priority first.
+   * @returns Returns the descriptors.
+   */
+  public preferredOrder(): readonly VersionControlDescriptor[] {
+    return [...this.options.descriptors()].sort(
+      (a: VersionControlDescriptor, b: VersionControlDescriptor): number => b.priority - a.priority,
     );
   }
 
@@ -271,16 +306,44 @@ export class VersionControlHost {
    * @returns Returns the distinct names.
    */
   public metadataDirectories(): readonly string[] {
-    return [
-      ...new Set(
-        this.options
-          .descriptors()
-          .flatMap(
-            (descriptor: VersionControlDescriptor): readonly string[] =>
-              descriptor.metadataDirectories,
-          ),
+    return [...this.metadataPolicies().keys()];
+  }
+
+  /**
+   * Gets, per metadata directory name, the patterns whose changes are worth forwarding — what the
+   * directory watcher filters a repository's own bookkeeping by. Every contributed plugin counts,
+   * installed or not, so the policy is known before the first repository is opened. A directory any
+   * plugin declares without signals forwards everything, since that plugin asked for every change.
+   * @returns Returns the patterns by directory name, an empty list meaning every change.
+   */
+  public metadataPolicies(): ReadonlyMap<string, readonly string[]> {
+    // Asked once per file-system event, and a fetch produces thousands: answered from a cache that
+    // outlives a burst, and still notices a plugin installed a moment ago.
+    const now: number = Date.now();
+    if (this.policies !== null && now - this.policies.at < POLICY_CACHE_MS) {
+      return this.policies.value;
+    }
+    const policies: Map<string, string[] | null> = new Map<string, string[] | null>();
+    for (const descriptor of this.options.descriptors()) {
+      for (const directory of descriptor.metadataDirectories) {
+        const current: string[] | null | undefined = policies.get(directory);
+        if (current === null || descriptor.metadataSignals.length === 0) {
+          policies.set(directory, null);
+        } else {
+          policies.set(directory, [...(current ?? []), ...descriptor.metadataSignals]);
+        }
+      }
+    }
+    const value: ReadonlyMap<string, readonly string[]> = new Map<string, readonly string[]>(
+      [...policies].map(
+        ([directory, signals]: [string, string[] | null]): [string, readonly string[]] => [
+          directory,
+          signals ?? [],
+        ],
       ),
-    ];
+    );
+    this.policies = { at: now, value };
+    return value;
   }
 
   /**
@@ -288,22 +351,29 @@ export class VersionControlHost {
    * @param root The absolute repository root.
    * @returns Returns the confirmed capabilities and description, or the reason there are none.
    */
-  public async describe(root: string): Promise<
-    | {
-        readonly ok: true;
-        readonly pluginId: string;
-        readonly description: VersionControlDescription;
-        readonly capabilities: readonly VersionControlCapability[];
-      }
-    | { readonly ok: false; readonly error: string }
-  > {
+  public async describe(root: string): Promise<PluginDescription> {
     const refusal: string | null = this.refuseRoot(root);
     if (refusal !== null) {
       return { ok: false, error: refusal };
     }
     const descriptor: VersionControlDescriptor | null = this.pluginFor(root);
-    if (descriptor === null) {
-      return { ok: false, error: 'No installed version-control plugin recognises this folder.' };
+    return descriptor === null
+      ? { ok: false, error: 'No installed version-control plugin recognises this folder.' }
+      : this.describePlugin(descriptor.id);
+  }
+
+  /**
+   * Gets what a named plugin can do, starting it if it is not running — what the setup wizard reports
+   * as the version-control tool and its version.
+   * @param pluginId The plugin.
+   * @returns Returns the confirmed capabilities and description, or the reason there are none.
+   */
+  public async describePlugin(pluginId: string): Promise<PluginDescription> {
+    const descriptor: VersionControlDescriptor | undefined = this.options
+      .descriptors()
+      .find((candidate: VersionControlDescriptor): boolean => candidate.id === pluginId);
+    if (descriptor === undefined) {
+      return { ok: false, error: `No version-control plugin named ${pluginId} is installed.` };
     }
     const plugin: RunningPlugin | string = await this.ensure(descriptor);
     return typeof plugin === 'string'
@@ -378,6 +448,27 @@ export class VersionControlHost {
       return refused(`No version-control plugin named ${pluginId} is installed.`);
     }
     return this.dispatch(descriptor, undefined, op, params);
+  }
+
+  /**
+   * Gets a contributed plugin by id.
+   * @param pluginId The plugin.
+   * @returns Returns the descriptor, or undefined when no such plugin is contributed.
+   */
+  public descriptor(pluginId: string): VersionControlDescriptor | undefined {
+    return this.options
+      .descriptors()
+      .find((candidate: VersionControlDescriptor): boolean => candidate.id === pluginId);
+  }
+
+  /**
+   * Stops a plugin, so the next request starts it afresh — after its executable choice changed.
+   * @param pluginId The plugin.
+   */
+  public restartPlugin(pluginId: string): void {
+    this.running.get(pluginId)?.client.dispose();
+    this.running.delete(pluginId);
+    this.starting.delete(pluginId);
   }
 
   /**

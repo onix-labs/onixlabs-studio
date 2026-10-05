@@ -13,6 +13,7 @@ import { Forge } from '@shared/angular/services/forge/forge';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { PasswordField } from '@shared/angular/components/forms/password-field/password-field';
 import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
+import { VersionControlPlugins } from './version-control-plugins/version-control-plugins';
 
 /**
  * The status shown before the first read completes, so the page never renders a misleading
@@ -41,7 +42,7 @@ const PENDING: ForgeAuthStatus = {
  */
 @Component({
   selector: 'app-source-control-settings',
-  imports: [Button, PasswordField, SettingRow],
+  imports: [Button, PasswordField, SettingRow, VersionControlPlugins],
   templateUrl: './source-control-settings.html',
   styleUrls: ['../section.scss', './source-control-settings.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,

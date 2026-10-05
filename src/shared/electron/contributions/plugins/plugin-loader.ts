@@ -838,6 +838,7 @@ export function toVersionControlDescriptors(
       priority: system.priority,
       markers: system.markers,
       metadataDirectories: system.metadataDirectories,
+      metadataSignals: system.metadataSignals ?? [],
       capabilities: system.capabilities,
       executableModes: system.executableModes,
       resolve: (): VersionControlResolution => {

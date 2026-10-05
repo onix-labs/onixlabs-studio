@@ -16,8 +16,35 @@ import {
   WorktreeOutcome,
 } from '@shared/api/worktree';
 import { TrustedPaths } from '../trusted-paths';
-import { coreGitDescriptor } from '../version-control/git/core-git';
+import { GitVersionControl } from '../../../../plugins/git/src/git';
 import { VersionControlDescriptor } from '../version-control/version-control-descriptor';
+
+/**
+ * The Git plugin, run in-process: the worktree mechanics are tested against real git through the real
+ * host, exactly the path every checkout takes in the app — minus the process boundary, which the host's
+ * own specs cover.
+ */
+const GIT_PLUGIN: VersionControlDescriptor = {
+  id: 'onixlabs.git',
+  displayName: 'Git',
+  priority: 100,
+  markers: ['.git'],
+  metadataDirectories: ['.git'],
+  metadataSignals: [],
+  capabilities: [
+    'stagingArea',
+    'stash',
+    'tags',
+    'remotes',
+    'merge',
+    'rebase',
+    'clone',
+    'parallelCheckouts',
+    'identity',
+  ],
+  executableModes: ['installed', 'custom'],
+  resolve: () => ({ available: true, create: () => new GitVersionControl() }),
+};
 import { VersionControlHost } from '../version-control/version-control-host';
 import { WorkspaceContext } from '../workspace-context';
 import { WorktreeOperations } from './worktree-operations';
@@ -78,7 +105,7 @@ describe('WorktreeOperations', () => {
       },
       // Real git behind the real host: the same path every checkout takes in the app (#816).
       new VersionControlHost({
-        descriptors: (): readonly VersionControlDescriptor[] => [coreGitDescriptor()],
+        descriptors: (): readonly VersionControlDescriptor[] => [GIT_PLUGIN],
         roots: workspace,
         executableFor: (): null => null,
       }),
@@ -183,7 +210,7 @@ describe('WorktreeOperations', () => {
       const notRepo: WorktreeOutcome<WorktreeDescriptor> = await operations.promote(plain);
       expect(notRepo.ok).toBe(false);
       if (!notRepo.ok) {
-        expect(notRepo.error).toContain('not a git repository');
+        expect(notRepo.error).toContain('not a repository');
       }
 
       const { root } = await promoteFixture();

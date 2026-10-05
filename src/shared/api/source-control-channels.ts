@@ -1,4 +1,7 @@
 import type {
+  VersionControlCapability,
+  VersionControlExecutableChoice,
+  VersionControlExecutableMode,
   VcsMergeMode,
   VcsOperationKind,
   VcsOperationState,
@@ -35,6 +38,81 @@ export enum SourceControlChannel {
    * operations.
    */
   Request = 'source-control:request',
+
+  /**
+   * Gets what the plugin serving an opened repository can do, so a surface offers only that.
+   */
+  Describe = 'source-control:describe',
+
+  /**
+   * Lists the contributed version-control plugins and how each is configured, for Settings.
+   */
+  ListPlugins = 'source-control:list-plugins',
+
+  /**
+   * Sets which tool a version-control plugin runs, restarting it so the choice takes effect.
+   */
+  SetExecutable = 'source-control:set-executable',
+}
+
+/**
+ * Describes what the plugin serving a repository can do.
+ */
+export interface RepositoryCapabilities {
+  /**
+   * Gets the serving plugin's identifier.
+   */
+  readonly pluginId: string;
+
+  /**
+   * Gets the serving plugin's display name, such as `Git`.
+   */
+  readonly displayName: string;
+
+  /**
+   * Gets the optional capabilities both the plugin's manifest declared and its handshake confirmed.
+   */
+  readonly capabilities: readonly VersionControlCapability[];
+}
+
+/**
+ * Describes a contributed version-control plugin, as Settings shows it.
+ */
+export interface VersionControlPluginInfo {
+  /**
+   * Gets the plugin's identifier.
+   */
+  readonly id: string;
+
+  /**
+   * Gets the plugin's display name.
+   */
+  readonly displayName: string;
+
+  /**
+   * Gets whether the plugin's payload is installed.
+   */
+  readonly installed: boolean;
+
+  /**
+   * Gets where the plugin's tool may come from, empty when there is no choice.
+   */
+  readonly executableModes: readonly VersionControlExecutableMode[];
+
+  /**
+   * Gets the user's choice, or null for the plugin's default.
+   */
+  readonly executable: VersionControlExecutableChoice | null;
+
+  /**
+   * Gets the tool's version as the running plugin reported it, or null when it could not be run.
+   */
+  readonly toolVersion: string | null;
+
+  /**
+   * Gets why the plugin or its tool cannot be used, when it cannot.
+   */
+  readonly problem?: string;
 }
 
 /**
@@ -130,4 +208,28 @@ export interface SourceControlClient {
     op: Op,
     params: VcsParams<Op>,
   ): Promise<VersionControlResponse<Op>>;
+
+  /**
+   * Gets what the plugin serving an opened repository can do.
+   * @param root The repository root.
+   * @returns Returns the capabilities, or null when no plugin can be asked.
+   */
+  describe(root: string): Promise<RepositoryCapabilities | null>;
+
+  /**
+   * Lists the contributed version-control plugins and how each is configured.
+   * @returns Returns the plugins.
+   */
+  listPlugins(): Promise<readonly VersionControlPluginInfo[]>;
+
+  /**
+   * Sets which tool a plugin runs, restarting it.
+   * @param pluginId The plugin.
+   * @param executable The choice, or null for the plugin's default.
+   * @returns Returns the plugin as configured afterwards, or null when the choice was refused.
+   */
+  setExecutable(
+    pluginId: string,
+    executable: VersionControlExecutableChoice | null,
+  ): Promise<VersionControlPluginInfo | null>;
 }

@@ -1,11 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  VcsCommit,
-  VcsFileChange,
-  VcsRefs,
-  VcsRemote,
-  VcsStatus,
-} from '@shared/api/version-control-protocol';
+import { VcsCommit, VcsFileChange, VcsRefs, VcsRemote, VcsStatus } from './protocol';
 import {
   mergeRemoteUrls,
   parseCommitFiles,

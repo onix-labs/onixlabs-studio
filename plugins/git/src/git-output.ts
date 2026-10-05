@@ -10,7 +10,7 @@ import {
   VcsStash,
   VcsStatus,
   VcsTag,
-} from '@shared/api/version-control-protocol';
+} from './protocol';
 
 // Parsers for git's machine-readable output, turning it into the version-control protocol's types
 // (#816). They lived in the renderer while the main process returned raw output; behind the protocol,

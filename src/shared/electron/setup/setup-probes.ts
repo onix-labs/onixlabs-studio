@@ -1,11 +1,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import type {
-  GitIdentity,
-  SetupProbeId,
-  SetupProbeResult,
-  SetupProbeStatus,
-} from '@shared/api/setup-channels';
+import type { SetupProbeId, SetupProbeResult } from '@shared/api/setup-channels';
 import { logger } from '../logger';
 
 /**
@@ -55,12 +50,7 @@ interface ProbeDefinition {
  *
  * This map IS the allowlist. The renderer names a key; nothing it sends reaches `execFile`.
  */
-const PROBES: Readonly<Record<Exclude<SetupProbeId, 'git-identity'>, ProbeDefinition>> = {
-  git: {
-    binary: 'git',
-    args: ['--version'],
-    missing: 'Source control is unavailable without it.',
-  },
+const PROBES: Readonly<Record<Exclude<SetupProbeId, 'git' | 'git-identity'>, ProbeDefinition>> = {
   node: {
     binary: 'node',
     args: ['--version'],
@@ -121,7 +111,6 @@ export async function runSetupProbes(
     ...executables.map((id: SetupProbeId): Promise<SetupProbeResult> =>
       probeExecutable(id, environment),
     ),
-    probeGitIdentity(environment),
   ]);
   logger.info(
     'SetupProbes',
@@ -143,7 +132,7 @@ async function probeExecutable(
   id: SetupProbeId,
   environment: NodeJS.ProcessEnv,
 ): Promise<SetupProbeResult> {
-  const definition: ProbeDefinition = PROBES[id as Exclude<SetupProbeId, 'git-identity'>];
+  const definition: ProbeDefinition = PROBES[id as Exclude<SetupProbeId, 'git' | 'git-identity'>];
   try {
     const { stdout, stderr }: { stdout: string; stderr: string } = await run(
       definition.binary,
@@ -160,123 +149,6 @@ async function probeExecutable(
         ? 'Took too long to answer, so this could not be checked.'
         : `Not found on your PATH. ${definition.missing}`,
     };
-  }
-}
-
-/**
- * Reports whether git is configured to attribute commits to anybody.
- *
- * Separate from whether git exists, because the two fail differently: a missing git is obvious
- * immediately, whereas a missing identity is invisible until the first commit is refused — often
- * hours into a session, with an error that names a config key rather than a thing to do.
- * @param environment The environment to run git in.
- * @returns Returns the result.
- */
-async function probeGitIdentity(environment: NodeJS.ProcessEnv): Promise<SetupProbeResult> {
-  const identity: GitIdentity | null = await readGitIdentity(environment);
-  if (identity === null) {
-    return {
-      id: 'git-identity',
-      status: 'unknown',
-      detail: 'Could not be read, because git is not available.',
-    };
-  }
-  const missing: readonly string[] = [
-    ...(identity.name.length === 0 ? ['name'] : []),
-    ...(identity.email.length === 0 ? ['email'] : []),
-  ];
-  const status: SetupProbeStatus = missing.length === 0 ? 'ok' : 'warn';
-  return {
-    id: 'git-identity',
-    status,
-    detail:
-      status === 'ok'
-        ? `${identity.name} <${identity.email}>`
-        : `No ${missing.join(' or ')} configured, so commits will be refused. Set it on the Source Control step.`,
-  };
-}
-
-/**
- * Reads the globally configured git identity.
- * @param environment The environment to run git in.
- * @returns Returns the identity, or null when git could not be run at all.
- */
-export async function readGitIdentity(environment: NodeJS.ProcessEnv): Promise<GitIdentity | null> {
-  const [name, email]: readonly (string | null)[] = await Promise.all([
-    gitConfig('user.name', environment),
-    gitConfig('user.email', environment),
-  ]);
-  // An unset key and an absent git are both failures of the same command, so they are told apart by
-  // whether BOTH reads failed outright — git itself missing — rather than by exit code alone.
-  if (name === null && email === null && !(await gitAvailable(environment))) {
-    return null;
-  }
-  return { name: name ?? '', email: email ?? '' };
-}
-
-/**
- * Writes the globally configured git identity, skipping either field the caller left empty.
- * @param identity The identity to write.
- * @param environment The environment to run git in.
- * @returns Returns the identity git holds afterwards, or null when git could not be run.
- */
-export async function writeGitIdentity(
-  identity: GitIdentity,
-  environment: NodeJS.ProcessEnv,
-): Promise<GitIdentity | null> {
-  for (const [key, value] of [
-    ['user.name', identity.name],
-    ['user.email', identity.email],
-  ] as const) {
-    if (value.length === 0) {
-      continue;
-    }
-    try {
-      // The value is user-entered, and it is passed as an argument rather than interpolated into a
-      // command line — there is no shell here, so it cannot be anything but a value.
-      await run('git', ['config', '--global', key, value], {
-        timeout: PROBE_TIMEOUT_MS,
-        env: environment,
-      });
-    } catch (error: unknown) {
-      logger.warn('SetupProbes', `Could not set git ${key}`, error);
-      return null;
-    }
-  }
-  return readGitIdentity(environment);
-}
-
-/**
- * Reads one global git configuration value.
- * @param key The configuration key.
- * @param environment The environment to run git in.
- * @returns Returns the value, or null when it is unset or git could not be run.
- */
-async function gitConfig(key: string, environment: NodeJS.ProcessEnv): Promise<string | null> {
-  try {
-    const { stdout }: { stdout: string } = await run('git', ['config', '--global', '--get', key], {
-      timeout: PROBE_TIMEOUT_MS,
-      env: environment,
-    });
-    const value: string = stdout.trim();
-    return value.length === 0 ? null : value;
-  } catch {
-    // `git config --get` exits non-zero for an unset key, which is an answer rather than a failure.
-    return null;
-  }
-}
-
-/**
- * Determines whether git can be run at all.
- * @param environment The environment to run git in.
- * @returns Returns true when git answered.
- */
-async function gitAvailable(environment: NodeJS.ProcessEnv): Promise<boolean> {
-  try {
-    await run('git', ['--version'], { timeout: PROBE_TIMEOUT_MS, env: environment });
-    return true;
-  } catch {
-    return false;
   }
 }
 

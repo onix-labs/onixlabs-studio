@@ -14,9 +14,8 @@ import {
   VersionControlOp,
   VersionControlResponse,
   VcsParams,
-} from '@shared/api/version-control-protocol';
-import { logger } from '../../logger';
-import { VersionControlEndpoint } from '../version-control-endpoint';
+} from './protocol';
+import { debug, note } from './log';
 import { classifyOperation, firstFile, probeOperation } from './git-operation-state';
 import {
   LOG_FORMAT,
@@ -223,17 +222,17 @@ export function networkFailureMessage(run: GitRun): string {
 }
 
 /**
- * Core's own git, speaking the version-control protocol from inside the main process (#816).
+ * Git, speaking the version-control protocol (#816, #817).
  *
- * This is `GitManager` moved behind the seam: the same commands, the same operand validation, the same
- * classification of conflicts and authentication failures — but answering with the protocol's typed
- * results rather than raw output for the renderer to parse. It is temporary by design: #817 lifts it
- * into the Git plugin, and core then runs no git at all.
+ * What was once core's `GitManager`: the same commands, the same operand validation, the same
+ * classification of conflicts and authentication failures — answering with the protocol's typed
+ * results. It runs in the Git plugin's own process; `main.ts` serves it over standard streams, and core
+ * runs no git at all.
  *
  * Every invocation uses `execFile` with array arguments (never a shell). The host has already checked
  * that the root lies within an open repository or workspace; this checks everything inside it.
  */
-export class GitVersionControl implements VersionControlEndpoint {
+export class GitVersionControl {
   /**
    * Holds the git program to run, settled at start from the user's executable choice.
    */
@@ -294,7 +293,7 @@ export class GitVersionControl implements VersionControlEndpoint {
     try {
       outcome = await this.perform(op, root === undefined ? undefined : path.resolve(root), params);
     } catch (error: unknown) {
-      logger.warn('GitVersionControl', `${op} threw`, error);
+      note('GitVersionControl', `${op} threw`, error);
       outcome = { ok: false, error: error instanceof Error ? error.message : String(error) };
     }
     return { id: 0, ...outcome } as VersionControlResponse<Op>;
@@ -622,7 +621,7 @@ export class GitVersionControl implements VersionControlEndpoint {
       try {
         await rm(path.resolve(root, relative), { recursive: true, force: true });
       } catch (error: unknown) {
-        logger.error('GitVersionControl', `Failed to delete ${relative} while discarding`, error);
+        note('GitVersionControl', `Failed to delete ${relative} while discarding`, error);
         return fail(`Failed to delete ${relative}: ${String(error)}`);
       }
     }
@@ -825,7 +824,7 @@ export class GitVersionControl implements VersionControlEndpoint {
         : mode === 'no-ff'
           ? ['--no-ff', '--no-edit']
           : ['--no-edit'];
-    logger.info('GitVersionControl.merge', `Merging ${branch} (${String(mode)})`);
+    note('GitVersionControl.merge', `Merging ${branch} (${String(mode)})`);
     return this.integrate(root, ['merge', ...options, branch]);
   }
 
@@ -889,7 +888,7 @@ export class GitVersionControl implements VersionControlEndpoint {
    */
   private async abortOperation(root: string): Promise<Outcome> {
     const state: VcsOperationState = await this.operationState(root);
-    logger.info('GitVersionControl.abortOperation', `Aborting ${state.kind ?? 'nothing'}`);
+    note('GitVersionControl.abortOperation', `Aborting ${state.kind ?? 'nothing'}`);
     switch (state.kind) {
       case 'rebase':
         return this.integrate(root, ['rebase', '--abort']);
@@ -1069,7 +1068,7 @@ export class GitVersionControl implements VersionControlEndpoint {
   private async network(root: string, args: readonly string[]): Promise<Outcome> {
     const run: GitRun = await this.git(root, args, GIT_NETWORK_TIMEOUT_MS, GIT_NETWORK_ENV);
     if (!run.success) {
-      logger.debug('GitVersionControl', `Network git ${args[0]} failed`);
+      debug('GitVersionControl', `Network git ${args[0]} failed`);
     }
     return run.success ? ok(DONE) : fail(networkFailureMessage(run));
   }
@@ -1108,7 +1107,7 @@ export class GitVersionControl implements VersionControlEndpoint {
     timeoutMs: number = GIT_TIMEOUT_MS,
     env: NodeJS.ProcessEnv = {},
   ): Promise<GitRun> {
-    logger.trace('GitVersionControl', `git ${args.join(' ')} (cwd ${cwd})`);
+    debug('GitVersionControl', `git ${args.join(' ')} (cwd ${cwd})`);
     return new Promise<GitRun>((resolve: (run: GitRun) => void): void => {
       execFile(
         this.program,
@@ -1127,7 +1126,7 @@ export class GitVersionControl implements VersionControlEndpoint {
           if (error !== null) {
             // Git failing is often expected (a status outside a repository, a rejected push), so
             // this is debug; the caller surfaces the outcome.
-            logger.debug('GitVersionControl', `git ${args[0] ?? ''} failed: ${error.message}`);
+            debug('GitVersionControl', `git ${args[0] ?? ''} failed: ${error.message}`);
             resolve({
               success: false,
               stdout: stdout ?? '',

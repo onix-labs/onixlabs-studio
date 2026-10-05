@@ -1,0 +1,11 @@
+{
+  "name": "@onixlabs/git",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Git version-control plugin for ONIXLabs Studio.",
+  "type": "commonjs",
+  "main": "main.js",
+  "scripts": {
+    "build": "node build.mjs"
+  }
+}
