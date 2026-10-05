@@ -228,6 +228,10 @@ export const SETUP_STEPS: readonly SetupStep[] = [
     title: 'How Studio should look',
     summary: 'Theme, accent colour, and how much of the GPU the interface uses.',
   },
+  // The plugins come before everything that depends on them. The environment check asks the installed
+  // plugins what they can run — with Git not yet installed it reports version control as missing, and
+  // the way to fix that would be steps further on.
+  ...PLUGIN_SLOTS.map(catalogueStep),
   {
     id: 'environment',
     kind: 'environment',
@@ -238,7 +242,6 @@ export const SETUP_STEPS: readonly SetupStep[] = [
       'The tools Studio builds on, checked against this machine — so anything missing is said here ' +
       'rather than failing quietly later.',
   },
-  ...PLUGIN_SLOTS.map(catalogueStep),
   {
     id: 'security',
     kind: 'settings',

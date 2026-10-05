@@ -319,8 +319,8 @@ describe('SetupWizard', () => {
     });
 
     it('steps_always_carryARootPerPluginSlotInCatalogueOrder', () => {
-      // One step per kind of plugin, under the Plugin Manager's own names, between the machine
-      // check and the settings that come after.
+      // One step per kind of plugin, under the Plugin Manager's own names, ahead of the machine
+      // check — which asks the installed plugins what they can run — and the settings after it.
       const labels: readonly string[] = build()
         .steps()
         .map((step: SetupStep): string => step.label);
@@ -328,13 +328,13 @@ describe('SetupWizard', () => {
       expect(labels).toEqual([
         'Welcome',
         'Appearance',
-        'Environment',
         'Language Servers',
         'Debug Adapters',
         'Decoders',
         'Container Engines',
         'Version Control',
         'AI Providers',
+        'Environment',
         'Security',
         'Terminal',
         'Source Control',
