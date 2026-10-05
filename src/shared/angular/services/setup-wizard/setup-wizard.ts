@@ -244,16 +244,6 @@ export const SETUP_STEPS: readonly SetupStep[] = [
     catalogueStep,
   ),
   {
-    id: 'environment',
-    kind: 'environment',
-    icon: Icon.SETUP_ENVIRONMENT,
-    label: 'Environment',
-    title: 'What is installed underneath',
-    summary:
-      'The tools Studio builds on, checked against this machine — so anything missing is said here ' +
-      'rather than failing quietly later.',
-  },
-  {
     id: 'security',
     kind: 'settings',
     icon: Icon.SETUP_SECURITY,
@@ -270,6 +260,18 @@ export const SETUP_STEPS: readonly SetupStep[] = [
     title: 'Terminal and shell',
     summary:
       'The shell new terminals start with, and the one the agent takes its environment from.',
+  },
+  // Last, because it only reports: it decides nothing, and everything it checks — the plugins, the
+  // identity, the agent's shell — is set on the steps before it, so it reads as where they left things.
+  {
+    id: 'environment',
+    kind: 'environment',
+    icon: Icon.SETUP_ENVIRONMENT,
+    label: 'Environment',
+    title: 'What is installed underneath',
+    summary:
+      'The tools Studio builds on, checked against this machine — so anything missing is said here ' +
+      'rather than failing quietly later.',
   },
 ];
 

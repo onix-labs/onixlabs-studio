@@ -362,9 +362,9 @@ describe('SetupWizard', () => {
         'Decoders',
         'Container Engines',
         'Version Control',
-        'Environment',
         'Security',
         'Terminal',
+        'Environment',
       ]);
     });
   });
