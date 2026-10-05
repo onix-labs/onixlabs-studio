@@ -30,8 +30,13 @@ import {
   toLanguageServerDescriptors,
   toPluginDescriptor,
   toProvision,
+  toVersionControlDescriptors,
   validManifests,
 } from './plugin-loader';
+import {
+  VersionControlDescriptor,
+  VersionControlResolution,
+} from '../../version-control/version-control-descriptor';
 import { ContainerEngineDescriptor } from '../containers/container-engine';
 import { PluginDescriptor } from './plugin-catalogue';
 
@@ -936,6 +941,75 @@ describe('a sideloaded plugin carrying its own payload', () => {
       root,
     );
     expect(descriptors[0].resolve().available).toBe(false);
+  });
+
+  /**
+   * A sideloaded manifest contributing a version-control system (#815).
+   * @returns Returns the manifest.
+   */
+  function versionControlManifest(): PluginManifest {
+    return {
+      ...decoderManifest(),
+      id: 'local.git',
+      contributes: {
+        versionControl: [
+          {
+            id: 'local.git',
+            displayName: 'Local Git',
+            priority: 100,
+            markers: ['.git'],
+            metadataDirectories: ['.git'],
+            capabilities: ['stash', 'clone'],
+            executableModes: ['installed', 'custom'],
+            command: { kind: 'node', env: { GIT_EXTRA: 'yes' } },
+          },
+        ],
+      },
+    };
+  }
+
+  it('toVersionControlDescriptors_carriesTheManifestAndRunsUnderTheRuntimeEnvironment', () => {
+    mkdirSync(path.join(root, 'payload'), { recursive: true });
+    writeFileSync(path.join(root, 'payload', 'main.js'), '', 'utf8');
+    const descriptors: readonly VersionControlDescriptor[] = toVersionControlDescriptors(
+      versionControlManifest(),
+      (): LspProvisioner => nothingDownloaded,
+      (entryPoint: string): NodeRuntimeSpec => ({
+        command: '/runtime',
+        args: [entryPoint],
+        env: { ELECTRON_RUN_AS_NODE: '1' },
+      }),
+      root,
+    );
+
+    expect(descriptors[0]).toMatchObject({
+      id: 'local.git',
+      markers: ['.git'],
+      capabilities: ['stash', 'clone'],
+      executableModes: ['installed', 'custom'],
+    });
+    const resolution: VersionControlResolution = descriptors[0].resolve();
+    expect(resolution).toEqual({
+      available: true,
+      spec: {
+        command: '/runtime',
+        args: [path.join(root, 'payload', 'main.js')],
+        env: { ELECTRON_RUN_AS_NODE: '1', GIT_EXTRA: 'yes' },
+      },
+    });
+  });
+
+  it('toVersionControlDescriptors_isUnavailableWithNeitherPayloadNorDownload', () => {
+    const descriptors: readonly VersionControlDescriptor[] = toVersionControlDescriptors(
+      versionControlManifest(),
+      (): LspProvisioner => nothingDownloaded,
+      (entryPoint: string): NodeRuntimeSpec => ({ command: '/runtime', args: [entryPoint] }),
+      root,
+    );
+    expect(descriptors[0].resolve()).toEqual({
+      available: false,
+      reason: 'Local Git is not installed — install it in Plugins.',
+    });
   });
 
   /**

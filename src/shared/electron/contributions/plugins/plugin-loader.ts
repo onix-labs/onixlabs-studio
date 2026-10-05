@@ -11,6 +11,7 @@ import {
   ManifestLanguageServer,
   ManifestRequirement,
   ManifestResult,
+  ManifestVersionControl,
   parsePluginManifest,
   PluginManifest,
 } from '@shared/api/plugin-manifest';
@@ -43,6 +44,10 @@ import { LspProvisioner } from '../../lsp/lsp-provisioner';
 import { pythonRuntime } from '../../provisioning/python-runtime';
 import { PluginContext, PluginDescriptor } from './plugin-catalogue';
 import { bundledLockfile } from './bundled-lockfiles';
+import {
+  VersionControlDescriptor,
+  VersionControlResolution,
+} from '../../version-control/version-control-descriptor';
 
 /**
  * The file a sideloaded plugin is described by, inside its own directory.
@@ -753,38 +758,107 @@ export function toDecoderDescriptors(
             `${decoder.displayName} is not installed — install it in Plugins.`,
           );
         }
-        if (decoder.command.kind === 'node') {
-          const runtime: NodeRuntimeSpec = nodeRuntime(entryPoint);
+        const spec: NodeRuntimeSpec | string = toCommandSpec(
+          decoder.command,
+          entryPoint,
+          decoder.displayName,
+          nodeRuntime,
+        );
+        return typeof spec === 'string' ? decoderUnavailable(spec) : { available: true, spec };
+      },
+    }),
+  );
+}
+
+/**
+ * Turns a contribution's command into how to spawn it, given where its entry point was installed.
+ *
+ * Shared by every contribution point whose payload Studio spawns and speaks a protocol to, so a `node`
+ * or `python` payload runs the same way whichever seam it fills.
+ * @param command The contribution's command.
+ * @param entryPoint The installed entry point.
+ * @param displayName The contribution's display name, for the reason it cannot run.
+ * @param nodeRuntime Gets how to run a JavaScript entry point under the runtime Studio ships.
+ * @returns Returns the spawn specification, or the reason the contribution cannot run.
+ */
+function toCommandSpec(
+  command: ManifestCommand,
+  entryPoint: string,
+  displayName: string,
+  nodeRuntime: (entryPoint: string) => NodeRuntimeSpec,
+): NodeRuntimeSpec | string {
+  if (command.kind === 'node') {
+    const runtime: NodeRuntimeSpec = nodeRuntime(entryPoint);
+    return {
+      command: runtime.command,
+      args: [...runtime.args, ...(command.args ?? [])],
+      // The runtime's own environment first, so a manifest cannot accidentally unset what the runtime
+      // needs to start at all.
+      env: { ...runtime.env, ...command.env },
+    };
+  }
+  if (command.kind === 'python') {
+    const python: { command: string; args: string[] } | null = pythonRuntime(entryPoint);
+    return python === null
+      ? `${displayName} needs Python 3.8+, which was not found on this machine.`
+      : {
+          command: python.command,
+          args: [...python.args, ...(command.args ?? [])],
+          env: command.env,
+        };
+  }
+  return { command: entryPoint, args: command.args ?? [], env: command.env };
+}
+
+/**
+ * Turns a manifest's version-control systems into descriptors the version-control host can start
+ * (#815).
+ *
+ * Like a decoder, a plugin that is not installed stays registered and resolves to unavailable, so the
+ * surface can say why and offer the install rather than behaving as though nothing were there.
+ * @param manifest The validated manifest.
+ * @param provisioner Gets the provisioner the plugin's install went through.
+ * @param nodeRuntime Gets how to run a JavaScript entry point under the runtime Studio ships.
+ * @param localRoot The sideloaded plugin's directory, or undefined when it was not sideloaded.
+ * @param installedVersion Resolves the installed version of a plugin.
+ * @returns Returns the descriptors.
+ */
+export function toVersionControlDescriptors(
+  manifest: PluginManifest,
+  provisioner: () => LspProvisioner,
+  nodeRuntime: (entryPoint: string) => NodeRuntimeSpec,
+  localRoot?: string,
+  installedVersion?: InstalledVersion,
+): readonly VersionControlDescriptor[] {
+  const ops: PayloadOps = payloadOps(manifest, localRoot, installedVersion);
+  return (manifest.contributes.versionControl ?? []).map(
+    (system: ManifestVersionControl): VersionControlDescriptor => ({
+      id: system.id,
+      displayName: system.displayName,
+      priority: system.priority,
+      markers: system.markers,
+      metadataDirectories: system.metadataDirectories,
+      capabilities: system.capabilities,
+      executableModes: system.executableModes,
+      resolve: (): VersionControlResolution => {
+        const entryPoint: string | null = ops.isInstalled(provisioner())
+          ? ops.target(provisioner(), system.entryPoint)
+          : null;
+        if (entryPoint === null) {
           return {
-            available: true,
-            spec: {
-              command: runtime.command,
-              args: [...runtime.args, ...(decoder.command.args ?? [])],
-              // The runtime's own environment first, so a manifest cannot accidentally unset what the
-              // runtime needs to start at all.
-              env: { ...runtime.env, ...decoder.command.env },
-            },
+            available: false,
+            reason: `${system.displayName} is not installed — install it in Plugins.`,
           };
         }
-        if (decoder.command.kind === 'python') {
-          const python: { command: string; args: string[] } | null = pythonRuntime(entryPoint);
-          return python === null
-            ? decoderUnavailable(
-                `${decoder.displayName} needs Python 3.8+, which was not found on this machine.`,
-              )
-            : {
-                available: true,
-                spec: {
-                  command: python.command,
-                  args: [...python.args, ...(decoder.command.args ?? [])],
-                  env: decoder.command.env,
-                },
-              };
-        }
-        return {
-          available: true,
-          spec: { command: entryPoint, args: decoder.command.args ?? [], env: decoder.command.env },
-        };
+        const spec: NodeRuntimeSpec | string = toCommandSpec(
+          system.command,
+          entryPoint,
+          system.displayName,
+          nodeRuntime,
+        );
+        return typeof spec === 'string'
+          ? { available: false, reason: spec }
+          : { available: true, spec };
       },
     }),
   );

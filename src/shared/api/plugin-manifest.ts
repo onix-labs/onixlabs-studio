@@ -1,4 +1,10 @@
 import { DECODER_FORMATS } from './decoder-protocol';
+import {
+  isVersionControlCapability,
+  VERSION_CONTROL_EXECUTABLE_MODES,
+  type VersionControlCapability,
+  type VersionControlExecutableMode,
+} from './version-control-protocol';
 
 // The plugin manifest: the declarative description a third-party plugin ships so Studio can install it
 // and register what it contributes, without running any of its code to find out. Keep this module
@@ -91,8 +97,13 @@ import { DECODER_FORMATS } from './decoder-protocol';
  * carried their model ids — so a binary shipped provider pages for agents it had no way to run (#653).
  * Declared on the harness rather than through a seam of its own, because the plugin that runs Claude is
  * the plugin that knows Anthropic.
+ *
+ * `1.13.0` adds the `versionControl` contribution point (#815), the sixth slot: Git and every other
+ * version-control system become plugins, because core runs no tool of its own (#804). Keyed by the
+ * **marker** a repository carries (`.git`, `.svn`, `.hg`), so several can be installed at once and each
+ * folder is served by the one it belongs to. Adds only, on the same terms as every minor before it.
  */
-export const PLUGIN_API_VERSION: string = '1.12.0';
+export const PLUGIN_API_VERSION: string = '1.13.0';
 
 /**
  * Matches a plain three-part semver. Deliberately strict and deliberately local: the rule below is the
@@ -347,6 +358,67 @@ export interface ManifestDecoder {
 
   /**
    * Gets how to start the decoder.
+   */
+  readonly command: ManifestCommand;
+
+  /**
+   * Gets this contribution's own entry point within the installed payload, or undefined to use the
+   * provision's. See {@link ManifestLanguageServer.entryPoint}.
+   */
+  readonly entryPoint?: string;
+}
+
+/**
+ * Describes a version-control system a plugin contributes (#815).
+ *
+ * Keyed by the **marker** a repository carries rather than chosen once for the application: a machine
+ * can hold Git and Subversion working copies side by side, and which plugin serves a folder is a fact
+ * about the folder.
+ */
+export interface ManifestVersionControl {
+  /**
+   * Gets the identifier the plugin is registered under.
+   */
+  readonly id: string;
+
+  /**
+   * Gets the display name, such as `Git`.
+   */
+  readonly displayName: string;
+
+  /**
+   * Gets the priority used to pick between plugins claiming the same marker, higher first.
+   */
+  readonly priority: number;
+
+  /**
+   * Gets the names of the entries that mark a repository's root, such as `.git`. A folder holding one
+   * is served by this plugin.
+   */
+  readonly markers: readonly string[];
+
+  /**
+   * Gets the names of the version-control system's own directories inside a repository, such as
+   * `.git`. Studio watches them to notice a commit made outside it, and its agents may not write into
+   * them — so core learns them from here rather than naming any tool's layout itself.
+   */
+  readonly metadataDirectories: readonly string[];
+
+  /**
+   * Gets the optional capabilities the plugin supports. Declared statically, like a harness's
+   * `sessionModel`, because the UI draws its controls before any process has started; the handshake
+   * then narrows them to what the running plugin actually confirms.
+   */
+  readonly capabilities: readonly VersionControlCapability[];
+
+  /**
+   * Gets where the plugin's tool may come from, which Settings offers the user to choose between, or
+   * empty when there is no choice to make.
+   */
+  readonly executableModes: readonly VersionControlExecutableMode[];
+
+  /**
+   * Gets how to start the plugin.
    */
   readonly command: ManifestCommand;
 
@@ -749,6 +821,11 @@ export interface ManifestContributions {
    * Gets the agent harnesses contributed.
    */
   readonly agentHarnesses?: readonly ManifestAgentHarness[];
+
+  /**
+   * Gets the version-control systems contributed.
+   */
+  readonly versionControl?: readonly ManifestVersionControl[];
 }
 
 /**
@@ -1318,19 +1395,60 @@ function readContributions(value: unknown, errors: Errors): ManifestContribution
       });
     },
   );
+  const versionControl: ManifestVersionControl[] = [];
+  readContributionList(
+    source['versionControl'],
+    'contributes.versionControl',
+    errors,
+    (entry: Record<string, unknown>, path: string): void => {
+      const command: ManifestCommand | null = readCommand(
+        entry['command'],
+        `${path}.command`,
+        errors,
+      );
+      versionControl.push({
+        id: readId(entry, 'id', `${path}.`, errors),
+        displayName: readString(entry, 'displayName', `${path}.`, errors),
+        priority: readPriority(entry, path, errors),
+        markers: readEntryNames(entry['markers'], `${path}.markers`, true, errors),
+        metadataDirectories: readEntryNames(
+          entry['metadataDirectories'],
+          `${path}.metadataDirectories`,
+          false,
+          errors,
+        ),
+        capabilities: readCapabilities(entry['capabilities'], `${path}.capabilities`, errors),
+        executableModes: readExecutableModes(
+          entry['executableModes'],
+          `${path}.executableModes`,
+          errors,
+        ),
+        command: command ?? { kind: 'executable' },
+        entryPoint: readEntryPoint(entry, 'entryPoint', `${path}.`, errors),
+      });
+    },
+  );
   if (
     languageServers.length === 0 &&
     debugAdapters.length === 0 &&
     decoders.length === 0 &&
     containerEngines.length === 0 &&
-    agentHarnesses.length === 0
+    agentHarnesses.length === 0 &&
+    versionControl.length === 0
   ) {
     errors.add(
       'contributes',
-      'must contribute at least one language server, debug adapter, decoder, container engine or agent harness',
+      'must contribute at least one language server, debug adapter, decoder, container engine, agent harness or version-control system',
     );
   }
-  return { languageServers, debugAdapters, decoders, containerEngines, agentHarnesses };
+  return {
+    languageServers,
+    debugAdapters,
+    decoders,
+    containerEngines,
+    agentHarnesses,
+    versionControl,
+  };
 }
 
 /**
@@ -1515,6 +1633,100 @@ function readFormats(value: unknown, path: string, errors: Errors): readonly str
     return [];
   }
   return keys;
+}
+
+/**
+ * Matches a single directory-entry name: no separators, and not `.` or `..`. A marker is looked up
+ * beside a candidate root, so a name that could climb out of it would let a manifest probe anywhere.
+ */
+const ENTRY_NAME_PATTERN: RegExp = /^(?!\.{1,2}$)[^/\\]+$/;
+
+/**
+ * Validates a list of directory-entry names — a version-control plugin's markers or metadata
+ * directories.
+ * @param value The candidate array.
+ * @param path The dotted path for failures.
+ * @param required Whether the list must be present and non-empty.
+ * @param errors The failure collector.
+ * @returns Returns the names, or an empty array when absent or invalid.
+ */
+function readEntryNames(
+  value: unknown,
+  path: string,
+  required: boolean,
+  errors: Errors,
+): readonly string[] {
+  if (value === undefined && !required) {
+    return [];
+  }
+  if (!Array.isArray(value) || (required && value.length === 0)) {
+    errors.add(path, required ? 'must be a non-empty array of names' : 'must be an array of names');
+    return [];
+  }
+  if (
+    !value.every(
+      (entry: unknown): boolean => typeof entry === 'string' && ENTRY_NAME_PATTERN.test(entry),
+    )
+  ) {
+    errors.add(path, 'must contain only single entry names, without separators');
+    return [];
+  }
+  return value as readonly string[];
+}
+
+/**
+ * Validates a version-control plugin's optional capabilities against the closed list.
+ * @param value The candidate array, or undefined for none.
+ * @param path The dotted path for failures.
+ * @param errors The failure collector.
+ * @returns Returns the capabilities, or an empty array when absent or invalid.
+ */
+function readCapabilities(
+  value: unknown,
+  path: string,
+  errors: Errors,
+): readonly VersionControlCapability[] {
+  if (value === undefined) {
+    return [];
+  }
+  if (!Array.isArray(value)) {
+    errors.add(path, 'must be an array of capabilities');
+    return [];
+  }
+  const unknown: readonly unknown[] = value.filter(
+    (entry: unknown): boolean => !isVersionControlCapability(entry),
+  );
+  if (unknown.length > 0) {
+    errors.add(path, `has unknown capabilities: ${unknown.map(String).join(', ')}`);
+    return [];
+  }
+  return value as readonly VersionControlCapability[];
+}
+
+/**
+ * Validates where a version-control plugin's tool may come from.
+ * @param value The candidate array, or undefined for no choice.
+ * @param path The dotted path for failures.
+ * @param errors The failure collector.
+ * @returns Returns the modes, or an empty array when absent or invalid.
+ */
+function readExecutableModes(
+  value: unknown,
+  path: string,
+  errors: Errors,
+): readonly VersionControlExecutableMode[] {
+  if (value === undefined) {
+    return [];
+  }
+  const modes: readonly string[] = VERSION_CONTROL_EXECUTABLE_MODES;
+  if (
+    !Array.isArray(value) ||
+    !value.every((entry: unknown): boolean => typeof entry === 'string' && modes.includes(entry))
+  ) {
+    errors.add(path, `must be an array of ${modes.join(', ')}`);
+    return [];
+  }
+  return value as readonly VersionControlExecutableMode[];
 }
 
 /**
