@@ -173,6 +173,8 @@ describe('AiConnections', () => {
         },
         setConnectionKey: (): Promise<AiAuthStatus> =>
           Promise.resolve({ available: true, detail: 'ready' } as AiAuthStatus),
+        getConnectionAuthStatus: (): Promise<AiAuthStatus> =>
+          Promise.resolve({ available: true, detail: 'Signed in.' } as AiAuthStatus),
       };
       TestBed.resetTestingModule();
       TestBed.configureTestingModule({ providers: [{ provide: Ai, useValue: { client } }] });
@@ -231,6 +233,23 @@ describe('AiConnections', () => {
       await settle();
 
       expect(discoveries.map((c: AiConnection): string => c.id)).toEqual([created.id]);
+    });
+
+    it('add_asksAtOnceWhetherTheConfigurationCanBeUsed', async () => {
+      // A subscription already signed in must not sit behind a pending "unavailable" status until
+      // the page is reopened.
+      const connections: AiConnections = withClient();
+
+      const created: AiConnection = connections.add('anthropic', {
+        harnessId: 'test.harness',
+        auth: 'claude-login',
+        buttonLabel: 'Subscription',
+        defaultDisplayName: 'Claude',
+        hint: '',
+      });
+      await settle();
+
+      expect(connections.authStatus(created.id).available).toBe(true);
     });
 
     it('add_whenNoPluginIsNamed_doesNotAsk', async () => {

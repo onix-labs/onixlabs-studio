@@ -83,6 +83,33 @@ const CLAUDE_HARNESS: PluginSummary = {
 } as unknown as PluginSummary;
 
 /**
+ * Builds an installed version-control plugin declaring the given capabilities.
+ * @param capabilities What the system says it supports.
+ * @returns Returns the plugin summary.
+ */
+function versionControl(capabilities: readonly string[]): PluginSummary {
+  return {
+    id: 'onixlabs.git',
+    name: 'Git',
+    description: 'Git.',
+    state: 'installed',
+    version: '0.1.0',
+    installedVersion: '0.1.0',
+    detail: null,
+    origin: null,
+    contributions: [
+      {
+        slot: 'version-control',
+        id: 'onixlabs.git',
+        displayName: 'Git',
+        priority: 100,
+        capabilities,
+      },
+    ],
+  } as unknown as PluginSummary;
+}
+
+/**
  * What the tree cases arrange: the plugin catalogue and the languages with an installed server,
  * both as signals so a case can install something after the wizard has opened.
  */
@@ -319,8 +346,9 @@ describe('SetupWizard', () => {
     });
 
     it('steps_always_carryARootPerPluginSlotInCatalogueOrder', () => {
-      // One step per kind of plugin, under the Plugin Manager's own names, between the machine
-      // check and the settings that come after.
+      // One step per kind of plugin, under the Plugin Manager's own names, ahead of the machine
+      // check — which asks the installed plugins what they can run — and the settings after it.
+      // AI providers lead; the rest keep the catalogue's order.
       const labels: readonly string[] = build()
         .steps()
         .map((step: SetupStep): string => step.label);
@@ -328,17 +356,40 @@ describe('SetupWizard', () => {
       expect(labels).toEqual([
         'Welcome',
         'Appearance',
-        'Environment',
+        'AI Providers',
         'Language Servers',
         'Debug Adapters',
         'Decoders',
         'Container Engines',
         'Version Control',
-        'AI Providers',
         'Security',
         'Terminal',
-        'Source Control',
+        'Summary',
       ]);
+    });
+  });
+
+  describe('goTo', () => {
+    it('goTo_backFromTheSummary_landsOnTheStep_andLeavesTheSummaryAhead', () => {
+      // The summary's way back to whatever fixes what it reports.
+      const wizard: SetupWizard = build();
+      while (!wizard.isLastStep()) {
+        wizard.next();
+      }
+
+      wizard.goTo('terminal');
+
+      expect(wizard.current()?.id).toBe('terminal');
+      const summary: SetupStep | undefined = wizard.steps().at(-1);
+      expect(summary !== undefined && wizard.isWalked(summary)).toBe(false);
+    });
+
+    it('goTo_whenTheStepIsNotPresented_staysPut', () => {
+      const wizard: SetupWizard = build();
+
+      wizard.goTo('version-control/nothing-installed');
+
+      expect(wizard.current()?.id).toBe('welcome');
     });
   });
 
@@ -383,6 +434,45 @@ describe('SetupWizard', () => {
       expect(leaf.kind).toBe('ai-provider');
       expect(leaf.pageId).toBe('anthropic');
       expect(leaf.label).toBe('Anthropic');
+    });
+
+    it('steps_whenAVersionControlSystemIsInstalled_growItsIdentityBeneathIt', () => {
+      // Who commits are from belongs to the system that makes them, as a provider's sign-in belongs
+      // beneath AI Providers; there is no separate Source Control step to find it in. GitHub has no
+      // step: it has nothing to set up yet, so the summary reports it instead.
+      const installed: Installed = nothingInstalled();
+      installed.plugins.set([versionControl(['stagingArea', 'identity'])]);
+
+      const wizard: SetupWizard = buildWith(installed);
+
+      const root: number = ids(wizard).indexOf('version-control');
+      expect(ids(wizard).slice(root, root + 3)).toEqual([
+        'version-control',
+        'version-control/onixlabs.git',
+        'security',
+      ]);
+      const identity: SetupStep = wizard.steps()[root + 1];
+      expect(identity.kind).toBe('commit-identity');
+      expect(identity.label).toBe('Git');
+      expect(ids(wizard)).not.toContain('source-control');
+    });
+
+    it('steps_whenTheSystemHasNoIdentity_growNoIdentityStep', () => {
+      // A system without committer identity (a future SVN plugin, say) is not asked for one.
+      const installed: Installed = nothingInstalled();
+      installed.plugins.set([versionControl(['stagingArea'])]);
+
+      const wizard: SetupWizard = buildWith(installed);
+
+      expect(ids(wizard)).not.toContain('version-control/onixlabs.git');
+    });
+
+    it('steps_whenNoVersionControlIsInstalled_askNoIdentity', () => {
+      const wizard: SetupWizard = buildWith(nothingInstalled());
+
+      expect(
+        ids(wizard).filter((id: string): boolean => id.startsWith('version-control/')),
+      ).toEqual([]);
     });
 
     it('steps_whenAPluginIsInstalledDuringTheRun_growItsLeafWhileTheUserStandsOnTheRoot', () => {
@@ -488,7 +578,7 @@ describe('SetupWizard', () => {
         .steps()
         .map((step: SetupStep): string => step.id);
 
-      expect(ids).toContain('environment');
+      expect(ids).toContain('summary');
       expect(ids).toContain('language-server');
       expect(ids).toContain('agent-harness');
     });
@@ -531,16 +621,26 @@ describe('SetupWizard', () => {
       expect(wizard.isWalked(wizard.steps()[1])).toBe(false);
     });
 
-    it('isWalked_afterGoingBack_keepsTheStepsWalked', () => {
-      // Going back does not un-walk the steps behind you; the rail must keep their ticks.
+    it('isWalked_afterGoingBack_readsEverythingFromTheCurrentStepOnAsAhead', () => {
+      // The rail says where the user is. Backing up three steps leaves those three ahead again,
+      // rather than a list half ticked and half not.
       const wizard: SetupWizard = build();
-      wizard.next();
-      wizard.next();
+      for (let i: number = 0; i < 4; i += 1) {
+        wizard.next();
+      }
 
+      wizard.back();
+      wizard.back();
       wizard.back();
 
       expect(wizard.stepIndex()).toBe(1);
-      expect(wizard.isWalked(wizard.steps()[1])).toBe(true);
+      expect(wizard.isWalked(wizard.steps()[0])).toBe(true);
+      expect(
+        wizard
+          .steps()
+          .slice(1)
+          .some((step: SetupStep): boolean => wizard.isWalked(step)),
+      ).toBe(false);
     });
   });
 

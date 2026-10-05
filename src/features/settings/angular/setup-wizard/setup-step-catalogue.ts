@@ -11,7 +11,7 @@ import {
 } from '@angular/core';
 import type { PluginContribution, PluginSlot, PluginSummary } from '@shared/api/plugin-channels';
 import { Button } from '@shared/angular/components/forms/button/button';
-import { TextField } from '@shared/angular/components/forms/text-field/text-field';
+import { Icon } from '@shared/angular/icons/icon';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
 
 /**
@@ -38,52 +38,53 @@ function rank(plugin: PluginSummary): number {
  * which languages, which engine, which provider — and a plugin installed here may grow a step of its
  * own beneath this one, for what it brought that has something to decide.
  *
- * Installed plugins stay in the list rather than being summarised away beneath it. A filter that
- * hides half its subject is a filter that lies — a user searching for "rust" wants to know it is
- * already there just as much as they want to install it.
+ * Installed plugins stay in the list rather than being summarised away beneath it — a user looking
+ * for Rust wants to know it is already there just as much as they want to install it. There is no
+ * filter: the wizard is a pass through each category, not a search, and the Plugin Manager is where
+ * the catalogue is searched.
  *
  * Installing goes through the same consent the Plugin Manager asks for. A wizard is another entry
- * point to an install, never a shortcut past the question.
+ * point to an install, never a shortcut past the question. What is installed can be removed here
+ * too, so a plugin tried during setup is not one the user must go elsewhere to take back out.
  */
 @Component({
   selector: 'app-setup-step-catalogue',
-  imports: [Button, TextField],
+  imports: [Button],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrl: './setup-step-catalogue.scss',
   template: `
-    @if (inSlot().length > 6) {
-      <app-text-field
-        class="catalogue__filter"
-        kind="search"
-        placeholder="Filter by name or description"
-        ariaLabel="Filter plugins"
-        [(value)]="filter"
-      />
-    }
-
-    @if (matching().length === 0) {
-      <p class="catalogue__empty">
-        @if (filter().trim().length > 0) {
-          Nothing matches “{{ filter() }}”.
-        } @else {
-          No plugins are available for this on this machine.
-        }
-      </p>
+    @if (listed().length === 0) {
+      <p class="catalogue__empty">No plugins are available for this on this machine.</p>
     } @else {
       <ul class="catalogue__list">
-        @for (plugin of matching(); track plugin.id) {
+        @for (plugin of listed(); track plugin.id) {
           <li class="catalogue__item">
             <span class="catalogue__text">
               <span class="catalogue__name">{{ plugin.name }}</span>
               <span class="catalogue__detail">{{ plugin.description }}</span>
             </span>
-            @if (plugin.state === 'installed') {
-              <span class="catalogue__state">Installed</span>
+            <!-- The same actions, icons and words as the Plugin Manager's rows, so a plugin
+                 installed here can be taken out again here. A row being removed keeps its Remove
+                 button, spinning, rather than flipping to Install while it works. -->
+            @if (plugin.state === 'installed' || removing().has(plugin.id)) {
+              <app-button
+                class="catalogue__action"
+                variant="solid"
+                tone="danger"
+                label="Remove"
+                [icon]="Icon.TRASH_SIMPLE"
+                [disabled]="plugins.busy()"
+                [loading]="plugin.state === 'busy'"
+                (click)="uninstall(plugin.id)"
+              />
             } @else if (plugin.state === 'unavailable') {
               <span class="catalogue__state">Not available here</span>
             } @else {
               <app-button
+                class="catalogue__action"
+                variant="solid"
                 label="Install"
+                [icon]="Icon.DOWNLOAD"
                 [disabled]="plugins.busy()"
                 [loading]="plugin.state === 'busy'"
                 (click)="install(plugin.id)"
@@ -111,14 +112,27 @@ export class SetupStepCatalogue {
   protected readonly plugins: Plugins = inject(Plugins);
 
   /**
-   * Holds the text the list is filtered by.
+   * Gets the icon set, exposed for the template.
    */
-  protected readonly filter: WritableSignal<string> = signal<string>('');
+  protected readonly Icon: typeof Icon = Icon;
 
   /**
-   * Gets every plugin that contributes into the slot, whatever its state.
+   * Holds the plugins being removed from here, so a row mid-removal keeps showing what it is doing.
    */
-  protected readonly inSlot: Signal<readonly PluginSummary[]> = computed(
+  private readonly removingIds: WritableSignal<ReadonlySet<string>> = signal<ReadonlySet<string>>(
+    new Set<string>(),
+  );
+
+  /**
+   * Gets the plugins being removed from here.
+   */
+  protected readonly removing: Signal<ReadonlySet<string>> = this.removingIds.asReadonly();
+
+  /**
+   * Gets the plugins to list: every one in the slot, whatever its state, with what is not installed
+   * first — the list exists to be acted on, so the actionable rows lead it.
+   */
+  protected readonly listed: Signal<readonly PluginSummary[]> = computed(
     (): readonly PluginSummary[] =>
       this.plugins
         .plugins()
@@ -126,25 +140,9 @@ export class SetupStepCatalogue {
           plugin.contributions.some(
             (contribution: PluginContribution): boolean => contribution.slot === this.slot(),
           ),
-        ),
-  );
-
-  /**
-   * Gets the plugins to list: those in the slot, matching the filter, with what is not installed
-   * first — the list exists to be acted on, so the actionable rows lead it.
-   */
-  protected readonly matching: Signal<readonly PluginSummary[]> = computed(
-    (): readonly PluginSummary[] => {
-      const needle: string = this.filter().trim().toLowerCase();
-      return this.inSlot()
-        .filter(
-          (plugin: PluginSummary): boolean =>
-            needle.length === 0 ||
-            plugin.name.toLowerCase().includes(needle) ||
-            plugin.description.toLowerCase().includes(needle),
         )
-        .toSorted((left: PluginSummary, right: PluginSummary): number => rank(left) - rank(right));
-    },
+        // The filter's array is already a copy, so sorting it in place touches nothing shared.
+        .sort((left: PluginSummary, right: PluginSummary): number => rank(left) - rank(right)),
   );
 
   /**
@@ -153,5 +151,25 @@ export class SetupStepCatalogue {
    */
   protected install(id: string): void {
     void this.plugins.installWithConsent(id);
+  }
+
+  /**
+   * Removes a plugin, as the Plugin Manager's Remove does.
+   * @param id The plugin identifier.
+   * @returns Returns a promise that settles once the removal has.
+   */
+  protected async uninstall(id: string): Promise<void> {
+    this.removingIds.update((ids: ReadonlySet<string>): ReadonlySet<string> =>
+      new Set<string>(ids).add(id),
+    );
+    try {
+      await this.plugins.uninstall(id);
+    } finally {
+      this.removingIds.update((ids: ReadonlySet<string>): ReadonlySet<string> => {
+        const next: Set<string> = new Set<string>(ids);
+        next.delete(id);
+        return next;
+      });
+    }
   }
 }

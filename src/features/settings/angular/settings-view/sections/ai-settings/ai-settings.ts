@@ -1,30 +1,21 @@
 import {
   ChangeDetectionStrategy,
   Component,
-  computed,
   inject,
   input,
   InputSignal,
-  signal,
   Signal,
-  WritableSignal,
 } from '@angular/core';
-import type { AiAuthStatus, AiConnection, AuthMethod, ProviderPage } from '@shared/api/ai-types';
-import { AiProviders } from '@shared/angular/services/ai-providers/ai-providers';
-import { AiConnections } from '@shared/angular/services/ai-connections/ai-connections';
 import { Log } from '@shared/angular/services/log/log';
 import { ShellPicker } from '@shared/angular/components/forms/shell-picker/shell-picker';
 import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { SettingControl } from '../../setting-control/setting-control';
-import { AiConnectionEditor } from './ai-connection-editor/ai-connection-editor';
+import { AiProviderConfigurations } from './ai-provider-configurations/ai-provider-configurations';
 import { AiRemoteNotifications } from './ai-remote-notifications/ai-remote-notifications';
 import { AiToolPolicies } from './ai-tool-policies/ai-tool-policies';
 import { AiNetworkLocations } from './ai-network-locations/ai-network-locations';
 import { AiWritePaths } from './ai-write-paths/ai-write-paths';
-import { Accordion } from '@shared/angular/components/forms/accordion/accordion';
-import { Button } from '@shared/angular/components/forms/button/button';
-import { Icon } from '@shared/angular/icons/icon';
 
 /**
  * Selects which slice of the AI settings a section instance renders, so the navigation can present
@@ -35,20 +26,16 @@ export type AiSettingsView = 'general' | 'security' | 'provider';
 /**
  * Represents the AI section of the settings view. The {@link view} input selects the slice a given
  * instance renders: General and Security & Permissions carry global agent settings, while `provider`
- * renders one company's page (selected by {@link providerId}) — a "Configurations" list where the user
- * adds one configuration per authentication method the company offers, each with its own credential and
- * model list. Configuration state is owned by {@link AiConnections}, which persists the collection and
- * keeps each key in the main process.
+ * renders one company's page (selected by {@link providerId}) — the {@link AiProviderConfigurations}
+ * list the setup wizard's provider step shows too, so the two cannot drift apart.
  */
 @Component({
   selector: 'app-ai-settings',
   imports: [
-    Accordion,
-    Button,
     ShellPicker,
     SettingRow,
     SettingControl,
-    AiConnectionEditor,
+    AiProviderConfigurations,
     AiRemoteNotifications,
     AiToolPolicies,
     AiNetworkLocations,
@@ -60,11 +47,6 @@ export type AiSettingsView = 'general' | 'security' | 'provider';
 })
 export class AiSettingsSection {
   /**
-   * Gets the icon set, exposed for the template.
-   */
-  protected readonly Icon: typeof Icon = Icon;
-
-  /**
    * Gets which slice of the AI settings to render. Defaults to General.
    */
   public readonly view: InputSignal<AiSettingsView> = input<AiSettingsView>('general');
@@ -73,16 +55,6 @@ export class AiSettingsSection {
    * Gets the id of the company page to render when {@link view} is `provider` (for example `anthropic`).
    */
   public readonly providerId: InputSignal<string> = input<string>('');
-
-  /**
-   * Holds the connection-management service.
-   */
-  private readonly connectionsService: AiConnections = inject(AiConnections);
-
-  /**
-   * Holds the providers installed plugins contribute, which is the whole of what this branch shows.
-   */
-  private readonly providers: AiProviders = inject(AiProviders);
 
   /**
    * Holds the settings service the agent shell persists through.
@@ -98,96 +70,6 @@ export class AiSettingsSection {
    * Gets the persisted agent shell (the empty string for the default login shell).
    */
   protected readonly agentShell: Signal<string> = this.settings.aiAgentShell;
-
-  /**
-   * Holds the ids of the currently-expanded configurations.
-   */
-  private readonly expandedIds: WritableSignal<ReadonlySet<string>> = signal<ReadonlySet<string>>(
-    new Set<string>(),
-  );
-
-  /**
-   * Gets the company page to render, resolved from {@link providerId}, or undefined when it names no
-   * known page.
-   */
-  protected readonly page: Signal<ProviderPage | undefined> = computed(
-    (): ProviderPage | undefined =>
-      this.providers.pages().find((page: ProviderPage): boolean => page.id === this.providerId()),
-  );
-
-  /**
-   * Gets the configurations shown on the current company page (every connection of its kind(s)).
-   */
-  protected readonly pageConnections: Signal<readonly AiConnection[]> = computed(
-    (): readonly AiConnection[] => {
-      const page: ProviderPage | undefined = this.page();
-      return page === undefined ? [] : this.connectionsService.connectionsForKinds(page.kinds);
-    },
-  );
-
-  /**
-   * Gets a value indicating whether the agent bridge is available.
-   */
-  protected readonly isAvailable: boolean = this.connectionsService.isAvailable;
-
-  /**
-   * Initialises the section, refreshing every configuration's auth status.
-   */
-  public constructor() {
-    void this.connectionsService.refreshAllAuth();
-  }
-
-  /**
-   * Reports whether a configuration is expanded.
-   * @param id The connection id.
-   * @returns Returns true when the configuration is expanded.
-   */
-  protected isExpanded(id: string): boolean {
-    return this.expandedIds().has(id);
-  }
-
-  /**
-   * Records a configuration's expanded state, as reported by its accordion.
-   * @param id The connection id.
-   * @param expanded True when the configuration is expanded.
-   */
-  protected setExpanded(id: string, expanded: boolean): void {
-    this.expandedIds.update((current: ReadonlySet<string>): ReadonlySet<string> => {
-      const next: Set<string> = new Set<string>(current);
-      if (expanded) {
-        next.add(id);
-      } else {
-        next.delete(id);
-      }
-      return next;
-    });
-  }
-
-  /**
-   * Gets a configuration's auth status.
-   * @param id The connection id.
-   * @returns Returns the status.
-   */
-  protected status(id: string): AiAuthStatus {
-    return this.connectionsService.authStatus(id);
-  }
-
-  /**
-   * Adds a configuration to the current company page through the given authentication method and expands
-   * it.
-   * @param method The authentication method the configuration is added through.
-   */
-  protected addConfiguration(method: AuthMethod): void {
-    const page: ProviderPage | undefined = this.page();
-    if (page === undefined) {
-      return;
-    }
-    const connection: AiConnection = this.connectionsService.add(page.createKind, method);
-    this.log.info('settings.ai', 'Configuration added', connection.id, connection.auth);
-    this.expandedIds.update((current: ReadonlySet<string>): ReadonlySet<string> =>
-      new Set<string>(current).add(connection.id),
-    );
-  }
 
   /**
    * Persists the chosen agent shell.

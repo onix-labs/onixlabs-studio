@@ -9,29 +9,50 @@
   overflow: hidden;
 }
 
-.accordion__header {
+// The bar carries the header's surface, so the toggle and any actions beside it read as one header.
+.accordion__bar {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  inline-size: 100%;
-  padding: 0.75rem;
-  font: inherit;
-  font-size: 0.85rem;
-  font-weight: 500;
-  text-align: start;
-  color: inherit;
   background: var(--accordion-header-background-color);
-  border: none;
-  cursor: default;
   transition: background-color 150ms ease-in-out;
 
   &:hover {
     background: var(--accordion-header-background-color--hover);
   }
+}
+
+.accordion__header {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 0.5rem;
+  min-inline-size: 0;
+  padding: 0.75rem 0.5rem 0.75rem 0.75rem;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 500;
+  text-align: start;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: default;
 
   &:focus-visible {
     outline: var(--focus-ring-width) solid var(--focus-ring-color);
     outline-offset: -0.125rem;
+  }
+}
+
+.accordion__actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.4rem;
+  padding-inline-end: 0.5rem;
+
+  // An accordion without actions keeps its header exactly as it was.
+  &:empty {
+    display: none;
   }
 }
 
@@ -42,6 +63,10 @@
   flex-shrink: 0;
   font-size: 1rem;
   color: var(--form-muted-foreground-color);
+}
+
+.accordion__caret {
+  margin-inline-end: 0.75rem;
 }
 
 .accordion__heading {

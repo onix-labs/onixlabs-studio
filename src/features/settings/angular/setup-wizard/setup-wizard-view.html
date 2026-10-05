@@ -98,8 +98,8 @@
               @case ('terminal') {
                 <app-setup-step-terminal />
               }
-              @case ('environment') {
-                <app-setup-step-environment />
+              @case ('summary') {
+                <app-setup-step-summary />
               }
               @case ('catalogue') {
                 @if (step()?.slot; as slot) {
@@ -116,8 +116,10 @@
                   <app-setup-step-ai-provider [pageId]="pageId" />
                 }
               }
-              @case ('source-control') {
-                <app-setup-step-source-control />
+              @case ('commit-identity') {
+                @if (step(); as identityStep) {
+                  <app-setup-step-commit-identity [systemName]="identityStep.label" />
+                }
               }
               @default {
                 <!-- Every step kind has a case above, so reaching this means a kind was added

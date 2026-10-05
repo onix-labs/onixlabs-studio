@@ -10,7 +10,7 @@
   gap: 0.15rem;
 }
 
-// The settings view's section heading, so the two groups read as sections rather than as decoration.
+// The settings view's section heading, so the groups read as sections rather than as decoration.
 .env__group-title {
   margin: 0 0 0.35rem;
   font-size: 0.7rem;
@@ -25,13 +25,6 @@
   font-size: 0.75rem;
   line-height: 1.45;
   color: var(--settings-muted-foreground-color);
-}
-
-// A nested row is a property of the row above it, not a peer, so it is indented to the parent's text
-// and drawn without the divider that separates independent findings.
-.env__item--nested {
-  padding-inline-start: 1.6rem;
-  border-block-start: none !important;
 }
 
 .env__list {
@@ -72,6 +65,18 @@
 .env__item--warn .env__mark,
 .env__item--unknown .env__mark {
   color: var(--warning-color, #fbbf24);
+}
+
+// Not set up is a fact, not a finding, so its mark stays as quiet as the text beside it.
+.env__item--unset .env__mark {
+  color: var(--settings-muted-foreground-color);
+}
+
+// The way back to the step that changes a row, at the row's trailing edge.
+.env__change {
+  flex: none;
+  align-self: center;
+  margin-inline-start: auto;
 }
 
 .env__text {

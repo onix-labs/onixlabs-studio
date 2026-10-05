@@ -4,7 +4,6 @@
   gap: 1rem;
 }
 
-.scm__note,
 .scm__unavailable {
   margin: 0;
   font-size: 0.78rem;
@@ -22,8 +21,4 @@
 
 .scm__verdict--good {
   color: var(--success-color, #34d399);
-}
-
-.scm__verdict--bad {
-  color: var(--danger-color, #f87171);
 }

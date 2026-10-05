@@ -497,6 +497,7 @@ export function toContributions(manifest: PluginManifest): readonly PluginContri
     id: system.id,
     displayName: system.displayName,
     priority: system.priority,
+    capabilities: system.capabilities,
   }));
   return [...servers, ...adapters, ...decoders, ...engines, ...versionControl, ...harnesses];
 }

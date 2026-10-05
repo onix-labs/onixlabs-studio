@@ -32,6 +32,7 @@ describe('SetupStepCatalogue', () => {
   let host: HTMLElement;
   let known: WritableSignal<readonly PluginSummary[]>;
   let installWithConsent: ReturnType<typeof vi.fn>;
+  let uninstall: ReturnType<typeof vi.fn>;
 
   /**
    * Renders the step for a slot and settles it.
@@ -64,6 +65,7 @@ describe('SetupStepCatalogue', () => {
       plugin('podman', 'container-engine', 'unavailable'),
     ]);
     installWithConsent = vi.fn().mockResolvedValue(undefined);
+    uninstall = vi.fn().mockResolvedValue(undefined);
     await TestBed.configureTestingModule({
       imports: [SetupStepCatalogue],
       providers: [
@@ -74,6 +76,7 @@ describe('SetupStepCatalogue', () => {
             busy: signal<boolean>(false),
             error: signal<string | null>(null),
             installWithConsent,
+            uninstall,
           },
         },
       ],
@@ -82,19 +85,35 @@ describe('SetupStepCatalogue', () => {
 
   it('render_listsOnlyThePluginsInTheSlot_withWhatIsNotInstalledFirst', async () => {
     // The list exists to be acted on, so the actionable rows lead it; but the installed one stays,
-    // because a filter that hides half its subject is a filter that lies.
+    // because whether it is already there is as much the answer as an Install button.
     await render('language-server');
 
     expect(names()).toEqual(['rust-analyzer', 'pyright']);
   });
 
-  it('render_saysWhichAreInstalledRatherThanOfferingToInstallThemAgain', async () => {
+  it('render_offersInstallInTheAccent_andRemoveInRed_asThePluginManagerDoes', async () => {
     await render('language-server');
 
     const rows: HTMLElement[] = Array.from(host.querySelectorAll<HTMLElement>('.catalogue__item'));
-    expect(rows[0].querySelector('button')?.textContent?.trim()).toBe('Install');
-    expect(rows[1].querySelector('button')).toBeNull();
-    expect(rows[1].textContent).toContain('Installed');
+    const install: HTMLElement | null = rows[0].querySelector('app-button');
+    expect(install?.textContent?.trim()).toBe('Install');
+    expect(install?.classList.contains('button--solid')).toBe(true);
+    // The accent is the button's default tone, so it carries no other.
+    expect(install?.className).not.toContain('button--tone-');
+    const remove: HTMLElement | null = rows[1].querySelector('app-button');
+    expect(remove?.textContent?.trim()).toBe('Remove');
+    expect(remove?.classList.contains('button--solid')).toBe(true);
+    expect(remove?.classList.contains('button--tone-danger')).toBe(true);
+  });
+
+  it('remove_whenClicked_uninstallsThePlugin', async () => {
+    await render('language-server');
+
+    const rows: HTMLElement[] = Array.from(host.querySelectorAll<HTMLElement>('.catalogue__item'));
+    rows[1].querySelector<HTMLButtonElement>('button')?.click();
+
+    // A plugin tried during setup can be taken back out without leaving it.
+    expect(uninstall).toHaveBeenCalledWith('pyright');
   });
 
   it('render_saysWhenAPluginCannotBeInstalledHere_ratherThanOfferingAnInstallThatWillRefuse', async () => {

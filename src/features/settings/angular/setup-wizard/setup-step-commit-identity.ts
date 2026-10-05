@@ -3,39 +3,41 @@ import {
   Component,
   computed,
   inject,
+  input,
+  InputSignal,
   Signal,
   signal,
   WritableSignal,
 } from '@angular/core';
-import { ForgeAuthStatus } from '@shared/api/forge-types';
 import { GitIdentity } from '@shared/api/setup-channels';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
-import { Forge } from '@shared/angular/services/forge/forge';
 import { SetupProbes } from '@shared/angular/services/setup-probes/setup-probes';
 
 /**
- * The setup wizard's source-control step: who commits are attributed to, and whether Studio can reach
- * the forge.
+ * The setup wizard's commit-identity step: who commits are attributed to.
  *
- * Both are classic deferred failures. An unset git identity is invisible until the first commit is
- * refused, and an absent forge token is invisible until Studio is asked for pull requests it cannot
- * fetch. Neither is fatal and neither blocks the step; both are cheap to fix now and tedious to
- * diagnose later.
+ * A leaf beneath Version Control, grown for an installed version-control system that has an identity
+ * to set — as AI Providers grows a sign-in step per provider. A system without one (a future SVN
+ * plugin, say) grows no step, and a machine with no system installed is not asked for a name nothing
+ * would use.
+ *
+ * An unset identity is a classic deferred failure: invisible until the first commit is refused. It
+ * is cheap to fix now and tedious to diagnose then.
  *
  * The identity is read and written through the same main-process seam the environment step uses, so
- * the two steps cannot disagree about what git holds.
+ * the two steps cannot disagree about what the system holds.
  */
 @Component({
-  selector: 'app-setup-step-source-control',
+  selector: 'app-setup-step-commit-identity',
   imports: [Button, SettingRow, TextField],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  styleUrl: './setup-step-source-control.scss',
+  styleUrl: './setup-step-commit-identity.scss',
   template: `
     @if (!probes.isAvailable) {
       <p class="scm__unavailable">
-        Source control cannot be configured outside the desktop application.
+        Version control cannot be configured outside the desktop application.
       </p>
     } @else {
       <app-setting-row label="Commit name" description="The name your commits are attributed to.">
@@ -57,46 +59,24 @@ import { SetupProbes } from '@shared/angular/services/setup-probes/setup-probes'
           (click)="save()"
         />
         @if (saved()) {
-          <span class="scm__verdict--good">Saved to your global git configuration.</span>
+          <span class="scm__verdict--good">
+            Saved to your global {{ systemName() }} configuration.
+          </span>
         }
       </div>
-
-      <app-setting-row
-        label="GitHub"
-        description="Signing in lets Studio show pull requests, issues and workflow runs for your repositories."
-      >
-        <span class="scm__status">
-          @if (forgeStatus(); as status) {
-            @if (status.authenticated) {
-              <span class="scm__verdict--good">
-                Signed in{{ status.identity ? ' as ' + status.identity.login : '' }}
-              </span>
-            } @else {
-              <span class="scm__verdict--bad">Not signed in</span>
-            }
-          } @else {
-            <span>Checking…</span>
-          }
-        </span>
-      </app-setting-row>
-
-      <p class="scm__note">
-        A forge token is set in Settings under Source Control, where it can be stored securely.
-        Studio works without one; only the pull-request and workflow views need it.
-      </p>
     }
   `,
 })
-export class SetupStepSourceControl {
+export class SetupStepCommitIdentity {
   /**
-   * Holds the probe client, which owns reading and writing the git identity.
+   * Gets the display name of the version-control system the identity belongs to (for example Git).
    */
-  protected readonly probes: SetupProbes = inject(SetupProbes);
+  public readonly systemName: InputSignal<string> = input.required<string>();
 
   /**
-   * Holds the forge client, consulted for whether Studio can reach GitHub.
+   * Holds the probe client, which owns reading and writing the identity.
    */
-  private readonly forge: Forge = inject(Forge);
+  protected readonly probes: SetupProbes = inject(SetupProbes);
 
   /**
    * Holds the name being edited.
@@ -114,20 +94,9 @@ export class SetupStepSourceControl {
   private readonly savedRecently: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
-   * Holds the forge authentication status, or null until it has been read.
-   */
-  private readonly forgeAuth: WritableSignal<ForgeAuthStatus | null> =
-    signal<ForgeAuthStatus | null>(null);
-
-  /**
    * Gets whether the identity was saved.
    */
   protected readonly saved: Signal<boolean> = this.savedRecently.asReadonly();
-
-  /**
-   * Gets the forge authentication status.
-   */
-  protected readonly forgeStatus: Signal<ForgeAuthStatus | null> = this.forgeAuth.asReadonly();
 
   /**
    * Gets whether both fields are filled in. Git accepts either alone, but a half-set identity fails
@@ -138,25 +107,22 @@ export class SetupStepSourceControl {
   );
 
   /**
-   * Initializes the step, loading what git and the forge already hold so the fields open pre-filled
-   * rather than blank — a user who set this up years ago should see that, not be asked again.
+   * Initializes the step, loading the identity already held so the fields open pre-filled rather
+   * than blank — a user who set this up years ago should see that, not be asked again.
    */
   public constructor() {
     void this.load();
   }
 
   /**
-   * Reads the current identity and forge status.
-   * @returns Returns a promise that resolves once both have been read.
+   * Reads the current identity.
+   * @returns Returns a promise that resolves once it has been read.
    */
   private async load(): Promise<void> {
     const identity: GitIdentity | null = await this.probes.gitIdentity();
     if (identity !== null) {
       this.name.set(identity.name);
       this.email.set(identity.email);
-    }
-    if (this.forge.isAvailable) {
-      this.forgeAuth.set(await this.forge.authStatus());
     }
   }
 

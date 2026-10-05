@@ -42,9 +42,11 @@
   color: var(--settings-muted-foreground-color);
 }
 
-// The list is the scrolling part, so the filter stays put above it.
-.catalogue__filter {
+// Install and Remove share one width, so the action column lines up from row to row whichever a row
+// offers, and a row flipping between them does not shift. The button centres its own content.
+.catalogue__action {
   flex: none;
+  inline-size: 6.5rem;
 }
 
 // A plain word rather than a disabled button: there is no action here, and a greyed-out control

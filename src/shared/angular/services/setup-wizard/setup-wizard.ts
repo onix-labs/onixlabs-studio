@@ -10,7 +10,13 @@ import {
 } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
 import type { ProviderPage } from '@shared/api/ai-types';
-import { PLUGIN_SLOT_LABELS, PLUGIN_SLOTS, type PluginSlot } from '@shared/api/plugin-channels';
+import {
+  installedContributions,
+  PLUGIN_SLOT_LABELS,
+  PLUGIN_SLOTS,
+  type PluginSlot,
+  type UnkeyedPluginContribution,
+} from '@shared/api/plugin-channels';
 import { highlightsBetween, ReleaseHighlights } from '@shared/api/release-highlights';
 import { isNewerStudioVersion } from '@shared/api/studio-version';
 import { AiProviders } from '@shared/angular/services/ai-providers/ai-providers';
@@ -42,19 +48,19 @@ export type SetupMode = 'first-run' | 'upgrade';
  * renders it. The service is deliberately ignorant of the components: it lives in shared, and they
  * live in the settings feature.
  *
- * A `catalogue` step installs plugins into one slot; a `language` or `ai-provider` step configures
- * one thing such a plugin brought, and exists only while it is installed.
+ * A `catalogue` step installs plugins into one slot; a `language`, `ai-provider` or `commit-identity`
+ * step configures one thing such a plugin brought, and exists only while it is installed.
  */
 export type SetupStepKind =
   | 'welcome'
   | 'whats-new'
   | 'settings'
-  | 'environment'
+  | 'summary'
   | 'catalogue'
   | 'language'
   | 'ai-provider'
-  | 'terminal'
-  | 'source-control';
+  | 'commit-identity'
+  | 'terminal';
 
 /**
  * Describes one step of the setup sequence: what it is called, the sentence that says why the user
@@ -228,17 +234,14 @@ export const SETUP_STEPS: readonly SetupStep[] = [
     title: 'How Studio should look',
     summary: 'Theme, accent colour, and how much of the GPU the interface uses.',
   },
-  {
-    id: 'environment',
-    kind: 'environment',
-    icon: Icon.SETUP_ENVIRONMENT,
-    label: 'Environment',
-    title: 'What is installed underneath',
-    summary:
-      'The tools Studio builds on, checked against this machine — so anything missing is said here ' +
-      'rather than failing quietly later.',
-  },
-  ...PLUGIN_SLOTS.map(catalogueStep),
+  // The plugins come before everything that depends on them. The summary asks the installed plugins
+  // what they can run — with Git not yet installed it reports version control as missing, and the way
+  // to fix that has to be a step behind it, not ahead. AI providers lead them: the agent is what Studio is
+  // for, so its sign-in is asked for first rather than after a run of optional tooling.
+  catalogueStep('agent-harness'),
+  ...PLUGIN_SLOTS.filter((slot: PluginSlot): boolean => slot !== 'agent-harness').map(
+    catalogueStep,
+  ),
   {
     id: 'security',
     kind: 'settings',
@@ -257,13 +260,18 @@ export const SETUP_STEPS: readonly SetupStep[] = [
     summary:
       'The shell new terminals start with, and the one the agent takes its environment from.',
   },
+  // Last, because it only reports: it decides nothing, and everything it shows — the providers, the
+  // plugins, the identity, the shells — is set on the steps before it, so it reads as where they left
+  // things, with a way back to each.
   {
-    id: 'source-control',
-    kind: 'source-control',
-    icon: Icon.SETUP_SOURCE_CONTROL,
-    label: 'Source Control',
-    title: 'Source control',
-    summary: 'Who your commits are attributed to, and how Studio reaches your forge.',
+    id: 'summary',
+    kind: 'summary',
+    icon: Icon.SETUP_SUMMARY,
+    label: 'Summary',
+    title: 'Your setup',
+    summary:
+      'Everything the steps before decided, and what this machine has underneath — anything missing ' +
+      'is said here rather than failing quietly later.',
   },
 ];
 
@@ -339,14 +347,6 @@ export class SetupWizard {
   private readonly currentId: WritableSignal<string> = signal<string>('welcome');
 
   /**
-   * Holds the identifiers of the steps already walked, which is what separates a step left behind
-   * from one still ahead. Going back does not un-walk the steps behind you.
-   */
-  private readonly walkedIds: WritableSignal<ReadonlySet<string>> = signal<ReadonlySet<string>>(
-    new Set<string>(),
-  );
-
-  /**
    * Holds the leaves present when the catalogue first loaded this run, or null until it has. An
    * upgrade shows only leaves that were not there then — a plugin installed during this pass, whose
    * configuration the user has not yet seen — rather than every language and provider they set up
@@ -386,6 +386,7 @@ export class SetupWizard {
    * sit beneath.
    */
   private readonly leaves: Signal<readonly SetupStep[]> = computed((): readonly SetupStep[] => [
+    ...this.versionControlLeaves(),
     ...this.lspSettings.installedLanguages().map((language: string): SetupStep => ({
       id: `language-server/${language}`,
       kind: 'language',
@@ -405,6 +406,30 @@ export class SetupWizard {
       summary: 'A way to sign in, a credential, and a check that it answers — before you leave.',
     })),
   ]);
+
+  /**
+   * Gets the leaves beneath Version Control: a commit-identity step per installed system that has an
+   * identity to set, named for the system.
+   *
+   * A forge sign-in is not one of them. It is where a repository is hosted, not version control, and
+   * until the hosting seam gives it something to set up (#819, #820) it is reported on the summary
+   * rather than given a step that only reports.
+   * @returns Returns the leaves, in walk order.
+   */
+  private versionControlLeaves(): readonly SetupStep[] {
+    return installedContributions(this.plugins.plugins(), 'version-control')
+      .filter((system: UnkeyedPluginContribution): boolean =>
+        (system.capabilities ?? []).includes('identity'),
+      )
+      .map((system: UnkeyedPluginContribution): SetupStep => ({
+        id: `version-control/${system.id}`,
+        kind: 'commit-identity',
+        parentId: 'version-control',
+        label: system.displayName,
+        title: `Who your ${system.displayName} commits are from`,
+        summary: 'The name and email address your commits are attributed to.',
+      }));
+  }
 
   /**
    * Gets the steps this run presents, in walk order: each root followed by its leaves.
@@ -500,7 +525,7 @@ export class SetupWizard {
    * step holding a setting that did not exist when the user last completed setup. Everything else
    * they have already answered, and asking again on every beta would turn the pass into a toll.
    *
-   * The environment and plugin steps always run. They are not about settings but about the machine,
+   * The summary and plugin steps always run. They are not about settings but about the machine,
    * and the machine changes underneath Studio without any version doing so — a runtime uninstalled, a
    * credential expired. A version bump is as good a moment as any to look again.
    * @param step The root to test.
@@ -513,7 +538,7 @@ export class SetupWizard {
     if (this.mode === 'first-run' || this.lastSeen === null) {
       return true;
     }
-    if (step.kind === 'welcome' || step.kind === 'environment' || step.kind === 'catalogue') {
+    if (step.kind === 'welcome' || step.kind === 'summary' || step.kind === 'catalogue') {
       return true;
     }
     return this.hasNewSettings(step, this.lastSeen);
@@ -549,12 +574,20 @@ export class SetupWizard {
   }
 
   /**
-   * Reports whether a step has been walked — left behind by Next at some point this run.
+   * Reports whether a step has been walked: whether it comes before the step being shown.
+   *
+   * Positional rather than remembered. A rail that remembered every step Next had left kept them
+   * ticked after the user went back, so backing up the list left it half done and half not — the
+   * ticks no longer said where the user was. Now everything from the current step on reads as ahead,
+   * however far the user has been before.
    * @param step The step.
-   * @returns Returns true when the step has been walked.
+   * @returns Returns true when the step comes before the current one.
    */
   public isWalked(step: SetupStep): boolean {
-    return this.walkedIds().has(step.id);
+    const index: number = this.steps().findIndex(
+      (candidate: SetupStep): boolean => candidate.id === step.id,
+    );
+    return index !== -1 && index < this.stepIndex();
   }
 
   /**
@@ -565,15 +598,20 @@ export class SetupWizard {
       this.finish();
       return;
     }
-    const leaving: SetupStep | undefined = this.current();
     const following: SetupStep | undefined = this.steps()[this.stepIndex() + 1];
-    if (leaving === undefined || following === undefined) {
-      return;
+    if (following !== undefined) {
+      this.currentId.set(following.id);
     }
-    this.walkedIds.update((walked: ReadonlySet<string>): ReadonlySet<string> =>
-      new Set<string>(walked).add(leaving.id),
-    );
-    this.currentId.set(following.id);
+  }
+
+  /**
+   * Jumps to a step — the summary's way back to whatever fixes what it reports.
+   * @param id The step identifier. A step this run does not present is ignored.
+   */
+  public goTo(id: string): void {
+    if (this.steps().some((step: SetupStep): boolean => step.id === id)) {
+      this.currentId.set(id);
+    }
   }
 
   /**
