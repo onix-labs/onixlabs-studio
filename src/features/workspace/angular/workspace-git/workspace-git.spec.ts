@@ -5,9 +5,11 @@ import { DirectoryChangeEvent } from '@shared/api/file-channels';
 import { DirectoryListing } from '@shared/api/workspace-channels';
 import { DirectoryWatch } from '@shared/angular/services/directory-watch/directory-watch';
 import { GitFileChange } from '@shared/angular/services/repository/repository-data';
-import { ParsedStatus } from '@shared/angular/services/source-control/git-output';
+import {
+  ParsedStatus,
+  SourceControlProvider,
+} from '@shared/angular/services/source-control/source-control-provider';
 import { SourceControl } from '@shared/angular/services/source-control/source-control';
-import { SourceControlProvider } from '@shared/angular/services/source-control/source-control-provider';
 import { SourceControlProviders } from '@shared/angular/services/source-control/source-control-providers';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 

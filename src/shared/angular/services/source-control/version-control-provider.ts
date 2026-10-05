@@ -1,24 +1,26 @@
 import {
   GitMergeMode,
   GitOperationState,
-  GitRunResult,
   SourceControlClient,
 } from '@shared/api/source-control-channels';
-import { GitCommit, GitFileChange, GitStash } from '../repository/repository-data';
 import {
-  ParsedRefs,
-  ParsedStatus,
-  parseCommitFiles,
-  parseLog,
-  mergeRemoteUrls,
-  parseRefs,
-  parseRemoteUrls,
-  parseStashes,
-  parseStatus,
-} from './git-output';
+  VcsCommit,
+  VcsFileChange,
+  VcsFileVersion,
+  VcsStash,
+  VcsStatus,
+  VersionControlOp,
+  VersionControlResponse,
+  VcsParams,
+  VcsResult,
+} from '@shared/api/version-control-protocol';
+import { DiffTarget, GitCommit, GitFileChange, GitStash } from '../repository/repository-data';
+import { relativeDate } from './relative-date';
 import {
   FileDiff,
   MutationResult,
+  ParsedRefs,
+  ParsedStatus,
   PushTarget,
   SourceControlProvider,
 } from './source-control-provider';
@@ -29,49 +31,73 @@ import {
 const DEFAULT_LOG_LIMIT: number = 500;
 
 /**
- * The revision naming the staged content. Not a revision *name* but git's way of writing a blob with
- * no revision in front of it, which is why the main process cannot join it to a path the way it joins
- * a real one — see `blobSpec` there.
- */
-const INDEX_REVISION: string = ':';
-
-/**
- * The revision naming the working tree, read from disk rather than from the object store.
- */
-const WORKTREE_REVISION: string = '';
-
-/**
- * The revision naming the tip of the current branch.
- */
-const HEAD_REVISION: string = 'HEAD';
-
-/**
- * The revision naming stage 2 of the index — "ours", the side the working tree was already on when a
- * merge or rebase hit a conflict. An unmerged path holds three stages at once, so it is addressed by
- * number: `:2:path`.
- */
-const OURS_STAGE_REVISION: string = ':2';
-
-/**
- * The git implementation of {@link SourceControlProvider}. It calls the safe git client (the
- * {@link SourceControlClient} over `window.bridge`) for a single opened repository root and maps the
- * raw output through the {@link import('./git-output')} parsers into the application's source-control
- * model. Running outside Electron (no client) every read yields empty data, so the surfaces render
+ * The status of a repository that could not be read: no branch and no changes, so the surfaces render
  * their empty state rather than throwing.
  */
-export class GitProvider implements SourceControlProvider {
+const EMPTY_STATUS: ParsedStatus = {
+  branch: null,
+  upstream: null,
+  ahead: 0,
+  behind: 0,
+  staged: [],
+  unstaged: [],
+  conflicted: [],
+};
+
+/**
+ * Adds to a protocol file change what only the renderer uses: the diff target its contents are loaded
+ * from, and the display fields (language, the loaded sides) that start empty.
+ * @param change The plugin's file change.
+ * @param target Where the change's two sides are read from.
+ * @returns Returns the renderer's file change.
+ */
+function toFileChange(change: VcsFileChange, target: DiffTarget): GitFileChange {
+  return {
+    path: change.path,
+    previousPath: change.previousPath,
+    status: change.status,
+    additions: change.additions,
+    deletions: change.deletions,
+    language: '',
+    original: '',
+    modified: '',
+    target,
+    untracked: change.untracked,
+  };
+}
+
+/**
+ * Adds to a protocol commit what only the renderer uses: the relative date and the (lazily loaded)
+ * files.
+ * @param commit The plugin's commit.
+ * @returns Returns the renderer's commit.
+ */
+function toCommit(commit: VcsCommit): GitCommit {
+  return { ...commit, relativeDate: relativeDate(commit.isoDate), files: [] };
+}
+
+/**
+ * Implements {@link SourceControlProvider} over the version-control protocol (#816).
+ *
+ * Every question goes to the main process, whose host decides which plugin answers for this
+ * repository; the answers arrive typed, so nothing here parses a tool's output. What remains is the
+ * renderer's own business: attaching diff targets, phrasing dates, and turning a failed read into an
+ * empty one so a surface renders its empty state. Running outside Electron (no client) every read
+ * yields empty data in the same way.
+ */
+export class VersionControlProvider implements SourceControlProvider {
   /**
    * Holds the repository's absolute root path.
    */
   public readonly root: string;
 
   /**
-   * Holds the git client, or undefined when running outside Electron.
+   * Holds the source-control client, or undefined when running outside Electron.
    */
   private readonly api: SourceControlClient | undefined;
 
   /**
-   * Initialises a new instance of the {@link GitProvider} class bound to a repository root.
+   * Initialises a new instance bound to a repository root.
    * @param root The repository's absolute root path.
    * @param client The source-control client, or undefined when running outside Electron.
    */
@@ -82,12 +108,26 @@ export class GitProvider implements SourceControlProvider {
 
   /**
    * Reads the working-tree status.
-   * @returns Returns the parsed status.
+   * @returns Returns the status, empty when it could not be read.
    */
   public async getStatus(): Promise<ParsedStatus> {
-    return parseStatus(
-      await this.read((api: SourceControlClient): Promise<GitRunResult> => api.status(this.root)),
-    );
+    const status: VcsStatus | null = await this.read('status', {});
+    if (status === null) {
+      return EMPTY_STATUS;
+    }
+    const working: (staged: boolean) => (change: VcsFileChange) => GitFileChange =
+      (staged: boolean) =>
+      (change: VcsFileChange): GitFileChange =>
+        toFileChange(change, { kind: 'working', staged });
+    return {
+      branch: status.branch,
+      upstream: status.upstream,
+      ahead: status.ahead,
+      behind: status.behind,
+      staged: status.staged.map(working(true)),
+      unstaged: status.unstaged.map(working(false)),
+      conflicted: status.conflicted.map(working(false)),
+    };
   }
 
   /**
@@ -95,7 +135,7 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the operation state, whose kind is null when nothing is in flight.
    */
   public async getOperationState(): Promise<GitOperationState> {
-    return (await this.api?.operationState(this.root)) ?? { kind: null };
+    return (await this.read('operationState', {})) ?? { kind: null };
   }
 
   /**
@@ -104,27 +144,15 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the commits.
    */
   public async getCommits(limit: number = DEFAULT_LOG_LIMIT): Promise<GitCommit[]> {
-    return parseLog(
-      await this.read((api: SourceControlClient): Promise<GitRunResult> =>
-        api.log(this.root, limit),
-      ),
-    );
+    return ((await this.read('log', { limit })) ?? []).map(toCommit);
   }
 
   /**
    * Reads the branches, remotes, and tags.
-   * @returns Returns the parsed refs.
+   * @returns Returns the refs.
    */
   public async getRefs(): Promise<ParsedRefs> {
-    // Two reads rather than one: `for-each-ref` knows the remote-tracking branches but nothing of a
-    // remote's URL, and `git remote -v` knows the URLs but nothing of the branches. Run together,
-    // since neither touches the network and the pair is what one caller wants.
-    const [refs, remoteUrls]: [string, string] = await Promise.all([
-      this.read((api: SourceControlClient): Promise<GitRunResult> => api.refs(this.root)),
-      this.read((api: SourceControlClient): Promise<GitRunResult> => api.remotes(this.root)),
-    ]);
-    const parsed: ParsedRefs = parseRefs(refs);
-    return { ...parsed, remotes: mergeRemoteUrls(parsed.remotes, parseRemoteUrls(remoteUrls)) };
+    return (await this.read('refs', {})) ?? { branches: [], remotes: [], tags: [] };
   }
 
   /**
@@ -132,9 +160,14 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the stashes.
    */
   public async getStashes(): Promise<GitStash[]> {
-    return parseStashes(
-      await this.read((api: SourceControlClient): Promise<GitRunResult> => api.stashes(this.root)),
-    );
+    return ((await this.read('stashes', {})) ?? []).map((stash: VcsStash): GitStash => ({
+      index: stash.index,
+      message: stash.message,
+      branch: stash.branch,
+      files: stash.files.map((change: VcsFileChange): GitFileChange =>
+        toFileChange(change, { kind: 'working', staged: false }),
+      ),
+    }));
   }
 
   /**
@@ -143,15 +176,19 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the changed files.
    */
   public async getCommitFiles(commit: GitCommit): Promise<GitFileChange[]> {
-    const output: string = await this.read((api: SourceControlClient): Promise<GitRunResult> =>
-      api.commitFiles(this.root, commit.hash),
+    const target: DiffTarget = {
+      kind: 'commit',
+      hash: commit.hash,
+      parent: commit.parents[0] ?? null,
+    };
+    return ((await this.read('commitFiles', { hash: commit.hash })) ?? []).map(
+      (change: VcsFileChange): GitFileChange => toFileChange(change, target),
     );
-    return parseCommitFiles(output, commit.hash, commit.parents[0] ?? null);
   }
 
   /**
-   * Reads the two sides of a changed file's diff, resolving its revision context. A change with no
-   * target (a mock change) returns its embedded contents directly.
+   * Reads the two sides of a changed file's diff. A change with no target (a mock change) returns its
+   * embedded contents directly.
    * @param file The changed file.
    * @returns Returns the diff content.
    */
@@ -163,35 +200,39 @@ export class GitProvider implements SourceControlProvider {
     const oldPath: string = file.previousPath ?? file.path;
 
     if (file.target.kind === 'commit') {
-      const parentRevision: string = file.target.parent ?? `${file.target.hash}^`;
+      // A root commit has no parent, and every file in it is added.
+      const parent: string | null = file.target.parent;
       const original: string =
-        file.status === 'added' ? '' : await this.blob(parentRevision, oldPath);
+        file.status === 'added' || parent === null
+          ? ''
+          : await this.contents(oldPath, { kind: 'commit', hash: parent });
       const modified: string =
-        file.status === 'deleted' ? '' : await this.blob(file.target.hash, newPath);
+        file.status === 'deleted'
+          ? ''
+          : await this.contents(newPath, { kind: 'commit', hash: file.target.hash });
       return { original, modified };
     }
 
-    // A conflicted path has no single indexed content to compare against — the index holds all three
-    // sides at once, and `:path` is ambiguous there, which is why the ordinary staged/unstaged pair
-    // would come back empty and read as a wholly-added file. Compare our side of the merge with what
-    // is on disk instead, so the diff shows what resolving it has to settle.
+    // A conflicted path has no single staged version to compare against — the index holds all three
+    // sides at once — so our side of the conflict is compared with what is on disk instead, which is
+    // what resolving it has to settle.
     if (file.status === 'conflicted') {
       return {
-        original: await this.blob(OURS_STAGE_REVISION, newPath),
-        modified: await this.blob(WORKTREE_REVISION, newPath),
+        original: await this.contents(newPath, { kind: 'ours' }),
+        modified: await this.contents(newPath, { kind: 'working' }),
       };
     }
 
-    // Working tree: staged compares HEAD with the index; unstaged compares the index with the worktree.
+    // Staged compares HEAD with the index; unstaged compares the index with the working tree.
     if (file.target.staged) {
       return {
-        original: await this.blob(HEAD_REVISION, newPath),
-        modified: await this.blob(INDEX_REVISION, newPath),
+        original: await this.contents(newPath, { kind: 'head' }),
+        modified: await this.contents(newPath, { kind: 'index' }),
       };
     }
     return {
-      original: await this.blob(INDEX_REVISION, newPath),
-      modified: await this.blob(WORKTREE_REVISION, newPath),
+      original: await this.contents(newPath, { kind: 'index' }),
+      modified: await this.contents(newPath, { kind: 'working' }),
     };
   }
 
@@ -201,20 +242,16 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public stage(paths: readonly string[]): Promise<MutationResult> {
-    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
-      api.stage(this.root, paths),
-    );
+    return this.mutate('stage', { paths });
   }
 
   /**
-   * Discards the uncommitted changes to paths (tracked restored to `HEAD`, untracked deleted).
+   * Discards the uncommitted changes to paths (tracked restored, untracked deleted).
    * @param paths The repository-relative paths to discard; must not be empty.
    * @returns Returns the outcome.
    */
   public discard(paths: readonly string[]): Promise<MutationResult> {
-    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
-      api.discard(this.root, paths),
-    );
+    return this.mutate('discard', { paths });
   }
 
   /**
@@ -223,9 +260,7 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public unstage(paths: readonly string[]): Promise<MutationResult> {
-    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
-      api.unstage(this.root, paths),
-    );
+    return this.mutate('unstage', { paths });
   }
 
   /**
@@ -234,9 +269,7 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public commit(message: string): Promise<MutationResult> {
-    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
-      api.commit(this.root, message),
-    );
+    return this.mutate('commit', { message });
   }
 
   /**
@@ -244,7 +277,7 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public stash(): Promise<MutationResult> {
-    return this.mutate((api: SourceControlClient): Promise<GitRunResult> => api.stash(this.root));
+    return this.mutate('stash', {});
   }
 
   /**
@@ -253,9 +286,7 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public applyStash(index: number): Promise<MutationResult> {
-    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
-      api.stashApply(this.root, index),
-    );
+    return this.mutate('stashApply', { index });
   }
 
   /**
@@ -264,9 +295,7 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public popStash(index: number): Promise<MutationResult> {
-    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
-      api.stashPop(this.root, index),
-    );
+    return this.mutate('stashPop', { index });
   }
 
   /**
@@ -275,9 +304,7 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public dropStash(index: number): Promise<MutationResult> {
-    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
-      api.stashDrop(this.root, index),
-    );
+    return this.mutate('stashDrop', { index });
   }
 
   /**
@@ -286,9 +313,7 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public checkout(branch: string): Promise<MutationResult> {
-    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
-      api.checkout(this.root, branch),
-    );
+    return this.mutate('checkout', { branch });
   }
 
   /**
@@ -298,9 +323,7 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public createBranch(name: string, checkout: boolean): Promise<MutationResult> {
-    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
-      api.createBranch(this.root, name, checkout),
-    );
+    return this.mutate('createBranch', { name, checkout });
   }
 
   /**
@@ -308,7 +331,7 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public fetch(): Promise<MutationResult> {
-    return this.mutate((api: SourceControlClient): Promise<GitRunResult> => api.fetch(this.root));
+    return this.mutate('fetch', {});
   }
 
   /**
@@ -319,9 +342,7 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public fetchRef(remote: string, sourceRef: string, localBranch: string): Promise<MutationResult> {
-    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
-      api.fetchRef(this.root, remote, sourceRef, localBranch),
-    );
+    return this.mutate('fetchRef', { remote, sourceRef, localBranch });
   }
 
   /**
@@ -329,7 +350,7 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public pull(): Promise<MutationResult> {
-    return this.mutate((api: SourceControlClient): Promise<GitRunResult> => api.pull(this.root));
+    return this.mutate('pull', {});
   }
 
   /**
@@ -338,9 +359,7 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public push(target?: PushTarget): Promise<MutationResult> {
-    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
-      api.push(this.root, target?.remote, target?.branch, target?.setUpstream),
-    );
+    return this.mutate('push', { target: target ?? null });
   }
 
   /**
@@ -350,9 +369,7 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public deleteBranch(name: string, force: boolean): Promise<MutationResult> {
-    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
-      api.deleteBranch(this.root, name, force),
-    );
+    return this.mutate('deleteBranch', { name, force });
   }
 
   /**
@@ -362,9 +379,7 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public renameBranch(from: string, to: string): Promise<MutationResult> {
-    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
-      api.renameBranch(this.root, from, to),
-    );
+    return this.mutate('renameBranch', { from, to });
   }
 
   /**
@@ -374,9 +389,7 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public setUpstream(branch: string, upstream: string | null): Promise<MutationResult> {
-    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
-      api.setUpstream(this.root, branch, upstream),
-    );
+    return this.mutate('setUpstream', { branch, upstream });
   }
 
   /**
@@ -385,9 +398,7 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public fetchRemote(remote: string): Promise<MutationResult> {
-    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
-      api.fetchRemote(this.root, remote),
-    );
+    return this.mutate('fetchRemote', { remote });
   }
 
   /**
@@ -396,9 +407,7 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public pruneRemote(remote: string): Promise<MutationResult> {
-    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
-      api.pruneRemote(this.root, remote),
-    );
+    return this.mutate('pruneRemote', { remote });
   }
 
   /**
@@ -408,9 +417,7 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public addRemote(name: string, url: string): Promise<MutationResult> {
-    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
-      api.addRemote(this.root, name, url),
-    );
+    return this.mutate('addRemote', { name, url });
   }
 
   /**
@@ -419,9 +426,7 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public removeRemote(name: string): Promise<MutationResult> {
-    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
-      api.removeRemote(this.root, name),
-    );
+    return this.mutate('removeRemote', { name });
   }
 
   /**
@@ -431,9 +436,7 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public checkoutTracking(remoteBranch: string, localBranch: string): Promise<MutationResult> {
-    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
-      api.checkoutTracking(this.root, remoteBranch, localBranch),
-    );
+    return this.mutate('checkoutTracking', { remoteBranch, localBranch });
   }
 
   /**
@@ -443,9 +446,7 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public merge(branch: string, mode: GitMergeMode): Promise<MutationResult> {
-    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
-      api.merge(this.root, branch, mode),
-    );
+    return this.mutate('merge', { branch, mode });
   }
 
   /**
@@ -454,9 +455,7 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public rebase(onto: string): Promise<MutationResult> {
-    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
-      api.rebase(this.root, onto),
-    );
+    return this.mutate('rebase', { onto });
   }
 
   /**
@@ -464,9 +463,7 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public continueOperation(): Promise<MutationResult> {
-    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
-      api.continueOperation(this.root),
-    );
+    return this.mutate('operationContinue', {});
   }
 
   /**
@@ -474,9 +471,7 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public skipOperation(): Promise<MutationResult> {
-    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
-      api.skipOperation(this.root),
-    );
+    return this.mutate('operationSkip', {});
   }
 
   /**
@@ -484,9 +479,7 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public abortOperation(): Promise<MutationResult> {
-    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
-      api.abortOperation(this.root),
-    );
+    return this.mutate('operationAbort', {});
   }
 
   /**
@@ -497,9 +490,11 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public createTag(name: string, commit: string, message?: string): Promise<MutationResult> {
-    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
-      api.createTag(this.root, name, commit, message),
-    );
+    return this.mutate('createTag', {
+      name,
+      commit,
+      ...(message === undefined ? {} : { message }),
+    });
   }
 
   /**
@@ -508,9 +503,7 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public deleteTag(name: string): Promise<MutationResult> {
-    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
-      api.deleteTag(this.root, name),
-    );
+    return this.mutate('deleteTag', { name });
   }
 
   /**
@@ -520,9 +513,7 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public deleteRemoteTag(remote: string, name: string): Promise<MutationResult> {
-    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
-      api.deleteRemoteTag(this.root, remote, name),
-    );
+    return this.mutate('deleteRemoteTag', { remote, name });
   }
 
   /**
@@ -532,9 +523,7 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public pushTag(remote: string, name: string): Promise<MutationResult> {
-    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
-      api.pushTag(this.root, remote, name),
-    );
+    return this.mutate('pushTag', { remote, name });
   }
 
   /**
@@ -543,9 +532,7 @@ export class GitProvider implements SourceControlProvider {
    * @returns Returns the outcome.
    */
   public pushAllTags(remote: string): Promise<MutationResult> {
-    return this.mutate((api: SourceControlClient): Promise<GitRunResult> =>
-      api.pushAllTags(this.root, remote),
-    );
+    return this.mutate('pushAllTags', { remote });
   }
 
   /**
@@ -557,48 +544,49 @@ export class GitProvider implements SourceControlProvider {
   }
 
   /**
-   * Runs a mutating git bridge call, mapping its result to a {@link MutationResult}. Reports failure
-   * when the bridge is absent.
-   * @param call Invokes the desired bridge method.
-   * @returns Returns the outcome.
+   * Performs a read, yielding null when there is no client or it failed — a surface shows its empty
+   * state rather than an error for a read.
+   * @param op The operation.
+   * @param params The operation's parameters.
+   * @returns Returns the result, or null.
    */
-  private async mutate(
-    call: (api: SourceControlClient) => Promise<GitRunResult>,
+  private async read<Op extends VersionControlOp>(
+    op: Op,
+    params: VcsParams<Op>,
+  ): Promise<VcsResult<Op> | null> {
+    if (this.api === undefined) {
+      return null;
+    }
+    const response: VersionControlResponse<Op> = await this.api.request(this.root, op, params);
+    return response.ok ? response.result : null;
+  }
+
+  /**
+   * Performs a mutation, mapping its answer to a {@link MutationResult}.
+   * @param op The operation.
+   * @param params The operation's parameters.
+   * @returns Returns the outcome; a failure when there is no client.
+   */
+  private async mutate<Op extends VersionControlOp>(
+    op: Op,
+    params: VcsParams<Op>,
   ): Promise<MutationResult> {
     if (this.api === undefined) {
       return { success: false, error: 'Source control is unavailable' };
     }
-    const result: GitRunResult = await call(this.api);
-    return { success: result.success, error: result.error, code: result.code };
+    const response: VersionControlResponse<Op> = await this.api.request(this.root, op, params);
+    return response.ok
+      ? { success: true }
+      : { success: false, error: response.error, code: response.code };
   }
 
   /**
-   * Reads a blob's contents at a revision, returning an empty string when the bridge is absent or the
-   * blob does not exist.
-   * @param revision The revision to read at, or an empty string for the working tree.
-   * @param filePath The repository-relative file path.
-   * @returns Returns the blob contents.
+   * Reads one version of a file, empty when it does not exist there or could not be read.
+   * @param filePath The repository-relative path.
+   * @param version The version.
+   * @returns Returns the contents.
    */
-  private async blob(revision: string, filePath: string): Promise<string> {
-    const result: GitRunResult | undefined = await this.api?.readBlob(
-      this.root,
-      revision,
-      filePath,
-    );
-    return result?.success === true ? (result.stdout ?? '') : '';
-  }
-
-  /**
-   * Runs a git bridge call, returning its standard output, or an empty string when the bridge is
-   * absent or the command failed.
-   * @param call Invokes the desired bridge method.
-   * @returns Returns the command's standard output, or an empty string.
-   */
-  private async read(call: (api: SourceControlClient) => Promise<GitRunResult>): Promise<string> {
-    if (this.api === undefined) {
-      return '';
-    }
-    const result: GitRunResult = await call(this.api);
-    return result.success ? (result.stdout ?? '') : '';
+  private async contents(filePath: string, version: VcsFileVersion): Promise<string> {
+    return (await this.read('readFile', { path: filePath, version }))?.content ?? '';
   }
 }

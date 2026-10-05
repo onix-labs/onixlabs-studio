@@ -16,6 +16,9 @@ import {
   WorktreeOutcome,
 } from '@shared/api/worktree';
 import { TrustedPaths } from '../trusted-paths';
+import { coreGitDescriptor } from '../version-control/git/core-git';
+import { VersionControlDescriptor } from '../version-control/version-control-descriptor';
+import { VersionControlHost } from '../version-control/version-control-host';
 import { WorkspaceContext } from '../workspace-context';
 import { WorktreeOperations } from './worktree-operations';
 
@@ -73,6 +76,12 @@ describe('WorktreeOperations', () => {
         trashed.push(target);
         await fs.rm(target, { recursive: true, force: true });
       },
+      // Real git behind the real host: the same path every checkout takes in the app (#816).
+      new VersionControlHost({
+        descriptors: (): readonly VersionControlDescriptor[] => [coreGitDescriptor()],
+        roots: workspace,
+        executableFor: (): null => null,
+      }),
     );
   });
 

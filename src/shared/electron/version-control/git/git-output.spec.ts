@@ -1,7 +1,12 @@
-import { GitCommit, GitFileChange, GitRemote } from '../repository/repository-data';
+import { describe, expect, it } from 'vitest';
 import {
-  ParsedRefs,
-  ParsedStatus,
+  VcsCommit,
+  VcsFileChange,
+  VcsRefs,
+  VcsRemote,
+  VcsStatus,
+} from '@shared/api/version-control-protocol';
+import {
   mergeRemoteUrls,
   parseCommitFiles,
   parseLog,
@@ -28,18 +33,17 @@ describe('git-output', () => {
         '? src/untracked.ts',
       ].join(NUL);
 
-      const status: ParsedStatus = parseStatus(output);
+      const status: VcsStatus = parseStatus(output);
 
       expect(status.branch).toBe('main');
       expect(status.upstream).toBe('origin/main');
       expect(status.ahead).toBe(2);
       expect(status.behind).toBe(1);
-      expect(status.staged.map((file: GitFileChange): string => file.path)).toEqual([
+      expect(status.staged.map((file: VcsFileChange): string => file.path)).toEqual([
         'src/staged.ts',
       ]);
       expect(status.staged[0].status).toBe('modified');
-      expect(status.staged[0].target).toEqual({ kind: 'working', staged: true });
-      expect(status.unstaged.map((file: GitFileChange): string => file.path)).toEqual([
+      expect(status.unstaged.map((file: VcsFileChange): string => file.path)).toEqual([
         'src/unstaged.ts',
         'src/untracked.ts',
       ]);
@@ -61,28 +65,27 @@ describe('git-output', () => {
         '? src/untracked.ts',
       ].join(NUL);
 
-      const status: ParsedStatus = parseStatus(output);
+      const status: VcsStatus = parseStatus(output);
 
-      expect(status.conflicted.map((file: GitFileChange): string => file.path)).toEqual([
+      expect(status.conflicted.map((file: VcsFileChange): string => file.path)).toEqual([
         'src/both-modified.ts',
         // A path with a space survives: the metadata fields are fixed in number, so everything from
         // the eleventh onwards is the path.
         'src/both added.ts',
       ]);
       expect(status.conflicted[0].status).toBe('conflicted');
-      expect(status.conflicted[0].target).toEqual({ kind: 'working', staged: false });
       // Git reports a conflicted path as an unmerged entry INSTEAD of an ordinary one, so it must not
       // also be counted among the changes waiting to be staged or committed.
-      expect(status.staged.map((file: GitFileChange): string => file.path)).toEqual([
+      expect(status.staged.map((file: VcsFileChange): string => file.path)).toEqual([
         'src/staged.ts',
       ]);
-      expect(status.unstaged.map((file: GitFileChange): string => file.path)).toEqual([
+      expect(status.unstaged.map((file: VcsFileChange): string => file.path)).toEqual([
         'src/untracked.ts',
       ]);
     });
 
     it('parseStatus_withNoUnmergedEntries_reportsNoConflicts', () => {
-      const status: ParsedStatus = parseStatus(
+      const status: VcsStatus = parseStatus(
         ['# branch.head main', '1 M. N... 100644 100644 100644 a b src/staged.ts'].join(NUL),
       );
 
@@ -96,12 +99,12 @@ describe('git-output', () => {
 
       expect(parseStatus(output).unstaged[0].path).toBe('after.ts');
 
-      const status: ParsedStatus = parseStatus(renameOutput);
+      const status: VcsStatus = parseStatus(renameOutput);
       expect(status.staged[0].status).toBe('renamed');
       expect(status.staged[0].path).toBe('renamed.ts');
       expect(status.staged[0].previousPath).toBe('original.ts');
       // The trailing untracked entry is still parsed (the rename's extra token was consumed correctly).
-      expect(status.unstaged.map((file: GitFileChange): string => file.path)).toEqual([
+      expect(status.unstaged.map((file: VcsFileChange): string => file.path)).toEqual([
         'trailing.ts',
       ]);
     });
@@ -120,7 +123,6 @@ describe('git-output', () => {
         'Alice',
         'alice@example.com',
         '2026-01-02T10:00:00Z',
-        '2 days ago',
         'HEAD -> main, tag: v1.0, origin/main',
         'Merge feature',
         'Body line',
@@ -132,14 +134,13 @@ describe('git-output', () => {
         'Bob',
         'bob@example.com',
         '2026-01-01T10:00:00Z',
-        '3 days ago',
         '',
         'Initial commit',
         '',
       ].join(US);
       const output: string = `${record1}${RS}\n${record2}${RS}\n`;
 
-      const commits: GitCommit[] = parseLog(output);
+      const commits: VcsCommit[] = parseLog(output);
 
       expect(commits.length).toBe(2);
       expect(commits[0].hash).toBe('hash1');
@@ -166,7 +167,7 @@ describe('git-output', () => {
         ['refs/tags/v1.0', 'CCC', ' ', '', ''].join(US),
       ].join('\n');
 
-      const refs: ParsedRefs = parseRefs(output);
+      const refs: VcsRefs = parseRefs(output);
 
       expect(refs.branches.length).toBe(2);
       expect(refs.branches[0]).toEqual({
@@ -233,7 +234,7 @@ describe('git-output', () => {
 
   describe('mergeRemoteUrls', () => {
     it('fillsInTheUrlOfARemoteThatHasTrackingBranches', () => {
-      const remotes: readonly GitRemote[] = [
+      const remotes: readonly VcsRemote[] = [
         { name: 'origin', url: '', branches: [{ name: 'origin/main', commit: 'aaa' }] },
       ];
 
@@ -259,7 +260,7 @@ describe('git-output', () => {
     it('keepsARemoteThatHasBranchesButNoConfiguredUrl', () => {
       // A stale refs/remotes entry for a removed remote. Its branches are still checkoutable refs, so
       // dropping it would lose them from the panel.
-      const remotes: readonly GitRemote[] = [
+      const remotes: readonly VcsRemote[] = [
         { name: 'gone', url: '', branches: [{ name: 'gone/old', commit: 'bbb' }] },
       ];
 
@@ -269,14 +270,14 @@ describe('git-output', () => {
     });
 
     it('ordersConfiguredRemotesFirst_withRefOnlyOnesAppended', () => {
-      const remotes: readonly GitRemote[] = [
+      const remotes: readonly VcsRemote[] = [
         { name: 'gone', url: '', branches: [{ name: 'gone/old', commit: 'bbb' }] },
         { name: 'origin', url: '', branches: [{ name: 'origin/main', commit: 'aaa' }] },
       ];
 
       expect(
         mergeRemoteUrls(remotes, new Map<string, string>([['origin', 'https://x/y.git']])).map(
-          (remote: GitRemote): string => remote.name,
+          (remote: VcsRemote): string => remote.name,
         ),
       ).toEqual(['origin', 'gone']);
     });
@@ -305,9 +306,9 @@ describe('git-output', () => {
         NUL,
       );
 
-      const files: GitFileChange[] = parseCommitFiles(output, 'commit1', 'parent1');
+      const files: VcsFileChange[] = parseCommitFiles(output);
 
-      expect(files.map((file: GitFileChange): string => file.path)).toEqual([
+      expect(files.map((file: VcsFileChange): string => file.path)).toEqual([
         'src/a.ts',
         'src/b.ts',
         'new.ts',
@@ -316,7 +317,6 @@ describe('git-output', () => {
       expect(files[1].status).toBe('added');
       expect(files[2].status).toBe('renamed');
       expect(files[2].previousPath).toBe('old.ts');
-      expect(files[0].target).toEqual({ kind: 'commit', hash: 'commit1', parent: 'parent1' });
     });
   });
 });

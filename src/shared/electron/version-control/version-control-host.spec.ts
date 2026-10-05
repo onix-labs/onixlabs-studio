@@ -18,6 +18,11 @@ import { VersionControlHost } from './version-control-host';
 const ROOT: string = path.resolve('/studio-vcs-host/repo');
 
 /**
+ * A repository outside every open workspace, opened the way a repository tab opens one.
+ */
+const ELSEWHERE: string = path.resolve('/elsewhere/project');
+
+/**
  * Records what a fake client was asked.
  */
 interface FakeClient {
@@ -69,6 +74,14 @@ function fakeClient(
         params: unknown,
       ): Promise<VersionControlResponse> => {
         record.requests.push({ op, root, params });
+        if (op === 'resolveRoot') {
+          const asked: string = (params as { path: string }).path;
+          return {
+            id: 1,
+            ok: true,
+            result: { root: asked.startsWith(ELSEWHERE) ? ELSEWHERE : null } as never,
+          };
+        }
         if (hold) {
           await new Promise<void>((resolve: () => void): void => {
             waiting.push(resolve);
@@ -320,5 +333,93 @@ describe('VersionControlHost', () => {
     );
 
     expect(vcs.metadataDirectories()).toEqual(['.git', '.hg']);
+  });
+
+  describe('opened repositories', () => {
+    /**
+     * Builds a host whose only repository is {@link ELSEWHERE}, outside every open workspace.
+     * @param fake The client the plugin gets.
+     * @returns Returns the host.
+     */
+    function elsewhere(fake: FakeClient): VersionControlHost {
+      return new VersionControlHost({
+        descriptors: () => [plugin('git', '.git')],
+        roots: new WorkspaceContext(),
+        executableFor: (): null => null,
+        exists: (target: string): boolean => target === path.join(ELSEWHERE, '.git'),
+        createClient: (): VersionControlClient => fake.client,
+      });
+    }
+
+    it('openRepository_findsTheMarkerAboveTheFolder_andAsksThePluginForTheRoot', async () => {
+      const fake: FakeClient = fakeClient([]);
+      const vcs: VersionControlHost = elsewhere(fake);
+
+      expect(await vcs.openRepository(path.join(ELSEWHERE, 'src', 'app'))).toEqual({
+        root: ELSEWHERE,
+        name: 'project',
+        pluginId: 'git',
+      });
+      expect(fake.requests[0]).toEqual({
+        op: 'resolveRoot',
+        root: undefined,
+        params: { path: path.join(ELSEWHERE, 'src', 'app') },
+      });
+    });
+
+    it('openRepository_whenNoRepositoryContainsTheFolder_isNull', async () => {
+      const vcs: VersionControlHost = elsewhere(fakeClient([]));
+
+      expect(await vcs.openRepository(path.resolve('/nowhere/at/all'))).toBeNull();
+      expect(await vcs.openRepository('relative/path')).toBeNull();
+    });
+
+    it('request_isAllowedInAnOpenedRepository_untilItsLastSurfaceClosesIt', async () => {
+      const vcs: VersionControlHost = elsewhere(fakeClient([]));
+      expect(await vcs.request(ELSEWHERE, 'status', {})).toMatchObject({ code: 'refused' });
+
+      await vcs.openRepository(ELSEWHERE);
+      await vcs.openRepository(ELSEWHERE);
+      expect((await vcs.request(ELSEWHERE, 'status', {})).ok).toBe(true);
+
+      vcs.closeRepository(ELSEWHERE);
+      expect((await vcs.request(ELSEWHERE, 'status', {})).ok).toBe(true);
+
+      vcs.closeRepository(ELSEWHERE);
+      expect(await vcs.request(ELSEWHERE, 'status', {})).toMatchObject({ code: 'refused' });
+    });
+  });
+
+  it('start_usesAnInProcessEndpointWhenTheResolutionProvidesOne', async () => {
+    const fake: FakeClient = fakeClient([]);
+    const inProcess: VersionControlDescriptor = {
+      ...plugin('core.git', '.git'),
+      resolve: () => ({ available: true, create: () => fake.client }),
+    };
+    const roots: WorkspaceContext = new WorkspaceContext();
+    roots.addRoot(ROOT);
+    const vcs: VersionControlHost = new VersionControlHost({
+      descriptors: () => [inProcess],
+      roots,
+      executableFor: (): null => null,
+      exists: (): boolean => true,
+      createClient: (): never => {
+        throw new Error('an in-process endpoint must not spawn a process');
+      },
+    });
+
+    expect((await vcs.request(ROOT, 'status', {})).ok).toBe(true);
+    expect(fake.requests.map((request) => request.op)).toEqual(['status']);
+  });
+
+  it('preferredPlugin_isTheHighestPriority', () => {
+    const vcs: VersionControlHost = host(
+      [plugin('low', '.git', 1), plugin('high', '.hg', 9)],
+      [],
+      fakeClient([]),
+    );
+
+    expect(vcs.preferredPlugin()?.id).toBe('high');
+    expect(host([], [], fakeClient([])).preferredPlugin()).toBeNull();
   });
 });

@@ -3,10 +3,11 @@ import { DirectoryWatch } from '@shared/angular/services/directory-watch/directo
 import { Notification, Notifications } from '@shared/angular/services/notifications/notifications';
 import { DirectoryChangeEvent } from '@shared/api/file-channels';
 import { GitMergeMode, GitOperationState } from '@shared/api/source-control-channels';
-import { ParsedRefs, ParsedStatus } from '../source-control/git-output';
 import {
   FileDiff,
   MutationResult,
+  ParsedRefs,
+  ParsedStatus,
   PushTarget,
   SourceControlProvider,
 } from '../source-control/source-control-provider';

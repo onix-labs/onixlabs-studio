@@ -466,13 +466,23 @@ export interface VcsOperationState {
 /**
  * Names which version of a file to read.
  *
+ * - `working`: the file on disk, as it is now.
  * - `index`: the staged version (only from a plugin with `stagingArea`).
+ * - `head`: the version in the checked-out commit.
  * - `commit`: the version in a given commit.
+ * - `ours`: our side of a conflicted file — the version the working tree was on when an operation
+ *   stopped on conflicts. What a conflicted file is compared against, since it has no single staged
+ *   version to compare with.
  *
- * The working tree's version is not here: that is a file on disk, which Studio reads itself.
+ * Read through the plugin even for the working tree: the plugin is confined to the repository, and a
+ * repository need not be an open workspace Studio's own file access would allow.
  */
 export type VcsFileVersion =
-  { readonly kind: 'index' } | { readonly kind: 'commit'; readonly hash: string };
+  | { readonly kind: 'working' }
+  | { readonly kind: 'index' }
+  | { readonly kind: 'head' }
+  | { readonly kind: 'commit'; readonly hash: string }
+  | { readonly kind: 'ours' };
 
 /**
  * Describes the user's committer identity.
@@ -749,8 +759,53 @@ interface RemoteName {
 type Done = Readonly<Record<string, never>>;
 
 /**
- * The requests that act on no repository. Every other request names one in `root`, which the host
- * checks against the open workspace roots before the plugin ever sees it.
+ * The requests that act on a repository, named in `root`, which the host checks against the open
+ * repositories and workspace roots before the plugin ever sees it. The renderer may send only these.
+ */
+export const VCS_REPOSITORY_OPS: readonly VersionControlOp[] = [
+  'status',
+  'operationState',
+  'log',
+  'refs',
+  'stashes',
+  'commitFiles',
+  'readFile',
+  'discard',
+  'stage',
+  'unstage',
+  'commit',
+  'stash',
+  'stashApply',
+  'stashPop',
+  'stashDrop',
+  'checkout',
+  'createBranch',
+  'deleteBranch',
+  'renameBranch',
+  'setUpstream',
+  'fetch',
+  'fetchRef',
+  'pull',
+  'push',
+  'fetchRemote',
+  'pruneRemote',
+  'addRemote',
+  'removeRemote',
+  'checkoutTracking',
+  'merge',
+  'rebase',
+  'operationContinue',
+  'operationSkip',
+  'operationAbort',
+  'createTag',
+  'deleteTag',
+  'deleteRemoteTag',
+  'pushTag',
+  'pushAllTags',
+];
+
+/**
+ * The requests that act on no repository.
  */
 export const VCS_GLOBAL_OPS: readonly VersionControlOp[] = [
   'initialize',

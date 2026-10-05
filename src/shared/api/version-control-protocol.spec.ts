@@ -6,7 +6,59 @@ import {
   VCS_NETWORK_OPS,
   VCS_OP_CAPABILITY,
   VCS_READ_OPS,
+  VCS_REPOSITORY_OPS,
+  VersionControlOp,
 } from './version-control-protocol';
+
+/**
+ * Every operation, as a record so the compiler fails when one is added without being listed here.
+ */
+const EVERY_OP: Readonly<Record<VersionControlOp, true>> = {
+  initialize: true,
+  resolveRoot: true,
+  status: true,
+  operationState: true,
+  log: true,
+  refs: true,
+  stashes: true,
+  commitFiles: true,
+  readFile: true,
+  discard: true,
+  stage: true,
+  unstage: true,
+  commit: true,
+  stash: true,
+  stashApply: true,
+  stashPop: true,
+  stashDrop: true,
+  checkout: true,
+  createBranch: true,
+  deleteBranch: true,
+  renameBranch: true,
+  setUpstream: true,
+  fetch: true,
+  fetchRef: true,
+  pull: true,
+  push: true,
+  fetchRemote: true,
+  pruneRemote: true,
+  addRemote: true,
+  removeRemote: true,
+  checkoutTracking: true,
+  merge: true,
+  rebase: true,
+  operationContinue: true,
+  operationSkip: true,
+  operationAbort: true,
+  createTag: true,
+  deleteTag: true,
+  deleteRemoteTag: true,
+  pushTag: true,
+  pushAllTags: true,
+  clone: true,
+  getIdentity: true,
+  setIdentity: true,
+};
 
 describe('isCompatibleVersionControlProtocol', () => {
   it('isCompatible_whenTheMajorMatches', () => {
@@ -37,6 +89,14 @@ describe('operation tables', () => {
     }
     expect(VCS_READ_OPS).not.toContain('commit');
     expect(VCS_READ_OPS).not.toContain('stage');
+  });
+
+  it('everyOperationIsEitherARepositoryOrAGlobalOne_neverBoth', () => {
+    // The renderer may send exactly the repository operations; an operation in neither list could
+    // never be reached, and one in both would let the renderer send a global one.
+    const listed: readonly VersionControlOp[] = [...VCS_REPOSITORY_OPS, ...VCS_GLOBAL_OPS];
+    expect([...listed].sort()).toEqual(Object.keys(EVERY_OP).sort());
+    expect(new Set(listed).size).toBe(listed.length);
   });
 
   it('cloneIsGlobalNetworkedAndNeedsTheCloneCapability', () => {

@@ -1,4 +1,3 @@
-import { execFile } from 'node:child_process';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { STUDIO_DIR } from '@shared/api/studio';
@@ -21,57 +20,11 @@ import {
   worktreeOk,
   WorktreeOutcome,
 } from '@shared/api/worktree';
+import { VcsRefs, VcsStatus, VersionControlResponse } from '@shared/api/version-control-protocol';
 import { TrustedPaths } from '../trusted-paths';
+import { VersionControlDescriptor } from '../version-control/version-control-descriptor';
+import { VersionControlHost } from '../version-control/version-control-host';
 import { WorkspaceContext } from '../workspace-context';
-
-/**
- * Holds the maximum time, in milliseconds, a local git invocation (branch/origin reads, checkout)
- * may run before being killed.
- */
-const WORKTREE_GIT_TIMEOUT_MS: number = 20000;
-
-/**
- * Holds the maximum time, in milliseconds, a clone may run. A checkout is a full clone that may
- * contact a remote, so it is given a far longer budget than the local-operation default.
- */
-const WORKTREE_CLONE_TIMEOUT_MS: number = 600000;
-
-/**
- * Holds the maximum size, in bytes, of a git invocation's captured output.
- */
-const WORKTREE_GIT_MAX_BUFFER: number = 16 * 1024 * 1024;
-
-/**
- * Holds the environment overlay applied to git invocations so they never block on an interactive
- * prompt — with no usable credentials a clone fails fast (and we surface its stderr) rather than
- * hanging until the timeout. Credentials still come from the user's configured git credential helper
- * and ssh-agent; this only disables interactive fallback.
- */
-const WORKTREE_GIT_ENV: NodeJS.ProcessEnv = {
-  GIT_TERMINAL_PROMPT: '0',
-  GIT_SSH_COMMAND: 'ssh -o BatchMode=yes -o ConnectTimeout=10',
-};
-
-/**
- * The result of a git invocation: its trimmed stdout on success, or the most useful error text git
- * produced on failure.
- */
-interface GitResult {
-  /**
-   * Gets whether the invocation succeeded.
-   */
-  readonly success: boolean;
-
-  /**
-   * Gets the trimmed standard output, when the invocation succeeded.
-   */
-  readonly stdout?: string;
-
-  /**
-   * Gets the failure text, when the invocation failed.
-   */
-  readonly error?: string;
-}
 
 /**
  * Validates a value passed to git as an operand (a branch name, a clone source) so the renderer
@@ -86,8 +39,10 @@ function isSafeOperand(value: unknown): value is string {
 /**
  * Implements the worktree-container disk operations: resolving what a directory is, describing a
  * container's live checkout state, promoting a repository workspace in place, and adding/removing
- * checkouts as independent full clones. Deliberately free of Electron imports so the mechanics are
- * unit-testable; the {@link import('./worktree-manager').WorktreeManager} wraps this behind IPC and
+ * checkouts as independent full clones. Every version-control question — cloning, a checkout's branch
+ * and status, the repository's branches — goes through the {@link VersionControlHost}, so whichever
+ * plugin serves the repository answers (#816). Deliberately free of Electron imports so the mechanics
+ * are unit-testable; the {@link import('./worktree-manager').WorktreeManager} wraps this behind IPC and
  * supplies the OS-trash function.
  *
  * Confinement treats the renderer as hostile, mirroring the workspace surfaces: kind resolution is
@@ -113,19 +68,27 @@ export class WorktreeOperations {
   private readonly trash: (target: string) => Promise<void>;
 
   /**
+   * Holds the version-control host every repository question goes through.
+   */
+  private readonly versionControl: VersionControlHost;
+
+  /**
    * Initializes a new instance of the {@link WorktreeOperations} class.
    * @param workspace The shared workspace context, used to confine every operation to open roots.
    * @param trusted The trusted-paths store, used to gate kind resolution.
    * @param trash The function that sends a directory to the OS trash.
+   * @param versionControl The version-control host repository questions go through.
    */
   public constructor(
     workspace: WorkspaceContext,
     trusted: TrustedPaths,
     trash: (target: string) => Promise<void>,
+    versionControl: VersionControlHost,
   ) {
     this.workspace = workspace;
     this.trusted = trusted;
     this.trash = trash;
+    this.versionControl = versionControl;
   }
 
   /**
@@ -281,26 +244,27 @@ export class WorktreeOperations {
       }
     }
 
-    const id: string = mintCheckoutId();
-    const clone: GitResult = await this.git(
-      resolved,
-      ['clone', '--', source, id],
-      WORKTREE_CLONE_TIMEOUT_MS,
-    );
-    if (!clone.success) {
-      return worktreeError(`The checkout could not be cloned: ${clone.error ?? 'unknown error'}`);
+    // The plugin serving an existing sibling clones the new one; with none left, the preferred
+    // installed plugin does.
+    const sibling: string | null = await this.firstExistingCheckout(resolved, config);
+    const plugin: VersionControlDescriptor | null =
+      (sibling === null ? null : this.versionControl.pluginFor(sibling)) ??
+      this.versionControl.preferredPlugin();
+    if (plugin === null) {
+      return worktreeError('No installed version-control plugin can make the checkout.');
     }
-    const directory: string = path.join(resolved, id);
-    if (branch !== undefined) {
-      const switched: GitResult = await this.git(directory, ['checkout', branch]);
-      if (!switched.success) {
-        const created: GitResult = await this.git(directory, ['checkout', '-b', branch]);
-        if (!created.success) {
-          return worktreeError(
-            `The branch could not be checked out: ${created.error ?? 'unknown error'}`,
-          );
-        }
-      }
+    const id: string = mintCheckoutId();
+    const cloned: VersionControlResponse<'clone'> = await this.versionControl.requestGlobal(
+      plugin.id,
+      'clone',
+      {
+        url: source,
+        directory: path.join(resolved, id),
+        ...(branch === undefined ? {} : { branch, createBranch: true }),
+      },
+    );
+    if (!cloned.ok) {
+      return worktreeError(`The checkout could not be made: ${cloned.error}`);
     }
 
     try {
@@ -390,26 +354,19 @@ export class WorktreeOperations {
     if (source === null) {
       return null;
     }
-    // Full refnames, not short ones: a LOCAL branch may itself contain slashes (feature/x), so only
-    // the refs/heads/ vs refs/remotes/<remote>/ prefix can classify a name reliably.
-    const result: GitResult = await this.git(source, [
-      'for-each-ref',
-      '--format=%(refname)',
-      'refs/heads',
-      'refs/remotes',
-    ]);
-    if (!result.success) {
+    const refs: VcsRefs | null = await this.readRefs(source);
+    if (refs === null) {
       return null;
     }
-    const names: Set<string> = new Set<string>();
-    for (const line of (result.stdout ?? '').split('\n')) {
-      const ref: string = line.trim();
-      if (ref.startsWith('refs/heads/')) {
-        names.add(ref.slice('refs/heads/'.length));
-      } else if (ref.startsWith('refs/remotes/')) {
-        const remote: string = ref.slice('refs/remotes/'.length);
-        const separator: number = remote.indexOf('/');
-        const name: string = separator === -1 ? '' : remote.slice(separator + 1);
+    // A remote branch is named `<remote>/<branch>`; the branch may itself contain slashes, so only the
+    // first segment is the remote's.
+    const names: Set<string> = new Set<string>(
+      refs.branches.map((branch: { readonly name: string }): string => branch.name),
+    );
+    for (const remote of refs.remotes) {
+      for (const branch of remote.branches) {
+        const separator: number = branch.name.indexOf('/');
+        const name: string = separator === -1 ? '' : branch.name.slice(separator + 1);
         if (name.length > 0 && name !== 'HEAD') {
           names.add(name);
         }
@@ -429,31 +386,26 @@ export class WorktreeOperations {
     if (!(await this.isDirectory(directory))) {
       return { id, branch: null, changes: null, ahead: null, behind: null };
     }
-    const branch: string | null = await this.readBranch(directory);
-    const porcelain: GitResult = await this.git(directory, ['status', '--porcelain']);
-    const changes: number | null = porcelain.success
-      ? (porcelain.stdout ?? '').split('\n').filter((line: string): boolean => line.length > 0)
-          .length
-      : null;
-    // `--left-right --count upstream...HEAD` prints "<behind>\t<ahead>": the left column counts
-    // commits only in the upstream, the right column commits only in HEAD. No upstream fails the
-    // command, which reads as "no counts" rather than zero.
-    const counts: GitResult = await this.git(directory, [
-      'rev-list',
-      '--left-right',
-      '--count',
-      '@{upstream}...HEAD',
-    ]);
-    let ahead: number | null = null;
-    let behind: number | null = null;
-    if (counts.success) {
-      const parts: readonly string[] = (counts.stdout ?? '').split(/\s+/);
-      const left: number = Number.parseInt(parts[0] ?? '', 10);
-      const right: number = Number.parseInt(parts[1] ?? '', 10);
-      behind = Number.isNaN(left) ? null : left;
-      ahead = Number.isNaN(right) ? null : right;
+    const status: VcsStatus | null = await this.readVcsStatus(directory);
+    if (status === null) {
+      return { id, branch: null, changes: null, ahead: null, behind: null };
     }
-    return { id, branch, changes, ahead, behind };
+    // A path staged and changed again appears in both lists, and counts once — as one line of
+    // `git status --porcelain` did.
+    const changed: Set<string> = new Set<string>(
+      [...status.staged, ...status.unstaged, ...status.conflicted].map(
+        (change: { readonly path: string }): string => change.path,
+      ),
+    );
+    // No upstream reads as "no counts" rather than zero.
+    const tracked: boolean = status.upstream !== null;
+    return {
+      id,
+      branch: status.branch ?? 'HEAD',
+      changes: changed.size,
+      ahead: tracked ? status.ahead : null,
+      behind: tracked ? status.behind : null,
+    };
   }
 
   /**
@@ -606,8 +558,10 @@ export class WorktreeOperations {
    * @returns Returns the origin URL, or null.
    */
   private async readOrigin(directory: string): Promise<string | null> {
-    const result: GitResult = await this.git(directory, ['remote', 'get-url', 'origin']);
-    const origin: string = result.success ? (result.stdout ?? '') : '';
+    const origin: string =
+      (await this.readRefs(directory))?.remotes.find(
+        (remote: { readonly name: string }): boolean => remote.name === 'origin',
+      )?.url ?? '';
     return origin.length > 0 ? origin : null;
   }
 
@@ -617,44 +571,36 @@ export class WorktreeOperations {
    * @returns Returns the branch name (or `HEAD` when detached), or null.
    */
   private async readBranch(directory: string): Promise<string | null> {
-    const result: GitResult = await this.git(directory, ['rev-parse', '--abbrev-ref', 'HEAD']);
-    const branch: string = result.success ? (result.stdout ?? '') : '';
-    return branch.length > 0 ? branch : null;
+    const status: VcsStatus | null = await this.readVcsStatus(directory);
+    return status === null ? null : (status.branch ?? 'HEAD');
   }
 
   /**
-   * Invokes git with array arguments (never a shell) in a working directory, non-interactively.
-   * @param cwd The working directory to run in.
-   * @param args The git argument vector.
-   * @param timeoutMs The maximum run time, defaulting to the local-operation budget.
-   * @returns Returns the result.
+   * Reads a repository's working-tree status through the version-control host.
+   * @param directory The repository directory, within an open root.
+   * @returns Returns the status, or null when it cannot be read.
    */
-  private git(
-    cwd: string,
-    args: readonly string[],
-    timeoutMs: number = WORKTREE_GIT_TIMEOUT_MS,
-  ): Promise<GitResult> {
-    return new Promise<GitResult>((resolve: (value: GitResult) => void): void => {
-      execFile(
-        'git',
-        [...args],
-        {
-          cwd,
-          timeout: timeoutMs,
-          maxBuffer: WORKTREE_GIT_MAX_BUFFER,
-          windowsHide: true,
-          env: { ...process.env, ...WORKTREE_GIT_ENV, GIT_OPTIONAL_LOCKS: '0' },
-        },
-        (error: Error | null, stdout: string, stderr: string): void => {
-          if (error !== null) {
-            const detail: string = stderr.trim();
-            resolve({ success: false, error: detail.length > 0 ? detail : error.message });
-            return;
-          }
-          resolve({ success: true, stdout: stdout.trim() });
-        },
-      );
-    });
+  private async readVcsStatus(directory: string): Promise<VcsStatus | null> {
+    const response: VersionControlResponse<'status'> = await this.versionControl.request(
+      directory,
+      'status',
+      {},
+    );
+    return response.ok ? response.result : null;
+  }
+
+  /**
+   * Reads a repository's refs through the version-control host.
+   * @param directory The repository directory, within an open root.
+   * @returns Returns the refs, or null when they cannot be read.
+   */
+  private async readRefs(directory: string): Promise<VcsRefs | null> {
+    const response: VersionControlResponse<'refs'> = await this.versionControl.request(
+      directory,
+      'refs',
+      {},
+    );
+    return response.ok ? response.result : null;
   }
 
   /**

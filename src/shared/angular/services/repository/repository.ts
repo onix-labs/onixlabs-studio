@@ -15,10 +15,11 @@ import {
 import {
   FileDiff,
   MutationResult,
+  ParsedRefs,
+  ParsedStatus,
   PushTarget,
   SourceControlProvider,
 } from '../source-control/source-control-provider';
-import { ParsedRefs, ParsedStatus } from '../source-control/git-output';
 import { SourceControlProviders } from '../source-control/source-control-providers';
 import {
   GitBranch,

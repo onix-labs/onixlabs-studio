@@ -9,6 +9,7 @@ import {
 import { WorktreeChannel } from '@shared/api/worktree-channels';
 import { logger } from '../logger';
 import { TrustedPaths } from '../trusted-paths';
+import { VersionControlHost } from '../version-control/version-control-host';
 import { WorkspaceContext } from '../workspace-context';
 import { WorktreeOperations } from './worktree-operations';
 
@@ -28,10 +29,18 @@ export class WorktreeManager {
    * Initializes a new instance of the {@link WorktreeManager} class.
    * @param workspace The shared workspace context, used to confine every operation to open roots.
    * @param trusted The trusted-paths store, used to gate kind resolution for not-yet-open folders.
+   * @param versionControl The version-control host repository questions go through.
    */
-  public constructor(workspace: WorkspaceContext, trusted: TrustedPaths) {
-    this.operations = new WorktreeOperations(workspace, trusted, (target: string): Promise<void> =>
-      shell.trashItem(target),
+  public constructor(
+    workspace: WorkspaceContext,
+    trusted: TrustedPaths,
+    versionControl: VersionControlHost,
+  ) {
+    this.operations = new WorktreeOperations(
+      workspace,
+      trusted,
+      (target: string): Promise<void> => shell.trashItem(target),
+      versionControl,
     );
   }
 

@@ -1,242 +1,48 @@
-// The version-control (git) capability's slice of the IPC contract. The renderer's SourceControl
-// client and the main-process GitManager both name their channels from here, carried over the generic
-// window.bridge transport. The git CLI is invoked in the main process with array arguments (never a
-// shell), its variable arguments validated, and every operation confined to a repository root the user
-// has explicitly opened — the renderer is treated as hostile. Output is returned raw for the renderer's
-// source-control provider to parse and map.
+import type {
+  VcsMergeMode,
+  VcsOperationKind,
+  VcsOperationState,
+  VersionControlOp,
+  VersionControlResponse,
+  VcsParams,
+} from './version-control-protocol';
+
+// The source-control slice of the IPC contract (#816). The renderer's SourceControl client and the
+// main process's VersionControlManager both name their channels from here, carried over the generic
+// window.bridge transport.
+//
+// The renderer asks the version-control protocol's questions about a repository it has opened; the
+// main process's host decides which plugin answers, confines every request to an open repository or
+// workspace, and refuses what the plugin does not support. Answers arrive typed — nothing on this side
+// of the seam parses a tool's output.
 
 /**
- * Names the version-control IPC channels. Every operation is a request/response `invoke`.
+ * Names the source-control IPC channels. Every one is a request/response `invoke`.
  */
 export enum SourceControlChannel {
   /**
-   * Shows an open-folder dialog and resolves the chosen folder's enclosing git repository root.
-   */
-  OpenRepository = 'source-control:open-repository',
-
-  /**
-   * Resolves the git repository root that contains an already-open folder, without a dialog.
+   * Opens the repository containing a folder, registering its root so requests may act on it.
    */
   ResolveRepository = 'source-control:resolve-repository',
 
   /**
-   * Releases an open repository root, removing it from the set git operations are confined to.
+   * Releases an opened repository.
    */
   CloseRepository = 'source-control:close-repository',
 
   /**
-   * Reads the working-tree status of a repository (porcelain v2, with the branch header).
+   * Asks the plugin serving an opened repository to perform one of the protocol's repository
+   * operations.
    */
-  Status = 'source-control:status',
-
-  /**
-   * Reads the multi-step operation a repository is in the middle of, if any (a merge, rebase,
-   * cherry-pick or revert git started and could not finish on its own).
-   */
-  OperationState = 'source-control:operation-state',
-
-  /**
-   * Reads the commit history of a repository, with parent hashes and ref decorations.
-   */
-  Log = 'source-control:log',
-
-  /**
-   * Reads the branches and tags of a repository (local heads, remote-tracking heads, and tags).
-   */
-  Refs = 'source-control:refs',
-
-  /**
-   * Reads the configured remotes of a repository with their URLs (`git remote -v`). Separate from
-   * {@link Refs}, which reads remote-tracking *branches* and so knows nothing of a remote's URL — nor
-   * of a remote that has never been fetched.
-   */
-  Remotes = 'source-control:remotes',
-
-  /**
-   * Reads the stash entries of a repository.
-   */
-  Stashes = 'source-control:stashes',
-
-  /**
-   * Reads the files changed by a single commit (name-status against its first parent).
-   */
-  CommitFiles = 'source-control:commit-files',
-
-  /**
-   * Reads the contents of a file at a revision for one side of a diff.
-   */
-  ReadBlob = 'source-control:read-blob',
-
-  /**
-   * Discards the uncommitted changes to files: tracked files are restored to `HEAD`, untracked
-   * files are deleted. Destructive; the caller confirms first.
-   */
-  Discard = 'source-control:discard',
-
-  /**
-   * Stages files into the index, or the whole working tree when no paths are given.
-   */
-  Stage = 'source-control:stage',
-
-  /**
-   * Unstages files from the index, or the whole index when no paths are given.
-   */
-  Unstage = 'source-control:unstage',
-
-  /**
-   * Commits the staged changes with a message.
-   */
-  Commit = 'source-control:commit',
-
-  /**
-   * Stashes the working-tree changes.
-   */
-  Stash = 'source-control:stash',
-
-  /**
-   * Restores a stash onto the working tree, keeping it on the stack.
-   */
-  StashApply = 'source-control:stash-apply',
-
-  /**
-   * Restores a stash onto the working tree and drops it from the stack.
-   */
-  StashPop = 'source-control:stash-pop',
-
-  /**
-   * Deletes a stash without restoring it. Destructive; the caller confirms first.
-   */
-  StashDrop = 'source-control:stash-drop',
-
-  /**
-   * Checks out an existing branch.
-   */
-  Checkout = 'source-control:checkout',
-
-  /**
-   * Creates a branch at the current head, optionally checking it out.
-   */
-  CreateBranch = 'source-control:create-branch',
-
-  /**
-   * Fetches all remotes, pruning deleted remote-tracking branches.
-   */
-  Fetch = 'source-control:fetch',
-
-  /**
-   * Fetches one ref from a remote into a local branch. The caller supplies the source ref, because
-   * which ref carries a pull request's head is the forge's convention rather than git's — GitHub
-   * publishes `refs/pull/N/head`, and another forge names it differently.
-   */
-  FetchRef = 'source-control:fetch-ref',
-
-  /**
-   * Pulls the current branch from its upstream.
-   */
-  Pull = 'source-control:pull',
-
-  /**
-   * Pushes the current branch, optionally setting the upstream on the push.
-   */
-  Push = 'source-control:push',
-
-  /**
-   * Fetches one remote, rather than all of them.
-   */
-  FetchRemote = 'source-control:fetch-remote',
-
-  /**
-   * Prunes one remote's tracking branches that no longer exist on it.
-   */
-  PruneRemote = 'source-control:prune-remote',
-
-  /**
-   * Adds a remote.
-   */
-  AddRemote = 'source-control:add-remote',
-
-  /**
-   * Removes a remote, along with its tracking branches.
-   */
-  RemoveRemote = 'source-control:remove-remote',
-
-  /**
-   * Creates a local branch tracking a remote-tracking branch, and checks it out.
-   */
-  CheckoutTracking = 'source-control:checkout-tracking',
-
-  /**
-   * Deletes a local branch. Destructive; the caller confirms first.
-   */
-  DeleteBranch = 'source-control:delete-branch',
-
-  /**
-   * Renames a local branch, including the checked-out one.
-   */
-  RenameBranch = 'source-control:rename-branch',
-
-  /**
-   * Points a local branch's upstream at a remote-tracking branch, or clears it.
-   */
-  SetUpstream = 'source-control:set-upstream',
-
-  /**
-   * Merges a branch into the checked-out one.
-   */
-  Merge = 'source-control:merge',
-
-  /**
-   * Replays the checked-out branch onto another. Rewrites history; the caller confirms first.
-   */
-  Rebase = 'source-control:rebase',
-
-  /**
-   * Carries on the operation in flight, once its conflicts have been resolved.
-   */
-  OperationContinue = 'source-control:operation-continue',
-
-  /**
-   * Skips the commit the operation in flight is stuck on, dropping its changes.
-   */
-  OperationSkip = 'source-control:operation-skip',
-
-  /**
-   * Abandons the operation in flight, returning the working tree to where it started.
-   */
-  OperationAbort = 'source-control:operation-abort',
-
-  /**
-   * Creates a tag at a commit, annotated when a message is given.
-   */
-  CreateTag = 'source-control:create-tag',
-
-  /**
-   * Deletes a local tag. Destructive; the caller confirms first.
-   */
-  DeleteTag = 'source-control:delete-tag',
-
-  /**
-   * Deletes a tag on a remote. Destructive for everyone who has fetched it, not just the caller.
-   */
-  DeleteRemoteTag = 'source-control:delete-remote-tag',
-
-  /**
-   * Pushes one tag to a remote.
-   */
-  PushTag = 'source-control:push-tag',
-
-  /**
-   * Pushes every local tag to a remote.
-   */
-  PushAllTags = 'source-control:push-all-tags',
+  Request = 'source-control:request',
 }
 
 /**
- * Describes an opened version-control repository: its resolved root path and display name.
+ * Describes an opened repository: its resolved root path and display name.
  */
 export interface RepositoryInfo {
   /**
-   * Gets the repository's absolute root path (the git top level).
+   * Gets the repository's absolute root path.
    */
   readonly root: string;
 
@@ -248,24 +54,22 @@ export interface RepositoryInfo {
 
 /**
  * Names the failures a caller answers differently from any other, so it never has to tell one refusal
- * from another by reading git's prose. That prose is not a contract, and it is not always English.
+ * from another by reading a tool's prose. The values are the protocol's error codes.
  */
 export enum SourceControlCode {
   /**
-   * An unforced branch delete git refused because the branch still holds commits of its own.
+   * An unforced branch delete refused because the branch still holds commits of its own.
    */
   BranchNotMerged = 'branch-not-merged',
 
   /**
-   * An operation that stopped on conflicts. Not an error in the ordinary sense: git did what it was
-   * asked as far as it could, and is waiting to be told how to finish. The working tree has changed,
-   * so the caller refreshes — but shows the conflicts rather than a failure.
+   * An operation that stopped on conflicts. Not an error in the ordinary sense: it did what it was
+   * asked as far as it could, and is waiting to be told how to finish.
    */
   Conflicted = 'conflicted',
 
   /**
-   * A continue asked of a squash merge, which git cannot carry on: it recorded no merge to resume, so
-   * the resolved result is committed like any other staged change.
+   * A continue asked of a squash merge, which is finished by committing the staged result.
    */
   SquashCommitRequired = 'squash-commit-required',
 
@@ -275,489 +79,55 @@ export enum SourceControlCode {
   NoOperation = 'no-operation',
 
   /**
-   * A skip asked of an operation that has no notion of skipping — a merge applies one change, so
-   * there is no next one to move on to.
+   * A skip asked of an operation that has no notion of skipping.
    */
   SkipUnsupported = 'skip-unsupported',
 }
 
 /**
- * Specifies how a merge records its result.
+ * Specifies how a merge records its result. The protocol's {@link VcsMergeMode}, under the name the
+ * renderer already uses.
  */
-export type GitMergeMode =
-  /**
-   * Fast-forwards where it can, and writes a merge commit where it cannot.
-   */
-  | 'default'
-
-  /**
-   * Always writes a merge commit, so the branch stays legible in the history.
-   */
-  | 'no-ff'
-
-  /**
-   * Applies the changes and stages them without committing or recording a merge at all.
-   */
-  | 'squash';
+export type GitMergeMode = VcsMergeMode;
 
 /**
  * Names a multi-step operation a working tree can be left in the middle of.
- *
- * Each is an operation git starts, abandons part-way when it cannot apply a change by itself, and
- * then expects to be told how to end. Until it is told, the repository is in a state that is neither
- * the commit it started from nor the one it was heading for — which is precisely the state a panel
- * offering these commands has to be able to name.
- *
- * `squash-merge` is spelled apart from `merge` because git does not treat the two alike: a squash
- * merge records no `MERGE_HEAD`, so `git merge --abort` does not know about it and `git merge
- * --continue` cannot finish it. A caller that conflated them would offer commands git refuses.
  */
-export type GitOperationKind = 'merge' | 'squash-merge' | 'rebase' | 'cherry-pick' | 'revert';
+export type GitOperationKind = VcsOperationKind;
 
 /**
  * Describes the multi-step operation a repository is in the middle of.
  */
-export interface GitOperationState {
-  /**
-   * Gets the operation in flight, or null when the working tree is in no such state.
-   */
-  readonly kind: GitOperationKind | null;
-
-  /**
-   * Gets what the operation is working towards, as a human reads it: the ref being merged in, or the
-   * one a rebase is replaying onto. Absent when git left nothing to name it by.
-   */
-  readonly target?: string;
-
-  /**
-   * Gets the branch being replayed, for a rebase. Absent for the other operations, which act on the
-   * checked-out branch itself.
-   */
-  readonly branch?: string;
-
-  /**
-   * Gets the number of the commit being applied, for an operation that replays several.
-   */
-  readonly step?: number;
-
-  /**
-   * Gets the total number of commits to apply, for an operation that replays several.
-   */
-  readonly total?: number;
-}
+export type GitOperationState = VcsOperationState;
 
 /**
- * Describes the outcome of a single git invocation. The command's standard output is returned raw for
- * the renderer-side provider to parse; failures carry the error (and any standard error) instead.
- */
-export interface GitRunResult {
-  /**
-   * Gets a value indicating whether the command exited successfully.
-   */
-  readonly success: boolean;
-
-  /**
-   * Gets the command's standard output, when it succeeded.
-   */
-  readonly stdout?: string;
-
-  /**
-   * Gets the command's standard error, when present.
-   */
-  readonly stderr?: string;
-
-  /**
-   * Gets the error message, when the command failed or the request was rejected.
-   */
-  readonly error?: string;
-
-  /**
-   * Gets a stable identifier for a failure the caller answers differently from any other, when the
-   * command produced one. Present so a caller never has to read git's prose to tell one refusal from
-   * another — that prose is not a contract, and it is not always English.
-   */
-  readonly code?: string;
-}
-
-/**
- * Defines the renderer-facing version-control operations, each mapping to a {@link SourceControlChannel}
- * over the bridge. The shape the renderer's source-control provider consumes.
+ * Describes the source-control client the renderer reaches the main process through.
  */
 export interface SourceControlClient {
   /**
-   * Shows an open-folder dialog and resolves the chosen folder's enclosing git repository root.
-   * @returns Returns the repository, or null when cancelled or the folder is not a git repository.
-   */
-  openRepository(): Promise<RepositoryInfo | null>;
-
-  /**
-   * Resolves the git repository root that contains an already-open folder, without a dialog.
+   * Opens the repository containing a folder.
    * @param directory The absolute folder path to resolve from.
-   * @returns Returns the repository, or null when the folder is not inside a git repository.
+   * @returns Returns the repository, or null when the folder is in none an installed plugin knows.
    */
   resolveRepository(directory: string): Promise<RepositoryInfo | null>;
 
   /**
-   * Releases an open repository root, removing it from the set git operations are confined to.
-   * @param root The absolute repository root to release.
+   * Releases an opened repository.
+   * @param root The repository root.
+   * @returns Returns a promise that resolves once it has been released.
    */
   closeRepository(root: string): Promise<void>;
 
   /**
-   * Reads the working-tree status of a repository (porcelain v2, with the branch header).
-   * @param root The absolute repository root; must be an open root.
-   * @returns Returns the raw command result.
+   * Asks the plugin serving an opened repository to perform an operation on it.
+   * @param root The repository root.
+   * @param op The operation.
+   * @param params The operation's parameters.
+   * @returns Returns the plugin's answer, or the host's refusal.
    */
-  status(root: string): Promise<GitRunResult>;
-
-  /**
-   * Reads the multi-step operation the repository is in the middle of, if any.
-   *
-   * Structured rather than raw, unlike the reads around it: this is not one git command's output but
-   * a set of state files git leaves in the repository's git directory, so there is no format for a
-   * renderer-side parser to own.
-   *
-   * @param root The absolute repository root; must be an open root.
-   * @returns Returns the operation state, whose kind is null when nothing is in flight.
-   */
-  operationState(root: string): Promise<GitOperationState>;
-
-  /**
-   * Reads the commit history of a repository, with parent hashes and ref decorations.
-   * @param root The absolute repository root; must be an open root.
-   * @param limit The maximum number of commits to read.
-   * @returns Returns the raw command result.
-   */
-  log(root: string, limit: number): Promise<GitRunResult>;
-
-  /**
-   * Reads the branches and tags of a repository (local heads, remote-tracking heads, and tags).
-   * @param root The absolute repository root; must be an open root.
-   * @returns Returns the raw command result.
-   */
-  refs(root: string): Promise<GitRunResult>;
-
-  /**
-   * Reads the configured remotes of a repository with their URLs.
-   * @param root The absolute repository root; must be an open root.
-   * @returns Returns the raw command result.
-   */
-  remotes(root: string): Promise<GitRunResult>;
-
-  /**
-   * Reads the stash entries of a repository.
-   * @param root The absolute repository root; must be an open root.
-   * @returns Returns the raw command result.
-   */
-  stashes(root: string): Promise<GitRunResult>;
-
-  /**
-   * Reads the files changed by a single commit (name-status against its first parent).
-   * @param root The absolute repository root; must be an open root.
-   * @param hash The commit hash to inspect.
-   * @returns Returns the raw command result.
-   */
-  commitFiles(root: string, hash: string): Promise<GitRunResult>;
-
-  /**
-   * Reads the contents of a file at a revision for one side of a diff.
-   *
-   * Three revisions are spelled specially and the difference matters, because a diff has two sides
-   * and each is fetched separately: an empty string is the working tree (read from disk), `:` is the
-   * index (the staged content), and anything else is a real revision read from the git object store.
-   * Note that `:` is not a revision *name* — it is git's way of writing a blob with no revision in
-   * front of it — so it is the one case that does not simply prefix `:path`.
-   *
-   * @param root The absolute repository root; must be an open root.
-   * @param revision The revision to read at (for example `HEAD`, a commit hash, `<hash>^`, or `:` for
-   * the index), or an empty string for the working tree.
-   * @param filePath The repository-relative file path.
-   * @returns Returns the raw command result; a missing file yields an empty string.
-   */
-  readBlob(root: string, revision: string, filePath: string): Promise<GitRunResult>;
-
-  /**
-   * Discards the uncommitted changes to files: tracked files are restored to `HEAD` (index and
-   * working tree), untracked files are deleted from disk. Destructive; the caller confirms first.
-   * @param root The absolute repository root; must be an open root.
-   * @param paths The repository-relative paths to discard; must not be empty.
-   * @returns Returns the raw command result.
-   */
-  discard(root: string, paths: readonly string[]): Promise<GitRunResult>;
-
-  /**
-   * Stages files into the index, or the whole working tree when no paths are given.
-   * @param root The absolute repository root; must be an open root.
-   * @param paths The repository-relative paths to stage, or an empty array to stage everything.
-   * @returns Returns the raw command result.
-   */
-  stage(root: string, paths: readonly string[]): Promise<GitRunResult>;
-
-  /**
-   * Unstages files from the index, or the whole index when no paths are given.
-   * @param root The absolute repository root; must be an open root.
-   * @param paths The repository-relative paths to unstage, or an empty array to unstage everything.
-   * @returns Returns the raw command result.
-   */
-  unstage(root: string, paths: readonly string[]): Promise<GitRunResult>;
-
-  /**
-   * Commits the staged changes with a message.
-   * @param root The absolute repository root; must be an open root.
-   * @param message The commit message.
-   * @returns Returns the raw command result.
-   */
-  commit(root: string, message: string): Promise<GitRunResult>;
-
-  /**
-   * Stashes the working-tree changes.
-   * @param root The absolute repository root; must be an open root.
-   * @returns Returns the raw command result.
-   */
-  stash(root: string): Promise<GitRunResult>;
-
-  /**
-   * Restores a stash onto the working tree, keeping it on the stack.
-   * @param root The absolute repository root; must be an open root.
-   * @param index The stack index of the stash (0 is the most recent).
-   * @returns Returns the raw command result.
-   */
-  stashApply(root: string, index: number): Promise<GitRunResult>;
-
-  /**
-   * Restores a stash onto the working tree and drops it from the stack.
-   * @param root The absolute repository root; must be an open root.
-   * @param index The stack index of the stash (0 is the most recent).
-   * @returns Returns the raw command result.
-   */
-  stashPop(root: string, index: number): Promise<GitRunResult>;
-
-  /**
-   * Deletes a stash without restoring it. Destructive; the caller confirms first.
-   * @param root The absolute repository root; must be an open root.
-   * @param index The stack index of the stash (0 is the most recent).
-   * @returns Returns the raw command result.
-   */
-  stashDrop(root: string, index: number): Promise<GitRunResult>;
-
-  /**
-   * Checks out an existing branch.
-   * @param root The absolute repository root; must be an open root.
-   * @param branch The branch name to check out.
-   * @returns Returns the raw command result.
-   */
-  checkout(root: string, branch: string): Promise<GitRunResult>;
-
-  /**
-   * Creates a branch at the current head, optionally checking it out.
-   * @param root The absolute repository root; must be an open root.
-   * @param name The new branch name.
-   * @param checkout Whether to check the new branch out; when false the branch is created and the
-   * current one stays checked out.
-   * @returns Returns the raw command result.
-   */
-  createBranch(root: string, name: string, checkout: boolean): Promise<GitRunResult>;
-
-  /**
-   * Fetches all remotes, pruning deleted remote-tracking branches.
-   * @param root The absolute repository root; must be an open root.
-   * @returns Returns the raw command result.
-   */
-  fetch(root: string): Promise<GitRunResult>;
-
-  /**
-   * Fetches one ref from a remote into a local branch.
-   * @param root The absolute repository root; must be an open root.
-   * @param remote The remote to fetch from.
-   * @param sourceRef The ref on the remote to fetch (for example `refs/pull/7/head`).
-   * @param localBranch The local branch to create or update.
-   * @returns Returns the raw command result.
-   */
-  fetchRef(
+  request<Op extends VersionControlOp>(
     root: string,
-    remote: string,
-    sourceRef: string,
-    localBranch: string,
-  ): Promise<GitRunResult>;
-
-  /**
-   * Pulls the current branch from its upstream.
-   * @param root The absolute repository root; must be an open root.
-   * @returns Returns the raw command result.
-   */
-  pull(root: string): Promise<GitRunResult>;
-
-  /**
-   * Pushes the current branch to its upstream. When a remote and branch are given, the upstream is
-   * set on the push (used for a branch that has none yet); otherwise the configured upstream is used.
-   * @param root The absolute repository root; must be an open root.
-   * @param remote The remote to push to, or undefined to push to the existing upstream.
-   * @param branch The branch to push, or undefined to push the checked-out one to its upstream.
-   * Naming it is what allows a branch that is not checked out to be pushed.
-   * @param setUpstream Whether to claim the upstream on the push. False for a branch that already has
-   * one, which must not be silently repointed.
-   * @returns Returns the raw command result.
-   */
-  push(
-    root: string,
-    remote?: string,
-    branch?: string,
-    setUpstream?: boolean,
-  ): Promise<GitRunResult>;
-
-  /**
-   * Deletes a local branch. Destructive; the caller confirms first.
-   * @param root The absolute repository root; must be an open root.
-   * @param name The branch name.
-   * @param force Whether to delete a branch whose commits are not merged anywhere.
-   * @returns Returns the raw command result, whose code is `branch-not-merged` when an unforced
-   * delete was refused because the branch still holds commits of its own.
-   */
-  deleteBranch(root: string, name: string, force: boolean): Promise<GitRunResult>;
-
-  /**
-   * Renames a local branch, including the checked-out one.
-   * @param root The absolute repository root; must be an open root.
-   * @param from The current branch name.
-   * @param to The new branch name.
-   * @returns Returns the raw command result.
-   */
-  renameBranch(root: string, from: string, to: string): Promise<GitRunResult>;
-
-  /**
-   * Points a local branch's upstream at a remote-tracking branch, or clears it.
-   * @param root The absolute repository root; must be an open root.
-   * @param branch The local branch.
-   * @param upstream The remote-tracking branch to track, or null to clear the upstream.
-   * @returns Returns the raw command result.
-   */
-  setUpstream(root: string, branch: string, upstream: string | null): Promise<GitRunResult>;
-
-  /**
-   * Fetches one remote, rather than all of them.
-   * @param root The absolute repository root; must be an open root.
-   * @param remote The remote to fetch.
-   * @returns Returns the raw command result.
-   */
-  fetchRemote(root: string, remote: string): Promise<GitRunResult>;
-
-  /**
-   * Prunes one remote's tracking branches that no longer exist on it.
-   * @param root The absolute repository root; must be an open root.
-   * @param remote The remote to prune.
-   * @returns Returns the raw command result.
-   */
-  pruneRemote(root: string, remote: string): Promise<GitRunResult>;
-
-  /**
-   * Adds a remote.
-   * @param root The absolute repository root; must be an open root.
-   * @param name The remote name.
-   * @param url The remote URL.
-   * @returns Returns the raw command result.
-   */
-  addRemote(root: string, name: string, url: string): Promise<GitRunResult>;
-
-  /**
-   * Removes a remote, along with its tracking branches. Destructive; the caller confirms first.
-   * @param root The absolute repository root; must be an open root.
-   * @param name The remote name.
-   * @returns Returns the raw command result.
-   */
-  removeRemote(root: string, name: string): Promise<GitRunResult>;
-
-  /**
-   * Creates a local branch tracking a remote-tracking branch, and checks it out.
-   * @param root The absolute repository root; must be an open root.
-   * @param remoteBranch The remote-tracking branch, as `origin/main`.
-   * @param localBranch The local branch to create.
-   * @returns Returns the raw command result.
-   */
-  checkoutTracking(root: string, remoteBranch: string, localBranch: string): Promise<GitRunResult>;
-
-  /**
-   * Merges a branch into the checked-out one.
-   * @param root The absolute repository root; must be an open root.
-   * @param branch The branch to merge in.
-   * @param mode How the merge records its result.
-   * @returns Returns the raw command result, coded {@link SourceControlCode.Conflicted} when the
-   * merge stopped on conflicts rather than failing outright.
-   */
-  merge(root: string, branch: string, mode: GitMergeMode): Promise<GitRunResult>;
-
-  /**
-   * Replays the checked-out branch onto another. Rewrites history; the caller confirms first.
-   * @param root The absolute repository root; must be an open root.
-   * @param onto The branch to replay onto.
-   * @returns Returns the raw command result, coded {@link SourceControlCode.Conflicted} when the
-   * rebase stopped on conflicts.
-   */
-  rebase(root: string, onto: string): Promise<GitRunResult>;
-
-  /**
-   * Carries on the operation in flight, once its conflicts have been resolved. Which command that is
-   * follows from the operation git is actually in, read at the time rather than taken from the caller.
-   * @param root The absolute repository root; must be an open root.
-   * @returns Returns the raw command result.
-   */
-  continueOperation(root: string): Promise<GitRunResult>;
-
-  /**
-   * Skips the commit the operation in flight is stuck on, dropping its changes.
-   * @param root The absolute repository root; must be an open root.
-   * @returns Returns the raw command result.
-   */
-  skipOperation(root: string): Promise<GitRunResult>;
-
-  /**
-   * Abandons the operation in flight, returning the working tree to where it started.
-   * @param root The absolute repository root; must be an open root.
-   * @returns Returns the raw command result.
-   */
-  abortOperation(root: string): Promise<GitRunResult>;
-
-  /**
-   * Creates a tag at a commit. A message makes it annotated — which is what a release wants, since an
-   * annotated tag is an object in its own right carrying its author, date and message.
-   * @param root The absolute repository root; must be an open root.
-   * @param name The tag name.
-   * @param commit The commit to tag.
-   * @param message The annotation message, or undefined for a lightweight tag.
-   * @returns Returns the raw command result.
-   */
-  createTag(root: string, name: string, commit: string, message?: string): Promise<GitRunResult>;
-
-  /**
-   * Deletes a local tag. Destructive; the caller confirms first.
-   * @param root The absolute repository root; must be an open root.
-   * @param name The tag name.
-   * @returns Returns the raw command result.
-   */
-  deleteTag(root: string, name: string): Promise<GitRunResult>;
-
-  /**
-   * Deletes a tag on a remote. Destructive for everyone who has fetched it, not just the caller.
-   * @param root The absolute repository root; must be an open root.
-   * @param remote The remote to delete on.
-   * @param name The tag name.
-   * @returns Returns the raw command result.
-   */
-  deleteRemoteTag(root: string, remote: string, name: string): Promise<GitRunResult>;
-
-  /**
-   * Pushes one tag to a remote.
-   * @param root The absolute repository root; must be an open root.
-   * @param remote The remote to push to.
-   * @param name The tag name.
-   * @returns Returns the raw command result.
-   */
-  pushTag(root: string, remote: string, name: string): Promise<GitRunResult>;
-
-  /**
-   * Pushes every local tag to a remote.
-   * @param root The absolute repository root; must be an open root.
-   * @param remote The remote to push to.
-   * @returns Returns the raw command result.
-   */
-  pushAllTags(root: string, remote: string): Promise<GitRunResult>;
+    op: Op,
+    params: VcsParams<Op>,
+  ): Promise<VersionControlResponse<Op>>;
 }

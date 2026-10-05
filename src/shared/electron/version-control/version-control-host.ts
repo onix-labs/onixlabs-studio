@@ -14,6 +14,7 @@ import {
 } from '@shared/api/version-control-protocol';
 import { logger } from '../logger';
 import { VersionControlClient } from './version-control-client';
+import { VersionControlEndpoint } from './version-control-endpoint';
 import {
   VersionControlDescriptor,
   VersionControlResolution,
@@ -49,9 +50,9 @@ export interface VersionControlRoots {
  */
 interface RunningPlugin {
   /**
-   * Gets the plugin's client.
+   * Gets the endpoint answering for the plugin.
    */
-  readonly client: VersionControlClient;
+  readonly client: VersionControlEndpoint;
 
   /**
    * Gets the capabilities both the manifest declared and the handshake confirmed.
@@ -90,9 +91,29 @@ export interface VersionControlHostOptions {
   readonly exists?: (target: string) => boolean;
 
   /**
-   * Creates the client for a plugin. Defaults to a real process.
+   * Creates the client for a plugin's process. Defaults to a real process.
    */
-  readonly createClient?: (id: string, spec: VersionControlSpec) => VersionControlClient;
+  readonly createClient?: (id: string, spec: VersionControlSpec) => VersionControlEndpoint;
+}
+
+/**
+ * Describes a repository the host has opened.
+ */
+export interface OpenedRepository {
+  /**
+   * Gets the repository's absolute root.
+   */
+  readonly root: string;
+
+  /**
+   * Gets the repository's folder name.
+   */
+  readonly name: string;
+
+  /**
+   * Gets the plugin serving it.
+   */
+  readonly pluginId: string;
 }
 
 /**
@@ -100,8 +121,10 @@ export interface VersionControlHostOptions {
  * starts it on first use, and stands between it and an untrusted renderer.
  *
  * ⛔ Every check lives here rather than in the plugin, because a plugin is code Studio did not write:
- * - a request's root must be absolute and lie within an open workspace root — the confinement
- *   `GitManager.isOpenRoot` applies today;
+ * - a request's root must be absolute and lie within an open repository or an open workspace root.
+ *   A repository is opened by {@link openRepository} and reference-counted, because several surfaces
+ *   (a repository tab and a workspace tab) can open the same one independently — the registry
+ *   `GitManager` kept until #816;
  * - a request needing a capability the plugin did not both declare and confirm is refused without the
  *   plugin ever seeing it;
  * - identical concurrent reads are answered by one request.
@@ -134,6 +157,11 @@ export class VersionControlHost {
   >();
 
   /**
+   * Holds the open repository roots, each with an open count.
+   */
+  private readonly repositories: Map<string, number> = new Map<string, number>();
+
+  /**
    * Initializes the host.
    * @param options What the host depends on.
    */
@@ -158,6 +186,83 @@ export class VersionControlHost {
       (a: VersionControlDescriptor, b: VersionControlDescriptor): number => b.priority - a.priority,
     );
     return candidates[0] ?? null;
+  }
+
+  /**
+   * Gets the highest-priority installed plugin, for an operation with no repository to recognise yet
+   * (a clone with no existing checkout to ask).
+   * @returns Returns the plugin, or null when none is installed.
+   */
+  public preferredPlugin(): VersionControlDescriptor | null {
+    return (
+      [...this.options.descriptors()].sort(
+        (a: VersionControlDescriptor, b: VersionControlDescriptor): number =>
+          b.priority - a.priority,
+      )[0] ?? null
+    );
+  }
+
+  /**
+   * Opens the repository containing a folder: finds the plugin whose marker the folder or one of its
+   * ancestors holds, asks it for the repository's exact root, and registers that root so requests may
+   * act on it. Reference-counted; each open is matched by a {@link closeRepository}.
+   *
+   * The folder is trusted only as a starting point, exactly as `GitManager.resolveRepository` was: the
+   * user chose it (a dialog, a workspace, a restored tab), and the plugin's answer — not the folder —
+   * becomes the confined root.
+   * @param directory The absolute folder to start from.
+   * @returns Returns the repository, or null when the folder is in none an installed plugin knows.
+   */
+  public async openRepository(directory: unknown): Promise<OpenedRepository | null> {
+    if (typeof directory !== 'string' || !path.isAbsolute(directory)) {
+      return null;
+    }
+    const start: string = path.resolve(directory);
+    let candidate: string = start;
+    let descriptor: VersionControlDescriptor | null = this.pluginFor(candidate);
+    while (descriptor === null && path.dirname(candidate) !== candidate) {
+      candidate = path.dirname(candidate);
+      descriptor = this.pluginFor(candidate);
+    }
+    if (descriptor === null) {
+      logger.trace('VersionControlHost.openRepository', `No repository contains ${start}`);
+      return null;
+    }
+    const resolved: VersionControlResponse<'resolveRoot'> = await this.dispatch(
+      descriptor,
+      undefined,
+      'resolveRoot',
+      { path: start },
+    );
+    if (!resolved.ok || resolved.result.root === null) {
+      return null;
+    }
+    const root: string = path.resolve(resolved.result.root);
+    const count: number = (this.repositories.get(root) ?? 0) + 1;
+    this.repositories.set(root, count);
+    logger.info('VersionControlHost', `Opened repository ${root} (open count ${count})`);
+    return { root, name: path.basename(root), pluginId: descriptor.id };
+  }
+
+  /**
+   * Releases an open repository, removing it once the last surface using it has released it.
+   * @param root The repository root.
+   */
+  public closeRepository(root: unknown): void {
+    if (typeof root !== 'string') {
+      return;
+    }
+    const resolved: string = path.resolve(root);
+    const count: number | undefined = this.repositories.get(resolved);
+    if (count === undefined) {
+      return;
+    }
+    if (count <= 1) {
+      this.repositories.delete(resolved);
+      logger.info('VersionControlHost', `Closed repository ${resolved}`);
+    } else {
+      this.repositories.set(resolved, count - 1);
+    }
   }
 
   /**
@@ -375,11 +480,12 @@ export class VersionControlHost {
     if (!resolution.available) {
       return resolution.reason;
     }
-    const create: (id: string, spec: VersionControlSpec) => VersionControlClient =
+    const create: (id: string, spec: VersionControlSpec) => VersionControlEndpoint =
       this.options.createClient ??
-      ((id: string, spec: VersionControlSpec): VersionControlClient =>
+      ((id: string, spec: VersionControlSpec): VersionControlEndpoint =>
         new VersionControlClient(id, spec));
-    const client: VersionControlClient = create(descriptor.id, resolution.spec);
+    const client: VersionControlEndpoint =
+      'create' in resolution ? resolution.create() : create(descriptor.id, resolution.spec);
     const description: VersionControlDescription | null = await client.start(
       this.options.executableFor(descriptor.id),
     );
@@ -399,7 +505,8 @@ export class VersionControlHost {
   }
 
   /**
-   * Checks a path a request names: it must be an absolute path within an open workspace root.
+   * Checks a path a request names: it must be absolute and lie within an open repository or an open
+   * workspace root.
    * @param target The candidate path.
    * @returns Returns the reason it is refused, or null when it is acceptable.
    */
@@ -407,7 +514,13 @@ export class VersionControlHost {
     if (typeof target !== 'string' || !path.isAbsolute(target)) {
       return 'The path is not absolute.';
     }
-    return this.options.roots.isWithin(target) ? null : 'That folder is not an open workspace.';
+    const resolved: string = path.resolve(target);
+    const inRepository: boolean = [...this.repositories.keys()].some(
+      (root: string): boolean => resolved === root || resolved.startsWith(root + path.sep),
+    );
+    return inRepository || this.options.roots.isWithin(resolved)
+      ? null
+      : 'That folder is not an open repository or workspace.';
   }
 }
 

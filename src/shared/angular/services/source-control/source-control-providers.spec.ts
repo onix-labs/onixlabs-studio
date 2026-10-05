@@ -1,16 +1,17 @@
 import { TestBed } from '@angular/core/testing';
 
-import { GitRunResult, SourceControlClient } from '@shared/api/source-control-channels';
-import { GitProvider } from './git-provider';
+import { SourceControlClient } from '@shared/api/source-control-channels';
+import { VersionControlOp, VersionControlResponse } from '@shared/api/version-control-protocol';
 import { SourceControl } from './source-control';
 import { SourceControlProvider } from './source-control-provider';
 import { SourceControlProviders } from './source-control-providers';
+import { VersionControlProvider } from './version-control-provider';
 
 describe('SourceControlProviders', () => {
-  let statusRoots: string[];
+  let requests: { root: string; op: VersionControlOp }[];
 
   /**
-   * Configures the testing module with a stub source-control client that records status reads.
+   * Configures the testing module with a stub source-control client.
    * @param client The client the stubbed {@link SourceControl} exposes.
    * @returns Returns the resolved factory.
    */
@@ -22,25 +23,30 @@ describe('SourceControlProviders', () => {
   }
 
   /**
-   * Builds a stub client whose status call records its root and yields empty output.
+   * Builds a stub client whose requests are recorded and fail, so reads come back empty.
    * @returns Returns the stub client.
    */
   function stubClient(): SourceControlClient {
-    statusRoots = [];
+    requests = [];
     return {
-      status: (root: string): Promise<GitRunResult> => {
-        statusRoots.push(root);
-        return Promise.resolve({ success: true, stdout: '' });
+      resolveRepository: (): Promise<null> => Promise.resolve(null),
+      closeRepository: (): Promise<void> => Promise.resolve(),
+      request: <Op extends VersionControlOp>(
+        root: string,
+        op: Op,
+      ): Promise<VersionControlResponse<Op>> => {
+        requests.push({ root, op });
+        return Promise.resolve({ id: 0, ok: false, error: 'stub' });
       },
-    } as Partial<SourceControlClient> as SourceControlClient;
+    };
   }
 
-  it('create_whenCalled_returnsAGitProviderBoundToTheRoot', () => {
+  it('create_whenCalled_returnsAVersionControlProviderBoundToTheRoot', () => {
     const factory: SourceControlProviders = setup(stubClient());
 
     const provider: SourceControlProvider = factory.create('/repos/studio');
 
-    expect(provider).toBeInstanceOf(GitProvider);
+    expect(provider).toBeInstanceOf(VersionControlProvider);
     expect(provider.root).toBe('/repos/studio');
   });
 
@@ -60,7 +66,7 @@ describe('SourceControlProviders', () => {
 
     await factory.create('/repos/studio').getStatus();
 
-    expect(statusRoots).toEqual(['/repos/studio']);
+    expect(requests).toEqual([{ root: '/repos/studio', op: 'status' }]);
   });
 
   it('create_whenRunningOutsideElectron_yieldsAProviderWhoseReadsAreEmpty', async () => {
