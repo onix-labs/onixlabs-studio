@@ -63,7 +63,7 @@ test.describe('setup wizard', () => {
       'Version Control',
       'Security',
       'Terminal',
-      'Environment',
+      'Summary',
     ]);
 
     await expect(wizard.locator('.setup__step-label--current')).toHaveText('Welcome');
@@ -101,7 +101,7 @@ test.describe('setup wizard', () => {
 
     await walkToTheEnd(wizard);
 
-    await expect(wizard.locator('.setup__step-label--current')).toHaveText('Environment');
+    await expect(wizard.locator('.setup__step-label--current')).toHaveText('Summary');
     await expect(wizard.getByRole('button', { name: 'Finish' })).toBeVisible();
     await expect(next).toHaveCount(0);
   });

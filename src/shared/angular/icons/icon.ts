@@ -1449,9 +1449,9 @@ export class Icon {
   public static readonly SETUP_APPEARANCE: Icon = new Icon('ph ph-monitor');
 
   /**
-   * Gets the icon of the setup wizard's environment step.
+   * Gets the icon of the setup wizard's summary step: the whole setup on one page.
    */
-  public static readonly SETUP_ENVIRONMENT: Icon = new Icon('ph ph-gear-six');
+  public static readonly SETUP_SUMMARY: Icon = new Icon('ph ph-list-checks');
 
   // The five plugin steps, one per contribution slot. The same glyphs the Plugin Manager's
   // categories use, at the rail's weight, so a category installed from here is recognised there.
@@ -1492,13 +1492,12 @@ export class Icon {
   public static readonly SETUP_TERMINAL: Icon = new Icon('ph ph-terminal-window');
 
   /**
-   * Gets the setup wizard's version-control plugin step: the tool that reads repositories, apart from
-   * the Source Control step's identity and accounts (#818).
+   * Gets the setup wizard's version-control plugin step: the tool that reads repositories (#818).
    */
   public static readonly SETUP_VERSION_CONTROL: Icon = new Icon('ph ph-git-fork');
 
   /**
-   * Gets the mark against something the setup wizard's environment step could not find.
+   * Gets the mark against something the setup wizard's summary could not find.
    */
   public static readonly SETUP_MISSING: Icon = new Icon('ph ph-x-circle');
 
@@ -1506,6 +1505,12 @@ export class Icon {
    * Gets the mark against something present but incompletely set up, or that could not be checked.
    */
   public static readonly SETUP_WARNING: Icon = new Icon('ph ph-warning-circle');
+
+  /**
+   * Gets the mark against something the setup wizard's summary reports as simply not set — nothing
+   * installed in a category, no forge signed in to. Not a problem, so neither a cross nor a warning.
+   */
+  public static readonly SETUP_NOT_SET: Icon = new Icon('ph ph-minus-circle');
 
   /**
    * Gets the arrow leading the setup wizard's Back button, mirroring Next's.

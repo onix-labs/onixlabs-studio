@@ -364,8 +364,28 @@ describe('SetupWizard', () => {
         'Version Control',
         'Security',
         'Terminal',
-        'Environment',
+        'Summary',
       ]);
+    });
+  });
+
+  describe('goTo', () => {
+    it('goTo_jumpsToAPresentedStep_withoutWalkingThoseBetween', () => {
+      // The summary's way back to whatever fixes what it reports.
+      const wizard: SetupWizard = build();
+
+      wizard.goTo('terminal');
+
+      expect(wizard.current()?.id).toBe('terminal');
+      expect(wizard.steps().some((step: SetupStep): boolean => wizard.isWalked(step))).toBe(false);
+    });
+
+    it('goTo_whenTheStepIsNotPresented_staysPut', () => {
+      const wizard: SetupWizard = build();
+
+      wizard.goTo('version-control/nothing-installed');
+
+      expect(wizard.current()?.id).toBe('welcome');
     });
   });
 
@@ -412,9 +432,10 @@ describe('SetupWizard', () => {
       expect(leaf.label).toBe('Anthropic');
     });
 
-    it('steps_whenAVersionControlSystemIsInstalled_growItsIdentityAndGitHubBeneathIt', () => {
+    it('steps_whenAVersionControlSystemIsInstalled_growItsIdentityBeneathIt', () => {
       // Who commits are from belongs to the system that makes them, as a provider's sign-in belongs
-      // beneath AI Providers; there is no separate Source Control step to find it in.
+      // beneath AI Providers; there is no separate Source Control step to find it in. GitHub has no
+      // step: it has nothing to set up yet, so the summary reports it instead.
       const installed: Installed = nothingInstalled();
       installed.plugins.set([versionControl(['stagingArea', 'identity'])]);
 
@@ -424,12 +445,11 @@ describe('SetupWizard', () => {
       expect(ids(wizard).slice(root, root + 3)).toEqual([
         'version-control',
         'version-control/onixlabs.git',
-        'version-control/github',
+        'security',
       ]);
       const identity: SetupStep = wizard.steps()[root + 1];
       expect(identity.kind).toBe('commit-identity');
       expect(identity.label).toBe('Git');
-      expect(wizard.steps()[root + 2].kind).toBe('forge');
       expect(ids(wizard)).not.toContain('source-control');
     });
 
@@ -441,10 +461,9 @@ describe('SetupWizard', () => {
       const wizard: SetupWizard = buildWith(installed);
 
       expect(ids(wizard)).not.toContain('version-control/onixlabs.git');
-      expect(ids(wizard)).toContain('version-control/github');
     });
 
-    it('steps_whenNoVersionControlIsInstalled_askNeitherIdentityNorGitHub', () => {
+    it('steps_whenNoVersionControlIsInstalled_askNoIdentity', () => {
       const wizard: SetupWizard = buildWith(nothingInstalled());
 
       expect(
@@ -555,7 +574,7 @@ describe('SetupWizard', () => {
         .steps()
         .map((step: SetupStep): string => step.id);
 
-      expect(ids).toContain('environment');
+      expect(ids).toContain('summary');
       expect(ids).toContain('language-server');
       expect(ids).toContain('agent-harness');
     });

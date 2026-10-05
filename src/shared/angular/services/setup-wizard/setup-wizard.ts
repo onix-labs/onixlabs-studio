@@ -48,19 +48,18 @@ export type SetupMode = 'first-run' | 'upgrade';
  * renders it. The service is deliberately ignorant of the components: it lives in shared, and they
  * live in the settings feature.
  *
- * A `catalogue` step installs plugins into one slot; a `language`, `ai-provider`, `commit-identity`
- * or `forge` step configures one thing such a plugin brought, and exists only while it is installed.
+ * A `catalogue` step installs plugins into one slot; a `language`, `ai-provider` or `commit-identity`
+ * step configures one thing such a plugin brought, and exists only while it is installed.
  */
 export type SetupStepKind =
   | 'welcome'
   | 'whats-new'
   | 'settings'
-  | 'environment'
+  | 'summary'
   | 'catalogue'
   | 'language'
   | 'ai-provider'
   | 'commit-identity'
-  | 'forge'
   | 'terminal';
 
 /**
@@ -235,9 +234,9 @@ export const SETUP_STEPS: readonly SetupStep[] = [
     title: 'How Studio should look',
     summary: 'Theme, accent colour, and how much of the GPU the interface uses.',
   },
-  // The plugins come before everything that depends on them. The environment check asks the installed
-  // plugins what they can run — with Git not yet installed it reports version control as missing, and
-  // the way to fix that would be steps further on. AI providers lead them: the agent is what Studio is
+  // The plugins come before everything that depends on them. The summary asks the installed plugins
+  // what they can run — with Git not yet installed it reports version control as missing, and the way
+  // to fix that has to be a step behind it, not ahead. AI providers lead them: the agent is what Studio is
   // for, so its sign-in is asked for first rather than after a run of optional tooling.
   catalogueStep('agent-harness'),
   ...PLUGIN_SLOTS.filter((slot: PluginSlot): boolean => slot !== 'agent-harness').map(
@@ -261,17 +260,18 @@ export const SETUP_STEPS: readonly SetupStep[] = [
     summary:
       'The shell new terminals start with, and the one the agent takes its environment from.',
   },
-  // Last, because it only reports: it decides nothing, and everything it checks — the plugins, the
-  // identity, the agent's shell — is set on the steps before it, so it reads as where they left things.
+  // Last, because it only reports: it decides nothing, and everything it shows — the providers, the
+  // plugins, the identity, the shells — is set on the steps before it, so it reads as where they left
+  // things, with a way back to each.
   {
-    id: 'environment',
-    kind: 'environment',
-    icon: Icon.SETUP_ENVIRONMENT,
-    label: 'Environment',
-    title: 'What is installed underneath',
+    id: 'summary',
+    kind: 'summary',
+    icon: Icon.SETUP_SUMMARY,
+    label: 'Summary',
+    title: 'Your setup',
     summary:
-      'The tools Studio builds on, checked against this machine — so anything missing is said here ' +
-      'rather than failing quietly later.',
+      'Everything the steps before decided, and what this machine has underneath — anything missing ' +
+      'is said here rather than failing quietly later.',
   },
 ];
 
@@ -417,18 +417,15 @@ export class SetupWizard {
 
   /**
    * Gets the leaves beneath Version Control: a commit-identity step per installed system that has an
-   * identity to set, named for the system, and — while any system is installed — the GitHub step.
+   * identity to set, named for the system.
    *
-   * ⚠️ The GitHub step is interim. A forge is where a repository is hosted, not version control; it
-   * moves to a Hosting root of its own, a leaf per hosting plugin, once that seam exists (#819, #820).
+   * A forge sign-in is not one of them. It is where a repository is hosted, not version control, and
+   * until the hosting seam gives it something to set up (#819, #820) it is reported on the summary
+   * rather than given a step that only reports.
    * @returns Returns the leaves, in walk order.
    */
   private versionControlLeaves(): readonly SetupStep[] {
-    const systems: readonly UnkeyedPluginContribution[] = installedContributions(
-      this.plugins.plugins(),
-      'version-control',
-    );
-    const identities: readonly SetupStep[] = systems
+    return installedContributions(this.plugins.plugins(), 'version-control')
       .filter((system: UnkeyedPluginContribution): boolean =>
         (system.capabilities ?? []).includes('identity'),
       )
@@ -440,20 +437,6 @@ export class SetupWizard {
         title: `Who your ${system.displayName} commits are from`,
         summary: 'The name and email address your commits are attributed to.',
       }));
-    if (systems.length === 0) {
-      return identities;
-    }
-    return [
-      ...identities,
-      {
-        id: 'version-control/github',
-        kind: 'forge',
-        parentId: 'version-control',
-        label: 'GitHub',
-        title: 'Sign in to GitHub',
-        summary: 'Pull requests, issues and workflow runs for the repositories you open.',
-      },
-    ];
   }
 
   /**
@@ -550,7 +533,7 @@ export class SetupWizard {
    * step holding a setting that did not exist when the user last completed setup. Everything else
    * they have already answered, and asking again on every beta would turn the pass into a toll.
    *
-   * The environment and plugin steps always run. They are not about settings but about the machine,
+   * The summary and plugin steps always run. They are not about settings but about the machine,
    * and the machine changes underneath Studio without any version doing so — a runtime uninstalled, a
    * credential expired. A version bump is as good a moment as any to look again.
    * @param step The root to test.
@@ -563,7 +546,7 @@ export class SetupWizard {
     if (this.mode === 'first-run' || this.lastSeen === null) {
       return true;
     }
-    if (step.kind === 'welcome' || step.kind === 'environment' || step.kind === 'catalogue') {
+    if (step.kind === 'welcome' || step.kind === 'summary' || step.kind === 'catalogue') {
       return true;
     }
     return this.hasNewSettings(step, this.lastSeen);
@@ -624,6 +607,17 @@ export class SetupWizard {
       new Set<string>(walked).add(leaving.id),
     );
     this.currentId.set(following.id);
+  }
+
+  /**
+   * Jumps to a step — the summary's way back to whatever fixes what it reports. The steps passed on
+   * the way are not marked walked; only Next walks a step.
+   * @param id The step identifier. A step this run does not present is ignored.
+   */
+  public goTo(id: string): void {
+    if (this.steps().some((step: SetupStep): boolean => step.id === id)) {
+      this.currentId.set(id);
+    }
   }
 
   /**

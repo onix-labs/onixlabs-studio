@@ -98,8 +98,8 @@
               @case ('terminal') {
                 <app-setup-step-terminal />
               }
-              @case ('environment') {
-                <app-setup-step-environment />
+              @case ('summary') {
+                <app-setup-step-summary />
               }
               @case ('catalogue') {
                 @if (step()?.slot; as slot) {
@@ -120,9 +120,6 @@
                 @if (step(); as identityStep) {
                   <app-setup-step-commit-identity [systemName]="identityStep.label" />
                 }
-              }
-              @case ('forge') {
-                <app-setup-step-forge />
               }
               @default {
                 <!-- Every step kind has a case above, so reaching this means a kind was added
