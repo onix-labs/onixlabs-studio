@@ -2,7 +2,12 @@ import { TestBed } from '@angular/core/testing';
 import { DirectoryWatch } from '@shared/angular/services/directory-watch/directory-watch';
 import { Notification, Notifications } from '@shared/angular/services/notifications/notifications';
 import { DirectoryChangeEvent } from '@shared/api/file-channels';
-import { GitMergeMode, GitOperationState } from '@shared/api/source-control-channels';
+import {
+  GitMergeMode,
+  GitOperationState,
+  RepositoryCapabilities,
+} from '@shared/api/source-control-channels';
+import { SourceControl } from '../source-control/source-control';
 import {
   FileDiff,
   MutationResult,
@@ -1251,5 +1256,45 @@ describe('Repository visibility gating', () => {
       setTimeout(resolve, 600);
     });
     expect(commitReads).toBe(readsAfterBind + 1);
+  });
+});
+
+describe('Repository capabilities', () => {
+  it('supports_isTrueWhileUnknown_thenFollowsWhatThePluginConfirmed', async () => {
+    let answer: (value: RepositoryCapabilities | null) => void = (): void => undefined;
+    TestBed.configureTestingModule({
+      providers: [
+        Repository,
+        {
+          provide: SourceControlProviders,
+          useValue: { create: (root: string): SourceControlProvider => new FakeProvider(root) },
+        },
+        {
+          provide: SourceControl,
+          useValue: {
+            client: {
+              describe: (): Promise<RepositoryCapabilities | null> =>
+                new Promise<RepositoryCapabilities | null>(
+                  (resolve: (value: RepositoryCapabilities | null) => void): void => {
+                    answer = resolve;
+                  },
+                ),
+            },
+          },
+        },
+      ],
+    });
+    const repository: Repository = TestBed.inject(Repository);
+    repository.bind({ root: '/repo', name: 'repo' });
+
+    // Not yet known: nothing is hidden for a plugin that is merely slow to answer.
+    expect(repository.supports('stash')).toBe(true);
+
+    answer({ pluginId: 'onixlabs.git', displayName: 'Git', capabilities: ['tags', 'remotes'] });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(repository.supports('tags')).toBe(true);
+    expect(repository.supports('stash')).toBe(false);
   });
 });

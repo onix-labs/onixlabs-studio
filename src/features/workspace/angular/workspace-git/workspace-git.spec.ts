@@ -1,6 +1,11 @@
 import { signal, WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { RepositoryInfo, SourceControlClient } from '@shared/api/source-control-channels';
+import {
+  DetectedRepository,
+  RepositoryInfo,
+  SourceControlClient,
+} from '@shared/api/source-control-channels';
+import { VersionControlPrompt } from '@shared/angular/services/plugins/version-control-prompt';
 import { DirectoryChangeEvent } from '@shared/api/file-channels';
 import { DirectoryListing } from '@shared/api/workspace-channels';
 import { DirectoryWatch } from '@shared/angular/services/directory-watch/directory-watch';
@@ -60,6 +65,9 @@ describe('WorkspaceGit', () => {
   let git: WorkspaceGit;
   let root: WritableSignal<DirectoryListing | null>;
   let resolved: RepositoryInfo | null;
+  let detected: DetectedRepository | null;
+  let offers: DetectedRepository[];
+  let pluginInstalled: WritableSignal<boolean>;
   let closed: string[];
   let status: ParsedStatus;
   let watched: string[];
@@ -88,6 +96,8 @@ describe('WorkspaceGit', () => {
         };
       },
     };
+    detected = null;
+    pluginInstalled = signal<boolean>(false);
     status = {
       branch: 'main',
       upstream: 'origin/main',
@@ -98,7 +108,9 @@ describe('WorkspaceGit', () => {
       conflicted: [],
     };
 
-    const client: Pick<SourceControlClient, 'resolveRepository' | 'closeRepository'> = {
+    offers = [];
+    const client: Pick<SourceControlClient, 'resolveRepository' | 'closeRepository' | 'detect'> = {
+      detect: (): Promise<DetectedRepository | null> => Promise.resolve(detected),
       resolveRepository: (): Promise<RepositoryInfo | null> => Promise.resolve(resolved),
       closeRepository: (repositoryRoot: string): Promise<void> => {
         closed.push(repositoryRoot);
@@ -119,6 +131,15 @@ describe('WorkspaceGit', () => {
           useValue: { create: (): SourceControlProvider => provider as SourceControlProvider },
         },
         { provide: DirectoryWatch, useValue: directoryWatch },
+        {
+          provide: VersionControlPrompt,
+          useValue: {
+            isInstalled: pluginInstalled,
+            offer: (repository: DetectedRepository): void => {
+              offers.push(repository);
+            },
+          },
+        },
       ],
     });
     git = TestBed.inject(WorkspaceGit);
@@ -170,6 +191,39 @@ describe('WorkspaceGit', () => {
     expect(git.isRepository()).toBe(false);
     expect(git.branch()).toBeNull();
     expect(git.statusFor('/plain/file.ts')).toBeNull();
+  });
+
+  it('bind_whenFolderIsARepositoryNoInstalledPluginReads_offersThePlugin', async () => {
+    resolved = null;
+    detected = { pluginId: 'onixlabs.git', displayName: 'Git', installed: false };
+    root.set(listing('/repo'));
+    await bind();
+
+    expect(git.isRepository()).toBe(false);
+    expect(offers).toEqual([detected]);
+  });
+
+  it('bind_whenAPluginIsInstalled_resolvesTheFolderAgain', async () => {
+    resolved = null;
+    detected = { pluginId: 'onixlabs.git', displayName: 'Git', installed: false };
+    root.set(listing('/repo'));
+    await bind();
+    expect(git.isRepository()).toBe(false);
+
+    resolved = { root: '/repo', name: 'repo' };
+    pluginInstalled.set(true);
+    await bind();
+
+    expect(git.isRepository()).toBe(true);
+  });
+
+  it('bind_whenFolderIsNoRepositoryAtAll_offersNothing', async () => {
+    resolved = null;
+    detected = null;
+    root.set(listing('/plain'));
+    await bind();
+
+    expect(offers).toEqual([]);
   });
 
   it('bind_whenFolderChangesToNull_releasesTheRepository', async () => {

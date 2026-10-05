@@ -27,6 +27,7 @@ import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-too
 import { TreeRow, TreeView } from '@shared/angular/components/tree-view/tree-view';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { Textarea } from '@shared/angular/components/forms/textarea/textarea';
+import { VersionControlMissing } from '../version-control-missing/version-control-missing';
 
 /**
  * Summarises a file group's checkbox state: fully checked, and partially checked (mixed).
@@ -90,7 +91,7 @@ type WorkingRowData =
  */
 @Component({
   selector: 'app-commit-detail',
-  imports: [Textarea, Button, AppIcon, Checkbox, PanelToolbar, TreeView],
+  imports: [Textarea, Button, AppIcon, Checkbox, PanelToolbar, TreeView, VersionControlMissing],
   templateUrl: './commit-detail.html',
   styleUrl: './commit-detail.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

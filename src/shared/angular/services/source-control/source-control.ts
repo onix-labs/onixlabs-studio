@@ -1,6 +1,7 @@
 import { inject, Service } from '@angular/core';
 import { Bridge } from '@shared/api/bridge';
 import {
+  DetectedRepository,
   RepositoryCapabilities,
   RepositoryInfo,
   SourceControlChannel,
@@ -36,6 +37,8 @@ function createClient(bridge: Bridge): SourceControlClient {
       bridge.invoke(SourceControlChannel.Request, root, op, params),
     describe: (root: string): Promise<RepositoryCapabilities | null> =>
       bridge.invoke(SourceControlChannel.Describe, root),
+    detect: (directory: string): Promise<DetectedRepository | null> =>
+      bridge.invoke(SourceControlChannel.Detect, directory),
     listPlugins: (): Promise<readonly VersionControlPluginInfo[]> =>
       bridge.invoke(SourceControlChannel.ListPlugins),
     setExecutable: (

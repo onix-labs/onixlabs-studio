@@ -11,6 +11,8 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
+import { VersionControlCapability } from '@shared/api/version-control-protocol';
+import { VersionControlMissing } from '../version-control-missing/version-control-missing';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { Repository, WORKING_NODE_ID } from '@shared/angular/services/repository/repository';
 import {
@@ -352,6 +354,21 @@ const ACTION_STASH: string = 'repo.stash';
 const ACTION_FETCH: string = 'repo.fetch';
 
 /**
+ * The capability each optional command needs, by action-id prefix (#818). A command not listed needs
+ * nothing a version-control system might lack. Prefixes, because some actions carry a remote after
+ * their id (`repo.pushAllTags:origin`).
+ */
+const ACTION_CAPABILITY: readonly (readonly [string, VersionControlCapability])[] = [
+  [ACTION_NEW_TAG, 'tags'],
+  [ACTION_PUSH_ALL_TAGS, 'tags'],
+  [ACTION_ADD_REMOTE, 'remotes'],
+  [ACTION_FETCH, 'remotes'],
+  [ACTION_STASH, 'stash'],
+  [ACTION_REBASE_ONTO_BRANCH, 'rebase'],
+  [ACTION_MERGE_BRANCH, 'merge'],
+];
+
+/**
  * Identifies the Refresh command on the tool strip's more-actions menu.
  */
 const ACTION_REFRESH: string = 'repo.refresh';
@@ -412,6 +429,11 @@ interface SectionDef {
    * @returns Returns the child rows.
    */
   readonly children: () => readonly TreeRow[];
+
+  /**
+   * Gets the capability the section needs, or undefined when every version-control system has it.
+   */
+  readonly capability?: VersionControlCapability;
 }
 
 /**
@@ -443,6 +465,7 @@ interface SectionDef {
     PulseDot,
     TreeView,
     IssueAgentConfirm,
+    VersionControlMissing,
   ],
   templateUrl: './source-control-sidebar.html',
   styleUrl: './source-control-sidebar.scss',
@@ -515,9 +538,27 @@ export class SourceControlSidebar implements OnDestroy {
    */
   private readonly sections: readonly SectionDef[] = [
     { key: 'local', label: 'Local', icon: Icon.SOURCE_CONTROL, children: () => this.localRows() },
-    { key: 'remote', label: 'Remote', icon: Icon.CLOUD, children: () => this.remoteRows() },
-    { key: 'tags', label: 'Tags', icon: Icon.TAG, children: () => this.tagRows() },
-    { key: 'stashes', label: 'Stashes', icon: Icon.STASH, children: () => this.stashRows() },
+    {
+      key: 'remote',
+      label: 'Remote',
+      icon: Icon.CLOUD,
+      children: () => this.remoteRows(),
+      capability: 'remotes',
+    },
+    {
+      key: 'tags',
+      label: 'Tags',
+      icon: Icon.TAG,
+      children: () => this.tagRows(),
+      capability: 'tags',
+    },
+    {
+      key: 'stashes',
+      label: 'Stashes',
+      icon: Icon.STASH,
+      children: () => this.stashRows(),
+      capability: 'stash',
+    },
     {
       key: 'pullRequests',
       label: 'Pull Requests',
@@ -546,6 +587,10 @@ export class SourceControlSidebar implements OnDestroy {
     const filtering: boolean = needle.length > 0;
     const out: TreeRow[] = [];
     for (const section of this.sections) {
+      // A section the serving plugin cannot fill is not shown at all (#818).
+      if (section.capability !== undefined && !this.repository.supports(section.capability)) {
+        continue;
+      }
       const open: boolean = filtering || expanded.has(section.key);
       const children: readonly TreeRow[] = open ? section.children() : [];
       const matched: readonly TreeRow[] = filtering
@@ -632,50 +677,52 @@ export class SourceControlSidebar implements OnDestroy {
    * repository rather than on a row. Anything acting on a row the user can see lives on that row's
    * context menu instead, which is the rule the panel already followed with its buttons.
    */
-  protected readonly moreItems: Signal<readonly MenuItem[]> = computed((): readonly MenuItem[] => [
-    {
-      id: ACTION_NEW_BRANCH,
-      label: 'New Branch…',
-      icon: Icon.PLUS,
-      disabled: !this.repository.isBound(),
-    },
-    {
-      id: ACTION_NEW_TAG,
-      label: 'New Tag…',
-      icon: Icon.TAG,
-      disabled: !this.repository.isBound(),
-    },
-    {
-      id: ACTION_ADD_REMOTE,
-      label: 'Add Remote…',
-      icon: Icon.CLOUD,
-      disabled: !this.repository.isBound(),
-    },
-    {
-      id: ACTION_STASH,
-      label: 'Stash Changes',
-      icon: Icon.STASH,
-      disabled: this.repository.changeCount() === 0,
-    },
-    { separator: true, id: 'repo.sep', label: '' },
-    {
-      id: ACTION_FETCH,
-      label: 'Fetch',
-      icon: Icon.CLOUD,
-      disabled: !this.repository.isBound(),
-    },
-    // Pushing every tag acts on the whole repository rather than on a row, which is what puts it
-    // here rather than on a tag's own menu. Nothing to push is a reason not to offer it.
-    ...(this.repository.tags().length === 0
-      ? []
-      : [this.pushToRemoteItem(ACTION_PUSH_ALL_TAGS, 'Push All Tags')]),
-    {
-      id: ACTION_REFRESH,
-      label: 'Refresh',
-      icon: Icon.REFRESH,
-      disabled: !this.repository.isBound(),
-    },
-  ]);
+  protected readonly moreItems: Signal<readonly MenuItem[]> = computed((): readonly MenuItem[] =>
+    this.offeredOnly([
+      {
+        id: ACTION_NEW_BRANCH,
+        label: 'New Branch…',
+        icon: Icon.PLUS,
+        disabled: !this.repository.isBound(),
+      },
+      {
+        id: ACTION_NEW_TAG,
+        label: 'New Tag…',
+        icon: Icon.TAG,
+        disabled: !this.repository.isBound(),
+      },
+      {
+        id: ACTION_ADD_REMOTE,
+        label: 'Add Remote…',
+        icon: Icon.CLOUD,
+        disabled: !this.repository.isBound(),
+      },
+      {
+        id: ACTION_STASH,
+        label: 'Stash Changes',
+        icon: Icon.STASH,
+        disabled: this.repository.changeCount() === 0,
+      },
+      { separator: true, id: 'repo.sep', label: '' },
+      {
+        id: ACTION_FETCH,
+        label: 'Fetch',
+        icon: Icon.CLOUD,
+        disabled: !this.repository.isBound(),
+      },
+      // Pushing every tag acts on the whole repository rather than on a row, which is what puts it
+      // here rather than on a tag's own menu. Nothing to push is a reason not to offer it.
+      ...(this.repository.tags().length === 0
+        ? []
+        : [this.pushToRemoteItem(ACTION_PUSH_ALL_TAGS, 'Push All Tags')]),
+      {
+        id: ACTION_REFRESH,
+        label: 'Refresh',
+        icon: Icon.REFRESH,
+        disabled: !this.repository.isBound(),
+      },
+    ]),
+  );
 
   /**
    * Runs a command chosen from the tool strip's more-actions menu.
@@ -1853,6 +1900,32 @@ export class SourceControlSidebar implements OnDestroy {
     if (branch.current || current === undefined) {
       return [];
     }
+    return this.offeredOnly(this.allIntegrationItems(branch, current));
+  }
+
+  /**
+   * Keeps the menu items whose command the serving plugin supports (#818): a tag command to a plugin
+   * with tags, a stash to one with stashes. Items needing nothing in particular are always kept.
+   * @param items The items.
+   * @returns Returns the items the plugin can carry out.
+   */
+  private offeredOnly(items: readonly MenuItem[]): readonly MenuItem[] {
+    return items.filter((item: MenuItem): boolean => {
+      const needed: VersionControlCapability | undefined = ACTION_CAPABILITY.find(
+        ([prefix]: readonly [string, VersionControlCapability]): boolean =>
+          item.id.startsWith(prefix),
+      )?.[1];
+      return needed === undefined || this.repository.supports(needed);
+    });
+  }
+
+  /**
+   * Builds a branch's merge and rebase commands, before they are filtered by what the plugin supports.
+   * @param branch The branch the row carries.
+   * @param current The checked-out branch.
+   * @returns Returns the menu items.
+   */
+  private allIntegrationItems(branch: GitBranch, current: GitBranch): readonly MenuItem[] {
     const reason: string | undefined = this.repository.operationInFlight()
       ? REASON_IN_PROGRESS
       : this.repository.changeCount() > 0

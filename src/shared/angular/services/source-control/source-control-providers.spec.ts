@@ -32,6 +32,7 @@ describe('SourceControlProviders', () => {
       resolveRepository: (): Promise<null> => Promise.resolve(null),
       closeRepository: (): Promise<void> => Promise.resolve(),
       describe: (): Promise<null> => Promise.resolve(null),
+      detect: (): Promise<null> => Promise.resolve(null),
       listPlugins: (): Promise<readonly []> => Promise.resolve([]),
       setExecutable: (): Promise<null> => Promise.resolve(null),
       request: <Op extends VersionControlOp>(

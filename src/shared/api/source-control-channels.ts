@@ -45,6 +45,12 @@ export enum SourceControlChannel {
   Describe = 'source-control:describe',
 
   /**
+   * Finds which version-control plugin a folder belongs to, installed or not — what tells a folder
+   * that is a repository nothing installed can read from one that is no repository at all.
+   */
+  Detect = 'source-control:detect',
+
+  /**
    * Lists the contributed version-control plugins and how each is configured, for Settings.
    */
   ListPlugins = 'source-control:list-plugins',
@@ -73,6 +79,27 @@ export interface RepositoryCapabilities {
    * Gets the optional capabilities both the plugin's manifest declared and its handshake confirmed.
    */
   readonly capabilities: readonly VersionControlCapability[];
+}
+
+/**
+ * Describes which version-control plugin a folder belongs to.
+ */
+export interface DetectedRepository {
+  /**
+   * Gets the plugin whose marker the folder or an ancestor holds.
+   */
+  readonly pluginId: string;
+
+  /**
+   * Gets the plugin's display name, such as `Git`.
+   */
+  readonly displayName: string;
+
+  /**
+   * Gets whether the plugin is installed. False is the case worth detecting: a repository Studio
+   * cannot read until the plugin is installed.
+   */
+  readonly installed: boolean;
 }
 
 /**
@@ -215,6 +242,13 @@ export interface SourceControlClient {
    * @returns Returns the capabilities, or null when no plugin can be asked.
    */
   describe(root: string): Promise<RepositoryCapabilities | null>;
+
+  /**
+   * Finds which version-control plugin an open workspace folder belongs to, installed or not.
+   * @param directory The folder.
+   * @returns Returns the plugin, or null when the folder is in no repository any plugin knows.
+   */
+  detect(directory: string): Promise<DetectedRepository | null>;
 
   /**
    * Lists the contributed version-control plugins and how each is configured.

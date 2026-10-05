@@ -1009,7 +1009,12 @@ export class DirectoryView implements OnInit, OnDestroy {
     stash: (): void => void this.repository.stash(),
     // Promotion is the host's structural act (the tab is rebuilt as a container around this view),
     // so the view only relays it; a checkout's sub-view gets no handler and cannot promote.
-    canPromoteToWorktree: computed((): boolean => this.promoteHandler() !== null),
+    // Offered only when the serving plugin can make parallel checkouts (#818): a worktree container is
+    // nothing but several of them.
+    canPromoteToWorktree: computed(
+      (): boolean =>
+        this.promoteHandler() !== null && this.repository.supports('parallelCheckouts'),
+    ),
     promoteToWorktree: (): void => this.promoteHandler()?.(),
   };
 

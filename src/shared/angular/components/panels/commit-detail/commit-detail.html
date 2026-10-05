@@ -23,14 +23,16 @@
     [disabled]="repository.selectedFile() === null"
     (click)="showDiff()"
   />
-  <app-button
-    variant="none"
-    [icon]="Icon.STASH"
-    ariaLabel="Stash"
-    tooltip="Stash the uncommitted changes"
-    [disabled]="repository.changeCount() === 0"
-    (click)="stash()"
-  />
+  @if (repository.supports('stash')) {
+    <app-button
+      variant="none"
+      [icon]="Icon.STASH"
+      ariaLabel="Stash"
+      tooltip="Stash the uncommitted changes"
+      [disabled]="repository.changeCount() === 0"
+      (click)="stash()"
+    />
+  }
   <span class="panel-toolbar__spacer"></span>
   <!-- The same pair the Solution Explorer wears, in the same order and on the same glyphs, because
        they do the same thing to the same kind of tree. -->
@@ -49,6 +51,8 @@
     (click)="collapseAll()"
   />
 </app-panel-toolbar>
+
+<app-version-control-missing />
 
 @if (repository.lastError(); as error) {
   <div class="detail__notice" role="alert">

@@ -1497,6 +1497,12 @@ export class Icon {
   public static readonly SETUP_SOURCE_CONTROL: Icon = new Icon('ph ph-git-branch');
 
   /**
+   * Gets the setup wizard's version-control plugin step: the tool that reads repositories, apart from
+   * the Source Control step's identity and accounts (#818).
+   */
+  public static readonly SETUP_VERSION_CONTROL: Icon = new Icon('ph ph-git-fork');
+
+  /**
    * Gets the mark against something the setup wizard's environment step could not find.
    */
   public static readonly SETUP_MISSING: Icon = new Icon('ph ph-x-circle');

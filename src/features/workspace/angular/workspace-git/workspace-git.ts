@@ -1,5 +1,10 @@
 import { effect, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
-import { RepositoryInfo, SourceControlClient } from '@shared/api/source-control-channels';
+import {
+  DetectedRepository,
+  RepositoryInfo,
+  SourceControlClient,
+} from '@shared/api/source-control-channels';
+import { VersionControlPrompt } from '@shared/angular/services/plugins/version-control-prompt';
 import { Log } from '@shared/angular/services/log/log';
 import { DirectoryWatch } from '@shared/angular/services/directory-watch/directory-watch';
 import { SourceControl } from '@shared/angular/services/source-control/source-control';
@@ -64,6 +69,18 @@ export class WorkspaceGit {
    * `.git/HEAD` change on disk — for example an agent creating or switching a branch.
    */
   private readonly directoryWatch: DirectoryWatch = inject(DirectoryWatch);
+
+  /**
+   * Holds the prompt that offers a version-control plugin when the folder is a repository nothing
+   * installed can read.
+   */
+  private readonly versionControlPrompt: VersionControlPrompt = inject(VersionControlPrompt);
+
+  /**
+   * Holds whether a version-control plugin was installed at the last binding, so installing one
+   * re-resolves a folder that resolved to nothing before.
+   */
+  private pluginInstalled: boolean | undefined = undefined;
 
   /**
    * Holds the disposer of the bound root's directory watch, or null when no repository is bound.
@@ -142,6 +159,12 @@ export class WorkspaceGit {
   public constructor() {
     effect((): void => {
       const root: string | null = this.workspace.root()?.path ?? null;
+      const installed: boolean = this.versionControlPrompt.isInstalled();
+      if (this.pluginInstalled !== undefined && installed !== this.pluginInstalled) {
+        // A plugin arrived (or left): the folder must be resolved again, not skipped as unchanged.
+        this.lastWorkspaceRoot = undefined;
+      }
+      this.pluginInstalled = installed;
       void this.bindTo(root);
     });
   }
@@ -225,6 +248,7 @@ export class WorkspaceGit {
     }
     if (info === null) {
       this.release();
+      await this.offerPlugin(workspaceRoot);
       return;
     }
     if (this.boundRoot !== info.root) {
@@ -244,6 +268,23 @@ export class WorkspaceGit {
       void this.api?.closeRepository(info.root);
     }
     await this.refresh();
+  }
+
+  /**
+   * Offers a version-control plugin when a folder that resolved to no repository is in fact one that
+   * no installed plugin can read — so a missing plugin is said, rather than looking like a plain folder.
+   * @param workspaceRoot The folder.
+   * @returns Returns a promise that settles once the folder has been checked.
+   */
+  private async offerPlugin(workspaceRoot: string): Promise<void> {
+    const detected: DetectedRepository | null = (await this.api?.detect(workspaceRoot)) ?? null;
+    if (this.lastWorkspaceRoot !== workspaceRoot) {
+      return;
+    }
+    if (detected !== null && !detected.installed) {
+      this.log.info('source-control', `${workspaceRoot} needs the ${detected.displayName} plugin`);
+      this.versionControlPrompt.offer(detected);
+    }
   }
 
   /**

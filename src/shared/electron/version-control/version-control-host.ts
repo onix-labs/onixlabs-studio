@@ -238,6 +238,30 @@ export class VersionControlHost {
   }
 
   /**
+   * Finds the plugin a folder belongs to — whose marker the folder or one of its ancestors holds —
+   * whether or not that plugin is installed. Confined to the open workspace roots: an answer reveals
+   * whether a marker exists, which is not the renderer's to ask about anywhere on disk.
+   * @param directory The absolute folder.
+   * @returns Returns the plugin, or null when none recognises the folder or it is not open.
+   */
+  public detect(directory: unknown): VersionControlDescriptor | null {
+    if (
+      typeof directory !== 'string' ||
+      !path.isAbsolute(directory) ||
+      !this.options.roots.isWithin(directory)
+    ) {
+      return null;
+    }
+    let candidate: string = path.resolve(directory);
+    let descriptor: VersionControlDescriptor | null = this.pluginFor(candidate);
+    while (descriptor === null && path.dirname(candidate) !== candidate) {
+      candidate = path.dirname(candidate);
+      descriptor = this.pluginFor(candidate);
+    }
+    return descriptor;
+  }
+
+  /**
    * Opens the repository containing a folder: finds the plugin whose marker the folder or one of its
    * ancestors holds, asks it for the repository's exact root, and registers that root so requests may
    * act on it. Reference-counted; each open is matched by a {@link closeRepository}.

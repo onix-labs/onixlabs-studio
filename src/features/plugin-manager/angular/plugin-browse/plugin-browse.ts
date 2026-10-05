@@ -55,6 +55,7 @@ const CATEGORY_ICONS: Readonly<Record<string, Icon>> = {
   'Debug Adapters': Icon.DEBUG,
   Decoders: Icon.DECODERS,
   'Container Engines': Icon.CONTAINERS,
+  'Version Control': Icon.SOURCE_CONTROL,
   'AI Providers': Icon.AGENT,
 };
 
@@ -70,6 +71,7 @@ const ROW_ICONS: Readonly<Record<string, Icon>> = {
   'Debug Adapters': Icon.DEBUG_LIGHT,
   Decoders: Icon.DECODERS_LIGHT,
   'Container Engines': Icon.CONTAINERS_LIGHT,
+  'Version Control': Icon.WELCOME_SOURCE_CONTROL,
   'AI Providers': Icon.AGENT_LIGHT,
 };
 

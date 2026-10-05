@@ -447,4 +447,16 @@ describe('VersionControlHost', () => {
         .get('.git'),
     ).toEqual([]);
   });
+
+  it('detect_findsTheRepositoryAPluginWouldServe_evenUninstalled_andOnlyInsideAnOpenWorkspace', () => {
+    const vcs: VersionControlHost = host(
+      [plugin('git', '.git', 100, [], false)],
+      ['.git'],
+      fakeClient([]),
+    );
+
+    expect(vcs.detect(path.join(ROOT, 'src', 'app'))?.id).toBe('git');
+    expect(vcs.detect(path.resolve('/elsewhere'))).toBeNull();
+    expect(vcs.detect('relative')).toBeNull();
+  });
 });

@@ -1,5 +1,6 @@
 import { ipcMain, IpcMainInvokeEvent } from 'electron';
 import {
+  DetectedRepository,
   RepositoryCapabilities,
   RepositoryInfo,
   SourceControlChannel,
@@ -74,6 +75,19 @@ export class VersionControlManager {
       SourceControlChannel.Describe,
       (_event: IpcMainInvokeEvent, root: unknown): Promise<RepositoryCapabilities | null> =>
         this.describe(root),
+    );
+    ipcMain.handle(
+      SourceControlChannel.Detect,
+      (_event: IpcMainInvokeEvent, directory: unknown): DetectedRepository | null => {
+        const descriptor: VersionControlDescriptor | null = this.host.detect(directory);
+        return descriptor === null
+          ? null
+          : {
+              pluginId: descriptor.id,
+              displayName: descriptor.displayName,
+              installed: descriptor.resolve().available,
+            };
+      },
     );
     ipcMain.handle(
       SourceControlChannel.ListPlugins,

@@ -3,9 +3,11 @@ import { DirectoryChangeEvent } from '@shared/api/file-channels';
 import {
   GitMergeMode,
   GitOperationState,
+  RepositoryCapabilities,
   RepositoryInfo,
   SourceControlCode,
 } from '@shared/api/source-control-channels';
+import { VersionControlCapability } from '@shared/api/version-control-protocol';
 import { DirectoryWatch } from '@shared/angular/services/directory-watch/directory-watch';
 import { Log } from '@shared/angular/services/log/log';
 import {
@@ -20,6 +22,7 @@ import {
   PushTarget,
   SourceControlProvider,
 } from '../source-control/source-control-provider';
+import { SourceControl } from '../source-control/source-control';
 import { SourceControlProviders } from '../source-control/source-control-providers';
 import {
   GitBranch,
@@ -120,6 +123,23 @@ export class Repository {
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds the source-control client the serving plugin's capabilities are read through.
+   */
+  private readonly sourceControl: SourceControl = inject(SourceControl);
+
+  /**
+   * Holds what the plugin serving the bound repository can do, or null while unknown.
+   */
+  private readonly capabilitiesSignal: WritableSignal<ReadonlySet<VersionControlCapability> | null> =
+    signal<ReadonlySet<VersionControlCapability> | null>(null);
+
+  /**
+   * Gets what the plugin serving the bound repository can do, or null while unknown (#818).
+   */
+  public readonly capabilities: Signal<ReadonlySet<VersionControlCapability> | null> =
+    this.capabilitiesSignal.asReadonly();
 
   /**
    * Holds the disposer of the bound root's directory watch, or null when no repository is bound.
@@ -467,7 +487,35 @@ export class Repository {
     this.watchDisposer = this.directoryWatch.watch(info.root, (event: DirectoryChangeEvent): void =>
       this.scheduleExternalRefresh(this.classifyBurst(info.root, event)),
     );
+    this.capabilitiesSignal.set(null);
+    void this.loadCapabilities(info.root);
     void this.refresh();
+  }
+
+  /**
+   * Determines whether the plugin serving the bound repository can do something, so a surface offers
+   * only what it supports — a stash to a plugin that has stashes, tags to one that has tags (#818).
+   * While the answer is not yet known every capability reads as supported: hiding the controls of a
+   * repository whose plugin is merely slow to answer would be worse than briefly offering one it
+   * refuses, which it does with a message.
+   * @param capability The capability.
+   * @returns Returns true when it is supported, or not yet known.
+   */
+  public supports(capability: VersionControlCapability): boolean {
+    return this.capabilitiesSignal()?.has(capability) ?? true;
+  }
+
+  /**
+   * Reads what the plugin serving a repository can do.
+   * @param root The repository root.
+   * @returns Returns a promise that settles once read.
+   */
+  private async loadCapabilities(root: string): Promise<void> {
+    const described: RepositoryCapabilities | null =
+      (await this.sourceControl.client?.describe(root)) ?? null;
+    if (described !== null && this.infoSignal()?.root === root) {
+      this.capabilitiesSignal.set(new Set<VersionControlCapability>(described.capabilities));
+    }
   }
 
   /**
