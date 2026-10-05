@@ -1,10 +1,13 @@
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { parsePluginManifest, PluginManifest } from '@shared/api/plugin-manifest';
+import { type LockfilePackage, parseLockfileDocument } from '../provisioning/lockfile-provision';
 import {
+  isCompatibleVersionControlProtocol,
   VersionControlDescription,
   VersionControlResponse,
 } from '@shared/api/version-control-protocol';
@@ -133,5 +136,81 @@ describe('Git plugin contract', () => {
     } finally {
       missing.dispose();
     }
+  });
+});
+
+/**
+ * The Git plugin is installable: everything a release depends on agrees before a tag is spent (#817),
+ * the same claims the harness plugins' contract makes of theirs.
+ */
+describe('the Git plugin is installable', () => {
+  const manifestText: string = fs.readFileSync(path.join(PLUGIN, 'plugin.json'), 'utf8');
+  const manifest: PluginManifest = parsePluginManifest(JSON.parse(manifestText)).manifest!;
+  const lockfilePath: string = path.resolve(
+    'src/shared/electron/contributions/plugins/lockfiles/onixlabs.git.lock.json',
+  );
+  const lockfileText: string = fs.readFileSync(lockfilePath, 'utf8');
+  const packages: readonly LockfilePackage[] = parseLockfileDocument(JSON.parse(lockfileText))!;
+  const pkg: { name: string; version: string } = JSON.parse(
+    fs.readFileSync(path.join(PLUGIN, 'package.json'), 'utf8'),
+  ) as { name: string; version: string };
+
+  it('pinsTheHashTheLockfileActuallyHas', () => {
+    expect(manifest.provision.kind).toBe('npm');
+    expect(createHash('sha256').update(lockfileText).digest('hex')).toBe(
+      (manifest.provision as { sha256: string }).sha256,
+    );
+  });
+
+  it('pinsALockfileFromTheDirectoryLockfilesLiveIn', () => {
+    expect((manifest.provision as { lockfileUrl: string }).lockfileUrl).toBe(
+      'https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/' +
+        'src/shared/electron/contributions/plugins/lockfiles/onixlabs.git.lock.json',
+    );
+  });
+
+  it('namesAnEntryPointTheTreeActuallyDelivers', () => {
+    const entryPoint: string = manifest.contributes.versionControl![0].entryPoint ?? '';
+
+    expect((manifest.provision as { executablePath: string }).executablePath).toBe(entryPoint);
+    expect(
+      packages.some((entry: LockfilePackage): boolean => entryPoint.startsWith(`${entry.path}/`)),
+    ).toBe(true);
+  });
+
+  it('resolvesItsOwnPackageFromTheRelease', () => {
+    const own: LockfilePackage | undefined = packages.find(
+      (entry: LockfilePackage): boolean => entry.path === `node_modules/${pkg.name}`,
+    );
+
+    expect(own?.url).toBe(
+      'https://github.com/onix-labs/onixlabs-studio/releases/download/' +
+        `plugin-git-v${pkg.version}/onixlabs-git-${pkg.version}.tgz`,
+    );
+  });
+
+  it('publishesTheVersionTheManifestNames', () => {
+    expect(pkg.version).toBe(manifest.version);
+  });
+
+  it('speaksAProtocolVersionThisBuildHonours', () => {
+    const source: string = fs.readFileSync(path.join(PLUGIN, 'src', 'protocol.ts'), 'utf8');
+    const declared: string =
+      /VERSION_CONTROL_PROTOCOL_VERSION: string = '([^']+)'/.exec(source)?.[1] ?? '';
+
+    expect(isCompatibleVersionControlProtocol(declared)).toBe(true);
+  });
+
+  it('isCarriedByTheCuratedIndex', () => {
+    const index: { plugins: readonly { id: string }[] } = JSON.parse(
+      fs.readFileSync(
+        path.resolve('src/shared/electron/contributions/plugins/curated-plugins.json'),
+        'utf8',
+      ),
+    ) as { plugins: readonly { id: string }[] };
+
+    expect(
+      index.plugins.find((plugin: { id: string }): boolean => plugin.id === manifest.id),
+    ).toEqual(JSON.parse(manifestText));
   });
 });

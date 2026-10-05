@@ -41,7 +41,7 @@ describe('VersionControlMissing', () => {
     const element: HTMLElement = fixture.nativeElement as HTMLElement;
 
     expect(element.textContent).toContain('This folder is a Git repository');
-    (element.querySelector('app-button button') as HTMLButtonElement).click();
+    element.querySelector<HTMLButtonElement>('app-button button')!.click();
     expect(installs).toBe(1);
   });
 });
