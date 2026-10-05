@@ -17,10 +17,12 @@ import {
   toLanguageServerDescriptors,
   resolveInstalledVersion,
   toPluginDescriptor,
+  toVersionControlDescriptors,
 } from './plugin-loader';
 import { sideloadedDirectories, sideloadedManifests } from './sideloaded';
 import { DecoderDescriptor } from '../../decoders/decoder-descriptor';
 import { ContainerEngineDescriptor } from '../containers/container-engine';
+import { VersionControlDescriptor } from '../../version-control/version-control-descriptor';
 
 // Everything Studio did not compile in: the plugins dropped into the sideload directory and the plugins
 // the curated index offers. They arrive by different routes and are the same kind of thing once they
@@ -160,6 +162,27 @@ export function contributedDecoders(
   const local: ReadonlyMap<string, string> = sideloadedDirectories();
   return contributedManifests().flatMap((manifest): readonly DecoderDescriptor[] =>
     toDecoderDescriptors(
+      manifest,
+      payloadProvisioner,
+      nodeRuntime,
+      local.get(manifest.id),
+      installedVersion,
+    ),
+  );
+}
+
+/**
+ * Gets the version-control systems the contributed plugins provide, for the version-control host to
+ * start (#815). Every one is listed, installed or not; an uninstalled one resolves to unavailable.
+ * @param nodeRuntime Gets how to run a JavaScript entry point under the runtime Studio ships.
+ * @returns Returns the descriptors.
+ */
+export function contributedVersionControl(
+  nodeRuntime: (entryPoint: string) => NodeRuntimeSpec,
+): readonly VersionControlDescriptor[] {
+  const local: ReadonlyMap<string, string> = sideloadedDirectories();
+  return contributedManifests().flatMap((manifest): readonly VersionControlDescriptor[] =>
+    toVersionControlDescriptors(
       manifest,
       payloadProvisioner,
       nodeRuntime,
