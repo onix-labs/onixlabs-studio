@@ -78,48 +78,7 @@
 
 <!-- Provider: one company's page — a list of configurations the user adds per authentication method. -->
 @if (view() === 'provider') {
-  @if (page(); as page) {
-    <section class="ai-group">
-      <div class="ai-connections">
-        <div class="ai-connections__head">
-          <div class="ai-connections__heading">
-            <h4 class="ai-connections__title">Configurations</h4>
-            <p class="ai-connections__subtitle">{{ page.description }}</p>
-          </div>
-          <div class="ai-connections__add">
-            @for (method of page.methods; track method.auth) {
-              <app-button
-                variant="solid"
-                [icon]="Icon.PLUS"
-                [label]="method.buttonLabel"
-                (click)="addConfiguration(method)"
-              />
-            }
-          </div>
-        </div>
-
-        @if (!isAvailable) {
-          <p class="ai-connections__hint">
-            Credentials and model discovery are only available inside Studio.
-          </p>
-        }
-
-        <div class="ai-connections__list">
-          @for (connection of pageConnections(); track connection.id) {
-            <app-accordion
-              [heading]="connection.label"
-              [icon]="status(connection.id).available ? Icon.SUCCESS_FILL : Icon.WARNING_FILL"
-              [iconColor]="
-                status(connection.id).available ? 'var(--success-color)' : 'var(--warning-color)'
-              "
-              [expanded]="isExpanded(connection.id)"
-              (expandedChange)="setExpanded(connection.id, $event)"
-            >
-              <app-ai-connection-editor [connection]="connection" />
-            </app-accordion>
-          }
-        </div>
-      </div>
-    </section>
-  }
+  <section class="ai-group">
+    <app-ai-provider-configurations [pageId]="providerId()" />
+  </section>
 }
