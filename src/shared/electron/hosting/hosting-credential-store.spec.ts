@@ -1,9 +1,9 @@
+import { beforeEach, describe, expect, it } from 'vitest';
 import {
-  ForgeCredentialStore,
-  ForgeCredentialStorePorts,
+  HostingCredentialStore,
+  HostingCredentialStorePorts,
   parseTokenMap,
-  ResolvedToken,
-} from './forge-credential-store';
+} from './hosting-credential-store';
 
 /**
  * The host every test operates on.
@@ -11,35 +11,28 @@ import {
 const HOST: string = 'github.com';
 
 /**
- * An in-memory stand-in for the encrypted blob and the `gh` CLI probe.
+ * An in-memory stand-in for the encrypted blob.
  */
-class FakePorts implements ForgeCredentialStorePorts {
+class FakePorts implements HostingCredentialStorePorts {
   /**
    * Holds the stored blob, or null when none is.
    */
   public blob: string | null = null;
 
   /**
-   * Holds the token the CLI reports, or null when it reports none.
+   * Reads the blob.
+   * @returns Returns it.
    */
-  public cli: string | null = null;
-
-  /**
-   * Holds the hosts the CLI was asked about, so the probe can be shown to be skipped.
-   */
-  public readonly cliCalls: string[] = [];
-
   public load(): string | null {
     return this.blob;
   }
 
+  /**
+   * Writes the blob.
+   * @param plaintext The blob, or null to clear it.
+   */
   public save(plaintext: string | null): void {
     this.blob = plaintext;
-  }
-
-  public ghToken(host: string): string | null {
-    this.cliCalls.push(host);
-    return this.cli;
   }
 }
 
@@ -62,26 +55,24 @@ describe('parseTokenMap', () => {
   });
 });
 
-describe('ForgeCredentialStore', () => {
+describe('HostingCredentialStore', () => {
   let ports: FakePorts;
-  let store: ForgeCredentialStore;
+  let store: HostingCredentialStore;
 
   beforeEach(() => {
     ports = new FakePorts();
-    store = new ForgeCredentialStore(ports);
+    store = new HostingCredentialStore(ports);
   });
 
-  it('resolvesNothing_whenNoTokenIsStoredAndTheCliHasNone', () => {
-    const resolved: ResolvedToken = store.resolve(HOST);
-
-    expect(resolved).toEqual({ token: null, source: 'none' });
+  it('holdsNothing_untilATokenIsStored', () => {
+    expect(store.token(HOST)).toBeNull();
     expect(store.hasStoredToken(HOST)).toBe(false);
   });
 
-  it('storesAndResolvesAToken', () => {
+  it('storesAndReadsAToken', () => {
     store.setToken(HOST, 'ghp_stored');
 
-    expect(store.resolve(HOST)).toEqual({ token: 'ghp_stored', source: 'stored' });
+    expect(store.token(HOST)).toBe('ghp_stored');
     expect(store.hasStoredToken(HOST)).toBe(true);
   });
 
@@ -90,33 +81,7 @@ describe('ForgeCredentialStore', () => {
     // request for a reason the user could not possibly diagnose.
     store.setToken(HOST, '  ghp_stored\n');
 
-    expect(store.resolve(HOST).token).toBe('ghp_stored');
-  });
-
-  it('prefersTheStoredToken_overTheCliToken', () => {
-    // Pasting a token into Studio is an explicit act and must win over an ambient login.
-    ports.cli = 'ghp_cli';
-    store.setToken(HOST, 'ghp_stored');
-
-    expect(store.resolve(HOST)).toEqual({ token: 'ghp_stored', source: 'stored' });
-    expect(ports.cliCalls).toEqual([]);
-  });
-
-  it('fallsBackToTheCliToken_whenNothingIsStored', () => {
-    ports.cli = 'ghp_cli';
-
-    expect(store.resolve(HOST)).toEqual({ token: 'ghp_cli', source: 'gh-cli' });
-    expect(ports.cliCalls).toEqual([HOST]);
-  });
-
-  it('clearingTheStoredToken_fallsBackToTheCliRatherThanSigningOut', () => {
-    ports.cli = 'ghp_cli';
-    store.setToken(HOST, 'ghp_stored');
-
-    store.clearToken(HOST);
-
-    expect(store.hasStoredToken(HOST)).toBe(false);
-    expect(store.resolve(HOST)).toEqual({ token: 'ghp_cli', source: 'gh-cli' });
+    expect(store.token(HOST)).toBe('ghp_stored');
   });
 
   it('storingABlankToken_clearsInstead_soEmptyingTheFieldSignsOut', () => {
@@ -125,7 +90,7 @@ describe('ForgeCredentialStore', () => {
     store.setToken(HOST, '   ');
 
     expect(store.hasStoredToken(HOST)).toBe(false);
-    expect(store.resolve(HOST)).toEqual({ token: null, source: 'none' });
+    expect(store.token(HOST)).toBeNull();
   });
 
   it('clearingTheLastToken_removesTheBlobEntirely', () => {
@@ -145,19 +110,11 @@ describe('ForgeCredentialStore', () => {
     store.clearToken(HOST);
 
     expect(store.hasStoredToken(HOST)).toBe(false);
-    expect(store.hasStoredToken('github.example.com')).toBe(true);
+    expect(store.token('github.example.com')).toBe('ghp_enterprise');
   });
 
   it('clearingAnAbsentToken_isANoOp', () => {
     expect((): void => store.clearToken(HOST)).not.toThrow();
     expect(ports.blob).toBeNull();
-  });
-
-  it('reportsAStoredToken_evenWhenItWouldBeRejected', () => {
-    // hasStoredToken is what the settings page's Clear action acts on, so it describes the file, not
-    // whether the forge likes what is in it.
-    store.setToken(HOST, 'ghp_expired');
-
-    expect(store.hasStoredToken(HOST)).toBe(true);
   });
 });

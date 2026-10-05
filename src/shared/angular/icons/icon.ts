@@ -686,6 +686,17 @@ export class Icon {
   public static readonly CLOUD: Icon = new Icon('ph-duotone ph-cloud');
 
   /**
+   * Gets the code-hosting icon (GitHub, GitLab — where a repository is hosted), for the Plugin Manager's
+   * Hosting category.
+   */
+  public static readonly HOSTING: Icon = new Icon('ph-duotone ph-cloud');
+
+  /**
+   * Gets the code-hosting icon at the light weight, for a plugin row in the Hosting category.
+   */
+  public static readonly HOSTING_LIGHT: Icon = new Icon('ph-light ph-cloud');
+
+  /**
    * Gets the lines-added icon, for a tally of what a change adds.
    */
   public static readonly PLUS_CIRCLE: Icon = new Icon('ph-duotone ph-plus-circle');
@@ -1495,6 +1506,11 @@ export class Icon {
    * Gets the setup wizard's version-control plugin step: the tool that reads repositories (#818).
    */
   public static readonly SETUP_VERSION_CONTROL: Icon = new Icon('ph ph-git-fork');
+
+  /**
+   * Gets the setup wizard's hosting plugin step: where repositories are hosted (#820).
+   */
+  public static readonly SETUP_HOSTING: Icon = new Icon('ph ph-git-pull-request');
 
   /**
    * Gets the mark against something the setup wizard's summary could not find.

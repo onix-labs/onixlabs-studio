@@ -362,6 +362,7 @@ describe('SetupWizard', () => {
         'Decoders',
         'Container Engines',
         'Version Control',
+        'Code Hosting',
         'Security',
         'Terminal',
         'Summary',
@@ -449,7 +450,7 @@ describe('SetupWizard', () => {
       expect(ids(wizard).slice(root, root + 3)).toEqual([
         'version-control',
         'version-control/onixlabs.git',
-        'security',
+        'hosting',
       ]);
       const identity: SetupStep = wizard.steps()[root + 1];
       expect(identity.kind).toBe('commit-identity');

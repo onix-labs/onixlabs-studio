@@ -52,6 +52,7 @@ export type PluginSlot =
   | 'decoder'
   | 'container-engine'
   | 'version-control'
+  | 'hosting'
   | 'agent-harness';
 
 /**
@@ -64,6 +65,7 @@ export const PLUGIN_SLOTS: readonly PluginSlot[] = [
   'decoder',
   'container-engine',
   'version-control',
+  'hosting',
   'agent-harness',
 ];
 
@@ -83,6 +85,7 @@ export const PLUGIN_SLOT_LABELS: Readonly<Record<PluginSlot, string>> = {
   decoder: 'Decoders',
   'container-engine': 'Container Engines',
   'version-control': 'Version Control',
+  hosting: 'Code Hosting',
   'agent-harness': 'AI Providers',
 };
 
@@ -131,7 +134,7 @@ export interface UnkeyedPluginContribution extends SlotEntry {
   /**
    * Gets the unkeyed slot this implementation fills.
    */
-  readonly slot: 'container-engine' | 'version-control' | 'agent-harness';
+  readonly slot: 'container-engine' | 'version-control' | 'hosting' | 'agent-harness';
 
   /**
    * Gets the AI providers an agent harness offers, or undefined when it offers none.
@@ -379,7 +382,7 @@ export function installedContributions(
 ): readonly FormatPluginContribution[];
 export function installedContributions(
   plugins: readonly PluginSummary[],
-  slot: 'container-engine' | 'version-control' | 'agent-harness',
+  slot: 'container-engine' | 'version-control' | 'hosting' | 'agent-harness',
 ): readonly UnkeyedPluginContribution[];
 export function installedContributions(
   plugins: readonly PluginSummary[],

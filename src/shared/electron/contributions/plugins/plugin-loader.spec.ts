@@ -31,12 +31,14 @@ import {
   toPluginDescriptor,
   toProvision,
   toVersionControlDescriptors,
+  toHostingDescriptors,
   validManifests,
 } from './plugin-loader';
 import {
   VersionControlDescriptor,
   VersionControlResolution,
 } from '../../version-control/version-control-descriptor';
+import { HostingDescriptor } from '../../hosting/hosting-descriptor';
 import { ContainerEngineDescriptor } from '../containers/container-engine';
 import { PluginDescriptor } from './plugin-catalogue';
 
@@ -1009,6 +1011,73 @@ describe('a sideloaded plugin carrying its own payload', () => {
     expect(descriptors[0].resolve()).toEqual({
       available: false,
       reason: 'Local Git is not installed — install it in Plugins.',
+    });
+  });
+
+  /**
+   * A sideloaded manifest contributing a code host (#819).
+   * @returns Returns the manifest.
+   */
+  function hostingManifest(): PluginManifest {
+    return {
+      ...decoderManifest(),
+      id: 'local.github',
+      contributes: {
+        hosting: [
+          {
+            id: 'local.github',
+            displayName: 'Local GitHub',
+            priority: 100,
+            hosts: ['github.com'],
+            capabilities: ['issues', 'ciRuns'],
+            authModes: ['cli', 'studio'],
+            command: { kind: 'node', env: { GITHUB_EXTRA: 'yes' } },
+          },
+        ],
+      },
+    };
+  }
+
+  it('toHostingDescriptors_carriesTheManifestAndRunsUnderTheRuntimeEnvironment', () => {
+    mkdirSync(path.join(root, 'payload'), { recursive: true });
+    writeFileSync(path.join(root, 'payload', 'main.js'), '', 'utf8');
+    const descriptors: readonly HostingDescriptor[] = toHostingDescriptors(
+      hostingManifest(),
+      (): LspProvisioner => nothingDownloaded,
+      (entryPoint: string): NodeRuntimeSpec => ({
+        command: '/runtime',
+        args: [entryPoint],
+        env: { ELECTRON_RUN_AS_NODE: '1' },
+      }),
+      root,
+    );
+
+    expect(descriptors[0]).toMatchObject({
+      id: 'local.github',
+      hosts: ['github.com'],
+      capabilities: ['issues', 'ciRuns'],
+      authModes: ['cli', 'studio'],
+    });
+    expect(descriptors[0].resolve()).toEqual({
+      available: true,
+      spec: {
+        command: '/runtime',
+        args: [path.join(root, 'payload', 'main.js')],
+        env: { ELECTRON_RUN_AS_NODE: '1', GITHUB_EXTRA: 'yes' },
+      },
+    });
+  });
+
+  it('toHostingDescriptors_isUnavailableWithNeitherPayloadNorDownload', () => {
+    const descriptors: readonly HostingDescriptor[] = toHostingDescriptors(
+      hostingManifest(),
+      (): LspProvisioner => nothingDownloaded,
+      (entryPoint: string): NodeRuntimeSpec => ({ command: '/runtime', args: [entryPoint] }),
+      root,
+    );
+    expect(descriptors[0].resolve()).toEqual({
+      available: false,
+      reason: 'Local GitHub is not installed — install it in Plugins.',
     });
   });
 

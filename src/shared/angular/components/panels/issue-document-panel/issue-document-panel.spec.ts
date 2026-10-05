@@ -98,7 +98,7 @@ describe('IssueDocumentPanel', () => {
           provide: ForgeRepository,
           useValue: {
             repositoryRef: signal<ForgeRepositoryRef | null>({
-              kind: 'github',
+              provider: 'GitHub',
               host: 'github.com',
               owner: 'onix-labs',
               name: 'onixlabs-studio',
@@ -187,7 +187,7 @@ describe('IssueDocumentPanel', () => {
     issues.put('issue:12', makeIssue({ commentCount: 1 }));
     issues.putComments('issue:12', [
       {
-        id: 1,
+        id: '1',
         author: 'someone',
         body: 'Reproduced.',
         createdAt: '2026-08-02T09:00:00Z',
@@ -246,7 +246,7 @@ describe('IssueDocumentPanel', () => {
     fixture.componentRef.setInput('panel', makePanel('issue:12'));
     fixture.detectChanges();
 
-    host.querySelector<HTMLButtonElement>('[aria-label="Open on GitHub"]')!.click();
+    host.querySelector<HTMLButtonElement>('[aria-label="Open in browser"]')!.click();
 
     expect(opened).toEqual(['https://example.com/12']);
   });

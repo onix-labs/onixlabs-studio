@@ -28,7 +28,7 @@ name: Harness plugin
 
 on:
   push:
-    tags: ['plugin-*-harness-v*', 'plugin-git-v*']
+    tags: ['plugin-*-harness-v*', 'plugin-git-v*', 'plugin-github-v*']
   # A dry run: builds and checks the tarball without publishing anything, so a change can be proved
   # before it is tagged. There is no tag to read the plugin from, so it is named.
   workflow_dispatch:

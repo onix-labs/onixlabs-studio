@@ -7,6 +7,7 @@ import {
   ForgeIssue,
   ForgeIssueComment,
   ForgePullRequest,
+  ForgeRepositoryCapabilities,
   ForgeRepositoryRef,
   ForgeResult,
   ForgeWorkflowRun,
@@ -35,7 +36,7 @@ const UNAVAILABLE_RESULT: ForgeResult<never> = {
 };
 
 /**
- * The renderer client for the forge backend contribution (#432): a thin, typed wrapper over the generic
+ * The renderer client for the forge backend — the hosting plugins (#432, #820): a thin, typed wrapper over the generic
  * {@link Bridge} that names the {@link ForgeChannel} channels so no view touches `window.bridge`
  * directly.
  *
@@ -68,6 +69,18 @@ export class Forge implements ForgeClient {
   public detect(remoteUrl: string): Promise<ForgeRepositoryRef | null> {
     return (
       this.bridge?.invoke<ForgeRepositoryRef | null>(ForgeChannel.Detect, remoteUrl) ??
+      Promise.resolve(null)
+    );
+  }
+
+  /**
+   * Says what a repository allows.
+   * @param repository The repository.
+   * @returns Returns the capabilities, or null when no installed plugin serves it.
+   */
+  public describe(repository: ForgeRepositoryRef): Promise<ForgeRepositoryCapabilities | null> {
+    return (
+      this.bridge?.invoke<ForgeRepositoryCapabilities | null>(ForgeChannel.Describe, repository) ??
       Promise.resolve(null)
     );
   }
@@ -178,7 +191,7 @@ export class Forge implements ForgeClient {
    */
   public rerunWorkflowRun(
     repository: ForgeRepositoryRef,
-    runId: number,
+    runId: string,
   ): Promise<ForgeResult<void>> {
     this.log.info('forge', `Re-running workflow run ${runId}`);
     return (
@@ -195,7 +208,7 @@ export class Forge implements ForgeClient {
    */
   public cancelWorkflowRun(
     repository: ForgeRepositoryRef,
-    runId: number,
+    runId: string,
   ): Promise<ForgeResult<void>> {
     this.log.info('forge', `Cancelling workflow run ${runId}`);
     return (

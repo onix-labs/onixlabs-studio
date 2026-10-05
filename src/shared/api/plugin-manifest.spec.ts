@@ -798,6 +798,89 @@ describe('parsePluginManifest', () => {
     });
   });
 
+  describe('hosting contributions', () => {
+    /**
+     * Builds a well-formed hosting contribution, modelled on the GitHub plugin to come (#820), which
+     * tests then break in one place at a time.
+     * @param overrides Fields to replace on the contribution.
+     * @returns Returns the contribution as untrusted JSON would arrive.
+     */
+    function hosting(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+      return {
+        id: 'github',
+        displayName: 'GitHub',
+        hosts: ['github.com', 'ghe.example.com:8443'],
+        capabilities: ['pullRequests', 'issues', 'ciRuns', 'ciRerun', 'ciCancel', 'agentTools'],
+        authModes: ['cli', 'studio'],
+        command: { kind: 'node' },
+        ...overrides,
+      };
+    }
+
+    it('accepts a code host contributed alone', () => {
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { hosting: [hosting()] } }),
+      );
+      expect(result.errors).toEqual([]);
+      expect(result.manifest?.contributes.hosting?.[0]).toMatchObject({
+        id: 'github',
+        priority: 100,
+        hosts: ['github.com', 'ghe.example.com:8443'],
+        capabilities: ['pullRequests', 'issues', 'ciRuns', 'ciRerun', 'ciCancel', 'agentTools'],
+        authModes: ['cli', 'studio'],
+      });
+    });
+
+    it('defaults the optional lists to empty', () => {
+      const entry: Record<string, unknown> = hosting();
+      delete entry['capabilities'];
+      delete entry['authModes'];
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { hosting: [entry] } }),
+      );
+      expect(result.errors).toEqual([]);
+      expect(result.manifest?.contributes.hosting?.[0]).toMatchObject({
+        capabilities: [],
+        authModes: [],
+      });
+    });
+
+    it('refuses a contribution serving no host, since it could never claim a repository', () => {
+      for (const hosts of [undefined, []]) {
+        const result: ManifestResult = parsePluginManifest(
+          manifest({ contributes: { hosting: [hosting({ hosts })] } }),
+        );
+        expect(paths(result)).toContain('contributes.hosting[0].hosts');
+      }
+    });
+
+    it('refuses a host that is not a lowercase host name', () => {
+      // Remotes are matched lowercased, so `GitHub.com` would silently never match.
+      for (const host of ['GitHub.com', 'https://github.com', 'github.com/org', '', 'a b']) {
+        const result: ManifestResult = parsePluginManifest(
+          manifest({ contributes: { hosting: [hosting({ hosts: [host] })] } }),
+        );
+        expect(paths(result)).toContain('contributes.hosting[0].hosts');
+      }
+    });
+
+    it('refuses an unknown capability or sign-in mode', () => {
+      const result: ManifestResult = parsePluginManifest(
+        manifest({
+          contributes: {
+            hosting: [hosting({ capabilities: ['issues', 'teleport'], authModes: ['oauth'] })],
+          },
+        }),
+      );
+      expect(paths(result)).toEqual(
+        expect.arrayContaining([
+          'contributes.hosting[0].capabilities',
+          'contributes.hosting[0].authModes',
+        ]),
+      );
+    });
+  });
+
   describe('describes the real catalogue', () => {
     // The format is only worth having if it can describe plugins that actually exist. These are the
     // live recipes Studio installs from, not fixtures written to pass: the two whose descriptors still

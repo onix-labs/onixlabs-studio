@@ -1,5 +1,11 @@
 import { DECODER_FORMATS } from './decoder-protocol';
 import {
+  HOSTING_AUTH_MODES,
+  HostingAuthMode,
+  HostingCapability,
+  isHostingCapability,
+} from './hosting-protocol';
+import {
   isVersionControlCapability,
   VERSION_CONTROL_EXECUTABLE_MODES,
   type VersionControlCapability,
@@ -107,8 +113,13 @@ import {
  * metadata directories mean something a surface shows has changed. Core used to name git's own —
  * `HEAD`, `index`, `refs/**` — to keep a fetch's object churn from flooding every explorer; with git a
  * plugin, the plugin says. Absent means every change counts, which is noisy but never stale.
+ *
+ * `1.15.0` adds the `hosting` contribution point (#819), the seventh slot: where a repository is hosted
+ * — GitHub, GitLab, Bitbucket — becomes a plugin, as version control did. Keyed by the **host names** a
+ * plugin serves (`github.com`), matched against a repository's remote, which replaces the host table
+ * core kept for GitHub. Adds only, on the same terms as every minor before it.
  */
-export const PLUGIN_API_VERSION: string = '1.14.0';
+export const PLUGIN_API_VERSION: string = '1.15.0';
 
 /**
  * Matches a plain three-part semver. Deliberately strict and deliberately local: the rule below is the
@@ -430,6 +441,61 @@ export interface ManifestVersionControl {
    * empty when there is no choice to make.
    */
   readonly executableModes: readonly VersionControlExecutableMode[];
+
+  /**
+   * Gets how to start the plugin.
+   */
+  readonly command: ManifestCommand;
+
+  /**
+   * Gets this contribution's own entry point within the installed payload, or undefined to use the
+   * provision's. See {@link ManifestLanguageServer.entryPoint}.
+   */
+  readonly entryPoint?: string;
+}
+
+/**
+ * Describes a code host a plugin contributes (#819): GitHub, GitLab, Bitbucket, a self-hosted forge.
+ *
+ * Keyed by the **host names** it serves rather than chosen once for the application: a machine can hold
+ * repositories on github.com and on a company's GitHub Enterprise server side by side, and which plugin
+ * serves a repository is a fact about its remote.
+ */
+export interface ManifestHosting {
+  /**
+   * Gets the identifier the plugin is registered under.
+   */
+  readonly id: string;
+
+  /**
+   * Gets the display name, such as `GitHub`.
+   */
+  readonly displayName: string;
+
+  /**
+   * Gets the priority used to pick between plugins serving the same host, higher first.
+   */
+  readonly priority: number;
+
+  /**
+   * Gets the host names the plugin serves, lowercased, such as `github.com`. A repository whose remote
+   * points at one is served by this plugin, and Studio hands the plugin credentials for these hosts and
+   * no others.
+   */
+  readonly hosts: readonly string[];
+
+  /**
+   * Gets the optional capabilities the plugin supports. Declared statically because the UI draws its
+   * controls before any process has started; the handshake narrows them to what the running plugin
+   * confirms, and each repository narrows them again to what it allows.
+   */
+  readonly capabilities: readonly HostingCapability[];
+
+  /**
+   * Gets the ways the plugin can sign in, which Settings offers the user to choose between per host, or
+   * empty when there is no choice to make.
+   */
+  readonly authModes: readonly HostingAuthMode[];
 
   /**
    * Gets how to start the plugin.
@@ -840,6 +906,11 @@ export interface ManifestContributions {
    * Gets the version-control systems contributed.
    */
   readonly versionControl?: readonly ManifestVersionControl[];
+
+  /**
+   * Gets the code hosts contributed.
+   */
+  readonly hosting?: readonly ManifestHosting[];
 }
 
 /**
@@ -1443,17 +1514,45 @@ function readContributions(value: unknown, errors: Errors): ManifestContribution
       });
     },
   );
+  const hosting: ManifestHosting[] = [];
+  readContributionList(
+    source['hosting'],
+    'contributes.hosting',
+    errors,
+    (entry: Record<string, unknown>, path: string): void => {
+      const command: ManifestCommand | null = readCommand(
+        entry['command'],
+        `${path}.command`,
+        errors,
+      );
+      hosting.push({
+        id: readId(entry, 'id', `${path}.`, errors),
+        displayName: readString(entry, 'displayName', `${path}.`, errors),
+        priority: readPriority(entry, path, errors),
+        hosts: readHosts(entry['hosts'], `${path}.hosts`, errors),
+        capabilities: readHostingCapabilities(
+          entry['capabilities'],
+          `${path}.capabilities`,
+          errors,
+        ),
+        authModes: readAuthModes(entry['authModes'], `${path}.authModes`, errors),
+        command: command ?? { kind: 'executable' },
+        entryPoint: readEntryPoint(entry, 'entryPoint', `${path}.`, errors),
+      });
+    },
+  );
   if (
     languageServers.length === 0 &&
     debugAdapters.length === 0 &&
     decoders.length === 0 &&
     containerEngines.length === 0 &&
     agentHarnesses.length === 0 &&
-    versionControl.length === 0
+    versionControl.length === 0 &&
+    hosting.length === 0
   ) {
     errors.add(
       'contributes',
-      'must contribute at least one language server, debug adapter, decoder, container engine, agent harness or version-control system',
+      'must contribute at least one language server, debug adapter, decoder, container engine, agent harness, version-control system or code host',
     );
   }
   return {
@@ -1463,6 +1562,7 @@ function readContributions(value: unknown, errors: Errors): ManifestContribution
     containerEngines,
     agentHarnesses,
     versionControl,
+    hosting,
   };
 }
 
@@ -1768,6 +1868,86 @@ function readExecutableModes(
     return [];
   }
   return value as readonly VersionControlExecutableMode[];
+}
+
+/**
+ * Matches a host name a hosting plugin may serve: lowercase DNS labels separated by dots, with an
+ * optional port. Lowercase because remotes are matched lowercased, so a declared `GitHub.com` would
+ * silently never match.
+ */
+const HOST_NAME_PATTERN: RegExp =
+  /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*(:\d{1,5})?$/;
+
+/**
+ * Validates the host names a hosting plugin serves.
+ * @param value The candidate array.
+ * @param path The dotted path for failures.
+ * @param errors The failure collector.
+ * @returns Returns the host names, or an empty array when invalid.
+ */
+function readHosts(value: unknown, path: string, errors: Errors): readonly string[] {
+  if (
+    !Array.isArray(value) ||
+    value.length === 0 ||
+    !value.every(
+      (entry: unknown): boolean => typeof entry === 'string' && HOST_NAME_PATTERN.test(entry),
+    )
+  ) {
+    errors.add(path, 'must be a non-empty array of lowercase host names');
+    return [];
+  }
+  return value as readonly string[];
+}
+
+/**
+ * Validates a hosting plugin's optional capabilities against the closed list.
+ * @param value The candidate array, or undefined for none.
+ * @param path The dotted path for failures.
+ * @param errors The failure collector.
+ * @returns Returns the capabilities, or an empty array when absent or invalid.
+ */
+function readHostingCapabilities(
+  value: unknown,
+  path: string,
+  errors: Errors,
+): readonly HostingCapability[] {
+  if (value === undefined) {
+    return [];
+  }
+  if (!Array.isArray(value)) {
+    errors.add(path, 'must be an array of capabilities');
+    return [];
+  }
+  const unknown: readonly unknown[] = value.filter(
+    (entry: unknown): boolean => !isHostingCapability(entry),
+  );
+  if (unknown.length > 0) {
+    errors.add(path, `has unknown capabilities: ${unknown.map(String).join(', ')}`);
+    return [];
+  }
+  return value as readonly HostingCapability[];
+}
+
+/**
+ * Validates the ways a hosting plugin can sign in.
+ * @param value The candidate array, or undefined for no choice.
+ * @param path The dotted path for failures.
+ * @param errors The failure collector.
+ * @returns Returns the modes, or an empty array when absent or invalid.
+ */
+function readAuthModes(value: unknown, path: string, errors: Errors): readonly HostingAuthMode[] {
+  if (value === undefined) {
+    return [];
+  }
+  const modes: readonly string[] = HOSTING_AUTH_MODES;
+  if (
+    !Array.isArray(value) ||
+    !value.every((entry: unknown): boolean => typeof entry === 'string' && modes.includes(entry))
+  ) {
+    errors.add(path, `must be an array of ${modes.join(', ')}`);
+    return [];
+  }
+  return value as readonly HostingAuthMode[];
 }
 
 /**

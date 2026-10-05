@@ -1,0 +1,11 @@
+{
+  "name": "@onixlabs/github",
+  "version": "0.1.0",
+  "private": true,
+  "description": "GitHub hosting plugin for ONIXLabs Studio.",
+  "type": "commonjs",
+  "main": "main.js",
+  "scripts": {
+    "build": "node build.mjs"
+  }
+}
