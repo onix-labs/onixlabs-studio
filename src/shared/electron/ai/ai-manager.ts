@@ -73,6 +73,7 @@ import { mergeModels, type ReportedModel } from './model-merge';
 import { PermissionRuleStore } from './permission-rule-store';
 import { RendererBridge } from './renderer-bridge';
 import { sanitizeLanguage, sanitizePromptExtra } from './prompt-guard';
+import { checkRunRoot, type OpenRoots, type RunRootCheck } from './run-root-guard';
 import type { SkillOfferer } from './skills/skill-library';
 
 /**
@@ -293,6 +294,11 @@ export class AiManager {
   private readonly skills: SkillOfferer;
 
   /**
+   * Holds the open workspace roots, which a run's root must be or lie inside (#810).
+   */
+  private readonly openRoots: OpenRoots;
+
+  /**
    * Holds the in-app Claude login driver, which runs the CLI's own OAuth flow and streams its progress
    * to the renderer's "not signed in" modal.
    */
@@ -379,10 +385,16 @@ export class AiManager {
    * Initializes a new instance of the {@link AiManager} class.
    * @param windowGetter A function that returns the window agent events are sent to.
    * @param skills The skill library runs draw their in-scope skills from.
+   * @param openRoots The open workspace roots, which a run's root must be or lie inside.
    */
-  public constructor(windowGetter: () => BrowserWindow | null, skills: SkillOfferer) {
+  public constructor(
+    windowGetter: () => BrowserWindow | null,
+    skills: SkillOfferer,
+    openRoots: OpenRoots,
+  ) {
     this.windowGetter = windowGetter;
     this.skills = skills;
+    this.openRoots = openRoots;
     this.bridge = new RendererBridge(windowGetter);
 
     // Contributed harnesses, and nothing else. `coreAgentProviders()` is empty — every provider is a
@@ -813,6 +825,22 @@ export class AiManager {
       'AiManager.run',
       `Run request ${request.requestId} for provider ${request.providerId}`,
     );
+    // ⛔ The root becomes the agent's working directory, the root of its write confinement, and the
+    // scope stamped on every capability request — so an untrusted renderer must not get to name it.
+    const rootCheck: RunRootCheck = checkRunRoot(request.workspaceRoot, this.openRoots);
+    if (!rootCheck.ok) {
+      logger.warn(
+        'AiManager.run',
+        `Refused run ${request.requestId}: root ${request.workspaceRoot} is not an open workspace`,
+      );
+      this.emit({
+        requestId: request.requestId,
+        kind: 'status',
+        state: 'error',
+        detail: rootCheck.detail,
+      });
+      return;
+    }
     const provider: AgentProvider | undefined = this.providers.get(request.providerId);
     const connection: AiConnection | undefined = this.connections.get(request.providerId);
     if (provider === undefined || connection === undefined) {
