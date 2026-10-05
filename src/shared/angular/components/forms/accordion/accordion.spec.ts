@@ -34,6 +34,12 @@ describe('Accordion with a header action', () => {
     expect(action?.closest('.accordion__actions')).not.toBeNull();
     // A button may not hold another, and the action must not also toggle the panel.
     expect(action?.closest('.accordion__header')).toBeNull();
+    // And it sits to the left of the caret.
+    expect(
+      element
+        .querySelector('.accordion__actions')
+        ?.nextElementSibling?.classList.contains('accordion__caret'),
+    ).toBe(true);
   });
 
   it('action_whenClicked_runsWithoutTogglingThePanel', async () => {
@@ -94,6 +100,15 @@ describe('Accordion', () => {
     const element: HTMLElement = fixture.nativeElement as HTMLElement;
     const header: HTMLElement | null = element.querySelector('.accordion__header');
     expect(header?.firstElementChild?.classList.contains('accordion__icon')).toBe(true);
-    expect(header?.lastElementChild?.classList.contains('accordion__caret')).toBe(true);
+    // The caret closes the header row, after any actions.
+    const bar: HTMLElement | null = element.querySelector('.accordion__bar');
+    expect(bar?.lastElementChild?.classList.contains('accordion__caret')).toBe(true);
+  });
+
+  it('caret_whenClicked_togglesOpen', () => {
+    const element: HTMLElement = fixture.nativeElement as HTMLElement;
+    element.querySelector<HTMLElement>('.accordion__caret')?.click();
+
+    expect(component.expanded()).toBe(true);
   });
 });

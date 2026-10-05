@@ -1,6 +1,8 @@
 <div class="accordion">
   <!-- The header's actions sit beside the toggle rather than inside it: a button cannot hold
-       another, and an action must not also expand or collapse the panel. -->
+       another, and an action must not also expand or collapse the panel. The caret closes the row,
+       after the actions, and toggles on click like the rest of the header; it is hidden from
+       assistive technology, which reaches the toggle through the header button. -->
   <div class="accordion__bar">
     <button
       type="button"
@@ -12,13 +14,15 @@
         <app-icon class="accordion__icon" [icon]="icon" [color]="iconColor()" />
       }
       <span class="accordion__heading">{{ heading() }}</span>
-      <app-icon
-        class="accordion__caret"
-        [icon]="Icon.CARET_DOWN"
-        [rotation]="expanded() ? 180 : 0"
-      />
     </button>
     <span class="accordion__actions"><ng-content select="[accordionActions]" /></span>
+    <app-icon
+      class="accordion__caret"
+      aria-hidden="true"
+      [icon]="Icon.CARET_DOWN_BOLD"
+      [rotation]="expanded() ? 180 : 0"
+      (click)="toggle()"
+    />
   </div>
   @if (expanded()) {
     <div class="accordion__body">

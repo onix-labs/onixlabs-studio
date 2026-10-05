@@ -1547,6 +1547,12 @@ export class Icon {
   public static readonly TRASH: Icon = new Icon('ph ph-trash');
 
   /**
+   * Gets the delete icon in the duotone weight, for a filled destructive button — the tinted body
+   * keeps the bin legible against the button's own fill.
+   */
+  public static readonly TRASH_DUOTONE: Icon = new Icon('ph-duotone ph-trash');
+
+  /**
    * Gets the delete icon in its lidless form, for a destructive action stated as a button beside other
    * buttons, where the lidded bin's extra detail reads as noise at button size.
    */

@@ -185,6 +185,7 @@ describe('AiSettingsSection', () => {
     // On the header, beside the toggle, so a configuration can be deleted without opening it.
     expect(remove?.textContent?.trim()).toBe('Delete');
     expect(remove?.closest('app-button')?.classList.contains('button--tone-danger')).toBe(true);
+    expect(remove?.closest('app-button')?.classList.contains('button--solid')).toBe(true);
 
     remove?.click();
     fixture.detectChanges();
