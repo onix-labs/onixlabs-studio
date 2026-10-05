@@ -28,6 +28,7 @@ import { TreeRow, TreeView } from '@shared/angular/components/tree-view/tree-vie
 import { Button } from '@shared/angular/components/forms/button/button';
 import { Textarea } from '@shared/angular/components/forms/textarea/textarea';
 import { VersionControlMissing } from '../version-control-missing/version-control-missing';
+import { VersionControlPrompt } from '@shared/angular/services/plugins/version-control-prompt';
 
 /**
  * Summarises a file group's checkbox state: fully checked, and partially checked (mixed).
@@ -97,6 +98,19 @@ type WorkingRowData =
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CommitDetail {
+  /**
+   * Holds the prompt that knows when the folder is a repository no installed plugin can read.
+   */
+  private readonly versionControlPrompt: VersionControlPrompt = inject(VersionControlPrompt);
+
+  /**
+   * Gets whether the folder is a repository no installed plugin can read, so the panel shows only its
+   * empty state.
+   */
+  protected readonly needsPlugin: Signal<boolean> = computed(
+    (): boolean => this.versionControlPrompt.needed() !== null && !this.repository.isBound(),
+  );
+
   /**
    * Gets the dock panel descriptor this panel was projected for. Supplied by the dock outlet; the
    * pane reads its state from the shared {@link Repository} rather than the descriptor.

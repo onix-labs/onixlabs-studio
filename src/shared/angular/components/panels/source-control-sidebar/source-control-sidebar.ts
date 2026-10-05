@@ -13,6 +13,7 @@ import {
 import { Icon } from '@shared/angular/icons/icon';
 import { VersionControlCapability } from '@shared/api/version-control-protocol';
 import { VersionControlMissing } from '../version-control-missing/version-control-missing';
+import { VersionControlPrompt } from '@shared/angular/services/plugins/version-control-prompt';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { Repository, WORKING_NODE_ID } from '@shared/angular/services/repository/repository';
 import {
@@ -492,6 +493,19 @@ export class SourceControlSidebar implements OnDestroy {
    * Holds the repository model the rail renders.
    */
   protected readonly repository: Repository = inject(Repository);
+
+  /**
+   * Holds the prompt that knows when the folder is a repository no installed plugin can read.
+   */
+  private readonly versionControlPrompt: VersionControlPrompt = inject(VersionControlPrompt);
+
+  /**
+   * Gets whether the folder is a repository no installed plugin can read, so the rail shows only its
+   * empty state.
+   */
+  protected readonly needsPlugin: Signal<boolean> = computed(
+    (): boolean => this.versionControlPrompt.needed() !== null && !this.repository.isBound(),
+  );
 
   /**
    * Holds the structured logger.

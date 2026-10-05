@@ -1,293 +1,296 @@
-<app-panel-toolbar>
-  <app-button
-    variant="none"
-    [icon]="Icon.REFRESH"
-    ariaLabel="Refresh"
-    tooltip="Refresh"
-    [disabled]="!repository.isBound()"
-    (click)="refresh()"
-  />
-  <app-button
-    variant="none"
-    [icon]="Icon.TRASH"
-    ariaLabel="Discard All"
-    tooltip="Discard every uncommitted change in the working tree"
-    [disabled]="repository.changeCount() === 0"
-    (click)="discardAll()"
-  />
-  <app-button
-    variant="none"
-    [icon]="Icon.GIT_DIFF"
-    ariaLabel="Show Diff"
-    tooltip="Show the selected file's diff"
-    [disabled]="repository.selectedFile() === null"
-    (click)="showDiff()"
-  />
-  @if (repository.supports('stash')) {
-    <app-button
-      variant="none"
-      [icon]="Icon.STASH"
-      ariaLabel="Stash"
-      tooltip="Stash the uncommitted changes"
-      [disabled]="repository.changeCount() === 0"
-      (click)="stash()"
-    />
-  }
-  <span class="panel-toolbar__spacer"></span>
-  <!-- The same pair the Solution Explorer wears, in the same order and on the same glyphs, because
-       they do the same thing to the same kind of tree. -->
-  <app-button
-    variant="none"
-    [icon]="Icon.PLUS_SQUARE"
-    ariaLabel="Expand All"
-    tooltip="Expand All"
-    (click)="expandAll()"
-  />
-  <app-button
-    variant="none"
-    [icon]="Icon.MINUS_SQUARE"
-    ariaLabel="Collapse All"
-    tooltip="Collapse All"
-    (click)="collapseAll()"
-  />
-</app-panel-toolbar>
-
+<!-- A repository no installed plugin can read shows only what is missing and the way to get it: a
+     composer and an empty change list would offer a commit that cannot happen (#818). -->
 <app-version-control-missing />
-
-@if (repository.lastError(); as error) {
-  <div class="detail__notice" role="alert">
-    <span class="detail__notice-text">{{ error }}</span>
+@if (!needsPlugin()) {
+  <app-panel-toolbar>
     <app-button
       variant="none"
-      size="small"
-      [icon]="Icon.CLOSE"
-      ariaLabel="Dismiss error"
-      (click)="dismissError()"
+      [icon]="Icon.REFRESH"
+      ariaLabel="Refresh"
+      tooltip="Refresh"
+      [disabled]="!repository.isBound()"
+      (click)="refresh()"
     />
-  </div>
-}
-
-<!-- What the working tree is in the middle of, and the three ways out of it. Shown whatever the graph
-     has selected: a repository mid-merge is mid-merge whichever commit is being looked at. -->
-@if (repository.operationInFlight()) {
-  <div class="detail__operation" role="status">
-    <div class="detail__operation-summary">
-      <app-icon class="detail__operation-icon" [icon]="Icon.GIT_MERGE" />
-      <span class="detail__operation-title">{{ operationTitle() }}</span>
-      @if (operationProgress(); as progress) {
-        <span class="detail__operation-progress">{{ progress }}</span>
-      }
-    </div>
-    <p class="detail__operation-message">{{ operationMessage() }}</p>
-    <div class="detail__operation-actions">
-      @if (canSkip()) {
-        <app-button
-          size="small"
-          label="Skip"
-          tooltip="Drop the commit this is stuck on and move to the next"
-          (click)="skipOperation()"
-        />
-      }
+    <app-button
+      variant="none"
+      [icon]="Icon.TRASH"
+      ariaLabel="Discard All"
+      tooltip="Discard every uncommitted change in the working tree"
+      [disabled]="repository.changeCount() === 0"
+      (click)="discardAll()"
+    />
+    <app-button
+      variant="none"
+      [icon]="Icon.GIT_DIFF"
+      ariaLabel="Show Diff"
+      tooltip="Show the selected file's diff"
+      [disabled]="repository.selectedFile() === null"
+      (click)="showDiff()"
+    />
+    @if (repository.supports('stash')) {
       <app-button
-        size="small"
-        variant="solid"
-        label="Continue"
-        [disabled]="!repository.canContinueOperation()"
-        tooltip="Carry on, now that the conflicts are resolved"
-        (click)="continueOperation()"
+        variant="none"
+        [icon]="Icon.STASH"
+        ariaLabel="Stash"
+        tooltip="Stash the uncommitted changes"
+        [disabled]="repository.changeCount() === 0"
+        (click)="stash()"
       />
-      <app-button
-        size="small"
-        tone="danger"
-        label="Abort"
-        tooltip="Abandon this and put the working tree back where it started"
-        (click)="abortOperation()"
-      />
-    </div>
-  </div>
-}
-
-@if (repository.selectedCommit(); as commit) {
-  <header class="detail__header">
-    <h2 class="detail__summary">{{ commit.summary }}</h2>
-    @if (commit.body) {
-      <p class="detail__body">{{ commit.body }}</p>
     }
-    <dl class="detail__meta">
-      <div class="detail__meta-row">
-        <dt><app-icon [icon]="Icon.USER" /></dt>
-        <dd>{{ commit.author }} &lt;{{ commit.email }}&gt;</dd>
-      </div>
-      <div class="detail__meta-row">
-        <dt><app-icon [icon]="Icon.RECENT" /></dt>
-        <dd>{{ commit.isoDate }} · {{ commit.relativeDate }}</dd>
-      </div>
-      <div class="detail__meta-row">
-        <dt><app-icon [icon]="Icon.GIT_COMMIT" /></dt>
-        <dd class="detail__hash">{{ commit.hash }}</dd>
-      </div>
-      @if (commit.parents.length > 1) {
-        <div class="detail__meta-row">
-          <dt><app-icon [icon]="Icon.GIT_MERGE" /></dt>
-          <dd>Merge of {{ commit.parents.length }} parents</dd>
-        </div>
-      }
-    </dl>
-  </header>
+    <span class="panel-toolbar__spacer"></span>
+    <!-- The same pair the Solution Explorer wears, in the same order and on the same glyphs, because
+         they do the same thing to the same kind of tree. -->
+    <app-button
+      variant="none"
+      [icon]="Icon.PLUS_SQUARE"
+      ariaLabel="Expand All"
+      tooltip="Expand All"
+      (click)="expandAll()"
+    />
+    <app-button
+      variant="none"
+      [icon]="Icon.MINUS_SQUARE"
+      ariaLabel="Collapse All"
+      tooltip="Collapse All"
+      (click)="collapseAll()"
+    />
+  </app-panel-toolbar>
 
-  <div class="detail__files">
-    <header class="detail__files-header">
-      <span>Changed files</span>
-      <span class="tree-count">{{ repository.selectedFiles().length }}</span>
-    </header>
-    @if (repository.selectedFiles().length > 0) {
-      <app-tree-view
-        [rows]="commitRows()"
-        [selectedId]="repository.selectedFile()?.path ?? null"
-        (rowClick)="onCommitRowClick($event)"
-      >
-        <ng-template let-row>
-          @let file = fileOf(row);
-          <span class="detail__status" [class]="'detail__status--' + file.status">
-            {{ statusLetter(file.status) }}
-          </span>
-          <span class="tree-name detail__file-name">
-            {{ fileName(file.path) }}
-            @if (fileDir(file.path); as dir) {
-              <span class="detail__file-dir">{{ dir }}</span>
-            }
-          </span>
-        </ng-template>
-      </app-tree-view>
-    } @else {
-      <p class="detail__empty">No file changes.</p>
-    }
-  </div>
-} @else if (repository.isWorkingSelected()) {
-  <div class="detail__files">
-    <app-tree-view
-      [rows]="workingRows()"
-      [selectedId]="repository.selectedFile()?.path ?? null"
-      (rowClick)="onWorkingRowClick($event)"
-    >
-      <ng-template let-row>
-        @let entry = workingRowOf(row);
-        @if (entry.kind === 'group') {
-          <!-- A conflicted file cannot be committed as it stands, so its group has no checkbox to
-               include it with: what it wants is resolving, not choosing. -->
-          @if (entry.group !== 'conflicted') {
-            <app-checkbox
-              class="detail__group-check"
-              [checked]="entry.group === 'tracked' ? trackedState().all : untrackedState().all"
-              [indeterminate]="
-                entry.group === 'tracked' ? trackedState().mixed : untrackedState().mixed
-              "
-              (checkedChange)="
-                setGroupChecked(
-                  entry.group === 'tracked' ? trackedFiles() : untrackedFiles(),
-                  $event
-                )
-              "
-              (click)="$event.stopPropagation()"
-            />
-          }
-          <span class="tree-name detail__group-name">{{ groupLabel(entry.group) }}</span>
-          <span class="tree-count">{{ groupFiles(entry.group).length }}</span>
-        } @else if (entry.file.status === 'conflicted') {
-          <span class="detail__status detail__status--conflicted">
-            {{ statusLetter(entry.file.status) }}
-          </span>
-          <span class="tree-name detail__file-name">
-            {{ fileName(entry.file.path) }}
-            @if (fileDir(entry.file.path); as dir) {
-              <span class="detail__file-dir">{{ dir }}</span>
-            }
-          </span>
-          <app-button
-            class="tree-row-action"
-            variant="none"
-            size="small"
-            [icon]="Icon.CHECK"
-            ariaLabel="Mark resolved"
-            tooltip="Mark resolved — stages the file as it now stands"
-            (click)="$event.stopPropagation(); markResolved(entry.file)"
-          />
-        } @else {
-          <app-checkbox
-            class="detail__file-check"
-            [checked]="isChecked(entry.file.path)"
-            (checkedChange)="setFileChecked(entry.file, $event)"
-            (click)="$event.stopPropagation()"
-          />
-          <span class="detail__status" [class]="'detail__status--' + entry.file.status">
-            {{ statusLetter(entry.file.status) }}
-          </span>
-          <span class="tree-name detail__file-name">
-            {{ fileName(entry.file.path) }}
-            @if (fileDir(entry.file.path); as dir) {
-              <span class="detail__file-dir">{{ dir }}</span>
-            }
-          </span>
-          <app-button
-            class="tree-row-action"
-            variant="none"
-            size="small"
-            [icon]="Icon.TRASH"
-            ariaLabel="Discard changes"
-            (click)="$event.stopPropagation(); discard(entry.file)"
-          />
-        }
-      </ng-template>
-    </app-tree-view>
-
-    @if (repository.changeCount() === 0) {
-      <p class="detail__empty">No uncommitted changes.</p>
-    }
-  </div>
-
-  <div class="detail__composer">
-    <header class="detail__composer-header">
-      <span class="detail__composer-title">Message</span>
+  @if (repository.lastError(); as error) {
+    <div class="detail__notice" role="alert">
+      <span class="detail__notice-text">{{ error }}</span>
       <app-button
         variant="none"
         size="small"
-        [icon]="Icon.SPARKLE"
-        ariaLabel="Generate commit message"
-        tooltip="Generate a commit message from the checked changes"
-        [disabled]="!canGenerate()"
-        (click)="generateMessage()"
-      />
-    </header>
-    <!-- Seamless and fixed, matching the agent composer: the card is the box, and its height does not
-         move with what has been typed into it. -->
-    <app-textarea
-      class="detail__message"
-      variant="seamless"
-      placeholder="Describe your commit here…"
-      ariaLabel="Commit message"
-      [rows]="4"
-      [fixedHeight]="true"
-      [value]="repository.commitMessage()"
-      (valueChange)="onMessageValue($event)"
-    />
-    <div class="detail__composer-actions">
-      <app-button
-        variant="solid"
-        [icon]="Icon.GIT_COMMIT"
-        label="Commit"
-        [disabled]="!canCommit()"
-        (click)="commit()"
-      />
-      <app-button
-        [icon]="Icon.ARROW_UP"
-        label="Commit and Push"
-        [disabled]="!canCommit()"
-        (click)="commitAndPush()"
+        [icon]="Icon.CLOSE"
+        ariaLabel="Dismiss error"
+        (click)="dismissError()"
       />
     </div>
-  </div>
-} @else {
-  <header class="detail__header">
-    <h2 class="detail__summary detail__summary--muted">No selection</h2>
-  </header>
+  }
+
+  <!-- What the working tree is in the middle of, and the three ways out of it. Shown whatever the graph
+       has selected: a repository mid-merge is mid-merge whichever commit is being looked at. -->
+  @if (repository.operationInFlight()) {
+    <div class="detail__operation" role="status">
+      <div class="detail__operation-summary">
+        <app-icon class="detail__operation-icon" [icon]="Icon.GIT_MERGE" />
+        <span class="detail__operation-title">{{ operationTitle() }}</span>
+        @if (operationProgress(); as progress) {
+          <span class="detail__operation-progress">{{ progress }}</span>
+        }
+      </div>
+      <p class="detail__operation-message">{{ operationMessage() }}</p>
+      <div class="detail__operation-actions">
+        @if (canSkip()) {
+          <app-button
+            size="small"
+            label="Skip"
+            tooltip="Drop the commit this is stuck on and move to the next"
+            (click)="skipOperation()"
+          />
+        }
+        <app-button
+          size="small"
+          variant="solid"
+          label="Continue"
+          [disabled]="!repository.canContinueOperation()"
+          tooltip="Carry on, now that the conflicts are resolved"
+          (click)="continueOperation()"
+        />
+        <app-button
+          size="small"
+          tone="danger"
+          label="Abort"
+          tooltip="Abandon this and put the working tree back where it started"
+          (click)="abortOperation()"
+        />
+      </div>
+    </div>
+  }
+
+  @if (repository.selectedCommit(); as commit) {
+    <header class="detail__header">
+      <h2 class="detail__summary">{{ commit.summary }}</h2>
+      @if (commit.body) {
+        <p class="detail__body">{{ commit.body }}</p>
+      }
+      <dl class="detail__meta">
+        <div class="detail__meta-row">
+          <dt><app-icon [icon]="Icon.USER" /></dt>
+          <dd>{{ commit.author }} &lt;{{ commit.email }}&gt;</dd>
+        </div>
+        <div class="detail__meta-row">
+          <dt><app-icon [icon]="Icon.RECENT" /></dt>
+          <dd>{{ commit.isoDate }} · {{ commit.relativeDate }}</dd>
+        </div>
+        <div class="detail__meta-row">
+          <dt><app-icon [icon]="Icon.GIT_COMMIT" /></dt>
+          <dd class="detail__hash">{{ commit.hash }}</dd>
+        </div>
+        @if (commit.parents.length > 1) {
+          <div class="detail__meta-row">
+            <dt><app-icon [icon]="Icon.GIT_MERGE" /></dt>
+            <dd>Merge of {{ commit.parents.length }} parents</dd>
+          </div>
+        }
+      </dl>
+    </header>
+
+    <div class="detail__files">
+      <header class="detail__files-header">
+        <span>Changed files</span>
+        <span class="tree-count">{{ repository.selectedFiles().length }}</span>
+      </header>
+      @if (repository.selectedFiles().length > 0) {
+        <app-tree-view
+          [rows]="commitRows()"
+          [selectedId]="repository.selectedFile()?.path ?? null"
+          (rowClick)="onCommitRowClick($event)"
+        >
+          <ng-template let-row>
+            @let file = fileOf(row);
+            <span class="detail__status" [class]="'detail__status--' + file.status">
+              {{ statusLetter(file.status) }}
+            </span>
+            <span class="tree-name detail__file-name">
+              {{ fileName(file.path) }}
+              @if (fileDir(file.path); as dir) {
+                <span class="detail__file-dir">{{ dir }}</span>
+              }
+            </span>
+          </ng-template>
+        </app-tree-view>
+      } @else {
+        <p class="detail__empty">No file changes.</p>
+      }
+    </div>
+  } @else if (repository.isWorkingSelected()) {
+    <div class="detail__files">
+      <app-tree-view
+        [rows]="workingRows()"
+        [selectedId]="repository.selectedFile()?.path ?? null"
+        (rowClick)="onWorkingRowClick($event)"
+      >
+        <ng-template let-row>
+          @let entry = workingRowOf(row);
+          @if (entry.kind === 'group') {
+            <!-- A conflicted file cannot be committed as it stands, so its group has no checkbox to
+                 include it with: what it wants is resolving, not choosing. -->
+            @if (entry.group !== 'conflicted') {
+              <app-checkbox
+                class="detail__group-check"
+                [checked]="entry.group === 'tracked' ? trackedState().all : untrackedState().all"
+                [indeterminate]="
+                  entry.group === 'tracked' ? trackedState().mixed : untrackedState().mixed
+                "
+                (checkedChange)="
+                  setGroupChecked(
+                    entry.group === 'tracked' ? trackedFiles() : untrackedFiles(),
+                    $event
+                  )
+                "
+                (click)="$event.stopPropagation()"
+              />
+            }
+            <span class="tree-name detail__group-name">{{ groupLabel(entry.group) }}</span>
+            <span class="tree-count">{{ groupFiles(entry.group).length }}</span>
+          } @else if (entry.file.status === 'conflicted') {
+            <span class="detail__status detail__status--conflicted">
+              {{ statusLetter(entry.file.status) }}
+            </span>
+            <span class="tree-name detail__file-name">
+              {{ fileName(entry.file.path) }}
+              @if (fileDir(entry.file.path); as dir) {
+                <span class="detail__file-dir">{{ dir }}</span>
+              }
+            </span>
+            <app-button
+              class="tree-row-action"
+              variant="none"
+              size="small"
+              [icon]="Icon.CHECK"
+              ariaLabel="Mark resolved"
+              tooltip="Mark resolved — stages the file as it now stands"
+              (click)="$event.stopPropagation(); markResolved(entry.file)"
+            />
+          } @else {
+            <app-checkbox
+              class="detail__file-check"
+              [checked]="isChecked(entry.file.path)"
+              (checkedChange)="setFileChecked(entry.file, $event)"
+              (click)="$event.stopPropagation()"
+            />
+            <span class="detail__status" [class]="'detail__status--' + entry.file.status">
+              {{ statusLetter(entry.file.status) }}
+            </span>
+            <span class="tree-name detail__file-name">
+              {{ fileName(entry.file.path) }}
+              @if (fileDir(entry.file.path); as dir) {
+                <span class="detail__file-dir">{{ dir }}</span>
+              }
+            </span>
+            <app-button
+              class="tree-row-action"
+              variant="none"
+              size="small"
+              [icon]="Icon.TRASH"
+              ariaLabel="Discard changes"
+              (click)="$event.stopPropagation(); discard(entry.file)"
+            />
+          }
+        </ng-template>
+      </app-tree-view>
+
+      @if (repository.changeCount() === 0) {
+        <p class="detail__empty">No uncommitted changes.</p>
+      }
+    </div>
+
+    <div class="detail__composer">
+      <header class="detail__composer-header">
+        <span class="detail__composer-title">Message</span>
+        <app-button
+          variant="none"
+          size="small"
+          [icon]="Icon.SPARKLE"
+          ariaLabel="Generate commit message"
+          tooltip="Generate a commit message from the checked changes"
+          [disabled]="!canGenerate()"
+          (click)="generateMessage()"
+        />
+      </header>
+      <!-- Seamless and fixed, matching the agent composer: the card is the box, and its height does not
+           move with what has been typed into it. -->
+      <app-textarea
+        class="detail__message"
+        variant="seamless"
+        placeholder="Describe your commit here…"
+        ariaLabel="Commit message"
+        [rows]="4"
+        [fixedHeight]="true"
+        [value]="repository.commitMessage()"
+        (valueChange)="onMessageValue($event)"
+      />
+      <div class="detail__composer-actions">
+        <app-button
+          variant="solid"
+          [icon]="Icon.GIT_COMMIT"
+          label="Commit"
+          [disabled]="!canCommit()"
+          (click)="commit()"
+        />
+        <app-button
+          [icon]="Icon.ARROW_UP"
+          label="Commit and Push"
+          [disabled]="!canCommit()"
+          (click)="commitAndPush()"
+        />
+      </div>
+    </div>
+  } @else {
+    <header class="detail__header">
+      <h2 class="detail__summary detail__summary--muted">No selection</h2>
+    </header>
+  }
 }

@@ -33,6 +33,7 @@ import { ProjectModel } from '@shared/api/project-system';
 import { DirectoryListing, FileOperationResult } from '@shared/api/workspace-channels';
 import type { FileWriteResult } from '@shared/api/file-channels';
 import { RepositoryInfo, SourceControlClient } from '@shared/api/source-control-channels';
+import { VersionControlPrompt } from '@shared/angular/services/plugins/version-control-prompt';
 import { SourceControl } from '@shared/angular/services/source-control/source-control';
 import { Icon } from '@shared/angular/icons/icon';
 import { EditorTerminals } from '@shared/angular/services/editor-terminals/editor-terminals';
@@ -694,6 +695,11 @@ export class DirectoryView implements OnInit, OnDestroy {
   private readonly forgeRepository: ForgeRepository = inject(ForgeRepository);
 
   /**
+   * Holds the prompt that knows when the folder is a repository no installed plugin can read.
+   */
+  private readonly versionControlPrompt: VersionControlPrompt = inject(VersionControlPrompt);
+
+  /**
    * Gets whether each panel that depends on something existing actually has it: a Solution Explorer
    * needs a recognised project system, Packages a recognised ecosystem, Debug a running session,
    * Worktrees a container, Logs something that has actually logged, and the source-control trio a
@@ -705,6 +711,9 @@ export class DirectoryView implements OnInit, OnDestroy {
   private readonly panelAvailability: Signal<Readonly<Record<string, boolean>>> = computed(
     (): Readonly<Record<string, boolean>> => {
       const repository: boolean = this.workspaceGit.isRepository();
+      // A repository no installed plugin can read still gets its Repository and Commit panels: they
+      // are where its empty state says what is missing and offers the plugin (#818).
+      const needsPlugin: boolean = this.versionControlPrompt.needed() !== null;
       return {
         solution: this.solutionModel.model() !== null,
         packages: this.packageModel.model() !== null,
@@ -714,9 +723,9 @@ export class DirectoryView implements OnInit, OnDestroy {
         // difference is that it is now passed over rather than cut out of the layout, so a layout
         // that names it still names it once something logs.
         output: this.outputService.channels().length > 0,
-        branches: repository,
+        branches: repository || needsPlugin,
         history: repository,
-        commit: repository,
+        commit: repository || needsPlugin,
       };
     },
   );
