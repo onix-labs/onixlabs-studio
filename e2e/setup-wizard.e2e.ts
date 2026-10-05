@@ -84,15 +84,15 @@ test.describe('setup wizard', () => {
     await expect(wizard.locator('.setup__step-label--walked')).toHaveText('Welcome');
   });
 
-  test('back_afterAdvancing_returnsButKeepsTheStepWalked', async ({ app }) => {
+  test('back_afterAdvancing_returnsAndLeavesTheStepAheadAgain', async ({ app }) => {
     const wizard: Page = await wizardWindow(app);
     await wizard.getByRole('button', { name: 'Next' }).click();
 
     await wizard.getByRole('button', { name: 'Back' }).click();
 
     await expect(wizard.locator('.setup__step-label--current')).toHaveText('Welcome');
-    // Going back does not un-walk what is behind you, so the tick stays.
-    await expect(wizard.locator('.setup__step-label--walked')).toHaveCount(1);
+    // The rail says where the user is: back on the first step, nothing is behind them.
+    await expect(wizard.locator('.setup__step-label--walked')).toHaveCount(0);
   });
 
   test('lastStep_offersFinishRatherThanNext', async ({ app }) => {

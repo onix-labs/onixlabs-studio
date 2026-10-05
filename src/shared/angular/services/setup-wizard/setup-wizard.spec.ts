@@ -370,14 +370,18 @@ describe('SetupWizard', () => {
   });
 
   describe('goTo', () => {
-    it('goTo_jumpsToAPresentedStep_withoutWalkingThoseBetween', () => {
+    it('goTo_backFromTheSummary_landsOnTheStep_andLeavesTheSummaryAhead', () => {
       // The summary's way back to whatever fixes what it reports.
       const wizard: SetupWizard = build();
+      while (!wizard.isLastStep()) {
+        wizard.next();
+      }
 
       wizard.goTo('terminal');
 
       expect(wizard.current()?.id).toBe('terminal');
-      expect(wizard.steps().some((step: SetupStep): boolean => wizard.isWalked(step))).toBe(false);
+      const summary: SetupStep | undefined = wizard.steps().at(-1);
+      expect(summary !== undefined && wizard.isWalked(summary)).toBe(false);
     });
 
     it('goTo_whenTheStepIsNotPresented_staysPut', () => {
@@ -617,16 +621,26 @@ describe('SetupWizard', () => {
       expect(wizard.isWalked(wizard.steps()[1])).toBe(false);
     });
 
-    it('isWalked_afterGoingBack_keepsTheStepsWalked', () => {
-      // Going back does not un-walk the steps behind you; the rail must keep their ticks.
+    it('isWalked_afterGoingBack_readsEverythingFromTheCurrentStepOnAsAhead', () => {
+      // The rail says where the user is. Backing up three steps leaves those three ahead again,
+      // rather than a list half ticked and half not.
       const wizard: SetupWizard = build();
-      wizard.next();
-      wizard.next();
+      for (let i: number = 0; i < 4; i += 1) {
+        wizard.next();
+      }
 
+      wizard.back();
+      wizard.back();
       wizard.back();
 
       expect(wizard.stepIndex()).toBe(1);
-      expect(wizard.isWalked(wizard.steps()[1])).toBe(true);
+      expect(wizard.isWalked(wizard.steps()[0])).toBe(true);
+      expect(
+        wizard
+          .steps()
+          .slice(1)
+          .some((step: SetupStep): boolean => wizard.isWalked(step)),
+      ).toBe(false);
     });
   });
 

@@ -347,14 +347,6 @@ export class SetupWizard {
   private readonly currentId: WritableSignal<string> = signal<string>('welcome');
 
   /**
-   * Holds the identifiers of the steps already walked, which is what separates a step left behind
-   * from one still ahead. Going back does not un-walk the steps behind you.
-   */
-  private readonly walkedIds: WritableSignal<ReadonlySet<string>> = signal<ReadonlySet<string>>(
-    new Set<string>(),
-  );
-
-  /**
    * Holds the leaves present when the catalogue first loaded this run, or null until it has. An
    * upgrade shows only leaves that were not there then — a plugin installed during this pass, whose
    * configuration the user has not yet seen — rather than every language and provider they set up
@@ -582,12 +574,20 @@ export class SetupWizard {
   }
 
   /**
-   * Reports whether a step has been walked — left behind by Next at some point this run.
+   * Reports whether a step has been walked: whether it comes before the step being shown.
+   *
+   * Positional rather than remembered. A rail that remembered every step Next had left kept them
+   * ticked after the user went back, so backing up the list left it half done and half not — the
+   * ticks no longer said where the user was. Now everything from the current step on reads as ahead,
+   * however far the user has been before.
    * @param step The step.
-   * @returns Returns true when the step has been walked.
+   * @returns Returns true when the step comes before the current one.
    */
   public isWalked(step: SetupStep): boolean {
-    return this.walkedIds().has(step.id);
+    const index: number = this.steps().findIndex(
+      (candidate: SetupStep): boolean => candidate.id === step.id,
+    );
+    return index !== -1 && index < this.stepIndex();
   }
 
   /**
@@ -598,20 +598,14 @@ export class SetupWizard {
       this.finish();
       return;
     }
-    const leaving: SetupStep | undefined = this.current();
     const following: SetupStep | undefined = this.steps()[this.stepIndex() + 1];
-    if (leaving === undefined || following === undefined) {
-      return;
+    if (following !== undefined) {
+      this.currentId.set(following.id);
     }
-    this.walkedIds.update((walked: ReadonlySet<string>): ReadonlySet<string> =>
-      new Set<string>(walked).add(leaving.id),
-    );
-    this.currentId.set(following.id);
   }
 
   /**
-   * Jumps to a step — the summary's way back to whatever fixes what it reports. The steps passed on
-   * the way are not marked walked; only Next walks a step.
+   * Jumps to a step — the summary's way back to whatever fixes what it reports.
    * @param id The step identifier. A step this run does not present is ignored.
    */
   public goTo(id: string): void {
