@@ -349,11 +349,18 @@ class Program {
   );
 
   /**
-   * Owns the AI agent subsystem: authentication, provider runtime, and event streaming.
+   * Tracks the open workspace roots and confines filesystem operations (and agent runs) to them.
+   */
+  private readonly workspaceContext: WorkspaceContext = new WorkspaceContext();
+
+  /**
+   * Owns the AI agent subsystem: authentication, provider runtime, and event streaming. Declared after
+   * {@link workspaceContext}, which it confines every run's root to.
    */
   private readonly aiManager: AiManager = new AiManager(
     (): BrowserWindow | null => this.windows.main(),
     this.skillLibrary,
+    this.workspaceContext,
   );
 
   /**
@@ -378,11 +385,6 @@ class Program {
    * Exports the current document to a PDF on behalf of the renderer's editors.
    */
   private readonly printManager: PrintManager = new PrintManager();
-
-  /**
-   * Tracks the open workspace root and confines filesystem operations to it.
-   */
-  private readonly workspaceContext: WorkspaceContext = new WorkspaceContext();
 
   /**
    * Reads and writes each workspace's `.studio` persistence, confined to the open workspace roots the
