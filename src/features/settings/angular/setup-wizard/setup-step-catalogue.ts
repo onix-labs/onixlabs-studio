@@ -6,9 +6,12 @@ import {
   input,
   InputSignal,
   Signal,
+  signal,
+  WritableSignal,
 } from '@angular/core';
 import type { PluginContribution, PluginSlot, PluginSummary } from '@shared/api/plugin-channels';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { Icon } from '@shared/angular/icons/icon';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
 
 /**
@@ -41,7 +44,8 @@ function rank(plugin: PluginSummary): number {
  * the catalogue is searched.
  *
  * Installing goes through the same consent the Plugin Manager asks for. A wizard is another entry
- * point to an install, never a shortcut past the question.
+ * point to an install, never a shortcut past the question. What is installed can be removed here
+ * too, so a plugin tried during setup is not one the user must go elsewhere to take back out.
  */
 @Component({
   selector: 'app-setup-step-catalogue',
@@ -59,13 +63,26 @@ function rank(plugin: PluginSummary): number {
               <span class="catalogue__name">{{ plugin.name }}</span>
               <span class="catalogue__detail">{{ plugin.description }}</span>
             </span>
-            @if (plugin.state === 'installed') {
-              <span class="catalogue__state">Installed</span>
+            <!-- The same actions, icons and words as the Plugin Manager's rows, so a plugin
+                 installed here can be taken out again here. A row being removed keeps its Remove
+                 button, spinning, rather than flipping to Install while it works. -->
+            @if (plugin.state === 'installed' || removing().has(plugin.id)) {
+              <app-button
+                variant="solid"
+                tone="danger"
+                label="Remove"
+                [icon]="Icon.TRASH_SIMPLE"
+                [disabled]="plugins.busy()"
+                [loading]="plugin.state === 'busy'"
+                (click)="uninstall(plugin.id)"
+              />
             } @else if (plugin.state === 'unavailable') {
               <span class="catalogue__state">Not available here</span>
             } @else {
               <app-button
+                variant="solid"
                 label="Install"
+                [icon]="Icon.DOWNLOAD"
                 [disabled]="plugins.busy()"
                 [loading]="plugin.state === 'busy'"
                 (click)="install(plugin.id)"
@@ -93,6 +110,23 @@ export class SetupStepCatalogue {
   protected readonly plugins: Plugins = inject(Plugins);
 
   /**
+   * Gets the icon set, exposed for the template.
+   */
+  protected readonly Icon: typeof Icon = Icon;
+
+  /**
+   * Holds the plugins being removed from here, so a row mid-removal keeps showing what it is doing.
+   */
+  private readonly removingIds: WritableSignal<ReadonlySet<string>> = signal<ReadonlySet<string>>(
+    new Set<string>(),
+  );
+
+  /**
+   * Gets the plugins being removed from here.
+   */
+  protected readonly removing: Signal<ReadonlySet<string>> = this.removingIds.asReadonly();
+
+  /**
    * Gets the plugins to list: every one in the slot, whatever its state, with what is not installed
    * first — the list exists to be acted on, so the actionable rows lead it.
    */
@@ -115,5 +149,25 @@ export class SetupStepCatalogue {
    */
   protected install(id: string): void {
     void this.plugins.installWithConsent(id);
+  }
+
+  /**
+   * Removes a plugin, as the Plugin Manager's Remove does.
+   * @param id The plugin identifier.
+   * @returns Returns a promise that settles once the removal has.
+   */
+  protected async uninstall(id: string): Promise<void> {
+    this.removingIds.update((ids: ReadonlySet<string>): ReadonlySet<string> =>
+      new Set<string>(ids).add(id),
+    );
+    try {
+      await this.plugins.uninstall(id);
+    } finally {
+      this.removingIds.update((ids: ReadonlySet<string>): ReadonlySet<string> => {
+        const next: Set<string> = new Set<string>(ids);
+        next.delete(id);
+        return next;
+      });
+    }
   }
 }
