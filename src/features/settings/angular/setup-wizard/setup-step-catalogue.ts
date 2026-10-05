@@ -68,6 +68,7 @@ function rank(plugin: PluginSummary): number {
                  button, spinning, rather than flipping to Install while it works. -->
             @if (plugin.state === 'installed' || removing().has(plugin.id)) {
               <app-button
+                class="catalogue__action"
                 variant="solid"
                 tone="danger"
                 label="Remove"
@@ -80,6 +81,7 @@ function rank(plugin: PluginSummary): number {
               <span class="catalogue__state">Not available here</span>
             } @else {
               <app-button
+                class="catalogue__action"
                 variant="solid"
                 label="Install"
                 [icon]="Icon.DOWNLOAD"
