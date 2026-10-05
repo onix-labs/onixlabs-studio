@@ -13,13 +13,8 @@ import {
   VersionControlResponse,
   VcsParams,
   VcsResult,
-} from '@shared/api/version-control-protocol';
-import {
-  confinedPaths,
-  GitVersionControl,
-  isSafeOperand,
-  revisionSpec,
-} from './git-version-control';
+} from './protocol';
+import { confinedPaths, GitVersionControl, isSafeOperand, revisionSpec } from './git';
 
 /**
  * The per-test timeout: these tests run real git, which is quick but not instant.

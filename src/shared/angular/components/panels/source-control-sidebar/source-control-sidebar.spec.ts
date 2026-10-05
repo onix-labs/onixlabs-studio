@@ -1,3 +1,4 @@
+import { vi } from 'vitest';
 import {
   ForgeRepository,
   ForgeSection,
@@ -695,6 +696,30 @@ describe('SourceControlSidebar', () => {
     expect(text).toContain('Tags');
     expect(text).not.toContain('origin');
     expect(text).not.toContain('v1.0.0');
+  });
+
+  it('render_hidesTheSectionsAndCommandsThePluginDoesNotSupport', () => {
+    // A plugin without stashes or tags (#818): neither section is offered, nor are their commands.
+    vi.spyOn(repository, 'supports').mockImplementation(
+      (capability: string): boolean => capability !== 'stash' && capability !== 'tags',
+    );
+    // A fresh rail, so its computed rows read the spied answer rather than a cached one.
+    const gated: ComponentFixture<SourceControlSidebar> =
+      TestBed.createComponent(SourceControlSidebar);
+    gated.componentRef.setInput('panel', panel);
+    gated.detectChanges();
+    const text: string = (gated.nativeElement as HTMLElement).textContent ?? '';
+    const more: readonly string[] = (
+      gated.componentInstance as unknown as { moreItems(): readonly { label: string }[] }
+    )
+      .moreItems()
+      .map((item: { label: string }): string => item.label);
+
+    expect(text).toContain('Remote');
+    expect(text).not.toContain('Stashes');
+    expect(text).not.toContain('Tags');
+    expect(more).not.toContain('Stash Changes');
+    expect(more).not.toContain('New Tag…');
   });
 
   it('render_theCheckedOutBranchReadsChangesThenAheadThenBehind', () => {

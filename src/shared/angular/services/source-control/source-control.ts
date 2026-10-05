@@ -1,11 +1,15 @@
 import { inject, Service } from '@angular/core';
 import { Bridge } from '@shared/api/bridge';
 import {
+  DetectedRepository,
+  RepositoryCapabilities,
   RepositoryInfo,
   SourceControlChannel,
   SourceControlClient,
+  VersionControlPluginInfo,
 } from '@shared/api/source-control-channels';
 import type {
+  VersionControlExecutableChoice,
   VersionControlOp,
   VersionControlResponse,
   VcsParams,
@@ -31,6 +35,17 @@ function createClient(bridge: Bridge): SourceControlClient {
       params: VcsParams<Op>,
     ): Promise<VersionControlResponse<Op>> =>
       bridge.invoke(SourceControlChannel.Request, root, op, params),
+    describe: (root: string): Promise<RepositoryCapabilities | null> =>
+      bridge.invoke(SourceControlChannel.Describe, root),
+    detect: (directory: string): Promise<DetectedRepository | null> =>
+      bridge.invoke(SourceControlChannel.Detect, directory),
+    listPlugins: (): Promise<readonly VersionControlPluginInfo[]> =>
+      bridge.invoke(SourceControlChannel.ListPlugins),
+    setExecutable: (
+      pluginId: string,
+      executable: VersionControlExecutableChoice | null,
+    ): Promise<VersionControlPluginInfo | null> =>
+      bridge.invoke(SourceControlChannel.SetExecutable, pluginId, executable),
   };
 }
 

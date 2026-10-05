@@ -1,0 +1,35 @@
+@for (row of rows(); track row.info.id) {
+  <app-setting-row [label]="row.info.displayName" [description]="describe(row)">
+    <span class="version-control-plugins__controls">
+      @if (row.info.executableModes.length > 0) {
+        <app-dropdown
+          [options]="options(row)"
+          [value]="row.mode"
+          [ariaLabel]="row.info.displayName + ' program'"
+          [disabled]="saving() !== null"
+          (valueChange)="onMode(row, $event)"
+        />
+      }
+      @if (row.mode === 'custom') {
+        <app-text-field
+          class="version-control-plugins__path"
+          [value]="row.path"
+          [ariaLabel]="row.info.displayName + ' path'"
+          placeholder="/usr/local/bin/git"
+          [disabled]="saving() !== null"
+          (valueChange)="onPath(row, $event)"
+        />
+      }
+      @if (row.info.executableModes.length > 0) {
+        <app-button variant="solid" label="Save" [disabled]="!canSave(row)" (click)="onSave(row)" />
+      }
+    </span>
+  </app-setting-row>
+} @empty {
+  @if (loaded()) {
+    <app-setting-row
+      label="Version control"
+      description="No version-control plugin is installed, so source control is unavailable. Install Git from the Plugin Manager."
+    />
+  }
+}

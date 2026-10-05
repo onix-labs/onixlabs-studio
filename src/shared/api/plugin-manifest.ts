@@ -102,8 +102,13 @@ import {
  * version-control system become plugins, because core runs no tool of its own (#804). Keyed by the
  * **marker** a repository carries (`.git`, `.svn`, `.hg`), so several can be installed at once and each
  * folder is served by the one it belongs to. Adds only, on the same terms as every minor before it.
+ *
+ * `1.14.0` adds a version-control system's optional `metadataSignals` (#817): which entries inside its
+ * metadata directories mean something a surface shows has changed. Core used to name git's own —
+ * `HEAD`, `index`, `refs/**` — to keep a fetch's object churn from flooding every explorer; with git a
+ * plugin, the plugin says. Absent means every change counts, which is noisy but never stale.
  */
-export const PLUGIN_API_VERSION: string = '1.13.0';
+export const PLUGIN_API_VERSION: string = '1.14.0';
 
 /**
  * Matches a plain three-part semver. Deliberately strict and deliberately local: the rule below is the
@@ -403,6 +408,15 @@ export interface ManifestVersionControl {
    * them — so core learns them from here rather than naming any tool's layout itself.
    */
   readonly metadataDirectories: readonly string[];
+
+  /**
+   * Gets the patterns, relative to a metadata directory, whose changes mean something a surface shows
+   * has changed — for git, `HEAD`, `*_HEAD`, `index`, `packed-refs` and `refs/**`. Changes to anything
+   * else in a metadata directory (git's `objects`, its logs and lock files) are dropped before they
+   * reach a subscriber, so a fetch does not refresh every explorer. `*` matches within one path
+   * segment and `**` any number of segments. Undefined when every change counts.
+   */
+  readonly metadataSignals?: readonly string[];
 
   /**
    * Gets the optional capabilities the plugin supports. Declared statically, like a harness's
@@ -1417,6 +1431,7 @@ function readContributions(value: unknown, errors: Errors): ManifestContribution
           false,
           errors,
         ),
+        metadataSignals: readSignals(entry['metadataSignals'], `${path}.metadataSignals`, errors),
         capabilities: readCapabilities(entry['capabilities'], `${path}.capabilities`, errors),
         executableModes: readExecutableModes(
           entry['executableModes'],
@@ -1670,6 +1685,32 @@ function readEntryNames(
   ) {
     errors.add(path, 'must contain only single entry names, without separators');
     return [];
+  }
+  return value as readonly string[];
+}
+
+/**
+ * Validates a version-control plugin's metadata signal patterns: relative paths of non-empty segments,
+ * none of them `.` or `..`, so a pattern cannot reach outside the metadata directory it describes.
+ * @param value The candidate array, or undefined for none.
+ * @param path The dotted path for failures.
+ * @param errors The failure collector.
+ * @returns Returns the patterns, or undefined when absent or invalid.
+ */
+function readSignals(value: unknown, path: string, errors: Errors): readonly string[] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const valid: (pattern: unknown) => boolean = (pattern: unknown): boolean =>
+    typeof pattern === 'string' &&
+    pattern
+      .split('/')
+      .every(
+        (segment: string): boolean => segment.length > 0 && segment !== '.' && segment !== '..',
+      );
+  if (!Array.isArray(value) || value.length === 0 || !value.every(valid)) {
+    errors.add(path, 'must be a non-empty array of relative patterns');
+    return undefined;
   }
   return value as readonly string[];
 }

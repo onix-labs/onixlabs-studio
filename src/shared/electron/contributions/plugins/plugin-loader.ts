@@ -490,7 +490,15 @@ export function toContributions(manifest: PluginManifest): readonly PluginContri
       ...(harness.providers === undefined ? {} : { providers: harness.providers }),
     }),
   );
-  return [...servers, ...adapters, ...decoders, ...engines, ...harnesses];
+  const versionControl: readonly PluginContribution[] = (
+    manifest.contributes.versionControl ?? []
+  ).map((system: ManifestVersionControl): PluginContribution => ({
+    slot: 'version-control',
+    id: system.id,
+    displayName: system.displayName,
+    priority: system.priority,
+  }));
+  return [...servers, ...adapters, ...decoders, ...engines, ...versionControl, ...harnesses];
 }
 
 /**
@@ -838,6 +846,7 @@ export function toVersionControlDescriptors(
       priority: system.priority,
       markers: system.markers,
       metadataDirectories: system.metadataDirectories,
+      metadataSignals: system.metadataSignals ?? [],
       capabilities: system.capabilities,
       executableModes: system.executableModes,
       resolve: (): VersionControlResolution => {

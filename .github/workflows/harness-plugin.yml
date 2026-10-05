@@ -1,5 +1,5 @@
-# Harness plugins — builds a harness plugin's npm tarball and publishes it as the release asset the
-# curated index points at.
+# npm-tarball plugins — builds a first-party plugin's npm tarball and publishes it as the release asset
+# the curated index points at. The agent harnesses and the Git plugin (#817) are released this way.
 #
 # One workflow for every harness plugin, keyed off the tag: `plugin-codex-harness-v0.1.0` builds
 # `plugins/codex-harness`. Generalised when the second harness arrived rather than when the first did,
@@ -28,13 +28,13 @@ name: Harness plugin
 
 on:
   push:
-    tags: ['plugin-*-harness-v*']
+    tags: ['plugin-*-harness-v*', 'plugin-git-v*']
   # A dry run: builds and checks the tarball without publishing anything, so a change can be proved
   # before it is tagged. There is no tag to read the plugin from, so it is named.
   workflow_dispatch:
     inputs:
       plugin:
-        description: 'Which harness plugin to build (directory under plugins/)'
+        description: 'Which plugin to build (directory under plugins/)'
         required: true
         default: claude-harness
 
@@ -124,7 +124,7 @@ jobs:
             "dist-plugins/${{ steps.plugin.outputs.asset }}" \
             --latest=false \
             --title "${GITHUB_REF_NAME}" \
-            --notes "An agent harness plugin, published as the npm tarball that
+            --notes "A Studio plugin, published as the npm tarball that
           \`curated-plugins.json\` pins. Install it from Studio's Plugin Manager rather than by hand."
 
       # On a manual run there is nothing to publish, so the proved artifact is kept for inspection.

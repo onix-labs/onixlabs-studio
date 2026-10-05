@@ -70,6 +70,12 @@ export interface VersionControlDescriptor {
   readonly metadataDirectories: readonly string[];
 
   /**
+   * Gets the patterns inside a metadata directory whose changes are worth forwarding, empty when every
+   * change counts.
+   */
+  readonly metadataSignals: readonly string[];
+
+  /**
    * Gets the optional capabilities the manifest declared.
    */
   readonly capabilities: readonly VersionControlCapability[];

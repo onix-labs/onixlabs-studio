@@ -2,7 +2,7 @@ import { BrowserWindow, ipcMain, IpcMainInvokeEvent, WebContents } from 'electro
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { DirectoryChangeEvent, FileChannel } from '@shared/api/file-channels';
-import { shouldForwardTreeEvent } from './directory-watch-filter';
+import { MetadataPolicies, shouldForwardTreeEvent } from './directory-watch-filter';
 import { logger } from './logger';
 
 /**
@@ -90,11 +90,22 @@ export class DirectoryWatcher {
   private readonly trackedSenders: Set<number> = new Set<number>();
 
   /**
+   * Gets the version-control metadata directories and the changes inside them worth forwarding, from
+   * the installed version-control plugins.
+   */
+  private readonly metadata: () => MetadataPolicies;
+
+  /**
    * Initializes a new instance of the {@link DirectoryWatcher} class.
    * @param windowGetter A function that returns the window change notifications are sent to.
+   * @param metadata Gets the version-control metadata policies; none by default.
    */
-  public constructor(windowGetter: () => BrowserWindow | null) {
+  public constructor(
+    windowGetter: () => BrowserWindow | null,
+    metadata: () => MetadataPolicies = (): MetadataPolicies => new Map<string, readonly string[]>(),
+  ) {
     this.windowGetter = windowGetter;
+    this.metadata = metadata;
   }
 
   /**
@@ -246,7 +257,7 @@ export class DirectoryWatcher {
       this.recordOverflow(root);
       return;
     }
-    if (!shouldForwardTreeEvent(filename)) {
+    if (!shouldForwardTreeEvent(filename, this.metadata())) {
       return;
     }
     const changes: PendingChanges = this.ensurePending(root);

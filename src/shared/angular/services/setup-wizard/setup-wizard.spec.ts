@@ -333,6 +333,7 @@ describe('SetupWizard', () => {
         'Debug Adapters',
         'Decoders',
         'Container Engines',
+        'Version Control',
         'AI Providers',
         'Security',
         'Terminal',

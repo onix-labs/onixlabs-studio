@@ -161,6 +161,13 @@ const SLOT_STEPS: Readonly<Record<PluginSlot, { icon: Icon; title: string; summa
     summary:
       'The engine the Containers tab talks to. Without one installed the tab has nothing to show.',
   },
+  'version-control': {
+    icon: Icon.SETUP_VERSION_CONTROL,
+    title: 'Version control',
+    summary:
+      'Studio runs no version-control tool of its own. Install Git to see changes, commit, branch ' +
+      'and work with remotes; without it the source-control panels have nothing to show.',
+  },
   'agent-harness': {
     icon: Icon.SETUP_AI_PROVIDER,
     title: 'Which AI Studio talks to',

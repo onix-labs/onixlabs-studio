@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { VcsOperationState } from '@shared/api/version-control-protocol';
+import { VcsOperationState } from './protocol';
 import { classifyOperation, OperationProbe } from './git-operation-state';
 
 /**
