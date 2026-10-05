@@ -321,6 +321,7 @@ describe('SetupWizard', () => {
     it('steps_always_carryARootPerPluginSlotInCatalogueOrder', () => {
       // One step per kind of plugin, under the Plugin Manager's own names, ahead of the machine
       // check — which asks the installed plugins what they can run — and the settings after it.
+      // AI providers lead; the rest keep the catalogue's order.
       const labels: readonly string[] = build()
         .steps()
         .map((step: SetupStep): string => step.label);
@@ -328,12 +329,12 @@ describe('SetupWizard', () => {
       expect(labels).toEqual([
         'Welcome',
         'Appearance',
+        'AI Providers',
         'Language Servers',
         'Debug Adapters',
         'Decoders',
         'Container Engines',
         'Version Control',
-        'AI Providers',
         'Environment',
         'Security',
         'Terminal',

@@ -55,12 +55,12 @@ test.describe('setup wizard', () => {
     expect(labels.map((label: string): string => label.trim())).toEqual([
       'Welcome',
       'Appearance',
+      'AI Providers',
       'Language Servers',
       'Debug Adapters',
       'Decoders',
       'Container Engines',
       'Version Control',
-      'AI Providers',
       'Environment',
       'Security',
       'Terminal',

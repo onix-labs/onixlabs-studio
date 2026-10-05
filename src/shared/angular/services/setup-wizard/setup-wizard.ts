@@ -230,8 +230,12 @@ export const SETUP_STEPS: readonly SetupStep[] = [
   },
   // The plugins come before everything that depends on them. The environment check asks the installed
   // plugins what they can run — with Git not yet installed it reports version control as missing, and
-  // the way to fix that would be steps further on.
-  ...PLUGIN_SLOTS.map(catalogueStep),
+  // the way to fix that would be steps further on. AI providers lead them: the agent is what Studio is
+  // for, so its sign-in is asked for first rather than after a run of optional tooling.
+  catalogueStep('agent-harness'),
+  ...PLUGIN_SLOTS.filter((slot: PluginSlot): boolean => slot !== 'agent-harness').map(
+    catalogueStep,
+  ),
   {
     id: 'environment',
     kind: 'environment',
