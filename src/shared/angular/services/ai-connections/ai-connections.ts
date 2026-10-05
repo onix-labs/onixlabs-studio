@@ -144,6 +144,10 @@ export class AiConnections {
     };
     this.settings.upsertConnection(connection);
     this.log.info('AiConnections', `Connection added '${connection.id}'`, kind, connection.auth);
+    // Ask at once whether it can be used. Until it is asked its status is pending, which reads as
+    // unavailable — a subscription already signed in would carry a warning for as long as the page
+    // stayed open, since the list refreshes only what existed when it opened.
+    void this.refreshAuth(connection);
     // A method that needs no key can be asked for its models straight away. The seeded list is a
     // snapshot frozen at the plugin's release; the plugin's harness knows what the provider offers
     // today, and nothing is lost by asking — a failure leaves the seeds in place.
