@@ -11,6 +11,7 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { Icon } from '@shared/angular/icons/icon';
+import type { HostingCapability } from '@shared/api/hosting-protocol';
 import { VersionControlCapability } from '@shared/api/version-control-protocol';
 import { VersionControlMissing } from '../version-control-missing/version-control-missing';
 import { VersionControlPrompt } from '@shared/angular/services/plugins/version-control-prompt';
@@ -435,6 +436,12 @@ interface SectionDef {
    * Gets the capability the section needs, or undefined when every version-control system has it.
    */
   readonly capability?: VersionControlCapability;
+
+  /**
+   * Gets the hosting capability the section needs, for a section a hosting plugin fills. Such a
+   * section is shown only when a plugin serves the repository's host and the repository allows it.
+   */
+  readonly hostingCapability?: HostingCapability;
 }
 
 /**
@@ -578,9 +585,22 @@ export class SourceControlSidebar implements OnDestroy {
       label: 'Pull Requests',
       icon: Icon.GIT_PULL_REQUEST,
       children: () => this.pullRequestRows(),
+      hostingCapability: 'pullRequests',
     },
-    { key: 'issues', label: 'Issues', icon: Icon.INFO, children: () => this.issueRows() },
-    { key: 'actions', label: 'Actions', icon: Icon.PLAY, children: () => this.actionRows() },
+    {
+      key: 'issues',
+      label: 'Issues',
+      icon: Icon.INFO,
+      children: () => this.issueRows(),
+      hostingCapability: 'issues',
+    },
+    {
+      key: 'actions',
+      label: 'Actions',
+      icon: Icon.PLAY,
+      children: () => this.actionRows(),
+      hostingCapability: 'ciRuns',
+    },
   ];
 
   /**
@@ -603,6 +623,13 @@ export class SourceControlSidebar implements OnDestroy {
     for (const section of this.sections) {
       // A section the serving plugin cannot fill is not shown at all (#818).
       if (section.capability !== undefined && !this.repository.supports(section.capability)) {
+        continue;
+      }
+      // Likewise a section no hosting plugin can fill: absent, rather than a row saying it is (#820).
+      if (
+        section.hostingCapability !== undefined &&
+        !(this.forge.hasForge() && this.forge.supports(section.hostingCapability))
+      ) {
         continue;
       }
       const open: boolean = filtering || expanded.has(section.key);
@@ -2200,25 +2227,28 @@ export class SourceControlSidebar implements OnDestroy {
     if (node.pullRequest !== undefined) {
       return [
         { id: ACTION_CHECKOUT_PULL_REQUEST, label: 'Check Out', icon: Icon.TRAY_UP },
-        { id: ACTION_OPEN_PULL_REQUEST, label: 'Open on GitHub', icon: Icon.OPEN_EXTERNAL },
+        { id: ACTION_OPEN_PULL_REQUEST, label: this.openOnLabel(), icon: Icon.OPEN_EXTERNAL },
       ];
     }
     if (node.issue !== undefined) {
       return [
         { id: ACTION_ISSUE_IN_AGENT, label: 'Open in Agent', icon: Icon.AGENT },
-        { id: ACTION_OPEN_ISSUE, label: 'Open on GitHub', icon: Icon.OPEN_EXTERNAL },
+        { id: ACTION_OPEN_ISSUE, label: this.openOnLabel(), icon: Icon.OPEN_EXTERNAL },
       ];
     }
     if (node.run !== undefined) {
       const items: MenuItem[] = [];
       // Cancel applies only to a run still going, re-run only to one that has stopped. Offering the
       // inapplicable one would be offering a command the forge would simply refuse.
+      // Each is also offered only where the repository allows it — a user without push access cannot.
       if (node.run.status === 'queued' || node.run.status === 'running') {
-        items.push({ id: ACTION_CANCEL_RUN, label: 'Cancel Run', icon: Icon.STOP });
-      } else {
+        if (this.forge.supports('ciCancel')) {
+          items.push({ id: ACTION_CANCEL_RUN, label: 'Cancel Run', icon: Icon.STOP });
+        }
+      } else if (this.forge.supports('ciRerun')) {
         items.push({ id: ACTION_RERUN, label: 'Re-run', icon: Icon.REFRESH });
       }
-      items.push({ id: ACTION_OPEN_RUN, label: 'Open on GitHub', icon: Icon.OPEN_EXTERNAL });
+      items.push({ id: ACTION_OPEN_RUN, label: this.openOnLabel(), icon: Icon.OPEN_EXTERNAL });
       return items;
     }
     return [];
@@ -2492,11 +2522,21 @@ export class SourceControlSidebar implements OnDestroy {
         kind: 'action',
         icon: Icon.PLAY,
         // The branch is what tells two runs of the same workflow apart, which is the common case.
-        label: run.branch.length > 0 ? `${run.name} — ${run.branch}` : run.name,
+        label:
+          run.branch !== null && run.branch.length > 0 ? `${run.name} — ${run.branch}` : run.name,
         run,
         status: run.status,
       },
     }));
+  }
+
+  /**
+   * Names where an item opens in the browser: the provider serving the repository, such as GitHub.
+   * @returns Returns the menu label.
+   */
+  private openOnLabel(): string {
+    const provider: string | undefined = this.forge.repositoryRef()?.provider;
+    return provider === undefined ? 'Open in Browser' : `Open on ${provider}`;
   }
 
   /**

@@ -56,6 +56,7 @@ const CATEGORY_ICONS: Readonly<Record<string, Icon>> = {
   Decoders: Icon.DECODERS,
   'Container Engines': Icon.CONTAINERS,
   'Version Control': Icon.SOURCE_CONTROL,
+  Hosting: Icon.HOSTING,
   'AI Providers': Icon.AGENT,
 };
 
@@ -72,6 +73,7 @@ const ROW_ICONS: Readonly<Record<string, Icon>> = {
   Decoders: Icon.DECODERS_LIGHT,
   'Container Engines': Icon.CONTAINERS_LIGHT,
   'Version Control': Icon.WELCOME_SOURCE_CONTROL,
+  Hosting: Icon.HOSTING_LIGHT,
   'AI Providers': Icon.AGENT_LIGHT,
 };
 

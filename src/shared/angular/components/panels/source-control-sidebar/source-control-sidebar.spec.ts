@@ -412,11 +412,30 @@ class FakeForgeRepository {
    */
   public readonly repositoryRef: Signal<ForgeRepositoryRef | null> =
     signal<ForgeRepositoryRef | null>({
-      kind: 'github',
+      provider: 'GitHub',
       host: 'github.com',
       owner: 'onix-labs',
       name: 'onixlabs-studio',
     });
+
+  /**
+   * Holds whether a hosting plugin serves the repository.
+   */
+  public readonly hasForge: WritableSignal<boolean> = signal<boolean>(true);
+
+  /**
+   * Holds what the repository allows, or null for everything.
+   */
+  public allowed: ReadonlySet<string> | null = null;
+
+  /**
+   * Determines whether the repository allows a capability.
+   * @param capability The capability.
+   * @returns Returns true when it is allowed.
+   */
+  public supports(capability: string): boolean {
+    return this.allowed === null || this.allowed.has(capability);
+  }
 
   public readonly pullRequests: Signal<ForgeSection<ForgePullRequest>> = this.section.asReadonly();
   public readonly issues: Signal<ForgeSection<ForgeIssue>> = this.issueSection.asReadonly();
@@ -492,7 +511,7 @@ function pullRequest(overrides: Partial<ForgePullRequest> = {}): ForgePullReques
     url: 'https://github.com/onix-labs/onixlabs-studio/pull/7',
     draft: false,
     headRef: 'feature/thing',
-    headRefspec: 'refs/pull/7/head',
+    fetchRef: 'refs/pull/7/head',
     checks: 'succeeded',
     ...overrides,
   };
@@ -526,7 +545,7 @@ function pullRequestRow(overrides: Partial<ForgePullRequest> = {}): TreeRow {
  */
 function workflowRun(overrides: Partial<ForgeWorkflowRun> = {}): ForgeWorkflowRun {
   return {
-    id: 99,
+    id: '99',
     name: 'CI',
     status: 'succeeded',
     url: 'https://github.com/onix-labs/onixlabs-studio/actions/runs/99',
@@ -720,6 +739,35 @@ describe('SourceControlSidebar', () => {
     expect(text).not.toContain('Tags');
     expect(more).not.toContain('Stash Changes');
     expect(more).not.toContain('New Tag…');
+  });
+
+  it('render_withNoHostingPluginServingTheRepository_leavesTheForgeSectionsOut', () => {
+    // #820: with GitHub uninstalled the sections are absent, not broken.
+    forge.hasForge.set(false);
+    const gated: ComponentFixture<SourceControlSidebar> =
+      TestBed.createComponent(SourceControlSidebar);
+    gated.componentRef.setInput('panel', panel);
+    gated.detectChanges();
+    const text: string = (gated.nativeElement as HTMLElement).textContent ?? '';
+
+    expect(text).toContain('Remote');
+    expect(text).not.toContain('Pull Requests');
+    expect(text).not.toContain('Issues');
+    expect(text).not.toContain('Actions');
+  });
+
+  it('render_leavesOutWhatTheRepositoryDoesNotAllow', () => {
+    // #819's acceptance: Issues switched off on the repository hides Issues, though the plugin has it.
+    forge.allowed = new Set<string>(['pullRequests', 'ciRuns']);
+    const gated: ComponentFixture<SourceControlSidebar> =
+      TestBed.createComponent(SourceControlSidebar);
+    gated.componentRef.setInput('panel', panel);
+    gated.detectChanges();
+    const text: string = (gated.nativeElement as HTMLElement).textContent ?? '';
+
+    expect(text).toContain('Pull Requests');
+    expect(text).toContain('Actions');
+    expect(text).not.toContain('Issues');
   });
 
   it('render_theCheckedOutBranchReadsChangesThenAheadThenBehind', () => {
@@ -2406,6 +2454,22 @@ describe('SourceControlSidebar', () => {
       ).toEqual(['Re-run', 'Open on GitHub']);
     });
 
+    it('aRunOffersNeitherCommand_toAUserTheRepositoryDoesNotAllow', () => {
+      // A user without push access can see runs but not re-run or cancel them.
+      forge.allowed = new Set<string>(['ciRuns']);
+
+      expect(
+        internals()
+          .contextMenuFor(runRow({ status: 'running' }))
+          .map((item: MenuItem): string => item.label),
+      ).toEqual(['Open on GitHub']);
+      expect(
+        internals()
+          .contextMenuFor(runRow({ status: 'failed' }))
+          .map((item: MenuItem): string => item.label),
+      ).toEqual(['Open on GitHub']);
+    });
+
     it('openingAnIssueOrRunReachesTheBrowser', () => {
       internals().onContextAction({ itemId: 'issue.open', row: issueRow() });
       internals().onContextAction({ itemId: 'run.open', row: runRow() });
@@ -2420,7 +2484,7 @@ describe('SourceControlSidebar', () => {
       // Re-running spends CI minutes and can redeploy; cancelling abandons work in flight.
       internals().onContextAction({ itemId: 'run.rerun', row: runRow() });
 
-      expect(internals().pendingRerun()?.id).toBe(99);
+      expect(internals().pendingRerun()?.id).toBe('99');
       expect(forge.commands).toEqual([]);
 
       internals().confirmRerun();
@@ -2441,7 +2505,7 @@ describe('SourceControlSidebar', () => {
     it('cancelRun_isConfirmedToo', () => {
       internals().onContextAction({ itemId: 'run.cancel', row: runRow({ status: 'running' }) });
 
-      expect(internals().pendingCancel()?.id).toBe(99);
+      expect(internals().pendingCancel()?.id).toBe('99');
       internals().confirmCancelRun();
 
       expect(forge.commands).toEqual(['cancel:99']);

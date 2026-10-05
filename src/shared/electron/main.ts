@@ -95,7 +95,15 @@ import { VersionControlSetup } from '@shared/electron/version-control/version-co
 import { VersionControlSettings } from '@shared/electron/version-control/version-control-settings';
 import type { VersionControlExecutableChoice } from '@shared/api/version-control-protocol';
 import type { MetadataPolicies } from '@shared/electron/directory-watch-filter';
-import { contributedVersionControl } from '@shared/electron/contributions/plugins/contributed';
+import {
+  contributedHosting,
+  contributedVersionControl,
+} from '@shared/electron/contributions/plugins/contributed';
+import { HostingHost } from '@shared/electron/hosting/hosting-host';
+import { HostingSettings } from '@shared/electron/hosting/hosting-settings';
+import { HostingManager } from '@shared/electron/hosting/hosting-manager';
+import { HostingCredentialStore } from '@shared/electron/hosting/hosting-credential-store';
+import { createHostingCredentialStore } from '@shared/electron/hosting/hosting-credentials';
 import type { NodeRuntimeSpec } from '@shared/electron/contributions/plugins/plugin-loader';
 import { SearchManager } from '@shared/electron/search-manager';
 import { StudioStore } from '@shared/electron/studio/studio-store';
@@ -377,6 +385,39 @@ class Program {
   private readonly versionControlManager: VersionControlManager = new VersionControlManager(
     this.versionControlHost,
     this.versionControlSettings,
+  );
+
+  /**
+   * Holds the token Studio keeps for each code host, encrypted at rest — the login a hosting plugin is
+   * handed when the user chooses Studio's rather than the host's CLI.
+   */
+  private readonly hostingCredentials: HostingCredentialStore = createHostingCredentialStore();
+
+  /**
+   * Holds how each hosting plugin signs in to each of its hosts, as chosen in Settings.
+   */
+  private readonly hostingSettings: HostingSettings = new HostingSettings(
+    path.join(app.getPath('userData'), 'hosting.json'),
+  );
+
+  /**
+   * Hosts the code-hosting plugins (#819, #820): picks the one serving each repository's host, hands it
+   * a credential only for a host it declares, and refuses what it or the repository does not allow.
+   * Core talks to no host of its own — GitHub is a plugin.
+   */
+  private readonly hostingHost: HostingHost = new HostingHost({
+    descriptors: () => contributedHosting(versionControlNodeRuntime),
+    authFor: (pluginId: string) => this.hostingSettings.authFor(pluginId),
+    credential: (host: string): Promise<string | null> =>
+      Promise.resolve(this.hostingCredentials.token(host)),
+  });
+
+  /**
+   * Serves the renderer's forge surfaces over the hosting host.
+   */
+  private readonly hostingManager: HostingManager = new HostingManager(
+    this.hostingHost,
+    this.hostingCredentials,
   );
 
   /**
@@ -914,6 +955,7 @@ class Program {
     this.menuManager.register();
     this.codeRunner.register();
     this.versionControlManager.register();
+    this.hostingManager.register();
     this.workspaceManager.register();
     this.searchManager.register();
     this.studioStore.register();
@@ -1249,6 +1291,7 @@ class Program {
     this.codeRunner.dispose();
     this.decoderHost.dispose();
     this.versionControlManager.dispose();
+    this.hostingManager.dispose();
     this.fileWatcher.disposeAll();
     this.directoryWatcher.disposeAll();
     this.aiManager.disposeAll();

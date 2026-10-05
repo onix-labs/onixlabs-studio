@@ -8,7 +8,7 @@ import { Forge } from './forge';
  * The repository the listing calls are made for.
  */
 const REPOSITORY: ForgeRepositoryRef = {
-  kind: 'github',
+  provider: 'GitHub',
   host: 'github.com',
   owner: 'onix-labs',
   name: 'onixlabs-studio',

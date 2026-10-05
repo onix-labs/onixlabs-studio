@@ -1,13 +1,14 @@
 // The forge capability's IPC channels and renderer-facing client. The renderer's Forge service and the
-// main-process ForgeContribution both name their channels from here, carried over the generic
-// window.bridge transport. The backend is contributed through the main-process contribution registry
-// (#389); it is not a core manager.
+// main-process HostingManager both name their channels from here, carried over the generic
+// window.bridge transport. Behind them is the hosting host: every request is answered by whichever
+// hosting plugin serves the repository's host (#819, #820), and with none installed there is no forge.
 //
 // Every network call and every credential lives in the main process. The renderer can ask for a token
 // to be stored or cleared, and can read the resulting status — it can never read the token back.
 
 import {
   ForgeAuthStatus,
+  ForgeRepositoryCapabilities,
   ForgeIssue,
   ForgeIssueComment,
   ForgePullRequest,
@@ -27,6 +28,12 @@ export enum ForgeChannel {
   Detect = 'forge:detect',
 
   /**
+   * Says what a repository allows — its plugin's capabilities narrowed to the repository's own — or
+   * null when no installed plugin serves it (invoke).
+   */
+  Describe = 'forge:describe',
+
+  /**
    * Reads the current authentication status, verifying the resolved credential against the forge
    * (invoke).
    */
@@ -39,7 +46,7 @@ export enum ForgeChannel {
 
   /**
    * Clears the stored token and returns the resulting status — which may still be authenticated, when
-   * a `gh` CLI login remains (invoke).
+   * the host's CLI login remains (invoke).
    */
   ClearToken = 'forge:clear-token',
 
@@ -84,6 +91,13 @@ export interface ForgeClient {
    * @returns Returns the repository reference, or null when the URL names no forge Studio can talk to.
    */
   detect(remoteUrl: string): Promise<ForgeRepositoryRef | null>;
+
+  /**
+   * Says what a repository allows.
+   * @param repository The repository.
+   * @returns Returns the capabilities, or null when no installed plugin serves it.
+   */
+  describe(repository: ForgeRepositoryRef): Promise<ForgeRepositoryCapabilities | null>;
 
   /**
    * Reads the current authentication status.
@@ -142,7 +156,7 @@ export interface ForgeClient {
    * @param runId The run to re-run.
    * @returns Returns nothing on success, or the reason it could not be started.
    */
-  rerunWorkflowRun(repository: ForgeRepositoryRef, runId: number): Promise<ForgeResult<void>>;
+  rerunWorkflowRun(repository: ForgeRepositoryRef, runId: string): Promise<ForgeResult<void>>;
 
   /**
    * Cancels a CI/CD workflow run that is in flight.
@@ -150,5 +164,5 @@ export interface ForgeClient {
    * @param runId The run to cancel.
    * @returns Returns nothing on success, or the reason it could not be cancelled.
    */
-  cancelWorkflowRun(repository: ForgeRepositoryRef, runId: number): Promise<ForgeResult<void>>;
+  cancelWorkflowRun(repository: ForgeRepositoryRef, runId: string): Promise<ForgeResult<void>>;
 }

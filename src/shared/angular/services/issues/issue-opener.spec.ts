@@ -39,7 +39,7 @@ function makeIssue(issueNumber: number, commentCount: number = 0): ForgeIssue {
  */
 function makeComment(id: number): ForgeIssueComment {
   return {
-    id,
+    id: String(id),
     author: 'matthew',
     body: 'Reproduced.',
     createdAt: '2026-08-02T09:00:00Z',

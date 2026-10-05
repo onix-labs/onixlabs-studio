@@ -501,7 +501,23 @@ export function toContributions(manifest: PluginManifest): readonly PluginContri
     priority: system.priority,
     capabilities: system.capabilities,
   }));
-  return [...servers, ...adapters, ...decoders, ...engines, ...versionControl, ...harnesses];
+  const hosting: readonly PluginContribution[] = (manifest.contributes.hosting ?? []).map(
+    (host: ManifestHosting): PluginContribution => ({
+      slot: 'hosting',
+      id: host.id,
+      displayName: host.displayName,
+      priority: host.priority,
+    }),
+  );
+  return [
+    ...servers,
+    ...adapters,
+    ...decoders,
+    ...engines,
+    ...versionControl,
+    ...hosting,
+    ...harnesses,
+  ];
 }
 
 /**

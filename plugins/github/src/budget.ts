@@ -1,4 +1,4 @@
-// What makes polling a forge affordable: an entity-tag cache and a rate-limit ledger. Pure logic, kept
+// What makes polling GitHub affordable: an entity-tag cache and a rate-limit ledger. Pure logic, kept
 // free of Electron and Node imports so both are unit-testable with a fake clock.
 //
 // The two work together. GitHub does not count a conditional request that answers 304 against the rate

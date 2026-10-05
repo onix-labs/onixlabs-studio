@@ -193,6 +193,16 @@ export class HostingHost {
   }
 
   /**
+   * Gets every contributed plugin, highest priority first.
+   * @returns Returns the descriptors.
+   */
+  public preferredOrder(): readonly HostingDescriptor[] {
+    return [...this.options.descriptors()].sort(
+      (a: HostingDescriptor, b: HostingDescriptor): number => b.priority - a.priority,
+    );
+  }
+
+  /**
    * Finds the repository a git remote points at, and the plugin serving its host — what replaces the
    * host table core kept for GitHub.
    * @param remoteUrl The remote's URL.

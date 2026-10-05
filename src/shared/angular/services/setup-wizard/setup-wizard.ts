@@ -174,6 +174,13 @@ const SLOT_STEPS: Readonly<Record<PluginSlot, { icon: Icon; title: string; summa
       'Studio runs no version-control tool of its own. Install Git to see changes, commit, branch ' +
       'and work with remotes; without it the source-control panels have nothing to show.',
   },
+  hosting: {
+    icon: Icon.SETUP_HOSTING,
+    title: 'Code hosting',
+    summary:
+      'Where your repositories live. Install GitHub to see pull requests, issues and workflow runs ' +
+      'beside your changes; without it those sections stay hidden.',
+  },
   'agent-harness': {
     icon: Icon.SETUP_AI_PROVIDER,
     title: 'Which AI Studio talks to',

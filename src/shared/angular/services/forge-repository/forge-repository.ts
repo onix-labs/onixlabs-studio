@@ -1,4 +1,15 @@
-import { computed, inject, Service, Signal, signal, WritableSignal } from '@angular/core';
+import {
+  computed,
+  effect,
+  inject,
+  Service,
+  Signal,
+  signal,
+  untracked,
+  WritableSignal,
+} from '@angular/core';
+import { installedContributions, PluginContribution } from '@shared/api/plugin-channels';
+import { Plugins } from '@shared/angular/services/plugins/plugins';
 import { Forge } from '@shared/angular/services/forge/forge';
 import { Log } from '@shared/angular/services/log/log';
 import { Repository } from '@shared/angular/services/repository/repository';
@@ -8,10 +19,12 @@ import {
   ForgeIssue,
   ForgeIssueComment,
   ForgePullRequest,
+  ForgeRepositoryCapabilities,
   ForgeRepositoryRef,
   ForgeResult,
   ForgeWorkflowRun,
 } from '@shared/api/forge-types';
+import type { HostingCapability } from '@shared/api/hosting-protocol';
 
 /**
  * The remote names preferred when a repository has several, in order. A fork typically has both, and
@@ -103,6 +116,26 @@ export class ForgeRepository {
   private readonly log: Log = inject(Log);
 
   /**
+   * Holds the plugin client, watched for hosting plugins arriving or leaving.
+   */
+  private readonly plugins: Plugins = inject(Plugins);
+
+  /**
+   * Holds what the detected repository allows, or null until it is known.
+   */
+  private readonly capabilitiesSignal: WritableSignal<ReadonlySet<HostingCapability> | null> =
+    signal<ReadonlySet<HostingCapability> | null>(null);
+
+  /**
+   * Gets the installed hosting plugins' ids, joined — what changes when one is installed or removed.
+   */
+  private readonly installedHosting: Signal<string> = computed((): string =>
+    installedContributions(this.plugins.plugins(), 'hosting')
+      .map((contribution: PluginContribution): string => contribution.id)
+      .join('\u0000'),
+  );
+
+  /**
    * Reads the current time, for describing how long a rate limit has left. Overridable in tests.
    */
   protected now: () => number = Date.now;
@@ -165,6 +198,34 @@ export class ForgeRepository {
   public readonly isAvailable: boolean = this.forge.isAvailable;
 
   /**
+   * Initializes the service, detecting the forge whenever the repository's remotes change or a hosting
+   * plugin is installed or removed — so the forge sections appear as soon as a plugin can serve them,
+   * and disappear with it, rather than waiting to be opened to find out.
+   */
+  public constructor() {
+    effect((): void => {
+      this.repository.remotes();
+      this.installedHosting();
+      untracked((): void => {
+        if (this.repository.isBound()) {
+          void this.detect();
+        }
+      });
+    });
+  }
+
+  /**
+   * Determines whether the detected repository allows something. True while it is not yet known, so a
+   * control does not flicker away and back while the answer is fetched.
+   * @param capability The capability.
+   * @returns Returns true when it is allowed or not yet known.
+   */
+  public supports(capability: HostingCapability): boolean {
+    const known: ReadonlySet<HostingCapability> | null = this.capabilitiesSignal();
+    return known === null || known.has(capability);
+  }
+
+  /**
    * Resolves which repository this workspace's remotes name on a forge, remembering it for the
    * listing calls. Safe to call repeatedly; the answer only changes when the remotes do.
    * @returns Returns the detected repository, or null when the remotes name none.
@@ -182,16 +243,32 @@ export class ForgeRepository {
       if (reference !== null) {
         this.log.debug(
           'forge',
-          `Remote '${remote.name}' is ${reference.owner}/${reference.name} on ${reference.kind}`,
+          `Remote '${remote.name}' is ${reference.owner}/${reference.name} on ${reference.provider}`,
         );
         this.detected.set(reference);
         this.detectedRemote.set(remote.name);
+        void this.loadCapabilities(reference);
         return reference;
       }
     }
     this.detected.set(null);
     this.detectedRemote.set(null);
+    this.capabilitiesSignal.set(null);
     return null;
+  }
+
+  /**
+   * Reads what a detected repository allows, unless another detection has superseded it meanwhile.
+   * @param reference The repository.
+   * @returns Returns a promise that settles once it has been read.
+   */
+  private async loadCapabilities(reference: ForgeRepositoryRef): Promise<void> {
+    const described: ForgeRepositoryCapabilities | null = await this.forge.describe(reference);
+    if (this.detected() === reference) {
+      this.capabilitiesSignal.set(
+        described === null ? null : new Set<HostingCapability>(described.capabilities),
+      );
+    }
   }
 
   /**
@@ -300,7 +377,7 @@ export class ForgeRepository {
     const local: string =
       pullRequest.headRef.length > 0 ? pullRequest.headRef : `pr-${pullRequest.number}`;
     this.log.info('forge', `Checking out pull request #${pullRequest.number} as '${local}'`);
-    return this.repository.checkoutRef(remote, pullRequest.headRefspec, local);
+    return this.repository.checkoutRef(remote, pullRequest.fetchRef, local);
   }
 
   /**
@@ -456,6 +533,7 @@ export class ForgeRepository {
   public reset(): void {
     this.detected.set(null);
     this.detectedRemote.set(null);
+    this.capabilitiesSignal.set(null);
     this.pullRequestSection.set(IDLE);
     this.issueSection.set(IDLE);
     this.runSection.set(IDLE);
