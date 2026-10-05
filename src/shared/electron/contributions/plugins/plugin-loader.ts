@@ -12,6 +12,7 @@ import {
   ManifestRequirement,
   ManifestResult,
   ManifestVersionControl,
+  ManifestHosting,
   parsePluginManifest,
   PluginManifest,
 } from '@shared/api/plugin-manifest';
@@ -48,6 +49,7 @@ import {
   VersionControlDescriptor,
   VersionControlResolution,
 } from '../../version-control/version-control-descriptor';
+import { HostingDescriptor, HostingResolution } from '../../hosting/hosting-descriptor';
 
 /**
  * The file a sideloaded plugin is described by, inside its own directory.
@@ -872,6 +874,56 @@ export function toVersionControlDescriptors(
       },
     }),
   );
+}
+
+/**
+ * Turns a manifest's code hosts into descriptors the hosting host can start (#819).
+ *
+ * Like a version-control system, a plugin that is not installed stays registered and resolves to
+ * unavailable, so a surface can say why and offer the install.
+ * @param manifest The validated manifest.
+ * @param provisioner Gets the provisioner the plugin's install went through.
+ * @param nodeRuntime Gets how to run a JavaScript entry point under the runtime Studio ships.
+ * @param localRoot The sideloaded plugin's directory, or undefined when it was not sideloaded.
+ * @param installedVersion Resolves the installed version of a plugin.
+ * @returns Returns the descriptors.
+ */
+export function toHostingDescriptors(
+  manifest: PluginManifest,
+  provisioner: () => LspProvisioner,
+  nodeRuntime: (entryPoint: string) => NodeRuntimeSpec,
+  localRoot?: string,
+  installedVersion?: InstalledVersion,
+): readonly HostingDescriptor[] {
+  const ops: PayloadOps = payloadOps(manifest, localRoot, installedVersion);
+  return (manifest.contributes.hosting ?? []).map((host: ManifestHosting): HostingDescriptor => ({
+    id: host.id,
+    displayName: host.displayName,
+    priority: host.priority,
+    hosts: host.hosts,
+    capabilities: host.capabilities,
+    authModes: host.authModes,
+    resolve: (): HostingResolution => {
+      const entryPoint: string | null = ops.isInstalled(provisioner())
+        ? ops.target(provisioner(), host.entryPoint)
+        : null;
+      if (entryPoint === null) {
+        return {
+          available: false,
+          reason: `${host.displayName} is not installed — install it in Plugins.`,
+        };
+      }
+      const spec: NodeRuntimeSpec | string = toCommandSpec(
+        host.command,
+        entryPoint,
+        host.displayName,
+        nodeRuntime,
+      );
+      return typeof spec === 'string'
+        ? { available: false, reason: spec }
+        : { available: true, spec };
+    },
+  }));
 }
 
 /**
