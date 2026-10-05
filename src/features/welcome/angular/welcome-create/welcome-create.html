@@ -1,0 +1,97 @@
+<div class="create">
+  <ol class="create__rail" aria-label="Steps">
+    @for (step of stages; track step.title; let index = $index) {
+      <li
+        class="create__step"
+        [class.create__step--current]="stage() === index"
+        [attr.aria-current]="stage() === index ? 'step' : null"
+      >
+        <span class="create__step-number">{{ index + 1 }}</span>
+        <span class="create__step-text">
+          <span class="create__step-title">{{ step.title }}</span>
+          <span class="create__step-hint">{{ step.hint }}</span>
+        </span>
+      </li>
+    }
+  </ol>
+
+  <div class="create__main">
+    <header>
+      <h2 class="create__title">Create a New Project with AI</h2>
+      <p class="create__description">
+        Describe what you want to build in plain language. The AI will suggest an architecture,
+        services and technologies, and create a project tailored to it.
+      </p>
+    </header>
+
+    <div class="create__composer">
+      <textarea
+        class="create__input"
+        aria-label="Describe your project"
+        placeholder="Describe your project…&#10;&#10;For example:&#10;• “Build a distributed AI agent that searches restaurants and books a ride”&#10;• “Create a data service with a REST API and a graph database”&#10;• “Make a real-time dashboard that integrates with Slack and Notion”"
+        [value]="description()"
+        (input)="onInput($event)"
+        (keydown)="onKeydown($event)"
+      ></textarea>
+      <div class="create__composer-bar">
+        <button
+          type="button"
+          class="create__secondary"
+          aria-disabled="true"
+          [appTooltip]="'Coming soon'"
+        >
+          <app-icon [icon]="Icon.WELCOME_ATTACH" />
+          <span>Add Context</span>
+        </button>
+        <button
+          type="button"
+          class="create__secondary"
+          aria-disabled="true"
+          [appTooltip]="'Coming soon'"
+        >
+          <app-icon [icon]="Icon.WELCOME_TEMPLATE" />
+          <span>Use a Template</span>
+        </button>
+        <button
+          type="button"
+          class="create__generate"
+          [disabled]="!canGenerate()"
+          (click)="generate()"
+        >
+          <app-icon [icon]="Icon.WELCOME_GENERATE" />
+          <span>Generate Plan</span>
+          <kbd class="create__shortcut">{{ shortcut }}</kbd>
+        </button>
+      </div>
+    </div>
+
+    @if (requested()) {
+      <p class="create__notice" role="status">
+        Studio can’t generate projects yet — this flow is still being designed. Your description is
+        kept here for when it can.
+      </p>
+    }
+
+    <section class="create__examples" aria-labelledby="create-examples-title">
+      <h3 class="create__examples-title" id="create-examples-title">Example Projects</h3>
+      <div class="create__examples-grid">
+        @for (example of examples; track example.title) {
+          <button
+            type="button"
+            class="welcome__example"
+            [class.welcome__example--unavailable]="example.description.length === 0"
+            [appTooltip]="example.description.length === 0 ? 'Coming soon' : ''"
+            (click)="useExample(example)"
+          >
+            <app-icon class="welcome__example-icon" [icon]="example.icon" />
+            <span class="welcome__example-text">
+              <span class="welcome__example-title">{{ example.title }}</span>
+              <span class="welcome__example-summary">{{ example.summary }}</span>
+            </span>
+            <app-icon class="welcome__example-chevron" [icon]="Icon.WELCOME_CHEVRON" />
+          </button>
+        }
+      </div>
+    </section>
+  </div>
+</div>

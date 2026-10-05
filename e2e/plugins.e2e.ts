@@ -5,16 +5,15 @@ import { modalWindow } from './helpers';
 /**
  * Opens the Plugin Manager from the welcome screen.
  *
- * Not `openTabFromWelcome`, which clicks an action directly: the welcome screen is a single-open
- * accordion with Get Started open, and the Plugin Manager lives under Tools — so the group has to be expanded
- * before its actions exist in the DOM at all.
+ * Not `openTabFromWelcome`, which clicks an action directly: the welcome screen opens on its Get
+ * Started section, and the Plugin Manager is a card in the Tools section — so that tab is chosen first.
  * @param app The Electron application.
  * @param page The main window.
  */
 async function openPlugins(app: ElectronApplication, page: Page): Promise<void> {
   const welcome: Page = await modalWindow(app);
-  await welcome.getByRole('button', { name: 'Tools' }).click();
-  await welcome.getByText('Plugin Manager', { exact: true }).click();
+  await welcome.getByRole('tab', { name: 'Tools & Settings' }).click();
+  await welcome.locator('.welcome__tool', { hasText: 'Plugin Manager' }).click();
   await expect(page.locator('app-plugin-manager-view')).toBeVisible();
 }
 

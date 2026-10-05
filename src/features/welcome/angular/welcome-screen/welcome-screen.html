@@ -1,7 +1,6 @@
-<!-- The welcome screen is a themed modal in its own window. With no tabs open it stands free — the
-     main window is hidden behind nothing at all — and closing it quits; summoned from the title
-     strip's new-tab button it is an ordinary dismissable modal over a blurred main window. A calm,
-     static accent glow sits behind its content, shown only when it stands in for the application. -->
+<!-- The welcome screen is a themed modal in its own window. With no tabs open it stands free — the main
+     window is hidden behind nothing at all — and closing it quits; summoned from the title strip's
+     new-tab button it is an ordinary dismissable modal over a blurred main window. -->
 <app-modal
   class="welcome-modal"
   [open]="visible()"
@@ -20,13 +19,6 @@
   (dismiss)="close()"
 >
   <ng-template appModalContent>
-    <!-- A soft, static accent glow behind the content. Purely decorative, and shown in both of the
-         welcome screen's roles: it is the same window either way, so it looks the same either way. -->
-    <div class="welcome__glow" aria-hidden="true">
-      <span class="welcome__glow-blob welcome__glow-blob--a"></span>
-      <span class="welcome__glow-blob welcome__glow-blob--b"></span>
-    </div>
-
     <header class="welcome__header">
       <img class="welcome__logo" src="icon.svg" alt="" draggable="false" />
       <div class="welcome__intro">
@@ -35,266 +27,53 @@
       </div>
     </header>
 
-    <div class="welcome__body">
-      <div class="welcome__left">
-        <section
-          class="welcome__group"
-          [class.welcome__group--open]="openGroup() === 'get-started'"
+    <!-- The sections share one tab strip, drawn like the document tabs: the active tab is outlined in
+         the accent and flares into the panel beneath it, so tab and panel read as one shape. -->
+    <div class="welcome__tabs" role="tablist" aria-label="Welcome">
+      @for (tab of shownSections; track tab.id; let index = $index) {
+        <button
+          type="button"
+          class="welcome__tab"
+          role="tab"
+          [id]="'welcome-tab-' + tab.id"
+          [class.welcome__tab--active]="section() === tab.id"
+          [attr.aria-selected]="section() === tab.id"
+          [attr.aria-controls]="'welcome-panel'"
+          [attr.tabindex]="section() === tab.id ? 0 : -1"
+          (click)="show(tab.id)"
+          (keydown)="onTabKeydown($event, index)"
         >
-          <button
-            type="button"
-            class="welcome__group-header"
-            [attr.aria-expanded]="openGroup() === 'get-started'"
-            (click)="toggleGroup('get-started')"
-          >
-            <span class="welcome__group-title">Get Started</span>
-            <app-icon
-              class="welcome__group-caret"
-              [icon]="Icon.CARET_RIGHT"
-              [rotation]="openGroup() === 'get-started' ? 90 : 0"
-            />
-          </button>
-          @if (openGroup() === 'get-started') {
-            <div class="welcome__actions">
-              <button type="button" class="welcome__action" (click)="openFiles()">
-                <app-icon class="welcome__action-icon" [icon]="Icon.WELCOME_DIRECTORY" />
-                <span class="welcome__action-label">Open Directory or File</span>
-              </button>
-              <button type="button" class="welcome__action" (click)="newProject()">
-                <app-icon class="welcome__action-icon" [icon]="Icon.WELCOME_PROJECT" />
-                <span class="welcome__action-label">New Project</span>
-              </button>
-              <button type="button" class="welcome__action" (click)="create('code')">
-                <app-icon class="welcome__action-icon" [icon]="Icon.WELCOME_CODE" />
-                <span class="welcome__action-label">New Code File</span>
-              </button>
-              <button type="button" class="welcome__action" (click)="create('markdown')">
-                <app-icon class="welcome__action-icon" [icon]="Icon.WELCOME_MARKDOWN" />
-                <span class="welcome__action-label">New Markdown File</span>
-              </button>
-              <button type="button" class="welcome__action" (click)="create('terminal')">
-                <app-icon class="welcome__action-icon" [icon]="Icon.WELCOME_TERMINAL" />
-                <span class="welcome__action-label">New Terminal</span>
-              </button>
-              <button type="button" class="welcome__action" (click)="create('agent')">
-                <app-icon class="welcome__action-icon" [icon]="Icon.WELCOME_AGENT" />
-                <span class="welcome__action-label">New Agent</span>
-              </button>
-              <button type="button" class="welcome__action" (click)="create('api-explorer')">
-                <app-icon class="welcome__action-icon" [icon]="Icon.WELCOME_API_EXPLORER" />
-                <span class="welcome__action-label">New API Explorer</span>
-              </button>
-              <button type="button" class="welcome__action" (click)="comingSoon()">
-                <app-icon class="welcome__action-icon" [icon]="Icon.WELCOME_DATABASE" />
-                <span class="welcome__action-label">New Database Explorer</span>
-              </button>
-            </div>
-          }
-        </section>
-
-        <section class="welcome__group" [class.welcome__group--open]="openGroup() === 'tools'">
-          <button
-            type="button"
-            class="welcome__group-header"
-            [attr.aria-expanded]="openGroup() === 'tools'"
-            (click)="toggleGroup('tools')"
-          >
-            <span class="welcome__group-title">Tools</span>
-            <app-icon
-              class="welcome__group-caret"
-              [icon]="Icon.CARET_RIGHT"
-              [rotation]="openGroup() === 'tools' ? 90 : 0"
-            />
-          </button>
-          @if (openGroup() === 'tools') {
-            <div class="welcome__actions">
-              <button type="button" class="welcome__action" (click)="create('containers')">
-                <app-icon class="welcome__action-icon" [icon]="Icon.WELCOME_CONTAINERS" />
-                <span class="welcome__action-label">Containers</span>
-              </button>
-              <button type="button" class="welcome__action" (click)="comingSoon()">
-                <app-icon class="welcome__action-icon" [icon]="Icon.WELCOME_ORCHESTRATION" />
-                <span class="welcome__action-label">Orchestration</span>
-              </button>
-              <button type="button" class="welcome__action" (click)="create('model-manager')">
-                <app-icon class="welcome__action-icon" [icon]="Icon.WELCOME_AI_MODELS" />
-                <span class="welcome__action-label">AI Model Manager</span>
-              </button>
-              <button type="button" class="welcome__action" (click)="create('system-monitor')">
-                <app-icon class="welcome__action-icon" [icon]="Icon.WELCOME_SYSTEM_MONITOR" />
-                <span class="welcome__action-label">System Monitor</span>
-              </button>
-              <button type="button" class="welcome__action" (click)="create('plugin-manager')">
-                <app-icon class="welcome__action-icon" [icon]="Icon.WELCOME_PLUGINS" />
-                <span class="welcome__action-label">Plugin Manager</span>
-              </button>
-              <button type="button" class="welcome__action" (click)="create('settings')">
-                <app-icon
-                  class="welcome__action-icon"
-                  [icon]="Icon.WELCOME_SETTINGS"
-                  [rotation]="30"
-                />
-                <span class="welcome__action-label">Settings</span>
-              </button>
-            </div>
-          }
-        </section>
-      </div>
-
-      <section class="welcome__group welcome__group--recent" aria-label="Recent items">
-        <h2 class="welcome__group-title">Recent Items</h2>
-        <div class="welcome__recent">
-          <div class="welcome__recent-head">
-            <!-- DELIBERATELY OUTSIDE THE ATOM SYSTEM. The welcome screen is the application's one
-                 bespoke surface: its search box and Clear pill are drawn to its own palette
-                 (`--wl-*`) and pill geometry, not the app's form chrome. Using `app-text-field` and
-                 `app-button` here would either look wrong or force the call site to override the
-                 atoms, which is the drift those atoms exist to prevent. Nothing else may follow this
-                 example. -->
-            <div class="welcome__searchbox">
-              <input
-                type="text"
-                class="welcome__searchbox-input"
-                placeholder="Search"
-                aria-label="Search recent items"
-                [value]="query()"
-                (input)="onSearchInput($event)"
-                (keydown.escape)="query.set('')"
-              />
-              <app-icon class="welcome__searchbox-icon" [icon]="Icon.SEARCH" />
-            </div>
-            @if (hasRecent()) {
-              <button type="button" class="welcome__clear" (click)="requestClearRecent()">
-                <app-icon [icon]="Icon.TRASH" />
-                <span>Clear</span>
-              </button>
-            }
-          </div>
-
-          <!-- Bespoke by design, as above: these pills carry the welcome palette's accent fill and
-             its own rounding, not the shared segmented track. -->
-          <div class="welcome__filters" role="tablist" aria-label="Filter recent items">
-            @for (filter of filters; track filter.id) {
-              <button
-                type="button"
-                class="welcome__filter"
-                [class.welcome__filter--active]="activeFilter() === filter.id"
-                role="tab"
-                [attr.aria-selected]="activeFilter() === filter.id"
-                (click)="activeFilter.set(filter.id)"
-              >
-                <app-icon [icon]="filter.icon" />
-                <span>{{ filter.label }}</span>
-              </button>
-            }
-          </div>
-
-          @if (visibleItems().length > 0) {
-            <ul class="welcome__recent-list">
-              @for (item of visibleItems(); track item.path) {
-                <li class="welcome__recent-row" [class.welcome__recent-row--pinned]="item.pinned">
-                  <button type="button" class="welcome__recent-open" (click)="openRecent(item)">
-                    <span class="welcome__recent-icon"
-                      ><app-icon [icon]="iconFor(item.kind)"
-                    /></span>
-                    <span class="welcome__recent-text">
-                      <span class="welcome__recent-name">{{ display(item.name) }}</span>
-                      <span class="welcome__recent-detail">{{ display(item.path) }}</span>
-                    </span>
-                  </button>
-                  <span class="welcome__recent-time">{{ relativeTime(item.openedAt) }}</span>
-                  <app-button
-                    [pressed]="item.pinned"
-                    [ariaLabel]="item.pinned ? 'Unpin item' : 'Pin item'"
-                    [icon]="item.pinned ? Icon.PIN_FILLED : Icon.PIN"
-                    variant="none"
-                    size="small"
-                    (click)="togglePin(item)"
-                  />
-                  <button
-                    type="button"
-                    class="welcome__recent-menu"
-                    aria-label="More actions"
-                    [appTooltip]="'More actions'"
-                    [cdkMenuTriggerFor]="rowMenu.panel() ?? null"
-                    [cdkMenuPosition]="rowMenu.position()"
-                  >
-                    <app-icon [icon]="Icon.DOTS_THREE_VERTICAL" />
-                  </button>
-                  <app-menu
-                    #rowMenu
-                    placement="down-end"
-                    [items]="rowMenuItems"
-                    (selected)="onRowAction(item, $event)"
-                  />
-                </li>
-              }
-            </ul>
-          } @else {
-            <div class="welcome__recent-empty">
-              <app-icon [icon]="Icon.RECENT_EMPTY" [size]="4" />
-              @if (hasRecent()) {
-                <p class="welcome__recent-empty-title">No matching items</p>
-                <p class="welcome__recent-empty-hint">Try a different filter or search.</p>
-              } @else {
-                <p class="welcome__recent-empty-title">No recent items yet</p>
-                <p class="welcome__recent-empty-hint">
-                  Files and folders you open will show up here.
-                </p>
-              }
-            </div>
-          }
-        </div>
-      </section>
+          <app-icon class="welcome__tab-icon" [icon]="tab.icon" />
+          <span class="welcome__tab-label">{{ tab.label }}</span>
+        </button>
+      }
     </div>
 
-    <!-- Confirmation shown before clearing the recent-items history, since the action cannot be
-         undone. It is declared INSIDE the welcome screen's content so it is raised from the welcome
-         window: it parents to that window, dims it, and never reaches for the main window — which is
-         hidden while the welcome screen stands in for it. -->
-    <app-modal
-      class="welcome__confirm"
-      [open]="confirmingClear()"
-      [width]="24"
-      ariaLabel="Clear recent items"
-      (dismiss)="cancelClearRecent()"
+    <section
+      class="welcome__panel"
+      id="welcome-panel"
+      role="tabpanel"
+      [class.welcome__panel--first]="section() === 'get-started'"
+      [attr.aria-labelledby]="'welcome-tab-' + section()"
     >
-      <ng-template appModalContent>
-        <h2 class="welcome__confirm-title">Clear recent items</h2>
-        <p class="welcome__confirm-message">
-          Are you sure you want to clear all recent items? This cannot be undone.
-        </p>
-        <div class="welcome__confirm-actions">
-          <app-button label="Cancel" (click)="cancelClearRecent()" />
-          <app-button variant="solid" label="Clear" (click)="clearRecent()" />
-        </div>
-      </ng-template>
-    </app-modal>
-
-    <!-- Shown when a recent item cannot be opened: its path was one the user opened before, so the
-         failure means it has moved, been renamed, or been deleted. Rather than the click doing
-         nothing, the user is offered a way forward — point it at its new location, forget it, or
-         leave it be. Raised from the welcome window like the clear-confirmation above. -->
-    <app-modal
-      class="welcome__confirm"
-      [open]="missingItem() !== null"
-      [width]="30"
-      ariaLabel="Item not found"
-      (dismiss)="dismissMissing()"
-    >
-      <ng-template appModalContent>
-        @if (missingItem(); as missing) {
-          <h2 class="welcome__confirm-title">Can’t find this item</h2>
-          <p class="welcome__confirm-message">
-            “{{ missing.name }}” could not be opened. It may have been moved, renamed, or deleted.
-          </p>
-          <div class="welcome__confirm-actions welcome__confirm-actions--stack">
-            <app-button variant="solid" label="Locate" (click)="locateMissing()" />
-            <app-button variant="outline" label="Remove" (click)="removeMissing()" />
-            <app-button variant="none" label="Cancel" (click)="dismissMissing()" />
-          </div>
-        }
-      </ng-template>
-    </app-modal>
+      <!-- Every section stays mounted and the inactive ones are hidden, so a section keeps what the
+           user was doing in it — a half-written project description, a search — across a look at
+           another tab. -->
+      <app-welcome-get-started
+        [hidden]="section() !== 'get-started'"
+        (openTab)="create($event)"
+        (opened)="opened()"
+      />
+      @if (isShown('create')) {
+        <app-welcome-create [hidden]="section() !== 'create'" />
+      }
+      @if (isShown('source-control')) {
+        <app-welcome-source-control
+          [hidden]="section() !== 'source-control'"
+          (openTab)="create($event)"
+        />
+      }
+      <app-welcome-tools [hidden]="section() !== 'tools'" (openTab)="create($event)" />
+    </section>
   </ng-template>
 </app-modal>

@@ -1,0 +1,276 @@
+@use '../welcome' as *;
+
+:host {
+  display: block;
+  block-size: 100%;
+  min-block-size: 0;
+}
+
+// The step rail on the left, the current step filling the right.
+.create {
+  display: grid;
+  grid-template-columns: 15rem minmax(0, 1fr);
+  gap: 1.5rem;
+  block-size: 100%;
+  min-block-size: 0;
+}
+
+.create__rail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0 1.25rem 0 0;
+  list-style: none;
+  border-inline-end: 0.0625rem solid var(--wl-border);
+}
+
+.create__step {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.55rem 0.7rem;
+  border: 0.0625rem solid transparent;
+  border-radius: calc(0.55rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+}
+
+// The current step is the rail's one accent: a tinted card and a filled number.
+.create__step--current {
+  background: rgba(var(--accent-color-rgb), 0.14);
+  border-color: rgba(var(--accent-color-rgb), 0.45);
+
+  .create__step-number {
+    color: #fff;
+    background: var(--accent-color);
+    border-color: var(--accent-color);
+  }
+
+  .create__step-title {
+    color: var(--wl-text);
+  }
+}
+
+.create__step-number {
+  display: grid;
+  flex: none;
+  place-items: center;
+  inline-size: 1.6rem;
+  block-size: 1.6rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--wl-muted);
+  border: 0.0625rem solid var(--wl-surface-border);
+  border-radius: 50%;
+}
+
+.create__step-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-inline-size: 0;
+}
+
+.create__step-title {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--wl-muted);
+}
+
+.create__step-hint {
+  font-size: 0.74rem;
+  line-height: 1.35;
+  color: var(--wl-faint);
+}
+
+.create__main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  min-inline-size: 0;
+  min-block-size: 0;
+  overflow-y: auto;
+}
+
+.create__title {
+  @include lead-title;
+}
+
+.create__description {
+  @include lead-description;
+}
+
+// The description box and its action bar read as one control.
+.create__composer {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  background: var(--wl-surface);
+  border: 0.0625rem solid var(--wl-surface-border);
+  border-radius: calc(0.75rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  transition: border-color 120ms ease;
+
+  &:focus-within {
+    border-color: rgba(var(--accent-color-rgb), 0.7);
+  }
+}
+
+.create__input {
+  min-block-size: 7.5rem;
+  padding: 0.8rem 1rem;
+  font: inherit;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  color: var(--wl-text);
+  background: transparent;
+  border: none;
+  resize: none;
+
+  &::placeholder {
+    color: var(--wl-faint);
+  }
+
+  &:focus-visible {
+    outline: none;
+  }
+}
+
+.create__composer-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem;
+  border-block-start: 0.0625rem solid var(--wl-border);
+}
+
+.create__secondary {
+  @include secondary-button;
+
+  // Present to show the flow's shape; inert until the feature behind it exists.
+  &[aria-disabled='true'] {
+    opacity: 0.5;
+  }
+}
+
+.create__generate {
+  @include primary-button;
+
+  margin-inline-start: auto;
+}
+
+.create__shortcut {
+  font: inherit;
+  font-size: 0.72rem;
+  opacity: 0.75;
+}
+
+.create__notice {
+  margin: 0;
+  padding: 0.6rem 0.8rem;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--wl-muted);
+  background: var(--wl-surface);
+  border: 0.0625rem dashed var(--wl-surface-border);
+  border-radius: calc(0.55rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+}
+
+.create__examples {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.create__examples-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--wl-text);
+}
+
+.create__examples-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.welcome__example {
+  @include card;
+  @include card-hover;
+
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.6rem 0.7rem;
+
+  &:hover .welcome__example-chevron,
+  &:focus-visible .welcome__example-chevron {
+    color: var(--wl-text);
+  }
+}
+
+.welcome__example--unavailable {
+  opacity: 0.55;
+}
+
+.welcome__example-icon {
+  flex: none;
+  font-size: 1.5rem;
+  color: var(--wl-text);
+}
+
+.welcome__example-text {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-inline-size: 0;
+}
+
+.welcome__example-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--wl-text);
+}
+
+.welcome__example-summary {
+  // Two lines at most, so every card in a row keeps one height.
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: var(--wl-muted);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.welcome__example-chevron {
+  flex: none;
+  font-size: 0.9rem;
+  color: var(--wl-faint);
+}
+
+@container welcome-panel (max-width: 50rem) {
+  .create {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  // The rail becomes a row of numbers above the step.
+  .create__rail {
+    flex-direction: row;
+    padding: 0 0 0.75rem;
+    border-inline-end: none;
+    border-block-end: 0.0625rem solid var(--wl-border);
+  }
+
+  .create__step-hint {
+    display: none;
+  }
+
+  .create__examples-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

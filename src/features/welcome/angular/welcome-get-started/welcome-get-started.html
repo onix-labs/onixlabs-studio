@@ -1,0 +1,158 @@
+<div class="start">
+  <!-- No visible headings: the tab already names the section, and the two columns explain
+       themselves. Each column keeps an accessible name. -->
+  <section class="start__column" aria-label="Get started">
+    <div class="start__actions">
+      @for (action of actions; track action.label) {
+        <button
+          type="button"
+          class="welcome__action"
+          [class.welcome__action--unavailable]="isUnavailable(action)"
+          [appTooltip]="isUnavailable(action) ? 'Coming soon' : ''"
+          (click)="run(action)"
+        >
+          <app-icon class="welcome__action-icon" [icon]="action.icon" />
+          <span class="welcome__action-label">{{ action.label }}</span>
+          <app-icon class="welcome__action-chevron" [icon]="Icon.WELCOME_CHEVRON" />
+        </button>
+      }
+    </div>
+  </section>
+
+  <section class="start__column start__column--recent" aria-label="Recent items">
+    <div class="welcome__recent">
+      <!-- One row: what kind of item to show, the search, and Clear. -->
+      <div class="welcome__recent-head">
+        <app-dropdown
+          class="welcome__recent-filter"
+          ariaLabel="Show"
+          [fullWidth]="true"
+          [options]="filterOptions"
+          [value]="activeFilter()"
+          (valueChange)="activeFilter.set($event)"
+        />
+        <div class="welcome__searchbox">
+          <app-icon [icon]="Icon.SEARCH" />
+          <input
+            type="text"
+            placeholder="Search recent items…"
+            aria-label="Search recent items"
+            [value]="query()"
+            (input)="onSearchInput($event)"
+            (keydown.escape)="query.set('')"
+          />
+        </div>
+        @if (hasRecent()) {
+          <button type="button" class="welcome__clear" (click)="requestClearRecent()">
+            <app-icon [icon]="Icon.TRASH" />
+            <span>Clear</span>
+          </button>
+        }
+      </div>
+
+      @if (visibleItems().length > 0) {
+        <ul class="welcome__recent-list">
+          @for (item of visibleItems(); track item.path) {
+            <li class="welcome__recent-row" [class.welcome__recent-row--pinned]="item.pinned">
+              <button type="button" class="welcome__recent-open" (click)="openRecent(item)">
+                <span class="welcome__recent-icon"><app-icon [icon]="iconFor(item.kind)" /></span>
+                <span class="welcome__recent-text">
+                  <span class="welcome__recent-name">{{ display(item.name) }}</span>
+                  <span class="welcome__recent-detail">{{ display(item.path) }}</span>
+                </span>
+              </button>
+              <span class="welcome__recent-time">{{ relativeTime(item.openedAt) }}</span>
+              <app-button
+                [pressed]="item.pinned"
+                [ariaLabel]="item.pinned ? 'Unstar item' : 'Star item'"
+                [icon]="item.pinned ? Icon.WELCOME_STAR_FILLED : Icon.WELCOME_STAR"
+                variant="none"
+                size="small"
+                (click)="togglePin(item)"
+              />
+              <!-- Its two other actions sit inline rather than behind a menu: two commands are quicker
+                   to reach as buttons than a menu is to open. -->
+              <app-button
+                ariaLabel="Show in Finder"
+                tooltip="Show in Finder"
+                [icon]="Icon.FOLDER_OPEN"
+                variant="none"
+                size="small"
+                (click)="reveal(item)"
+              />
+              <app-button
+                ariaLabel="Remove item"
+                tooltip="Remove from recent items"
+                [icon]="Icon.TRASH"
+                variant="none"
+                size="small"
+                (click)="remove(item)"
+              />
+            </li>
+          }
+        </ul>
+      } @else {
+        <div class="welcome__recent-empty">
+          <app-icon [icon]="Icon.RECENT_EMPTY" [size]="4" />
+          @if (hasRecent()) {
+            <p class="welcome__recent-empty-title">No matching items</p>
+            <p class="welcome__recent-empty-hint">Try a different filter or search.</p>
+          } @else {
+            <p class="welcome__recent-empty-title">No recent items</p>
+            <p class="welcome__recent-empty-hint">
+              Open something or create a new project to get started.
+            </p>
+          }
+        </div>
+      }
+    </div>
+  </section>
+</div>
+
+<!-- Confirmation shown before clearing the recent-items history, since the action cannot be undone.
+     Declared inside the welcome screen's content, so it is raised from the welcome window: it parents
+     to that window, dims it, and never reaches for the main window — which is hidden while the
+     welcome screen stands in for it. -->
+<app-modal
+  class="welcome__confirm"
+  [open]="confirmingClear()"
+  [width]="24"
+  ariaLabel="Clear recent items"
+  (dismiss)="cancelClearRecent()"
+>
+  <ng-template appModalContent>
+    <h2 class="welcome__confirm-title">Clear recent items</h2>
+    <p class="welcome__confirm-message">
+      Are you sure you want to clear all recent items? This cannot be undone.
+    </p>
+    <div class="welcome__confirm-actions">
+      <app-button label="Cancel" (click)="cancelClearRecent()" />
+      <app-button variant="solid" label="Clear" (click)="clearRecent()" />
+    </div>
+  </ng-template>
+</app-modal>
+
+<!-- Shown when a recent item cannot be opened: its path was one the user opened before, so the failure
+     means it has moved, been renamed, or been deleted. Rather than the click doing nothing, the user is
+     offered a way forward — point it at its new location, forget it, or leave it be. -->
+<app-modal
+  class="welcome__confirm"
+  [open]="missingItem() !== null"
+  [width]="30"
+  ariaLabel="Item not found"
+  (dismiss)="dismissMissing()"
+>
+  <ng-template appModalContent>
+    @if (missingItem(); as missing) {
+      <h2 class="welcome__confirm-title">Can’t find this item</h2>
+      <p class="welcome__confirm-message">
+        “{{ missing.name }}” could not be opened. It may have been moved, renamed, or deleted.
+      </p>
+      <div class="welcome__confirm-actions welcome__confirm-actions--stack">
+        <app-button variant="solid" label="Locate" (click)="locateMissing()" />
+        <app-button variant="outline" label="Remove" (click)="removeMissing()" />
+        <app-button variant="none" label="Cancel" (click)="dismissMissing()" />
+      </div>
+    }
+  </ng-template>
+</app-modal>

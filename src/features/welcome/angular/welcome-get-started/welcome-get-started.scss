@@ -1,0 +1,343 @@
+@use '../welcome' as *;
+
+:host {
+  display: block;
+  block-size: 100%;
+  min-block-size: 0;
+}
+
+// Two columns: the actions at a fixed width on the left, recent items filling the right. The gap
+// between them matches the panel's inline padding, so the three gutters read as one rhythm.
+.start {
+  display: grid;
+  grid-template-columns: minmax(11rem, 16rem) minmax(0, 1fr);
+  gap: var(--welcome-panel-padding, 1.25rem);
+  block-size: 100%;
+  min-block-size: 0;
+}
+
+.start__column {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-inline-size: 0;
+  min-block-size: 0;
+}
+
+// The actions share the column's height equally and stretch to fill it, shrinking together when the
+// window is smaller.
+.start__actions {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-block-size: 0;
+}
+
+.welcome__action {
+  @include card;
+
+  position: relative;
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  gap: 0.7rem;
+  min-block-size: 2.25rem;
+  padding: 0 0.85rem;
+  transition:
+    background 150ms ease,
+    border-color 150ms ease,
+    box-shadow 150ms ease,
+    transform 150ms ease;
+
+  // The original welcome screen's hover, kept on purpose: the row lifts to an accent wash with an
+  // accent edge and glow, grows slightly, and its icon, label and chevron turn accent.
+  &:hover,
+  &:focus-visible {
+    // Lift above its neighbours so the scale and glow are never covered by the next row.
+    z-index: 1;
+    outline: none;
+    background: rgba(var(--accent-color-rgb), 0.25);
+    border-color: rgba(var(--accent-color-rgb), 1);
+    box-shadow: 0 0 2rem -0.25rem rgba(var(--accent-color-rgb), 1);
+    transform: scale(1.03);
+
+    .welcome__action-icon,
+    .welcome__action-label,
+    .welcome__action-chevron {
+      color: var(--accent-color);
+    }
+
+    .welcome__action-chevron {
+      transform: translateX(0.125rem);
+    }
+  }
+}
+
+// An action with nothing behind it yet reads as quieter, so the screen does not promise it.
+.welcome__action--unavailable {
+  opacity: 0.55;
+}
+
+.welcome__action-icon {
+  flex: none;
+  font-size: 1.25rem;
+  color: var(--wl-text);
+  transition: color 150ms ease;
+}
+
+.welcome__action-label {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  font-size: 0.86rem;
+  font-weight: 500;
+  color: var(--wl-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color 150ms ease;
+}
+
+.welcome__action-chevron {
+  flex: none;
+  font-size: 0.95rem;
+  color: var(--wl-faint);
+  transition:
+    color 120ms ease,
+    transform 120ms ease;
+}
+
+// The recent-items panel fills its column, so its list scrolls within it.
+.welcome__recent {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-inline-size: 0;
+  min-block-size: 0;
+  padding: 1rem;
+  background: rgba(255, 255, 255, 0.015);
+  border: 0.0625rem solid var(--wl-border);
+  border-radius: calc(0.75rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+}
+
+.welcome__recent-head {
+  // The search box and the Clear button share one height, set here rather than left to each one's
+  // padding, which put them a pixel or two apart.
+  --recent-head-height: 2.25rem;
+  // The dropdown atom sizes itself from the shared control height; give it the row's.
+  --control-height: var(--recent-head-height);
+
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+// The shared dropdown atom, drawn in the welcome palette: its face matches the search box and Clear
+// beside it, and its list matches the panel, in both themes.
+.welcome__recent-filter {
+  --form-control-background-color: var(--wl-surface);
+  --form-control-border-color: var(--wl-surface-border);
+  --form-control-border-color--hover: rgba(var(--accent-color-rgb), 0.55);
+  --form-muted-foreground-color: var(--wl-muted);
+  --dropdown-menu-background-color: var(--wl-panel);
+  --dropdown-menu-border-color: var(--wl-border);
+  --dropdown-menu-foreground-color: var(--wl-text);
+  --dropdown-menu-item-background-color--hover: rgba(var(--accent-color-rgb), 0.25);
+  --dropdown-menu-item-foreground-color--hover: var(--wl-text);
+
+  flex: 0 0 9.5rem;
+  min-inline-size: 0;
+  color: var(--wl-text);
+}
+
+.welcome__searchbox {
+  @include field;
+
+  flex: 1 1 auto;
+  block-size: var(--recent-head-height);
+
+  input {
+    padding-block: 0;
+  }
+}
+
+.welcome__clear {
+  @include secondary-button;
+
+  flex: none;
+  block-size: var(--recent-head-height);
+  padding-block: 0;
+
+  i {
+    font-size: 0.9rem;
+  }
+}
+
+.welcome__recent-list {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin: 0;
+  padding: 0;
+  min-block-size: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.welcome__recent-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-inline-end: 0.35rem;
+  border-radius: calc(0.55rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  transition: background 120ms ease;
+
+  &:hover {
+    background: var(--wl-surface);
+  }
+}
+
+// The name/detail region is the click target; the trailing pin and menu are separate controls.
+.welcome__recent-open {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 0.75rem;
+  min-inline-size: 0;
+  padding: 0.5rem;
+  font: inherit;
+  text-align: start;
+  color: inherit;
+  background: transparent;
+  border: none;
+  border-radius: inherit;
+  cursor: default;
+
+  &:focus-visible {
+    outline: none;
+  }
+}
+
+.welcome__recent-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  inline-size: 2.25rem;
+  block-size: 2.25rem;
+  font-size: 1.15rem;
+  color: var(--wl-muted);
+  background: var(--wl-surface);
+  border: 0.0625rem solid var(--wl-surface-border);
+  border-radius: calc(0.55rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+}
+
+.welcome__recent-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-inline-size: 0;
+}
+
+// The name and path truncate on the left (keeping the meaningful end, e.g. the file name) via an RTL
+// layout direction, left-aligned so the LTR text still reads normally.
+.welcome__recent-name,
+.welcome__recent-detail {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
+}
+
+.welcome__recent-name {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--wl-text);
+}
+
+.welcome__recent-detail {
+  font-size: 0.76rem;
+  color: var(--wl-faint);
+}
+
+.welcome__recent-time {
+  flex: none;
+  font-size: 0.78rem;
+  white-space: nowrap;
+  color: var(--wl-faint);
+}
+
+.welcome__recent-empty {
+  @include empty-state;
+}
+
+.welcome__recent-empty-title {
+  @include empty-title;
+}
+
+.welcome__recent-empty-hint {
+  @include empty-hint;
+}
+
+// The confirmations are raised from the welcome window and take its panel treatment with them, so a
+// dialog looks like it belongs to the window it opened over, in both themes.
+.welcome__confirm-title {
+  margin: 0 0 0.6rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--body-foreground-color);
+}
+
+.welcome__confirm-message {
+  margin: 0 0 1.3rem;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--form-muted-foreground-color);
+}
+
+// Equal-width buttons, sized to the widest and kept to the trailing edge.
+.welcome__confirm-actions {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 0.6rem;
+  inline-size: fit-content;
+  margin-inline-start: auto;
+}
+
+// A prompt whose buttons carry longer labels stacks them in one full-width column.
+.welcome__confirm-actions--stack {
+  grid-auto-flow: row;
+  inline-size: auto;
+  margin-inline-start: 0;
+}
+
+// Light theme: the cards and fields are the panel colour, defined by their border, so their hover
+// needs an explicit fill.
+:host-context([data-theme-mode='light']) {
+  .welcome__recent {
+    background: transparent;
+  }
+
+  .welcome__recent-row:hover {
+    background: var(--gray-200);
+  }
+}
+
+// At a narrow window the columns stack, the actions first.
+@container welcome-panel (max-width: 44rem) {
+  .start {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(14rem, 1fr);
+  }
+
+  .start__actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

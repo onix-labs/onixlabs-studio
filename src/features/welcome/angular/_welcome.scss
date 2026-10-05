@@ -1,0 +1,235 @@
+// The welcome screen's shared drawing: the pieces every section repeats — headings, cards, the pill
+// search box, pills, and empty states — so the four sections read as one surface. Each section's
+// stylesheet `@use`s this and includes the mixins on its own classes; the palette (`--wl-*`) is set
+// once on the modal by the welcome screen and inherits down into every section.
+//
+// DELIBERATELY OUTSIDE THE ATOM SYSTEM. The welcome screen is the application's one bespoke surface:
+// its controls are drawn to its own palette and geometry rather than the app's form chrome. Nothing
+// else may follow this example.
+
+// A small, quiet uppercase heading over a section's column.
+@mixin section-title {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--wl-muted);
+}
+
+// A larger heading leading a section's main region, with its description beneath.
+@mixin lead-title {
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--wl-text);
+}
+
+@mixin lead-description {
+  margin: 0.3rem 0 0;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: var(--wl-muted);
+}
+
+// A raised surface: actions, cards, list rows. Lifts to a quiet accent edge on hover — no fill, no
+// glow, so blue stays an accent rather than a background.
+@mixin card {
+  font: inherit;
+  text-align: start;
+  color: inherit;
+  background: var(--wl-surface);
+  border: 0.0625rem solid var(--wl-surface-border);
+  border-radius: calc(0.55rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  cursor: default;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
+}
+
+@mixin card-hover {
+  &:hover,
+  &:focus-visible {
+    outline: none;
+    background: var(--wl-surface-hover);
+    border-color: rgba(var(--accent-color-rgb), 0.55);
+  }
+}
+
+// A rounded field with a leading or trailing glyph: the search boxes and the clone URL field.
+@mixin field {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-inline-size: 0;
+  padding-inline: 0.75rem;
+  background: var(--wl-surface);
+  border: 0.0625rem solid var(--wl-surface-border);
+  border-radius: calc(0.55rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  transition: border-color 120ms ease;
+
+  &:focus-within {
+    border-color: rgba(var(--accent-color-rgb), 0.7);
+  }
+
+  i {
+    flex: none;
+    font-size: 1rem;
+    color: var(--wl-faint);
+  }
+
+  input,
+  textarea {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    padding-block: 0.5rem;
+    font: inherit;
+    font-size: 0.85rem;
+    color: var(--wl-text);
+    background: transparent;
+    border: none;
+    resize: none;
+
+    &::placeholder {
+      color: var(--wl-faint);
+    }
+
+    &:focus-visible {
+      outline: none;
+    }
+  }
+}
+
+// A rounded filter pill. The active one carries the accent fill — the one place a section uses blue
+// as a fill.
+@mixin pill {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.65rem;
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 500;
+  white-space: nowrap;
+  color: var(--wl-muted);
+  background: transparent;
+  border: 0.0625rem solid var(--wl-surface-border);
+  border-radius: 999px;
+  cursor: default;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+
+  i {
+    font-size: 0.9rem;
+  }
+
+  &:hover,
+  &:focus-visible {
+    outline: none;
+    color: var(--wl-text);
+    background: var(--wl-surface);
+  }
+}
+
+@mixin pill-active {
+  color: #fff;
+  background: var(--accent-color);
+  border-color: var(--accent-color);
+
+  &:hover,
+  &:focus-visible {
+    color: #fff;
+    background: var(--accent-color);
+  }
+}
+
+// A button that does the section's main thing: Clone Repository, Generate Plan.
+@mixin primary-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  padding: 0.55rem 1rem;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #fff;
+  background: var(--accent-color);
+  border: 0.0625rem solid var(--accent-color);
+  border-radius: calc(0.55rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  cursor: default;
+  transition: filter 120ms ease;
+
+  &:hover:not(:disabled),
+  &:focus-visible {
+    outline: none;
+    filter: brightness(1.1);
+  }
+
+  &:disabled {
+    opacity: 0.45;
+  }
+}
+
+// A quieter companion to the primary button.
+@mixin secondary-button {
+  @include card;
+
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.5rem 0.85rem;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--wl-muted);
+
+  &:hover,
+  &:focus-visible {
+    outline: none;
+    color: var(--wl-text);
+    border-color: rgba(var(--accent-color-rgb), 0.55);
+  }
+
+  &:disabled {
+    opacity: 0.45;
+  }
+}
+
+// A centred empty state: a large thin glyph, a title, and a hint.
+@mixin empty-state {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 1.5rem;
+  text-align: center;
+  color: var(--wl-faint);
+
+  i {
+    opacity: 0.7;
+  }
+}
+
+@mixin empty-title {
+  margin: 0.2rem 0 0;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--wl-muted);
+}
+
+@mixin empty-hint {
+  max-inline-size: 26rem;
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  opacity: 0.85;
+}

@@ -1,0 +1,22 @@
+<div class="tools">
+  <div class="tools__grid">
+    @for (tool of tools; track tool.title) {
+      <button
+        type="button"
+        class="welcome__tool"
+        [class.welcome__tool--unavailable]="tool.opens === null"
+        [appTooltip]="tool.opens === null ? 'Coming soon' : ''"
+        (click)="open(tool)"
+      >
+        <span class="welcome__tool-tile">
+          <app-icon [icon]="tool.icon" [rotation]="tool.icon === Icon.WELCOME_SETTINGS ? 30 : 0" />
+        </span>
+        <span class="welcome__tool-text">
+          <span class="welcome__tool-title">{{ tool.title }}</span>
+          <span class="welcome__tool-description">{{ tool.description }}</span>
+        </span>
+        <app-icon class="welcome__tool-chevron" [icon]="Icon.WELCOME_CHEVRON" />
+      </button>
+    }
+  </div>
+</div>
