@@ -57,7 +57,7 @@
     "@vscode/ripgrep": "^1.18.0",
     "ai": "^7.0.114",
     "node-pty": "^1.1.0",
-    "systeminformation": "^5.33.13",
+    "systeminformation": "^5.33.15",
     "vscode-jsonrpc": "^9.0.3",
     "zod": "^4.6.5"
   },
