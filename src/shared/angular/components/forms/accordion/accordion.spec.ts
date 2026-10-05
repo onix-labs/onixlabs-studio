@@ -1,7 +1,54 @@
+import { Component } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { Icon } from '@shared/angular/icons/icon';
 import { Accordion } from './accordion';
+
+/**
+ * Hosts an accordion with a header action, counting the action's clicks.
+ */
+@Component({
+  imports: [Accordion],
+  template: `
+    <app-accordion heading="Claude">
+      <button accordionActions class="action" (click)="clicks = clicks + 1">Delete</button>
+      <p class="content">Body</p>
+    </app-accordion>
+  `,
+})
+class AccordionWithAction {
+  /**
+   * Gets how many times the header action was clicked.
+   */
+  public clicks: number = 0;
+}
+
+describe('Accordion with a header action', () => {
+  it('render_placesTheActionInTheHeader_outsideTheToggle', async () => {
+    const fixture: ComponentFixture<AccordionWithAction> =
+      TestBed.createComponent(AccordionWithAction);
+    await fixture.whenStable();
+    const element: HTMLElement = fixture.nativeElement as HTMLElement;
+
+    const action: HTMLElement | null = element.querySelector('.action');
+    expect(action?.closest('.accordion__actions')).not.toBeNull();
+    // A button may not hold another, and the action must not also toggle the panel.
+    expect(action?.closest('.accordion__header')).toBeNull();
+  });
+
+  it('action_whenClicked_runsWithoutTogglingThePanel', async () => {
+    const fixture: ComponentFixture<AccordionWithAction> =
+      TestBed.createComponent(AccordionWithAction);
+    await fixture.whenStable();
+    const element: HTMLElement = fixture.nativeElement as HTMLElement;
+
+    element.querySelector<HTMLButtonElement>('.action')?.click();
+    await fixture.whenStable();
+
+    expect(fixture.componentInstance.clicks).toBe(1);
+    expect(element.querySelector('.content')).toBeNull();
+  });
+});
 
 describe('Accordion', () => {
   let component: Accordion;

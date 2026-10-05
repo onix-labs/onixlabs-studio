@@ -10,7 +10,9 @@ import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 
 /**
- * Represents an expandable panel with a heading button and a collapsible body.
+ * Represents an expandable panel with a heading button and a collapsible body. Content marked
+ * `accordionActions` is projected into the header beside the toggle — actions on the panel's subject,
+ * such as deleting it — and the rest into the body.
  */
 @Component({
   selector: 'app-accordion',

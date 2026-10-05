@@ -399,12 +399,4 @@ export class AiConnectionEditor {
     this.log.info('settings.ai', 'Default model set', this.connection().id, modelId);
     this.connections.setDefaultModel(this.connection(), modelId);
   }
-
-  /**
-   * Removes the configuration.
-   */
-  protected removeConnection(): void {
-    this.log.info('settings.ai', 'Configuration removed', this.connection().id);
-    this.connections.remove(this.connection().id);
-  }
 }

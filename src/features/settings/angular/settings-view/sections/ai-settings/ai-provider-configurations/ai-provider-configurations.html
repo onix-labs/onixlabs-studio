@@ -34,6 +34,15 @@
           [expanded]="isExpanded(connection.id)"
           (expandedChange)="setExpanded(connection.id, $event)"
         >
+          <app-button
+            accordionActions
+            size="small"
+            tone="danger"
+            [icon]="Icon.TRASH"
+            label="Delete"
+            [ariaLabel]="'Delete ' + connection.label"
+            (click)="remove(connection)"
+          />
           <app-ai-connection-editor [connection]="connection" />
         </app-accordion>
       }

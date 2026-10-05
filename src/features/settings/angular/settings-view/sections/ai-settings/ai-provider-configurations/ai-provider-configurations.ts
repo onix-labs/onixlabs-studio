@@ -153,4 +153,14 @@ export class AiProviderConfigurations {
     this.setExpanded(connection.id, true);
     this.added.emit(connection);
   }
+
+  /**
+   * Deletes a configuration, from the delete action on its header.
+   * @param connection The configuration.
+   */
+  protected remove(connection: AiConnection): void {
+    this.log.info('settings.ai', 'Configuration removed', connection.id);
+    this.connections.remove(connection.id);
+    this.setExpanded(connection.id, false);
+  }
 }

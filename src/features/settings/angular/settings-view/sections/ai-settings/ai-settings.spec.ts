@@ -175,6 +175,23 @@ describe('AiSettingsSection', () => {
     expect(host.querySelectorAll('app-ai-connection-editor').length).toBe(1);
   });
 
+  it('delete_fromTheConfigurationsHeader_removesIt_inTheDangerTone', () => {
+    TestBed.inject(AiConnections).add('anthropic');
+    show('provider', 'anthropic');
+
+    const remove: HTMLButtonElement | null = host.querySelector<HTMLButtonElement>(
+      '.ai-connections__list app-accordion .accordion__actions button',
+    );
+    // On the header, beside the toggle, so a configuration can be deleted without opening it.
+    expect(remove?.textContent?.trim()).toBe('Delete');
+    expect(remove?.closest('app-button')?.classList.contains('button--tone-danger')).toBe(true);
+
+    remove?.click();
+    fixture.detectChanges();
+
+    expect(items().length).toBe(0);
+  });
+
   it('toggle_whenClicked_expandsTheConfigurationEditor', () => {
     TestBed.inject(AiConnections).add('anthropic');
     show('provider', 'anthropic');
