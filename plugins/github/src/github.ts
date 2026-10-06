@@ -10,6 +10,7 @@ import {
   HostedCheckStatus,
   HostedCiRun,
   HostedCiRunStatus,
+  HostedCloseReason,
   HostedIdentity,
   HostedIssue,
   HostedIssueComment,
@@ -112,7 +113,7 @@ interface RawRepository {
   readonly html_url?: unknown;
   readonly updated_at?: unknown;
   readonly has_issues?: unknown;
-  readonly permissions?: { readonly push?: unknown };
+  readonly permissions?: { readonly push?: unknown; readonly triage?: unknown };
 }
 
 /**
@@ -455,13 +456,18 @@ export class GitHubHosting {
     const raw: RawRepository = read.result ?? {};
     const issues: boolean = raw.has_issues !== false;
     const canPush: boolean = raw.permissions?.push === true;
+    // Closing someone else's issue takes triage; anyone signed in may open one or comment.
+    const canTriage: boolean = canPush || raw.permissions?.triage === true;
     return {
       ok: true,
       result: {
         capabilities: [
           'pullRequests',
+          // A pull request can come from a fork, so opening one needs no push access here.
+          'createPullRequest',
           'ciRuns',
-          ...(issues ? (['issues', 'subIssues'] as const) : []),
+          ...(issues ? (['issues', 'subIssues', 'createIssue', 'commentOnIssue'] as const) : []),
+          ...(issues && canTriage ? (['setIssueState'] as const) : []),
           ...(canPush ? (['ciRerun', 'ciCancel'] as const) : []),
         ],
       },
@@ -497,18 +503,9 @@ export class GitHubHosting {
     );
     return {
       ok: true,
-      result: raw.map((pull: RawPullRequest, index: number): HostedPullRequest => ({
-        number: asNumber(pull.number),
-        title: asString(pull.title, '(untitled)'),
-        author: asString(pull.user?.login, 'unknown'),
-        url: asString(pull.html_url),
-        draft: pull.draft === true,
-        headRef: asString(pull.head?.ref),
-        // GitHub publishes every pull request's head under this ref on the base repository, which
-        // is what makes a fork's pull request checkoutable at all.
-        fetchRef: `refs/pull/${asNumber(pull.number)}/head`,
-        checks: checks[index],
-      })),
+      result: raw.map((pull: RawPullRequest, index: number): HostedPullRequest =>
+        toPullRequest(pull, checks[index]),
+      ),
     };
   }
 
@@ -547,16 +544,7 @@ export class GitHubHosting {
     const raw: readonly RawIssueComment[] = Array.isArray(listed.result)
       ? (listed.result as readonly RawIssueComment[])
       : [];
-    return {
-      ok: true,
-      result: raw.map((comment: RawIssueComment): HostedIssueComment => ({
-        id: asId(comment.id),
-        author: asString(comment.user?.login, 'unknown'),
-        body: asString(comment.body),
-        createdAt: asString(comment.created_at),
-        url: asString(comment.html_url),
-      })),
-    };
+    return { ok: true, result: raw.map(toComment) };
   }
 
   /**
@@ -608,6 +596,125 @@ export class GitHubHosting {
         startedAt: asString(run.run_started_at, asString(run.created_at)),
       })),
     };
+  }
+
+  /**
+   * Opens an issue.
+   * @param repository The repository.
+   * @param title Its title.
+   * @param body Its body, as GitHub markdown, when it has one.
+   * @returns Returns the issue opened.
+   */
+  public async createIssue(
+    repository: HostedRepositoryRef,
+    title: string,
+    body: string | undefined,
+  ): Promise<Outcome<HostedIssue>> {
+    if (title.trim().length === 0) {
+      return { ok: false, error: 'An issue needs a title.', code: 'refused' };
+    }
+    const sent: Outcome<unknown> = await this.send(
+      repository.host,
+      'POST',
+      `${repoPath(repository)}/issues`,
+      { title, ...(body === undefined ? {} : { body }) },
+    );
+    return sent.ok ? { ok: true, result: toIssue((sent.result ?? {})) } : sent;
+  }
+
+  /**
+   * Comments on an issue or a pull request. GitHub keeps a pull request's conversation on the issue it
+   * is, so one endpoint serves both.
+   * @param repository The repository.
+   * @param issue The issue's or pull request's number.
+   * @param body The comment, as GitHub markdown.
+   * @returns Returns the comment written.
+   */
+  public async commentOnIssue(
+    repository: HostedRepositoryRef,
+    issue: number,
+    body: string,
+  ): Promise<Outcome<HostedIssueComment>> {
+    if (body.trim().length === 0) {
+      return { ok: false, error: 'A comment needs a body.', code: 'refused' };
+    }
+    const sent: Outcome<unknown> = await this.send(
+      repository.host,
+      'POST',
+      `${repoPath(repository)}/issues/${issueNumber(issue)}/comments`,
+      { body },
+    );
+    return sent.ok ? { ok: true, result: toComment((sent.result ?? {})) } : sent;
+  }
+
+  /**
+   * Closes or reopens an issue, recording why one was closed.
+   * @param repository The repository.
+   * @param issue The issue's number.
+   * @param state Whether it should be open or closed.
+   * @param reason Why it is being closed, when it is.
+   * @returns Returns the issue as it now is.
+   */
+  public async setIssueState(
+    repository: HostedRepositoryRef,
+    issue: number,
+    state: 'open' | 'closed',
+    reason: HostedCloseReason | undefined,
+  ): Promise<Outcome<HostedIssue>> {
+    const stateReason: string | undefined =
+      state === 'open' ? 'reopened' : reason === 'notPlanned' ? 'not_planned' : reason;
+    const sent: Outcome<unknown> = await this.send(
+      repository.host,
+      'PATCH',
+      `${repoPath(repository)}/issues/${issueNumber(issue)}`,
+      { state, ...(stateReason === undefined ? {} : { state_reason: stateReason }) },
+    );
+    return sent.ok ? { ok: true, result: toIssue((sent.result ?? {})) } : sent;
+  }
+
+  /**
+   * Opens a pull request from `head` into `base`.
+   * @param repository The repository.
+   * @param request What to open: its title, branches, body and whether it is a draft.
+   * @returns Returns the pull request opened.
+   */
+  public async createPullRequest(
+    repository: HostedRepositoryRef,
+    request: {
+      readonly title: string;
+      readonly head: string;
+      readonly base: string;
+      readonly body?: string;
+      readonly draft?: boolean;
+    },
+  ): Promise<Outcome<HostedPullRequest>> {
+    if (
+      request.title.trim().length === 0 ||
+      request.head.length === 0 ||
+      request.base.length === 0
+    ) {
+      return {
+        ok: false,
+        error: 'A pull request needs a title, a head branch and a base branch.',
+        code: 'refused',
+      };
+    }
+    const sent: Outcome<unknown> = await this.send(
+      repository.host,
+      'POST',
+      `${repoPath(repository)}/pulls`,
+      {
+        title: request.title,
+        head: request.head,
+        base: request.base,
+        ...(request.body === undefined ? {} : { body: request.body }),
+        ...(request.draft === true ? { draft: true } : {}),
+      },
+    );
+    // Checks start only after it is opened, so a fresh pull request has none to report yet.
+    return sent.ok
+      ? { ok: true, result: toPullRequest((sent.result ?? {}), 'none') }
+      : sent;
   }
 
   /**
@@ -861,29 +968,72 @@ function toRepository(host: string, raw: RawRepository): HostedRepository {
  */
 function toIssues(body: unknown): readonly HostedIssue[] {
   const raw: readonly RawIssue[] = Array.isArray(body) ? (body as readonly RawIssue[]) : [];
-  return raw
-    .filter((issue: RawIssue): boolean => issue.pull_request === undefined)
-    .map((issue: RawIssue): HostedIssue => ({
-      number: asNumber(issue.number),
-      title: asString(issue.title, '(untitled)'),
-      author: asString(issue.user?.login, 'unknown'),
-      url: asString(issue.html_url),
-      labels: (issue.labels ?? [])
-        .map((label: { readonly name?: unknown }): string => asString(label.name))
-        .filter((name: string): boolean => name.length > 0),
-      assignees: (issue.assignees ?? [])
-        .map((user: RawUser): string => asString(user.login))
-        .filter((login: string): boolean => login.length > 0),
-      state: asString(issue.state) === 'closed' ? 'closed' : 'open',
-      body: asString(issue.body),
-      createdAt: asString(issue.created_at),
-      updatedAt: asString(issue.updated_at),
-      ...(asString(issue.closed_at).length === 0 ? {} : { closedAt: asString(issue.closed_at) }),
-      commentCount: asNumber(issue.comments),
-      ...(asString(issue.milestone?.title).length === 0
-        ? {}
-        : { milestone: asString(issue.milestone?.title) }),
-    }));
+  return raw.filter((issue: RawIssue): boolean => issue.pull_request === undefined).map(toIssue);
+}
+
+/**
+ * Maps a raw pull request to the protocol's.
+ * @param pull The raw pull request.
+ * @param checks The combined state of its checks.
+ * @returns Returns the pull request.
+ */
+function toPullRequest(pull: RawPullRequest, checks: HostedCheckStatus): HostedPullRequest {
+  return {
+    number: asNumber(pull.number),
+    title: asString(pull.title, '(untitled)'),
+    author: asString(pull.user?.login, 'unknown'),
+    url: asString(pull.html_url),
+    draft: pull.draft === true,
+    headRef: asString(pull.head?.ref),
+    // GitHub publishes every pull request's head under this ref on the base repository, which is
+    // what makes a fork's pull request checkoutable at all.
+    fetchRef: `refs/pull/${asNumber(pull.number)}/head`,
+    checks,
+  };
+}
+
+/**
+ * Maps a raw issue comment to the protocol's.
+ * @param comment The raw comment.
+ * @returns Returns the comment.
+ */
+function toComment(comment: RawIssueComment): HostedIssueComment {
+  return {
+    id: asId(comment.id),
+    author: asString(comment.user?.login, 'unknown'),
+    body: asString(comment.body),
+    createdAt: asString(comment.created_at),
+    url: asString(comment.html_url),
+  };
+}
+
+/**
+ * Maps a raw issue to the protocol's.
+ * @param issue The raw issue.
+ * @returns Returns the issue.
+ */
+function toIssue(issue: RawIssue): HostedIssue {
+  return {
+    number: asNumber(issue.number),
+    title: asString(issue.title, '(untitled)'),
+    author: asString(issue.user?.login, 'unknown'),
+    url: asString(issue.html_url),
+    labels: (issue.labels ?? [])
+      .map((label: { readonly name?: unknown }): string => asString(label.name))
+      .filter((name: string): boolean => name.length > 0),
+    assignees: (issue.assignees ?? [])
+      .map((user: RawUser): string => asString(user.login))
+      .filter((login: string): boolean => login.length > 0),
+    state: asString(issue.state) === 'closed' ? 'closed' : 'open',
+    body: asString(issue.body),
+    createdAt: asString(issue.created_at),
+    updatedAt: asString(issue.updated_at),
+    ...(asString(issue.closed_at).length === 0 ? {} : { closedAt: asString(issue.closed_at) }),
+    commentCount: asNumber(issue.comments),
+    ...(asString(issue.milestone?.title).length === 0
+      ? {}
+      : { milestone: asString(issue.milestone?.title) }),
+  };
 }
 
 /**

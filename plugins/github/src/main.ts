@@ -26,7 +26,11 @@ const CAPABILITIES: readonly HostingCapability[] = [
   'listRepositories',
   'createRepository',
   'pullRequests',
+  'createPullRequest',
   'issues',
+  'createIssue',
+  'commentOnIssue',
+  'setIssueState',
   'subIssues',
   'ciRuns',
   'ciRerun',
@@ -205,6 +209,47 @@ async function answer(op: string, params: unknown): Promise<Outcome<unknown>> {
       return typeof runId === 'string'
         ? github.runCommand(repository, runId, 'cancel')
         : malformed(op);
+    case 'createIssue': {
+      const title: unknown = field(params, 'title');
+      const body: unknown = field(params, 'body');
+      return typeof title === 'string' && (body === undefined || typeof body === 'string')
+        ? github.createIssue(repository, title, body)
+        : malformed(op);
+    }
+    case 'commentOnIssue': {
+      const body: unknown = field(params, 'body');
+      return typeof issue === 'number' && typeof body === 'string'
+        ? github.commentOnIssue(repository, issue, body)
+        : malformed(op);
+    }
+    case 'setIssueState': {
+      const state: unknown = field(params, 'state');
+      const reason: unknown = field(params, 'reason');
+      return typeof issue === 'number' &&
+        (state === 'open' || state === 'closed') &&
+        (reason === undefined || reason === 'completed' || reason === 'notPlanned')
+        ? github.setIssueState(repository, issue, state, reason)
+        : malformed(op);
+    }
+    case 'createPullRequest': {
+      const title: unknown = field(params, 'title');
+      const head: unknown = field(params, 'head');
+      const base: unknown = field(params, 'base');
+      const body: unknown = field(params, 'body');
+      const draft: unknown = field(params, 'draft');
+      return typeof title === 'string' &&
+        typeof head === 'string' &&
+        typeof base === 'string' &&
+        (body === undefined || typeof body === 'string')
+        ? github.createPullRequest(repository, {
+            title,
+            head,
+            base,
+            ...(typeof body === 'string' ? { body } : {}),
+            draft: draft === true,
+          })
+        : malformed(op);
+    }
     default:
       return { ok: false, error: `GitHub does not answer ${op}.`, code: 'unsupported' };
   }

@@ -446,17 +446,47 @@ describe('GitHubHosting', () => {
 
       expect(await read({ has_issues: true, permissions: { push: true } })).toEqual([
         'pullRequests',
+        'createPullRequest',
         'ciRuns',
         'issues',
         'subIssues',
+        'createIssue',
+        'commentOnIssue',
+        'setIssueState',
         'ciRerun',
         'ciCancel',
       ]);
       // #819's acceptance: Issues turned off on the repository.
       expect(await read({ has_issues: false, permissions: { push: false } })).toEqual([
         'pullRequests',
+        'createPullRequest',
         'ciRuns',
       ]);
+    });
+
+    it('letsAnyoneOpenOrCommentOnIssues_butClosingThemTakesTriage', async () => {
+      const read: (body: unknown) => Promise<readonly HostingCapability[]> = async (
+        body: unknown,
+      ): Promise<readonly HostingCapability[]> => {
+        const { github } = setup([
+          { match: '/repos/onix-labs/onixlabs-studio', status: 200, body },
+        ]);
+        const described: Outcome<{ readonly capabilities: readonly HostingCapability[] }> =
+          await github.describeRepository(REPOSITORY);
+        return described.ok ? described.result.capabilities : [];
+      };
+
+      const outsider: readonly HostingCapability[] = await read({ has_issues: true });
+      const triager: readonly HostingCapability[] = await read({
+        has_issues: true,
+        permissions: { push: false, triage: true },
+      });
+
+      expect(outsider).toContain('createIssue');
+      expect(outsider).toContain('commentOnIssue');
+      expect(outsider).not.toContain('setIssueState');
+      expect(triager).toContain('setIssueState');
+      expect(triager).not.toContain('ciRerun');
     });
   });
 
@@ -770,6 +800,151 @@ describe('GitHubHosting', () => {
       expect(http.requests[0].method).toBe('POST');
       expect(smuggled).toMatchObject({ ok: false, code: 'refused' });
       expect(http.requests.length).toBe(1);
+    });
+  });
+});
+
+describe('writing', () => {
+  const ISSUE_BODY: unknown = {
+    number: 12,
+    title: 'Fix login',
+    html_url: 'https://github.com/onix-labs/onixlabs-studio/issues/12',
+    user: { login: 'matthew' },
+    labels: [],
+    assignees: [],
+    state: 'open',
+    body: 'It breaks.',
+    created_at: '2026-10-06T09:00:00Z',
+    updated_at: '2026-10-06T09:00:00Z',
+    comments: 0,
+  };
+
+  it('createIssue_postsTheTitleAndBody_andAnswersWithTheIssue', async () => {
+    const { github, http } = setup([{ match: '/issues', status: 201, body: ISSUE_BODY }]);
+
+    const created: Outcome<HostedIssue> = await github.createIssue(
+      REPOSITORY,
+      'Fix login',
+      'It breaks.',
+    );
+
+    expect(http.requests[0].method).toBe('POST');
+    expect(http.urls[0]).toBe('https://api.github.com/repos/onix-labs/onixlabs-studio/issues');
+    expect(JSON.parse(http.requests[0].body ?? '{}')).toEqual({
+      title: 'Fix login',
+      body: 'It breaks.',
+    });
+    expect(created).toMatchObject({ ok: true, result: { number: 12, title: 'Fix login' } });
+  });
+
+  it('createIssue_refusesAnEmptyTitle_withoutARequest', async () => {
+    const { github, http } = setup([]);
+
+    expect(await github.createIssue(REPOSITORY, '   ', undefined)).toMatchObject({
+      ok: false,
+      code: 'refused',
+    });
+    expect(http.requests).toEqual([]);
+  });
+
+  it('commentOnIssue_postsToTheIssuesConversation_whichAPullRequestSharesToo', async () => {
+    const { github, http } = setup([
+      {
+        match: '/issues/7/comments',
+        status: 201,
+        body: { id: 5, user: { login: 'matthew' }, body: 'Done.', created_at: 'x', html_url: 'u' },
+      },
+    ]);
+
+    const comment: Outcome<HostedIssueComment> = await github.commentOnIssue(
+      REPOSITORY,
+      7,
+      'Done.',
+    );
+
+    expect(http.requests[0].method).toBe('POST');
+    expect(JSON.parse(http.requests[0].body ?? '{}')).toEqual({ body: 'Done.' });
+    expect(comment).toEqual({
+      ok: true,
+      result: { id: '5', author: 'matthew', body: 'Done.', createdAt: 'x', url: 'u' },
+    });
+  });
+
+  it('setIssueState_patchesTheState_withGitHubsWordForTheReason', async () => {
+    const { github, http } = setup([
+      { match: '/issues/12', status: 200, body: { ...(ISSUE_BODY as object), state: 'closed' } },
+    ]);
+
+    const closed: Outcome<HostedIssue> = await github.setIssueState(
+      REPOSITORY,
+      12,
+      'closed',
+      'notPlanned',
+    );
+    await github.setIssueState(REPOSITORY, 12, 'open', undefined);
+
+    expect(http.requests[0].method).toBe('PATCH');
+    expect(JSON.parse(http.requests[0].body ?? '{}')).toEqual({
+      state: 'closed',
+      state_reason: 'not_planned',
+    });
+    expect(JSON.parse(http.requests[1].body ?? '{}')).toEqual({
+      state: 'open',
+      state_reason: 'reopened',
+    });
+    expect(closed).toMatchObject({ ok: true, result: { state: 'closed' } });
+  });
+
+  it('createPullRequest_postsTheBranches_andAnswersWithThePullRequest', async () => {
+    const { github, http } = setup([
+      {
+        match: '/pulls',
+        status: 201,
+        body: {
+          number: 851,
+          title: 'Add writes',
+          html_url: 'https://github.com/onix-labs/onixlabs-studio/pull/851',
+          draft: true,
+          user: { login: 'matthew' },
+          head: { ref: 'feat/851', sha: 'abc' },
+        },
+      },
+    ]);
+
+    const opened: Outcome<HostedPullRequest> = await github.createPullRequest(REPOSITORY, {
+      title: 'Add writes',
+      head: 'feat/851',
+      base: 'main',
+      draft: true,
+    });
+
+    expect(JSON.parse(http.requests[0].body ?? '{}')).toEqual({
+      title: 'Add writes',
+      head: 'feat/851',
+      base: 'main',
+      draft: true,
+    });
+    expect(opened).toEqual({
+      ok: true,
+      result: {
+        number: 851,
+        title: 'Add writes',
+        author: 'matthew',
+        url: 'https://github.com/onix-labs/onixlabs-studio/pull/851',
+        draft: true,
+        headRef: 'feat/851',
+        fetchRef: 'refs/pull/851/head',
+        checks: 'none',
+      },
+    });
+  });
+
+  it('aWriteGitHubRefuses_saysWhy', async () => {
+    const { github } = setup([{ match: '/issues', status: 403, body: {} }]);
+
+    expect(await github.createIssue(REPOSITORY, 'Fix login', undefined)).toMatchObject({
+      ok: false,
+      code: 'forbidden',
     });
   });
 });
