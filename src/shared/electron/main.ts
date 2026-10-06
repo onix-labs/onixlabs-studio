@@ -418,6 +418,7 @@ class Program {
   private readonly hostingManager: HostingManager = new HostingManager(
     this.hostingHost,
     this.hostingCredentials,
+    this.hostingSettings,
   );
 
   /**

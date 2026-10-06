@@ -16,6 +16,7 @@ import type {
   HostedIssue,
   HostedIssueComment,
   HostedPullRequest,
+  HostingAuthMode,
   HostingCapability,
 } from './hosting-protocol';
 
@@ -66,22 +67,18 @@ export interface ForgeRepositoryCapabilities {
 export type ForgeIdentity = HostedIdentity;
 
 /**
- * Identifies where the credential in use came from: Studio's own store, the host's CLI login, or none.
- */
-export type ForgeTokenSource = 'stored' | 'gh-cli' | 'none';
-
-/**
- * Reports the forge authentication state, for the settings page and the panel's signed-out row. Carries
- * no token: only its provenance, whether it works, and who it belongs to.
+ * Reports how a hosting plugin is signed in to one host, for the settings page and the setup summary.
+ * Carries no token: only how the plugin signed in, whether it works, and who it belongs to.
  */
 export interface ForgeAuthStatus {
   /**
-   * Gets where the credential in use came from.
+   * Gets how the plugin signed in — its host's own CLI login, or the token Studio keeps — or null when
+   * it could not.
    */
-  readonly source: ForgeTokenSource;
+  readonly mode: HostingAuthMode | null;
 
   /**
-   * Gets whether the forge accepted the credential.
+   * Gets whether the host accepted the credential.
    */
   readonly authenticated: boolean;
 
@@ -100,6 +97,44 @@ export interface ForgeAuthStatus {
    * Gets what to tell the user.
    */
   readonly detail: string;
+}
+
+/**
+ * Describes one host an installed hosting plugin serves, and how it is signed in to it (#821): one
+ * row of Settings ▸ Source Control, and of the setup summary. Core names no host; these come from the
+ * plugins' manifests.
+ */
+export interface ForgeHostAccount {
+  /**
+   * Gets the plugin's id.
+   */
+  readonly pluginId: string;
+
+  /**
+   * Gets the plugin's display name, such as `GitHub`.
+   */
+  readonly provider: string;
+
+  /**
+   * Gets the host's name, lowercased, such as `github.com`.
+   */
+  readonly host: string;
+
+  /**
+   * Gets the ways the plugin can sign in, as its manifest declares them.
+   */
+  readonly authModes: readonly HostingAuthMode[];
+
+  /**
+   * Gets the way the user chose, or null when the plugin decides: its CLI's login when that is signed
+   * in, the token Studio keeps otherwise.
+   */
+  readonly authMode: HostingAuthMode | null;
+
+  /**
+   * Gets how the plugin is signed in to the host now.
+   */
+  readonly status: ForgeAuthStatus;
 }
 
 /**

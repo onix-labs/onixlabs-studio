@@ -1,11 +1,15 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
+  effect,
   inject,
-  OnInit,
+  Signal,
   signal,
+  untracked,
   WritableSignal,
 } from '@angular/core';
+import { installedContributions, PluginContribution } from '@shared/api/plugin-channels';
 import { SourceControlClient, VersionControlPluginInfo } from '@shared/api/source-control-channels';
 import {
   VersionControlExecutableChoice,
@@ -15,6 +19,7 @@ import { Button } from '@shared/angular/components/forms/button/button';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { SettingRow } from '@shared/angular/components/forms/setting-row/setting-row';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
+import { Plugins } from '@shared/angular/services/plugins/plugins';
 import { SourceControl } from '@shared/angular/services/source-control/source-control';
 
 /**
@@ -59,11 +64,26 @@ interface PluginRow {
   styleUrl: './version-control-plugins.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class VersionControlPlugins implements OnInit {
+export class VersionControlPlugins {
   /**
    * Holds the source-control client, or undefined outside Electron.
    */
   private readonly client: SourceControlClient | undefined = inject(SourceControl).client;
+
+  /**
+   * Holds the plugin client, watched for version-control plugins arriving or leaving.
+   */
+  private readonly plugins: Plugins = inject(Plugins);
+
+  /**
+   * Gets the installed version-control plugins' ids, joined — what changes when one is installed or
+   * removed.
+   */
+  private readonly installed: Signal<string> = computed((): string =>
+    installedContributions(this.plugins.plugins(), 'version-control')
+      .map((contribution: PluginContribution): string => contribution.id)
+      .join('\u0000'),
+  );
 
   /**
    * Holds one row per installed plugin.
@@ -81,10 +101,14 @@ export class VersionControlPlugins implements OnInit {
   protected readonly saving: WritableSignal<string | null> = signal<string | null>(null);
 
   /**
-   * Reads the installed plugins.
+   * Reads the installed plugins when the page opens, and again whenever one is installed or removed
+   * while it is open — the settings tab stays mounted, so opening it is not the only moment to read.
    */
-  public ngOnInit(): void {
-    void this.load();
+  public constructor() {
+    effect((): void => {
+      this.installed();
+      untracked((): void => void this.load());
+    });
   }
 
   /**

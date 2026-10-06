@@ -2,27 +2,30 @@ import { ipcMain, IpcMainInvokeEvent } from 'electron';
 import { ForgeChannel } from '@shared/api/forge-channels';
 import {
   ForgeAuthStatus,
+  ForgeHostAccount,
   ForgeIssue,
   ForgeIssueComment,
   ForgePullRequest,
   ForgeRepositoryCapabilities,
   ForgeRepositoryRef,
   ForgeResult,
-  ForgeTokenSource,
   ForgeWorkflowRun,
 } from '@shared/api/forge-types';
 import {
   HostedAuthStatus,
   HostedRepositoryRef,
+  HostingAuthMode,
   HostingOp,
   HostingParams,
   HostingResponse,
   HostingResult,
+  isHostingAuthMode,
 } from '@shared/api/hosting-protocol';
 import { logger } from '../logger';
 import { HostingCredentialStore } from './hosting-credential-store';
 import { HostingDescriptor } from './hosting-descriptor';
 import { HostedRepositoryDescription, HostingHost } from './hosting-host';
+import { HostingSettings } from './hosting-settings';
 import { HostingCaller } from './hosting-write-gate';
 
 /**
@@ -39,17 +42,20 @@ const USER: HostingCaller = { kind: 'user' };
  * finds nothing, and the sections are absent rather than broken.
  *
  * The token the user pastes in Settings stays in core's encrypted store; the plugin is handed it only
- * when it asks, and the renderer never sees it.
+ * when it asks, and the renderer never sees it. Which hosts there are to sign in to comes from the
+ * installed plugins' manifests (#821): core names none.
  */
 export class HostingManager {
   /**
    * Initializes the manager.
    * @param host The hosting host.
    * @param store The token store.
+   * @param settings How each plugin signs in to each of its hosts.
    */
   public constructor(
     private readonly host: HostingHost,
     private readonly store: HostingCredentialStore,
+    private readonly settings: HostingSettings,
   ) {}
 
   /**
@@ -69,13 +75,34 @@ export class HostingManager {
         repository: unknown,
       ): Promise<ForgeRepositoryCapabilities | null> => this.describe(repository),
     );
-    ipcMain.handle(ForgeChannel.AuthStatus, (): Promise<ForgeAuthStatus> => this.authStatus());
+    ipcMain.handle(ForgeChannel.Hosts, (): Promise<readonly ForgeHostAccount[]> => this.hosts());
+    ipcMain.handle(
+      ForgeChannel.SetAuthMode,
+      (
+        _event: IpcMainInvokeEvent,
+        pluginId: unknown,
+        host: unknown,
+        mode: unknown,
+      ): Promise<ForgeHostAccount | null> => this.setAuthMode(pluginId, host, mode),
+    );
     ipcMain.handle(
       ForgeChannel.SetToken,
-      (_event: IpcMainInvokeEvent, token: unknown): Promise<ForgeAuthStatus> =>
-        this.setToken(typeof token === 'string' ? token : ''),
+      (
+        _event: IpcMainInvokeEvent,
+        pluginId: unknown,
+        host: unknown,
+        token: unknown,
+      ): Promise<ForgeHostAccount | null> =>
+        this.setToken(pluginId, host, typeof token === 'string' ? token : ''),
     );
-    ipcMain.handle(ForgeChannel.ClearToken, (): Promise<ForgeAuthStatus> => this.setToken(''));
+    ipcMain.handle(
+      ForgeChannel.ClearToken,
+      (
+        _event: IpcMainInvokeEvent,
+        pluginId: unknown,
+        host: unknown,
+      ): Promise<ForgeHostAccount | null> => this.setToken(pluginId, host, ''),
+    );
     ipcMain.handle(
       ForgeChannel.PullRequests,
       (
@@ -167,20 +194,119 @@ export class HostingManager {
   }
 
   /**
-   * Reads how the plugin serving the default host is signed in to it.
+   * Lists every host the installed hosting plugins serve, with how each is signed in. A host appears
+   * under the plugin that serves it — the highest priority among those declaring it — and a `www.`
+   * alias of a host the plugin also declares is not listed apart from it.
+   * @returns Returns the hosts, highest-priority plugin first.
+   */
+  public async hosts(): Promise<readonly ForgeHostAccount[]> {
+    const pairs: { descriptor: HostingDescriptor; host: string }[] = [];
+    for (const descriptor of this.host.preferredOrder()) {
+      if (!descriptor.resolve().available) {
+        continue;
+      }
+      for (const host of this.servedHosts(descriptor)) {
+        pairs.push({ descriptor, host });
+      }
+    }
+    return Promise.all(
+      pairs.map(({ descriptor, host }: { descriptor: HostingDescriptor; host: string }) =>
+        this.account(descriptor, host),
+      ),
+    );
+  }
+
+  /**
+   * Chooses how a plugin signs in to one of its hosts, and to that host's `www.` alias, restarting the
+   * plugin so it starts afresh with the choice.
+   * @param pluginId The untrusted plugin id.
+   * @param host The untrusted host.
+   * @param mode The untrusted mode, or null to let the plugin decide.
+   * @returns Returns the host's resulting account, or null when the plugin does not serve it or does
+   * not offer the mode.
+   */
+  public async setAuthMode(
+    pluginId: unknown,
+    host: unknown,
+    mode: unknown,
+  ): Promise<ForgeHostAccount | null> {
+    const target: { descriptor: HostingDescriptor; host: string } | null = this.served(
+      pluginId,
+      host,
+    );
+    if (target === null) {
+      return null;
+    }
+    const choice: HostingAuthMode | null =
+      mode === null ? null : isHostingAuthMode(mode) ? mode : null;
+    if (mode !== null && (choice === null || !target.descriptor.authModes.includes(choice))) {
+      return null;
+    }
+    for (const name of this.withAliases(target.descriptor, target.host)) {
+      this.settings.setAuth(target.descriptor.id, name, choice);
+    }
+    this.host.restartPlugin(target.descriptor.id);
+    logger.info(
+      'HostingManager',
+      `${target.descriptor.id} signs in to ${target.host} with ${choice ?? 'its default'}`,
+    );
+    return this.account(target.descriptor, target.host);
+  }
+
+  /**
+   * Stores (or, given a blank token, clears) the token Studio keeps for a host and its `www.` alias,
+   * restarting the plugin so nothing it learnt under the old credential outlives it.
+   * @param pluginId The untrusted plugin id.
+   * @param host The untrusted host.
+   * @param token The token.
+   * @returns Returns the host's resulting account, or null when the plugin does not serve it.
+   */
+  public async setToken(
+    pluginId: unknown,
+    host: unknown,
+    token: string,
+  ): Promise<ForgeHostAccount | null> {
+    const target: { descriptor: HostingDescriptor; host: string } | null = this.served(
+      pluginId,
+      host,
+    );
+    if (target === null) {
+      return null;
+    }
+    for (const name of this.withAliases(target.descriptor, target.host)) {
+      this.store.setToken(name, token);
+    }
+    this.host.restartPlugin(target.descriptor.id);
+    logger.info(
+      'HostingManager',
+      `${token.trim().length > 0 ? 'Stored' : 'Cleared'} the ${target.host} token`,
+    );
+    return this.account(target.descriptor, target.host);
+  }
+
+  /**
+   * Reads how a plugin is signed in to one host.
+   * @param descriptor The plugin.
+   * @param host The host.
+   * @returns Returns the account.
+   */
+  private async account(descriptor: HostingDescriptor, host: string): Promise<ForgeHostAccount> {
+    return {
+      pluginId: descriptor.id,
+      provider: descriptor.displayName,
+      host,
+      authModes: descriptor.authModes,
+      authMode: this.settings.authFor(descriptor.id)[host] ?? null,
+      status: await this.authStatus(host),
+    };
+  }
+
+  /**
+   * Asks the plugin serving a host how it is signed in to it.
+   * @param host The host.
    * @returns Returns the status.
    */
-  public async authStatus(): Promise<ForgeAuthStatus> {
-    const host: string | null = this.defaultHost();
-    if (host === null) {
-      return {
-        source: 'none',
-        authenticated: false,
-        hasStoredToken: false,
-        identity: null,
-        detail: 'No hosting plugin is installed. Install GitHub from the Plugin Manager.',
-      };
-    }
+  private async authStatus(host: string): Promise<ForgeAuthStatus> {
     const hasStoredToken: boolean = this.store.hasStoredToken(host);
     const response: HostingResponse<'authStatus'> = await this.host.request(
       'authStatus',
@@ -189,7 +315,7 @@ export class HostingManager {
     );
     if (!response.ok) {
       return {
-        source: 'none',
+        mode: null,
         authenticated: false,
         hasStoredToken,
         identity: null,
@@ -197,10 +323,8 @@ export class HostingManager {
       };
     }
     const status: HostedAuthStatus = response.result;
-    const source: ForgeTokenSource =
-      status.mode === 'cli' ? 'gh-cli' : status.mode === 'studio' ? 'stored' : 'none';
     return {
-      source,
+      mode: status.mode,
       authenticated: status.authenticated,
       hasStoredToken,
       identity: status.identity,
@@ -209,32 +333,54 @@ export class HostingManager {
   }
 
   /**
-   * Stores (or, given a blank token, clears) the token Studio keeps for the default host.
-   * @param token The token.
-   * @returns Returns the resulting status.
+   * Gets the hosts a plugin is the one to sign in to: those it declares and serves, less the `www.`
+   * aliases of others it declares.
+   * @param descriptor The plugin.
+   * @returns Returns the hosts, in manifest order.
    */
-  public async setToken(token: string): Promise<ForgeAuthStatus> {
-    const host: string | null = this.defaultHost();
-    if (host !== null) {
-      this.store.setToken(host, token);
-      logger.info(
-        'HostingManager',
-        `${token.trim().length > 0 ? 'Stored' : 'Cleared'} the ${host} token`,
-      );
-    }
-    return this.authStatus();
+  private servedHosts(descriptor: HostingDescriptor): readonly string[] {
+    return descriptor.hosts.filter(
+      (host: string): boolean =>
+        !(host.startsWith('www.') && descriptor.hosts.includes(host.slice('www.'.length))) &&
+        this.host.pluginForHost(host)?.id === descriptor.id,
+    );
   }
 
   /**
-   * Gets the host the settings page signs in to: the first host of the highest-priority installed
-   * hosting plugin. Core names no host itself.
-   * @returns Returns the host, or null when no hosting plugin is installed.
+   * Gets a host together with its `www.` alias, when the plugin declares that too.
+   * @param descriptor The plugin.
+   * @param host The host.
+   * @returns Returns the host names.
    */
-  private defaultHost(): string | null {
-    const installed: HostingDescriptor | undefined = this.host
-      .preferredOrder()
-      .find((descriptor: HostingDescriptor): boolean => descriptor.resolve().available);
-    return installed?.hosts[0] ?? null;
+  private withAliases(descriptor: HostingDescriptor, host: string): readonly string[] {
+    const alias: string = `www.${host}`;
+    return descriptor.hosts.includes(alias) ? [host, alias] : [host];
+  }
+
+  /**
+   * Validates a plugin and host the renderer named: the plugin must be installed and be the one to
+   * sign in to the host.
+   * @param pluginId The untrusted plugin id.
+   * @param host The untrusted host.
+   * @returns Returns the plugin and the lowercased host, or null.
+   */
+  private served(
+    pluginId: unknown,
+    host: unknown,
+  ): { descriptor: HostingDescriptor; host: string } | null {
+    if (typeof pluginId !== 'string' || typeof host !== 'string') {
+      return null;
+    }
+    const descriptor: HostingDescriptor | undefined = this.host.descriptor(pluginId);
+    const name: string = host.toLowerCase();
+    if (
+      descriptor === undefined ||
+      !descriptor.resolve().available ||
+      !this.servedHosts(descriptor).includes(name)
+    ) {
+      return null;
+    }
+    return { descriptor, host: name };
   }
 
   /**
