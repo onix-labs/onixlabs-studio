@@ -155,6 +155,13 @@ export interface RepositoryInfo {
    * Gets the repository's display name (its root folder's base name).
    */
   readonly name: string;
+
+  /**
+   * Gets the real path of the folder the repository was resolved for — symlinks followed — when it
+   * differs from the path asked about (#862). The root is a real path too, so a caller that holds the
+   * folder by a symlinked path (macOS `/var` → `/private/var`) maps its paths through this pair.
+   */
+  readonly realDirectory?: string;
 }
 
 /**
