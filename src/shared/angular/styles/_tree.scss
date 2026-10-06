@@ -101,6 +101,36 @@ app-tree-view {
   }
 }
 
+// A row whose subject is not ready yet reads as disabled: the whole row dims together — chevron,
+// glyph, label and any decoration — rather than the glyph alone changing shape. Dimming beats
+// swapping the icon for a "loading" variant, because a variant says the folder is a different KIND
+// of thing when all that is different is that it has not arrived. The row keeps its own hover and
+// selection chrome, since it is still something you can point at and expand.
+.tree-row--disabled {
+  opacity: 0.45;
+}
+
+.tree-name {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  font-size: 1rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+
+  .tree-row.active & {
+    color: var(--dock-tab-foreground-color--active);
+  }
+
+  // Semibold weight only — no colour lift, so a root row reads as a heading, not a highlight.
+  &.bold {
+    font-weight: 600;
+  }
+}
+
+// ⚠️ After `.tree-name`, deliberately: the selected-label colour there has the same specificity, and the
+// later rule wins — so a selected changed row keeps its colour rather than taking the active one.
+//
 // A row in a semantic state (#860) — a source-control change, say — takes that colour for its text and
 // a muted version of it for its hover and selection, in place of the accent. Muted greys the text and
 // keeps the accent highlight. The colour is the theme's token, so light and dark both follow.
@@ -128,41 +158,16 @@ app-tree-view {
 }
 
 .tree-row--tone-muted {
+  // Faded rather than recoloured: the muted text colour sits too close to the body text in a light
+  // theme to read as "not tracked here", where a fade reads the same in every theme.
   .tree-name,
-  &.active .tree-name {
-    color: var(--form-muted-foreground-color);
+  .tree-icon {
+    opacity: 0.5;
   }
 }
 
 .tree-row--strong .tree-name {
   font-weight: 700;
-}
-
-// A row whose subject is not ready yet reads as disabled: the whole row dims together — chevron,
-// glyph, label and any decoration — rather than the glyph alone changing shape. Dimming beats
-// swapping the icon for a "loading" variant, because a variant says the folder is a different KIND
-// of thing when all that is different is that it has not arrived. The row keeps its own hover and
-// selection chrome, since it is still something you can point at and expand.
-.tree-row--disabled {
-  opacity: 0.45;
-}
-
-.tree-name {
-  flex: 1 1 auto;
-  min-inline-size: 0;
-  font-size: 1rem;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-
-  .tree-row.active & {
-    color: var(--dock-tab-foreground-color--active);
-  }
-
-  // Semibold weight only — no colour lift, so a root row reads as a heading, not a highlight.
-  &.bold {
-    font-weight: 600;
-  }
 }
 
 // The matched run of a row label while a tree is being searched (the Solution Explorer's filter).
