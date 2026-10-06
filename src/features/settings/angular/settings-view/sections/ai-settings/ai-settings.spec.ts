@@ -133,6 +133,24 @@ describe('AiSettingsSection', () => {
     expect(rowSelect('Permission posture')).toBeTruthy();
   });
 
+  it('blockHostCommandLine_isOffByDefault_andPersistsWhenSwitchedOn', () => {
+    // #853: the switch that keeps agents off the code host's CLI, on the Security page.
+    show('security');
+    const settings: Settings = TestBed.inject(Settings);
+    const row: Element | undefined = Array.from(host.querySelectorAll('app-setting-row')).find(
+      (element: Element): boolean =>
+        element.querySelector('.setting-row__label')?.textContent?.trim() ===
+        "Keep agents off the code host's command-line tool",
+    );
+    const toggle: HTMLInputElement | null | undefined = row?.querySelector('input');
+    expect(toggle).toBeTruthy();
+    expect(settings.aiBlockHostCommandLine()).toBe(false);
+
+    toggle?.click();
+
+    expect(settings.aiBlockHostCommandLine()).toBe(true);
+  });
+
   it('render_whenProviderView_rendersAnItemPerConfigurationOfThatCompany', () => {
     const connections: AiConnections = TestBed.inject(AiConnections);
     connections.add('anthropic');

@@ -133,6 +133,13 @@ export interface AiRunRequest {
   readonly toolPolicies?: Readonly<Record<string, AiToolPolicy>>;
 
   /**
+   * Gets whether the agent is kept off the code host's own command-line tool while a hosting plugin
+   * serves the run's repository (#853). Main resolves which commands that means — the plugin's
+   * manifest names them — so the renderer sends only the choice.
+   */
+  readonly blockHostCommandLine?: boolean;
+
+  /**
    * Gets extra directories the agent may write to beyond the workspace root (#310), as absolute
    * paths. They widen the write-confinement boundary and are granted to the agent's tools (and the
    * Bash sandbox). Absent or empty when the user has configured none.

@@ -259,5 +259,12 @@ export function hostingPromptAppendix(context: AgentRunContext): string {
     `This workspace's repository is ${owner}/${name} on ${host}, served by Studio's ${hosting.provider} plugin. You have these tools for it:`,
     ...offered.map((spec: HostingToolSpec): string => `- ${hostingOpToolName(spec.op)}`),
     `For these operations, use these tools rather than a command-line tool (such as the host's own CLI) or the web API: Studio asks the user before anything is changed on ${hosting.provider}, keeps a record, and applies the user's own sign-in. For anything they do not cover — releases, wikis, repository settings and the like — use your other tools as usual.`,
+    // The user keeps agents off the host's CLI (#853): said up front, so the agent does not try it and
+    // learn from a refusal.
+    ...((context.blockedCommands ?? []).length === 0
+      ? []
+      : [
+          `The user has blocked ${context.blockedCommands.map((command: string): string => `\`${command}\``).join(', ')} for agents in this workspace; commands that run ${context.blockedCommands.length === 1 ? 'it' : 'them'} will be refused. Use the tools above instead, and tell the user when something they ask for is not covered by them.`,
+        ]),
   ].join('\n');
 }

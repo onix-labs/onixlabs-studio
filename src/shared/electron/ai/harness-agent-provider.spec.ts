@@ -730,6 +730,25 @@ describe('toTurnRequest', () => {
     expect(turn['resumeSessionAt']).toBeNull();
   });
 
+  it('carriesTheBlockedCommands_onlyWhenThereAreAny', () => {
+    // 1.11.0 (#853): the code host's CLI the user keeps agents off. Omitted when empty, so a harness
+    // written before it sees exactly the envelope it always did.
+    const { context } = contextFor();
+    const blocking: AgentRunContext = { ...context, blockedCommands: ['gh'] };
+
+    const turn: Record<string, unknown> = toTurnRequest(blocking) as unknown as Record<
+      string,
+      unknown
+    >;
+    const plain: Record<string, unknown> = toTurnRequest({
+      ...context,
+      blockedCommands: [],
+    }) as unknown as Record<string, unknown>;
+
+    expect(turn['blockedCommands']).toEqual(['gh']);
+    expect('blockedCommands' in plain).toBe(false);
+  });
+
   it('carriesAVendorsOwnSettingInTheOpaqueBagRatherThanAsANamedField', () => {
     // ⛔ A wire field called `claudeExecutable` would be the seam naming a vendor. The setting still
     // reaches the harness that understands it; the protocol simply does not know what it means.

@@ -123,8 +123,12 @@ import {
  * `createPullRequest` — the first writes beyond CI, so a plugin can open and close issues, comment, and
  * open pull requests for agents and the UI. The capability list is closed, so a manifest declaring one
  * must say it needs this version: an older build would refuse the manifest rather than ignore the word.
+ *
+ * `1.17.0` adds a hosting contribution's optional `commandLineTools` (#853): the host's own CLI by
+ * command name (`gh`), so Studio can keep agents off it when the user asks — they then go through the
+ * plugin, which asks before it changes anything. The plugin names its tool; core names none. Adds only.
  */
-export const PLUGIN_API_VERSION: string = '1.16.0';
+export const PLUGIN_API_VERSION: string = '1.17.0';
 
 /**
  * Matches a plain three-part semver. Deliberately strict and deliberately local: the rule below is the
@@ -501,6 +505,13 @@ export interface ManifestHosting {
    * empty when there is no choice to make.
    */
   readonly authModes: readonly HostingAuthMode[];
+
+  /**
+   * Gets the host's own command-line tools — `gh` for GitHub — by command name, or empty when it has
+   * none (#853). Optional: Studio uses it only to keep agents off them when the user asks it to, so an
+   * agent goes through the plugin instead. Core names no tool of its own; the plugin says.
+   */
+  readonly commandLineTools: readonly string[];
 
   /**
    * Gets how to start the plugin.
@@ -1541,6 +1552,11 @@ function readContributions(value: unknown, errors: Errors): ManifestContribution
           errors,
         ),
         authModes: readAuthModes(entry['authModes'], `${path}.authModes`, errors),
+        commandLineTools: readCommandLineTools(
+          entry['commandLineTools'],
+          `${path}.commandLineTools`,
+          errors,
+        ),
         command: command ?? { kind: 'executable' },
         entryPoint: readEntryPoint(entry, 'entryPoint', `${path}.`, errors),
       });
@@ -1931,6 +1947,34 @@ function readHostingCapabilities(
     return [];
   }
   return value as readonly HostingCapability[];
+}
+
+/**
+ * Matches the bare name of a command a user runs: a word, with dots, dashes and underscores — not a
+ * path, nor anything with a space or a shell metacharacter in it.
+ */
+const COMMAND_NAME: RegExp = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
+/**
+ * Validates a hosting plugin's command-line tools: bare command names, which Studio matches against
+ * the commands an agent runs, so a path or a shell fragment would never match — or match too much.
+ * @param value The candidate array, or undefined for none.
+ * @param path The dotted path for failures.
+ * @param errors The failure collector.
+ * @returns Returns the names, or an empty array when absent or invalid.
+ */
+function readCommandLineTools(value: unknown, path: string, errors: Errors): readonly string[] {
+  if (value === undefined) {
+    return [];
+  }
+  if (
+    !Array.isArray(value) ||
+    !value.every((entry: unknown): boolean => typeof entry === 'string' && COMMAND_NAME.test(entry))
+  ) {
+    errors.add(path, 'must be an array of command names, such as "gh" — no paths or spaces');
+    return [];
+  }
+  return value as readonly string[];
 }
 
 /**

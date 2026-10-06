@@ -193,6 +193,7 @@ function hostingFor(confirm: boolean): {
         hosts: ['github.com'],
         capabilities: ['issues', 'createIssue'],
         authModes: ['cli', 'studio'],
+        commandLineTools: ['gh'],
         resolve: () => ({ available: true, spec: { command: 'github', args: [] } }),
       },
     ],
@@ -210,6 +211,7 @@ function hostingFor(confirm: boolean): {
     provider: 'GitHub',
     repository,
     capabilities: ['issues', 'createIssue'],
+    commandLineTools: ['gh'],
   };
   const asked: { tool: string; summary: string }[] = [];
   const audited: string[] = [];

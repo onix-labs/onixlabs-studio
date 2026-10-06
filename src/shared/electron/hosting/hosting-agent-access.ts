@@ -41,6 +41,11 @@ export interface RunHosting {
    * Gets what the plugin can do *and* the repository allows — what the run is offered.
    */
   readonly capabilities: readonly HostingCapability[];
+
+  /**
+   * Gets the host's own command-line tools, as the plugin's manifest names them (#853).
+   */
+  readonly commandLineTools: readonly string[];
 }
 
 /**
@@ -99,6 +104,7 @@ export class HostingAgentAccess {
         provider: described.displayName,
         repository: detected.repository,
         capabilities: described.capabilities,
+        commandLineTools: detected.plugin.commandLineTools,
       };
     }
     return null;

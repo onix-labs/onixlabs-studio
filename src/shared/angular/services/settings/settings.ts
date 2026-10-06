@@ -671,6 +671,12 @@ export class Settings {
     this.value('ai.toolPolicies');
 
   /**
+   * Gets whether agents are kept off the code host's own command-line tool while a hosting plugin
+   * serves the repository (#853).
+   */
+  public readonly aiBlockHostCommandLine: Signal<boolean> = this.value('ai.blockHostCommandLine');
+
+  /**
    * Gets the extra directories the agent may write to beyond the workspace root (absolute paths).
    */
   public readonly aiAllowedWritePaths: Signal<readonly string[]> =

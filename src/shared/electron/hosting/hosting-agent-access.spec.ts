@@ -52,6 +52,7 @@ function build(
   };
   const plugin: Partial<HostingDescriptor> = {
     id: 'onixlabs.github',
+    commandLineTools: ['gh'],
     resolve: () =>
       options.installed === false
         ? { available: false, reason: 'not installed' }
@@ -123,6 +124,7 @@ describe('HostingAgentAccess', () => {
       provider: 'GitHub',
       repository: { host: 'github.com', owner: 'matthew', name: 'studio' },
       capabilities: ['issues', 'createIssue'],
+      commandLineTools: ['gh'],
     });
     // The repository is opened only for the read, so a run does not hold it open.
     expect(closed).toEqual(['/work/repo']);
@@ -155,7 +157,13 @@ describe('HostingAgentAccess', () => {
     const caller: HostingCaller = { kind: 'user' };
 
     await access.request(
-      { pluginId: 'onixlabs.github', provider: 'GitHub', repository, capabilities: [] },
+      {
+        pluginId: 'onixlabs.github',
+        provider: 'GitHub',
+        repository,
+        capabilities: [],
+        commandLineTools: ['gh'],
+      },
       'listIssues',
       { repository },
       caller,

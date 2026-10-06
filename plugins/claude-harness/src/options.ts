@@ -21,8 +21,10 @@ import type {
   Options,
   PermissionResult,
   PostToolUseHookInput,
+  PreToolUseHookInput,
   SandboxSettings,
 } from '@anthropic-ai/claude-agent-sdk';
+import { blockedCommandMessage, findBlockedCommand } from './blocked-commands';
 import {
   absolutePathsOf,
   CONFINED_WRITE_TOOLS,
@@ -504,6 +506,10 @@ export function buildOptions(
   // the gate. 🔥 Necessary, not tidy: the Claude Code CLI auto-runs commands its own safety classifier
   // deems harmless — `echo` and the like — **without calling `canUseTool`**, so a gate-only deny would
   // leak them. The gate's deny below stays as a backstop for anything that does reach it.
+  // The commands the user keeps agents off (#853) are NOT added here as `Bash(gh:*)` rules: those are
+  // fixed when a session opens, so turning the setting off mid-conversation would leave them blocked.
+  // The PreToolUse hook below reads the live turn instead, and fires for every Bash call — including
+  // the ones the classifier auto-runs (verified in the app, 2026-10-06).
   const disallowedTools: readonly string[] = Object.entries(open.toolPolicies)
     .filter(([, value]: [string, string]): boolean => value === 'deny')
     .map(([tool]: [string, string]): string => tool);
@@ -538,6 +544,38 @@ export function buildOptions(
       : {}),
     ...(disallowedTools.length > 0 ? { disallowedTools: [...disallowedTools] } : {}),
     hooks: {
+      PreToolUse: [
+        {
+          hooks: [
+            (input): Promise<HookJSONOutput> => {
+              // 🔑 Read from the live turn, not the session's first: the setting can change between
+              // turns of a held-open session, and the Bash rules above are fixed when it opens.
+              const pre: PreToolUseHookInput = input as PreToolUseHookInput;
+              const command: unknown =
+                pre.tool_name === 'Bash' &&
+                typeof pre.tool_input === 'object' &&
+                pre.tool_input !== null
+                  ? (pre.tool_input as { command?: unknown }).command
+                  : undefined;
+              const blocked: string | null =
+                typeof command === 'string'
+                  ? findBlockedCommand(command, gate.getTurn().blockedCommands ?? [])
+                  : null;
+              if (blocked === null) {
+                return Promise.resolve({ continue: true });
+              }
+              note(`blocked ${blocked} in a Bash command`);
+              return Promise.resolve({
+                hookSpecificOutput: {
+                  hookEventName: 'PreToolUse',
+                  permissionDecision: 'deny',
+                  permissionDecisionReason: blockedCommandMessage(blocked),
+                },
+              });
+            },
+          ],
+        },
+      ],
       PostToolUse: [
         {
           hooks: [

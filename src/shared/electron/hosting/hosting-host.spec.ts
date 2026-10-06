@@ -126,6 +126,7 @@ function descriptor(
     hosts,
     capabilities,
     authModes: ['cli', 'studio'],
+    commandLineTools: ['gh'],
     resolve: () => ({ available: true, spec: { command: id, args: [] } }),
   };
 }

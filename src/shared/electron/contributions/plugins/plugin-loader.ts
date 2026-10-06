@@ -919,6 +919,7 @@ export function toHostingDescriptors(
     hosts: host.hosts,
     capabilities: host.capabilities,
     authModes: host.authModes,
+    commandLineTools: host.commandLineTools,
     resolve: (): HostingResolution => {
       const entryPoint: string | null = ops.isInstalled(provisioner())
         ? ops.target(provisioner(), host.entryPoint)

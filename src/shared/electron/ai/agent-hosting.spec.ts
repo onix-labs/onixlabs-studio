@@ -14,6 +14,7 @@ const RUN: RunHosting = {
   provider: 'GitHub',
   repository: REPOSITORY,
   capabilities: ['issues', 'createIssue'],
+  commandLineTools: ['gh'],
 };
 
 /**

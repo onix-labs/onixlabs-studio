@@ -842,7 +842,27 @@ describe('parsePluginManifest', () => {
       expect(result.manifest?.contributes.hosting?.[0]).toMatchObject({
         capabilities: [],
         authModes: [],
+        commandLineTools: [],
       });
+    });
+
+    it('reads the hosts command-line tools as bare command names (#853)', () => {
+      const result: ManifestResult = parsePluginManifest(
+        manifest({ contributes: { hosting: [hosting({ commandLineTools: ['gh', 'glab'] })] } }),
+      );
+      expect(result.errors).toEqual([]);
+      expect(result.manifest?.contributes.hosting?.[0].commandLineTools).toEqual(['gh', 'glab']);
+    });
+
+    it('refuses a command-line tool given as a path, a fragment or not a string', () => {
+      // Studio matches these against the commands an agent runs: a path would never match, and a
+      // fragment with spaces or shell characters would match too much.
+      for (const tool of ['/usr/bin/gh', 'gh issue', 'gh;rm', '', 7]) {
+        const result: ManifestResult = parsePluginManifest(
+          manifest({ contributes: { hosting: [hosting({ commandLineTools: [tool] })] } }),
+        );
+        expect(paths(result)).toContain('contributes.hosting[0].commandLineTools');
+      }
     });
 
     it('refuses a contribution serving no host, since it could never claim a repository', () => {

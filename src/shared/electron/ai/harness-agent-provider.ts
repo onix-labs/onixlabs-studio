@@ -891,6 +891,9 @@ export function toTurnRequest(
     resumeSessionAt: context.resumeSessionAt,
     permissionPosture: context.permissionPosture,
     toolPolicies: { ...context.toolPolicies },
+    ...((context.blockedCommands ?? []).length === 0
+      ? {}
+      : { blockedCommands: [...context.blockedCommands] }),
     images: context.images.map((image: AiImageRef): TurnImage => ({
       mediaType: image.mediaType,
       data: image.data,

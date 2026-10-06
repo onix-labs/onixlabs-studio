@@ -1031,6 +1031,7 @@ describe('a sideloaded plugin carrying its own payload', () => {
             hosts: ['github.com'],
             capabilities: ['issues', 'ciRuns'],
             authModes: ['cli', 'studio'],
+            commandLineTools: ['gh'],
             command: { kind: 'node', env: { GITHUB_EXTRA: 'yes' } },
           },
         ],
