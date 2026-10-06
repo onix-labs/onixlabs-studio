@@ -75,7 +75,7 @@ function change(
 }
 
 /**
- * Parses `git status --porcelain=v2 --branch -z` output into the branch header and the staged,
+ * Parses `git status --porcelain=v2 --branch --ignored -z` output into the branch header and the staged,
  * unstaged and conflicted changes. The NUL-delimited stream interleaves header lines, ordinary and
  * rename entries (whose rename form carries a second, separately-delimited path), unmerged entries and
  * untracked entries.
@@ -91,6 +91,7 @@ export function parseStatus(output: string): VcsStatus {
   const staged: VcsFileChange[] = [];
   const unstaged: VcsFileChange[] = [];
   const conflicted: VcsFileChange[] = [];
+  const ignored: string[] = [];
 
   for (let index: number = 0; index < tokens.length; index++) {
     const token: string = tokens[index];
@@ -142,11 +143,17 @@ export function parseStatus(output: string): VcsStatus {
 
     if (token.startsWith('? ')) {
       unstaged.push(change(token.slice(2), 'added', undefined, true));
+      continue;
     }
-    // '! ' (ignored) entries are skipped: the panel shows what git is tracking, not what it is not.
+
+    if (token.startsWith('! ')) {
+      // Ignored (#860): the explorers grey these out. A whole ignored directory arrives as one entry
+      // ending in `/`, which is what keeps `node_modules` one line rather than thousands.
+      ignored.push(token.slice(2));
+    }
   }
 
-  return { branch, upstream, ahead, behind, staged, unstaged, conflicted };
+  return { branch, upstream, ahead, behind, staged, unstaged, conflicted, ignored };
 }
 
 /**

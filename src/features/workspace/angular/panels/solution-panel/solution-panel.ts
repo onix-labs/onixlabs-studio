@@ -18,8 +18,10 @@ import {
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { SolutionModel, SolutionRow } from '@features/workspace/angular/project/solution-model';
-import { GitChangeStatus, statusLetter } from '@shared/angular/services/repository/repository-data';
-import { WorkspaceGit } from '@features/workspace/angular/workspace-git/workspace-git';
+import {
+  scmRowFields,
+  WorkspaceGit,
+} from '@features/workspace/angular/workspace-git/workspace-git';
 import { Log } from '@shared/angular/services/log/log';
 import { Icon } from '@shared/angular/icons/icon';
 import { ExplorerToolbar } from '@shared/angular/components/explorer-toolbar/explorer-toolbar';
@@ -30,6 +32,7 @@ import { MenuItem } from '@shared/angular/components/menu/menu';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
+import { MutationResult } from '@shared/angular/services/source-control/source-control-provider';
 import { Shell } from '@shared/angular/services/shell/shell';
 import { OPEN_FOLDER_LABEL, REVEAL_LABEL } from '@shared/angular/services/shell/shell-labels';
 import { BuildRunner } from '@shared/angular/services/tasks/build-runner';
@@ -48,6 +51,11 @@ const ACTION_EDIT_PROJECT: string = 'edit-project';
 const ACTION_COPY_PATH: string = 'copy-path';
 const ACTION_COPY_RELATIVE: string = 'copy-relative-path';
 const ACTION_REVEAL: string = 'reveal';
+
+/**
+ * Identifies the context-menu command that adds an untracked path to version control (#860).
+ */
+const ACTION_ADD_TO_VCS: string = 'add-to-version-control';
 const ACTION_OPTIONS: string = 'options';
 const ACTION_FOLLOW: string = 'follow-active';
 const ACTION_GIT_STATUS: string = 'git-status';
@@ -249,6 +257,13 @@ export class SolutionPanel {
         { id: ACTION_COPY_RELATIVE, label: 'Copy Relative Path', icon: Icon.COPY },
         { id: ACTION_REVEAL, label: REVEAL_LABEL, icon: Icon.DIRECTORY },
       );
+      // Offered only on a path version control does not track yet: nothing is added unasked (#860).
+      if (this.git.canAddToVersionControl(path)) {
+        items.push(
+          { id: 'solution-menu.sep-vcs', label: '', separator: true },
+          { id: ACTION_ADD_TO_VCS, label: 'Add to Version Control', icon: Icon.PLUS_CIRCLE },
+        );
+      }
     }
     return items;
   };
@@ -385,11 +400,6 @@ export class SolutionPanel {
   }
 
   /**
-   * Maps a change status to its badge letter, exposed for the template.
-   */
-  protected readonly statusLetter: (status: GitChangeStatus) => string = statusLetter;
-
-  /**
    * Gets the current solution model, or null when there is none (the empty state).
    */
   public readonly model: Signal<ProjectModel | null> = this.solution.model;
@@ -416,6 +426,11 @@ export class SolutionPanel {
       // Greyed out until what it stands for has arrived. Presentation only: an unready project is
       // still expandable, and expanding one is how its contents get requested ahead of the sweep.
       disabled: row.pending,
+      // How version control sees the path the row stands for, in colour (#860) — when the Solution
+      // Explorer shows source-control state at all, and for a row that maps to a path.
+      ...(row.path !== null && this.solution.showsGitStatus()
+        ? scmRowFields(this.git.stateFor(row.path))
+        : {}),
       data: row,
     })),
   );
@@ -451,19 +466,6 @@ export class SolutionPanel {
   protected collapseAll(): void {
     this.log.info('workspace.solution', 'Collapse all requested');
     this.solution.collapseAll();
-  }
-
-  /**
-   * Gets the git change status of a row that maps to a file, or null when it is unchanged, has no
-   * path (a logical folder), or the badges are switched off.
-   * @param path The row's path, or null.
-   * @returns Returns the change status, or null.
-   */
-  protected statusFor(path: string | null): GitChangeStatus | null {
-    if (path === null || !this.solution.showsGitStatus()) {
-      return null;
-    }
-    return this.git.statusFor(path);
   }
 
   /**
@@ -528,6 +530,17 @@ export class SolutionPanel {
         return;
       case ACTION_REVEAL:
         void this.shell.revealPath(path);
+        return;
+      case ACTION_ADD_TO_VCS:
+        void this.git.addToVersionControl(path).then((result: MutationResult): void => {
+          if (!result.success) {
+            this.notifications.notify({
+              severity: 'error',
+              title: `Could not add “${row.label}” to version control`,
+              detail: result.error ?? 'Version control refused it.',
+            });
+          }
+        });
         return;
       default:
         return;

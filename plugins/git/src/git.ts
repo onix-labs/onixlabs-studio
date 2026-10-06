@@ -339,7 +339,13 @@ export class GitVersionControl {
     }
     switch (op) {
       case 'status':
-        return this.read(root, ['status', '--porcelain=v2', '--branch', '-z'], parseStatus);
+        return this.read(
+          root,
+          // `--ignored` in its default (traditional) mode lists an ignored directory as one entry
+          // rather than every file in it, so reporting ignored paths costs a line per directory (#860).
+          ['status', '--porcelain=v2', '--branch', '--ignored', '-z'],
+          parseStatus,
+        );
       case 'operationState':
         return this.operationState(root).then(ok);
       case 'log':

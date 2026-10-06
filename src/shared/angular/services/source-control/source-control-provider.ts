@@ -47,6 +47,12 @@ export interface ParsedStatus {
    * conflicted path is not a change waiting to be staged, and cannot be committed as it stands.
    */
   readonly conflicted: readonly GitFileChange[];
+
+  /**
+   * Gets the paths the version-control system ignores, relative to the repository root — a whole
+   * ignored directory as one entry ending in `/` (#860). Absent or empty when the plugin does not report them.
+   */
+  readonly ignored?: readonly string[];
 }
 
 /**

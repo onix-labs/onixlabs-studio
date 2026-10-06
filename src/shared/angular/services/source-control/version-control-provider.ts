@@ -42,6 +42,7 @@ const EMPTY_STATUS: ParsedStatus = {
   staged: [],
   unstaged: [],
   conflicted: [],
+  ignored: [],
 };
 
 /**
@@ -127,6 +128,7 @@ export class VersionControlProvider implements SourceControlProvider {
       staged: status.staged.map(working(true)),
       unstaged: status.unstaged.map(working(false)),
       conflicted: status.conflicted.map(working(false)),
+      ignored: status.ignored ?? [],
     };
   }
 

@@ -17,6 +17,10 @@ import {
 } from '@shared/angular/services/workspace/workspace';
 import { DirectoryListing, FileOperationResult } from '@shared/api/workspace-channels';
 
+import {
+  ExplorerScmState,
+  WorkspaceGit,
+} from '@features/workspace/angular/workspace-git/workspace-git';
 import { TreePanel } from './tree-panel';
 
 /**
@@ -308,6 +312,50 @@ describe('TreePanel row context menu', () => {
       value,
     });
   }
+
+  it('rows_colourEachPathByHowVersionControlSeesIt', async () => {
+    // #860: colour instead of an A/M letter — untracked red, the folders above it info.
+    vi.spyOn(TestBed.inject(WorkspaceGit), 'stateFor').mockImplementation(
+      (path: string): ExplorerScmState | null =>
+        path === '/ws/src/new.ts' ? 'untracked' : path === '/ws/src' ? 'contains' : null,
+    );
+    workspace.rows.set([
+      { node: node('src', '/ws/src', 'directory'), depth: 0, expanded: true },
+      { node: node('new.ts', '/ws/src/new.ts', 'file'), depth: 1, expanded: false },
+      { node: node('README.md', '/ws/README.md', 'file'), depth: 0, expanded: false },
+    ]);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const rows: Element[] = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('.tree-row'),
+    );
+    expect(rows[0].classList.contains('tree-row--tone-info')).toBe(true);
+    expect(rows[1].classList.contains('tree-row--tone-danger')).toBe(true);
+    expect(rows[1].getAttribute('title')).toBe('Untracked — not under version control');
+    expect(rows[2].className).not.toContain('tree-row--tone-');
+    expect((fixture.nativeElement as HTMLElement).textContent).not.toMatch(/\b[AM]\b/);
+  });
+
+  it('contextMenuFor_offersAddToVersionControl_onlyOnAnUntrackedPath', () => {
+    // #860: nothing is added unasked — the command is the only way a new path becomes tracked.
+    const git: WorkspaceGit = TestBed.inject(WorkspaceGit);
+    vi.spyOn(git, 'canAddToVersionControl').mockImplementation(
+      (path: string): boolean => path === '/ws/new.ts',
+    );
+    const add: ReturnType<typeof vi.spyOn> = vi
+      .spyOn(git, 'addToVersionControl')
+      .mockResolvedValue({ success: true });
+
+    expect(itemIds(node('new.ts', '/ws/new.ts', 'file'))).toContain('add-to-version-control');
+    expect(itemIds(node('old.ts', '/ws/old.ts', 'file'))).not.toContain('add-to-version-control');
+
+    component.onContextAction({
+      itemId: 'add-to-version-control',
+      row: treeRow(node('new.ts', '/ws/new.ts', 'file')),
+    });
+    expect(add).toHaveBeenCalledWith('/ws/new.ts');
+  });
 
   it('onContextAction_newFile_onADirectory_opensAPlaceholderFirstAmongItsChildren', async () => {
     workspace.rows.set([

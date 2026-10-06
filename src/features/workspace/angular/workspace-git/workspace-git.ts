@@ -8,19 +8,35 @@ import { VersionControlPrompt } from '@shared/angular/services/plugins/version-c
 import { Log } from '@shared/angular/services/log/log';
 import { DirectoryWatch } from '@shared/angular/services/directory-watch/directory-watch';
 import { SourceControl } from '@shared/angular/services/source-control/source-control';
-import { GitChangeStatus } from '@shared/angular/services/repository/repository-data';
+import { GitFileChange } from '@shared/angular/services/repository/repository-data';
 import {
+  MutationResult,
   ParsedStatus,
   SourceControlProvider,
 } from '@shared/angular/services/source-control/source-control-provider';
 import { SourceControlProviders } from '@shared/angular/services/source-control/source-control-providers';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
+import type { TreeRow } from '@shared/angular/components/tree-view/tree-view';
 
 /**
  * How long, in milliseconds, external on-disk changes are debounced before the workspace git status
  * refreshes, so a burst (a checkout, a build) refreshes once rather than per file.
  */
 const EXTERNAL_REFRESH_DEBOUNCE_MS: number = 500;
+
+/**
+ * Names how version control sees a path in the explorers (#860):
+ *
+ * - `untracked` — new, and not under version control.
+ * - `added` — new, and added to version control (staged); it stays added until committed, even when
+ *   edited again since.
+ * - `modified` — changed, renamed or deleted.
+ * - `conflicted` — left conflicted by an unfinished merge or rebase.
+ * - `ignored` — excluded by the ignore rules.
+ * - `contains` — a folder with any of the first four somewhere beneath it.
+ */
+export type ExplorerScmState =
+  'untracked' | 'added' | 'modified' | 'conflicted' | 'ignored' | 'contains';
 
 /**
  * Normalises a filesystem path for use as a status-map key: forward slashes and no trailing slash, so
@@ -120,11 +136,20 @@ export class WorkspaceGit {
   private lastWorkspaceRoot: string | null | undefined = undefined;
 
   /**
-   * Holds the changed files, keyed by normalised absolute path.
+   * Holds each path's own state — changed, untracked or ignored files, and directories reported
+   * whole (an untracked or ignored directory) — keyed by normalised absolute path.
    */
-  private readonly fileStatus: WritableSignal<ReadonlyMap<string, GitChangeStatus>> = signal<
-    ReadonlyMap<string, GitChangeStatus>
-  >(new Map<string, GitChangeStatus>());
+  private readonly pathState: WritableSignal<ReadonlyMap<string, ExplorerScmState>> = signal<
+    ReadonlyMap<string, ExplorerScmState>
+  >(new Map<string, ExplorerScmState>());
+
+  /**
+   * Holds the directories reported whole — untracked or ignored — whose state everything beneath them
+   * shares, keyed by normalised absolute path.
+   */
+  private readonly wholeDirs: WritableSignal<ReadonlyMap<string, ExplorerScmState>> = signal<
+    ReadonlyMap<string, ExplorerScmState>
+  >(new Map<string, ExplorerScmState>());
 
   /**
    * Holds the normalised absolute paths of directories that contain a change.
@@ -170,21 +195,34 @@ export class WorkspaceGit {
   }
 
   /**
-   * Gets the git status of a file, or null when it is unchanged or untracked-by-status.
-   * @param path The absolute file path.
-   * @returns Returns the change status, or null.
+   * Gets how version control sees a path (#860). Its own state wins; failing that, the state of an
+   * untracked or ignored directory it lies in; failing that, `contains` for a folder with changes
+   * beneath it; otherwise null — unchanged.
+   * @param path The absolute file or directory path.
+   * @returns Returns the state, or null when unchanged.
    */
-  public statusFor(path: string): GitChangeStatus | null {
-    return this.fileStatus().get(normalize(path)) ?? null;
-  }
-
-  /**
-   * Gets a value indicating whether a directory contains a change at any depth.
-   * @param path The absolute directory path.
-   * @returns Returns true when the directory has descendant changes.
-   */
-  public hasChanges(path: string): boolean {
-    return this.changedDirs().has(normalize(path));
+  public stateFor(path: string): ExplorerScmState | null {
+    const key: string = normalize(path);
+    const own: ExplorerScmState | undefined = this.pathState().get(key);
+    if (own !== undefined) {
+      return own;
+    }
+    const whole: ReadonlyMap<string, ExplorerScmState> = this.wholeDirs();
+    if (whole.size > 0) {
+      let current: string = key;
+      for (
+        let slash: number = current.lastIndexOf('/');
+        slash > 0;
+        slash = current.lastIndexOf('/')
+      ) {
+        current = current.slice(0, slash);
+        const inherited: ExplorerScmState | undefined = whole.get(current);
+        if (inherited !== undefined) {
+          return inherited;
+        }
+      }
+    }
+    return this.changedDirs().has(key) ? 'contains' : null;
   }
 
   /**
@@ -200,18 +238,79 @@ export class WorkspaceGit {
     if (this.provider !== provider || this.boundRoot === null) {
       return;
     }
-    const files: Map<string, GitChangeStatus> = new Map<string, GitChangeStatus>();
+    const states: Map<string, ExplorerScmState> = new Map<string, ExplorerScmState>();
+    const whole: Map<string, ExplorerScmState> = new Map<string, ExplorerScmState>();
     const dirs: Set<string> = new Set<string>();
     const root: string = normalize(this.boundRoot);
-    // Stage first then worktree, so the worktree status wins for a file changed in both.
-    for (const change of [...status.staged, ...status.unstaged]) {
-      const absolute: string = `${root}/${change.path}`;
-      files.set(absolute, change.status);
-      this.addAncestors(absolute, root, dirs);
+    const record: (path: string, state: ExplorerScmState, changes: boolean) => void = (
+      path: string,
+      state: ExplorerScmState,
+      changes: boolean,
+    ): void => {
+      const absolute: string = normalize(`${root}/${path}`);
+      states.set(absolute, state);
+      // A directory reported whole (`dir/`) colours everything beneath it.
+      if (path.endsWith('/')) {
+        whole.set(absolute, state);
+      }
+      if (changes) {
+        this.addAncestors(absolute, root, dirs);
+      }
+    };
+    // Staged first: a file added to version control stays added until it is committed, even once it
+    // has been edited again since — so a later worktree change does not demote it to modified.
+    for (const change of status.staged) {
+      record(change.path, change.status === 'added' ? 'added' : 'modified', true);
     }
-    this.fileStatus.set(files);
+    for (const change of status.unstaged) {
+      const state: ExplorerScmState = scmStateOf(change);
+      if (states.get(normalize(`${root}/${change.path}`)) !== 'added' || state === 'untracked') {
+        record(change.path, state, true);
+      }
+    }
+    for (const change of status.conflicted) {
+      record(change.path, 'conflicted', true);
+    }
+    // Ignored paths are not changes: they grey out, but no folder turns info because of one.
+    for (const path of status.ignored ?? []) {
+      record(path, 'ignored', false);
+    }
+    this.pathState.set(states);
+    this.wholeDirs.set(whole);
     this.changedDirs.set(dirs);
     this.branchSignal.set(status.branch);
+  }
+
+  /**
+   * Gets whether a path can be added to version control: the folder is a repository and the path is
+   * untracked (#860).
+   * @param path The absolute file or folder path.
+   * @returns Returns true when the context menu offers to add it.
+   */
+  public canAddToVersionControl(path: string): boolean {
+    return this.provider !== null && this.stateFor(path) === 'untracked';
+  }
+
+  /**
+   * Adds an untracked file or folder to version control (#860) — stages it, the ignore rules still
+   * applying to a folder's contents — and reads the status again, so the row turns from untracked to
+   * added. Nothing is ever added unasked: this is the only way a new path becomes tracked.
+   * @param path The absolute file or folder path.
+   * @returns Returns the outcome.
+   */
+  public async addToVersionControl(path: string): Promise<MutationResult> {
+    const provider: SourceControlProvider | null = this.provider;
+    const root: string | null = this.boundRoot === null ? null : normalize(this.boundRoot);
+    const target: string = normalize(path);
+    if (provider === null || root === null || !target.startsWith(`${root}/`)) {
+      return { success: false, error: 'That path is not in this workspace’s repository.' };
+    }
+    // Never empty: an empty list stages the whole working tree.
+    const relative: string = target.slice(root.length + 1);
+    this.log.info('workspace.git', 'Adding to version control', relative);
+    const result: MutationResult = await provider.stage([relative]);
+    await this.refresh();
+    return result;
   }
 
   /**
@@ -342,7 +441,8 @@ export class WorkspaceGit {
     }
     this.provider = null;
     this.boundSignal.set(false);
-    this.fileStatus.set(new Map<string, GitChangeStatus>());
+    this.pathState.set(new Map<string, ExplorerScmState>());
+    this.wholeDirs.set(new Map<string, ExplorerScmState>());
     this.changedDirs.set(new Set<string>());
     this.branchSignal.set(null);
   }
@@ -368,4 +468,41 @@ export class WorkspaceGit {
       }
     }
   }
+}
+
+/**
+ * Gets the state a worktree change puts its path in.
+ * @param change The change.
+ * @returns Returns the state.
+ */
+function scmStateOf(change: GitFileChange): ExplorerScmState {
+  if (change.untracked === true) {
+    return 'untracked';
+  }
+  return change.status === 'conflicted' ? 'conflicted' : 'modified';
+}
+
+/**
+ * How each state reads in a tree row (#860): its colour and, so colour is never the only signal, the
+ * words its tooltip and accessible description say.
+ */
+const PRESENTATION: Readonly<Record<ExplorerScmState, Pick<TreeRow, 'tone' | 'strong' | 'hint'>>> =
+  {
+    untracked: { tone: 'danger', hint: 'Untracked — not under version control' },
+    added: { tone: 'success', hint: 'Added to version control' },
+    modified: { tone: 'warning', hint: 'Modified' },
+    conflicted: { tone: 'danger', strong: true, hint: 'Conflicted' },
+    ignored: { tone: 'muted', hint: 'Ignored by version control' },
+    contains: { tone: 'info', hint: 'Contains changes' },
+  };
+
+/**
+ * Gets the tree-row fields that present a state: none for an unchanged path.
+ * @param state The state, or null when unchanged.
+ * @returns Returns the fields to spread into the row.
+ */
+export function scmRowFields(
+  state: ExplorerScmState | null,
+): Pick<TreeRow, 'tone' | 'strong' | 'hint'> {
+  return state === null ? {} : PRESENTATION[state];
 }

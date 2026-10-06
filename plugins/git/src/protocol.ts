@@ -207,6 +207,13 @@ export interface VcsStatus {
    * conflicted path is not a change waiting to be committed, and cannot be committed as it stands.
    */
   readonly conflicted: readonly VcsFileChange[];
+
+  /**
+   * Gets the paths the version-control system ignores, relative to the repository root with forward
+   * slashes — a whole ignored directory as one entry ending in `/` (#860). Optional: a plugin that does
+   * not report them, or a system with no ignore rules, leaves it out, and nothing is shown as ignored.
+   */
+  readonly ignored?: readonly string[];
 }
 
 /**
