@@ -1,0 +1,45 @@
+@for (row of rows(); track keyOf(row)) {
+  <app-setting-row [label]="labelOf(row)" [description]="row.account.status.detail">
+    <span class="hosting-accounts__controls">
+      @if (row.account.authModes.length > 1) {
+        <app-dropdown
+          [options]="options(row)"
+          [value]="modeOf(row)"
+          [ariaLabel]="labelOf(row) + ' sign-in'"
+          [disabled]="busy() !== null"
+          (valueChange)="onMode(row, $event)"
+        />
+      }
+      @if (offersToken(row)) {
+        <app-password-field
+          class="hosting-accounts__token"
+          [value]="row.draft"
+          [disabled]="busy() !== null"
+          placeholder="Personal access token"
+          (valueChange)="onDraft(row, $event)"
+        />
+        <app-button variant="solid" label="Save" [disabled]="!canSave(row)" (click)="onSave(row)" />
+        <app-button label="Clear" [disabled]="!canClear(row)" (click)="onClear(row)" />
+      }
+      <app-button label="Recheck" [disabled]="busy() !== null" (click)="refresh()" />
+    </span>
+  </app-setting-row>
+} @empty {
+  @if (loaded() && isAvailable) {
+    <app-setting-row
+      label="Code hosting"
+      description="No code-hosting plugin is installed, so pull requests, issues and workflow runs are unavailable. Install GitHub from the Plugin Manager."
+    />
+  }
+}
+
+@if (rows().length > 0) {
+  <app-setting-row
+    label="How tokens are stored"
+    description="A token you save is encrypted with your operating system's secure storage and kept in the main process. Studio hands it only to the plugin that serves its host, and it is never readable from this page once saved."
+  />
+  <app-setting-row
+    label="Signing in"
+    description="Automatic uses the host's command-line login when you are signed in with it, and the token saved here otherwise. Choose one to use only that."
+  />
+}

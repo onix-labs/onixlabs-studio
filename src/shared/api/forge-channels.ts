@@ -6,8 +6,9 @@
 // Every network call and every credential lives in the main process. The renderer can ask for a token
 // to be stored or cleared, and can read the resulting status — it can never read the token back.
 
+import { HostingAuthMode } from './hosting-protocol';
 import {
-  ForgeAuthStatus,
+  ForgeHostAccount,
   ForgeRepositoryCapabilities,
   ForgeIssue,
   ForgeIssueComment,
@@ -34,19 +35,26 @@ export enum ForgeChannel {
   Describe = 'forge:describe',
 
   /**
-   * Reads the current authentication status, verifying the resolved credential against the forge
-   * (invoke).
+   * Lists every host the installed hosting plugins serve, with how each is signed in, verifying each
+   * credential against its host (invoke).
    */
-  AuthStatus = 'forge:auth-status',
+  Hosts = 'forge:hosts',
 
   /**
-   * Stores a personal access token, encrypted at rest, and returns the resulting status (invoke).
+   * Chooses how a plugin signs in to one of its hosts, restarting the plugin, and returns the host's
+   * resulting account (invoke).
+   */
+  SetAuthMode = 'forge:set-auth-mode',
+
+  /**
+   * Stores a personal access token for a host, encrypted at rest, and returns the host's resulting
+   * account (invoke).
    */
   SetToken = 'forge:set-token',
 
   /**
-   * Clears the stored token and returns the resulting status — which may still be authenticated, when
-   * the host's CLI login remains (invoke).
+   * Clears the token stored for a host and returns its resulting account — which may still be
+   * authenticated, when the host's CLI login remains (invoke).
    */
   ClearToken = 'forge:clear-token',
 
@@ -100,23 +108,40 @@ export interface ForgeClient {
   describe(repository: ForgeRepositoryRef): Promise<ForgeRepositoryCapabilities | null>;
 
   /**
-   * Reads the current authentication status.
-   * @returns Returns the status.
+   * Lists every host the installed hosting plugins serve, with how each is signed in.
+   * @returns Returns the hosts, highest-priority plugin first.
    */
-  authStatus(): Promise<ForgeAuthStatus>;
+  hosts(): Promise<readonly ForgeHostAccount[]>;
 
   /**
-   * Stores a personal access token.
+   * Chooses how a plugin signs in to one of its hosts.
+   * @param pluginId The plugin.
+   * @param host The host.
+   * @param mode The way to sign in, or null to let the plugin decide.
+   * @returns Returns the host's resulting account, or null when the plugin does not serve it.
+   */
+  setAuthMode(
+    pluginId: string,
+    host: string,
+    mode: HostingAuthMode | null,
+  ): Promise<ForgeHostAccount | null>;
+
+  /**
+   * Stores a personal access token for a host.
+   * @param pluginId The plugin serving the host.
+   * @param host The host.
    * @param token The token to store; a blank token clears it instead.
-   * @returns Returns the resulting status.
+   * @returns Returns the host's resulting account, or null when the plugin does not serve it.
    */
-  setToken(token: string): Promise<ForgeAuthStatus>;
+  setToken(pluginId: string, host: string, token: string): Promise<ForgeHostAccount | null>;
 
   /**
-   * Clears the stored token.
-   * @returns Returns the resulting status.
+   * Clears the token stored for a host.
+   * @param pluginId The plugin serving the host.
+   * @param host The host.
+   * @returns Returns the host's resulting account, or null when the plugin does not serve it.
    */
-  clearToken(): Promise<ForgeAuthStatus>;
+  clearToken(pluginId: string, host: string): Promise<ForgeHostAccount | null>;
 
   /**
    * Lists a repository's open pull requests.

@@ -3,7 +3,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AiAuthStatus, AiConnection, ProviderPage } from '@shared/api/ai-types';
-import type { ForgeAuthStatus } from '@shared/api/forge-types';
+import type { ForgeHostAccount } from '@shared/api/forge-types';
 import type { PluginSummary } from '@shared/api/plugin-channels';
 import type { SetupProbeResult } from '@shared/api/setup-channels';
 import { AiConnections } from '@shared/angular/services/ai-connections/ai-connections';
@@ -58,7 +58,7 @@ describe('SetupStepSummary', () => {
   let results: WritableSignal<readonly SetupProbeResult[]>;
   let connections: WritableSignal<readonly AiConnection[]>;
   let installed: WritableSignal<readonly PluginSummary[]>;
-  let forge: ForgeAuthStatus;
+  let hosts: readonly ForgeHostAccount[];
   let goTo: ReturnType<typeof vi.fn>;
 
   /**
@@ -95,12 +95,22 @@ describe('SetupStepSummary', () => {
     ]);
     connections = signal<readonly AiConnection[]>([]);
     installed = signal<readonly PluginSummary[]>([GIT, CSHARP]);
-    forge = {
-      authenticated: false,
-      identity: null,
-      hasStoredToken: false,
-      source: 'none',
-    } as unknown as ForgeAuthStatus;
+    hosts = [
+      {
+        pluginId: 'onixlabs.github',
+        provider: 'GitHub',
+        host: 'github.com',
+        authModes: ['cli', 'studio'],
+        authMode: null,
+        status: {
+          mode: null,
+          authenticated: false,
+          hasStoredToken: false,
+          identity: null,
+          detail: 'Add a token in Settings → Source Control.',
+        },
+      },
+    ];
     goTo = vi.fn();
     await TestBed.configureTestingModule({
       imports: [SetupStepSummary],
@@ -137,7 +147,7 @@ describe('SetupStepSummary', () => {
           provide: Forge,
           useValue: {
             isAvailable: true,
-            authStatus: (): Promise<ForgeAuthStatus> => Promise.resolve(forge),
+            hosts: (): Promise<readonly ForgeHostAccount[]> => Promise.resolve(hosts),
           },
         },
       ],
@@ -154,6 +164,7 @@ describe('SetupStepSummary', () => {
       'AI providers',
       'Plugins',
       'Version control',
+      'Code hosting',
       'Security',
       'Terminal',
       'This machine',
@@ -204,13 +215,43 @@ describe('SetupStepSummary', () => {
     expect(goTo).toHaveBeenCalledWith('version-control/onixlabs.git');
   });
 
-  it('render_reportsGitHubWithoutAStepToChangeIt', async () => {
-    // GitHub has nothing to set up in the wizard yet, so it is reported rather than given a step.
+  it('render_reportsEachHostAHostingPluginServes_withoutAStepToChangeIt', async () => {
+    // Signing in is Settings' business; the wizard's hosting step only installs.
     await render();
 
-    const github: HTMLElement | undefined = row('GitHub');
+    const github: HTMLElement | undefined = row('GitHub (github.com)');
     expect(github?.classList.contains('env__item--unset')).toBe(true);
+    expect(github?.querySelector('.env__detail')?.textContent).toContain('Add a token');
     expect(github?.querySelector('.env__change')).toBeNull();
+  });
+
+  it('render_reportsWhoAHostIsSignedInAs', async () => {
+    hosts = [
+      {
+        ...hosts[0],
+        status: {
+          ...hosts[0].status,
+          authenticated: true,
+          identity: { login: 'matthew', name: null },
+        },
+      },
+    ];
+
+    await render();
+
+    const github: HTMLElement | undefined = row('GitHub (github.com)');
+    expect(github?.classList.contains('env__item--ok')).toBe(true);
+    expect(github?.querySelector('.env__detail')?.textContent?.trim()).toBe('Signed in as matthew');
+  });
+
+  it('render_hasNoCodeHostingGroup_whenNoHostingPluginIsInstalled', async () => {
+    // Core names no host.
+    hosts = [];
+
+    await render();
+
+    expect(row('GitHub (github.com)')).toBeUndefined();
+    expect((fixture.nativeElement as HTMLElement).textContent).not.toContain('Code hosting');
   });
 
   it('render_statesSecurityChoicesInTheWordsTheStepOffered', async () => {

@@ -1,5 +1,8 @@
-import { beforeEach, describe, expect, it } from 'vitest';
-import { ForgeAuthStatus, ForgeRepositoryCapabilities } from '@shared/api/forge-types';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { ForgeHostAccount, ForgeRepositoryCapabilities } from '@shared/api/forge-types';
 import {
   HostingDescription,
   HostingOp,
@@ -11,12 +14,14 @@ import { HostingDescriptor, HostingResolution } from './hosting-descriptor';
 import { HostingEndpoint } from './hosting-endpoint';
 import { HostingHost } from './hosting-host';
 import { asIssueNumber, asRepository, HostingManager } from './hosting-manager';
+import { HostingSettings } from './hosting-settings';
 
 /**
  * A plugin answering from a table, recording what it was asked.
  */
 class FakeEndpoint implements HostingEndpoint {
   public running: boolean = false;
+  public starts: number = 0;
   public readonly sent: { op: HostingOp; params: unknown }[] = [];
 
   /**
@@ -31,6 +36,7 @@ class FakeEndpoint implements HostingEndpoint {
    */
   public start(): Promise<HostingDescription> {
     this.running = true;
+    this.starts++;
     return Promise.resolve({
       protocol: '1.0',
       capabilities: ['pullRequests', 'issues', 'ciRuns', 'ciRerun', 'ciCancel'],
@@ -65,6 +71,8 @@ describe('HostingManager', () => {
   let installed: boolean;
   let endpoint: FakeEndpoint;
   let blob: string | null;
+  let directory: string;
+  let settings: HostingSettings;
   let manager: HostingManager;
 
   /**
@@ -98,19 +106,25 @@ describe('HostingManager', () => {
         blob = plaintext;
       },
     });
+    settings = new HostingSettings(path.join(directory, 'hosting.json'));
     const host: HostingHost = new HostingHost({
       descriptors: () => [descriptor],
-      authFor: () => ({}),
+      authFor: (pluginId: string) => settings.authFor(pluginId),
       credential: (name: string) => Promise.resolve(store.token(name)),
       createClient: () => endpoint,
     });
-    manager = new HostingManager(host, store);
+    manager = new HostingManager(host, store, settings);
   }
 
   beforeEach(() => {
     installed = true;
     blob = null;
+    directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hosting-manager-'));
     build();
+  });
+
+  afterEach(() => {
+    fs.rmSync(directory, { recursive: true, force: true });
   });
 
   describe('detect', () => {
@@ -152,8 +166,8 @@ describe('HostingManager', () => {
     });
   });
 
-  describe('authStatus', () => {
-    it('reportsHowThePluginSignedIn_andWhetherStudioHoldsAToken', async () => {
+  describe('hosts', () => {
+    it('listsEachHostThePluginServes_withHowItIsSignedIn', async () => {
       build({
         authStatus: {
           id: 1,
@@ -167,35 +181,97 @@ describe('HostingManager', () => {
         },
       });
 
-      const status: ForgeAuthStatus = await manager.authStatus();
+      const hosts: readonly ForgeHostAccount[] = await manager.hosts();
 
-      expect(status).toEqual({
-        source: 'gh-cli',
-        authenticated: true,
-        hasStoredToken: false,
-        identity: { login: 'matthew', name: null },
-        detail: "Signed in as matthew using the GitHub CLI's login.",
-      });
-      // The default host is the installed plugin's first, not one core names itself.
+      // www.github.com is an alias of github.com, so it is not a row of its own.
+      expect(hosts).toEqual([
+        {
+          pluginId: 'onixlabs.github',
+          provider: 'GitHub',
+          host: 'github.com',
+          authModes: ['cli', 'studio'],
+          authMode: null,
+          status: {
+            mode: 'cli',
+            authenticated: true,
+            hasStoredToken: false,
+            identity: { login: 'matthew', name: null },
+            detail: "Signed in as matthew using the GitHub CLI's login.",
+          },
+        },
+      ]);
       expect(endpoint.sent[0]).toEqual({ op: 'authStatus', params: { host: 'github.com' } });
     });
 
-    it('saysToInstallAPlugin_whenNoneIsInstalled', async () => {
+    it('listsNothing_whenNoHostingPluginIsInstalled', async () => {
+      // Core names no host: with GitHub uninstalled there is nothing to sign in to.
       installed = false;
 
-      const status: ForgeAuthStatus = await manager.authStatus();
+      expect(await manager.hosts()).toEqual([]);
+    });
+  });
 
-      expect(status.authenticated).toBe(false);
-      expect(status.detail).toContain('No hosting plugin is installed');
+  describe('setAuthMode', () => {
+    it('recordsTheChoiceForTheHostAndItsAlias_andRestartsThePlugin', async () => {
+      await manager.hosts();
+      const before: number = endpoint.starts;
+
+      const account: ForgeHostAccount | null = await manager.setAuthMode(
+        'onixlabs.github',
+        'GitHub.com',
+        'studio',
+      );
+
+      expect(account?.authMode).toBe('studio');
+      expect(settings.authFor('onixlabs.github')).toEqual({
+        'github.com': 'studio',
+        'www.github.com': 'studio',
+      });
+      // The choice travels in the handshake, so the plugin is started afresh to receive it.
+      expect(endpoint.starts).toBe(before + 1);
+    });
+
+    it('returnsToThePluginsDefault_givenNull', async () => {
+      await manager.setAuthMode('onixlabs.github', 'github.com', 'cli');
+
+      const account: ForgeHostAccount | null = await manager.setAuthMode(
+        'onixlabs.github',
+        'github.com',
+        null,
+      );
+
+      expect(account?.authMode).toBeNull();
+      expect(settings.authFor('onixlabs.github')).toEqual({});
+    });
+
+    it('refusesAModeThePluginDoesNotOffer_aHostItDoesNotServe_orAPluginNotInstalled', async () => {
+      expect(await manager.setAuthMode('onixlabs.github', 'github.com', 'oauth')).toBeNull();
+      expect(await manager.setAuthMode('onixlabs.github', 'gitlab.com', 'cli')).toBeNull();
+      expect(await manager.setAuthMode('someone.else', 'github.com', 'cli')).toBeNull();
+      installed = false;
+      expect(await manager.setAuthMode('onixlabs.github', 'github.com', 'cli')).toBeNull();
+      expect(settings.authFor('onixlabs.github')).toEqual({});
     });
   });
 
   describe('setToken', () => {
-    it('storesTheTokenForTheDefaultHost_andAblankOneClearsIt', async () => {
-      await manager.setToken('ghp_pasted');
-      expect(blob).toContain('github.com');
+    it('storesTheTokenForTheHostAndItsAlias_andABlankOneClearsIt', async () => {
+      const stored: ForgeHostAccount | null = await manager.setToken(
+        'onixlabs.github',
+        'github.com',
+        'ghp_pasted',
+      );
+      expect(stored?.status.hasStoredToken).toBe(true);
+      expect(blob).toBe(
+        JSON.stringify({ 'github.com': 'ghp_pasted', 'www.github.com': 'ghp_pasted' }),
+      );
 
-      await manager.setToken('   ');
+      await manager.setToken('onixlabs.github', 'github.com', '   ');
+      expect(blob).toBeNull();
+    });
+
+    it('storesNothing_forAHostThePluginDoesNotServe', async () => {
+      expect(await manager.setToken('onixlabs.github', 'evil.example', 'ghp_pasted')).toBeNull();
       expect(blob).toBeNull();
     });
   });

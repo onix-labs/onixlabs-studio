@@ -9,7 +9,7 @@ import {
 } from '@angular/core';
 import type { AiAuthStatus, AiConnection, ProviderPage } from '@shared/api/ai-types';
 import { providerDisplayLabel } from '@shared/api/ai-types';
-import { ForgeAuthStatus } from '@shared/api/forge-types';
+import { ForgeHostAccount } from '@shared/api/forge-types';
 import {
   installedContributions,
   PLUGIN_SLOT_LABELS,
@@ -226,15 +226,17 @@ export class SetupStepSummary {
   private readonly security: Security = inject(Security);
 
   /**
-   * Holds the forge client, for the GitHub row.
+   * Holds the forge client, for the code-hosting rows.
    */
   private readonly forge: Forge = inject(Forge);
 
   /**
-   * Holds the forge authentication status, or null until it has been read.
+   * Holds every host the installed hosting plugins serve and how each is signed in, or null until
+   * they have been read.
    */
-  private readonly forgeAuth: WritableSignal<ForgeAuthStatus | null> =
-    signal<ForgeAuthStatus | null>(null);
+  private readonly hostAccounts: WritableSignal<readonly ForgeHostAccount[] | null> = signal<
+    readonly ForgeHostAccount[] | null
+  >(null);
 
   /**
    * Gets the AI group: each configuration and whether it answers.
@@ -295,7 +297,7 @@ export class SetupStepSummary {
   }));
 
   /**
-   * Gets the version-control group: the tool, who commits are from, and the forge.
+   * Gets the version-control group: the tool, and who commits are from.
    */
   private readonly versionControlGroup: Signal<SummaryGroup> = computed((): SummaryGroup => {
     const identityStep: string =
@@ -315,7 +317,27 @@ export class SetupStepSummary {
         status: result.status,
         stepId: result.id === 'git-identity' ? identityStep : 'version-control',
       }));
-    return { title: 'Version control', rows: [...probed, ...this.forgeRows()] };
+    return { title: 'Version control', rows: probed };
+  });
+
+  /**
+   * Gets the code-hosting group: each host the installed hosting plugins serve, and whether it is
+   * signed in to (#821). Core names no host, so with no hosting plugin installed there is no group.
+   */
+  private readonly hostingGroup: Signal<SummaryGroup> = computed((): SummaryGroup => {
+    const accounts: readonly ForgeHostAccount[] | null = this.hostAccounts();
+    return {
+      title: 'Code hosting',
+      rows: (accounts ?? []).map((account: ForgeHostAccount): SummaryRow => ({
+        id: `${account.pluginId}/${account.host}`,
+        name: `${account.provider} (${account.host})`,
+        detail: account.status.authenticated
+          ? `Signed in${account.status.identity === null ? '' : ` as ${account.status.identity.login}`}`
+          : account.status.detail,
+        status: account.status.authenticated ? 'ok' : 'unset',
+        // No step to change it from: signing in is Settings', and the hosting step only installs.
+      })),
+    };
   });
 
   /**
@@ -367,6 +389,7 @@ export class SetupStepSummary {
         this.aiGroup(),
         this.pluginGroup(),
         this.versionControlGroup(),
+        this.hostingGroup(),
         this.securityGroup(),
         this.terminalGroup(),
         this.machineGroup(),
@@ -381,11 +404,7 @@ export class SetupStepSummary {
   public constructor() {
     void this.probes.refresh();
     void this.connections.refreshAllAuth();
-    if (this.forge.isAvailable) {
-      void this.forge
-        .authStatus()
-        .then((status: ForgeAuthStatus): void => this.forgeAuth.set(status));
-    }
+    void this.readHosts();
   }
 
   /**
@@ -412,6 +431,14 @@ export class SetupStepSummary {
   protected recheck(): void {
     void this.probes.refresh();
     void this.connections.refreshAllAuth();
+    void this.readHosts();
+  }
+
+  /**
+   * Reads every host the installed hosting plugins serve, checking each sign-in against its host.
+   */
+  private async readHosts(): Promise<void> {
+    this.hostAccounts.set(await this.forge.hosts());
   }
 
   /**
@@ -430,32 +457,6 @@ export class SetupStepSummary {
           ),
       )
       .map((plugin: PluginSummary): string => plugin.name);
-  }
-
-  /**
-   * Builds the GitHub row. Interim: a forge is where a repository is hosted, and it moves to a group
-   * of its own once hosting plugins exist (#819, #820). There is no step to change it from yet.
-   * @returns Returns the row, or none outside the desktop application.
-   */
-  private forgeRows(): readonly SummaryRow[] {
-    if (!this.forge.isAvailable) {
-      return [];
-    }
-    const status: ForgeAuthStatus | null = this.forgeAuth();
-    return [
-      {
-        id: 'github',
-        name: 'GitHub',
-        detail:
-          status === null
-            ? 'Checking…'
-            : status.authenticated
-              ? `Signed in${status.identity === null ? '' : ` as ${status.identity.login}`}`
-              : 'Not signed in. Set a token in Settings under Source Control to see pull requests ' +
-                'and workflow runs.',
-        status: status === null ? 'unknown' : status.authenticated ? 'ok' : 'unset',
-      },
-    ];
   }
 
   /**

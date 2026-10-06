@@ -1,0 +1,12 @@
+// A host's sign-in choice, its token field and its actions on one row, like the version-control
+// plugins' rows above it.
+.hosting-accounts__controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+// A password field that should be comfortably wide: a personal access token is long.
+.hosting-accounts__token {
+  min-inline-size: 18rem;
+}

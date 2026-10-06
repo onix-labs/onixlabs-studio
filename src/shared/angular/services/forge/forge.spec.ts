@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { Bridge } from '@shared/api/bridge';
 import { ForgeChannel } from '@shared/api/forge-channels';
-import { ForgeAuthStatus, ForgeRepositoryRef, ForgeResult } from '@shared/api/forge-types';
+import { ForgeRepositoryRef, ForgeResult } from '@shared/api/forge-types';
 import { Forge } from './forge';
 
 /**
@@ -68,13 +68,27 @@ describe('Forge', () => {
       });
     });
 
-    it('setToken_passesTheTokenToTheMainProcess', async () => {
+    it('setToken_passesThePluginHostAndTokenToTheMainProcess', async () => {
       const forge: Forge = TestBed.inject(Forge);
 
-      await forge.setToken('ghp_token');
+      await forge.setToken('onixlabs.github', 'github.com', 'ghp_token');
 
       expect(invocations[0].channel).toBe(ForgeChannel.SetToken);
-      expect(invocations[0].args).toEqual(['ghp_token']);
+      expect(invocations[0].args).toEqual(['onixlabs.github', 'github.com', 'ghp_token']);
+    });
+
+    it('signInCalls_nameTheirChannelsAndCarryThePluginAndHost', async () => {
+      const forge: Forge = TestBed.inject(Forge);
+
+      await forge.hosts();
+      await forge.setAuthMode('onixlabs.github', 'github.com', 'cli');
+      await forge.clearToken('onixlabs.github', 'github.com');
+
+      expect(invocations).toEqual([
+        { channel: ForgeChannel.Hosts, args: [] },
+        { channel: ForgeChannel.SetAuthMode, args: ['onixlabs.github', 'github.com', 'cli'] },
+        { channel: ForgeChannel.ClearToken, args: ['onixlabs.github', 'github.com'] },
+      ]);
     });
 
     it('exposesNoWayToReadATokenBack', () => {
@@ -120,13 +134,12 @@ describe('Forge', () => {
       expect(TestBed.inject(Forge).isAvailable).toBe(false);
     });
 
-    it('degradesToAnUnavailableStatus_ratherThanThrowing', async () => {
+    it('listsNoHosts_andChangesNothing_ratherThanThrowing', async () => {
       const forge: Forge = TestBed.inject(Forge);
 
-      const result: ForgeAuthStatus = await forge.authStatus();
-
-      expect(result.authenticated).toBe(false);
-      expect(result.detail).toContain('unavailable');
+      expect(await forge.hosts()).toEqual([]);
+      expect(await forge.setAuthMode('onixlabs.github', 'github.com', 'cli')).toBeNull();
+      expect(await forge.setToken('onixlabs.github', 'github.com', 'ghp_token')).toBeNull();
     });
 
     it('degradesListingCallsToAFailedResult_soCallersNeedNoEnvironmentCheck', async () => {
