@@ -619,7 +619,7 @@ export class GitHubHosting {
       `${repoPath(repository)}/issues`,
       { title, ...(body === undefined ? {} : { body }) },
     );
-    return sent.ok ? { ok: true, result: toIssue((sent.result ?? {})) } : sent;
+    return sent.ok ? { ok: true, result: toIssue(sent.result ?? {}) } : sent;
   }
 
   /**
@@ -644,7 +644,7 @@ export class GitHubHosting {
       `${repoPath(repository)}/issues/${issueNumber(issue)}/comments`,
       { body },
     );
-    return sent.ok ? { ok: true, result: toComment((sent.result ?? {})) } : sent;
+    return sent.ok ? { ok: true, result: toComment(sent.result ?? {}) } : sent;
   }
 
   /**
@@ -669,7 +669,7 @@ export class GitHubHosting {
       `${repoPath(repository)}/issues/${issueNumber(issue)}`,
       { state, ...(stateReason === undefined ? {} : { state_reason: stateReason }) },
     );
-    return sent.ok ? { ok: true, result: toIssue((sent.result ?? {})) } : sent;
+    return sent.ok ? { ok: true, result: toIssue(sent.result ?? {}) } : sent;
   }
 
   /**
@@ -712,9 +712,7 @@ export class GitHubHosting {
       },
     );
     // Checks start only after it is opened, so a fresh pull request has none to report yet.
-    return sent.ok
-      ? { ok: true, result: toPullRequest((sent.result ?? {}), 'none') }
-      : sent;
+    return sent.ok ? { ok: true, result: toPullRequest(sent.result ?? {}, 'none') } : sent;
   }
 
   /**

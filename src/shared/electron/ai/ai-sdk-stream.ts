@@ -103,6 +103,7 @@ import {
   READ_ONLY_APPENDIX,
 } from './studio-tools';
 import { skillsAppendix, withSystemPromptExtra } from './prompt-layers';
+import { createHostingTools, hostingPromptAppendix } from './hosting-tools';
 import { createSkillTools } from './skill-tools';
 import { summarizeToolInput } from './tool-format';
 import { coarseGrantSource } from './tool-policy';
@@ -1102,11 +1103,18 @@ export function promptForSurface(
       ? `${withWorkbench}\n\n${RUN_CONFIGURATION_PROMPT_APPENDIX}`
       : withWorkbench;
   })();
+  // The hosting tools' guidance rides with the rest of Studio's, and only where they are offered —
+  // both are derived from `offeredHostingTools`, so they cannot disagree (#852).
+  const hosting: string = hostingPromptAppendix(context);
+  const withHosting: string = hosting.length === 0 ? studio : `${studio}\n\n${hosting}`;
   // The user's layers come last, and in this order: the skills listing describes a tool the model
   // holds, so it belongs with Studio's tool guidance; the standing text is the user's own voice and
   // reads as such only once everything Studio has to say is above it.
   const skills: string = skillsAppendix(context);
-  return withSystemPromptExtra(skills.length === 0 ? studio : `${studio}\n\n${skills}`, context);
+  return withSystemPromptExtra(
+    skills.length === 0 ? withHosting : `${withHosting}\n\n${skills}`,
+    context,
+  );
 }
 
 /**
@@ -1125,6 +1133,9 @@ export async function toolsForSurface(context: AgentRunContext): Promise<ToolSet
   const runConfigurationTools: ToolSet = await createRunConfigurationTools(context);
   // The skill tool rides on every surface and decides for itself whether it applies (#301).
   const skillTools: ToolSet = await createSkillTools(context);
+  // The hosting tools ride wherever the run works in a hosted repository, and decide for themselves
+  // which operations the repository allows (#852).
+  const hostingTools: ToolSet = await createHostingTools(context);
   const surfaceTools: ToolSet = await ((): Promise<ToolSet> => {
     switch (context.surface) {
       case 'terminal':
@@ -1148,6 +1159,7 @@ export async function toolsForSurface(context: AgentRunContext): Promise<ToolSet
     ...workbenchTools,
     ...runConfigurationTools,
     ...skillTools,
+    ...hostingTools,
     ...surfaceTools,
   };
 }

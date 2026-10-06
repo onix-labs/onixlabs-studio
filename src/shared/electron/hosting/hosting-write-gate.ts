@@ -64,12 +64,15 @@ export function hostingWriteDecision(
 }
 
 /**
- * Names the tool a typed hosting write is known by in per-tool policies: `hosting:<op>`.
+ * Names the tool a typed hosting operation is offered to agents as, and known by in per-tool policies
+ * and remembered permissions: `hosting_<op in snake case>` — `hosting_create_issue`. One name
+ * everywhere, so a policy set on the offered tool is the policy the gate reads (#852). Snake case
+ * because a tool name must be one an MCP client accepts, which a colon is not.
  * @param op The operation.
  * @returns Returns the tool name.
  */
 export function hostingOpToolName(op: string): string {
-  return `hosting:${op}`;
+  return `hosting_${op.replace(/[A-Z]/g, (letter: string): string => `_${letter.toLowerCase()}`)}`;
 }
 
 /**

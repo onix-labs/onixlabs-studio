@@ -67,6 +67,8 @@ import { readRemoteNotificationsEnabled, writeRemoteNotificationsEnabled } from 
 // re-implement the login modal would be a plugin duplicating Studio's chrome (#653).
 import { ClaudeLoginDriver, readClaudeAuthStatus, runClaudeLogout } from './claude-login';
 import { sanitizeToolPolicies } from './tool-policy';
+import type { HostingAgentAccess, RunHosting } from '../hosting/hosting-agent-access';
+import { bindAgentHosting } from './agent-hosting';
 import { sanitizeWritePaths } from './write-confinement';
 import { sanitizeAgentShell } from '@shared/electron/shell-env';
 import { mergeModels, type ReportedModel } from './model-merge';
@@ -294,6 +296,12 @@ export class AiManager {
   private readonly skills: SkillOfferer;
 
   /**
+   * Holds the agents' way to the installed hosting plugins (#852), or null where there is none (a
+   * test, or a build without hosting).
+   */
+  private readonly hosting: HostingAgentAccess | null;
+
+  /**
    * Holds the open workspace roots, which a run's root must be or lie inside (#810).
    */
   private readonly openRoots: OpenRoots;
@@ -386,14 +394,17 @@ export class AiManager {
    * @param windowGetter A function that returns the window agent events are sent to.
    * @param skills The skill library runs draw their in-scope skills from.
    * @param openRoots The open workspace roots, which a run's root must be or lie inside.
+   * @param hosting The agents' way to the installed hosting plugins, or null for none.
    */
   public constructor(
     windowGetter: () => BrowserWindow | null,
     skills: SkillOfferer,
     openRoots: OpenRoots,
+    hosting: HostingAgentAccess | null = null,
   ) {
     this.windowGetter = windowGetter;
     this.skills = skills;
+    this.hosting = hosting;
     this.openRoots = openRoots;
     this.bridge = new RendererBridge(windowGetter);
 
@@ -931,6 +942,15 @@ export class AiManager {
         `Run ${request.requestId}: ${skills.length} skill(s) in scope for ${surface}/${language ?? '-'}`,
       );
     }
+    // The hosted repository the run works in (#852), found from the workspace's remotes. A failure
+    // here costs the run its hosting tools, never the run.
+    const runHosting: RunHosting | null =
+      this.hosting === null
+        ? null
+        : await this.hosting.resolve(request.workspaceRoot ?? null).catch((error: unknown) => {
+            logger.warn('AiManager.run', "Could not find the run's hosted repository", error);
+            return null;
+          });
     logger.debug(
       'AiManager.run',
       `Run ${request.requestId}: model ${model}, mode ${mode}, posture ${permissionPosture}, surface ${request.surface ?? 'editor'}`,
@@ -974,6 +994,23 @@ export class AiManager {
       systemPromptExtra,
       userPromptExtra,
       skills,
+      hosting:
+        runHosting === null || this.hosting === null
+          ? null
+          : bindAgentHosting(this.hosting, runHosting, {
+              permissionPosture,
+              toolPolicies,
+              ask: (tool: string, summary: string): Promise<boolean> =>
+                this.requestPermission(
+                  request.requestId,
+                  controller.signal,
+                  request.workspaceRoot,
+                  tool,
+                  summary,
+                ),
+              audit: (tool: string, detail: string, source: AuditGrantSource): void =>
+                this.recordAudit(tool, detail, request.workspaceRoot, source),
+            }),
       contextPaths,
       images,
       resumeSessionId:

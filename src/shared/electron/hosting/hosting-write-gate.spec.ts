@@ -8,36 +8,36 @@ import {
 
 describe('hostingWriteDecision', () => {
   it('asks_underPrompt', () => {
-    expect(hostingWriteDecision('hosting:rerunCiRun', 'prompt', {})).toBe('ask');
+    expect(hostingWriteDecision('hosting_rerun_ci_run', 'prompt', {})).toBe('ask');
   });
 
   it('asks_underAutoEdits_becauseAWriteToAHostIsNotAFileEdit', () => {
-    expect(hostingWriteDecision('hosting:rerunCiRun', 'auto-edits', {})).toBe('ask');
+    expect(hostingWriteDecision('hosting_rerun_ci_run', 'auto-edits', {})).toBe('ask');
   });
 
   it('allows_underAutoAll', () => {
-    expect(hostingWriteDecision('hosting:rerunCiRun', 'auto-all', {})).toBe('allow');
+    expect(hostingWriteDecision('hosting_rerun_ci_run', 'auto-all', {})).toBe('allow');
   });
 
   it('letsAnExplicitPolicyWin_overThePosture', () => {
     expect(
-      hostingWriteDecision('hosting:rerunCiRun', 'auto-all', { 'hosting:rerunCiRun': 'deny' }),
+      hostingWriteDecision('hosting_rerun_ci_run', 'auto-all', { hosting_rerun_ci_run: 'deny' }),
     ).toBe('deny');
     expect(
-      hostingWriteDecision('hosting:rerunCiRun', 'prompt', { 'hosting:rerunCiRun': 'allow' }),
+      hostingWriteDecision('hosting_rerun_ci_run', 'prompt', { hosting_rerun_ci_run: 'allow' }),
     ).toBe('allow');
   });
 
   it('ignoresAPolicyForAnotherTool', () => {
     expect(
-      hostingWriteDecision('hosting:cancelCiRun', 'prompt', { 'hosting:rerunCiRun': 'allow' }),
+      hostingWriteDecision('hosting_cancel_ci_run', 'prompt', { hosting_rerun_ci_run: 'allow' }),
     ).toBe('ask');
   });
 });
 
 describe('tool names', () => {
   it('namesATypedWrite_andAPluginsToolSoTwoPluginsToolsAreToldApart', () => {
-    expect(hostingOpToolName('rerunCiRun')).toBe('hosting:rerunCiRun');
+    expect(hostingOpToolName('rerunCiRun')).toBe('hosting_rerun_ci_run');
     expect(hostingAgentToolName('onixlabs.github', 'create_release')).toBe(
       'hosting:onixlabs.github/create_release',
     );

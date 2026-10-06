@@ -449,7 +449,7 @@ describe('HostingHost', () => {
     });
 
     it('anAgentsWrite_deniedByPolicy_isRefusedEvenUnderAutoAll', async () => {
-      const { caller, confirm } = agent('auto-all', { 'hosting:rerunCiRun': 'deny' });
+      const { caller, confirm } = agent('auto-all', { hosting_rerun_ci_run: 'deny' });
 
       const response: HostingResponse = await build().request(
         'rerunCiRun',
