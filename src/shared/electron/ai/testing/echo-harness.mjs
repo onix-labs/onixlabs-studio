@@ -15,6 +15,8 @@
 //   - `ask`     — requests permission before finishing, and reports what it was answered.
 //   - `input`   — asks the user a question, and reports the answer.
 //   - `tools`   — asks what tools Studio offers, runs the first, and reports both.
+//   - `tool <name> <json>` — runs one named Studio tool with the given input, and reports what it
+//                 answered (#852).
 //   - `fail`    — fails the turn.
 //   - `noise`   — writes a line to stderr and a non-JSON line to stdout before finishing, so the
 //                 host's refusal paths are exercised against a real stream.
@@ -116,6 +118,17 @@ async function runTurn(turn) {
       const names = listed.tools.map((t) => t.name);
       const ran = await ask(requestId, { kind: 'tool', name: names[0] ?? 'none', input: {} });
       say(requestId, `tools: ${names.join(',')} | ran: ${ran.error ?? ran.result}`);
+    } else if (prompt.startsWith('tool ')) {
+      // Runs one named tool with the given input, the way a model's tool call arrives.
+      const [, name, ...rest] = prompt.split(' ');
+      const listed = await ask(requestId, { kind: 'tools' });
+      const offered = listed.tools.some((t) => t.name === name);
+      const ran = await ask(requestId, {
+        kind: 'tool',
+        name,
+        input: rest.length === 0 ? {} : JSON.parse(rest.join(' ')),
+      });
+      say(requestId, `offered: ${offered} | ran: ${ran.error ?? ran.result}`);
     } else if (prompt === 'credential') {
       // Reports only whether a key arrived, never the key. A fixture that echoed a secret back as
       // assistant text would put one in every test's captured output, which is how they end up in CI
