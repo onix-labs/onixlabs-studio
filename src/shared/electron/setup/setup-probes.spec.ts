@@ -1,14 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import type { SetupProbeResult } from '@shared/api/setup-channels';
-import { runSetupProbes } from './setup-probes';
+import { PROBE_TIMEOUT_MS, runSetupProbes } from './setup-probes';
 
 /**
  * The probes run real processes against the machine the suite runs on, so what they find differs
  * between a developer's laptop and a CI runner. The assertions are therefore about the shape and the
  * contract — every probe answers, nothing throws, nothing hangs — rather than about which tools
  * happen to be installed, which is not a property of the code.
+ *
+ * Each test waits on a whole probe run, which may take up to one probe's timeout: a slow probe reports
+ * `unknown` when its bound expires. Vitest's default test timeout equals that bound, so on a slow CI
+ * runner the test was failed at the very moment the probe was due to answer. The suite allows the
+ * bound plus room to collect the answers.
  */
-describe('runSetupProbes', () => {
+describe('runSetupProbes', { timeout: PROBE_TIMEOUT_MS * 2 }, () => {
   it('answersForEveryToolchainProbe_butNotGit', async () => {
     // Git's rows come from the installed version-control plugin (#817), not from core.
     const results: readonly SetupProbeResult[] = await runSetupProbes(process.env);

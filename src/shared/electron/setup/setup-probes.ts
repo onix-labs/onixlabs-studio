@@ -21,7 +21,7 @@ const run: (
  * something. The step must not. Every probe is bounded, and the whole set runs concurrently, so the
  * step takes as long as its slowest answer rather than the sum of them.
  */
-const PROBE_TIMEOUT_MS: number = 5000;
+export const PROBE_TIMEOUT_MS: number = 5000;
 
 /**
  * Describes how one probe is run: the binary, the arguments that make it report its version, and how
