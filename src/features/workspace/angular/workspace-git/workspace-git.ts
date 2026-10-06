@@ -131,6 +131,12 @@ export class WorkspaceGit {
   private boundRoot: string | null = null;
 
   /**
+   * Holds how the workspace folder, as the explorers hold it, maps onto its real path when the two
+   * differ — a folder opened through a symlink (#862) — or null when they do not.
+   */
+  private pathAlias: { readonly from: string; readonly to: string } | null = null;
+
+  /**
    * Holds the last workspace folder a resolve was attempted for, so the resolve runs once per folder.
    */
   private lastWorkspaceRoot: string | null | undefined = undefined;
@@ -202,7 +208,7 @@ export class WorkspaceGit {
    * @returns Returns the state, or null when unchanged.
    */
   public stateFor(path: string): ExplorerScmState | null {
-    const key: string = normalize(path);
+    const key: string = this.realKey(path);
     const own: ExplorerScmState | undefined = this.pathState().get(key);
     if (own !== undefined) {
       return own;
@@ -301,7 +307,7 @@ export class WorkspaceGit {
   public async addToVersionControl(path: string): Promise<MutationResult> {
     const provider: SourceControlProvider | null = this.provider;
     const root: string | null = this.boundRoot === null ? null : normalize(this.boundRoot);
-    const target: string = normalize(path);
+    const target: string = this.realKey(path);
     if (provider === null || root === null || !target.startsWith(`${root}/`)) {
       return { success: false, error: 'That path is not in this workspace’s repository.' };
     }
@@ -353,6 +359,11 @@ export class WorkspaceGit {
     if (this.boundRoot !== info.root) {
       this.release();
       this.boundRoot = info.root;
+      this.pathAlias =
+        info.realDirectory === undefined ||
+        normalize(info.realDirectory) === normalize(workspaceRoot)
+          ? null
+          : { from: normalize(workspaceRoot), to: normalize(info.realDirectory) };
       this.provider = this.providers.create(info.root);
       this.boundSignal.set(true);
       this.log.debug('source-control', 'Bound workspace git repository', info.root);
@@ -440,11 +451,27 @@ export class WorkspaceGit {
       this.boundRoot = null;
     }
     this.provider = null;
+    this.pathAlias = null;
     this.boundSignal.set(false);
     this.pathState.set(new Map<string, ExplorerScmState>());
     this.wholeDirs.set(new Map<string, ExplorerScmState>());
     this.changedDirs.set(new Set<string>());
     this.branchSignal.set(null);
+  }
+
+  /**
+   * Gets the key a path's state is held under: normalised, and moved onto the real path when the
+   * workspace was opened through a symlink — the repository's paths are real ones (#862).
+   * @param path The absolute path, as the explorers hold it.
+   * @returns Returns the key.
+   */
+  private realKey(path: string): string {
+    const key: string = normalize(path);
+    const alias: { readonly from: string; readonly to: string } | null = this.pathAlias;
+    if (alias === null || (key !== alias.from && !key.startsWith(`${alias.from}/`))) {
+      return key;
+    }
+    return `${alias.to}${key.slice(alias.from.length)}`;
   }
 
   /**

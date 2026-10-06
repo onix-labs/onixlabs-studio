@@ -1,3 +1,4 @@
+import { realpath } from 'node:fs/promises';
 import { ipcMain, IpcMainInvokeEvent } from 'electron';
 import {
   DetectedRepository,
@@ -117,7 +118,18 @@ export class VersionControlManager {
    */
   private async resolveRepository(directory: unknown): Promise<RepositoryInfo | null> {
     const opened: OpenedRepository | null = await this.host.openRepository(directory);
-    return opened === null ? null : { root: opened.root, name: opened.name };
+    if (opened === null) {
+      return null;
+    }
+    // The root is the plugin's real path; say what the folder asked about really is too, so a caller
+    // holding it by a symlinked path can map one onto the other (#862).
+    const real: string | null =
+      typeof directory === 'string' ? await realpath(directory).catch((): null => null) : null;
+    return {
+      root: opened.root,
+      name: opened.name,
+      ...(real !== null && real !== directory ? { realDirectory: real } : {}),
+    };
   }
 
   /**

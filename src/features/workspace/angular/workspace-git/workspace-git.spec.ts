@@ -259,6 +259,21 @@ describe('WorkspaceGit', () => {
     expect(staged).toEqual([]);
   });
 
+  it('stateFor_findsTheState_whenTheWorkspaceWasOpenedThroughASymlink', async () => {
+    // #862: macOS opens /var/… as /private/var/…. The repository answers in real paths; the explorers
+    // hold the symlinked ones — they must still meet.
+    resolved = { root: '/private/repo', name: 'repo', realDirectory: '/private/repo' };
+    root.set(listing('/repo'));
+    await bind();
+
+    expect(git.stateFor('/repo/src/app/main.ts')).toBe('modified');
+    expect(git.stateFor('/repo/src')).toBe('contains');
+    expect(git.stateFor('/repo/README.md')).toBe('untracked');
+
+    await git.addToVersionControl('/repo/README.md');
+    expect(staged).toEqual([['README.md']]);
+  });
+
   it('stateFor_marksAConflictedPath', async () => {
     status = { ...status, conflicted: [change('src/both.ts', 'conflicted')] };
     root.set(listing('/repo'));
