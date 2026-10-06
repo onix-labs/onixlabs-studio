@@ -42,5 +42,7 @@ describe('findBlockedCommand', () => {
 
   it('saysWhatToUseInstead', () => {
     expect(blockedCommandMessage('gh')).toContain('hosting_* tools');
+    // Says where the block is lifted, so the agent does not send the user looking elsewhere.
+    expect(blockedCommandMessage('gh')).toContain('Security & Permissions');
   });
 });

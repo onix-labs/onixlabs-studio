@@ -506,15 +506,13 @@ export function buildOptions(
   // the gate. 🔥 Necessary, not tidy: the Claude Code CLI auto-runs commands its own safety classifier
   // deems harmless — `echo` and the like — **without calling `canUseTool`**, so a gate-only deny would
   // leak them. The gate's deny below stays as a backstop for anything that does reach it.
-  const disallowedTools: readonly string[] = [
-    ...Object.entries(open.toolPolicies)
-      .filter(([, value]: [string, string]): boolean => value === 'deny')
-      .map(([tool]: [string, string]): string => tool),
-    // The commands the user keeps agents off (#853), as the CLI's own Bash rules — which also stop the
-    // classifier auto-running them. They match a command line that *starts* with one; the PreToolUse
-    // hook below catches one later in a compound line.
-    ...(open.blockedCommands ?? []).map((command: string): string => `Bash(${command}:*)`),
-  ];
+  // The commands the user keeps agents off (#853) are NOT added here as `Bash(gh:*)` rules: those are
+  // fixed when a session opens, so turning the setting off mid-conversation would leave them blocked.
+  // The PreToolUse hook below reads the live turn instead, and fires for every Bash call — including
+  // the ones the classifier auto-runs (verified in the app, 2026-10-06).
+  const disallowedTools: readonly string[] = Object.entries(open.toolPolicies)
+    .filter(([, value]: [string, string]): boolean => value === 'deny')
+    .map(([tool]: [string, string]): string => tool);
   const env: Record<string, string> | null = runEnvironment(open.agentShell, apiKey);
   const executable: string | undefined = resolveExecutable(
     open.providerSettings['claudeExecutable'],

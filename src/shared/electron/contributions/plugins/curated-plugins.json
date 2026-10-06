@@ -1170,7 +1170,7 @@
       "provision": {
         "kind": "npm",
         "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.claude-harness.lock.json",
-        "sha256": "b3d8a5136d5548220863340101962d05d167c8d36f30b094b8802126e0b71764",
+        "sha256": "330ac5a42a5e217ca39a66622b0218c125b09e9777480861add4ad6e3f22a60f",
         "executablePath": "node_modules/@onixlabs/claude-harness/main.js"
       },
       "contributes": {

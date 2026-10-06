@@ -70,6 +70,13 @@
 
     <app-ai-tool-policies />
 
+    <app-setting-row
+      label="Keep agents off the code host's command-line tool"
+      description="While a code-hosting plugin serves the repository, agents may not run that host's own command-line tool (gh for GitHub) and go through the plugin instead, which asks before it changes anything. Enforced for Claude and for providers that run commands through Studio's terminal; Codex is only told."
+    >
+      <app-setting-control key="ai.blockHostCommandLine" />
+    </app-setting-row>
+
     <app-ai-write-paths />
 
     <app-ai-network-locations />

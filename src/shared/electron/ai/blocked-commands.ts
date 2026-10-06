@@ -69,5 +69,5 @@ export function findBlockedCommand(commandLine: string, blocked: readonly string
  * @returns Returns the explanation.
  */
 export function blockedCommandMessage(command: string): string {
-  return `\`${command}\` is blocked for agents in this workspace: Studio's hosting plugin serves this repository. Use the hosting_* tools instead — they ask the user before changing anything.`;
+  return `\`${command}\` is blocked for agents in this workspace: Studio's hosting plugin serves this repository. Use the hosting_* tools instead — they ask the user before changing anything. (The user can allow it again under Settings ▸ Artificial Intelligence ▸ Security & Permissions.)`;
 }
