@@ -58,6 +58,12 @@ const HEADLESS_DOM: boolean =
   typeof navigator !== 'undefined' && navigator.userAgent.includes('jsdom');
 
 /**
+ * Names a semantic colour a row's text and highlight take (#860) — the theme's own tokens, so light,
+ * dark and every accent follow. `muted` greys the text and keeps the accent highlight.
+ */
+export type TreeRowTone = 'danger' | 'success' | 'warning' | 'info' | 'muted';
+
+/**
  * Describes one visible row of a tree: its identity, depth, and expansion state. Consumers carry their
  * own row payload in {@link data} and render it through the projected row-content template.
  */
@@ -91,6 +97,24 @@ export interface TreeRow {
    * inert as well ignores the click itself.
    */
   readonly disabled?: boolean;
+
+  /**
+   * Gets the semantic colour the row's text takes, and a muted version of which its hover and
+   * selection take in place of the accent; absent for an ordinary row.
+   */
+  readonly tone?: TreeRowTone;
+
+  /**
+   * Gets whether the row's label is emphasised as well as coloured — for a state colour alone would
+   * leave ambiguous, such as a conflict among new files.
+   */
+  readonly strong?: boolean;
+
+  /**
+   * Gets a short description of the row's state, shown as its tooltip and read by assistive
+   * technology — so a state carried by colour is never carried by colour alone.
+   */
+  readonly hint?: string;
 
   /**
    * Gets the consumer's payload for the row, read by the projected row-content template.

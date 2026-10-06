@@ -35,10 +35,6 @@
           <app-highlighted-text [text]="r.label" [query]="query()" />
         </span>
 
-        @if (statusFor(r.path); as status) {
-          <span class="tree-status">{{ statusLetter(status) }}</span>
-        }
-
         @if (r.loading) {
           <app-icon class="tree-loading" [icon]="Icon.SPINNER" />
         }

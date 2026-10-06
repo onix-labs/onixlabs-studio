@@ -48,6 +48,25 @@ describe('git-output', () => {
       expect(status.staged[0].untracked).toBeUndefined();
     });
 
+    it('parseStatus_withIgnoredEntries_listsThem_aDirectoryAsOneEntry', () => {
+      // #860: `--ignored` reports an ignored directory as one `/`-terminated entry, not its files.
+      const output: string = [
+        '# branch.head main',
+        '? src/new.ts',
+        '! node_modules/',
+        '! dist/',
+        '! .env',
+      ].join(NUL);
+
+      const status: VcsStatus = parseStatus(output);
+
+      expect(status.ignored).toEqual(['node_modules/', 'dist/', '.env']);
+      // An ignored path is not a change: it is neither staged nor unstaged.
+      expect(status.unstaged.map((file: VcsFileChange): string => file.path)).toEqual([
+        'src/new.ts',
+      ]);
+    });
+
     it('parseStatus_withUnmergedEntries_collectsThemAsConflicted', () => {
       // An unmerged entry carries ten metadata fields before the path: the XY code, the submodule
       // field, three stage modes plus the worktree mode, and the three stage object names.

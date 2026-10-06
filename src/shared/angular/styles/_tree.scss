@@ -101,6 +101,43 @@ app-tree-view {
   }
 }
 
+// A row in a semantic state (#860) — a source-control change, say — takes that colour for its text and
+// a muted version of it for its hover and selection, in place of the accent. Muted greys the text and
+// keeps the accent highlight. The colour is the theme's token, so light and dark both follow.
+@each $tone in (danger, success, warning, info) {
+  .tree-row--tone-#{$tone} {
+    --tree-row-tone: var(--#{$tone}-color);
+
+    color: var(--tree-row-tone);
+
+    &:hover {
+      background: color-mix(in srgb, var(--tree-row-tone) 12%, transparent);
+    }
+
+    &.active {
+      background: color-mix(in srgb, var(--tree-row-tone) 22%, transparent);
+    }
+
+    // The label keeps the tone when selected, rather than the active-tab foreground every other row
+    // takes — the colour is the state, and selecting a row must not hide it.
+    .tree-name,
+    &.active .tree-name {
+      color: var(--tree-row-tone);
+    }
+  }
+}
+
+.tree-row--tone-muted {
+  .tree-name,
+  &.active .tree-name {
+    color: var(--form-muted-foreground-color);
+  }
+}
+
+.tree-row--strong .tree-name {
+  font-weight: 700;
+}
+
 // A row whose subject is not ready yet reads as disabled: the whole row dims together — chevron,
 // glyph, label and any decoration — rather than the glyph alone changing shape. Dimming beats
 // swapping the icon for a "loading" variant, because a variant says the folder is a different KIND
@@ -141,22 +178,6 @@ app-tree-view {
   font-size: 0.8125rem;
   opacity: 0.7;
   animation: tree-spin 0.8s linear infinite;
-}
-
-// Git status decoration: a monochrome letter for a changed file (or a dot for a folder that contains
-// changes), kept to greys rather than hue.
-.tree-status {
-  flex: 0 0 auto;
-  margin-inline-start: 0.25rem;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.75rem;
-  font-weight: 600;
-  line-height: 1;
-  color: var(--form-muted-foreground-color);
-
-  &--dot {
-    font-size: 1rem;
-  }
 }
 
 // A count carried by a tree row or the header above one: the changes on the checked-out branch, the

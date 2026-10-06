@@ -11,6 +11,7 @@ import { DirectoryListing } from '@shared/api/workspace-channels';
 import { DirectoryWatch } from '@shared/angular/services/directory-watch/directory-watch';
 import { GitFileChange } from '@shared/angular/services/repository/repository-data';
 import {
+  MutationResult,
   ParsedStatus,
   SourceControlProvider,
 } from '@shared/angular/services/source-control/source-control-provider';
@@ -18,7 +19,7 @@ import { SourceControl } from '@shared/angular/services/source-control/source-co
 import { SourceControlProviders } from '@shared/angular/services/source-control/source-control-providers';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 
-import { WorkspaceGit } from './workspace-git';
+import { scmRowFields, WorkspaceGit } from './workspace-git';
 
 /**
  * Builds a file change with the given repository-relative path and status.
@@ -26,10 +27,15 @@ import { WorkspaceGit } from './workspace-git';
  * @param status The change status.
  * @returns Returns the file change.
  */
-function change(path: string, status: GitFileChange['status']): GitFileChange {
+function change(
+  path: string,
+  status: GitFileChange['status'],
+  untracked: boolean = false,
+): GitFileChange {
   return {
     path,
     status,
+    ...(untracked ? { untracked } : {}),
     additions: 0,
     deletions: 0,
     language: '',
@@ -70,6 +76,7 @@ describe('WorkspaceGit', () => {
   let pluginInstalled: WritableSignal<boolean>;
   let closed: string[];
   let status: ParsedStatus;
+  let staged: string[][];
   let watched: string[];
   let fireWatch: () => void;
 
@@ -104,7 +111,7 @@ describe('WorkspaceGit', () => {
       ahead: 0,
       behind: 0,
       staged: [change('src/app/main.ts', 'modified')],
-      unstaged: [change('README.md', 'added')],
+      unstaged: [change('README.md', 'added', true)],
       conflicted: [],
     };
 
@@ -117,8 +124,13 @@ describe('WorkspaceGit', () => {
         return Promise.resolve();
       },
     };
-    const provider: Pick<SourceControlProvider, 'getStatus'> = {
+    staged = [];
+    const provider: Pick<SourceControlProvider, 'getStatus' | 'stage'> = {
       getStatus: (): Promise<ParsedStatus> => Promise.resolve(status),
+      stage: (paths: readonly string[]): Promise<MutationResult> => {
+        staged.push([...paths]);
+        return Promise.resolve({ success: true });
+      },
     };
 
     TestBed.configureTestingModule({
@@ -160,27 +172,99 @@ describe('WorkspaceGit', () => {
 
     expect(git.isRepository()).toBe(true);
     expect(git.branch()).toBe('main');
-    expect(git.statusFor('/repo/src/app/main.ts')).toBe('modified');
-    expect(git.statusFor('/repo/README.md')).toBe('added');
-    expect(git.statusFor('/repo/src/other.ts')).toBeNull();
+    expect(git.stateFor('/repo/src/app/main.ts')).toBe('modified');
+    // #860: a new file not under version control is untracked, not added.
+    expect(git.stateFor('/repo/README.md')).toBe('untracked');
+    expect(git.stateFor('/repo/src/other.ts')).toBeNull();
   });
 
-  it('statusFor_normalisesSeparatorsAndTrailingSlashes', async () => {
+  it('stateFor_normalisesSeparatorsAndTrailingSlashes', async () => {
     root.set(listing('/repo'));
     await bind();
 
-    expect(git.statusFor('\\repo\\src\\app\\main.ts')).toBe('modified');
-    expect(git.hasChanges('/repo/src/')).toBe(true);
+    expect(git.stateFor('\\repo\\src\\app\\main.ts')).toBe('modified');
+    expect(git.stateFor('/repo/src/')).toBe('contains');
   });
 
-  it('hasChanges_flagsEveryAncestorDirectoryOfAChange', async () => {
+  it('stateFor_marksEveryAncestorOfAChange_asContainingChanges', async () => {
     root.set(listing('/repo'));
     await bind();
 
-    expect(git.hasChanges('/repo/src/app')).toBe(true);
-    expect(git.hasChanges('/repo/src')).toBe(true);
-    expect(git.hasChanges('/repo')).toBe(true);
-    expect(git.hasChanges('/repo/docs')).toBe(false);
+    expect(git.stateFor('/repo/src/app')).toBe('contains');
+    expect(git.stateFor('/repo/src')).toBe('contains');
+    expect(git.stateFor('/repo')).toBe('contains');
+    expect(git.stateFor('/repo/docs')).toBeNull();
+  });
+
+  it('stateFor_keepsAnAddedFileAdded_evenOnceItIsEditedAgain', async () => {
+    // Staged as new, then changed in the worktree: still new to the repository until committed.
+    status = {
+      ...status,
+      staged: [change('src/new.ts', 'added')],
+      unstaged: [change('src/new.ts', 'modified')],
+    };
+    root.set(listing('/repo'));
+    await bind();
+
+    expect(git.stateFor('/repo/src/new.ts')).toBe('added');
+  });
+
+  it('stateFor_givesEverythingInAnUntrackedOrIgnoredDirectoryThatDirectorysState', async () => {
+    status = {
+      ...status,
+      staged: [],
+      unstaged: [change('scratch/', 'added', true)],
+      ignored: ['node_modules/', '.env'],
+    };
+    root.set(listing('/repo'));
+    await bind();
+
+    expect(git.stateFor('/repo/scratch')).toBe('untracked');
+    expect(git.stateFor('/repo/scratch/deep/file.ts')).toBe('untracked');
+    expect(git.stateFor('/repo/node_modules')).toBe('ignored');
+    expect(git.stateFor('/repo/node_modules/pkg/index.js')).toBe('ignored');
+    expect(git.stateFor('/repo/.env')).toBe('ignored');
+  });
+
+  it('stateFor_doesNotMarkAFolderAsContainingChanges_forAnIgnoredPathInIt', async () => {
+    status = { ...status, staged: [], unstaged: [], ignored: ['docs/build/'] };
+    root.set(listing('/repo'));
+    await bind();
+
+    expect(git.stateFor('/repo/docs')).toBeNull();
+    expect(git.stateFor('/repo')).toBeNull();
+  });
+
+  it('addToVersionControl_stagesTheRepositoryRelativePath_andReadsTheStatusAgain', async () => {
+    root.set(listing('/repo'));
+    await bind();
+    expect(git.canAddToVersionControl('/repo/README.md')).toBe(true);
+    expect(git.canAddToVersionControl('/repo/src/app/main.ts')).toBe(false);
+
+    status = { ...status, staged: [change('README.md', 'added')], unstaged: [] };
+    const result: MutationResult = await git.addToVersionControl('/repo/README.md');
+
+    expect(result.success).toBe(true);
+    expect(staged).toEqual([['README.md']]);
+    expect(git.stateFor('/repo/README.md')).toBe('added');
+  });
+
+  it('addToVersionControl_refusesAPathOutsideTheRepository_withoutStagingEverything', async () => {
+    // An empty path list stages the whole working tree, so the root itself must never become one.
+    root.set(listing('/repo'));
+    await bind();
+
+    expect((await git.addToVersionControl('/elsewhere/a.ts')).success).toBe(false);
+    expect((await git.addToVersionControl('/repo')).success).toBe(false);
+    expect(staged).toEqual([]);
+  });
+
+  it('stateFor_marksAConflictedPath', async () => {
+    status = { ...status, conflicted: [change('src/both.ts', 'conflicted')] };
+    root.set(listing('/repo'));
+    await bind();
+
+    expect(git.stateFor('/repo/src/both.ts')).toBe('conflicted');
   });
 
   it('bind_whenFolderIsNotARepository_staysUnbound', async () => {
@@ -190,7 +274,7 @@ describe('WorkspaceGit', () => {
 
     expect(git.isRepository()).toBe(false);
     expect(git.branch()).toBeNull();
-    expect(git.statusFor('/plain/file.ts')).toBeNull();
+    expect(git.stateFor('/plain/file.ts')).toBeNull();
   });
 
   it('bind_whenFolderIsARepositoryNoInstalledPluginReads_offersThePlugin', async () => {
@@ -236,7 +320,7 @@ describe('WorkspaceGit', () => {
     expect(closed).toContain('/repo');
     expect(git.isRepository()).toBe(false);
     expect(git.branch()).toBeNull();
-    expect(git.hasChanges('/repo/src')).toBe(false);
+    expect(git.stateFor('/repo/src')).toBeNull();
   });
 
   it('dispose_releasesTheRepositoryAndClearsAllStatus', async () => {
@@ -247,7 +331,7 @@ describe('WorkspaceGit', () => {
 
     expect(closed).toContain('/repo');
     expect(git.isRepository()).toBe(false);
-    expect(git.statusFor('/repo/src/app/main.ts')).toBeNull();
+    expect(git.stateFor('/repo/src/app/main.ts')).toBeNull();
     expect(git.branch()).toBeNull();
   });
 
@@ -259,8 +343,8 @@ describe('WorkspaceGit', () => {
     await git.refresh();
 
     expect(git.branch()).toBe('develop');
-    expect(git.statusFor('/repo/src/app/main.ts')).toBeNull();
-    expect(git.hasChanges('/repo/src')).toBe(false);
+    expect(git.stateFor('/repo/src/app/main.ts')).toBeNull();
+    expect(git.stateFor('/repo/src')).toBeNull();
   });
 
   it('watch_whenTheRepositoryChangesOnDisk_refreshesBranchWithoutReactivation', async () => {
@@ -293,5 +377,17 @@ describe('WorkspaceGit', () => {
     await settle();
 
     expect(git.branch()).toBeNull();
+  });
+});
+
+describe('scmRowFields', () => {
+  it('colours each state, and says it in words too', () => {
+    expect(scmRowFields(null)).toEqual({});
+    expect(scmRowFields('untracked')).toMatchObject({ tone: 'danger' });
+    expect(scmRowFields('added')).toMatchObject({ tone: 'success' });
+    expect(scmRowFields('modified')).toMatchObject({ tone: 'warning', hint: 'Modified' });
+    expect(scmRowFields('conflicted')).toMatchObject({ tone: 'danger', strong: true });
+    expect(scmRowFields('ignored')).toMatchObject({ tone: 'muted' });
+    expect(scmRowFields('contains')).toMatchObject({ tone: 'info', hint: 'Contains changes' });
   });
 });

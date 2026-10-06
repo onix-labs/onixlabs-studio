@@ -16,6 +16,7 @@ import { MenuItem } from '@shared/angular/components/menu/menu';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
 import { Shell } from '@shared/angular/services/shell/shell';
 import { TreeRow } from '@shared/angular/components/tree-view/tree-view';
+import { WorkspaceGit } from '@features/workspace/angular/workspace-git/workspace-git';
 import { SolutionPanel } from './solution-panel';
 
 /**
@@ -796,13 +797,29 @@ describe('SolutionPanel', () => {
       expect(commands.every((item: MenuItem): boolean => item.checked === undefined)).toBe(true);
     });
 
-    it('statusFor_whenGitStatusHidden_reportsNoBadge', () => {
+    it('rows_colourAChangedPath_inItsSourceControlTone', () => {
+      // #860: colour, not a letter — a modified file reads in the warning tone.
+      vi.spyOn(TestBed.inject(WorkspaceGit), 'stateFor').mockReturnValue('modified');
+      solution.model.set(model);
+      solution.rows.set([makeRow({ kind: 'file', path: '/root/A/g.cs' })]);
+      solution.showsGitStatus.set(true);
+      fixture.detectChanges();
+
+      const row: Element | null = (fixture.nativeElement as HTMLElement).querySelector('.tree-row');
+      expect(row?.classList.contains('tree-row--tone-warning')).toBe(true);
+      expect(row?.getAttribute('title')).toBe('Modified');
+    });
+
+    it('rows_whenGitStatusHidden_areNotColoured', () => {
+      vi.spyOn(TestBed.inject(WorkspaceGit), 'stateFor').mockReturnValue('modified');
       solution.model.set(model);
       solution.rows.set([makeRow({ kind: 'file', path: '/root/A/g.cs' })]);
       solution.showsGitStatus.set(false);
       fixture.detectChanges();
 
-      expect((fixture.nativeElement as HTMLElement).querySelector('.tree-status')).toBeNull();
+      expect(
+        (fixture.nativeElement as HTMLElement).querySelector('[class*="tree-row--tone-"]'),
+      ).toBeNull();
     });
   });
 

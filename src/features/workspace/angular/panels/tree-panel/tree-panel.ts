@@ -11,16 +11,19 @@ import {
 } from '@angular/core';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
-import { GitChangeStatus, statusLetter } from '@shared/angular/services/repository/repository-data';
 import {
   Workspace,
   WorkspaceTreeNode,
   WorkspaceTreeRow,
 } from '@shared/angular/services/workspace/workspace';
 import { FileOperationResult } from '@shared/api/workspace-channels';
-import { WorkspaceGit } from '@features/workspace/angular/workspace-git/workspace-git';
+import {
+  scmRowFields,
+  WorkspaceGit,
+} from '@features/workspace/angular/workspace-git/workspace-git';
 import { Log } from '@shared/angular/services/log/log';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
+import { MutationResult } from '@shared/angular/services/source-control/source-control-provider';
 import { Shell } from '@shared/angular/services/shell/shell';
 import { REVEAL_LABEL } from '@shared/angular/services/shell/shell-labels';
 import { Icon } from '@shared/angular/icons/icon';
@@ -50,6 +53,11 @@ const ACTION_COPY_RELATIVE: string = 'copy-relative-path';
 const ACTION_REVEAL: string = 'reveal';
 const ACTION_RENAME: string = 'rename';
 const ACTION_DELETE: string = 'delete';
+
+/**
+ * Identifies the context-menu command that adds an untracked path to version control (#860).
+ */
+const ACTION_ADD_TO_VCS: string = 'add-to-version-control';
 
 /**
  * Identifies the placeholder row a create is named in. Never a path — a NUL cannot occur in one — so it
@@ -136,11 +144,6 @@ export class TreePanel {
   private readonly git: WorkspaceGit = inject(WorkspaceGit);
 
   /**
-   * Maps a change status to its badge letter, exposed for the template.
-   */
-  protected readonly statusLetter: (status: GitChangeStatus) => string = statusLetter;
-
-  /**
    * Holds the opener used to open a file into the right editor tab.
    */
   private readonly fileOpener: FileOpener = inject(FileOpener);
@@ -181,6 +184,8 @@ export class TreePanel {
       depth: row.depth,
       expandable: row.node.type === 'directory',
       expanded: row.expanded,
+      // How version control sees the path, in colour (#860).
+      ...scmRowFields(this.git.stateFor(row.node.path)),
       data: row.node,
     }));
     const edit: NameEdit | null = this.editing();
@@ -226,24 +231,6 @@ export class TreePanel {
   protected collapseAll(): void {
     this.log.info('workspace.tree', 'Collapse all requested');
     this.workspace.collapseAll();
-  }
-
-  /**
-   * Gets the git change status of a file row, or null when it is unchanged.
-   * @param path The node's absolute path.
-   * @returns Returns the change status, or null.
-   */
-  protected statusFor(path: string): GitChangeStatus | null {
-    return this.git.statusFor(path);
-  }
-
-  /**
-   * Gets a value indicating whether a directory row contains a change at any depth.
-   * @param path The node's absolute path.
-   * @returns Returns true when the directory has descendant changes.
-   */
-  protected folderChanged(path: string): boolean {
-    return this.git.hasChanges(path);
   }
 
   /**
@@ -294,12 +281,34 @@ export class TreePanel {
       { id: ACTION_COPY_PATH, label: 'Copy Path', icon: Icon.COPY },
       { id: ACTION_COPY_RELATIVE, label: 'Copy Relative Path', icon: Icon.COPY },
       { id: ACTION_REVEAL, label: REVEAL_LABEL, icon: Icon.DIRECTORY },
+      // Offered only on a path version control does not track yet: nothing is added unasked (#860).
+      ...(this.git.canAddToVersionControl(node.path)
+        ? [
+            { id: 'tree-menu.sep-vcs', label: '', separator: true },
+            { id: ACTION_ADD_TO_VCS, label: 'Add to Version Control', icon: Icon.PLUS_CIRCLE },
+          ]
+        : []),
       { id: 'tree-menu.sep-writes', label: '', separator: true },
       { id: ACTION_RENAME, label: 'Rename…', icon: Icon.PENCIL },
       { id: ACTION_DELETE, label: 'Delete', icon: Icon.TRASH, tone: 'danger' },
     );
     return items;
   };
+
+  /**
+   * Adds a row's untracked path to version control, saying so when it cannot be added.
+   * @param node The row's node.
+   */
+  private async addToVersionControl(node: WorkspaceTreeNode): Promise<void> {
+    const result: MutationResult = await this.git.addToVersionControl(node.path);
+    if (!result.success) {
+      this.notifications.notify({
+        severity: 'error',
+        title: `Could not add “${node.name}” to version control`,
+        detail: result.error ?? 'Version control refused it.',
+      });
+    }
+  }
 
   /**
    * Runs the command chosen from a row's context menu.
@@ -340,6 +349,9 @@ export class TreePanel {
         return;
       case ACTION_DELETE:
         this.deleteTarget.set(node);
+        return;
+      case ACTION_ADD_TO_VCS:
+        void this.addToVersionControl(node);
         return;
       default:
         return;
