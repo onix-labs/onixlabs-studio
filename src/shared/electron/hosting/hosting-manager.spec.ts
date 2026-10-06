@@ -87,6 +87,7 @@ describe('HostingManager', () => {
       hosts: ['github.com', 'www.github.com'],
       capabilities: ['pullRequests', 'issues', 'ciRuns', 'ciRerun', 'ciCancel'],
       authModes: ['cli', 'studio'],
+      commandLineTools: ['gh'],
       resolve: (): HostingResolution =>
         installed
           ? { available: true, spec: { command: 'github', args: [] } }

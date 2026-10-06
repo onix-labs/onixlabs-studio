@@ -262,6 +262,13 @@ export interface AgentRunContext {
   readonly hosting: AgentHosting | null;
 
   /**
+   * Gets the commands the agent may not run (#853): the code host's own command-line tools, when the
+   * user keeps agents off them and a hosting plugin serves the run's repository — so the agent goes
+   * through the plugin's tools instead. Empty otherwise. Each harness enforces it as it can.
+   */
+  readonly blockedCommands: readonly string[];
+
+  /**
    * Gets the files and folders the user attached to the run's context, referenced by path for the
    * agent to read with its own file tools. Empty when nothing is attached.
    */

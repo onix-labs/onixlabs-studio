@@ -68,6 +68,12 @@ export interface AiRunOptions {
   readonly toolPolicies?: Readonly<Record<string, AiToolPolicy>>;
 
   /**
+   * Gets whether the agent is kept off the code host's command-line tool while a hosting plugin serves
+   * its repository (#853). Omitted means not.
+   */
+  readonly blockHostCommandLine?: boolean;
+
+  /**
    * Gets extra directories the agent may write to beyond the workspace root (absolute paths).
    */
   readonly allowedWritePaths?: readonly string[];
@@ -272,6 +278,7 @@ export class AiRuntime {
       workspaceRoot: options.workspaceRoot ?? null,
       permissionPosture: options.permissionPosture ?? 'prompt',
       toolPolicies: options.toolPolicies ?? {},
+      blockHostCommandLine: options.blockHostCommandLine === true,
       allowedWritePaths: options.allowedWritePaths ?? [],
       deniedWritePaths: options.deniedWritePaths ?? [],
       allowedNetworkLocations: options.allowedNetworkLocations ?? [],

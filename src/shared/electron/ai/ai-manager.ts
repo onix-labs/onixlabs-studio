@@ -994,6 +994,10 @@ export class AiManager {
       systemPromptExtra,
       userPromptExtra,
       skills,
+      blockedCommands:
+        request.blockHostCommandLine === true && runHosting !== null
+          ? runHosting.commandLineTools
+          : [],
       hosting:
         runHosting === null || this.hosting === null
           ? null

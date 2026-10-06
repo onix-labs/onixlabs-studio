@@ -78,6 +78,10 @@ export interface TurnRequest {
   readonly resumeSessionAt: string | null;
   readonly permissionPosture: 'prompt' | 'auto-edits' | 'auto-all';
   readonly toolPolicies: Readonly<Record<string, 'allow' | 'ask' | 'deny'>>;
+  /**
+   * The commands the agent may not run (protocol 1.11.0, #853); absent from an older Studio.
+   */
+  readonly blockedCommands?: readonly string[];
   readonly images: readonly TurnImage[];
   readonly contextPaths: readonly ContextRef[];
   readonly remoteControl: 'off' | 'mirror' | 'control';

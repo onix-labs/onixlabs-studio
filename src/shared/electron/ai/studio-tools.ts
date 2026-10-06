@@ -47,6 +47,7 @@ import {
   type AgentContextRef,
   type AiInputChoice,
 } from '@shared/api/ai-types';
+import { blockedCommandMessage, findBlockedCommand } from './blocked-commands';
 import { logger } from '@shared/electron/logger';
 import type { AgentRunContext } from './agent-provider';
 import { isWriteDenied, isWriteWithinRoots } from './write-confinement';
@@ -562,6 +563,15 @@ export async function writeTerminalInput(
     'StudioTools',
     `Tool invoked: write_terminal_input (tab=${tabId}, submit=${submit})`,
   );
+  // A command the user keeps agents off (#853) is refused before it reaches a shell — the AI SDK
+  // providers have no shell of their own, so this tool is their only way to run one.
+  const blocked: string | null = submit
+    ? findBlockedCommand(text, context.blockedCommands ?? [])
+    : null;
+  if (blocked !== null) {
+    logger.info('StudioTools', `write_terminal_input refused: ${blocked} is blocked`);
+    return blockedCommandMessage(blocked);
+  }
   const result: unknown = await context.bridge.request(WRITE_TERMINAL_INPUT, {
     tabId,
     text,

@@ -103,6 +103,7 @@ export interface SettingsValues {
   readonly 'ai.permissionPosture': AiPermissionPosture;
   readonly 'ai.remoteControlPosture': AiRemoteControlPosture;
   readonly 'ai.toolPolicies': Readonly<Record<string, AiToolPolicy>>;
+  readonly 'ai.blockHostCommandLine': boolean;
   readonly 'ai.allowedWritePaths': readonly string[];
   readonly 'ai.deniedWritePaths': readonly string[];
   readonly 'ai.allowedNetworkLocations': readonly string[];
@@ -824,6 +825,17 @@ export const SETTINGS_REGISTRY: readonly SectionDef[] = [
           'auto-allow it; Allow skips the prompt; Ask uses the posture above.',
         control: { kind: 'custom', component: 'ai-tool-policies' },
         default: {},
+      },
+      {
+        key: 'ai.blockHostCommandLine',
+        title: "Keep agents off the code host's command-line tool",
+        description:
+          "While a code-hosting plugin serves the repository, agents may not run that host's own " +
+          'command-line tool (gh for GitHub) and go through the plugin instead, which asks before it ' +
+          'changes anything. Enforced for Claude and for providers that run commands through ' +
+          "Studio's terminal; Codex is only told.",
+        control: { kind: 'toggle' },
+        default: false,
       },
       {
         key: 'ai.allowedWritePaths',

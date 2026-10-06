@@ -72,6 +72,12 @@ export interface HostingDescriptor {
   readonly authModes: readonly HostingAuthMode[];
 
   /**
+   * Gets the host's own command-line tools, such as `gh`, which agents are kept off when the user asks
+   * (#853).
+   */
+  readonly commandLineTools: readonly string[];
+
+  /**
    * Resolves how to start the plugin. Never installs anything: an uninstalled plugin resolves to
    * unavailable, and the user installs it in the Plugin Manager.
    */

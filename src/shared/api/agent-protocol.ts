@@ -202,8 +202,11 @@ import { AiEvent } from './ai/ai-event-types';
  * harnesses disagreeing about a model is a smaller problem than core shipping a table it cannot keep
  * current. ⚠️ Optional, so every published harness is unaffected — an omitted window falls back to a
  * single neutral default that names no provider.
+ *
+ * `1.11.0` adds a turn's optional `blockedCommands` (#853): commands the agent may not run, which a
+ * harness enforces as its runtime allows. Optional, so every published harness is unaffected.
  */
-export const AGENT_PROTOCOL_VERSION: string = '1.10.0';
+export const AGENT_PROTOCOL_VERSION: string = '1.11.0';
 
 /**
  * Matches a plain three-part semver. Local and deliberately strict, for the same reason the manifest's
@@ -390,6 +393,15 @@ export interface TurnRequest {
    * and falls to {@link permissionPosture}.
    */
   readonly toolPolicies: Readonly<Record<string, 'allow' | 'ask' | 'deny'>>;
+
+  /**
+   * Gets the commands the agent may not run, by command name (1.11.0, #853) — the code host's own CLI
+   * (`gh`) when the user keeps agents off it and a hosting plugin serves the repository, so the agent
+   * goes through the plugin's tools instead. A harness enforces it however its runtime allows: refusing
+   * a shell command that runs one of them, anywhere in the command line. Absent or empty means none.
+   * ⚠️ Optional, so a harness written before it simply does not enforce it — the setting says which do.
+   */
+  readonly blockedCommands?: readonly string[];
 
   /**
    * Gets the images attached to the turn's input. Empty when there are none, and always empty for a

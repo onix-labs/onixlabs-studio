@@ -33,6 +33,7 @@ function hostingOf(
       provider: 'GitHub',
       repository: REPOSITORY,
       capabilities,
+      commandLineTools: ['gh'],
       request: request as unknown as AgentHosting['request'],
     },
     request,
@@ -186,6 +187,18 @@ describe('hostingPromptAppendix', () => {
     expect(appendix).toContain('- hosting_create_issue');
     expect(appendix).not.toContain('hosting_list_ci_runs');
     expect(appendix).toContain('rather than a command-line tool');
+  });
+
+  it('saysTheHostsCliIsBlocked_whenTheUserBlocksIt', () => {
+    const context: AgentRunContext = {
+      ...contextOf(hostingOf(['issues']).hosting),
+      blockedCommands: ['gh'],
+    };
+
+    expect(hostingPromptAppendix(context)).toContain('The user has blocked `gh` for agents');
+    expect(hostingPromptAppendix(contextOf(hostingOf(['issues']).hosting))).not.toContain(
+      'has blocked',
+    );
   });
 
   it('isEmpty_whenNoToolIsOffered', () => {
