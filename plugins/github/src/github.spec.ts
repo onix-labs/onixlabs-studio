@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { GitHubAuth } from './auth';
-import { GitHubHosting, Http, HttpResponse, mapRunStatus, Outcome, rollUpChecks } from './github';
+import {
+  GitHubHosting,
+  Http,
+  HttpResponse,
+  mapRunStatus,
+  notSignedInDetail,
+  Outcome,
+  rollUpChecks,
+} from './github';
 import {
   HostedAccount,
   HostedAuthStatus,
@@ -260,7 +268,21 @@ describe('GitHubHosting', () => {
       const status: Outcome<HostedAuthStatus> = await github.authStatus('github.com');
 
       expect(status.ok && status.result.authenticated).toBe(false);
-      expect(status.ok && status.result.detail).toContain('rejected the credential');
+      // The test's credential is the token Studio keeps, so that is what the user is sent to fix.
+      expect(status.ok && status.result.detail).toBe(
+        'GitHub rejected the token saved in Studio. Replace it under Settings → Source Control.',
+      );
+    });
+
+    it('notSignedIn_pointsAtTheWayTheUserChoseToSignIn', () => {
+      // A user who chose a token is not sent to the CLI, nor one who chose the CLI to a token.
+      expect(notSignedInDetail('github.com', 'studio')).toBe(
+        'Not signed in to github.com. Add a token under Settings → Source Control, or choose another way to sign in there.',
+      );
+      expect(notSignedInDetail('github.com', 'cli')).toContain('`gh auth login`');
+      expect(notSignedInDetail('github.com', 'cli')).not.toContain('Add a token');
+      expect(notSignedInDetail('github.com', undefined)).toContain('`gh auth login`');
+      expect(notSignedInDetail('github.com', undefined)).toContain('add a token');
     });
 
     it('servesAGitHubEnterpriseHostUnderApiV3', async () => {
