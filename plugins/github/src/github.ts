@@ -16,6 +16,7 @@ import {
   HostedPullRequest,
   HostedRepository,
   HostedRepositoryRef,
+  HostingAuthMode,
   HostingCapability,
   HostingErrorCode,
 } from './protocol';
@@ -317,7 +318,7 @@ export class GitHubHosting {
           authenticated: false,
           mode: null,
           identity: null,
-          detail: `Not signed in to ${host}. Sign in with the GitHub CLI (\`gh auth login\`), or add a token in Settings → Source Control.`,
+          detail: notSignedInDetail(host, this.auth.choiceFor(host)),
         },
       };
     }
@@ -712,7 +713,7 @@ export class GitHubHosting {
   ): Promise<Outcome<unknown>> {
     const credential: ResolvedCredential | null = await this.auth.resolve(host);
     if (credential === null) {
-      return notSignedIn(host);
+      return notSignedIn(host, this.auth.choiceFor(host));
     }
     debug('github', `${method} ${host}${path}`);
     let response: HttpResponse;
@@ -729,7 +730,7 @@ export class GitHubHosting {
       return { ok: false, error: messageOf(error) };
     }
     if (!response.ok) {
-      return failure(response.status);
+      return failure(response.status, credential.mode);
     }
     try {
       return { ok: true, result: response.status === 204 ? null : await response.json() };
@@ -748,7 +749,7 @@ export class GitHubHosting {
   private async get(host: string, path: string): Promise<Outcome<unknown>> {
     const credential: ResolvedCredential | null = await this.auth.resolve(host);
     if (credential === null) {
-      return notSignedIn(host);
+      return notSignedIn(host, this.auth.choiceFor(host));
     }
     const state: HostState = this.stateFor(host, credential.token);
     const blockedUntil: number | null = state.ledger.blockedUntil();
@@ -787,7 +788,7 @@ export class GitHubHosting {
       // apart, and the two are answered differently — one by waiting, one by the user.
       return response.status === 403 && exhausted !== null
         ? rateLimited(exhausted)
-        : failure(response.status);
+        : failure(response.status, credential.mode);
     }
     try {
       const body: unknown = await response.json();
@@ -898,16 +899,31 @@ function readStatusState(body: unknown): string {
 }
 
 /**
+ * Says a host is not signed in to, and what to do about it — in terms of the way the user chose to
+ * sign in, so a user who chose a token is not sent to the CLI, nor one who chose the CLI to a token.
+ * @param host The host.
+ * @param choice How the user chose to sign in to it, or undefined when the plugin decides.
+ * @returns Returns the message.
+ */
+export function notSignedInDetail(host: string, choice: HostingAuthMode | undefined): string {
+  switch (choice) {
+    case 'cli':
+      return `Not signed in to ${host}. Sign in with the GitHub CLI (\`gh auth login\`), or choose another way to sign in under Settings → Source Control.`;
+    case 'studio':
+      return `Not signed in to ${host}. Add a token under Settings → Source Control, or choose another way to sign in there.`;
+    default:
+      return `Not signed in to ${host}. Sign in with the GitHub CLI (\`gh auth login\`), or add a token under Settings → Source Control.`;
+  }
+}
+
+/**
  * Builds the failure for a host with no credential.
  * @param host The host.
+ * @param choice How the user chose to sign in to it, or undefined when the plugin decides.
  * @returns Returns the failure.
  */
-function notSignedIn(host: string): Outcome<never> {
-  return {
-    ok: false,
-    error: `Not signed in to ${host}. Sign in with the GitHub CLI (\`gh auth login\`), or add a token in Settings → Source Control.`,
-    code: 'unauthorized',
-  };
+function notSignedIn(host: string, choice: HostingAuthMode | undefined): Outcome<never> {
+  return { ok: false, error: notSignedInDetail(host, choice), code: 'unauthorized' };
 }
 
 /**
@@ -927,15 +943,18 @@ function rateLimited(until: number): Outcome<never> {
 /**
  * Describes an HTTP failure in terms the user can act on.
  * @param status The status code.
+ * @param mode How the rejected credential was obtained, which is what the user has to fix.
  * @returns Returns the failure.
  */
-function failure(status: number): Outcome<never> {
+function failure(status: number, mode: HostingAuthMode): Outcome<never> {
   switch (status) {
     case 401:
       return {
         ok: false,
         error:
-          'GitHub rejected the credential. Sign in again, or check the token in Settings → Source Control.',
+          mode === 'cli'
+            ? 'GitHub rejected the GitHub CLI’s login. Sign in again with `gh auth login`.'
+            : 'GitHub rejected the token saved in Studio. Replace it under Settings → Source Control.',
         code: 'unauthorized',
       };
     case 403:

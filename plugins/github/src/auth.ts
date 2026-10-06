@@ -85,6 +85,15 @@ export class GitHubAuth {
   }
 
   /**
+   * Gets how the user chose to sign in to a host, for telling them what to do when it is not signed in.
+   * @param host The host.
+   * @returns Returns the choice, or undefined when the plugin decides.
+   */
+  public choiceFor(host: string): HostingAuthMode | undefined {
+    return this.choices[host];
+  }
+
+  /**
    * Resolves the credential for a host.
    * @param host The host.
    * @returns Returns the credential and how it was obtained, or null when there is none.
