@@ -1,7 +1,17 @@
 import { existsSync } from 'node:fs';
 import * as path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import type { AgentModelReport, AgentRunContext } from './agent-provider';
+import type {
+  HostedRepositoryRef,
+  HostingDescription,
+  HostingOp,
+  HostingParams,
+  HostingResponse,
+} from '@shared/api/hosting-protocol';
+import type { HostingEndpoint } from '../hosting/hosting-endpoint';
+import type { RunHosting } from '../hosting/hosting-agent-access';
+import type { VersionControlHost } from '../version-control/version-control-host';
+import type { AgentHosting, AgentModelReport, AgentRunContext } from './agent-provider';
 
 // `HarnessProcess` reaches the pid journal and the process-tree helpers, both of which are Electron's
 // world. Nothing here depends on what they do.
@@ -11,6 +21,9 @@ vi.mock('electron', () => ({ app: { isPackaged: false, getPath: (): string => '/
 
 const { HarnessAgentProvider } = await import('./harness-agent-provider');
 const { HarnessProcess } = await import('./harness-process');
+const { HostingHost } = await import('../hosting/hosting-host');
+const { HostingAgentAccess } = await import('../hosting/hosting-agent-access');
+const { bindAgentHosting } = await import('./agent-hosting');
 
 /**
  * The reference harness, spawned for real by these tests.
@@ -116,6 +129,104 @@ function contextFor(
     ...overrides,
   };
   return { context: context as unknown as AgentRunContext, texts, audits };
+}
+
+/**
+ * A hosting plugin answering from memory, recording what it was sent.
+ */
+class MemoryHostingPlugin implements HostingEndpoint {
+  public running: boolean = false;
+  public readonly sent: { op: HostingOp; params: unknown }[] = [];
+
+  /**
+   * Starts the plugin, confirming it can open issues, whatever sign-in choices it is given.
+   * @returns Returns its description.
+   */
+  public start(): Promise<HostingDescription> {
+    this.running = true;
+    return Promise.resolve({ protocol: '1.1', capabilities: ['issues', 'createIssue'] });
+  }
+
+  /**
+   * Answers a request.
+   * @param op The operation.
+   * @param params Its parameters.
+   * @returns Returns the answer.
+   */
+  public request<Op extends HostingOp>(
+    op: Op,
+    params: HostingParams<Op>,
+  ): Promise<HostingResponse<Op>> {
+    this.sent.push({ op, params });
+    const result: unknown =
+      op === 'describeRepository' ? { capabilities: ['issues', 'createIssue'] } : { number: 7 };
+    return Promise.resolve({ id: 1, ok: true, result } as HostingResponse<Op>);
+  }
+
+  /**
+   * Stops the plugin.
+   */
+  public dispose(): void {
+    this.running = false;
+  }
+}
+
+/**
+ * Builds a run's hosting over a real hosting host and write gate, with the plugin behind it answering
+ * from memory — everything between the harness and the plugin is the real path (#852).
+ * @param confirm What the user answers the permission prompt.
+ * @returns Returns the hosting, the plugin, and what the user was asked.
+ */
+function hostingFor(confirm: boolean): {
+  hosting: AgentHosting;
+  plugin: MemoryHostingPlugin;
+  asked: { tool: string; summary: string }[];
+  audited: string[];
+} {
+  const plugin: MemoryHostingPlugin = new MemoryHostingPlugin();
+  const host: InstanceType<typeof HostingHost> = new HostingHost({
+    descriptors: () => [
+      {
+        id: 'onixlabs.github',
+        displayName: 'GitHub',
+        priority: 100,
+        hosts: ['github.com'],
+        capabilities: ['issues', 'createIssue'],
+        authModes: ['cli', 'studio'],
+        resolve: () => ({ available: true, spec: { command: 'github', args: [] } }),
+      },
+    ],
+    authFor: () => ({}),
+    credential: () => Promise.resolve(null),
+    createClient: (): HostingEndpoint => plugin,
+  });
+  const repository: HostedRepositoryRef = {
+    host: 'github.com',
+    owner: 'onix-labs',
+    name: 'studio',
+  };
+  const run: RunHosting = {
+    pluginId: 'onixlabs.github',
+    provider: 'GitHub',
+    repository,
+    capabilities: ['issues', 'createIssue'],
+  };
+  const asked: { tool: string; summary: string }[] = [];
+  const audited: string[] = [];
+  return {
+    hosting: bindAgentHosting(new HostingAgentAccess(host, {} as VersionControlHost), run, {
+      permissionPosture: 'prompt',
+      toolPolicies: {},
+      ask: (tool: string, summary: string): Promise<boolean> => {
+        asked.push({ tool, summary });
+        return Promise.resolve(confirm);
+      },
+      audit: (tool: string, detail: string): void => void audited.push(`${tool}: ${detail}`),
+    }),
+    plugin,
+    asked,
+    audited,
+  };
 }
 
 describe('HarnessProcess, against the reference harness', () => {
@@ -224,6 +335,59 @@ describe('HarnessProcess, against the reference harness', () => {
     expect(texts).toHaveLength(1);
     expect(texts[0]).toContain('tools:');
     expect(texts[0]).not.toContain('has no tool called');
+  }, 20_000);
+
+  it('offersARealHarnessTheHostingTools_andCarriesItsWriteThroughTheGate', async () => {
+    // #852 end to end: a real harness process asks Studio for its tools, finds the hosting tool, and
+    // calls it; Studio asks the user under the tool's name, in the user's terms, and only then does the
+    // plugin hear of it — and the write is audited.
+    const { hosting, plugin, asked, audited } = hostingFor(true);
+    const { context, texts } = contextFor(
+      'tool hosting_create_issue {"title":"Fix login","body":"It breaks."}',
+      { hosting },
+    );
+
+    await echoProvider().run(context);
+
+    expect(texts[0]).toBe('offered: true | ran: {"number":7}');
+    expect(asked).toEqual([
+      {
+        tool: 'hosting_create_issue',
+        summary: 'GitHub: open an issue “Fix login” in onix-labs/studio',
+      },
+    ]);
+    expect(plugin.sent.map((entry) => entry.op)).toContain('createIssue');
+    expect(plugin.sent.find((entry) => entry.op === 'createIssue')?.params).toEqual({
+      repository: { host: 'github.com', owner: 'onix-labs', name: 'studio' },
+      title: 'Fix login',
+      body: 'It breaks.',
+    });
+    expect(audited).toEqual([
+      'hosting_create_issue: GitHub: open an issue “Fix login” in onix-labs/studio',
+    ]);
+  }, 20_000);
+
+  it('neverSendsAHostingWriteTheUserDeclines', async () => {
+    const { hosting, plugin, audited } = hostingFor(false);
+    const { context, texts } = contextFor('tool hosting_create_issue {"title":"Fix login"}', {
+      hosting,
+    });
+
+    await echoProvider().run(context);
+
+    expect(texts[0]).toBe('offered: true | ran: GitHub did not do it: The write was declined.');
+    expect(plugin.sent.map((entry) => entry.op)).not.toContain('createIssue');
+    expect(audited).toEqual([]);
+  }, 20_000);
+
+  it('offersNoHostingToolToARunOutsideAHostedRepository', async () => {
+    const { context, texts } = contextFor('tool hosting_create_issue {"title":"x"}', {
+      hosting: null,
+    });
+
+    await echoProvider().run(context);
+
+    expect(texts[0]).toContain('offered: false');
   }, 20_000);
 
   it('failsTheTurnWhenTheHarnessFailsIt', async () => {

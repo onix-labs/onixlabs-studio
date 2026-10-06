@@ -100,6 +100,7 @@ import {
   contributedVersionControl,
 } from '@shared/electron/contributions/plugins/contributed';
 import { HostingHost } from '@shared/electron/hosting/hosting-host';
+import { HostingAgentAccess } from '@shared/electron/hosting/hosting-agent-access';
 import { HostingSettings } from '@shared/electron/hosting/hosting-settings';
 import { HostingManager } from '@shared/electron/hosting/hosting-manager';
 import { HostingCredentialStore } from '@shared/electron/hosting/hosting-credential-store';
@@ -430,12 +431,14 @@ class Program {
 
   /**
    * Owns the AI agent subsystem: authentication, provider runtime, and event streaming. Declared after
-   * {@link workspaceContext}, which it confines every run's root to.
+   * {@link workspaceContext}, which it confines every run's root to, and after the hosting and
+   * version-control hosts, through which a run reaches the plugin serving its repository (#852).
    */
   private readonly aiManager: AiManager = new AiManager(
     (): BrowserWindow | null => this.windows.main(),
     this.skillLibrary,
     this.workspaceContext,
+    new HostingAgentAccess(this.hostingHost, this.versionControlHost),
   );
 
   /**

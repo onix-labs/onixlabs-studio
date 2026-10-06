@@ -1,4 +1,5 @@
 import type { AiPermissionPosture, AiToolPolicy } from '@shared/api/ai-types';
+import type { HostedRepositoryRef, HostingOp } from '@shared/api/hosting-protocol';
 
 /**
  * Describes who is asking the hosting host to do something.
@@ -63,12 +64,15 @@ export function hostingWriteDecision(
 }
 
 /**
- * Names the tool a typed hosting write is known by in per-tool policies: `hosting:<op>`.
+ * Names the tool a typed hosting operation is offered to agents as, and known by in per-tool policies
+ * and remembered permissions: `hosting_<op in snake case>` — `hosting_create_issue`. One name
+ * everywhere, so a policy set on the offered tool is the policy the gate reads (#852). Snake case
+ * because a tool name must be one an MCP client accepts, which a colon is not.
  * @param op The operation.
  * @returns Returns the tool name.
  */
 export function hostingOpToolName(op: string): string {
-  return `hosting:${op}`;
+  return `hosting_${op.replace(/[A-Z]/g, (letter: string): string => `_${letter.toLowerCase()}`)}`;
 }
 
 /**
@@ -80,4 +84,43 @@ export function hostingOpToolName(op: string): string {
  */
 export function hostingAgentToolName(pluginId: string, tool: string): string {
   return `hosting:${pluginId}/${tool}`;
+}
+
+/**
+ * Says what an agent's write would do, in the user's terms — what the permission prompt shows. Built
+ * from the request itself, so the user approves *this* issue in *this* repository rather than an
+ * operation's name.
+ * @param provider The display name of the plugin serving the host, such as `GitHub`.
+ * @param op The operation.
+ * @param params The operation's parameters.
+ * @returns Returns the description.
+ */
+export function describeHostingWrite(provider: string, op: HostingOp, params: unknown): string {
+  const record: Record<string, unknown> =
+    typeof params === 'object' && params !== null ? (params as Record<string, unknown>) : {};
+  const text: (key: string) => string = (key: string): string =>
+    typeof record[key] === 'string' || typeof record[key] === 'number' ? String(record[key]) : '?';
+  const repository: unknown = record['repository'];
+  const where: string =
+    typeof repository === 'object' && repository !== null
+      ? ` in ${String((repository as HostedRepositoryRef).owner)}/${String((repository as HostedRepositoryRef).name)}`
+      : '';
+  switch (op) {
+    case 'createRepository':
+      return `${provider}: create the ${record['private'] === true ? 'private' : 'public'} repository ${text('account')}/${text('name')}`;
+    case 'createIssue':
+      return `${provider}: open an issue “${text('title')}”${where}`;
+    case 'commentOnIssue':
+      return `${provider}: comment on #${text('issue')}${where}`;
+    case 'setIssueState':
+      return `${provider}: ${record['state'] === 'closed' ? 'close' : 'reopen'} #${text('issue')}${where}`;
+    case 'createPullRequest':
+      return `${provider}: open a pull request “${text('title')}” from ${text('head')} into ${text('base')}${where}`;
+    case 'rerunCiRun':
+      return `${provider}: re-run CI run ${text('runId')}${where}`;
+    case 'cancelCiRun':
+      return `${provider}: cancel CI run ${text('runId')}${where}`;
+    default:
+      return `${provider}: ${op}${where}`;
+  }
 }

@@ -18,6 +18,7 @@ import { HostingClient } from './hosting-client';
 import { HostingDescriptor, HostingResolution, HostingSpec } from './hosting-descriptor';
 import { HostingCredentialSource, HostingEndpoint } from './hosting-endpoint';
 import {
+  describeHostingWrite,
   HostingCaller,
   hostingAgentToolName,
   hostingOpToolName,
@@ -494,7 +495,7 @@ export class HostingHost {
       summary = `${descriptor.displayName}: ${offered.name}`;
     } else if (HOSTING_WRITE_OPS.includes(op)) {
       tool = hostingOpToolName(op);
-      summary = `${descriptor.displayName}: ${op}`;
+      summary = describeHostingWrite(descriptor.displayName, op, params);
     } else {
       return null;
     }

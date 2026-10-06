@@ -115,6 +115,7 @@ function descriptor(
     'ciRerun',
     'ciCancel',
     'createRepository',
+    'createIssue',
     'agentTools',
   ],
 ): HostingDescriptor {
@@ -192,6 +193,7 @@ describe('HostingHost', () => {
             }),
             invokeAgentTool: () => ({ id: 1, ok: true, result: { output: 'done' } }),
             rerunCiRun: () => ({ id: 1, ok: true, result: {} }),
+            createIssue: () => ({ id: 1, ok: true, result: {} }),
           },
           credentials,
         );
@@ -427,7 +429,8 @@ describe('HostingHost', () => {
         caller,
       );
 
-      expect(confirm).toHaveBeenCalledWith('onixlabs.github: rerunCiRun');
+      // The prompt says what the write does, in the user's terms.
+      expect(confirm).toHaveBeenCalledWith('onixlabs.github: re-run CI run 7 in onix-labs/studio');
       expect(response).toMatchObject({ ok: false, code: 'refused' });
       expect(sent('onixlabs.github')).toEqual([]);
     });
@@ -446,7 +449,7 @@ describe('HostingHost', () => {
     });
 
     it('anAgentsWrite_deniedByPolicy_isRefusedEvenUnderAutoAll', async () => {
-      const { caller, confirm } = agent('auto-all', { 'hosting:rerunCiRun': 'deny' });
+      const { caller, confirm } = agent('auto-all', { hosting_rerun_ci_run: 'deny' });
 
       const response: HostingResponse = await build().request(
         'rerunCiRun',
@@ -456,6 +459,51 @@ describe('HostingHost', () => {
 
       expect(confirm).not.toHaveBeenCalled();
       expect(response).toMatchObject({ ok: false, code: 'refused' });
+    });
+
+    it('anAgentOpeningAnIssue_isAWrite_askedWithItsTitle', async () => {
+      // #851: the new writes are gated like CI's, by the same table.
+      confirmed = [...confirmed, 'createIssue'];
+      repositoryAllows = [...repositoryAllows, 'createIssue'];
+      const { caller, confirm } = agent('prompt', {}, true);
+
+      const response: HostingResponse = await build().request(
+        'createIssue',
+        { repository: REPO, title: 'Fix login' },
+        caller,
+      );
+
+      expect(confirm).toHaveBeenCalledWith(
+        'onixlabs.github: open an issue “Fix login” in onix-labs/studio',
+      );
+      expect(response.ok).toBe(true);
+      expect(sent('onixlabs.github')).toEqual(['createIssue']);
+    });
+
+    it('openingAnIssue_whereTheRepositoryDoesNotAllowIt_isRefusedBeforeAnyPrompt', async () => {
+      confirmed = [...confirmed, 'createIssue'];
+      const { caller, confirm } = agent('prompt', {}, true);
+
+      const response: HostingResponse = await build().request(
+        'createIssue',
+        { repository: REPO, title: 'Fix login' },
+        caller,
+      );
+
+      expect(response).toMatchObject({ ok: false, code: 'unsupported' });
+      expect(confirm).not.toHaveBeenCalled();
+      expect(sent('onixlabs.github')).toEqual([]);
+    });
+
+    it('openingAnIssue_withAPluginThatLacksTheCapability_isRefused_evenForTheUser', async () => {
+      const response: HostingResponse = await build().request(
+        'createIssue',
+        { repository: REPO, title: 'Fix login' },
+        USER,
+      );
+
+      expect(response).toMatchObject({ ok: false, code: 'unsupported' });
+      expect(sent('onixlabs.github')).toEqual([]);
     });
 
     it('anAgentsRead_isNeverGated', async () => {

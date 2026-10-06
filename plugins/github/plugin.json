@@ -1,14 +1,14 @@
 {
   "id": "onixlabs.github",
   "name": "GitHub",
-  "description": "GitHub hosting: pull requests with their checks, issues and comments, Actions runs (re-run and cancel), and your accounts and repositories.",
-  "version": "0.1.1",
-  "apiVersion": "1.15.0",
+  "description": "GitHub hosting: pull requests with their checks, issues and comments, Actions runs (re-run and cancel), and your accounts and repositories — and, for you and your agents, opening issues and pull requests, commenting, and closing or reopening issues.",
+  "version": "0.2.0",
+  "apiVersion": "1.16.0",
   "detail": "Signs in with the GitHub CLI's login (gh auth login), or a token you add in Settings. Serves github.com.",
   "provision": {
     "kind": "npm",
     "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.github.lock.json",
-    "sha256": "cc830e1674c501171e9d593d8031fc0ad4a357f841cfd835fe5f95941c48b68d",
+    "sha256": "7222f3bb1a3cfd46d93b61d9056dfb5667920281ba6b1172640fe362ed2e1f40",
     "executablePath": "node_modules/@onixlabs/github/main.js"
   },
   "contributes": {
@@ -23,7 +23,11 @@
           "listRepositories",
           "createRepository",
           "pullRequests",
+          "createPullRequest",
           "issues",
+          "createIssue",
+          "commentOnIssue",
+          "setIssueState",
           "subIssues",
           "ciRuns",
           "ciRerun",

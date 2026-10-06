@@ -118,8 +118,13 @@ import {
  * — GitHub, GitLab, Bitbucket — becomes a plugin, as version control did. Keyed by the **host names** a
  * plugin serves (`github.com`), matched against a repository's remote, which replaces the host table
  * core kept for GitHub. Adds only, on the same terms as every minor before it.
+ *
+ * `1.16.0` adds four hosting capabilities (#851) — `createIssue`, `commentOnIssue`, `setIssueState` and
+ * `createPullRequest` — the first writes beyond CI, so a plugin can open and close issues, comment, and
+ * open pull requests for agents and the UI. The capability list is closed, so a manifest declaring one
+ * must say it needs this version: an older build would refuse the manifest rather than ignore the word.
  */
-export const PLUGIN_API_VERSION: string = '1.15.0';
+export const PLUGIN_API_VERSION: string = '1.16.0';
 
 /**
  * Matches a plain three-part semver. Deliberately strict and deliberately local: the rule below is the

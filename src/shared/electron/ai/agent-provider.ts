@@ -13,6 +13,8 @@ import type {
   ClaudeExecutableChoice,
 } from '@shared/api/ai-types';
 import type { AuditGrantSource } from './agent-audit-log';
+import type { HostingOp, HostingParams, HostingResponse } from '@shared/api/hosting-protocol';
+import type { RunHosting } from '../hosting/hosting-agent-access';
 
 /**
  * The outcome of an edit-decision round-trip as the provider sees it: apply or don't. The
@@ -89,6 +91,22 @@ export interface OfferedSkill {
    * @returns Returns the content, or null when the skill has since gone from the library.
    */
   load(): Promise<{ readonly body: string; readonly files: readonly string[] } | null>;
+}
+
+/**
+ * Describes the hosted repository a run works in, with the run's own way to reach the plugin serving
+ * it (#852). `request` is bound to the run: its permission posture, per-tool policies and permission
+ * prompt gate an agent's writes, and a write that goes through is audited — a tool calls it and
+ * handles none of that itself.
+ */
+export interface AgentHosting extends RunHosting {
+  /**
+   * Sends one request to the plugin serving the repository, as this run.
+   * @param op The operation.
+   * @param params Its parameters.
+   * @returns Returns the plugin's answer, or why it was refused.
+   */
+  request<Op extends HostingOp>(op: Op, params: HostingParams<Op>): Promise<HostingResponse<Op>>;
 }
 
 /**
@@ -235,6 +253,13 @@ export interface AgentRunContext {
    * when the library has none that apply, in which case no skill tool is offered either.
    */
   readonly skills: readonly OfferedSkill[];
+
+  /**
+   * Gets the hosted repository the run works in and a way to reach the plugin serving it (#852), or
+   * null when the workspace is in no repository an installed hosting plugin serves — in which case no
+   * hosting tool is offered and the prompt says nothing of them.
+   */
+  readonly hosting: AgentHosting | null;
 
   /**
    * Gets the files and folders the user attached to the run's context, referenced by path for the

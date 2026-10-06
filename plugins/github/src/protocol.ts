@@ -15,7 +15,7 @@
  * refused rather than spoken to: one that misreads a request may act on the user's account in a way
  * they did not ask for.
  */
-export const HOSTING_PROTOCOL_VERSION: string = '1.0';
+export const HOSTING_PROTOCOL_VERSION: string = '1.1';
 
 /**
  * Names one optional capability a hosting plugin can advertise.
@@ -48,9 +48,29 @@ export type HostingCapability =
   | 'pullRequests'
 
   /**
+   * Opening a pull (merge) request.
+   */
+  | 'createPullRequest'
+
+  /**
    * Listing issues and their comments.
    */
   | 'issues'
+
+  /**
+   * Opening an issue.
+   */
+  | 'createIssue'
+
+  /**
+   * Commenting on an issue or a pull request — one conversation on most hosts.
+   */
+  | 'commentOnIssue'
+
+  /**
+   * Closing or reopening an issue.
+   */
+  | 'setIssueState'
 
   /**
    * Listing an issue's sub-issues.
@@ -88,7 +108,11 @@ export const HOSTING_CAPABILITIES: readonly HostingCapability[] = [
   'listRepositories',
   'createRepository',
   'pullRequests',
+  'createPullRequest',
   'issues',
+  'createIssue',
+  'commentOnIssue',
+  'setIssueState',
   'subIssues',
   'ciRuns',
   'ciRerun',
@@ -355,6 +379,11 @@ export interface HostedIssue {
 }
 
 /**
+ * Says why an issue was closed: its work is done, or it will not be done.
+ */
+export type HostedCloseReason = 'completed' | 'notPlanned';
+
+/**
  * Describes a comment on an issue.
  */
 export interface HostedIssueComment {
@@ -568,6 +597,48 @@ export interface HostingOperations {
     readonly result: readonly HostedCiRun[];
   };
 
+  /**
+   * Opens an issue. Its body is the host's markdown.
+   */
+  readonly createIssue: {
+    readonly params: RepositoryParams & { readonly title: string; readonly body?: string };
+    readonly result: HostedIssue;
+  };
+
+  /**
+   * Comments on an issue or a pull request, which share one conversation on most hosts.
+   */
+  readonly commentOnIssue: {
+    readonly params: IssueParams & { readonly body: string };
+    readonly result: HostedIssueComment;
+  };
+
+  /**
+   * Closes or reopens an issue. `reason` says why one was closed, where the host records it.
+   */
+  readonly setIssueState: {
+    readonly params: IssueParams & {
+      readonly state: 'open' | 'closed';
+      readonly reason?: HostedCloseReason;
+    };
+    readonly result: HostedIssue;
+  };
+
+  /**
+   * Opens a pull (merge) request from `head` into `base`. `head` may name another account's fork as
+   * `owner:branch`, where the host allows it.
+   */
+  readonly createPullRequest: {
+    readonly params: RepositoryParams & {
+      readonly title: string;
+      readonly head: string;
+      readonly base: string;
+      readonly body?: string;
+      readonly draft?: boolean;
+    };
+    readonly result: HostedPullRequest;
+  };
+
   readonly rerunCiRun: { readonly params: RunParams; readonly result: Done };
   readonly cancelCiRun: { readonly params: RunParams; readonly result: Done };
 
@@ -646,6 +717,10 @@ export const HOSTING_REPOSITORY_OPS: readonly HostingOp[] = [
   'listCiRuns',
   'rerunCiRun',
   'cancelCiRun',
+  'createIssue',
+  'commentOnIssue',
+  'setIssueState',
+  'createPullRequest',
 ];
 
 /**
@@ -657,6 +732,10 @@ export const HOSTING_WRITE_OPS: readonly HostingOp[] = [
   'createRepository',
   'rerunCiRun',
   'cancelCiRun',
+  'createIssue',
+  'commentOnIssue',
+  'setIssueState',
+  'createPullRequest',
 ];
 
 /**
@@ -690,6 +769,10 @@ export const HOSTING_OP_CAPABILITY: Readonly<Partial<Record<HostingOp, HostingCa
   listCiRuns: 'ciRuns',
   rerunCiRun: 'ciRerun',
   cancelCiRun: 'ciCancel',
+  createIssue: 'createIssue',
+  commentOnIssue: 'commentOnIssue',
+  setIssueState: 'setIssueState',
+  createPullRequest: 'createPullRequest',
   listAgentTools: 'agentTools',
   invokeAgentTool: 'agentTools',
 };
