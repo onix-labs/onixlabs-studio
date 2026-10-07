@@ -95,11 +95,30 @@
         </h2>
       </div>
       @if (openSection() === 'accounts') {
+        <!-- Picking an account narrows the repository list to it; All Accounts widens it again. -->
+        @if (accounts().length > 0) {
+          <button
+            type="button"
+            class="source__account"
+            [class.source__account--picked]="accountFilter() === null"
+            [attr.aria-pressed]="accountFilter() === null"
+            (click)="accountFilter.set(null)"
+          >
+            <span class="source__account-name">All Accounts</span>
+            <span class="source__account-kind">{{ accountCount() }}</span>
+          </button>
+        }
         @for (account of accounts(); track account.id) {
-          <div class="source__account">
-            <span class="source__account-host">{{ account.host }}</span>
-            <span class="source__account-login">{{ account.login }}</span>
-          </div>
+          <button
+            type="button"
+            class="source__account"
+            [class.source__account--picked]="accountFilter() === account.id"
+            [attr.aria-pressed]="accountFilter() === account.id"
+            (click)="toggleAccount(account.id)"
+          >
+            <span class="source__account-name">{{ account.login }}</span>
+            <span class="source__account-kind">{{ accountKind(account) }}</span>
+          </button>
         }
         @for (entry of signedOut(); track entry.host) {
           <button
@@ -107,8 +126,8 @@
             class="source__account source__account--signed-out"
             (click)="openSettings()"
           >
-            <span class="source__account-host">{{ entry.provider }}</span>
-            <span class="source__account-login">Sign in to {{ entry.host }}…</span>
+            <span class="source__account-name">{{ entry.provider }}</span>
+            <span class="source__account-kind">Sign in to {{ entry.host }}…</span>
           </button>
         }
         @if (accounts().length === 0 && signedOut().length === 0) {
@@ -121,14 +140,6 @@
             }
           </p>
         }
-        <button
-          type="button"
-          class="source__connect"
-          (click)="canBrowse() ? openSettings() : openPlugins()"
-        >
-          <app-icon [icon]="Icon.WELCOME_ADD" />
-          <span>Connect an Account</span>
-        </button>
       }
     </section>
   </aside>
@@ -145,7 +156,7 @@
             ariaLabel="Show repositories"
             [fullWidth]="true"
             [options]="filterOptions()"
-            [value]="filterValue()"
+            [value]="view()"
             [disabled]="accounts().length === 0"
             (valueChange)="setFilter($event)"
           />

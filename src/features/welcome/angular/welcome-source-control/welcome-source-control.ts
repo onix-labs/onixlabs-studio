@@ -56,6 +56,11 @@ export interface HostedAccount {
    * Gets the account's user or organisation name.
    */
   readonly login: string;
+
+  /**
+   * Gets whether it is the user themselves or an organisation they belong to.
+   */
+  readonly kind: 'user' | 'organization';
 }
 
 /**
@@ -394,9 +399,10 @@ export class WelcomeSourceControl implements OnInit {
   protected readonly view: WritableSignal<BrowseView> = signal<BrowseView>('all');
 
   /**
-   * Holds the host filter: an account's host, or null for every host.
+   * Holds the account the list is narrowed to — its id — or null for every account. Set by picking an
+   * account in Connected Accounts; it narrows whichever view the filter dropdown shows.
    */
-  protected readonly host: WritableSignal<string | null> = signal<string | null>(null);
+  protected readonly accountFilter: WritableSignal<string | null> = signal<string | null>(null);
 
   /**
    * Holds the repository search.
@@ -469,58 +475,24 @@ export class WelcomeSourceControl implements OnInit {
   );
 
   /**
-   * Gets the hosts the accounts are on, for the host filter.
-   */
-  protected readonly hosts: Signal<readonly string[]> = computed((): readonly string[] => [
-    ...new Set<string>(this.accounts().map((account: HostedAccount): string => account.host)),
-  ]);
-
-  /**
-   * Gets the repository filter's choices: the browse views the data supports, then — when there is
-   * more than one host to tell apart — the hosts. One choice applies at a time.
+   * Gets the repository filter's choices: the browse views the data supports, each with how many
+   * repositories it holds in the account picked, if any.
    */
   protected readonly filterOptions: Signal<readonly DropdownOption[]> = computed(
-    (): readonly DropdownOption[] => [
-      ...this.browse().map((entry: BrowseEntry): DropdownOption => ({
-        value: `view:${entry.view}`,
+    (): readonly DropdownOption[] =>
+      this.browse().map((entry: BrowseEntry): DropdownOption => ({
+        value: entry.view,
         label: `${entry.label} (${this.countIn(entry.view)})`,
       })),
-      ...(this.hosts().length > 1
-        ? this.hosts().map((name: string): DropdownOption => ({
-            value: `host:${name}`,
-            label: `${name} (${this.countOn(name)})`,
-            group: 'Hosts',
-          }))
-        : []),
-    ],
   );
 
   /**
-   * Gets the repository filter's current choice.
-   */
-  protected readonly filterValue: Signal<string> = computed((): string => {
-    const host: string | null = this.host();
-    return host === null ? `view:${this.view()}` : `host:${host}`;
-  });
-
-  /**
-   * Gets the repositories in the current view, host and search, most recently updated first.
+   * Gets the repositories in the current view, account and search, most recently updated first.
    */
   protected readonly visible: Signal<readonly HostedRepository[]> = computed(
     (): readonly HostedRepository[] => {
-      const host: string | null = this.host();
       const needle: string = this.query().trim().toLowerCase();
-      const hostOf: ReadonlyMap<string, string> = new Map<string, string>(
-        this.accounts().map((account: HostedAccount): [string, string] => [
-          account.id,
-          account.host,
-        ]),
-      );
       return this.inViewList(this.view())
-        .filter(
-          (repository: HostedRepository): boolean =>
-            host === null || hostOf.get(repository.accountId) === host,
-        )
         .filter(
           (repository: HostedRepository): boolean =>
             needle.length === 0 ||
@@ -602,6 +574,7 @@ export class WelcomeSourceControl implements OnInit {
             id: `${entry.host}/${account.login}`,
             host: entry.provider,
             login: account.login,
+            kind: account.kind,
           };
           accounts.push(view);
           const repos: ForgeResult<readonly ProtocolRepository[]> = await this.forge.repositories(
@@ -618,6 +591,15 @@ export class WelcomeSourceControl implements OnInit {
         }
       }
       this.accounts.set(accounts);
+      // An account picked as the filter that is no longer listed (signed out, left) would leave the
+      // list empty with no way to tell why: widen it again.
+      const picked: string | null = this.accountFilter();
+      if (
+        picked !== null &&
+        !accounts.some((account: HostedAccount): boolean => account.id === picked)
+      ) {
+        this.accountFilter.set(null);
+      }
       const own: readonly HostedRepository[] = dedupe(repositories);
       const ids: ReadonlySet<string> = new Set<string>(
         own.map((repository: HostedRepository): string => repository.id),
@@ -637,23 +619,45 @@ export class WelcomeSourceControl implements OnInit {
   }
 
   /**
-   * Applies the repository filter's choice: a browse view across every host, or every repository on
-   * one host.
+   * Applies the repository filter's choice of browse view.
    * @param value The picked value.
    */
   protected setFilter(value: string): void {
-    if (value.startsWith('host:')) {
-      this.view.set('all');
-      this.host.set(value.slice('host:'.length));
-      return;
-    }
     const view: BrowseView | undefined = this.allViews.find(
-      (entry: BrowseEntry): boolean => `view:${entry.view}` === value,
+      (entry: BrowseEntry): boolean => entry.view === value,
     )?.view;
     if (view !== undefined) {
-      this.host.set(null);
       this.view.set(view);
     }
+  }
+
+  /**
+   * Narrows the list to an account's repositories, or widens it again when that account is the one
+   * already picked.
+   * @param id The account's id.
+   */
+  protected toggleAccount(id: string): void {
+    this.accountFilter.update((current: string | null): string | null =>
+      current === id ? null : id,
+    );
+  }
+
+  /**
+   * Describes what All Accounts covers, e.g. "3 accounts".
+   * @returns Returns the description.
+   */
+  protected accountCount(): string {
+    const count: number = this.accounts().length;
+    return `${count} ${count === 1 ? 'account' : 'accounts'}`;
+  }
+
+  /**
+   * Describes an account under its name: its host, and whether it is the user or an organisation.
+   * @param account The account.
+   * @returns Returns the description, e.g. "GitHub · Organisation".
+   */
+  protected accountKind(account: HostedAccount): string {
+    return `${account.host} · ${account.kind === 'user' ? 'You' : 'Organisation'}`;
   }
 
   /**
@@ -663,22 +667,6 @@ export class WelcomeSourceControl implements OnInit {
    */
   protected countIn(view: BrowseView): number {
     return this.inViewList(view).length;
-  }
-
-  /**
-   * Counts the repositories on a host.
-   * @param host The host.
-   * @returns Returns the count.
-   */
-  protected countOn(host: string): number {
-    const accounts: ReadonlySet<string> = new Set<string>(
-      this.accounts()
-        .filter((account: HostedAccount): boolean => account.host === host)
-        .map((account: HostedAccount): string => account.id),
-    );
-    return this.repositories().filter((repository: HostedRepository): boolean =>
-      accounts.has(repository.accountId),
-    ).length;
   }
 
   /**
@@ -858,16 +846,22 @@ export class WelcomeSourceControl implements OnInit {
   }
 
   /**
-   * Gets the repositories a browse view lists: the user's own that match it, and — for Starred — the
-   * other people's projects they starred as well.
+   * Gets the repositories a browse view lists: the user's own that match it — only the picked
+   * account's, when one is picked — and, for Starred across every account, the other people's
+   * projects they starred as well.
    * @param view The view.
    * @returns Returns them, unsorted.
    */
   private inViewList(view: BrowseView): readonly HostedRepository[] {
+    const account: string | null = this.accountFilter();
     const own: readonly HostedRepository[] = this.repositories().filter(
-      (repository: HostedRepository): boolean => this.matchesView(repository, view),
+      (repository: HostedRepository): boolean =>
+        (account === null || repository.accountId === account) &&
+        this.matchesView(repository, view),
     );
-    return view === 'starred' ? [...own, ...this.starredElsewhere()] : own;
+    // Other people's projects the user starred belong to none of their accounts, so picking one leaves
+    // them out.
+    return view === 'starred' && account === null ? [...own, ...this.starredElsewhere()] : own;
   }
 
   /**

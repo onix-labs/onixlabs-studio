@@ -134,38 +134,44 @@
   corner-shape: var(--app-corner-shape, squircle);
 }
 
-// Under the accounts list: the same accent button as Clone, filling the column.
-.source__connect {
-  @include primary-button;
-}
-
+// An account: a list row like the repositories', picked as the list's filter. Hover and the picked
+// account share the accent look.
 .source__account {
-  @include card;
+  @include list-row;
 
   display: flex;
   flex-direction: column;
   gap: 0.1rem;
-  padding: 0.55rem 0.7rem;
-}
-
-// A host served but not signed in: the same card, opening Settings to sign in.
-.source__account--signed-out {
+  padding: 0.5rem 0.7rem;
   font: inherit;
   text-align: start;
   cursor: default;
 
-  .source__account-login {
-    color: var(--accent-color);
+  &:hover,
+  &:focus-visible {
+    @include list-row-active;
   }
 }
 
-.source__account-host {
+.source__account--picked {
+  @include list-row-active;
+}
+
+// A host served but not signed in: the same row, opening Settings to sign in.
+.source__account--signed-out .source__account-kind {
+  color: var(--accent-color);
+}
+
+.source__account-name {
+  overflow: hidden;
   font-size: 0.85rem;
   font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   color: var(--wl-text);
 }
 
-.source__account-login {
+.source__account-kind {
   font-size: 0.74rem;
   color: var(--wl-muted);
 }

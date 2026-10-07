@@ -1364,11 +1364,6 @@ export class Icon {
   public static readonly WELCOME_HOMEPAGE: Icon = new Icon('ph-light ph-globe-simple');
 
   /**
-   * Gets the bold plus glyph on the Connect an Account button.
-   */
-  public static readonly WELCOME_ADD: Icon = new Icon('ph-bold ph-plus');
-
-  /**
    * Gets the light-weight icon of a public repository.
    */
   public static readonly WELCOME_REPOSITORY: Icon = new Icon('ph-light ph-book-open');
