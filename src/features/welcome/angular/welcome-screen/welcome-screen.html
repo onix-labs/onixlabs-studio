@@ -71,6 +71,7 @@
         <app-welcome-source-control
           [hidden]="section() !== 'source-control'"
           (openTab)="create($event)"
+          (opened)="opened()"
         />
       }
       <app-welcome-tools [hidden]="section() !== 'tools'" (openTab)="create($event)" />

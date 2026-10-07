@@ -39,7 +39,15 @@ class FakeEndpoint implements HostingEndpoint {
     this.starts++;
     return Promise.resolve({
       protocol: '1.0',
-      capabilities: ['pullRequests', 'issues', 'ciRuns', 'ciRerun', 'ciCancel'],
+      capabilities: [
+        'pullRequests',
+        'issues',
+        'ciRuns',
+        'ciRerun',
+        'ciCancel',
+        'accounts',
+        'listRepositories',
+      ],
     });
   }
 
@@ -85,7 +93,15 @@ describe('HostingManager', () => {
       displayName: 'GitHub',
       priority: 100,
       hosts: ['github.com', 'www.github.com'],
-      capabilities: ['pullRequests', 'issues', 'ciRuns', 'ciRerun', 'ciCancel'],
+      capabilities: [
+        'pullRequests',
+        'issues',
+        'ciRuns',
+        'ciRerun',
+        'ciCancel',
+        'accounts',
+        'listRepositories',
+      ],
       authModes: ['cli', 'studio'],
       commandLineTools: ['gh'],
       resolve: (): HostingResolution =>
@@ -252,6 +268,41 @@ describe('HostingManager', () => {
       installed = false;
       expect(await manager.setAuthMode('onixlabs.github', 'github.com', 'cli')).toBeNull();
       expect(settings.authFor('onixlabs.github')).toEqual({});
+    });
+  });
+
+  describe('accounts and repositories', () => {
+    it('askThePluginServingTheHost', async () => {
+      build({
+        listAccounts: { id: 1, ok: true, result: [{ login: 'matthew', name: null, kind: 'user' }] },
+      });
+
+      const accounts: Awaited<ReturnType<HostingManager['accounts']>> =
+        await manager.accounts('GitHub.com');
+      await manager.repositories('github.com', 'onix-labs');
+
+      expect(accounts).toEqual({
+        ok: true,
+        value: [{ login: 'matthew', name: null, kind: 'user' }],
+      });
+      expect(endpoint.sent.map((entry: { op: string; params: unknown }) => entry.params)).toEqual(
+        expect.arrayContaining([
+          { host: 'github.com' },
+          { host: 'github.com', account: 'onix-labs' },
+        ]),
+      );
+    });
+
+    it('refuseAHostNoInstalledPluginServes_andAnAccountThatCouldRedirectThePath', async () => {
+      build();
+
+      expect((await manager.accounts('gitlab.com')).ok).toBe(false);
+      for (const account of ['', 'a/b', 'a?b', 'a b', 42]) {
+        expect((await manager.repositories('github.com', account)).ok).toBe(false);
+      }
+      expect(endpoint.sent.some((entry: { op: string }) => entry.op === 'listRepositories')).toBe(
+        false,
+      );
     });
   });
 
