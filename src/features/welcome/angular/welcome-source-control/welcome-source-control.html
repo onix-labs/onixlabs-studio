@@ -93,13 +93,33 @@
             />
           </button>
         </h2>
+        <!-- Shown while an account narrows the list, even with the section collapsed, so the filter is
+             never in force out of sight. -->
+        @if (accountFilter() !== null) {
+          <app-button
+            class="source__clear-account"
+            ariaLabel="Show every account's repositories"
+            tooltip="Show every account's repositories"
+            [icon]="Icon.CLOSE"
+            variant="none"
+            size="small"
+            (click)="accountFilter.set(null)"
+          />
+        }
       </div>
       @if (openSection() === 'accounts') {
+        <!-- Picking an account narrows the repository list to it; picking it again widens it. -->
         @for (account of accounts(); track account.id) {
-          <div class="source__account">
-            <span class="source__account-host">{{ account.host }}</span>
-            <span class="source__account-login">{{ account.login }}</span>
-          </div>
+          <button
+            type="button"
+            class="source__account"
+            [class.source__account--picked]="accountFilter() === account.id"
+            [attr.aria-pressed]="accountFilter() === account.id"
+            (click)="toggleAccount(account.id)"
+          >
+            <span class="source__account-name">{{ account.login }}</span>
+            <span class="source__account-kind">{{ accountKind(account) }}</span>
+          </button>
         }
         @for (entry of signedOut(); track entry.host) {
           <button
@@ -107,8 +127,8 @@
             class="source__account source__account--signed-out"
             (click)="openSettings()"
           >
-            <span class="source__account-host">{{ entry.provider }}</span>
-            <span class="source__account-login">Sign in to {{ entry.host }}…</span>
+            <span class="source__account-name">{{ entry.provider }}</span>
+            <span class="source__account-kind">Sign in to {{ entry.host }}…</span>
           </button>
         }
         @if (accounts().length === 0 && signedOut().length === 0) {
@@ -121,10 +141,13 @@
             }
           </p>
         }
+        <!-- Not built yet: signing in happens in Settings (the rows above, or Open Settings). Marked the
+             way Get Started marks its unavailable actions. -->
         <button
           type="button"
-          class="source__connect"
-          (click)="canBrowse() ? openSettings() : openPlugins()"
+          class="source__connect source__connect--unavailable"
+          aria-disabled="true"
+          [appTooltip]="'Coming soon'"
         >
           <app-icon [icon]="Icon.WELCOME_ADD" />
           <span>Connect an Account</span>
@@ -145,7 +168,7 @@
             ariaLabel="Show repositories"
             [fullWidth]="true"
             [options]="filterOptions()"
-            [value]="filterValue()"
+            [value]="view()"
             [disabled]="accounts().length === 0"
             (valueChange)="setFilter($event)"
           />

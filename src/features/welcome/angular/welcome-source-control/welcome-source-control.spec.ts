@@ -233,6 +233,18 @@ describe('WelcomeSourceControl', () => {
   }
 
   /**
+   * Finds a Connected Accounts row by the line under its name.
+   * @param kind The line, e.g. "GitHub · You".
+   * @returns Returns the row.
+   */
+  function accountRow(kind: string): HTMLButtonElement {
+    return Array.from(host.querySelectorAll<HTMLButtonElement>('.source__account')).find(
+      (row: HTMLButtonElement): boolean =>
+        row.querySelector('.source__account-kind')?.textContent?.trim() === kind,
+    )!;
+  }
+
+  /**
    * Gets the names of the listed repositories.
    * @returns Returns them, in order.
    */
@@ -271,7 +283,7 @@ describe('WelcomeSourceControl', () => {
     await expand('Connected Accounts');
 
     expect(names()).toEqual(['secret', 'aero']);
-    expect(host.querySelector('.source__account-login')?.textContent).toContain('matthew');
+    expect(host.querySelector('.source__account-name')?.textContent).toContain('matthew');
     const signIn: HTMLButtonElement = host.querySelector<HTMLButtonElement>(
       '.source__account--signed-out',
     )!;
@@ -289,8 +301,6 @@ describe('WelcomeSourceControl', () => {
     await render();
 
     expect(filters()).toEqual(['All Repositories', 'Recent', 'Private']);
-    // One host has nothing to tell apart.
-    expect(filters('Hosts')).toEqual([]);
 
     internals.repositories.set([repository('aero', { starred: true })]);
     await fixture.whenStable();
@@ -323,8 +333,14 @@ describe('WelcomeSourceControl', () => {
 
     expect(names()).toEqual(['secret', 'aero']);
     expect(filters()).toContain('Starred');
-    await choose('Show repositories', 'view:starred');
+    await choose('Show repositories', 'starred');
     expect(names()).toEqual(['angular']);
+
+    // Other people's projects belong to none of the user's accounts.
+    await expand('Connected Accounts');
+    accountRow('GitHub · You').click();
+    await fixture.whenStable();
+    expect(names()).toEqual([]);
   });
 
   it('withNoHostingPlugin_saysWhatToInstall', async () => {
@@ -470,8 +486,8 @@ describe('WelcomeSourceControl', () => {
     beforeEach(async () => {
       await render();
       internals.accounts.set([
-        { id: 'gh', host: 'GitHub', login: 'matthew' },
-        { id: 'gl', host: 'GitLab', login: 'matthew' },
+        { id: 'gh', host: 'GitHub', login: 'matthew', kind: 'user' },
+        { id: 'gl', host: 'GitLab', login: 'matthew', kind: 'user' },
       ]);
       // Fixed, distinct update times: the list sorts on them, and stamping each with Date.now() let
       // two land a millisecond apart and swap.
@@ -492,33 +508,78 @@ describe('WelcomeSourceControl', () => {
     });
 
     it('browseViews_filterTheList', async () => {
-      await choose('Show repositories', 'view:starred');
+      await choose('Show repositories', 'starred');
       expect(names()).toEqual(['aero']);
-      await choose('Show repositories', 'view:private');
+      await choose('Show repositories', 'private');
       expect(names()).toEqual(['stride']);
-      await choose('Show repositories', 'view:forks');
+      await choose('Show repositories', 'forks');
       expect(names()).toEqual(['infra']);
-      await choose('Show repositories', 'view:archived');
+      await choose('Show repositories', 'archived');
       expect(names()).toEqual(['old']);
-      await choose('Show repositories', 'view:recent');
+      await choose('Show repositories', 'recent');
       expect(names()).toEqual(['aero', 'stride', 'infra']);
     });
 
-    it('theFilter_offersHostsWhenThereIsMoreThanOne_withCounts', () => {
-      expect(filters('Hosts')).toEqual(['GitHub', 'GitLab']);
+    it('theFilter_offersOnlyViews_withCounts', () => {
+      expect(filters('Hosts')).toEqual([]);
       const select: HTMLSelectElement = host.querySelector<HTMLSelectElement>(
         'select[aria-label="Show repositories"]',
       )!;
       expect(select.options[0].textContent.trim()).toBe('All Repositories (4)');
     });
 
-    it('hosts_andSearch_filterTheList', async () => {
-      await choose('Show repositories', 'host:GitLab');
-      expect(names()).toEqual(['infra']);
+    it('pickingAnAccount_narrowsTheListAndCounts_andPickingItAgainWidensThem', async () => {
+      await expand('Connected Accounts');
+      const gitlab: HTMLButtonElement = accountRow('GitLab · You');
 
-      await choose('Show repositories', 'view:all');
-      await type('Search repositories', 'STRIDE');
+      gitlab.click();
+      await fixture.whenStable();
+      expect(names()).toEqual(['infra']);
+      expect(gitlab.getAttribute('aria-pressed')).toBe('true');
+      expect(filters()).toContain('All Repositories');
+      expect(
+        host
+          .querySelector<HTMLSelectElement>('select[aria-label="Show repositories"]')!
+          .options[0].textContent.trim(),
+      ).toBe('All Repositories (1)');
+
+      gitlab.click();
+      await fixture.whenStable();
+      expect(names()).toEqual(['aero', 'stride', 'infra', 'old']);
+    });
+
+    it('anAccount_combinesWithTheView_andSearch', async () => {
+      await expand('Connected Accounts');
+      accountRow('GitHub · You').click();
+      await fixture.whenStable();
+      await choose('Show repositories', 'private');
       expect(names()).toEqual(['stride']);
+
+      await choose('Show repositories', 'all');
+      await type('Search repositories', 'AERO');
+      expect(names()).toEqual(['aero']);
+    });
+
+    it('clear_showsOnlyWhileAnAccountIsPicked_evenCollapsed_andWidensTheList', async () => {
+      expect(host.querySelector('.source__clear-account')).toBeNull();
+      await expand('Connected Accounts');
+      accountRow('GitLab · You').click();
+      await fixture.whenStable();
+      // Collapse the section: the filter is still in force, so Clear stays in sight.
+      await expand('Connected Accounts');
+
+      host.querySelector<HTMLButtonElement>('.source__clear-account button')!.click();
+      await fixture.whenStable();
+      expect(names()).toEqual(['aero', 'stride', 'infra', 'old']);
+      expect(host.querySelector('.source__clear-account')).toBeNull();
+    });
+
+    it('connectAnAccount_isMarkedComingSoon_andDoesNothing', async () => {
+      await expand('Connected Accounts');
+      const connect: HTMLButtonElement = host.querySelector<HTMLButtonElement>('.source__connect')!;
+      expect(connect.getAttribute('aria-disabled')).toBe('true');
+      connect.click();
+      expect(tabs).toEqual([]);
     });
 
     it('selectingARepository_showsItsDetails_andClonesItLikeTheCloneSection', async () => {
