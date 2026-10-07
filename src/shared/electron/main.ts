@@ -109,6 +109,7 @@ import type { NodeRuntimeSpec } from '@shared/electron/contributions/plugins/plu
 import { SearchManager } from '@shared/electron/search-manager';
 import { StudioStore } from '@shared/electron/studio/studio-store';
 import { WorktreeManager } from '@shared/electron/worktree/worktree-manager';
+import { CloneManager } from '@shared/electron/clone/clone-manager';
 import { TerminalManager } from '@shared/electron/terminal-manager';
 import { TrustedPaths } from './trusted-paths';
 import { WindowManager } from '@shared/electron/window-manager';
@@ -487,6 +488,17 @@ class Program {
     this.workspaceContext,
     this.trustedPaths,
     this.versionControlHost,
+  );
+
+  /**
+   * Clones repositories into a folder the user chose in this process's own dialog (#805), trusting the
+   * result so it opens like any folder they opened themselves.
+   */
+  private readonly cloneManager: CloneManager = new CloneManager(
+    path.join(app.getPath('userData'), 'clone.json'),
+    (): BrowserWindow | null => this.windows.main(),
+    this.versionControlHost,
+    this.trustedPaths,
   );
 
   /**
@@ -964,6 +976,7 @@ class Program {
     this.searchManager.register();
     this.studioStore.register();
     this.worktreeManager.register();
+    this.cloneManager.register();
     this.decoderHost.register();
     this.binaryAssembler.register();
     this.fileWatcher.register();

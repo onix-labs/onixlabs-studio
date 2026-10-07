@@ -12,7 +12,9 @@ import {
   ForgeWorkflowRun,
 } from '@shared/api/forge-types';
 import {
+  HostedAccount,
   HostedAuthStatus,
+  HostedRepository,
   HostedRepositoryRef,
   HostingAuthMode,
   HostingOp,
@@ -155,6 +157,72 @@ export class HostingManager {
         runId: unknown,
       ): Promise<ForgeResult<void>> => this.runCommand(repository, runId, 'cancelCiRun'),
     );
+    ipcMain.handle(
+      ForgeChannel.Accounts,
+      (_event: IpcMainInvokeEvent, host: unknown): Promise<ForgeResult<readonly HostedAccount[]>> =>
+        this.accounts(host),
+    );
+    ipcMain.handle(
+      ForgeChannel.Repositories,
+      (
+        _event: IpcMainInvokeEvent,
+        host: unknown,
+        account: unknown,
+      ): Promise<ForgeResult<readonly HostedRepository[]>> => this.repositories(host, account),
+    );
+  }
+
+  /**
+   * Lists the accounts the user acts as on a host (#805).
+   * @param host The untrusted host.
+   * @returns Returns the accounts, or why they could not be read.
+   */
+  public async accounts(host: unknown): Promise<ForgeResult<readonly HostedAccount[]>> {
+    const name: string | null = this.servedHost(host);
+    if (name === null) {
+      return { ok: false, error: 'No installed plugin serves that host.', unauthorized: false };
+    }
+    return toResult(await this.host.request('listAccounts', { host: name }, USER));
+  }
+
+  /**
+   * Lists an account's repositories on a host (#805).
+   * @param host The untrusted host.
+   * @param account The untrusted account login.
+   * @returns Returns the repositories, or why they could not be read.
+   */
+  public async repositories(
+    host: unknown,
+    account: unknown,
+  ): Promise<ForgeResult<readonly HostedRepository[]>> {
+    const name: string | null = this.servedHost(host);
+    if (name === null) {
+      return { ok: false, error: 'No installed plugin serves that host.', unauthorized: false };
+    }
+    if (typeof account !== 'string' || account.length === 0 || /[/\\?#\s]/.test(account)) {
+      return { ok: false, error: 'No account was named.', unauthorized: false };
+    }
+    return toResult(await this.host.request('listRepositories', { host: name, account }, USER));
+  }
+
+  /**
+   * Validates a host the renderer named: an installed plugin must be the one to sign in to it.
+   * @param host The untrusted host.
+   * @returns Returns the lowercased host, or null.
+   */
+  private servedHost(host: unknown): string | null {
+    if (typeof host !== 'string') {
+      return null;
+    }
+    const name: string = host.toLowerCase();
+    return this.host
+      .preferredOrder()
+      .some(
+        (descriptor: HostingDescriptor): boolean =>
+          descriptor.resolve().available && this.servedHosts(descriptor).includes(name),
+      )
+      ? name
+      : null;
   }
 
   /**

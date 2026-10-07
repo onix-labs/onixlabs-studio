@@ -2,7 +2,7 @@ import { inject, Service } from '@angular/core';
 import { Log } from '@shared/angular/services/log/log';
 import { Bridge } from '@shared/api/bridge';
 import { ForgeChannel, ForgeClient } from '@shared/api/forge-channels';
-import { HostingAuthMode } from '@shared/api/hosting-protocol';
+import { HostedAccount, HostedRepository, HostingAuthMode } from '@shared/api/hosting-protocol';
 import {
   ForgeHostAccount,
   ForgeIssue,
@@ -233,6 +233,37 @@ export class Forge implements ForgeClient {
     return (
       this.bridge?.invoke<ForgeResult<void>>(ForgeChannel.CancelWorkflowRun, repository, runId) ??
       Promise.resolve(UNAVAILABLE_RESULT)
+    );
+  }
+
+  /**
+   * Lists the accounts the user acts as on a host: themselves, and their organisations (#805).
+   * @param host The host.
+   * @returns Returns the accounts, or the reason they could not be read.
+   */
+  public accounts(host: string): Promise<ForgeResult<readonly HostedAccount[]>> {
+    return (
+      this.bridge?.invoke<ForgeResult<readonly HostedAccount[]>>(ForgeChannel.Accounts, host) ??
+      Promise.resolve(UNAVAILABLE_RESULT)
+    );
+  }
+
+  /**
+   * Lists an account's repositories on a host (#805).
+   * @param host The host.
+   * @param account The account's login.
+   * @returns Returns the repositories, or the reason they could not be read.
+   */
+  public repositories(
+    host: string,
+    account: string,
+  ): Promise<ForgeResult<readonly HostedRepository[]>> {
+    return (
+      this.bridge?.invoke<ForgeResult<readonly HostedRepository[]>>(
+        ForgeChannel.Repositories,
+        host,
+        account,
+      ) ?? Promise.resolve(UNAVAILABLE_RESULT)
     );
   }
 }

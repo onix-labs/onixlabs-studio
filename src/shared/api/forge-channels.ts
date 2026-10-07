@@ -6,7 +6,7 @@
 // Every network call and every credential lives in the main process. The renderer can ask for a token
 // to be stored or cleared, and can read the resulting status — it can never read the token back.
 
-import { HostingAuthMode } from './hosting-protocol';
+import { HostedAccount, HostedRepository, HostingAuthMode } from './hosting-protocol';
 import {
   ForgeHostAccount,
   ForgeRepositoryCapabilities,
@@ -87,6 +87,16 @@ export enum ForgeChannel {
    * Cancels a CI/CD workflow run that is in flight (invoke).
    */
   CancelWorkflowRun = 'forge:cancel-workflow-run',
+
+  /**
+   * Lists the accounts the user acts as on a host: themselves, and their organisations (invoke, #805).
+   */
+  Accounts = 'forge:accounts',
+
+  /**
+   * Lists an account's repositories on a host (invoke, #805).
+   */
+  Repositories = 'forge:repositories',
 }
 
 /**
@@ -190,4 +200,19 @@ export interface ForgeClient {
    * @returns Returns nothing on success, or the reason it could not be cancelled.
    */
   cancelWorkflowRun(repository: ForgeRepositoryRef, runId: string): Promise<ForgeResult<void>>;
+
+  /**
+   * Lists the accounts the user acts as on a host: themselves, and the organisations they belong to.
+   * @param host The host, which an installed hosting plugin must serve.
+   * @returns Returns the accounts, or the reason they could not be read.
+   */
+  accounts(host: string): Promise<ForgeResult<readonly HostedAccount[]>>;
+
+  /**
+   * Lists an account's repositories on a host.
+   * @param host The host, which an installed hosting plugin must serve.
+   * @param account The account's login.
+   * @returns Returns the repositories, or the reason they could not be read.
+   */
+  repositories(host: string, account: string): Promise<ForgeResult<readonly HostedRepository[]>>;
 }

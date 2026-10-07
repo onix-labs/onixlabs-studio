@@ -475,6 +475,33 @@ export class VersionControlHost {
   }
 
   /**
+   * Clones a repository into a folder that is not an open repository or workspace yet (#805).
+   *
+   * ⛔ The one request not confined to an open root, because a clone's destination cannot be one yet.
+   * The caller vouches for the directory instead: it must lie in a folder the user chose in the main
+   * process's own dialog (see `CloneManager`), never one a renderer named. Every other clone — a
+   * worktree checkout inside an open container — goes through {@link requestGlobal}.
+   * @param pluginId The plugin to ask.
+   * @param params The clone's parameters; `directory` must be absolute.
+   * @returns Returns the plugin's answer, or the host's refusal.
+   */
+  public async cloneToChosenFolder(
+    pluginId: string,
+    params: VcsParams<'clone'>,
+  ): Promise<VersionControlResponse<'clone'>> {
+    if (!path.isAbsolute(params.directory)) {
+      return refused<'clone'>('The path is not absolute.');
+    }
+    const descriptor: VersionControlDescriptor | undefined = this.options
+      .descriptors()
+      .find((candidate: VersionControlDescriptor): boolean => candidate.id === pluginId);
+    if (descriptor === undefined) {
+      return refused<'clone'>(`No version-control plugin named ${pluginId} is installed.`);
+    }
+    return this.dispatch<'clone'>(descriptor, undefined, 'clone', params);
+  }
+
+  /**
    * Gets a contributed plugin by id.
    * @param pluginId The plugin.
    * @returns Returns the descriptor, or undefined when no such plugin is contributed.
