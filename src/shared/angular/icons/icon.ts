@@ -1349,14 +1349,14 @@ export class Icon {
   public static readonly WELCOME_LINK: Icon = new Icon('ph-light ph-link');
 
   /**
-   * Gets the light-weight download glyph on the Clone Repository action.
+   * Gets the bold download glyph on the Clone Repository buttons.
    */
-  public static readonly WELCOME_CLONE: Icon = new Icon('ph-light ph-download-simple');
+  public static readonly WELCOME_CLONE: Icon = new Icon('ph-bold ph-download-simple');
 
   /**
-   * Gets the light-weight glyph on a repository's Open on GitHub (or other host) button.
+   * Gets the bold glyph on a repository's Open on GitHub (or other host) button.
    */
-  public static readonly WELCOME_OPEN_EXTERNAL: Icon = new Icon('ph-light ph-arrow-square-out');
+  public static readonly WELCOME_OPEN_EXTERNAL: Icon = new Icon('ph-bold ph-arrow-square-out');
 
   /**
    * Gets the light-weight glyph beside a repository's homepage link.
