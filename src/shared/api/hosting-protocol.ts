@@ -25,7 +25,9 @@
  * refused rather than spoken to: one that misreads a request may act on the user's account in a way
  * they did not ask for.
  */
-export const HOSTING_PROTOCOL_VERSION: string = '1.1';
+// 1.2 (#805) adds optional repository details — language, stars, fork, archived, starred — so a
+// repository browser can offer views on them. Optional, so a 1.1 plugin is still understood.
+export const HOSTING_PROTOCOL_VERSION: string = '1.2';
 
 /**
  * Names one optional capability a hosting plugin can advertise.
@@ -265,6 +267,32 @@ export interface HostedRepository {
    * Gets when it last changed, as an ISO 8601 timestamp.
    */
   readonly updatedAt: string;
+
+  /**
+   * Gets its main language, or null when the host names none. Absent when the plugin does not say
+   * (added in 1.2, like every field below).
+   */
+  readonly language?: string | null;
+
+  /**
+   * Gets how many users starred it. Absent when the plugin does not say.
+   */
+  readonly stars?: number;
+
+  /**
+   * Gets whether it is a fork of another repository. Absent when the plugin does not say.
+   */
+  readonly fork?: boolean;
+
+  /**
+   * Gets whether it is archived (read-only). Absent when the plugin does not say.
+   */
+  readonly archived?: boolean;
+
+  /**
+   * Gets whether the signed-in user starred it. Absent when the plugin does not say.
+   */
+  readonly starred?: boolean;
 }
 
 /**

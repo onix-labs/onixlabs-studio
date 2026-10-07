@@ -29,9 +29,16 @@ import {
 const PAGE_SIZE: number = 50;
 
 /**
- * How many repositories a listing asks for — one page of GitHub's maximum, most recently updated first.
+ * How many repositories each page of a listing asks for: GitHub's maximum.
  */
 const REPOSITORY_PAGE_SIZE: number = 100;
+
+/**
+ * The most pages a repository listing reads (#805). Unlike a panel's glance at what is open, the
+ * repository browser is a browser — but an account with thousands of repositories would spend the
+ * rate-limit budget on pages nobody scrolls to, so a listing stops at a thousand.
+ */
+const REPOSITORY_PAGE_LIMIT: number = 10;
 
 /**
  * The API version header GitHub asks integrations to pin.
@@ -104,6 +111,11 @@ interface RawUser {
  * The raw repository shape, as much of it as this reads.
  */
 interface RawRepository {
+  readonly full_name?: unknown;
+  readonly language?: unknown;
+  readonly stargazers_count?: unknown;
+  readonly fork?: unknown;
+  readonly archived?: unknown;
   readonly name?: unknown;
   readonly owner?: RawUser;
   readonly description?: unknown;
@@ -394,18 +406,57 @@ export class GitHubHosting {
     if (!me.ok) {
       return me;
     }
+    // The user's own listing is what they own and what they collaborate on (#805); an organisation's
+    // is listed under the organisation, so its repositories are not read twice.
     const path: string =
       me.result.login.toLowerCase() === account.toLowerCase()
-        ? `/user/repos?affiliation=owner&sort=updated&per_page=${REPOSITORY_PAGE_SIZE}`
-        : `/orgs/${encodeURIComponent(account)}/repos?sort=updated&per_page=${REPOSITORY_PAGE_SIZE}`;
-    const listed: Outcome<unknown> = await this.get(host, path);
+        ? '/user/repos?affiliation=owner,collaborator&sort=updated'
+        : `/orgs/${encodeURIComponent(account)}/repos?sort=updated`;
+    const listed: Outcome<readonly RawRepository[]> = await this.pages<RawRepository>(host, path);
     if (!listed.ok) {
       return listed;
     }
-    const raw: readonly RawRepository[] = Array.isArray(listed.result)
-      ? (listed.result as readonly RawRepository[])
-      : [];
-    return { ok: true, result: raw.map((repo: RawRepository) => toRepository(host, repo)) };
+    // Starring is a fact about the user, not the repository, so it is a listing of its own. A failure
+    // to read it leaves the repositories unmarked rather than failing the listing.
+    const starred: Outcome<readonly RawRepository[]> = await this.pages<RawRepository>(
+      host,
+      '/user/starred?sort=updated',
+    );
+    const stars: ReadonlySet<string> | null = starred.ok
+      ? new Set<string>(starred.result.map((repo: RawRepository): string => fullName(repo)))
+      : null;
+    return {
+      ok: true,
+      result: listed.result.map((repo: RawRepository) =>
+        toRepository(host, repo, stars === null ? undefined : stars.has(fullName(repo))),
+      ),
+    };
+  }
+
+  /**
+   * Reads every page of a list endpoint, up to {@link REPOSITORY_PAGE_LIMIT}: a page shorter than
+   * {@link REPOSITORY_PAGE_SIZE} is the last.
+   * @param host The host.
+   * @param path The endpoint, with its query, without paging.
+   * @returns Returns every entry, in order.
+   */
+  private async pages<T>(host: string, path: string): Promise<Outcome<readonly T[]>> {
+    const entries: T[] = [];
+    for (let page: number = 1; page <= REPOSITORY_PAGE_LIMIT; page += 1) {
+      const listed: Outcome<unknown> = await this.get(
+        host,
+        `${path}&per_page=${REPOSITORY_PAGE_SIZE}&page=${page}`,
+      );
+      if (!listed.ok) {
+        return listed;
+      }
+      const batch: readonly T[] = Array.isArray(listed.result) ? (listed.result as T[]) : [];
+      entries.push(...batch);
+      if (batch.length < REPOSITORY_PAGE_SIZE) {
+        break;
+      }
+    }
+    return { ok: true, result: entries };
   }
 
   /**
@@ -944,9 +995,10 @@ function issueNumber(value: number): number {
  * @param raw The raw repository.
  * @returns Returns the repository.
  */
-function toRepository(host: string, raw: RawRepository): HostedRepository {
+function toRepository(host: string, raw: RawRepository, starred?: boolean): HostedRepository {
   const description: string = asString(raw.description);
   const defaultBranch: string = asString(raw.default_branch);
+  const language: string = asString(raw.language);
   return {
     ref: { host, owner: asString(raw.owner?.login), name: asString(raw.name) },
     description: description.length === 0 ? null : description,
@@ -955,7 +1007,26 @@ function toRepository(host: string, raw: RawRepository): HostedRepository {
     cloneUrl: asString(raw.clone_url),
     webUrl: asString(raw.html_url),
     updatedAt: asString(raw.updated_at),
+    // The 1.2 details (#805). Each is left out when GitHub did not send it, so a reader can tell "not a
+    // fork" from "not said".
+    ...(raw.language === undefined ? {} : { language: language.length === 0 ? null : language }),
+    ...(typeof raw.stargazers_count === 'number' ? { stars: raw.stargazers_count } : {}),
+    ...(typeof raw.fork === 'boolean' ? { fork: raw.fork } : {}),
+    ...(typeof raw.archived === 'boolean' ? { archived: raw.archived } : {}),
+    ...(starred === undefined ? {} : { starred }),
   };
+}
+
+/**
+ * Names a raw repository as `owner/name`, lowercased, for matching it against the user's starred list.
+ * @param raw The raw repository.
+ * @returns Returns its full name.
+ */
+function fullName(raw: RawRepository): string {
+  const named: string = asString(raw.full_name);
+  return (
+    named.length > 0 ? named : `${asString(raw.owner?.login)}/${asString(raw.name)}`
+  ).toLowerCase();
 }
 
 /**
