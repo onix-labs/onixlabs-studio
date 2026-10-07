@@ -28,7 +28,6 @@ import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { OverlayScrollbar } from '@shared/angular/components/overlay-scrollbar/overlay-scrollbar';
-import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigger';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 
 export type { CloneLayout } from '@shared/api/clone-channels';
@@ -240,7 +239,7 @@ const FOLDER_NAME: RegExp = /^(?!\.{1,2}$)[\w.-]+$/;
  */
 @Component({
   selector: 'app-welcome-source-control',
-  imports: [AppIcon, Button, Dropdown, OverlayScrollbar, TooltipTrigger],
+  imports: [AppIcon, Button, Dropdown, OverlayScrollbar],
   templateUrl: './welcome-source-control.html',
   styleUrl: './welcome-source-control.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -641,6 +640,15 @@ export class WelcomeSourceControl implements OnInit {
     this.accountFilter.update((current: string | null): string | null =>
       current === id ? null : id,
     );
+  }
+
+  /**
+   * Describes what All Accounts covers, e.g. "3 accounts".
+   * @returns Returns the description.
+   */
+  protected accountCount(): string {
+    const count: number = this.accounts().length;
+    return `${count} ${count === 1 ? 'account' : 'accounts'}`;
   }
 
   /**

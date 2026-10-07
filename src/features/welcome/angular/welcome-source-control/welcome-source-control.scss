@@ -134,21 +134,6 @@
   corner-shape: var(--app-corner-shape, squircle);
 }
 
-// Under the accounts list: the same accent button as Clone, filling the column.
-.source__connect {
-  @include primary-button;
-}
-
-// Not available yet: quieter, and it does nothing, as Get Started's unavailable actions.
-.source__connect--unavailable {
-  opacity: 0.55;
-
-  &:hover:not(:disabled),
-  &:focus-visible {
-    filter: none;
-  }
-}
-
 // An account: a list row like the repositories', picked as the list's filter. Hover and the picked
 // account share the accent look.
 .source__account {
@@ -189,10 +174,6 @@
 .source__account-kind {
   font-size: 0.74rem;
   color: var(--wl-muted);
-}
-
-.source__clear-account {
-  flex: none;
 }
 
 .source__accounts-empty {

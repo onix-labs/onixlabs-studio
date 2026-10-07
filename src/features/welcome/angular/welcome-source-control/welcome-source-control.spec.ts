@@ -283,7 +283,7 @@ describe('WelcomeSourceControl', () => {
     await expand('Connected Accounts');
 
     expect(names()).toEqual(['secret', 'aero']);
-    expect(host.querySelector('.source__account-name')?.textContent).toContain('matthew');
+    expect(accountRow('GitHub · You').textContent).toContain('matthew');
     const signIn: HTMLButtonElement = host.querySelector<HTMLButtonElement>(
       '.source__account--signed-out',
     )!;
@@ -447,12 +447,12 @@ describe('WelcomeSourceControl', () => {
 
     expect(open()).toEqual(['Clone a Repository']);
     expect(host.querySelector('input[aria-label="Repository URL"]')).not.toBeNull();
-    expect(host.querySelector('.source__connect')).toBeNull();
+    expect(host.querySelector('.source__accounts-empty')).toBeNull();
 
     await expand('Connected Accounts');
     expect(open()).toEqual(['Connected Accounts']);
     expect(host.querySelector('input[aria-label="Repository URL"]')).toBeNull();
-    expect(host.querySelector('.source__connect')).not.toBeNull();
+    expect(host.querySelector('.source__accounts-empty')).not.toBeNull();
 
     await expand('Connected Accounts');
     expect(open()).toEqual([]);
@@ -560,26 +560,20 @@ describe('WelcomeSourceControl', () => {
       expect(names()).toEqual(['aero']);
     });
 
-    it('clear_showsOnlyWhileAnAccountIsPicked_evenCollapsed_andWidensTheList', async () => {
-      expect(host.querySelector('.source__clear-account')).toBeNull();
+    it('allAccounts_leadsTheList_pickedUntilAnAccountIs_andWidensTheListAgain', async () => {
       await expand('Connected Accounts');
+      const all: HTMLButtonElement = accountRow('2 accounts');
+      expect(all.querySelector('.source__account-name')?.textContent?.trim()).toBe('All Accounts');
+      expect(all.getAttribute('aria-pressed')).toBe('true');
+
       accountRow('GitLab · You').click();
       await fixture.whenStable();
-      // Collapse the section: the filter is still in force, so Clear stays in sight.
-      await expand('Connected Accounts');
+      expect(all.getAttribute('aria-pressed')).toBe('false');
 
-      host.querySelector<HTMLButtonElement>('.source__clear-account button')!.click();
+      all.click();
       await fixture.whenStable();
       expect(names()).toEqual(['aero', 'stride', 'infra', 'old']);
-      expect(host.querySelector('.source__clear-account')).toBeNull();
-    });
-
-    it('connectAnAccount_isMarkedComingSoon_andDoesNothing', async () => {
-      await expand('Connected Accounts');
-      const connect: HTMLButtonElement = host.querySelector<HTMLButtonElement>('.source__connect')!;
-      expect(connect.getAttribute('aria-disabled')).toBe('true');
-      connect.click();
-      expect(tabs).toEqual([]);
+      expect(all.getAttribute('aria-pressed')).toBe('true');
     });
 
     it('selectingARepository_showsItsDetails_andClonesItLikeTheCloneSection', async () => {

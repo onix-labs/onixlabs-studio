@@ -93,22 +93,21 @@
             />
           </button>
         </h2>
-        <!-- Shown while an account narrows the list, even with the section collapsed, so the filter is
-             never in force out of sight. -->
-        @if (accountFilter() !== null) {
-          <app-button
-            class="source__clear-account"
-            ariaLabel="Show every account's repositories"
-            tooltip="Show every account's repositories"
-            [icon]="Icon.CLOSE"
-            variant="none"
-            size="small"
-            (click)="accountFilter.set(null)"
-          />
-        }
       </div>
       @if (openSection() === 'accounts') {
-        <!-- Picking an account narrows the repository list to it; picking it again widens it. -->
+        <!-- Picking an account narrows the repository list to it; All Accounts widens it again. -->
+        @if (accounts().length > 0) {
+          <button
+            type="button"
+            class="source__account"
+            [class.source__account--picked]="accountFilter() === null"
+            [attr.aria-pressed]="accountFilter() === null"
+            (click)="accountFilter.set(null)"
+          >
+            <span class="source__account-name">All Accounts</span>
+            <span class="source__account-kind">{{ accountCount() }}</span>
+          </button>
+        }
         @for (account of accounts(); track account.id) {
           <button
             type="button"
@@ -141,17 +140,6 @@
             }
           </p>
         }
-        <!-- Not built yet: signing in happens in Settings (the rows above, or Open Settings). Marked the
-             way Get Started marks its unavailable actions. -->
-        <button
-          type="button"
-          class="source__connect source__connect--unavailable"
-          aria-disabled="true"
-          [appTooltip]="'Coming soon'"
-        >
-          <app-icon [icon]="Icon.WELCOME_ADD" />
-          <span>Connect an Account</span>
-        </button>
       }
     </section>
   </aside>
