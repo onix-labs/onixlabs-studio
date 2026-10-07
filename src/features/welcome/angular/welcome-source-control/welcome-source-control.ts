@@ -325,8 +325,6 @@ export class WelcomeSourceControl implements OnInit {
    * Gets the layout choices.
    */
   protected readonly layoutOptions: readonly DropdownOption[] = [
-    // A prompt, not a choice: shown until the user picks, and never pickable itself.
-    { value: '', label: 'Clone As…', disabled: true },
     { value: 'flat', label: 'Flat Repository' },
     { value: 'worktree', label: 'Worktree Repository' },
   ];

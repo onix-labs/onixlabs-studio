@@ -90,6 +90,29 @@ describe('Dropdown', () => {
     expect(options[1].disabled).toBe(true);
   });
 
+  it('placeholder_whenNothingIsChosen_showsItAtRestButHidesItFromTheList', async () => {
+    fixture.componentRef.setInput('placeholder', 'Pick one…');
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const element: HTMLElement = fixture.nativeElement as HTMLElement;
+    const select: HTMLSelectElement = element.querySelector('select')!;
+    expect(select.value).toBe('');
+    expect(select.options[0].hidden).toBe(true);
+    expect(element.querySelector('.dropdown__label')?.textContent).toBe('Pick one…');
+  });
+
+  it('placeholder_whenAnOptionIsChosen_showsThatOptionInstead', async () => {
+    fixture.componentRef.setInput('placeholder', 'Pick one…');
+    fixture.componentRef.setInput('value', 'code');
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const element: HTMLElement = fixture.nativeElement as HTMLElement;
+    expect(element.querySelector('select')!.value).toBe('code');
+    expect(element.querySelector('.dropdown__label')?.textContent).toBe('Code');
+  });
+
   it('group_whenOptionsAreUngrouped_rendersNoOptgroup', () => {
     const element: HTMLElement = fixture.nativeElement as HTMLElement;
     expect(element.querySelectorAll('optgroup').length).toBe(0);

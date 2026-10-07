@@ -17,6 +17,12 @@
   <!-- Options are rendered run by run rather than flat, so a run carrying a group heading can be
        wrapped in the <optgroup> that draws it. Tracked by index: runs are rebuilt wholesale from the
        option list, and two runs may legitimately share a label. -->
+  <!-- The placeholder's own option: hidden, so it never appears in the list, but present so the select
+       has something selected while nothing is chosen. Without it the browser selects the first real
+       option, and picking that option first would raise no change. -->
+  @if (placeholder(); as prompt) {
+    <option value="" hidden [selected]="!isChosen()">{{ prompt }}</option>
+  }
   @for (group of groups(); track $index) {
     @if (group.label; as groupLabel) {
       <optgroup [attr.label]="groupLabel">

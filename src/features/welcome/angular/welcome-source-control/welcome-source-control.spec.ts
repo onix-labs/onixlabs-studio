@@ -392,13 +392,23 @@ describe('WelcomeSourceControl', () => {
     const select: HTMLSelectElement = host.querySelector<HTMLSelectElement>(
       'select[aria-label="Clone as"]',
     )!;
-    // "Clone As…" is a prompt: shown first, and not itself a choice.
+    // "Clone As…" shows at rest, but is hidden from the list: it is not itself a choice.
     expect(select.value).toBe('');
     expect(
       Array.from(select.options).map(
-        (option: HTMLOptionElement): string => `${option.value}:${option.disabled}`,
+        (option: HTMLOptionElement): string => `${option.value}:${option.hidden}`,
       ),
     ).toEqual([':true', 'flat:false', 'worktree:false']);
+    expect(select.options[0].textContent?.trim()).toBe('Clone As…');
+    expect(host.querySelector('.source__layout-choice .dropdown__label')?.textContent).toBe(
+      'Clone As…',
+    );
+
+    await choose('Clone as', 'flat');
+    expect(select.value).toBe('flat');
+    expect(host.querySelector('.source__layout-choice .dropdown__label')?.textContent).toBe(
+      'Flat Repository',
+    );
   });
 
   describe('browsing', () => {

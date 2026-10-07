@@ -147,6 +147,12 @@
       color: var(--dropdown-menu-item-foreground-color--hover);
     }
 
+    // A placeholder option names the empty choice at rest but is never offered in the popup; the
+    // display above would otherwise override the hidden attribute.
+    &[hidden] {
+      display: none;
+    }
+
     // Hide the native selected-state checkmark the customizable select adds.
     &::checkmark {
       display: none;
