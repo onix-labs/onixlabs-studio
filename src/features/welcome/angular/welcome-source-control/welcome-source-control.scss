@@ -486,19 +486,6 @@
   }
 }
 
-.source__detail-url {
-  margin: 0;
-  padding: 0.4rem 0.55rem;
-  overflow: hidden;
-  font-family: var(--code-font-family, monospace);
-  font-size: 0.72rem;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  color: var(--wl-muted);
-  border: 0.0625rem solid var(--wl-surface-border);
-  border-radius: calc(0.45rem * var(--border-radius-multiplier));
-}
-
 .source__empty {
   @include empty-state;
 
