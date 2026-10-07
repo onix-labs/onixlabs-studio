@@ -1,0 +1,23 @@
+<app-agent-card class="agent__permission" tone="pending">
+  <p class="agent__permission-text">
+    Allow <strong>{{ item().permissionName }}</strong
+    >?
+    @if (item().permissionDetail) {
+      <span class="agent__permission-detail">{{ item().permissionDetail }}</span>
+    }
+  </p>
+  @if (item().permissionState === 'pending') {
+    <div class="agent__permission-actions">
+      <app-dropdown
+        [options]="rememberOptions()"
+        [value]="remember()"
+        ariaLabel="Remember this decision"
+        (valueChange)="setRemember($event)"
+      />
+      <app-button variant="solid" label="Allow" (click)="answer(true)" />
+      <app-button label="Deny" (click)="answer(false)" />
+    </div>
+  } @else {
+    <span class="agent__permission-state">{{ stateLabel() }}</span>
+  }
+</app-agent-card>

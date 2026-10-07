@@ -69,6 +69,12 @@
           },
           "configurations": {
             "production": {
+              "fileReplacements": [
+                {
+                  "replace": "src/shared/app/canvas/canvas-entry.ts",
+                  "with": "src/shared/app/canvas/canvas-entry.prod.ts"
+                }
+              ],
               "budgets": [
                 {
                   "type": "initial",

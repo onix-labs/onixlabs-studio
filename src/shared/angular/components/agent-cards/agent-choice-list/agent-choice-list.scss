@@ -1,0 +1,36 @@
+// The choices as a radio list: each row pairs the radio dial atom with a bold label and a muted
+// colon-separated description ("orders-db: the store the order service already uses").
+.agent__ask-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.agent__ask-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+}
+
+.agent__ask-option-dial {
+  flex: none;
+  margin-block-start: 0.05rem;
+}
+
+.agent__ask-option-text {
+  min-inline-size: 0;
+  font-size: 0.9rem;
+  word-break: break-word;
+}
+
+.agent__ask-option-label {
+  font-weight: 600;
+}
+
+.agent__ask-option-desc {
+  color: var(--form-muted-foreground-color);
+
+  &::before {
+    content: ': ';
+  }
+}

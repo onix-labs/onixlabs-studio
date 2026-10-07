@@ -1,0 +1,89 @@
+// The canvas chrome: a bar of controls, the theme panes beneath it, and a status line saying what the
+// last click would have done. The chrome follows the dark theme; each pane follows its own.
+:host {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  block-size: 100vh;
+  color: var(--body-foreground-color);
+  background: var(--body-background-color);
+}
+
+.canvas__bar,
+.canvas__status {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.85rem;
+  border-block-end: 0.0625rem solid var(--agent-view-border-color);
+}
+
+.canvas__status {
+  border-block-start: 0.0625rem solid var(--agent-view-border-color);
+  border-block-end: none;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+
+.canvas__title {
+  font-weight: 600;
+}
+
+.canvas__spacer {
+  flex: 1;
+}
+
+.canvas__panes {
+  overflow: auto;
+}
+
+.canvas__pane {
+  padding: 1.5rem 2rem 2.5rem;
+  color: var(--body-foreground-color);
+  background: var(--body-background-color);
+}
+
+.canvas__pane-title {
+  margin: 0 0 1.25rem;
+  font-size: 1.1rem;
+}
+
+.canvas__specimen + .canvas__specimen {
+  margin-block-start: 2rem;
+}
+
+.canvas__specimen-title {
+  margin: 0 0 0.75rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+// One row per state: its name, then the specimen at each width. Columns size to their frames, so the
+// widths are true.
+.canvas__grid {
+  display: grid;
+  grid-template-columns: 12rem repeat(var(--canvas-columns), max-content);
+  gap: 0.75rem 1.5rem;
+  align-items: start;
+}
+
+.canvas__column-title,
+.canvas__state {
+  font-size: 0.75rem;
+  color: var(--form-muted-foreground-color);
+}
+
+.canvas__state {
+  padding-block-start: 0.85rem;
+}
+
+// A frame is the width the card is given, outlined faintly so overflow past it is visible.
+.canvas__frame {
+  box-sizing: border-box;
+  outline: 0.0625rem dashed color-mix(in srgb, var(--form-muted-foreground-color) 35%, transparent);
+  outline-offset: 0.25rem;
+}
+
+.canvas__status-detail {
+  color: var(--accent-color);
+}

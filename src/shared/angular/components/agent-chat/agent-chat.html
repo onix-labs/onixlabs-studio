@@ -108,182 +108,37 @@
           </div>
         }
         @case ('input-request') {
-          <div
-            class="agent__ask"
-            [class.agent__ask--pending]="row.item!.inputState === 'pending'"
+          <app-agent-question-card
+            class="agent__card"
             [class.agent__unmeasured]="!isMeasured(row.id)"
-          >
-            <p class="agent__ask-question">{{ row.item!.inputQuestion }}</p>
-            @if (row.item!.inputState === 'pending') {
-              @if (row.item!.inputChoices?.length) {
-                <div
-                  class="agent__ask-options"
-                  role="radiogroup"
-                  [attr.aria-label]="row.item!.inputQuestion"
-                >
-                  @for (choice of row.item!.inputChoices!; track choice.label) {
-                    <!-- The label wraps the radio's projected native input, associating them at
-                         runtime; the lint rule cannot see through the component boundary. -->
-                    <!-- eslint-disable-next-line @angular-eslint/template/label-has-associated-control -->
-                    <label class="agent__ask-option">
-                      <app-radio
-                        class="agent__ask-option-dial"
-                        [name]="'ask-' + row.item!.id"
-                        [checked]="selectedChoice() === choice.label"
-                        (checkedChange)="selectChoice(choice.label)"
-                      />
-                      <span class="agent__ask-option-text">
-                        <span class="agent__ask-option-label">{{ choice.label }}</span>
-                        @if (choice.description) {
-                          <span class="agent__ask-option-desc">{{ choice.description }}</span>
-                        }
-                      </span>
-                    </label>
-                  }
-                </div>
-              }
-              <div class="agent__ask-footer">
-                <span class="agent__ask-hint">
-                  {{
-                    row.item!.inputChoices?.length
-                      ? 'Pick an option, or type your own answer below.'
-                      : 'Type your answer below.'
-                  }}
-                </span>
-                <div class="agent__ask-actions">
-                  @if (row.item!.inputChoices?.length) {
-                    <app-button
-                      variant="solid"
-                      label="Answer"
-                      [disabled]="selectedChoice() === null"
-                      (click)="confirmChoice(row.item!)"
-                    />
-                  }
-                  <app-button label="Skip" (click)="skipInput(row.item!)" />
-                </div>
-              </div>
-            } @else if (row.item!.inputState === 'answered') {
-              <span class="agent__ask-answer">{{ row.item!.inputAnswer }}</span>
-            } @else {
-              <span class="agent__ask-state">Not answered</span>
-            }
-          </div>
+            [item]="row.item!"
+            (answer)="answerInput(row.item!, $event)"
+          />
         }
         @case ('edit-decision') {
-          <div
-            class="agent__ask"
-            [class.agent__ask--pending]="row.item!.decisionState === 'pending'"
+          <app-agent-edit-decision-card
+            class="agent__card"
             [class.agent__unmeasured]="!isMeasured(row.id)"
-          >
-            <p class="agent__ask-question">
-              Apply this edit to <strong>{{ row.item!.decisionName }}</strong
-              >?
-              @if (row.item!.decisionDetail) {
-                <span class="agent__permission-detail">{{ row.item!.decisionDetail }}</span>
-              }
-            </p>
-            @if (row.item!.decisionState === 'pending') {
-              <span class="agent__ask-hint">
-                {{
-                  row.item!.decisionHasDiff
-                    ? 'Review the diff in the document well.'
-                    : 'The summary above describes the change.'
-                }}
-              </span>
-              <!-- The choices as a radio list, as the ask card draws its suggested answers, rather
-                   than three stacked buttons: full-width buttons made "No" as loud as "Yes, and
-                   automatically accept edits", and side by side the long one dwarfed the short
-                   ones. Choosing a row IS the decision — there is no confirm step, because a
-                   decision prompt with a second button to press is two prompts. -->
-              <div class="agent__ask-options" role="radiogroup" aria-label="Apply this edit?">
-                @for (choice of editDecisionChoices; track choice.value) {
-                  <!-- The label wraps the radio's projected native input, associating them at
-                       runtime; the lint rule cannot see through the component boundary. -->
-                  <!-- eslint-disable-next-line @angular-eslint/template/label-has-associated-control -->
-                  <label class="agent__ask-option">
-                    <app-radio
-                      class="agent__ask-option-dial"
-                      [name]="'decision-' + row.item!.id"
-                      [checked]="false"
-                      [ariaLabel]="choice.label"
-                      (checkedChange)="$event && decide(row.item!, choice.value)"
-                    />
-                    <span class="agent__ask-option-text">
-                      <span class="agent__ask-option-label">{{ choice.label }}</span>
-                      <span class="agent__ask-option-desc">{{ choice.description }}</span>
-                    </span>
-                  </label>
-                }
-              </div>
-            } @else {
-              <span class="agent__ask-state">{{ decisionStateLabel(row.item!) }}</span>
-            }
-          </div>
+            [item]="row.item!"
+            (decide)="decide(row.item!, $event)"
+          />
         }
         @case ('error') {
-          <!-- A failed run: the cause over the provider it went through, expandable diagnostics,
-               and a one-click retry of the failed turn. -->
-          <div class="agent__error" [class.agent__unmeasured]="!isMeasured(row.id)">
-            <p class="agent__error-text">
-              <app-icon class="agent__error-icon" [icon]="Icon.ERROR" aria-hidden="true" />
-              <span>{{ row.item!.text }}</span>
-            </p>
-            @if (row.item!.errorProvider) {
-              <span class="agent__error-provider">{{ row.item!.errorProvider }}</span>
-            }
-            @if (errorDiagnostics(row.item!); as diagnostics) {
-              <details class="agent__error-details">
-                <summary class="agent__action-summary">
-                  <span>Details</span>
-                  <app-icon class="agent__action-caret" [icon]="Icon.CARET_DOWN" />
-                </summary>
-                <pre class="agent__action-cmd agent__action-payload agent__error-diagnostics">{{
-                  diagnostics
-                }}</pre>
-              </details>
-            }
-            @if (row.item!.errorPrompt) {
-              <div class="agent__ask-actions">
-                @if (row.item!.errorRetried) {
-                  <span class="agent__ask-state">Retried</span>
-                } @else {
-                  <app-button
-                    variant="solid"
-                    label="Retry"
-                    [disabled]="isRunning()"
-                    (click)="retry(row.item!)"
-                  />
-                }
-              </div>
-            }
-          </div>
+          <app-agent-error-card
+            class="agent__card"
+            [class.agent__unmeasured]="!isMeasured(row.id)"
+            [item]="row.item!"
+            [busy]="isRunning()"
+            (retry)="retry(row.item!)"
+          />
         }
         @case ('permission') {
-          <div class="agent__permission" [class.agent__unmeasured]="!isMeasured(row.id)">
-            <p class="agent__permission-text">
-              Allow <strong>{{ row.item!.permissionName }}</strong
-              >?
-              @if (row.item!.permissionDetail) {
-                <span class="agent__permission-detail">{{ row.item!.permissionDetail }}</span>
-              }
-            </p>
-            @if (row.item!.permissionState === 'pending') {
-              <div class="agent__permission-actions">
-                <app-dropdown
-                  [options]="rememberOptions(row.item!)"
-                  [value]="rememberChoice()[row.item!.id] ?? 'once'"
-                  ariaLabel="Remember this decision"
-                  (valueChange)="setRemember(row.item!.id, $event)"
-                />
-                <app-button variant="solid" label="Allow" (click)="respond(row.item!, true)" />
-                <app-button label="Deny" (click)="respond(row.item!, false)" />
-              </div>
-            } @else {
-              <span class="agent__permission-state">
-                {{ permissionStateLabel(row.item!) }}
-              </span>
-            }
-          </div>
+          <app-agent-permission-card
+            class="agent__card"
+            [class.agent__unmeasured]="!isMeasured(row.id)"
+            [item]="row.item!"
+            (respond)="respond(row.item!, $event)"
+          />
         }
         @default {
           <ng-container

@@ -1,0 +1,38 @@
+<app-agent-card class="agent__ask" [tone]="item().inputState === 'pending' ? 'pending' : 'settled'">
+  <p class="agent__ask-question">{{ item().inputQuestion }}</p>
+  @if (item().inputState === 'pending') {
+    @if (choices().length) {
+      <app-agent-choice-list
+        [choices]="choices()"
+        [name]="'ask-' + item().id"
+        [selected]="selected()"
+        [ariaLabel]="item().inputQuestion ?? ''"
+        (choose)="select($event)"
+      />
+    }
+    <div class="agent__ask-footer">
+      <span class="agent__ask-hint">
+        {{
+          choices().length
+            ? 'Pick an option, or type your own answer below.'
+            : 'Type your answer below.'
+        }}
+      </span>
+      <div class="agent__ask-actions">
+        @if (choices().length) {
+          <app-button
+            variant="solid"
+            label="Answer"
+            [disabled]="selected() === null"
+            (click)="confirm()"
+          />
+        }
+        <app-button label="Skip" (click)="answer.emit(null)" />
+      </div>
+    </div>
+  } @else if (item().inputState === 'answered') {
+    <span class="agent__ask-answer">{{ item().inputAnswer }}</span>
+  } @else {
+    <span class="agent__ask-state">Not answered</span>
+  }
+</app-agent-card>

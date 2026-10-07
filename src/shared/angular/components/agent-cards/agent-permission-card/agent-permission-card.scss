@@ -1,0 +1,26 @@
+:host {
+  display: block;
+}
+
+.agent__permission-text {
+  margin: 0;
+}
+
+.agent__permission-detail {
+  display: block;
+  margin-block-start: 0.4rem;
+  font-size: 0.85rem;
+  word-break: break-word;
+  opacity: 0.7;
+}
+
+.agent__permission-actions {
+  display: flex;
+  flex: none;
+  gap: 0.5rem;
+}
+
+.agent__permission-state {
+  font-size: 0.85rem;
+  opacity: 0.7;
+}

@@ -1,0 +1,27 @@
+<app-agent-card class="agent__error" tone="error">
+  <p class="agent__error-text">
+    <app-icon class="agent__error-icon" [icon]="Icon.ERROR" aria-hidden="true" />
+    <span>{{ item().text }}</span>
+  </p>
+  @if (item().errorProvider) {
+    <span class="agent__error-provider">{{ item().errorProvider }}</span>
+  }
+  @if (diagnostics(); as text) {
+    <details class="agent__error-details">
+      <summary class="agent__error-summary">
+        <span>Details</span>
+        <app-icon class="agent__error-caret" [icon]="Icon.CARET_DOWN" />
+      </summary>
+      <pre class="agent__error-diagnostics">{{ text }}</pre>
+    </details>
+  }
+  @if (item().errorPrompt) {
+    <div class="agent__error-actions">
+      @if (item().errorRetried) {
+        <span class="agent__ask-state">Retried</span>
+      } @else {
+        <app-button variant="solid" label="Retry" [disabled]="busy()" (click)="retry.emit()" />
+      }
+    </div>
+  }
+</app-agent-card>

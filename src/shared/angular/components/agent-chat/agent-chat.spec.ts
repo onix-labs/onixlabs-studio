@@ -250,24 +250,8 @@ describe('AgentChat', () => {
     expect(host.querySelector('.agent__empty app-button')).not.toBeNull();
   });
 
-  it('confirmChoice_whenAChoiceIsSelected_answersWithIt', () => {
-    const item: AgentItem = {
-      id: 'item-2',
-      kind: 'input-request',
-      text: '',
-      inputId: 'q1',
-      inputQuestion: 'Which approach?',
-      inputChoices: [{ label: 'A' }, { label: 'B', description: 'the bold one' }],
-      inputState: 'pending',
-    };
-
-    component.selectChoice('B');
-    component.confirmChoice(item);
-
-    expect(inputAnswers).toEqual([{ id: 'item-2', answer: 'B' }]);
-  });
-
-  it('confirmChoice_whenNothingIsSelected_isIgnored', () => {
+  it('answerInput_passesTheCardsAnswerToTheAgent', () => {
+    // The card owns selecting and confirming (see AgentQuestionCard); the chat only forwards.
     const item: AgentItem = {
       id: 'item-2',
       kind: 'input-request',
@@ -278,25 +262,35 @@ describe('AgentChat', () => {
       inputState: 'pending',
     };
 
-    component.confirmChoice(item);
+    component.answerInput(item, 'B');
+    component.answerInput(item, null);
 
-    expect(inputAnswers).toEqual([]);
+    expect(inputAnswers).toEqual([
+      { id: 'item-2', answer: 'B' },
+      { id: 'item-2', answer: null },
+    ]);
   });
 
-  it('skipInput_whenCalled_declinesTheQuestion', () => {
-    const item: AgentItem = {
-      id: 'item-2',
-      kind: 'input-request',
-      text: '',
-      inputId: 'q1',
-      inputQuestion: 'Which approach?',
-      inputChoices: [],
-      inputState: 'pending',
-    };
+  it('questionCard_whenAChoiceIsPickedAndConfirmed_answersThroughTheAgent', () => {
+    items.set([
+      {
+        id: 'item-2',
+        kind: 'input-request',
+        text: '',
+        inputId: 'q1',
+        inputQuestion: 'Which approach?',
+        inputChoices: [{ label: 'A' }, { label: 'B', description: 'the bold one' }],
+        inputState: 'pending',
+      },
+    ]);
+    fixture.detectChanges();
 
-    component.skipInput(item);
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    host.querySelectorAll<HTMLInputElement>('.agent__ask input[type="radio"]')[1].click();
+    fixture.detectChanges();
+    host.querySelector<HTMLButtonElement>('.agent__ask app-button button')!.click();
 
-    expect(inputAnswers).toEqual([{ id: 'item-2', answer: null }]);
+    expect(inputAnswers).toEqual([{ id: 'item-2', answer: 'B' }]);
   });
 
   /**
@@ -417,7 +411,7 @@ describe('AgentChat', () => {
     expect(writes).toEqual(['the answer']);
   });
 
-  it('respond_whenARememberScopeIsPicked_carriesItOnAGrantOnly', () => {
+  it('respond_passesTheCardsAnswerAndScopeToTheAgent', () => {
     const item: AgentItem = {
       id: 'item-9',
       kind: 'permission',
@@ -425,32 +419,15 @@ describe('AgentChat', () => {
       permissionId: 'p1',
       permissionName: 'Bash',
       permissionState: 'pending',
-      permissionHasWorkspace: true,
     };
 
-    component.setRemember('item-9', 'session');
-    component.respond(item, true);
-    component.respond(item, false);
+    component.respond(item, { granted: true, remember: 'session' });
+    component.respond(item, { granted: false });
 
     expect(permissionResponses).toEqual([
       { id: 'item-9', granted: true, remember: 'session' },
-      { id: 'item-9', granted: false, remember: 'session' },
+      { id: 'item-9', granted: false },
     ]);
-  });
-
-  it('rememberOptions_whenTheRunHasNoWorkspace_omitTheWorkspaceScope', () => {
-    const values: (hasWorkspace: boolean) => string[] = (hasWorkspace: boolean): string[] =>
-      component
-        .rememberOptions({
-          id: 'item-9',
-          kind: 'permission',
-          text: '',
-          permissionHasWorkspace: hasWorkspace,
-        })
-        .map((option: { value: string }): string => option.value);
-
-    expect(values(true)).toEqual(['once', 'session', 'workspace', 'always']);
-    expect(values(false)).toEqual(['once', 'session', 'always']);
   });
 
   it('thinking_whenSettled_showsTheWordsInTheOpenWithTheirCount', () => {

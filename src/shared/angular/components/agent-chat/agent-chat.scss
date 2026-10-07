@@ -56,14 +56,12 @@
 // revisit — a too-small estimate is what makes a scrollbar shift as real heights replace guesses.
 //
 // Applied to the direct children of the scroller, which is one element per transcript row: the rail
-// rows and the off-rail ones (messages, prompts, errors). Safe against the connector rail, because
-// each row draws its own segments within its own bounds — nothing spans rows for the containment that
-// `content-visibility` implies to break.
+// rows and the off-rail ones (messages, and the prompt and error cards, whose hosts carry
+// `agent__card`). Safe against the connector rail, because each row draws its own segments within its
+// own bounds — nothing spans rows for the containment that `content-visibility` implies to break.
 .agent__messages > .agent__row,
 .agent__messages > .agent__message,
-.agent__messages > .agent__ask,
-.agent__messages > .agent__error,
-.agent__messages > .agent__permission {
+.agent__messages > .agent__card {
   content-visibility: auto;
   contain-intrinsic-size: auto 5rem;
   // ⚠️ Load-bearing. These rows are items of a column flexbox, and a flex item defaults to
@@ -448,158 +446,13 @@ $agent-node-size: 1.75rem;
   }
 }
 
-// The permission, question, and error cards share one off-rail card shell; a card awaiting the user
-// is outlined in the accent colour, a failed run in the warning colour.
-.agent__permission,
-.agent__ask,
-.agent__error {
-  display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
-  max-inline-size: 48rem;
-  margin-block-end: 0.85rem;
-  padding: 0.8rem 1rem;
-}
-
-// Shared chrome, grouped to keep the compiled style lean: the raised surfaces share one background,
-// and the outlined surfaces share one border. The accent overrides below must stay after the border
-// group so they win at equal specificity.
+// Shared chrome, grouped to keep the compiled style lean: the raised surfaces share one background.
+// The prompt and error cards draw their own (see the agent-cards components).
 .agent__avatar,
 .agent__bubble,
 .agent__node-icon,
-.agent__action-summary,
-.agent__permission,
-.agent__ask,
-.agent__error {
+.agent__action-summary {
   background: var(--agent-view-surface-color);
-}
-
-.agent__permission,
-.agent__ask,
-.agent__error {
-  border: 0.0625rem solid var(--agent-view-border-color);
-}
-
-.agent__permission,
-.agent__ask--pending {
-  border-color: var(--accent-color);
-}
-
-.agent__error {
-  border-color: var(--warning-color);
-}
-
-// A failed run's card: the cause line beside its warning glyph, the provider readout under it, and
-// the diagnostics disclosure.
-.agent__error-text {
-  display: flex;
-  gap: 0.5rem;
-  align-items: baseline;
-  margin: 0;
-}
-
-.agent__error-icon {
-  color: var(--warning-color);
-}
-
-.agent__error-provider {
-  font-family: var(--font-mono);
-  font-size: 0.72rem;
-  color: var(--form-muted-foreground-color);
-}
-
-.agent__error-details[open] .agent__action-caret {
-  transform: rotate(180deg);
-}
-
-.agent__error-diagnostics {
-  margin-block-start: 0.4rem;
-}
-
-.agent__permission-text {
-  margin: 0;
-}
-
-.agent__permission-detail {
-  display: block;
-  margin-block-start: 0.4rem;
-  font-size: 0.85rem;
-  word-break: break-word;
-  opacity: 0.7;
-}
-
-.agent__permission-actions,
-.agent__ask-actions {
-  display: flex;
-  flex: none;
-  gap: 0.5rem;
-}
-
-.agent__permission-state,
-.agent__ask-state,
-.agent__ask-hint {
-  font-size: 0.85rem;
-  opacity: 0.7;
-}
-
-.agent__ask-question {
-  margin: 0;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-// The suggested answers as a radio list: each row pairs the radio dial atom with a bold label and a
-// muted colon-separated description ("orders-db: the store the order service already uses").
-.agent__ask-options {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.agent__ask-option {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.6rem;
-}
-
-.agent__ask-option-dial {
-  flex: none;
-  margin-block-start: 0.05rem;
-}
-
-.agent__ask-option-text {
-  min-inline-size: 0;
-  font-size: 0.9rem;
-  word-break: break-word;
-}
-
-.agent__ask-option-label {
-  font-weight: 600;
-}
-
-.agent__ask-option-desc {
-  color: var(--form-muted-foreground-color);
-
-  &::before {
-    content: ': ';
-  }
-}
-
-.agent__ask-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-}
-
-.agent__ask-answer {
-  font-size: 0.9rem;
-  word-break: break-word;
-
-  &::before {
-    content: '→ ';
-    color: var(--accent-color);
-  }
 }
 
 // A sub-agent lane rides the action-chip chrome but reads as its own actor: an accent edge and
@@ -761,16 +614,10 @@ $agent-node-size: 1.75rem;
 .agent__node-icon,
 .agent__action-summary,
 .agent__action-cmd,
-.agent__permission,
-.agent__ask,
-.agent__error,
 .agent__bubble-image {
   corner-shape: var(--app-corner-shape, squircle);
 }
 
-.agent__avatar,
-.agent__permission,
-.agent__ask,
-.agent__error {
+.agent__avatar {
   border-radius: calc(0.6rem * var(--border-radius-multiplier));
 }
