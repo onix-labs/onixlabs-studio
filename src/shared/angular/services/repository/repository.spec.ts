@@ -55,13 +55,18 @@ class FakeProvider implements SourceControlProvider {
    */
   public operation: GitOperationState = { kind: null };
 
+  /**
+   * Holds the staged changes reported by {@link getStatus}.
+   */
+  public staged: readonly GitFileChange[] = [workingFile('staged.ts')];
+
   public getStatus(): Promise<ParsedStatus> {
     return Promise.resolve({
       branch: 'main',
       upstream: 'origin/main',
       ahead: 1,
       behind: 0,
-      staged: [workingFile('staged.ts')],
+      staged: [...this.staged],
       unstaged: [workingFile('unstaged.ts')],
       conflicted: [...this.conflicted],
     });
@@ -675,6 +680,38 @@ describe('Repository', () => {
       'commit:feat: selected files',
     ]);
     expect(repository.commitMessage()).toBe('');
+  });
+
+  it('commitFiles_whenAFileWasRenamed_stagesItsOldPathToo', async () => {
+    // #825: the panel lists a rename under its new path, but the commit resets the index first, so
+    // staging that path alone committed the file under both names and left the deletion behind.
+    provider.staged = [
+      { ...workingFile('b.ts'), status: 'renamed', previousPath: 'a.ts' },
+      workingFile('c.ts'),
+    ];
+    await repository.refresh();
+    repository.setCommitMessage('refactor: rename a to b');
+    provider.calls.length = 0;
+
+    const result: MutationResult = await repository.commitFiles(['b.ts', 'c.ts']);
+
+    expect(result.success).toBe(true);
+    expect(provider.calls.slice(0, 3)).toEqual([
+      'unstage:',
+      'stage:b.ts,a.ts,c.ts',
+      'commit:refactor: rename a to b',
+    ]);
+  });
+
+  it('commitAndPushFiles_whenAFileWasRenamed_stagesItsOldPathToo', async () => {
+    provider.staged = [{ ...workingFile('b.ts'), status: 'renamed', previousPath: 'a.ts' }];
+    await repository.refresh();
+    repository.setCommitMessage('refactor: rename a to b');
+    provider.calls.length = 0;
+
+    await repository.commitAndPushFiles(['b.ts']);
+
+    expect(provider.calls).toContain('stage:b.ts,a.ts');
   });
 
   it('commitFiles_withNoFiles_failsWithoutTouchingTheProvider', async () => {

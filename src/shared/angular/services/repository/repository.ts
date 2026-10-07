@@ -910,7 +910,7 @@ export class Repository {
         if (!reset.success) {
           return reset;
         }
-        const add: MutationResult = await provider.stage([...paths]);
+        const add: MutationResult = await provider.stage(this.withRenameSources(paths));
         if (!add.success) {
           return add;
         }
@@ -919,6 +919,32 @@ export class Repository {
     );
     if (result.success) {
       this.commitMessageSignal.set('');
+    }
+    return result;
+  }
+
+  /**
+   * Adds the old path of every renamed file among the given paths (#825). A rename is listed under its
+   * new path, but it is two index entries — the new path added and the old one removed — and the
+   * selective commit resets the index before staging. Staging the new path alone would commit the
+   * file under both names and leave the old one's deletion behind, unstaged.
+   * @param paths The repository-relative paths chosen to commit.
+   * @returns Returns them with each rename's old path after it, without duplicates.
+   */
+  private withRenameSources(paths: readonly string[]): readonly string[] {
+    const sources: Map<string, string> = new Map<string, string>();
+    for (const change of [...this.stagedSignal(), ...this.unstagedSignal()]) {
+      if (change.previousPath !== undefined && change.previousPath !== change.path) {
+        sources.set(change.path, change.previousPath);
+      }
+    }
+    const result: string[] = [];
+    for (const path of paths) {
+      for (const entry of [path, sources.get(path)]) {
+        if (entry !== undefined && !result.includes(entry)) {
+          result.push(entry);
+        }
+      }
     }
     return result;
   }

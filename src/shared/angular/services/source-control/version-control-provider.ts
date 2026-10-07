@@ -225,15 +225,17 @@ export class VersionControlProvider implements SourceControlProvider {
       };
     }
 
-    // Staged compares HEAD with the index; unstaged compares the index with the working tree.
+    // Staged compares HEAD with the index; unstaged compares the index with the working tree. The
+    // original side is read at the old path, as a commit's is (#826): a renamed file is not at its new
+    // path in HEAD, and reading it there showed every line of an unchanged rename as added.
     if (file.target.staged) {
       return {
-        original: await this.contents(newPath, { kind: 'head' }),
+        original: await this.contents(oldPath, { kind: 'head' }),
         modified: await this.contents(newPath, { kind: 'index' }),
       };
     }
     return {
-      original: await this.contents(newPath, { kind: 'index' }),
+      original: await this.contents(oldPath, { kind: 'index' }),
       modified: await this.contents(newPath, { kind: 'working' }),
     };
   }
