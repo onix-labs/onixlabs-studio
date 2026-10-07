@@ -24,6 +24,7 @@ import type {
   ThreadOptions,
 } from '@openai/codex-sdk';
 import { createInterface } from 'node:readline';
+import { CodexModels, readCodexModels } from './codex-models';
 import { homedir } from 'node:os';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -145,7 +146,16 @@ function ask(requestId: string, request: Request): Promise<Answer> {
  * @returns Returns true when a Codex login is present.
  */
 function hasLocalLogin(): boolean {
-  return existsSync(join(homedir(), '.codex', 'auth.json'));
+  return existsSync(join(codexHome(), 'auth.json'));
+}
+
+/**
+ * Gets the Codex CLI's home, where it keeps its login and its list of the account's models.
+ * @returns Returns `$CODEX_HOME`, or `~/.codex`.
+ */
+function codexHome(): string {
+  const configured: string | undefined = process.env['CODEX_HOME'];
+  return configured !== undefined && configured.length > 0 ? configured : join(homedir(), '.codex');
 }
 
 /**
@@ -520,10 +530,10 @@ function receive(message: HostMessage): void {
           // ⛔ Must match the manifest, or Studio refuses the harness. It has already decided to hold
           // this process open on the manifest's word.
           sessionModel: 'live-harness',
-          // None of the optional messages. The SDK takes one input per turn, so there is no `steer`
-          // (Studio queues it for the next turn instead); the claude.ai bridge behind `remote-control`
-          // is Anthropic's; and nothing here backgrounds work for `task.stop` to name.
-          answers: [],
+          // Only `discover` (#866). The SDK takes one input per turn, so there is no `steer` (Studio
+          // queues it for the next turn instead); the claude.ai bridge behind `remote-control` is
+          // Anthropic's; and nothing here backgrounds work for `task.stop` to name.
+          answers: ['discover'],
           images: false,
           efforts: ['low', 'medium', 'high', 'xhigh'],
           resumable: true,
@@ -543,6 +553,11 @@ function receive(message: HostMessage): void {
       // Cancels the turn and leaves the thread open, which is what makes this a session rather than a
       // sequence of runs: the next turn continues the same conversation.
       running?.controller.abort();
+      break;
+    case 'discover':
+      void readCodexModels(codexHome()).then((found: CodexModels): void =>
+        send({ type: 'models', discoveryId: message.discoveryId, ...found }),
+      );
       break;
     case 'steer':
     case 'remote-control':

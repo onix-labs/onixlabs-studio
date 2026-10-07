@@ -260,6 +260,155 @@ describe('AiConnections', () => {
 
       expect(discoveries).toEqual([]);
     });
+
+    it('discover_addsWhatIsNew_andRemovesNothing_markingWhatIsNoLongerOffered', async () => {
+      // ⛔ #866: a model list only ever gains. Discover used to replace the list with whatever the
+      // provider said, throwing away the user's own curation; now a model the provider stopped
+      // offering stays — marked, so the picker can disable it — until the user removes it.
+      discovered = [
+        { id: 'terra', label: 'Terra', contextWindow: 272_000 },
+        { id: 'luna', label: 'Luna', contextWindow: 272_000 },
+      ];
+      const connections: AiConnections = withClient();
+      const created: AiConnection = connections.add('openai');
+      connections.update(created.id, {
+        harnessId: 'test.harness',
+        models: [
+          { id: 'sol', label: 'Sol', contextWindow: 1_050_000 },
+          { id: 'terra', label: 'Terra', contextWindow: 272_000, pinned: true },
+        ],
+        defaultModelId: 'sol',
+      });
+
+      const outcome: { ok: boolean; detail: string } | null = await connections.discover(
+        find(connections, created.id),
+      );
+
+      const after: AiConnection = find(connections, created.id);
+      expect(after.models.map((m: AiModelInfo): string => m.id)).toEqual(['sol', 'terra', 'luna']);
+      expect(after.models[0].retired).toBe(true);
+      expect(after.models[1]).toEqual({
+        id: 'terra',
+        label: 'Terra',
+        contextWindow: 272_000,
+        pinned: true,
+      });
+      // The default is the user's: a retired one is shown as retired, not quietly swapped.
+      expect(after.defaultModelId).toBe('sol');
+      expect(outcome).toEqual({
+        ok: true,
+        detail: 'Added Luna. No longer offered: Sol — remove it here if you no longer want it.',
+      });
+    });
+
+    it('discover_neverRetiresAModelTheUserAddedByHand', async () => {
+      // A model added by hand was added because discovery does not list it.
+      discovered = [{ id: 'terra', label: 'Terra', contextWindow: 272_000 }];
+      const connections: AiConnections = withClient();
+      const created: AiConnection = connections.add('openai');
+      connections.update(created.id, { harnessId: 'test.harness' });
+      connections.addModel(find(connections, created.id), 'gpt-5.5');
+
+      await connections.discover(find(connections, created.id));
+
+      expect(find(connections, created.id).models[0]).toEqual({
+        id: 'gpt-5.5',
+        label: 'gpt-5.5',
+        contextWindow: 32_768,
+        manual: true,
+      });
+    });
+
+    it('discover_offersModelsTheUserTurnedDown', async () => {
+      // "Not now" is remembered for the notification; pressing Discover is asking.
+      discovered = [{ id: 'luna', label: 'Luna', contextWindow: 272_000 }];
+      const connections: AiConnections = withClient();
+      const created: AiConnection = connections.add('openai');
+      connections.update(created.id, { harnessId: 'test.harness' });
+      connections.dismissModels(created.id, ['luna']);
+
+      await connections.discover(find(connections, created.id));
+
+      const after: AiConnection = find(connections, created.id);
+      expect(after.models.map((m: AiModelInfo): string => m.id)).toEqual(['luna']);
+      expect(after.dismissedModelIds).toEqual([]);
+    });
+
+    it('discover_whenTheProviderCannotAnswer_changesNothing', async () => {
+      const connections: AiConnections = withClient();
+      const created: AiConnection = connections.add('openai');
+      connections.update(created.id, {
+        models: [{ id: 'sol', label: 'Sol', contextWindow: 1 }],
+      });
+      TestBed.inject(Ai).client!.discoverModels = (): Promise<AiDiscoverModelsResult> =>
+        Promise.resolve({ ok: false, models: [], added: 0, detail: 'Could not be asked.' });
+
+      const outcome: { ok: boolean; detail: string } | null = await connections.discover(
+        find(connections, created.id),
+      );
+
+      expect(outcome).toEqual({ ok: false, detail: 'Could not be asked.' });
+      expect(find(connections, created.id).models).toEqual([
+        { id: 'sol', label: 'Sol', contextWindow: 1 },
+      ]);
+    });
+
+    it('setKey_onACuratedConfiguration_onlyAdds', async () => {
+      // Re-entering a key must not undo the user's curation; only a configuration still holding
+      // its untouched seeds takes the discovered list outright.
+      discovered = [{ id: 'gpt-5', label: 'GPT-5', contextWindow: 400_000 }];
+      const connections: AiConnections = withClient();
+      const created: AiConnection = connections.add('openai');
+      connections.update(created.id, { harnessId: 'test.harness' });
+      connections.addModel(find(connections, created.id), 'my-model');
+
+      await connections.setKey(find(connections, created.id), 'sk-test');
+      await settle();
+
+      expect(find(connections, created.id).models.map((m: AiModelInfo): string => m.id)).toEqual([
+        'my-model',
+        'gpt-5',
+      ]);
+    });
+
+    it('addModels_appendsAndForgetsTheyWereTurnedDown', () => {
+      const connections: AiConnections = withClient();
+      const created: AiConnection = connections.add('openai');
+      connections.dismissModels(created.id, ['luna', 'terra']);
+
+      connections.addModels(created.id, [{ id: 'luna', label: 'Luna', contextWindow: 1 }]);
+
+      const after: AiConnection = find(connections, created.id);
+      expect(after.models.map((m: AiModelInfo): string => m.id)).toEqual(['luna']);
+      expect(after.defaultModelId).toBe('luna');
+      expect(after.dismissedModelIds).toEqual(['terra']);
+    });
+
+    /**
+     * Reads a connection by id from the given service.
+     * @param connections The service.
+     * @param id The connection id.
+     * @returns Returns the connection.
+     */
+    function find(connections: AiConnections, id: string): AiConnection {
+      const connection: AiConnection | undefined = connections
+        .connections()
+        .find((candidate: AiConnection): boolean => candidate.id === id);
+      if (connection === undefined) {
+        throw new Error(`No connection "${id}"`);
+      }
+      return connection;
+    }
+  });
+
+  it('removeModel_remembersItAsTurnedDown', () => {
+    // So a background check does not offer straight back what the user just removed (#866).
+    const created: AiConnection = service.add('openai');
+    service.addModel(current(created.id), 'a');
+
+    service.removeModel(current(created.id), 'a');
+
+    expect(current(created.id).dismissedModelIds).toEqual(['a']);
   });
 
   it('authStatus_whenUnresolved_isPending', () => {

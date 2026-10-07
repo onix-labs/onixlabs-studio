@@ -1,5 +1,5 @@
 {
-  "revision": 30,
+  "revision": 31,
   "plugins": [
     {
       "id": "pyright",
@@ -1232,13 +1232,13 @@
       "id": "onixlabs.codex-harness",
       "name": "Codex (out of process)",
       "description": "Runs OpenAI Codex through its SDK in its own process, over Studio's agent protocol.",
-      "version": "0.3.0",
+      "version": "0.4.0",
       "apiVersion": "1.12.0",
       "detail": "Holds a Codex thread open across turns, so a conversation keeps its context. Streams replies, reasoning, shell commands, file changes and web searches into the transcript. Authenticates through your local Codex login, or through an API key configured against the connection.",
       "provision": {
         "kind": "npm",
         "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.codex-harness.lock.json",
-        "sha256": "abedd036b80483258fcd2f9491cd73e459a568ed8d7fc067d3e886b0a32ffa17",
+        "sha256": "a47e21d54e4e43eb63cc189c9da2e0f10549e72b46a2e66109c38c254c1264f6",
         "executablePath": "node_modules/@onixlabs/codex-harness/main.js"
       },
       "contributes": {

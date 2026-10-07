@@ -123,6 +123,20 @@ export interface AiModelInfo {
    * offered for selection). Absent means visible.
    */
   readonly hidden?: boolean;
+
+  /**
+   * Gets a value indicating whether the provider no longer offers this model: discovery stopped
+   * listing it (#866). It stays in the list — removing it is the user's choice — but the picker
+   * disables it. Absent means offered.
+   */
+  readonly retired?: boolean;
+
+  /**
+   * Gets a value indicating whether the user added this model by hand. Such a model is never marked
+   * {@link retired}, because discovery not listing it is the reason it was added. Absent means it came
+   * from the plugin or from discovery.
+   */
+  readonly manual?: boolean;
 }
 
 /**

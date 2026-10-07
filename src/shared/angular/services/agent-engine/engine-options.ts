@@ -18,6 +18,11 @@ const ENGINE_SEPARATOR: string = '::';
 const NO_MODELS_LABEL: string = 'No models available';
 
 /**
+ * Follows a retired model's label in the picker (#866).
+ */
+const RETIRED_SUFFIX: string = '(no longer offered)';
+
+/**
  * Represents a provider/model pair recovered from an engine option value.
  */
 export interface EngineSelection {
@@ -86,11 +91,23 @@ export function engineOptions(providers: readonly AiProviderInfo[]): readonly Dr
             disabled: true,
           },
         ]
-      : provider.models.map((model: AiModelInfo): DropdownOption => ({
-          value: engineOptionValue(provider.id, model.id),
-          label: model.label,
-          group: provider.label,
-        })),
+      : provider.models.map((model: AiModelInfo): DropdownOption =>
+          // A retired model stays listed until the user removes it in settings, but cannot be
+          // picked: the provider no longer runs it (#866). Still shown, so a conversation already
+          // on it shows why, rather than a blank picker.
+          model.retired === true
+            ? {
+                value: engineOptionValue(provider.id, model.id),
+                label: `${model.label} ${RETIRED_SUFFIX}`,
+                group: provider.label,
+                disabled: true,
+              }
+            : {
+                value: engineOptionValue(provider.id, model.id),
+                label: model.label,
+                group: provider.label,
+              },
+        ),
   );
 }
 

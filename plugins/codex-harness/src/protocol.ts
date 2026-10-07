@@ -74,7 +74,8 @@ export type HostMessage =
   | { readonly type: 'turn.abort'; readonly requestId: string }
   | { readonly type: 'steer'; readonly requestId: string; readonly text: string }
   | { readonly type: 'answer'; readonly callId: string; readonly answer: Answer }
-  | { readonly type: 'remote-control'; readonly mode: 'off' | 'mirror' | 'control' };
+  | { readonly type: 'remote-control'; readonly mode: 'off' | 'mirror' | 'control' }
+  | { readonly type: 'discover'; readonly discoveryId: string };
 
 /**
  * The answer to a blocking question.
@@ -148,4 +149,23 @@ export type HarnessMessage =
       readonly requestId: string;
       readonly sessionId: string | null;
     }
-  | { readonly type: 'turn.failed'; readonly requestId: string; readonly error: string };
+  | { readonly type: 'turn.failed'; readonly requestId: string; readonly error: string }
+  | {
+      readonly type: 'models';
+      readonly discoveryId: string;
+      readonly models: readonly HarnessModel[];
+      readonly detail?: string;
+    };
+
+/**
+ * A model this harness reports the account can run.
+ */
+export interface HarnessModel {
+  readonly id: string;
+  readonly label?: string;
+
+  /**
+   * The model's context window in tokens, or undefined when the harness does not know.
+   */
+  readonly contextWindow?: number;
+}

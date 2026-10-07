@@ -341,7 +341,8 @@ export class AiConnectionEditor {
   }
 
   /**
-   * Discovers the configuration's models from its endpoint, replacing its list with the result.
+   * Discovers the configuration's models from its provider and adds any that are new; nothing is
+   * removed (#866).
    * @returns Returns a promise that resolves once discovery completes.
    */
   protected async refresh(): Promise<void> {

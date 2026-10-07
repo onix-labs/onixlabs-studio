@@ -4,6 +4,7 @@ import type {
   AiAuthStatus,
   AiConnection,
   AiDiscoverModelsResult,
+  AiModelCheck,
   AiModelInfo,
   AiProviderKind,
   AuthMethod,
@@ -13,6 +14,42 @@ import { Settings } from '@shared/angular/services/settings/settings';
 import { Ai } from '@shared/angular/services/ai/ai';
 import { Log } from '@shared/angular/services/log/log';
 import { AiProviders } from '@shared/angular/services/ai-providers/ai-providers';
+import { appendModels, ModelReview, modelNames, offeredAgain, reviewModels } from './model-review';
+
+/**
+ * Describes the outcome of a Discover the user asked for.
+ */
+export interface DiscoverOutcome {
+  /**
+   * Gets whether the provider answered.
+   */
+  readonly ok: boolean;
+
+  /**
+   * Gets what happened, worded for display.
+   */
+  readonly detail: string;
+}
+
+/**
+ * Describes a review of a connection's models.
+ */
+export interface ConnectionReview {
+  /**
+   * Gets the models the harness discovered, or null when it was not asked or could not answer.
+   */
+  readonly discovered: readonly AiModelInfo[] | null;
+
+  /**
+   * Gets the harness's own account of the discovery, empty when it was not asked.
+   */
+  readonly detail: string;
+
+  /**
+   * Gets what the review found.
+   */
+  readonly review: ModelReview;
+}
 
 /**
  * The context window applied to a manually-added model until the user edits it or discovery refines it.
@@ -152,7 +189,7 @@ export class AiConnections {
     // snapshot frozen at the plugin's release; the plugin's harness knows what the provider offers
     // today, and nothing is lost by asking — a failure leaves the seeds in place.
     if (method?.harnessId !== undefined && method.auth !== API_KEY_AUTH) {
-      void this.discoverQuietly(connection);
+      void this.seedFromDiscovery(connection);
     }
     return connection;
   }
@@ -239,8 +276,12 @@ export class AiConnections {
     }
     this.log.info('AiConnections', `API key stored for '${connection.id}'`);
     // The key is what discovery was waiting for: a configuration created through an API-key method
-    // could not be asked until now.
-    void this.discoverQuietly(connection);
+    // could not be asked until now. One still holding the plugin's seeds untouched is new, and takes
+    // the discovered list outright; any other has been curated, and only gains (#866).
+    const current: AiConnection = this.find(connection.id) ?? connection;
+    void (this.holdsOnlySeeds(current)
+      ? this.seedFromDiscovery(current)
+      : this.discoverQuietly(current));
   }
 
   /**
@@ -260,16 +301,164 @@ export class AiConnections {
   }
 
   /**
-   * Discovers a connection's models from its endpoint and, on success, replaces its persisted list with
-   * the discovered set (a refresh re-discovers what the endpoint currently offers rather than
-   * accumulating). The connection's default model is kept when the discovered set still includes it, and
-   * otherwise falls to the first discovered model. Discovery runs against a cleared model list so the
-   * main-process merge yields the discovered models alone.
+   * Discovers a connection's models at the user's request — Discover in settings — and adds what is new
+   * (#866). Append-only: nothing in the list is removed, and a model the provider no longer offers is
+   * marked retired instead. Models the user turned down from a notification are offered here too,
+   * because pressing Discover is asking.
    * @param connection The connection.
-   * @returns Returns the discovery result (its detail is suitable for display), or null when the
-   * bridge is unavailable.
+   * @returns Returns the outcome, worded for display, or null when the bridge is unavailable.
    */
-  public async discover(connection: AiConnection): Promise<AiDiscoverModelsResult | null> {
+  public async discover(connection: AiConnection): Promise<DiscoverOutcome | null> {
+    const review: ConnectionReview | null = await this.review(connection, {
+      discover: true,
+      includeDismissed: true,
+    });
+    if (review === null) {
+      return null;
+    }
+    if (review.discovered === null) {
+      return { ok: false, detail: review.detail };
+    }
+    this.applyReview(connection.id, review.review);
+    this.addModels(connection.id, review.review.added);
+    return { ok: true, detail: discoverDetail(review.review) };
+  }
+
+  /**
+   * Reviews a connection's models against what its provider offers now, without adding anything
+   * (#866). Retired flags are the caller's to apply with {@link applyReview}.
+   * @param connection The connection.
+   * @param options Whether to ask the harness (discovery starts it, so the background check rations
+   * it), and whether to offer models the user turned down.
+   * @returns Returns the review, or null when the bridge is unavailable.
+   */
+  public async review(
+    connection: AiConnection,
+    options: { readonly discover: boolean; readonly includeDismissed: boolean },
+  ): Promise<ConnectionReview | null> {
+    if (this.ai.client === undefined) {
+      return null;
+    }
+    const result: AiDiscoverModelsResult | null = options.discover
+      ? await this.discoverModels(connection)
+      : null;
+    if (result !== null && !result.ok) {
+      this.log.debug(
+        'AiConnections',
+        `Model discovery did not answer for '${connection.id}'`,
+        result.detail,
+      );
+    }
+    const discovered: readonly AiModelInfo[] | null = result?.ok === true ? result.models : null;
+    return {
+      discovered,
+      detail: result?.detail ?? '',
+      review: reviewModels(
+        connection.models,
+        { discovered, manifest: this.providers.modelsFor(connection.kind) },
+        options.includeDismissed ? [] : (connection.dismissedModelIds ?? []),
+      ),
+    };
+  }
+
+  /**
+   * Applies a review's retired flags to a connection's current list. Marking is not a change to the
+   * list — every model stays, and the user decides what to remove — so it needs no asking.
+   * @param id The connection id.
+   * @param review The review.
+   */
+  public applyReview(id: string, review: ModelReview): void {
+    const current: AiConnection | undefined = this.find(id);
+    if (current === undefined) {
+      return;
+    }
+    const retired: ReadonlyMap<string, boolean> = new Map<string, boolean>(
+      review.models.map((model: AiModelInfo): [string, boolean] => [
+        model.id,
+        model.retired === true,
+      ]),
+    );
+    let changed: boolean = false;
+    const models: AiModelInfo[] = current.models.map((model: AiModelInfo): AiModelInfo => {
+      const now: boolean | undefined = retired.get(model.id);
+      if (now === undefined || now === (model.retired === true)) {
+        return model;
+      }
+      changed = true;
+      if (now) {
+        return { ...model, retired: true };
+      }
+      return offeredAgain(model);
+    });
+    if (changed) {
+      this.update(id, { models });
+    }
+    if (review.retired.length > 0) {
+      this.log.info(
+        'AiConnections',
+        `Models no longer offered for '${id}': ${review.retired.join(', ')}`,
+      );
+    }
+  }
+
+  /**
+   * Adds models the user chose to a connection, after its own, and stops treating them as turned down.
+   * @param id The connection id.
+   * @param added The models.
+   */
+  public addModels(id: string, added: readonly AiModelInfo[]): void {
+    const current: AiConnection | undefined = this.find(id);
+    if (current === undefined || added.length === 0) {
+      return;
+    }
+    const ids: ReadonlySet<string> = new Set<string>(
+      added.map((model: AiModelInfo): string => model.id),
+    );
+    const models: readonly AiModelInfo[] = appendModels(current.models, added);
+    this.update(id, {
+      models,
+      dismissedModelIds: (current.dismissedModelIds ?? []).filter(
+        (modelId: string): boolean => !ids.has(modelId),
+      ),
+      ...(current.defaultModelId === '' ? { defaultModelId: models[0]?.id ?? '' } : {}),
+    });
+    this.log.info('AiConnections', `Models added to '${id}': ${[...ids].join(', ')}`);
+  }
+
+  /**
+   * Remembers that the user turned models down, so they are not offered again until a Discover.
+   * @param id The connection id.
+   * @param modelIds The model ids.
+   */
+  public dismissModels(id: string, modelIds: readonly string[]): void {
+    const current: AiConnection | undefined = this.find(id);
+    if (current === undefined || modelIds.length === 0) {
+      return;
+    }
+    const dismissed: Set<string> = new Set<string>(current.dismissedModelIds ?? []);
+    for (const modelId of modelIds) {
+      dismissed.add(modelId);
+    }
+    this.update(id, { dismissedModelIds: [...dismissed] });
+    this.log.info('AiConnections', `Models turned down for '${id}': ${modelIds.join(', ')}`);
+  }
+
+  /**
+   * Records a background check of a connection's models.
+   * @param id The connection id.
+   * @param check The check.
+   */
+  public markChecked(id: string, check: AiModelCheck): void {
+    this.update(id, { modelCheck: check });
+  }
+
+  /**
+   * Asks a connection's harness which models the account offers.
+   * @param connection The connection.
+   * @returns Returns the result, or null when the bridge is unavailable.
+   */
+  private async discoverModels(connection: AiConnection): Promise<AiDiscoverModelsResult | null> {
+    // Asked with an empty list, so the main process's merge yields the discovered models alone.
     const result: AiDiscoverModelsResult | undefined = await this.ai.client?.discoverModels({
       connection: { ...connection, models: [] },
       claudeExecutable: {
@@ -277,33 +466,38 @@ export class AiConnections {
         path: this.settings.aiClaudeExecutablePath(),
       },
     });
-    if (result === undefined) {
-      return null;
-    }
-    if (result.ok) {
-      const models: readonly AiModelInfo[] = result.models;
-      const defaultModelId: string = models.some(
-        (model: AiModelInfo): boolean => model.id === connection.defaultModelId,
-      )
-        ? connection.defaultModelId
-        : (models[0]?.id ?? '');
-      this.update(connection.id, { models, defaultModelId });
-      this.log.info('AiConnections', `Discovered ${models.length} models for '${connection.id}'`);
-    } else {
-      this.log.warn(
-        'AiConnections',
-        `Model discovery failed for '${connection.id}'`,
-        result.detail,
-      );
-    }
-    return result;
+    return result ?? null;
   }
 
   /**
-   * Discovers a connection's models without anything waiting on the answer: the list updates when it
-   * arrives, and a failure is logged and otherwise leaves the connection as it was. For the moments a
-   * configuration first becomes able to answer, where the seeded list would otherwise sit until the
-   * user thought to press Refresh.
+   * Replaces a new configuration's seeded models with what its harness discovers, without anything
+   * waiting on the answer. Only at creation: the seeds are the plugin's guess at release time, and the
+   * user has curated nothing yet. A failure is logged and leaves the seeds in place.
+   * @param connection The connection.
+   * @returns Resolves once discovery has settled, however it settled.
+   */
+  private async seedFromDiscovery(connection: AiConnection): Promise<void> {
+    try {
+      const result: AiDiscoverModelsResult | null = await this.discoverModels(connection);
+      if (result?.ok !== true) {
+        return;
+      }
+      const models: readonly AiModelInfo[] = result.models;
+      const current: AiConnection | undefined = this.find(connection.id);
+      const defaultModelId: string = models.some(
+        (model: AiModelInfo): boolean => model.id === current?.defaultModelId,
+      )
+        ? (current?.defaultModelId ?? '')
+        : (models[0]?.id ?? '');
+      this.update(connection.id, { models, defaultModelId });
+      this.log.info('AiConnections', `Discovered ${models.length} models for '${connection.id}'`);
+    } catch (error: unknown) {
+      this.log.warn('AiConnections', `Background discovery failed for '${connection.id}'`, error);
+    }
+  }
+
+  /**
+   * Discovers a connection's models in the background, append-only, as {@link discover} does.
    * @param connection The connection.
    * @returns Resolves once discovery has settled, however it settled.
    */
@@ -332,12 +526,16 @@ export class AiConnections {
       id: trimmed,
       label: trimmed,
       contextWindow: DEFAULT_MANUAL_CONTEXT_WINDOW,
+      // Discovery not listing it is why it was added by hand, so discovery never retires it.
+      manual: true,
     };
     this.update(connection.id, { models: [...connection.models, model] });
   }
 
   /**
-   * Removes a model from a connection, clearing the default when it was the one removed.
+   * Removes a model from a connection, clearing the default when it was the one removed. The model
+   * counts as turned down, so a background check does not offer straight back what the user just
+   * removed; Discover in settings still does (#866).
    * @param connection The connection.
    * @param modelId The model id.
    */
@@ -345,10 +543,33 @@ export class AiConnections {
     const models: AiModelInfo[] = connection.models.filter(
       (model: AiModelInfo): boolean => model.id !== modelId,
     );
+    const dismissed: readonly string[] = connection.dismissedModelIds ?? [];
     this.update(connection.id, {
       models,
+      ...(dismissed.includes(modelId) ? {} : { dismissedModelIds: [...dismissed, modelId] }),
       ...(connection.defaultModelId === modelId ? { defaultModelId: models[0]?.id ?? '' } : {}),
     });
+  }
+
+  /**
+   * Determines whether a connection still holds exactly the models its plugin seeded it with, so it
+   * has nothing of the user's to keep.
+   * @param connection The connection.
+   * @returns Returns true when the list is the untouched seed.
+   */
+  private holdsOnlySeeds(connection: AiConnection): boolean {
+    const seeds: readonly AiModelInfo[] = this.providers.modelsFor(connection.kind);
+    return (
+      connection.models.length === seeds.length &&
+      connection.models.every(
+        (model: AiModelInfo, index: number): boolean =>
+          model.id === seeds[index]?.id &&
+          model.manual !== true &&
+          model.pinned !== true &&
+          model.hidden !== true,
+      ) &&
+      (connection.dismissedModelIds ?? []).length === 0
+    );
   }
 
   /**
@@ -439,4 +660,20 @@ export class AiConnections {
         new Map<string, AiAuthStatus>(current).set(connectionId, status),
     );
   }
+}
+
+/**
+ * Words what a Discover the user asked for did to the list.
+ * @param review The review it applied.
+ * @returns Returns the sentence or two to show.
+ */
+function discoverDetail(review: ModelReview): string {
+  const added: string =
+    review.added.length === 0 ? 'No new models.' : `Added ${modelNames(review.added)}.`;
+  const retired: readonly AiModelInfo[] = review.models.filter(
+    (model: AiModelInfo): boolean => model.retired === true,
+  );
+  return retired.length === 0
+    ? added
+    : `${added} No longer offered: ${modelNames(retired)} — remove ${retired.length === 1 ? 'it' : 'them'} here if you no longer want ${retired.length === 1 ? 'it' : 'them'}.`;
 }
