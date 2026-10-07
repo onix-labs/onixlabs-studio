@@ -15,8 +15,9 @@
  * refused rather than spoken to: one that misreads a request may act on the user's account in a way
  * they did not ask for.
  */
-// 1.2 (#805) adds optional repository details — language, stars, fork, archived, starred — so a
-// repository browser can offer views on them. Optional, so a 1.1 plugin is still understood.
+// 1.2 (#805) adds optional repository details — language, stars, fork, archived, starred — and the
+// `listStarredRepositories` request, so a repository browser can offer views on them. Both are
+// additions, so a 1.1 plugin is still understood.
 export const HOSTING_PROTOCOL_VERSION: string = '1.2';
 
 /**
@@ -580,6 +581,15 @@ export interface HostingOperations {
     readonly result: readonly HostedRepository[];
   };
 
+  /**
+   * Lists every repository the signed-in user starred on a host, whoever owns it (1.2, #805). Each is
+   * marked `starred`. Gated by `listRepositories`.
+   */
+  readonly listStarredRepositories: {
+    readonly params: { readonly host: string };
+    readonly result: readonly HostedRepository[];
+  };
+
   readonly createRepository: {
     readonly params: {
       readonly host: string;
@@ -774,6 +784,7 @@ export const HOSTING_READ_OPS: readonly HostingOp[] = [
   'authStatus',
   'listAccounts',
   'listRepositories',
+  'listStarredRepositories',
   'describeRepository',
   'listPullRequests',
   'listIssues',
@@ -789,6 +800,7 @@ export const HOSTING_READ_OPS: readonly HostingOp[] = [
 export const HOSTING_OP_CAPABILITY: Readonly<Partial<Record<HostingOp, HostingCapability>>> = {
   listAccounts: 'accounts',
   listRepositories: 'listRepositories',
+  listStarredRepositories: 'listRepositories',
   createRepository: 'createRepository',
   listPullRequests: 'pullRequests',
   listIssues: 'issues',

@@ -97,6 +97,7 @@ describe('WelcomeSourceControl', () => {
   let clones: CloneRequest[];
   let cloneOutcome: CloneOutcome;
   let reopened: string[];
+  let starred: ProtocolRepository[];
 
   beforeEach(async () => {
     plugins = signal<readonly PluginSummary[]>([
@@ -109,6 +110,7 @@ describe('WelcomeSourceControl', () => {
     clones = [];
     cloneOutcome = { ok: true, path: '/Users/me/Development/repo' };
     reopened = [];
+    starred = [];
     await TestBed.configureTestingModule({
       imports: [WelcomeSourceControl],
       providers: [
@@ -131,6 +133,8 @@ describe('WelcomeSourceControl', () => {
                   listed('secret', '2026-10-05T10:00:00Z'),
                 ],
               }),
+            starredRepositories: (): Promise<ForgeResult<readonly ProtocolRepository[]>> =>
+              Promise.resolve({ ok: true, value: starred }),
           },
         },
         {
@@ -249,6 +253,32 @@ describe('WelcomeSourceControl', () => {
       'Forks',
       'Archived',
     ]);
+  });
+
+  it('starredOtherPeoplesProjects_appearInStarredOnly', async () => {
+    // Most of what a user stars is other people's: it belongs in Starred, not crowding their own list.
+    hosts = [
+      { host: 'github.com', provider: 'GitHub', status: { authenticated: true } },
+    ] as unknown as ForgeHostAccount[];
+    starred = [
+      {
+        ...listed('angular', '2026-10-06T10:00:00Z'),
+        ref: { host: 'github.com', owner: 'angular', name: 'angular' },
+        starred: true,
+      },
+      // One of the user's own, also starred: listed once.
+      { ...listed('aero', '2026-10-01T10:00:00Z'), starred: true },
+    ];
+    await render();
+
+    expect(names()).toEqual(['secret', 'aero']);
+    expect(views()).toContain('Starred');
+    Array.from(host.querySelectorAll<HTMLButtonElement>('.source__browse-item'))
+      .find((item: HTMLButtonElement): boolean => item.textContent?.includes('Starred') ?? false)
+      ?.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(names()).toEqual(['angular']);
   });
 
   it('withNoHostingPlugin_saysWhatToInstall', async () => {

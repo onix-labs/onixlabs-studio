@@ -97,6 +97,11 @@ export enum ForgeChannel {
    * Lists an account's repositories on a host (invoke, #805).
    */
   Repositories = 'forge:repositories',
+
+  /**
+   * Lists every repository the user starred on a host, whoever owns it (invoke, #805).
+   */
+  StarredRepositories = 'forge:starred-repositories',
 }
 
 /**
@@ -215,4 +220,11 @@ export interface ForgeClient {
    * @returns Returns the repositories, or the reason they could not be read.
    */
   repositories(host: string, account: string): Promise<ForgeResult<readonly HostedRepository[]>>;
+
+  /**
+   * Lists every repository the user starred on a host, whoever owns it.
+   * @param host The host, which an installed hosting plugin must serve.
+   * @returns Returns the repositories, or the reason they could not be read.
+   */
+  starredRepositories(host: string): Promise<ForgeResult<readonly HostedRepository[]>>;
 }

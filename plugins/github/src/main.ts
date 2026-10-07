@@ -161,6 +161,10 @@ async function answer(op: string, params: unknown): Promise<Outcome<unknown>> {
       return typeof host === 'string' && typeof account === 'string'
         ? github.listRepositories(host.toLowerCase(), account)
         : malformed(op);
+    case 'listStarredRepositories':
+      return typeof host === 'string'
+        ? github.listStarredRepositories(host.toLowerCase())
+        : malformed(op);
     case 'createRepository': {
       const name: unknown = field(params, 'name');
       const description: unknown = field(params, 'description');

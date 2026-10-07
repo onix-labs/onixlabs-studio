@@ -290,6 +290,15 @@ export class WelcomeSourceControl implements OnInit {
   >([]);
 
   /**
+   * Holds the repositories the user starred that are not among their own, collaborator or
+   * organisation repositories: other people's projects, offered in the Starred view only, so they do
+   * not crowd the user's own list.
+   */
+  protected readonly starredElsewhere: WritableSignal<readonly HostedRepository[]> = signal<
+    readonly HostedRepository[]
+  >([]);
+
+  /**
    * Holds whether the accounts and repositories are being read.
    */
   protected readonly loading: WritableSignal<boolean> = signal<boolean>(false);
@@ -392,7 +401,7 @@ export class WelcomeSourceControl implements OnInit {
       return this.allViews.filter((entry: BrowseEntry): boolean => {
         switch (entry.view) {
           case 'starred':
-            return carried('starred');
+            return carried('starred') || this.starredElsewhere().length > 0;
           case 'forks':
             return carried('fork');
           case 'archived':
@@ -424,8 +433,7 @@ export class WelcomeSourceControl implements OnInit {
           account.host,
         ]),
       );
-      return this.repositories()
-        .filter((repository: HostedRepository): boolean => this.inView(repository))
+      return this.inViewList(this.view())
         .filter(
           (repository: HostedRepository): boolean =>
             host === null || hostOf.get(repository.accountId) === host,
@@ -445,7 +453,7 @@ export class WelcomeSourceControl implements OnInit {
    */
   protected readonly selected: Signal<HostedRepository | null> = computed(
     (): HostedRepository | null =>
-      this.repositories().find(
+      [...this.repositories(), ...this.starredElsewhere()].find(
         (repository: HostedRepository): boolean => repository.id === this.selectedId(),
       ) ?? null,
   );
@@ -482,6 +490,7 @@ export class WelcomeSourceControl implements OnInit {
             provider: entry.provider,
           })),
       );
+      const starred: HostedRepository[] = [];
       for (const entry of hosts.filter((h: ForgeHostAccount): boolean => h.status.authenticated)) {
         const listed: ForgeResult<readonly ProtocolAccount[]> = await this.forge.accounts(
           entry.host,
@@ -489,6 +498,22 @@ export class WelcomeSourceControl implements OnInit {
         if (!listed.ok) {
           errors.push(`${entry.provider}: ${listed.error}`);
           continue;
+        }
+        // Starred repositories are filed under the user's own account on the host, so the host filter
+        // finds them; a host whose plugin cannot list them simply has none.
+        const user: ProtocolAccount | undefined =
+          listed.value.find((account: ProtocolAccount): boolean => account.kind === 'user') ??
+          listed.value[0];
+        if (user !== undefined) {
+          const stars: ForgeResult<readonly ProtocolRepository[]> =
+            await this.forge.starredRepositories(entry.host);
+          if (stars.ok) {
+            starred.push(
+              ...stars.value.map((repository: ProtocolRepository): HostedRepository =>
+                toView(repository, `${entry.host}/${user.login}`),
+              ),
+            );
+          }
         }
         for (const account of listed.value) {
           const view: HostedAccount = {
@@ -511,7 +536,14 @@ export class WelcomeSourceControl implements OnInit {
         }
       }
       this.accounts.set(accounts);
-      this.repositories.set(dedupe(repositories));
+      const own: readonly HostedRepository[] = dedupe(repositories);
+      const ids: ReadonlySet<string> = new Set<string>(
+        own.map((repository: HostedRepository): string => repository.id),
+      );
+      this.repositories.set(own);
+      this.starredElsewhere.set(
+        dedupe(starred).filter((repository: HostedRepository): boolean => !ids.has(repository.id)),
+      );
       this.loadError.set(errors.length === 0 ? null : errors.join(' · '));
       this.log.info(
         'welcome',
@@ -528,9 +560,7 @@ export class WelcomeSourceControl implements OnInit {
    * @returns Returns the count.
    */
   protected countIn(view: BrowseView): number {
-    return this.repositories().filter((repository: HostedRepository): boolean =>
-      this.matchesView(repository, view),
-    ).length;
+    return this.inViewList(view).length;
   }
 
   /**
@@ -682,12 +712,16 @@ export class WelcomeSourceControl implements OnInit {
   }
 
   /**
-   * Determines whether a repository belongs in the current browse view.
-   * @param repository The repository.
-   * @returns Returns true when it does.
+   * Gets the repositories a browse view lists: the user's own that match it, and — for Starred — the
+   * other people's projects they starred as well.
+   * @param view The view.
+   * @returns Returns them, unsorted.
    */
-  private inView(repository: HostedRepository): boolean {
-    return this.matchesView(repository, this.view());
+  private inViewList(view: BrowseView): readonly HostedRepository[] {
+    const own: readonly HostedRepository[] = this.repositories().filter(
+      (repository: HostedRepository): boolean => this.matchesView(repository, view),
+    );
+    return view === 'starred' ? [...own, ...this.starredElsewhere()] : own;
   }
 
   /**

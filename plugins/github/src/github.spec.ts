@@ -498,6 +498,37 @@ describe('GitHubHosting', () => {
       ]);
     });
 
+    it('listStarredRepositories_readsEveryStar_markedStarred', async () => {
+      const { github } = setup([
+        {
+          match: '/user/starred',
+          status: 200,
+          body: [
+            {
+              name: 'angular',
+              owner: { login: 'angular' },
+              language: 'TypeScript',
+              stargazers_count: 99000,
+              updated_at: '2026-10-05T10:00:00Z',
+            },
+          ],
+        },
+      ]);
+
+      const listed: Outcome<readonly HostedRepository[]> =
+        await github.listStarredRepositories('github.com');
+
+      expect(
+        listed.ok && listed.result.map(({ ref, starred, stars }) => ({ ref, starred, stars })),
+      ).toEqual([
+        {
+          ref: { host: 'github.com', owner: 'angular', name: 'angular' },
+          starred: true,
+          stars: 99000,
+        },
+      ]);
+    });
+
     it('createRepository_postsUnderTheRightAccount', async () => {
       const { github, http } = setup([
         {

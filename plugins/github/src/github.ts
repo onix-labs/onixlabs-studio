@@ -434,6 +434,26 @@ export class GitHubHosting {
   }
 
   /**
+   * Lists every repository the signed-in user starred, whoever owns it (#805).
+   * @param host The host.
+   * @returns Returns the repositories, each marked starred.
+   */
+  public async listStarredRepositories(
+    host: string,
+  ): Promise<Outcome<readonly HostedRepository[]>> {
+    const starred: Outcome<readonly RawRepository[]> = await this.pages<RawRepository>(
+      host,
+      '/user/starred?sort=updated',
+    );
+    return starred.ok
+      ? {
+          ok: true,
+          result: starred.result.map((repo: RawRepository) => toRepository(host, repo, true)),
+        }
+      : starred;
+  }
+
+  /**
    * Reads every page of a list endpoint, up to {@link REPOSITORY_PAGE_LIMIT}: a page shorter than
    * {@link REPOSITORY_PAGE_SIZE} is the last.
    * @param host The host.
