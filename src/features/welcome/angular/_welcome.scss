@@ -78,10 +78,8 @@
   background: rgba(var(--accent-color-rgb), 0.25);
   border-color: rgba(var(--accent-color-rgb), 1);
 
-  @if length($accented) > 0 {
-    #{$accented} {
-      color: var(--accent-color);
-    }
+  #{$accented} {
+    color: var(--accent-color);
   }
 }
 
