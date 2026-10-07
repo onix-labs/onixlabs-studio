@@ -116,6 +116,12 @@ interface RawRepository {
   readonly stargazers_count?: unknown;
   readonly fork?: unknown;
   readonly archived?: unknown;
+  readonly forks_count?: unknown;
+  readonly open_issues_count?: unknown;
+  readonly topics?: unknown;
+  readonly license?: { readonly spdx_id?: unknown; readonly name?: unknown } | null;
+  readonly homepage?: unknown;
+  readonly pushed_at?: unknown;
   readonly name?: unknown;
   readonly owner?: RawUser;
   readonly description?: unknown;
@@ -1034,7 +1040,48 @@ function toRepository(host: string, raw: RawRepository, starred?: boolean): Host
     ...(typeof raw.fork === 'boolean' ? { fork: raw.fork } : {}),
     ...(typeof raw.archived === 'boolean' ? { archived: raw.archived } : {}),
     ...(starred === undefined ? {} : { starred }),
+    ...(typeof raw.forks_count === 'number' ? { forks: raw.forks_count } : {}),
+    ...(typeof raw.open_issues_count === 'number' ? { openIssues: raw.open_issues_count } : {}),
+    ...(Array.isArray(raw.topics)
+      ? {
+          topics: raw.topics.filter(
+            (topic: unknown): topic is string => typeof topic === 'string' && topic.length > 0,
+          ),
+        }
+      : {}),
+    ...(raw.license === undefined ? {} : { license: licenseName(raw.license) }),
+    ...(raw.homepage === undefined ? {} : { homepage: nonEmpty(raw.homepage) }),
+    ...(raw.pushed_at === undefined ? {} : { pushedAt: nonEmpty(raw.pushed_at) }),
   };
+}
+
+/**
+ * Names a repository's licence: its SPDX id, or — for a licence GitHub does not recognise, which it
+ * marks `NOASSERTION` — the name it gives instead.
+ * @param license The raw licence, or null for none.
+ * @returns Returns the name, or null when there is no licence.
+ */
+function licenseName(
+  license: { readonly spdx_id?: unknown; readonly name?: unknown } | null,
+): string | null {
+  if (license === null) {
+    return null;
+  }
+  const spdx: string = asString(license.spdx_id);
+  if (spdx.length > 0 && spdx !== 'NOASSERTION') {
+    return spdx;
+  }
+  return nonEmpty(license.name);
+}
+
+/**
+ * Reads an optional string GitHub may send empty: an empty string or a non-string reads as none.
+ * @param value The raw value.
+ * @returns Returns the string, or null.
+ */
+function nonEmpty(value: unknown): string | null {
+  const text: string = asString(value);
+  return text.length === 0 ? null : text;
 }
 
 /**

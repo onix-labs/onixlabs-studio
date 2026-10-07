@@ -25,7 +25,8 @@
  * refused rather than spoken to: one that misreads a request may act on the user's account in a way
  * they did not ask for.
  */
-// 1.2 (#805) adds optional repository details — language, stars, fork, archived, starred — and the
+// 1.2 (#805) adds optional repository details — language, stars, forks, open issues, topics, licence,
+// homepage, last push, fork, archived, starred — and the
 // `listStarredRepositories` request, so a repository browser can offer views on them. Both are
 // additions, so a 1.1 plugin is still understood.
 export const HOSTING_PROTOCOL_VERSION: string = '1.2';
@@ -294,6 +295,40 @@ export interface HostedRepository {
    * Gets whether the signed-in user starred it. Absent when the plugin does not say.
    */
   readonly starred?: boolean;
+
+  /**
+   * Gets how many forks it has. Absent when the plugin does not say.
+   */
+  readonly forks?: number;
+
+  /**
+   * Gets how many issues are open on it. Absent when the plugin does not say. A host may count open
+   * pull requests among them, as GitHub does.
+   */
+  readonly openIssues?: number;
+
+  /**
+   * Gets the topics it is tagged with. Absent when the plugin does not say.
+   */
+  readonly topics?: readonly string[];
+
+  /**
+   * Gets its licence's short name (an SPDX id such as "MIT" where the host knows one), or null when it
+   * has none. Absent when the plugin does not say.
+   */
+  readonly license?: string | null;
+
+  /**
+   * Gets its homepage, or null when it has none. Absent when the plugin does not say.
+   */
+  readonly homepage?: string | null;
+
+  /**
+   * Gets when it was last pushed to, as an ISO 8601 timestamp, or null when it never was. Unlike
+   * `updatedAt`, which a host may bump for a star or a settings change, this moves only with code.
+   * Absent when the plugin does not say.
+   */
+  readonly pushedAt?: string | null;
 }
 
 /**

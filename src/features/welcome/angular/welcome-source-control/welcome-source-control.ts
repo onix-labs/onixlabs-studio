@@ -22,6 +22,7 @@ import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { Forge } from '@shared/angular/services/forge/forge';
 import { Log } from '@shared/angular/services/log/log';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
+import { Shell } from '@shared/angular/services/shell/shell';
 import { TabType } from '@shared/angular/services/tabs/tab';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
@@ -104,6 +105,11 @@ export interface HostedRepository {
   readonly cloneUrl: string;
 
   /**
+   * Gets the URL of its page in a browser, or empty when the host gave none.
+   */
+  readonly webUrl: string;
+
+  /**
    * Gets its default branch, when the host says.
    */
   readonly defaultBranch?: string;
@@ -132,6 +138,36 @@ export interface HostedRepository {
    * Gets whether the user starred it, when the host says.
    */
   readonly starred?: boolean;
+
+  /**
+   * Gets its fork count, when the host says.
+   */
+  readonly forks?: number;
+
+  /**
+   * Gets its open issue count, when the host says.
+   */
+  readonly openIssues?: number;
+
+  /**
+   * Gets its topics, when the host says.
+   */
+  readonly topics?: readonly string[];
+
+  /**
+   * Gets its licence's short name, or null for none, when the host says.
+   */
+  readonly license?: string | null;
+
+  /**
+   * Gets its homepage, or null for none, when the host says.
+   */
+  readonly homepage?: string | null;
+
+  /**
+   * Gets when it was last pushed to (epoch ms), or null for never, when the host says.
+   */
+  readonly pushedAt?: number | null;
 }
 
 /**
@@ -241,6 +277,11 @@ export class WelcomeSourceControl implements OnInit {
    * Holds the plugin client, read for which kinds of plugin are installed.
    */
   private readonly plugins: Plugins = inject(Plugins);
+
+  /**
+   * Holds the shell client, which opens a repository's page in the browser.
+   */
+  private readonly shell: Shell = inject(Shell);
 
   /**
    * Gets every browse view, in order. The ones whose data no repository carries are not offered.
@@ -712,6 +753,29 @@ export class WelcomeSourceControl implements OnInit {
   protected prepareClone(repository: HostedRepository): void {
     this.cloneUrl.set(repository.cloneUrl);
     this.cloneError.set(null);
+    // The field is in the Clone section, which may be collapsed: open it so the URL is seen to land.
+    this.openSection.set('clone');
+  }
+
+  /**
+   * Opens a repository's page, or its homepage, in the browser.
+   * @param url The URL.
+   */
+  protected openInBrowser(url: string): void {
+    void this.shell.openExternal(url);
+  }
+
+  /**
+   * Names where a repository's page opens: its host's name ("Open on GitHub"), or the browser when the
+   * account it came through is not known.
+   * @param repository The repository.
+   * @returns Returns the button's label.
+   */
+  protected openLabel(repository: HostedRepository): string {
+    const host: string | undefined = this.accounts().find(
+      (account: HostedAccount): boolean => account.id === repository.accountId,
+    )?.host;
+    return host === undefined ? 'Open in Browser' : `Open on ${host}`;
   }
 
   /**
@@ -734,20 +798,32 @@ export class WelcomeSourceControl implements OnInit {
    * @returns Returns a short relative label.
    */
   protected updated(at: number): string {
+    return `Updated ${this.ago(at)}`;
+  }
+
+  /**
+   * Formats how long ago something happened.
+   * @param at The epoch-millisecond timestamp.
+   * @returns Returns a short relative label, e.g. "today" or "3d ago".
+   */
+  protected ago(at: number): string {
     const days: number = Math.floor(Math.max(0, Date.now() - at) / (24 * 60 * 60 * 1000));
     if (days === 0) {
-      return 'Updated today';
+      return 'today';
     }
     if (days === 1) {
-      return 'Updated yesterday';
+      return 'yesterday';
     }
     if (days < 7) {
-      return `Updated ${days}d ago`;
+      return `${days}d ago`;
     }
     if (days < 30) {
-      return `Updated ${Math.floor(days / 7)}w ago`;
+      return `${Math.floor(days / 7)}w ago`;
     }
-    return `Updated ${Math.floor(days / 30)}mo ago`;
+    if (days < 365) {
+      return `${Math.floor(days / 30)}mo ago`;
+    }
+    return `${Math.floor(days / 365)}y ago`;
   }
 
   /**
@@ -812,12 +888,25 @@ export function nameFromUrl(url: string): string {
 function toView(repository: ProtocolRepository, accountId: string): HostedRepository {
   const extra: Record<string, unknown> = repository as unknown as Record<string, unknown>;
   const optional: Partial<HostedRepository> = {};
-  for (const key of ['language', 'stars', 'fork', 'archived', 'starred'] as const) {
+  for (const key of [
+    'language',
+    'stars',
+    'fork',
+    'archived',
+    'starred',
+    'forks',
+    'openIssues',
+    'topics',
+    'license',
+    'homepage',
+  ] as const) {
     if (extra[key] !== undefined) {
       (optional as Record<string, unknown>)[key] = extra[key];
     }
   }
   const updated: number = Date.parse(repository.updatedAt);
+  const pushed: string | null | undefined = repository.pushedAt;
+  const pushedAt: number = pushed === undefined || pushed === null ? NaN : Date.parse(pushed);
   return {
     id: `${repository.ref.host}/${repository.ref.owner}/${repository.ref.name}`,
     accountId,
@@ -827,8 +916,10 @@ function toView(repository: ProtocolRepository, accountId: string): HostedReposi
     updatedAt: Number.isFinite(updated) ? updated : 0,
     private: repository.private,
     cloneUrl: repository.cloneUrl,
+    webUrl: repository.webUrl,
     ...(repository.defaultBranch === null ? {} : { defaultBranch: repository.defaultBranch }),
     ...optional,
+    ...(pushed === undefined ? {} : { pushedAt: Number.isFinite(pushedAt) ? pushedAt : null }),
   };
 }
 

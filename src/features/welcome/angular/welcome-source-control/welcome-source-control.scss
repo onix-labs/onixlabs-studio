@@ -323,8 +323,16 @@
   corner-shape: var(--app-corner-shape, squircle);
 }
 
+.source__detail-head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-inline-size: 0;
+}
+
 .source__detail-name {
   margin: 0;
+  overflow-wrap: anywhere;
   font-size: 1rem;
   font-weight: 600;
   color: var(--wl-text);
@@ -333,9 +341,95 @@
 .source__detail-owner,
 .source__detail-description {
   margin: 0;
+  overflow-wrap: anywhere;
   font-size: 0.78rem;
   line-height: 1.45;
   color: var(--wl-muted);
+}
+
+// Fork, Archived, Starred: small, quiet facts about what kind of repository it is.
+.source__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.source__badge {
+  padding: 0.1rem 0.45rem;
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--wl-muted);
+  border: 0.0625rem solid var(--wl-surface-border);
+  border-radius: calc(0.35rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+}
+
+// Archived is read-only: worth noticing before cloning to work on it.
+.source__badge--warning {
+  color: var(--warning-color);
+  border-color: rgba(var(--warning-color-rgb), 0.5);
+}
+
+.source__topics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.source__topic {
+  padding: 0.1rem 0.5rem;
+  font-size: 0.7rem;
+  color: var(--accent-color);
+  background: rgba(var(--accent-color-rgb), 0.12);
+  border-radius: 999px;
+}
+
+// The homepage, as a link-styled button: it opens in the browser.
+.source__detail-link {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-inline-size: 0;
+  padding: 0;
+  font: inherit;
+  font-size: 0.78rem;
+  text-align: start;
+  color: var(--accent-color);
+  background: transparent;
+  border: none;
+  cursor: default;
+
+  i {
+    flex: none;
+  }
+
+  span {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  &:hover,
+  &:focus-visible {
+    outline: none;
+    text-decoration: underline;
+  }
+}
+
+.source__detail-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.source__open {
+  @include control-metrics;
+
+  justify-content: center;
+  margin-block-start: 0;
 }
 
 .source__detail-facts {

@@ -233,19 +233,57 @@
       @if (accounts().length > 0 && visible().length > 0) {
         @if (selected(); as repository) {
           <aside class="source__detail" aria-label="Repository details">
-            <h3 class="source__detail-name">{{ repository.name }}</h3>
-            <p class="source__detail-owner">{{ repository.fullName }}</p>
+            <header class="source__detail-head">
+              <h3 class="source__detail-name">{{ repository.name }}</h3>
+              <p class="source__detail-owner">{{ repository.fullName }}</p>
+            </header>
+
+            @if (repository.fork || repository.archived || repository.starred) {
+              <div class="source__badges">
+                @if (repository.starred) {
+                  <span class="source__badge">Starred</span>
+                }
+                @if (repository.fork) {
+                  <span class="source__badge">Fork</span>
+                }
+                @if (repository.archived) {
+                  <span class="source__badge source__badge--warning">Archived</span>
+                }
+              </div>
+            }
+
             @if (repository.description) {
               <p class="source__detail-description">{{ repository.description }}</p>
             }
+
+            @if (repository.topics?.length) {
+              <ul class="source__topics" aria-label="Topics">
+                @for (topic of repository.topics; track topic) {
+                  <li class="source__topic">{{ topic }}</li>
+                }
+              </ul>
+            }
+
             <dl class="source__detail-facts">
               @if (repository.stars !== undefined) {
                 <dt>Stars</dt>
                 <dd>{{ repository.stars }}</dd>
               }
+              @if (repository.forks !== undefined) {
+                <dt>Forks</dt>
+                <dd>{{ repository.forks }}</dd>
+              }
+              @if (repository.openIssues !== undefined) {
+                <dt>Open issues</dt>
+                <dd>{{ repository.openIssues }}</dd>
+              }
               @if (repository.language) {
                 <dt>Language</dt>
                 <dd>{{ repository.language }}</dd>
+              }
+              @if (repository.license) {
+                <dt>Licence</dt>
+                <dd>{{ repository.license }}</dd>
               }
               @if (repository.defaultBranch) {
                 <dt>Default branch</dt>
@@ -253,14 +291,43 @@
               }
               <dt>Visibility</dt>
               <dd>{{ repository.private ? 'Private' : 'Public' }}</dd>
+              @if (repository.pushedAt !== undefined) {
+                <dt>Last pushed</dt>
+                <dd>{{ repository.pushedAt === null ? 'Never' : ago(repository.pushedAt) }}</dd>
+              }
               <dt>Last updated</dt>
-              <dd>{{ updated(repository.updatedAt) }}</dd>
+              <dd>{{ ago(repository.updatedAt) }}</dd>
             </dl>
+
+            @if (repository.homepage; as homepage) {
+              <button
+                type="button"
+                class="source__detail-link"
+                [attr.aria-label]="'Open the homepage, ' + homepage"
+                (click)="openInBrowser(homepage)"
+              >
+                <app-icon [icon]="Icon.WELCOME_HOMEPAGE" />
+                <span>{{ homepage }}</span>
+              </button>
+            }
+
             <p class="source__detail-url">{{ repository.cloneUrl }}</p>
-            <button type="button" class="source__clone" (click)="prepareClone(repository)">
-              <app-icon [icon]="Icon.WELCOME_CLONE" />
-              <span>Clone Repository</span>
-            </button>
+            <div class="source__detail-actions">
+              <button type="button" class="source__clone" (click)="prepareClone(repository)">
+                <app-icon [icon]="Icon.WELCOME_CLONE" />
+                <span>Clone Repository</span>
+              </button>
+              @if (repository.webUrl) {
+                <button
+                  type="button"
+                  class="source__secondary source__open"
+                  (click)="openInBrowser(repository.webUrl)"
+                >
+                  <app-icon [icon]="Icon.WELCOME_OPEN_EXTERNAL" />
+                  <span>{{ openLabel(repository) }}</span>
+                </button>
+              }
+            </div>
           </aside>
         }
       }

@@ -14,7 +14,7 @@
     "node_modules/@onixlabs/github": {
       "version": "0.3.0",
       "resolved": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-github-v0.3.0/onixlabs-github-0.3.0.tgz",
-      "integrity": "sha512-mmyVdSkAK5Uj80yvK7bYZO3Ai21XpfhoaQ+iN67sNGP5bwzEblf4YIF6hPw8y1nXrr6VC+xQDLCUOhsrQTlvTQ=="
+      "integrity": "sha512-cwbjaDLSddqhm/N5TXAkaiWMvCqb2B+rEXTNl0x3dQSK4jpjyTCyNHdgiq4Jx1LOD8JTBI+yIALGE2pSKDI6Ig=="
     }
   }
 }

@@ -9,6 +9,7 @@ import type {
 } from '@shared/api/hosting-protocol';
 import type { PluginSummary } from '@shared/api/plugin-channels';
 import { Clone } from '@shared/angular/services/clone/clone';
+import { Shell } from '@shared/angular/services/shell/shell';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { Forge } from '@shared/angular/services/forge/forge';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
@@ -49,6 +50,7 @@ function repository(name: string, overrides: Partial<HostedRepository> = {}): Ho
     archived: false,
     starred: false,
     cloneUrl: `https://github.com/matthew/${name}.git`,
+    webUrl: `https://github.com/matthew/${name}`,
     ...overrides,
   };
 }
@@ -97,6 +99,7 @@ describe('WelcomeSourceControl', () => {
   let cloneOutcome: CloneOutcome;
   let reopened: string[];
   let starred: ProtocolRepository[];
+  let external: string[];
 
   beforeEach(async () => {
     plugins = signal<readonly PluginSummary[]>([
@@ -109,6 +112,7 @@ describe('WelcomeSourceControl', () => {
     cloneOutcome = { ok: true, path: '/Users/me/Development/repo' };
     reopened = [];
     starred = [];
+    external = [];
     await TestBed.configureTestingModule({
       imports: [WelcomeSourceControl],
       providers: [
@@ -142,6 +146,15 @@ describe('WelcomeSourceControl', () => {
             clone: (request: CloneRequest): Promise<CloneOutcome> => {
               clones.push(request);
               return Promise.resolve(cloneOutcome);
+            },
+          },
+        },
+        {
+          provide: Shell,
+          useValue: {
+            openExternal: (url: string): Promise<void> => {
+              external.push(url);
+              return Promise.resolve();
             },
           },
         },
@@ -513,11 +526,92 @@ describe('WelcomeSourceControl', () => {
       await fixture.whenStable();
 
       expect(host.querySelector('.source__detail-name')?.textContent).toContain('aero');
+      // With the Clone section collapsed, cloning from the details opens it, so the URL is seen to land.
+      await expand('Connected Accounts');
       host.querySelector<HTMLButtonElement>('.source__detail .source__clone')!.click();
       await fixture.whenStable();
       expect(
         host.querySelector<HTMLInputElement>('input[aria-label="Repository URL"]')!.value,
       ).toBe('https://github.com/matthew/aero.git');
+    });
+
+    it('details_showWhatTheHostSaid_andLeaveOutWhatItDidNot', async () => {
+      const now: number = Date.now();
+      internals.repositories.set([
+        repository('aero', {
+          starred: true,
+          fork: true,
+          archived: true,
+          topics: ['ide', 'electron'],
+          forks: 4,
+          openIssues: 9,
+          license: 'MIT',
+          homepage: 'https://aero.dev',
+          pushedAt: now - 2 * 24 * 60 * 60 * 1000,
+          updatedAt: now,
+        }),
+        repository('plain'),
+      ]);
+      await fixture.whenStable();
+      const facts: () => Record<string, string> = (): Record<string, string> =>
+        Object.fromEntries(
+          Array.from(host.querySelectorAll<HTMLElement>('.source__detail-facts dt')).map(
+            (term: HTMLElement): [string, string] => [
+              term.textContent.trim(),
+              term.nextElementSibling?.textContent?.trim() ?? '',
+            ],
+          ),
+        );
+      const select: (name: string) => Promise<void> = async (name: string): Promise<void> => {
+        Array.from(host.querySelectorAll<HTMLButtonElement>('.welcome__repository'))
+          .find(
+            (row: HTMLButtonElement): boolean =>
+              row.querySelector('.welcome__repository-name')?.textContent?.trim() === name,
+          )!
+          .click();
+        await fixture.whenStable();
+      };
+
+      await select('aero');
+      expect(
+        Array.from(host.querySelectorAll('.source__badge')).map((badge: Element): string =>
+          badge.textContent.trim(),
+        ),
+      ).toEqual(['Starred', 'Fork', 'Archived']);
+      expect(
+        Array.from(host.querySelectorAll('.source__topic')).map((topic: Element): string =>
+          topic.textContent.trim(),
+        ),
+      ).toEqual(['ide', 'electron']);
+      expect(facts()).toEqual({
+        Stars: '3',
+        Forks: '4',
+        'Open issues': '9',
+        Language: 'C#',
+        Licence: 'MIT',
+        Visibility: 'Public',
+        'Last pushed': '2d ago',
+        'Last updated': 'today',
+      });
+
+      await select('plain');
+      expect(host.querySelector('.source__badges')).toBeNull();
+      expect(host.querySelector('.source__topics')).toBeNull();
+      expect(host.querySelector('.source__detail-link')).toBeNull();
+      expect(Object.keys(facts())).toEqual(['Stars', 'Language', 'Visibility', 'Last updated']);
+    });
+
+    it('details_openTheRepositoryAndItsHomepage_inTheBrowser', async () => {
+      internals.repositories.set([repository('aero', { homepage: 'https://aero.dev' })]);
+      await fixture.whenStable();
+      host.querySelector<HTMLButtonElement>('.welcome__repository')!.click();
+      await fixture.whenStable();
+
+      const open: HTMLButtonElement = host.querySelector<HTMLButtonElement>('.source__open')!;
+      expect(open.textContent.trim()).toBe('Open on GitHub');
+      open.click();
+      host.querySelector<HTMLButtonElement>('.source__detail-link')!.click();
+      expect(external).toEqual(['https://github.com/matthew/aero', 'https://aero.dev']);
     });
   });
 });

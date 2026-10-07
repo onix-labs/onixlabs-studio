@@ -498,6 +498,103 @@ describe('GitHubHosting', () => {
       ]);
     });
 
+    it('listRepositories_carriesTheFullerDetails_readingGitHubsEmptyValuesAsNone', async () => {
+      const { github } = setup([
+        {
+          match: '/orgs/onix-labs/repos',
+          status: 200,
+          body: [
+            {
+              name: 'studio',
+              owner: { login: 'Onix-Labs' },
+              updated_at: '2026-10-05T10:00:00Z',
+              forks_count: 3,
+              open_issues_count: 7,
+              topics: ['ide', 'electron', 42],
+              license: { spdx_id: 'MIT', name: 'MIT License' },
+              homepage: 'https://onixlabs.io',
+              pushed_at: '2026-10-04T09:00:00Z',
+            },
+            {
+              name: 'custom',
+              owner: { login: 'Onix-Labs' },
+              updated_at: '2026-10-05T10:00:00Z',
+              license: { spdx_id: 'NOASSERTION', name: 'Other' },
+              homepage: '',
+              pushed_at: null,
+            },
+            {
+              name: 'bare',
+              owner: { login: 'Onix-Labs' },
+              updated_at: '2026-10-05T10:00:00Z',
+              license: null,
+            },
+          ],
+        },
+        { match: '/user/starred', status: 200, body: [] },
+        { match: '/user', status: 200, body: { login: 'matthew' } },
+      ]);
+
+      const listed: Outcome<readonly HostedRepository[]> = await github.listRepositories(
+        'github.com',
+        'onix-labs',
+      );
+
+      expect(
+        listed.ok &&
+          listed.result.map(
+            ({
+              ref,
+              forks,
+              openIssues,
+              topics,
+              license,
+              homepage,
+              pushedAt,
+            }: HostedRepository) => ({
+              name: ref.name,
+              forks,
+              openIssues,
+              topics,
+              license,
+              homepage,
+              pushedAt,
+            }),
+          ),
+      ).toEqual([
+        {
+          name: 'studio',
+          forks: 3,
+          openIssues: 7,
+          topics: ['ide', 'electron'],
+          license: 'MIT',
+          homepage: 'https://onixlabs.io',
+          pushedAt: '2026-10-04T09:00:00Z',
+        },
+        // An unrecognised licence reads by its name; an empty homepage and an unpushed repository read
+        // as none.
+        {
+          name: 'custom',
+          forks: undefined,
+          openIssues: undefined,
+          topics: undefined,
+          license: 'Other',
+          homepage: null,
+          pushedAt: null,
+        },
+        // What GitHub did not send is left out, not invented.
+        {
+          name: 'bare',
+          forks: undefined,
+          openIssues: undefined,
+          topics: undefined,
+          license: null,
+          homepage: undefined,
+          pushedAt: undefined,
+        },
+      ]);
+    });
+
     it('listStarredRepositories_readsEveryStar_markedStarred', async () => {
       const { github } = setup([
         {
