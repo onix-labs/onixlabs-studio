@@ -92,7 +92,6 @@ describe('WelcomeSourceControl', () => {
   let openedCount: number;
   let plugins: WritableSignal<readonly PluginSummary[]>;
   let hosts: ForgeHostAccount[];
-  let parent: string | null;
   let picked: string | null;
   let clones: CloneRequest[];
   let cloneOutcome: CloneOutcome;
@@ -105,8 +104,7 @@ describe('WelcomeSourceControl', () => {
       installed('hosting'),
     ]);
     hosts = [];
-    parent = '/Users/me/Development';
-    picked = null;
+    picked = '/Users/me/Development';
     clones = [];
     cloneOutcome = { ok: true, path: '/Users/me/Development/repo' };
     reopened = [];
@@ -140,7 +138,6 @@ describe('WelcomeSourceControl', () => {
         {
           provide: Clone,
           useValue: {
-            parent: (): Promise<string | null> => Promise.resolve(parent),
             pickParent: (): Promise<string | null> => Promise.resolve(picked),
             clone: (request: CloneRequest): Promise<CloneOutcome> => {
               clones.push(request);
@@ -191,6 +188,20 @@ describe('WelcomeSourceControl', () => {
     )!;
     input.value = value;
     input.dispatchEvent(new Event('input'));
+    await fixture.whenStable();
+  }
+
+  /**
+   * Picks an option in one of the section's dropdowns.
+   * @param label The dropdown's accessible label.
+   * @param value The option's value.
+   */
+  async function choose(label: string, value: string): Promise<void> {
+    const select: HTMLSelectElement = host.querySelector<HTMLSelectElement>(
+      `select[aria-label="${label}"]`,
+    )!;
+    select.value = value;
+    select.dispatchEvent(new Event('change'));
     await fixture.whenStable();
   }
 
@@ -324,7 +335,7 @@ describe('WelcomeSourceControl', () => {
     expect(host.querySelector<HTMLInputElement>('input[aria-label="Folder name"]')!.value).toBe(
       'repo',
     );
-    host.querySelectorAll<HTMLButtonElement>('.source__layout-option')[1].click();
+    await choose('Clone as', 'worktree');
     await type('Branch', 'develop');
 
     host.querySelector<HTMLButtonElement>('.source__clone')!.click();
@@ -342,8 +353,10 @@ describe('WelcomeSourceControl', () => {
     expect(openedCount).toBe(1);
   });
 
-  it('clone_asksWhereFirst_whenNoFolderIsChosen_andStopsIfCancelled', async () => {
-    parent = null;
+  it('clone_asksWhereEveryTime_andCancellingClonesNothing', async () => {
+    // The folder dialog opens on every clone (on the folder used last), and is the user's last chance
+    // to back out.
+    picked = null;
     await render();
     await type('Repository URL', 'https://github.com/owner/repo.git');
 
@@ -354,11 +367,8 @@ describe('WelcomeSourceControl', () => {
     picked = '/Users/me/Code';
     host.querySelector<HTMLButtonElement>('.source__clone')!.click();
     await fixture.whenStable();
-    fixture.detectChanges();
     expect(clones.length).toBe(1);
-    expect(host.querySelector('.source__destination-path')?.textContent).toContain(
-      '/Users/me/Code',
-    );
+    expect(reopened).toEqual(['/Users/me/Development/repo']);
   });
 
   it('clone_saysWhyItFailed', async () => {
@@ -374,22 +384,15 @@ describe('WelcomeSourceControl', () => {
     expect(openedCount).toBe(0);
   });
 
-  it('layout_isChosenBeforeCloning', async () => {
+  it('layout_isChosenBeforeCloning_fromADropdown', async () => {
     await render();
-    const options: HTMLButtonElement[] = Array.from(
-      host.querySelectorAll<HTMLButtonElement>('.source__layout-option'),
-    );
+    const select: HTMLSelectElement = host.querySelector<HTMLSelectElement>(
+      'select[aria-label="Clone as"]',
+    )!;
+    expect(select.value).toBe('flat');
     expect(
-      options.map((option: HTMLButtonElement): string | null =>
-        option.getAttribute('aria-checked'),
-      ),
-    ).toEqual(['true', 'false']);
-
-    options[1].click();
-    await fixture.whenStable();
-
-    expect(options[1].getAttribute('aria-checked')).toBe('true');
-    expect(options[0].getAttribute('aria-checked')).toBe('false');
+      Array.from(select.options).map((option: HTMLOptionElement): string => option.value),
+    ).toEqual(['flat', 'worktree']);
   });
 
   describe('browsing', () => {

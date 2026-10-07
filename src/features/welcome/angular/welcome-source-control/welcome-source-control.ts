@@ -26,6 +26,7 @@ import { TabType } from '@shared/angular/services/tabs/tab';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigger';
+import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 
 export type { CloneLayout } from '@shared/api/clone-channels';
 
@@ -196,7 +197,7 @@ const FOLDER_NAME: RegExp = /^(?!\.{1,2}$)[\w.-]+$/;
  */
 @Component({
   selector: 'app-welcome-source-control',
-  imports: [AppIcon, TooltipTrigger],
+  imports: [AppIcon, TooltipTrigger, Dropdown],
   templateUrl: './welcome-source-control.html',
   styleUrl: './welcome-source-control.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -324,16 +325,19 @@ export class WelcomeSourceControl implements OnInit {
   protected readonly branch: WritableSignal<string> = signal<string>('');
 
   /**
-   * Holds the folder clones go into, or null until one is chosen.
-   */
-  protected readonly parent: WritableSignal<string | null> = signal<string | null>(null);
-
-  /**
    * Holds how the repository will be laid out once cloned. Studio has no default of its own: it is
    * the user's choice, made before cloning, so the field starts on the flat working copy everyone
    * already knows and remembers nothing.
    */
   protected readonly layout: WritableSignal<CloneLayout> = signal<CloneLayout>('flat');
+
+  /**
+   * Gets the layout choices.
+   */
+  protected readonly layoutOptions: readonly DropdownOption[] = [
+    { value: 'flat', label: 'Flat repository — one working copy' },
+    { value: 'worktree', label: 'Worktree — several branches at once' },
+  ];
 
   /**
    * Holds whether a clone is running.
@@ -459,10 +463,9 @@ export class WelcomeSourceControl implements OnInit {
   );
 
   /**
-   * Reads the clone folder and the repositories when the section is first built.
+   * Reads the repositories when the section is first built.
    */
   public ngOnInit(): void {
-    void this.cloner.parent().then((parent: string | null): void => this.parent.set(parent));
     void this.refresh();
   }
 
@@ -610,6 +613,14 @@ export class WelcomeSourceControl implements OnInit {
   }
 
   /**
+   * Records the layout picked.
+   * @param value The picked value.
+   */
+  protected setLayout(value: string): void {
+    this.layout.set(value === 'worktree' ? 'worktree' : 'flat');
+  }
+
+  /**
    * Updates the repository search from the input event.
    * @param event The input event carrying the current value.
    */
@@ -622,23 +633,16 @@ export class WelcomeSourceControl implements OnInit {
    * @returns Resolves with the chosen folder, or null when the dialog was cancelled.
    */
   protected async chooseParent(): Promise<string | null> {
-    const chosen: string | null = await this.cloner.pickParent();
-    if (chosen !== null) {
-      this.parent.set(chosen);
-    }
-    return chosen;
+    return this.cloner.pickParent();
   }
 
   /**
-   * Clones the URL in the field into the chosen folder, asking for the folder first when none is
-   * chosen, then opens the result and steps aside.
+   * Asks where the clone goes — the folder dialog opens on the folder used last — then clones the URL
+   * in the field into it, opens the result and steps aside. Cancelling the dialog clones nothing.
    * @returns Resolves once the clone has settled, however it settled.
    */
   protected async clone(): Promise<void> {
-    if (!this.cloneReady()) {
-      return;
-    }
-    if (this.parent() === null && (await this.chooseParent()) === null) {
+    if (!this.cloneReady() || (await this.chooseParent()) === null) {
       return;
     }
     this.cloning.set(true);

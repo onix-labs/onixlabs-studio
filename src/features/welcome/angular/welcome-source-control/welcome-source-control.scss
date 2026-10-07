@@ -45,45 +45,6 @@
   @include field;
 }
 
-// Where the clone goes: "Clone into <folder>/" with a link to change it, then the folder name and
-// branch side by side.
-.source__destination {
-  display: flex;
-  align-items: baseline;
-  gap: 0.4rem;
-  min-inline-size: 0;
-  font-size: 0.75rem;
-  color: var(--wl-muted);
-}
-
-.source__destination-label {
-  flex: none;
-}
-
-.source__destination-path {
-  min-inline-size: 0;
-  overflow: hidden;
-  color: var(--wl-text);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  direction: rtl;
-  text-align: start;
-}
-
-.source__link {
-  flex: none;
-  padding: 0;
-  font: inherit;
-  color: var(--accent-color);
-  background: none;
-  border: none;
-  cursor: default;
-
-  &:hover {
-    text-decoration: underline;
-  }
-}
-
 .source__row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -106,45 +67,6 @@
   to {
     transform: rotate(1turn);
   }
-}
-
-.source__example {
-  margin: -0.15rem 0 0;
-  font-size: 0.72rem;
-  color: var(--wl-faint);
-}
-
-// The flat-or-worktree choice: two cards side by side, the chosen one accented.
-.source__layout {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.4rem;
-}
-
-.source__layout-option {
-  @include card;
-  @include card-hover;
-
-  display: flex;
-  flex-direction: column;
-  gap: 0.1rem;
-  padding: 0.4rem 0.6rem;
-}
-
-.source__layout-option--active {
-  background: rgba(var(--accent-color-rgb), 0.14);
-  border-color: rgba(var(--accent-color-rgb), 0.7);
-}
-
-.source__layout-title {
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--wl-text);
-}
-
-.source__layout-hint {
-  font-size: 0.7rem;
-  color: var(--wl-faint);
 }
 
 .source__clone {

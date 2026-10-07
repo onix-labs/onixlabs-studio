@@ -14,46 +14,19 @@
           (keydown.enter)="clone()"
         />
       </div>
-      <p class="source__example">e.g. https://github.com/owner/repo.git</p>
-
       <!-- The layout is chosen BEFORE cloning: a worktree is laid out as a container from the start,
            so nothing has to be moved later. -->
-      <div class="source__layout" role="radiogroup" aria-label="Clone as">
-        <button
-          type="button"
-          class="source__layout-option"
-          role="radio"
-          [class.source__layout-option--active]="layout() === 'flat'"
-          [attr.aria-checked]="layout() === 'flat'"
-          (click)="layout.set('flat')"
-        >
-          <span class="source__layout-title">Flat repository</span>
-          <span class="source__layout-hint">One working copy</span>
-        </button>
-        <button
-          type="button"
-          class="source__layout-option"
-          role="radio"
-          [class.source__layout-option--active]="layout() === 'worktree'"
-          [attr.aria-checked]="layout() === 'worktree'"
-          (click)="layout.set('worktree')"
-        >
-          <span class="source__layout-title">Worktree</span>
-          <span class="source__layout-hint">Several branches at once</span>
-        </button>
-      </div>
+      <app-dropdown
+        class="source__layout-choice"
+        [options]="layoutOptions"
+        [value]="layout()"
+        [fullWidth]="true"
+        ariaLabel="Clone as"
+        (valueChange)="setLayout($event)"
+      />
 
-      <!-- Where the clone goes: a folder chosen in Studio's own dialog and remembered, and the name of
-           the folder to create in it (taken from the URL until it is typed). -->
-      <div class="source__destination">
-        <span class="source__destination-label">Clone into</span>
-        <span class="source__destination-path" [attr.title]="parent()">
-          {{ parent() ?? 'A folder you choose' }}{{ parent() === null ? '' : '/' }}
-        </span>
-        <button type="button" class="source__link" (click)="chooseParent()">
-          {{ parent() === null ? 'Choose…' : 'Change…' }}
-        </button>
-      </div>
+      <!-- The name of the folder the clone creates, taken from the URL until it is typed. Where that
+           folder goes is chosen in the folder dialog Clone opens. -->
       <div class="source__row">
         <div class="source__field source__field--compact">
           <input
