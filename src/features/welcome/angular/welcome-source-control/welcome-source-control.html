@@ -201,7 +201,9 @@
             <p class="source__empty-hint">Try a different filter or search.</p>
           </div>
         } @else {
-          <ul class="source__list">
+          <!-- The scrollbar floats over the rows rather than taking a channel beside them, so the list's
+               right edge lines up with the controls above it. -->
+          <ul class="source__list" appOverlayScrollbar>
             @for (repository of visible(); track repository.id) {
               <li>
                 <button
@@ -232,7 +234,7 @@
       </div>
       @if (accounts().length > 0 && visible().length > 0) {
         @if (selected(); as repository) {
-          <aside class="source__detail" aria-label="Repository details">
+          <aside class="source__detail" aria-label="Repository details" appOverlayScrollbar>
             <header class="source__detail-head">
               <div class="source__detail-title">
                 <h3 class="source__detail-name">{{ repository.name }}</h3>
