@@ -1369,16 +1369,6 @@ export class Icon {
   public static readonly WELCOME_REPOSITORY_PRIVATE: Icon = new Icon('ph-light ph-lock-simple');
 
   /**
-   * Gets the light-weight icon of the repository browser's All Repositories view.
-   */
-  public static readonly WELCOME_REPOSITORIES: Icon = new Icon('ph-light ph-stack');
-
-  /**
-   * Gets the light-weight icon of the repository browser's Starred view.
-   */
-  public static readonly WELCOME_STARRED: Icon = new Icon('ph-light ph-star');
-
-  /**
    * Gets the regular-weight outline star on a recent item that is not starred.
    */
   public static readonly WELCOME_STAR: Icon = new Icon('ph ph-star');
@@ -1387,21 +1377,6 @@ export class Icon {
    * Gets the filled star on a starred recent item.
    */
   public static readonly WELCOME_STAR_FILLED: Icon = new Icon('ph-fill ph-star');
-
-  /**
-   * Gets the light-weight icon of the repository browser's Recent view.
-   */
-  public static readonly WELCOME_RECENT: Icon = new Icon('ph-light ph-clock');
-
-  /**
-   * Gets the light-weight icon of the repository browser's Forks view.
-   */
-  public static readonly WELCOME_FORKS: Icon = new Icon('ph-light ph-git-fork');
-
-  /**
-   * Gets the light-weight icon of the repository browser's Archived view.
-   */
-  public static readonly WELCOME_ARCHIVED: Icon = new Icon('ph-light ph-archive');
 
   /**
    * Gets the light-weight refresh glyph of the repository browser.

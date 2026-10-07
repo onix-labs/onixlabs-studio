@@ -230,13 +230,22 @@ describe('WelcomeSourceControl', () => {
   }
 
   /**
-   * Gets the labels of the browse views offered.
+   * Gets the labels of the repository filter's choices, without their counts.
+   * @param group The heading of the group to read, or null for the ungrouped views.
    * @returns Returns them, in order.
    */
-  function views(): string[] {
-    return Array.from(host.querySelectorAll<HTMLElement>('.source__browse-label')).map(
-      (label: HTMLElement): string => label.textContent.trim(),
-    );
+  function filters(group: string | null = null): string[] {
+    const select: HTMLSelectElement = host.querySelector<HTMLSelectElement>(
+      'select[aria-label="Show repositories"]',
+    )!;
+    return Array.from(select.querySelectorAll<HTMLOptionElement>('option'))
+      .filter(
+        (option: HTMLOptionElement): boolean =>
+          (option.closest('optgroup')?.getAttribute('label') ?? null) === group,
+      )
+      .map((option: HTMLOptionElement): string =>
+        option.textContent.trim().replace(/ \(\d+\)$/, ''),
+      );
   }
 
   it('listsTheRepositoriesOfEverySignedInHost_andOffersToSignInToTheRest', async () => {
@@ -265,14 +274,15 @@ describe('WelcomeSourceControl', () => {
       { host: 'github.com', provider: 'GitHub', status: { authenticated: true } },
     ] as unknown as ForgeHostAccount[];
     await render();
-    await expand('Browse');
 
-    expect(views()).toEqual(['All Repositories', 'Recent', 'Private']);
+    expect(filters()).toEqual(['All Repositories', 'Recent', 'Private']);
+    // One host has nothing to tell apart.
+    expect(filters('Hosts')).toEqual([]);
 
     internals.repositories.set([repository('aero', { starred: true })]);
     await fixture.whenStable();
     fixture.detectChanges();
-    expect(views()).toEqual([
+    expect(filters()).toEqual([
       'All Repositories',
       'Starred',
       'Recent',
@@ -297,15 +307,10 @@ describe('WelcomeSourceControl', () => {
       { ...listed('aero', '2026-10-01T10:00:00Z'), starred: true },
     ];
     await render();
-    await expand('Browse');
 
     expect(names()).toEqual(['secret', 'aero']);
-    expect(views()).toContain('Starred');
-    Array.from(host.querySelectorAll<HTMLButtonElement>('.source__browse-item'))
-      .find((item: HTMLButtonElement): boolean => item.textContent?.includes('Starred') ?? false)
-      ?.click();
-    await fixture.whenStable();
-    fixture.detectChanges();
+    expect(filters()).toContain('Starred');
+    await choose('Show repositories', 'view:starred');
     expect(names()).toEqual(['angular']);
   });
 
@@ -413,14 +418,14 @@ describe('WelcomeSourceControl', () => {
 
     expect(open()).toEqual(['Clone a Repository']);
     expect(host.querySelector('input[aria-label="Repository URL"]')).not.toBeNull();
-    expect(host.querySelector('.source__browse')).toBeNull();
+    expect(host.querySelector('.source__connect')).toBeNull();
 
-    await expand('Browse');
-    expect(open()).toEqual(['Browse']);
+    await expand('Connected Accounts');
+    expect(open()).toEqual(['Connected Accounts']);
     expect(host.querySelector('input[aria-label="Repository URL"]')).toBeNull();
-    expect(host.querySelector('.source__browse')).not.toBeNull();
+    expect(host.querySelector('.source__connect')).not.toBeNull();
 
-    await expand('Browse');
+    await expand('Connected Accounts');
     expect(open()).toEqual([]);
   });
 
@@ -474,37 +479,31 @@ describe('WelcomeSourceControl', () => {
     });
 
     it('browseViews_filterTheList', async () => {
-      await expand('Browse');
-      const view: (label: string) => Promise<void> = async (label: string): Promise<void> => {
-        Array.from(host.querySelectorAll<HTMLButtonElement>('.source__browse-item'))
-          .find(
-            (item: HTMLButtonElement): boolean =>
-              item.querySelector('.source__browse-label')?.textContent?.trim() === label,
-          )
-          ?.click();
-        await fixture.whenStable();
-      };
-
-      await view('Starred');
+      await choose('Show repositories', 'view:starred');
       expect(names()).toEqual(['aero']);
-      await view('Private');
+      await choose('Show repositories', 'view:private');
       expect(names()).toEqual(['stride']);
-      await view('Forks');
+      await choose('Show repositories', 'view:forks');
       expect(names()).toEqual(['infra']);
-      await view('Archived');
+      await choose('Show repositories', 'view:archived');
       expect(names()).toEqual(['old']);
-      await view('Recent');
+      await choose('Show repositories', 'view:recent');
       expect(names()).toEqual(['aero', 'stride', 'infra']);
     });
 
-    it('hostPills_andSearch_filterTheList', async () => {
-      Array.from(host.querySelectorAll<HTMLButtonElement>('.source__host'))
-        .find((pill: HTMLButtonElement): boolean => pill.textContent?.includes('GitLab') ?? false)
-        ?.click();
-      await fixture.whenStable();
+    it('theFilter_offersHostsWhenThereIsMoreThanOne_withCounts', () => {
+      expect(filters('Hosts')).toEqual(['GitHub', 'GitLab']);
+      const select: HTMLSelectElement = host.querySelector<HTMLSelectElement>(
+        'select[aria-label="Show repositories"]',
+      )!;
+      expect(select.options[0].textContent.trim()).toBe('All Repositories (4)');
+    });
+
+    it('hosts_andSearch_filterTheList', async () => {
+      await choose('Show repositories', 'host:GitLab');
       expect(names()).toEqual(['infra']);
 
-      host.querySelector<HTMLButtonElement>('.source__host')!.click();
+      await choose('Show repositories', 'view:all');
       await type('Search repositories', 'STRIDE');
       expect(names()).toEqual(['stride']);
     });

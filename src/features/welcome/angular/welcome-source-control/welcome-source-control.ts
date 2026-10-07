@@ -32,7 +32,7 @@ export type { CloneLayout } from '@shared/api/clone-channels';
 /**
  * A collapsible section of the sidebar.
  */
-export type SourceSection = 'clone' | 'accounts' | 'browse';
+export type SourceSection = 'clone' | 'accounts';
 
 /**
  * An account the user acts as on a code host — themselves or an organisation — listed through the
@@ -155,7 +155,7 @@ interface SignedOutHost {
 type BrowseView = 'all' | 'starred' | 'recent' | 'private' | 'forks' | 'archived';
 
 /**
- * Describes a browse view on the left.
+ * Describes a browse view in the repository filter.
  */
 interface BrowseEntry {
   /**
@@ -167,11 +167,6 @@ interface BrowseEntry {
    * Gets its label.
    */
   readonly label: string;
-
-  /**
-   * Gets its icon.
-   */
-  readonly icon: Icon;
 }
 
 /**
@@ -251,12 +246,12 @@ export class WelcomeSourceControl implements OnInit {
    * Gets every browse view, in order. The ones whose data no repository carries are not offered.
    */
   private readonly allViews: readonly BrowseEntry[] = [
-    { view: 'all', label: 'All Repositories', icon: Icon.WELCOME_REPOSITORIES },
-    { view: 'starred', label: 'Starred', icon: Icon.WELCOME_STARRED },
-    { view: 'recent', label: 'Recent', icon: Icon.WELCOME_RECENT },
-    { view: 'private', label: 'Private', icon: Icon.WELCOME_REPOSITORY_PRIVATE },
-    { view: 'forks', label: 'Forks', icon: Icon.WELCOME_FORKS },
-    { view: 'archived', label: 'Archived', icon: Icon.WELCOME_ARCHIVED },
+    { view: 'all', label: 'All Repositories' },
+    { view: 'starred', label: 'Starred' },
+    { view: 'recent', label: 'Recent' },
+    { view: 'private', label: 'Private' },
+    { view: 'forks', label: 'Forks' },
+    { view: 'archived', label: 'Archived' },
   ];
 
   /**
@@ -423,11 +418,39 @@ export class WelcomeSourceControl implements OnInit {
   );
 
   /**
-   * Gets the hosts the accounts are on, for the host filter pills.
+   * Gets the hosts the accounts are on, for the host filter.
    */
   protected readonly hosts: Signal<readonly string[]> = computed((): readonly string[] => [
     ...new Set<string>(this.accounts().map((account: HostedAccount): string => account.host)),
   ]);
+
+  /**
+   * Gets the repository filter's choices: the browse views the data supports, then — when there is
+   * more than one host to tell apart — the hosts. One choice applies at a time.
+   */
+  protected readonly filterOptions: Signal<readonly DropdownOption[]> = computed(
+    (): readonly DropdownOption[] => [
+      ...this.browse().map((entry: BrowseEntry): DropdownOption => ({
+        value: `view:${entry.view}`,
+        label: `${entry.label} (${this.countIn(entry.view)})`,
+      })),
+      ...(this.hosts().length > 1
+        ? this.hosts().map((name: string): DropdownOption => ({
+            value: `host:${name}`,
+            label: `${name} (${this.countOn(name)})`,
+            group: 'Hosts',
+          }))
+        : []),
+    ],
+  );
+
+  /**
+   * Gets the repository filter's current choice.
+   */
+  protected readonly filterValue: Signal<string> = computed((): string => {
+    const host: string | null = this.host();
+    return host === null ? `view:${this.view()}` : `host:${host}`;
+  });
 
   /**
    * Gets the repositories in the current view, host and search, most recently updated first.
@@ -563,6 +586,26 @@ export class WelcomeSourceControl implements OnInit {
   }
 
   /**
+   * Applies the repository filter's choice: a browse view across every host, or every repository on
+   * one host.
+   * @param value The picked value.
+   */
+  protected setFilter(value: string): void {
+    if (value.startsWith('host:')) {
+      this.view.set('all');
+      this.host.set(value.slice('host:'.length));
+      return;
+    }
+    const view: BrowseView | undefined = this.allViews.find(
+      (entry: BrowseEntry): boolean => `view:${entry.view}` === value,
+    )?.view;
+    if (view !== undefined) {
+      this.host.set(null);
+      this.view.set(view);
+    }
+  }
+
+  /**
    * Counts the repositories in a browse view.
    * @param view The view.
    * @returns Returns the count.
@@ -573,13 +616,10 @@ export class WelcomeSourceControl implements OnInit {
 
   /**
    * Counts the repositories on a host.
-   * @param host The host, or null for every host.
+   * @param host The host.
    * @returns Returns the count.
    */
-  protected countOn(host: string | null): number {
-    if (host === null) {
-      return this.repositories().length;
-    }
+  protected countOn(host: string): number {
     const accounts: ReadonlySet<string> = new Set<string>(
       this.accounts()
         .filter((account: HostedAccount): boolean => account.host === host)

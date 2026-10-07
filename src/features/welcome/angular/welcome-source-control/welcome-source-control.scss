@@ -6,7 +6,7 @@
   min-block-size: 0;
 }
 
-// Clone, accounts and browse down the left; the repository browser filling the right.
+// Clone and accounts down the left; the repository browser filling the right.
 .source {
   display: grid;
   grid-template-columns: 16.5rem minmax(0, 1fr);
@@ -177,103 +177,20 @@
   color: var(--wl-faint);
 }
 
-.source__browse {
-  display: flex;
-  flex-direction: column;
-  gap: 0.05rem;
-}
-
-.source__browse-item {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  padding: 0.3rem 0.55rem;
-  font: inherit;
-  font-size: 0.82rem;
-  text-align: start;
-  color: var(--wl-muted);
-  background: transparent;
-  border: 0.0625rem solid transparent;
-  border-radius: calc(0.5rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-  cursor: default;
-
-  i {
-    font-size: 1rem;
-  }
-
-  &:hover,
-  &:focus-visible {
-    outline: none;
-    color: var(--wl-text);
-    background: var(--wl-surface);
-  }
-}
-
-.source__browse-item--active {
-  color: var(--wl-text);
-  background: rgba(var(--accent-color-rgb), 0.14);
-  border-color: rgba(var(--accent-color-rgb), 0.45);
-}
-
-.source__browse-label {
-  flex: 1 1 auto;
-}
-
-.source__browse-count {
-  font-size: 0.72rem;
-  color: var(--wl-faint);
-}
-
 .source__main {
   display: flex;
   flex-direction: column;
-  gap: 0.8rem;
+  gap: 0.5rem;
   min-inline-size: 0;
   min-block-size: 0;
 }
 
-.source__main-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
+// Styled as the sidebar's section titles, padded to sit level with them.
 .source__title {
-  @include lead-title;
+  padding: 0.2rem 0.15rem;
 }
 
-.source__description {
-  @include lead-description;
-}
-
-.source__search {
-  @include field;
-  @include control-metrics;
-
-  flex: 0 1 17rem;
-
-  input:disabled {
-    opacity: 0.5;
-  }
-}
-
-.source__hosts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-}
-
-.source__host {
-  @include pill;
-}
-
-.source__host--active {
-  @include pill-active;
-}
-
-// The list, with the selected repository's details beside it.
+// The list's panel, with the selected repository's details beside it.
 .source__body {
   display: flex;
   flex: 1;
@@ -281,26 +198,58 @@
   min-block-size: 0;
 }
 
+.source__panel {
+  @include list-panel;
+}
+
+// One row, as in Recent Items: the filter at a fixed width, the search filling the rest.
+.source__panel-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.source__filter {
+  @include dropdown;
+
+  flex: 0 0 12rem;
+  min-inline-size: 0;
+}
+
+.source__search {
+  @include field;
+  @include control-metrics;
+
+  flex: 1 1 auto;
+
+  input:disabled {
+    opacity: 0.5;
+  }
+}
+
 .source__list {
   display: flex;
-  flex: 1 1 auto;
+  flex: 1 1 0;
   flex-direction: column;
   gap: 0.4rem;
   min-inline-size: 0;
+  min-block-size: 0;
   margin: 0;
   padding: 0;
   overflow-y: auto;
   list-style: none;
 }
 
+// A row as in Recent Items: the icon on its mount, the name over the full name, and when it changed.
 .welcome__repository {
   @include list-row;
 
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 0.75rem;
   inline-size: 100%;
-  padding: 0.7rem 0.8rem;
+  padding: 0.5rem;
+  padding-inline-end: 0.75rem;
   font: inherit;
   text-align: start;
   cursor: default;
@@ -308,18 +257,24 @@
   &:hover,
   &:focus-visible {
     @include list-row-active;
+
+    .welcome__repository-icon {
+      @include list-icon-active;
+    }
   }
 }
 
 // The selected repository keeps the hover look, so it stays marked while the pointer is elsewhere.
 .welcome__repository--selected {
   @include list-row-active;
+
+  .welcome__repository-icon {
+    @include list-icon-active;
+  }
 }
 
 .welcome__repository-icon {
-  flex: none;
-  font-size: 1.3rem;
-  color: var(--wl-muted);
+  @include list-icon;
 }
 
 .welcome__repository-text {
@@ -330,28 +285,28 @@
   min-inline-size: 0;
 }
 
+.welcome__repository-name,
+.welcome__repository-owner {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 .welcome__repository-name {
   font-size: 0.9rem;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--wl-text);
 }
 
-.welcome__repository-owner,
-.welcome__repository-description {
-  overflow: hidden;
-  font-size: 0.75rem;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  color: var(--wl-muted);
+.welcome__repository-owner {
+  font-size: 0.76rem;
+  color: var(--wl-faint);
 }
 
-.welcome__repository-meta {
-  display: flex;
+.welcome__repository-time {
   flex: none;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 0.2rem;
-  font-size: 0.72rem;
+  font-size: 0.78rem;
+  white-space: nowrap;
   color: var(--wl-faint);
 }
 

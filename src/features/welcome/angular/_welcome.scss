@@ -1,5 +1,5 @@
-// The welcome screen's shared drawing: the pieces every section repeats — headings, cards, the pill
-// search box, pills, and empty states — so the four sections read as one surface. Each section's
+// The welcome screen's shared drawing: the pieces every section repeats — headings, cards, the
+// search fields, list panels and rows, and empty states — so the four sections read as one surface. Each section's
 // stylesheet `@use`s this and includes the mixins on its own classes; the palette (`--wl-*`) is set
 // once on the modal by the welcome screen and inherits down into every section.
 //
@@ -70,6 +70,51 @@
   transition:
     background 150ms ease,
     border-color 150ms ease;
+}
+
+// The bordered panel a list sits in (recent items, repositories): a header row of controls, then the
+// list, which scrolls within it.
+@mixin list-panel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-inline-size: 0;
+  min-block-size: 0;
+  padding: 1rem;
+  background: rgba(255, 255, 255, 0.015);
+  border: 0.0625rem solid var(--wl-border);
+  border-radius: calc(0.75rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+
+  // In the light theme the panel is the window's colour, drawn by its border alone.
+  :host-context([data-theme-mode='light']) & {
+    background: transparent;
+  }
+}
+
+// A list row's icon, on its own small mount. Turns accent with the row (see list-row-active).
+@mixin list-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  inline-size: 2.25rem;
+  block-size: 2.25rem;
+  font-size: 1.15rem;
+  color: var(--wl-muted);
+  background: var(--wl-surface);
+  border: 0.0625rem solid var(--wl-surface-border);
+  border-radius: calc(0.55rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  transition:
+    background 150ms ease,
+    border-color 150ms ease;
+}
+
+// The icon mount's accent, for a hovered or selected row.
+@mixin list-icon-active {
+  background: rgba(var(--accent-color-rgb), 0.2);
+  border-color: rgba(var(--accent-color-rgb), 0.7);
 }
 
 // The list row's hover, also its selected state: everything in the row turns accent. The foreground
@@ -149,53 +194,6 @@ $control-radius: 0.55rem;
   }
 }
 
-// A rounded filter pill. The active one carries the accent fill — the one place a section uses blue
-// as a fill.
-@mixin pill {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  gap: 0.3rem;
-  padding: 0.3rem 0.65rem;
-  font: inherit;
-  font-size: 0.76rem;
-  font-weight: 500;
-  white-space: nowrap;
-  color: var(--wl-muted);
-  background: transparent;
-  border: 0.0625rem solid var(--wl-surface-border);
-  border-radius: 999px;
-  cursor: default;
-  transition:
-    background 120ms ease,
-    border-color 120ms ease,
-    color 120ms ease;
-
-  i {
-    font-size: 0.9rem;
-  }
-
-  &:hover,
-  &:focus-visible {
-    outline: none;
-    color: var(--wl-text);
-    background: var(--wl-surface);
-  }
-}
-
-@mixin pill-active {
-  color: #fff;
-  background: var(--accent-color);
-  border-color: var(--accent-color);
-
-  &:hover,
-  &:focus-visible {
-    color: #fff;
-    background: var(--accent-color);
-  }
-}
-
-// A button that does the section's main thing: Clone Repository, Generate Plan.
 // The shared dropdown atom, drawn in the welcome palette: its face matches the fields and buttons
 // beside it, and its list matches the panel, in both themes. Used by every dropdown on the screen, so
 // they are one control wherever they appear.
@@ -216,6 +214,7 @@ $control-radius: 0.55rem;
   color: var(--wl-text);
 }
 
+// A button that does the section's main thing: Clone Repository, Generate Plan.
 @mixin primary-button {
   display: inline-flex;
   align-items: center;

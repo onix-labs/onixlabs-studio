@@ -109,17 +109,7 @@
 
 // The recent-items panel fills its column, so its list scrolls within it.
 .welcome__recent {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: 0.75rem;
-  min-inline-size: 0;
-  min-block-size: 0;
-  padding: 1rem;
-  background: rgba(255, 255, 255, 0.015);
-  border: 0.0625rem solid var(--wl-border);
-  border-radius: calc(0.75rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
+  @include list-panel;
 }
 
 .welcome__recent-head {
@@ -179,10 +169,8 @@
   &:has(.welcome__recent-open:focus-visible) {
     @include list-row-active;
 
-    // The icon's mount turns accent with the row.
     .welcome__recent-icon {
-      background: rgba(var(--accent-color-rgb), 0.2);
-      border-color: rgba(var(--accent-color-rgb), 0.7);
+      @include list-icon-active;
     }
   }
 }
@@ -209,20 +197,7 @@
 }
 
 .welcome__recent-icon {
-  display: grid;
-  flex: none;
-  place-items: center;
-  inline-size: 2.25rem;
-  block-size: 2.25rem;
-  font-size: 1.15rem;
-  color: var(--wl-muted);
-  background: var(--wl-surface);
-  border: 0.0625rem solid var(--wl-surface-border);
-  border-radius: calc(0.55rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-  transition:
-    background 150ms ease,
-    border-color 150ms ease;
+  @include list-icon;
 }
 
 .welcome__recent-text {
@@ -304,14 +279,6 @@
   grid-auto-flow: row;
   inline-size: auto;
   margin-inline-start: 0;
-}
-
-// Light theme: the cards and fields are the panel colour, defined by their border, so their hover
-// needs an explicit fill.
-:host-context([data-theme-mode='light']) {
-  .welcome__recent {
-    background: transparent;
-  }
 }
 
 // At a narrow window the columns stack, the actions first.
