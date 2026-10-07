@@ -1,4 +1,4 @@
-// Opens the design canvas (#855) in an Electron window: the same Chromium Studio renders in, so what
+// Opens the conversation canvas (#855) in an Electron window: the same Chromium Studio renders in, so what
 // is reviewed is what ships. Started by `npm run canvas`, which serves the app with `ng serve`, so an
 // edit to a card, its styles or a fixture reloads the window live.
 //
@@ -13,7 +13,7 @@ app.whenReady().then(() => {
   const window = new BrowserWindow({
     width: 1600,
     height: 1000,
-    title: 'Design canvas',
+    title: 'Conversation canvas',
     backgroundColor: '#1e1f22',
     webPreferences: { contextIsolation: true, sandbox: true },
   });

@@ -1,6 +1,12 @@
 import type { Type } from '@angular/core';
 
-// The design canvas's vocabulary (#855). A page groups specimens; a specimen is one component shown
+// The conversation canvas's vocabulary (#855).
+//
+// ⛔ Scoped to agent conversations, on purpose. The rest of Studio can be opened and looked at — its
+// content is static and reachable — but a conversation's cards and rows only appear when an agent
+// produces them, so this is the one place a fixture is the only practical way to see every state.
+// Add a page for new conversation content (a card, a row kind), not for the rest of the app.
+// A page groups specimens; a specimen is one component shown
 // in each of its states; a state is the inputs it is rendered with. Adding a component to the canvas
 // is adding a page or a specimen here — the canvas itself never changes.
 

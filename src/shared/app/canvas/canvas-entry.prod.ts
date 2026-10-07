@@ -1,4 +1,4 @@
-// The production stand-in for `canvas-entry.ts` (#855): the design canvas is a development tool, and
+// The production stand-in for `canvas-entry.ts` (#855): the conversation canvas is a development tool, and
 // this replacement keeps it — and its fixtures — out of the shipped bundle.
 
 /**

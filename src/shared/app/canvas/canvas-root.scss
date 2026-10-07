@@ -46,9 +46,7 @@
 // The two surfaces a conversation is drawn on: an Agent tab sits on the page background, a docked
 // Agent panel on the shared panel surface.
 .canvas__pane--panel {
-  --agent-backdrop-color: var(--panel-surface-color);
-
-  background: var(--agent-backdrop-color);
+  background: var(--panel-surface-color);
 }
 
 .canvas__pane-title {

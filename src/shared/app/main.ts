@@ -61,7 +61,7 @@ function bootstrapStudio(): void {
   });
 }
 
-// The design canvas (#855) takes the page instead when it is loaded with `?canvas`, in development
+// The conversation canvas (#855) takes the page instead when it is loaded with `?canvas`, in development
 // builds only; a production build never starts it.
 void openDesignCanvas().then((opened: boolean): void => {
   if (!opened) {

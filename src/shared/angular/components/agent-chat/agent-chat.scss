@@ -455,12 +455,15 @@ $agent-node-size: 1.75rem;
   background: var(--agent-view-surface-color);
 }
 
-// A sub-agent lane rides the action-chip chrome but reads as its own actor: an accent edge and
+// A sub-agent lane rides the action-chip chrome but reads as its own actor: an accent outline and
 // robot glyph on the summary (bold title · live status · muted meta, dot-separated), and the
 // expanded body indented behind a sub-rail line, in prose type rather than the tool chips' mono.
 .agent__lane-summary {
   gap: 0.45rem;
-  border-inline-start: 0.125rem solid var(--accent-color);
+  // Outlined in the accent, with the leading edge heavier, so a sub-agent reads as an actor of its own
+  // rather than another tool chip.
+  border: 0.0625rem solid var(--accent-color);
+  border-inline-start-width: 0.1875rem;
 
   .agent__action-label {
     font-weight: 600;
@@ -540,19 +543,32 @@ $agent-node-size: 1.75rem;
   }
 }
 
-// A user message's attached images, shown as bounded previews above its bubble.
+// A user message's attached images, shown as bounded previews below its bubble.
 .agent__bubble-images {
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;
   justify-content: flex-end;
+  // Under the message they came with, as far from it as one transcript row is from the next (the
+  // rows' 0.85rem trailing space), less the 0.15rem the message body already puts between them.
+  margin-block-start: 0.7rem;
 }
 
 .agent__bubble-image {
   max-block-size: 10rem;
   max-inline-size: 100%;
-  border: 0.0625rem solid var(--agent-view-border-color);
-  border-radius: calc(0.4rem * var(--border-radius-multiplier));
+  // A double ring: the inner one in the surface's own tone (dark on dark, light on light) separates
+  // the picture from the accent outer ring, which marks it as the user's own, as their bubble is.
+  // ⚠️ Both are drawn inside the image's own box — the border is the outer ring, the padding showing
+  // the background is the inner one. An outline would sit outside it, and a transcript row clips its
+  // paint to its box (`content-visibility`), which cut the outline off where the image meets the
+  // row's top edge.
+  box-sizing: border-box;
+  padding: 0.0625rem;
+  background: var(--agent-image-inner-border-color);
+  border: 0.0625rem solid var(--accent-color);
+  // The prompt cards' corners (see agent-card.scss): an attachment sits among them in the transcript.
+  border-radius: calc(0.6rem * var(--border-radius-multiplier));
 }
 
 // Markdown content rendered via [innerHTML]; its children don't carry the emulated-encapsulation

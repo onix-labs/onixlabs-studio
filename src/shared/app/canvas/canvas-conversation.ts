@@ -79,8 +79,8 @@ function mockAgent(running: boolean): Partial<Agent> {
   styles: ':host { display: flex; flex-direction: column; block-size: 100%; }',
   changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [
-    // Idle, so the transcript reads as a conversation waiting on the user rather than mid-turn.
-    { provide: Agent, useFactory: (): Partial<Agent> => mockAgent(false) },
+    // Mid-turn, so the live "Working…" row and the composer's Stop are part of what is reviewed.
+    { provide: Agent, useFactory: (): Partial<Agent> => mockAgent(true) },
     {
       provide: AgentEngine,
       useValue: {

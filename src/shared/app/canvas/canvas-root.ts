@@ -46,7 +46,7 @@ const WIDTHS: readonly CanvasWidth[] = [
 ];
 
 /**
- * The design canvas (#855): every state of a component, side by side, at the widths it is used at and
+ * The conversation canvas (#855): every state of a component, side by side, at the widths it is used at and
  * in both themes, from fixtures rather than a live agent. Dev-only — see `canvas-entry.ts`. The theme
  * and accent here are the canvas's own; nothing the user saved is changed.
  */

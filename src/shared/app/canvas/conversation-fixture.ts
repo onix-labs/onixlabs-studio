@@ -27,9 +27,13 @@ function screenshot(): AiImageRef {
     context.fillRect(24, 68, 220, 10);
     context.fillRect(24, 140, 90, 26);
   }
+  // Where nothing can be drawn — a test environment has no canvas — a single accent pixel stands in.
+  const drawn: string | null = context === null ? null : canvas.toDataURL('image/png');
   return {
     mediaType: 'image/png',
-    data: canvas.toDataURL('image/png').replace(/^data:image\/png;base64,/, ''),
+    data:
+      drawn?.replace(/^data:image\/png;base64,/, '') ??
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkqPtfDwAEdQH+bFhZxgAAAABJRU5ErkJggg==',
     name: 'settings-page.png',
   };
 }

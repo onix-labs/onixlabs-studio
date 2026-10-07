@@ -102,11 +102,8 @@
 
   --agent-view-surface-color: var(--gray-150);
   --agent-view-border-color: var(--gray-500);
-  // What a conversation is drawn on; a host with its own background (the docked Agent panel, a
-  // Mission Control tile) restates it. The prompt cards are two shades lighter than it (#856), and
-  // `--agent-card-lift` is how much white makes two shades in this theme's grey ramp.
-  --agent-backdrop-color: var(--body-background-color);
-  --agent-card-lift: 45%;
+  // The inner ring of an attached image: the surface's own tone, inside its accent outer ring.
+  --agent-image-inner-border-color: #fff;
   // Prompt card titles: the accent, a shade darker on light surfaces (#856).
   --agent-card-title-color: color-mix(in srgb, var(--accent-color), black 15%);
   // A settled prompt card's outcome ("Allowed"): the accent, muted toward the card (#856).

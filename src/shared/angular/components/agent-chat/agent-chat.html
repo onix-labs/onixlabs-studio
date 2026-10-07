@@ -69,6 +69,10 @@
           >
             <span class="agent__avatar" aria-hidden="true"><app-icon [icon]="Icon.USER" /></span>
             <div class="agent__message-body">
+              <app-markdown-renderer
+                class="agent__bubble agent__markdown"
+                [text]="row.item!.text"
+              />
               @if (row.item!.images?.length) {
                 <div class="agent__bubble-images">
                   @for (image of row.item!.images!; track $index) {
@@ -80,10 +84,6 @@
                   }
                 </div>
               }
-              <app-markdown-renderer
-                class="agent__bubble agent__markdown"
-                [text]="row.item!.text"
-              />
               <span class="agent__msg-actions">
                 <app-button
                   variant="none"
