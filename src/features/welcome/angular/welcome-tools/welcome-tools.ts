@@ -95,13 +95,13 @@ export class WelcomeTools {
     {
       title: 'Plugin Manager',
       description: 'Discover, install and manage the plugins that extend ONIXLabs Studio.',
-      icon: Icon.WELCOME_PLUGINS,
+      icon: Icon.WELCOME_TOOL_PLUGINS,
       opens: 'plugin-manager',
     },
     {
       title: 'Settings',
       description: 'Configure Studio’s preferences, providers and appearance.',
-      icon: Icon.WELCOME_SETTINGS,
+      icon: Icon.WELCOME_TOOL_SETTINGS,
       opens: 'settings',
     },
   ];

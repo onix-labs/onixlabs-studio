@@ -1,5 +1,5 @@
-// The welcome screen's shared drawing: the pieces every section repeats — headings, cards, the pill
-// search box, pills, and empty states — so the four sections read as one surface. Each section's
+// The welcome screen's shared drawing: the pieces every section repeats — headings, cards, the
+// search fields, list panels and rows, and empty states — so the four sections read as one surface. Each section's
 // stylesheet `@use`s this and includes the mixins on its own classes; the palette (`--wl-*`) is set
 // once on the modal by the welcome screen and inherits down into every section.
 //
@@ -58,6 +58,122 @@
   }
 }
 
+// A row in a list (recent items, repositories): only a faint fill at rest, so the list reads as text
+// rather than a stack of cards; on hover the action buttons' accent wash and edge, without their lift
+// and glow. The transparent border holds the hover edge's space so the row does not shift.
+@mixin list-row {
+  color: inherit;
+  background: var(--wl-row);
+  border: 0.0625rem solid transparent;
+  border-radius: calc(0.55rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  transition:
+    background 150ms ease,
+    border-color 150ms ease;
+}
+
+// The bordered panel a list sits in (recent items, repositories): a header row of controls, then the
+// list, which scrolls within it.
+@mixin list-panel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-inline-size: 0;
+  min-block-size: 0;
+  padding: 1rem;
+  background: rgba(255, 255, 255, 0.015);
+  border: 0.0625rem solid var(--wl-border);
+  border-radius: calc(0.75rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+
+  // In the light theme the panel is the window's colour, drawn by its border alone.
+  :host-context([data-theme-mode='light']) & {
+    background: transparent;
+  }
+}
+
+// The box a list or panel scrolls within, carrying the app's overlay scrollbar (`appOverlayScrollbar`
+// naming the scroller inside): the thumb floats over the content, so nothing takes a channel at the
+// right edge and the content lines up with the controls above it.
+@mixin scroll-frame {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-inline-size: 0;
+  min-block-size: 0;
+}
+
+// The scroller inside a scroll frame. Its native bar is hidden here, from the first paint, rather than
+// left to the directive's class: Chromium does not always re-apply scrollbar styles that change after
+// a scroller has rendered.
+@mixin scroller {
+  flex: 1 1 0;
+  min-block-size: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+// A list row's icon, on its own small mount. Turns accent with the row (see list-row-active).
+@mixin list-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  inline-size: 2.25rem;
+  block-size: 2.25rem;
+  font-size: 1.15rem;
+  color: var(--wl-muted);
+  background: var(--wl-surface);
+  border: 0.0625rem solid var(--wl-surface-border);
+  border-radius: calc(0.55rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  transition:
+    background 150ms ease,
+    border-color 150ms ease;
+}
+
+// The icon mount's accent, for a hovered or selected row.
+@mixin list-icon-active {
+  background: rgba(var(--accent-color-rgb), 0.2);
+  border-color: rgba(var(--accent-color-rgb), 0.7);
+}
+
+// The list row's hover, also its selected state: everything in the row turns accent. The foreground
+// variable carries it into nested controls (the recent rows' buttons), which colour from it.
+@mixin list-row-active {
+  --body-foreground-color: var(--accent-color);
+
+  outline: none;
+  color: var(--accent-color);
+  background: rgba(var(--accent-color-rgb), 0.25);
+  border-color: rgba(var(--accent-color-rgb), 1);
+
+  * {
+    color: var(--accent-color);
+  }
+}
+
+// The one height and corner every single-line control shares — the recent items' filter, search and
+// Clear, and the clone field, dropdown, button and repository search — so they line up wherever two
+// meet.
+$control-height: 2.25rem;
+$control-radius: 0.55rem;
+
+@mixin control-metrics {
+  block-size: $control-height;
+  padding-block: 0;
+  border-radius: calc(#{$control-radius} * var(--border-radius-multiplier));
+
+  // A field's input is centred by the field, so its own padding would only push the field taller.
+  input {
+    padding-block: 0;
+  }
+}
+
 // A rounded field with a leading or trailing glyph: the search boxes and the clone URL field.
 @mixin field {
   display: flex;
@@ -103,50 +219,24 @@
   }
 }
 
-// A rounded filter pill. The active one carries the accent fill — the one place a section uses blue
-// as a fill.
-@mixin pill {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  gap: 0.3rem;
-  padding: 0.3rem 0.65rem;
-  font: inherit;
-  font-size: 0.76rem;
-  font-weight: 500;
-  white-space: nowrap;
-  color: var(--wl-muted);
-  background: transparent;
-  border: 0.0625rem solid var(--wl-surface-border);
-  border-radius: 999px;
-  cursor: default;
-  transition:
-    background 120ms ease,
-    border-color 120ms ease,
-    color 120ms ease;
+// The shared dropdown atom, drawn in the welcome palette: its face matches the fields and buttons
+// beside it, and its list matches the panel, in both themes. Used by every dropdown on the screen, so
+// they are one control wherever they appear.
+@mixin dropdown {
+  --control-height: #{$control-height};
+  --dropdown-radius: #{$control-radius};
 
-  i {
-    font-size: 0.9rem;
-  }
+  --form-control-background-color: var(--wl-surface);
+  --form-control-border-color: var(--wl-surface-border);
+  --form-control-border-color--hover: rgba(var(--accent-color-rgb), 0.55);
+  --form-muted-foreground-color: var(--wl-muted);
+  --dropdown-menu-background-color: var(--wl-panel);
+  --dropdown-menu-border-color: var(--wl-border);
+  --dropdown-menu-foreground-color: var(--wl-text);
+  --dropdown-menu-item-background-color--hover: rgba(var(--accent-color-rgb), 0.25);
+  --dropdown-menu-item-foreground-color--hover: var(--wl-text);
 
-  &:hover,
-  &:focus-visible {
-    outline: none;
-    color: var(--wl-text);
-    background: var(--wl-surface);
-  }
-}
-
-@mixin pill-active {
-  color: #fff;
-  background: var(--accent-color);
-  border-color: var(--accent-color);
-
-  &:hover,
-  &:focus-visible {
-    color: #fff;
-    background: var(--accent-color);
-  }
+  color: var(--wl-text);
 }
 
 // A button that does the section's main thing: Clone Repository, Generate Plan.

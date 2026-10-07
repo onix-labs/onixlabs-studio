@@ -22,12 +22,20 @@ import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { Forge } from '@shared/angular/services/forge/forge';
 import { Log } from '@shared/angular/services/log/log';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
+import { Shell } from '@shared/angular/services/shell/shell';
 import { TabType } from '@shared/angular/services/tabs/tab';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
-import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigger';
+import { Button } from '@shared/angular/components/forms/button/button';
+import { OverlayScrollbar } from '@shared/angular/components/overlay-scrollbar/overlay-scrollbar';
+import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 
 export type { CloneLayout } from '@shared/api/clone-channels';
+
+/**
+ * A collapsible section of the sidebar.
+ */
+export type SourceSection = 'clone' | 'accounts';
 
 /**
  * An account the user acts as on a code host — themselves or an organisation — listed through the
@@ -99,6 +107,11 @@ export interface HostedRepository {
   readonly cloneUrl: string;
 
   /**
+   * Gets the URL of its page in a browser, or empty when the host gave none.
+   */
+  readonly webUrl: string;
+
+  /**
    * Gets its default branch, when the host says.
    */
   readonly defaultBranch?: string;
@@ -127,6 +140,36 @@ export interface HostedRepository {
    * Gets whether the user starred it, when the host says.
    */
   readonly starred?: boolean;
+
+  /**
+   * Gets its fork count, when the host says.
+   */
+  readonly forks?: number;
+
+  /**
+   * Gets its open issue count, when the host says.
+   */
+  readonly openIssues?: number;
+
+  /**
+   * Gets its topics, when the host says.
+   */
+  readonly topics?: readonly string[];
+
+  /**
+   * Gets its licence's short name, or null for none, when the host says.
+   */
+  readonly license?: string | null;
+
+  /**
+   * Gets its homepage, or null for none, when the host says.
+   */
+  readonly homepage?: string | null;
+
+  /**
+   * Gets when it was last pushed to (epoch ms), or null for never, when the host says.
+   */
+  readonly pushedAt?: number | null;
 }
 
 /**
@@ -150,7 +193,7 @@ interface SignedOutHost {
 type BrowseView = 'all' | 'starred' | 'recent' | 'private' | 'forks' | 'archived';
 
 /**
- * Describes a browse view on the left.
+ * Describes a browse view in the repository filter.
  */
 interface BrowseEntry {
   /**
@@ -162,11 +205,6 @@ interface BrowseEntry {
    * Gets its label.
    */
   readonly label: string;
-
-  /**
-   * Gets its icon.
-   */
-  readonly icon: Icon;
 }
 
 /**
@@ -196,7 +234,7 @@ const FOLDER_NAME: RegExp = /^(?!\.{1,2}$)[\w.-]+$/;
  */
 @Component({
   selector: 'app-welcome-source-control',
-  imports: [AppIcon, TooltipTrigger],
+  imports: [AppIcon, Button, Dropdown, OverlayScrollbar],
   templateUrl: './welcome-source-control.html',
   styleUrl: './welcome-source-control.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -243,15 +281,20 @@ export class WelcomeSourceControl implements OnInit {
   private readonly plugins: Plugins = inject(Plugins);
 
   /**
+   * Holds the shell client, which opens a repository's page in the browser.
+   */
+  private readonly shell: Shell = inject(Shell);
+
+  /**
    * Gets every browse view, in order. The ones whose data no repository carries are not offered.
    */
   private readonly allViews: readonly BrowseEntry[] = [
-    { view: 'all', label: 'All Repositories', icon: Icon.WELCOME_REPOSITORIES },
-    { view: 'starred', label: 'Starred', icon: Icon.WELCOME_STARRED },
-    { view: 'recent', label: 'Recent', icon: Icon.WELCOME_RECENT },
-    { view: 'private', label: 'Private', icon: Icon.WELCOME_REPOSITORY_PRIVATE },
-    { view: 'forks', label: 'Forks', icon: Icon.WELCOME_FORKS },
-    { view: 'archived', label: 'Archived', icon: Icon.WELCOME_ARCHIVED },
+    { view: 'all', label: 'All Repositories' },
+    { view: 'starred', label: 'Starred' },
+    { view: 'recent', label: 'Recent' },
+    { view: 'private', label: 'Private' },
+    { view: 'forks', label: 'Forks' },
+    { view: 'archived', label: 'Archived' },
   ];
 
   /**
@@ -290,6 +333,22 @@ export class WelcomeSourceControl implements OnInit {
   >([]);
 
   /**
+   * Holds the repositories the user starred that are not among their own, collaborator or
+   * organisation repositories: other people's projects, offered in the Starred view only, so they do
+   * not crowd the user's own list.
+   */
+  protected readonly starredElsewhere: WritableSignal<readonly HostedRepository[]> = signal<
+    readonly HostedRepository[]
+  >([]);
+
+  /**
+   * Holds which sidebar section is open, or null when all are collapsed. At most one is open, as in the
+   * original welcome screen's Get Started and Tools; Clone, the first, starts open.
+   */
+  protected readonly openSection: WritableSignal<SourceSection | null> =
+    signal<SourceSection | null>('clone');
+
+  /**
    * Holds whether the accounts and repositories are being read.
    */
   protected readonly loading: WritableSignal<boolean> = signal<boolean>(false);
@@ -305,26 +364,19 @@ export class WelcomeSourceControl implements OnInit {
   protected readonly cloneUrl: WritableSignal<string> = signal<string>('');
 
   /**
-   * Holds the folder name the clone is given, or null to take it from the URL.
+   * Holds how the repository will be laid out once cloned, or null until the user picks. Studio has
+   * no default of its own: the layout is the user's choice, made before cloning, so the field starts
+   * on "Clone As…" and Clone waits for an answer.
    */
-  protected readonly folderName: WritableSignal<string | null> = signal<string | null>(null);
+  protected readonly layout: WritableSignal<CloneLayout | null> = signal<CloneLayout | null>(null);
 
   /**
-   * Holds the branch to check out, or empty for the repository's default.
+   * Gets the layout choices.
    */
-  protected readonly branch: WritableSignal<string> = signal<string>('');
-
-  /**
-   * Holds the folder clones go into, or null until one is chosen.
-   */
-  protected readonly parent: WritableSignal<string | null> = signal<string | null>(null);
-
-  /**
-   * Holds how the repository will be laid out once cloned. Studio has no default of its own: it is
-   * the user's choice, made before cloning, so the field starts on the flat working copy everyone
-   * already knows and remembers nothing.
-   */
-  protected readonly layout: WritableSignal<CloneLayout> = signal<CloneLayout>('flat');
+  protected readonly layoutOptions: readonly DropdownOption[] = [
+    { value: 'flat', label: 'Flat Repository' },
+    { value: 'worktree', label: 'Worktree Repository' },
+  ];
 
   /**
    * Holds whether a clone is running.
@@ -364,18 +416,30 @@ export class WelcomeSourceControl implements OnInit {
   );
 
   /**
-   * Gets the folder name the clone will be given: the one typed, or the URL's last part.
+   * Gets the folder name the clone will be given: the URL's last part.
    */
-  protected readonly targetName: Signal<string> = computed(
-    (): string => this.folderName() ?? nameFromUrl(this.cloneUrl()),
+  protected readonly targetName: Signal<string> = computed((): string =>
+    nameFromUrl(this.cloneUrl()),
   );
 
   /**
-   * Gets whether everything a clone needs is in place.
+   * Gets whether the details' Clone can run: a version-control plugin, a layout, and no clone running.
+   * The repository brings its own URL.
+   */
+  protected readonly detailCloneReady: Signal<boolean> = computed(
+    (): boolean => this.canClone() && this.layout() !== null && !this.cloning(),
+  );
+
+  /**
+   * Gets whether everything a clone of the field's URL needs is in place.
    */
   protected readonly cloneReady: Signal<boolean> = computed(
     (): boolean =>
-      this.canClone() && this.urlValid() && FOLDER_NAME.test(this.targetName()) && !this.cloning(),
+      this.canClone() &&
+      this.layout() !== null &&
+      this.urlValid() &&
+      FOLDER_NAME.test(this.targetName()) &&
+      !this.cloning(),
   );
 
   /**
@@ -392,7 +456,7 @@ export class WelcomeSourceControl implements OnInit {
       return this.allViews.filter((entry: BrowseEntry): boolean => {
         switch (entry.view) {
           case 'starred':
-            return carried('starred');
+            return carried('starred') || this.starredElsewhere().length > 0;
           case 'forks':
             return carried('fork');
           case 'archived':
@@ -405,11 +469,39 @@ export class WelcomeSourceControl implements OnInit {
   );
 
   /**
-   * Gets the hosts the accounts are on, for the host filter pills.
+   * Gets the hosts the accounts are on, for the host filter.
    */
   protected readonly hosts: Signal<readonly string[]> = computed((): readonly string[] => [
     ...new Set<string>(this.accounts().map((account: HostedAccount): string => account.host)),
   ]);
+
+  /**
+   * Gets the repository filter's choices: the browse views the data supports, then — when there is
+   * more than one host to tell apart — the hosts. One choice applies at a time.
+   */
+  protected readonly filterOptions: Signal<readonly DropdownOption[]> = computed(
+    (): readonly DropdownOption[] => [
+      ...this.browse().map((entry: BrowseEntry): DropdownOption => ({
+        value: `view:${entry.view}`,
+        label: `${entry.label} (${this.countIn(entry.view)})`,
+      })),
+      ...(this.hosts().length > 1
+        ? this.hosts().map((name: string): DropdownOption => ({
+            value: `host:${name}`,
+            label: `${name} (${this.countOn(name)})`,
+            group: 'Hosts',
+          }))
+        : []),
+    ],
+  );
+
+  /**
+   * Gets the repository filter's current choice.
+   */
+  protected readonly filterValue: Signal<string> = computed((): string => {
+    const host: string | null = this.host();
+    return host === null ? `view:${this.view()}` : `host:${host}`;
+  });
 
   /**
    * Gets the repositories in the current view, host and search, most recently updated first.
@@ -424,8 +516,7 @@ export class WelcomeSourceControl implements OnInit {
           account.host,
         ]),
       );
-      return this.repositories()
-        .filter((repository: HostedRepository): boolean => this.inView(repository))
+      return this.inViewList(this.view())
         .filter(
           (repository: HostedRepository): boolean =>
             host === null || hostOf.get(repository.accountId) === host,
@@ -445,16 +536,15 @@ export class WelcomeSourceControl implements OnInit {
    */
   protected readonly selected: Signal<HostedRepository | null> = computed(
     (): HostedRepository | null =>
-      this.repositories().find(
+      [...this.repositories(), ...this.starredElsewhere()].find(
         (repository: HostedRepository): boolean => repository.id === this.selectedId(),
       ) ?? null,
   );
 
   /**
-   * Reads the clone folder and the repositories when the section is first built.
+   * Reads the repositories when the section is first built.
    */
   public ngOnInit(): void {
-    void this.cloner.parent().then((parent: string | null): void => this.parent.set(parent));
     void this.refresh();
   }
 
@@ -482,6 +572,7 @@ export class WelcomeSourceControl implements OnInit {
             provider: entry.provider,
           })),
       );
+      const starred: HostedRepository[] = [];
       for (const entry of hosts.filter((h: ForgeHostAccount): boolean => h.status.authenticated)) {
         const listed: ForgeResult<readonly ProtocolAccount[]> = await this.forge.accounts(
           entry.host,
@@ -489,6 +580,22 @@ export class WelcomeSourceControl implements OnInit {
         if (!listed.ok) {
           errors.push(`${entry.provider}: ${listed.error}`);
           continue;
+        }
+        // Starred repositories are filed under the user's own account on the host, so the host filter
+        // finds them; a host whose plugin cannot list them simply has none.
+        const user: ProtocolAccount | undefined =
+          listed.value.find((account: ProtocolAccount): boolean => account.kind === 'user') ??
+          listed.value[0];
+        if (user !== undefined) {
+          const stars: ForgeResult<readonly ProtocolRepository[]> =
+            await this.forge.starredRepositories(entry.host);
+          if (stars.ok) {
+            starred.push(
+              ...stars.value.map((repository: ProtocolRepository): HostedRepository =>
+                toView(repository, `${entry.host}/${user.login}`),
+              ),
+            );
+          }
         }
         for (const account of listed.value) {
           const view: HostedAccount = {
@@ -511,7 +618,14 @@ export class WelcomeSourceControl implements OnInit {
         }
       }
       this.accounts.set(accounts);
-      this.repositories.set(dedupe(repositories));
+      const own: readonly HostedRepository[] = dedupe(repositories);
+      const ids: ReadonlySet<string> = new Set<string>(
+        own.map((repository: HostedRepository): string => repository.id),
+      );
+      this.repositories.set(own);
+      this.starredElsewhere.set(
+        dedupe(starred).filter((repository: HostedRepository): boolean => !ids.has(repository.id)),
+      );
       this.loadError.set(errors.length === 0 ? null : errors.join(' · '));
       this.log.info(
         'welcome',
@@ -523,25 +637,40 @@ export class WelcomeSourceControl implements OnInit {
   }
 
   /**
+   * Applies the repository filter's choice: a browse view across every host, or every repository on
+   * one host.
+   * @param value The picked value.
+   */
+  protected setFilter(value: string): void {
+    if (value.startsWith('host:')) {
+      this.view.set('all');
+      this.host.set(value.slice('host:'.length));
+      return;
+    }
+    const view: BrowseView | undefined = this.allViews.find(
+      (entry: BrowseEntry): boolean => `view:${entry.view}` === value,
+    )?.view;
+    if (view !== undefined) {
+      this.host.set(null);
+      this.view.set(view);
+    }
+  }
+
+  /**
    * Counts the repositories in a browse view.
    * @param view The view.
    * @returns Returns the count.
    */
   protected countIn(view: BrowseView): number {
-    return this.repositories().filter((repository: HostedRepository): boolean =>
-      this.matchesView(repository, view),
-    ).length;
+    return this.inViewList(view).length;
   }
 
   /**
    * Counts the repositories on a host.
-   * @param host The host, or null for every host.
+   * @param host The host.
    * @returns Returns the count.
    */
-  protected countOn(host: string | null): number {
-    if (host === null) {
-      return this.repositories().length;
-    }
+  protected countOn(host: string): number {
     const accounts: ReadonlySet<string> = new Set<string>(
       this.accounts()
         .filter((account: HostedAccount): boolean => account.host === host)
@@ -562,21 +691,29 @@ export class WelcomeSourceControl implements OnInit {
   }
 
   /**
-   * Updates the folder name from the input event; clearing it goes back to the URL's name.
-   * @param event The input event carrying the current value.
+   * Shows a repository's details, or closes them when it is the one already shown.
+   * @param id The repository's id.
    */
-  protected onNameInput(event: Event): void {
-    const value: string = (event.target as HTMLInputElement).value.trim();
-    this.folderName.set(value.length === 0 ? null : value);
-    this.cloneError.set(null);
+  protected toggleSelected(id: string): void {
+    this.selectedId.update((current: string | null): string | null => (current === id ? null : id));
   }
 
   /**
-   * Updates the branch from the input event.
-   * @param event The input event carrying the current value.
+   * Opens a sidebar section, collapsing the others; clicking the open section collapses it.
+   * @param section The section whose header was clicked.
    */
-  protected onBranchInput(event: Event): void {
-    this.branch.set((event.target as HTMLInputElement).value.trim());
+  protected toggleSection(section: SourceSection): void {
+    this.openSection.update((open: SourceSection | null): SourceSection | null =>
+      open === section ? null : section,
+    );
+  }
+
+  /**
+   * Records the layout picked.
+   * @param value The picked value.
+   */
+  protected setLayout(value: string): void {
+    this.layout.set(value === 'worktree' || value === 'flat' ? value : null);
   }
 
   /**
@@ -592,34 +729,50 @@ export class WelcomeSourceControl implements OnInit {
    * @returns Resolves with the chosen folder, or null when the dialog was cancelled.
    */
   protected async chooseParent(): Promise<string | null> {
-    const chosen: string | null = await this.cloner.pickParent();
-    if (chosen !== null) {
-      this.parent.set(chosen);
-    }
-    return chosen;
+    return this.cloner.pickParent();
   }
 
   /**
-   * Clones the URL in the field into the chosen folder, asking for the folder first when none is
-   * chosen, then opens the result and steps aside.
+   * Asks where the clone goes — the folder dialog opens on the folder used last — then clones the URL
+   * in the field into it, opens the result and steps aside. Cancelling the dialog clones nothing.
    * @returns Resolves once the clone has settled, however it settled.
    */
   protected async clone(): Promise<void> {
-    if (!this.cloneReady()) {
-      return;
+    if (this.cloneReady()) {
+      await this.cloneInto(this.cloneUrl().trim());
     }
-    if (this.parent() === null && (await this.chooseParent()) === null) {
+  }
+
+  /**
+   * Clones the repository shown in the details, the same way as the URL in the field: in the layout
+   * chosen, into a folder asked for now, opening the result.
+   * @param repository The repository.
+   * @returns Resolves once the clone has settled, however it settled.
+   */
+  protected async cloneRepository(repository: HostedRepository): Promise<void> {
+    if (this.detailCloneReady()) {
+      await this.cloneInto(repository.cloneUrl);
+    }
+  }
+
+  /**
+   * Asks where the clone goes, clones a URL into it in the chosen layout, opens the result and steps
+   * aside. Cancelling the dialog clones nothing.
+   * @param url The URL to clone.
+   * @returns Resolves once the clone has settled, however it settled.
+   */
+  private async cloneInto(url: string): Promise<void> {
+    const layout: CloneLayout | null = this.layout();
+    if (layout === null || (await this.chooseParent()) === null) {
       return;
     }
     this.cloning.set(true);
     this.cloneError.set(null);
     try {
-      const branch: string = this.branch();
       const outcome: CloneOutcome = await this.cloner.clone({
-        url: this.cloneUrl().trim(),
-        name: this.targetName(),
-        layout: this.layout(),
-        ...(branch.length === 0 ? {} : { branch }),
+        url,
+        name: nameFromUrl(url),
+        layout,
       });
       if (!outcome.ok) {
         this.cloneError.set(outcome.error);
@@ -636,13 +789,24 @@ export class WelcomeSourceControl implements OnInit {
   }
 
   /**
-   * Puts a repository's clone URL in the field, ready to clone.
-   * @param repository The repository.
+   * Opens a repository's page, or its homepage, in the browser.
+   * @param url The URL.
    */
-  protected prepareClone(repository: HostedRepository): void {
-    this.cloneUrl.set(repository.cloneUrl);
-    this.folderName.set(null);
-    this.cloneError.set(null);
+  protected openInBrowser(url: string): void {
+    void this.shell.openExternal(url);
+  }
+
+  /**
+   * Names where a repository's page opens: its host's name ("Open on GitHub"), or the browser when the
+   * account it came through is not known.
+   * @param repository The repository.
+   * @returns Returns the button's label.
+   */
+  protected openLabel(repository: HostedRepository): string {
+    const host: string | undefined = this.accounts().find(
+      (account: HostedAccount): boolean => account.id === repository.accountId,
+    )?.host;
+    return host === undefined ? 'Open in Browser' : `Open on ${host}`;
   }
 
   /**
@@ -665,29 +829,45 @@ export class WelcomeSourceControl implements OnInit {
    * @returns Returns a short relative label.
    */
   protected updated(at: number): string {
-    const days: number = Math.floor(Math.max(0, Date.now() - at) / (24 * 60 * 60 * 1000));
-    if (days === 0) {
-      return 'Updated today';
-    }
-    if (days === 1) {
-      return 'Updated yesterday';
-    }
-    if (days < 7) {
-      return `Updated ${days}d ago`;
-    }
-    if (days < 30) {
-      return `Updated ${Math.floor(days / 7)}w ago`;
-    }
-    return `Updated ${Math.floor(days / 30)}mo ago`;
+    return `Updated ${this.ago(at)}`;
   }
 
   /**
-   * Determines whether a repository belongs in the current browse view.
-   * @param repository The repository.
-   * @returns Returns true when it does.
+   * Formats how long ago something happened.
+   * @param at The epoch-millisecond timestamp.
+   * @returns Returns a short relative label, e.g. "today" or "3d ago".
    */
-  private inView(repository: HostedRepository): boolean {
-    return this.matchesView(repository, this.view());
+  protected ago(at: number): string {
+    const days: number = Math.floor(Math.max(0, Date.now() - at) / (24 * 60 * 60 * 1000));
+    if (days === 0) {
+      return 'today';
+    }
+    if (days === 1) {
+      return 'yesterday';
+    }
+    if (days < 7) {
+      return `${days}d ago`;
+    }
+    if (days < 30) {
+      return `${Math.floor(days / 7)}w ago`;
+    }
+    if (days < 365) {
+      return `${Math.floor(days / 30)}mo ago`;
+    }
+    return `${Math.floor(days / 365)}y ago`;
+  }
+
+  /**
+   * Gets the repositories a browse view lists: the user's own that match it, and — for Starred — the
+   * other people's projects they starred as well.
+   * @param view The view.
+   * @returns Returns them, unsorted.
+   */
+  private inViewList(view: BrowseView): readonly HostedRepository[] {
+    const own: readonly HostedRepository[] = this.repositories().filter(
+      (repository: HostedRepository): boolean => this.matchesView(repository, view),
+    );
+    return view === 'starred' ? [...own, ...this.starredElsewhere()] : own;
   }
 
   /**
@@ -739,12 +919,25 @@ export function nameFromUrl(url: string): string {
 function toView(repository: ProtocolRepository, accountId: string): HostedRepository {
   const extra: Record<string, unknown> = repository as unknown as Record<string, unknown>;
   const optional: Partial<HostedRepository> = {};
-  for (const key of ['language', 'stars', 'fork', 'archived', 'starred'] as const) {
+  for (const key of [
+    'language',
+    'stars',
+    'fork',
+    'archived',
+    'starred',
+    'forks',
+    'openIssues',
+    'topics',
+    'license',
+    'homepage',
+  ] as const) {
     if (extra[key] !== undefined) {
       (optional as Record<string, unknown>)[key] = extra[key];
     }
   }
   const updated: number = Date.parse(repository.updatedAt);
+  const pushed: string | null | undefined = repository.pushedAt;
+  const pushedAt: number = pushed === undefined || pushed === null ? NaN : Date.parse(pushed);
   return {
     id: `${repository.ref.host}/${repository.ref.owner}/${repository.ref.name}`,
     accountId,
@@ -754,8 +947,10 @@ function toView(repository: ProtocolRepository, accountId: string): HostedReposi
     updatedAt: Number.isFinite(updated) ? updated : 0,
     private: repository.private,
     cloneUrl: repository.cloneUrl,
+    webUrl: repository.webUrl,
     ...(repository.defaultBranch === null ? {} : { defaultBranch: repository.defaultBranch }),
     ...optional,
+    ...(pushed === undefined ? {} : { pushedAt: Number.isFinite(pushedAt) ? pushedAt : null }),
   };
 }
 

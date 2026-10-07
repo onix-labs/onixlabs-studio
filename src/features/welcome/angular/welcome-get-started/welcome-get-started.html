@@ -51,46 +51,50 @@
       </div>
 
       @if (visibleItems().length > 0) {
-        <ul class="welcome__recent-list">
-          @for (item of visibleItems(); track item.path) {
-            <li class="welcome__recent-row" [class.welcome__recent-row--pinned]="item.pinned">
-              <button type="button" class="welcome__recent-open" (click)="openRecent(item)">
-                <span class="welcome__recent-icon"><app-icon [icon]="iconFor(item.kind)" /></span>
-                <span class="welcome__recent-text">
-                  <span class="welcome__recent-name">{{ display(item.name) }}</span>
-                  <span class="welcome__recent-detail">{{ display(item.path) }}</span>
-                </span>
-              </button>
-              <span class="welcome__recent-time">{{ relativeTime(item.openedAt) }}</span>
-              <app-button
-                [pressed]="item.pinned"
-                [ariaLabel]="item.pinned ? 'Unstar item' : 'Star item'"
-                [icon]="item.pinned ? Icon.WELCOME_STAR_FILLED : Icon.WELCOME_STAR"
-                variant="none"
-                size="small"
-                (click)="togglePin(item)"
-              />
-              <!-- Its two other actions sit inline rather than behind a menu: two commands are quicker
+        <!-- The scrollbar floats over the rows rather than taking a channel beside them, so the list's
+             right edge lines up with the controls above it. -->
+        <div class="welcome__recent-frame" appOverlayScrollbar=".welcome__recent-list">
+          <ul class="welcome__recent-list">
+            @for (item of visibleItems(); track item.path) {
+              <li class="welcome__recent-row" [class.welcome__recent-row--pinned]="item.pinned">
+                <button type="button" class="welcome__recent-open" (click)="openRecent(item)">
+                  <span class="welcome__recent-icon"><app-icon [icon]="iconFor(item.kind)" /></span>
+                  <span class="welcome__recent-text">
+                    <span class="welcome__recent-name">{{ display(item.name) }}</span>
+                    <span class="welcome__recent-detail">{{ display(item.path) }}</span>
+                  </span>
+                </button>
+                <span class="welcome__recent-time">{{ relativeTime(item.openedAt) }}</span>
+                <app-button
+                  [pressed]="item.pinned"
+                  [ariaLabel]="item.pinned ? 'Unstar item' : 'Star item'"
+                  [icon]="item.pinned ? Icon.WELCOME_STAR_FILLED : Icon.WELCOME_STAR"
+                  variant="none"
+                  size="small"
+                  (click)="togglePin(item)"
+                />
+                <!-- Its two other actions sit inline rather than behind a menu: two commands are quicker
                    to reach as buttons than a menu is to open. -->
-              <app-button
-                ariaLabel="Show in Finder"
-                tooltip="Show in Finder"
-                [icon]="Icon.FOLDER_OPEN"
-                variant="none"
-                size="small"
-                (click)="reveal(item)"
-              />
-              <app-button
-                ariaLabel="Remove item"
-                tooltip="Remove from recent items"
-                [icon]="Icon.TRASH"
-                variant="none"
-                size="small"
-                (click)="remove(item)"
-              />
-            </li>
-          }
-        </ul>
+                <app-button
+                  ariaLabel="Show in Finder"
+                  tooltip="Show in Finder"
+                  [icon]="Icon.FOLDER_OPEN"
+                  variant="none"
+                  size="small"
+                  (click)="reveal(item)"
+                />
+                <app-button
+                  ariaLabel="Remove item"
+                  tooltip="Remove from recent items"
+                  [icon]="Icon.TRASH"
+                  variant="none"
+                  size="small"
+                  (click)="remove(item)"
+                />
+              </li>
+            }
+          </ul>
+        </div>
       } @else {
         <div class="welcome__recent-empty">
           <app-icon [icon]="Icon.RECENT_EMPTY" [size]="4" />

@@ -170,6 +170,28 @@ export class HostingManager {
         account: unknown,
       ): Promise<ForgeResult<readonly HostedRepository[]>> => this.repositories(host, account),
     );
+    ipcMain.handle(
+      ForgeChannel.StarredRepositories,
+      (
+        _event: IpcMainInvokeEvent,
+        host: unknown,
+      ): Promise<ForgeResult<readonly HostedRepository[]>> => this.starredRepositories(host),
+    );
+  }
+
+  /**
+   * Lists every repository the user starred on a host, whoever owns it (#805).
+   * @param host The untrusted host.
+   * @returns Returns the repositories, or why they could not be read.
+   */
+  public async starredRepositories(
+    host: unknown,
+  ): Promise<ForgeResult<readonly HostedRepository[]>> {
+    const name: string | null = this.servedHost(host);
+    if (name === null) {
+      return { ok: false, error: 'No installed plugin serves that host.', unauthorized: false };
+    }
+    return toResult(await this.host.request('listStarredRepositories', { host: name }, USER));
   }
 
   /**

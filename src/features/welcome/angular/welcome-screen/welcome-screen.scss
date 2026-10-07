@@ -16,6 +16,8 @@
   --wl-surface: rgba(255, 255, 255, 0.035);
   --wl-surface-hover: rgba(255, 255, 255, 0.06);
   --wl-surface-border: rgba(255, 255, 255, 0.09);
+  // A list row at rest: fainter than a card, just enough to separate the rows.
+  --wl-row: rgba(255, 255, 255, 0.025);
   --wl-border: rgba(255, 255, 255, 0.08);
   // The panel colour the active tab and its content share, so the two read as one shape.
   --wl-panel: #1d2026;
@@ -47,6 +49,7 @@
     --wl-surface: transparent;
     --wl-surface-hover: var(--gray-200);
     --wl-surface-border: var(--gray-300);
+    --wl-row: rgba(0, 0, 0, 0.025);
     --wl-border: var(--gray-300);
     --wl-panel: #ffffff;
 

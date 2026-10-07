@@ -377,6 +377,7 @@ describe('GitHubHosting', () => {
       };
       const { github, http } = setup([
         { match: '/user/repos', status: 200, body: [] },
+        { match: '/user/starred', status: 200, body: [] },
         { match: '/orgs/onix-labs/repos', status: 200, body: [repository] },
         { match: '/user', status: 200, body: { login: 'matthew' } },
       ]);
@@ -387,7 +388,10 @@ describe('GitHubHosting', () => {
         'onix-labs',
       );
 
-      expect(http.urls.some((url) => url.includes('/user/repos?affiliation=owner'))).toBe(true);
+      // #805: the user's own listing includes what they collaborate on.
+      expect(
+        http.urls.some((url) => url.includes('/user/repos?affiliation=owner,collaborator')),
+      ).toBe(true);
       expect(org).toEqual({
         ok: true,
         result: [
@@ -399,9 +403,227 @@ describe('GitHubHosting', () => {
             cloneUrl: 'https://github.com/onix-labs/studio.git',
             webUrl: 'https://github.com/onix-labs/studio',
             updatedAt: '2026-10-05T10:00:00Z',
+            starred: false,
           },
         ],
       });
+    });
+
+    it('listRepositories_readsEveryPage_untilAShortOne', async () => {
+      // #805: a browser, not a glance — a hundred was where the list used to stop.
+      const page: (count: number, from: number) => unknown[] = (count: number, from: number) =>
+        Array.from({ length: count }, (_value: unknown, index: number) => ({
+          name: `repo-${from + index}`,
+          owner: { login: 'matthew' },
+          updated_at: '2026-10-05T10:00:00Z',
+        }));
+      const { github, http } = setup([
+        {
+          match: 'affiliation=owner,collaborator&sort=updated&per_page=100&page=1',
+          status: 200,
+          body: page(100, 0),
+        },
+        {
+          match: 'affiliation=owner,collaborator&sort=updated&per_page=100&page=2',
+          status: 200,
+          body: page(30, 100),
+        },
+        { match: '/user/starred', status: 200, body: [] },
+        { match: '/user', status: 200, body: { login: 'matthew' } },
+      ]);
+
+      const listed: Outcome<readonly HostedRepository[]> = await github.listRepositories(
+        'github.com',
+        'matthew',
+      );
+
+      expect(listed.ok && listed.result.length).toBe(130);
+      expect(http.urls.filter((url) => url.includes('/user/repos')).length).toBe(2);
+    });
+
+    it('listRepositories_carriesTheDetails_andMarksWhatTheUserStarred', async () => {
+      const raw: (name: string, extra: Record<string, unknown>) => unknown = (
+        name: string,
+        extra: Record<string, unknown>,
+      ) => ({
+        name,
+        full_name: `Onix-Labs/${name}`,
+        owner: { login: 'Onix-Labs' },
+        updated_at: '2026-10-05T10:00:00Z',
+        ...extra,
+      });
+      const { github } = setup([
+        {
+          match: '/orgs/onix-labs/repos',
+          status: 200,
+          body: [
+            raw('studio', {
+              language: 'TypeScript',
+              stargazers_count: 12,
+              fork: false,
+              archived: false,
+            }),
+            raw('old-fork', { language: null, stargazers_count: 0, fork: true, archived: true }),
+          ],
+        },
+        { match: '/user/starred', status: 200, body: [{ full_name: 'onix-labs/studio' }] },
+        { match: '/user', status: 200, body: { login: 'matthew' } },
+      ]);
+
+      const listed: Outcome<readonly HostedRepository[]> = await github.listRepositories(
+        'github.com',
+        'onix-labs',
+      );
+
+      expect(
+        listed.ok &&
+          listed.result.map(({ ref, language, stars, fork, archived, starred }) => ({
+            name: ref.name,
+            language,
+            stars,
+            fork,
+            archived,
+            starred,
+          })),
+      ).toEqual([
+        {
+          name: 'studio',
+          language: 'TypeScript',
+          stars: 12,
+          fork: false,
+          archived: false,
+          starred: true,
+        },
+        { name: 'old-fork', language: null, stars: 0, fork: true, archived: true, starred: false },
+      ]);
+    });
+
+    it('listRepositories_carriesTheFullerDetails_readingGitHubsEmptyValuesAsNone', async () => {
+      const { github } = setup([
+        {
+          match: '/orgs/onix-labs/repos',
+          status: 200,
+          body: [
+            {
+              name: 'studio',
+              owner: { login: 'Onix-Labs' },
+              updated_at: '2026-10-05T10:00:00Z',
+              forks_count: 3,
+              open_issues_count: 7,
+              topics: ['ide', 'electron', 42],
+              license: { spdx_id: 'MIT', name: 'MIT License' },
+              homepage: 'https://onixlabs.io',
+              pushed_at: '2026-10-04T09:00:00Z',
+            },
+            {
+              name: 'custom',
+              owner: { login: 'Onix-Labs' },
+              updated_at: '2026-10-05T10:00:00Z',
+              license: { spdx_id: 'NOASSERTION', name: 'Other' },
+              homepage: '',
+              pushed_at: null,
+            },
+            {
+              name: 'bare',
+              owner: { login: 'Onix-Labs' },
+              updated_at: '2026-10-05T10:00:00Z',
+              license: null,
+            },
+          ],
+        },
+        { match: '/user/starred', status: 200, body: [] },
+        { match: '/user', status: 200, body: { login: 'matthew' } },
+      ]);
+
+      const listed: Outcome<readonly HostedRepository[]> = await github.listRepositories(
+        'github.com',
+        'onix-labs',
+      );
+
+      expect(
+        listed.ok &&
+          listed.result.map(
+            ({
+              ref,
+              forks,
+              openIssues,
+              topics,
+              license,
+              homepage,
+              pushedAt,
+            }: HostedRepository) => ({
+              name: ref.name,
+              forks,
+              openIssues,
+              topics,
+              license,
+              homepage,
+              pushedAt,
+            }),
+          ),
+      ).toEqual([
+        {
+          name: 'studio',
+          forks: 3,
+          openIssues: 7,
+          topics: ['ide', 'electron'],
+          license: 'MIT',
+          homepage: 'https://onixlabs.io',
+          pushedAt: '2026-10-04T09:00:00Z',
+        },
+        // An unrecognised licence reads by its name; an empty homepage and an unpushed repository read
+        // as none.
+        {
+          name: 'custom',
+          forks: undefined,
+          openIssues: undefined,
+          topics: undefined,
+          license: 'Other',
+          homepage: null,
+          pushedAt: null,
+        },
+        // What GitHub did not send is left out, not invented.
+        {
+          name: 'bare',
+          forks: undefined,
+          openIssues: undefined,
+          topics: undefined,
+          license: null,
+          homepage: undefined,
+          pushedAt: undefined,
+        },
+      ]);
+    });
+
+    it('listStarredRepositories_readsEveryStar_markedStarred', async () => {
+      const { github } = setup([
+        {
+          match: '/user/starred',
+          status: 200,
+          body: [
+            {
+              name: 'angular',
+              owner: { login: 'angular' },
+              language: 'TypeScript',
+              stargazers_count: 99000,
+              updated_at: '2026-10-05T10:00:00Z',
+            },
+          ],
+        },
+      ]);
+
+      const listed: Outcome<readonly HostedRepository[]> =
+        await github.listStarredRepositories('github.com');
+
+      expect(
+        listed.ok && listed.result.map(({ ref, starred, stars }) => ({ ref, starred, stars })),
+      ).toEqual([
+        {
+          ref: { host: 'github.com', owner: 'angular', name: 'angular' },
+          starred: true,
+          stars: 99000,
+        },
+      ]);
     });
 
     it('createRepository_postsUnderTheRightAccount', async () => {

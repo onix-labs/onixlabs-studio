@@ -143,6 +143,7 @@ export async function createHostingTools(context: AgentRunContext): Promise<Tool
     authStatus: undefined,
     listAccounts: undefined,
     listRepositories: undefined,
+    listStarredRepositories: undefined,
     createRepository: undefined,
     describeRepository: undefined,
     listAgentTools: undefined,

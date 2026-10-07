@@ -1,318 +1,380 @@
 <div class="source">
   <aside class="source__side">
-    <section class="source__block" aria-labelledby="source-clone-title">
-      <h2 class="source__heading" id="source-clone-title">Clone a Repository</h2>
-      <div class="source__field">
-        <app-icon [icon]="Icon.WELCOME_LINK" />
-        <input
-          type="text"
-          placeholder="Paste repository URL…"
-          aria-label="Repository URL"
-          spellcheck="false"
-          [value]="cloneUrl()"
-          (input)="onUrlInput($event)"
-          (keydown.enter)="clone()"
-        />
+    <section
+      class="source__block"
+      [class.source__block--open]="openSection() === 'clone'"
+      aria-labelledby="source-clone-title"
+    >
+      <div class="source__heading-row">
+        <h2 class="source__header">
+          <button
+            type="button"
+            class="source__toggle"
+            id="source-clone-title"
+            [attr.aria-expanded]="openSection() === 'clone'"
+            (click)="toggleSection('clone')"
+          >
+            <span class="source__heading">Clone a Repository</span>
+            <app-icon
+              class="source__caret"
+              [icon]="Icon.CARET_RIGHT_BOLD"
+              [rotation]="openSection() === 'clone' ? 90 : 0"
+            />
+          </button>
+        </h2>
       </div>
-      <p class="source__example">e.g. https://github.com/owner/repo.git</p>
-
-      <!-- The layout is chosen BEFORE cloning: a worktree is laid out as a container from the start,
+      @if (openSection() === 'clone') {
+        <div class="source__field">
+          <app-icon [icon]="Icon.WELCOME_LINK" />
+          <input
+            type="text"
+            placeholder="Paste repository URL…"
+            aria-label="Repository URL"
+            spellcheck="false"
+            [value]="cloneUrl()"
+            (input)="onUrlInput($event)"
+            (keydown.enter)="clone()"
+          />
+        </div>
+        <!-- The layout is chosen BEFORE cloning: a worktree is laid out as a container from the start,
            so nothing has to be moved later. -->
-      <div class="source__layout" role="radiogroup" aria-label="Clone as">
-        <button
-          type="button"
-          class="source__layout-option"
-          role="radio"
-          [class.source__layout-option--active]="layout() === 'flat'"
-          [attr.aria-checked]="layout() === 'flat'"
-          (click)="layout.set('flat')"
-        >
-          <span class="source__layout-title">Flat repository</span>
-          <span class="source__layout-hint">One working copy</span>
-        </button>
-        <button
-          type="button"
-          class="source__layout-option"
-          role="radio"
-          [class.source__layout-option--active]="layout() === 'worktree'"
-          [attr.aria-checked]="layout() === 'worktree'"
-          (click)="layout.set('worktree')"
-        >
-          <span class="source__layout-title">Worktree</span>
-          <span class="source__layout-hint">Several branches at once</span>
-        </button>
-      </div>
+        <app-dropdown
+          class="source__layout-choice"
+          [options]="layoutOptions"
+          [value]="layout() ?? ''"
+          [fullWidth]="true"
+          ariaLabel="Clone as"
+          placeholder="Clone As…"
+          (valueChange)="setLayout($event)"
+        />
 
-      <!-- Where the clone goes: a folder chosen in Studio's own dialog and remembered, and the name of
-           the folder to create in it (taken from the URL until it is typed). -->
-      <div class="source__destination">
-        <span class="source__destination-label">Clone into</span>
-        <span class="source__destination-path" [attr.title]="parent()">
-          {{ parent() ?? 'A folder you choose' }}{{ parent() === null ? '' : '/' }}
-        </span>
-        <button type="button" class="source__link" (click)="chooseParent()">
-          {{ parent() === null ? 'Choose…' : 'Change…' }}
-        </button>
-      </div>
-      <div class="source__row">
-        <div class="source__field source__field--compact">
-          <input
-            type="text"
-            placeholder="Folder name"
-            aria-label="Folder name"
-            spellcheck="false"
-            [value]="folderName() ?? targetName()"
-            (input)="onNameInput($event)"
-          />
-        </div>
-        <div class="source__field source__field--compact">
-          <input
-            type="text"
-            placeholder="Branch"
-            aria-label="Branch"
-            spellcheck="false"
-            [value]="branch()"
-            (input)="onBranchInput($event)"
-          />
-        </div>
-      </div>
-
-      @if (canClone()) {
-        <button type="button" class="source__clone" [disabled]="!cloneReady()" (click)="clone()">
-          <app-icon
-            [icon]="cloning() ? Icon.SPINNER : Icon.WELCOME_CLONE"
-            [class.source__spin]="cloning()"
-          />
-          <span>{{ cloning() ? 'Cloning…' : 'Clone Repository' }}</span>
-        </button>
-      } @else {
-        <p class="source__notice" role="status">
-          Cloning needs a version-control plugin. Install Git from the Plugin Manager.
-        </p>
-        <button type="button" class="source__secondary" (click)="openPlugins()">
-          <app-icon [icon]="Icon.WELCOME_PLUGINS" />
-          <span>Open Plugin Manager</span>
-        </button>
-      }
-      @if (cloneError(); as error) {
-        <p class="source__error" role="alert">{{ error }}</p>
+        @if (canClone()) {
+          <button type="button" class="source__clone" [disabled]="!cloneReady()" (click)="clone()">
+            <app-icon
+              [icon]="cloning() ? Icon.SPINNER : Icon.WELCOME_CLONE"
+              [class.source__spin]="cloning()"
+            />
+            <span>{{ cloning() ? 'Cloning…' : 'Clone Repository' }}</span>
+          </button>
+        } @else {
+          <p class="source__notice" role="status">
+            Cloning needs a version-control plugin. Install Git from the Plugin Manager.
+          </p>
+          <button type="button" class="source__secondary" (click)="openPlugins()">
+            <app-icon [icon]="Icon.WELCOME_PLUGINS" />
+            <span>Open Plugin Manager</span>
+          </button>
+        }
+        @if (cloneError(); as error) {
+          <p class="source__error" role="alert">{{ error }}</p>
+        }
       }
     </section>
 
-    <section class="source__block" aria-labelledby="source-accounts-title">
+    <section
+      class="source__block"
+      [class.source__block--open]="openSection() === 'accounts'"
+      aria-labelledby="source-accounts-title"
+    >
       <div class="source__heading-row">
-        <h2 class="source__heading" id="source-accounts-title">Connected Accounts</h2>
+        <h2 class="source__header">
+          <button
+            type="button"
+            class="source__toggle"
+            id="source-accounts-title"
+            [attr.aria-expanded]="openSection() === 'accounts'"
+            (click)="toggleSection('accounts')"
+          >
+            <span class="source__heading">Connected Accounts</span>
+            <app-icon
+              class="source__caret"
+              [icon]="Icon.CARET_RIGHT_BOLD"
+              [rotation]="openSection() === 'accounts' ? 90 : 0"
+            />
+          </button>
+        </h2>
+      </div>
+      @if (openSection() === 'accounts') {
+        @for (account of accounts(); track account.id) {
+          <div class="source__account">
+            <span class="source__account-host">{{ account.host }}</span>
+            <span class="source__account-login">{{ account.login }}</span>
+          </div>
+        }
+        @for (entry of signedOut(); track entry.host) {
+          <button
+            type="button"
+            class="source__account source__account--signed-out"
+            (click)="openSettings()"
+          >
+            <span class="source__account-host">{{ entry.provider }}</span>
+            <span class="source__account-login">Sign in to {{ entry.host }}…</span>
+          </button>
+        }
+        @if (accounts().length === 0 && signedOut().length === 0) {
+          <p class="source__accounts-empty">
+            @if (canBrowse()) {
+              {{ loading() ? 'Reading your accounts…' : 'No accounts are signed in.' }}
+            } @else {
+              Accounts on GitHub, GitLab, Bitbucket and Azure DevOps connect through hosting
+              plugins.
+            }
+          </p>
+        }
         <button
           type="button"
-          class="source__icon-button"
-          aria-label="Connect an account"
-          [appTooltip]="'Connect an account'"
+          class="source__connect"
           (click)="canBrowse() ? openSettings() : openPlugins()"
         >
           <app-icon [icon]="Icon.WELCOME_ADD" />
-        </button>
-      </div>
-      @for (account of accounts(); track account.id) {
-        <div class="source__account">
-          <span class="source__account-host">{{ account.host }}</span>
-          <span class="source__account-login">{{ account.login }}</span>
-        </div>
-      }
-      @for (entry of signedOut(); track entry.host) {
-        <button
-          type="button"
-          class="source__account source__account--signed-out"
-          (click)="openSettings()"
-        >
-          <span class="source__account-host">{{ entry.provider }}</span>
-          <span class="source__account-login">Sign in to {{ entry.host }}…</span>
+          <span>Connect an Account</span>
         </button>
       }
-      @if (accounts().length === 0 && signedOut().length === 0) {
-        <p class="source__accounts-empty">
-          @if (canBrowse()) {
-            {{ loading() ? 'Reading your accounts…' : 'No accounts are signed in.' }}
-          } @else {
-            Accounts on GitHub, GitLab, Bitbucket and Azure DevOps connect through hosting plugins.
-          }
-        </p>
-      }
-    </section>
-
-    <section class="source__block" aria-labelledby="source-browse-title">
-      <h2 class="source__heading" id="source-browse-title">Browse</h2>
-      <div class="source__browse">
-        @for (entry of browse(); track entry.view) {
-          <button
-            type="button"
-            class="source__browse-item"
-            [class.source__browse-item--active]="view() === entry.view"
-            [attr.aria-pressed]="view() === entry.view"
-            (click)="view.set(entry.view)"
-          >
-            <app-icon [icon]="entry.icon" />
-            <span class="source__browse-label">{{ entry.label }}</span>
-            @if (accounts().length > 0) {
-              <span class="source__browse-count">{{ countIn(entry.view) }}</span>
-            }
-          </button>
-        }
-      </div>
     </section>
   </aside>
 
   <section class="source__main" aria-labelledby="source-repositories-title">
-    <header class="source__main-head">
-      <div>
-        <h2 class="source__title" id="source-repositories-title">Your Repositories</h2>
-        <p class="source__description">
-          Browse, search and clone your repositories across every connected account.
-        </p>
-      </div>
-      <div class="source__search">
-        <app-icon [icon]="Icon.SEARCH" />
-        <input
-          type="text"
-          placeholder="Search repositories…"
-          aria-label="Search repositories"
-          [value]="query()"
-          [disabled]="accounts().length === 0"
-          (input)="onSearchInput($event)"
-          (keydown.escape)="query.set('')"
-        />
-      </div>
-    </header>
-
-    @if (accounts().length > 0) {
-      <div class="source__hosts" role="tablist" aria-label="Filter by host">
-        <button
-          type="button"
-          class="source__host"
-          role="tab"
-          [class.source__host--active]="host() === null"
-          [attr.aria-selected]="host() === null"
-          (click)="host.set(null)"
-        >
-          All ({{ countOn(null) }})
-        </button>
-        @for (name of hosts(); track name) {
-          <button
-            type="button"
-            class="source__host"
-            role="tab"
-            [class.source__host--active]="host() === name"
-            [attr.aria-selected]="host() === name"
-            (click)="host.set(name)"
-          >
-            {{ name }} ({{ countOn(name) }})
-          </button>
-        }
-      </div>
-    }
-
-    @if (loadError(); as error) {
-      <p class="source__error" role="alert">Some repositories could not be read: {{ error }}</p>
-    }
+    <h2 class="source__heading source__title" id="source-repositories-title">Your Repositories</h2>
 
     <div class="source__body">
-      @if (accounts().length === 0) {
-        <div class="source__empty">
-          <app-icon [icon]="Icon.WELCOME_REPOSITORIES_EMPTY" [size]="4" />
-          @if (loading()) {
-            <p class="source__empty-title">Reading your repositories…</p>
-          } @else if (canBrowse()) {
-            <p class="source__empty-title">No accounts signed in</p>
-            <p class="source__empty-hint">
-              Sign in to a code host in Settings to see your repositories here. Until then, paste a
-              repository URL to clone it.
-            </p>
-            <button type="button" class="source__secondary" (click)="openSettings()">
-              <app-icon [icon]="Icon.WELCOME_SETTINGS" />
-              <span>Open Settings</span>
-            </button>
-          } @else {
-            <p class="source__empty-title">No hosting plugin installed</p>
-            <p class="source__empty-hint">
-              Your repositories appear here once a hosting plugin — GitHub, for one — is installed
-              and signed in. Until then, paste a repository URL to clone it.
-            </p>
-            <button type="button" class="source__secondary" (click)="openPlugins()">
-              <app-icon [icon]="Icon.WELCOME_PLUGINS" />
-              <span>Open Plugin Manager</span>
-            </button>
-          }
+      <div class="source__panel">
+        <!-- One row, as in Recent Items: what to show, then the search. -->
+        <div class="source__panel-head">
+          <app-dropdown
+            class="source__filter"
+            ariaLabel="Show repositories"
+            [fullWidth]="true"
+            [options]="filterOptions()"
+            [value]="filterValue()"
+            [disabled]="accounts().length === 0"
+            (valueChange)="setFilter($event)"
+          />
+          <div class="source__search">
+            <app-icon [icon]="Icon.SEARCH" />
+            <input
+              type="text"
+              placeholder="Search repositories…"
+              aria-label="Search repositories"
+              [value]="query()"
+              [disabled]="accounts().length === 0"
+              (input)="onSearchInput($event)"
+              (keydown.escape)="query.set('')"
+            />
+          </div>
         </div>
-      } @else if (visible().length === 0) {
-        <div class="source__empty">
-          <app-icon [icon]="Icon.WELCOME_REPOSITORIES_EMPTY" [size]="4" />
-          <p class="source__empty-title">No matching repositories</p>
-          <p class="source__empty-hint">Try a different view, host or search.</p>
-        </div>
-      } @else {
-        <ul class="source__list">
-          @for (repository of visible(); track repository.id) {
-            <li>
-              <button
-                type="button"
-                class="welcome__repository"
-                [class.welcome__repository--selected]="selectedId() === repository.id"
-                (click)="selectedId.set(repository.id)"
-              >
-                <app-icon
-                  class="welcome__repository-icon"
-                  [icon]="
-                    repository.private ? Icon.WELCOME_REPOSITORY_PRIVATE : Icon.WELCOME_REPOSITORY
-                  "
-                />
-                <span class="welcome__repository-text">
-                  <span class="welcome__repository-name">{{ repository.name }}</span>
-                  <span class="welcome__repository-owner">{{ repository.fullName }}</span>
-                  @if (repository.description) {
-                    <span class="welcome__repository-description">{{
-                      repository.description
-                    }}</span>
-                  }
-                </span>
-                <span class="welcome__repository-meta">
-                  @if (repository.language) {
-                    <span>{{ repository.language }}</span>
-                  }
-                  <span>{{ updated(repository.updatedAt) }}</span>
-                </span>
+
+        @if (loadError(); as error) {
+          <p class="source__error" role="alert">Some repositories could not be read: {{ error }}</p>
+        }
+
+        @if (accounts().length === 0) {
+          <div class="source__empty">
+            <app-icon [icon]="Icon.WELCOME_REPOSITORIES_EMPTY" [size]="4" />
+            @if (loading()) {
+              <p class="source__empty-title">Reading your repositories…</p>
+            } @else if (canBrowse()) {
+              <p class="source__empty-title">No accounts signed in</p>
+              <p class="source__empty-hint">
+                Sign in to a code host in Settings to see your repositories here. Until then, paste
+                a repository URL to clone it.
+              </p>
+              <button type="button" class="source__secondary" (click)="openSettings()">
+                <app-icon [icon]="Icon.WELCOME_SETTINGS" />
+                <span>Open Settings</span>
               </button>
-            </li>
-          }
-        </ul>
-        @if (selected(); as repository) {
-          <aside class="source__detail" aria-label="Repository details">
-            <h3 class="source__detail-name">{{ repository.name }}</h3>
-            <p class="source__detail-owner">{{ repository.fullName }}</p>
-            @if (repository.description) {
-              <p class="source__detail-description">{{ repository.description }}</p>
+            } @else {
+              <p class="source__empty-title">No hosting plugin installed</p>
+              <p class="source__empty-hint">
+                Your repositories appear here once a hosting plugin — GitHub, for one — is installed
+                and signed in. Until then, paste a repository URL to clone it.
+              </p>
+              <button type="button" class="source__secondary" (click)="openPlugins()">
+                <app-icon [icon]="Icon.WELCOME_PLUGINS" />
+                <span>Open Plugin Manager</span>
+              </button>
             }
-            <dl class="source__detail-facts">
-              @if (repository.stars !== undefined) {
-                <dt>Stars</dt>
-                <dd>{{ repository.stars }}</dd>
+          </div>
+        } @else if (visible().length === 0) {
+          <div class="source__empty">
+            <app-icon [icon]="Icon.WELCOME_REPOSITORIES_EMPTY" [size]="4" />
+            <p class="source__empty-title">No matching repositories</p>
+            <p class="source__empty-hint">Try a different filter or search.</p>
+          </div>
+        } @else {
+          <!-- The scrollbar floats over the rows rather than taking a channel beside them, so the list's
+               right edge lines up with the controls above it. -->
+          <div class="source__list-frame" appOverlayScrollbar=".source__list">
+            <ul class="source__list">
+              @for (repository of visible(); track repository.id) {
+                <li>
+                  <button
+                    type="button"
+                    class="welcome__repository"
+                    [class.welcome__repository--selected]="selectedId() === repository.id"
+                    (click)="toggleSelected(repository.id)"
+                  >
+                    <span class="welcome__repository-icon">
+                      <app-icon
+                        [icon]="
+                          repository.private
+                            ? Icon.WELCOME_REPOSITORY_PRIVATE
+                            : Icon.WELCOME_REPOSITORY
+                        "
+                      />
+                    </span>
+                    <span class="welcome__repository-text">
+                      <span class="welcome__repository-name">{{ repository.name }}</span>
+                      <span class="welcome__repository-owner">{{ repository.fullName }}</span>
+                    </span>
+                    <span class="welcome__repository-time">{{
+                      updated(repository.updatedAt)
+                    }}</span>
+                  </button>
+                </li>
               }
-              @if (repository.language) {
-                <dt>Language</dt>
-                <dd>{{ repository.language }}</dd>
+            </ul>
+          </div>
+        }
+      </div>
+      @if (accounts().length > 0 && visible().length > 0) {
+        @if (selected(); as repository) {
+          <aside
+            class="source__detail"
+            aria-label="Repository details"
+            appOverlayScrollbar=".source__detail-body"
+          >
+            <!-- The name stays put at the top and the actions at the bottom; only the details between
+                 them scroll. -->
+            <header class="source__detail-head">
+              <div class="source__detail-title">
+                <h3 class="source__detail-name">{{ repository.name }}</h3>
+                <p class="source__detail-owner">{{ repository.fullName }}</p>
+              </div>
+              <!-- The same quiet button as the actions at the end of a recent item. -->
+              <app-button
+                class="source__detail-close"
+                ariaLabel="Close details"
+                tooltip="Close details"
+                [icon]="Icon.CLOSE"
+                variant="none"
+                size="small"
+                (click)="selectedId.set(null)"
+              />
+            </header>
+            <div class="source__detail-body">
+              @if (repository.fork || repository.archived || repository.starred) {
+                <div class="source__badges">
+                  @if (repository.starred) {
+                    <span class="source__badge">Starred</span>
+                  }
+                  @if (repository.fork) {
+                    <span class="source__badge">Fork</span>
+                  }
+                  @if (repository.archived) {
+                    <span class="source__badge source__badge--warning">Archived</span>
+                  }
+                </div>
               }
-              @if (repository.defaultBranch) {
-                <dt>Default branch</dt>
-                <dd>{{ repository.defaultBranch }}</dd>
+
+              @if (repository.description) {
+                <p class="source__detail-description">{{ repository.description }}</p>
               }
-              <dt>Visibility</dt>
-              <dd>{{ repository.private ? 'Private' : 'Public' }}</dd>
-              <dt>Last updated</dt>
-              <dd>{{ updated(repository.updatedAt) }}</dd>
-            </dl>
-            <p class="source__detail-url">{{ repository.cloneUrl }}</p>
-            <button type="button" class="source__clone" (click)="prepareClone(repository)">
-              <app-icon [icon]="Icon.WELCOME_CLONE" />
-              <span>Clone Repository</span>
-            </button>
+
+              @if (repository.topics?.length) {
+                <ul class="source__topics" aria-label="Topics">
+                  @for (topic of repository.topics; track topic) {
+                    <li class="source__topic">{{ topic }}</li>
+                  }
+                </ul>
+              }
+
+              <dl class="source__detail-facts">
+                @if (repository.stars !== undefined) {
+                  <dt>Stars</dt>
+                  <dd>{{ repository.stars }}</dd>
+                }
+                @if (repository.forks !== undefined) {
+                  <dt>Forks</dt>
+                  <dd>{{ repository.forks }}</dd>
+                }
+                @if (repository.openIssues !== undefined) {
+                  <dt>Open issues</dt>
+                  <dd>{{ repository.openIssues }}</dd>
+                }
+                @if (repository.language) {
+                  <dt>Language</dt>
+                  <dd>{{ repository.language }}</dd>
+                }
+                @if (repository.license) {
+                  <dt>Licence</dt>
+                  <dd>{{ repository.license }}</dd>
+                }
+                @if (repository.defaultBranch) {
+                  <dt>Default branch</dt>
+                  <dd>{{ repository.defaultBranch }}</dd>
+                }
+                <dt>Visibility</dt>
+                <dd>{{ repository.private ? 'Private' : 'Public' }}</dd>
+                @if (repository.pushedAt !== undefined) {
+                  <dt>Last pushed</dt>
+                  <dd>{{ repository.pushedAt === null ? 'Never' : ago(repository.pushedAt) }}</dd>
+                }
+                <dt>Last updated</dt>
+                <dd>{{ ago(repository.updatedAt) }}</dd>
+              </dl>
+
+              @if (repository.homepage; as homepage) {
+                <button
+                  type="button"
+                  class="source__detail-link"
+                  [attr.aria-label]="'Open the homepage, ' + homepage"
+                  (click)="openInBrowser(homepage)"
+                >
+                  <app-icon [icon]="Icon.WELCOME_HOMEPAGE" />
+                  <span>{{ homepage }}</span>
+                </button>
+              }
+            </div>
+            <footer class="source__detail-foot">
+              <!-- The same choice as under Clone a Repository, and the same clone: the layout first, then
+                   where it goes. -->
+              @if (canClone()) {
+                <app-dropdown
+                  class="source__layout-choice"
+                  [options]="layoutOptions"
+                  [value]="layout() ?? ''"
+                  [fullWidth]="true"
+                  ariaLabel="Clone details as"
+                  placeholder="Clone As…"
+                  (valueChange)="setLayout($event)"
+                />
+                <button
+                  type="button"
+                  class="source__clone"
+                  [disabled]="!detailCloneReady()"
+                  (click)="cloneRepository(repository)"
+                >
+                  <app-icon
+                    [icon]="cloning() ? Icon.SPINNER : Icon.WELCOME_CLONE"
+                    [class.source__spin]="cloning()"
+                  />
+                  <span>{{ cloning() ? 'Cloning…' : 'Clone Repository' }}</span>
+                </button>
+              }
+              @if (repository.webUrl) {
+                <button
+                  type="button"
+                  class="source__secondary source__open"
+                  (click)="openInBrowser(repository.webUrl)"
+                >
+                  <app-icon [icon]="Icon.WELCOME_OPEN_EXTERNAL" />
+                  <span>{{ openLabel(repository) }}</span>
+                </button>
+              }
+              @if (cloneError(); as error) {
+                <p class="source__error" role="alert">{{ error }}</p>
+              }
+            </footer>
           </aside>
         }
       }

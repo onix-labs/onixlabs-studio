@@ -25,7 +25,11 @@
  * refused rather than spoken to: one that misreads a request may act on the user's account in a way
  * they did not ask for.
  */
-export const HOSTING_PROTOCOL_VERSION: string = '1.1';
+// 1.2 (#805) adds optional repository details — language, stars, forks, open issues, topics, licence,
+// homepage, last push, fork, archived, starred — and the
+// `listStarredRepositories` request, so a repository browser can offer views on them. Both are
+// additions, so a 1.1 plugin is still understood.
+export const HOSTING_PROTOCOL_VERSION: string = '1.2';
 
 /**
  * Names one optional capability a hosting plugin can advertise.
@@ -265,6 +269,66 @@ export interface HostedRepository {
    * Gets when it last changed, as an ISO 8601 timestamp.
    */
   readonly updatedAt: string;
+
+  /**
+   * Gets its main language, or null when the host names none. Absent when the plugin does not say
+   * (added in 1.2, like every field below).
+   */
+  readonly language?: string | null;
+
+  /**
+   * Gets how many users starred it. Absent when the plugin does not say.
+   */
+  readonly stars?: number;
+
+  /**
+   * Gets whether it is a fork of another repository. Absent when the plugin does not say.
+   */
+  readonly fork?: boolean;
+
+  /**
+   * Gets whether it is archived (read-only). Absent when the plugin does not say.
+   */
+  readonly archived?: boolean;
+
+  /**
+   * Gets whether the signed-in user starred it. Absent when the plugin does not say.
+   */
+  readonly starred?: boolean;
+
+  /**
+   * Gets how many forks it has. Absent when the plugin does not say.
+   */
+  readonly forks?: number;
+
+  /**
+   * Gets how many issues are open on it. Absent when the plugin does not say. A host may count open
+   * pull requests among them, as GitHub does.
+   */
+  readonly openIssues?: number;
+
+  /**
+   * Gets the topics it is tagged with. Absent when the plugin does not say.
+   */
+  readonly topics?: readonly string[];
+
+  /**
+   * Gets its licence's short name (an SPDX id such as "MIT" where the host knows one), or null when it
+   * has none. Absent when the plugin does not say.
+   */
+  readonly license?: string | null;
+
+  /**
+   * Gets its homepage, or null when it has none. Absent when the plugin does not say.
+   */
+  readonly homepage?: string | null;
+
+  /**
+   * Gets when it was last pushed to, as an ISO 8601 timestamp, or null when it never was. Unlike
+   * `updatedAt`, which a host may bump for a star or a settings change, this moves only with code.
+   * Absent when the plugin does not say.
+   */
+  readonly pushedAt?: string | null;
 }
 
 /**
@@ -562,6 +626,15 @@ export interface HostingOperations {
     readonly result: readonly HostedRepository[];
   };
 
+  /**
+   * Lists every repository the signed-in user starred on a host, whoever owns it (1.2, #805). Each is
+   * marked `starred`. Gated by `listRepositories`.
+   */
+  readonly listStarredRepositories: {
+    readonly params: { readonly host: string };
+    readonly result: readonly HostedRepository[];
+  };
+
   readonly createRepository: {
     readonly params: {
       readonly host: string;
@@ -756,6 +829,7 @@ export const HOSTING_READ_OPS: readonly HostingOp[] = [
   'authStatus',
   'listAccounts',
   'listRepositories',
+  'listStarredRepositories',
   'describeRepository',
   'listPullRequests',
   'listIssues',
@@ -771,6 +845,7 @@ export const HOSTING_READ_OPS: readonly HostingOp[] = [
 export const HOSTING_OP_CAPABILITY: Readonly<Partial<Record<HostingOp, HostingCapability>>> = {
   listAccounts: 'accounts',
   listRepositories: 'listRepositories',
+  listStarredRepositories: 'listRepositories',
   createRepository: 'createRepository',
   listPullRequests: 'pullRequests',
   listIssues: 'issues',

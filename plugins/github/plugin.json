@@ -2,13 +2,13 @@
   "id": "onixlabs.github",
   "name": "GitHub",
   "description": "GitHub hosting: pull requests with their checks, issues and comments, Actions runs (re-run and cancel), and your accounts and repositories — and, for you and your agents, opening issues and pull requests, commenting, and closing or reopening issues.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "apiVersion": "1.17.0",
   "detail": "Signs in with the GitHub CLI's login (gh auth login), or a token you add in Settings. Serves github.com.",
   "provision": {
     "kind": "npm",
     "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.github.lock.json",
-    "sha256": "7222f3bb1a3cfd46d93b61d9056dfb5667920281ba6b1172640fe362ed2e1f40",
+    "sha256": "7965d18c1a3e8323e48ed68e034fe95c7800f07b88400dabb09ab83d3559214e",
     "executablePath": "node_modules/@onixlabs/github/main.js"
   },
   "contributes": {

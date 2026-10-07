@@ -266,4 +266,18 @@ export class Forge implements ForgeClient {
       ) ?? Promise.resolve(UNAVAILABLE_RESULT)
     );
   }
+
+  /**
+   * Lists every repository the user starred on a host, whoever owns it (#805).
+   * @param host The host.
+   * @returns Returns the repositories, or the reason they could not be read.
+   */
+  public starredRepositories(host: string): Promise<ForgeResult<readonly HostedRepository[]>> {
+    return (
+      this.bridge?.invoke<ForgeResult<readonly HostedRepository[]>>(
+        ForgeChannel.StarredRepositories,
+        host,
+      ) ?? Promise.resolve(UNAVAILABLE_RESULT)
+    );
+  }
 }
