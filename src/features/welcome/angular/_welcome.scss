@@ -58,6 +58,33 @@
   }
 }
 
+// A row in a list (recent items, repositories): nothing at rest, so the list reads as text rather than
+// a stack of cards; on hover the action buttons' accent wash and edge, without their lift and glow.
+// The transparent border holds the hover edge's space so the row does not shift.
+@mixin list-row {
+  color: inherit;
+  background: transparent;
+  border: 0.0625rem solid transparent;
+  border-radius: calc(0.55rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  transition:
+    background 150ms ease,
+    border-color 150ms ease;
+}
+
+// The list row's hover, also its selected state. Pass the children that turn accent with it.
+@mixin list-row-active($accented...) {
+  outline: none;
+  background: rgba(var(--accent-color-rgb), 0.25);
+  border-color: rgba(var(--accent-color-rgb), 1);
+
+  @if length($accented) > 0 {
+    #{$accented} {
+      color: var(--accent-color);
+    }
+  }
+}
+
 // A rounded field with a leading or trailing glyph: the search boxes and the clone URL field.
 @mixin field {
   display: flex;

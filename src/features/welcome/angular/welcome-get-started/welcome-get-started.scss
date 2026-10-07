@@ -177,16 +177,16 @@
 }
 
 .welcome__recent-row {
+  @include list-row;
+
   display: flex;
   align-items: center;
   gap: 0.5rem;
   padding-inline-end: 0.35rem;
-  border-radius: calc(0.55rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-  transition: background 120ms ease;
 
-  &:hover {
-    background: var(--wl-surface);
+  &:hover,
+  &:has(.welcome__recent-open:focus-visible) {
+    @include list-row-active('.welcome__recent-icon', '.welcome__recent-name');
   }
 }
 
@@ -311,10 +311,6 @@
 :host-context([data-theme-mode='light']) {
   .welcome__recent {
     background: transparent;
-  }
-
-  .welcome__recent-row:hover {
-    background: var(--gray-200);
   }
 }
 

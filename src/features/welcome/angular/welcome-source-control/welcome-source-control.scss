@@ -252,19 +252,26 @@
 }
 
 .welcome__repository {
-  @include card;
-  @include card-hover;
+  @include list-row;
 
   display: flex;
   align-items: flex-start;
   gap: 0.75rem;
   inline-size: 100%;
   padding: 0.7rem 0.8rem;
+  font: inherit;
+  text-align: start;
+  cursor: default;
+
+  &:hover,
+  &:focus-visible {
+    @include list-row-active('.welcome__repository-icon', '.welcome__repository-name');
+  }
 }
 
+// The selected repository keeps the hover look, so it stays marked while the pointer is elsewhere.
 .welcome__repository--selected {
-  background: rgba(var(--accent-color-rgb), 0.12);
-  border-color: rgba(var(--accent-color-rgb), 0.7);
+  @include list-row-active('.welcome__repository-icon', '.welcome__repository-name');
 }
 
 .welcome__repository-icon {
