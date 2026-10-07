@@ -9,7 +9,10 @@
         (click)="open(tool)"
       >
         <span class="welcome__tool-tile">
-          <app-icon [icon]="tool.icon" [rotation]="tool.icon === Icon.WELCOME_SETTINGS ? 30 : 0" />
+          <app-icon
+            [icon]="tool.icon"
+            [rotation]="tool.icon === Icon.WELCOME_TOOL_SETTINGS ? 30 : 0"
+          />
         </span>
         <span class="welcome__tool-text">
           <span class="welcome__tool-title">{{ tool.title }}</span>
