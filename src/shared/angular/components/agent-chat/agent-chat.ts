@@ -34,8 +34,13 @@ import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
-import { Radio } from '@shared/angular/components/forms/radio/radio';
-import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
+import { AgentEditDecisionCard } from '@shared/angular/components/agent-cards/agent-edit-decision-card/agent-edit-decision-card';
+import { AgentErrorCard } from '@shared/angular/components/agent-cards/agent-error-card/agent-error-card';
+import {
+  AgentPermissionCard,
+  PermissionAnswer,
+} from '@shared/angular/components/agent-cards/agent-permission-card/agent-permission-card';
+import { AgentQuestionCard } from '@shared/angular/components/agent-cards/agent-question-card/agent-question-card';
 import { MarkdownRenderer } from '@shared/angular/components/markdown-renderer/markdown-renderer';
 import { AgentComposer } from '@shared/angular/components/agent-composer/agent-composer';
 import { friendlyToolLabel, technicalToolName, toolNodeIcon } from './tool-summary';
@@ -305,7 +310,17 @@ interface LaneInfo {
  */
 @Component({
   selector: 'app-agent-chat',
-  imports: [Button, AppIcon, MarkdownRenderer, NgTemplateOutlet, Radio, Dropdown, AgentComposer],
+  imports: [
+    Button,
+    AppIcon,
+    MarkdownRenderer,
+    NgTemplateOutlet,
+    AgentComposer,
+    AgentQuestionCard,
+    AgentEditDecisionCard,
+    AgentErrorCard,
+    AgentPermissionCard,
+  ],
   templateUrl: './agent-chat.html',
   styleUrl: './agent-chat.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -621,19 +636,6 @@ export class AgentChat implements OnInit {
   public readonly pendingInput: Signal<AgentItem | undefined> = this.agent.pendingInput;
 
   /**
-   * Holds the label of the suggested choice currently selected on the pending question's radio group,
-   * or null when none is selected yet. Reset whenever the pending question changes.
-   */
-  protected readonly selectedChoice: WritableSignal<string | null> = signal<string | null>(null);
-
-  /**
-   * Holds the remember scope selected on each pending permission card, keyed by item id ('once' when
-   * unset). Parallel sub-agents can raise concurrent prompts, so the selection is per card.
-   */
-  protected readonly rememberChoice: WritableSignal<Readonly<Record<string, string | undefined>>> =
-    signal<Readonly<Record<string, string | undefined>>>({});
-
-  /**
    * Holds the id of the transcript item whose text was just copied, driving the transient "Copied"
    * feedback on its button; null when none.
    */
@@ -929,13 +931,6 @@ export class AgentChat implements OnInit {
     // The hosting tab's attention dot is not lit from here. It is driven centrally by
     // `AgentTabAttention` off the requests registry, which knows the owning tab for every live
     // conversation — including the surfaces whose dock panel never passed one down to this chat.
-
-    // A fresh question starts with nothing selected: reset the radio selection whenever the pending
-    // question changes (including when it settles).
-    effect((): void => {
-      this.pendingInput();
-      untracked((): void => this.selectedChoice.set(null));
-    });
 
     // Hiding the transcript drops its DOM, so remember how far the reader was from the tail and put
     // them back there when it returns. Without this, coming back to a tab you had scrolled up in would
@@ -1325,31 +1320,13 @@ export class AgentChat implements OnInit {
   }
 
   /**
-   * Marks a suggested choice as selected on the pending question's radio group. Answering happens on
-   * confirm, so a mis-click is recoverable.
-   * @param label The selected choice's label.
-   */
-  public selectChoice(label: string): void {
-    this.selectedChoice.set(label);
-  }
-
-  /**
-   * Answers a pending agent question with the selected choice. Ignored while nothing is selected.
+   * Answers a pending agent question: a suggested choice's label, or null when the user skips it and
+   * the agent continues without an answer.
    * @param item The input-request item.
+   * @param answer The answer, or null.
    */
-  public confirmChoice(item: AgentItem): void {
-    const choice: string | null = this.selectedChoice();
-    if (choice !== null) {
-      this.agent.respondInput(item, choice);
-    }
-  }
-
-  /**
-   * Declines to answer a pending agent question; the agent is told and continues without an answer.
-   * @param item The input-request item.
-   */
-  public skipInput(item: AgentItem): void {
-    this.agent.respondInput(item, null);
+  public answerInput(item: AgentItem, answer: string | null): void {
+    this.agent.respondInput(item, answer);
   }
 
   /**
@@ -1406,67 +1383,12 @@ export class AgentChat implements OnInit {
   }
 
   /**
-   * Renders an error item's expandable diagnostics: the raw provider error, plus the failing tool's
-   * context when a tool failure preceded the run's end. Empty when the cause line carries everything.
-   * @param item The error item.
-   * @returns Returns the diagnostics text.
-   */
-  public errorDiagnostics(item: AgentItem): string {
-    const parts: string[] = [];
-    if (item.errorDetail !== undefined) {
-      parts.push(item.errorDetail);
-    }
-    if (item.errorToolContext !== undefined) {
-      parts.push(`Failed tool — ${item.errorToolContext}`);
-    }
-    return parts.join('\n\n');
-  }
-
-  /**
-   * Builds the remember-scope options for a pending permission card. The workspace option is only
-   * offered when the asking run is workspace-scoped.
+   * Answers a pending permission prompt, carrying how long the card said to remember a grant.
    * @param item The permission item.
-   * @returns Returns the dropdown options.
+   * @param answer The user's answer.
    */
-  public rememberOptions(item: AgentItem): readonly DropdownOption[] {
-    return [
-      { value: 'once', label: 'Just this once' },
-      { value: 'session', label: 'For this session' },
-      ...(item.permissionHasWorkspace === true
-        ? [{ value: 'workspace', label: 'For this workspace' }]
-        : []),
-      { value: 'always', label: 'Always' },
-    ];
-  }
-
-  /**
-   * Records the remember scope picked on a pending permission card.
-   * @param itemId The permission item's id.
-   * @param scope The picked scope value.
-   */
-  public setRemember(itemId: string, scope: string): void {
-    this.rememberChoice.update(
-      (
-        choices: Readonly<Record<string, string | undefined>>,
-      ): Readonly<Record<string, string | undefined>> => ({
-        ...choices,
-        [itemId]: scope,
-      }),
-    );
-  }
-
-  /**
-   * Answers a pending permission prompt, carrying the card's remember scope on a grant.
-   * @param item The permission item.
-   * @param granted Whether the user granted permission.
-   */
-  public respond(item: AgentItem, granted: boolean): void {
-    const scope: string = this.rememberChoice()[item.id] ?? 'once';
-    this.agent.respondPermission(
-      item,
-      granted,
-      scope === 'session' || scope === 'workspace' || scope === 'always' ? scope : undefined,
-    );
+  public respond(item: AgentItem, answer: PermissionAnswer): void {
+    this.agent.respondPermission(item, answer.granted, answer.remember);
   }
 
   /**
@@ -1474,69 +1396,8 @@ export class AgentChat implements OnInit {
    * @param item The edit-decision item.
    * @param choice The user's decision.
    */
-  /**
-   * Gets the choices an edit-decision card offers, in the order they are listed: the plain yes, the
-   * yes that stops the asking for the rest of the session, and no. Each carries the sentence that
-   * says what choosing it does, so the row reads as a consequence rather than a button label.
-   */
-  protected readonly editDecisionChoices: readonly {
-    readonly value: AiEditDecision;
-    readonly label: string;
-    readonly description: string;
-  }[] = [
-    { value: 'yes', label: 'Yes', description: 'Apply this edit.' },
-    {
-      value: 'yes-auto',
-      label: 'Yes, and automatically accept edits',
-      description: 'Apply it, and stop asking for the rest of this session.',
-    },
-    { value: 'no', label: 'No', description: 'Leave the document as it is.' },
-  ];
-
   public decide(item: AgentItem, choice: AiEditDecision): void {
     this.agent.respondEditDecision(item, choice);
-  }
-
-  /**
-   * Renders the settled state line of an edit-decision card.
-   * @param item The edit-decision item.
-   * @returns Returns the state label.
-   */
-  public decisionStateLabel(item: AgentItem): string {
-    switch (item.decisionState) {
-      case 'applied':
-        return item.decisionAuto === true
-          ? 'Applied · auto-accepting edits this session'
-          : 'Applied';
-      case 'rejected':
-        return 'Rejected';
-      default:
-        return 'Not decided';
-    }
-  }
-
-  /**
-   * Renders the settled state line of a permission card, including the remembered scope on a grant.
-   * @param item The permission item.
-   * @returns Returns the state label.
-   */
-  public permissionStateLabel(item: AgentItem): string {
-    if (item.permissionState === 'dismissed') {
-      return 'Answered on another device';
-    }
-    if (item.permissionState !== 'allowed') {
-      return 'Denied';
-    }
-    switch (item.permissionRemember) {
-      case 'session':
-        return 'Allowed for this session';
-      case 'workspace':
-        return 'Allowed for this workspace';
-      case 'always':
-        return 'Always allowed';
-      default:
-        return 'Allowed';
-    }
   }
 
   /**

@@ -1,0 +1,37 @@
+<app-agent-card
+  class="agent__ask"
+  [tone]="item().decisionState === 'pending' ? 'pending' : 'settled'"
+>
+  <p class="agent__ask-question">
+    Apply this edit to <strong>{{ item().decisionName }}</strong
+    >?
+    @if (item().decisionDetail) {
+      <span class="agent__permission-detail">
+        @for (segment of detail(); track $index) {
+          <span
+            [class.agent__detail-added]="segment.sign === 'added'"
+            [class.agent__detail-removed]="segment.sign === 'removed'"
+            >{{ segment.text }}</span
+          >
+        }
+      </span>
+    }
+  </p>
+  @if (item().decisionState === 'pending') {
+    <span class="agent__ask-hint">
+      {{
+        item().decisionHasDiff
+          ? 'Review the diff in the document well.'
+          : 'The summary above describes the change.'
+      }}
+    </span>
+    <app-agent-choice-list
+      [choices]="choices"
+      [name]="'decision-' + item().id"
+      ariaLabel="Apply this edit?"
+      (choose)="choose($event)"
+    />
+  } @else {
+    <span class="agent__ask-state">{{ stateLabel() }}</span>
+  }
+</app-agent-card>

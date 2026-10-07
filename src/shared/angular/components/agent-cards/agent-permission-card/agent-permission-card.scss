@@ -1,0 +1,66 @@
+:host {
+  display: block;
+  // The actions lay themselves out by the card's own width, not the window's: the same card sits in
+  // a narrow docked panel and in a wide tab.
+  container-type: inline-size;
+}
+
+.agent__permission-text {
+  margin: 0;
+  font-weight: 600;
+  color: var(--agent-card-title-color);
+
+  // One weight for the whole title: the name inside it is not heavier than the words around it.
+  strong {
+    font-weight: inherit;
+  }
+}
+
+.agent__permission-detail {
+  display: block;
+  // It sits inside the title's paragraph, but is not the title.
+  font-weight: 400;
+  color: var(--body-foreground-color);
+  margin-block-start: 0.4rem;
+  font-size: 0.85rem;
+  word-break: break-word;
+  opacity: 0.7;
+}
+
+.agent__permission-actions {
+  display: flex;
+  flex: none;
+  gap: 0.5rem;
+}
+
+// The remember dropdown takes the space the buttons leave, so Allow and Deny sit at the right edge.
+.agent__permission-remember {
+  flex: 1;
+  min-inline-size: 9rem;
+}
+
+// Allow and Deny are one width — the wider label's — so neither answer reads as the bigger one by
+// accident of its length. Two equal tracks in a grid that shrinks to fit.
+.agent__permission-buttons {
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+// Narrow — a docked Agent panel: the three controls no longer fit on one line (Deny ran off the
+// card). The dropdown takes the full width, and the buttons share the line beneath it equally.
+@container (inline-size <= 22.5rem) {
+  .agent__permission-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .agent__permission-buttons {
+    display: grid;
+  }
+}
+
+.agent__permission-state {
+  font-size: 0.85rem;
+  color: var(--agent-card-state-color);
+}

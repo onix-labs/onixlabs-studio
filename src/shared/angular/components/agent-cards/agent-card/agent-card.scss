@@ -1,0 +1,23 @@
+// The card shell: a raised surface outlined in the conversation's border colour; a card awaiting the
+// user is outlined in the accent colour, a failed run in red.
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  max-inline-size: 48rem;
+  margin-block-end: 0.85rem;
+  padding: 0.8rem 1rem;
+  // The same surface as the agent's replies, so a prompt reads as part of the conversation.
+  background: var(--agent-view-surface-color);
+  border: 0.0625rem solid var(--agent-view-border-color);
+  border-radius: calc(0.6rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+}
+
+:host(.agent-card--pending) {
+  border-color: var(--accent-color);
+}
+
+:host(.agent-card--error) {
+  border-color: var(--danger-color);
+}
