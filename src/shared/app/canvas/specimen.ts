@@ -54,6 +54,12 @@ export interface SpecimenPage {
   readonly title: string;
 
   /**
+   * Gets how the page is laid out: each state at every canvas width (`grid`, the default), or each
+   * specimen once at the pane's own width (`single`) — for something reviewed by resizing the window.
+   */
+  readonly layout?: 'grid' | 'single';
+
+  /**
    * Gets its specimens.
    */
   readonly specimens: readonly Specimen[];

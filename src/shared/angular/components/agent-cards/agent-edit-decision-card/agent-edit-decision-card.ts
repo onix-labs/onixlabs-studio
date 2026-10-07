@@ -29,6 +29,48 @@ const EDIT_DECISION_CHOICES: readonly AgentChoice[] = [
 ];
 
 /**
+ * One run of an edit's summary: plain text, or a signed count to colour by its sign.
+ */
+export interface DetailSegment {
+  /**
+   * Gets the text.
+   */
+  readonly text: string;
+
+  /**
+   * Gets whether it is an addition (`+12`), a removal (`−4`), or plain text.
+   */
+  readonly sign: 'added' | 'removed' | null;
+}
+
+/**
+ * Matches a signed count in an edit's summary: `+12`, or `−4` with either minus sign.
+ */
+const SIGNED_COUNT: RegExp = /[+\u2212-]\d[\d,]*/g;
+
+/**
+ * Splits an edit's summary (`+3 lines, −120 characters`) into plain text and signed counts.
+ * @param detail The summary.
+ * @returns Returns its segments, in order.
+ */
+export function detailSegments(detail: string): readonly DetailSegment[] {
+  const segments: DetailSegment[] = [];
+  let last: number = 0;
+  for (const match of detail.matchAll(SIGNED_COUNT)) {
+    const start: number = match.index;
+    if (start > last) {
+      segments.push({ text: detail.slice(last, start), sign: null });
+    }
+    segments.push({ text: match[0], sign: match[0].startsWith('+') ? 'added' : 'removed' });
+    last = start + match[0].length;
+  }
+  if (last < detail.length) {
+    segments.push({ text: detail.slice(last), sign: null });
+  }
+  return segments;
+}
+
+/**
  * Asks whether to apply an edit the agent made to a document (#855). The choices are a radio list, as
  * the question card draws its suggestions, rather than three stacked buttons: full-width buttons made
  * "No" as loud as "Yes, and automatically accept edits". Choosing a row IS the decision — there is no
@@ -56,6 +98,13 @@ export class AgentEditDecisionCard {
    * Gets the choices offered.
    */
   protected readonly choices: readonly AgentChoice[] = EDIT_DECISION_CHOICES;
+
+  /**
+   * Gets the summary of the change, its additions and removals marked.
+   */
+  protected readonly detail: Signal<readonly DetailSegment[]> = computed(
+    (): readonly DetailSegment[] => detailSegments(this.item().decisionDetail ?? ''),
+  );
 
   /**
    * Gets the settled state line.

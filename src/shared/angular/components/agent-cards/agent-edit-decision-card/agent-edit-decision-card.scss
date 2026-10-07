@@ -4,20 +4,53 @@
 
 .agent__ask-question {
   margin: 0;
+  font-weight: 600;
+  color: var(--agent-card-title-color);
   white-space: pre-wrap;
   word-break: break-word;
+
+  // One weight for the whole title: the name inside it is not heavier than the words around it.
+  strong {
+    font-weight: inherit;
+  }
 }
 
 .agent__permission-detail {
   display: block;
+  // It sits inside the title's paragraph, but is not the title.
+  font-weight: 400;
+  // Muted by colour rather than opacity, which would fade the count chips inside it too.
+  color: var(--form-muted-foreground-color);
   margin-block-start: 0.4rem;
   font-size: 0.85rem;
   word-break: break-word;
-  opacity: 0.7;
 }
 
 .agent__ask-state,
 .agent__ask-hint {
   font-size: 0.85rem;
   opacity: 0.7;
+}
+
+// The summary's counts as chips, drawn as the diff panel's badge is and in the change-margin colours,
+// so the card agrees with the diff it asks the user to review: added green, removed red.
+.agent__detail-added,
+.agent__detail-removed {
+  display: inline-block;
+  padding: 0.05rem 0.4rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  border-radius: calc(0.35rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+}
+
+.agent__detail-added {
+  color: var(--change-margin-saved);
+  background: color-mix(in srgb, var(--change-margin-saved) 18%, transparent);
+}
+
+.agent__detail-removed {
+  color: var(--change-margin-deleted);
+  background: color-mix(in srgb, var(--change-margin-deleted) 18%, transparent);
 }

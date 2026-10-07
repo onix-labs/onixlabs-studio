@@ -1,6 +1,13 @@
 <app-agent-card class="agent__ask" [tone]="item().inputState === 'pending' ? 'pending' : 'settled'">
   <p class="agent__ask-question">{{ item().inputQuestion }}</p>
   @if (item().inputState === 'pending') {
+    <span class="agent__ask-hint">
+      {{
+        choices().length
+          ? 'Pick an option, or type your own answer below.'
+          : 'Type your answer below.'
+      }}
+    </span>
     @if (choices().length) {
       <app-agent-choice-list
         [choices]="choices()"
@@ -10,25 +17,19 @@
         (choose)="select($event)"
       />
     }
-    <div class="agent__ask-footer">
-      <span class="agent__ask-hint">
-        {{
-          choices().length
-            ? 'Pick an option, or type your own answer below.'
-            : 'Type your answer below.'
-        }}
-      </span>
-      <div class="agent__ask-actions">
-        @if (choices().length) {
-          <app-button
-            variant="solid"
-            label="Answer"
-            [disabled]="selected() === null"
-            (click)="confirm()"
-          />
-        }
-        <app-button label="Skip" (click)="answer.emit(null)" />
-      </div>
+    <div class="agent__ask-actions">
+      <!-- A free-form question has nothing to confirm here (the answer is typed in the composer), so
+           its Answer is kept only as an invisible placeholder: Skip then takes exactly the width and
+           place it has beside a visible Answer. Hidden from pointer, keyboard and screen readers. -->
+      <app-button
+        variant="solid"
+        label="Answer"
+        [class.agent__ask-placeholder]="!choices().length"
+        [attr.aria-hidden]="choices().length ? null : 'true'"
+        [disabled]="selected() === null"
+        (click)="confirm()"
+      />
+      <app-button label="Skip" (click)="answer.emit(null)" />
     </div>
   } @else if (item().inputState === 'answered') {
     <span class="agent__ask-answer">{{ item().inputAnswer }}</span>

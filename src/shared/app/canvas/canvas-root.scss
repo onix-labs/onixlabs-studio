@@ -43,9 +43,24 @@
   background: var(--body-background-color);
 }
 
+// The two surfaces a conversation is drawn on: an Agent tab sits on the page background, a docked
+// Agent panel on the shared panel surface.
+.canvas__pane--panel {
+  --agent-backdrop-color: var(--panel-surface-color);
+
+  background: var(--agent-backdrop-color);
+}
+
 .canvas__pane-title {
   margin: 0 0 1.25rem;
   font-size: 1.1rem;
+}
+
+// A specimen shown once at the pane's width, as tall as the window allows: a conversation scrolls
+// inside itself, so it needs a height to scroll within.
+.canvas__single {
+  block-size: calc(100vh - 9rem);
+  min-block-size: 24rem;
 }
 
 .canvas__specimen + .canvas__specimen {

@@ -10,6 +10,12 @@
   }
   <span class="canvas__spacer"></span>
   <app-button-group
+    [options]="backdropOptions"
+    [value]="backdrop()"
+    ariaLabel="Backdrop"
+    (valueChange)="backdrop.set($event)"
+  />
+  <app-button-group
     [options]="themeOptions"
     [value]="themeChoice()"
     ariaLabel="Theme"
@@ -25,36 +31,54 @@
 
 <main class="canvas__panes">
   @for (theme of themes(); track theme) {
-    <section class="canvas__pane" [attr.data-theme-mode]="theme">
+    <section
+      class="canvas__pane"
+      [class.canvas__pane--panel]="backdrop() === 'panel'"
+      [attr.data-theme-mode]="theme"
+    >
       <h1 class="canvas__pane-title">
         {{ page().title }} · {{ theme === 'light' ? 'Light' : 'Dark' }}
       </h1>
-      @for (specimen of page().specimens; track specimen.name) {
-        <section class="canvas__specimen">
-          <h2 class="canvas__specimen-title">{{ specimen.name }}</h2>
-          <div class="canvas__grid" [style.--canvas-columns]="widths.length">
-            <span></span>
-            @for (width of widths; track width.px) {
-              <span class="canvas__column-title">{{ width.label }} · {{ width.px }}px</span>
-            }
-            @for (state of specimen.states; track state.name) {
-              <span class="canvas__state">{{ state.name }}</span>
-              @for (width of widths; track width.px) {
-                <div class="canvas__frame" [style.inline-size.px]="width.px">
-                  <app-canvas-frame
-                    [specimen]="specimen"
-                    [state]="state"
-                    [key]="theme + '-' + width.px + '-' + $index"
-                    [source]="
-                      specimen.name + ' · ' + state.name + ' · ' + theme + ' · ' + width.px + 'px'
-                    "
-                    (emitted)="lastEvent.set($event)"
-                  />
-                </div>
-              }
-            }
+      @if (page().layout === 'single') {
+        @for (specimen of page().specimens; track specimen.name) {
+          <div class="canvas__single">
+            <app-canvas-frame
+              [specimen]="specimen"
+              [state]="specimen.states[0]"
+              [key]="theme + '-single'"
+              [source]="specimen.name + ' · ' + theme"
+              (emitted)="lastEvent.set($event)"
+            />
           </div>
-        </section>
+        }
+      } @else {
+        @for (specimen of page().specimens; track specimen.name) {
+          <section class="canvas__specimen">
+            <h2 class="canvas__specimen-title">{{ specimen.name }}</h2>
+            <div class="canvas__grid" [style.--canvas-columns]="widths.length">
+              <span></span>
+              @for (width of widths; track width.px) {
+                <span class="canvas__column-title">{{ width.label }} · {{ width.px }}px</span>
+              }
+              @for (state of specimen.states; track state.name) {
+                <span class="canvas__state">{{ state.name }}</span>
+                @for (width of widths; track width.px) {
+                  <div class="canvas__frame" [style.inline-size.px]="width.px">
+                    <app-canvas-frame
+                      [specimen]="specimen"
+                      [state]="state"
+                      [key]="theme + '-' + width.px + '-' + $index"
+                      [source]="
+                        specimen.name + ' · ' + state.name + ' · ' + theme + ' · ' + width.px + 'px'
+                      "
+                      (emitted)="lastEvent.set($event)"
+                    />
+                  </div>
+                }
+              }
+            </div>
+          </section>
+        }
       }
     </section>
   }

@@ -6,7 +6,15 @@
     Apply this edit to <strong>{{ item().decisionName }}</strong
     >?
     @if (item().decisionDetail) {
-      <span class="agent__permission-detail">{{ item().decisionDetail }}</span>
+      <span class="agent__permission-detail">
+        @for (segment of detail(); track $index) {
+          <span
+            [class.agent__detail-added]="segment.sign === 'added'"
+            [class.agent__detail-removed]="segment.sign === 'removed'"
+            >{{ segment.text }}</span
+          >
+        }
+      </span>
     }
   </p>
   @if (item().decisionState === 'pending') {

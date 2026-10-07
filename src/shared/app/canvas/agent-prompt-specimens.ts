@@ -3,6 +3,7 @@ import { AgentEditDecisionCard } from '@shared/angular/components/agent-cards/ag
 import { AgentErrorCard } from '@shared/angular/components/agent-cards/agent-error-card/agent-error-card';
 import { AgentPermissionCard } from '@shared/angular/components/agent-cards/agent-permission-card/agent-permission-card';
 import { AgentQuestionCard } from '@shared/angular/components/agent-cards/agent-question-card/agent-question-card';
+import { CanvasConversation } from './canvas-conversation';
 import type { SpecimenPage } from './specimen';
 
 // The agent conversation's prompt cards in every state (#855, #856). Fixtures are written as an agent
@@ -154,6 +155,10 @@ export const AGENT_PROMPT_SPECIMENS: SpecimenPage = {
       states: [
         { name: 'Pending · with diff', inputs: { item: DECISION } },
         {
+          name: 'Pending · as Studio words it',
+          inputs: { item: { ...DECISION, decisionDetail: '+3 lines, −120 characters' } },
+        },
+        {
           name: 'Pending · summary only',
           inputs: {
             item: {
@@ -200,6 +205,25 @@ export const AGENT_PROMPT_SPECIMENS: SpecimenPage = {
 };
 
 /**
+ * A whole conversation, once per pane: every row a conversation can render, at the window's width.
+ */
+export const CONVERSATION_SPECIMENS: SpecimenPage = {
+  title: 'Conversation',
+  layout: 'single',
+  specimens: [
+    {
+      name: 'Conversation',
+      component: CanvasConversation,
+      outputs: [],
+      states: [{ name: 'Everything a conversation renders', inputs: {} }],
+    },
+  ],
+};
+
+/**
  * Every page of the canvas, in tab order.
  */
-export const SPECIMEN_PAGES: readonly SpecimenPage[] = [AGENT_PROMPT_SPECIMENS];
+export const SPECIMEN_PAGES: readonly SpecimenPage[] = [
+  AGENT_PROMPT_SPECIMENS,
+  CONVERSATION_SPECIMENS,
+];

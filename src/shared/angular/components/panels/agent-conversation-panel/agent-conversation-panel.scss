@@ -1,4 +1,7 @@
 :host {
+  // A docked conversation is drawn on the panel surface (see `--agent-backdrop-color`).
+  --agent-backdrop-color: var(--panel-surface-color);
+
   display: flex;
   flex-direction: column;
   block-size: 100%;

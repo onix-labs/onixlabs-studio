@@ -1,5 +1,5 @@
 // The card shell: a raised surface outlined in the conversation's border colour; a card awaiting the
-// user is outlined in the accent colour, a failed run in the warning colour.
+// user is outlined in the accent colour, a failed run in red.
 :host {
   display: flex;
   flex-direction: column;
@@ -7,7 +7,10 @@
   max-inline-size: 48rem;
   margin-block-end: 0.85rem;
   padding: 0.8rem 1rem;
-  background: var(--agent-view-surface-color);
+  // Two shades lighter than whatever the conversation is drawn on. Mixed here rather than in the
+  // theme, because a custom property's own var() references resolve where it is declared: mixed at
+  // the root, it would never see a host's restated backdrop.
+  background: color-mix(in srgb, var(--agent-backdrop-color), white var(--agent-card-lift));
   border: 0.0625rem solid var(--agent-view-border-color);
   border-radius: calc(0.6rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
@@ -18,5 +21,5 @@
 }
 
 :host(.agent-card--error) {
-  border-color: var(--warning-color);
+  border-color: var(--danger-color);
 }

@@ -14,7 +14,9 @@
   // A shade darker than the app's standard panel surface so the live agent mirrors read as their own
   // region here. Scoped to the tile — a Mission-Control-only component — so an agent's own tab or dock
   // panel keeps the standard surface.
-  background: color-mix(in srgb, var(--panel-surface-color) 90%, black);
+  // The tile's surface is what its conversation is drawn on (see `--agent-backdrop-color`).
+  --agent-backdrop-color: color-mix(in srgb, var(--panel-surface-color) 90%, black);
+  background: var(--agent-backdrop-color);
 }
 
 // A tile suppressed by the ribbon's Hide Empty / Hide Idle toggles: collapsed out of the row entirely.

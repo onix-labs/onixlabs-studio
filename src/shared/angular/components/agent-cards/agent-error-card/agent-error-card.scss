@@ -9,10 +9,13 @@
   gap: 0.5rem;
   align-items: baseline;
   margin: 0;
+  font-weight: 600;
+  // A failure is red throughout — outline, glyph and title — so it never reads as a prompt.
+  color: var(--danger-color);
 }
 
 .agent__error-icon {
-  color: var(--warning-color);
+  color: var(--danger-color);
 }
 
 .agent__error-provider {
@@ -29,7 +32,6 @@
   padding: 0.35rem 0.6rem;
   font-size: 0.85rem;
   color: var(--body-foreground-color);
-  background: var(--agent-view-surface-color);
   border-radius: calc(0.5rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
   cursor: default;

@@ -2,7 +2,10 @@ import type { Type } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import type { AiEditDecision } from '@shared/api/ai-types';
 import type { AgentItem } from '@shared/angular/services/agent/agent';
-import { AgentEditDecisionCard } from './agent-edit-decision-card/agent-edit-decision-card';
+import {
+  AgentEditDecisionCard,
+  detailSegments,
+} from './agent-edit-decision-card/agent-edit-decision-card';
 import { AgentErrorCard } from './agent-error-card/agent-error-card';
 import {
   AgentPermissionCard,
@@ -168,6 +171,19 @@ describe('AgentEditDecisionCard', () => {
         }),
       ),
     ).toBe('Apply this edit to notes.md? Applied · auto-accepting edits this session');
+  });
+});
+
+describe('detailSegments', () => {
+  it('marksAdditionsAndRemovals_withEitherMinusSign', () => {
+    expect(detailSegments('+3 lines, \u2212120 characters')).toEqual([
+      { text: '+3', sign: 'added' },
+      { text: ' lines, ', sign: null },
+      { text: '\u2212120', sign: 'removed' },
+      { text: ' characters', sign: null },
+    ]);
+    expect(detailSegments('-4')).toEqual([{ text: '-4', sign: 'removed' }]);
+    expect(detailSegments('same line count')).toEqual([{ text: 'same line count', sign: null }]);
   });
 });
 

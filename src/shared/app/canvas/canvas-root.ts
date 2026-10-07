@@ -2,13 +2,10 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
-  effect,
-  inject,
   signal,
   Signal,
   WritableSignal,
 } from '@angular/core';
-import { DOCUMENT } from '@angular/common';
 import {
   ButtonGroup,
   ButtonGroupOption,
@@ -59,6 +56,13 @@ const WIDTHS: readonly CanvasWidth[] = [
   templateUrl: './canvas-root.html',
   styleUrl: './canvas-root.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: {
+    // The canvas's chrome is dark whatever the document root says — the components it renders can
+    // start Studio's Theme service, which writes the user's saved mode there.
+    'data-theme-mode': 'dark',
+    '[style.--accent-color]': 'accentColor().hex',
+    '[style.--accent-color-rgb]': 'accentColor().rgb',
+  },
 })
 export class CanvasRoot {
   /**
@@ -98,6 +102,19 @@ export class CanvasRoot {
   );
 
   /**
+   * Holds what the cards are drawn on: an Agent tab's page, or a docked Agent panel's surface.
+   */
+  protected readonly backdrop: WritableSignal<string> = signal<string>('panel');
+
+  /**
+   * Gets the backdrop choices.
+   */
+  protected readonly backdropOptions: readonly ButtonGroupOption[] = [
+    { value: 'panel', label: 'Panel' },
+    { value: 'tab', label: 'Tab' },
+  ];
+
+  /**
    * Holds the accent preset shown.
    */
   protected readonly accent: WritableSignal<string> = signal<string>('blue');
@@ -133,20 +150,12 @@ export class CanvasRoot {
   );
 
   /**
-   * Holds the document.
+   * Gets the canvas's accent, applied on the canvas itself (see the host bindings) rather than on the
+   * document: the components it renders can start Studio's Theme service, which writes the user's
+   * saved accent to the document root, and a value on the canvas takes precedence over that.
    */
-  private readonly document: Document = inject(DOCUMENT);
-
-  /**
-   * Applies the canvas's accent to the document, as the Theme service would.
-   */
-  private readonly applyAccent: ReturnType<typeof effect> = effect((): void => {
-    const root: HTMLElement = this.document.documentElement;
-    const resolved: { readonly hex: string; readonly rgb: string } = resolveAccent({
-      kind: 'preset',
-      id: this.accent(),
-    });
-    root.style.setProperty('--accent-color', resolved.hex);
-    root.style.setProperty('--accent-color-rgb', resolved.rgb);
-  });
+  protected readonly accentColor: Signal<{ readonly hex: string; readonly rgb: string }> = computed(
+    (): { readonly hex: string; readonly rgb: string } =>
+      resolveAccent({ kind: 'preset', id: this.accent() }),
+  );
 }
