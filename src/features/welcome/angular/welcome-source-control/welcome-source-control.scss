@@ -45,12 +45,6 @@
   @include field;
 }
 
-.source__row {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.4rem;
-}
-
 .source__error {
   margin: 0;
   font-size: 0.75rem;
@@ -67,6 +61,13 @@
   to {
     transform: rotate(1turn);
   }
+}
+
+// "Clone as": the same dropdown as Get Started's recent-items filter, at the same height.
+.source__layout-choice {
+  @include dropdown;
+
+  --control-height: 2.25rem;
 }
 
 .source__clone {

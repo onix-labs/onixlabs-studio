@@ -315,16 +315,6 @@ export class WelcomeSourceControl implements OnInit {
   protected readonly cloneUrl: WritableSignal<string> = signal<string>('');
 
   /**
-   * Holds the folder name the clone is given, or null to take it from the URL.
-   */
-  protected readonly folderName: WritableSignal<string | null> = signal<string | null>(null);
-
-  /**
-   * Holds the branch to check out, or empty for the repository's default.
-   */
-  protected readonly branch: WritableSignal<string> = signal<string>('');
-
-  /**
    * Holds how the repository will be laid out once cloned. Studio has no default of its own: it is
    * the user's choice, made before cloning, so the field starts on the flat working copy everyone
    * already knows and remembers nothing.
@@ -335,8 +325,8 @@ export class WelcomeSourceControl implements OnInit {
    * Gets the layout choices.
    */
   protected readonly layoutOptions: readonly DropdownOption[] = [
-    { value: 'flat', label: 'Flat repository — one working copy' },
-    { value: 'worktree', label: 'Worktree — several branches at once' },
+    { value: 'flat', label: 'Flat Repository' },
+    { value: 'worktree', label: 'Worktree Repository' },
   ];
 
   /**
@@ -377,10 +367,10 @@ export class WelcomeSourceControl implements OnInit {
   );
 
   /**
-   * Gets the folder name the clone will be given: the one typed, or the URL's last part.
+   * Gets the folder name the clone will be given: the URL's last part.
    */
-  protected readonly targetName: Signal<string> = computed(
-    (): string => this.folderName() ?? nameFromUrl(this.cloneUrl()),
+  protected readonly targetName: Signal<string> = computed((): string =>
+    nameFromUrl(this.cloneUrl()),
   );
 
   /**
@@ -595,24 +585,6 @@ export class WelcomeSourceControl implements OnInit {
   }
 
   /**
-   * Updates the folder name from the input event; clearing it goes back to the URL's name.
-   * @param event The input event carrying the current value.
-   */
-  protected onNameInput(event: Event): void {
-    const value: string = (event.target as HTMLInputElement).value.trim();
-    this.folderName.set(value.length === 0 ? null : value);
-    this.cloneError.set(null);
-  }
-
-  /**
-   * Updates the branch from the input event.
-   * @param event The input event carrying the current value.
-   */
-  protected onBranchInput(event: Event): void {
-    this.branch.set((event.target as HTMLInputElement).value.trim());
-  }
-
-  /**
    * Records the layout picked.
    * @param value The picked value.
    */
@@ -648,12 +620,10 @@ export class WelcomeSourceControl implements OnInit {
     this.cloning.set(true);
     this.cloneError.set(null);
     try {
-      const branch: string = this.branch();
       const outcome: CloneOutcome = await this.cloner.clone({
         url: this.cloneUrl().trim(),
         name: this.targetName(),
         layout: this.layout(),
-        ...(branch.length === 0 ? {} : { branch }),
       });
       if (!outcome.ok) {
         this.cloneError.set(outcome.error);
@@ -675,7 +645,6 @@ export class WelcomeSourceControl implements OnInit {
    */
   protected prepareClone(repository: HostedRepository): void {
     this.cloneUrl.set(repository.cloneUrl);
-    this.folderName.set(null);
     this.cloneError.set(null);
   }
 

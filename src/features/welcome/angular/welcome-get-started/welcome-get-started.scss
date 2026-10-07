@@ -134,22 +134,11 @@
   gap: 0.6rem;
 }
 
-// The shared dropdown atom, drawn in the welcome palette: its face matches the search box and Clear
-// beside it, and its list matches the panel, in both themes.
 .welcome__recent-filter {
-  --form-control-background-color: var(--wl-surface);
-  --form-control-border-color: var(--wl-surface-border);
-  --form-control-border-color--hover: rgba(var(--accent-color-rgb), 0.55);
-  --form-muted-foreground-color: var(--wl-muted);
-  --dropdown-menu-background-color: var(--wl-panel);
-  --dropdown-menu-border-color: var(--wl-border);
-  --dropdown-menu-foreground-color: var(--wl-text);
-  --dropdown-menu-item-background-color--hover: rgba(var(--accent-color-rgb), 0.25);
-  --dropdown-menu-item-foreground-color--hover: var(--wl-text);
+  @include dropdown;
 
   flex: 0 0 9.5rem;
   min-inline-size: 0;
-  color: var(--wl-text);
 }
 
 .welcome__searchbox {

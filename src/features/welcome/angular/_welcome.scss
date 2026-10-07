@@ -150,6 +150,23 @@
 }
 
 // A button that does the section's main thing: Clone Repository, Generate Plan.
+// The shared dropdown atom, drawn in the welcome palette: its face matches the fields and buttons
+// beside it, and its list matches the panel, in both themes. Used by every dropdown on the screen, so
+// they are one control wherever they appear.
+@mixin dropdown {
+  --form-control-background-color: var(--wl-surface);
+  --form-control-border-color: var(--wl-surface-border);
+  --form-control-border-color--hover: rgba(var(--accent-color-rgb), 0.55);
+  --form-muted-foreground-color: var(--wl-muted);
+  --dropdown-menu-background-color: var(--wl-panel);
+  --dropdown-menu-border-color: var(--wl-border);
+  --dropdown-menu-foreground-color: var(--wl-text);
+  --dropdown-menu-item-background-color--hover: rgba(var(--accent-color-rgb), 0.25);
+  --dropdown-menu-item-foreground-color--hover: var(--wl-text);
+
+  color: var(--wl-text);
+}
+
 @mixin primary-button {
   display: inline-flex;
   align-items: center;

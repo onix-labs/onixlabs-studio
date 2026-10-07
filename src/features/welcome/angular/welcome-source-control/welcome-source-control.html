@@ -25,31 +25,6 @@
         (valueChange)="setLayout($event)"
       />
 
-      <!-- The name of the folder the clone creates, taken from the URL until it is typed. Where that
-           folder goes is chosen in the folder dialog Clone opens. -->
-      <div class="source__row">
-        <div class="source__field source__field--compact">
-          <input
-            type="text"
-            placeholder="Folder name"
-            aria-label="Folder name"
-            spellcheck="false"
-            [value]="folderName() ?? targetName()"
-            (input)="onNameInput($event)"
-          />
-        </div>
-        <div class="source__field source__field--compact">
-          <input
-            type="text"
-            placeholder="Branch"
-            aria-label="Branch"
-            spellcheck="false"
-            [value]="branch()"
-            (input)="onBranchInput($event)"
-          />
-        </div>
-      </div>
-
       @if (canClone()) {
         <button type="button" class="source__clone" [disabled]="!cloneReady()" (click)="clone()">
           <app-icon

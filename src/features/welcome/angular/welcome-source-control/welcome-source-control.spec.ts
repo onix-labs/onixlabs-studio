@@ -332,11 +332,7 @@ describe('WelcomeSourceControl', () => {
   it('clones_inTheChosenLayout_thenOpensTheResultAndStepsAside', async () => {
     await render();
     await type('Repository URL', 'https://github.com/owner/repo.git');
-    expect(host.querySelector<HTMLInputElement>('input[aria-label="Folder name"]')!.value).toBe(
-      'repo',
-    );
     await choose('Clone as', 'worktree');
-    await type('Branch', 'develop');
 
     host.querySelector<HTMLButtonElement>('.source__clone')!.click();
     await fixture.whenStable();
@@ -344,9 +340,9 @@ describe('WelcomeSourceControl', () => {
     expect(clones).toEqual([
       {
         url: 'https://github.com/owner/repo.git',
+        // The folder is named after the repository.
         name: 'repo',
         layout: 'worktree',
-        branch: 'develop',
       },
     ]);
     expect(reopened).toEqual(['/Users/me/Development/repo']);
