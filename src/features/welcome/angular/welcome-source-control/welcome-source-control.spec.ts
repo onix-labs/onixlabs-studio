@@ -601,6 +601,23 @@ describe('WelcomeSourceControl', () => {
       expect(Object.keys(facts())).toEqual(['Stars', 'Language', 'Visibility', 'Last updated']);
     });
 
+    it('details_close_fromTheirButton_orByPickingTheSameRepositoryAgain', async () => {
+      const row: HTMLButtonElement = host.querySelector<HTMLButtonElement>('.welcome__repository')!;
+      row.click();
+      await fixture.whenStable();
+      expect(host.querySelector('.source__detail')).not.toBeNull();
+
+      host.querySelector<HTMLButtonElement>('.source__detail-close')!.click();
+      await fixture.whenStable();
+      expect(host.querySelector('.source__detail')).toBeNull();
+
+      row.click();
+      await fixture.whenStable();
+      row.click();
+      await fixture.whenStable();
+      expect(host.querySelector('.source__detail')).toBeNull();
+    });
+
     it('details_openTheRepositoryAndItsHomepage_inTheBrowser', async () => {
       internals.repositories.set([repository('aero', { homepage: 'https://aero.dev' })]);
       await fixture.whenStable();

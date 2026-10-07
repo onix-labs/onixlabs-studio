@@ -208,7 +208,7 @@
                   type="button"
                   class="welcome__repository"
                   [class.welcome__repository--selected]="selectedId() === repository.id"
-                  (click)="selectedId.set(repository.id)"
+                  (click)="toggleSelected(repository.id)"
                 >
                   <span class="welcome__repository-icon">
                     <app-icon
@@ -234,8 +234,19 @@
         @if (selected(); as repository) {
           <aside class="source__detail" aria-label="Repository details">
             <header class="source__detail-head">
-              <h3 class="source__detail-name">{{ repository.name }}</h3>
-              <p class="source__detail-owner">{{ repository.fullName }}</p>
+              <div class="source__detail-title">
+                <h3 class="source__detail-name">{{ repository.name }}</h3>
+                <p class="source__detail-owner">{{ repository.fullName }}</p>
+              </div>
+              <button
+                type="button"
+                class="source__detail-close"
+                aria-label="Close details"
+                [appTooltip]="'Close details'"
+                (click)="selectedId.set(null)"
+              >
+                <app-icon [icon]="Icon.WELCOME_CLOSE" />
+              </button>
             </header>
 
             @if (repository.fork || repository.archived || repository.starred) {

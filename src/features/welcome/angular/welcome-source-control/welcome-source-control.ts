@@ -26,6 +26,7 @@ import { Shell } from '@shared/angular/services/shell/shell';
 import { TabType } from '@shared/angular/services/tabs/tab';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
+import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigger';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 
 export type { CloneLayout } from '@shared/api/clone-channels';
@@ -232,7 +233,7 @@ const FOLDER_NAME: RegExp = /^(?!\.{1,2}$)[\w.-]+$/;
  */
 @Component({
   selector: 'app-welcome-source-control',
-  imports: [AppIcon, Dropdown],
+  imports: [AppIcon, TooltipTrigger, Dropdown],
   templateUrl: './welcome-source-control.html',
   styleUrl: './welcome-source-control.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -678,6 +679,14 @@ export class WelcomeSourceControl implements OnInit {
   protected onUrlInput(event: Event): void {
     this.cloneUrl.set((event.target as HTMLInputElement).value);
     this.cloneError.set(null);
+  }
+
+  /**
+   * Shows a repository's details, or closes them when it is the one already shown.
+   * @param id The repository's id.
+   */
+  protected toggleSelected(id: string): void {
+    this.selectedId.update((current: string | null): string | null => (current === id ? null : id));
   }
 
   /**
