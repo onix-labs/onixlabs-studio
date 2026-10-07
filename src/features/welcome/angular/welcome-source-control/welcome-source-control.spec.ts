@@ -311,10 +311,15 @@ describe('WelcomeSourceControl', () => {
     expect(host.querySelector('.source__notice')?.textContent).toContain('Install Git');
   });
 
-  it('clone_isDisabled_untilTheFieldHoldsACloneUrl', async () => {
+  it('clone_isDisabled_untilALayoutIsPicked_andTheFieldHoldsACloneUrl', async () => {
     await render();
     const clone: HTMLButtonElement = host.querySelector<HTMLButtonElement>('.source__clone')!;
     expect(clone.disabled).toBe(true);
+
+    // Studio has no default layout: a URL alone is not enough.
+    await type('Repository URL', 'https://github.com/owner/repo.git');
+    expect(clone.disabled).toBe(true);
+    await choose('Clone as', 'flat');
 
     await type('Repository URL', 'not a url');
     expect(clone.disabled).toBe(true);
@@ -355,6 +360,7 @@ describe('WelcomeSourceControl', () => {
     picked = null;
     await render();
     await type('Repository URL', 'https://github.com/owner/repo.git');
+    await choose('Clone as', 'flat');
 
     host.querySelector<HTMLButtonElement>('.source__clone')!.click();
     await fixture.whenStable();
@@ -371,6 +377,7 @@ describe('WelcomeSourceControl', () => {
     cloneOutcome = { ok: false, error: 'Authentication failed for the repository.' };
     await render();
     await type('Repository URL', 'https://github.com/owner/private.git');
+    await choose('Clone as', 'flat');
 
     host.querySelector<HTMLButtonElement>('.source__clone')!.click();
     await fixture.whenStable();
@@ -385,10 +392,13 @@ describe('WelcomeSourceControl', () => {
     const select: HTMLSelectElement = host.querySelector<HTMLSelectElement>(
       'select[aria-label="Clone as"]',
     )!;
-    expect(select.value).toBe('flat');
+    // "Clone As…" is a prompt: shown first, and not itself a choice.
+    expect(select.value).toBe('');
     expect(
-      Array.from(select.options).map((option: HTMLOptionElement): string => option.value),
-    ).toEqual(['flat', 'worktree']);
+      Array.from(select.options).map(
+        (option: HTMLOptionElement): string => `${option.value}:${option.disabled}`,
+      ),
+    ).toEqual([':true', 'flat:false', 'worktree:false']);
   });
 
   describe('browsing', () => {

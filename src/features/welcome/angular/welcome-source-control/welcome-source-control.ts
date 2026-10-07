@@ -315,16 +315,18 @@ export class WelcomeSourceControl implements OnInit {
   protected readonly cloneUrl: WritableSignal<string> = signal<string>('');
 
   /**
-   * Holds how the repository will be laid out once cloned. Studio has no default of its own: it is
-   * the user's choice, made before cloning, so the field starts on the flat working copy everyone
-   * already knows and remembers nothing.
+   * Holds how the repository will be laid out once cloned, or null until the user picks. Studio has
+   * no default of its own: the layout is the user's choice, made before cloning, so the field starts
+   * on "Clone As…" and Clone waits for an answer.
    */
-  protected readonly layout: WritableSignal<CloneLayout> = signal<CloneLayout>('flat');
+  protected readonly layout: WritableSignal<CloneLayout | null> = signal<CloneLayout | null>(null);
 
   /**
    * Gets the layout choices.
    */
   protected readonly layoutOptions: readonly DropdownOption[] = [
+    // A prompt, not a choice: shown until the user picks, and never pickable itself.
+    { value: '', label: 'Clone As…', disabled: true },
     { value: 'flat', label: 'Flat Repository' },
     { value: 'worktree', label: 'Worktree Repository' },
   ];
@@ -378,7 +380,11 @@ export class WelcomeSourceControl implements OnInit {
    */
   protected readonly cloneReady: Signal<boolean> = computed(
     (): boolean =>
-      this.canClone() && this.urlValid() && FOLDER_NAME.test(this.targetName()) && !this.cloning(),
+      this.canClone() &&
+      this.layout() !== null &&
+      this.urlValid() &&
+      FOLDER_NAME.test(this.targetName()) &&
+      !this.cloning(),
   );
 
   /**
@@ -589,7 +595,7 @@ export class WelcomeSourceControl implements OnInit {
    * @param value The picked value.
    */
   protected setLayout(value: string): void {
-    this.layout.set(value === 'worktree' ? 'worktree' : 'flat');
+    this.layout.set(value === 'worktree' || value === 'flat' ? value : null);
   }
 
   /**
@@ -614,7 +620,8 @@ export class WelcomeSourceControl implements OnInit {
    * @returns Resolves once the clone has settled, however it settled.
    */
   protected async clone(): Promise<void> {
-    if (!this.cloneReady() || (await this.chooseParent()) === null) {
+    const layout: CloneLayout | null = this.layout();
+    if (!this.cloneReady() || layout === null || (await this.chooseParent()) === null) {
       return;
     }
     this.cloning.set(true);
@@ -623,7 +630,7 @@ export class WelcomeSourceControl implements OnInit {
       const outcome: CloneOutcome = await this.cloner.clone({
         url: this.cloneUrl().trim(),
         name: this.targetName(),
-        layout: this.layout(),
+        layout,
       });
       if (!outcome.ok) {
         this.cloneError.set(outcome.error);

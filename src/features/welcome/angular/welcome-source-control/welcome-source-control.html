@@ -19,7 +19,7 @@
       <app-dropdown
         class="source__layout-choice"
         [options]="layoutOptions"
-        [value]="layout()"
+        [value]="layout() ?? ''"
         [fullWidth]="true"
         ariaLabel="Clone as"
         (valueChange)="setLayout($event)"
