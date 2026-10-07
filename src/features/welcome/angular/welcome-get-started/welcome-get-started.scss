@@ -187,6 +187,12 @@
   &:hover,
   &:has(.welcome__recent-open:focus-visible) {
     @include list-row-active;
+
+    // The icon's mount turns accent with the row.
+    .welcome__recent-icon {
+      background: rgba(var(--accent-color-rgb), 0.2);
+      border-color: rgba(var(--accent-color-rgb), 0.7);
+    }
   }
 }
 
@@ -223,6 +229,9 @@
   border: 0.0625rem solid var(--wl-surface-border);
   border-radius: calc(0.55rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
+  transition:
+    background 150ms ease,
+    border-color 150ms ease;
 }
 
 .welcome__recent-text {
