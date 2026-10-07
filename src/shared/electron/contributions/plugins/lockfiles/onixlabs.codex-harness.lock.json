@@ -8,13 +8,13 @@
       "name": "codex-harness",
       "version": "1.0.0",
       "dependencies": {
-        "@onixlabs/codex-harness": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-codex-harness-v0.2.0/onixlabs-codex-harness-0.2.0.tgz"
+        "@onixlabs/codex-harness": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-codex-harness-v0.3.0/onixlabs-codex-harness-0.3.0.tgz"
       }
     },
     "node_modules/@onixlabs/codex-harness": {
-      "version": "0.2.0",
-      "resolved": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-codex-harness-v0.2.0/onixlabs-codex-harness-0.2.0.tgz",
-      "integrity": "sha512-/PIGVBjbSREFVrWBH15pIJI4DG6iPSoyYoUyax879rGCheK297NOpqevRp9MXd+GsBKsobyxyQlKyDuhPicgcQ==",
+      "version": "0.3.0",
+      "resolved": "https://github.com/onix-labs/onixlabs-studio/releases/download/plugin-codex-harness-v0.3.0/onixlabs-codex-harness-0.3.0.tgz",
+      "integrity": "sha512-kruBtErX/J/W2kZ6j7tjnPefsStx2Lb7jnZUdfVcH8dpif9fyhk3N1Tp+uer+Kwrrzhhn3J1FlbUnOCVufP+DQ==",
       "dependencies": {
         "@openai/codex-sdk": "0.153.4"
       }

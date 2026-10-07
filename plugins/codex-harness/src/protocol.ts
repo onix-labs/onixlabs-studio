@@ -13,19 +13,21 @@
  * The protocol version this harness speaks. Studio refuses a harness whose major differs, or whose
  * minor is newer than the build's.
  */
-export const PROTOCOL_VERSION: string = '1.3.0';
+export const PROTOCOL_VERSION: string = '1.7.0';
 
 /**
  * What a harness declares it can do, once, at the handshake.
+ *
+ * `answers` lists the optional host messages this harness replies to; Studio sends nothing absent
+ * from it. It replaced the per-feature `steering` and `remoteControl` flags in 1.5.0.
  */
 export interface Capabilities {
   readonly protocolVersion: string;
   readonly sessionModel: 'live-harness' | 'stateless';
-  readonly steering: boolean;
+  readonly answers: readonly string[];
   readonly images: boolean;
   readonly efforts: readonly string[];
   readonly resumable: boolean;
-  readonly remoteControl: boolean;
 }
 
 /**
@@ -85,7 +87,23 @@ export type Answer =
   | { readonly kind: 'input'; readonly answer: string | null }
   | { readonly kind: 'edit-decision'; readonly decision: 'yes' | 'no' }
   | { readonly kind: 'bridge'; readonly result: unknown; readonly error: string | null }
-  | { readonly kind: 'credential'; readonly apiKey: string | null };
+  | { readonly kind: 'credential'; readonly apiKey: string | null }
+  | {
+      readonly kind: 'tools';
+      readonly tools: readonly StudioTool[];
+      readonly systemPrompt: string;
+    }
+  | { readonly kind: 'tool'; readonly result: string | null; readonly error: string | null };
+
+/**
+ * One of Studio's own tools, as it describes it (1.6.0): the input shape is JSON Schema, which is what
+ * MCP's `tools/list` carries, so it reaches Codex unconverted (#854).
+ */
+export interface StudioTool {
+  readonly name: string;
+  readonly description: string;
+  readonly inputSchema: unknown;
+}
 
 /**
  * A blocking question this harness asks Studio.
@@ -99,7 +117,9 @@ export type Request =
       readonly detail: string;
       readonly hasDiff: boolean;
     }
-  | { readonly kind: 'credential' };
+  | { readonly kind: 'credential' }
+  | { readonly kind: 'tools'; readonly omit?: readonly string[] }
+  | { readonly kind: 'tool'; readonly name: string; readonly input: unknown };
 
 /**
  * A message this harness sends Studio.

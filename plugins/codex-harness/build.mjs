@@ -33,10 +33,10 @@ await build({
   // more here than it looks: the tarball's integrity is pinned in a lockfile, so a bundle that differs
   // by nothing but a comment is an install that fails verification on every user's machine.
   absWorkingDir: root,
-  // Node 22 is the floor, not a preference: the SDK is ESM-only ("type": "module", and its sole export
-  // condition is `sdk.mjs`), so a CommonJS bundle reaches it through `require(esm)`, which is unflagged
-  // from 22.12. Studio runs this under its own runtime — Electron 42's Node 24 — so the floor is met by
-  // the host rather than by whatever the user has installed.
+  // ⚠️ The SDK is ESM-only and its sole export condition is `import`, so `require` cannot resolve it —
+  // not even through `require(esm)`, which still resolves with the `require` condition. `main.ts`
+  // therefore loads it with a dynamic `import()`, which esbuild leaves alone for a Node target. Studio
+  // runs this under its own runtime — Electron 42's Node 24.
   target: 'node22',
   format: 'cjs',
   outfile: join(out, 'main.js'),

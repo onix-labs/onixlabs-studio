@@ -29,9 +29,10 @@ class ScriptedHarness {
   public events: unknown[] = [];
 
   /**
-   * Holds the host messages the harness declares it answers.
+   * Holds the host messages the harness declares it answers, or undefined for a harness older than
+   * 1.5.0, which sends no list.
    */
-  public declaredAnswers: readonly string[] = ['steer', 'discover', 'remote-control'];
+  public declaredAnswers: readonly string[] | undefined = ['steer', 'discover', 'remote-control'];
 
   /**
    * Holds the protocol version the harness declares.
@@ -587,6 +588,17 @@ describe('HarnessAgentProvider', () => {
     expect(steerHandlers[0]).toBeNull();
   });
 
+  it('run_runsATurnForAHarnessThatSendsNoAnswersList', async () => {
+    // 🐛 A harness older than 1.5.0 sends no `answers`. The protocol reads that as "answers only the
+    // mandatory messages"; reading `.includes` off it failed every turn instead.
+    harness.declaredAnswers = undefined;
+    const { context, steerHandlers } = contextFor();
+
+    await provider.run(context);
+
+    expect(steerHandlers[0]).toBeNull();
+  });
+
   it('run_registersASteerHandlerWhenTheHarnessTakesIt', async () => {
     const { context, steerHandlers } = contextFor();
 
@@ -881,6 +893,18 @@ describe('HarnessAgentSession', () => {
         (message: Record<string, unknown>): boolean => message['type'] === 'remote-control',
       ),
     ).toBe(false);
+    expect(session.alive).toBe(true);
+  });
+
+  it('turn_runsForAHarnessThatSendsNoAnswersList', async () => {
+    // 🐛 The live-session half of the same fault: a harness older than 1.5.0 failed every turn.
+    harness.declaredAnswers = undefined;
+    const { context, steerHandlers } = contextFor();
+    const session: AgentSession = provider.openSession(context);
+
+    await session.turn(context);
+
+    expect(steerHandlers[0]).toBeNull();
     expect(session.alive).toBe(true);
   });
 

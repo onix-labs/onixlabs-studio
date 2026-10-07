@@ -315,12 +315,11 @@ export class HarnessAgentProvider implements AgentProvider {
         throw new Error(`${this.definition.label} could not be started.`);
       }
       this.declared = capabilities;
-      // Steering is only offered when the harness said it takes it; otherwise the renderer queues the
-      // message for the next turn, exactly as it does for an in-core provider with no steer handler.
       // Steering is offered only when the harness listed it; otherwise the renderer queues the message
-      // for the next turn, exactly as it does for an in-core provider with no steer handler.
+      // for the next turn, exactly as it does for an in-core provider with no steer handler. A harness
+      // older than 1.5.0 sends no list at all, which reads as "answers none of the optional messages".
       context.setSteerHandler(
-        capabilities.answers.includes('steer')
+        (capabilities.answers ?? []).includes('steer')
           ? (text: string): boolean => host.steer(context.requestId, text)
           : null,
       );
@@ -456,7 +455,7 @@ export class HarnessAgentSession implements AgentSession {
     try {
       const capabilities: HarnessCapabilities | null = host.capabilities;
       context.setSteerHandler(
-        capabilities?.answers.includes('steer') === true
+        (capabilities?.answers ?? []).includes('steer')
           ? (text: string): boolean => host.steer(context.requestId, text)
           : null,
       );
