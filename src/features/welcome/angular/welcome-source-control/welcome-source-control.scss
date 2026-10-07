@@ -86,6 +86,7 @@
 
 .source__field {
   @include field;
+  @include control-metrics;
 }
 
 .source__error {
@@ -106,15 +107,14 @@
   }
 }
 
-// "Clone as": the same dropdown as Get Started's recent-items filter, at the same height.
+// "Clone as": the same dropdown as Get Started's recent-items filter.
 .source__layout-choice {
   @include dropdown;
-
-  --control-height: 2.25rem;
 }
 
 .source__clone {
   @include primary-button;
+  @include control-metrics;
 }
 
 .source__secondary {
@@ -250,6 +250,7 @@
 
 .source__search {
   @include field;
+  @include control-metrics;
 
   flex: 0 1 17rem;
 

@@ -123,12 +123,6 @@
 }
 
 .welcome__recent-head {
-  // The search box and the Clear button share one height, set here rather than left to each one's
-  // padding, which put them a pixel or two apart.
-  --recent-head-height: 2.25rem;
-  // The dropdown atom sizes itself from the shared control height; give it the row's.
-  --control-height: var(--recent-head-height);
-
   display: flex;
   align-items: center;
   gap: 0.6rem;
@@ -144,20 +138,17 @@
 .welcome__searchbox {
   @include field;
 
-  flex: 1 1 auto;
-  block-size: var(--recent-head-height);
+  @include control-metrics;
 
-  input {
-    padding-block: 0;
-  }
+  flex: 1 1 auto;
 }
 
 .welcome__clear {
   @include secondary-button;
 
+  @include control-metrics;
+
   flex: none;
-  block-size: var(--recent-head-height);
-  padding-block: 0;
 
   i {
     font-size: 0.9rem;

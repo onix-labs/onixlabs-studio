@@ -87,6 +87,23 @@
   }
 }
 
+// The one height and corner every single-line control shares — the recent items' filter, search and
+// Clear, and the clone field, dropdown, button and repository search — so they line up wherever two
+// meet.
+$control-height: 2.25rem;
+$control-radius: 0.55rem;
+
+@mixin control-metrics {
+  block-size: $control-height;
+  padding-block: 0;
+  border-radius: calc(#{$control-radius} * var(--border-radius-multiplier));
+
+  // A field's input is centred by the field, so its own padding would only push the field taller.
+  input {
+    padding-block: 0;
+  }
+}
+
 // A rounded field with a leading or trailing glyph: the search boxes and the clone URL field.
 @mixin field {
   display: flex;
@@ -183,6 +200,9 @@
 // beside it, and its list matches the panel, in both themes. Used by every dropdown on the screen, so
 // they are one control wherever they appear.
 @mixin dropdown {
+  --control-height: #{$control-height};
+  --dropdown-radius: #{$control-radius};
+
   --form-control-background-color: var(--wl-surface);
   --form-control-border-color: var(--wl-surface-border);
   --form-control-border-color--hover: rgba(var(--accent-color-rgb), 0.55);
