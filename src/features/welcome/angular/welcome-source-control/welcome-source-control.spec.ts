@@ -521,18 +521,39 @@ describe('WelcomeSourceControl', () => {
       expect(names()).toEqual(['stride']);
     });
 
-    it('selectingARepository_showsItsDetails_andCloningPutsItsUrlInTheField', async () => {
+    it('selectingARepository_showsItsDetails_andClonesItLikeTheCloneSection', async () => {
       host.querySelector<HTMLButtonElement>('.welcome__repository')!.click();
       await fixture.whenStable();
-
       expect(host.querySelector('.source__detail-name')?.textContent).toContain('aero');
-      // With the Clone section collapsed, cloning from the details opens it, so the URL is seen to land.
-      await expand('Connected Accounts');
+
+      // As under Clone a Repository: nothing clones until a layout is chosen.
+      const clone: HTMLButtonElement = host.querySelector<HTMLButtonElement>(
+        '.source__detail .source__clone',
+      )!;
+      expect(clone.disabled).toBe(true);
+
+      await choose('Clone details as', 'worktree');
+      expect(clone.disabled).toBe(false);
+      clone.click();
+      await fixture.whenStable();
+
+      expect(clones).toEqual([
+        { url: 'https://github.com/matthew/aero.git', name: 'aero', layout: 'worktree' },
+      ]);
+      expect(reopened).toEqual(['/Users/me/Development/repo']);
+      expect(openedCount).toBe(1);
+    });
+
+    it('detailsClone_asksWhere_andCancellingClonesNothing', async () => {
+      picked = null;
+      host.querySelector<HTMLButtonElement>('.welcome__repository')!.click();
+      await fixture.whenStable();
+      await choose('Clone details as', 'flat');
+
       host.querySelector<HTMLButtonElement>('.source__detail .source__clone')!.click();
       await fixture.whenStable();
-      expect(
-        host.querySelector<HTMLInputElement>('input[aria-label="Repository URL"]')!.value,
-      ).toBe('https://github.com/matthew/aero.git');
+
+      expect(clones).toEqual([]);
     });
 
     it('details_showWhatTheHostSaid_andLeaveOutWhatItDidNot', async () => {

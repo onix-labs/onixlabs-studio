@@ -455,12 +455,6 @@
   }
 }
 
-.source__detail-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-}
-
 .source__open {
   @include control-metrics;
 

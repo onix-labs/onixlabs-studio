@@ -423,7 +423,15 @@ export class WelcomeSourceControl implements OnInit {
   );
 
   /**
-   * Gets whether everything a clone needs is in place.
+   * Gets whether the details' Clone can run: a version-control plugin, a layout, and no clone running.
+   * The repository brings its own URL.
+   */
+  protected readonly detailCloneReady: Signal<boolean> = computed(
+    (): boolean => this.canClone() && this.layout() !== null && !this.cloning(),
+  );
+
+  /**
+   * Gets whether everything a clone of the field's URL needs is in place.
    */
   protected readonly cloneReady: Signal<boolean> = computed(
     (): boolean =>
@@ -730,16 +738,40 @@ export class WelcomeSourceControl implements OnInit {
    * @returns Resolves once the clone has settled, however it settled.
    */
   protected async clone(): Promise<void> {
+    if (this.cloneReady()) {
+      await this.cloneInto(this.cloneUrl().trim());
+    }
+  }
+
+  /**
+   * Clones the repository shown in the details, the same way as the URL in the field: in the layout
+   * chosen, into a folder asked for now, opening the result.
+   * @param repository The repository.
+   * @returns Resolves once the clone has settled, however it settled.
+   */
+  protected async cloneRepository(repository: HostedRepository): Promise<void> {
+    if (this.detailCloneReady()) {
+      await this.cloneInto(repository.cloneUrl);
+    }
+  }
+
+  /**
+   * Asks where the clone goes, clones a URL into it in the chosen layout, opens the result and steps
+   * aside. Cancelling the dialog clones nothing.
+   * @param url The URL to clone.
+   * @returns Resolves once the clone has settled, however it settled.
+   */
+  private async cloneInto(url: string): Promise<void> {
     const layout: CloneLayout | null = this.layout();
-    if (!this.cloneReady() || layout === null || (await this.chooseParent()) === null) {
+    if (layout === null || (await this.chooseParent()) === null) {
       return;
     }
     this.cloning.set(true);
     this.cloneError.set(null);
     try {
       const outcome: CloneOutcome = await this.cloner.clone({
-        url: this.cloneUrl().trim(),
-        name: this.targetName(),
+        url,
+        name: nameFromUrl(url),
         layout,
       });
       if (!outcome.ok) {
@@ -754,17 +786,6 @@ export class WelcomeSourceControl implements OnInit {
     } finally {
       this.cloning.set(false);
     }
-  }
-
-  /**
-   * Puts a repository's clone URL in the field, ready to clone.
-   * @param repository The repository.
-   */
-  protected prepareClone(repository: HostedRepository): void {
-    this.cloneUrl.set(repository.cloneUrl);
-    this.cloneError.set(null);
-    // The field is in the Clone section, which may be collapsed: open it so the URL is seen to land.
-    this.openSection.set('clone');
   }
 
   /**

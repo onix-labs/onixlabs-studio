@@ -336,22 +336,44 @@
               }
             </div>
             <footer class="source__detail-foot">
-              <div class="source__detail-actions">
-                <button type="button" class="source__clone" (click)="prepareClone(repository)">
-                  <app-icon [icon]="Icon.WELCOME_CLONE" />
-                  <span>Clone Repository</span>
+              <!-- The same choice as under Clone a Repository, and the same clone: the layout first, then
+                   where it goes. -->
+              @if (canClone()) {
+                <app-dropdown
+                  class="source__layout-choice"
+                  [options]="layoutOptions"
+                  [value]="layout() ?? ''"
+                  [fullWidth]="true"
+                  ariaLabel="Clone details as"
+                  placeholder="Clone As…"
+                  (valueChange)="setLayout($event)"
+                />
+                <button
+                  type="button"
+                  class="source__clone"
+                  [disabled]="!detailCloneReady()"
+                  (click)="cloneRepository(repository)"
+                >
+                  <app-icon
+                    [icon]="cloning() ? Icon.SPINNER : Icon.WELCOME_CLONE"
+                    [class.source__spin]="cloning()"
+                  />
+                  <span>{{ cloning() ? 'Cloning…' : 'Clone Repository' }}</span>
                 </button>
-                @if (repository.webUrl) {
-                  <button
-                    type="button"
-                    class="source__secondary source__open"
-                    (click)="openInBrowser(repository.webUrl)"
-                  >
-                    <app-icon [icon]="Icon.WELCOME_OPEN_EXTERNAL" />
-                    <span>{{ openLabel(repository) }}</span>
-                  </button>
-                }
-              </div>
+              }
+              @if (repository.webUrl) {
+                <button
+                  type="button"
+                  class="source__secondary source__open"
+                  (click)="openInBrowser(repository.webUrl)"
+                >
+                  <app-icon [icon]="Icon.WELCOME_OPEN_EXTERNAL" />
+                  <span>{{ openLabel(repository) }}</span>
+                </button>
+              }
+              @if (cloneError(); as error) {
+                <p class="source__error" role="alert">{{ error }}</p>
+              }
             </footer>
           </aside>
         }
