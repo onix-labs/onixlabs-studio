@@ -206,6 +206,20 @@ describe('WelcomeSourceControl', () => {
   }
 
   /**
+   * Opens a sidebar section by clicking its header.
+   * @param title The section's title.
+   */
+  async function expand(title: string): Promise<void> {
+    Array.from(host.querySelectorAll<HTMLButtonElement>('.source__toggle'))
+      .find(
+        (toggle: HTMLButtonElement): boolean =>
+          toggle.querySelector('.source__heading')?.textContent?.trim() === title,
+      )!
+      .click();
+    await fixture.whenStable();
+  }
+
+  /**
    * Gets the names of the listed repositories.
    * @returns Returns them, in order.
    */
@@ -232,6 +246,7 @@ describe('WelcomeSourceControl', () => {
     ] as unknown as ForgeHostAccount[];
 
     await render();
+    await expand('Connected Accounts');
 
     expect(names()).toEqual(['secret', 'aero']);
     expect(host.querySelector('.source__account-login')?.textContent).toContain('matthew');
@@ -250,6 +265,7 @@ describe('WelcomeSourceControl', () => {
       { host: 'github.com', provider: 'GitHub', status: { authenticated: true } },
     ] as unknown as ForgeHostAccount[];
     await render();
+    await expand('Browse');
 
     expect(views()).toEqual(['All Repositories', 'Recent', 'Private']);
 
@@ -281,6 +297,7 @@ describe('WelcomeSourceControl', () => {
       { ...listed('aero', '2026-10-01T10:00:00Z'), starred: true },
     ];
     await render();
+    await expand('Browse');
 
     expect(names()).toEqual(['secret', 'aero']);
     expect(views()).toContain('Starred');
@@ -387,6 +404,26 @@ describe('WelcomeSourceControl', () => {
     expect(openedCount).toBe(0);
   });
 
+  it('sections_areASingleOpenAccordion_withCloneOpenFirst', async () => {
+    await render();
+    const open: () => string[] = (): string[] =>
+      Array.from(host.querySelectorAll<HTMLButtonElement>('.source__toggle'))
+        .filter((toggle: HTMLButtonElement): boolean => toggle.ariaExpanded === 'true')
+        .map((toggle: HTMLButtonElement): string => toggle.textContent.trim());
+
+    expect(open()).toEqual(['Clone a Repository']);
+    expect(host.querySelector('input[aria-label="Repository URL"]')).not.toBeNull();
+    expect(host.querySelector('.source__browse')).toBeNull();
+
+    await expand('Browse');
+    expect(open()).toEqual(['Browse']);
+    expect(host.querySelector('input[aria-label="Repository URL"]')).toBeNull();
+    expect(host.querySelector('.source__browse')).not.toBeNull();
+
+    await expand('Browse');
+    expect(open()).toEqual([]);
+  });
+
   it('layout_isChosenBeforeCloning_fromADropdown', async () => {
     await render();
     const select: HTMLSelectElement = host.querySelector<HTMLSelectElement>(
@@ -437,6 +474,7 @@ describe('WelcomeSourceControl', () => {
     });
 
     it('browseViews_filterTheList', async () => {
+      await expand('Browse');
       const view: (label: string) => Promise<void> = async (label: string): Promise<void> => {
         Array.from(host.querySelectorAll<HTMLButtonElement>('.source__browse-item'))
           .find(

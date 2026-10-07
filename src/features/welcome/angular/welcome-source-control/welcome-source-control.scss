@@ -33,12 +33,55 @@
 
 .source__heading {
   @include section-title;
+
+  transition: color 120ms ease;
 }
 
 .source__heading-row {
   display: flex;
   align-items: center;
+  gap: 0.5rem;
+}
+
+.source__header {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  margin: 0;
+  font: inherit;
+}
+
+// The accordion header, as in the original welcome screen's Get Started and Tools: the section's title
+// and a caret that turns to point down when open, both brightening on hover.
+.source__toggle {
+  display: flex;
+  align-items: center;
   justify-content: space-between;
+  gap: 0.5rem;
+  inline-size: 100%;
+  padding: 0.2rem 0.15rem;
+  font: inherit;
+  text-align: start;
+  color: inherit;
+  background: transparent;
+  border: none;
+  cursor: default;
+
+  &:hover,
+  &:focus-visible {
+    outline: none;
+
+    .source__heading,
+    .source__caret {
+      color: var(--wl-text);
+    }
+  }
+}
+
+.source__caret {
+  flex: none;
+  font-size: 0.9rem;
+  color: var(--wl-muted);
+  transition: color 120ms ease;
 }
 
 .source__field {

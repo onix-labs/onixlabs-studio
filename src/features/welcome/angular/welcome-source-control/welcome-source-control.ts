@@ -31,6 +31,11 @@ import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropd
 export type { CloneLayout } from '@shared/api/clone-channels';
 
 /**
+ * A collapsible section of the sidebar.
+ */
+export type SourceSection = 'clone' | 'accounts' | 'browse';
+
+/**
  * An account the user acts as on a code host — themselves or an organisation — listed through the
  * hosting plugin that serves the host.
  */
@@ -298,6 +303,13 @@ export class WelcomeSourceControl implements OnInit {
   protected readonly starredElsewhere: WritableSignal<readonly HostedRepository[]> = signal<
     readonly HostedRepository[]
   >([]);
+
+  /**
+   * Holds which sidebar section is open, or null when all are collapsed. At most one is open, as in the
+   * original welcome screen's Get Started and Tools; Clone, the first, starts open.
+   */
+  protected readonly openSection: WritableSignal<SourceSection | null> =
+    signal<SourceSection | null>('clone');
 
   /**
    * Holds whether the accounts and repositories are being read.
@@ -586,6 +598,16 @@ export class WelcomeSourceControl implements OnInit {
   protected onUrlInput(event: Event): void {
     this.cloneUrl.set((event.target as HTMLInputElement).value);
     this.cloneError.set(null);
+  }
+
+  /**
+   * Opens a sidebar section, collapsing the others; clicking the open section collapses it.
+   * @param section The section whose header was clicked.
+   */
+  protected toggleSection(section: SourceSection): void {
+    this.openSection.update((open: SourceSection | null): SourceSection | null =>
+      open === section ? null : section,
+    );
   }
 
   /**

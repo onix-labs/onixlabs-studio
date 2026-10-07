@@ -1,56 +1,98 @@
 <div class="source">
   <aside class="source__side">
-    <section class="source__block" aria-labelledby="source-clone-title">
-      <h2 class="source__heading" id="source-clone-title">Clone a Repository</h2>
-      <div class="source__field">
-        <app-icon [icon]="Icon.WELCOME_LINK" />
-        <input
-          type="text"
-          placeholder="Paste repository URL…"
-          aria-label="Repository URL"
-          spellcheck="false"
-          [value]="cloneUrl()"
-          (input)="onUrlInput($event)"
-          (keydown.enter)="clone()"
-        />
+    <section
+      class="source__block"
+      [class.source__block--open]="openSection() === 'clone'"
+      aria-labelledby="source-clone-title"
+    >
+      <div class="source__heading-row">
+        <h2 class="source__header">
+          <button
+            type="button"
+            class="source__toggle"
+            id="source-clone-title"
+            [attr.aria-expanded]="openSection() === 'clone'"
+            (click)="toggleSection('clone')"
+          >
+            <span class="source__heading">Clone a Repository</span>
+            <app-icon
+              class="source__caret"
+              [icon]="Icon.CARET_RIGHT"
+              [rotation]="openSection() === 'clone' ? 90 : 0"
+            />
+          </button>
+        </h2>
       </div>
-      <!-- The layout is chosen BEFORE cloning: a worktree is laid out as a container from the start,
-           so nothing has to be moved later. -->
-      <app-dropdown
-        class="source__layout-choice"
-        [options]="layoutOptions"
-        [value]="layout() ?? ''"
-        [fullWidth]="true"
-        ariaLabel="Clone as"
-        placeholder="Clone As…"
-        (valueChange)="setLayout($event)"
-      />
-
-      @if (canClone()) {
-        <button type="button" class="source__clone" [disabled]="!cloneReady()" (click)="clone()">
-          <app-icon
-            [icon]="cloning() ? Icon.SPINNER : Icon.WELCOME_CLONE"
-            [class.source__spin]="cloning()"
+      @if (openSection() === 'clone') {
+        <div class="source__field">
+          <app-icon [icon]="Icon.WELCOME_LINK" />
+          <input
+            type="text"
+            placeholder="Paste repository URL…"
+            aria-label="Repository URL"
+            spellcheck="false"
+            [value]="cloneUrl()"
+            (input)="onUrlInput($event)"
+            (keydown.enter)="clone()"
           />
-          <span>{{ cloning() ? 'Cloning…' : 'Clone Repository' }}</span>
-        </button>
-      } @else {
-        <p class="source__notice" role="status">
-          Cloning needs a version-control plugin. Install Git from the Plugin Manager.
-        </p>
-        <button type="button" class="source__secondary" (click)="openPlugins()">
-          <app-icon [icon]="Icon.WELCOME_PLUGINS" />
-          <span>Open Plugin Manager</span>
-        </button>
-      }
-      @if (cloneError(); as error) {
-        <p class="source__error" role="alert">{{ error }}</p>
+        </div>
+        <!-- The layout is chosen BEFORE cloning: a worktree is laid out as a container from the start,
+           so nothing has to be moved later. -->
+        <app-dropdown
+          class="source__layout-choice"
+          [options]="layoutOptions"
+          [value]="layout() ?? ''"
+          [fullWidth]="true"
+          ariaLabel="Clone as"
+          placeholder="Clone As…"
+          (valueChange)="setLayout($event)"
+        />
+
+        @if (canClone()) {
+          <button type="button" class="source__clone" [disabled]="!cloneReady()" (click)="clone()">
+            <app-icon
+              [icon]="cloning() ? Icon.SPINNER : Icon.WELCOME_CLONE"
+              [class.source__spin]="cloning()"
+            />
+            <span>{{ cloning() ? 'Cloning…' : 'Clone Repository' }}</span>
+          </button>
+        } @else {
+          <p class="source__notice" role="status">
+            Cloning needs a version-control plugin. Install Git from the Plugin Manager.
+          </p>
+          <button type="button" class="source__secondary" (click)="openPlugins()">
+            <app-icon [icon]="Icon.WELCOME_PLUGINS" />
+            <span>Open Plugin Manager</span>
+          </button>
+        }
+        @if (cloneError(); as error) {
+          <p class="source__error" role="alert">{{ error }}</p>
+        }
       }
     </section>
 
-    <section class="source__block" aria-labelledby="source-accounts-title">
+    <section
+      class="source__block"
+      [class.source__block--open]="openSection() === 'accounts'"
+      aria-labelledby="source-accounts-title"
+    >
       <div class="source__heading-row">
-        <h2 class="source__heading" id="source-accounts-title">Connected Accounts</h2>
+        <h2 class="source__header">
+          <button
+            type="button"
+            class="source__toggle"
+            id="source-accounts-title"
+            [attr.aria-expanded]="openSection() === 'accounts'"
+            (click)="toggleSection('accounts')"
+          >
+            <span class="source__heading">Connected Accounts</span>
+            <app-icon
+              class="source__caret"
+              [icon]="Icon.CARET_RIGHT"
+              [rotation]="openSection() === 'accounts' ? 90 : 0"
+            />
+          </button>
+        </h2>
         <button
           type="button"
           class="source__icon-button"
@@ -61,52 +103,78 @@
           <app-icon [icon]="Icon.WELCOME_ADD" />
         </button>
       </div>
-      @for (account of accounts(); track account.id) {
-        <div class="source__account">
-          <span class="source__account-host">{{ account.host }}</span>
-          <span class="source__account-login">{{ account.login }}</span>
-        </div>
-      }
-      @for (entry of signedOut(); track entry.host) {
-        <button
-          type="button"
-          class="source__account source__account--signed-out"
-          (click)="openSettings()"
-        >
-          <span class="source__account-host">{{ entry.provider }}</span>
-          <span class="source__account-login">Sign in to {{ entry.host }}…</span>
-        </button>
-      }
-      @if (accounts().length === 0 && signedOut().length === 0) {
-        <p class="source__accounts-empty">
-          @if (canBrowse()) {
-            {{ loading() ? 'Reading your accounts…' : 'No accounts are signed in.' }}
-          } @else {
-            Accounts on GitHub, GitLab, Bitbucket and Azure DevOps connect through hosting plugins.
-          }
-        </p>
+      @if (openSection() === 'accounts') {
+        @for (account of accounts(); track account.id) {
+          <div class="source__account">
+            <span class="source__account-host">{{ account.host }}</span>
+            <span class="source__account-login">{{ account.login }}</span>
+          </div>
+        }
+        @for (entry of signedOut(); track entry.host) {
+          <button
+            type="button"
+            class="source__account source__account--signed-out"
+            (click)="openSettings()"
+          >
+            <span class="source__account-host">{{ entry.provider }}</span>
+            <span class="source__account-login">Sign in to {{ entry.host }}…</span>
+          </button>
+        }
+        @if (accounts().length === 0 && signedOut().length === 0) {
+          <p class="source__accounts-empty">
+            @if (canBrowse()) {
+              {{ loading() ? 'Reading your accounts…' : 'No accounts are signed in.' }}
+            } @else {
+              Accounts on GitHub, GitLab, Bitbucket and Azure DevOps connect through hosting
+              plugins.
+            }
+          </p>
+        }
       }
     </section>
 
-    <section class="source__block" aria-labelledby="source-browse-title">
-      <h2 class="source__heading" id="source-browse-title">Browse</h2>
-      <div class="source__browse">
-        @for (entry of browse(); track entry.view) {
+    <section
+      class="source__block"
+      [class.source__block--open]="openSection() === 'browse'"
+      aria-labelledby="source-browse-title"
+    >
+      <div class="source__heading-row">
+        <h2 class="source__header">
           <button
             type="button"
-            class="source__browse-item"
-            [class.source__browse-item--active]="view() === entry.view"
-            [attr.aria-pressed]="view() === entry.view"
-            (click)="view.set(entry.view)"
+            class="source__toggle"
+            id="source-browse-title"
+            [attr.aria-expanded]="openSection() === 'browse'"
+            (click)="toggleSection('browse')"
           >
-            <app-icon [icon]="entry.icon" />
-            <span class="source__browse-label">{{ entry.label }}</span>
-            @if (accounts().length > 0) {
-              <span class="source__browse-count">{{ countIn(entry.view) }}</span>
-            }
+            <span class="source__heading">Browse</span>
+            <app-icon
+              class="source__caret"
+              [icon]="Icon.CARET_RIGHT"
+              [rotation]="openSection() === 'browse' ? 90 : 0"
+            />
           </button>
-        }
+        </h2>
       </div>
+      @if (openSection() === 'browse') {
+        <div class="source__browse">
+          @for (entry of browse(); track entry.view) {
+            <button
+              type="button"
+              class="source__browse-item"
+              [class.source__browse-item--active]="view() === entry.view"
+              [attr.aria-pressed]="view() === entry.view"
+              (click)="view.set(entry.view)"
+            >
+              <app-icon [icon]="entry.icon" />
+              <span class="source__browse-label">{{ entry.label }}</span>
+              @if (accounts().length > 0) {
+                <span class="source__browse-count">{{ countIn(entry.view) }}</span>
+              }
+            </button>
+          }
+        </div>
+      }
     </section>
   </aside>
 
