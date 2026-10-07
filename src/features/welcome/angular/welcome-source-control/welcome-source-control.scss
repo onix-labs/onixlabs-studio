@@ -134,11 +134,9 @@
   corner-shape: var(--app-corner-shape, squircle);
 }
 
-.source__icon-button {
-  @include secondary-button;
-
-  padding: 0.3rem;
-  font-size: 0.9rem;
+// Under the accounts list: the same accent button as Clone, filling the column.
+.source__connect {
+  @include primary-button;
 }
 
 .source__account {

@@ -25,7 +25,6 @@ import { Plugins } from '@shared/angular/services/plugins/plugins';
 import { TabType } from '@shared/angular/services/tabs/tab';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
-import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigger';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 
 export type { CloneLayout } from '@shared/api/clone-channels';
@@ -202,7 +201,7 @@ const FOLDER_NAME: RegExp = /^(?!\.{1,2}$)[\w.-]+$/;
  */
 @Component({
   selector: 'app-welcome-source-control',
-  imports: [AppIcon, TooltipTrigger, Dropdown],
+  imports: [AppIcon, Dropdown],
   templateUrl: './welcome-source-control.html',
   styleUrl: './welcome-source-control.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

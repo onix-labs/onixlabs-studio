@@ -17,7 +17,7 @@
             <span class="source__heading">Clone a Repository</span>
             <app-icon
               class="source__caret"
-              [icon]="Icon.CARET_RIGHT"
+              [icon]="Icon.CARET_RIGHT_BOLD"
               [rotation]="openSection() === 'clone' ? 90 : 0"
             />
           </button>
@@ -88,20 +88,11 @@
             <span class="source__heading">Connected Accounts</span>
             <app-icon
               class="source__caret"
-              [icon]="Icon.CARET_RIGHT"
+              [icon]="Icon.CARET_RIGHT_BOLD"
               [rotation]="openSection() === 'accounts' ? 90 : 0"
             />
           </button>
         </h2>
-        <button
-          type="button"
-          class="source__icon-button"
-          aria-label="Connect an account"
-          [appTooltip]="'Connect an account'"
-          (click)="canBrowse() ? openSettings() : openPlugins()"
-        >
-          <app-icon [icon]="Icon.WELCOME_ADD" />
-        </button>
       </div>
       @if (openSection() === 'accounts') {
         @for (account of accounts(); track account.id) {
@@ -130,6 +121,14 @@
             }
           </p>
         }
+        <button
+          type="button"
+          class="source__connect"
+          (click)="canBrowse() ? openSettings() : openPlugins()"
+        >
+          <app-icon [icon]="Icon.WELCOME_ADD" />
+          <span>Connect an Account</span>
+        </button>
       }
     </section>
 
@@ -150,7 +149,7 @@
             <span class="source__heading">Browse</span>
             <app-icon
               class="source__caret"
-              [icon]="Icon.CARET_RIGHT"
+              [icon]="Icon.CARET_RIGHT_BOLD"
               [rotation]="openSection() === 'browse' ? 90 : 0"
             />
           </button>

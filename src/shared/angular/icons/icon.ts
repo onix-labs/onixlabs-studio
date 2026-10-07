@@ -1354,7 +1354,7 @@ export class Icon {
   public static readonly WELCOME_CLONE: Icon = new Icon('ph-light ph-download-simple');
 
   /**
-   * Gets the light-weight plus glyph that adds a source-control account.
+   * Gets the light-weight plus glyph on the Connect an Account button.
    */
   public static readonly WELCOME_ADD: Icon = new Icon('ph-light ph-plus');
 
@@ -1637,6 +1637,11 @@ export class Icon {
    * Gets the rightward caret used on collapsed nodes.
    */
   public static readonly CARET_RIGHT: Icon = new Icon('ph ph-caret-right');
+
+  /**
+   * Gets the bold rightward caret on the welcome screen's accordion headers.
+   */
+  public static readonly CARET_RIGHT_BOLD: Icon = new Icon('ph-bold ph-caret-right');
 
   /**
    * Gets the filled downward caret used on expanded tree nodes.
