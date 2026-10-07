@@ -326,19 +326,30 @@
   corner-shape: var(--app-corner-shape, squircle);
 }
 
+// The middle scrolls; the name above and the actions below stay where they are.
 .source__detail-body {
   @include scroller;
 
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  padding: 0.9rem;
+  padding: 0 0.9rem;
 }
 
 .source__detail-head {
   display: flex;
+  flex: none;
   align-items: flex-start;
   gap: 0.5rem;
+  padding: 0.9rem 0.9rem 0.6rem;
+}
+
+.source__detail-foot {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.6rem 0.9rem 0.9rem;
 }
 
 .source__detail-title {

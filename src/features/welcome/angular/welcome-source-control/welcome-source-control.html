@@ -243,24 +243,25 @@
             aria-label="Repository details"
             appOverlayScrollbar=".source__detail-body"
           >
+            <!-- The name stays put at the top and the actions at the bottom; only the details between
+                 them scroll. -->
+            <header class="source__detail-head">
+              <div class="source__detail-title">
+                <h3 class="source__detail-name">{{ repository.name }}</h3>
+                <p class="source__detail-owner">{{ repository.fullName }}</p>
+              </div>
+              <!-- The same quiet button as the actions at the end of a recent item. -->
+              <app-button
+                class="source__detail-close"
+                ariaLabel="Close details"
+                tooltip="Close details"
+                [icon]="Icon.CLOSE"
+                variant="none"
+                size="small"
+                (click)="selectedId.set(null)"
+              />
+            </header>
             <div class="source__detail-body">
-              <header class="source__detail-head">
-                <div class="source__detail-title">
-                  <h3 class="source__detail-name">{{ repository.name }}</h3>
-                  <p class="source__detail-owner">{{ repository.fullName }}</p>
-                </div>
-                <!-- The same quiet button as the actions at the end of a recent item. -->
-                <app-button
-                  class="source__detail-close"
-                  ariaLabel="Close details"
-                  tooltip="Close details"
-                  [icon]="Icon.CLOSE"
-                  variant="none"
-                  size="small"
-                  (click)="selectedId.set(null)"
-                />
-              </header>
-
               @if (repository.fork || repository.archived || repository.starred) {
                 <div class="source__badges">
                   @if (repository.starred) {
@@ -333,7 +334,8 @@
                   <span>{{ homepage }}</span>
                 </button>
               }
-
+            </div>
+            <footer class="source__detail-foot">
               <p class="source__detail-url">{{ repository.cloneUrl }}</p>
               <div class="source__detail-actions">
                 <button type="button" class="source__clone" (click)="prepareClone(repository)">
@@ -351,7 +353,7 @@
                   </button>
                 }
               </div>
-            </div>
+            </footer>
           </aside>
         }
       }
