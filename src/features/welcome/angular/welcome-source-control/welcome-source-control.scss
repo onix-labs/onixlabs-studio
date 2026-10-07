@@ -337,32 +337,10 @@
   min-inline-size: 0;
 }
 
-// Quiet until hovered, like the header controls elsewhere on the screen.
+// The button aligns with the name's first line rather than the header's middle.
 .source__detail-close {
-  display: grid;
   flex: none;
-  place-items: center;
-  inline-size: 1.6rem;
-  block-size: 1.6rem;
-  margin: -0.25rem -0.35rem 0 0;
-  padding: 0;
-  font-size: 0.95rem;
-  color: var(--wl-muted);
-  background: transparent;
-  border: none;
-  border-radius: calc(0.4rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-  cursor: default;
-  transition:
-    background 120ms ease,
-    color 120ms ease;
-
-  &:hover,
-  &:focus-visible {
-    outline: none;
-    color: var(--wl-text);
-    background: var(--wl-surface-hover);
-  }
+  margin-block-start: -0.2rem;
 }
 
 .source__detail-name {

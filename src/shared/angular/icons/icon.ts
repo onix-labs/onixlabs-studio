@@ -1364,11 +1364,6 @@ export class Icon {
   public static readonly WELCOME_HOMEPAGE: Icon = new Icon('ph-light ph-globe-simple');
 
   /**
-   * Gets the light-weight glyph that closes the repository details on the welcome screen.
-   */
-  public static readonly WELCOME_CLOSE: Icon = new Icon('ph-light ph-x');
-
-  /**
    * Gets the light-weight plus glyph on the Connect an Account button.
    */
   public static readonly WELCOME_ADD: Icon = new Icon('ph-light ph-plus');

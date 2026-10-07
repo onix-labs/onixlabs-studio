@@ -238,15 +238,16 @@
                 <h3 class="source__detail-name">{{ repository.name }}</h3>
                 <p class="source__detail-owner">{{ repository.fullName }}</p>
               </div>
-              <button
-                type="button"
+              <!-- The same quiet button as the actions at the end of a recent item. -->
+              <app-button
                 class="source__detail-close"
-                aria-label="Close details"
-                [appTooltip]="'Close details'"
+                ariaLabel="Close details"
+                tooltip="Close details"
+                [icon]="Icon.CLOSE"
+                variant="none"
+                size="small"
                 (click)="selectedId.set(null)"
-              >
-                <app-icon [icon]="Icon.WELCOME_CLOSE" />
-              </button>
+              />
             </header>
 
             @if (repository.fork || repository.archived || repository.starred) {

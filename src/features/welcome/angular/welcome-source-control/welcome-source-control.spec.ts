@@ -607,7 +607,7 @@ describe('WelcomeSourceControl', () => {
       await fixture.whenStable();
       expect(host.querySelector('.source__detail')).not.toBeNull();
 
-      host.querySelector<HTMLButtonElement>('.source__detail-close')!.click();
+      host.querySelector<HTMLButtonElement>('.source__detail-close button')!.click();
       await fixture.whenStable();
       expect(host.querySelector('.source__detail')).toBeNull();
 
