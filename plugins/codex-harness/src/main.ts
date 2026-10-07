@@ -16,8 +16,13 @@
 // development run. The workaround was a consequence of being in core, and moving out deletes it rather
 // than porting it.
 
-import { Codex } from '@openai/codex-sdk';
-import type { CodexOptions, ThreadEvent, ThreadItem, ThreadOptions } from '@openai/codex-sdk';
+import type {
+  Codex,
+  CodexOptions,
+  ThreadEvent,
+  ThreadItem,
+  ThreadOptions,
+} from '@openai/codex-sdk';
 import { createInterface } from 'node:readline';
 import { homedir } from 'node:os';
 import { existsSync } from 'node:fs';
@@ -28,8 +33,27 @@ import {
   type HostMessage,
   PROTOCOL_VERSION,
   type Request,
+  type StudioTool,
   type TurnRequest,
 } from './protocol';
+import { startStudioMcpServer, type StudioMcpServer } from './studio-mcp';
+
+/**
+ * The name Studio's tools are registered under in Codex's MCP configuration, and the environment
+ * variable that carries the server's bearer token to the CLI (#854).
+ */
+const STUDIO_SERVER: string = 'studio';
+
+/**
+ * The environment variable the CLI reads the Studio tool server's bearer token from.
+ */
+const STUDIO_TOKEN_VARIABLE: string = 'STUDIO_TOOLS_TOKEN';
+
+/**
+ * How long Codex waits on one Studio tool call, in seconds. Generous because a call may sit on the
+ * user's permission prompt.
+ */
+const STUDIO_TOOL_TIMEOUT_SECONDS: number = 900;
 
 /**
  * Codex CLI notices Studio turns off, as raw `--config` overrides.
@@ -90,6 +114,11 @@ let reportedThreadId: string | null = null;
  * Holds the turn in flight, so an abort knows what to cancel.
  */
 let running: { requestId: string; controller: AbortController } | null = null;
+
+/**
+ * Holds the server that gives Codex Studio's own tools, started with the client (#854).
+ */
+let studioTools: StudioMcpServer | null = null;
 
 /**
  * Asks Studio a blocking question and resolves with its answer.
@@ -303,7 +332,9 @@ function translateItem(item: ThreadItem, completed: boolean, requestId: string):
       break;
     case 'mcp_tool_call':
       if (completed) {
-        toolEnd(item.error === undefined);
+        // By status, not by `error`: a successful call arrives with `error: null`, which an
+        // `=== undefined` test read as a failure for every Studio tool (found by the #854 probe).
+        toolEnd(item.status === 'completed');
       } else {
         toolStart(`${item.server} / ${item.tool}`, item.tool);
       }
@@ -356,11 +387,82 @@ function translateEvent(event: ThreadEvent, requestId: string): void {
 }
 
 /**
+ * Gives Codex Studio's own tools and Studio's instructions (#854): starts the server that serves the
+ * tools, points the CLI at it, and passes the instructions as the session's developer instructions.
+ *
+ * The tool list is not fixed here — the server asks Studio afresh at each `tools/list`, for the turn in
+ * flight. The instructions are: Codex takes them once, when the client is made, so a live session
+ * carries the first turn's (the Claude harness has the same limit).
+ * @param turn The first turn.
+ * @param options The client options built so far.
+ * @returns Returns the options with Studio's tools and instructions added.
+ */
+async function withStudioTools(turn: TurnRequest, options: CodexOptions): Promise<CodexOptions> {
+  studioTools ??= await startStudioMcpServer({
+    describe: async (): Promise<readonly StudioTool[]> => {
+      if (running === null) {
+        return [];
+      }
+      const answer: Answer = await ask(running.requestId, { kind: 'tools' });
+      return answer.kind === 'tools' ? answer.tools : [];
+    },
+    invoke: async (
+      name: string,
+      input: unknown,
+    ): Promise<{ result: string | null; error: string | null }> => {
+      if (running === null) {
+        return { result: null, error: 'No turn is running, so Studio cannot run the tool.' };
+      }
+      const answer: Answer = await ask(running.requestId, { kind: 'tool', name, input });
+      return answer.kind === 'tool'
+        ? { result: answer.result, error: answer.error }
+        : { result: null, error: 'Studio did not run the tool.' };
+    },
+  });
+  const offer: Answer = await ask(turn.requestId, { kind: 'tools' });
+  const instructions: string = offer.kind === 'tools' ? offer.systemPrompt : '';
+  return {
+    ...options,
+    config: {
+      ...(options.config ?? {}),
+      mcp_servers: {
+        [STUDIO_SERVER]: {
+          url: studioTools.url,
+          bearer_token_env_var: STUDIO_TOKEN_VARIABLE,
+          tool_timeout_sec: STUDIO_TOOL_TIMEOUT_SECONDS,
+          // 🔑 Codex's own approval is waived for Studio's tools, because Studio applies the user's
+          // per-tool policy and raises the permission prompt itself. Without it the CLI refuses every
+          // call outright: "requires approval, but approval policy is never" (verified, CLI 0.160).
+          default_tools_approval_mode: 'approve',
+        },
+      },
+      ...(instructions.length === 0 ? {} : { developer_instructions: instructions }),
+    },
+    // ⚠️ Given an `env`, the SDK passes nothing else from this process — so the whole environment is
+    // carried, with the token added.
+    env: {
+      ...(Object.fromEntries(
+        Object.entries(process.env).filter(
+          (entry: [string, string | undefined]): entry is [string, string] =>
+            entry[1] !== undefined,
+        ),
+      ) as Record<string, string>),
+      [STUDIO_TOKEN_VARIABLE]: studioTools.token,
+    },
+  };
+}
+
+/**
  * Opens the thread on the first turn, resuming a persisted one when the envelope names it.
  * @param turn The turn envelope.
  */
 async function openThread(turn: TurnRequest): Promise<void> {
-  client ??= new Codex(await clientOptionsFor(turn));
+  if (client === null) {
+    // ⚠️ Imported, not required: the SDK is ESM-only and exports nothing but an `import` condition, so
+    // the `require` a CommonJS bundle makes of a static import cannot resolve it on any Node.
+    const { Codex: CodexClient } = await import('@openai/codex-sdk');
+    client = new CodexClient(await withStudioTools(turn, await clientOptionsFor(turn)));
+  }
   const options: ThreadOptions = threadOptionsFor(turn);
   thread =
     turn.resumeSessionId !== null
@@ -418,14 +520,13 @@ function receive(message: HostMessage): void {
           // ⛔ Must match the manifest, or Studio refuses the harness. It has already decided to hold
           // this process open on the manifest's word.
           sessionModel: 'live-harness',
-          // The SDK takes one input per turn; a mid-turn injection is not something it accepts, so
-          // Studio queues a steer for the next turn rather than dropping it.
-          steering: false,
+          // None of the optional messages. The SDK takes one input per turn, so there is no `steer`
+          // (Studio queues it for the next turn instead); the claude.ai bridge behind `remote-control`
+          // is Anthropic's; and nothing here backgrounds work for `task.stop` to name.
+          answers: [],
           images: false,
           efforts: ['low', 'medium', 'high', 'xhigh'],
           resumable: true,
-          // The claude.ai bridge is Anthropic's; Codex has no equivalent this harness drives.
-          remoteControl: false,
         },
       });
       break;
