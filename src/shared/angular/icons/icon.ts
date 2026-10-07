@@ -1210,11 +1210,6 @@ export class Icon {
   public static readonly WELCOME_SOURCE_CONTROL: Icon = new Icon('ph-light ph-git-branch');
 
   /**
-   * Gets the light-weight project (cube) icon shown on the welcome screen.
-   */
-  public static readonly WELCOME_PROJECT: Icon = new Icon('ph-light ph-cube');
-
-  /**
    * Gets the light-weight code icon shown on the welcome screen.
    */
   public static readonly WELCOME_CODE: Icon = new Icon('ph-light ph-brackets-curly');
@@ -1307,15 +1302,28 @@ export class Icon {
   // list of repositories reads as one set. These are the ones its sections need beyond the actions
   // above.
 
-  /**
-   * Gets the light-weight icon of the welcome screen's Get Started tab.
-   */
-  public static readonly WELCOME_GET_STARTED: Icon = new Icon('ph-light ph-house');
+  // The section tabs are the one exception, drawn bold: they are the screen's navigation, and at the
+  // light weight they read as faintly as the content beneath them.
 
   /**
-   * Gets the light-weight icon of the welcome screen's Tools tab.
+   * Gets the bold icon of the welcome screen's Get Started tab.
    */
-  public static readonly WELCOME_TOOLS: Icon = new Icon('ph-light ph-wrench');
+  public static readonly WELCOME_TAB_GET_STARTED: Icon = new Icon('ph-bold ph-house');
+
+  /**
+   * Gets the bold icon of the welcome screen's Create Something tab.
+   */
+  public static readonly WELCOME_TAB_CREATE: Icon = new Icon('ph-bold ph-cube');
+
+  /**
+   * Gets the bold icon of the welcome screen's Source Control tab.
+   */
+  public static readonly WELCOME_TAB_SOURCE_CONTROL: Icon = new Icon('ph-bold ph-git-branch');
+
+  /**
+   * Gets the bold icon of the welcome screen's Tools tab.
+   */
+  public static readonly WELCOME_TAB_TOOLS: Icon = new Icon('ph-bold ph-wrench');
 
   /**
    * Gets the light-weight chevron trailing each welcome action and card.
