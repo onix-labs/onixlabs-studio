@@ -186,7 +186,7 @@
 
   &:hover,
   &:has(.welcome__recent-open:focus-visible) {
-    @include list-row-active('.welcome__recent-icon', '.welcome__recent-name');
+    @include list-row-active;
   }
 }
 

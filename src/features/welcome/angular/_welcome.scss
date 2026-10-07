@@ -72,13 +72,17 @@
     border-color 150ms ease;
 }
 
-// The list row's hover, also its selected state. Pass the children that turn accent with it.
-@mixin list-row-active($accented...) {
+// The list row's hover, also its selected state: everything in the row turns accent. The foreground
+// variable carries it into nested controls (the recent rows' buttons), which colour from it.
+@mixin list-row-active {
+  --body-foreground-color: var(--accent-color);
+
   outline: none;
+  color: var(--accent-color);
   background: rgba(var(--accent-color-rgb), 0.25);
   border-color: rgba(var(--accent-color-rgb), 1);
 
-  #{$accented} {
+  * {
     color: var(--accent-color);
   }
 }
