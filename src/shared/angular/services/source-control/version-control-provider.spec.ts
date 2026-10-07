@@ -191,6 +191,34 @@ describe('VersionControlProvider', () => {
     expect(renamed).toEqual({ original: 'commit:p1:old.ts', modified: 'commit:c1:new.ts' });
   });
 
+  it('getFileDiff_readsARenamesOriginalAtItsOldPath_inTheWorkingTreeToo', async () => {
+    // #826: a staged rename read HEAD at its new path, where it is not, so an unchanged rename showed
+    // every line as added. The original side is read where the file was, as a commit's already is.
+    const provider: VersionControlProvider = new VersionControlProvider(
+      '/repo',
+      client({ readFile: labelled }),
+    );
+    const rename: Partial<GitFileChange> = {
+      path: 'test/arithmetic.test.js',
+      previousPath: 'test/math.test.js',
+      status: 'renamed',
+    };
+
+    const staged: FileDiff = await provider.getFileDiff(
+      workingChange({ ...rename, target: { kind: 'working', staged: true } }),
+    );
+    const unstaged: FileDiff = await provider.getFileDiff(workingChange(rename));
+
+    expect(staged).toEqual({
+      original: 'head:test/math.test.js',
+      modified: 'index:test/arithmetic.test.js',
+    });
+    expect(unstaged).toEqual({
+      original: 'index:test/math.test.js',
+      modified: 'working:test/arithmetic.test.js',
+    });
+  });
+
   it('getFileDiff_givesAnAddedOrRootFileAnEmptyOriginal', async () => {
     const recorded: Recorded[] = [];
     const provider: VersionControlProvider = new VersionControlProvider(
