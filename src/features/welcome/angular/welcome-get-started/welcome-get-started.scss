@@ -145,15 +145,18 @@
   }
 }
 
+.welcome__recent-frame {
+  @include scroll-frame;
+}
+
 .welcome__recent-list {
+  @include scroller;
+
   display: flex;
-  flex: 1 1 0;
   flex-direction: column;
   gap: 0.4rem;
   margin: 0;
   padding: 0;
-  min-block-size: 0;
-  overflow-y: auto;
   list-style: none;
 }
 

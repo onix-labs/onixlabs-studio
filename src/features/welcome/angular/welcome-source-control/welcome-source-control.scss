@@ -227,16 +227,19 @@
   }
 }
 
+.source__list-frame {
+  @include scroll-frame;
+}
+
 .source__list {
+  @include scroller;
+
   display: flex;
-  flex: 1 1 0;
   flex-direction: column;
   gap: 0.4rem;
   min-inline-size: 0;
-  min-block-size: 0;
   margin: 0;
   padding: 0;
-  overflow-y: auto;
   list-style: none;
 }
 
@@ -310,17 +313,26 @@
   color: var(--wl-faint);
 }
 
+// The panel draws the box; its body scrolls inside it, under the overlay scrollbar.
 .source__detail {
   display: flex;
   flex: 0 0 16rem;
   flex-direction: column;
-  gap: 0.5rem;
-  padding: 0.9rem;
-  overflow-y: auto;
+  min-block-size: 0;
+  overflow: hidden;
   background: var(--wl-surface);
   border: 0.0625rem solid var(--wl-border);
   border-radius: calc(0.75rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
+}
+
+.source__detail-body {
+  @include scroller;
+
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.9rem;
 }
 
 .source__detail-head {
@@ -510,5 +522,10 @@
 
   .source__detail {
     flex-basis: auto;
+  }
+
+  // Stacked, the panel is as tall as its content, so the body does not scroll inside it.
+  .source__detail-body {
+    flex: none;
   }
 }

@@ -203,144 +203,154 @@
         } @else {
           <!-- The scrollbar floats over the rows rather than taking a channel beside them, so the list's
                right edge lines up with the controls above it. -->
-          <ul class="source__list" appOverlayScrollbar>
-            @for (repository of visible(); track repository.id) {
-              <li>
-                <button
-                  type="button"
-                  class="welcome__repository"
-                  [class.welcome__repository--selected]="selectedId() === repository.id"
-                  (click)="toggleSelected(repository.id)"
-                >
-                  <span class="welcome__repository-icon">
-                    <app-icon
-                      [icon]="
-                        repository.private
-                          ? Icon.WELCOME_REPOSITORY_PRIVATE
-                          : Icon.WELCOME_REPOSITORY
-                      "
-                    />
-                  </span>
-                  <span class="welcome__repository-text">
-                    <span class="welcome__repository-name">{{ repository.name }}</span>
-                    <span class="welcome__repository-owner">{{ repository.fullName }}</span>
-                  </span>
-                  <span class="welcome__repository-time">{{ updated(repository.updatedAt) }}</span>
-                </button>
-              </li>
-            }
-          </ul>
+          <div class="source__list-frame" appOverlayScrollbar=".source__list">
+            <ul class="source__list">
+              @for (repository of visible(); track repository.id) {
+                <li>
+                  <button
+                    type="button"
+                    class="welcome__repository"
+                    [class.welcome__repository--selected]="selectedId() === repository.id"
+                    (click)="toggleSelected(repository.id)"
+                  >
+                    <span class="welcome__repository-icon">
+                      <app-icon
+                        [icon]="
+                          repository.private
+                            ? Icon.WELCOME_REPOSITORY_PRIVATE
+                            : Icon.WELCOME_REPOSITORY
+                        "
+                      />
+                    </span>
+                    <span class="welcome__repository-text">
+                      <span class="welcome__repository-name">{{ repository.name }}</span>
+                      <span class="welcome__repository-owner">{{ repository.fullName }}</span>
+                    </span>
+                    <span class="welcome__repository-time">{{
+                      updated(repository.updatedAt)
+                    }}</span>
+                  </button>
+                </li>
+              }
+            </ul>
+          </div>
         }
       </div>
       @if (accounts().length > 0 && visible().length > 0) {
         @if (selected(); as repository) {
-          <aside class="source__detail" aria-label="Repository details" appOverlayScrollbar>
-            <header class="source__detail-head">
-              <div class="source__detail-title">
-                <h3 class="source__detail-name">{{ repository.name }}</h3>
-                <p class="source__detail-owner">{{ repository.fullName }}</p>
-              </div>
-              <!-- The same quiet button as the actions at the end of a recent item. -->
-              <app-button
-                class="source__detail-close"
-                ariaLabel="Close details"
-                tooltip="Close details"
-                [icon]="Icon.CLOSE"
-                variant="none"
-                size="small"
-                (click)="selectedId.set(null)"
-              />
-            </header>
+          <aside
+            class="source__detail"
+            aria-label="Repository details"
+            appOverlayScrollbar=".source__detail-body"
+          >
+            <div class="source__detail-body">
+              <header class="source__detail-head">
+                <div class="source__detail-title">
+                  <h3 class="source__detail-name">{{ repository.name }}</h3>
+                  <p class="source__detail-owner">{{ repository.fullName }}</p>
+                </div>
+                <!-- The same quiet button as the actions at the end of a recent item. -->
+                <app-button
+                  class="source__detail-close"
+                  ariaLabel="Close details"
+                  tooltip="Close details"
+                  [icon]="Icon.CLOSE"
+                  variant="none"
+                  size="small"
+                  (click)="selectedId.set(null)"
+                />
+              </header>
 
-            @if (repository.fork || repository.archived || repository.starred) {
-              <div class="source__badges">
-                @if (repository.starred) {
-                  <span class="source__badge">Starred</span>
+              @if (repository.fork || repository.archived || repository.starred) {
+                <div class="source__badges">
+                  @if (repository.starred) {
+                    <span class="source__badge">Starred</span>
+                  }
+                  @if (repository.fork) {
+                    <span class="source__badge">Fork</span>
+                  }
+                  @if (repository.archived) {
+                    <span class="source__badge source__badge--warning">Archived</span>
+                  }
+                </div>
+              }
+
+              @if (repository.description) {
+                <p class="source__detail-description">{{ repository.description }}</p>
+              }
+
+              @if (repository.topics?.length) {
+                <ul class="source__topics" aria-label="Topics">
+                  @for (topic of repository.topics; track topic) {
+                    <li class="source__topic">{{ topic }}</li>
+                  }
+                </ul>
+              }
+
+              <dl class="source__detail-facts">
+                @if (repository.stars !== undefined) {
+                  <dt>Stars</dt>
+                  <dd>{{ repository.stars }}</dd>
                 }
-                @if (repository.fork) {
-                  <span class="source__badge">Fork</span>
+                @if (repository.forks !== undefined) {
+                  <dt>Forks</dt>
+                  <dd>{{ repository.forks }}</dd>
                 }
-                @if (repository.archived) {
-                  <span class="source__badge source__badge--warning">Archived</span>
+                @if (repository.openIssues !== undefined) {
+                  <dt>Open issues</dt>
+                  <dd>{{ repository.openIssues }}</dd>
                 }
-              </div>
-            }
-
-            @if (repository.description) {
-              <p class="source__detail-description">{{ repository.description }}</p>
-            }
-
-            @if (repository.topics?.length) {
-              <ul class="source__topics" aria-label="Topics">
-                @for (topic of repository.topics; track topic) {
-                  <li class="source__topic">{{ topic }}</li>
+                @if (repository.language) {
+                  <dt>Language</dt>
+                  <dd>{{ repository.language }}</dd>
                 }
-              </ul>
-            }
+                @if (repository.license) {
+                  <dt>Licence</dt>
+                  <dd>{{ repository.license }}</dd>
+                }
+                @if (repository.defaultBranch) {
+                  <dt>Default branch</dt>
+                  <dd>{{ repository.defaultBranch }}</dd>
+                }
+                <dt>Visibility</dt>
+                <dd>{{ repository.private ? 'Private' : 'Public' }}</dd>
+                @if (repository.pushedAt !== undefined) {
+                  <dt>Last pushed</dt>
+                  <dd>{{ repository.pushedAt === null ? 'Never' : ago(repository.pushedAt) }}</dd>
+                }
+                <dt>Last updated</dt>
+                <dd>{{ ago(repository.updatedAt) }}</dd>
+              </dl>
 
-            <dl class="source__detail-facts">
-              @if (repository.stars !== undefined) {
-                <dt>Stars</dt>
-                <dd>{{ repository.stars }}</dd>
-              }
-              @if (repository.forks !== undefined) {
-                <dt>Forks</dt>
-                <dd>{{ repository.forks }}</dd>
-              }
-              @if (repository.openIssues !== undefined) {
-                <dt>Open issues</dt>
-                <dd>{{ repository.openIssues }}</dd>
-              }
-              @if (repository.language) {
-                <dt>Language</dt>
-                <dd>{{ repository.language }}</dd>
-              }
-              @if (repository.license) {
-                <dt>Licence</dt>
-                <dd>{{ repository.license }}</dd>
-              }
-              @if (repository.defaultBranch) {
-                <dt>Default branch</dt>
-                <dd>{{ repository.defaultBranch }}</dd>
-              }
-              <dt>Visibility</dt>
-              <dd>{{ repository.private ? 'Private' : 'Public' }}</dd>
-              @if (repository.pushedAt !== undefined) {
-                <dt>Last pushed</dt>
-                <dd>{{ repository.pushedAt === null ? 'Never' : ago(repository.pushedAt) }}</dd>
-              }
-              <dt>Last updated</dt>
-              <dd>{{ ago(repository.updatedAt) }}</dd>
-            </dl>
-
-            @if (repository.homepage; as homepage) {
-              <button
-                type="button"
-                class="source__detail-link"
-                [attr.aria-label]="'Open the homepage, ' + homepage"
-                (click)="openInBrowser(homepage)"
-              >
-                <app-icon [icon]="Icon.WELCOME_HOMEPAGE" />
-                <span>{{ homepage }}</span>
-              </button>
-            }
-
-            <p class="source__detail-url">{{ repository.cloneUrl }}</p>
-            <div class="source__detail-actions">
-              <button type="button" class="source__clone" (click)="prepareClone(repository)">
-                <app-icon [icon]="Icon.WELCOME_CLONE" />
-                <span>Clone Repository</span>
-              </button>
-              @if (repository.webUrl) {
+              @if (repository.homepage; as homepage) {
                 <button
                   type="button"
-                  class="source__secondary source__open"
-                  (click)="openInBrowser(repository.webUrl)"
+                  class="source__detail-link"
+                  [attr.aria-label]="'Open the homepage, ' + homepage"
+                  (click)="openInBrowser(homepage)"
                 >
-                  <app-icon [icon]="Icon.WELCOME_OPEN_EXTERNAL" />
-                  <span>{{ openLabel(repository) }}</span>
+                  <app-icon [icon]="Icon.WELCOME_HOMEPAGE" />
+                  <span>{{ homepage }}</span>
                 </button>
               }
+
+              <p class="source__detail-url">{{ repository.cloneUrl }}</p>
+              <div class="source__detail-actions">
+                <button type="button" class="source__clone" (click)="prepareClone(repository)">
+                  <app-icon [icon]="Icon.WELCOME_CLONE" />
+                  <span>Clone Repository</span>
+                </button>
+                @if (repository.webUrl) {
+                  <button
+                    type="button"
+                    class="source__secondary source__open"
+                    (click)="openInBrowser(repository.webUrl)"
+                  >
+                    <app-icon [icon]="Icon.WELCOME_OPEN_EXTERNAL" />
+                    <span>{{ openLabel(repository) }}</span>
+                  </button>
+                }
+              </div>
             </div>
           </aside>
         }
