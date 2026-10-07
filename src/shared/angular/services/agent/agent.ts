@@ -48,6 +48,7 @@ import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { AGENT_RUN_OWNER } from './agent-run-owner';
 import { AGENT_WORKSPACE_ROOT } from './agent-workspace-root';
 import { isNotLoggedInReply, looksLikeAuthFailure } from './auth-failure';
+import { startingModel } from '@shared/angular/services/agent-engine/engine-options';
 
 /**
  * How long, in milliseconds, streamed text deltas are buffered before they are folded into the
@@ -552,7 +553,7 @@ export class Agent {
     if (this.providerOverride() === null) {
       return this.engine.model();
     }
-    return this.providerInfo()?.defaultModelId ?? '';
+    return startingModel(this.providerInfo());
   });
 
   /**

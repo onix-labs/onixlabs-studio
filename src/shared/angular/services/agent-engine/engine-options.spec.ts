@@ -1,6 +1,44 @@
 import type { AiProviderInfo } from '@shared/api/ai-types';
 import type { DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
-import { engineOptions } from './engine-options';
+import { engineOptions, startingModel } from './engine-options';
+
+describe('startingModel', () => {
+  /**
+   * Builds a Codex provider whose default is Sol.
+   * @param solRetired Whether Sol is retired.
+   * @returns Returns the provider.
+   */
+  function codex(solRetired: boolean): AiProviderInfo {
+    return {
+      id: 'openai-1',
+      label: 'Codex',
+      available: true,
+      detail: '',
+      defaultModelId: 'sol',
+      models: [
+        { id: 'sol', label: 'Sol', contextWindow: 1, ...(solRetired ? { retired: true } : {}) },
+        { id: 'terra', label: 'Terra', contextWindow: 1 },
+      ],
+    };
+  }
+
+  it('startsOnTheDefault', () => {
+    expect(startingModel(codex(false))).toBe('sol');
+  });
+
+  it('startsOnTheFirstModelStillOffered_whenTheDefaultIsRetired', () => {
+    // #866: the saved default is the user's and is left alone, but a new conversation must not
+    // start on a model the provider no longer runs.
+    expect(startingModel(codex(true))).toBe('terra');
+  });
+
+  it('keepsTheDefault_whenNothingElseIsOffered', () => {
+    const only: AiProviderInfo = { ...codex(true), models: [codex(true).models[0]] };
+
+    expect(startingModel(only)).toBe('sol');
+    expect(startingModel(undefined)).toBe('');
+  });
+});
 
 describe('engineOptions', () => {
   it('disablesARetiredModel_butStillShowsIt', () => {

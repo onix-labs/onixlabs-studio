@@ -112,6 +112,30 @@ export function engineOptions(providers: readonly AiProviderInfo[]): readonly Dr
 }
 
 /**
+ * Gets the model a conversation starts on with a provider: its default, unless the provider no longer
+ * offers that model, in which case the first one it still offers (#866). The saved default is not
+ * changed — that stays the user's to change in settings — but a conversation does not start on a model
+ * that cannot run.
+ * @param provider The provider, or undefined before the providers load.
+ * @returns Returns the model id, empty when there is none.
+ */
+export function startingModel(provider: AiProviderInfo | undefined): string {
+  if (provider === undefined) {
+    return '';
+  }
+  const preferred: AiModelInfo | undefined = provider.models.find(
+    (model: AiModelInfo): boolean => model.id === provider.defaultModelId,
+  );
+  if (preferred?.retired !== true) {
+    return provider.defaultModelId;
+  }
+  return (
+    provider.models.find((model: AiModelInfo): boolean => model.retired !== true)?.id ??
+    provider.defaultModelId
+  );
+}
+
+/**
  * Recovers the provider/model pair an engine option value names.
  * @param value The option value.
  * @returns Returns the pair, or null when the value does not name one.

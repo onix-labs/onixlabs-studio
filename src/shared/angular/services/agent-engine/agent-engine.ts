@@ -5,6 +5,7 @@ import { AiProviders } from '@shared/angular/services/ai-providers/ai-providers'
 import { AiRuntime } from '../ai-runtime/ai-runtime';
 import { Log } from '@shared/angular/services/log/log';
 import { Settings } from '@shared/angular/services/settings/settings';
+import { startingModel } from './engine-options';
 
 /**
  * Owns the global engine selection shared by every agent conversation: the registered providers (built
@@ -98,7 +99,7 @@ export class AgentEngine {
     if (models.some((candidate: AiModelInfo): boolean => candidate.id === chosen)) {
       return chosen;
     }
-    return this.providerInfo()?.defaultModelId ?? '';
+    return startingModel(this.providerInfo());
   });
 
   /**
