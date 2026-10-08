@@ -1,11 +1,11 @@
 // The bar wears the button's footprint — the same height, radius and corner shape — so it can stand
 // in for the button it replaces without the row moving. It is a quiet track in the tone's tint, with a
-// soft sheen sweeping across it, brightest at its heart and fading to nothing at either end: the
+// soft sheen sweeping across it, fullest at its heart and fading to nothing at either end: the
 // conventional "busy, no idea how long" signal, drawn as Windows 7 drew it rather than as stripes.
 :host {
   --progress-bar-color: var(--accent-color);
   // The sheen's width as a share of the track's.
-  --progress-bar-sheen-share: 0.45;
+  --progress-bar-sheen-share: 0.75;
 
   position: relative;
   isolation: isolate;
@@ -25,9 +25,9 @@
   border-radius: calc(0.5rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
 
-  // The sheen: the tone, lit to near white at its centre, faded to transparent at both edges. It
-  // starts wholly off the left edge and leaves wholly off the right, so each sweep enters and exits
-  // cleanly before the next.
+  // The sheen: the tone at its fullest in the centre — never lit past it — faded to transparent at
+  // both edges. It starts wholly off the left edge and leaves wholly off the right, so each sweep
+  // enters and exits cleanly before the next.
   &::before {
     content: '';
     position: absolute;
@@ -38,9 +38,9 @@
     background: linear-gradient(
       90deg,
       transparent 0%,
-      color-mix(in srgb, var(--progress-bar-color) 55%, transparent) 30%,
-      color-mix(in srgb, var(--progress-bar-color) 70%, white) 50%,
-      color-mix(in srgb, var(--progress-bar-color) 55%, transparent) 70%,
+      color-mix(in srgb, var(--progress-bar-color) 40%, transparent) 25%,
+      color-mix(in srgb, var(--progress-bar-color) 75%, transparent) 50%,
+      color-mix(in srgb, var(--progress-bar-color) 40%, transparent) 75%,
       transparent 100%
     );
     transform: translateX(-100%);
