@@ -20,8 +20,7 @@ interface OfferedOption {
 
 /**
  * The New Project wizard's Options step (#806): how the project is run — containers, continuous
- * integration, work tracking, licence — and the library's skills the agent should follow. Each is
- * optional; one left unanswered is not mentioned.
+ * integration, work tracking, licence. Each is optional; one left unanswered is not mentioned.
  */
 @Component({
   selector: 'app-create-options',

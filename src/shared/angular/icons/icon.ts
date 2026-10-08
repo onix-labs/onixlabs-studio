@@ -1656,6 +1656,17 @@ export class Icon {
   public static readonly WELCOME_TEMPLATE_FLASK: Icon = new Icon('ph-light ph-flask');
 
   /**
+   * Gets the light-weight sparkle of a skill in the New Project wizard's Skills step: Studio's skill
+   * glyph.
+   */
+  public static readonly WELCOME_SKILL: Icon = new Icon('ph-light ph-sparkle');
+
+  /**
+   * Gets the icon of the New Project wizard's Import Skill button.
+   */
+  public static readonly WELCOME_SKILL_IMPORT: Icon = new Icon('ph-light ph-download-simple');
+
+  /**
    * Gets the icon of a New Project wizard step not yet visited.
    */
   public static readonly WELCOME_STEP_TODO: Icon = new Icon('ph-light ph-circle');

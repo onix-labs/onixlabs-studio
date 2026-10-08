@@ -8,7 +8,7 @@ import type {
   ProjectDocument,
 } from '@shared/api/new-project-channels';
 import { installedContributions } from '@shared/api/plugin-channels';
-import type { Skill } from '@shared/api/skill-channels';
+import type { Skill, SkillSaveResult } from '@shared/api/skill-channels';
 import type { VersionControlPluginInfo } from '@shared/api/source-control-channels';
 import { Clone } from '@shared/angular/services/clone/clone';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
@@ -38,7 +38,7 @@ import {
 /**
  * Names a step of the New Project wizard, in order.
  */
-export type CreateStep = 'start' | 'details' | 'technology' | 'options' | 'summary';
+export type CreateStep = 'start' | 'details' | 'technology' | 'options' | 'skills' | 'summary';
 
 /**
  * The wizard's steps, in order.
@@ -48,6 +48,7 @@ export const CREATE_STEPS: readonly CreateStep[] = [
   'details',
   'technology',
   'options',
+  'skills',
   'summary',
 ];
 
@@ -300,11 +301,18 @@ export class ProjectDraft {
   ]);
 
   /**
-   * Gets the skills the library offers to follow: those enabled.
+   * Gets the skills the library offers to follow: every one that loads without a problem. A skill the
+   * user switched off is offered too — it is off for being offered automatically, and choosing it here
+   * is the user asking for it.
    */
   public readonly availableSkills: Signal<readonly Skill[]> = computed((): readonly Skill[] =>
-    this.skillLibrary.skills().filter((skill: Skill): boolean => skill.enabled),
+    this.skillLibrary.skills().filter((skill: Skill): boolean => skill.problem === null),
   );
+
+  /**
+   * Holds why the last skill import failed, or null.
+   */
+  public readonly skillImportError: WritableSignal<string | null> = signal<string | null>(null);
 
   /**
    * Gets whether the repository picked is one a code host makes.
@@ -403,7 +411,9 @@ export class ProjectDraft {
       case 'technology':
         return this.technologies().size > 0;
       case 'options':
-        return this.options().size > 0 || this.skills().size > 0;
+        return this.options().size > 0;
+      case 'skills':
+        return this.skills().size > 0;
       case 'summary':
         return true;
     }
@@ -576,6 +586,26 @@ export class ProjectDraft {
   }
 
   /**
+   * Imports a skill into the library, through the platform dialog, and chooses it.
+   * @returns Resolves once the dialog has closed and the library is current.
+   */
+  public async importSkill(): Promise<void> {
+    this.skillImportError.set(null);
+    const result: SkillSaveResult | null = await this.skillLibrary.import();
+    if (result === null) {
+      return;
+    }
+    if (result.skill === null) {
+      this.skillImportError.set(result.error ?? 'The skill could not be imported.');
+      return;
+    }
+    const name: string = result.skill.name;
+    this.skills.update(
+      (selected: ReadonlySet<string>): ReadonlySet<string> => new Set<string>([...selected, name]),
+    );
+  }
+
+  /**
    * Toggles a skill to follow.
    * @param name The skill's name.
    */
@@ -609,6 +639,7 @@ export class ProjectDraft {
     this.ownTechnologies.set([]);
     this.options.set(new Map<string, string>());
     this.skills.set(new Set<string>());
+    this.skillImportError.set(null);
     this.error.set(null);
   }
 

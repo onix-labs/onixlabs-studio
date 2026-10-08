@@ -48,6 +48,17 @@
   }
 }
 
+// A search beside the step's own action, as Recent Items' filter and search share a row.
+.step__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.step__field--grow {
+  flex: 1 1 auto;
+}
+
 .step__hint {
   margin: 0;
   padding-inline: 0.15rem;
@@ -348,20 +359,6 @@
 
 .step__option-label {
   margin: 0;
-}
-
-.step__chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-}
-
-.step__chip {
-  @include chip;
-}
-
-.step__chip--on {
-  @include chip-on;
 }
 
 // The first message, as it will be sent.

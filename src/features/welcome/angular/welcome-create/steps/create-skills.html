@@ -1,0 +1,59 @@
+<div class="step">
+  <div class="step__toolbar">
+    <div class="step__field step__field--grow">
+      <app-icon [icon]="Icon.SEARCH" />
+      <input
+        type="text"
+        placeholder="Search skills…"
+        aria-label="Search skills"
+        spellcheck="false"
+        [value]="query()"
+        (input)="onQueryInput($event)"
+        (keydown.escape)="query.set('')"
+      />
+    </div>
+    <button type="button" class="step__secondary" (click)="draft.importSkill()">
+      <app-icon [icon]="Icon.WELCOME_SKILL_IMPORT" />
+      <span>Import Skill…</span>
+    </button>
+  </div>
+  @if (draft.skillImportError(); as error) {
+    <p class="step__error" role="alert">{{ error }}</p>
+  }
+
+  @if (draft.availableSkills().length === 0) {
+    <p class="step__hint">
+      Your skill library is empty. Skills hold coding standards, conventions and know-how for the
+      agent to follow; import one here, or write your own in Settings.
+    </p>
+  } @else {
+    <!-- The library: each skill's name over its description; the chosen held in the accent. -->
+    <div class="step__list-frame" appOverlayScrollbar=".step__groups">
+      <ul class="step__groups step__list" aria-label="Skills">
+        @for (skill of skills(); track skill.name) {
+          <li>
+            <button
+              type="button"
+              class="step__row"
+              [class.step__row--picked]="draft.skills().has(skill.name)"
+              [attr.aria-pressed]="draft.skills().has(skill.name)"
+              [title]="skill.description"
+              (click)="draft.toggleSkill(skill.name)"
+            >
+              <span class="step__row-icon"><app-icon [icon]="Icon.WELCOME_SKILL" /></span>
+              <span class="step__row-text">
+                <span class="step__row-title">{{ skill.name }}</span>
+                <span class="step__row-summary">{{ skill.description }}</span>
+              </span>
+              @if (draft.skills().has(skill.name)) {
+                <app-icon class="step__row-mark" [icon]="Icon.WELCOME_STEP_DONE" />
+              }
+            </button>
+          </li>
+        } @empty {
+          <li class="step__empty">No skill matches.</li>
+        }
+      </ul>
+    </div>
+  }
+</div>

@@ -1,4 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import type { Skill } from '@shared/api/skill-channels';
 import type { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { ProjectDraft } from './project-draft';
@@ -89,6 +90,7 @@ describe('WelcomeCreate', () => {
       'Project Details:other',
       'Technology:other',
       'Options:other',
+      'Skills:other',
       'Summary:other',
     ]);
     expect(host.querySelector('.create__title')!.textContent.trim()).toBe(
@@ -176,17 +178,57 @@ describe('WelcomeCreate', () => {
     expect(host.querySelector('app-create-options')).not.toBeNull();
 
     await clickPrimary();
+    expect(host.querySelector('app-create-skills')).not.toBeNull();
+
+    await clickPrimary();
     expect(host.querySelector('app-create-summary')).not.toBeNull();
     expect(checklist()).toEqual([
       'Start:done',
       'Project Details:other',
       'Technology:other',
       'Options:other',
+      'Skills:other',
       'Summary:current',
     ]);
     expect(host.querySelector('.step__message')!.textContent).toContain(
       'I want to build a desktop application.',
     );
+  });
+
+  it('theSkillsStep_listsTheLibrary_searched_andChoosesFromIt', async () => {
+    machine.skills = [
+      { name: 'house-style', description: 'British English, explicit types.', problem: null },
+      { name: 'testing', description: 'Test every public method.', problem: null },
+      { name: 'broken', description: 'Will not load.', problem: 'Bad frontmatter.' },
+    ] as unknown as Skill[];
+    TestBed.inject(ProjectDraft).goTo('skills');
+    await settle();
+
+    const rows: () => string[] = (): string[] =>
+      Array.from(host.querySelectorAll('.step__row-title')).map((title: Element): string =>
+        title.textContent.trim(),
+      );
+    expect(rows()).toEqual(['house-style', 'testing']);
+
+    const search: HTMLInputElement = host.querySelector<HTMLInputElement>(
+      'input[aria-label="Search skills"]',
+    )!;
+    search.value = 'british';
+    search.dispatchEvent(new Event('input'));
+    await settle();
+    expect(rows()).toEqual(['house-style']);
+
+    host.querySelector<HTMLButtonElement>('.step__row')!.click();
+    await settle();
+    expect([...TestBed.inject(ProjectDraft).skills()]).toEqual(['house-style']);
+    expect(primary().textContent.trim()).toBe('Next');
+  });
+
+  it('theSkillsStep_saysWhenTheLibraryIsEmpty', async () => {
+    TestBed.inject(ProjectDraft).goTo('skills');
+    await settle();
+
+    expect(host.querySelector('.step__hint')!.textContent).toContain('Your skill library is empty');
   });
 
   it('theChecklist_jumpsToAnyStep', async () => {

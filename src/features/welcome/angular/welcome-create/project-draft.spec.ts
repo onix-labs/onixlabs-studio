@@ -68,6 +68,10 @@ describe('ProjectDraft', () => {
 
     draft.setOption('licence', '');
     expect(draft.touched('options')).toBe(false);
+
+    expect(draft.touched('skills')).toBe(false);
+    draft.toggleSkill('house-style');
+    expect(draft.touched('skills')).toBe(true);
   });
 
   it('move_walksTheSteps_rememberingThoseVisited', () => {
@@ -204,9 +208,9 @@ describe('ProjectDraft', () => {
 
   it('send_briefsTheAgent_withTheTemplatesSkill_andThoseChosen', async () => {
     machine.skills = [
-      { name: 'new-game', enabled: true, body: 'Ask about the engine.' } as Skill,
-      { name: 'house-style', enabled: true, body: 'Use British English.' } as Skill,
-      { name: 'unused', enabled: true, body: 'Never.' } as Skill,
+      { name: 'new-game', problem: null, body: 'Ask about the engine.' } as Skill,
+      { name: 'house-style', problem: null, body: 'Use British English.' } as Skill,
+      { name: 'unused', problem: null, body: 'Never.' } as Skill,
     ];
     draft.chooseTemplate(template('new-game'));
     draft.toggleSkill('house-style');
@@ -218,6 +222,34 @@ describe('ProjectDraft', () => {
     expect(brief).toContain('Ask about the engine.');
     expect(brief).toContain('Use British English.');
     expect(brief).not.toContain('Never.');
+  });
+
+  it('availableSkills_offersEveryOneThatLoads_switchedOffOrNot', () => {
+    machine.skills = [
+      { name: 'on', enabled: true, problem: null } as Skill,
+      { name: 'off', enabled: false, problem: null } as Skill,
+      { name: 'broken', enabled: true, problem: 'Bad frontmatter.' } as Skill,
+    ];
+
+    expect(draft.availableSkills().map((skill: Skill): string => skill.name)).toEqual([
+      'on',
+      'off',
+    ]);
+  });
+
+  it('importSkill_choosesWhatItImports_orSaysWhyItCouldNot', async () => {
+    machine.importResult = { skill: { name: 'house-style' } as Skill, error: null };
+    await draft.importSkill();
+    expect([...draft.skills()]).toEqual(['house-style']);
+
+    machine.importResult = { skill: null, error: 'Not a skill.' };
+    await draft.importSkill();
+    expect(draft.skillImportError()).toBe('Not a skill.');
+
+    machine.importResult = null;
+    await draft.importSkill();
+    expect(draft.skillImportError()).toBeNull();
+    expect([...draft.skills()]).toEqual(['house-style']);
   });
 
   it('message_previewsWhereTheProjectWillBeMade', () => {

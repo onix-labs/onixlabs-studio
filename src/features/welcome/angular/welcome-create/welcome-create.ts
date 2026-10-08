@@ -13,6 +13,7 @@ import { Icon } from '@shared/angular/icons/icon';
 import { CREATE_STEPS, CreateStep, ProjectDraft } from './project-draft';
 import { CreateDetails } from './steps/create-details';
 import { CreateOptions } from './steps/create-options';
+import { CreateSkills } from './steps/create-skills';
 import { CreateStart } from './steps/create-start';
 import { CreateSummary } from './steps/create-summary';
 import { CreateTechnology } from './technology/create-technology';
@@ -60,7 +61,15 @@ export type CreateStepState = 'current' | 'done' | 'skipped' | 'todo';
  */
 @Component({
   selector: 'app-welcome-create',
-  imports: [AppIcon, CreateStart, CreateDetails, CreateTechnology, CreateOptions, CreateSummary],
+  imports: [
+    AppIcon,
+    CreateStart,
+    CreateDetails,
+    CreateTechnology,
+    CreateOptions,
+    CreateSkills,
+    CreateSummary,
+  ],
   templateUrl: './welcome-create.html',
   styleUrl: './welcome-create.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -105,7 +114,13 @@ export class WelcomeCreate implements OnInit {
     {
       id: 'options',
       title: 'Options',
-      description: 'How the project is run, and the skills the agent should follow.',
+      description: 'How the project is run.',
+    },
+    {
+      id: 'skills',
+      title: 'Skills',
+      description:
+        'Standards, conventions and know-how from your skill library, for the agent to follow.',
     },
     {
       id: 'summary',

@@ -12,27 +12,4 @@
       />
     }
   </div>
-
-  <span class="step__label">Skills to follow</span>
-  @if (draft.availableSkills().length === 0) {
-    <p class="step__hint">
-      Your skill library is empty. Skills you add in Settings — coding standards, conventions — can
-      be chosen here for the agent to follow.
-    </p>
-  } @else {
-    <div class="step__chips">
-      @for (skill of draft.availableSkills(); track skill.name) {
-        <button
-          type="button"
-          class="step__chip"
-          [class.step__chip--on]="draft.skills().has(skill.name)"
-          [attr.aria-pressed]="draft.skills().has(skill.name)"
-          [title]="skill.description"
-          (click)="draft.toggleSkill(skill.name)"
-        >
-          {{ skill.name }}
-        </button>
-      }
-    </div>
-  }
 </div>

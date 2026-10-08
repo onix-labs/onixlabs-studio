@@ -7,7 +7,7 @@ import type {
   PickedDocuments,
 } from '@shared/api/new-project-channels';
 import type { PluginSummary } from '@shared/api/plugin-channels';
-import type { Skill } from '@shared/api/skill-channels';
+import type { Skill, SkillSaveResult } from '@shared/api/skill-channels';
 import type { VersionControlPluginInfo } from '@shared/api/source-control-channels';
 import type { VersionControlCapability } from '@shared/api/version-control-protocol';
 import { Clone } from '@shared/angular/services/clone/clone';
@@ -55,6 +55,11 @@ export class FakeProjectMachine {
    * Holds the skills in the library.
    */
   public skills: Skill[] = [];
+
+  /**
+   * Holds what importing a skill answers: null when the dialog is cancelled.
+   */
+  public importResult: SkillSaveResult | null = null;
 
   /**
    * Holds what making a project answers.
@@ -136,7 +141,13 @@ export class FakeProjectMachine {
           },
         },
       },
-      { provide: Skills, useValue: { skills: (): readonly Skill[] => this.skills } },
+      {
+        provide: Skills,
+        useValue: {
+          skills: (): readonly Skill[] => this.skills,
+          import: (): Promise<SkillSaveResult | null> => Promise.resolve(this.importResult),
+        },
+      },
     ];
   }
 }
