@@ -20,6 +20,7 @@ import {
 import { Shell } from '@shared/angular/services/shell/shell';
 import { TabType } from '@shared/angular/services/tabs/tab';
 import { Icon } from '@shared/angular/icons/icon';
+import { OPEN_IN_FILE_SYSTEM_LABEL } from '@shared/angular/services/shell/shell-labels';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { OverlayScrollbar } from '@shared/angular/components/overlay-scrollbar/overlay-scrollbar';
@@ -88,6 +89,11 @@ export class WelcomeGetStarted {
    * Gets the icon set, exposed for the template.
    */
   protected readonly Icon: typeof Icon = Icon;
+
+  /**
+   * Gets the label for showing a recent item in the file system.
+   */
+  protected readonly openInFileSystemLabel: string = OPEN_IN_FILE_SYSTEM_LABEL;
 
   /**
    * Emits the kind of tab an action asks for; the welcome screen opens it and steps aside.

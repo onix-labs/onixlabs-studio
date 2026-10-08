@@ -249,6 +249,51 @@ export class Workspace {
   public readonly query: Signal<string> = this.searchQuery.asReadonly();
 
   /**
+   * Holds whether the tree follows the active document. On by default, as it always was before it could
+   * be turned off; the Solution Explorer has the same switch.
+   */
+  private readonly followingActive: WritableSignal<boolean> = signal<boolean>(true);
+
+  /**
+   * Holds whether rows are coloured by how version control sees them.
+   */
+  private readonly gitStatusVisible: WritableSignal<boolean> = signal<boolean>(true);
+
+  /**
+   * Gets whether the tree follows the active document, revealing it as the editor's tab changes.
+   */
+  public readonly followsActiveDocument: Signal<boolean> = this.followingActive.asReadonly();
+
+  /**
+   * Gets whether rows are coloured by how version control sees them.
+   */
+  public readonly showsGitStatus: Signal<boolean> = this.gitStatusVisible.asReadonly();
+
+  /**
+   * Toggles whether the tree follows the active document.
+   */
+  public toggleFollowActiveDocument(): void {
+    this.followingActive.update((value: boolean): boolean => !value);
+  }
+
+  /**
+   * Toggles whether rows are coloured by how version control sees them.
+   */
+  public toggleGitStatus(): void {
+    this.gitStatusVisible.update((value: boolean): boolean => !value);
+  }
+
+  /**
+   * Re-reads every directory the tree has loaded, keeping what is expanded — the manual counterpart
+   * of the directory watch, for a change the watch did not report.
+   * @returns Returns a promise that resolves once the pass has settled.
+   */
+  public refreshFromDisk(): Promise<void> {
+    this.log.info('Workspace', 'Refreshing the tree from disk');
+    return this.runTreeRefresh(null);
+  }
+
+  /**
    * Gets the visible tree flattened into depth-tagged rows for rendering. While a search query is
    * active the rows are filtered to the matches (and their ancestors), with matching branches expanded.
    */
@@ -439,6 +484,13 @@ export class Workspace {
    */
   public select(path: string): void {
     this.selection.set(path);
+  }
+
+  /**
+   * Clears the selection, so no entry is selected — what a click on the tree's empty space asks for.
+   */
+  public clearSelection(): void {
+    this.selection.set(null);
   }
 
   /**

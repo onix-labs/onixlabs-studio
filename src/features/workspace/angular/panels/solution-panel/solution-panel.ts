@@ -16,6 +16,7 @@ import {
   ProjectOperationResult,
 } from '@shared/api/project-system';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
+import { DiffOpener } from '@shared/angular/services/diffs/diff-opener';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { SolutionModel, SolutionRow } from '@features/workspace/angular/project/solution-model';
 import {
@@ -34,7 +35,7 @@ import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { Notifications } from '@shared/angular/services/notifications/notifications';
 import { MutationResult } from '@shared/angular/services/source-control/source-control-provider';
 import { Shell } from '@shared/angular/services/shell/shell';
-import { OPEN_FOLDER_LABEL, REVEAL_LABEL } from '@shared/angular/services/shell/shell-labels';
+import { OPEN_IN_FILE_SYSTEM_LABEL } from '@shared/angular/services/shell/shell-labels';
 import { BuildRunner } from '@shared/angular/services/tasks/build-runner';
 import {
   TreeEdit,
@@ -56,6 +57,11 @@ const ACTION_REVEAL: string = 'reveal';
  * Identifies the context-menu command that adds an untracked path to version control (#860).
  */
 const ACTION_ADD_TO_VCS: string = 'add-to-version-control';
+
+/**
+ * Identifies the context-menu command that opens a modified file's diff.
+ */
+const ACTION_SHOW_DIFF: string = 'show-diff';
 const ACTION_OPTIONS: string = 'options';
 const ACTION_FOLLOW: string = 'follow-active';
 const ACTION_GIT_STATUS: string = 'git-status';
@@ -153,6 +159,11 @@ export class SolutionPanel {
   private readonly git: WorkspaceGit = inject(WorkspaceGit);
 
   /**
+   * Holds the opener a modified file's diff opens through, into this workspace's well.
+   */
+  private readonly diffOpener: DiffOpener = inject(DiffOpener);
+
+  /**
    * Holds the structured logger for solution explorer actions.
    */
   private readonly log: Log = inject(Log);
@@ -219,7 +230,7 @@ export class SolutionPanel {
         },
       ],
     },
-    { id: ACTION_OPEN_ROOT, label: OPEN_FOLDER_LABEL, icon: Icon.DIRECTORY },
+    { id: ACTION_OPEN_ROOT, label: OPEN_IN_FILE_SYSTEM_LABEL, icon: Icon.DIRECTORY },
     { id: ACTION_RELOAD, label: 'Reload Solution', icon: Icon.REFRESH },
   ]);
 
@@ -255,14 +266,24 @@ export class SolutionPanel {
       items.push(
         { id: ACTION_COPY_PATH, label: 'Copy Path', icon: Icon.COPY },
         { id: ACTION_COPY_RELATIVE, label: 'Copy Relative Path', icon: Icon.COPY },
-        { id: ACTION_REVEAL, label: REVEAL_LABEL, icon: Icon.DIRECTORY },
+        { id: ACTION_REVEAL, label: OPEN_IN_FILE_SYSTEM_LABEL, icon: Icon.DIRECTORY },
       );
+      // A path is untracked or modified, never both, so at most one of these is offered — under one
+      // separator, pushed only when there is something for it to divide.
+      const vcs: MenuItem[] = [];
       // Offered only on a path version control does not track yet: nothing is added unasked (#860).
       if (this.git.canAddToVersionControl(path)) {
-        items.push(
-          { id: 'solution-menu.sep-vcs', label: '', separator: true },
-          { id: ACTION_ADD_TO_VCS, label: 'Add to Version Control', icon: Icon.PLUS_CIRCLE },
-        );
+        vcs.push({
+          id: ACTION_ADD_TO_VCS,
+          label: 'Add to Version Control',
+          icon: Icon.PLUS_CIRCLE,
+        });
+      }
+      if (row.kind === 'file' && this.git.canShowDiff(path)) {
+        vcs.push({ id: ACTION_SHOW_DIFF, label: 'Show Diff', icon: Icon.GIT_DIFF });
+      }
+      if (vcs.length > 0) {
+        items.push({ id: 'solution-menu.sep-vcs', label: '', separator: true }, ...vcs);
       }
     }
     return items;
@@ -542,6 +563,17 @@ export class SolutionPanel {
           }
         });
         return;
+      case ACTION_SHOW_DIFF:
+        void this.diffOpener.openPath(path).then((refusal: string | null): void => {
+          if (refusal !== null) {
+            this.notifications.notify({
+              severity: 'warning',
+              title: `No diff for “${row.label}”`,
+              detail: refusal,
+            });
+          }
+        });
+        return;
       default:
         return;
     }
@@ -646,6 +678,13 @@ export class SolutionPanel {
       default:
         return this.fileIconFor(row.label);
     }
+  }
+
+  /**
+   * Clears the selection, after a click on the tree's empty space.
+   */
+  public clearSelection(): void {
+    this.solution.clearSelection();
   }
 
   /**

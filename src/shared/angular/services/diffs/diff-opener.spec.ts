@@ -1,4 +1,6 @@
+import { signal, WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import type { RepositoryInfo } from '@shared/api/source-control-channels';
 
 import { DockFocus } from '@shared/angular/services/dock-layout/dock-focus';
 import { DockPanelRegistry } from '@shared/angular/services/dock-layout/dock-panel-registry';
@@ -41,6 +43,10 @@ describe('DiffOpener', () => {
   let dockFocus: DockFocus;
   let registry: DockPanelRegistry;
   let loadedFiles: GitFileChange[];
+  let bound: WritableSignal<boolean>;
+  let unstaged: WritableSignal<readonly GitFileChange[]>;
+  let afterRefresh: readonly GitFileChange[] | null;
+  let refreshes: number;
 
   /**
    * Gets the document well of the current layout.
@@ -57,10 +63,29 @@ describe('DiffOpener', () => {
   beforeEach(() => {
     localStorage.clear();
     loadedFiles = [];
-    const repositoryStub: Pick<Repository, 'loadDiff'> = {
+    bound = signal<boolean>(true);
+    unstaged = signal<readonly GitFileChange[]>([]);
+    afterRefresh = null;
+    refreshes = 0;
+    const repositoryStub: Pick<
+      Repository,
+      'loadDiff' | 'isBound' | 'info' | 'unstaged' | 'staged' | 'conflicted' | 'refreshStatus'
+    > = {
       loadDiff: (file: GitFileChange): Promise<FileDiff> => {
         loadedFiles.push(file);
         return Promise.resolve({ original: 'before', modified: 'after' });
+      },
+      isBound: bound,
+      info: signal<RepositoryInfo | null>({ root: '/repo', name: 'repo' }),
+      unstaged,
+      staged: signal<readonly GitFileChange[]>([]),
+      conflicted: signal<readonly GitFileChange[]>([]),
+      refreshStatus: (): Promise<void> => {
+        refreshes += 1;
+        if (afterRefresh !== null) {
+          unstaged.set(afterRefresh);
+        }
+        return Promise.resolve();
       },
     };
     TestBed.configureTestingModule({
@@ -118,6 +143,46 @@ describe('DiffOpener', () => {
     const stored: GitFileChange | null = diffs.get(diffs.idForPath('src/app.ts'));
     expect(stored?.original).toBe('before');
     expect(stored?.modified).toBe('after');
+  });
+
+  describe('openPath', () => {
+    it('opensTheChangeAtAnAbsolutePath_withoutReadingTheStatusAgain', async () => {
+      unstaged.set([change('src/app.ts')]);
+
+      const refusal: string | null = await opener.openPath('/repo/src/app.ts');
+
+      expect(refusal).toBeNull();
+      expect(well().active).toBe(diffs.idForPath('src/app.ts'));
+      expect(refreshes).toBe(0);
+    });
+
+    it('readsTheStatusOnceMore_whenTheChangeHasNotArrivedYet', async () => {
+      // The explorers' status can land a moment before this repository's.
+      afterRefresh = [change('src/app.ts')];
+
+      const refusal: string | null = await opener.openPath('/repo/src/app.ts');
+
+      expect(refusal).toBeNull();
+      expect(refreshes).toBe(1);
+      expect(well().active).toBe(diffs.idForPath('src/app.ts'));
+    });
+
+    it('refusesAnUnchangedFile_withTheReason', async () => {
+      const refusal: string | null = await opener.openPath('/repo/src/same.ts');
+
+      expect(refusal).toBe(
+        '"src/same.ts" has no changes against HEAD, so there is no diff to show.',
+      );
+      expect(registry.has(diffs.idForPath('src/same.ts'))).toBe(false);
+    });
+
+    it('refusesAWorkspaceThatIsNotARepository', async () => {
+      bound.set(false);
+
+      expect(await opener.openPath('/repo/src/app.ts')).toBe(
+        'This workspace is not a git repository, so there is no diff to show.',
+      );
+    });
   });
 
   it('open_whenThePathHasNoDirectory_usesTheWholePathAsTheTitle', () => {

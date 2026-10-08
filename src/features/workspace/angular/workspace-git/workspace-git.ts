@@ -298,6 +298,17 @@ export class WorkspaceGit {
   }
 
   /**
+   * Gets whether a path has a diff the explorers offer to show: the folder is a repository and the path
+   * is modified. Only modified — a new file's diff is the whole file, and a conflict is resolved in the
+   * Source Control panel rather than read here.
+   * @param path The absolute file path.
+   * @returns Returns true when the context menu offers Show Diff.
+   */
+  public canShowDiff(path: string): boolean {
+    return this.provider !== null && this.stateFor(path) === 'modified';
+  }
+
+  /**
    * Adds an untracked file or folder to version control (#860) — stages it, the ignore rules still
    * applying to a folder's contents — and reads the status again, so the row turns from untracked to
    * added. Nothing is ever added unasked: this is the only way a new path becomes tracked.

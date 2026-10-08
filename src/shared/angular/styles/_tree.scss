@@ -149,9 +149,12 @@ app-tree-view {
     }
 
     // The label keeps the tone when selected, rather than the active-tab foreground every other row
-    // takes — the colour is the state, and selecting a row must not hide it.
+    // takes — the colour is the state, and selecting a row must not hide it. The glyph takes it too,
+    // in place of the neutral grey every other icon reads as: a coloured name beside a grey icon
+    // looked like two different rows' worth of state.
     .tree-name,
-    &.active .tree-name {
+    &.active .tree-name,
+    .tree-icon {
       color: var(--tree-row-tone);
     }
   }

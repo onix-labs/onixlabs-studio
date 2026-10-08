@@ -186,6 +186,9 @@ export interface TreeEdit {
   ],
   templateUrl: './tree-view.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: {
+    '(click)': 'onHostClick($event)',
+  },
 })
 export class TreeView {
   /**
@@ -230,6 +233,16 @@ export class TreeView {
    * properly. A tree with nothing to open simply does not listen.
    */
   public readonly rowDoubleClick: OutputEmitterRef<TreeRow> = output<TreeRow>();
+
+  /**
+   * Emits when a click lands on the tree's own area but on no row — the empty space below the last
+   * row, or beside a short one — which is how a person says "nothing selected".
+   *
+   * An event rather than the tree clearing anything itself: the selection is the consumer's, and what
+   * it means differs. In an explorer it is only a highlight, and clearing it is what the click asks;
+   * in Settings it is the page being shown, and there is no page to show instead.
+   */
+  public readonly backgroundClick: OutputEmitterRef<void> = output<void>();
 
   /**
    * Gets the factory that builds a row's context-menu items, or null for a tree without one.
@@ -398,6 +411,18 @@ export class TreeView {
    */
   protected indentFor(depth: number): number {
     return BASE_INDENT + depth * INDENT_STEP;
+  }
+
+  /**
+   * Reports a click on the tree's area that landed on no row. A click inside a row — its label, its
+   * icon, a field being typed into, a trailing action — is the row's.
+   * @param event The click.
+   */
+  protected onHostClick(event: MouseEvent): void {
+    const target: EventTarget | null = event.target;
+    if (target instanceof Element && target.closest('.tree-row') === null) {
+      this.backgroundClick.emit();
+    }
   }
 
   /**

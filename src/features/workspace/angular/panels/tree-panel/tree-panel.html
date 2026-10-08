@@ -2,7 +2,9 @@
   <app-explorer-toolbar
     [query]="query()"
     searchPlaceholder="Search files"
+    [moreItems]="moreItems()"
     (queryChange)="onSearch($event)"
+    (moreSelected)="onMoreAction($event)"
     (expandAll)="expandAll()"
     (collapseAll)="collapseAll()"
   />
@@ -16,6 +18,7 @@
     [editValue]="editing()?.initial ?? ''"
     [editSelection]="editing()?.selection ?? 'all'"
     (rowClick)="onRowClick($event)"
+    (backgroundClick)="workspace.clearSelection()"
     (contextMenuSelect)="onContextAction($event)"
     (editCommit)="onEditCommit($event)"
     (editCancel)="onEditCancel()"
@@ -30,7 +33,7 @@
         [icon]="iconFor(node)"
       />
       @if (!editing) {
-        <span class="tree-name" [class.bold]="node.type === 'directory' && node.expanded">
+        <span class="tree-name">
           <app-highlighted-text [text]="node.name" [query]="query()" />
         </span>
 

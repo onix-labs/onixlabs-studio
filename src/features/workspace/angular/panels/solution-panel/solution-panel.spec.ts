@@ -8,6 +8,7 @@ import {
 } from '@shared/api/project-system';
 import { BuildRunner } from '@shared/angular/services/tasks/build-runner';
 import { ProjectActionOptions } from '@shared/angular/services/tasks/builds';
+import { DiffOpener } from '@shared/angular/services/diffs/diff-opener';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { SolutionModel, SolutionRow } from '@features/workspace/angular/project/solution-model';
@@ -322,6 +323,29 @@ describe('SolutionPanel', () => {
     it('contextMenuFor_aFile_offersOpenAndThePathActions', () => {
       const ids: string[] = menuIds(makeRow({ kind: 'file', path: '/root/A/g.cs' }));
       expect(ids).toEqual(['open', 'copy-path', 'copy-relative-path', 'reveal']);
+    });
+
+    it('contextMenuFor_aModifiedFile_offersShowDiff_andChoosingItOpensTheDiff', () => {
+      vi.spyOn(TestBed.inject(WorkspaceGit), 'canShowDiff').mockImplementation(
+        (path: string): boolean => path === '/root/A/g.cs',
+      );
+      const open: ReturnType<typeof vi.spyOn> = vi
+        .spyOn(TestBed.inject(DiffOpener), 'openPath')
+        .mockResolvedValue(null);
+      const changed: SolutionRow = makeRow({ kind: 'file', path: '/root/A/g.cs' });
+
+      expect(menuIds(changed)).toEqual([
+        'open',
+        'copy-path',
+        'copy-relative-path',
+        'reveal',
+        'solution-menu.sep-vcs',
+        'show-diff',
+      ]);
+      expect(menuIds(makeRow({ kind: 'file', path: '/root/A/h.cs' }))).not.toContain('show-diff');
+
+      component.onContextAction({ itemId: 'show-diff', row: treeRow(changed) });
+      expect(open).toHaveBeenCalledWith('/root/A/g.cs');
     });
 
     it('contextMenuFor_aProject_offersEditProjectFileRatherThanOpen', () => {
