@@ -1399,39 +1399,261 @@ export class Icon {
   public static readonly WELCOME_PROJECT_BROWSE: Icon = new Icon('ph-light ph-folder-simple');
 
   /**
-   * Gets the light-weight icon of the desktop application starter.
+   * Gets the light-weight desktop icon of a New Project template.
    */
-  public static readonly WELCOME_STARTER_DESKTOP: Icon = new Icon('ph-light ph-desktop');
+  public static readonly WELCOME_TEMPLATE_DESKTOP: Icon = new Icon('ph-light ph-desktop');
 
   /**
-   * Gets the light-weight icon of the web application starter.
+   * Gets the light-weight globe icon of a New Project template.
    */
-  public static readonly WELCOME_STARTER_WEB: Icon = new Icon('ph-light ph-globe');
+  public static readonly WELCOME_TEMPLATE_GLOBE: Icon = new Icon('ph-light ph-globe');
 
   /**
-   * Gets the light-weight icon of the mobile application starters.
+   * Gets the light-weight device mobile icon of a New Project template.
    */
-  public static readonly WELCOME_STARTER_MOBILE: Icon = new Icon('ph-light ph-device-mobile');
+  public static readonly WELCOME_TEMPLATE_DEVICE_MOBILE: Icon = new Icon(
+    'ph-light ph-device-mobile',
+  );
 
   /**
-   * Gets the light-weight icon of the API or service starter.
+   * Gets the light-weight storefront icon of a New Project template.
    */
-  public static readonly WELCOME_STARTER_SERVICE: Icon = new Icon('ph-light ph-cloud');
+  public static readonly WELCOME_TEMPLATE_STOREFRONT: Icon = new Icon('ph-light ph-storefront');
 
   /**
-   * Gets the light-weight icon of the command-line tool starter.
+   * Gets the light-weight app window icon of a New Project template.
    */
-  public static readonly WELCOME_STARTER_CLI: Icon = new Icon('ph-light ph-terminal-window');
+  public static readonly WELCOME_TEMPLATE_APP_WINDOW: Icon = new Icon('ph-light ph-app-window');
 
   /**
-   * Gets the light-weight icon of the library or package starter.
+   * Gets the light-weight file html icon of a New Project template.
    */
-  public static readonly WELCOME_STARTER_LIBRARY: Icon = new Icon('ph-light ph-package');
+  public static readonly WELCOME_TEMPLATE_FILE_HTML: Icon = new Icon('ph-light ph-file-html');
 
   /**
-   * Gets the light-weight icon of the game starter.
+   * Gets the light-weight terminal window icon of a New Project template.
    */
-  public static readonly WELCOME_STARTER_GAME: Icon = new Icon('ph-light ph-game-controller');
+  public static readonly WELCOME_TEMPLATE_TERMINAL_WINDOW: Icon = new Icon(
+    'ph-light ph-terminal-window',
+  );
+
+  /**
+   * Gets the light-weight terminal icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_TERMINAL: Icon = new Icon('ph-light ph-terminal');
+
+  /**
+   * Gets the light-weight cloud icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_CLOUD: Icon = new Icon('ph-light ph-cloud');
+
+  /**
+   * Gets the light-weight graph icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_GRAPH: Icon = new Icon('ph-light ph-graph');
+
+  /**
+   * Gets the light-weight share network icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_SHARE_NETWORK: Icon = new Icon(
+    'ph-light ph-share-network',
+  );
+
+  /**
+   * Gets the light-weight lightning icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_LIGHTNING: Icon = new Icon('ph-light ph-lightning');
+
+  /**
+   * Gets the light-weight broadcast icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_BROADCAST: Icon = new Icon('ph-light ph-broadcast');
+
+  /**
+   * Gets the light-weight stack icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_STACK: Icon = new Icon('ph-light ph-stack');
+
+  /**
+   * Gets the light-weight robot icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_ROBOT: Icon = new Icon('ph-light ph-robot');
+
+  /**
+   * Gets the light-weight users three icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_USERS_THREE: Icon = new Icon('ph-light ph-users-three');
+
+  /**
+   * Gets the light-weight plugs connected icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_PLUGS_CONNECTED: Icon = new Icon(
+    'ph-light ph-plugs-connected',
+  );
+
+  /**
+   * Gets the light-weight chats circle icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_CHATS_CIRCLE: Icon = new Icon('ph-light ph-chats-circle');
+
+  /**
+   * Gets the light-weight brain icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_BRAIN: Icon = new Icon('ph-light ph-brain');
+
+  /**
+   * Gets the light-weight eye icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_EYE: Icon = new Icon('ph-light ph-eye');
+
+  /**
+   * Gets the light-weight microphone icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_MICROPHONE: Icon = new Icon('ph-light ph-microphone');
+
+  /**
+   * Gets the light-weight chart scatter icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_CHART_SCATTER: Icon = new Icon(
+    'ph-light ph-chart-scatter',
+  );
+
+  /**
+   * Gets the light-weight flow arrow icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_FLOW_ARROW: Icon = new Icon('ph-light ph-flow-arrow');
+
+  /**
+   * Gets the light-weight chart bar icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_CHART_BAR: Icon = new Icon('ph-light ph-chart-bar');
+
+  /**
+   * Gets the light-weight database icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_DATABASE: Icon = new Icon('ph-light ph-database');
+
+  /**
+   * Gets the light-weight magnifying glass icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_MAGNIFYING_GLASS: Icon = new Icon(
+    'ph-light ph-magnifying-glass',
+  );
+
+  /**
+   * Gets the light-weight cube icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_CUBE: Icon = new Icon('ph-light ph-cube');
+
+  /**
+   * Gets the light-weight shipping container icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_SHIPPING_CONTAINER: Icon = new Icon(
+    'ph-light ph-shipping-container',
+  );
+
+  /**
+   * Gets the light-weight infinity icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_INFINITY: Icon = new Icon('ph-light ph-infinity');
+
+  /**
+   * Gets the light-weight puzzle piece icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_PUZZLE_PIECE: Icon = new Icon('ph-light ph-puzzle-piece');
+
+  /**
+   * Gets the light-weight code icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_CODE: Icon = new Icon('ph-light ph-code');
+
+  /**
+   * Gets the light-weight browser icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_BROWSER: Icon = new Icon('ph-light ph-browser');
+
+  /**
+   * Gets the light-weight chat circle dots icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_CHAT_CIRCLE_DOTS: Icon = new Icon(
+    'ph-light ph-chat-circle-dots',
+  );
+
+  /**
+   * Gets the light-weight repeat icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_REPEAT: Icon = new Icon('ph-light ph-repeat');
+
+  /**
+   * Gets the light-weight file doc icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_FILE_DOC: Icon = new Icon('ph-light ph-file-doc');
+
+  /**
+   * Gets the light-weight package icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_PACKAGE: Icon = new Icon('ph-light ph-package');
+
+  /**
+   * Gets the light-weight toolbox icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_TOOLBOX: Icon = new Icon('ph-light ph-toolbox');
+
+  /**
+   * Gets the light-weight brackets angle icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_BRACKETS_ANGLE: Icon = new Icon(
+    'ph-light ph-brackets-angle',
+  );
+
+  /**
+   * Gets the light-weight wrench icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_WRENCH: Icon = new Icon('ph-light ph-wrench');
+
+  /**
+   * Gets the light-weight game controller icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_GAME_CONTROLLER: Icon = new Icon(
+    'ph-light ph-game-controller',
+  );
+
+  /**
+   * Gets the light-weight sword icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_SWORD: Icon = new Icon('ph-light ph-sword');
+
+  /**
+   * Gets the light-weight cube focus icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_CUBE_FOCUS: Icon = new Icon('ph-light ph-cube-focus');
+
+  /**
+   * Gets the light-weight cpu icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_CPU: Icon = new Icon('ph-light ph-cpu');
+
+  /**
+   * Gets the light-weight circuitry icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_CIRCUITRY: Icon = new Icon('ph-light ph-circuitry');
+
+  /**
+   * Gets the light-weight house line icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_HOUSE_LINE: Icon = new Icon('ph-light ph-house-line');
+
+  /**
+   * Gets the light-weight cube transparent icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_CUBE_TRANSPARENT: Icon = new Icon(
+    'ph-light ph-cube-transparent',
+  );
+
+  /**
+   * Gets the light-weight flask icon of a New Project template.
+   */
+  public static readonly WELCOME_TEMPLATE_FLASK: Icon = new Icon('ph-light ph-flask');
 
   /**
    * Gets the icon of a New Project wizard step not yet visited.

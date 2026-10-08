@@ -71,14 +71,82 @@
   flex: none;
 }
 
-// Templates: rows as in the repository list, the picked one held in the accent.
+// Templates: an accordion of groups, as Source Control's sidebar sections, scrolling as a whole; rows as
+// in the repository list, the picked one held in the accent.
 .step__list-frame {
   @include scroll-frame;
 }
 
-.step__list {
+.step__groups {
   @include scroller;
 
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.step__group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.step__group-header {
+  margin: 0;
+  font: inherit;
+}
+
+// The group's header: its title, the chosen template when it is in here, and a caret that turns to
+// point down when open, brightening on hover.
+.step__toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  inline-size: 100%;
+  padding: 0.2rem 0.15rem;
+  font: inherit;
+  text-align: start;
+  color: inherit;
+  background: transparent;
+  border: none;
+  cursor: default;
+
+  &:hover,
+  &:focus-visible {
+    outline: none;
+
+    .step__group-title,
+    .step__caret {
+      color: var(--wl-text);
+    }
+  }
+}
+
+.step__group-title {
+  @include section-title;
+
+  transition: color 120ms ease;
+}
+
+.step__group-picked {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  overflow: hidden;
+  font-size: 0.76rem;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--accent-color);
+}
+
+.step__caret {
+  flex: none;
+  margin-inline-start: auto;
+  font-size: 0.9rem;
+  color: var(--wl-muted);
+  transition: color 120ms ease;
+}
+
+.step__list {
   display: flex;
   flex-direction: column;
   gap: 0.4rem;

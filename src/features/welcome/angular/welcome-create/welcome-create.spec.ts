@@ -97,6 +97,38 @@ describe('WelcomeCreate', () => {
     expect(host.querySelector('app-create-start')).not.toBeNull();
   });
 
+  it('theTemplates_areGrouped_oneGroupOpenAtATime', async () => {
+    const toggles: () => HTMLButtonElement[] = (): HTMLButtonElement[] =>
+      Array.from(host.querySelectorAll<HTMLButtonElement>('.step__toggle'));
+    expect(toggles()[0].getAttribute('aria-expanded')).toBe('true');
+    expect(host.querySelectorAll('.step__list')).toHaveLength(1);
+
+    toggles()[2].click();
+    await settle();
+
+    expect(
+      toggles().map((toggle: HTMLButtonElement): string | null =>
+        toggle.getAttribute('aria-expanded'),
+      ),
+    ).toEqual(
+      toggles().map((_toggle: HTMLButtonElement, index: number): string =>
+        index === 2 ? 'true' : 'false',
+      ),
+    );
+    expect(host.querySelector('.step__list')!.textContent).toContain('MCP Server');
+  });
+
+  it('aClosedGroup_namesTheTemplateChosenInIt', async () => {
+    host.querySelector<HTMLButtonElement>('.step__row')!.click();
+    await settle();
+    host.querySelectorAll<HTMLButtonElement>('.step__toggle')[0].click();
+    await settle();
+
+    expect(host.querySelector('.step__group-picked')!.textContent.trim()).toBe(
+      'Desktop Application',
+    );
+  });
+
   it('theButton_saysSkip_untilTheStepHasSomethingInIt_thenNext', async () => {
     expect(primary().textContent.trim()).toBe('Skip');
 
