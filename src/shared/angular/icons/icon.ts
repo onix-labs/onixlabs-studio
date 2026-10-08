@@ -1394,49 +1394,54 @@ export class Icon {
   public static readonly WELCOME_REPOSITORIES_EMPTY: Icon = new Icon('ph-thin ph-git-branch');
 
   /**
-   * Gets the light-weight paperclip on the project wizard's Add Context action.
+   * Gets the light-weight sparkle on Create Something's New Project Agent button.
    */
-  public static readonly WELCOME_ATTACH: Icon = new Icon('ph-light ph-paperclip');
+  public static readonly WELCOME_PROJECT_AGENT: Icon = new Icon('ph-light ph-sparkle');
 
   /**
-   * Gets the light-weight icon of the project wizard's Use a Template action.
+   * Gets the light-weight folder on Create Something's Browse button, which picks where a project goes.
    */
-  public static readonly WELCOME_TEMPLATE: Icon = new Icon('ph-light ph-file-text');
+  public static readonly WELCOME_PROJECT_BROWSE: Icon = new Icon('ph-light ph-folder-simple');
 
   /**
-   * Gets the light-weight send glyph on the project wizard's Generate Plan action.
+   * Gets the light-weight icon of the most general project starter: create something.
    */
-  public static readonly WELCOME_GENERATE: Icon = new Icon('ph-light ph-paper-plane-right');
+  public static readonly WELCOME_STARTER_ANYTHING: Icon = new Icon('ph-light ph-lightbulb');
 
   /**
-   * Gets the light-weight icon of the AI agent service example project.
+   * Gets the light-weight icon of the desktop application starter.
    */
-  public static readonly WELCOME_EXAMPLE_AGENT: Icon = new Icon('ph-light ph-chat-circle-dots');
+  public static readonly WELCOME_STARTER_DESKTOP: Icon = new Icon('ph-light ph-desktop');
 
   /**
-   * Gets the light-weight icon of the data platform example project.
+   * Gets the light-weight icon of the web application starter.
    */
-  public static readonly WELCOME_EXAMPLE_DATA: Icon = new Icon('ph-light ph-graph');
+  public static readonly WELCOME_STARTER_WEB: Icon = new Icon('ph-light ph-globe');
 
   /**
-   * Gets the light-weight icon of the workflow automation example project.
+   * Gets the light-weight icon of the mobile application starters.
    */
-  public static readonly WELCOME_EXAMPLE_WORKFLOW: Icon = new Icon('ph-light ph-stack-simple');
+  public static readonly WELCOME_STARTER_MOBILE: Icon = new Icon('ph-light ph-device-mobile');
 
   /**
-   * Gets the light-weight icon of the web application example project.
+   * Gets the light-weight icon of the API or service starter.
    */
-  public static readonly WELCOME_EXAMPLE_WEB: Icon = new Icon('ph-light ph-globe');
+  public static readonly WELCOME_STARTER_SERVICE: Icon = new Icon('ph-light ph-cloud');
 
   /**
-   * Gets the light-weight icon of the service mesh node example project.
+   * Gets the light-weight icon of the command-line tool starter.
    */
-  public static readonly WELCOME_EXAMPLE_SERVICE: Icon = new Icon('ph-light ph-cloud');
+  public static readonly WELCOME_STARTER_CLI: Icon = new Icon('ph-light ph-terminal-window');
 
   /**
-   * Gets the light-weight icon of the start-from-a-template example card.
+   * Gets the light-weight icon of the library or package starter.
    */
-  public static readonly WELCOME_EXAMPLE_TEMPLATE: Icon = new Icon('ph-light ph-code');
+  public static readonly WELCOME_STARTER_LIBRARY: Icon = new Icon('ph-light ph-package');
+
+  /**
+   * Gets the light-weight icon of the game starter.
+   */
+  public static readonly WELCOME_STARTER_GAME: Icon = new Icon('ph-light ph-game-controller');
 
   // --- Setup wizard ---
   //

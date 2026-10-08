@@ -1,97 +1,94 @@
 <div class="create">
-  <ol class="create__rail" aria-label="Steps">
-    @for (step of stages; track step.title; let index = $index) {
-      <li
-        class="create__step"
-        [class.create__step--current]="stage() === index"
-        [attr.aria-current]="stage() === index ? 'step' : null"
-      >
-        <span class="create__step-number">{{ index + 1 }}</span>
-        <span class="create__step-text">
-          <span class="create__step-title">{{ step.title }}</span>
-          <span class="create__step-hint">{{ step.hint }}</span>
-        </span>
-      </li>
-    }
-  </ol>
+  <!-- The project's details, all optional: filled in, the agent opens in a workspace made from them. -->
+  <aside class="create__side" aria-labelledby="create-details-title">
+    <h2 class="create__heading" id="create-details-title">Project Details</h2>
 
-  <div class="create__main">
-    <header>
-      <h2 class="create__title">Create a New Project with AI</h2>
-      <p class="create__description">
-        Describe what you want to build in plain language. The AI will suggest an architecture,
-        services and technologies, and create a project tailored to it.
+    <label class="create__label" for="create-name">Name</label>
+    <div class="create__field">
+      <input
+        id="create-name"
+        type="text"
+        placeholder="my-project"
+        spellcheck="false"
+        [value]="name()"
+        (input)="onNameInput($event)"
+        (keydown.enter)="start(general)"
+      />
+    </div>
+    @if (name().trim().length > 0 && !nameValid()) {
+      <p class="create__error" role="alert">
+        Use letters, digits, dots, hyphens and underscores only.
       </p>
-    </header>
+    }
 
-    <div class="create__composer">
-      <textarea
-        class="create__input"
-        aria-label="Describe your project"
-        placeholder="Describe your project…&#10;&#10;For example:&#10;• “Build a distributed AI agent that searches restaurants and books a ride”&#10;• “Create a data service with a REST API and a graph database”&#10;• “Make a real-time dashboard that integrates with Slack and Notion”"
-        [value]="description()"
-        (input)="onInput($event)"
-        (keydown)="onKeydown($event)"
-      ></textarea>
-      <div class="create__composer-bar">
-        <button
-          type="button"
-          class="create__secondary"
-          aria-disabled="true"
-          [appTooltip]="'Coming soon'"
-        >
-          <app-icon [icon]="Icon.WELCOME_ATTACH" />
-          <span>Add Context</span>
-        </button>
-        <button
-          type="button"
-          class="create__secondary"
-          aria-disabled="true"
-          [appTooltip]="'Coming soon'"
-        >
-          <app-icon [icon]="Icon.WELCOME_TEMPLATE" />
-          <span>Use a Template</span>
-        </button>
-        <button
-          type="button"
-          class="create__generate"
-          [disabled]="!canGenerate()"
-          (click)="generate()"
-        >
-          <app-icon [icon]="Icon.WELCOME_GENERATE" />
-          <span>Generate Plan</span>
-          <kbd class="create__shortcut">{{ shortcut }}</kbd>
-        </button>
-      </div>
+    <span class="create__label">Location</span>
+    <div class="create__location">
+      <span class="create__path" [class.create__path--empty]="location() === null">
+        {{ location() ?? 'Not chosen' }}
+      </span>
+      <button type="button" class="create__browse" (click)="browse()">
+        <app-icon [icon]="Icon.WELCOME_PROJECT_BROWSE" />
+        <span>Browse…</span>
+      </button>
     </div>
 
-    @if (requested()) {
-      <p class="create__notice" role="status">
-        Studio can’t generate projects yet — this flow is still being designed. Your description is
-        kept here for when it can.
-      </p>
+    <span class="create__label">Repository</span>
+    <app-dropdown
+      class="create__choice"
+      ariaLabel="Repository"
+      placeholder="Repository…"
+      [options]="repositoryOptions()"
+      [value]="repository() ?? ''"
+      [fullWidth]="true"
+      (valueChange)="setRepository($event)"
+    />
+    @if (repository() !== null && repository() !== 'none') {
+      <app-dropdown
+        class="create__choice"
+        ariaLabel="Repository layout"
+        placeholder="Layout…"
+        [options]="layoutOptions"
+        [value]="layout() ?? ''"
+        [fullWidth]="true"
+        (valueChange)="setLayout($event)"
+      />
     }
 
-    <section class="create__examples" aria-labelledby="create-examples-title">
-      <h3 class="create__examples-title" id="create-examples-title">Example Projects</h3>
-      <div class="create__examples-grid">
-        @for (example of examples; track example.title) {
-          <button
-            type="button"
-            class="welcome__example"
-            [class.welcome__example--unavailable]="example.description.length === 0"
-            [appTooltip]="example.description.length === 0 ? 'Coming soon' : ''"
-            (click)="useExample(example)"
-          >
-            <app-icon class="welcome__example-icon" [icon]="example.icon" />
-            <span class="welcome__example-text">
-              <span class="welcome__example-title">{{ example.title }}</span>
-              <span class="welcome__example-summary">{{ example.summary }}</span>
-            </span>
-            <app-icon class="welcome__example-chevron" [icon]="Icon.WELCOME_CHEVRON" />
-          </button>
-        }
+    <p class="create__destination">{{ destination() }}</p>
+
+    <button type="button" class="create__start" (click)="start(general)">
+      <app-icon [icon]="general.icon" />
+      <span>{{ general.title }}</span>
+    </button>
+  </aside>
+
+  <!-- The starters: each opens the project agent with its own skill, general first. -->
+  <section class="create__main" aria-labelledby="create-starters-title">
+    <h2 class="create__heading create__title" id="create-starters-title">Start From</h2>
+
+    @if (preview(); as message) {
+      <p class="create__notice" role="status">{{ message }}</p>
+    }
+
+    <div class="create__panel">
+      <div class="create__list-frame" appOverlayScrollbar=".create__list">
+        <ul class="create__list">
+          @for (starter of starters; track starter.skill) {
+            <li>
+              <button type="button" class="create__starter" (click)="start(starter)">
+                <span class="create__starter-icon">
+                  <app-icon [icon]="starter.icon" />
+                </span>
+                <span class="create__starter-text">
+                  <span class="create__starter-title">{{ starter.title }}</span>
+                  <span class="create__starter-summary">{{ starter.summary }}</span>
+                </span>
+                <app-icon class="create__starter-chevron" [icon]="Icon.WELCOME_CHEVRON" />
+              </button>
+            </li>
+          }
+        </ul>
       </div>
-    </section>
-  </div>
+    </div>
+  </section>
 </div>
