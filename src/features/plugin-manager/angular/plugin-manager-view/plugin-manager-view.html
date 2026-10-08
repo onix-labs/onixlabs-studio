@@ -90,42 +90,7 @@
             {{ stateLabel(item) }}
           </span>
           <span class="plugin-row__action">
-            <!-- While this plugin is being installed, updated or removed its button gives way to an
-                 indeterminate bar: the work has no known length, and a merely-disabled button reads as
-                 nothing happening. The other rows keep their buttons, disabled by busy(). -->
-            @if (item.state === 'busy') {
-              <app-progress-bar [ariaLabel]="'Working on ' + item.name" />
-            } @else if (canUpdate(item)) {
-              <app-button
-                variant="solid"
-                tone="info"
-                label="Update"
-                [icon]="Icon.DOWNLOAD"
-                [disabled]="busy()"
-                (click)="update(item)"
-              />
-            } @else if (canUninstall(item)) {
-              <app-button
-                variant="solid"
-                tone="danger"
-                label="Remove"
-                [icon]="Icon.TRASH_SIMPLE"
-                [disabled]="busy()"
-                (click)="uninstall(item)"
-              />
-            } @else {
-              <!-- An unsupported plugin still shows its Install, disabled: removing the button would
-                   leave the row with no statement of what it would do, and the state column beside it
-                   already says why it cannot. -->
-              <app-button
-                variant="solid"
-                [tone]="canInstall(item) ? 'success' : 'neutral'"
-                label="Install"
-                [icon]="Icon.DOWNLOAD"
-                [disabled]="busy() || !canInstall(item)"
-                (click)="install(item)"
-              />
-            }
+            <app-plugin-action [plugin]="item" />
           </span>
         </div>
       </ng-template>

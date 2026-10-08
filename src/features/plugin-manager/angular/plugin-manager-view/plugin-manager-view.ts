@@ -17,11 +17,11 @@ import {
 } from '@shared/api/plugin-channels';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
-import { Button } from '@shared/angular/components/forms/button/button';
 import { ListRow, ListView } from '@shared/angular/components/list-view/list-view';
 import { Panel } from '@shared/angular/components/panel-layout/panel';
 import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layout';
-import { ProgressBar } from '@shared/angular/components/progress-bar/progress-bar';
+import { PluginAction } from '@shared/angular/components/plugin-action/plugin-action';
+import { canUpdate } from '@shared/angular/components/plugin-action/plugin-action-rules';
 import { PluginBrowse, categoriesOf, rowIconForCategory } from '../plugin-browse/plugin-browse';
 import { languageDisplayName } from '@shared/angular/services/plugins/language-names';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
@@ -50,7 +50,7 @@ const SLOT_LABELS: Readonly<Record<PluginSlot, string>> = {
  */
 @Component({
   selector: 'app-plugin-manager-view',
-  imports: [AppIcon, Button, ListView, PanelLayout, Panel, ProgressBar],
+  imports: [AppIcon, ListView, PanelLayout, Panel, PluginAction],
   templateUrl: './plugin-manager-view.html',
   styleUrl: './plugin-manager-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -111,8 +111,6 @@ export class PluginManagerView {
     const scope: string = this.browse.narrowed() ? 'match your filters' : 'available';
     return `${shown} ${noun} ${scope}. Where two installed plugins provide the same thing, choose between them in Settings.`;
   });
-
-  protected readonly busy: Signal<boolean> = this.plugins.busy;
 
   /**
    * Gets the last action's error, or null.
@@ -187,39 +185,9 @@ export class PluginManagerView {
   }
 
   /**
-   * Gets whether the plugin can be installed from here.
-   * @param plugin The plugin.
-   * @returns Returns true when an Install action applies.
+   * Gets whether a newer version is waiting, exposed for the state badge.
    */
-  protected canInstall(plugin: PluginSummary): boolean {
-    return plugin.state === 'available';
-  }
-
-  /**
-   * Gets whether the plugin can be removed from here. Every installed plugin can — that is what makes
-   * it a plugin rather than part of the application.
-   * @param plugin The plugin.
-   * @returns Returns true when a Remove action applies.
-   */
-  protected canUninstall(plugin: PluginSummary): boolean {
-    return plugin.state === 'installed';
-  }
-
-  /**
-   * Gets whether a newer version is waiting.
-   *
-   * The installed version is what the user accepted; a catalogue that has moved on does not get to
-   * arrive without being asked. So this is an offer, not a state the plugin drifts into.
-   * @param plugin The plugin.
-   * @returns Returns true when what is installed is not what the catalogue now offers.
-   */
-  protected canUpdate(plugin: PluginSummary): boolean {
-    return (
-      plugin.state === 'installed' &&
-      plugin.installedVersion !== null &&
-      plugin.installedVersion !== plugin.version
-    );
-  }
+  protected readonly canUpdate: typeof canUpdate = canUpdate;
 
   /**
    * Gets a plugin's categories as one readable phrase.
@@ -247,7 +215,7 @@ export class PluginManagerView {
    */
   protected stateLabel(plugin: PluginSummary): string {
     if (plugin.state === 'installed') {
-      return this.canUpdate(plugin) ? 'Update available' : 'Installed';
+      return canUpdate(plugin) ? 'Update available' : 'Installed';
     }
     if (plugin.state === 'busy') {
       return 'Working…';
@@ -262,42 +230,11 @@ export class PluginManagerView {
    */
   protected stateIcon(plugin: PluginSummary): Icon {
     if (plugin.state === 'installed') {
-      return this.canUpdate(plugin) ? Icon.INFO_FILL : Icon.CHECK_CIRCLE_FILL;
+      return canUpdate(plugin) ? Icon.INFO_FILL : Icon.CHECK_CIRCLE_FILL;
     }
     if (plugin.state === 'unavailable') {
       return Icon.WARNING_CIRCLE_FILL;
     }
     return Icon.DOWNLOAD_CIRCLE_FILL;
-  }
-
-  /**
-   * Installs, after the terms have been accepted.
-   *
-   * Verification proves a payload has not been *tampered with*; it has never claimed the code is good,
-   * and for a dependency tree the code arrives from many more people than the one named on the entry.
-   * That residual risk is the user's to accept, so it is put in front of them rather than assumed —
-   * by the shared consent seam, so every other entry point to an install asks the same way.
-   * @param plugin The plugin to install.
-   */
-  protected install(plugin: PluginSummary): void {
-    void this.plugins.installWithConsent(plugin.id);
-  }
-
-  /**
-   * Updates, after the terms have been accepted again. An update is new code from the same publisher,
-   * which is the same thing being accepted as at install — so it is asked the same way rather than
-   * waved through.
-   * @param plugin The plugin to update.
-   */
-  protected update(plugin: PluginSummary): void {
-    void this.plugins.installWithConsent(plugin.id);
-  }
-
-  /**
-   * Removes a plugin.
-   * @param plugin The plugin to remove.
-   */
-  protected uninstall(plugin: PluginSummary): void {
-    void this.plugins.uninstall(plugin.id);
   }
 }

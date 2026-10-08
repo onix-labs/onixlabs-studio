@@ -42,19 +42,11 @@
   color: var(--settings-muted-foreground-color);
 }
 
-// Install and Remove share one width, so the action column lines up from row to row whichever a row
-// offers, and a row flipping between them does not shift. The button centres its own content.
+// Every action shares one width, so the action column lines up from row to row whichever a row offers,
+// and a row flipping between them — or to its progress bar — does not shift.
 .catalogue__action {
   flex: none;
   inline-size: 6.5rem;
-}
-
-// A plain word rather than a disabled button: there is no action here, and a greyed-out control
-// invites a click that does nothing.
-.catalogue__state {
-  flex: none;
-  font-size: 0.75rem;
-  color: var(--settings-muted-foreground-color);
 }
 
 .catalogue__empty,

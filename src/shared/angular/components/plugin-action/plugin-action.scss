@@ -1,0 +1,18 @@
+// Fills the width the call site gives it, and holds the button's height while a progress bar stands in
+// for it, so a row does not shrink and a list does not shift as work starts and finishes.
+:host {
+  display: flex;
+  align-items: center;
+  min-block-size: var(--control-height);
+}
+
+// The atom is built to be stretched by its call site — its inner button carries `flex: 1`.
+app-button,
+app-progress-bar {
+  inline-size: 100%;
+}
+
+// A label wider than the button is cut at its edge instead of spilling into the column beside it.
+app-button {
+  overflow: hidden;
+}
