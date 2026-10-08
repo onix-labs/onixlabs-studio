@@ -1,7 +1,12 @@
 <div class="create">
-  <!-- The project's details, all optional: filled in, the agent opens in a workspace made from them. -->
+  <!-- The project's details, all optional: filled in, the starter opens a workspace made from them. -->
   <aside class="create__side" aria-labelledby="create-details-title">
     <h2 class="create__heading" id="create-details-title">Project Details</h2>
+    <p class="create__lead">
+      Optional. If you already know your project's name, where it goes and its repository, fill them
+      in and it opens as a workspace straight away. Otherwise the agent opens in its own tab to plan
+      it with you first.
+    </p>
 
     <label class="create__label" for="create-name">Name</label>
     <div class="create__field">
@@ -12,7 +17,6 @@
         spellcheck="false"
         [value]="name()"
         (input)="onNameInput($event)"
-        (keydown.enter)="start(general)"
       />
     </div>
     @if (name().trim().length > 0 && !nameValid()) {
@@ -66,30 +70,18 @@
       />
     }
 
-    <p class="create__destination">{{ destination() }}</p>
-
-    <button type="button" class="create__start" [disabled]="creating()" (click)="start(general)">
-      <app-icon
-        [icon]="creating() ? Icon.SPINNER : general.icon"
-        [class.create__spin]="creating()"
-      />
-      <span>{{ creating() ? 'Creating…' : general.title }}</span>
-    </button>
-    @if (startedFrom() === general) {
-      @if (error(); as message) {
-        <p class="create__error" role="alert">{{ message }}</p>
-      }
+    @if (destination(); as line) {
+      <p class="create__destination">{{ line }}</p>
     }
   </aside>
 
-  <!-- The starters: each opens the project agent with its own skill, general first. -->
+  <!-- The starters, the one way to begin: each opens the project agent with its own skill, general
+       first — in a new workspace when the details are complete, in its own tab when they are empty. -->
   <section class="create__main" aria-labelledby="create-starters-title">
     <h2 class="create__heading create__title" id="create-starters-title">Start From</h2>
 
-    @if (startedFrom() !== general) {
-      @if (error(); as message) {
-        <p class="create__notice create__notice--error" role="alert">{{ message }}</p>
-      }
+    @if (error(); as message) {
+      <p class="create__notice create__notice--error" role="alert">{{ message }}</p>
     }
 
     <div class="create__panel">
@@ -101,6 +93,7 @@
                 type="button"
                 class="create__starter"
                 [disabled]="creating()"
+                [attr.aria-busy]="creating() && startedFrom() === starter"
                 (click)="start(starter)"
               >
                 <span class="create__starter-icon">
@@ -110,7 +103,11 @@
                   <span class="create__starter-title">{{ starter.title }}</span>
                   <span class="create__starter-summary">{{ starter.summary }}</span>
                 </span>
-                <app-icon class="create__starter-chevron" [icon]="Icon.WELCOME_CHEVRON" />
+                @if (creating() && startedFrom() === starter) {
+                  <app-icon class="create__starter-chevron create__spin" [icon]="Icon.SPINNER" />
+                } @else {
+                  <app-icon class="create__starter-chevron" [icon]="Icon.WELCOME_CHEVRON" />
+                }
               </button>
             </li>
           }

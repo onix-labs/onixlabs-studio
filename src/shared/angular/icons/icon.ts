@@ -1394,11 +1394,6 @@ export class Icon {
   public static readonly WELCOME_REPOSITORIES_EMPTY: Icon = new Icon('ph-thin ph-git-branch');
 
   /**
-   * Gets the light-weight sparkle on Create Something's New Project Agent button.
-   */
-  public static readonly WELCOME_PROJECT_AGENT: Icon = new Icon('ph-light ph-sparkle');
-
-  /**
    * Gets the light-weight folder on Create Something's Browse button, which picks where a project goes.
    */
   public static readonly WELCOME_PROJECT_BROWSE: Icon = new Icon('ph-light ph-folder-simple');

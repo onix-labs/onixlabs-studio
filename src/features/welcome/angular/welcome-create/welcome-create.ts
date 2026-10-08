@@ -95,18 +95,14 @@ interface ProjectAccount {
 
 /**
  * The welcome screen's Create Something section: an optional form — a project's name, where it goes
- * and its repository — and the starters that open a project agent. It hosts no conversation itself.
+ * and its repository — and the starters that open a project agent. It hosts no conversation itself,
+ * and the starters are the one way to begin.
  *
- * Filled in, the form decides that a workspace is made first and the agent opens inside it; left
- * empty, the agent opens in its own tab and asks for those details when the project needs a home. The
- * starter chosen decides only which skill the agent begins with, from the most general ("Create
+ * The form decides only where the agent opens. Complete, the starter makes the project — the folder, a
+ * local repository, or a clone of one the code host makes — and opens it as a workspace with the agent
+ * waiting inside. Without a name, the agent opens in its own tab to plan the project before it has a
+ * home. The starter decides which skill the agent begins with, from the most general ("Create
  * Something") to the specific.
- *
- * A complete form makes the project — the folder, or a clone of a repository the code host makes — and
- * opens it with the agent waiting, briefed on the project and its starter's skill when the library has
- * it.
- *
- * Left empty, the form opens the agent in its own tab instead, to plan the project before it has a home.
  *
  * ⚠️ Still to come: the starters are a fixed list rather than the skill library's, and the agent tab
  * cannot yet make the project and move into it.
@@ -178,16 +174,6 @@ export class WelcomeCreate implements OnInit {
    * Holds the skill library, where a starter's skill is looked up.
    */
   private readonly skills: Skills = inject(Skills);
-
-  /**
-   * Gets the starter every project can begin with: no assumption about what is being built.
-   */
-  protected readonly general: ProjectStarter = {
-    skill: 'new-project',
-    title: 'New Project Agent',
-    summary: 'Tell the agent about your project and plan it together.',
-    icon: Icon.WELCOME_PROJECT_AGENT,
-  };
 
   /**
    * Gets the starters, from the general to the specific.
@@ -296,8 +282,7 @@ export class WelcomeCreate implements OnInit {
   protected readonly error: WritableSignal<string | null> = signal<string | null>(null);
 
   /**
-   * Holds the starter last started, so what starting says is shown beside the control that was
-   * clicked: the form's button, or the starter list.
+   * Holds the starter last started, whose row shows the project being made.
    */
   protected readonly startedFrom: WritableSignal<ProjectStarter | null> =
     signal<ProjectStarter | null>(null);
@@ -376,10 +361,11 @@ export class WelcomeCreate implements OnInit {
   );
 
   /**
-   * Gets whether the form has been started: anything typed or picked.
+   * Gets whether the user has begun describing a project to make now: a name decides it, since a
+   * repository, once picked, cannot be un-picked.
    */
   protected readonly started: Signal<boolean> = computed(
-    (): boolean => this.name().trim().length > 0 || this.repository() !== null,
+    (): boolean => this.name().trim().length > 0,
   );
 
   /**
@@ -406,16 +392,17 @@ export class WelcomeCreate implements OnInit {
   });
 
   /**
-   * Gets the line under the form saying where starting opens the agent.
+   * Gets the line under the form saying where a starter opens the agent, or null while the form is
+   * untouched and the lead above it says enough.
    */
-  protected readonly destination: Signal<string> = computed((): string => {
+  protected readonly destination: Signal<string | null> = computed((): string | null => {
     if (this.complete()) {
-      return `Opens a new workspace at ${this.target()}, with the agent waiting in it.`;
+      return `Choose a starter to create a workspace at ${this.target()}.`;
     }
     if (this.started()) {
-      return 'Finish the details to open a workspace, or leave them empty and the agent asks for them later.';
+      return 'Finish the details to start in a new workspace, or clear the name to plan with the agent first.';
     }
-    return 'Optional. Without these, the agent opens in its own tab and asks where the project goes when it is ready.';
+    return null;
   });
 
   /**
@@ -546,7 +533,8 @@ export class WelcomeCreate implements OnInit {
 
   /**
    * Starts a project agent with a starter's skill: in a new workspace when the form is complete, in
-   * its own tab otherwise.
+   * its own tab when there is no name. A name with the rest unfinished is asked to be finished rather
+   * than guessed at.
    * @param starter The starter.
    * @returns Resolves once the project is open, or has failed.
    */
@@ -556,8 +544,14 @@ export class WelcomeCreate implements OnInit {
     }
     this.settle();
     this.startedFrom.set(starter);
-    if (!this.complete()) {
+    if (!this.started()) {
       this.openAgentTab(starter);
+      return;
+    }
+    if (!this.complete()) {
+      this.error.set(
+        'Finish the project details to start in a new workspace, or clear the name to plan with the agent first.',
+      );
       return;
     }
     const repository: NewProjectRepository | string = this.repositoryRequest();

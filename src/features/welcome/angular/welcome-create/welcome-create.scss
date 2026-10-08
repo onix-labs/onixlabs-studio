@@ -31,6 +31,14 @@
   padding: 0.2rem 0.15rem;
 }
 
+.create__lead {
+  margin: 0;
+  padding-inline: 0.15rem;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--wl-muted);
+}
+
 .create__label {
   margin-block-start: 0.5rem;
   padding-inline: 0.15rem;
@@ -102,13 +110,6 @@
   font-size: 0.76rem;
   line-height: 1.45;
   color: var(--wl-faint);
-}
-
-.create__start {
-  @include primary-button;
-  @include control-metrics;
-
-  margin-block-start: 0.25rem;
 }
 
 .create__main {

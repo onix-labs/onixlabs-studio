@@ -138,10 +138,10 @@ describe('WelcomeCreate', () => {
   }
 
   /**
-   * Clicks New Project Agent and lets the project be made.
+   * Clicks the first starter, Create Something, and lets the project be made.
    */
   async function startGeneral(): Promise<void> {
-    host.querySelector<HTMLButtonElement>('.create__start')!.click();
+    host.querySelector<HTMLButtonElement>('.create__starter')!.click();
     await fixture.whenStable();
   }
 
@@ -188,7 +188,7 @@ describe('WelcomeCreate', () => {
    * @returns Returns its text.
    */
   function destination(): string {
-    return host.querySelector('.create__destination')!.textContent.trim();
+    return host.querySelector('.create__destination')?.textContent.trim() ?? '';
   }
 
   it('location_startsAtTheRememberedFolder', async () => {
@@ -241,7 +241,8 @@ describe('WelcomeCreate', () => {
 
   it('emptyForm_opensTheAgentInItsOwnTab_withTheStartersStart_andStepsAside', async () => {
     await render();
-    expect(destination()).toContain('own tab');
+    expect(destination()).toBe('');
+    expect(host.querySelector('.create__lead')!.textContent).toContain('own tab');
     const flutter: HTMLButtonElement = Array.from(
       host.querySelectorAll<HTMLButtonElement>('.create__starter'),
     ).find((row: HTMLButtonElement): boolean => row.textContent.includes('Flutter'))!;
@@ -267,7 +268,9 @@ describe('WelcomeCreate', () => {
     expect(destination()).toContain('Finish the details');
 
     await choose('Repository layout', 'flat');
-    expect(destination()).toContain('/Users/me/Development/todo-app');
+    expect(destination()).toBe(
+      'Choose a starter to create a workspace at /Users/me/Development/todo-app.',
+    );
   });
 
   it('noRepository_makesTheFolder_opensIt_withTheAgentStart_andStepsAside', async () => {
@@ -336,22 +339,7 @@ describe('WelcomeCreate', () => {
     expect(created[0].repository).toMatchObject({ account: 'onixlabs', private: false });
   });
 
-  it('aStartersFailure_isShownBesideTheStarters_notUnderTheFormsButton', async () => {
-    outcome = { ok: false, error: 'Git does not support this (init).' };
-    await render();
-    await typeName('todo-app');
-    await choose('Repository', 'none');
-
-    host.querySelector<HTMLButtonElement>('.create__starter')!.click();
-    await fixture.whenStable();
-
-    expect(host.querySelector('.create__main .create__notice--error')!.textContent).toContain(
-      'does not support',
-    );
-    expect(host.querySelector('.create__side .create__error')).toBeNull();
-  });
-
-  it('aFailure_isShown_andNothingOpens', async () => {
+  it('aFailure_isShownAboveTheStarters_andNothingOpens', async () => {
     outcome = { ok: false, error: '/Users/me/Development/todo-app already exists.' };
     await render();
     await typeName('todo-app');
@@ -359,9 +347,66 @@ describe('WelcomeCreate', () => {
 
     await startGeneral();
 
-    expect(host.querySelector('.create__error')!.textContent).toContain('already exists');
+    expect(host.querySelector('.create__main .create__notice--error')!.textContent).toContain(
+      'already exists',
+    );
     expect(opened).toEqual([]);
     expect(openedCount).toBe(0);
+  });
+
+  it('aNameWithTheRestUnfinished_isAskedToBeFinished_notGuessedAt', async () => {
+    await render();
+    await typeName('todo-app');
+
+    await startGeneral();
+
+    expect(host.querySelector('.create__notice--error')!.textContent).toContain(
+      'clear the name to plan with the agent',
+    );
+    expect(created).toEqual([]);
+    expect(TestBed.inject(Tabs).tabs()).toEqual([]);
+    expect(openedCount).toBe(0);
+  });
+
+  it('aRepositoryPickedWithoutAName_stillPlansWithTheAgentFirst', async () => {
+    await render();
+    await choose('Repository', 'none');
+
+    await startGeneral();
+
+    expect(
+      TestBed.inject(Tabs)
+        .tabs()
+        .map((tab: Tab): string => tab.type),
+    ).toEqual(['agent']);
+    expect(created).toEqual([]);
+  });
+
+  it('theRowStarted_showsTheProjectBeingMade', async () => {
+    let finish: (value: NewProjectOutcome) => void = (): void => undefined;
+    TestBed.inject(NewProject).create = (): Promise<NewProjectOutcome> =>
+      new Promise<NewProjectOutcome>((resolve: (value: NewProjectOutcome) => void): void => {
+        finish = resolve;
+      });
+    await render();
+    await typeName('todo-app');
+    await choose('Repository', 'none');
+
+    host.querySelectorAll<HTMLButtonElement>('.create__starter')[2].click();
+    await fixture.whenStable();
+
+    const rows: HTMLButtonElement[] = Array.from(
+      host.querySelectorAll<HTMLButtonElement>('.create__starter'),
+    );
+    expect(
+      rows.map((row: HTMLButtonElement): string | null => row.getAttribute('aria-busy')),
+    ).toEqual(
+      rows.map((_row: HTMLButtonElement, index: number): string =>
+        index === 2 ? 'true' : 'false',
+      ),
+    );
+    expect(rows.every((row: HTMLButtonElement): boolean => row.disabled)).toBe(true);
+    finish({ ok: true, path: '/Users/me/Development/todo-app' });
   });
 
   it('theStartersSkill_isFoundInTheLibrary_byName', async () => {
@@ -386,7 +431,7 @@ describe('WelcomeCreate', () => {
     await typeName('todo-app');
     await choose('Repository', 'none');
 
-    expect(destination()).toContain('Opens a new workspace');
+    expect(destination()).toContain('create a workspace at /Users/me/Development/todo-app');
   });
 
   it('anInvalidName_isExplained_andDoesNotCountAsComplete', async () => {
@@ -394,7 +439,7 @@ describe('WelcomeCreate', () => {
     await typeName('my project/');
     await choose('Repository', 'none');
 
-    expect(host.querySelector('.create__error')).not.toBeNull();
+    expect(host.querySelector('.create__side .create__error')).not.toBeNull();
     expect(destination()).toContain('Finish the details');
   });
 
@@ -404,11 +449,11 @@ describe('WelcomeCreate', () => {
     await typeName('todo');
     await choose('Repository', 'none');
     await startGeneral();
-    expect(host.querySelector('.create__error')).not.toBeNull();
+    expect(host.querySelector('.create__notice--error')).not.toBeNull();
 
     await typeName('todo-app');
 
-    expect(host.querySelector('.create__error')).toBeNull();
+    expect(host.querySelector('.create__notice--error')).toBeNull();
   });
 });
 
