@@ -32,7 +32,7 @@ import { RecentItems } from '@shared/angular/services/recent-items/recent-items'
 import { Tab, TabType } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
-import { Workspaces } from '../workspaces/workspaces';
+import { WorkspaceAgentStart, Workspaces } from '../workspaces/workspaces';
 
 /**
  * Holds the lowercased file extensions (including the leading dot) routed to the markdown editor.
@@ -207,14 +207,16 @@ export class FileOpener {
    * only folders the user has opened before, so this cannot open arbitrary locations; used to re-open a
    * recent folder from the welcome screen.
    * @param path The absolute directory path to re-open.
+   * @param agentStart How the new tab's agent starts, for a new project (#806); ignored when the folder
+   * is already open in a tab.
    * @returns Returns true when the folder was re-opened, or false when untrusted or unreadable.
    */
-  public async reopenDirectory(path: string): Promise<boolean> {
+  public async reopenDirectory(path: string, agentStart?: WorkspaceAgentStart): Promise<boolean> {
     const listing: DirectoryListing | null = await this.workspace.reopenFolder(path);
     if (listing === null) {
       return false;
     }
-    this.openDirectory(listing);
+    this.openDirectory(listing, agentStart);
     return true;
   }
 
@@ -371,8 +373,9 @@ export class FileOpener {
    * Opens a chosen directory as a new workspace tab, stashing its listing for the tab's view to seed
    * its scoped workspace from. Each opened directory gets its own tab, so several can be open at once.
    * @param listing The root directory listing to display.
+   * @param agentStart How a new tab's agent starts, stashed with the listing for its view, if any.
    */
-  private openDirectory(listing: DirectoryListing): void {
+  private openDirectory(listing: DirectoryListing, agentStart?: WorkspaceAgentStart): void {
     this.recentItems.record(listing.path, listing.name, 'directory');
     const existing: Tab | undefined = this.tabs.findByResource('directory', listing.path);
     if (existing !== undefined) {
@@ -383,6 +386,9 @@ export class FileOpener {
     const tab: Tab = this.tabs.open('directory', listing.path);
     this.tabs.rename(tab.id, listing.name);
     this.workspaces.setInitial(tab.id, listing);
+    if (agentStart !== undefined) {
+      this.workspaces.setAgentStart(tab.id, agentStart);
+    }
     this.log.info(
       'FileOpener',
       `Opened folder '${listing.name}' as workspace`,

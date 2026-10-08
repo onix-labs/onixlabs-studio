@@ -88,9 +88,8 @@ export class WelcomeScreen {
    */
   protected readonly sections: readonly SectionTab[] = [
     { id: 'get-started', label: 'Get Started', icon: Icon.WELCOME_TAB_GET_STARTED, shown: true },
-    // ⚠️ Hidden, not removed: Create Something has no project generator behind it yet. It is designed
-    // and tested, and shows again when its own branch (#806) makes it real.
-    { id: 'create', label: 'Create Something', icon: Icon.WELCOME_TAB_CREATE, shown: false },
+    // ⚠️ Shown as a layout preview (#806): its starters say what they would do rather than doing it.
+    { id: 'create', label: 'Create Something', icon: Icon.WELCOME_TAB_CREATE, shown: true },
     // Real since #805: repositories from the hosting plugins, clones by the version-control plugin.
     {
       id: 'source-control',

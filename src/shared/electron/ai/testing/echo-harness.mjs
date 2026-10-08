@@ -134,7 +134,10 @@ async function runTurn(turn) {
       // assistant text would put one in every test's captured output, which is how they end up in CI
       // logs — the exact failure the credential round-trip exists to avoid.
       const answer = await ask(requestId, { kind: 'credential' });
-      say(requestId, answer.apiKey === null ? 'no credential' : `credential of ${answer.apiKey.length}`);
+      say(
+        requestId,
+        answer.apiKey === null ? 'no credential' : `credential of ${answer.apiKey.length}`,
+      );
     } else {
       say(requestId, `echo: ${prompt}`);
     }
@@ -183,7 +186,12 @@ function receive(message) {
               ? [{ id: 'echo-anonymous' }]
               : // The label carries the connection kind back, which is how a spec sees that the
                 // handshake's settings reached a real process rather than merely typechecking.
-                [{ id: 'echo-authenticated', label: `Echo (${settings.connectionKind ?? 'unknown'})` }],
+                [
+                  {
+                    id: 'echo-authenticated',
+                    label: `Echo (${settings.connectionKind ?? 'unknown'})`,
+                  },
+                ],
         });
       });
       break;

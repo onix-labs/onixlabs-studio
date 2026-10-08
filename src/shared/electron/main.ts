@@ -110,6 +110,7 @@ import { SearchManager } from '@shared/electron/search-manager';
 import { StudioStore } from '@shared/electron/studio/studio-store';
 import { WorktreeManager } from '@shared/electron/worktree/worktree-manager';
 import { CloneManager } from '@shared/electron/clone/clone-manager';
+import { NewProjectManager } from '@shared/electron/new-project/new-project-manager';
 import { TerminalManager } from '@shared/electron/terminal-manager';
 import { TrustedPaths } from './trusted-paths';
 import { WindowManager } from '@shared/electron/window-manager';
@@ -499,6 +500,18 @@ class Program {
     (): BrowserWindow | null => this.windows.main(),
     this.versionControlHost,
     this.trustedPaths,
+  );
+
+  /**
+   * Creates new projects from the welcome screen (#806), where clones go: an empty folder, or a clone
+   * of a repository the code host makes first.
+   */
+  private readonly newProjectManager: NewProjectManager = new NewProjectManager(
+    this.cloneManager,
+    this.hostingManager,
+    this.versionControlHost,
+    this.trustedPaths,
+    (): BrowserWindow | null => this.windows.main(),
   );
 
   /**
@@ -977,6 +990,7 @@ class Program {
     this.studioStore.register();
     this.worktreeManager.register();
     this.cloneManager.register();
+    this.newProjectManager.register();
     this.decoderHost.register();
     this.binaryAssembler.register();
     this.fileWatcher.register();

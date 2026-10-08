@@ -1,0 +1,85 @@
+<div class="step">
+  <div class="step__field">
+    <app-icon [icon]="Icon.SEARCH" />
+    <input
+      type="text"
+      placeholder="Search templates…"
+      aria-label="Search templates"
+      spellcheck="false"
+      [value]="query()"
+      (input)="onQueryInput($event)"
+      (keydown.escape)="query.set('')"
+    />
+  </div>
+
+  <!-- The templates by group, one group open at a time, as Source Control's sidebar sections are;
+       while searching, every group with a match is open. -->
+  <div class="step__list-frame" appOverlayScrollbar=".step__groups">
+    <div class="step__groups">
+      @for (group of groups(); track group.id) {
+        <section
+          class="step__group"
+          [class.step__group--open]="isOpen(group.id)"
+          [attr.aria-labelledby]="'create-group-' + group.id"
+        >
+          <h3 class="step__group-header">
+            <button
+              type="button"
+              class="step__toggle"
+              [id]="'create-group-' + group.id"
+              [attr.aria-expanded]="isOpen(group.id)"
+              (click)="toggleGroup(group.id)"
+            >
+              <span class="step__group-title">{{ group.title }}</span>
+              @if (pickedIn(group.id) && !isOpen(group.id)) {
+                <span class="step__group-picked">{{ draft.template()?.title }}</span>
+              }
+              <app-icon
+                class="step__caret"
+                [icon]="Icon.CARET_RIGHT_BOLD"
+                [rotation]="isOpen(group.id) ? 90 : 0"
+              />
+            </button>
+          </h3>
+          @if (isOpen(group.id)) {
+            <ul class="step__list" [attr.aria-label]="group.title">
+              @for (template of templatesIn(group.id); track template.skill) {
+                <li>
+                  <button
+                    type="button"
+                    class="step__row"
+                    [class.step__row--picked]="draft.template()?.skill === template.skill"
+                    [attr.aria-pressed]="draft.template()?.skill === template.skill"
+                    (click)="draft.chooseTemplate(template)"
+                  >
+                    <span class="step__row-icon"><app-icon [icon]="template.icon" /></span>
+                    <span class="step__row-text">
+                      <span class="step__row-title">{{ template.title }}</span>
+                      <span class="step__row-summary">{{ template.summary }}</span>
+                    </span>
+                    @if (draft.template()?.skill === template.skill) {
+                      <app-icon class="step__row-mark" [icon]="Icon.WELCOME_STEP_DONE" />
+                    }
+                  </button>
+                </li>
+              }
+            </ul>
+          }
+        </section>
+      } @empty {
+        <p class="step__empty">No template matches. Describe it below instead.</p>
+      }
+    </div>
+  </div>
+
+  <div class="step__field step__field--area">
+    <textarea
+      id="create-idea"
+      rows="3"
+      placeholder="Or describe what you want to build here…"
+      aria-label="Describe what you want to build"
+      [value]="draft.idea()"
+      (input)="onIdeaInput($event)"
+    ></textarea>
+  </div>
+</div>

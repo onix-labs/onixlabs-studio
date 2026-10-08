@@ -1,0 +1,380 @@
+@use '../../welcome' as *;
+
+// Shared by every step of the New Project wizard: each fills the wizard's step area.
+:host {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-block-size: 0;
+}
+
+.step {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-block-size: 0;
+}
+
+// A step taller than the area it has scrolls as a whole.
+.step--scroll {
+  overflow-y: auto;
+  padding-inline-end: 0.25rem;
+}
+
+.step__label {
+  margin-block-start: 0.35rem;
+  padding-inline: 0.15rem;
+  font-size: 0.76rem;
+  font-weight: 500;
+  color: var(--wl-muted);
+}
+
+.step__field {
+  @include field;
+  @include control-metrics;
+
+  flex: none;
+}
+
+// A field holding a textarea grows to its rows instead of the controls' one height.
+.step__field--area {
+  align-items: stretch;
+  block-size: auto;
+
+  textarea {
+    padding-block: 0.55rem;
+    line-height: 1.45;
+  }
+}
+
+// A search beside the step's own action, as Recent Items' filter and search share a row.
+.step__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.step__field--grow {
+  flex: 1 1 auto;
+}
+
+.step__hint {
+  margin: 0;
+  padding-inline: 0.15rem;
+  font-size: 0.76rem;
+  line-height: 1.45;
+  color: var(--wl-faint);
+}
+
+.step__error {
+  margin: 0;
+  padding-inline: 0.15rem;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--danger-color);
+}
+
+.step__empty {
+  margin: 0;
+  padding: 0.75rem 0.15rem;
+  font-size: 0.8rem;
+  color: var(--wl-muted);
+}
+
+.step__secondary {
+  @include secondary-button;
+  @include control-metrics;
+
+  flex: none;
+}
+
+// Templates: an accordion of groups, as Source Control's sidebar sections, scrolling as a whole; rows as
+// in the repository list, the picked one held in the accent.
+.step__list-frame {
+  @include scroll-frame;
+}
+
+.step__groups {
+  @include scroller;
+
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.step__group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.step__group-header {
+  margin: 0;
+  font: inherit;
+}
+
+// The group's header: its title, the chosen template when it is in here, and a caret that turns to
+// point down when open, brightening on hover.
+.step__toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  inline-size: 100%;
+  padding: 0.2rem 0.15rem;
+  font: inherit;
+  text-align: start;
+  color: inherit;
+  background: transparent;
+  border: none;
+  cursor: default;
+
+  &:hover,
+  &:focus-visible {
+    outline: none;
+
+    .step__group-title,
+    .step__caret {
+      color: var(--wl-text);
+    }
+  }
+}
+
+.step__group-title {
+  @include section-title;
+
+  transition: color 120ms ease;
+}
+
+.step__group-picked {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  overflow: hidden;
+  font-size: 0.76rem;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--accent-color);
+}
+
+.step__caret {
+  flex: none;
+  margin-inline-start: auto;
+  font-size: 0.9rem;
+  color: var(--wl-muted);
+  transition: color 120ms ease;
+}
+
+.step__list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.step__row {
+  @include list-row;
+
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  inline-size: 100%;
+  padding: 0.5rem;
+  padding-inline-end: 0.75rem;
+  font: inherit;
+  text-align: start;
+  cursor: default;
+
+  &:hover,
+  &:focus-visible {
+    @include list-row-active;
+
+    .step__row-icon {
+      @include list-icon-active;
+    }
+  }
+}
+
+.step__row--picked {
+  @include list-row-active;
+
+  .step__row-icon {
+    @include list-icon-active;
+  }
+}
+
+.step__row-icon {
+  @include list-icon;
+}
+
+.step__row-text {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-inline-size: 0;
+}
+
+.step__row-title,
+.step__row-summary {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.step__row-title {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--wl-text);
+}
+
+.step__row-summary {
+  font-size: 0.76rem;
+  color: var(--wl-muted);
+}
+
+.step__row-mark {
+  flex: none;
+}
+
+// Name and location side by side.
+.step__pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: 1rem;
+}
+
+.step__column {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-inline-size: 0;
+}
+
+// The chosen folder, which the user changes through Browse rather than by typing a path.
+.step__location {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-inline-size: 0;
+}
+
+.step__path {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  overflow: hidden;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--wl-text);
+  direction: rtl;
+  text-align: start;
+}
+
+.step__path--empty {
+  color: var(--wl-faint);
+  direction: ltr;
+}
+
+.step__choices {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 0.5rem;
+}
+
+.step__choice {
+  @include dropdown;
+}
+
+.step__heading-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-block-start: 0.35rem;
+
+  .step__label {
+    margin: 0;
+  }
+}
+
+.step__documents {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.step__document {
+  @include list-row;
+
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0.4rem 0.3rem 0.65rem;
+  font-size: 0.82rem;
+  color: var(--wl-text);
+}
+
+.step__document-name {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.step__remove {
+  display: grid;
+  flex: none;
+  place-items: center;
+  inline-size: 1.6rem;
+  block-size: 1.6rem;
+  padding: 0;
+  color: var(--wl-muted);
+  background: transparent;
+  border: 0.0625rem solid transparent;
+  border-radius: calc(0.4rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  cursor: default;
+
+  &:hover,
+  &:focus-visible {
+    outline: none;
+    color: var(--wl-text);
+    border-color: rgba(var(--accent-color-rgb), 0.55);
+  }
+}
+
+// Options: each question's name beside its answer.
+.step__options {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 18rem);
+  align-items: center;
+  gap: 0.6rem 1rem;
+}
+
+.step__option-label {
+  margin: 0;
+}
+
+// The first message, as it will be sent.
+.step__message {
+  flex: 1 1 0;
+  min-block-size: 0;
+  margin: 0;
+  padding: 0.85rem 1rem;
+  overflow: auto;
+  font-family: var(--editor-font-family, ui-monospace, monospace);
+  font-size: 0.78rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  color: var(--wl-text);
+  background: var(--wl-surface);
+  border: 0.0625rem solid var(--wl-surface-border);
+  border-radius: calc(0.55rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+}

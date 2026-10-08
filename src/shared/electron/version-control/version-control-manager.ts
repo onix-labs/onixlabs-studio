@@ -218,6 +218,7 @@ export class VersionControlManager {
       executable: this.settings.executableFor(descriptor.id),
       toolVersion: described?.ok === true ? described.description.toolVersion : null,
       ...(problem === undefined ? {} : { problem }),
+      capabilities: described?.ok === true ? described.capabilities : [],
     };
   }
 

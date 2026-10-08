@@ -3,211 +3,228 @@ import {
   Component,
   computed,
   inject,
-  signal,
+  OnInit,
+  output,
+  OutputEmitterRef,
   Signal,
-  WritableSignal,
 } from '@angular/core';
-import { Log } from '@shared/angular/services/log/log';
-import { Studio } from '@shared/angular/services/studio/studio';
-import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
-import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigger';
+import { Icon } from '@shared/angular/icons/icon';
+import { CREATE_STEPS, CreateStep, ProjectDraft } from './project-draft';
+import { CreateDetails } from './steps/create-details';
+import { CreateOptions } from './steps/create-options';
+import { CreateSkills } from './steps/create-skills';
+import { CreateStart } from './steps/create-start';
+import { CreateSummary } from './steps/create-summary';
+import { CreateTechnology } from './technology/create-technology';
 
 /**
- * Describes one stage of the project wizard, shown on its rail.
+ * Describes one step of the wizard as the checklist shows it.
  */
-interface WizardStage {
+interface CreateStepInfo {
   /**
-   * Gets the stage's name.
+   * Gets the step.
+   */
+  readonly id: CreateStep;
+
+  /**
+   * Gets its name.
    */
   readonly title: string;
 
   /**
-   * Gets a line saying what happens in it.
+   * Gets the heading of the step's own page, when it says more than its name.
    */
-  readonly hint: string;
+  readonly heading?: string;
+
+  /**
+   * Gets what it asks, under its heading on the step's own page, when its heading does not say it.
+   */
+  readonly description?: string;
 }
 
 /**
- * Describes an example project: a starting description the user can take and edit.
+ * How a step stands in the checklist: the one shown, filled in, passed without filling in, or not
+ * reached yet.
  */
-interface ExampleProject {
-  /**
-   * Gets the example's name.
-   */
-  readonly title: string;
-
-  /**
-   * Gets a line describing it.
-   */
-  readonly summary: string;
-
-  /**
-   * Gets its icon.
-   */
-  readonly icon: Icon;
-
-  /**
-   * Gets the description it puts in the box: what a user might have typed for it.
-   */
-  readonly description: string;
-}
+export type CreateStepState = 'current' | 'done' | 'skipped' | 'todo';
 
 /**
- * The welcome screen's Create Something section: "I want AI to help me design and build something".
- * A guided flow — describe, plan, configure, generate, open — rather than an empty New Project.
+ * The welcome screen's Create Something section (#806): a wizard that gathers what the user knows
+ * about a new project — what it is, its details, its technology, how it is run — and sends it all to
+ * an agent as one first message. No agent takes part until then.
  *
- * ⚠️ Only the first stage is built: a description can be written, or started from an example, but
- * nothing generates a plan yet, and the screen says so rather than appearing to try. The rail shows
- * the whole flow so the shape of the feature is visible while it is designed.
+ * Every step is optional: its button says Skip until something is filled in, then Next, and the
+ * checklist jumps anywhere. The last step shows the message as it will be sent, and Start sends it — to
+ * a workspace Studio makes first when there is a name and a place, or to an agent in its own tab, as the
+ * line above the buttons says.
  */
 @Component({
   selector: 'app-welcome-create',
-  imports: [AppIcon, TooltipTrigger],
+  imports: [
+    AppIcon,
+    CreateStart,
+    CreateDetails,
+    CreateTechnology,
+    CreateOptions,
+    CreateSkills,
+    CreateSummary,
+  ],
   templateUrl: './welcome-create.html',
   styleUrl: './welcome-create.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class WelcomeCreate {
+export class WelcomeCreate implements OnInit {
+  /**
+   * Emits once the draft has gone to an agent, so the welcome screen steps aside.
+   */
+  public readonly opened: OutputEmitterRef<void> = output<void>();
+
   /**
    * Gets the icon set, exposed for the template.
    */
   protected readonly Icon: typeof Icon = Icon;
 
   /**
-   * Holds the structured logger.
+   * Holds the draft, which outlives this view.
    */
-  private readonly log: Log = inject(Log);
+  protected readonly draft: ProjectDraft = inject(ProjectDraft);
 
   /**
-   * Gets the Generate Plan shortcut as the platform writes it.
+   * Gets the steps, in order.
    */
-  protected readonly shortcut: string = inject(Studio).platform === 'darwin' ? '⌘↵' : 'Ctrl+↵';
-
-  /**
-   * Gets the wizard's stages, in order.
-   */
-  protected readonly stages: readonly WizardStage[] = [
-    { title: 'Describe', hint: 'Tell us what you want to build' },
-    { title: 'Plan', hint: 'Review and refine the design' },
-    { title: 'Configure', hint: 'Choose technologies and options' },
-    { title: 'Generate', hint: 'Create the project structure' },
-    { title: 'Open', hint: 'Start working in your new project' },
-  ];
-
-  /**
-   * Gets the example projects.
-   */
-  protected readonly examples: readonly ExampleProject[] = [
+  protected readonly steps: readonly CreateStepInfo[] = [
     {
-      title: 'AI Agent Service',
-      summary: 'An AI-powered service with plugin support and MCP tools.',
-      icon: Icon.WELCOME_EXAMPLE_AGENT,
-      description:
-        'Build an AI agent service that answers questions about our documentation, exposes its tools over MCP, and can be extended with plugins.',
+      id: 'start',
+      title: 'Start',
+      heading: 'What do you want to build',
     },
     {
-      title: 'Data Platform',
-      summary: 'Relational and graph data services behind an API.',
-      icon: Icon.WELCOME_EXAMPLE_DATA,
+      id: 'details',
+      title: 'Project Details',
       description:
-        'Create a data service with a REST API over a relational database and a graph database, with authentication and an admin dashboard.',
+        'Whatever you already know. With a name and a place, the project is made before the agent starts.',
     },
     {
-      title: 'Workflow Automation',
-      summary: 'Distributed workflows across services and agents.',
-      icon: Icon.WELCOME_EXAMPLE_WORKFLOW,
+      id: 'technology',
+      title: 'Technology',
       description:
-        'Build a workflow automation platform that runs multi-step jobs across services and AI agents, with retries and a live status view.',
+        'Pick what you want to use. Leave it to the agent for anything you are unsure of.',
     },
     {
-      title: 'Web Application',
-      summary: 'A modern web app with AI built in.',
-      icon: Icon.WELCOME_EXAMPLE_WEB,
-      description:
-        'Make a web application where users upload documents and ask questions about them, with accounts, search and an AI assistant.',
+      id: 'options',
+      title: 'Options',
+      description: 'How the project is run.',
     },
     {
-      title: 'Service Mesh Node',
-      summary: 'A microservice with discovery and telemetry.',
-      icon: Icon.WELCOME_EXAMPLE_SERVICE,
+      id: 'skills',
+      title: 'Skills',
       description:
-        'Create a microservice that registers itself for service discovery, exposes health and metrics, and traces its requests.',
+        'Standards, conventions and know-how from your skill library, for the agent to follow.',
     },
     {
-      title: 'From a Template',
-      summary: 'Start from a project template and adapt it.',
-      icon: Icon.WELCOME_EXAMPLE_TEMPLATE,
-      description: '',
+      id: 'summary',
+      title: 'Summary',
+      description: 'This is what the agent receives.',
     },
   ];
 
   /**
-   * Holds the stage the wizard is on, counting from 0.
+   * Gets the step shown.
    */
-  protected readonly stage: WritableSignal<number> = signal<number>(0);
-
-  /**
-   * Holds the user's description of what they want to build.
-   */
-  protected readonly description: WritableSignal<string> = signal<string>('');
-
-  /**
-   * Holds a value indicating whether the user asked for a plan, so the screen can say plainly that
-   * generation is not built yet.
-   */
-  protected readonly requested: WritableSignal<boolean> = signal<boolean>(false);
-
-  /**
-   * Gets a value indicating whether there is a description to plan from.
-   */
-  protected readonly canGenerate: Signal<boolean> = computed(
-    (): boolean => this.description().trim().length > 0,
+  protected readonly current: Signal<CreateStepInfo> = computed(
+    (): CreateStepInfo =>
+      this.steps.find((step: CreateStepInfo): boolean => step.id === this.draft.step()) ??
+      this.steps[0],
   );
 
   /**
-   * Updates the description from the input event.
-   * @param event The input event carrying the current value.
+   * Gets whether the step shown is the first.
    */
-  protected onInput(event: Event): void {
-    this.description.set((event.target as HTMLTextAreaElement).value);
-    this.requested.set(false);
+  protected readonly first: Signal<boolean> = computed(
+    (): boolean => this.draft.step() === CREATE_STEPS[0],
+  );
+
+  /**
+   * Gets whether the step shown is the last, which sends.
+   */
+  protected readonly last: Signal<boolean> = computed(
+    (): boolean => this.draft.step() === CREATE_STEPS[CREATE_STEPS.length - 1],
+  );
+
+  /**
+   * Gets the main button's words: Skip or Next by whether the step has anything in it, and Start on
+   * the last step.
+   */
+  protected readonly primaryLabel: Signal<string> = computed((): string => {
+    if (this.last()) {
+      return 'Start';
+    }
+    return this.draft.touched(this.draft.step()) ? 'Next' : 'Skip';
+  });
+
+  /**
+   * Gets the line above the buttons on the last step, saying where Start sends the project, or null
+   * on the other steps.
+   */
+  protected readonly destination: Signal<string | null> = computed((): string | null => {
+    if (!this.last()) {
+      return null;
+    }
+    return this.draft.toWorkspace()
+      ? 'Start makes the project and opens its workspace, with the agent.'
+      : 'Start opens the agent in a tab of its own.';
+  });
+
+  /**
+   * Starts reading what the machine can do, once.
+   */
+  public ngOnInit(): void {
+    this.draft.initialise();
   }
 
   /**
-   * Starts the description from an example, for the user to adapt.
-   * @param example The example.
+   * Says how a step stands in the checklist.
+   * @param step The step.
+   * @returns Returns its state.
    */
-  protected useExample(example: ExampleProject): void {
-    if (example.description.length === 0) {
-      this.log.info('welcome', 'Project templates are not available yet');
+  protected stateOf(step: CreateStep): CreateStepState {
+    if (step === this.draft.step()) {
+      return 'current';
+    }
+    if (step !== 'summary' && this.draft.touched(step)) {
+      return 'done';
+    }
+    return this.draft.visited().has(step) ? 'skipped' : 'todo';
+  }
+
+  /**
+   * Gets the checklist's icon for a step.
+   * @param step The step.
+   * @returns Returns the icon.
+   */
+  protected iconOf(step: CreateStep): Icon {
+    switch (this.stateOf(step)) {
+      case 'done':
+        return Icon.WELCOME_STEP_DONE;
+      case 'skipped':
+        return Icon.WELCOME_STEP_SKIPPED;
+      default:
+        return Icon.WELCOME_STEP_TODO;
+    }
+  }
+
+  /**
+   * Moves on a step, or on the last step sends the draft and steps aside once it has gone.
+   * @returns Resolves once the step has moved or the draft has been sent.
+   */
+  protected async primary(): Promise<void> {
+    if (!this.last()) {
+      this.draft.move(1);
       return;
     }
-    this.log.debug('welcome', `Example project "${example.title}" chosen`);
-    this.description.set(example.description);
-    this.requested.set(false);
-  }
-
-  /**
-   * Asks for a plan. Nothing generates one yet, so this records the request and the screen says so.
-   */
-  protected generate(): void {
-    if (!this.canGenerate()) {
-      return;
-    }
-    this.log.info('welcome', 'Project plan requested (generation is not built yet)');
-    this.requested.set(true);
-  }
-
-  /**
-   * Handles a key in the description: ⌘↵ on macOS, Ctrl+↵ elsewhere, asks for the plan.
-   * @param event The keyboard event.
-   */
-  protected onKeydown(event: KeyboardEvent): void {
-    const modifier: boolean = this.shortcut.startsWith('⌘') ? event.metaKey : event.ctrlKey;
-    if (event.key === 'Enter' && modifier) {
-      event.preventDefault();
-      this.generate();
+    if (await this.draft.send()) {
+      this.opened.emit();
     }
   }
 }

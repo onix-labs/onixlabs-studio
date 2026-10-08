@@ -219,6 +219,42 @@ describe('Agent', () => {
     expect(lastItem()?.kind === 'user' && lastItem()?.text).toBe('hello');
   });
 
+  it('sendWhenReady_waitsForTheProvidersToLoad_thenSends', async () => {
+    // #806. A message sent as a conversation opens can beat the first provider load; sent then, main
+    // knows no runnable provider and refuses it.
+    const engine: AgentEngine = TestBed.inject(AgentEngine);
+    let release: () => void = (): void => undefined;
+    Object.defineProperty(engine, 'whenLoaded', {
+      value: new Promise<void>((resolve: () => void): void => {
+        release = resolve;
+      }),
+    });
+
+    const sent: Promise<void> = agent.sendWhenReady('hello', 'tab-1', 'project');
+    await Promise.resolve();
+    expect(runCalls).toEqual([]);
+
+    release();
+    await sent;
+
+    expect(runCalls).toHaveLength(1);
+    expect(runCalls[0].prompt).toBe('hello');
+  });
+
+  it('send_carriesTheConversationsBrief_afterTheStandingPrompts_untilANewChat', () => {
+    // #806. A new project's conversation is briefed on the project and its starter skill.
+    const profiles: PromptProfiles = TestBed.inject(PromptProfiles);
+    profiles.update(profiles.create('Everywhere').id, { system: 'Be brief.' });
+    agent.setBrief('A new project.');
+
+    agent.send('hello');
+    expect(runCalls[0].systemPromptExtra).toBe('### Everywhere\nBe brief.\n\nA new project.');
+
+    agent.clear();
+    agent.send('again');
+    expect(runCalls[1].systemPromptExtra).toBe('### Everywhere\nBe brief.');
+  });
+
   it('send_whenNoLanguageIsBound_carriesNoneAndOnlyUnscopedProfilesApply', () => {
     const profiles: PromptProfiles = TestBed.inject(PromptProfiles);
     profiles.update(profiles.create('Everywhere').id, { user: 'Be brief.' });

@@ -1,110 +1,305 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-
+import type { Skill } from '@shared/api/skill-channels';
+import type { Tab } from '@shared/angular/services/tabs/tab';
+import { Tabs } from '@shared/angular/services/tabs/tabs';
+import { ProjectDraft } from './project-draft';
+import { FakeProjectMachine, installed } from './project-draft.testing';
 import { WelcomeCreate } from './welcome-create';
 
 describe('WelcomeCreate', () => {
+  let machine: FakeProjectMachine;
   let fixture: ComponentFixture<WelcomeCreate>;
   let host: HTMLElement;
+  let openedCount: number;
 
   beforeEach(async () => {
-    await TestBed.configureTestingModule({ imports: [WelcomeCreate] }).compileComponents();
+    machine = new FakeProjectMachine();
+    openedCount = 0;
+    await TestBed.configureTestingModule({
+      imports: [WelcomeCreate],
+      providers: machine.providers(),
+    }).compileComponents();
     fixture = TestBed.createComponent(WelcomeCreate);
-    await fixture.whenStable();
     host = fixture.nativeElement as HTMLElement;
+    fixture.componentInstance.opened.subscribe((): void => {
+      openedCount += 1;
+    });
+    await settle();
   });
 
   /**
-   * Gets the Generate Plan button.
+   * Lets the draft's reads and change detection finish.
+   */
+  async function settle(): Promise<void> {
+    await fixture.whenStable();
+    await new Promise<void>((resolve: () => void): void => {
+      setTimeout(resolve);
+    });
+    await fixture.whenStable();
+  }
+
+  /**
+   * Gets the checklist's steps as "name:state", the state read from its classes.
+   * @returns Returns them, in order.
+   */
+  function checklist(): string[] {
+    return Array.from(host.querySelectorAll<HTMLButtonElement>('.create__step')).map(
+      (step: HTMLButtonElement): string =>
+        `${step.textContent.trim()}:${
+          step.classList.contains('create__step--current')
+            ? 'current'
+            : step.classList.contains('create__step--done')
+              ? 'done'
+              : 'other'
+        }`,
+    );
+  }
+
+  /**
+   * Gets the main button.
    * @returns Returns it.
    */
-  function generate(): HTMLButtonElement {
-    return host.querySelector<HTMLButtonElement>('.create__generate')!;
+  function primary(): HTMLButtonElement {
+    return host.querySelector<HTMLButtonElement>('.create__primary')!;
   }
 
   /**
-   * Types into the description.
-   * @param text The text.
+   * Clicks the main button and lets it act.
    */
-  async function describe_(text: string): Promise<void> {
-    const input: HTMLTextAreaElement = host.querySelector<HTMLTextAreaElement>('.create__input')!;
-    input.value = text;
-    input.dispatchEvent(new Event('input'));
-    await fixture.whenStable();
+  async function clickPrimary(): Promise<void> {
+    primary().click();
+    await settle();
   }
 
-  it('rail_showsTheFiveStages_onDescribe', () => {
+  /**
+   * Gets the values a dropdown offers, without its placeholder.
+   * @param label The dropdown's accessible name.
+   * @returns Returns them, in order.
+   */
+  function offered(label: string): string[] {
+    return Array.from(
+      host.querySelectorAll<HTMLOptionElement>(`select[aria-label="${label}"] option`),
+    )
+      .filter((option: HTMLOptionElement): boolean => !option.hidden)
+      .map((option: HTMLOptionElement): string => option.value);
+  }
+
+  it('opensOnStart_withEveryStepInTheChecklist', () => {
+    expect(checklist()).toEqual([
+      'Start:current',
+      'Project Details:other',
+      'Technology:other',
+      'Options:other',
+      'Skills:other',
+      'Summary:other',
+    ]);
+    expect(host.querySelector('.create__title')!.textContent.trim()).toBe(
+      'What do you want to build',
+    );
+    expect(host.querySelector('app-create-start')).not.toBeNull();
+  });
+
+  it('theTemplates_areGrouped_oneGroupOpenAtATime', async () => {
+    const toggles: () => HTMLButtonElement[] = (): HTMLButtonElement[] =>
+      Array.from(host.querySelectorAll<HTMLButtonElement>('.step__toggle'));
+    expect(toggles()[0].getAttribute('aria-expanded')).toBe('true');
+    expect(host.querySelectorAll('.step__list')).toHaveLength(1);
+
+    toggles()[2].click();
+    await settle();
+
     expect(
-      Array.from(host.querySelectorAll<HTMLElement>('.create__step-title')).map(
-        (title: HTMLElement): string => title.textContent.trim(),
+      toggles().map((toggle: HTMLButtonElement): string | null =>
+        toggle.getAttribute('aria-expanded'),
       ),
-    ).toEqual(['Describe', 'Plan', 'Configure', 'Generate', 'Open']);
-    expect(host.querySelector('.create__step--current')?.textContent).toContain('Describe');
-  });
-
-  it('generate_isDisabled_untilThereIsADescription', async () => {
-    expect(generate().disabled).toBe(true);
-
-    await describe_('   ');
-    expect(generate().disabled).toBe(true);
-
-    await describe_('A todo app');
-    expect(generate().disabled).toBe(false);
-  });
-
-  it('generate_saysPlainlyThatNothingGeneratesYet', async () => {
-    await describe_('A todo app');
-
-    generate().click();
-    await fixture.whenStable();
-
-    expect(host.querySelector('.create__notice')?.textContent).toContain('can’t generate');
-  });
-
-  it('editingTheDescription_clearsTheNotice', async () => {
-    await describe_('A todo app');
-    generate().click();
-    await fixture.whenStable();
-
-    await describe_('A todo app with sync');
-
-    expect(host.querySelector('.create__notice')).toBeNull();
-  });
-
-  it('anExample_startsTheDescription', async () => {
-    host.querySelector<HTMLButtonElement>('.welcome__example')!.click();
-    await fixture.whenStable();
-
-    expect(host.querySelector<HTMLTextAreaElement>('.create__input')!.value).toContain(
-      'AI agent service',
+    ).toEqual(
+      toggles().map((_toggle: HTMLButtonElement, index: number): string =>
+        index === 2 ? 'true' : 'false',
+      ),
     );
-    expect(generate().disabled).toBe(false);
+    expect(host.querySelector('.step__list')!.textContent).toContain('MCP Server');
   });
 
-  it('theTemplateExample_isNotAvailableYet', async () => {
-    const cards: HTMLButtonElement[] = Array.from(
-      host.querySelectorAll<HTMLButtonElement>('.welcome__example'),
-    );
-    cards[cards.length - 1].click();
-    await fixture.whenStable();
+  it('aSearch_opensEveryGroupWithAMatch_andHidesTheRest', async () => {
+    const search: HTMLInputElement = host.querySelector<HTMLInputElement>(
+      'input[aria-label="Search templates"]',
+    )!;
+    search.value = 'agent';
+    search.dispatchEvent(new Event('input'));
+    await settle();
 
-    expect(host.querySelector<HTMLTextAreaElement>('.create__input')!.value).toBe('');
-    expect(cards[cards.length - 1].classList).toContain('welcome__example--unavailable');
+    const titles: string[] = Array.from(host.querySelectorAll('.step__group-title')).map(
+      (title: Element): string => title.textContent.trim(),
+    );
+    expect(titles).toContain('AI');
+    expect(titles).not.toContain('Games & Graphics');
+    expect(host.querySelectorAll('.step__list')).toHaveLength(titles.length);
+
+    search.value = 'nothing like this';
+    search.dispatchEvent(new Event('input'));
+    await settle();
+    expect(host.querySelector('.step__empty')).not.toBeNull();
   });
 
-  it('theShortcut_asksForThePlan', async () => {
-    await describe_('A todo app');
-    const input: HTMLTextAreaElement = host.querySelector<HTMLTextAreaElement>('.create__input')!;
-    const shortcut: string = host.querySelector('.create__shortcut')!.textContent.trim();
+  it('aClosedGroup_namesTheTemplateChosenInIt', async () => {
+    host.querySelector<HTMLButtonElement>('.step__row')!.click();
+    await settle();
+    host.querySelectorAll<HTMLButtonElement>('.step__toggle')[0].click();
+    await settle();
 
-    input.dispatchEvent(
-      new KeyboardEvent('keydown', {
-        key: 'Enter',
-        metaKey: shortcut.startsWith('⌘'),
-        ctrlKey: !shortcut.startsWith('⌘'),
-      }),
+    expect(host.querySelector('.step__group-picked')!.textContent.trim()).toBe(
+      'Desktop Application',
     );
-    await fixture.whenStable();
+  });
 
-    expect(host.querySelector('.create__notice')).not.toBeNull();
+  it('theButton_saysSkip_untilTheStepHasSomethingInIt_thenNext', async () => {
+    expect(primary().textContent.trim()).toBe('Skip');
+
+    host.querySelector<HTMLButtonElement>('.step__row')!.click();
+    await settle();
+
+    expect(primary().textContent.trim()).toBe('Next');
+  });
+
+  it('back_isOffOnTheFirstStep', () => {
+    expect(host.querySelector<HTMLButtonElement>('.create__secondary')!.disabled).toBe(true);
+  });
+
+  it('walkingThrough_showsEachStep_andMarksThoseFilledIn', async () => {
+    host.querySelector<HTMLButtonElement>('.step__row')!.click();
+    await settle();
+    await clickPrimary();
+    expect(host.querySelector('app-create-details')).not.toBeNull();
+
+    await clickPrimary();
+    expect(host.querySelector('app-create-technology')).not.toBeNull();
+
+    await clickPrimary();
+    expect(host.querySelector('app-create-options')).not.toBeNull();
+
+    await clickPrimary();
+    expect(host.querySelector('app-create-skills')).not.toBeNull();
+
+    await clickPrimary();
+    expect(host.querySelector('app-create-summary')).not.toBeNull();
+    expect(checklist()).toEqual([
+      'Start:done',
+      'Project Details:other',
+      'Technology:other',
+      'Options:other',
+      'Skills:other',
+      'Summary:current',
+    ]);
+    expect(host.querySelector('.step__message')!.textContent).toContain(
+      'I want to build a desktop application.',
+    );
+  });
+
+  it('theSkillsStep_listsTheLibrary_searched_andChoosesFromIt', async () => {
+    machine.skills = [
+      { name: 'house-style', description: 'British English, explicit types.', problem: null },
+      { name: 'testing', description: 'Test every public method.', problem: null },
+      { name: 'broken', description: 'Will not load.', problem: 'Bad frontmatter.' },
+    ] as unknown as Skill[];
+    TestBed.inject(ProjectDraft).goTo('skills');
+    await settle();
+
+    const rows: () => string[] = (): string[] =>
+      Array.from(host.querySelectorAll('.step__row-title')).map((title: Element): string =>
+        title.textContent.trim(),
+      );
+    expect(rows()).toEqual(['house-style', 'testing']);
+
+    const search: HTMLInputElement = host.querySelector<HTMLInputElement>(
+      'input[aria-label="Search skills"]',
+    )!;
+    search.value = 'british';
+    search.dispatchEvent(new Event('input'));
+    await settle();
+    expect(rows()).toEqual(['house-style']);
+
+    host.querySelector<HTMLButtonElement>('.step__row')!.click();
+    await settle();
+    expect([...TestBed.inject(ProjectDraft).skills()]).toEqual(['house-style']);
+    expect(primary().textContent.trim()).toBe('Next');
+  });
+
+  it('theSkillsStep_saysWhenTheLibraryIsEmpty', async () => {
+    TestBed.inject(ProjectDraft).goTo('skills');
+    await settle();
+
+    expect(host.querySelector('.step__hint')!.textContent).toContain('Your skill library is empty');
+  });
+
+  it('theChecklist_jumpsToAnyStep', async () => {
+    host.querySelectorAll<HTMLButtonElement>('.create__step')[3].click();
+    await settle();
+
+    expect(host.querySelector('.create__title')!.textContent.trim()).toBe('Options');
+  });
+
+  it('theDetails_offerOnlyTheRepositoriesTheRunningPluginsCanMake', async () => {
+    machine.running = ['clone'];
+    TestBed.resetTestingModule();
+    await TestBed.configureTestingModule({
+      imports: [WelcomeCreate],
+      providers: machine.providers(),
+    }).compileComponents();
+    fixture = TestBed.createComponent(WelcomeCreate);
+    host = fixture.nativeElement as HTMLElement;
+    await settle();
+
+    TestBed.inject(ProjectDraft).goTo('details');
+    await settle();
+    expect(offered('Repository')).toEqual(['none', 'public', 'private']);
+
+    machine.plugins.set([installed('version-control')]);
+    await settle();
+    expect(offered('Repository')).toEqual(['none']);
+  });
+
+  it('theLastStep_sendsToAnAgent_withoutAName', async () => {
+    TestBed.inject(ProjectDraft).goTo('summary');
+    await settle();
+    expect(primary().textContent.trim()).toBe('Start');
+    expect(host.querySelector('.create__destination')!.textContent).toContain('a tab of its own');
+
+    await clickPrimary();
+
+    expect(
+      TestBed.inject(Tabs)
+        .tabs()
+        .map((tab: Tab): string => tab.type),
+    ).toEqual(['agent']);
+    expect(openedCount).toBe(1);
+  });
+
+  it('theLastStep_sendsToAWorkspaceAgent_withANameAndAPlace', async () => {
+    const draft: ProjectDraft = TestBed.inject(ProjectDraft);
+    draft.name.set('todo-app');
+    draft.goTo('summary');
+    await settle();
+    expect(primary().textContent.trim()).toBe('Start');
+    expect(host.querySelector('.create__destination')!.textContent).toContain(
+      'opens its workspace',
+    );
+
+    await clickPrimary();
+
+    expect(machine.created).toEqual([{ name: 'todo-app', repository: { kind: 'none' } }]);
+    expect(openedCount).toBe(1);
+  });
+
+  it('aFailedSend_isShown_andTheWelcomeScreenStays', async () => {
+    machine.outcome = { ok: false, error: 'It already exists.' };
+    const draft: ProjectDraft = TestBed.inject(ProjectDraft);
+    draft.name.set('todo-app');
+    draft.goTo('summary');
+    await settle();
+
+    await clickPrimary();
+
+    expect(host.querySelector('.create__error')!.textContent).toBe('It already exists.');
+    expect(openedCount).toBe(0);
   });
 });

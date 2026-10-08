@@ -502,6 +502,32 @@ export class VersionControlHost {
   }
 
   /**
+   * Makes a new, empty repository in a folder that is not an open repository or workspace yet (#806).
+   *
+   * ⛔ Like {@link cloneToChosenFolder}, not confined to an open root, because a new project's folder
+   * cannot be one yet. The caller vouches for the directory: it must lie in a folder the user chose in
+   * the main process's own dialog (see `NewProjectManager`), never one a renderer named.
+   * @param pluginId The plugin to ask.
+   * @param params The request's parameters; `directory` must be absolute.
+   * @returns Returns the plugin's answer, or the host's refusal.
+   */
+  public async initInChosenFolder(
+    pluginId: string,
+    params: VcsParams<'init'>,
+  ): Promise<VersionControlResponse<'init'>> {
+    if (!path.isAbsolute(params.directory)) {
+      return refused<'init'>('The path is not absolute.');
+    }
+    const descriptor: VersionControlDescriptor | undefined = this.options
+      .descriptors()
+      .find((candidate: VersionControlDescriptor): boolean => candidate.id === pluginId);
+    if (descriptor === undefined) {
+      return refused<'init'>(`No version-control plugin named ${pluginId} is installed.`);
+    }
+    return this.dispatch<'init'>(descriptor, undefined, 'init', params);
+  }
+
+  /**
    * Gets a contributed plugin by id.
    * @param pluginId The plugin.
    * @returns Returns the descriptor, or undefined when no such plugin is contributed.

@@ -31,6 +31,7 @@ function plugin(overrides: Partial<VersionControlPluginInfo> = {}): VersionContr
     executableModes: ['installed', 'custom'],
     executable: null,
     toolVersion: 'git version 2.50.1',
+    capabilities: [],
     ...overrides,
   };
 }

@@ -1,97 +1,94 @@
 <div class="create">
-  <ol class="create__rail" aria-label="Steps">
-    @for (step of stages; track step.title; let index = $index) {
-      <li
-        class="create__step"
-        [class.create__step--current]="stage() === index"
-        [attr.aria-current]="stage() === index ? 'step' : null"
-      >
-        <span class="create__step-number">{{ index + 1 }}</span>
-        <span class="create__step-text">
-          <span class="create__step-title">{{ step.title }}</span>
-          <span class="create__step-hint">{{ step.hint }}</span>
-        </span>
-      </li>
-    }
-  </ol>
-
-  <div class="create__main">
-    <header>
-      <h2 class="create__title">Create a New Project with AI</h2>
-      <p class="create__description">
-        Describe what you want to build in plain language. The AI will suggest an architecture,
-        services and technologies, and create a project tailored to it.
-      </p>
+  <!-- The step shown. -->
+  <section class="create__main" aria-labelledby="create-step-title">
+    <header class="create__header">
+      <h2 class="create__title" id="create-step-title">
+        {{ current().heading ?? current().title }}
+      </h2>
+      @if (current().description; as description) {
+        <p class="create__description">{{ description }}</p>
+      }
     </header>
 
-    <div class="create__composer">
-      <textarea
-        class="create__input"
-        aria-label="Describe your project"
-        placeholder="Describe your project…&#10;&#10;For example:&#10;• “Build a distributed AI agent that searches restaurants and books a ride”&#10;• “Create a data service with a REST API and a graph database”&#10;• “Make a real-time dashboard that integrates with Slack and Notion”"
-        [value]="description()"
-        (input)="onInput($event)"
-        (keydown)="onKeydown($event)"
-      ></textarea>
-      <div class="create__composer-bar">
-        <button
-          type="button"
-          class="create__secondary"
-          aria-disabled="true"
-          [appTooltip]="'Coming soon'"
-        >
-          <app-icon [icon]="Icon.WELCOME_ATTACH" />
-          <span>Add Context</span>
-        </button>
-        <button
-          type="button"
-          class="create__secondary"
-          aria-disabled="true"
-          [appTooltip]="'Coming soon'"
-        >
-          <app-icon [icon]="Icon.WELCOME_TEMPLATE" />
-          <span>Use a Template</span>
-        </button>
-        <button
-          type="button"
-          class="create__generate"
-          [disabled]="!canGenerate()"
-          (click)="generate()"
-        >
-          <app-icon [icon]="Icon.WELCOME_GENERATE" />
-          <span>Generate Plan</span>
-          <kbd class="create__shortcut">{{ shortcut }}</kbd>
-        </button>
-      </div>
+    <div class="create__body">
+      @switch (draft.step()) {
+        @case ('start') {
+          <app-create-start />
+        }
+        @case ('details') {
+          <app-create-details />
+        }
+        @case ('technology') {
+          <app-create-technology
+            [technologies]="draft.catalogue()"
+            [selected]="draft.technologies()"
+            (toggled)="draft.toggleTechnology($event)"
+            (added)="draft.addTechnology($event)"
+          />
+        }
+        @case ('options') {
+          <app-create-options />
+        }
+        @case ('skills') {
+          <app-create-skills />
+        }
+        @case ('summary') {
+          <app-create-summary />
+        }
+      }
     </div>
+  </section>
 
-    @if (requested()) {
-      <p class="create__notice" role="status">
-        Studio can’t generate projects yet — this flow is still being designed. Your description is
-        kept here for when it can.
-      </p>
-    }
-
-    <section class="create__examples" aria-labelledby="create-examples-title">
-      <h3 class="create__examples-title" id="create-examples-title">Example Projects</h3>
-      <div class="create__examples-grid">
-        @for (example of examples; track example.title) {
+  <!-- The checklist: every step, how it stands, and a way to jump to it — then the way on. -->
+  <nav class="create__side" aria-labelledby="create-steps-title">
+    <h2 class="create__heading" id="create-steps-title">New Project</h2>
+    <ol class="create__steps">
+      @for (step of steps; track step.id) {
+        <li>
           <button
             type="button"
-            class="welcome__example"
-            [class.welcome__example--unavailable]="example.description.length === 0"
-            [appTooltip]="example.description.length === 0 ? 'Coming soon' : ''"
-            (click)="useExample(example)"
+            class="create__step"
+            [class.create__step--current]="stateOf(step.id) === 'current'"
+            [class.create__step--done]="stateOf(step.id) === 'done'"
+            [attr.aria-current]="stateOf(step.id) === 'current' ? 'step' : null"
+            (click)="draft.goTo(step.id)"
           >
-            <app-icon class="welcome__example-icon" [icon]="example.icon" />
-            <span class="welcome__example-text">
-              <span class="welcome__example-title">{{ example.title }}</span>
-              <span class="welcome__example-summary">{{ example.summary }}</span>
-            </span>
-            <app-icon class="welcome__example-chevron" [icon]="Icon.WELCOME_CHEVRON" />
+            <app-icon class="create__step-icon" [icon]="iconOf(step.id)" />
+            <span>{{ step.title }}</span>
           </button>
+        </li>
+      }
+    </ol>
+    <p class="create__lead">
+      Every step is optional. Fill in what you know; the agent asks about the rest.
+    </p>
+    <div class="create__nav">
+      @if (draft.error(); as message) {
+        <p class="create__error" role="alert">{{ message }}</p>
+      } @else if (destination(); as line) {
+        <p class="create__destination">{{ line }}</p>
+      }
+      <button
+        type="button"
+        class="create__secondary"
+        [disabled]="first() || draft.sending()"
+        (click)="draft.move(-1)"
+      >
+        Back
+      </button>
+      <button
+        type="button"
+        class="create__primary"
+        [disabled]="draft.sending()"
+        (click)="primary()"
+      >
+        @if (draft.sending()) {
+          <app-icon class="create__spin" [icon]="Icon.SPINNER" />
+          <span>Creating…</span>
+        } @else {
+          <span>{{ primaryLabel() }}</span>
         }
-      </div>
-    </section>
-  </div>
+      </button>
+    </div>
+  </nav>
 </div>

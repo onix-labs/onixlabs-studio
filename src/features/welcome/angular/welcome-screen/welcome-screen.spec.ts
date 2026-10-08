@@ -65,15 +65,14 @@ describe('WelcomeScreen', () => {
   it('tabs_areTheShownSections_inOrder', () => {
     expect(sectionTabs().map((tab: HTMLButtonElement): string => tab.textContent.trim())).toEqual([
       'Get Started',
+      'Create Something',
       'Source Control',
       'Tools & Settings',
     ]);
   });
 
-  it('createSomething_isHidden_untilItIsReal_andSourceControlIsShown', () => {
-    // Hidden, not removed: Create Something is built and tested, but nothing real stands behind it
-    // yet (#806). Source Control is real since #805.
-    expect(host.querySelector('app-welcome-create')).toBeNull();
+  it('createSomething_andSourceControl_areShown', () => {
+    expect(host.querySelector('app-welcome-create')).not.toBeNull();
     expect(host.querySelector('app-welcome-source-control')).not.toBeNull();
   });
 
@@ -96,7 +95,7 @@ describe('WelcomeScreen', () => {
     sectionTab('Tools & Settings').click();
     await fixture.whenStable();
 
-    expect(host.querySelectorAll('.welcome__panel > *')).toHaveLength(3);
+    expect(host.querySelectorAll('.welcome__panel > *')).toHaveLength(4);
     expect(shownSection()).toBe('app-welcome-tools');
   });
 
@@ -123,7 +122,7 @@ describe('WelcomeScreen', () => {
   it('onlyTheActiveTab_isInTheTabOrder', () => {
     expect(
       sectionTabs().map((tab: HTMLButtonElement): string | null => tab.getAttribute('tabindex')),
-    ).toEqual(['0', '-1', '-1']);
+    ).toEqual(['0', '-1', '-1', '-1']);
   });
 
   it('aToolCard_opensItsTab_andStepsAside', async () => {
