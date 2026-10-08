@@ -312,9 +312,18 @@ export interface PluginSummary {
   readonly state: PluginState;
 
   /**
-   * Gets the implementations this plugin contributes.
+   * Gets the implementations this plugin contributes: what the installed version contributes when it
+   * is installed, and what an install would bring when it is not (#878).
    */
   readonly contributions: readonly PluginContribution[];
+
+  /**
+   * Gets whether {@link contributions} may not describe the installed version: true only for a plugin
+   * installed before Studio recorded what an install contributes, whose catalogue entry has since moved
+   * to a different version. A surface gating on a capability asks the running plugin instead, where it
+   * can; absent means the contributions are the installed version's own.
+   */
+  readonly contributionsUnconfirmed?: true;
 
   /**
    * Gets the pinned version Studio installs.

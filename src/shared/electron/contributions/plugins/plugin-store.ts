@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import * as path from 'node:path';
+import { PluginContribution } from '@shared/api/plugin-channels';
 import { logger } from '../../logger';
 
 /**
@@ -21,6 +22,35 @@ export interface PluginInstallRecord {
    * Gets the absolute path the installation produced (the provisioned executable or entry point).
    */
   readonly installedPath: string;
+
+  /**
+   * Gets what the installed version contributes, as its manifest described it at install time, or
+   * undefined for a record written before Studio kept them (#878).
+   *
+   * Kept because the catalogue moves on without the install: once the index describes a newer version,
+   * its contributions are what an update *would* bring, not what is on disk, and a surface gating on a
+   * capability would offer something the running plugin refuses.
+   */
+  readonly contributions?: readonly PluginContribution[];
+}
+
+/**
+ * Decides whether a stored value is a list of contributions. Studio wrote it, so the check is only
+ * deep enough to refuse a hand-edited or truncated file: every entry names its slot and identifier.
+ * @param value The stored value.
+ * @returns Returns true when the value is a list of contributions.
+ */
+function isContributionList(value: unknown): value is readonly PluginContribution[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (entry: unknown): boolean =>
+        typeof entry === 'object' &&
+        entry !== null &&
+        typeof (entry as { slot?: unknown }).slot === 'string' &&
+        typeof (entry as { id?: unknown }).id === 'string',
+    )
+  );
 }
 
 /**
@@ -116,7 +146,12 @@ export class PluginStore {
     if (typeof value !== 'object' || value === null) {
       return null;
     }
-    const candidate: { id?: unknown; version?: unknown; installedPath?: unknown } = value;
+    const candidate: {
+      id?: unknown;
+      version?: unknown;
+      installedPath?: unknown;
+      contributions?: unknown;
+    } = value;
     if (
       typeof candidate.id !== 'string' ||
       typeof candidate.version !== 'string' ||
@@ -124,7 +159,16 @@ export class PluginStore {
     ) {
       return null;
     }
-    return { id: candidate.id, version: candidate.version, installedPath: candidate.installedPath };
+    const record: PluginInstallRecord = {
+      id: candidate.id,
+      version: candidate.version,
+      installedPath: candidate.installedPath,
+    };
+    // A malformed snapshot costs the snapshot, not the record: the install is still on disk, and the
+    // plugin is described from the catalogue as it was before snapshots existed.
+    return isContributionList(candidate.contributions)
+      ? { ...record, contributions: candidate.contributions }
+      : record;
   }
 
   /**

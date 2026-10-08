@@ -11,13 +11,16 @@ import {
 import { Icon } from '@shared/angular/icons/icon';
 import type { ProviderPage } from '@shared/api/ai-types';
 import {
-  installedContributions,
   PLUGIN_SLOT_LABELS,
   PLUGIN_SLOTS,
+  type PluginContribution,
   type PluginSlot,
+  type PluginSummary,
   type UnkeyedPluginContribution,
 } from '@shared/api/plugin-channels';
 import { highlightsBetween, ReleaseHighlights } from '@shared/api/release-highlights';
+import type { VersionControlPluginInfo } from '@shared/api/source-control-channels';
+import type { VersionControlCapability } from '@shared/api/version-control-protocol';
 import { isNewerStudioVersion } from '@shared/api/studio-version';
 import { AiProviders } from '@shared/angular/services/ai-providers/ai-providers';
 import { Log } from '@shared/angular/services/log/log';
@@ -27,7 +30,33 @@ import { Plugins } from '@shared/angular/services/plugins/plugins';
 import { SETTINGS_BY_KEY } from '@shared/angular/services/settings/settings-registry';
 import { SettingDef } from '@shared/angular/services/settings/settings-schema';
 import { SettingsStore } from '@shared/angular/services/settings-store/settings-store';
+import { SourceControl } from '@shared/angular/services/source-control/source-control';
 import { Studio } from '@shared/angular/services/studio/studio';
+
+/**
+ * Decides whether a contribution is a version-control system.
+ * @param contribution The contribution.
+ * @returns Returns true when it fills the version-control slot.
+ */
+function isVersionControl(
+  contribution: PluginContribution,
+): contribution is UnkeyedPluginContribution {
+  return contribution.slot === 'version-control';
+}
+
+/**
+ * Decides whether a plugin is an installed version-control plugin whose summary cannot say what the
+ * installed version supports (#878), so the running plugin has to be asked.
+ * @param plugin The plugin.
+ * @returns Returns true when its capabilities need confirming.
+ */
+function needsConfirming(plugin: PluginSummary): boolean {
+  return (
+    plugin.state === 'installed' &&
+    plugin.contributionsUnconfirmed === true &&
+    plugin.contributions.some(isVersionControl)
+  );
+}
 
 /**
  * Holds the store key under which the version the user last completed setup on is persisted. Written
@@ -336,6 +365,11 @@ export class SetupWizard {
   private readonly providers: AiProviders = inject(AiProviders);
 
   /**
+   * Holds the version-control client, asked what a running plugin supports when its summary cannot say.
+   */
+  private readonly sourceControl: SourceControl = inject(SourceControl);
+
+  /**
    * Holds the running build's version, or null when the renderer runs outside Electron.
    */
   private readonly version: string | null = window.host?.versions.studio ?? null;
@@ -395,6 +429,43 @@ export class SetupWizard {
   );
 
   /**
+   * Holds what running version-control plugins confirmed they support, by system, for the systems
+   * whose summary could not say (#878). Empty until asked, and only ever asked for those.
+   */
+  private readonly confirmedCapabilities: WritableSignal<
+    ReadonlyMap<string, readonly VersionControlCapability[]>
+  > = signal<ReadonlyMap<string, readonly VersionControlCapability[]>>(new Map());
+
+  /**
+   * Gets the installed version-control systems that have a committer identity to set — the ones the
+   * wizard gives a commit-identity step, and the summary links its identity row to.
+   *
+   * A system is judged by what its installed version contributes. A plugin installed before Studio
+   * recorded that is judged by what its running process confirms instead, and until it has answered it
+   * is given no step: offering one the plugin then refuses is the very bug this guards (#878).
+   */
+  public readonly identitySystems: Signal<readonly UnkeyedPluginContribution[]> = computed(
+    (): readonly UnkeyedPluginContribution[] => {
+      const confirmed: ReadonlyMap<string, readonly VersionControlCapability[]> =
+        this.confirmedCapabilities();
+      return this.plugins
+        .plugins()
+        .filter((plugin: PluginSummary): boolean => plugin.state === 'installed')
+        .flatMap((plugin: PluginSummary): readonly UnkeyedPluginContribution[] =>
+          plugin.contributions
+            .filter(isVersionControl)
+            .filter((system: UnkeyedPluginContribution): boolean =>
+              (
+                (plugin.contributionsUnconfirmed === true
+                  ? confirmed.get(system.id)
+                  : system.capabilities) ?? []
+              ).includes('identity'),
+            ),
+        );
+    },
+  );
+
+  /**
    * Gets the leaves the installed plugins currently call for, in walk order, keyed by the root they
    * sit beneath.
    */
@@ -430,18 +501,14 @@ export class SetupWizard {
    * @returns Returns the leaves, in walk order.
    */
   private versionControlLeaves(): readonly SetupStep[] {
-    return installedContributions(this.plugins.plugins(), 'version-control')
-      .filter((system: UnkeyedPluginContribution): boolean =>
-        (system.capabilities ?? []).includes('identity'),
-      )
-      .map((system: UnkeyedPluginContribution): SetupStep => ({
-        id: `version-control/${system.id}`,
-        kind: 'commit-identity',
-        parentId: 'version-control',
-        label: system.displayName,
-        title: `Who your ${system.displayName} commits are from`,
-        summary: 'The name and email address your commits are attributed to.',
-      }));
+    return this.identitySystems().map((system: UnkeyedPluginContribution): SetupStep => ({
+      id: `version-control/${system.id}`,
+      kind: 'commit-identity',
+      parentId: 'version-control',
+      label: system.displayName,
+      title: `Who your ${system.displayName} commits are from`,
+      summary: 'The name and email address your commits are attributed to.',
+    }));
   }
 
   /**
@@ -528,6 +595,42 @@ export class SetupWizard {
       );
       untracked((): void => this.baseline.set(present));
     });
+    effect((): void => {
+      if (this.plugins.plugins().some(needsConfirming)) {
+        untracked((): void => void this.confirmCapabilities());
+      }
+    });
+  }
+
+  /**
+   * Asks the running version-control plugins what they support, for the systems whose summary could
+   * not say. Starting a plugin to ask is the cost, which is why only those systems are asked for.
+   */
+  private async confirmCapabilities(): Promise<void> {
+    let plugins: readonly VersionControlPluginInfo[];
+    try {
+      plugins = (await this.sourceControl.client?.listPlugins()) ?? [];
+    } catch (error: unknown) {
+      // Unanswered means unconfirmed, and an unconfirmed system is given no step — the safe side.
+      this.log.warn(
+        'SetupWizard',
+        'Could not ask the version-control plugins what they support',
+        error,
+      );
+      return;
+    }
+    this.confirmedCapabilities.set(
+      new Map<string, readonly VersionControlCapability[]>(
+        plugins
+          .filter((plugin: VersionControlPluginInfo): boolean => plugin.installed)
+          .map(
+            (plugin: VersionControlPluginInfo): [string, readonly VersionControlCapability[]] => [
+              plugin.id,
+              plugin.capabilities,
+            ],
+          ),
+      ),
+    );
   }
 
   /**
