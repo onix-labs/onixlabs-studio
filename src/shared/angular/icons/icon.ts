@@ -1844,6 +1844,13 @@ export class Icon {
   public static readonly DOWNLOAD: Icon = new Icon('ph ph-download-simple');
 
   /**
+   * Gets the download icon in the duotone weight, for a filled button that installs or updates a
+   * plugin — the tinted tray keeps it legible against the button's own fill, as the duotone bin does
+   * for Remove beside it.
+   */
+  public static readonly DOWNLOAD_DUOTONE: Icon = new Icon('ph-duotone ph-download');
+
+  /**
    * Gets the select-all (double check) icon.
    */
   public static readonly SELECT_ALL: Icon = new Icon('ph ph-checks');

@@ -5,6 +5,7 @@ import type { PluginSummary } from '@shared/api/plugin-channels';
 import { RELEASE_HIGHLIGHTS } from '@shared/api/release-highlights';
 import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
+import { Studio } from '@shared/angular/services/studio/studio';
 
 import { SetupStep, SetupWizard } from './setup-wizard';
 
@@ -274,12 +275,18 @@ describe('SetupWizard', () => {
       expect(build().isOpen()).toBe(false);
     });
 
-    it('abandon_whenCalled_closesTheWizard', () => {
+    it('abandon_whenCalled_quitsTheApplication_withoutShowingTheWelcomeScreen', () => {
       const wizard: SetupWizard = build();
+      const closeWindow: ReturnType<typeof vi.spyOn> = vi.spyOn(
+        TestBed.inject(Studio),
+        'closeWindow',
+      );
 
       wizard.abandon();
 
-      expect(wizard.isOpen()).toBe(false);
+      expect(closeWindow).toHaveBeenCalledTimes(1);
+      // Still running while the application closes: the welcome screen waits for the wizard.
+      expect(wizard.isOpen()).toBe(true);
     });
 
     it('abandon_whenCalled_recordsNothing', () => {

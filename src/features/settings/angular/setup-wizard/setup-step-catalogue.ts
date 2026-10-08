@@ -6,12 +6,9 @@ import {
   input,
   InputSignal,
   Signal,
-  signal,
-  WritableSignal,
 } from '@angular/core';
 import type { PluginContribution, PluginSlot, PluginSummary } from '@shared/api/plugin-channels';
-import { Button } from '@shared/angular/components/forms/button/button';
-import { Icon } from '@shared/angular/icons/icon';
+import { PluginAction } from '@shared/angular/components/plugin-action/plugin-action';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
 
 /**
@@ -43,13 +40,15 @@ function rank(plugin: PluginSummary): number {
  * filter: the wizard is a pass through each category, not a search, and the Plugin Manager is where
  * the catalogue is searched.
  *
- * Installing goes through the same consent the Plugin Manager asks for. A wizard is another entry
- * point to an install, never a shortcut past the question. What is installed can be removed here
- * too, so a plugin tried during setup is not one the user must go elsewhere to take back out.
+ * Each row's action is the Plugin Manager's own — Install, Update, Remove, and a progress bar while it
+ * works — so a plugin reads and behaves the same in both. Installing goes through the same consent;
+ * a wizard is another entry point to an install, never a shortcut past the question. What is installed
+ * can be updated or removed here too, so a plugin tried during setup is not one the user must go
+ * elsewhere to take back out.
  */
 @Component({
   selector: 'app-setup-step-catalogue',
-  imports: [Button],
+  imports: [PluginAction],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrl: './setup-step-catalogue.scss',
   template: `
@@ -63,33 +62,9 @@ function rank(plugin: PluginSummary): number {
               <span class="catalogue__name">{{ plugin.name }}</span>
               <span class="catalogue__detail">{{ plugin.description }}</span>
             </span>
-            <!-- The same actions, icons and words as the Plugin Manager's rows, so a plugin
-                 installed here can be taken out again here. A row being removed keeps its Remove
-                 button, spinning, rather than flipping to Install while it works. -->
-            @if (plugin.state === 'installed' || removing().has(plugin.id)) {
-              <app-button
-                class="catalogue__action"
-                variant="solid"
-                tone="danger"
-                label="Remove"
-                [icon]="Icon.TRASH_SIMPLE"
-                [disabled]="plugins.busy()"
-                [loading]="plugin.state === 'busy'"
-                (click)="uninstall(plugin.id)"
-              />
-            } @else if (plugin.state === 'unavailable') {
-              <span class="catalogue__state">Not available here</span>
-            } @else {
-              <app-button
-                class="catalogue__action"
-                variant="solid"
-                label="Install"
-                [icon]="Icon.DOWNLOAD"
-                [disabled]="plugins.busy()"
-                [loading]="plugin.state === 'busy'"
-                (click)="install(plugin.id)"
-              />
-            }
+            <!-- The Plugin Manager's own action: Install, Update, Remove, and a progress bar while
+                 it works — so a plugin installed here can be updated or taken out again here. -->
+            <app-plugin-action class="catalogue__action" [plugin]="plugin" />
           </li>
         }
       </ul>
@@ -112,23 +87,6 @@ export class SetupStepCatalogue {
   protected readonly plugins: Plugins = inject(Plugins);
 
   /**
-   * Gets the icon set, exposed for the template.
-   */
-  protected readonly Icon: typeof Icon = Icon;
-
-  /**
-   * Holds the plugins being removed from here, so a row mid-removal keeps showing what it is doing.
-   */
-  private readonly removingIds: WritableSignal<ReadonlySet<string>> = signal<ReadonlySet<string>>(
-    new Set<string>(),
-  );
-
-  /**
-   * Gets the plugins being removed from here.
-   */
-  protected readonly removing: Signal<ReadonlySet<string>> = this.removingIds.asReadonly();
-
-  /**
    * Gets the plugins to list: every one in the slot, whatever its state, with what is not installed
    * first — the list exists to be acted on, so the actionable rows lead it.
    */
@@ -144,32 +102,4 @@ export class SetupStepCatalogue {
         // The filter's array is already a copy, so sorting it in place touches nothing shared.
         .sort((left: PluginSummary, right: PluginSummary): number => rank(left) - rank(right)),
   );
-
-  /**
-   * Installs a plugin, through the same terms the Plugin Manager asks for.
-   * @param id The plugin identifier.
-   */
-  protected install(id: string): void {
-    void this.plugins.installWithConsent(id);
-  }
-
-  /**
-   * Removes a plugin, as the Plugin Manager's Remove does.
-   * @param id The plugin identifier.
-   * @returns Returns a promise that settles once the removal has.
-   */
-  protected async uninstall(id: string): Promise<void> {
-    this.removingIds.update((ids: ReadonlySet<string>): ReadonlySet<string> =>
-      new Set<string>(ids).add(id),
-    );
-    try {
-      await this.plugins.uninstall(id);
-    } finally {
-      this.removingIds.update((ids: ReadonlySet<string>): ReadonlySet<string> => {
-        const next: Set<string> = new Set<string>(ids);
-        next.delete(id);
-        return next;
-      });
-    }
-  }
 }

@@ -274,12 +274,7 @@ $action-column: 7rem;
   // list does not shift as installs start and finish.
   min-block-size: var(--control-height);
 
-  // The atom is built to be stretched by its call site — its inner button carries `flex: 1` — so the
-  // width is stated here rather than by reaching into the button's own styling.
-  app-button {
+  app-plugin-action {
     inline-size: 100%;
-    // The track is narrower than the widest label, so a label that does not fit is cut at the button's
-    // edge instead of spilling across the column beside it.
-    overflow: hidden;
   }
 }

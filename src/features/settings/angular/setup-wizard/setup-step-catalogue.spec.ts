@@ -91,15 +91,14 @@ describe('SetupStepCatalogue', () => {
     expect(names()).toEqual(['rust-analyzer', 'pyright']);
   });
 
-  it('render_offersInstallInTheAccent_andRemoveInRed_asThePluginManagerDoes', async () => {
+  it('render_offersInstallInGreen_andRemoveInRed_asThePluginManagerDoes', async () => {
     await render('language-server');
 
     const rows: HTMLElement[] = Array.from(host.querySelectorAll<HTMLElement>('.catalogue__item'));
     const install: HTMLElement | null = rows[0].querySelector('app-button');
     expect(install?.textContent?.trim()).toBe('Install');
     expect(install?.classList.contains('button--solid')).toBe(true);
-    // The accent is the button's default tone, so it carries no other.
-    expect(install?.className).not.toContain('button--tone-');
+    expect(install?.classList.contains('button--tone-success')).toBe(true);
     const remove: HTMLElement | null = rows[1].querySelector('app-button');
     expect(remove?.textContent?.trim()).toBe('Remove');
     expect(remove?.classList.contains('button--solid')).toBe(true);
@@ -116,12 +115,36 @@ describe('SetupStepCatalogue', () => {
     expect(uninstall).toHaveBeenCalledWith('pyright');
   });
 
-  it('render_saysWhenAPluginCannotBeInstalledHere_ratherThanOfferingAnInstallThatWillRefuse', async () => {
+  it('render_offersAnUnsupportedPluginsInstall_disabled_asThePluginManagerDoes', async () => {
     await render('container-engine');
 
     const rows: HTMLElement[] = Array.from(host.querySelectorAll<HTMLElement>('.catalogue__item'));
-    expect(rows[1].textContent).toContain('Not available here');
-    expect(rows[1].querySelector('button')).toBeNull();
+    expect(rows[1].querySelector('app-button')?.classList.contains('button--tone-neutral')).toBe(
+      true,
+    );
+    expect(rows[1].querySelector<HTMLButtonElement>('button')?.disabled).toBe(true);
+  });
+
+  it('render_offersAnUpdateInBlue_whenANewerVersionIsWaiting', async () => {
+    known.set([
+      { ...plugin('pyright', 'language-server', 'installed'), installedVersion: '0.9.0' },
+    ]);
+    await render('language-server');
+
+    const update: HTMLElement | null = host.querySelector('.catalogue__item app-button');
+    expect(update?.textContent?.trim()).toBe('Update');
+    expect(update?.classList.contains('button--tone-info')).toBe(true);
+
+    host.querySelector<HTMLButtonElement>('.catalogue__item button')?.click();
+    expect(installWithConsent).toHaveBeenCalledWith('pyright');
+  });
+
+  it('render_showsProgress_whileAPluginIsWorkedOn', async () => {
+    known.set([plugin('pyright', 'language-server', 'busy')]);
+    await render('language-server');
+
+    expect(host.querySelector('.catalogue__item app-progress-bar')).not.toBeNull();
+    expect(host.querySelector('.catalogue__item app-button')).toBeNull();
   });
 
   it('install_whenClicked_installsThroughTheSameConsentThePluginManagerAsks', async () => {

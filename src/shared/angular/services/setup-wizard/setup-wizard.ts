@@ -27,6 +27,7 @@ import { Plugins } from '@shared/angular/services/plugins/plugins';
 import { SETTINGS_BY_KEY } from '@shared/angular/services/settings/settings-registry';
 import { SettingDef } from '@shared/angular/services/settings/settings-schema';
 import { SettingsStore } from '@shared/angular/services/settings-store/settings-store';
+import { Studio } from '@shared/angular/services/studio/studio';
 
 /**
  * Holds the store key under which the version the user last completed setup on is persisted. Written
@@ -313,6 +314,11 @@ export class SetupWizard {
    * Holds the structured logger.
    */
   private readonly log: Log = inject(Log);
+
+  /**
+   * Holds the application window service, through which closing the wizard quits.
+   */
+  private readonly studio: Studio = inject(Studio);
 
   /**
    * Holds the plugin client, read for when the catalogue has loaded.
@@ -644,11 +650,17 @@ export class SetupWizard {
   }
 
   /**
-   * Abandons the wizard for this session without recording anything, which is what closing its window
-   * does. The wizard runs again on the next launch, because nothing was decided.
+   * Abandons the wizard without recording anything, which is what closing its window does: Studio
+   * quits, through its ordinary close (unsaved work is still asked about). The wizard runs only at
+   * start-up, before anything else is shown, so closing it closes the application rather than
+   * falling through to the welcome screen; it runs again on the next launch, because nothing was
+   * decided.
+   *
+   * ⚠️ The wizard stays marked as running while the application closes, so the welcome screen —
+   * which waits for it — does not flash up on the way out.
    */
   public abandon(): void {
-    this.log.info('SetupWizard', 'Setup abandoned; it will run again on the next launch');
-    this.running.set(false);
+    this.log.info('SetupWizard', 'Setup abandoned; closing the application');
+    this.studio.closeWindow();
   }
 }

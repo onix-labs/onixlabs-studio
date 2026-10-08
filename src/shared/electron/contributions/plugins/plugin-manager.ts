@@ -1,6 +1,6 @@
 import { PluginActionResult, PluginState, PluginSummary } from '@shared/api/plugin-channels';
 import { logger } from '../../logger';
-import { PluginContext, PluginDescriptor } from './plugin-catalogue';
+import { HandPlacedPluginError, PluginContext, PluginDescriptor } from './plugin-catalogue';
 import { PluginStore } from './plugin-store';
 
 /**
@@ -172,6 +172,14 @@ export class PluginManager {
       this.store.remove(id);
       return { success: true, state: 'available', error: null };
     } catch (error: unknown) {
+      if (error instanceof HandPlacedPluginError) {
+        logger.warn('PluginManager', `${id} was placed by hand in ${error.directory}; not removed`);
+        return {
+          success: false,
+          state: 'installed',
+          error: `${descriptor.name} was added by hand, in ${error.directory}. To remove it, delete that folder and restart Studio.`,
+        };
+      }
       logger.error('PluginManager', `Uninstall threw for ${id}`, error);
       return {
         success: false,

@@ -25,6 +25,24 @@ export interface PluginContext {
 }
 
 /**
+ * Refuses to remove a plugin the user placed by hand, in the sideload folder, and says where it is.
+ *
+ * Studio does not delete a folder the user manages; removing it is theirs to do. Saying so beats the
+ * alternative it replaces, a removal that reported success, touched nothing, and left the plugin
+ * listed as installed with no word of why.
+ */
+export class HandPlacedPluginError extends Error {
+  /**
+   * Initializes the error.
+   * @param directory The folder the plugin was placed in.
+   */
+  public constructor(public readonly directory: string) {
+    super(`The plugin was placed by hand in ${directory}.`);
+    this.name = 'HandPlacedPluginError';
+  }
+}
+
+/**
  * Describes one plugin the application knows about: what it is, what it contributes, and how it is
  * installed and removed.
  *
