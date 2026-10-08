@@ -17,7 +17,7 @@ import { Icon } from '@shared/angular/icons/icon';
 import { RecentItem, RecentItems } from '@shared/angular/services/recent-items/recent-items';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
-import { Workspaces } from '../workspaces/workspaces';
+import { WorkspaceAgentStart, Workspaces } from '../workspaces/workspaces';
 import { BINARY_FILE_OPENER, BinaryFileOpener } from './binary-file-opener';
 import { IMAGE_FILE_OPENER, ImageFileOpener } from './image-file-opener';
 import { FileOpener } from './file-opener';
@@ -419,6 +419,16 @@ describe('FileOpener', () => {
     expect(await opener.reopenDirectory('/ws')).toBe(true);
     expect(tabs.tabs().map((tab: Tab): string => tab.type)).toEqual(['directory']);
     expect(workspaces.takeInitial(tabs.tabs()[0].id)).toBe(ROOT_LISTING);
+    expect(workspaces.takeAgentStart(tabs.tabs()[0].id)).toBeUndefined();
+  });
+
+  it('reopenDirectory_withAnAgentStart_stashesItForTheNewTab', async () => {
+    nextListing = ROOT_LISTING;
+    const start: WorkspaceAgentStart = { opening: 'Ready.', brief: 'A new project.' };
+
+    expect(await opener.reopenDirectory('/ws', start)).toBe(true);
+
+    expect(workspaces.takeAgentStart(tabs.tabs()[0].id)).toBe(start);
   });
 
   it('reopenDirectory_whenUntrusted_opensNothing', async () => {

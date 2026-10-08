@@ -4,6 +4,7 @@ import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ForgeHostAccount, ForgeRepositoryCapabilities } from '@shared/api/forge-types';
 import {
+  HostedRepository,
   HostingDescription,
   HostingOp,
   HostingParams,
@@ -47,6 +48,7 @@ class FakeEndpoint implements HostingEndpoint {
         'ciCancel',
         'accounts',
         'listRepositories',
+        'createRepository',
       ],
     });
   }
@@ -101,6 +103,7 @@ describe('HostingManager', () => {
         'ciCancel',
         'accounts',
         'listRepositories',
+        'createRepository',
       ],
       authModes: ['cli', 'studio'],
       commandLineTools: ['gh'],
@@ -301,6 +304,36 @@ describe('HostingManager', () => {
         expect((await manager.repositories('github.com', account)).ok).toBe(false);
       }
       expect(endpoint.sent.some((entry: { op: string }) => entry.op === 'listRepositories')).toBe(
+        false,
+      );
+    });
+
+    it('createRepository_asksThePluginServingTheHost_asTheUser', async () => {
+      build({
+        createRepository: {
+          id: 1,
+          ok: true,
+          result: { name: 'todo' } as unknown as HostedRepository,
+        },
+      });
+
+      const made: Awaited<ReturnType<HostingManager['createRepository']>> =
+        await manager.createRepository('GitHub.com', 'matthew', 'todo', true);
+
+      expect(made).toEqual({ ok: true, value: { name: 'todo' } });
+      expect(
+        endpoint.sent.find((entry: { op: string }) => entry.op === 'createRepository')?.params,
+      ).toEqual({ host: 'github.com', account: 'matthew', name: 'todo', private: true });
+    });
+
+    it('createRepository_refusesAHostNoPluginServes_andAnAccountThatCouldRedirectThePath', async () => {
+      build();
+
+      expect((await manager.createRepository('gitlab.com', 'matthew', 'todo', false)).ok).toBe(
+        false,
+      );
+      expect((await manager.createRepository('github.com', 'a/b', 'todo', false)).ok).toBe(false);
+      expect(endpoint.sent.some((entry: { op: string }) => entry.op === 'createRepository')).toBe(
         false,
       );
     });

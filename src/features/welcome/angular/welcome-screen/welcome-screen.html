@@ -65,7 +65,7 @@
         (opened)="opened()"
       />
       @if (isShown('create')) {
-        <app-welcome-create [hidden]="section() !== 'create'" />
+        <app-welcome-create [hidden]="section() !== 'create'" (opened)="opened()" />
       }
       @if (isShown('source-control')) {
         <app-welcome-source-control

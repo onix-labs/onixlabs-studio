@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { DirectoryListing } from '@shared/api/workspace-channels';
 
-import { Workspaces } from './workspaces';
+import { WorkspaceAgentStart, Workspaces } from './workspaces';
 
 const LISTING: DirectoryListing = { path: '/ws', name: 'ws', entries: [] };
 
@@ -26,5 +26,14 @@ describe('Workspaces', () => {
 
   it('takeInitial_whenNothingStashed_returnsUndefined', () => {
     expect(workspaces.takeInitial('absent')).toBeUndefined();
+  });
+
+  it('takeAgentStart_returnsTheStart_once_forItsOwnTab', () => {
+    const start: WorkspaceAgentStart = { opening: 'Ready.', brief: 'A new project.' };
+    workspaces.setAgentStart('tab-1', start);
+
+    expect(workspaces.takeAgentStart('tab-2')).toBeUndefined();
+    expect(workspaces.takeAgentStart('tab-1')).toBe(start);
+    expect(workspaces.takeAgentStart('tab-1')).toBeUndefined();
   });
 });

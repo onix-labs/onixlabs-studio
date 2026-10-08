@@ -87,6 +87,16 @@
   color: var(--danger-color);
 }
 
+.create__spin {
+  animation: create-spin 1s linear infinite;
+}
+
+@keyframes create-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
 .create__destination {
   margin: 0.5rem 0 0;
   font-size: 0.76rem;

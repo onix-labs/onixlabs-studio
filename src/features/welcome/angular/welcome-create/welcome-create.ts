@@ -4,12 +4,23 @@ import {
   computed,
   inject,
   OnInit,
+  output,
+  OutputEmitterRef,
   signal,
   Signal,
   WritableSignal,
 } from '@angular/core';
+import type { ForgeHostAccount, ForgeResult } from '@shared/api/forge-types';
+import type { HostedAccount } from '@shared/api/hosting-protocol';
+import type { NewProjectOutcome, NewProjectRepository } from '@shared/api/new-project-channels';
 import { installedContributions } from '@shared/api/plugin-channels';
+import type { Skill } from '@shared/api/skill-channels';
 import { Clone } from '@shared/angular/services/clone/clone';
+import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
+import { Forge } from '@shared/angular/services/forge/forge';
+import { NewProject } from '@shared/angular/services/new-project/new-project';
+import { Skills } from '@shared/angular/services/skills/skills';
+import type { WorkspaceAgentStart } from '@shared/angular/services/workspaces/workspaces';
 import { Log } from '@shared/angular/services/log/log';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
 import { Icon } from '@shared/angular/icons/icon';
@@ -54,6 +65,31 @@ export interface ProjectStarter {
 }
 
 /**
+ * Describes an account a hosted repository can be made under.
+ */
+interface ProjectAccount {
+  /**
+   * Gets the account's key: its host and login.
+   */
+  readonly id: string;
+
+  /**
+   * Gets the code host, e.g. "github.com".
+   */
+  readonly host: string;
+
+  /**
+   * Gets the host's display name, e.g. "GitHub".
+   */
+  readonly provider: string;
+
+  /**
+   * Gets the account's login.
+   */
+  readonly login: string;
+}
+
+/**
  * The welcome screen's Create Something section: an optional form — a project's name, where it goes
  * and its repository — and the starters that open a project agent. It hosts no conversation itself.
  *
@@ -62,8 +98,12 @@ export interface ProjectStarter {
  * starter chosen decides only which skill the agent begins with, from the most general ("Create
  * Something") to the specific.
  *
- * ⚠️ A layout preview: the starters are a fixed list rather than the skill library's, and starting
- * says what would happen instead of doing it.
+ * A complete form makes the project — the folder, or a clone of a repository the code host makes — and
+ * opens it with the agent waiting, briefed on the project and its starter's skill when the library has
+ * it.
+ *
+ * ⚠️ Still to come: the starters are a fixed list rather than the skill library's, a local repository
+ * needs the version-control plugin to learn to make one, and an empty form only says what it would do.
  */
 @Component({
   selector: 'app-welcome-create',
@@ -73,6 +113,11 @@ export interface ProjectStarter {
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class WelcomeCreate implements OnInit {
+  /**
+   * Emits once a project has been made and opened, so the welcome screen steps aside.
+   */
+  public readonly opened: OutputEmitterRef<void> = output<void>();
+
   /**
    * Gets the icon set, exposed for the template.
    */
@@ -92,6 +137,26 @@ export class WelcomeCreate implements OnInit {
    * Holds the plugin registry, which says whether repositories can be made and hosted.
    */
   private readonly plugins: Plugins = inject(Plugins);
+
+  /**
+   * Holds the forge service, which lists the accounts a repository can be made under.
+   */
+  private readonly forge: Forge = inject(Forge);
+
+  /**
+   * Holds the new-project service, which makes the project in the main process.
+   */
+  private readonly newProject: NewProject = inject(NewProject);
+
+  /**
+   * Holds the file opener, which opens the project as a workspace.
+   */
+  private readonly fileOpener: FileOpener = inject(FileOpener);
+
+  /**
+   * Holds the skill library, where a starter's skill is looked up.
+   */
+  private readonly skills: Skills = inject(Skills);
 
   /**
    * Gets the starter every project can begin with: no assumption about what is being built.
@@ -188,9 +253,31 @@ export class WelcomeCreate implements OnInit {
   );
 
   /**
-   * Holds what starting would have done, said in place of doing it while this is a preview.
+   * Holds the accounts hosted repositories can be made under, across the signed-in hosts.
+   */
+  protected readonly accounts: WritableSignal<readonly ProjectAccount[]> = signal<
+    readonly ProjectAccount[]
+  >([]);
+
+  /**
+   * Holds the account picked for a hosted repository — its id — or null.
+   */
+  protected readonly account: WritableSignal<string | null> = signal<string | null>(null);
+
+  /**
+   * Holds what starting would have done, said in place of doing it where it is not built yet.
    */
   protected readonly preview: WritableSignal<string | null> = signal<string | null>(null);
+
+  /**
+   * Holds whether the project is being made.
+   */
+  protected readonly creating: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Holds why the project could not be made, or null.
+   */
+  protected readonly error: WritableSignal<string | null> = signal<string | null>(null);
 
   /**
    * Gets whether a version-control plugin, which makes the repository, is installed.
@@ -224,6 +311,24 @@ export class WelcomeCreate implements OnInit {
   );
 
   /**
+   * Gets whether the repository picked is one a code host makes.
+   */
+  protected readonly hosted: Signal<boolean> = computed(
+    (): boolean => this.repository() === 'public' || this.repository() === 'private',
+  );
+
+  /**
+   * Gets the account choices.
+   */
+  protected readonly accountOptions: Signal<readonly DropdownOption[]> = computed(
+    (): readonly DropdownOption[] =>
+      this.accounts().map((account: ProjectAccount): DropdownOption => ({
+        value: account.id,
+        label: `${account.login} (${account.provider})`,
+      })),
+  );
+
+  /**
    * Gets the layout choices, the same as cloning's.
    */
   protected readonly layoutOptions: readonly DropdownOption[] = [
@@ -254,7 +359,8 @@ export class WelcomeCreate implements OnInit {
       this.nameValid() &&
       this.location() !== null &&
       this.repository() !== null &&
-      (this.repository() === 'none' || this.layout() !== null),
+      (this.repository() === 'none' || this.layout() !== null) &&
+      (!this.hosted() || this.account() !== null),
   );
 
   /**
@@ -281,7 +387,8 @@ export class WelcomeCreate implements OnInit {
   });
 
   /**
-   * Starts with the folder clones go into, the one the user chose last.
+   * Starts with the folder clones go into, the one the user chose last, and reads the accounts a
+   * repository can be made under.
    */
   public ngOnInit(): void {
     void this.cloner.parent().then((parent: string | null): void => {
@@ -289,6 +396,44 @@ export class WelcomeCreate implements OnInit {
         this.location.set(parent);
       }
     });
+    void this.loadAccounts();
+  }
+
+  /**
+   * Reads the accounts on every signed-in host. A host that fails is left out rather than failing the
+   * rest; with no hosting plugin there are none.
+   * @returns Resolves once they have been read.
+   */
+  private async loadAccounts(): Promise<void> {
+    if (!this.forge.isAvailable || !this.canHost()) {
+      return;
+    }
+    const accounts: ProjectAccount[] = [];
+    const hosts: readonly ForgeHostAccount[] = await this.forge.hosts();
+    for (const entry of hosts.filter((h: ForgeHostAccount): boolean => h.status.authenticated)) {
+      const listed: ForgeResult<readonly HostedAccount[]> = await this.forge.accounts(entry.host);
+      if (listed.ok) {
+        accounts.push(
+          ...listed.value.map((account: HostedAccount): ProjectAccount => ({
+            id: `${entry.host}/${account.login}`,
+            host: entry.host,
+            provider: entry.provider,
+            login: account.login,
+          })),
+        );
+      }
+    }
+    this.accounts.set(accounts);
+    this.pickSoleAccount();
+  }
+
+  /**
+   * Picks the account for a hosted repository when there is only one to pick.
+   */
+  private pickSoleAccount(): void {
+    if (this.hosted() && this.account() === null && this.accounts().length === 1) {
+      this.account.set(this.accounts()[0].id);
+    }
   }
 
   /**
@@ -297,7 +442,7 @@ export class WelcomeCreate implements OnInit {
    */
   protected onNameInput(event: Event): void {
     this.name.set((event.target as HTMLInputElement).value);
-    this.preview.set(null);
+    this.settle();
   }
 
   /**
@@ -308,7 +453,7 @@ export class WelcomeCreate implements OnInit {
     const chosen: string | null = await this.cloner.pickParent();
     if (chosen !== null) {
       this.location.set(chosen);
-      this.preview.set(null);
+      this.settle();
     }
   }
 
@@ -318,7 +463,21 @@ export class WelcomeCreate implements OnInit {
    */
   protected setRepository(value: string): void {
     this.repository.set(isRepository(value) ? value : null);
-    this.preview.set(null);
+    this.pickSoleAccount();
+    this.settle();
+  }
+
+  /**
+   * Records the account picked.
+   * @param value The picked value.
+   */
+  protected setAccount(value: string): void {
+    this.account.set(
+      this.accounts().some((account: ProjectAccount): boolean => account.id === value)
+        ? value
+        : null,
+    );
+    this.settle();
   }
 
   /**
@@ -327,21 +486,119 @@ export class WelcomeCreate implements OnInit {
    */
   protected setLayout(value: string): void {
     this.layout.set(value === 'flat' || value === 'worktree' ? value : null);
+    this.settle();
+  }
+
+  /**
+   * Clears what the last start said, once the form changes.
+   */
+  private settle(): void {
     this.preview.set(null);
+    this.error.set(null);
   }
 
   /**
    * Starts a project agent with a starter's skill: in a new workspace when the form is complete, in
-   * its own tab otherwise. A preview for now: it says which, rather than doing it.
+   * its own tab otherwise.
    * @param starter The starter.
+   * @returns Resolves once the project is open, or has failed.
    */
-  protected start(starter: ProjectStarter): void {
-    const where: string = this.complete()
-      ? `open a new workspace at ${this.target()}`
-      : 'open an agent tab, which asks where the project goes later';
-    this.log.info('welcome', `Project agent "${starter.skill}" requested (preview only)`);
-    this.preview.set(`Preview: this would ${where}, starting from the “${starter.title}” skill.`);
+  protected async start(starter: ProjectStarter): Promise<void> {
+    if (this.creating()) {
+      return;
+    }
+    this.settle();
+    if (!this.complete()) {
+      // ⚠️ Not built yet: the agent's own tab, which asks for the details later (#806).
+      this.log.info('welcome', `Project agent "${starter.skill}" requested without details`);
+      this.preview.set(
+        `Not built yet: this will open an agent tab, starting from the “${starter.title}” skill, which asks where the project goes later. Fill in the details to open a workspace now.`,
+      );
+      return;
+    }
+    const repository: NewProjectRepository | string = this.repositoryRequest();
+    if (typeof repository === 'string') {
+      this.error.set(repository);
+      return;
+    }
+    const name: string = this.name().trim();
+    this.creating.set(true);
+    try {
+      const outcome: NewProjectOutcome = await this.newProject.create({ name, repository });
+      if (!outcome.ok) {
+        this.error.set(outcome.error);
+        return;
+      }
+      const skill: Skill | undefined = this.skills
+        .skills()
+        .find((candidate: Skill): boolean => candidate.enabled && candidate.name === starter.skill);
+      const start: WorkspaceAgentStart = agentStart(name, outcome.path, starter, skill);
+      if (await this.fileOpener.reopenDirectory(outcome.path, start)) {
+        this.opened.emit();
+      } else {
+        this.error.set(`${name} was made at ${outcome.path}, but it could not be opened.`);
+      }
+    } finally {
+      this.creating.set(false);
+    }
   }
+
+  /**
+   * Describes the repository the form asks for, for the main process.
+   * @returns Returns the repository, or why it cannot be made yet.
+   */
+  private repositoryRequest(): NewProjectRepository | string {
+    const choice: ProjectRepository | null = this.repository();
+    const layout: ProjectLayout | null = this.layout();
+    if (choice === 'none') {
+      return { kind: 'none' };
+    }
+    if (choice === 'local') {
+      return 'Studio cannot make a local repository yet. Choose no repository, or a hosted one.';
+    }
+    const account: ProjectAccount | undefined = this.accounts().find(
+      (candidate: ProjectAccount): boolean => candidate.id === this.account(),
+    );
+    if (choice === null || layout === null || account === undefined) {
+      return 'Finish the project details first.';
+    }
+    return {
+      kind: 'hosted',
+      host: account.host,
+      account: account.login,
+      private: choice === 'private',
+      layout,
+    };
+  }
+}
+
+/**
+ * Describes how a new project's agent starts: Studio's opening line, and the brief every turn carries —
+ * what the project is and where it began, with the starter's skill when the library has it.
+ * @param name The project's name.
+ * @param path Where it is.
+ * @param starter The starter it began from.
+ * @param skill The starter's skill, when the library has it.
+ * @returns Returns the start.
+ */
+export function agentStart(
+  name: string,
+  path: string,
+  starter: ProjectStarter,
+  skill: Skill | undefined,
+): WorkspaceAgentStart {
+  const brief: string[] = [
+    `The user has just created a new project, "${name}", at ${path}. This workspace is that project; it is new and holds nothing the user wrote yet.`,
+    `They started from "${starter.title}": ${starter.summary}`,
+    'Help them plan the project before building it: ask about what it is for and how it should be made, one question at a time, and recommend an option when offering a choice. Follow them if they want to talk about something else. Ask before creating files.',
+  ];
+  if (skill !== undefined) {
+    brief.push(`Follow the "${skill.name}" skill:\n\n${skill.body}`);
+  }
+  return {
+    opening: `${name} is ready. Tell the agent about your project to start planning it.`,
+    brief: brief.join('\n\n'),
+  };
 }
 
 /**

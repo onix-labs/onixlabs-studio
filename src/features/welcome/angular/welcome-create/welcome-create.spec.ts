@@ -1,10 +1,19 @@
 import { signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
+import type { ForgeHostAccount, ForgeResult } from '@shared/api/forge-types';
+import type { HostedAccount } from '@shared/api/hosting-protocol';
+import type { NewProjectOutcome, NewProjectRequest } from '@shared/api/new-project-channels';
 import type { PluginSummary } from '@shared/api/plugin-channels';
+import type { Skill } from '@shared/api/skill-channels';
 import { Clone } from '@shared/angular/services/clone/clone';
+import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
+import { Forge } from '@shared/angular/services/forge/forge';
+import { NewProject } from '@shared/angular/services/new-project/new-project';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
-import { WelcomeCreate } from './welcome-create';
+import { Skills } from '@shared/angular/services/skills/skills';
+import type { WorkspaceAgentStart } from '@shared/angular/services/workspaces/workspaces';
+import { agentStart, ProjectStarter, WelcomeCreate } from './welcome-create';
 
 /**
  * Builds an installed plugin filling a slot.
@@ -25,6 +34,12 @@ describe('WelcomeCreate', () => {
   let plugins: WritableSignal<readonly PluginSummary[]>;
   let remembered: string | null;
   let picked: string | null;
+  let accounts: HostedAccount[];
+  let created: NewProjectRequest[];
+  let outcome: NewProjectOutcome;
+  let opened: { path: string; start: WorkspaceAgentStart | undefined }[];
+  let openedCount: number;
+  let skills: Skill[];
 
   beforeEach(async () => {
     plugins = signal<readonly PluginSummary[]>([
@@ -33,6 +48,12 @@ describe('WelcomeCreate', () => {
     ]);
     remembered = '/Users/me/Development';
     picked = '/Users/me/Projects';
+    accounts = [{ login: 'matthew', name: null, kind: 'user' }];
+    created = [];
+    outcome = { ok: true, path: '/Users/me/Development/todo-app' };
+    opened = [];
+    openedCount = 0;
+    skills = [];
     await TestBed.configureTestingModule({
       imports: [WelcomeCreate],
       providers: [
@@ -44,6 +65,41 @@ describe('WelcomeCreate', () => {
             pickParent: (): Promise<string | null> => Promise.resolve(picked),
           },
         },
+        {
+          provide: Forge,
+          useValue: {
+            isAvailable: true,
+            hosts: (): Promise<readonly ForgeHostAccount[]> =>
+              Promise.resolve([
+                {
+                  host: 'github.com',
+                  provider: 'GitHub',
+                  status: { authenticated: true },
+                } as unknown as ForgeHostAccount,
+              ]),
+            accounts: (): Promise<ForgeResult<readonly HostedAccount[]>> =>
+              Promise.resolve({ ok: true, value: accounts }),
+          },
+        },
+        {
+          provide: NewProject,
+          useValue: {
+            create: (request: NewProjectRequest): Promise<NewProjectOutcome> => {
+              created.push(request);
+              return Promise.resolve(outcome);
+            },
+          },
+        },
+        {
+          provide: FileOpener,
+          useValue: {
+            reopenDirectory: (path: string, start?: WorkspaceAgentStart): Promise<boolean> => {
+              opened.push({ path, start });
+              return Promise.resolve(true);
+            },
+          },
+        },
+        { provide: Skills, useValue: { skills: (): readonly Skill[] => skills } },
       ],
     }).compileComponents();
   });
@@ -54,6 +110,17 @@ describe('WelcomeCreate', () => {
   async function render(): Promise<void> {
     fixture = TestBed.createComponent(WelcomeCreate);
     host = fixture.nativeElement as HTMLElement;
+    fixture.componentInstance.opened.subscribe((): void => {
+      openedCount += 1;
+    });
+    await fixture.whenStable();
+  }
+
+  /**
+   * Clicks New Project Agent and lets the project be made.
+   */
+  async function startGeneral(): Promise<void> {
+    host.querySelector<HTMLButtonElement>('.create__start')!.click();
     await fixture.whenStable();
   }
 
@@ -160,13 +227,89 @@ describe('WelcomeCreate', () => {
 
     await choose('Repository layout', 'flat');
     expect(destination()).toContain('/Users/me/Development/todo-app');
+  });
 
-    host.querySelector<HTMLButtonElement>('.create__start')!.click();
+  it('noRepository_makesTheFolder_opensIt_withTheAgentStart_andStepsAside', async () => {
+    await render();
+    await typeName('todo-app');
+    await choose('Repository', 'none');
+
+    await startGeneral();
+
+    expect(created).toEqual([{ name: 'todo-app', repository: { kind: 'none' } }]);
+    expect(opened).toHaveLength(1);
+    expect(opened[0].path).toBe('/Users/me/Development/todo-app');
+    expect(opened[0].start?.opening).toContain('todo-app is ready');
+    expect(openedCount).toBe(1);
+  });
+
+  it('aHostedRepository_isMadeUnderTheSoleAccount_inTheLayoutPicked', async () => {
+    await render();
+    await typeName('todo-app');
+    await choose('Repository', 'private');
+    await choose('Repository layout', 'worktree');
+
+    await startGeneral();
+
+    expect(created).toEqual([
+      {
+        name: 'todo-app',
+        repository: {
+          kind: 'hosted',
+          host: 'github.com',
+          account: 'matthew',
+          private: true,
+          layout: 'worktree',
+        },
+      },
+    ]);
+  });
+
+  it('severalAccounts_waitForOneToBePicked', async () => {
+    accounts = [
+      { login: 'matthew', name: null, kind: 'user' },
+      { login: 'onixlabs', name: null, kind: 'organization' },
+    ] as HostedAccount[];
+    await render();
+    await typeName('todo-app');
+    await choose('Repository', 'public');
+    await choose('Repository layout', 'flat');
+    expect(destination()).toContain('Finish the details');
+
+    await choose('Account', 'github.com/onixlabs');
+    await startGeneral();
+
+    expect(created[0].repository).toMatchObject({ account: 'onixlabs', private: false });
+  });
+
+  it('aFailure_isShown_andNothingOpens', async () => {
+    outcome = { ok: false, error: '/Users/me/Development/todo-app already exists.' };
+    await render();
+    await typeName('todo-app');
+    await choose('Repository', 'none');
+
+    await startGeneral();
+
+    expect(host.querySelector('.create__error')!.textContent).toContain('already exists');
+    expect(opened).toEqual([]);
+    expect(openedCount).toBe(0);
+  });
+
+  it('theStartersSkill_isFoundInTheLibrary_byName', async () => {
+    skills = [
+      { name: 'new-web-app', enabled: true, body: 'Ask about hosting.' } as unknown as Skill,
+    ];
+    await render();
+    await typeName('todo-app');
+    await choose('Repository', 'none');
+    const web: HTMLButtonElement = Array.from(
+      host.querySelectorAll<HTMLButtonElement>('.create__starter'),
+    ).find((row: HTMLButtonElement): boolean => row.textContent.includes('Web Application'))!;
+
+    web.click();
     await fixture.whenStable();
 
-    expect(host.querySelector('.create__notice')!.textContent).toContain(
-      'open a new workspace at /Users/me/Development/todo-app',
-    );
+    expect(opened[0].start?.brief).toContain('Ask about hosting.');
   });
 
   it('noRepository_needsNoLayout', async () => {
@@ -177,7 +320,7 @@ describe('WelcomeCreate', () => {
     expect(destination()).toContain('Opens a new workspace');
   });
 
-  it('aStarter_namesItsSkill_inThePreview', async () => {
+  it('aStarterWithoutDetails_saysTheAgentTabIsNotBuiltYet', async () => {
     await render();
     const flutter: HTMLButtonElement = Array.from(
       host.querySelectorAll<HTMLButtonElement>('.create__starter'),
@@ -200,11 +343,35 @@ describe('WelcomeCreate', () => {
 
   it('editingTheForm_clearsThePreview', async () => {
     await render();
-    host.querySelector<HTMLButtonElement>('.create__start')!.click();
-    await fixture.whenStable();
+    await startGeneral();
 
     await typeName('todo');
 
     expect(host.querySelector('.create__notice')).toBeNull();
+  });
+});
+
+describe('agentStart', () => {
+  const starter: ProjectStarter = {
+    skill: 'new-cli-tool',
+    title: 'Command-Line Tool',
+    summary: 'A tool run from the terminal.',
+    icon: undefined as never,
+  };
+
+  it('briefsTheAgent_onTheProject_andItsStarter', () => {
+    const start: WorkspaceAgentStart = agentStart('todo', '/p/todo', starter, undefined);
+
+    expect(start.brief).toContain('"todo", at /p/todo');
+    expect(start.brief).toContain('Command-Line Tool');
+    expect(start.brief).not.toContain('skill:');
+  });
+
+  it('carriesTheSkillsBody_whenTheLibraryHasIt', () => {
+    const skill: Skill = { name: 'new-cli-tool', body: 'Ask about packaging.' } as Skill;
+
+    expect(agentStart('todo', '/p/todo', starter, skill).brief).toContain(
+      'Follow the "new-cli-tool" skill:\n\nAsk about packaging.',
+    );
   });
 });

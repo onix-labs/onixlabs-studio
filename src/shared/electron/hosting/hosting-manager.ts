@@ -228,6 +228,37 @@ export class HostingManager {
   }
 
   /**
+   * Makes a new, empty repository on a host, for a new project (#806). Asked for by the user through
+   * the welcome screen's form, so it is made as the user, without the agents' permission prompt.
+   * @param host The host.
+   * @param account The account login it is made under.
+   * @param repository The repository's name.
+   * @param isPrivate Whether only those given access can see it.
+   * @returns Returns the repository made, or why it could not be.
+   */
+  public async createRepository(
+    host: string,
+    account: string,
+    repository: string,
+    isPrivate: boolean,
+  ): Promise<ForgeResult<HostedRepository>> {
+    const name: string | null = this.servedHost(host);
+    if (name === null) {
+      return { ok: false, error: 'No installed plugin serves that host.', unauthorized: false };
+    }
+    if (account.length === 0 || /[/\\?#\s]/.test(account)) {
+      return { ok: false, error: 'No account was named.', unauthorized: false };
+    }
+    return toResult(
+      await this.host.request(
+        'createRepository',
+        { host: name, account, name: repository, private: isPrivate },
+        USER,
+      ),
+    );
+  }
+
+  /**
    * Validates a host the renderer named: an installed plugin must be the one to sign in to it.
    * @param host The untrusted host.
    * @returns Returns the lowercased host, or null.

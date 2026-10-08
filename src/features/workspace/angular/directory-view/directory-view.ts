@@ -119,7 +119,7 @@ import {
 } from '@shared/angular/services/workspace/active-workspace';
 import { Workspace } from '@shared/angular/services/workspace/workspace';
 import { WorkspaceGit } from '@features/workspace/angular/workspace-git/workspace-git';
-import { Workspaces } from '@shared/angular/services/workspaces/workspaces';
+import { WorkspaceAgentStart, Workspaces } from '@shared/angular/services/workspaces/workspaces';
 import { CommitDetail } from '@shared/angular/components/panels/commit-detail/commit-detail';
 import { DockContainer } from '@shared/angular/components/dock-layout/dock-container/dock-container';
 import { WORKSPACE_DOCK_BLUEPRINT } from './workspace-dock-blueprint';
@@ -461,6 +461,11 @@ export class DirectoryView implements OnInit, OnDestroy {
    * Holds the global registry that hands off the initial folder for this tab.
    */
   private readonly workspaces: Workspaces = inject(Workspaces);
+
+  /**
+   * Holds this view's agent conversation, which a new project's agent start opens fresh.
+   */
+  private readonly agentConversation: AgentConversation = inject(AgentConversation);
 
   /**
    * Holds the global active-workspace seam this tab publishes its open folder to, so the status
@@ -1791,6 +1796,23 @@ export class DirectoryView implements OnInit, OnDestroy {
       this.log.info('workspace', 'Workspace folder opened', initial.path);
       this.workspace.openListing(initial);
     }
+    const start: WorkspaceAgentStart | undefined = this.workspaces.takeAgentStart(this.tabId());
+    if (start !== undefined) {
+      this.startAgent(start);
+    }
+  }
+
+  /**
+   * Opens this workspace's agent on a new project (#806): a fresh conversation carrying the project's
+   * brief, opening on Studio's line, with the agent panel brought forward to wait for the user.
+   * @param start How the agent starts.
+   */
+  private startAgent(start: WorkspaceAgentStart): void {
+    this.log.info('workspace', 'Starting the agent on a new project');
+    this.agentConversation.newChat();
+    this.agent.setBrief(start.brief);
+    this.agent.note(start.opening);
+    this.dockReveal.reveal('agent');
   }
 
   /**

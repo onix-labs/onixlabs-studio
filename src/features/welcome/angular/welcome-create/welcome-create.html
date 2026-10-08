@@ -42,6 +42,18 @@
       [fullWidth]="true"
       (valueChange)="setRepository($event)"
     />
+    @if (hosted()) {
+      <app-dropdown
+        class="create__choice"
+        ariaLabel="Account"
+        [placeholder]="accounts().length === 0 ? 'No accounts signed in' : 'Account…'"
+        [options]="accountOptions()"
+        [value]="account() ?? ''"
+        [fullWidth]="true"
+        [disabled]="accounts().length === 0"
+        (valueChange)="setAccount($event)"
+      />
+    }
     @if (repository() !== null && repository() !== 'none') {
       <app-dropdown
         class="create__choice"
@@ -56,10 +68,16 @@
 
     <p class="create__destination">{{ destination() }}</p>
 
-    <button type="button" class="create__start" (click)="start(general)">
-      <app-icon [icon]="general.icon" />
-      <span>{{ general.title }}</span>
+    <button type="button" class="create__start" [disabled]="creating()" (click)="start(general)">
+      <app-icon
+        [icon]="creating() ? Icon.SPINNER : general.icon"
+        [class.create__spin]="creating()"
+      />
+      <span>{{ creating() ? 'Creating…' : general.title }}</span>
     </button>
+    @if (error(); as message) {
+      <p class="create__error" role="alert">{{ message }}</p>
+    }
   </aside>
 
   <!-- The starters: each opens the project agent with its own skill, general first. -->
@@ -75,7 +93,12 @@
         <ul class="create__list">
           @for (starter of starters; track starter.skill) {
             <li>
-              <button type="button" class="create__starter" (click)="start(starter)">
+              <button
+                type="button"
+                class="create__starter"
+                [disabled]="creating()"
+                (click)="start(starter)"
+              >
                 <span class="create__starter-icon">
                   <app-icon [icon]="starter.icon" />
                 </span>

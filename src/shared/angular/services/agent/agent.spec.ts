@@ -219,6 +219,31 @@ describe('Agent', () => {
     expect(lastItem()?.kind === 'user' && lastItem()?.text).toBe('hello');
   });
 
+  it('send_carriesTheConversationsBrief_afterTheStandingPrompts_untilANewChat', () => {
+    // #806. A new project's conversation is briefed on the project and its starter skill.
+    const profiles: PromptProfiles = TestBed.inject(PromptProfiles);
+    profiles.update(profiles.create('Everywhere').id, { system: 'Be brief.' });
+    agent.setBrief('A new project.');
+
+    agent.send('hello');
+    expect(runCalls[0].systemPromptExtra).toBe('### Everywhere\nBe brief.\n\nA new project.');
+
+    agent.clear();
+    agent.send('again');
+    expect(runCalls[1].systemPromptExtra).toBe('### Everywhere\nBe brief.');
+  });
+
+  it('note_addsALineInStudiosVoice', () => {
+    agent.note('todo is ready.', 'At /p/todo.');
+
+    expect(lastItem()).toMatchObject({
+      kind: 'notice',
+      text: 'todo is ready.',
+      detail: 'At /p/todo.',
+    });
+    expect(runCalls).toEqual([]);
+  });
+
   it('send_whenNoLanguageIsBound_carriesNoneAndOnlyUnscopedProfilesApply', () => {
     const profiles: PromptProfiles = TestBed.inject(PromptProfiles);
     profiles.update(profiles.create('Everywhere').id, { user: 'Be brief.' });

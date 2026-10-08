@@ -846,6 +846,13 @@ export class Agent {
   private pendingContextSeed: string | null = null;
 
   /**
+   * Holds the conversation's brief: standing instructions Studio gives every turn of this conversation
+   * alone, on top of the user's prompt profiles — what a new project is, and the starter skill it began
+   * from (#806). Null for an ordinary conversation; a new chat or a restored one drops it.
+   */
+  private briefText: string | null = null;
+
+  /**
    * Holds the tokens the conversation currently occupies in the context window: the latest turn's
    * input (the whole re-sent conversation) plus its output. Zero for a fresh conversation and after a
    * compaction, refilling on the next turn.
@@ -1335,7 +1342,9 @@ export class Agent {
     this.activeRequestId = this.runtime.run(this.provider(), runPrompt, {
       agentSessionId: this.agentSessionId,
       ...(language === undefined ? {} : { language }),
-      systemPromptExtra: standing.system,
+      systemPromptExtra: [standing.system, this.briefText ?? '']
+        .filter((layer: string): boolean => layer.trim().length > 0)
+        .join('\n\n'),
       userPromptExtra: standing.user,
       workspaceRoot: this.runWorkspaceRoot(),
       model: this.model(),
@@ -1603,6 +1612,7 @@ export class Agent {
    */
   public clear(): void {
     this.logger.info('Agent', 'Conversation cleared');
+    this.briefText = null;
     this.resetAgentSession();
     this.discardStream();
     this.log.set([]);
@@ -1613,6 +1623,25 @@ export class Agent {
     this.contextTokensState.set(0);
     this.costUsdState.set(0);
     this.queueState.set([]);
+  }
+
+  /**
+   * Gives this conversation a brief: standing instructions sent with every turn, alongside the user's
+   * prompt profiles, until a new chat or a restored conversation replaces it.
+   * @param text The brief, or null for none.
+   */
+  public setBrief(text: string | null): void {
+    this.briefText = text === null || text.trim().length === 0 ? null : text;
+    this.logger.info('Agent', this.briefText === null ? 'Brief cleared' : 'Brief set');
+  }
+
+  /**
+   * Adds a line in Studio's own voice to the transcript — never the model's (#691).
+   * @param text The line.
+   * @param detail A quieter detail beneath it, if any.
+   */
+  public note(text: string, detail?: string): void {
+    this.push({ kind: 'notice', text, ...(detail === undefined ? {} : { detail }) });
   }
 
   /**
@@ -1631,6 +1660,7 @@ export class Agent {
     queue: readonly string[] = [],
   ): void {
     this.logger.info('Agent', 'Conversation restored', items.length, sessionId);
+    this.briefText = null;
     this.resetAgentSession();
     this.activeRequestId = null;
     this.busy.set(false);
