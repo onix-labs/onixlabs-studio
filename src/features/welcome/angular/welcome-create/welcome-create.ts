@@ -37,9 +37,9 @@ interface CreateStepInfo {
   readonly heading?: string;
 
   /**
-   * Gets what it asks, under its name on the step's own page.
+   * Gets what it asks, under its heading on the step's own page, when its heading does not say it.
    */
-  readonly description: string;
+  readonly description?: string;
 }
 
 /**
@@ -88,7 +88,6 @@ export class WelcomeCreate implements OnInit {
       id: 'start',
       title: 'Start',
       heading: 'What do you want to build',
-      description: 'Choose what kind of project this is, or describe it in your own words.',
     },
     {
       id: 'details',

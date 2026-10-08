@@ -1,20 +1,7 @@
 <div class="step">
-  <div class="step__field">
-    <app-icon [icon]="Icon.SEARCH" />
-    <input
-      type="text"
-      placeholder="Search templates…"
-      aria-label="Search templates"
-      spellcheck="false"
-      [value]="query()"
-      (input)="onQueryInput($event)"
-      (keydown.escape)="query.set('')"
-    />
-  </div>
-
   <div class="step__list-frame" appOverlayScrollbar=".step__list">
     <ul class="step__list" aria-label="Templates">
-      @for (template of templates(); track template.skill) {
+      @for (template of templates; track template.skill) {
         <li>
           <button
             type="button"
@@ -33,8 +20,6 @@
             }
           </button>
         </li>
-      } @empty {
-        <li class="step__empty">No template matches. Describe it below instead.</li>
       }
     </ul>
   </div>

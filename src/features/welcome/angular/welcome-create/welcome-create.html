@@ -5,7 +5,9 @@
       <h2 class="create__title" id="create-step-title">
         {{ current().heading ?? current().title }}
       </h2>
-      <p class="create__description">{{ current().description }}</p>
+      @if (current().description; as description) {
+        <p class="create__description">{{ description }}</p>
+      }
     </header>
 
     <div class="create__body">
