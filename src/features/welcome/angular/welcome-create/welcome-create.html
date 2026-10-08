@@ -1,5 +1,5 @@
 <div class="create">
-  <!-- The step shown, then the way on. -->
+  <!-- The step shown. -->
   <section class="create__main" aria-labelledby="create-step-title">
     <header class="create__header">
       <h2 class="create__title" id="create-step-title">
@@ -34,8 +34,32 @@
         }
       }
     </div>
+  </section>
 
-    <footer class="create__footer">
+  <!-- The checklist: every step, how it stands, and a way to jump to it — then the way on. -->
+  <nav class="create__side" aria-labelledby="create-steps-title">
+    <h2 class="create__heading" id="create-steps-title">New Project</h2>
+    <ol class="create__steps">
+      @for (step of steps; track step.id) {
+        <li>
+          <button
+            type="button"
+            class="create__step"
+            [class.create__step--current]="stateOf(step.id) === 'current'"
+            [class.create__step--done]="stateOf(step.id) === 'done'"
+            [attr.aria-current]="stateOf(step.id) === 'current' ? 'step' : null"
+            (click)="draft.goTo(step.id)"
+          >
+            <app-icon class="create__step-icon" [icon]="iconOf(step.id)" />
+            <span>{{ step.title }}</span>
+          </button>
+        </li>
+      }
+    </ol>
+    <p class="create__lead">
+      Every step is optional. Fill in what you know; the agent asks about the rest.
+    </p>
+    <div class="create__nav">
       @if (draft.error(); as message) {
         <p class="create__error" role="alert">{{ message }}</p>
       }
@@ -60,34 +84,6 @@
           <span>{{ primaryLabel() }}</span>
         }
       </button>
-    </footer>
-  </section>
-
-  <!-- The checklist: every step, how it stands, and a way to jump to it. -->
-  <nav class="create__side" aria-labelledby="create-steps-title">
-    <h2 class="create__heading" id="create-steps-title">New Project</h2>
-    <ol class="create__steps">
-      @for (step of steps; track step.id) {
-        <li>
-          <button
-            type="button"
-            class="create__step"
-            [class.create__step--current]="stateOf(step.id) === 'current'"
-            [class.create__step--done]="stateOf(step.id) === 'done'"
-            [attr.aria-current]="stateOf(step.id) === 'current' ? 'step' : null"
-            (click)="draft.goTo(step.id)"
-          >
-            <app-icon class="create__step-icon" [icon]="iconOf(step.id)" />
-            <span>{{ step.title }}</span>
-          </button>
-        </li>
-      }
-    </ol>
-    <p class="create__lead">
-      Every step is optional. Fill in what you know; the agent asks about the rest.
-    </p>
-    <button type="button" class="create__secondary create__over" (click)="draft.reset()">
-      Start Over
-    </button>
+    </div>
   </nav>
 </div>

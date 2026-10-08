@@ -9,7 +9,7 @@
 // The step filling the left; the checklist down the right.
 .create {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 14rem;
+  grid-template-columns: minmax(0, 1fr) 16rem;
   gap: 1.5rem;
   block-size: 100%;
   min-block-size: 0;
@@ -81,11 +81,6 @@
   color: var(--wl-faint);
 }
 
-.create__over {
-  align-self: flex-start;
-  margin-block-start: auto;
-}
-
 .create__main {
   display: flex;
   flex-direction: column;
@@ -112,18 +107,19 @@
   min-block-size: 0;
 }
 
-.create__footer {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 0.6rem;
+// The way on, at the foot of the checklist: Back and Skip/Next side by side, half each, with what went
+// wrong above them.
+.create__nav {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin-block-start: auto;
   padding-block-start: 0.75rem;
   border-block-start: 0.0625rem solid var(--wl-border);
 }
 
 .create__error {
-  flex: 1 1 auto;
-  min-inline-size: 0;
+  grid-column: 1 / -1;
   margin: 0;
   font-size: 0.76rem;
   line-height: 1.4;
@@ -133,13 +129,20 @@
 .create__secondary {
   @include secondary-button;
   @include control-metrics;
+
+  justify-content: center;
 }
 
+// "Send to Workspace Agent" is longer than half the column: it wraps rather than overflowing.
 .create__primary {
   @include primary-button;
   @include control-metrics;
 
-  min-inline-size: 7rem;
+  block-size: auto;
+  min-block-size: 2.25rem;
+  padding-block: 0.35rem;
+  line-height: 1.25;
+  text-align: center;
 }
 
 .create__spin {

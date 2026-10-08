@@ -107,9 +107,7 @@ describe('WelcomeCreate', () => {
   });
 
   it('back_isOffOnTheFirstStep', () => {
-    expect(
-      host.querySelector<HTMLButtonElement>('.create__secondary:not(.create__over)')!.disabled,
-    ).toBe(true);
+    expect(host.querySelector<HTMLButtonElement>('.create__secondary')!.disabled).toBe(true);
   });
 
   it('walkingThrough_showsEachStep_andMarksThoseFilledIn', async () => {
@@ -204,16 +202,5 @@ describe('WelcomeCreate', () => {
 
     expect(host.querySelector('.create__error')!.textContent).toBe('It already exists.');
     expect(openedCount).toBe(0);
-  });
-
-  it('startOver_clearsTheDraft', async () => {
-    host.querySelector<HTMLButtonElement>('.step__row')!.click();
-    await settle();
-
-    host.querySelector<HTMLButtonElement>('.create__over')!.click();
-    await settle();
-
-    expect(TestBed.inject(ProjectDraft).template()).toBeNull();
-    expect(primary().textContent.trim()).toBe('Skip');
   });
 });
