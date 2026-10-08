@@ -1,6 +1,7 @@
 import { PluginActionResult, PluginState, PluginSummary } from '@shared/api/plugin-channels';
 import { logger } from '../../logger';
 import { HandPlacedPluginError, PluginContext, PluginDescriptor } from './plugin-catalogue';
+import { PluginInstallEvents } from './plugin-install-events';
 import { PluginInstallRecord, PluginStore } from './plugin-store';
 
 /**
@@ -43,16 +44,25 @@ export class PluginManager {
   private readonly warnedUnconfirmed: Set<string> = new Set<string>();
 
   /**
+   * Holds where completed installs and removals are announced, or undefined to announce nothing.
+   */
+  private readonly events: PluginInstallEvents | undefined;
+
+  /**
    * Initializes a new instance of the {@link PluginManager} class.
    * @param descriptors The available plugins.
    * @param context The surface descriptors detect and install themselves through.
    * @param store The record of what Studio installed.
+   * @param events Where completed installs and removals are announced, so the hosts stop what they
+   * left behind (#881); undefined to announce nothing.
    */
   public constructor(
     descriptors: readonly PluginDescriptor[],
     context: PluginContext,
     store: PluginStore,
+    events?: PluginInstallEvents,
   ) {
+    this.events = events;
     this.descriptors = new Map<string, PluginDescriptor>(
       descriptors.map((descriptor: PluginDescriptor): [string, PluginDescriptor] => [
         descriptor.id,
@@ -147,6 +157,7 @@ export class PluginManager {
       // it. Pruning here is what makes an update a replacement rather than an accumulation — and it
       // happens only after the new one verified, so a failed update leaves the working install alone.
       await descriptor.pruneOtherVersions?.(this.context);
+      const replaced: PluginInstallRecord | null = this.store.get(id);
       // The descriptor describes exactly the version that just landed, so this is the moment to keep
       // what it contributes. Once the catalogue moves on, nothing else can say (#878).
       this.store.add({
@@ -156,6 +167,13 @@ export class PluginManager {
         contributions: descriptor.contributions,
       });
       logger.info('PluginManager', `Installed ${id} at ${installedPath}`);
+      // Announced only once the record names the new version, so a host that restarts on hearing it
+      // starts what was just installed rather than racing the record to the old one (#881).
+      this.events?.emit({
+        pluginId: id,
+        kind: 'installed',
+        contributions: [...(replaced?.contributions ?? []), ...descriptor.contributions],
+      });
       return { success: true, state: 'installed', error: null };
     } catch (error: unknown) {
       logger.error('PluginManager', `Install threw for ${id}`, error);
@@ -181,8 +199,16 @@ export class PluginManager {
     this.setBusy(id, true);
     try {
       logger.info('PluginManager', `Uninstalling ${id}`);
+      const removed: PluginInstallRecord | null = this.store.get(id);
       await descriptor.uninstall(this.context);
       this.store.remove(id);
+      // The files are gone, but a host's process for them is not until it is told (#881). A plugin
+      // placed by hand never reaches here — its removal refuses — so its process rightly keeps running.
+      this.events?.emit({
+        pluginId: id,
+        kind: 'removed',
+        contributions: removed?.contributions ?? descriptor.contributions,
+      });
       return { success: true, state: 'available', error: null };
     } catch (error: unknown) {
       if (error instanceof HandPlacedPluginError) {

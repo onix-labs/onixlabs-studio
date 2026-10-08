@@ -99,6 +99,10 @@ import {
   contributedHosting,
   contributedVersionControl,
 } from '@shared/electron/contributions/plugins/contributed';
+import {
+  PluginInstallChange,
+  pluginInstallEvents,
+} from '@shared/electron/contributions/plugins/plugin-install-events';
 import { HostingHost } from '@shared/electron/hosting/hosting-host';
 import { HostingAgentAccess } from '@shared/electron/hosting/hosting-agent-access';
 import { HostingSettings } from '@shared/electron/hosting/hosting-settings';
@@ -1004,9 +1008,43 @@ class Program {
     this.debugManager.register();
     this.debugLaunchResolver.register();
 
+    // Before the contributions activate, because the Plugin Manager is one of them: from its first
+    // install on, a plugin updated or removed must not leave its old process serving (#881).
+    pluginInstallEvents().on((change: PluginInstallChange): void =>
+      this.stopReplacedPlugins(change),
+    );
+
     // Activate the main-process contributions after the hard-wired managers above, alongside (not in
     // place of) them. A failing contribution is isolated by the registry and never aborts startup.
     void this.contributions.activateAll();
+  }
+
+  /**
+   * Stops what an install or removal left running, in whichever host runs it (#881). The next request
+   * starts whatever is installed now, or is refused because nothing is; an agent's live session ends
+   * once it is idle, and resumes on the next turn.
+   * @param change What was installed or removed.
+   */
+  private stopReplacedPlugins(change: PluginInstallChange): void {
+    const seen: Set<string> = new Set<string>();
+    for (const contribution of change.contributions) {
+      const key: string = `${contribution.slot}\u0000${contribution.id}`;
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      if (contribution.slot === 'hosting') {
+        this.hostingHost.restartPlugin(contribution.id);
+      } else if (contribution.slot === 'version-control') {
+        this.versionControlHost.restartPlugin(contribution.id);
+      } else if (contribution.slot === 'agent-harness') {
+        this.aiManager.retireHarnessSessions(contribution.id);
+      }
+    }
+    this.logger.info(
+      'app',
+      `${change.pluginId} ${change.kind}; stopped what it left running (${[...seen].length} contribution(s))`,
+    );
   }
 
   /**

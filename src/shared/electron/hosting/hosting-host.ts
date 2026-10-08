@@ -154,6 +154,12 @@ export class HostingHost {
   >();
 
   /**
+   * Holds how many times each plugin has been restarted, so a start already under way when it was
+   * restarted is recognised as stale when it finishes and does not bring the old process back (#881).
+   */
+  private readonly generations: Map<string, number> = new Map<string, number>();
+
+  /**
    * Holds the reads in flight, keyed by plugin, operation and parameters.
    */
   private readonly inFlightReads: Map<string, Promise<HostingResponse>> = new Map<
@@ -358,11 +364,13 @@ export class HostingHost {
   }
 
   /**
-   * Stops a plugin, so the next request starts it afresh — after its sign-in choice changed — and
-   * forgets what its repositories allowed, which a different account may see differently.
+   * Stops a plugin, so the next request starts it afresh — after its sign-in choice changed, or the
+   * plugin was updated or removed (#881) — and forgets what its repositories allowed, which a different
+   * account or version may see differently.
    * @param pluginId The plugin.
    */
   public restartPlugin(pluginId: string): void {
+    this.generations.set(pluginId, (this.generations.get(pluginId) ?? 0) + 1);
     this.running.get(pluginId)?.client.dispose();
     this.running.delete(pluginId);
     this.starting.delete(pluginId);
@@ -623,7 +631,14 @@ export class HostingHost {
   private ensure(descriptor: HostingDescriptor): Promise<RunningPlugin | string> {
     const current: RunningPlugin | undefined = this.running.get(descriptor.id);
     if (current?.client.running === true) {
-      return Promise.resolve(current);
+      // ⛔ Still installed, or nothing is served. A running process outlives its files, so being
+      // alive is not the same as being installed: a removed plugin went on answering for as long as
+      // its process lasted (#881). Stopping it here holds even if the removal's notice was missed.
+      if (descriptor.resolve().available) {
+        return Promise.resolve(current);
+      }
+      logger.info('HostingHost', `${descriptor.id} is no longer installed; stopping its process`);
+      this.restartPlugin(descriptor.id);
     }
     this.running.delete(descriptor.id);
     const inProgress: Promise<RunningPlugin | string> | undefined = this.starting.get(
@@ -633,7 +648,10 @@ export class HostingHost {
       return inProgress;
     }
     const started: Promise<RunningPlugin | string> = this.start(descriptor).finally((): void => {
-      this.starting.delete(descriptor.id);
+      // Only this start's own entry: a restart while it ran may already have a newer one in place.
+      if (this.starting.get(descriptor.id) === started) {
+        this.starting.delete(descriptor.id);
+      }
     });
     this.starting.set(descriptor.id, started);
     return started;
@@ -646,6 +664,7 @@ export class HostingHost {
    * @returns Returns the running plugin, or the reason it could not be started.
    */
   private async start(descriptor: HostingDescriptor): Promise<RunningPlugin | string> {
+    const generation: number = this.generations.get(descriptor.id) ?? 0;
     const resolution: HostingResolution = descriptor.resolve();
     if (!resolution.available) {
       return resolution.reason;
@@ -669,6 +688,13 @@ export class HostingHost {
     );
     if (description === null) {
       return `${descriptor.displayName} could not be started.`;
+    }
+    if ((this.generations.get(descriptor.id) ?? 0) !== generation) {
+      // Restarted while this one started — updated or removed underneath it. What it started is the
+      // version that was replaced, so it is stopped and whatever is installed now is started instead.
+      logger.info('HostingHost', `${descriptor.id} changed while starting; starting it afresh`);
+      client.dispose();
+      return this.ensure(descriptor);
     }
     const plugin: RunningPlugin = {
       client,

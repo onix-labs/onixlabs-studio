@@ -262,6 +262,50 @@ describe('VersionControlHost', () => {
     });
   });
 
+  it('request_afterThePluginWasRemoved_stopsItsProcess_andRefuses', async () => {
+    // #881: alive is not installed. The process outlived its files and answered anyway.
+    let installed: boolean = true;
+    const fake: FakeClient = fakeClient(['stash']);
+    const vcs: VersionControlHost = host(
+      [
+        {
+          ...plugin('git', '.git'),
+          resolve: () =>
+            installed
+              ? { available: true, spec: { command: 'git', args: [] } }
+              : { available: false, reason: 'git is not installed — install it in Plugins.' },
+        },
+      ],
+      ['.git'],
+      fake,
+    );
+    await vcs.request(ROOT, 'status', {});
+    installed = false;
+
+    const after: VersionControlResponse<'status'> = await vcs.request(ROOT, 'status', {});
+
+    expect(after).toMatchObject({
+      ok: false,
+      error: 'git is not installed — install it in Plugins.',
+    });
+    expect(fake.client.running).toBe(false);
+    expect(fake.requests.map((request) => request.op)).toEqual(['status']);
+  });
+
+  it('restartPlugin_whileItStarts_startsItAfresh_ratherThanKeepingTheStaleStart', async () => {
+    // An update lands while the old version is still starting: what that start produces is stale.
+    const fake: FakeClient = fakeClient(['stash']);
+    const vcs: VersionControlHost = host([plugin('git', '.git')], ['.git'], fake);
+
+    const pending: Promise<VersionControlResponse<'status'>> = vcs.request(ROOT, 'status', {});
+    vcs.restartPlugin('git');
+    const response: VersionControlResponse<'status'> = await pending;
+
+    expect(response.ok).toBe(true);
+    expect(fake.starts).toHaveLength(2);
+    expect(fake.client.running).toBe(true);
+  });
+
   it('request_refusesAGlobalOperation', async () => {
     const vcs: VersionControlHost = host([plugin('git', '.git')], ['.git'], fakeClient([]));
 

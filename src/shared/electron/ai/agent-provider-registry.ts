@@ -147,7 +147,17 @@ export function toHarnessDescriptor(
         label: harness.displayName,
         models: connection.models,
         defaultModelId: connection.defaultModelId,
-        connect: (): HarnessTransport => connect(spec),
+        // ⛔ Resolved at every connect, not captured from `create`. Installs are version-scoped and an
+        // update prunes the version it replaced, so a spec captured when the provider was built names
+        // an entry point the update deleted — every later turn failed to spawn until Studio restarted
+        // (#881). Resolving each time also refuses, in words, a harness removed since.
+        connect: (): HarnessTransport => {
+          const current: HarnessSpawnSpec | null = harness.spawnSpec();
+          if (current === null) {
+            throw new Error(`${harness.displayName} is not installed.`);
+          }
+          return connect(current);
+        },
         sessionModel: harness.sessionModel,
         remoteControl: harness.remoteControl,
         // What the harness needs to know about the connection it serves. A harness talking to a plain

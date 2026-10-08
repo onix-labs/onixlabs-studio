@@ -2,6 +2,7 @@ import { PluginActionResult, PluginChannel, PluginSummary } from '@shared/api/pl
 import { LspProvisioner } from '../../lsp/lsp-provisioner';
 import { ContributionContext, MainContribution } from '../main-contribution';
 import { PluginContext, pluginCatalogue } from './plugin-catalogue';
+import { pluginInstallEvents } from './plugin-install-events';
 import { PluginManager } from './plugin-manager';
 import { contributedPlugins, pluginIndex, pluginStore } from './contributed';
 
@@ -38,10 +39,14 @@ export class PluginsContribution implements MainContribution {
     // The store comes from `contributed.ts` rather than being constructed here, because the resolution
     // path reads the installed version from it to decide which version to run (#456). Two instances
     // over one file would let the manager and the registries disagree about what is installed.
+    //
+    // The events are shared for the same reason: the hosts that must stop a replaced or removed plugin
+    // are wired in `main.ts`, out of this contribution's reach (#881).
     this.manager = new PluginManager(
       [...pluginCatalogue(), ...contributedPlugins()],
       pluginContext,
       pluginStore(),
+      pluginInstallEvents(),
     );
     // Every state change — an action starting as well as finishing — pushes the refreshed list, so a
     // view shows a plugin as busy for as long as its install runs rather than only learning it is

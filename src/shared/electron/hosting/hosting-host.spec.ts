@@ -606,5 +606,46 @@ describe('HostingHost', () => {
 
       expect(created).toBe(1);
     });
+
+    it('aPluginRemovedWhileRunning_isStopped_andAnswersNothingMore', async () => {
+      // #881: the process outlived its files and went on answering for pull requests and CI runs.
+      const host: HostingHost = build();
+      await host.describeRepository(REPO);
+      const running: FakeEndpoint | undefined = endpoints.get('onixlabs.github');
+      descriptors = [
+        {
+          ...descriptor('onixlabs.github', ['github.com']),
+          resolve: (): HostingResolution => ({
+            available: false,
+            reason: 'GitHub is not installed.',
+          }),
+        },
+      ];
+
+      const response: HostingResponse = await host.request(
+        'listIssues',
+        { repository: REPO },
+        USER,
+      );
+
+      expect(response.ok).toBe(false);
+      expect(running?.running).toBe(false);
+      expect(sent('onixlabs.github')).toEqual([]);
+    });
+
+    it('aRestartWhileStarting_doesNotBringTheReplacedProcessBack', async () => {
+      // An update lands while the old version is still starting: what that start produces is stale.
+      const host: HostingHost = build();
+      const describing: Promise<HostingPluginDescription> = host.describePlugin('onixlabs.github');
+      const replaced: FakeEndpoint | undefined = endpoints.get('onixlabs.github');
+
+      host.restartPlugin('onixlabs.github');
+      const described: HostingPluginDescription = await describing;
+
+      expect(described.ok).toBe(true);
+      expect(created).toBe(2);
+      expect(replaced?.running).toBe(false);
+      expect(endpoints.get('onixlabs.github')?.running).toBe(true);
+    });
   });
 });

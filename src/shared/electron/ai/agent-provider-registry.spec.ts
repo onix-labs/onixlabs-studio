@@ -205,6 +205,36 @@ describe('toHarnessDescriptor', () => {
     expect(provider.label).toBe('Claude');
   });
 
+  it('connect_spawnsWhatIsInstalledNow_notWhatWasInstalledWhenTheProviderWasBuilt', async () => {
+    // #881: the spec was captured when the provider was built, so after an update pruned the old
+    // version every turn tried to spawn an entry point that no longer existed.
+    let command: string | null = '/plugins/claude/0.6.0/harness';
+    const seen: string[] = [];
+    const descriptor: AgentProviderDescriptor = toHarnessDescriptor(
+      {
+        ...contributed(true),
+        spawnSpec: (): { command: string; args: readonly string[] } | null =>
+          command === null ? null : { command, args: [] },
+      },
+      (spec: { command: string }): never => {
+        seen.push(spec.command);
+        throw new Error('stopped before spawning');
+      },
+    );
+    const provider: AgentProvider = descriptor.create(
+      connection('my-claude', 'claude-login', 'claude-harness'),
+    );
+
+    command = '/plugins/claude/0.7.0/harness';
+    await expect(provider.discoverModels?.({} as never)).rejects.toThrow('stopped before spawning');
+    command = null;
+    await expect(provider.discoverModels?.({} as never)).rejects.toThrow(
+      'Claude is not installed.',
+    );
+
+    expect(seen).toEqual(['/plugins/claude/0.7.0/harness']);
+  });
+
   it('isTheOnlyThingRegisteredOnceTheBuiltInsAreGone', () => {
     const registry: InstanceType<typeof AgentProviderRegistry> = new AgentProviderRegistry();
     registry.register(toHarnessDescriptor(contributed(true), () => ({}) as never));
