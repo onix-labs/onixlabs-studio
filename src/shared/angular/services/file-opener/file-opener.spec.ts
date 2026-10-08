@@ -424,7 +424,7 @@ describe('FileOpener', () => {
 
   it('reopenDirectory_withAnAgentStart_stashesItForTheNewTab', async () => {
     nextListing = ROOT_LISTING;
-    const start: WorkspaceAgentStart = { opening: 'Ready.', brief: 'A new project.' };
+    const start: WorkspaceAgentStart = { prompt: 'Hello.', brief: 'A new project.' };
 
     expect(await opener.reopenDirectory('/ws', start)).toBe(true);
 

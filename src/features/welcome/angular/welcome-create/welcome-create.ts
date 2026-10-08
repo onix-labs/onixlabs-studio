@@ -66,6 +66,12 @@ export interface ProjectStarter {
    * Gets its icon.
    */
   readonly icon: Icon;
+
+  /**
+   * Gets what the user says first when the conversation starts from it, in the user's voice: what they
+   * want to build.
+   */
+  readonly prompt: string;
 }
 
 /**
@@ -183,54 +189,64 @@ export class WelcomeCreate implements OnInit {
       skill: 'new-project',
       title: 'Create Something',
       summary: 'No idea of the shape yet: talk it through from the beginning.',
+      prompt: "I want to build something new, and I'd like to plan it with you.",
       icon: Icon.WELCOME_STARTER_ANYTHING,
     },
     {
       skill: 'new-desktop-app',
       title: 'Desktop Application',
       summary: 'A native or cross-platform app for Windows, macOS and Linux.',
+      prompt: 'I want to build a desktop application. Help me plan it.',
       icon: Icon.WELCOME_STARTER_DESKTOP,
     },
     {
       skill: 'new-web-app',
       title: 'Web Application',
       summary: 'A site or app in the browser, with or without a back end.',
+      prompt: 'I want to build a web application. Help me plan it.',
       icon: Icon.WELCOME_STARTER_WEB,
     },
     {
       skill: 'new-mobile-app',
       title: 'Mobile Application',
       summary: 'An app for iOS, Android, or both.',
+      prompt: 'I want to build a mobile application. Help me plan it.',
       icon: Icon.WELCOME_STARTER_MOBILE,
     },
     {
       skill: 'new-flutter-app',
       title: 'Cross-Platform Mobile App with Flutter',
       summary: 'Dart and Flutter, for iOS and Android from one code base.',
+      prompt:
+        'I want to build a cross-platform mobile application with Dart and Flutter. Help me plan it.',
       icon: Icon.WELCOME_STARTER_MOBILE,
     },
     {
       skill: 'new-service',
       title: 'API or Service',
       summary: 'A back-end service, its API, data and deployment.',
+      prompt: 'I want to build an API or back-end service. Help me plan it.',
       icon: Icon.WELCOME_STARTER_SERVICE,
     },
     {
       skill: 'new-cli-tool',
       title: 'Command-Line Tool',
       summary: 'A tool run from the terminal, and how it is installed.',
+      prompt: 'I want to build a command-line tool. Help me plan it.',
       icon: Icon.WELCOME_STARTER_CLI,
     },
     {
       skill: 'new-library',
       title: 'Library or Package',
       summary: 'Reusable code, published for others to depend on.',
+      prompt: 'I want to build a library or package for others to use. Help me plan it.',
       icon: Icon.WELCOME_STARTER_LIBRARY,
     },
     {
       skill: 'new-game',
       title: 'Game',
       summary: 'A game, its engine and the platforms it ships to.',
+      prompt: 'I want to build a game. Help me plan it.',
       icon: Icon.WELCOME_STARTER_GAME,
     },
   ];
@@ -570,6 +586,7 @@ export class WelcomeCreate implements OnInit {
       const start: WorkspaceAgentStart = agentStart(starter, this.skillFor(starter), {
         name,
         path: outcome.path,
+        repository: describeRepository(repository),
       });
       if (await this.fileOpener.reopenDirectory(outcome.path, start)) {
         this.opened.emit();
@@ -634,17 +651,54 @@ export class WelcomeCreate implements OnInit {
 }
 
 /**
- * Describes how a new project's agent starts: Studio's opening line, and the brief every turn carries —
- * what the project is and where it began, with the starter's skill when the library has it.
+ * Describes a project Studio has made, for the agent's first message.
+ */
+export interface StartedProject {
+  /**
+   * Gets the project's name.
+   */
+  readonly name: string;
+
+  /**
+   * Gets where it is.
+   */
+  readonly path: string;
+
+  /**
+   * Gets its repository in a phrase — "a local repository" — or null for none.
+   */
+  readonly repository: string | null;
+}
+
+/**
+ * Words a project's repository for the agent's first message.
+ * @param repository The repository made.
+ * @returns Returns the phrase, or null for none.
+ */
+export function describeRepository(repository: NewProjectRepository): string | null {
+  switch (repository.kind) {
+    case 'none':
+      return null;
+    case 'local':
+      return 'a local repository';
+    case 'hosted':
+      return `a ${repository.private ? 'private' : 'public'} repository on ${repository.host}`;
+  }
+}
+
+/**
+ * Describes how a new project's agent starts: the user's first message, sent at once — what Studio
+ * made, then what the starter says they want to build — and the brief every turn carries, with the
+ * starter's skill when the library has it.
  * @param starter The starter it began from.
  * @param skill The starter's skill, when the library has it.
- * @param project The project's name and folder, or null when it has no folder yet.
+ * @param project The project Studio made, or null when it has no folder yet.
  * @returns Returns the start.
  */
 export function agentStart(
   starter: ProjectStarter,
   skill: Skill | undefined,
-  project: { readonly name: string; readonly path: string } | null,
+  project: StartedProject | null,
 ): WorkspaceAgentStart {
   const brief: string[] = [
     project === null
@@ -656,11 +710,12 @@ export function agentStart(
   if (skill !== undefined) {
     brief.push(`Follow the "${skill.name}" skill:\n\n${skill.body}`);
   }
+  const made: string =
+    project === null
+      ? ''
+      : `I've created a project called "${project.name}"${project.repository === null ? '' : `, with ${project.repository}`}. `;
   return {
-    opening:
-      project === null
-        ? 'Tell the agent about your project to start planning it.'
-        : `${project.name} is ready. Tell the agent about your project to start planning it.`,
+    prompt: `${made}${starter.prompt}`,
     brief: brief.join('\n\n'),
   };
 }

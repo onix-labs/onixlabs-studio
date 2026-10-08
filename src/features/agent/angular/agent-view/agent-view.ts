@@ -127,7 +127,8 @@ export class AgentView implements OnInit, OnDestroy {
 
   /**
    * Starts the conversation on a new project when the welcome screen opened this tab for one: fresh,
-   * briefed on the project's starter, and opening on Studio's line (#806).
+   * briefed on the project's starter, sending the user's first message at once (#806) — on the project
+   * surface, as this tab's chat sends.
    */
   public ngOnInit(): void {
     const id: string | undefined = this.tabId();
@@ -137,7 +138,7 @@ export class AgentView implements OnInit, OnDestroy {
       this.log.info('agent.view', 'Starting the agent on a new project', { tabId: id });
       this.conversation.newChat();
       this.agent.setBrief(start.brief);
-      this.agent.note(start.opening);
+      this.agent.send(start.prompt, id, 'project');
     }
   }
 

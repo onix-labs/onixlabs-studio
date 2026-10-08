@@ -1636,15 +1636,6 @@ export class Agent {
   }
 
   /**
-   * Adds a line in Studio's own voice to the transcript — never the model's (#691).
-   * @param text The line.
-   * @param detail A quieter detail beneath it, if any.
-   */
-  public note(text: string, detail?: string): void {
-    this.push({ kind: 'notice', text, ...(detail === undefined ? {} : { detail }) });
-  }
-
-  /**
    * Replaces the transcript with a restored conversation, ending any in-flight run and reseeding the
    * id counter past the restored items so subsequently appended items keep unique ids. Used to
    * rehydrate a persisted conversation into this session.

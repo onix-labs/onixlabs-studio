@@ -1,7 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { AgentChat } from '@shared/angular/components/agent-chat/agent-chat';
-import { Agent, AgentItem } from '@shared/angular/services/agent/agent';
+import { Agent } from '@shared/angular/services/agent/agent';
 import { Workspaces } from '@shared/angular/services/workspaces/workspaces';
 import { AgentView } from './agent-view';
 
@@ -37,10 +37,10 @@ describe('AgentView', () => {
     expect(chat.surface()).toBe('project');
   });
 
-  it('aNewProjectsStart_opensTheConversation_onStudiosLine_withTheBrief', async () => {
+  it('aNewProjectsStart_sendsTheUsersFirstMessage_atOnce', async () => {
     // #806. The welcome screen opens this tab for a project that has no folder yet.
     TestBed.inject(Workspaces).setAgentStart('agent-1', {
-      opening: 'Tell the agent about your project.',
+      prompt: 'I want to build a game. Help me plan it.',
       brief: 'A new project.',
     });
     const started: ComponentFixture<AgentView> = TestBed.createComponent(AgentView);
@@ -48,9 +48,10 @@ describe('AgentView', () => {
     await started.whenStable();
 
     const agent: Agent = started.debugElement.injector.get(Agent);
-    expect(agent.items().map((item: AgentItem): string => `${item.kind}:${item.text}`)).toEqual([
-      'notice:Tell the agent about your project.',
-    ]);
+    expect(agent.items()[0]).toMatchObject({
+      kind: 'user',
+      text: 'I want to build a game. Help me plan it.',
+    });
     expect(TestBed.inject(Workspaces).takeAgentStart('agent-1')).toBeUndefined();
   });
 

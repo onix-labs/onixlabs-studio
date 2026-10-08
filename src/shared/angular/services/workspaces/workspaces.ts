@@ -3,14 +3,14 @@ import { DirectoryListing } from '@shared/api/workspace-channels';
 import { Log } from '@shared/angular/services/log/log';
 
 /**
- * Describes how a new workspace's agent starts (#806): a conversation that opens on a line in Studio's
- * voice, carrying a brief every turn of it is given.
+ * Describes how a new project's agent starts (#806): a conversation that opens on the user's first
+ * message, sent at once, carrying a brief every turn of it is given.
  */
 export interface WorkspaceAgentStart {
   /**
-   * Gets the line the conversation opens on.
+   * Gets the first message, in the user's voice, sent as soon as the conversation opens.
    */
-  readonly opening: string;
+  readonly prompt: string;
 
   /**
    * Gets the standing instructions every turn of the conversation carries.

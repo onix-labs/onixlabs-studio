@@ -18,7 +18,7 @@ import type { Tab } from '@shared/angular/services/tabs/tab';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { SourceControl } from '@shared/angular/services/source-control/source-control';
 import { WorkspaceAgentStart, Workspaces } from '@shared/angular/services/workspaces/workspaces';
-import { agentStart, ProjectStarter, WelcomeCreate } from './welcome-create';
+import { agentStart, describeRepository, ProjectStarter, WelcomeCreate } from './welcome-create';
 
 /**
  * Builds an installed plugin filling a slot.
@@ -255,6 +255,9 @@ describe('WelcomeCreate', () => {
     const start: WorkspaceAgentStart | undefined = TestBed.inject(Workspaces).takeAgentStart(
       tabs[0].id,
     );
+    expect(start?.prompt).toBe(
+      'I want to build a cross-platform mobile application with Dart and Flutter. Help me plan it.',
+    );
     expect(start?.brief).toContain('Flutter');
     expect(start?.brief).toContain('no name or folder yet');
     expect(created).toEqual([]);
@@ -283,7 +286,9 @@ describe('WelcomeCreate', () => {
     expect(created).toEqual([{ name: 'todo-app', repository: { kind: 'none' } }]);
     expect(opened).toHaveLength(1);
     expect(opened[0].path).toBe('/Users/me/Development/todo-app');
-    expect(opened[0].start?.opening).toContain('todo-app is ready');
+    expect(opened[0].start?.prompt).toBe(
+      'I\'ve created a project called "todo-app". I want to build something new, and I\'d like to plan it with you.',
+    );
     expect(openedCount).toBe(1);
   });
 
@@ -463,14 +468,19 @@ describe('agentStart', () => {
     title: 'Command-Line Tool',
     summary: 'A tool run from the terminal.',
     icon: undefined as never,
+    prompt: 'I want to build a command-line tool.',
   };
 
   it('briefsTheAgent_onTheProject_andItsStarter', () => {
     const start: WorkspaceAgentStart = agentStart(starter, undefined, {
       name: 'todo',
       path: '/p/todo',
+      repository: 'a private repository on github.com',
     });
 
+    expect(start.prompt).toBe(
+      'I\'ve created a project called "todo", with a private repository on github.com. I want to build a command-line tool.',
+    );
     expect(start.brief).toContain('"todo", at /p/todo');
     expect(start.brief).toContain('Command-Line Tool');
     expect(start.brief).not.toContain('skill:');
@@ -484,10 +494,24 @@ describe('agentStart', () => {
     );
   });
 
+  it('describeRepository_wordsEachKind', () => {
+    expect(describeRepository({ kind: 'none' })).toBeNull();
+    expect(describeRepository({ kind: 'local', layout: 'flat' })).toBe('a local repository');
+    expect(
+      describeRepository({
+        kind: 'hosted',
+        host: 'github.com',
+        account: 'matthew',
+        private: false,
+        layout: 'worktree',
+      }),
+    ).toBe('a public repository on github.com');
+  });
+
   it('withoutAFolder_tellsTheAgentNotToCreateFiles', () => {
     const start: WorkspaceAgentStart = agentStart(starter, undefined, null);
 
     expect(start.brief).toContain('nowhere to create files');
-    expect(start.opening).toBe('Tell the agent about your project to start planning it.');
+    expect(start.prompt).toBe('I want to build a command-line tool.');
   });
 });

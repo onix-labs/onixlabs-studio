@@ -29,7 +29,7 @@ describe('Workspaces', () => {
   });
 
   it('takeAgentStart_returnsTheStart_once_forItsOwnTab', () => {
-    const start: WorkspaceAgentStart = { opening: 'Ready.', brief: 'A new project.' };
+    const start: WorkspaceAgentStart = { prompt: 'Hello.', brief: 'A new project.' };
     workspaces.setAgentStart('tab-1', start);
 
     expect(workspaces.takeAgentStart('tab-2')).toBeUndefined();

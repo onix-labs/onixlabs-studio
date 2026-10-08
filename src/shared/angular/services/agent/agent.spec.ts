@@ -233,17 +233,6 @@ describe('Agent', () => {
     expect(runCalls[1].systemPromptExtra).toBe('### Everywhere\nBe brief.');
   });
 
-  it('note_addsALineInStudiosVoice', () => {
-    agent.note('todo is ready.', 'At /p/todo.');
-
-    expect(lastItem()).toMatchObject({
-      kind: 'notice',
-      text: 'todo is ready.',
-      detail: 'At /p/todo.',
-    });
-    expect(runCalls).toEqual([]);
-  });
-
   it('send_whenNoLanguageIsBound_carriesNoneAndOnlyUnscopedProfilesApply', () => {
     const profiles: PromptProfiles = TestBed.inject(PromptProfiles);
     profiles.update(profiles.create('Everywhere').id, { user: 'Be brief.' });

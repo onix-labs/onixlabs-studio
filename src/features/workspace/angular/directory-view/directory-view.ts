@@ -1804,14 +1804,15 @@ export class DirectoryView implements OnInit, OnDestroy {
 
   /**
    * Opens this workspace's agent on a new project (#806): a fresh conversation carrying the project's
-   * brief, opening on Studio's line, with the agent panel brought forward to wait for the user.
+   * brief, sending the user's first message at once — as this workspace, the way its agent panel and
+   * Mission Control's tile send — with the agent panel brought forward.
    * @param start How the agent starts.
    */
   private startAgent(start: WorkspaceAgentStart): void {
     this.log.info('workspace', 'Starting the agent on a new project');
     this.agentConversation.newChat();
     this.agent.setBrief(start.brief);
-    this.agent.note(start.opening);
+    this.agent.send(start.prompt, this.tabId(), 'workspace');
     this.dockReveal.reveal('agent');
   }
 
