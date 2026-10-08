@@ -25,9 +25,10 @@
   border-radius: calc(0.5rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
 
-  // The sheen: the tone at its fullest in the centre — never lit past it — faded to transparent at
-  // both edges. It starts wholly off the left edge and leaves wholly off the right, so each sweep
-  // enters and exits cleanly before the next.
+  // The sheen: an even band of the tone across its middle — never past the tone itself, and flat
+  // rather than peaked, since a peak reads as a bright streak — faded to transparent at both edges. It
+  // starts wholly off the left edge and leaves wholly off the right, so each sweep enters and exits
+  // cleanly before the next.
   &::before {
     content: '';
     position: absolute;
@@ -38,9 +39,10 @@
     background: linear-gradient(
       90deg,
       transparent 0%,
-      color-mix(in srgb, var(--progress-bar-color) 40%, transparent) 25%,
-      color-mix(in srgb, var(--progress-bar-color) 75%, transparent) 50%,
-      color-mix(in srgb, var(--progress-bar-color) 40%, transparent) 75%,
+      color-mix(in srgb, var(--progress-bar-color) 45%, transparent) 20%,
+      color-mix(in srgb, var(--progress-bar-color) 70%, transparent) 38%,
+      color-mix(in srgb, var(--progress-bar-color) 70%, transparent) 62%,
+      color-mix(in srgb, var(--progress-bar-color) 45%, transparent) 80%,
       transparent 100%
     );
     transform: translateX(-100%);
