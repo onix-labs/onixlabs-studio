@@ -24,14 +24,14 @@
     </ul>
   </div>
 
-  <div class="step__field step__field--area">
-    <textarea
+  <div class="step__field">
+    <input
       id="create-idea"
-      rows="2"
+      type="text"
       placeholder="Or describe what you want to build here…"
       aria-label="Describe what you want to build"
       [value]="draft.idea()"
       (input)="onIdeaInput($event)"
-    ></textarea>
+    />
   </div>
 </div>

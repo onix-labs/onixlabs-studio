@@ -37,6 +37,6 @@ export class CreateStart {
    * @param event The input event carrying the current value.
    */
   protected onIdeaInput(event: Event): void {
-    this.draft.describe((event.target as HTMLTextAreaElement).value);
+    this.draft.describe((event.target as HTMLInputElement).value);
   }
 }
