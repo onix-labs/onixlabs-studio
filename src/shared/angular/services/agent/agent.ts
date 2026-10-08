@@ -1131,6 +1131,25 @@ export class Agent {
   }
 
   /**
+   * Sends a user message once the providers have loaded — for a message sent the moment a conversation
+   * opens, before anything could have loaded them (#806). Otherwise the same as {@link send}.
+   * @param text The user's message.
+   * @param owningTabId The owning tab (as for {@link send}).
+   * @param surface The run surface (as for {@link send}).
+   * @param images The images attached to the message.
+   * @returns Resolves once the message has been sent.
+   */
+  public async sendWhenReady(
+    text: string,
+    owningTabId?: string,
+    surface?: AgentSurface,
+    images: readonly AiImageRef[] = [],
+  ): Promise<void> {
+    await this.engine.whenLoaded;
+    this.send(text, owningTabId, surface, images);
+  }
+
+  /**
    * Handles a message sent while a run executes: first tries to steer the in-flight run (accepted
    * only when the provider supports streaming input and the run is still open — the message then
    * becomes a further turn in the same run), otherwise queues it to dispatch when the run completes.

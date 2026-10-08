@@ -141,7 +141,7 @@ export class AgentView implements OnInit, OnDestroy {
       for (const reference of start.context ?? []) {
         this.agent.attachContext(reference);
       }
-      this.agent.send(start.prompt, id, 'project', start.images ?? []);
+      void this.agent.sendWhenReady(start.prompt, id, 'project', start.images ?? []);
     }
   }
 
