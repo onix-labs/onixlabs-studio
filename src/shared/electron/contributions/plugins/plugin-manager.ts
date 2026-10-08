@@ -1,7 +1,7 @@
 import { PluginActionResult, PluginState, PluginSummary } from '@shared/api/plugin-channels';
 import { logger } from '../../logger';
 import { HandPlacedPluginError, PluginContext, PluginDescriptor } from './plugin-catalogue';
-import { PluginStore } from './plugin-store';
+import { PluginInstallRecord, PluginStore } from './plugin-store';
 
 /**
  * Owns the plugin model's first two layers: the catalogue of what is **available**, and the state of
@@ -35,6 +35,12 @@ export class PluginManager {
    * Holds the listeners told when a plugin's state changes: an action starting or finishing.
    */
   private readonly listeners: Set<() => void> = new Set<() => void>();
+
+  /**
+   * Holds the identifiers of plugins already logged as described from the catalogue rather than from
+   * their install, so a list pushed on every state change does not repeat the warning.
+   */
+  private readonly warnedUnconfirmed: Set<string> = new Set<string>();
 
   /**
    * Initializes a new instance of the {@link PluginManager} class.
@@ -141,7 +147,14 @@ export class PluginManager {
       // it. Pruning here is what makes an update a replacement rather than an accumulation — and it
       // happens only after the new one verified, so a failed update leaves the working install alone.
       await descriptor.pruneOtherVersions?.(this.context);
-      this.store.add({ id, version: descriptor.version ?? 'unknown', installedPath });
+      // The descriptor describes exactly the version that just landed, so this is the moment to keep
+      // what it contributes. Once the catalogue moves on, nothing else can say (#878).
+      this.store.add({
+        id,
+        version: descriptor.version ?? 'unknown',
+        installedPath,
+        contributions: descriptor.contributions,
+      });
       logger.info('PluginManager', `Installed ${id} at ${installedPath}`);
       return { success: true, state: 'installed', error: null };
     } catch (error: unknown) {
@@ -193,21 +206,43 @@ export class PluginManager {
 
   /**
    * Builds a plugin's summary, resolving its current state.
+   *
+   * ⛔ An installed plugin's contributions come from its install record, not the descriptor. The
+   * descriptor is the catalogue's entry, and once the index describes a newer version every surface
+   * gating on a capability over-reported: the project wizard offered `init` to a Git that could not do
+   * it (#878). A record from before snapshots existed matches the descriptor when the versions agree;
+   * when they do not, nothing on this side can say, so the summary is marked unconfirmed for the
+   * surfaces that can ask the running plugin.
    * @param descriptor The plugin to summarise.
    * @returns Returns the summary.
    */
   private async summarise(descriptor: PluginDescriptor): Promise<PluginSummary> {
     const state: PluginState = await this.stateOf(descriptor);
+    const record: PluginInstallRecord | null = this.store.get(descriptor.id);
+    const installed: PluginInstallRecord | null = state === 'installed' ? record : null;
+    const unconfirmed: boolean =
+      installed !== null &&
+      installed.contributions === undefined &&
+      installed.version !== descriptor.version;
+    if (unconfirmed && !this.warnedUnconfirmed.has(descriptor.id)) {
+      this.warnedUnconfirmed.add(descriptor.id);
+      logger.warn(
+        'PluginManager',
+        `${descriptor.id} ${installed?.version} was installed before Studio recorded its contributions; ` +
+          `describing it from the catalogue's ${descriptor.version} until it is updated`,
+      );
+    }
     return {
       id: descriptor.id,
       name: descriptor.name,
       description: descriptor.description,
       state,
-      contributions: descriptor.contributions,
+      contributions: installed?.contributions ?? descriptor.contributions,
+      ...(unconfirmed ? { contributionsUnconfirmed: true } : {}),
       version: descriptor.version,
       detail: state === 'installed' ? null : (descriptor.detail ?? null),
       origin: descriptor.origin ?? null,
-      installedVersion: this.store.get(descriptor.id)?.version ?? null,
+      installedVersion: record?.version ?? null,
     };
   }
 

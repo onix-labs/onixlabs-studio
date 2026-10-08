@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AiAuthStatus, AiConnection, ProviderPage } from '@shared/api/ai-types';
 import type { ForgeHostAccount } from '@shared/api/forge-types';
-import type { PluginSummary } from '@shared/api/plugin-channels';
+import type { PluginSummary, UnkeyedPluginContribution } from '@shared/api/plugin-channels';
 import type { SetupProbeResult } from '@shared/api/setup-channels';
 import { AiConnections } from '@shared/angular/services/ai-connections/ai-connections';
 import { AiProviders } from '@shared/angular/services/ai-providers/ai-providers';
@@ -115,7 +115,15 @@ describe('SetupStepSummary', () => {
     await TestBed.configureTestingModule({
       imports: [SetupStepSummary],
       providers: [
-        { provide: SetupWizard, useValue: { goTo } },
+        {
+          provide: SetupWizard,
+          // Which systems have an identity is the wizard's decision (#878); the summary only links to it.
+          useValue: {
+            goTo,
+            identitySystems: (): readonly UnkeyedPluginContribution[] =>
+              GIT.contributions as readonly UnkeyedPluginContribution[],
+          },
+        },
         {
           provide: SetupProbes,
           useValue: {

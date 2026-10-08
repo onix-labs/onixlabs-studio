@@ -11,7 +11,6 @@ import type { AiAuthStatus, AiConnection, ProviderPage } from '@shared/api/ai-ty
 import { providerDisplayLabel } from '@shared/api/ai-types';
 import { ForgeHostAccount } from '@shared/api/forge-types';
 import {
-  installedContributions,
   PLUGIN_SLOT_LABELS,
   type PluginContribution,
   type PluginSlot,
@@ -300,13 +299,9 @@ export class SetupStepSummary {
    * Gets the version-control group: the tool, and who commits are from.
    */
   private readonly versionControlGroup: Signal<SummaryGroup> = computed((): SummaryGroup => {
+    const identitySystem: UnkeyedPluginContribution | undefined = this.wizard.identitySystems()[0];
     const identityStep: string =
-      installedContributions(this.plugins.plugins(), 'version-control')
-        .filter((system: UnkeyedPluginContribution): boolean =>
-          (system.capabilities ?? []).includes('identity'),
-        )
-        .map((system: UnkeyedPluginContribution): string => `version-control/${system.id}`)[0] ??
-      'version-control';
+      identitySystem === undefined ? 'version-control' : `version-control/${identitySystem.id}`;
     const probed: readonly SummaryRow[] = this.probes
       .results()
       .filter((result: SetupProbeResult): boolean => VERSION_CONTROL_PROBES.includes(result.id))

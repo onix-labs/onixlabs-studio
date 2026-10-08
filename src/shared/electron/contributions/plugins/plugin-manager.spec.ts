@@ -1,7 +1,8 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
-import { PluginActionResult, PluginSummary } from '@shared/api/plugin-channels';
+import { PluginActionResult, PluginContribution, PluginSummary } from '@shared/api/plugin-channels';
+import { VersionControlCapability } from '@shared/api/version-control-protocol';
 import { HandPlacedPluginError, PluginContext, PluginDescriptor } from './plugin-catalogue';
 import { PluginManager } from './plugin-manager';
 import { PluginStore } from './plugin-store';
@@ -204,6 +205,97 @@ describe('PluginManager', () => {
     expect(result.error).not.toBe(detail);
     expect(result.error).toContain('demo');
     expect(store.get('demo')).toBeNull();
+  });
+
+  describe('contributions (#878)', () => {
+    /**
+     * Builds a version-control plugin at a version, supporting what it is told.
+     * @param version The catalogue version.
+     * @param capabilities What the version supports.
+     * @returns Returns the descriptor, detected as installed.
+     */
+    function git(
+      version: string,
+      capabilities: readonly VersionControlCapability[],
+    ): PluginDescriptor {
+      return {
+        ...descriptor('git', (): boolean => true),
+        version,
+        contributions: [
+          { slot: 'version-control', id: 'git', displayName: 'Git', priority: 100, capabilities },
+        ],
+      };
+    }
+
+    /**
+     * Lists one plugin and returns what its summary says it contributes.
+     * @param manager The manager under test.
+     * @returns Returns the contributions.
+     */
+    async function contributed(manager: PluginManager): Promise<readonly PluginContribution[]> {
+      return (await only(manager)).contributions;
+    }
+
+    it('list_afterTheCatalogueMovesAhead_describesTheInstalledVersion', async () => {
+      // The bug: 0.3.0 in the index could `init`, 0.2.0 on disk could not, and the summary said it could.
+      await new PluginManager([git('0.2.0', ['clone'])], context, store).install('git');
+      const manager: PluginManager = new PluginManager(
+        [git('0.3.0', ['clone', 'init'])],
+        context,
+        store,
+      );
+
+      const summary: PluginSummary = await only(manager);
+
+      expect(summary.contributions).toEqual(git('0.2.0', ['clone']).contributions);
+      expect(summary.contributionsUnconfirmed).toBeUndefined();
+      expect(summary.version).toBe('0.3.0');
+      expect(summary.installedVersion).toBe('0.2.0');
+    });
+
+    it('install_ofTheUpdate_replacesWhatTheSummaryDescribes', async () => {
+      await new PluginManager([git('0.2.0', ['clone'])], context, store).install('git');
+      const manager: PluginManager = new PluginManager(
+        [git('0.3.0', ['clone', 'init'])],
+        context,
+        store,
+      );
+
+      await manager.install('git');
+
+      expect(await contributed(manager)).toEqual(git('0.3.0', ['clone', 'init']).contributions);
+    });
+
+    it('list_ofAPluginThatIsNotInstalled_describesWhatAnInstallWouldBring', async () => {
+      const manager: PluginManager = new PluginManager(
+        [{ ...git('0.3.0', ['init']), detect: (): Promise<boolean> => Promise.resolve(false) }],
+        context,
+        store,
+      );
+
+      expect(await contributed(manager)).toEqual(git('0.3.0', ['init']).contributions);
+    });
+
+    it('list_recordFromBeforeSnapshots_atTheCatalogueVersion_isDescribedByTheCatalogue', async () => {
+      // Same version, same manifest: the catalogue is exactly what is installed, so it is confirmed.
+      store.add({ id: 'git', version: '0.3.0', installedPath: directory });
+      const manager: PluginManager = new PluginManager([git('0.3.0', ['init'])], context, store);
+
+      const summary: PluginSummary = await only(manager);
+
+      expect(summary.contributions).toEqual(git('0.3.0', ['init']).contributions);
+      expect(summary.contributionsUnconfirmed).toBeUndefined();
+    });
+
+    it('list_recordFromBeforeSnapshots_atAnotherVersion_isMarkedUnconfirmed', async () => {
+      store.add({ id: 'git', version: '0.2.0', installedPath: directory });
+      const manager: PluginManager = new PluginManager([git('0.3.0', ['init'])], context, store);
+
+      const summary: PluginSummary = await only(manager);
+
+      expect(summary.contributions).toEqual(git('0.3.0', ['init']).contributions);
+      expect(summary.contributionsUnconfirmed).toBe(true);
+    });
   });
 
   it('install_unknownPlugin_isRejected', async () => {

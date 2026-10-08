@@ -3,8 +3,11 @@ import { TestBed } from '@angular/core/testing';
 import type { HostEnv } from '@shared/api/host';
 import type { PluginSummary } from '@shared/api/plugin-channels';
 import { RELEASE_HIGHLIGHTS } from '@shared/api/release-highlights';
+import type { VersionControlPluginInfo } from '@shared/api/source-control-channels';
+import type { VersionControlCapability } from '@shared/api/version-control-protocol';
 import { LspSettings } from '@shared/angular/services/lsp-settings/lsp-settings';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
+import { SourceControl } from '@shared/angular/services/source-control/source-control';
 import { Studio } from '@shared/angular/services/studio/studio';
 
 import { SetupStep, SetupWizard } from './setup-wizard';
@@ -121,11 +124,43 @@ interface Installed {
 }
 
 /**
+ * Builds the same plugin installed before Studio recorded what an install contributes, with a newer
+ * catalogue entry since, so its summary cannot vouch for its capabilities (#878).
+ * @param capabilities What the catalogue's version says it supports.
+ * @returns Returns the plugin summary.
+ */
+function unconfirmedVersionControl(capabilities: readonly string[]): PluginSummary {
+  return {
+    ...versionControl(capabilities),
+    version: '0.3.0',
+    installedVersion: '0.2.0',
+    contributionsUnconfirmed: true,
+  };
+}
+
+/**
+ * Stands in for the version-control client, answering what the running plugins confirm.
+ * @param capabilities What the running Git confirms.
+ * @returns Returns the stand-in.
+ */
+function runningGit(capabilities: readonly VersionControlCapability[]): SourceControl {
+  return {
+    client: {
+      listPlugins: (): Promise<readonly VersionControlPluginInfo[]> =>
+        Promise.resolve([
+          { id: 'onixlabs.git', installed: true, capabilities } as VersionControlPluginInfo,
+        ]),
+    },
+  } as unknown as SourceControl;
+}
+
+/**
  * Builds the service over a stubbed catalogue, then settles its effects so the baseline is taken.
  * @param installed What is installed.
+ * @param sourceControl The version-control client, or undefined for the real one (no bridge).
  * @returns Returns the service.
  */
-function buildWith(installed: Installed): SetupWizard {
+function buildWith(installed: Installed, sourceControl?: SourceControl): SetupWizard {
   TestBed.configureTestingModule({
     providers: [
       {
@@ -139,6 +174,7 @@ function buildWith(installed: Installed): SetupWizard {
           catalogueLoaded: installed.loaded,
         },
       },
+      ...(sourceControl === undefined ? [] : [{ provide: SourceControl, useValue: sourceControl }]),
     ],
   });
   const wizard: SetupWizard = TestBed.inject(SetupWizard);
@@ -156,6 +192,15 @@ function nothingInstalled(): Installed {
     languages: signal<readonly string[]>([]),
     loaded: signal<boolean>(true),
   };
+}
+
+/**
+ * Lets the running plugins' answer arrive, then settles the effects it feeds.
+ * @returns Returns a promise that resolves once settled.
+ */
+async function settle(): Promise<void> {
+  await new Promise<void>((resolve: () => void): void => void setTimeout(resolve));
+  TestBed.tick();
 }
 
 /**
@@ -471,6 +516,38 @@ describe('SetupWizard', () => {
       installed.plugins.set([versionControl(['stagingArea'])]);
 
       const wizard: SetupWizard = buildWith(installed);
+
+      expect(ids(wizard)).not.toContain('version-control/onixlabs.git');
+    });
+
+    it('steps_whenAnOlderInstallCannotBeVouchedFor_askTheRunningPluginAndTrustItsAnswer', async () => {
+      // The catalogue's 0.3.0 has an identity; the 0.2.0 actually running does not. The summary says
+      // it cannot vouch for the installed version, so the running plugin decides (#878).
+      const installed: Installed = nothingInstalled();
+      installed.plugins.set([unconfirmedVersionControl(['stagingArea', 'identity'])]);
+
+      const wizard: SetupWizard = buildWith(installed, runningGit(['stagingArea']));
+      await settle();
+
+      expect(ids(wizard)).not.toContain('version-control/onixlabs.git');
+    });
+
+    it('steps_whenTheRunningPluginConfirmsAnIdentity_growTheStep', async () => {
+      const installed: Installed = nothingInstalled();
+      installed.plugins.set([unconfirmedVersionControl(['identity'])]);
+
+      const wizard: SetupWizard = buildWith(installed, runningGit(['identity']));
+      await settle();
+
+      expect(ids(wizard)).toContain('version-control/onixlabs.git');
+    });
+
+    it('steps_beforeTheRunningPluginHasAnswered_offerNoIdentityStep', () => {
+      // Offering a step the plugin then refuses is the bug; waiting for its answer is the safe side.
+      const installed: Installed = nothingInstalled();
+      installed.plugins.set([unconfirmedVersionControl(['identity'])]);
+
+      const wizard: SetupWizard = buildWith(installed, runningGit(['identity']));
 
       expect(ids(wizard)).not.toContain('version-control/onixlabs.git');
     });
