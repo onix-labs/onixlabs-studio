@@ -30,7 +30,7 @@ import { canInstall, canUninstall, canUpdate } from './plugin-action-rules';
         variant="solid"
         tone="info"
         label="Update"
-        [icon]="Icon.DOWNLOAD"
+        [icon]="Icon.DOWNLOAD_DUOTONE"
         [disabled]="plugins.busy()"
         (click)="install()"
       />
@@ -39,7 +39,7 @@ import { canInstall, canUninstall, canUpdate } from './plugin-action-rules';
         variant="solid"
         tone="danger"
         label="Remove"
-        [icon]="Icon.TRASH_SIMPLE"
+        [icon]="Icon.TRASH_DUOTONE"
         [disabled]="plugins.busy()"
         (click)="uninstall()"
       />
@@ -50,7 +50,7 @@ import { canInstall, canUninstall, canUpdate } from './plugin-action-rules';
         variant="solid"
         [tone]="canInstall(plugin()) ? 'success' : 'neutral'"
         label="Install"
-        [icon]="Icon.DOWNLOAD"
+        [icon]="Icon.DOWNLOAD_DUOTONE"
         [disabled]="plugins.busy() || !canInstall(plugin())"
         (click)="install()"
       />
