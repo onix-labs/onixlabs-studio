@@ -166,6 +166,12 @@ export class VersionControlHost {
   >();
 
   /**
+   * Holds how many times each plugin has been restarted, so a start already under way when it was
+   * restarted is recognised as stale when it finishes and does not bring the old process back (#881).
+   */
+  private readonly generations: Map<string, number> = new Map<string, number>();
+
+  /**
    * Holds the reads in flight, keyed by plugin, root, operation and parameters.
    */
   private readonly inFlightReads: Map<string, Promise<VersionControlResponse>> = new Map<
@@ -539,10 +545,12 @@ export class VersionControlHost {
   }
 
   /**
-   * Stops a plugin, so the next request starts it afresh — after its executable choice changed.
+   * Stops a plugin, so the next request starts it afresh — after its executable choice changed, or the
+   * plugin was updated or removed (#881).
    * @param pluginId The plugin.
    */
   public restartPlugin(pluginId: string): void {
+    this.generations.set(pluginId, (this.generations.get(pluginId) ?? 0) + 1);
     this.running.get(pluginId)?.client.dispose();
     this.running.delete(pluginId);
     this.starting.delete(pluginId);
@@ -621,7 +629,17 @@ export class VersionControlHost {
   private ensure(descriptor: VersionControlDescriptor): Promise<RunningPlugin | string> {
     const current: RunningPlugin | undefined = this.running.get(descriptor.id);
     if (current?.client.running === true) {
-      return Promise.resolve(current);
+      // ⛔ Still installed, or nothing is served. A running process outlives its files, so being
+      // alive is not the same as being installed (#881). Stopping it here holds even if the removal's
+      // notice was missed.
+      if (descriptor.resolve().available) {
+        return Promise.resolve(current);
+      }
+      logger.info(
+        'VersionControlHost',
+        `${descriptor.id} is no longer installed; stopping its process`,
+      );
+      this.restartPlugin(descriptor.id);
     }
     this.running.delete(descriptor.id);
     const inProgress: Promise<RunningPlugin | string> | undefined = this.starting.get(
@@ -631,7 +649,10 @@ export class VersionControlHost {
       return inProgress;
     }
     const started: Promise<RunningPlugin | string> = this.start(descriptor).finally((): void => {
-      this.starting.delete(descriptor.id);
+      // Only this start's own entry: a restart while it ran may already have a newer one in place.
+      if (this.starting.get(descriptor.id) === started) {
+        this.starting.delete(descriptor.id);
+      }
     });
     this.starting.set(descriptor.id, started);
     return started;
@@ -644,6 +665,7 @@ export class VersionControlHost {
    * @returns Returns the running plugin, or the reason it could not be started.
    */
   private async start(descriptor: VersionControlDescriptor): Promise<RunningPlugin | string> {
+    const generation: number = this.generations.get(descriptor.id) ?? 0;
     const resolution: VersionControlResolution = descriptor.resolve();
     if (!resolution.available) {
       return resolution.reason;
@@ -659,6 +681,16 @@ export class VersionControlHost {
     );
     if (description === null) {
       return `${descriptor.displayName} could not be started.`;
+    }
+    if ((this.generations.get(descriptor.id) ?? 0) !== generation) {
+      // Restarted while this one started — updated, removed or re-pointed underneath it. What it
+      // started is stale, so it is stopped and whatever is configured now is started instead.
+      logger.info(
+        'VersionControlHost',
+        `${descriptor.id} changed while starting; starting it afresh`,
+      );
+      client.dispose();
+      return this.ensure(descriptor);
     }
     const plugin: RunningPlugin = {
       client,

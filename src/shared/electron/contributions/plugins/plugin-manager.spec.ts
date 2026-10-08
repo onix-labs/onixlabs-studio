@@ -4,6 +4,7 @@ import * as path from 'node:path';
 import { PluginActionResult, PluginContribution, PluginSummary } from '@shared/api/plugin-channels';
 import { VersionControlCapability } from '@shared/api/version-control-protocol';
 import { HandPlacedPluginError, PluginContext, PluginDescriptor } from './plugin-catalogue';
+import { PluginInstallChange, PluginInstallEvents } from './plugin-install-events';
 import { PluginManager } from './plugin-manager';
 import { PluginStore } from './plugin-store';
 
@@ -295,6 +296,102 @@ describe('PluginManager', () => {
 
       expect(summary.contributions).toEqual(git('0.3.0', ['init']).contributions);
       expect(summary.contributionsUnconfirmed).toBe(true);
+    });
+  });
+
+  describe('announcing installs and removals (#881)', () => {
+    /**
+     * Builds a manager over one Git plugin that announces on a recorder.
+     * @param version The catalogue version.
+     * @param capabilities What the version supports.
+     * @returns Returns the manager and what it announced.
+     */
+    function announcing(
+      version: string,
+      capabilities: readonly VersionControlCapability[],
+    ): { manager: PluginManager; announced: PluginInstallChange[] } {
+      const announced: PluginInstallChange[] = [];
+      const events: PluginInstallEvents = new PluginInstallEvents();
+      events.on((change: PluginInstallChange): void => void announced.push(change));
+      const git: PluginDescriptor = {
+        ...descriptor('git', (): boolean => true),
+        version,
+        contributions: [
+          { slot: 'version-control', id: 'git', displayName: 'Git', priority: 100, capabilities },
+        ],
+      };
+      return { manager: new PluginManager([git], context, store, events), announced };
+    }
+
+    it('install_announcesWhatTheReplacedAndTheNewVersionContribute', async () => {
+      await announcing('0.2.0', ['clone']).manager.install('git');
+      const { manager, announced } = announcing('0.3.0', ['clone', 'init']);
+
+      await manager.install('git');
+
+      expect(announced).toEqual([
+        {
+          pluginId: 'git',
+          kind: 'installed',
+          contributions: [
+            {
+              slot: 'version-control',
+              id: 'git',
+              displayName: 'Git',
+              priority: 100,
+              capabilities: ['clone'],
+            },
+            {
+              slot: 'version-control',
+              id: 'git',
+              displayName: 'Git',
+              priority: 100,
+              capabilities: ['clone', 'init'],
+            },
+          ],
+        },
+      ]);
+    });
+
+    it('uninstall_announcesTheRemoval_withWhatTheInstallContributed', async () => {
+      const { manager, announced } = announcing('0.3.0', ['init']);
+      await manager.install('git');
+      announced.length = 0;
+
+      await manager.uninstall('git');
+
+      expect(announced.map((change: PluginInstallChange): string => change.kind)).toEqual([
+        'removed',
+      ]);
+      expect(announced[0].contributions.map((c: PluginContribution): string => c.id)).toEqual([
+        'git',
+      ]);
+    });
+
+    it('anActionThatFails_announcesNothing', async () => {
+      // A failed install left the old version running, and a refused removal left the plugin in
+      // place: there is nothing for a host to stop in either case.
+      const announced: PluginInstallChange[] = [];
+      const events: PluginInstallEvents = new PluginInstallEvents();
+      events.on((change: PluginInstallChange): void => void announced.push(change));
+      const manager: PluginManager = new PluginManager(
+        [
+          {
+            ...descriptor('demo', (): boolean => true),
+            install: (): Promise<string | null> => Promise.resolve(null),
+            uninstall: (): Promise<void> =>
+              Promise.reject(new HandPlacedPluginError('/data/plugins/demo')),
+          },
+        ],
+        context,
+        store,
+        events,
+      );
+
+      await manager.install('demo');
+      await manager.uninstall('demo');
+
+      expect(announced).toEqual([]);
     });
   });
 

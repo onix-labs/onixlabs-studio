@@ -75,6 +75,7 @@ import { mergeModels, type ReportedModel } from './model-merge';
 import { PermissionRuleStore } from './permission-rule-store';
 import { RendererBridge } from './renderer-bridge';
 import { sanitizeLanguage, sanitizePromptExtra } from './prompt-guard';
+import { retirementFor, type Retirement } from './live-session-retirement';
 import { checkRunRoot, type OpenRoots, type RunRootCheck } from './run-root-guard';
 import type { SkillOfferer } from './skills/skill-library';
 
@@ -207,6 +208,18 @@ interface LiveSessionEntry {
    * carries a run id like every other event.
    */
   lastRequestId: string;
+
+  /**
+   * How many turns are running in the session now — what decides whether it can be ended at once or
+   * must be left to finish (#881).
+   */
+  activeTurns: number;
+
+  /**
+   * Whether the session is to end as soon as its running turns settle, because the harness it runs on
+   * was updated or removed (#881).
+   */
+  retiring: boolean;
 }
 
 /**
@@ -626,6 +639,40 @@ export class AiManager {
       logger.trace('AiManager.register', 'LogoutClaude invoked');
       return runClaudeLogout().then((): void => undefined);
     });
+  }
+
+  /**
+   * Ends the live sessions running on a harness that was updated or removed, so none goes on running
+   * the version that was replaced (#881).
+   *
+   * ⛔ Never in the middle of a turn. An idle session ends now; one with a turn running is marked, lets
+   * the turn finish, and ends as it settles. Either way the conversation is not lost: its next turn
+   * opens a fresh session, which resumes from the session id onto whatever is installed now — or is
+   * refused, in words, when the harness is gone.
+   * @param harnessId The harness that changed.
+   */
+  public retireHarnessSessions(harnessId: string): void {
+    const retirement: Retirement = retirementFor(this.liveSessions, this.connections, harnessId);
+    for (const key of retirement.endNow) {
+      const entry: LiveSessionEntry | undefined = this.liveSessions.get(key);
+      if (entry !== undefined) {
+        logger.info(
+          'AiManager',
+          `Ending idle live session ${key}: its harness ${harnessId} changed`,
+        );
+        this.endSession(key, entry, 'retired');
+      }
+    }
+    for (const key of retirement.afterTurn) {
+      const entry: LiveSessionEntry | undefined = this.liveSessions.get(key);
+      if (entry !== undefined) {
+        logger.info(
+          'AiManager',
+          `Live session ${key} will end when its turn finishes: its harness ${harnessId} changed`,
+        );
+        entry.retiring = true;
+      }
+    }
   }
 
   /**
@@ -1164,6 +1211,8 @@ export class AiManager {
       reapTimer: null,
       lastActivity: Date.now(),
       lastRequestId: context.requestId,
+      activeTurns: 0,
+      retiring: false,
     };
     this.liveSessions.set(key, entry);
     // A session that ends on its own — harness crashed between turns, panic stop escalated — leaves
@@ -1196,9 +1245,21 @@ export class AiManager {
     this.clearReap(entry);
     entry.lastActivity = Date.now();
     entry.lastRequestId = context.requestId;
+    entry.activeTurns += 1;
     return this.trackLiveTurn(key, entry.session, entry.session.turn(context)).finally((): void => {
-      // Idle again: re-arm the reap for whichever entry is still registered (a failed turn was evicted).
+      entry.activeTurns -= 1;
       const current: LiveSessionEntry | undefined = this.liveSessions.get(key);
+      // Its harness was updated or removed during the turn: the turn was let finish, and now the
+      // session ends, so the next turn resumes on whatever is installed now (#881).
+      if (current === entry && entry.retiring && entry.activeTurns === 0) {
+        logger.info(
+          'AiManager',
+          `Ending live session ${key} now its turn is over: harness changed`,
+        );
+        this.endSession(key, entry, 'retired');
+        return;
+      }
+      // Idle again: re-arm the reap for whichever entry is still registered (a failed turn was evicted).
       if (current !== undefined) {
         current.lastActivity = Date.now();
         this.armReap(key, current);
