@@ -6,10 +6,10 @@
   min-block-size: 0;
 }
 
-// The checklist down the left, as Source Control's sidebar; the step filling the right.
+// The step filling the left; the checklist down the right.
 .create {
   display: grid;
-  grid-template-columns: 14rem minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) 14rem;
   gap: 1.5rem;
   block-size: 100%;
   min-block-size: 0;
@@ -20,8 +20,8 @@
   flex-direction: column;
   gap: 0.5rem;
   min-block-size: 0;
-  padding-inline-end: 1.25rem;
-  border-inline-end: 0.0625rem solid var(--wl-border);
+  padding-inline-start: 1.25rem;
+  border-inline-start: 0.0625rem solid var(--wl-border);
 }
 
 .create__heading {
