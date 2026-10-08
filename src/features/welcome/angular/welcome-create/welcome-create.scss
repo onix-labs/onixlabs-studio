@@ -116,6 +116,14 @@
   margin-block-start: auto;
 }
 
+.create__destination {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 0.76rem;
+  line-height: 1.4;
+  color: var(--wl-faint);
+}
+
 .create__error {
   grid-column: 1 / -1;
   margin: 0;
@@ -131,16 +139,9 @@
   justify-content: center;
 }
 
-// "Send to Workspace Agent" is longer than half the column: it wraps rather than overflowing.
 .create__primary {
   @include primary-button;
   @include control-metrics;
-
-  block-size: auto;
-  min-block-size: 2.25rem;
-  padding-block: 0.35rem;
-  line-height: 1.25;
-  text-align: center;
 }
 
 .create__spin {

@@ -219,7 +219,8 @@ describe('WelcomeCreate', () => {
   it('theLastStep_sendsToAnAgent_withoutAName', async () => {
     TestBed.inject(ProjectDraft).goTo('summary');
     await settle();
-    expect(primary().textContent.trim()).toBe('Send to Agent');
+    expect(primary().textContent.trim()).toBe('Start');
+    expect(host.querySelector('.create__destination')!.textContent).toContain('a tab of its own');
 
     await clickPrimary();
 
@@ -236,7 +237,10 @@ describe('WelcomeCreate', () => {
     draft.name.set('todo-app');
     draft.goTo('summary');
     await settle();
-    expect(primary().textContent.trim()).toBe('Send to Workspace Agent');
+    expect(primary().textContent.trim()).toBe('Start');
+    expect(host.querySelector('.create__destination')!.textContent).toContain(
+      'opens its workspace',
+    );
 
     await clickPrimary();
 

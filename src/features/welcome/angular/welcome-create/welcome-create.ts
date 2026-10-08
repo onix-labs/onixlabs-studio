@@ -54,8 +54,9 @@ export type CreateStepState = 'current' | 'done' | 'skipped' | 'todo';
  * an agent as one first message. No agent takes part until then.
  *
  * Every step is optional: its button says Skip until something is filled in, then Next, and the
- * checklist jumps anywhere. The last step shows the message as it will be sent, and sends it — to a
- * workspace Studio makes first when there is a name and a place, or to an agent in its own tab.
+ * checklist jumps anywhere. The last step shows the message as it will be sent, and Start sends it — to
+ * a workspace Studio makes first when there is a name and a place, or to an agent in its own tab, as the
+ * line above the buttons says.
  */
 @Component({
   selector: 'app-welcome-create',
@@ -137,14 +138,27 @@ export class WelcomeCreate implements OnInit {
   );
 
   /**
-   * Gets the main button's words: Skip or Next by whether the step has anything in it, and on the
-   * last step where the draft goes.
+   * Gets the main button's words: Skip or Next by whether the step has anything in it, and Start on
+   * the last step.
    */
   protected readonly primaryLabel: Signal<string> = computed((): string => {
     if (this.last()) {
-      return this.draft.toWorkspace() ? 'Send to Workspace Agent' : 'Send to Agent';
+      return 'Start';
     }
     return this.draft.touched(this.draft.step()) ? 'Next' : 'Skip';
+  });
+
+  /**
+   * Gets the line above the buttons on the last step, saying where Start sends the project, or null
+   * on the other steps.
+   */
+  protected readonly destination: Signal<string | null> = computed((): string | null => {
+    if (!this.last()) {
+      return null;
+    }
+    return this.draft.toWorkspace()
+      ? 'Start makes the project and opens its workspace, with the agent.'
+      : 'Start opens the agent in a tab of its own.';
   });
 
   /**

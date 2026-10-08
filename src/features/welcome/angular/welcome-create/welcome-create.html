@@ -62,6 +62,8 @@
     <div class="create__nav">
       @if (draft.error(); as message) {
         <p class="create__error" role="alert">{{ message }}</p>
+      } @else if (destination(); as line) {
+        <p class="create__destination">{{ line }}</p>
       }
       <button
         type="button"
