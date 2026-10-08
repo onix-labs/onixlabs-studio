@@ -21,8 +21,10 @@ import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { Forge } from '@shared/angular/services/forge/forge';
 import { NewProject } from '@shared/angular/services/new-project/new-project';
 import { Skills } from '@shared/angular/services/skills/skills';
+import type { Tab } from '@shared/angular/services/tabs/tab';
+import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { SourceControl } from '@shared/angular/services/source-control/source-control';
-import type { WorkspaceAgentStart } from '@shared/angular/services/workspaces/workspaces';
+import { WorkspaceAgentStart, Workspaces } from '@shared/angular/services/workspaces/workspaces';
 import { Log } from '@shared/angular/services/log/log';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
 import { Icon } from '@shared/angular/icons/icon';
@@ -104,8 +106,10 @@ interface ProjectAccount {
  * opens it with the agent waiting, briefed on the project and its starter's skill when the library has
  * it.
  *
- * ⚠️ Still to come: the starters are a fixed list rather than the skill library's, and an empty form
- * only says what it would do.
+ * Left empty, the form opens the agent in its own tab instead, to plan the project before it has a home.
+ *
+ * ⚠️ Still to come: the starters are a fixed list rather than the skill library's, and the agent tab
+ * cannot yet make the project and move into it.
  */
 @Component({
   selector: 'app-welcome-create',
@@ -159,6 +163,16 @@ export class WelcomeCreate implements OnInit {
    * Holds the source-control service, which says what the installed version-control plugins can do.
    */
   private readonly sourceControl: SourceControl = inject(SourceControl);
+
+  /**
+   * Holds the tab service, which opens the agent's own tab when there is no project folder yet.
+   */
+  private readonly tabs: Tabs = inject(Tabs);
+
+  /**
+   * Holds the per-tab handoff, which carries the agent's start to the tab it opens in.
+   */
+  private readonly workspaces: Workspaces = inject(Workspaces);
 
   /**
    * Holds the skill library, where a starter's skill is looked up.
@@ -270,11 +284,6 @@ export class WelcomeCreate implements OnInit {
    * Holds the account picked for a hosted repository — its id — or null.
    */
   protected readonly account: WritableSignal<string | null> = signal<string | null>(null);
-
-  /**
-   * Holds what starting would have done, said in place of doing it where it is not built yet.
-   */
-  protected readonly preview: WritableSignal<string | null> = signal<string | null>(null);
 
   /**
    * Holds whether the project is being made.
@@ -532,7 +541,6 @@ export class WelcomeCreate implements OnInit {
    * Clears what the last start said, once the form changes.
    */
   private settle(): void {
-    this.preview.set(null);
     this.error.set(null);
   }
 
@@ -549,11 +557,7 @@ export class WelcomeCreate implements OnInit {
     this.settle();
     this.startedFrom.set(starter);
     if (!this.complete()) {
-      // ⚠️ Not built yet: the agent's own tab, which asks for the details later (#806).
-      this.log.info('welcome', `Project agent "${starter.skill}" requested without details`);
-      this.preview.set(
-        `Not built yet: this will open an agent tab, starting from the “${starter.title}” skill, which asks where the project goes later. Fill in the details to open a workspace now.`,
-      );
+      this.openAgentTab(starter);
       return;
     }
     const repository: NewProjectRepository | string = this.repositoryRequest();
@@ -569,10 +573,10 @@ export class WelcomeCreate implements OnInit {
         this.error.set(outcome.error);
         return;
       }
-      const skill: Skill | undefined = this.skills
-        .skills()
-        .find((candidate: Skill): boolean => candidate.enabled && candidate.name === starter.skill);
-      const start: WorkspaceAgentStart = agentStart(name, outcome.path, starter, skill);
+      const start: WorkspaceAgentStart = agentStart(starter, this.skillFor(starter), {
+        name,
+        path: outcome.path,
+      });
       if (await this.fileOpener.reopenDirectory(outcome.path, start)) {
         this.opened.emit();
       } else {
@@ -581,6 +585,29 @@ export class WelcomeCreate implements OnInit {
     } finally {
       this.creating.set(false);
     }
+  }
+
+  /**
+   * Opens the agent in a tab of its own, before the project has a folder: briefed on its starter, to
+   * plan the project with the user (#806).
+   * @param starter The starter.
+   */
+  private openAgentTab(starter: ProjectStarter): void {
+    this.log.info('welcome', `Opening a project agent tab from "${starter.skill}"`);
+    const tab: Tab = this.tabs.open('agent');
+    this.workspaces.setAgentStart(tab.id, agentStart(starter, this.skillFor(starter), null));
+    this.opened.emit();
+  }
+
+  /**
+   * Finds a starter's skill in the library.
+   * @param starter The starter.
+   * @returns Returns the skill, or undefined when the library has no enabled skill of that name.
+   */
+  private skillFor(starter: ProjectStarter): Skill | undefined {
+    return this.skills
+      .skills()
+      .find((candidate: Skill): boolean => candidate.enabled && candidate.name === starter.skill);
   }
 
   /**
@@ -615,20 +642,20 @@ export class WelcomeCreate implements OnInit {
 /**
  * Describes how a new project's agent starts: Studio's opening line, and the brief every turn carries —
  * what the project is and where it began, with the starter's skill when the library has it.
- * @param name The project's name.
- * @param path Where it is.
  * @param starter The starter it began from.
  * @param skill The starter's skill, when the library has it.
+ * @param project The project's name and folder, or null when it has no folder yet.
  * @returns Returns the start.
  */
 export function agentStart(
-  name: string,
-  path: string,
   starter: ProjectStarter,
   skill: Skill | undefined,
+  project: { readonly name: string; readonly path: string } | null,
 ): WorkspaceAgentStart {
   const brief: string[] = [
-    `The user has just created a new project, "${name}", at ${path}. This workspace is that project; it is new and holds nothing the user wrote yet.`,
+    project === null
+      ? 'The user wants to start a new project. It has no name or folder yet, so there is nowhere to create files: do not try to. When the plan is settled, say so; the user chooses where the project goes.'
+      : `The user has just created a new project, "${project.name}", at ${project.path}. This workspace is that project; it is new and holds nothing the user wrote yet.`,
     `They started from "${starter.title}": ${starter.summary}`,
     'Help them plan the project before building it: ask about what it is for and how it should be made, one question at a time, and recommend an option when offering a choice. Follow them if they want to talk about something else. Ask before creating files.',
   ];
@@ -636,7 +663,10 @@ export function agentStart(
     brief.push(`Follow the "${skill.name}" skill:\n\n${skill.body}`);
   }
   return {
-    opening: `${name} is ready. Tell the agent about your project to start planning it.`,
+    opening:
+      project === null
+        ? 'Tell the agent about your project to start planning it.'
+        : `${project.name} is ready. Tell the agent about your project to start planning it.`,
     brief: brief.join('\n\n'),
   };
 }

@@ -86,9 +86,6 @@
   <section class="create__main" aria-labelledby="create-starters-title">
     <h2 class="create__heading create__title" id="create-starters-title">Start From</h2>
 
-    @if (preview(); as message) {
-      <p class="create__notice" role="status">{{ message }}</p>
-    }
     @if (startedFrom() !== general) {
       @if (error(); as message) {
         <p class="create__notice create__notice--error" role="alert">{{ message }}</p>

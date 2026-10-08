@@ -14,8 +14,10 @@ import { Forge } from '@shared/angular/services/forge/forge';
 import { NewProject } from '@shared/angular/services/new-project/new-project';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
 import { Skills } from '@shared/angular/services/skills/skills';
+import type { Tab } from '@shared/angular/services/tabs/tab';
+import { Tabs } from '@shared/angular/services/tabs/tabs';
 import { SourceControl } from '@shared/angular/services/source-control/source-control';
-import type { WorkspaceAgentStart } from '@shared/angular/services/workspaces/workspaces';
+import { WorkspaceAgentStart, Workspaces } from '@shared/angular/services/workspaces/workspaces';
 import { agentStart, ProjectStarter, WelcomeCreate } from './welcome-create';
 
 /**
@@ -237,14 +239,25 @@ describe('WelcomeCreate', () => {
     expect(host.querySelector('select[aria-label="Repository layout"]')).not.toBeNull();
   });
 
-  it('emptyForm_opensTheAgentInItsOwnTab', async () => {
+  it('emptyForm_opensTheAgentInItsOwnTab_withTheStartersStart_andStepsAside', async () => {
     await render();
     expect(destination()).toContain('own tab');
+    const flutter: HTMLButtonElement = Array.from(
+      host.querySelectorAll<HTMLButtonElement>('.create__starter'),
+    ).find((row: HTMLButtonElement): boolean => row.textContent.includes('Flutter'))!;
 
-    host.querySelector<HTMLButtonElement>('.create__starter')!.click();
+    flutter.click();
     await fixture.whenStable();
 
-    expect(host.querySelector('.create__notice')!.textContent).toContain('open an agent tab');
+    const tabs: readonly Tab[] = TestBed.inject(Tabs).tabs();
+    expect(tabs.map((tab: Tab): string => tab.type)).toEqual(['agent']);
+    const start: WorkspaceAgentStart | undefined = TestBed.inject(Workspaces).takeAgentStart(
+      tabs[0].id,
+    );
+    expect(start?.brief).toContain('Flutter');
+    expect(start?.brief).toContain('no name or folder yet');
+    expect(created).toEqual([]);
+    expect(openedCount).toBe(1);
   });
 
   it('completeForm_opensANewWorkspace_atTheTarget', async () => {
@@ -376,18 +389,6 @@ describe('WelcomeCreate', () => {
     expect(destination()).toContain('Opens a new workspace');
   });
 
-  it('aStarterWithoutDetails_saysTheAgentTabIsNotBuiltYet', async () => {
-    await render();
-    const flutter: HTMLButtonElement = Array.from(
-      host.querySelectorAll<HTMLButtonElement>('.create__starter'),
-    ).find((row: HTMLButtonElement): boolean => row.textContent.includes('Flutter'))!;
-
-    flutter.click();
-    await fixture.whenStable();
-
-    expect(host.querySelector('.create__notice')!.textContent).toContain('Flutter');
-  });
-
   it('anInvalidName_isExplained_andDoesNotCountAsComplete', async () => {
     await render();
     await typeName('my project/');
@@ -397,13 +398,17 @@ describe('WelcomeCreate', () => {
     expect(destination()).toContain('Finish the details');
   });
 
-  it('editingTheForm_clearsThePreview', async () => {
+  it('editingTheForm_clearsTheError', async () => {
+    outcome = { ok: false, error: 'Something went wrong.' };
     await render();
-    await startGeneral();
-
     await typeName('todo');
+    await choose('Repository', 'none');
+    await startGeneral();
+    expect(host.querySelector('.create__error')).not.toBeNull();
 
-    expect(host.querySelector('.create__notice')).toBeNull();
+    await typeName('todo-app');
+
+    expect(host.querySelector('.create__error')).toBeNull();
   });
 });
 
@@ -416,7 +421,10 @@ describe('agentStart', () => {
   };
 
   it('briefsTheAgent_onTheProject_andItsStarter', () => {
-    const start: WorkspaceAgentStart = agentStart('todo', '/p/todo', starter, undefined);
+    const start: WorkspaceAgentStart = agentStart(starter, undefined, {
+      name: 'todo',
+      path: '/p/todo',
+    });
 
     expect(start.brief).toContain('"todo", at /p/todo');
     expect(start.brief).toContain('Command-Line Tool');
@@ -426,8 +434,15 @@ describe('agentStart', () => {
   it('carriesTheSkillsBody_whenTheLibraryHasIt', () => {
     const skill: Skill = { name: 'new-cli-tool', body: 'Ask about packaging.' } as Skill;
 
-    expect(agentStart('todo', '/p/todo', starter, skill).brief).toContain(
+    expect(agentStart(starter, skill, null).brief).toContain(
       'Follow the "new-cli-tool" skill:\n\nAsk about packaging.',
     );
+  });
+
+  it('withoutAFolder_tellsTheAgentNotToCreateFiles', () => {
+    const start: WorkspaceAgentStart = agentStart(starter, undefined, null);
+
+    expect(start.brief).toContain('nowhere to create files');
+    expect(start.opening).toBe('Tell the agent about your project to start planning it.');
   });
 });

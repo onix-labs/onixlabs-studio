@@ -6,6 +6,7 @@ import {
   input,
   InputSignal,
   OnDestroy,
+  OnInit,
   untracked,
 } from '@angular/core';
 import { AgentChat } from '@shared/angular/components/agent-chat/agent-chat';
@@ -19,6 +20,7 @@ import { AGENT_CONVERSATION_KIND } from '@shared/angular/services/agent-conversa
 import { AgentSessions } from '@shared/angular/services/agent-sessions/agent-sessions';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { Log } from '@shared/angular/services/log/log';
+import { WorkspaceAgentStart, Workspaces } from '@shared/angular/services/workspaces/workspaces';
 import { Icon } from '@shared/angular/icons/icon';
 
 /**
@@ -36,7 +38,7 @@ import { Icon } from '@shared/angular/icons/icon';
   styleUrl: './agent-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class AgentView implements OnDestroy {
+export class AgentView implements OnInit, OnDestroy {
   /**
    * Gets the icon set, exposed for the template.
    */
@@ -47,6 +49,16 @@ export class AgentView implements OnDestroy {
    * chat and history list.
    */
   protected readonly conversation: AgentConversation = inject(AgentConversation);
+
+  /**
+   * Holds this tab's agent, which a new project's start briefs.
+   */
+  private readonly agent: Agent = inject(Agent);
+
+  /**
+   * Holds the per-tab handoff a new project's agent start arrives through (#806).
+   */
+  private readonly workspaces: Workspaces = inject(Workspaces);
 
   /**
    * Holds the active agent session registry the ribbon and accelerators drive.
@@ -111,6 +123,22 @@ export class AgentView implements OnDestroy {
         this.registered = false;
       }
     });
+  }
+
+  /**
+   * Starts the conversation on a new project when the welcome screen opened this tab for one: fresh,
+   * briefed on the project's starter, and opening on Studio's line (#806).
+   */
+  public ngOnInit(): void {
+    const id: string | undefined = this.tabId();
+    const start: WorkspaceAgentStart | undefined =
+      id === undefined ? undefined : this.workspaces.takeAgentStart(id);
+    if (start !== undefined) {
+      this.log.info('agent.view', 'Starting the agent on a new project', { tabId: id });
+      this.conversation.newChat();
+      this.agent.setBrief(start.brief);
+      this.agent.note(start.opening);
+    }
   }
 
   /**
