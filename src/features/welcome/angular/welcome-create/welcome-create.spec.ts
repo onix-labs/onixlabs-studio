@@ -91,7 +91,9 @@ describe('WelcomeCreate', () => {
       'Options:other',
       'Summary:other',
     ]);
-    expect(host.querySelector('.create__title')!.textContent).toBe('Start');
+    expect(host.querySelector('.create__title')!.textContent.trim()).toBe(
+      'What do you want to build',
+    );
     expect(host.querySelector('app-create-start')).not.toBeNull();
   });
 
@@ -140,7 +142,7 @@ describe('WelcomeCreate', () => {
     host.querySelectorAll<HTMLButtonElement>('.create__step')[3].click();
     await settle();
 
-    expect(host.querySelector('.create__title')!.textContent).toBe('Options');
+    expect(host.querySelector('.create__title')!.textContent.trim()).toBe('Options');
   });
 
   it('theDetails_offerOnlyTheRepositoriesTheRunningPluginsCanMake', async () => {

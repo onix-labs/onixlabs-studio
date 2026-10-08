@@ -94,8 +94,11 @@
   min-block-size: 0;
 }
 
+// Styled as the checklist's own heading.
 .create__title {
-  @include lead-title;
+  @include section-title;
+
+  padding: 0.2rem 0.15rem;
 }
 
 .create__description {
