@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { PluginActionResult, PluginSummary } from '@shared/api/plugin-channels';
-import { PluginContext, PluginDescriptor } from './plugin-catalogue';
+import { HandPlacedPluginError, PluginContext, PluginDescriptor } from './plugin-catalogue';
 import { PluginManager } from './plugin-manager';
 import { PluginStore } from './plugin-store';
 
@@ -151,6 +151,32 @@ describe('PluginManager', () => {
     expect(result).toEqual({ success: true, state: 'available', error: null });
     expect(store.get('demo')).toBeNull();
     expect((await only(manager)).state).toBe('available');
+  });
+
+  it('uninstall_ofAPluginPlacedByHand_saysWhereItIs_andKeepsItsRecord', async () => {
+    const manager: PluginManager = new PluginManager(
+      [
+        {
+          ...descriptor('github', (): boolean => true),
+          name: 'GitHub',
+          uninstall: (): Promise<void> =>
+            Promise.reject(new HandPlacedPluginError('/data/plugins/onixlabs.github')),
+        },
+      ],
+      context,
+      store,
+    );
+    await manager.install('github');
+
+    const result: PluginActionResult = await manager.uninstall('github');
+
+    expect(result).toEqual({
+      success: false,
+      state: 'installed',
+      error:
+        'GitHub was added by hand, in /data/plugins/onixlabs.github. To remove it, delete that folder and restart Studio.',
+    });
+    expect(store.get('github')).not.toBeNull();
   });
 
   it('install_thatFails_reportsAFailureAndNotThePluginsOwnDescription', async () => {

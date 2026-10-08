@@ -43,7 +43,7 @@ import {
 } from '../../provisioning/lockfile-provision';
 import { LspProvisioner } from '../../lsp/lsp-provisioner';
 import { pythonRuntime } from '../../provisioning/python-runtime';
-import { PluginContext, PluginDescriptor } from './plugin-catalogue';
+import { HandPlacedPluginError, PluginContext, PluginDescriptor } from './plugin-catalogue';
 import { bundledLockfile } from './bundled-lockfiles';
 import {
   VersionControlDescriptor,
@@ -392,8 +392,10 @@ export function payloadOps(
       // Nothing to fetch: the payload is already beside the manifest.
       ensure: (): Promise<string | null> => Promise.resolve(local),
       // Removing it is the user's business, since they placed it by hand. Deleting a directory they
-      // manage from under them would be a surprise, so this reports success and touches nothing.
-      remove: (): Promise<void> => Promise.resolve(),
+      // manage from under them would be a surprise, so this touches nothing — and refuses, naming the
+      // folder, rather than reporting a removal that did not happen.
+      remove: (): Promise<void> =>
+        Promise.reject(new HandPlacedPluginError(localRoot ?? path.dirname(local))),
     };
   }
   // The version on disk when one is recorded and differs, the offered one otherwise. Read per call:

@@ -40,7 +40,7 @@ import {
 } from '../../version-control/version-control-descriptor';
 import { HostingDescriptor } from '../../hosting/hosting-descriptor';
 import { ContainerEngineDescriptor } from '../containers/container-engine';
-import { PluginDescriptor } from './plugin-catalogue';
+import { HandPlacedPluginError, PluginDescriptor } from './plugin-catalogue';
 
 /**
  * Builds a well-formed manifest for a sideloaded plugin.
@@ -829,6 +829,16 @@ describe('a sideloaded plugin carrying its own payload', () => {
     // Installed by the only definition that matters: the thing to run is on disk.
     expect(ops.isInstalled(nothingDownloaded)).toBe(true);
     expect(ops.target(nothingDownloaded)).toBe(path.join(root, 'payload', 'main.js'));
+  });
+
+  it('payloadOps_refusesToRemoveAPayloadPlacedByHand_namingItsFolder', async () => {
+    mkdirSync(path.join(root, 'payload'), { recursive: true });
+    writeFileSync(path.join(root, 'payload', 'main.js'), '', 'utf8');
+    const ops: PayloadOps = payloadOps(decoderManifest(), root);
+
+    // Removing it is the user's business; reporting a removal that did not happen is not.
+    await expect(ops.remove(nothingDownloaded)).rejects.toEqual(new HandPlacedPluginError(root));
+    expect(ops.isInstalled(nothingDownloaded)).toBe(true);
   });
 
   it('payloadOps_fallsBackToTheProvisionerWhenNoPayloadIsPresent', () => {
