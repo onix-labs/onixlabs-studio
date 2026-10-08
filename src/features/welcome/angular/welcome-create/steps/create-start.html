@@ -24,12 +24,12 @@
     </ul>
   </div>
 
-  <label class="step__label" for="create-idea">Or describe what you want to build</label>
   <div class="step__field step__field--area">
     <textarea
       id="create-idea"
       rows="3"
-      placeholder="A command-line tool that tidies my photo library by date and place…"
+      placeholder="Or describe what you want to build here…"
+      aria-label="Describe what you want to build"
       [value]="draft.idea()"
       (input)="onIdeaInput($event)"
     ></textarea>
