@@ -13,7 +13,7 @@ import {
 import type { ForgeHostAccount, ForgeResult } from '@shared/api/forge-types';
 import type { HostedAccount } from '@shared/api/hosting-protocol';
 import type { NewProjectOutcome, NewProjectRepository } from '@shared/api/new-project-channels';
-import { installedContributions } from '@shared/api/plugin-channels';
+import { installedContributions, UnkeyedPluginContribution } from '@shared/api/plugin-channels';
 import type { Skill } from '@shared/api/skill-channels';
 import { Clone } from '@shared/angular/services/clone/clone';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
@@ -102,8 +102,8 @@ interface ProjectAccount {
  * opens it with the agent waiting, briefed on the project and its starter's skill when the library has
  * it.
  *
- * ⚠️ Still to come: the starters are a fixed list rather than the skill library's, a local repository
- * needs the version-control plugin to learn to make one, and an empty form only says what it would do.
+ * ⚠️ Still to come: the starters are a fixed list rather than the skill library's, and an empty form
+ * only says what it would do.
  */
 @Component({
   selector: 'app-welcome-create',
@@ -287,6 +287,16 @@ export class WelcomeCreate implements OnInit {
   );
 
   /**
+   * Gets whether an installed version-control plugin can make a new repository in place.
+   */
+  protected readonly canInit: Signal<boolean> = computed((): boolean =>
+    installedContributions(this.plugins.plugins(), 'version-control').some(
+      (contribution: UnkeyedPluginContribution): boolean =>
+        contribution.capabilities?.includes('init') ?? false,
+    ),
+  );
+
+  /**
    * Gets whether a hosting plugin, which makes the remote, is installed.
    */
   protected readonly canHost: Signal<boolean> = computed(
@@ -295,12 +305,13 @@ export class WelcomeCreate implements OnInit {
 
   /**
    * Gets the repository choices the installed plugins can make: none always; a local one with a
-   * version-control plugin; a hosted one with a hosting plugin as well.
+   * version-control plugin that can make one; a hosted one — made by the code host, then cloned — with
+   * a hosting plugin as well.
    */
   protected readonly repositoryOptions: Signal<readonly DropdownOption[]> = computed(
     (): readonly DropdownOption[] => [
       { value: 'none', label: 'No Repository' },
-      ...(this.canVersion() ? [{ value: 'local', label: 'Local Repository' }] : []),
+      ...(this.canInit() ? [{ value: 'local', label: 'Local Repository' }] : []),
       ...(this.canVersion() && this.canHost()
         ? [
             { value: 'public', label: 'Public Repository' },
@@ -554,7 +565,7 @@ export class WelcomeCreate implements OnInit {
       return { kind: 'none' };
     }
     if (choice === 'local') {
-      return 'Studio cannot make a local repository yet. Choose no repository, or a hosted one.';
+      return layout === null ? 'Finish the project details first.' : { kind: 'local', layout };
     }
     const account: ProjectAccount | undefined = this.accounts().find(
       (candidate: ProjectAccount): boolean => candidate.id === this.account(),

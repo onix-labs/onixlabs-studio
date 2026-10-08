@@ -4,15 +4,26 @@ import * as path from 'node:path';
 import type { CloneOutcome } from '@shared/api/clone-channels';
 import type { ForgeResult } from '@shared/api/forge-types';
 import type { HostedRepository } from '@shared/api/hosting-protocol';
+import type { CloneLayout } from '@shared/api/clone-channels';
 import {
   NewProjectChannel,
   NewProjectOutcome,
   NewProjectRequest,
 } from '@shared/api/new-project-channels';
+import { STUDIO_DIR } from '@shared/api/studio';
+import type { VersionControlResponse } from '@shared/api/version-control-protocol';
+import {
+  defaultWorktreeConfig,
+  mintCheckoutId,
+  serializeWorktreeConfig,
+  WORKTREE_CONFIG_FILE,
+} from '@shared/api/worktree';
 import type { CloneManager } from '../clone/clone-manager';
 import type { HostingManager } from '../hosting/hosting-manager';
 import { logger } from '../logger';
 import type { TrustedPaths } from '../trusted-paths';
+import type { VersionControlDescriptor } from '../version-control/version-control-descriptor';
+import type { VersionControlHost } from '../version-control/version-control-host';
 
 /**
  * The folder names a project may have: one path segment, nothing a shell or git would read as more. The
@@ -25,7 +36,8 @@ const FOLDER_NAME: RegExp = /^(?!\.{1,2}$)[\w.-]+$/;
  *
  * A project is made where clones go — the parent folder the user chose in this process's own dialog —
  * so the renderer names the project but never where it is, exactly as with a clone. With no repository
- * the folder is simply made. With a hosted one the code host makes the repository first and the
+ * the folder is simply made. With a local one the version-control plugin makes it — in the folder, or
+ * as a worktree container's first checkout, with no origin. With a hosted one the code host makes the repository first and the
  * project is a clone of it, in the layout the user picked, so a new project and a cloned one are laid
  * out alike. Either way the folder is trusted: the user asked for it, so it opens like one they opened.
  */
@@ -34,11 +46,13 @@ export class NewProjectManager {
    * Initializes the manager.
    * @param clones The clone manager, which knows the parent folder and makes the clone.
    * @param hosting The hosting manager, which asks the code host for the repository.
+   * @param versionControl The version-control host, which makes a local repository.
    * @param trusted The trusted paths, which a new folder joins.
    */
   public constructor(
     private readonly clones: CloneManager,
     private readonly hosting: HostingManager,
+    private readonly versionControl: VersionControlHost,
     private readonly trusted: TrustedPaths,
   ) {}
 
@@ -75,7 +89,9 @@ export class NewProjectManager {
     const outcome: NewProjectOutcome =
       parsed.repository.kind === 'hosted'
         ? await this.createHosted(parsed, parsed.repository)
-        : this.createFolder(destination);
+        : parsed.repository.kind === 'local'
+          ? await this.createLocal(destination, parsed.repository.layout)
+          : this.createFolder(destination);
     if (outcome.ok) {
       logger.info('NewProjectManager', `Created ${outcome.path}`);
     } else {
@@ -94,6 +110,57 @@ export class NewProjectManager {
       fs.mkdirSync(destination);
     } catch (error: unknown) {
       return { ok: false, error: `The folder could not be created: ${message(error)}` };
+    }
+    this.trusted.remember(destination);
+    return { ok: true, path: destination };
+  }
+
+  /**
+   * Has the version-control plugin make a repository on this machine: in the project's folder, or as
+   * the first checkout of a worktree container there, which then has no origin. A failure removes the
+   * folder it made, so a retry finds the name free.
+   * @param destination The folder to make.
+   * @param layout How the repository is laid out.
+   * @returns Returns the outcome.
+   */
+  private async createLocal(destination: string, layout: CloneLayout): Promise<NewProjectOutcome> {
+    const plugin: VersionControlDescriptor | null = this.versionControl.preferredPlugin();
+    if (plugin === null) {
+      return {
+        ok: false,
+        error: 'No version-control plugin is installed. Install Git from the Plugin Manager.',
+      };
+    }
+    const id: string = mintCheckoutId();
+    const repository: string = layout === 'worktree' ? path.join(destination, id) : destination;
+    try {
+      fs.mkdirSync(repository, { recursive: true });
+    } catch (error: unknown) {
+      return { ok: false, error: `The folder could not be created: ${message(error)}` };
+    }
+    const made: VersionControlResponse<'init'> = await this.versionControl.initInChosenFolder(
+      plugin.id,
+      { directory: repository },
+    );
+    if (!made.ok) {
+      fs.rmSync(destination, { recursive: true, force: true });
+      return { ok: false, error: made.error };
+    }
+    if (layout === 'worktree') {
+      try {
+        const studio: string = path.join(destination, STUDIO_DIR);
+        fs.mkdirSync(studio, { recursive: true });
+        fs.writeFileSync(
+          path.join(studio, WORKTREE_CONFIG_FILE),
+          serializeWorktreeConfig(defaultWorktreeConfig(null, [{ id }])),
+          'utf8',
+        );
+      } catch (error: unknown) {
+        return {
+          ok: false,
+          error: `The repository was made, but the container could not be set up: ${message(error)}`,
+        };
+      }
     }
     this.trusted.remember(destination);
     return { ok: true, path: destination };
@@ -137,7 +204,7 @@ export class NewProjectManager {
 
 /**
  * Validates a project request from the renderer, which is treated as hostile: the name must be one
- * plain folder name, and a hosted repository must name its host, an account, and a layout.
+ * plain folder name, a repository must name its layout, and a hosted one its host and account too.
  * @param value The untrusted request.
  * @returns Returns the request, or why it is refused.
  */
@@ -155,6 +222,12 @@ export function parseProjectRequest(value: unknown): NewProjectRequest | string 
   const fields: Record<string, unknown> = repository as Record<string, unknown>;
   if (fields['kind'] === 'none') {
     return { name, repository: { kind: 'none' } };
+  }
+  if (fields['kind'] === 'local') {
+    const layout: unknown = fields['layout'];
+    return layout === 'flat' || layout === 'worktree'
+      ? { name, repository: { kind: 'local', layout } }
+      : 'Choose a flat repository or a worktree.';
   }
   if (fields['kind'] !== 'hosted') {
     return 'Choose a repository, or none.';

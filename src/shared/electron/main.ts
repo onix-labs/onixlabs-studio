@@ -509,6 +509,7 @@ class Program {
   private readonly newProjectManager: NewProjectManager = new NewProjectManager(
     this.cloneManager,
     this.hostingManager,
+    this.versionControlHost,
     this.trustedPaths,
   );
 

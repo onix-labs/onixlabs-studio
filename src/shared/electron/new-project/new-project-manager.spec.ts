@@ -6,9 +6,13 @@ import type { CloneOutcome, CloneRequest } from '@shared/api/clone-channels';
 import type { ForgeResult } from '@shared/api/forge-types';
 import type { HostedRepository } from '@shared/api/hosting-protocol';
 import type { NewProjectOutcome } from '@shared/api/new-project-channels';
+import type { VcsParams, VersionControlResponse } from '@shared/api/version-control-protocol';
+import { parseWorktreeConfig, WorktreeConfig } from '@shared/api/worktree';
 import type { CloneManager } from '../clone/clone-manager';
 import type { HostingManager } from '../hosting/hosting-manager';
 import type { TrustedPaths } from '../trusted-paths';
+import type { VersionControlDescriptor } from '../version-control/version-control-descriptor';
+import type { VersionControlHost } from '../version-control/version-control-host';
 import { NewProjectManager, parseProjectRequest } from './new-project-manager';
 
 describe('parseProjectRequest', () => {
@@ -47,6 +51,9 @@ describe('parseProjectRequest', () => {
     expect(typeof parseProjectRequest({ name: 'todo', repository: { kind: 'local' } })).toBe(
       'string',
     );
+    expect(
+      parseProjectRequest({ name: 'todo', repository: { kind: 'local', layout: 'flat' } }),
+    ).toEqual({ name: 'todo', repository: { kind: 'local', layout: 'flat' } });
   });
 });
 
@@ -57,6 +64,8 @@ describe('NewProjectManager', () => {
   let cloneOutcome: CloneOutcome;
   let made: { host: string; account: string; name: string; private: boolean }[];
   let repository: ForgeResult<HostedRepository>;
+  let inits: VcsParams<'init'>[];
+  let initError: string | null;
 
   /**
    * Builds the manager over stand-ins for the clone and hosting managers.
@@ -82,6 +91,21 @@ describe('NewProjectManager', () => {
           return Promise.resolve(repository);
         },
       } as unknown as HostingManager,
+      {
+        preferredPlugin: (): VersionControlDescriptor =>
+          ({ id: 'test.git' }) as VersionControlDescriptor,
+        initInChosenFolder: (
+          _pluginId: string,
+          params: VcsParams<'init'>,
+        ): Promise<VersionControlResponse<'init'>> => {
+          inits.push(params);
+          if (initError !== null) {
+            return Promise.resolve({ id: 1, ok: false, error: initError });
+          }
+          fs.mkdirSync(path.join(params.directory, '.git'), { recursive: true });
+          return Promise.resolve({ id: 1, ok: true, result: {} });
+        },
+      } as unknown as VersionControlHost,
       { remember: (target: string): number => trusted.push(target) } as unknown as TrustedPaths,
     );
   }
@@ -92,6 +116,8 @@ describe('NewProjectManager', () => {
     clones = [];
     cloneOutcome = { ok: true, path: path.join(parent, 'todo') };
     made = [];
+    inits = [];
+    initError = null;
     repository = {
       ok: true,
       value: {
@@ -197,5 +223,46 @@ describe('NewProjectManager', () => {
 
     expect(outcome.ok === false && outcome.error).toContain('https://github.com/matthew/todo');
     expect(outcome.ok === false && outcome.error).toContain('Authentication failed');
+  });
+
+  it('aLocalFlatRepository_isMadeInTheFolder_andTrusted', async () => {
+    const outcome: NewProjectOutcome = await manager().create({
+      name: 'todo',
+      repository: { kind: 'local', layout: 'flat' },
+    });
+
+    const folder: string = path.join(parent!, 'todo');
+    expect(outcome).toEqual({ ok: true, path: folder });
+    expect(inits).toEqual([{ directory: folder }]);
+    expect(trusted).toEqual([folder]);
+  });
+
+  it('aLocalWorktree_isAContainer_whoseFirstCheckoutIsTheRepository_withNoOrigin', async () => {
+    const outcome: NewProjectOutcome = await manager().create({
+      name: 'todo',
+      repository: { kind: 'local', layout: 'worktree' },
+    });
+
+    const folder: string = path.join(parent!, 'todo');
+    expect(outcome).toEqual({ ok: true, path: folder });
+    const config: WorktreeConfig = parseWorktreeConfig(
+      JSON.parse(fs.readFileSync(path.join(folder, '.studio', 'worktree.json'), 'utf8')),
+    );
+    expect(config.origin).toBeNull();
+    expect(config.checkouts).toHaveLength(1);
+    expect(inits).toEqual([{ directory: path.join(folder, config.checkouts[0].id) }]);
+  });
+
+  it('aLocalRepositoryThatFails_removesTheFolderItMade', async () => {
+    initError = 'git is not installed';
+
+    const outcome: NewProjectOutcome = await manager().create({
+      name: 'todo',
+      repository: { kind: 'local', layout: 'worktree' },
+    });
+
+    expect(outcome).toEqual({ ok: false, error: 'git is not installed' });
+    expect(fs.existsSync(path.join(parent!, 'todo'))).toBe(false);
+    expect(trusted).toEqual([]);
   });
 });

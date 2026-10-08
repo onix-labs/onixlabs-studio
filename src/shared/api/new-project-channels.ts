@@ -2,8 +2,8 @@
 //
 // A new project's folder is made in the parent folder clones go into — the one the user chose in the
 // main process's own dialog — so, as with a clone, the renderer names the folder but never where it is.
-// With a hosted repository the code host makes it first and the project is a clone of it; with none,
-// the folder is simply made.
+// With a hosted repository the code host makes it first and the project is a clone of it; with a local
+// one the version-control plugin makes it in place; with none, the folder is simply made.
 
 import type { CloneLayout } from './clone-channels';
 
@@ -18,8 +18,8 @@ export enum NewProjectChannel {
 }
 
 /**
- * Describes the repository a new project starts with: none, or one a code host makes, public or
- * private, under one of the user's accounts there.
+ * Describes the repository a new project starts with: none; one on this machine only; or one a code
+ * host makes, public or private, under one of the user's accounts there.
  */
 export type NewProjectRepository =
   | {
@@ -27,6 +27,17 @@ export type NewProjectRepository =
        * Gets that the project has no repository.
        */
       readonly kind: 'none';
+    }
+  | {
+      /**
+       * Gets that the version-control plugin makes the repository, on this machine only.
+       */
+      readonly kind: 'local';
+
+      /**
+       * Gets how it is laid out.
+       */
+      readonly layout: CloneLayout;
     }
   | {
       /**

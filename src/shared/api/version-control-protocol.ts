@@ -20,7 +20,9 @@
  * refused rather than spoken to: one that misreads a request does something to the user's repository
  * other than what they asked, and that is worse than doing nothing.
  */
-export const VERSION_CONTROL_PROTOCOL_VERSION: string = '1.0';
+// 1.1 (#806) adds the `init` request and its capability, so a new project can start with a repository
+// of its own. An addition, so a 1.0 plugin is still understood: it simply does not offer `init`.
+export const VERSION_CONTROL_PROTOCOL_VERSION: string = '1.1';
 
 /**
  * Names one optional capability a version-control plugin can advertise.
@@ -69,6 +71,11 @@ export type VersionControlCapability =
   | 'clone'
 
   /**
+   * Making a new, empty repository in a directory (1.1, #806).
+   */
+  | 'init'
+
+  /**
    * Making extra, independent checkouts of one repository side by side, for parallel work — what a
    * worktree container (#351) and an agent team's workers (#808) are built on.
    */
@@ -92,6 +99,7 @@ export const VERSION_CONTROL_CAPABILITIES: readonly VersionControlCapability[] =
   'merge',
   'rebase',
   'clone',
+  'init',
   'parallelCheckouts',
   'identity',
 ];
@@ -715,6 +723,15 @@ export interface VersionControlOperations {
     readonly result: Done;
   };
 
+  /**
+   * Makes a new, empty repository in a directory, creating the directory if it does not exist yet
+   * (1.1, #806). Gated by `init`.
+   */
+  readonly init: {
+    readonly params: { readonly directory: string };
+    readonly result: Done;
+  };
+
   readonly getIdentity: { readonly params: Empty; readonly result: VcsIdentity };
   readonly setIdentity: { readonly params: VcsIdentity; readonly result: Done };
 }
@@ -818,6 +835,7 @@ export const VCS_GLOBAL_OPS: readonly VersionControlOp[] = [
   'initialize',
   'resolveRoot',
   'clone',
+  'init',
   'getIdentity',
   'setIdentity',
 ];
@@ -884,6 +902,7 @@ export const VCS_OP_CAPABILITY: Readonly<
   pushTag: 'tags',
   pushAllTags: 'tags',
   clone: 'clone',
+  init: 'init',
   getIdentity: 'identity',
   setIdentity: 'identity',
 };

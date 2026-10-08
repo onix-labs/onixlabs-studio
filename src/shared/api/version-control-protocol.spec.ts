@@ -56,6 +56,7 @@ const EVERY_OP: Readonly<Record<VersionControlOp, true>> = {
   pushTag: true,
   pushAllTags: true,
   clone: true,
+  init: true,
   getIdentity: true,
   setIdentity: true,
 };

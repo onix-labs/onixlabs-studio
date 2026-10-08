@@ -279,6 +279,25 @@ describe('GitVersionControl', () => {
     });
   });
 
+  it('init_makesAnEmptyRepository_inANewDirectory', GIT_TEST_TIMEOUT, async () => {
+    const target: string = path.join(base, 'fresh');
+
+    expect(await vcs.request('init', undefined, { directory: target })).toMatchObject({
+      ok: true,
+    });
+
+    expect(await vcs.request('resolveRoot', undefined, { path: target })).toMatchObject({
+      ok: true,
+      result: { root: target },
+    });
+  });
+
+  it('init_refusesARelativeDirectory', GIT_TEST_TIMEOUT, async () => {
+    expect(await vcs.request('init', undefined, { directory: 'fresh' })).toMatchObject({
+      ok: false,
+    });
+  });
+
   it('request_whenNotStarted_fails', async () => {
     const idle: GitVersionControl = new GitVersionControl();
     expect(await idle.request('status', repo, {})).toMatchObject({ ok: false });

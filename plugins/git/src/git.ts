@@ -328,6 +328,9 @@ export class GitVersionControl {
     if (op === 'clone') {
       return this.clone(params);
     }
+    if (op === 'init') {
+      return this.init(params);
+    }
     if (op === 'getIdentity') {
       return this.getIdentity();
     }
@@ -956,6 +959,25 @@ export class GitVersionControl {
       return Promise.resolve(fail('Invalid remote or tag name'));
     }
     return this.network(root, ['push', remote, '--delete', `refs/tags/${name}`]);
+  }
+
+  /**
+   * Makes a new, empty repository in a directory, creating the directory when it does not exist yet.
+   * @param params The request's parameters, untrusted.
+   * @returns Returns the outcome.
+   */
+  private async init(params: Record<string, unknown>): Promise<Outcome> {
+    const directory: unknown = params['directory'];
+    if (typeof directory !== 'string' || !path.isAbsolute(directory)) {
+      return fail('Invalid directory');
+    }
+    const target: string = path.resolve(directory);
+    const made: GitRun = await this.git(path.dirname(target), [
+      'init',
+      '--',
+      path.basename(target),
+    ]);
+    return made.success ? ok(DONE) : fail(made.error ?? 'git init failed');
   }
 
   /**

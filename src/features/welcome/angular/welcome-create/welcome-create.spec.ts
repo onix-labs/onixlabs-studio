@@ -20,11 +20,14 @@ import { agentStart, ProjectStarter, WelcomeCreate } from './welcome-create';
  * @param slot The slot.
  * @returns Returns its summary.
  */
-function installed(slot: 'version-control' | 'hosting'): PluginSummary {
+function installed(
+  slot: 'version-control' | 'hosting',
+  capabilities: readonly string[] = slot === 'version-control' ? ['clone', 'init'] : [],
+): PluginSummary {
   return {
     id: `test.${slot}`,
     state: 'installed',
-    contributions: [{ slot, id: `test.${slot}` }],
+    contributions: [{ slot, id: `test.${slot}`, capabilities }],
   } as unknown as PluginSummary;
 }
 
@@ -193,6 +196,11 @@ describe('WelcomeCreate', () => {
     await fixture.whenStable();
     expect(offered('Repository')).toEqual(['none', 'local']);
 
+    // A plugin that cannot make a repository in place still clones a hosted one.
+    plugins.set([installed('version-control', ['clone']), installed('hosting')]);
+    await fixture.whenStable();
+    expect(offered('Repository')).toEqual(['none', 'public', 'private']);
+
     plugins.set([]);
     await fixture.whenStable();
     expect(offered('Repository')).toEqual(['none']);
@@ -262,6 +270,19 @@ describe('WelcomeCreate', () => {
           layout: 'worktree',
         },
       },
+    ]);
+  });
+
+  it('aLocalRepository_isMadeInTheLayoutPicked', async () => {
+    await render();
+    await typeName('todo-app');
+    await choose('Repository', 'local');
+    await choose('Repository layout', 'worktree');
+
+    await startGeneral();
+
+    expect(created).toEqual([
+      { name: 'todo-app', repository: { kind: 'local', layout: 'worktree' } },
     ]);
   });
 
