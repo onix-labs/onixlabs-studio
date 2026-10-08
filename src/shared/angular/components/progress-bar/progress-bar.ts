@@ -7,12 +7,13 @@ import { ChangeDetectionStrategy, Component, input, InputSignal } from '@angular
 export type ProgressTone = 'accent' | 'success' | 'warning' | 'danger' | 'info';
 
 /**
- * An indeterminate progress bar: a solid bar in the button's footprint with diagonal stripes sliding
- * across it for as long as it is shown, for work whose duration is unknown — a download, an install.
- * Sized and shaped exactly as a button so it can stand in for the button that started the work
- * without the row moving, and it may carry a label ("Installing…") where the button's label was.
- * THE progress bar, so the fill, the stripes and their motion live in one place rather than being
- * redrawn per surface. It has no value: show it while the work runs and remove it when the work ends.
+ * An indeterminate progress bar: a track in the button's footprint, tinted with its tone, with a soft
+ * sheen — faded at both ends — sweeping across it for as long as it is shown, for work whose duration
+ * is unknown — a download, an install. Sized and shaped exactly as a button so it can stand in for the
+ * button that started the work without the row moving, and it may carry a label ("Installing…") where
+ * the button's label was. THE progress bar, so the track, the sheen and its motion live in one place
+ * rather than being redrawn per surface. It has no value: show it while the work runs and remove it
+ * when the work ends.
  */
 @Component({
   selector: 'app-progress-bar',

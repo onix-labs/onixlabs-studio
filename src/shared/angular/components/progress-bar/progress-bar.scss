@@ -1,11 +1,14 @@
-// The bar wears the button's footprint — the same height, padding, radius and corner shape, and the
-// same solid tone fill — so it can stand in for the button it replaces without the row moving. Over
-// the fill, diagonal stripes slide continuously: the conventional "busy, no idea how long" signal.
+// The bar wears the button's footprint — the same height, radius and corner shape — so it can stand
+// in for the button it replaces without the row moving. It is a quiet track in the tone's tint, with a
+// soft sheen sweeping across it, brightest at its heart and fading to nothing at either end: the
+// conventional "busy, no idea how long" signal, drawn as Windows 7 drew it rather than as stripes.
 :host {
   --progress-bar-color: var(--accent-color);
-  --progress-bar-stripe: rgba(255, 255, 255, 0.18);
-  --progress-bar-stripe-size: 1rem;
+  // The sheen's width as a share of the track's.
+  --progress-bar-sheen-share: 0.45;
 
+  position: relative;
+  isolation: isolate;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -16,27 +19,41 @@
   overflow: hidden;
   font-size: 0.8rem;
   font-weight: 500;
-  color: var(--gray-100);
-  background-color: var(--progress-bar-color);
-  background-image: linear-gradient(
-    45deg,
-    var(--progress-bar-stripe) 25%,
-    transparent 25%,
-    transparent 50%,
-    var(--progress-bar-stripe) 50%,
-    var(--progress-bar-stripe) 75%,
-    transparent 75%,
-    transparent
-  );
-  background-size: var(--progress-bar-stripe-size) var(--progress-bar-stripe-size);
-  border: 0.0625rem solid var(--progress-bar-color);
+  color: var(--body-foreground-color, currentColor);
+  background-color: color-mix(in srgb, var(--progress-bar-color) 16%, transparent);
+  border: 0.0625rem solid color-mix(in srgb, var(--progress-bar-color) 45%, transparent);
   border-radius: calc(0.5rem * var(--border-radius-multiplier));
   corner-shape: var(--app-corner-shape, squircle);
-  animation: progress-bar-stripes 1s linear infinite;
+
+  // The sheen: the tone, lit to near white at its centre, faded to transparent at both edges. It
+  // starts wholly off the left edge and leaves wholly off the right, so each sweep enters and exits
+  // cleanly before the next.
+  &::before {
+    content: '';
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: 0;
+    z-index: -1;
+    inline-size: calc(var(--progress-bar-sheen-share) * 100%);
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      color-mix(in srgb, var(--progress-bar-color) 55%, transparent) 30%,
+      color-mix(in srgb, var(--progress-bar-color) 70%, white) 50%,
+      color-mix(in srgb, var(--progress-bar-color) 55%, transparent) 70%,
+      transparent 100%
+    );
+    transform: translateX(-100%);
+    animation: progress-bar-sweep 1.6s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  }
 
   @media (prefers-reduced-motion: reduce) {
-    // Still says "busy" without moving: the stripes stand still and the whole bar breathes instead.
-    animation: progress-bar-breathe 1.4s ease-in-out infinite;
+    // Still says "busy" without moving: the sheen rests at the centre and breathes.
+    &::before {
+      inset-inline-start: calc((1 - var(--progress-bar-sheen-share)) * 50%);
+      transform: none;
+      animation: progress-bar-breathe 1.6s ease-in-out infinite;
+    }
   }
 }
 
@@ -63,13 +80,14 @@
   text-overflow: ellipsis;
 }
 
-// Sliding the stripe pattern by one tile per cycle loops seamlessly.
-@keyframes progress-bar-stripes {
+// One sweep: from wholly off the left edge to wholly off the right. A transform's percentages are the
+// band's own width, so the track's width is the band's divided by its share.
+@keyframes progress-bar-sweep {
   from {
-    background-position: var(--progress-bar-stripe-size) 0;
+    transform: translateX(-100%);
   }
   to {
-    background-position: 0 0;
+    transform: translateX(calc(100% / var(--progress-bar-sheen-share)));
   }
 }
 
