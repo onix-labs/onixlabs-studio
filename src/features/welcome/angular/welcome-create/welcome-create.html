@@ -1,118 +1,89 @@
 <div class="create">
-  <!-- The project's details, all optional: filled in, the starter opens a workspace made from them. -->
-  <aside class="create__side" aria-labelledby="create-details-title">
-    <h2 class="create__heading" id="create-details-title">Project Details</h2>
+  <!-- The checklist: every step, how it stands, and a way to jump to it. -->
+  <nav class="create__side" aria-labelledby="create-steps-title">
+    <h2 class="create__heading" id="create-steps-title">New Project</h2>
+    <ol class="create__steps">
+      @for (step of steps; track step.id) {
+        <li>
+          <button
+            type="button"
+            class="create__step"
+            [class.create__step--current]="stateOf(step.id) === 'current'"
+            [class.create__step--done]="stateOf(step.id) === 'done'"
+            [attr.aria-current]="stateOf(step.id) === 'current' ? 'step' : null"
+            (click)="draft.goTo(step.id)"
+          >
+            <app-icon class="create__step-icon" [icon]="iconOf(step.id)" />
+            <span>{{ step.title }}</span>
+          </button>
+        </li>
+      }
+    </ol>
     <p class="create__lead">
-      Optional. If you already know your project's name, where it goes and its repository, fill them
-      in and it opens as a workspace straight away. Otherwise the agent opens in its own tab to plan
-      it with you first.
+      Every step is optional. Fill in what you know; the agent asks about the rest.
     </p>
+    <button type="button" class="create__secondary create__over" (click)="draft.reset()">
+      Start Over
+    </button>
+  </nav>
 
-    <label class="create__label" for="create-name">Name</label>
-    <div class="create__field">
-      <input
-        id="create-name"
-        type="text"
-        placeholder="my-project"
-        spellcheck="false"
-        [value]="name()"
-        (input)="onNameInput($event)"
-      />
+  <!-- The step shown, then the way on. -->
+  <section class="create__main" aria-labelledby="create-step-title">
+    <header class="create__header">
+      <h2 class="create__title" id="create-step-title">{{ current().title }}</h2>
+      <p class="create__description">{{ current().description }}</p>
+    </header>
+
+    <div class="create__body">
+      @switch (draft.step()) {
+        @case ('start') {
+          <app-create-start />
+        }
+        @case ('details') {
+          <app-create-details />
+        }
+        @case ('technology') {
+          <app-create-technology
+            [technologies]="draft.catalogue()"
+            [selected]="draft.technologies()"
+            (toggled)="draft.toggleTechnology($event)"
+            (added)="draft.addTechnology($event)"
+          />
+        }
+        @case ('options') {
+          <app-create-options />
+        }
+        @case ('summary') {
+          <app-create-summary />
+        }
+      }
     </div>
-    @if (name().trim().length > 0 && !nameValid()) {
-      <p class="create__error" role="alert">
-        Use letters, digits, dots, hyphens and underscores only.
-      </p>
-    }
 
-    <span class="create__label">Location</span>
-    <div class="create__location">
-      <span class="create__path" [class.create__path--empty]="location() === null">
-        {{ location() ?? 'Not chosen' }}
-      </span>
-      <button type="button" class="create__browse" (click)="browse()">
-        <app-icon [icon]="Icon.WELCOME_PROJECT_BROWSE" />
-        <span>Browse…</span>
+    <footer class="create__footer">
+      @if (draft.error(); as message) {
+        <p class="create__error" role="alert">{{ message }}</p>
+      }
+      <button
+        type="button"
+        class="create__secondary"
+        [disabled]="first() || draft.sending()"
+        (click)="draft.move(-1)"
+      >
+        Back
       </button>
-    </div>
-
-    <span class="create__label">Repository</span>
-    <app-dropdown
-      class="create__choice"
-      ariaLabel="Repository"
-      placeholder="Repository…"
-      [options]="repositoryOptions()"
-      [value]="repository() ?? ''"
-      [fullWidth]="true"
-      (valueChange)="setRepository($event)"
-    />
-    @if (hosted()) {
-      <app-dropdown
-        class="create__choice"
-        ariaLabel="Account"
-        [placeholder]="accounts().length === 0 ? 'No accounts signed in' : 'Account…'"
-        [options]="accountOptions()"
-        [value]="account() ?? ''"
-        [fullWidth]="true"
-        [disabled]="accounts().length === 0"
-        (valueChange)="setAccount($event)"
-      />
-    }
-    @if (repository() !== null && repository() !== 'none') {
-      <app-dropdown
-        class="create__choice"
-        ariaLabel="Repository layout"
-        placeholder="Layout…"
-        [options]="layoutOptions"
-        [value]="layout() ?? ''"
-        [fullWidth]="true"
-        (valueChange)="setLayout($event)"
-      />
-    }
-
-    @if (destination(); as line) {
-      <p class="create__destination">{{ line }}</p>
-    }
-  </aside>
-
-  <!-- The starters, the one way to begin: each opens the project agent with its own skill, general
-       first — in a new workspace when the details are complete, in its own tab when they are empty. -->
-  <section class="create__main" aria-labelledby="create-starters-title">
-    <h2 class="create__heading create__title" id="create-starters-title">Start From</h2>
-
-    @if (error(); as message) {
-      <p class="create__notice create__notice--error" role="alert">{{ message }}</p>
-    }
-
-    <div class="create__panel">
-      <div class="create__list-frame" appOverlayScrollbar=".create__list">
-        <ul class="create__list">
-          @for (starter of starters; track starter.skill) {
-            <li>
-              <button
-                type="button"
-                class="create__starter"
-                [disabled]="creating()"
-                [attr.aria-busy]="creating() && startedFrom() === starter"
-                (click)="start(starter)"
-              >
-                <span class="create__starter-icon">
-                  <app-icon [icon]="starter.icon" />
-                </span>
-                <span class="create__starter-text">
-                  <span class="create__starter-title">{{ starter.title }}</span>
-                  <span class="create__starter-summary">{{ starter.summary }}</span>
-                </span>
-                @if (creating() && startedFrom() === starter) {
-                  <app-icon class="create__starter-chevron create__spin" [icon]="Icon.SPINNER" />
-                } @else {
-                  <app-icon class="create__starter-chevron" [icon]="Icon.WELCOME_CHEVRON" />
-                }
-              </button>
-            </li>
-          }
-        </ul>
-      </div>
-    </div>
+      <button
+        type="button"
+        class="create__primary"
+        [disabled]="draft.sending()"
+        (click)="primary()"
+      >
+        @if (draft.sending()) {
+          <app-icon class="create__spin" [icon]="Icon.SPINNER" />
+          <span>Creating…</span>
+        } @else {
+          <span>{{ primaryLabel() }}</span>
+        }
+      </button>
+    </footer>
   </section>
 </div>

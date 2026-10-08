@@ -1812,7 +1812,10 @@ export class DirectoryView implements OnInit, OnDestroy {
     this.log.info('workspace', 'Starting the agent on a new project');
     this.agentConversation.newChat();
     this.agent.setBrief(start.brief);
-    this.agent.send(start.prompt, this.tabId(), 'workspace');
+    for (const reference of start.context ?? []) {
+      this.agent.attachContext(reference);
+    }
+    this.agent.send(start.prompt, this.tabId(), 'workspace', start.images ?? []);
     this.dockReveal.reveal('agent');
   }
 

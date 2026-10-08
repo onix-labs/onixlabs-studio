@@ -13,7 +13,8 @@ import type { HostingManager } from '../hosting/hosting-manager';
 import type { TrustedPaths } from '../trusted-paths';
 import type { VersionControlDescriptor } from '../version-control/version-control-descriptor';
 import type { VersionControlHost } from '../version-control/version-control-host';
-import { NewProjectManager, parseProjectRequest } from './new-project-manager';
+import type { PickedDocuments } from '@shared/api/new-project-channels';
+import { NewProjectManager, parseProjectRequest, readDocuments } from './new-project-manager';
 
 describe('parseProjectRequest', () => {
   const hosted: Record<string, unknown> = {
@@ -264,5 +265,62 @@ describe('NewProjectManager', () => {
     expect(outcome).toEqual({ ok: false, error: 'git is not installed' });
     expect(fs.existsSync(path.join(parent!, 'todo'))).toBe(false);
     expect(trusted).toEqual([]);
+  });
+});
+
+describe('readDocuments', () => {
+  let folder: string;
+
+  beforeEach(() => {
+    folder = fs.mkdtempSync(path.join(os.tmpdir(), 'project-documents-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(folder, { recursive: true, force: true });
+  });
+
+  /**
+   * Writes a file into the folder.
+   * @param name Its name.
+   * @param content Its content.
+   * @returns Returns its path.
+   */
+  function file(name: string, content: string | Buffer): string {
+    const target: string = path.join(folder, name);
+    fs.writeFileSync(target, content);
+    return target;
+  }
+
+  it('readsText_asText_andImages_asBase64', async () => {
+    const notes: string = file('notes.md', '# Notes');
+    const sketch: string = file('sketch.PNG', Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+
+    const picked: PickedDocuments = await readDocuments([notes, sketch]);
+
+    expect(picked.documents).toEqual([
+      { kind: 'text', name: 'notes.md', path: notes, content: '# Notes' },
+      { kind: 'image', name: 'sketch.PNG', path: sketch, mediaType: 'image/png', data: 'iVBORw==' },
+    ]);
+    expect(picked.skipped).toEqual([]);
+  });
+
+  it('leavesOut_whatIsNotText_whatIsTooLarge_andWhatCannotBeRead', async () => {
+    const binary: string = file('spec.pdf', Buffer.from([0x25, 0x50, 0x00, 0x46]));
+    const large: string = file('dump.txt', 'x'.repeat(200_001));
+
+    const picked: PickedDocuments = await readDocuments([
+      binary,
+      large,
+      path.join(folder, 'missing.md'),
+    ]);
+
+    expect(picked.documents).toEqual([]);
+    expect(picked.skipped.map((entry) => entry.name)).toEqual([
+      'spec.pdf',
+      'dump.txt',
+      'missing.md',
+    ]);
+    expect(picked.skipped[0].reason).toContain('Only text documents and images');
+    expect(picked.skipped[1].reason).toContain('over 200 KB');
   });
 });

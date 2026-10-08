@@ -138,7 +138,10 @@ export class AgentView implements OnInit, OnDestroy {
       this.log.info('agent.view', 'Starting the agent on a new project', { tabId: id });
       this.conversation.newChat();
       this.agent.setBrief(start.brief);
-      this.agent.send(start.prompt, id, 'project');
+      for (const reference of start.context ?? []) {
+        this.agent.attachContext(reference);
+      }
+      this.agent.send(start.prompt, id, 'project', start.images ?? []);
     }
   }
 

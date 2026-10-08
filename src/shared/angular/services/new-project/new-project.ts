@@ -5,6 +5,7 @@ import {
   NewProjectClient,
   NewProjectOutcome,
   NewProjectRequest,
+  PickedDocuments,
 } from '@shared/api/new-project-channels';
 import { Log } from '@shared/angular/services/log/log';
 
@@ -38,6 +39,17 @@ export class NewProject implements NewProjectClient {
         ok: false,
         error: 'Creating a project is unavailable outside the desktop application.',
       })
+    );
+  }
+
+  /**
+   * Asks the user for supporting documents and reads them.
+   * @returns Returns what was read and what was left out; nothing when the dialog was cancelled.
+   */
+  public pickDocuments(): Promise<PickedDocuments> {
+    return (
+      this.bridge?.invoke<PickedDocuments>(NewProjectChannel.PickDocuments) ??
+      Promise.resolve({ documents: [], skipped: [] })
     );
   }
 }

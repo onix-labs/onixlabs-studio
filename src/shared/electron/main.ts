@@ -511,6 +511,7 @@ class Program {
     this.hostingManager,
     this.versionControlHost,
     this.trustedPaths,
+    (): BrowserWindow | null => this.windows.main(),
   );
 
   /**

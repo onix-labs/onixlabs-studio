@@ -1,4 +1,4 @@
-import { ipcMain, IpcMainInvokeEvent } from 'electron';
+import { ipcMain, IpcMainInvokeEvent, OpenDialogReturnValue, WebContents } from 'electron';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { CloneOutcome } from '@shared/api/clone-channels';
@@ -9,6 +9,8 @@ import {
   NewProjectChannel,
   NewProjectOutcome,
   NewProjectRequest,
+  PickedDocuments,
+  ProjectDocument,
 } from '@shared/api/new-project-channels';
 import { STUDIO_DIR } from '@shared/api/studio';
 import type { VersionControlResponse } from '@shared/api/version-control-protocol';
@@ -19,6 +21,7 @@ import {
   WORKTREE_CONFIG_FILE,
 } from '@shared/api/worktree';
 import type { CloneManager } from '../clone/clone-manager';
+import { showOpenDialog } from '../dialog-parent';
 import type { HostingManager } from '../hosting/hosting-manager';
 import { logger } from '../logger';
 import type { TrustedPaths } from '../trusted-paths';
@@ -48,12 +51,14 @@ export class NewProjectManager {
    * @param hosting The hosting manager, which asks the code host for the repository.
    * @param versionControl The version-control host, which makes a local repository.
    * @param trusted The trusted paths, which a new folder joins.
+   * @param window Gets the window a dialog belongs to when no sender is known.
    */
   public constructor(
     private readonly clones: CloneManager,
     private readonly hosting: HostingManager,
     private readonly versionControl: VersionControlHost,
     private readonly trusted: TrustedPaths,
+    private readonly window: () => Electron.BrowserWindow | null = (): null => null,
   ) {}
 
   /**
@@ -65,6 +70,25 @@ export class NewProjectManager {
       (_event: IpcMainInvokeEvent, request: unknown): Promise<NewProjectOutcome> =>
         this.create(request),
     );
+    ipcMain.handle(
+      NewProjectChannel.PickDocuments,
+      (event: IpcMainInvokeEvent): Promise<PickedDocuments> => this.pickDocuments(event.sender),
+    );
+  }
+
+  /**
+   * Asks the user for supporting documents, in this process's own dialog, and reads them: the
+   * renderer never names a path, so it can read only what the user picked.
+   * @param sender The web contents that asked, whose window the dialog belongs to.
+   * @returns Returns what was read and what was left out; nothing when the dialog was cancelled.
+   */
+  public async pickDocuments(sender: WebContents): Promise<PickedDocuments> {
+    const result: OpenDialogReturnValue = await showOpenDialog(sender, this.window, {
+      title: 'Choose supporting documents',
+      buttonLabel: 'Attach',
+      properties: ['openFile', 'multiSelections'],
+    });
+    return result.canceled ? { documents: [], skipped: [] } : readDocuments(result.filePaths);
   }
 
   /**
@@ -243,6 +267,69 @@ export function parseProjectRequest(value: unknown): NewProjectRequest | string 
     name,
     repository: { kind: 'hosted', host, account, private: fields['private'] === true, layout },
   };
+}
+
+/**
+ * The most bytes a text document may have to be attached inline: what a run accepts of one.
+ */
+const MAX_TEXT_BYTES: number = 200_000;
+
+/**
+ * The most bytes an image may have: what a run accepts of one, once base64-encoded.
+ */
+const MAX_IMAGE_BYTES: number = 4_400_000;
+
+/**
+ * The image types a run accepts, by extension.
+ */
+const IMAGE_TYPES: Readonly<Record<string, string>> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.gif': 'image/gif',
+};
+
+/**
+ * Reads the documents the user picked: an image as an image, anything else as text — unless it is too
+ * large, or is not text at all, which is left out with why.
+ * @param paths The absolute paths picked.
+ * @returns Returns what was read and what was left out.
+ */
+export async function readDocuments(paths: readonly string[]): Promise<PickedDocuments> {
+  const documents: ProjectDocument[] = [];
+  const skipped: { name: string; reason: string }[] = [];
+  for (const file of paths) {
+    const name: string = path.basename(file);
+    let bytes: Buffer;
+    try {
+      bytes = await fs.promises.readFile(file);
+    } catch (error: unknown) {
+      skipped.push({ name, reason: `It could not be read: ${message(error)}` });
+      continue;
+    }
+    const mediaType: string | undefined = IMAGE_TYPES[path.extname(file).toLowerCase()];
+    if (mediaType !== undefined) {
+      if (bytes.length > MAX_IMAGE_BYTES) {
+        skipped.push({ name, reason: 'Images over 4 MB cannot be attached.' });
+      } else {
+        documents.push({
+          kind: 'image',
+          name,
+          path: file,
+          mediaType,
+          data: bytes.toString('base64'),
+        });
+      }
+    } else if (bytes.includes(0)) {
+      skipped.push({ name, reason: 'Only text documents and images can be attached.' });
+    } else if (bytes.length > MAX_TEXT_BYTES) {
+      skipped.push({ name, reason: 'Text documents over 200 KB cannot be attached.' });
+    } else {
+      documents.push({ kind: 'text', name, path: file, content: bytes.toString('utf8') });
+    }
+  }
+  return { documents, skipped };
 }
 
 /**

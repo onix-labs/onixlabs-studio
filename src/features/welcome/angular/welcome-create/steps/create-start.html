@@ -1,0 +1,52 @@
+<div class="step">
+  <div class="step__field">
+    <app-icon [icon]="Icon.SEARCH" />
+    <input
+      type="text"
+      placeholder="Search templates…"
+      aria-label="Search templates"
+      spellcheck="false"
+      [value]="query()"
+      (input)="onQueryInput($event)"
+      (keydown.escape)="query.set('')"
+    />
+  </div>
+
+  <div class="step__list-frame" appOverlayScrollbar=".step__list">
+    <ul class="step__list" aria-label="Templates">
+      @for (template of templates(); track template.skill) {
+        <li>
+          <button
+            type="button"
+            class="step__row"
+            [class.step__row--picked]="draft.template()?.skill === template.skill"
+            [attr.aria-pressed]="draft.template()?.skill === template.skill"
+            (click)="draft.chooseTemplate(template)"
+          >
+            <span class="step__row-icon"><app-icon [icon]="template.icon" /></span>
+            <span class="step__row-text">
+              <span class="step__row-title">{{ template.title }}</span>
+              <span class="step__row-summary">{{ template.summary }}</span>
+            </span>
+            @if (draft.template()?.skill === template.skill) {
+              <app-icon class="step__row-mark" [icon]="Icon.WELCOME_STEP_DONE" />
+            }
+          </button>
+        </li>
+      } @empty {
+        <li class="step__empty">No template matches. Describe it below instead.</li>
+      }
+    </ul>
+  </div>
+
+  <label class="step__label" for="create-idea">Or describe what you want to build</label>
+  <div class="step__field step__field--area">
+    <textarea
+      id="create-idea"
+      rows="3"
+      placeholder="A command-line tool that tidies my photo library by date and place…"
+      [value]="draft.idea()"
+      (input)="onIdeaInput($event)"
+    ></textarea>
+  </div>
+</div>

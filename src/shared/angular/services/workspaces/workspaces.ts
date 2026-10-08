@@ -1,4 +1,5 @@
 import { inject, Service } from '@angular/core';
+import type { AgentContextRef, AiImageRef } from '@shared/api/ai/ai-run-types';
 import { DirectoryListing } from '@shared/api/workspace-channels';
 import { Log } from '@shared/angular/services/log/log';
 
@@ -16,6 +17,16 @@ export interface WorkspaceAgentStart {
    * Gets the standing instructions every turn of the conversation carries.
    */
   readonly brief: string;
+
+  /**
+   * Gets the context the first message carries — supporting documents, inline — if any.
+   */
+  readonly context?: readonly AgentContextRef[];
+
+  /**
+   * Gets the images the first message carries, if any.
+   */
+  readonly images?: readonly AiImageRef[];
 }
 
 /**

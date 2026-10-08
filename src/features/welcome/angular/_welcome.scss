@@ -292,6 +292,44 @@ $control-radius: 0.55rem;
   }
 }
 
+// A pill that toggles — a technology, a skill: quiet at rest, accent-filled when on.
+@mixin chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.7rem;
+  font: inherit;
+  font-size: 0.8rem;
+  color: var(--wl-muted);
+  background: var(--wl-row);
+  border: 0.0625rem solid var(--wl-surface-border);
+  border-radius: 999px;
+  cursor: default;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+
+  &:hover,
+  &:focus-visible {
+    outline: none;
+    color: var(--wl-text);
+    border-color: rgba(var(--accent-color-rgb), 0.55);
+  }
+}
+
+@mixin chip-on {
+  color: var(--accent-color);
+  background: rgba(var(--accent-color-rgb), 0.2);
+  border-color: rgba(var(--accent-color-rgb), 0.8);
+
+  &:hover,
+  &:focus-visible {
+    color: var(--accent-color);
+    border-color: var(--accent-color);
+  }
+}
+
 // A centred empty state: a large thin glyph, a title, and a hint.
 @mixin empty-state {
   display: flex;

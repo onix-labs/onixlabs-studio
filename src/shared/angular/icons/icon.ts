@@ -1399,11 +1399,6 @@ export class Icon {
   public static readonly WELCOME_PROJECT_BROWSE: Icon = new Icon('ph-light ph-folder-simple');
 
   /**
-   * Gets the light-weight icon of the most general project starter: create something.
-   */
-  public static readonly WELCOME_STARTER_ANYTHING: Icon = new Icon('ph-light ph-lightbulb');
-
-  /**
    * Gets the light-weight icon of the desktop application starter.
    */
   public static readonly WELCOME_STARTER_DESKTOP: Icon = new Icon('ph-light ph-desktop');
@@ -1437,6 +1432,41 @@ export class Icon {
    * Gets the light-weight icon of the game starter.
    */
   public static readonly WELCOME_STARTER_GAME: Icon = new Icon('ph-light ph-game-controller');
+
+  /**
+   * Gets the icon of a New Project wizard step not yet visited.
+   */
+  public static readonly WELCOME_STEP_TODO: Icon = new Icon('ph-light ph-circle');
+
+  /**
+   * Gets the icon of a New Project wizard step the user filled in.
+   */
+  public static readonly WELCOME_STEP_DONE: Icon = new Icon('ph-fill ph-check-circle');
+
+  /**
+   * Gets the icon of a New Project wizard step the user passed without filling in.
+   */
+  public static readonly WELCOME_STEP_SKIPPED: Icon = new Icon('ph-light ph-minus-circle');
+
+  /**
+   * Gets the plus on the Technology step's field for adding one that is not listed.
+   */
+  public static readonly WELCOME_TECH_ADD: Icon = new Icon('ph-light ph-plus');
+
+  /**
+   * Gets the icon of a supporting document attached to a new project.
+   */
+  public static readonly WELCOME_DOCUMENT: Icon = new Icon('ph-light ph-file-text');
+
+  /**
+   * Gets the icon of an image attached to a new project.
+   */
+  public static readonly WELCOME_DOCUMENT_IMAGE: Icon = new Icon('ph-light ph-image');
+
+  /**
+   * Gets the icon of the New Project wizard's Add Documents button.
+   */
+  public static readonly WELCOME_DOCUMENT_ADD: Icon = new Icon('ph-light ph-paperclip');
 
   // --- Setup wizard ---
   //

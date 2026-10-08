@@ -6,123 +6,62 @@ import {
   OnInit,
   output,
   OutputEmitterRef,
-  signal,
   Signal,
-  WritableSignal,
 } from '@angular/core';
-import type { ForgeHostAccount, ForgeResult } from '@shared/api/forge-types';
-import type { HostedAccount } from '@shared/api/hosting-protocol';
-import type { NewProjectOutcome, NewProjectRepository } from '@shared/api/new-project-channels';
-import { installedContributions } from '@shared/api/plugin-channels';
-import type { VersionControlPluginInfo } from '@shared/api/source-control-channels';
-import type { Skill } from '@shared/api/skill-channels';
-import { Clone } from '@shared/angular/services/clone/clone';
-import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
-import { Forge } from '@shared/angular/services/forge/forge';
-import { NewProject } from '@shared/angular/services/new-project/new-project';
-import { Skills } from '@shared/angular/services/skills/skills';
-import type { Tab } from '@shared/angular/services/tabs/tab';
-import { Tabs } from '@shared/angular/services/tabs/tabs';
-import { SourceControl } from '@shared/angular/services/source-control/source-control';
-import { WorkspaceAgentStart, Workspaces } from '@shared/angular/services/workspaces/workspaces';
-import { Log } from '@shared/angular/services/log/log';
-import { Plugins } from '@shared/angular/services/plugins/plugins';
-import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
-import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
-import { OverlayScrollbar } from '@shared/angular/components/overlay-scrollbar/overlay-scrollbar';
+import { Icon } from '@shared/angular/icons/icon';
+import { CREATE_STEPS, CreateStep, ProjectDraft } from './project-draft';
+import { CreateDetails } from './steps/create-details';
+import { CreateOptions } from './steps/create-options';
+import { CreateStart } from './steps/create-start';
+import { CreateSummary } from './steps/create-summary';
+import { CreateTechnology } from './technology/create-technology';
 
 /**
- * Where a new project's repository lives: nowhere, on this machine only, or on a code host as well.
+ * Describes one step of the wizard as the checklist shows it.
  */
-export type ProjectRepository = 'none' | 'local' | 'public' | 'private';
-
-/**
- * How a new project's repository is laid out on disk: as a plain checkout, or as a worktree container.
- */
-export type ProjectLayout = 'flat' | 'worktree';
-
-/**
- * Describes a project starter: a skill that gives the agent its first idea of what is being built. A
- * starter shapes the questions the agent asks, never the answers — it is not a template.
- */
-export interface ProjectStarter {
+interface CreateStepInfo {
   /**
-   * Gets the name of the skill the starter applies.
+   * Gets the step.
    */
-  readonly skill: string;
+  readonly id: CreateStep;
 
   /**
-   * Gets the starter's name.
+   * Gets its name.
    */
   readonly title: string;
 
   /**
-   * Gets a line describing it.
+   * Gets what it asks, under its name on the step's own page.
    */
-  readonly summary: string;
-
-  /**
-   * Gets its icon.
-   */
-  readonly icon: Icon;
-
-  /**
-   * Gets what the user says first when the conversation starts from it, in the user's voice: what they
-   * want to build.
-   */
-  readonly prompt: string;
+  readonly description: string;
 }
 
 /**
- * Describes an account a hosted repository can be made under.
+ * How a step stands in the checklist: the one shown, filled in, passed without filling in, or not
+ * reached yet.
  */
-interface ProjectAccount {
-  /**
-   * Gets the account's key: its host and login.
-   */
-  readonly id: string;
-
-  /**
-   * Gets the code host, e.g. "github.com".
-   */
-  readonly host: string;
-
-  /**
-   * Gets the host's display name, e.g. "GitHub".
-   */
-  readonly provider: string;
-
-  /**
-   * Gets the account's login.
-   */
-  readonly login: string;
-}
+export type CreateStepState = 'current' | 'done' | 'skipped' | 'todo';
 
 /**
- * The welcome screen's Create Something section: an optional form — a project's name, where it goes
- * and its repository — and the starters that open a project agent. It hosts no conversation itself,
- * and the starters are the one way to begin.
+ * The welcome screen's Create Something section (#806): a wizard that gathers what the user knows
+ * about a new project — what it is, its details, its technology, how it is run — and sends it all to
+ * an agent as one first message. No agent takes part until then.
  *
- * The form decides only where the agent opens. Complete, the starter makes the project — the folder, a
- * local repository, or a clone of one the code host makes — and opens it as a workspace with the agent
- * waiting inside. Without a name, the agent opens in its own tab to plan the project before it has a
- * home. The starter decides which skill the agent begins with, from the most general ("Create
- * Something") to the specific.
- *
- * ⚠️ Still to come: the starters are a fixed list rather than the skill library's, and the agent tab
- * cannot yet make the project and move into it.
+ * Every step is optional: its button says Skip until something is filled in, then Next, and the
+ * checklist jumps anywhere. The last step shows the message as it will be sent, and sends it — to a
+ * workspace Studio makes first when there is a name and a place, or to an agent in its own tab.
  */
 @Component({
   selector: 'app-welcome-create',
-  imports: [AppIcon, Dropdown, OverlayScrollbar],
+  imports: [AppIcon, CreateStart, CreateDetails, CreateTechnology, CreateOptions, CreateSummary],
   templateUrl: './welcome-create.html',
   styleUrl: './welcome-create.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class WelcomeCreate implements OnInit {
   /**
-   * Emits once a project has been made and opened, so the welcome screen steps aside.
+   * Emits once the draft has gone to an agent, so the welcome screen steps aside.
    */
   public readonly opened: OutputEmitterRef<void> = output<void>();
 
@@ -132,605 +71,126 @@ export class WelcomeCreate implements OnInit {
   protected readonly Icon: typeof Icon = Icon;
 
   /**
-   * Holds the structured logger.
+   * Holds the draft, which outlives this view.
    */
-  private readonly log: Log = inject(Log);
+  protected readonly draft: ProjectDraft = inject(ProjectDraft);
 
   /**
-   * Holds the clone service, whose remembered parent folder is where new projects go too.
+   * Gets the steps, in order.
    */
-  private readonly cloner: Clone = inject(Clone);
-
-  /**
-   * Holds the plugin registry, which says whether repositories can be made and hosted.
-   */
-  private readonly plugins: Plugins = inject(Plugins);
-
-  /**
-   * Holds the forge service, which lists the accounts a repository can be made under.
-   */
-  private readonly forge: Forge = inject(Forge);
-
-  /**
-   * Holds the new-project service, which makes the project in the main process.
-   */
-  private readonly newProject: NewProject = inject(NewProject);
-
-  /**
-   * Holds the file opener, which opens the project as a workspace.
-   */
-  private readonly fileOpener: FileOpener = inject(FileOpener);
-
-  /**
-   * Holds the source-control service, which says what the installed version-control plugins can do.
-   */
-  private readonly sourceControl: SourceControl = inject(SourceControl);
-
-  /**
-   * Holds the tab service, which opens the agent's own tab when there is no project folder yet.
-   */
-  private readonly tabs: Tabs = inject(Tabs);
-
-  /**
-   * Holds the per-tab handoff, which carries the agent's start to the tab it opens in.
-   */
-  private readonly workspaces: Workspaces = inject(Workspaces);
-
-  /**
-   * Holds the skill library, where a starter's skill is looked up.
-   */
-  private readonly skills: Skills = inject(Skills);
-
-  /**
-   * Gets the starters, from the general to the specific.
-   */
-  protected readonly starters: readonly ProjectStarter[] = [
+  protected readonly steps: readonly CreateStepInfo[] = [
     {
-      skill: 'new-project',
-      title: 'Create Something',
-      summary: 'No idea of the shape yet: talk it through from the beginning.',
-      prompt: "I want to build something new, and I'd like to plan it with you.",
-      icon: Icon.WELCOME_STARTER_ANYTHING,
+      id: 'start',
+      title: 'Start',
+      description: 'Choose what kind of project this is, or describe it in your own words.',
     },
     {
-      skill: 'new-desktop-app',
-      title: 'Desktop Application',
-      summary: 'A native or cross-platform app for Windows, macOS and Linux.',
-      prompt: 'I want to build a desktop application. Help me plan it.',
-      icon: Icon.WELCOME_STARTER_DESKTOP,
+      id: 'details',
+      title: 'Project Details',
+      description:
+        'Whatever you already know. With a name and a place, the project is made before the agent starts.',
     },
     {
-      skill: 'new-web-app',
-      title: 'Web Application',
-      summary: 'A site or app in the browser, with or without a back end.',
-      prompt: 'I want to build a web application. Help me plan it.',
-      icon: Icon.WELCOME_STARTER_WEB,
+      id: 'technology',
+      title: 'Technology',
+      description:
+        'Pick what you want to use. Leave it to the agent for anything you are unsure of.',
     },
     {
-      skill: 'new-mobile-app',
-      title: 'Mobile Application',
-      summary: 'An app for iOS, Android, or both.',
-      prompt: 'I want to build a mobile application. Help me plan it.',
-      icon: Icon.WELCOME_STARTER_MOBILE,
+      id: 'options',
+      title: 'Options',
+      description: 'How the project is run, and the skills the agent should follow.',
     },
     {
-      skill: 'new-flutter-app',
-      title: 'Cross-Platform Mobile App with Flutter',
-      summary: 'Dart and Flutter, for iOS and Android from one code base.',
-      prompt:
-        'I want to build a cross-platform mobile application with Dart and Flutter. Help me plan it.',
-      icon: Icon.WELCOME_STARTER_MOBILE,
-    },
-    {
-      skill: 'new-service',
-      title: 'API or Service',
-      summary: 'A back-end service, its API, data and deployment.',
-      prompt: 'I want to build an API or back-end service. Help me plan it.',
-      icon: Icon.WELCOME_STARTER_SERVICE,
-    },
-    {
-      skill: 'new-cli-tool',
-      title: 'Command-Line Tool',
-      summary: 'A tool run from the terminal, and how it is installed.',
-      prompt: 'I want to build a command-line tool. Help me plan it.',
-      icon: Icon.WELCOME_STARTER_CLI,
-    },
-    {
-      skill: 'new-library',
-      title: 'Library or Package',
-      summary: 'Reusable code, published for others to depend on.',
-      prompt: 'I want to build a library or package for others to use. Help me plan it.',
-      icon: Icon.WELCOME_STARTER_LIBRARY,
-    },
-    {
-      skill: 'new-game',
-      title: 'Game',
-      summary: 'A game, its engine and the platforms it ships to.',
-      prompt: 'I want to build a game. Help me plan it.',
-      icon: Icon.WELCOME_STARTER_GAME,
+      id: 'summary',
+      title: 'Summary',
+      description: 'This is what the agent receives.',
     },
   ];
 
   /**
-   * Holds the project's name, which is also its folder's.
+   * Gets the step shown.
    */
-  protected readonly name: WritableSignal<string> = signal<string>('');
-
-  /**
-   * Holds the folder the project's folder is made in, or null until one is known.
-   */
-  protected readonly location: WritableSignal<string | null> = signal<string | null>(null);
-
-  /**
-   * Holds where the repository lives, or null until the user picks. As with cloning, Studio has no
-   * default of its own.
-   */
-  protected readonly repository: WritableSignal<ProjectRepository | null> =
-    signal<ProjectRepository | null>(null);
-
-  /**
-   * Holds how the repository is laid out, or null until the user picks.
-   */
-  protected readonly layout: WritableSignal<ProjectLayout | null> = signal<ProjectLayout | null>(
-    null,
+  protected readonly current: Signal<CreateStepInfo> = computed(
+    (): CreateStepInfo =>
+      this.steps.find((step: CreateStepInfo): boolean => step.id === this.draft.step()) ??
+      this.steps[0],
   );
 
   /**
-   * Holds the accounts hosted repositories can be made under, across the signed-in hosts.
+   * Gets whether the step shown is the first.
    */
-  protected readonly accounts: WritableSignal<readonly ProjectAccount[]> = signal<
-    readonly ProjectAccount[]
-  >([]);
-
-  /**
-   * Holds the account picked for a hosted repository — its id — or null.
-   */
-  protected readonly account: WritableSignal<string | null> = signal<string | null>(null);
-
-  /**
-   * Holds whether the project is being made.
-   */
-  protected readonly creating: WritableSignal<boolean> = signal<boolean>(false);
-
-  /**
-   * Holds why the project could not be made, or null.
-   */
-  protected readonly error: WritableSignal<string | null> = signal<string | null>(null);
-
-  /**
-   * Holds the starter last started, whose row shows the project being made.
-   */
-  protected readonly startedFrom: WritableSignal<ProjectStarter | null> =
-    signal<ProjectStarter | null>(null);
-
-  /**
-   * Gets whether a version-control plugin, which makes the repository, is installed.
-   */
-  protected readonly canVersion: Signal<boolean> = computed(
-    (): boolean => installedContributions(this.plugins.plugins(), 'version-control').length > 0,
+  protected readonly first: Signal<boolean> = computed(
+    (): boolean => this.draft.step() === CREATE_STEPS[0],
   );
 
   /**
-   * Holds whether an installed version-control plugin can make a new repository in place, as the
-   * running plugin says — not the catalogue, whose entry may be newer than the copy installed.
+   * Gets whether the step shown is the last, which sends.
    */
-  protected readonly canInit: WritableSignal<boolean> = signal<boolean>(false);
-
-  /**
-   * Gets whether a hosting plugin, which makes the remote, is installed.
-   */
-  protected readonly canHost: Signal<boolean> = computed(
-    (): boolean => installedContributions(this.plugins.plugins(), 'hosting').length > 0,
+  protected readonly last: Signal<boolean> = computed(
+    (): boolean => this.draft.step() === CREATE_STEPS[CREATE_STEPS.length - 1],
   );
 
   /**
-   * Gets the repository choices the installed plugins can make: none always; a local one with a
-   * version-control plugin that can make one; a hosted one — made by the code host, then cloned — with
-   * a hosting plugin as well.
+   * Gets the main button's words: Skip or Next by whether the step has anything in it, and on the
+   * last step where the draft goes.
    */
-  protected readonly repositoryOptions: Signal<readonly DropdownOption[]> = computed(
-    (): readonly DropdownOption[] => [
-      { value: 'none', label: 'No Repository' },
-      ...(this.canVersion() && this.canInit()
-        ? [{ value: 'local', label: 'Local Repository' }]
-        : []),
-      ...(this.canVersion() && this.canHost()
-        ? [
-            { value: 'public', label: 'Public Repository' },
-            { value: 'private', label: 'Private Repository' },
-          ]
-        : []),
-    ],
-  );
-
-  /**
-   * Gets whether the repository picked is one a code host makes.
-   */
-  protected readonly hosted: Signal<boolean> = computed(
-    (): boolean => this.repository() === 'public' || this.repository() === 'private',
-  );
-
-  /**
-   * Gets the account choices.
-   */
-  protected readonly accountOptions: Signal<readonly DropdownOption[]> = computed(
-    (): readonly DropdownOption[] =>
-      this.accounts().map((account: ProjectAccount): DropdownOption => ({
-        value: account.id,
-        label: `${account.login} (${account.provider})`,
-      })),
-  );
-
-  /**
-   * Gets the layout choices, the same as cloning's.
-   */
-  protected readonly layoutOptions: readonly DropdownOption[] = [
-    { value: 'flat', label: 'Flat Repository' },
-    { value: 'worktree', label: 'Worktree Repository' },
-  ];
-
-  /**
-   * Gets whether the name can be a folder's.
-   */
-  protected readonly nameValid: Signal<boolean> = computed((): boolean =>
-    FOLDER_NAME.test(this.name().trim()),
-  );
-
-  /**
-   * Gets whether the user has begun describing a project to make now: a name decides it, since a
-   * repository, once picked, cannot be un-picked.
-   */
-  protected readonly started: Signal<boolean> = computed(
-    (): boolean => this.name().trim().length > 0,
-  );
-
-  /**
-   * Gets whether the form says everything a workspace needs: a name, a place, a repository, and a
-   * layout when there is a repository.
-   */
-  protected readonly complete: Signal<boolean> = computed(
-    (): boolean =>
-      this.nameValid() &&
-      this.location() !== null &&
-      this.repository() !== null &&
-      (this.repository() === 'none' || this.layout() !== null) &&
-      (!this.hosted() || this.account() !== null),
-  );
-
-  /**
-   * Gets where the project's folder would be made, or null until the name and place are known.
-   */
-  protected readonly target: Signal<string | null> = computed((): string | null => {
-    const location: string | null = this.location();
-    return location === null || !this.nameValid()
-      ? null
-      : `${location.replace(/[\\/]+$/, '')}/${this.name().trim()}`;
+  protected readonly primaryLabel: Signal<string> = computed((): string => {
+    if (this.last()) {
+      return this.draft.toWorkspace() ? 'Send to Workspace Agent' : 'Send to Agent';
+    }
+    return this.draft.touched(this.draft.step()) ? 'Next' : 'Skip';
   });
 
   /**
-   * Gets the line under the form saying where a starter opens the agent, or null while the form is
-   * untouched and the lead above it says enough.
-   */
-  protected readonly destination: Signal<string | null> = computed((): string | null => {
-    if (this.complete()) {
-      return `Choose a starter to create a workspace at ${this.target()}.`;
-    }
-    if (this.started()) {
-      return 'Finish the details to start in a new workspace, or clear the name to plan with the agent first.';
-    }
-    return null;
-  });
-
-  /**
-   * Starts with the folder clones go into, the one the user chose last, and reads the accounts a
-   * repository can be made under.
+   * Starts reading what the machine can do, once.
    */
   public ngOnInit(): void {
-    void this.cloner.parent().then((parent: string | null): void => {
-      if (this.location() === null) {
-        this.location.set(parent);
-      }
-    });
-    void this.loadAccounts();
-    void this.loadCanInit();
+    this.draft.initialise();
   }
 
   /**
-   * Asks the running version-control plugins whether any can make a repository in place.
-   * @returns Resolves once they have answered.
+   * Says how a step stands in the checklist.
+   * @param step The step.
+   * @returns Returns its state.
    */
-  private async loadCanInit(): Promise<void> {
-    const plugins: readonly VersionControlPluginInfo[] =
-      (await this.sourceControl.client?.listPlugins()) ?? [];
-    this.canInit.set(
-      plugins.some(
-        (plugin: VersionControlPluginInfo): boolean =>
-          plugin.installed && plugin.capabilities.includes('init'),
-      ),
-    );
+  protected stateOf(step: CreateStep): CreateStepState {
+    if (step === this.draft.step()) {
+      return 'current';
+    }
+    if (step !== 'summary' && this.draft.touched(step)) {
+      return 'done';
+    }
+    return this.draft.visited().has(step) ? 'skipped' : 'todo';
   }
 
   /**
-   * Reads the accounts on every signed-in host. A host that fails is left out rather than failing the
-   * rest; with no hosting plugin there are none.
-   * @returns Resolves once they have been read.
+   * Gets the checklist's icon for a step.
+   * @param step The step.
+   * @returns Returns the icon.
    */
-  private async loadAccounts(): Promise<void> {
-    if (!this.forge.isAvailable || !this.canHost()) {
+  protected iconOf(step: CreateStep): Icon {
+    switch (this.stateOf(step)) {
+      case 'done':
+        return Icon.WELCOME_STEP_DONE;
+      case 'skipped':
+        return Icon.WELCOME_STEP_SKIPPED;
+      default:
+        return Icon.WELCOME_STEP_TODO;
+    }
+  }
+
+  /**
+   * Moves on a step, or on the last step sends the draft and steps aside once it has gone.
+   * @returns Resolves once the step has moved or the draft has been sent.
+   */
+  protected async primary(): Promise<void> {
+    if (!this.last()) {
+      this.draft.move(1);
       return;
     }
-    const accounts: ProjectAccount[] = [];
-    const hosts: readonly ForgeHostAccount[] = await this.forge.hosts();
-    for (const entry of hosts.filter((h: ForgeHostAccount): boolean => h.status.authenticated)) {
-      const listed: ForgeResult<readonly HostedAccount[]> = await this.forge.accounts(entry.host);
-      if (listed.ok) {
-        accounts.push(
-          ...listed.value.map((account: HostedAccount): ProjectAccount => ({
-            id: `${entry.host}/${account.login}`,
-            host: entry.host,
-            provider: entry.provider,
-            login: account.login,
-          })),
-        );
-      }
-    }
-    this.accounts.set(accounts);
-    this.pickSoleAccount();
-  }
-
-  /**
-   * Picks the account for a hosted repository when there is only one to pick.
-   */
-  private pickSoleAccount(): void {
-    if (this.hosted() && this.account() === null && this.accounts().length === 1) {
-      this.account.set(this.accounts()[0].id);
+    if (await this.draft.send()) {
+      this.opened.emit();
     }
   }
-
-  /**
-   * Updates the name from the input event.
-   * @param event The input event carrying the current value.
-   */
-  protected onNameInput(event: Event): void {
-    this.name.set((event.target as HTMLInputElement).value);
-    this.settle();
-  }
-
-  /**
-   * Asks where the project goes, in the main process's folder dialog.
-   * @returns Resolves once the dialog has closed.
-   */
-  protected async browse(): Promise<void> {
-    const chosen: string | null = await this.cloner.pickParent();
-    if (chosen !== null) {
-      this.location.set(chosen);
-      this.settle();
-    }
-  }
-
-  /**
-   * Records the repository picked.
-   * @param value The picked value.
-   */
-  protected setRepository(value: string): void {
-    this.repository.set(isRepository(value) ? value : null);
-    this.pickSoleAccount();
-    this.settle();
-  }
-
-  /**
-   * Records the account picked.
-   * @param value The picked value.
-   */
-  protected setAccount(value: string): void {
-    this.account.set(
-      this.accounts().some((account: ProjectAccount): boolean => account.id === value)
-        ? value
-        : null,
-    );
-    this.settle();
-  }
-
-  /**
-   * Records the layout picked.
-   * @param value The picked value.
-   */
-  protected setLayout(value: string): void {
-    this.layout.set(value === 'flat' || value === 'worktree' ? value : null);
-    this.settle();
-  }
-
-  /**
-   * Clears what the last start said, once the form changes.
-   */
-  private settle(): void {
-    this.error.set(null);
-  }
-
-  /**
-   * Starts a project agent with a starter's skill: in a new workspace when the form is complete, in
-   * its own tab when there is no name. A name with the rest unfinished is asked to be finished rather
-   * than guessed at.
-   * @param starter The starter.
-   * @returns Resolves once the project is open, or has failed.
-   */
-  protected async start(starter: ProjectStarter): Promise<void> {
-    if (this.creating()) {
-      return;
-    }
-    this.settle();
-    this.startedFrom.set(starter);
-    if (!this.started()) {
-      this.openAgentTab(starter);
-      return;
-    }
-    if (!this.complete()) {
-      this.error.set(
-        'Finish the project details to start in a new workspace, or clear the name to plan with the agent first.',
-      );
-      return;
-    }
-    const repository: NewProjectRepository | string = this.repositoryRequest();
-    if (typeof repository === 'string') {
-      this.error.set(repository);
-      return;
-    }
-    const name: string = this.name().trim();
-    this.creating.set(true);
-    try {
-      const outcome: NewProjectOutcome = await this.newProject.create({ name, repository });
-      if (!outcome.ok) {
-        this.error.set(outcome.error);
-        return;
-      }
-      const start: WorkspaceAgentStart = agentStart(starter, this.skillFor(starter), {
-        name,
-        path: outcome.path,
-        repository: describeRepository(repository),
-      });
-      if (await this.fileOpener.reopenDirectory(outcome.path, start)) {
-        this.opened.emit();
-      } else {
-        this.error.set(`${name} was made at ${outcome.path}, but it could not be opened.`);
-      }
-    } finally {
-      this.creating.set(false);
-    }
-  }
-
-  /**
-   * Opens the agent in a tab of its own, before the project has a folder: briefed on its starter, to
-   * plan the project with the user (#806).
-   * @param starter The starter.
-   */
-  private openAgentTab(starter: ProjectStarter): void {
-    this.log.info('welcome', `Opening a project agent tab from "${starter.skill}"`);
-    const tab: Tab = this.tabs.open('agent');
-    this.workspaces.setAgentStart(tab.id, agentStart(starter, this.skillFor(starter), null));
-    this.opened.emit();
-  }
-
-  /**
-   * Finds a starter's skill in the library.
-   * @param starter The starter.
-   * @returns Returns the skill, or undefined when the library has no enabled skill of that name.
-   */
-  private skillFor(starter: ProjectStarter): Skill | undefined {
-    return this.skills
-      .skills()
-      .find((candidate: Skill): boolean => candidate.enabled && candidate.name === starter.skill);
-  }
-
-  /**
-   * Describes the repository the form asks for, for the main process.
-   * @returns Returns the repository, or why it cannot be made yet.
-   */
-  private repositoryRequest(): NewProjectRepository | string {
-    const choice: ProjectRepository | null = this.repository();
-    const layout: ProjectLayout | null = this.layout();
-    if (choice === 'none') {
-      return { kind: 'none' };
-    }
-    if (choice === 'local') {
-      return layout === null ? 'Finish the project details first.' : { kind: 'local', layout };
-    }
-    const account: ProjectAccount | undefined = this.accounts().find(
-      (candidate: ProjectAccount): boolean => candidate.id === this.account(),
-    );
-    if (choice === null || layout === null || account === undefined) {
-      return 'Finish the project details first.';
-    }
-    return {
-      kind: 'hosted',
-      host: account.host,
-      account: account.login,
-      private: choice === 'private',
-      layout,
-    };
-  }
-}
-
-/**
- * Describes a project Studio has made, for the agent's first message.
- */
-export interface StartedProject {
-  /**
-   * Gets the project's name.
-   */
-  readonly name: string;
-
-  /**
-   * Gets where it is.
-   */
-  readonly path: string;
-
-  /**
-   * Gets its repository in a phrase — "a local repository" — or null for none.
-   */
-  readonly repository: string | null;
-}
-
-/**
- * Words a project's repository for the agent's first message.
- * @param repository The repository made.
- * @returns Returns the phrase, or null for none.
- */
-export function describeRepository(repository: NewProjectRepository): string | null {
-  switch (repository.kind) {
-    case 'none':
-      return null;
-    case 'local':
-      return 'a local repository';
-    case 'hosted':
-      return `a ${repository.private ? 'private' : 'public'} repository on ${repository.host}`;
-  }
-}
-
-/**
- * Describes how a new project's agent starts: the user's first message, sent at once — what Studio
- * made, then what the starter says they want to build — and the brief every turn carries, with the
- * starter's skill when the library has it.
- * @param starter The starter it began from.
- * @param skill The starter's skill, when the library has it.
- * @param project The project Studio made, or null when it has no folder yet.
- * @returns Returns the start.
- */
-export function agentStart(
-  starter: ProjectStarter,
-  skill: Skill | undefined,
-  project: StartedProject | null,
-): WorkspaceAgentStart {
-  const brief: string[] = [
-    project === null
-      ? 'The user wants to start a new project. It has no name or folder yet, so there is nowhere to create files: do not try to. When the plan is settled, say so; the user chooses where the project goes.'
-      : `The user has just created a new project, "${project.name}", at ${project.path}. This workspace is that project; it is new and holds nothing the user wrote yet.`,
-    `They started from "${starter.title}": ${starter.summary}`,
-    'Help them plan the project before building it: ask about what it is for and how it should be made, one question at a time, and recommend an option when offering a choice. Follow them if they want to talk about something else. Ask before creating files.',
-  ];
-  if (skill !== undefined) {
-    brief.push(`Follow the "${skill.name}" skill:\n\n${skill.body}`);
-  }
-  const made: string =
-    project === null
-      ? ''
-      : `I've created a project called "${project.name}"${project.repository === null ? '' : `, with ${project.repository}`}. `;
-  return {
-    prompt: `${made}${starter.prompt}`,
-    brief: brief.join('\n\n'),
-  };
-}
-
-/**
- * Matches a name that can be a folder's: letters, digits, dots, hyphens and underscores, but not "."
- * or "..". The same rule as a clone's folder.
- */
-const FOLDER_NAME: RegExp = /^(?!\.{1,2}$)[\w.-]+$/;
-
-/**
- * Determines whether a value names a repository choice.
- * @param value The value.
- * @returns Returns true when it does.
- */
-function isRepository(value: string): value is ProjectRepository {
-  return value === 'none' || value === 'local' || value === 'public' || value === 'private';
 }

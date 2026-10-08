@@ -6,10 +6,10 @@
   min-block-size: 0;
 }
 
-// The project's details down the left, as Source Control's clone column; the starters filling the right.
+// The checklist down the left, as Source Control's sidebar; the step filling the right.
 .create {
   display: grid;
-  grid-template-columns: 18rem minmax(0, 1fr);
+  grid-template-columns: 14rem minmax(0, 1fr);
   gap: 1.5rem;
   block-size: 100%;
   min-block-size: 0;
@@ -21,7 +21,6 @@
   gap: 0.5rem;
   min-block-size: 0;
   padding-inline-end: 1.25rem;
-  overflow-y: auto;
   border-inline-end: 0.0625rem solid var(--wl-border);
 }
 
@@ -31,68 +30,113 @@
   padding: 0.2rem 0.15rem;
 }
 
-.create__lead {
+.create__steps {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
   margin: 0;
-  padding-inline: 0.15rem;
-  font-size: 0.78rem;
-  line-height: 1.45;
-  color: var(--wl-muted);
+  padding: 0;
+  list-style: none;
 }
 
-.create__label {
-  margin-block-start: 0.5rem;
-  padding-inline: 0.15rem;
-  font-size: 0.76rem;
-  font-weight: 500;
-  color: var(--wl-muted);
-}
+// A step: its state's glyph and its name; the one shown held in the accent, as a picked row is.
+.create__step {
+  @include list-row;
 
-.create__field {
-  @include field;
-  @include control-metrics;
-}
-
-// The chosen folder, which the user changes through Browse rather than by typing a path.
-.create__location {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  min-inline-size: 0;
-}
-
-.create__path {
-  flex: 1 1 auto;
-  min-inline-size: 0;
-  overflow: hidden;
-  font-size: 0.8rem;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  color: var(--wl-text);
-  direction: rtl;
+  gap: 0.6rem;
+  inline-size: 100%;
+  padding: 0.5rem 0.65rem;
+  font: inherit;
+  font-size: 0.86rem;
   text-align: start;
+  color: var(--wl-muted);
+  cursor: default;
+
+  &:hover,
+  &:focus-visible {
+    @include list-row-active;
+  }
 }
 
-.create__path--empty {
-  color: var(--wl-faint);
-  direction: ltr;
+.create__step--current {
+  @include list-row-active;
 }
 
-.create__browse {
-  @include secondary-button;
-  @include control-metrics;
+.create__step--done {
+  color: var(--wl-text);
+}
 
+.create__step-icon {
   flex: none;
+  font-size: 1rem;
 }
 
-.create__choice {
-  @include dropdown;
+.create__lead {
+  margin: 0.5rem 0 0;
+  padding-inline: 0.15rem;
+  font-size: 0.76rem;
+  line-height: 1.45;
+  color: var(--wl-faint);
+}
+
+.create__over {
+  align-self: flex-start;
+  margin-block-start: auto;
+}
+
+.create__main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  min-inline-size: 0;
+  min-block-size: 0;
+}
+
+.create__title {
+  @include lead-title;
+}
+
+.create__description {
+  @include lead-description;
+}
+
+.create__body {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-block-size: 0;
+}
+
+.create__footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  padding-block-start: 0.75rem;
+  border-block-start: 0.0625rem solid var(--wl-border);
 }
 
 .create__error {
+  flex: 1 1 auto;
+  min-inline-size: 0;
   margin: 0;
-  font-size: 0.75rem;
+  font-size: 0.76rem;
   line-height: 1.4;
   color: var(--danger-color);
+}
+
+.create__secondary {
+  @include secondary-button;
+  @include control-metrics;
+}
+
+.create__primary {
+  @include primary-button;
+  @include control-metrics;
+
+  min-inline-size: 7rem;
 }
 
 .create__spin {
@@ -103,115 +147,4 @@
   to {
     transform: rotate(1turn);
   }
-}
-
-.create__destination {
-  margin: 0.5rem 0 0;
-  font-size: 0.76rem;
-  line-height: 1.45;
-  color: var(--wl-faint);
-}
-
-.create__main {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  min-inline-size: 0;
-  min-block-size: 0;
-}
-
-.create__notice {
-  margin: 0;
-  padding: 0.5rem 0.65rem;
-  font-size: 0.75rem;
-  line-height: 1.4;
-  color: var(--wl-muted);
-  border: 0.0625rem dashed var(--wl-surface-border);
-  border-radius: calc(0.55rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-}
-
-.create__notice--error {
-  color: var(--danger-color);
-  border-color: rgba(var(--danger-color-rgb), 0.5);
-}
-
-.create__panel {
-  @include list-panel;
-}
-
-.create__list-frame {
-  @include scroll-frame;
-}
-
-.create__list {
-  @include scroller;
-
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-  min-inline-size: 0;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-// A starter, drawn as a repository row: the icon on its mount, the name over its summary, and a chevron
-// saying it goes somewhere.
-.create__starter {
-  @include list-row;
-
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  inline-size: 100%;
-  padding: 0.5rem;
-  padding-inline-end: 0.75rem;
-  font: inherit;
-  text-align: start;
-  cursor: default;
-
-  &:hover,
-  &:focus-visible {
-    @include list-row-active;
-
-    .create__starter-icon {
-      @include list-icon-active;
-    }
-  }
-}
-
-.create__starter-icon {
-  @include list-icon;
-}
-
-.create__starter-text {
-  display: flex;
-  flex: 1 1 auto;
-  flex-direction: column;
-  gap: 0.1rem;
-  min-inline-size: 0;
-}
-
-.create__starter-title,
-.create__starter-summary {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.create__starter-title {
-  font-size: 0.9rem;
-  font-weight: 500;
-  color: var(--wl-text);
-}
-
-.create__starter-summary {
-  font-size: 0.76rem;
-  color: var(--wl-muted);
-}
-
-.create__starter-chevron {
-  flex: none;
-  color: var(--wl-faint);
 }

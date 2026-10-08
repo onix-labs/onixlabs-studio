@@ -15,6 +15,81 @@ export enum NewProjectChannel {
    * Creates a new project's folder in the chosen parent folder (invoke).
    */
   Create = 'new-project:create',
+
+  /**
+   * Asks the user for supporting documents in the main process's own dialog, and reads them to attach
+   * to the agent's first message (invoke).
+   */
+  PickDocuments = 'new-project:pick-documents',
+}
+
+/**
+ * A supporting document read for a new project's first message: a text document's content, or an
+ * image's data. Read here rather than referred to by path, so the agent can read it wherever it is —
+ * even before the project has a folder the agent may look in.
+ */
+export type ProjectDocument =
+  | {
+      /**
+       * Gets that it is text, attached inline.
+       */
+      readonly kind: 'text';
+
+      /**
+       * Gets the file's name.
+       */
+      readonly name: string;
+
+      /**
+       * Gets the file's absolute path, for the agent's reference.
+       */
+      readonly path: string;
+
+      /**
+       * Gets its content.
+       */
+      readonly content: string;
+    }
+  | {
+      /**
+       * Gets that it is an image, attached as one.
+       */
+      readonly kind: 'image';
+
+      /**
+       * Gets the file's name.
+       */
+      readonly name: string;
+
+      /**
+       * Gets the file's absolute path, for the agent's reference.
+       */
+      readonly path: string;
+
+      /**
+       * Gets its media type, e.g. "image/png".
+       */
+      readonly mediaType: string;
+
+      /**
+       * Gets its bytes, base64-encoded.
+       */
+      readonly data: string;
+    };
+
+/**
+ * Describes the documents the user picked: those read, and those that could not be attached and why.
+ */
+export interface PickedDocuments {
+  /**
+   * Gets the documents read.
+   */
+  readonly documents: readonly ProjectDocument[];
+
+  /**
+   * Gets the files left out, each with why, worded for the user.
+   */
+  readonly skipped: readonly { readonly name: string; readonly reason: string }[];
 }
 
 /**
@@ -118,4 +193,10 @@ export interface NewProjectClient {
    * @returns Returns where it is, or why there is none.
    */
   create(request: NewProjectRequest): Promise<NewProjectOutcome>;
+
+  /**
+   * Asks the user for supporting documents and reads them.
+   * @returns Returns what was read and what was left out; nothing when the dialog was cancelled.
+   */
+  pickDocuments(): Promise<PickedDocuments>;
 }
