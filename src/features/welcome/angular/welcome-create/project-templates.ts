@@ -60,13 +60,6 @@ export const PROJECT_TEMPLATES: readonly ProjectTemplate[] = [
     goal: 'a mobile application',
   },
   {
-    skill: 'new-flutter-app',
-    title: 'Cross-Platform Mobile App with Flutter',
-    summary: 'Dart and Flutter, for iOS and Android from one code base.',
-    icon: Icon.WELCOME_STARTER_MOBILE,
-    goal: 'a cross-platform mobile application with Dart and Flutter',
-  },
-  {
     skill: 'new-service',
     title: 'API or Service',
     summary: 'A back-end service, its API, data and deployment.',
