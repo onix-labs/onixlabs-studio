@@ -130,6 +130,11 @@
   corner-shape: var(--app-corner-shape, squircle);
 }
 
+.create__notice--error {
+  color: var(--danger-color);
+  border-color: rgba(var(--danger-color-rgb), 0.5);
+}
+
 .create__panel {
   @include list-panel;
 }

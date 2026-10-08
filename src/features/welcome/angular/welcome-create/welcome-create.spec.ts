@@ -6,12 +6,15 @@ import type { HostedAccount } from '@shared/api/hosting-protocol';
 import type { NewProjectOutcome, NewProjectRequest } from '@shared/api/new-project-channels';
 import type { PluginSummary } from '@shared/api/plugin-channels';
 import type { Skill } from '@shared/api/skill-channels';
+import type { VersionControlPluginInfo } from '@shared/api/source-control-channels';
+import type { VersionControlCapability } from '@shared/api/version-control-protocol';
 import { Clone } from '@shared/angular/services/clone/clone';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { Forge } from '@shared/angular/services/forge/forge';
 import { NewProject } from '@shared/angular/services/new-project/new-project';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
 import { Skills } from '@shared/angular/services/skills/skills';
+import { SourceControl } from '@shared/angular/services/source-control/source-control';
 import type { WorkspaceAgentStart } from '@shared/angular/services/workspaces/workspaces';
 import { agentStart, ProjectStarter, WelcomeCreate } from './welcome-create';
 
@@ -43,6 +46,7 @@ describe('WelcomeCreate', () => {
   let opened: { path: string; start: WorkspaceAgentStart | undefined }[];
   let openedCount: number;
   let skills: Skill[];
+  let running: VersionControlCapability[];
 
   beforeEach(async () => {
     plugins = signal<readonly PluginSummary[]>([
@@ -57,6 +61,7 @@ describe('WelcomeCreate', () => {
     opened = [];
     openedCount = 0;
     skills = [];
+    running = ['clone', 'init'];
     await TestBed.configureTestingModule({
       imports: [WelcomeCreate],
       providers: [
@@ -103,6 +108,17 @@ describe('WelcomeCreate', () => {
           },
         },
         { provide: Skills, useValue: { skills: (): readonly Skill[] => skills } },
+        {
+          provide: SourceControl,
+          useValue: {
+            client: {
+              listPlugins: (): Promise<readonly VersionControlPluginInfo[]> =>
+                Promise.resolve([
+                  { id: 'test.git', installed: true, capabilities: running },
+                ] as unknown as VersionControlPluginInfo[]),
+            },
+          },
+        },
       ],
     }).compileComponents();
   });
@@ -196,14 +212,18 @@ describe('WelcomeCreate', () => {
     await fixture.whenStable();
     expect(offered('Repository')).toEqual(['none', 'local']);
 
-    // A plugin that cannot make a repository in place still clones a hosted one.
-    plugins.set([installed('version-control', ['clone']), installed('hosting')]);
-    await fixture.whenStable();
-    expect(offered('Repository')).toEqual(['none', 'public', 'private']);
-
     plugins.set([]);
     await fixture.whenStable();
     expect(offered('Repository')).toEqual(['none']);
+  });
+
+  it('local_isOfferedOnlyWhenTheRunningPluginCanInit_notWhenOnlyTheCatalogueSaysSo', async () => {
+    // The catalogue's entry can be newer than the copy installed: Git 0.2.0 installed while the index
+    // already describes 0.3.0. Only the running plugin's handshake says what it can really do.
+    running = ['clone'];
+    await render();
+
+    expect(offered('Repository')).toEqual(['none', 'public', 'private']);
   });
 
   it('layout_isAskedOnlyWhenThereIsARepository', async () => {
@@ -301,6 +321,21 @@ describe('WelcomeCreate', () => {
     await startGeneral();
 
     expect(created[0].repository).toMatchObject({ account: 'onixlabs', private: false });
+  });
+
+  it('aStartersFailure_isShownBesideTheStarters_notUnderTheFormsButton', async () => {
+    outcome = { ok: false, error: 'Git does not support this (init).' };
+    await render();
+    await typeName('todo-app');
+    await choose('Repository', 'none');
+
+    host.querySelector<HTMLButtonElement>('.create__starter')!.click();
+    await fixture.whenStable();
+
+    expect(host.querySelector('.create__main .create__notice--error')!.textContent).toContain(
+      'does not support',
+    );
+    expect(host.querySelector('.create__side .create__error')).toBeNull();
   });
 
   it('aFailure_isShown_andNothingOpens', async () => {

@@ -140,6 +140,13 @@ export interface VersionControlPluginInfo {
    * Gets why the plugin or its tool cannot be used, when it cannot.
    */
   readonly problem?: string;
+
+  /**
+   * Gets what the running plugin can do: the capabilities its manifest declares that its handshake
+   * confirmed (#806). Empty when it could not be run. This, not the catalogue's manifest, is what an
+   * installed copy older than the catalogue's entry actually supports.
+   */
+  readonly capabilities: readonly VersionControlCapability[];
 }
 
 /**

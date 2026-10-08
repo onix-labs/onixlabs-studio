@@ -13,13 +13,15 @@ import {
 import type { ForgeHostAccount, ForgeResult } from '@shared/api/forge-types';
 import type { HostedAccount } from '@shared/api/hosting-protocol';
 import type { NewProjectOutcome, NewProjectRepository } from '@shared/api/new-project-channels';
-import { installedContributions, UnkeyedPluginContribution } from '@shared/api/plugin-channels';
+import { installedContributions } from '@shared/api/plugin-channels';
+import type { VersionControlPluginInfo } from '@shared/api/source-control-channels';
 import type { Skill } from '@shared/api/skill-channels';
 import { Clone } from '@shared/angular/services/clone/clone';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { Forge } from '@shared/angular/services/forge/forge';
 import { NewProject } from '@shared/angular/services/new-project/new-project';
 import { Skills } from '@shared/angular/services/skills/skills';
+import { SourceControl } from '@shared/angular/services/source-control/source-control';
 import type { WorkspaceAgentStart } from '@shared/angular/services/workspaces/workspaces';
 import { Log } from '@shared/angular/services/log/log';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
@@ -154,6 +156,11 @@ export class WelcomeCreate implements OnInit {
   private readonly fileOpener: FileOpener = inject(FileOpener);
 
   /**
+   * Holds the source-control service, which says what the installed version-control plugins can do.
+   */
+  private readonly sourceControl: SourceControl = inject(SourceControl);
+
+  /**
    * Holds the skill library, where a starter's skill is looked up.
    */
   private readonly skills: Skills = inject(Skills);
@@ -280,6 +287,13 @@ export class WelcomeCreate implements OnInit {
   protected readonly error: WritableSignal<string | null> = signal<string | null>(null);
 
   /**
+   * Holds the starter last started, so what starting says is shown beside the control that was
+   * clicked: the form's button, or the starter list.
+   */
+  protected readonly startedFrom: WritableSignal<ProjectStarter | null> =
+    signal<ProjectStarter | null>(null);
+
+  /**
    * Gets whether a version-control plugin, which makes the repository, is installed.
    */
   protected readonly canVersion: Signal<boolean> = computed(
@@ -287,14 +301,10 @@ export class WelcomeCreate implements OnInit {
   );
 
   /**
-   * Gets whether an installed version-control plugin can make a new repository in place.
+   * Holds whether an installed version-control plugin can make a new repository in place, as the
+   * running plugin says — not the catalogue, whose entry may be newer than the copy installed.
    */
-  protected readonly canInit: Signal<boolean> = computed((): boolean =>
-    installedContributions(this.plugins.plugins(), 'version-control').some(
-      (contribution: UnkeyedPluginContribution): boolean =>
-        contribution.capabilities?.includes('init') ?? false,
-    ),
-  );
+  protected readonly canInit: WritableSignal<boolean> = signal<boolean>(false);
 
   /**
    * Gets whether a hosting plugin, which makes the remote, is installed.
@@ -311,7 +321,9 @@ export class WelcomeCreate implements OnInit {
   protected readonly repositoryOptions: Signal<readonly DropdownOption[]> = computed(
     (): readonly DropdownOption[] => [
       { value: 'none', label: 'No Repository' },
-      ...(this.canInit() ? [{ value: 'local', label: 'Local Repository' }] : []),
+      ...(this.canVersion() && this.canInit()
+        ? [{ value: 'local', label: 'Local Repository' }]
+        : []),
       ...(this.canVersion() && this.canHost()
         ? [
             { value: 'public', label: 'Public Repository' },
@@ -408,6 +420,22 @@ export class WelcomeCreate implements OnInit {
       }
     });
     void this.loadAccounts();
+    void this.loadCanInit();
+  }
+
+  /**
+   * Asks the running version-control plugins whether any can make a repository in place.
+   * @returns Resolves once they have answered.
+   */
+  private async loadCanInit(): Promise<void> {
+    const plugins: readonly VersionControlPluginInfo[] =
+      (await this.sourceControl.client?.listPlugins()) ?? [];
+    this.canInit.set(
+      plugins.some(
+        (plugin: VersionControlPluginInfo): boolean =>
+          plugin.installed && plugin.capabilities.includes('init'),
+      ),
+    );
   }
 
   /**
@@ -519,6 +547,7 @@ export class WelcomeCreate implements OnInit {
       return;
     }
     this.settle();
+    this.startedFrom.set(starter);
     if (!this.complete()) {
       // ⚠️ Not built yet: the agent's own tab, which asks for the details later (#806).
       this.log.info('welcome', `Project agent "${starter.skill}" requested without details`);

@@ -75,8 +75,10 @@
       />
       <span>{{ creating() ? 'Creating…' : general.title }}</span>
     </button>
-    @if (error(); as message) {
-      <p class="create__error" role="alert">{{ message }}</p>
+    @if (startedFrom() === general) {
+      @if (error(); as message) {
+        <p class="create__error" role="alert">{{ message }}</p>
+      }
     }
   </aside>
 
@@ -86,6 +88,11 @@
 
     @if (preview(); as message) {
       <p class="create__notice" role="status">{{ message }}</p>
+    }
+    @if (startedFrom() !== general) {
+      @if (error(); as message) {
+        <p class="create__notice create__notice--error" role="alert">{{ message }}</p>
+      }
     }
 
     <div class="create__panel">
