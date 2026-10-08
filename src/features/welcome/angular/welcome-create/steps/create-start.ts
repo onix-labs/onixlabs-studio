@@ -1,9 +1,18 @@
-import { ChangeDetectionStrategy, Component, inject, signal, WritableSignal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  signal,
+  Signal,
+  WritableSignal,
+} from '@angular/core';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { OverlayScrollbar } from '@shared/angular/components/overlay-scrollbar/overlay-scrollbar';
 import { Icon } from '@shared/angular/icons/icon';
 import { ProjectDraft } from '../project-draft';
 import {
+  matchesTemplate,
   PROJECT_TEMPLATE_GROUPS,
   PROJECT_TEMPLATES,
   ProjectTemplate,
@@ -14,7 +23,8 @@ import {
 /**
  * The New Project wizard's Start step (#806): what is being built — a template, or the user's own
  * words when none fits. Choosing one clears the other. The templates are grouped in an accordion, one
- * group open at a time; the group holding the chosen template opens first.
+ * group open at a time; the group holding the chosen template opens first. A search shows every group
+ * with a match, open, and hides the rest.
  */
 @Component({
   selector: 'app-create-start',
@@ -35,9 +45,38 @@ export class CreateStart {
   protected readonly draft: ProjectDraft = inject(ProjectDraft);
 
   /**
-   * Gets the template groups, in order.
+   * Holds the template search.
    */
-  protected readonly groups: readonly ProjectTemplateGroup[] = PROJECT_TEMPLATE_GROUPS;
+  protected readonly query: WritableSignal<string> = signal<string>('');
+
+  /**
+   * Gets whether a search is narrowing the templates.
+   */
+  protected readonly searching: Signal<boolean> = computed(
+    (): boolean => this.query().trim().length > 0,
+  );
+
+  /**
+   * Gets the templates matching the search: all of them when there is none.
+   */
+  private readonly matching: Signal<readonly ProjectTemplate[]> = computed(
+    (): readonly ProjectTemplate[] => {
+      const needle: string = this.query().trim().toLowerCase();
+      return PROJECT_TEMPLATES.filter((template: ProjectTemplate): boolean =>
+        matchesTemplate(template, needle),
+      );
+    },
+  );
+
+  /**
+   * Gets the groups to show, in order: every group, or while searching only those with a match.
+   */
+  protected readonly groups: Signal<readonly ProjectTemplateGroup[]> = computed(
+    (): readonly ProjectTemplateGroup[] =>
+      PROJECT_TEMPLATE_GROUPS.filter(
+        (group: ProjectTemplateGroup): boolean => this.templatesIn(group.id).length > 0,
+      ),
+  );
 
   /**
    * Holds the group open, or null when all are closed. Starts on the chosen template's group, or the
@@ -59,14 +98,21 @@ export class CreateStart {
   }
 
   /**
-   * Gets a group's templates.
+   * Gets a group's templates that match the search.
    * @param group The group.
    * @returns Returns them, in order.
    */
   protected templatesIn(group: ProjectTemplateGroupId): readonly ProjectTemplate[] {
-    return PROJECT_TEMPLATES.filter(
-      (template: ProjectTemplate): boolean => template.group === group,
-    );
+    return this.matching().filter((template: ProjectTemplate): boolean => template.group === group);
+  }
+
+  /**
+   * Gets whether a group shows its templates: the one open, or every one while searching.
+   * @param group The group.
+   * @returns Returns true when it does.
+   */
+  protected isOpen(group: ProjectTemplateGroupId): boolean {
+    return this.searching() || this.openGroup() === group;
   }
 
   /**
@@ -79,10 +125,18 @@ export class CreateStart {
   }
 
   /**
+   * Updates the search from the input event.
+   * @param event The input event carrying the current value.
+   */
+  protected onQueryInput(event: Event): void {
+    this.query.set((event.target as HTMLInputElement).value);
+  }
+
+  /**
    * Records the user's own description from the input event.
    * @param event The input event carrying the current value.
    */
   protected onIdeaInput(event: Event): void {
-    this.draft.describe((event.target as HTMLInputElement).value);
+    this.draft.describe((event.target as HTMLTextAreaElement).value);
   }
 }

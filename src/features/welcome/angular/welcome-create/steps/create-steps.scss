@@ -64,6 +64,13 @@
   color: var(--danger-color);
 }
 
+.step__empty {
+  margin: 0;
+  padding: 0.75rem 0.15rem;
+  font-size: 0.8rem;
+  color: var(--wl-muted);
+}
+
 .step__secondary {
   @include secondary-button;
   @include control-metrics;

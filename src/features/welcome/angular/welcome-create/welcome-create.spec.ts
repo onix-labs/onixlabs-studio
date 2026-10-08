@@ -118,6 +118,27 @@ describe('WelcomeCreate', () => {
     expect(host.querySelector('.step__list')!.textContent).toContain('MCP Server');
   });
 
+  it('aSearch_opensEveryGroupWithAMatch_andHidesTheRest', async () => {
+    const search: HTMLInputElement = host.querySelector<HTMLInputElement>(
+      'input[aria-label="Search templates"]',
+    )!;
+    search.value = 'agent';
+    search.dispatchEvent(new Event('input'));
+    await settle();
+
+    const titles: string[] = Array.from(host.querySelectorAll('.step__group-title')).map(
+      (title: Element): string => title.textContent.trim(),
+    );
+    expect(titles).toContain('AI');
+    expect(titles).not.toContain('Games & Graphics');
+    expect(host.querySelectorAll('.step__list')).toHaveLength(titles.length);
+
+    search.value = 'nothing like this';
+    search.dispatchEvent(new Event('input'));
+    await settle();
+    expect(host.querySelector('.step__empty')).not.toBeNull();
+  });
+
   it('aClosedGroup_namesTheTemplateChosenInIt', async () => {
     host.querySelector<HTMLButtonElement>('.step__row')!.click();
     await settle();

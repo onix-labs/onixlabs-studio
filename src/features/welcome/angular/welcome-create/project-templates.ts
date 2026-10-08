@@ -488,6 +488,21 @@ export const PROJECT_TEMPLATES: readonly ProjectTemplate[] = ROWS.map(
 );
 
 /**
+ * Determines whether a template matches a search: its name, its summary, or what it builds.
+ * @param template The template.
+ * @param needle The lower-cased search.
+ * @returns Returns true when it matches, or when there is nothing to search for.
+ */
+export function matchesTemplate(template: ProjectTemplate, needle: string): boolean {
+  return (
+    needle.length === 0 ||
+    template.title.toLowerCase().includes(needle) ||
+    template.summary.toLowerCase().includes(needle) ||
+    template.goal.toLowerCase().includes(needle)
+  );
+}
+
+/**
  * Describes one choice of a project option.
  */
 export interface ProjectOptionChoice {
