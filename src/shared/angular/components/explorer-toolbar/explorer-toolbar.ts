@@ -23,7 +23,8 @@ const NO_MORE_ACTIONS: readonly MenuItem[] = [
 /**
  * The shared explorer tool strip rendered at the top of the Solution Explorer, File Explorer and API
  * Explorer panel bodies (those panels opt out of the dock's default strip). It pairs a search box on
- * the left with expand-all, collapse-all, and a more-actions menu on the right. The toolbar is purely
+ * the left with expand-all, collapse-all, and a more-actions menu on the right. A panel may project
+ * buttons of its own, which sit between collapse-all and the menu (the Repository panel's Refresh). The toolbar is purely
  * presentational: it emits the search text, the expand/collapse intents, and the chosen menu item,
  * leaving the panel to drive its own model.
  */
