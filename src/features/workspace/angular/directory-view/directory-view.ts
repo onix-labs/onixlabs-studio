@@ -81,6 +81,7 @@ import {
   findNode,
   findStackOfPanel,
   firstStackOfRole,
+  rightHandToolStack,
 } from '@shared/angular/services/dock-layout/dock-tree';
 import { CodeDocument, Documents } from '@shared/angular/services/documents/documents';
 import { FileSystem } from '@shared/angular/services/file-system/file-system';
@@ -1391,16 +1392,20 @@ export class DirectoryView implements OnInit, OnDestroy {
   }
 
   /**
-   * Reveals the Search panel in this tab's dock, tabbing it beside the File Explorer (falling back to
-   * the agent's group) when it is not already in the layout, then activating and focusing it.
+   * Reveals the Find & Replace panel in this tab's dock — tabbing it into the right-hand group, or
+   * docking a new one on the right when the layout has none — then activating and focusing it.
    */
   private revealSearch(): void {
+    // Opened on the right, beside the Agent, rather than over the explorers on the left: you search
+    // while looking at the tree, not instead of it. A layout with no right-hand group (Agentic
+    // Engineering, whose Agent is in the centre) gets one, docked to the right edge. A panel the layout
+    // already holds stays wherever it was put.
     if (!collectPanelIds(this.dockState.layout()).includes('search')) {
-      const anchor: StackNode | null =
-        findStackOfPanel(this.dockState.layout(), 'files') ??
-        findStackOfPanel(this.dockState.layout(), 'agent');
-      if (anchor !== null) {
-        this.dockState.tabInto(anchor.id, 'search');
+      const right: StackNode | null = rightHandToolStack(this.dockState.layout());
+      if (right !== null) {
+        this.dockState.tabInto(right.id, 'search');
+      } else {
+        this.dockState.dockEdge('search', 'right');
       }
     }
     const stack: StackNode | null = findStackOfPanel(this.dockState.layout(), 'search');

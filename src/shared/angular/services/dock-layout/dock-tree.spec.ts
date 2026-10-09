@@ -26,6 +26,7 @@ import {
   removeNode,
   reorderTab,
   replaceNode,
+  rightHandToolStack,
   setActive,
   setCollapsed,
   setSizes,
@@ -101,6 +102,42 @@ describe('dock-tree', () => {
 
     it('firstStackOfRole_whenRoleAbsent_returnsNull', () => {
       expect(firstStackOfRole(mkStack('tool', ['a']), 'document')).toBeNull();
+    });
+  });
+
+  describe('rightHandToolStack', () => {
+    it('isTheToolStackThatIsTheRootRowsLastColumn', () => {
+      // The Default and Source Control layouts' shape: the Agent alone down the right.
+      const agent: StackNode = mkStack('tool', ['agent']);
+      const tree: DockNode = mkSplit('row', [
+        mkStack('tool', ['files']),
+        mkSplit('col', [mkStack('document', [], true), mkStack('tool', ['errors'])]),
+        agent,
+      ]);
+
+      expect(rightHandToolStack(tree)).toBe(agent);
+    });
+
+    it('isNull_whenTheLastColumnIsASplit', () => {
+      // The Agentic Engineering layout's shape: the Agent in the centre over a bottom strip.
+      const tree: DockNode = mkSplit('row', [
+        mkStack('tool', ['files']),
+        mkSplit('col', [mkStack('tool', ['agent'], true), mkStack('tool', ['errors'])]),
+      ]);
+
+      expect(rightHandToolStack(tree)).toBeNull();
+    });
+
+    it('isNull_whenTheLastColumnIsADocumentWellOrTheRootIsNotARow', () => {
+      expect(
+        rightHandToolStack(
+          mkSplit('row', [mkStack('tool', ['files']), mkStack('document', [], true)]),
+        ),
+      ).toBeNull();
+      expect(
+        rightHandToolStack(mkSplit('col', [mkStack('tool', ['a']), mkStack('tool', ['b'])])),
+      ).toBeNull();
+      expect(rightHandToolStack(mkStack('tool', ['a']))).toBeNull();
     });
   });
 

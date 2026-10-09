@@ -94,6 +94,26 @@ export function firstStackOfRole(tree: DockNode, role: StackRole): StackNode | n
 }
 
 /**
+ * Finds the layout's right-hand tool group: the tool stack that is the last column of a row at the
+ * root — where the Agent sits in the Default and Source Control layouts.
+ *
+ * Only a stack that is itself the whole last column counts. A layout whose last column is a split (the
+ * Agentic Engineering layout's agent-over-bottom-strip) has no right-hand group, and a caller that wants
+ * one docks a new stack against the right edge instead.
+ * @param tree The root of the tree to search.
+ * @returns Returns the right-hand tool stack, or null when the layout has none.
+ */
+export function rightHandToolStack(tree: DockNode): StackNode | null {
+  if (isStackNode(tree) || tree.dir !== 'row') {
+    return null;
+  }
+  const last: DockNode | undefined = tree.children.at(-1);
+  return last !== undefined && isStackNode(last) && last.role === 'tool' && last.primary !== true
+    ? last
+    : null;
+}
+
+/**
  * Collects the ids of every panel present anywhere in the tree.
  * @param tree The root of the tree to search.
  * @returns Returns the panel ids in depth-first order.

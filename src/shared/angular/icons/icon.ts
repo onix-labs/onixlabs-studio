@@ -372,6 +372,11 @@ export class Icon {
    */
   public static readonly SEARCH: Icon = new Icon('ph-duotone ph-magnifying-glass');
 
+  /**
+   * Gets the replace icon: two opposing arrows, one text swapped for another.
+   */
+  public static readonly REPLACE: Icon = new Icon('ph-duotone ph-swap');
+
   // --- Ribbon: run, format and session ---
 
   /**

@@ -65,11 +65,14 @@ export const WORKSPACE_DOCK_BLUEPRINT: DockBlueprint = {
       ownsToolStrip: true,
     },
     {
+      // The id stays 'search', so a saved layout that names the panel still finds it.
       id: 'search',
-      title: 'Search',
+      title: 'Find & Replace',
       icon: Icon.SEARCH,
       role: 'tool',
       component: SearchPanel,
+      // The panel's strip is the search itself — the dock's placeholder set did nothing (#882).
+      ownsToolStrip: true,
     },
     {
       id: 'agent',
