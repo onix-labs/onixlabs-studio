@@ -1,6 +1,7 @@
 import { Page } from '@playwright/test';
 import { expect, test } from './fixtures';
 import {
+  GIT_CATALOGUE_VERSION,
   GIT_ID,
   INSTALLED_VERSION,
   invoke,
@@ -75,7 +76,7 @@ test.describe('plugin capabilities come from the installed version (#878)', () =
       const summary: PluginSummary | undefined = await gitSummary(page);
 
       expect(summary?.state).toBe('installed');
-      expect(summary?.version).toBe('0.3.0');
+      expect(summary?.version).toBe(GIT_CATALOGUE_VERSION);
       expect(summary?.installedVersion).toBe(INSTALLED_VERSION);
       expect(summary?.contributionsUnconfirmed).toBeUndefined();
       const system: UnkeyedPluginContribution | undefined = summary?.contributions[0];
@@ -83,7 +84,7 @@ test.describe('plugin capabilities come from the installed version (#878)', () =
     });
 
     test('setupWizard_offersNoIdentityStep_theInstalledVersionCannotTake', async ({ app }) => {
-      // The catalogue's 0.3.0 has an identity, so before #878 this rail grew a Git step here.
+      // The catalogue's Git has an identity, so before #878 this rail grew a Git step here.
       const wizard: Page = await modalWindow(app);
       await expect(wizard.locator('.setup')).toBeVisible();
 
@@ -109,7 +110,7 @@ test.describe('plugin capabilities come from the installed version (#878)', () =
     });
 
     test('setupWizard_asksTheRunningPlugin_andGrowsTheStepItConfirms', async ({ app }) => {
-      // The built plugin is the real 0.3.0, so its handshake confirms an identity: the step appears,
+      // The built plugin is the catalogue's own, so its handshake confirms an identity: the step appears,
       // but only once the running plugin has said so.
       const wizard: Page = await modalWindow(app);
       await expect(wizard.locator('.setup')).toBeVisible();
