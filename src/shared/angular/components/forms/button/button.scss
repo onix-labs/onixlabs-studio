@@ -51,8 +51,15 @@
 // (which the icon atom already draws at `line-height: 1`). Without this the label carries the font's
 // default leading — more above the text than below — and the two boxes centre at slightly different
 // heights, which is what reads as an icon sitting a hair high next to its label.
+//
+// One line, always: the button's height is fixed, so a wrapped label spills out of it. A button
+// squeezed narrower than its label ellipsises instead.
 .button__label {
+  min-inline-size: 0;
+  overflow: hidden;
   line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 // A glyph with no label is a square: the height comes from the shared control height, and the width

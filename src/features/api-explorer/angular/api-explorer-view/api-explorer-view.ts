@@ -209,7 +209,7 @@ export class ApiExplorerView implements OnInit, OnDestroy, ApiExplorerCommandHan
    * Gets the variable syntax shown in the new-environment dialog, written out rather than
    * interpolated so the braces survive the template.
    */
-  protected readonly variableSyntax: string = '{{base_url}}';
+  protected readonly variableSyntax: string = '{{name}}';
 
   /**
    * Registers this tab's live agent with Mission Control and the requests inbox for the tab's whole
