@@ -249,6 +249,16 @@ describe('WorkspaceGit', () => {
     expect(git.stateFor('/repo/README.md')).toBe('added');
   });
 
+  it('canShowDiff_isTrueOnlyForAModifiedPath', async () => {
+    root.set(listing('/repo'));
+    await bind();
+
+    expect(git.canShowDiff('/repo/src/app/main.ts')).toBe(true);
+    // Untracked has no diff against HEAD, and a folder holding changes is not itself modified.
+    expect(git.canShowDiff('/repo/README.md')).toBe(false);
+    expect(git.canShowDiff('/repo/src')).toBe(false);
+  });
+
   it('addToVersionControl_refusesAPathOutsideTheRepository_withoutStagingEverything', async () => {
     // An empty path list stages the whole working tree, so the root itself must never become one.
     root.set(listing('/repo'));

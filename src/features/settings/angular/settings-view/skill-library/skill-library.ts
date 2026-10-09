@@ -17,6 +17,7 @@ import { MarkdownField } from '@shared/angular/components/forms/markdown-field/m
 import { Textarea } from '@shared/angular/components/forms/textarea/textarea';
 import { Toggle } from '@shared/angular/components/forms/toggle/toggle';
 import { Icon } from '@shared/angular/icons/icon';
+import { OPEN_IN_FILE_SYSTEM_LABEL } from '@shared/angular/services/shell/shell-labels';
 import { Log } from '@shared/angular/services/log/log';
 import { Skills } from '@shared/angular/services/skills/skills';
 import { PromptScopeEditor } from '../prompt-scope-editor/prompt-scope-editor';
@@ -83,6 +84,11 @@ export class SkillLibrarySettings {
    * Gets the icon set, exposed for the template.
    */
   protected readonly Icon: typeof Icon = Icon;
+
+  /**
+   * Gets the label for showing a skill's folder in the file system.
+   */
+  protected readonly openInFileSystemLabel: string = OPEN_IN_FILE_SYSTEM_LABEL;
 
   /**
    * Holds the skill service.

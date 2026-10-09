@@ -337,6 +337,29 @@ describe('Workspace mutations', () => {
     expect(service.rows().map((row) => row.node.name)).toEqual(['src', 'README.md', 'added.ts']);
   });
 
+  it('refreshFromDisk_picksUpAChangeTheWatchNeverReported', async () => {
+    await service.openFolder();
+    rootEntries = [
+      ...ROOT_LISTING.entries,
+      { name: 'unseen.ts', path: '/ws/unseen.ts', type: 'file' },
+    ];
+
+    await service.refreshFromDisk();
+
+    expect(service.rows().map((row) => row.node.name)).toEqual(['src', 'README.md', 'unseen.ts']);
+  });
+
+  it('followsActiveDocument_andShowsGitStatus_areOnUntilToggledOff', () => {
+    expect(service.followsActiveDocument()).toBe(true);
+    expect(service.showsGitStatus()).toBe(true);
+
+    service.toggleFollowActiveDocument();
+    service.toggleGitStatus();
+
+    expect(service.followsActiveDocument()).toBe(false);
+    expect(service.showsGitStatus()).toBe(false);
+  });
+
   it('delete_reconcilesTheDirectory_soTheEntryDropsOut', async () => {
     await service.openFolder();
     rootEntries = ROOT_LISTING.entries.filter(

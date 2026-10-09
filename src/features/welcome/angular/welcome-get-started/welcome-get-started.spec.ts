@@ -4,6 +4,7 @@ import type { TabType } from '@shared/angular/services/tabs/tab';
 import { ModalWindows } from '@shared/angular/services/modal-windows/modal-windows';
 import { FakeModalWindows } from '@shared/angular/services/modal-windows/modal-windows.fake';
 import { RecentItem, RecentItems } from '@shared/angular/services/recent-items/recent-items';
+import { OPEN_IN_FILE_SYSTEM_LABEL } from '@shared/angular/services/shell/shell-labels';
 import { WelcomeGetStarted } from './welcome-get-started';
 
 /**
@@ -136,7 +137,7 @@ describe('WelcomeGetStarted', () => {
 
     // No overflow menu: the row carries its commands as buttons.
     expect(row.querySelector('app-menu')).toBeNull();
-    expect(row.querySelector('button[aria-label="Show in Finder"]')).not.toBeNull();
+    expect(row.querySelector(`button[aria-label="${OPEN_IN_FILE_SYSTEM_LABEL}"]`)).not.toBeNull();
     row.querySelector<HTMLButtonElement>('button[aria-label="Remove item"]')!.click();
     await fixture.whenStable();
 

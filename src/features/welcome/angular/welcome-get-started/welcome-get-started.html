@@ -76,8 +76,8 @@
                 <!-- Its two other actions sit inline rather than behind a menu: two commands are quicker
                    to reach as buttons than a menu is to open. -->
                 <app-button
-                  ariaLabel="Show in Finder"
-                  tooltip="Show in Finder"
+                  [ariaLabel]="openInFileSystemLabel"
+                  [tooltip]="openInFileSystemLabel"
                   [icon]="Icon.FOLDER_OPEN"
                   variant="none"
                   size="small"

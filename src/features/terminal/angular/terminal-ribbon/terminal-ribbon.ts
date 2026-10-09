@@ -18,6 +18,7 @@ import { TerminalAgents } from '@features/terminal/angular/terminal-agents/termi
 import { TerminalCommands } from '@features/terminal/angular/terminal-commands/terminal-commands';
 import { TerminalShells } from '@shared/angular/services/terminal-shells/terminal-shells';
 import { Tabs } from '@shared/angular/services/tabs/tabs';
+import { OPEN_IN_FILE_SYSTEM_LABEL } from '@shared/angular/services/shell/shell-labels';
 
 /**
  * Identifies the Restart entry in the Clear button's dropdown.
@@ -126,7 +127,11 @@ export class TerminalRibbon {
           MENU_SEPARATOR,
           { id: 'terminal.home', label: 'Go Home', run: (): void => this.onHome() },
           { id: 'terminal.root', label: 'Go to Workspace Root', run: (): void => this.onRoot() },
-          { id: 'terminal.open', label: 'Reveal in Finder', run: (): void => this.onOpen() },
+          {
+            id: 'terminal.open',
+            label: OPEN_IN_FILE_SYSTEM_LABEL,
+            run: (): void => this.onOpen(),
+          },
           MENU_SEPARATOR,
           {
             id: 'terminal.scrollLock',

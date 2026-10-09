@@ -19,7 +19,12 @@ function makeRow(id: string, depth: number, expandable: boolean, expanded: boole
 @Component({
   imports: [TreeView],
   template: `
-    <app-tree-view [rows]="rows()" [selectedId]="selectedId()" (rowClick)="onRow($event)">
+    <app-tree-view
+      [rows]="rows()"
+      [selectedId]="selectedId()"
+      (rowClick)="onRow($event)"
+      (backgroundClick)="backgroundClicks = backgroundClicks + 1"
+    >
       <ng-template let-row
         ><span class="probe-label">{{ row.data }}</span></ng-template
       >
@@ -34,6 +39,7 @@ class TestHost {
   ]);
   public readonly selectedId: WritableSignal<string | null> = signal<string | null>(null);
   public readonly clicked: TreeRow[] = [];
+  public backgroundClicks: number = 0;
 
   public onRow(row: TreeRow): void {
     this.clicked.push(row);
@@ -71,6 +77,20 @@ describe('TreeView', () => {
 
     expect(rowElements().length).toBe(3);
     expect(labels).toEqual(['root', 'child', 'collapsed']);
+  });
+
+  it('click_onTheEmptySpaceBesideTheRows_reportsABackgroundClick', () => {
+    host.querySelector<HTMLElement>('.tree-list')?.click();
+
+    expect(component.backgroundClicks).toBe(1);
+  });
+
+  it('click_onARowOrAnythingInsideIt_isTheRowsAndNotTheBackgrounds', () => {
+    rowElements()[0].click();
+    host.querySelector<HTMLElement>('.probe-label')?.click();
+
+    expect(component.backgroundClicks).toBe(0);
+    expect(component.clicked.length).toBe(2);
   });
 
   it('indentFor_deeperRowsGetMoreLeftPadding', () => {

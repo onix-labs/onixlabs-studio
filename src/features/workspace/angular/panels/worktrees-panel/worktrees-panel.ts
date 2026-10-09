@@ -18,7 +18,7 @@ import {
 } from '@shared/angular/components/list-view/list-view';
 import { MenuItem } from '@shared/angular/components/menu/menu';
 import { Shell } from '@shared/angular/services/shell/shell';
-import { REVEAL_LABEL } from '@shared/angular/services/shell/shell-labels';
+import { OPEN_IN_FILE_SYSTEM_LABEL } from '@shared/angular/services/shell/shell-labels';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { Button } from '@shared/angular/components/forms/button/button';
@@ -363,7 +363,7 @@ export class WorktreesPanel {
       return [];
     }
     const items: MenuItem[] = [
-      { id: ACTION_REVEAL, label: REVEAL_LABEL, icon: Icon.DIRECTORY },
+      { id: ACTION_REVEAL, label: OPEN_IN_FILE_SYSTEM_LABEL, icon: Icon.DIRECTORY },
       { id: ACTION_COPY_PATH, label: 'Copy Path', icon: Icon.COPY },
     ];
     // Removal is omitted rather than disabled while a mutation is in flight or on the last remaining

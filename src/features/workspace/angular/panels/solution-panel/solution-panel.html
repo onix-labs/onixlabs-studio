@@ -17,6 +17,7 @@
     [editingId]="renameTarget()?.key ?? null"
     [editValue]="renameTarget()?.label ?? ''"
     (rowClick)="onRowClick($event)"
+    (backgroundClick)="clearSelection()"
     (contextMenuSelect)="onContextAction($event)"
     (editCommit)="commitRename($event)"
     (editCancel)="cancelRename()"

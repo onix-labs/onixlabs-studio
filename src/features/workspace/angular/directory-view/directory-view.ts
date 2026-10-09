@@ -1306,9 +1306,11 @@ export class DirectoryView implements OnInit, OnDestroy {
       }
       this.lastRevealedPath = path;
       untracked((): void => {
-        void this.workspace.revealPath(path);
-        // The Solution Explorer follows only while asked to: reading around a solution with a
-        // generated file open otherwise drags the selection back on every tab change.
+        // Each explorer follows only while asked to: reading around a tree with a generated file
+        // open otherwise drags the selection back on every tab change.
+        if (this.workspace.followsActiveDocument()) {
+          void this.workspace.revealPath(path);
+        }
         if (this.solutionModel.followsActiveDocument()) {
           this.solutionModel.revealPath(path);
         }
@@ -1513,28 +1515,8 @@ export class DirectoryView implements OnInit, OnDestroy {
    * @returns Returns null when the diff was opened, or the reason it could not be.
    */
   private openDiffForAgent(path: string): Promise<string | null> {
-    if (!this.repository.isBound()) {
-      return Promise.resolve(
-        'This workspace is not a git repository, so there is no diff to show.',
-      );
-    }
-    const root: string = this.repository.info()?.root ?? '';
-    const relative: string = path.startsWith(root)
-      ? path.slice(root.length).replace(/^[\\/]+/, '')
-      : path;
-    const normalised: string = relative.replace(/\\/g, '/');
-    const change: GitFileChange | undefined = [
-      ...this.repository.unstaged(),
-      ...this.repository.staged(),
-      ...this.repository.conflicted(),
-    ].find((candidate: GitFileChange): boolean => candidate.path === normalised);
-    if (change === undefined) {
-      return Promise.resolve(
-        `"${normalised}" has no changes against HEAD, so there is no diff to show.`,
-      );
-    }
-    this.diffOpener.open(change);
-    return Promise.resolve(null);
+    // The same lookup the explorers' Show Diff uses, so an agent and a person get the same answer.
+    return this.diffOpener.openPath(path);
   }
 
   /**

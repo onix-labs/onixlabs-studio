@@ -94,6 +94,61 @@ export class DiffOpener {
   }
 
   /**
+   * Opens the diff for a file named by its absolute path — what a tree row or an agent holds, rather
+   * than a change from the repository's own lists. Only a file the repository reports as changed has a
+   * diff; anything else is refused with the reason rather than opened as an empty comparison.
+   *
+   * The status is read once more before refusing. The explorers colour their rows from their own
+   * status read, which can land a moment before this repository's, so a file just edited can be
+   * offered a diff the lists here do not hold yet.
+   * @param path The absolute path of the file.
+   * @returns Returns null when the diff was opened, or the reason it could not be.
+   */
+  public async openPath(path: string): Promise<string | null> {
+    if (!this.repository.isBound()) {
+      return 'This workspace is not a git repository, so there is no diff to show.';
+    }
+    const relative: string = this.relativeToRoot(path);
+    let change: GitFileChange | undefined = this.changeAt(relative);
+    if (change === undefined) {
+      await this.repository.refreshStatus();
+      change = this.changeAt(relative);
+    }
+    if (change === undefined) {
+      return `"${relative}" has no changes against HEAD, so there is no diff to show.`;
+    }
+    this.open(change);
+    return null;
+  }
+
+  /**
+   * Gets a path relative to the bound repository's root, with forward slashes — the form the
+   * repository's change lists use.
+   * @param path The absolute path.
+   * @returns Returns the relative path, or the path unchanged when it is outside the root.
+   */
+  private relativeToRoot(path: string): string {
+    const root: string = (this.repository.info()?.root ?? '').replace(/\\/g, '/');
+    const slashed: string = path.replace(/\\/g, '/');
+    return root.length > 0 && slashed.startsWith(`${root}/`)
+      ? slashed.slice(root.length + 1)
+      : slashed;
+  }
+
+  /**
+   * Finds the working-tree change at a path, in any of the repository's change lists.
+   * @param relative The path relative to the repository root.
+   * @returns Returns the change, or undefined when the path has none.
+   */
+  private changeAt(relative: string): GitFileChange | undefined {
+    return [
+      ...this.repository.unstaged(),
+      ...this.repository.staged(),
+      ...this.repository.conflicted(),
+    ].find((candidate: GitFileChange): boolean => candidate.path === relative);
+  }
+
+  /**
    * Makes a document well above the layout's centre slot, holding the given panel.
    *
    * A surface may reasonably have no well at all — the Git layout has none, since History is what it

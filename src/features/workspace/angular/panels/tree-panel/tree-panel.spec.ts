@@ -1,5 +1,6 @@
 import { signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { DiffOpener } from '@shared/angular/services/diffs/diff-opener';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { Icon } from '@shared/angular/icons/icon';
@@ -21,6 +22,7 @@ import {
   ExplorerScmState,
   WorkspaceGit,
 } from '@features/workspace/angular/workspace-git/workspace-git';
+import { OPEN_IN_FILE_SYSTEM_LABEL } from '@shared/angular/services/shell/shell-labels';
 import { TreePanel } from './tree-panel';
 
 /**
@@ -71,6 +73,27 @@ class FakeWorkspace {
     this.selectedPath.set(path);
   }
 
+  public clearSelection(): void {
+    this.selectedPath.set(null);
+  }
+
+  public readonly followsActiveDocument: WritableSignal<boolean> = signal<boolean>(true);
+  public readonly showsGitStatus: WritableSignal<boolean> = signal<boolean>(true);
+  public refreshes: number = 0;
+
+  public toggleFollowActiveDocument(): void {
+    this.followsActiveDocument.update((value: boolean): boolean => !value);
+  }
+
+  public toggleGitStatus(): void {
+    this.showsGitStatus.update((value: boolean): boolean => !value);
+  }
+
+  public refreshFromDisk(): Promise<void> {
+    this.refreshes += 1;
+    return Promise.resolve();
+  }
+
   public setQuery(value: string): void {
     this.query.set(value);
   }
@@ -112,8 +135,15 @@ class FakeWorkspace {
 class FakeShell {
   public readonly revealed: string[] = [];
 
+  public readonly opened: string[] = [];
+
   public revealPath(path: string): Promise<void> {
     this.revealed.push(path);
+    return Promise.resolve();
+  }
+
+  public openPath(path: string): Promise<void> {
+    this.opened.push(path);
     return Promise.resolve();
   }
 }
@@ -337,6 +367,143 @@ describe('TreePanel row context menu', () => {
     expect((fixture.nativeElement as HTMLElement).textContent).not.toMatch(/\b[AM]\b/);
   });
 
+  it('click_onTheTreesEmptySpace_clearsTheSelection', async () => {
+    workspace.rows.set([
+      { node: node('README.md', '/ws/README.md', 'file'), depth: 0, expanded: false },
+    ]);
+    workspace.select('/ws/README.md');
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>('.tree-list')?.click();
+
+    expect(workspace.selectedPath()).toBeNull();
+  });
+
+  describe('the toolbar … menu', () => {
+    /**
+     * Gets the menu's items, as the toolbar receives them.
+     * @returns Returns the items.
+     */
+    function moreItems(): readonly MenuItem[] {
+      return (component as unknown as { moreItems: () => readonly MenuItem[] }).moreItems();
+    }
+
+    /**
+     * Chooses an item from the menu.
+     * @param itemId The item.
+     */
+    function choose(itemId: string): void {
+      (component as unknown as { onMoreAction: (id: string) => void }).onMoreAction(itemId);
+    }
+
+    it('offersTheTreeAndRootCommands_underTheOptions', () => {
+      expect(moreItems().map((item: MenuItem): string => item.id)).toEqual([
+        'options',
+        'tree-more.sep-create',
+        'new-file',
+        'new-folder',
+        'tree-more.sep-root',
+        'open-root',
+        'copy-workspace-path',
+        'refresh',
+      ]);
+      expect(moreItems()[0].children?.map((item: MenuItem): string => item.id)).toEqual([
+        'follow-active',
+        'git-status',
+      ]);
+    });
+
+    it('newFile_opensAPlaceholderFirstAtTheWorkspaceRoot', async () => {
+      // The root has no row of its own, so this is the only way to create directly inside it.
+      workspace.rows.set([
+        { node: node('src', '/ws/src', 'directory'), depth: 0, expanded: false },
+        { node: node('README.md', '/ws/README.md', 'file'), depth: 0, expanded: false },
+      ]);
+
+      choose('new-file');
+      await fixture.whenStable();
+
+      expect(component.editing()).toMatchObject({ kind: 'new-file', target: '/ws' });
+      expect(renderedRows()).toEqual(['0:<new>', '0:/ws/src', '0:/ws/README.md']);
+    });
+
+    it('newFolder_createsAtTheWorkspaceRoot', async () => {
+      choose('new-folder');
+      await fixture.whenStable();
+
+      expect(component.editing()).toMatchObject({ kind: 'new-folder', target: '/ws' });
+    });
+
+    it('theOptions_toggleFollowingAndGitStatus_andShowWhichAreOn', () => {
+      choose('follow-active');
+      choose('git-status');
+
+      expect(workspace.followsActiveDocument()).toBe(false);
+      expect(workspace.showsGitStatus()).toBe(false);
+      expect(
+        moreItems()[0].children?.map((item: MenuItem): boolean | undefined => item.checked),
+      ).toEqual([false, false]);
+    });
+
+    it('showGitStatus_off_dropsTheRowColours', async () => {
+      vi.spyOn(TestBed.inject(WorkspaceGit), 'stateFor').mockReturnValue('modified');
+      workspace.rows.set([{ node: node('a.ts', '/ws/a.ts', 'file'), depth: 0, expanded: false }]);
+      choose('git-status');
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      const row: Element | null = (fixture.nativeElement as HTMLElement).querySelector('.tree-row');
+      expect(row?.className).not.toContain('tree-row--tone-');
+    });
+
+    it('refresh_reReadsTheTreeAndTheGitStatus', () => {
+      const status: ReturnType<typeof vi.spyOn> = vi
+        .spyOn(TestBed.inject(WorkspaceGit), 'refresh')
+        .mockResolvedValue();
+
+      choose('refresh');
+
+      expect(workspace.refreshes).toBe(1);
+      expect(status).toHaveBeenCalled();
+    });
+
+    it('openInFileSystem_opensTheRootsOwnContents_ratherThanRevealingIt', () => {
+      // Revealing would show the root selected inside whatever folder happens to contain it.
+      const open: MenuItem | undefined = moreItems().find(
+        (item: MenuItem): boolean => item.id === 'open-root',
+      );
+      expect(open?.label).toBe(OPEN_IN_FILE_SYSTEM_LABEL);
+
+      choose('open-root');
+
+      expect(shell.opened).toEqual(['/ws']);
+      expect(shell.revealed).toEqual([]);
+    });
+
+    it('copyWorkspacePath_copiesTheRoot', () => {
+      const write: ReturnType<typeof vi.fn> = vi.fn().mockResolvedValue(undefined);
+      Object.defineProperty(navigator, 'clipboard', {
+        value: { writeText: write },
+        configurable: true,
+      });
+
+      choose('copy-workspace-path');
+
+      expect(write).toHaveBeenCalledWith('/ws');
+    });
+  });
+
+  it('rows_anExpandedFolder_isNotBold', async () => {
+    // Opening a folder is navigation, not emphasis: the weight is kept for a conflicted file.
+    workspace.rows.set([{ node: node('src', '/ws/src', 'directory'), depth: 0, expanded: true }]);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const name: Element | null = (fixture.nativeElement as HTMLElement).querySelector('.tree-name');
+    expect(name?.classList.contains('bold')).toBe(false);
+  });
+
   it('contextMenuFor_offersAddToVersionControl_onlyOnAnUntrackedPath', () => {
     // #860: nothing is added unasked — the command is the only way a new path becomes tracked.
     const git: WorkspaceGit = TestBed.inject(WorkspaceGit);
@@ -355,6 +522,44 @@ describe('TreePanel row context menu', () => {
       row: treeRow(node('new.ts', '/ws/new.ts', 'file')),
     });
     expect(add).toHaveBeenCalledWith('/ws/new.ts');
+  });
+
+  it('contextMenuFor_offersShowDiff_onlyOnAModifiedFile_andOpensItsDiff', () => {
+    const git: WorkspaceGit = TestBed.inject(WorkspaceGit);
+    vi.spyOn(git, 'canShowDiff').mockImplementation(
+      (path: string): boolean => path === '/ws/changed.ts' || path === '/ws/src',
+    );
+    const open: ReturnType<typeof vi.spyOn> = vi
+      .spyOn(TestBed.inject(DiffOpener), 'openPath')
+      .mockResolvedValue(null);
+
+    expect(itemIds(node('changed.ts', '/ws/changed.ts', 'file'))).toContain('show-diff');
+    expect(itemIds(node('same.ts', '/ws/same.ts', 'file'))).not.toContain('show-diff');
+    // A folder has no diff of its own, whatever is changed beneath it.
+    expect(itemIds(node('src', '/ws/src', 'directory'))).not.toContain('show-diff');
+
+    component.onContextAction({
+      itemId: 'show-diff',
+      row: treeRow(node('changed.ts', '/ws/changed.ts', 'file')),
+    });
+    expect(open).toHaveBeenCalledWith('/ws/changed.ts');
+  });
+
+  it('onContextAction_showDiff_whenThereIsNoDiff_saysWhy', async () => {
+    vi.spyOn(TestBed.inject(DiffOpener), 'openPath').mockResolvedValue(
+      '"changed.ts" has no changes against HEAD, so there is no diff to show.',
+    );
+    const notify: ReturnType<typeof vi.spyOn> = vi.spyOn(TestBed.inject(Notifications), 'notify');
+
+    component.onContextAction({
+      itemId: 'show-diff',
+      row: treeRow(node('changed.ts', '/ws/changed.ts', 'file')),
+    });
+    await fixture.whenStable();
+
+    expect(notify).toHaveBeenCalledWith(
+      expect.objectContaining({ severity: 'warning', title: 'No diff for “changed.ts”' }),
+    );
   });
 
   it('onContextAction_newFile_onADirectory_opensAPlaceholderFirstAmongItsChildren', async () => {
