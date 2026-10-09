@@ -665,6 +665,21 @@ export class Icon {
   public static readonly GO_TO_HEAD: Icon = new Icon('ph-duotone ph-crosshair');
 
   /**
+   * Gets the go-to-symbol icon on a code file's strip menu.
+   */
+  public static readonly GO_TO_SYMBOL: Icon = new Icon('ph-duotone ph-crosshair-simple');
+
+  /**
+   * Gets the go-to-line icon on a code file's strip menu.
+   */
+  public static readonly GO_TO_LINE: Icon = new Icon('ph-duotone ph-list-numbers');
+
+  /**
+   * Gets the open-file icon on a diff's strip, which opens the compared file to edit.
+   */
+  public static readonly OPEN_FILE: Icon = new Icon('ph-duotone ph-file-text');
+
+  /**
    * Gets the source-control (git-branch) icon shown on the source-control tab.
    */
   public static readonly SOURCE_CONTROL: Icon = new Icon('ph-duotone ph-git-branch');

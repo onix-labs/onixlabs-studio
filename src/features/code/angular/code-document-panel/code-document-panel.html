@@ -1,4 +1,68 @@
 <div class="document-panel">
+  <!-- The panel's tool strip (#882). A code file always has one: where the cursor is — its type and
+       the member of it — with the way to go to another, and the editor's commonest commands. -->
+  <app-panel-toolbar class="document-panel__strip" aria-label="Code">
+    <span
+      class="document-panel__nav"
+      [appTooltip]="navigationHint()"
+      [appTooltipDisabled]="navigationHint() === ''"
+    >
+      <app-dropdown
+        ariaLabel="Type"
+        placeholder="Types"
+        [fullWidth]="true"
+        [options]="typeOptions()"
+        [value]="location().typeId ?? ''"
+        [disabled]="typeOptions().length === 0"
+        (valueChange)="goToType($event)"
+      />
+    </span>
+    <span
+      class="document-panel__nav"
+      [appTooltip]="navigationHint()"
+      [appTooltipDisabled]="navigationHint() === ''"
+    >
+      <app-dropdown
+        ariaLabel="Member"
+        placeholder="Members"
+        [fullWidth]="true"
+        [options]="memberOptions()"
+        [value]="location().memberId ?? ''"
+        [disabled]="memberOptions().length === 0"
+        (valueChange)="goToMember($event)"
+      />
+    </span>
+    <app-button
+      variant="none"
+      [icon]="Icon.PLUS_SQUARE_DUOTONE"
+      ariaLabel="Unfold All"
+      tooltip="Unfold All"
+      (click)="unfoldAll()"
+    />
+    <app-button
+      variant="none"
+      [icon]="Icon.MINUS_SQUARE_DUOTONE"
+      ariaLabel="Fold All"
+      tooltip="Fold All"
+      (click)="foldAll()"
+    />
+    <app-button
+      variant="none"
+      [icon]="Icon.SEARCH"
+      ariaLabel="Find"
+      tooltip="Find"
+      (click)="find()"
+    />
+    <app-button
+      variant="none"
+      [icon]="Icon.DOTS_THREE_BOLD"
+      ariaLabel="More Actions"
+      tooltip="More Actions"
+      [cdkMenuTriggerFor]="moreMenu.panel() ?? null"
+      [cdkMenuPosition]="moreMenu.position()"
+    />
+  </app-panel-toolbar>
+  <app-menu #moreMenu [items]="menuItems()" placement="down-end" (selected)="onMenu($event)" />
   <div class="document-panel__editor">
     <app-code-document
       [documentId]="documentId()"

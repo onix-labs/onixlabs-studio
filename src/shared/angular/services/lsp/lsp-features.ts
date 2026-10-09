@@ -10,6 +10,7 @@ import {
 } from '@shared/api/lsp-channels';
 import { Editors } from '@shared/angular/services/editors/editors';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
+import { CodeSymbol, toCodeSymbols } from '@shared/angular/services/lsp/lsp-symbols';
 import {
   buildHeuristicSemanticTokens,
   HEURISTIC_SEMANTIC_TOKEN_LANGUAGES,
@@ -122,16 +123,36 @@ interface LspLocationLink {
 }
 
 /**
- * Holds the languages editor features are wired for; each must have a registered server.
+ * Holds the languages the editor's language-server features are wired for: every language a server in
+ * either catalogue — the built-in one (`language-server-catalogue.ts`) or a plugin's manifest
+ * (`curated-plugins.json`) — serves, so a Rust or Go file gets hover, completion, go-to-definition,
+ * references, colouring and Go to Symbol as a C# file does (#882). A language with no server running
+ * is harmless here: each provider finds no document to ask about and answers nothing. The spec keeps
+ * this in step with both catalogues.
  */
-const FEATURE_LANGUAGES: readonly string[] = [
-  'typescript',
-  'javascript',
-  'java',
-  'python',
-  'csharp',
-  'cpp',
+export const FEATURE_LANGUAGES: readonly string[] = [
   'c',
+  'cpp',
+  'csharp',
+  'css',
+  'dockerfile',
+  'go',
+  'html',
+  'java',
+  'javascript',
+  'json',
+  'kotlin',
+  'less',
+  'lua',
+  'perl',
+  'python',
+  'rust',
+  'scss',
+  'shell',
+  'sql',
+  'svelte',
+  'typescript',
+  'yaml',
 ];
 
 /**
@@ -346,6 +367,20 @@ export class LspFeatures {
           this.provideLocations(monaco, model, position, 'textDocument/references', {
             context: { includeDeclaration: true },
           }),
+      });
+      // The document's symbols, which Monaco's own Go to Symbol (⌘⇧O) lists; the editor strip's
+      // Type and Member dropdowns read the same answer through {@link documentSymbols} (#882).
+      monaco.languages.registerDocumentSymbolProvider(language, {
+        provideDocumentSymbols: async (
+          model: MonacoApi.editor.ITextModel,
+        ): Promise<MonacoApi.languages.DocumentSymbol[] | undefined> => {
+          const symbols: readonly CodeSymbol[] | null = await this.documentSymbols(model);
+          return symbols === null
+            ? undefined
+            : symbols.map((symbol: CodeSymbol): MonacoApi.languages.DocumentSymbol =>
+                this.toMonacoSymbol(symbol),
+              );
+        },
       });
       const semanticTokensChanged: MonacoApi.Emitter<void> = new monaco.Emitter<void>();
       this.semanticTokensChanged.set(language, semanticTokensChanged);
@@ -721,6 +756,67 @@ export class LspFeatures {
     } catch {
       return null;
     }
+  }
+
+  /**
+   * Determines whether a language server serves a document — whether one is running for it — whatever
+   * it can yet answer.
+   * @param model The editor model.
+   * @returns Returns true when a server owns the document.
+   */
+  public servesDocument(model: MonacoApi.editor.ITextModel): boolean {
+    return this.resolve(model) !== null;
+  }
+
+  /**
+   * Reads the symbols a language server reports for a document — its types and their members, nested
+   * — for the editor strip's navigation and Monaco's Go to Symbol (#882).
+   * @param model The editor model.
+   * @returns Returns the document's top-level symbols, or null when no server serves the document or
+   * it could not answer.
+   */
+  public async documentSymbols(
+    model: MonacoApi.editor.ITextModel,
+  ): Promise<readonly CodeSymbol[] | null> {
+    const ref: LspDocumentRef | null = this.resolve(model);
+    if (ref === null || this.bridge === undefined) {
+      return null;
+    }
+    try {
+      const result: unknown = await this.bridge.invoke(
+        LspChannel.Request,
+        ref.sessionId,
+        'textDocument/documentSymbol',
+        { textDocument: { uri: ref.uri } },
+      );
+      if (result === null || result === undefined) {
+        return null;
+      }
+      this.notifyServed(ref.sessionId);
+      return toCodeSymbols(result);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Converts a symbol to Monaco's shape, with its children. Monaco numbers symbol kinds from zero, in
+   * the protocol's order, which numbers them from one.
+   * @param symbol The symbol.
+   * @returns Returns Monaco's symbol.
+   */
+  private toMonacoSymbol(symbol: CodeSymbol): MonacoApi.languages.DocumentSymbol {
+    return {
+      name: symbol.name,
+      detail: '',
+      kind: symbol.kind - 1,
+      tags: [],
+      range: this.toRange(symbol.range),
+      selectionRange: this.toRange(symbol.selectionRange),
+      children: symbol.children.map((child: CodeSymbol): MonacoApi.languages.DocumentSymbol =>
+        this.toMonacoSymbol(child),
+      ),
+    };
   }
 
   /**

@@ -5,6 +5,11 @@ import { Icon } from '@shared/angular/icons/icon';
 import { Agent } from '@shared/angular/services/agent/agent';
 import { AgentConversation } from '@shared/angular/services/agent-conversation/agent-conversation';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
+import { DockState } from '@shared/angular/services/dock-layout/dock-state';
+import {
+  DocumentStatus,
+  DocumentStatusInfo,
+} from '@shared/angular/services/document-status/document-status';
 import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
 import { ForgeRepository } from '@shared/angular/services/forge-repository/forge-repository';
 import { IssueAgent } from '@shared/angular/services/issues/issue-agent';
@@ -149,7 +154,27 @@ describe('IssueDocumentPanel', () => {
     expect(text).toContain('bug');
     expect(text).toContain('area:git');
     expect(text).toContain('v0.13');
-    expect(text).toContain('open');
+    // The state is a chip on the status strip now, not on the tool strip (#882).
+    expect(host.querySelector('app-panel-toolbar')?.textContent).not.toContain('open');
+  });
+
+  it('theIssuesStatus_isPublishedToTheStatusStrip_asAChipAndItsDetails', () => {
+    issues.put('issue:12', makeIssue());
+    const panel: DockPanel = makePanel('issue:12');
+    const dockState: DockState = TestBed.inject(DockState);
+    vi.spyOn(dockState, 'layout').mockReturnValue({
+      kind: 'stack',
+      id: 'well',
+      role: 'document',
+      panels: ['issue:12'],
+      active: 'issue:12',
+    } as unknown as ReturnType<DockState['layout']>);
+    fixture.componentRef.setInput('panel', panel);
+    fixture.detectChanges();
+
+    const status: DocumentStatusInfo | null = TestBed.inject(DocumentStatus).info();
+    expect(status?.chip).toEqual({ text: 'Open', tone: 'success', title: "The issue's state" });
+    expect(status?.details?.map((detail: { text: string }): string => detail.text)[0]).toBe('#12');
   });
 
   it('render_rendersTheBodyAsMarkdown_ratherThanAsSource', () => {
@@ -241,12 +266,15 @@ describe('IssueDocumentPanel', () => {
     expect(TestBed.inject(IssueAgent).pending()?.number).toBe(12);
   });
 
-  it('openExternally_opensTheIssueOnTheForge', () => {
+  it('openInBrowser_onTheMenu_opensTheIssueOnTheForge', () => {
     issues.put('issue:12', makeIssue());
     fixture.componentRef.setInput('panel', makePanel('issue:12'));
     fixture.detectChanges();
 
-    host.querySelector<HTMLButtonElement>('[aria-label="Open in browser"]')!.click();
+    // Open in Browser is on the strip's menu (#882).
+    (fixture.componentInstance as unknown as { onMenu(id: string): void }).onMenu(
+      'issue.openInBrowser',
+    );
 
     expect(opened).toEqual(['https://example.com/12']);
   });

@@ -7,11 +7,15 @@
   font-size: 0.8rem;
 }
 
+// The height every workspace panel's tool strip has (#882): a full-height control with 0.5rem either
+// side, as `app-panel-toolbar` sets it.
 .image-toolstrip {
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   gap: 0.125rem;
-  padding: 0.25rem 0.5rem;
+  block-size: calc(var(--control-height) + 1rem);
+  padding: 0 0.5rem;
   overflow-x: auto;
 }
 

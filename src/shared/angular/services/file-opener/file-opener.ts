@@ -421,9 +421,9 @@ export class FileOpener {
       icon: this.dockIconFor(fileInfo.extension),
       role: 'document',
       component: DocumentPanel,
-      // A markdown well panel mounts its own formatting toolstrip, so the dock's stub strip (whose
-      // actions are placeholders) is suppressed for it; code documents keep the shared strip.
-      ownsToolStrip: this.isMarkdown(fileInfo.extension),
+      // A well document draws its own strip: markdown its formatting tools, code its Type and Member
+      // navigation (#882) — so the dock's stub strip, whose actions are placeholders, is never shown.
+      ownsToolStrip: true,
       // Surface the well document's unsaved state to the dock tab (a dirty marker) and guard its close
       // so an edited-but-unsaved file prompts to save before the tab is removed.
       ...(document === undefined ? {} : { dirty: document.dirty }),

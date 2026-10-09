@@ -77,6 +77,24 @@ export class LanguageSupportPrompt {
    * @param language The Monaco language identifier of the document that found no server.
    */
   public offerFor(language: string): void {
+    this.offerOnce(language);
+  }
+
+  /**
+   * Names the plugin that would serve a language, when one is offered and none is installed — so a
+   * surface waiting on a language server can say what would fill it in (#882).
+   * @param language The Monaco language identifier.
+   * @returns Returns the plugin's name, or null when the language is served or no plugin offers it.
+   */
+  public installableFor(language: string): string | null {
+    return this.uninstalledFor(language, 'language-server')[0]?.name ?? null;
+  }
+
+  /**
+   * Offers language support once per language, as {@link offerFor} describes.
+   * @param language The Monaco language identifier.
+   */
+  private offerOnce(language: string): void {
     if (this.offered.has(language)) {
       return;
     }

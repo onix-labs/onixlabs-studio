@@ -18,13 +18,39 @@ import { DockState } from '@shared/angular/services/dock-layout/dock-state';
 import { findStackOfPanel } from '@shared/angular/services/dock-layout/dock-tree';
 import { DocumentStatus } from '@shared/angular/services/document-status/document-status';
 import { Diffs } from '@shared/angular/services/diffs/diffs';
-import { GitFileChange } from '@shared/angular/services/repository/repository-data';
+import {
+  GitChangeStatus,
+  GitFileChange,
+} from '@shared/angular/services/repository/repository-data';
+import { ChipTone } from '@shared/angular/components/chip/chip';
+import { StatusChip } from '@shared/angular/services/document-status/document-status';
 import { Icon } from '@shared/angular/icons/icon';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { DiffSummary } from '@shared/angular/components/diff-editor/diff-editor';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
 import { DiffView } from '../diff-view/diff-view';
+import { CdkMenuTrigger } from '@angular/cdk/menu';
+import { Menu, MenuItem } from '@shared/angular/components/menu/menu';
+import { Repository } from '@shared/angular/services/repository/repository';
+import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
+import { Editors, EditorLocation } from '@shared/angular/services/editors/editors';
+import { FileSystem } from '@shared/angular/services/file-system/file-system';
+import { MutationResult } from '@shared/angular/services/source-control/source-control-provider';
+import {
+  DocumentFileCommands,
+  injectDocumentFileCommands,
+} from '@shared/angular/services/document-file-commands/document-file-commands';
+
+/**
+ * How long to wait between looks for a just-opened file's editor, so its caret can be placed.
+ */
+const REVEAL_POLL_MS: number = 80;
+
+/**
+ * How many looks before leaving the file open at its start.
+ */
+const REVEAL_POLL_ATTEMPTS: number = 25;
 
 /**
  * Hosts a changed file's diff inside the source-control document well. The dock panel id is the diff
@@ -39,7 +65,7 @@ import { DiffView } from '../diff-view/diff-view';
  */
 @Component({
   selector: 'app-diff-document-panel',
-  imports: [DiffView, Button, Dropdown, PanelToolbar],
+  imports: [Button, CdkMenuTrigger, DiffView, Dropdown, Menu, PanelToolbar],
   templateUrl: './diff-document-panel.html',
   styleUrl: './diff-document-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -81,6 +107,78 @@ export class DiffDocumentPanel {
    * Gets whether there is a comparison to act on, which gates the navigation arrows.
    */
   protected readonly hasFile: Signal<boolean> = computed((): boolean => this.file() !== null);
+
+  /**
+   * Holds the workspace's repository, which stages, unstages and discards a working-tree change, or
+   * null where there is none.
+   */
+  private readonly repository: Repository | null = inject(Repository, { optional: true });
+
+  /**
+   * Holds the file opener, for Open File.
+   */
+  private readonly fileOpener: FileOpener = inject(FileOpener);
+
+  /**
+   * Holds the editor registry, used to place the caret in the file Open File opens.
+   */
+  private readonly editors: Editors = inject(Editors);
+
+  /**
+   * Holds the file system, whose confirmation guards Discard Changes.
+   */
+  private readonly fileSystem: FileSystem = inject(FileSystem);
+
+  /**
+   * Holds the file commands the strip's menu offers, shared with every document strip (#882).
+   */
+  private readonly fileCommands: DocumentFileCommands = injectDocumentFileCommands();
+
+  /**
+   * Holds whether a stage, unstage or discard is under way, during which none runs another.
+   */
+  protected readonly busy: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Gets the compared file's absolute path, or null when there is no file or no repository root.
+   */
+  protected readonly absolutePath: Signal<string | null> = computed((): string | null => {
+    const file: GitFileChange | null = this.file();
+    const root: string | undefined = this.repository?.info()?.root;
+    return file === null || root === undefined
+      ? null
+      : `${root.replace(/[\\/]+$/, '')}/${file.path}`;
+  });
+
+  /**
+   * Gets whether the diff is of a working-tree change — what can be staged, unstaged or discarded; a
+   * commit's diff is history, and none of them applies to it.
+   */
+  protected readonly isWorkingChange: Signal<boolean> = computed(
+    (): boolean => this.file()?.target?.kind === 'working' && this.repository !== null,
+  );
+
+  /**
+   * Gets whether the diff is of a staged change, so the strip offers Unstage rather than Stage.
+   */
+  protected readonly isStaged: Signal<boolean> = computed((): boolean => {
+    const target: GitFileChange['target'] = this.file()?.target;
+    return target?.kind === 'working' && target.staged;
+  });
+
+  /**
+   * Gets whether Open File can open the file: there is one, and it was not deleted.
+   */
+  protected readonly canOpenFile: Signal<boolean> = computed(
+    (): boolean => this.absolutePath() !== null && this.file()?.status !== 'deleted',
+  );
+
+  /**
+   * Gets the strip menu's items: the file's own commands.
+   */
+  protected readonly menuItems: Signal<readonly MenuItem[]> = computed((): readonly MenuItem[] =>
+    this.fileCommands.items(this.absolutePath()),
+  );
 
   /**
    * Gets whether the diff renders inline rather than side by side.
@@ -145,6 +243,7 @@ export class DiffDocumentPanel {
         return;
       }
       this.documentStatus.set(this.panel().id, {
+        chip: changeChip(file.status),
         language: file.language,
         changes: summary?.changes ?? 0,
         ...(summary?.currentChange === undefined ? {} : { currentChange: summary.currentChange }),
@@ -179,4 +278,137 @@ export class DiffDocumentPanel {
   protected nextChange(): void {
     this.view()?.goToDiff('next');
   }
+
+  /**
+   * Opens the compared file to edit, with the caret where it is on the diff's changed side.
+   */
+  protected async openFile(): Promise<void> {
+    const path: string | null = this.absolutePath();
+    if (path === null || !this.canOpenFile()) {
+      return;
+    }
+    const position: { readonly line: number; readonly column: number } | null =
+      this.view()?.modifiedPosition() ?? null;
+    if (!(await this.fileOpener.openPath(path)) || position === null) {
+      return;
+    }
+    for (let attempt: number = 0; attempt < REVEAL_POLL_ATTEMPTS; attempt++) {
+      const modelUri: string | undefined = this.editors.modelUriForPath(path);
+      const location: EditorLocation | undefined =
+        modelUri === undefined ? undefined : this.editors.locate(modelUri);
+      if (location !== undefined) {
+        this.editors.requestReveal(location.documentId, position.line, position.column);
+        return;
+      }
+      await new Promise<void>((resolve: () => void): void => {
+        setTimeout(resolve, REVEAL_POLL_MS);
+      });
+    }
+  }
+
+  /**
+   * Stages the change, or unstages it when it is staged, and shows what it then is.
+   */
+  protected async toggleStaged(): Promise<void> {
+    const file: GitFileChange | null = this.file();
+    if (file === null || this.repository === null || !this.isWorkingChange() || this.busy()) {
+      return;
+    }
+    const staged: boolean = this.isStaged();
+    await this.mutate(
+      (): Promise<MutationResult> =>
+        staged ? this.repository!.unstage(file) : this.repository!.stage(file),
+      // Staged, the change is the index's; unstaged, the working tree's. A file partly staged is in
+      // both lists, and the one it moved to is the one to show.
+      (): GitFileChange | undefined =>
+        (staged ? this.repository!.unstaged() : this.repository!.staged()).find(
+          (change: GitFileChange): boolean => change.path === file.path,
+        ),
+    );
+  }
+
+  /**
+   * Discards the change, once confirmed — a tracked file goes back to the last commit, an untracked
+   * one is deleted — and closes the diff, which then has nothing to compare.
+   */
+  protected async discard(): Promise<void> {
+    const file: GitFileChange | null = this.file();
+    if (file === null || this.repository === null || !this.isWorkingChange() || this.isStaged()) {
+      return;
+    }
+    const confirmed: boolean = await this.fileSystem.confirmDestructive({
+      title: 'Discard Changes',
+      message: `Discard the changes to "${file.path}"?`,
+      detail:
+        'A tracked file is restored to the last commit; an untracked file is deleted. ' +
+        'This cannot be undone.',
+      confirmLabel: 'Discard',
+    });
+    if (!confirmed) {
+      return;
+    }
+    await this.mutate(
+      (): Promise<MutationResult> => this.repository!.discard(file),
+      (): GitFileChange | undefined => undefined,
+    );
+  }
+
+  /**
+   * Runs a command chosen from the strip's menu.
+   * @param id The chosen item's identifier.
+   */
+  protected onMenu(id: string): void {
+    this.fileCommands.run(id, this.absolutePath());
+  }
+
+  /**
+   * Runs a change to the repository and then shows what the file has become: its change as it now
+   * stands, read afresh, or — when it no longer has one there — closes the diff.
+   * @param change Makes the change.
+   * @param next Finds the file's change afterwards, once the repository has refreshed.
+   */
+  private async mutate(
+    change: () => Promise<MutationResult>,
+    next: () => GitFileChange | undefined,
+  ): Promise<void> {
+    this.busy.set(true);
+    try {
+      const result: MutationResult = await change();
+      if (!result.success) {
+        return;
+      }
+      const updated: GitFileChange | undefined = next();
+      const id: string = this.panel().id;
+      if (updated === undefined) {
+        this.dockState.removeFromLayout(id);
+        return;
+      }
+      this.diffs.put(id, updated);
+      const diff: { original: string; modified: string } = await this.repository!.loadDiff(updated);
+      this.diffs.put(id, { ...updated, original: diff.original, modified: diff.modified });
+    } finally {
+      this.busy.set(false);
+    }
+  }
+}
+
+/**
+ * Builds the status chip for how a file changed: green for a file added, amber for one modified, red
+ * for one deleted, the accent for one renamed, and red again for one in conflict.
+ * @param status How the file changed.
+ * @returns Returns the chip.
+ */
+function changeChip(status: GitChangeStatus): StatusChip {
+  const tones: Readonly<Record<GitChangeStatus, ChipTone>> = {
+    added: 'success',
+    modified: 'warning',
+    deleted: 'danger',
+    renamed: 'accent',
+    conflicted: 'danger',
+  };
+  return {
+    text: status.charAt(0).toUpperCase() + status.slice(1),
+    tone: tones[status],
+    title: 'How the file changed',
+  };
 }

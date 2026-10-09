@@ -14,6 +14,17 @@
     (click)="onRedo()"
   />
   <span class="markdown-toolstrip__divider" aria-hidden="true"></span>
+  <!-- What the cursor is in, and the way to turn it into another kind of block: the markdown tab's
+       style field, here too (#882). -->
+  <app-dropdown
+    class="markdown-toolstrip__format"
+    ariaLabel="Format"
+    [fullWidth]="true"
+    [options]="blockTypeOptions"
+    [value]="blockType()"
+    (valueChange)="onBlockType($event)"
+  />
+  <span class="markdown-toolstrip__divider" aria-hidden="true"></span>
   <app-button
     variant="none"
     [icon]="Icon.BOLD_BOLD"
@@ -79,14 +90,16 @@
     tooltip="Insert divider"
     (click)="onDivider()"
   />
-  @if (showOpenInTab()) {
-    <span class="markdown-toolstrip__spacer"></span>
-    <app-button
-      variant="none"
-      [icon]="Icon.OPEN_EXTERNAL_BOLD"
-      ariaLabel="Open in Tab"
-      tooltip="Open in Tab"
-      (click)="openInTab.emit()"
-    />
-  }
+  <!-- The file's commands, behind the menu every document strip ends with (#882): Open in Tab first,
+       for the full editor, then those the code strip offers too. -->
+  <span class="markdown-toolstrip__spacer"></span>
+  <app-button
+    variant="none"
+    [icon]="Icon.DOTS_THREE_BOLD"
+    ariaLabel="More Actions"
+    tooltip="More Actions"
+    [cdkMenuTriggerFor]="moreMenu.panel() ?? null"
+    [cdkMenuPosition]="moreMenu.position()"
+  />
 </div>
+<app-menu #moreMenu [items]="menuItems()" placement="down-end" (selected)="onMenu($event)" />

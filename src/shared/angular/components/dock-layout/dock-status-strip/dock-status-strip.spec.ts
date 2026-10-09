@@ -7,6 +7,7 @@ import {
   DocumentStatusInfo,
 } from '@shared/angular/services/document-status/document-status';
 import { EditorZoom } from '@shared/angular/services/editor-zoom/editor-zoom';
+import { DockReveal } from '@shared/angular/services/dock-layout/dock-reveal';
 import { DockStatusStrip } from './dock-status-strip';
 
 describe('DockStatusStrip', () => {
@@ -25,18 +26,25 @@ describe('DockStatusStrip', () => {
     line: 12,
     column: 4,
     language: 'typescript',
+    diagnostics: true,
     eol: 'LF',
     encoding: 'UTF-8',
   };
 
+  let revealed: string[];
+
   beforeEach(async () => {
+    revealed = [];
     errorCount = signal<number>(0);
     warningCount = signal<number>(0);
 
     await TestBed.configureTestingModule({
       imports: [DockStatusStrip],
       // The real Diagnostics aggregate pulls in Monaco; only its counts matter here.
-      providers: [{ provide: Diagnostics, useValue: { errorCount, warningCount } }],
+      providers: [
+        { provide: Diagnostics, useValue: { errorCount, warningCount } },
+        { provide: DockReveal, useValue: { reveal: (id: string): number => revealed.push(id) } },
+      ],
     }).compileComponents();
 
     documentStatus = TestBed.inject(DocumentStatus);
@@ -51,9 +59,10 @@ describe('DockStatusStrip', () => {
     expect(component).toBeTruthy();
   });
 
-  it('render_showsTheErrorAndWarningCounts', () => {
+  it('render_showsTheErrorAndWarningCounts_besideSourceCode', () => {
     errorCount.set(2);
     warningCount.set(5);
+    documentStatus.set('owner', info);
     fixture.detectChanges();
 
     const segment: HTMLElement | null = host.querySelector<HTMLElement>(
@@ -63,10 +72,10 @@ describe('DockStatusStrip', () => {
     expect(segment?.textContent).toContain('5');
   });
 
-  it('render_whenNoDocumentPublishes_hidesTheDocumentGroup', () => {
+  it('render_whenNoDocumentPublishes_showsNothing', () => {
     fixture.detectChanges();
 
-    expect(host.querySelectorAll('.dock-status-strip__group').length).toBe(1);
+    expect(host.querySelectorAll('.dock-status-strip__group').length).toBe(0);
   });
 
   it('render_whenADocumentPublishes_showsCaretLanguageEolEncodingAndZoom', () => {
@@ -143,14 +152,44 @@ describe('DockStatusStrip', () => {
     documentStatus.set('owner', { language: 'markdown', changes: 12, linesAdded: 1 });
     fixture.detectChanges();
 
-    expect(host.querySelector('[title="Errors and warnings"]')).toBeNull();
+    expect(host.querySelector('[title^="Errors and warnings"]')).toBeNull();
   });
 
-  it('render_whenAnOrdinaryDocumentPublishes_keepsTheDiagnosticsSegment', () => {
+  it('render_whenACodeDocumentPublishes_keepsTheDiagnosticsSegment_whichOpensTheErrorList', () => {
     documentStatus.set('owner', info);
     fixture.detectChanges();
 
-    expect(host.querySelector('[title="Errors and warnings"]')).not.toBeNull();
+    const segment: HTMLButtonElement | null = host.querySelector<HTMLButtonElement>(
+      '[title^="Errors and warnings"]',
+    );
+    expect(segment).not.toBeNull();
+    segment?.click();
+    expect(revealed).toEqual(['errors']);
+  });
+
+  it('render_theDocumentsDetails_areHeldToTheTrailingEdge_withOrWithoutTheCounts', () => {
+    // #882: a picture's details sat on the left, a code file's on the right.
+    documentStatus.set('owner', { language: 'PNG', details: [] });
+    fixture.detectChanges();
+    expect(host.querySelector('.dock-status-strip__group')?.classList).toContain(
+      'dock-status-strip__group--details',
+    );
+
+    documentStatus.set('owner', info);
+    fixture.detectChanges();
+    const groups: NodeListOf<Element> = host.querySelectorAll('.dock-status-strip__group');
+    expect(groups[1].classList).toContain('dock-status-strip__group--details');
+  });
+
+  it('render_besideAPictureOrAProseFile_dropsTheDiagnosticsSegment', () => {
+    // #882: the workspace's counts say nothing about a PNG or a markdown file.
+    documentStatus.set('owner', { language: 'PNG', details: [] });
+    fixture.detectChanges();
+    expect(host.querySelector('[title^="Errors and warnings"]')).toBeNull();
+
+    documentStatus.set('owner', { language: 'markdown', words: 4, readMinutes: 1 });
+    fixture.detectChanges();
+    expect(host.querySelector('[title^="Errors and warnings"]')).toBeNull();
   });
 
   it('render_theLineTallyIsHeldToTheTrailingEdge', () => {

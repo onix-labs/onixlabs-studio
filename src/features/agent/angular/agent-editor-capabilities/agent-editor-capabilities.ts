@@ -30,7 +30,6 @@ import {
   ActiveWorkspace,
   WorkspaceWell,
 } from '@shared/angular/services/workspace/active-workspace';
-import { AgentEditPreview } from '../agent-edit-preview/agent-edit-preview';
 import { EditOutcome, resolveEdit, resolveInsert } from './document-edit';
 import { parseRunOutput, RunOutputParse } from './run-output';
 
@@ -194,11 +193,6 @@ interface PendingPreview {
    * Applies the staged outcome to its document.
    */
   readonly apply: () => boolean;
-
-  /**
-   * Gets a value indicating whether the preview opened a diff that must be closed on settle.
-   */
-  readonly diffShown: boolean;
 }
 
 /**
@@ -306,11 +300,6 @@ export class AgentEditorCapabilities {
    * focused in THAT workspace rather than whichever editor is focused app-wide.
    */
   private readonly workspace: ActiveWorkspace = inject(ActiveWorkspace);
-
-  /**
-   * Holds the edit-preview diff surface (the staged change shown in the document well).
-   */
-  private readonly preview: AgentEditPreview = inject(AgentEditPreview);
 
   /**
    * Holds the staged previews awaiting a decision, keyed by preview id.
@@ -572,13 +561,11 @@ export class AgentEditorCapabilities {
     }
     this.previewCounter += 1;
     const previewId: string = `preview-${this.previewCounter}`;
-    const diffShown: boolean = target.kind === 'code';
-    if (diffShown) {
-      this.preview.open('Agent edit', 'plaintext', target.source, outcome.text);
-    }
+    // No diff opens: none of the surfaces that stage an edit has a document well to show one in, so
+    // the decision card carries the summary alone (#882; a real preview is followed up separately).
+    const diffShown: boolean = false;
     this.pendingPreviews.set(previewId, {
       apply: (): boolean => target.apply(outcome),
-      diffShown,
     });
     this.log.info('agent.editor-capabilities', 'Staged edit preview', {
       previewId,
@@ -635,9 +622,6 @@ export class AgentEditorCapabilities {
       return null;
     }
     this.pendingPreviews.delete(previewId);
-    if (pending.diffShown) {
-      this.preview.close();
-    }
     return pending;
   }
 

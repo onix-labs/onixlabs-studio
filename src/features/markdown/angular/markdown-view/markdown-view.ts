@@ -20,24 +20,10 @@ import {
   createAgentHostRegistrar,
 } from '@shared/angular/services/agent-hosts/agent-host-registration';
 import { AGENT_CONVERSATION_KIND } from '@shared/angular/services/agent-conversations/agent-conversation-context';
-import { type Node as ProseMirrorNode } from '@milkdown/kit/prose/model';
 import type { Selection } from '@milkdown/kit/prose/state';
 import type { EditorView } from '@milkdown/kit/prose/view';
-import {
-  createCodeBlockCommand,
-  turnIntoTextCommand,
-  wrapInBlockquoteCommand,
-  wrapInHeadingCommand,
-} from '@milkdown/preset-commonmark';
 import { redoDepth, undoDepth } from '@milkdown/kit/prose/history';
-import { callCommand } from '@milkdown/utils';
-import {
-  wrapInCautionAlertCommand,
-  wrapInImportantAlertCommand,
-  wrapInNoteAlertCommand,
-  wrapInTipAlertCommand,
-  wrapInWarningAlertCommand,
-} from '@shared/angular/milkdown/github-alert-plugin';
+import { applyBlockType, blockTypeAt } from '@shared/angular/milkdown/markdown-block-type';
 import { MarkdownEditor } from '@shared/angular/components/markdown-editor/markdown-editor';
 import { FindPanel } from '@shared/angular/components/find-panel/find-panel';
 import { MarkdownFindAdapter } from '@features/markdown/angular/find/markdown-find-adapter';
@@ -73,41 +59,6 @@ import { ReadAlongHighlighter } from './read-along-highlighter';
 import { ReviewReveal } from './review-reveal';
 import { OutlineScrollSpy } from './outline-scroll-spy';
 import { buildMarkdownCommandHandler } from './build-command-handler';
-
-/**
- * Heading level for an H1 element.
- */
-const HEADING_LEVEL_1: number = 1;
-
-/**
- * Heading level for an H2 element.
- */
-const HEADING_LEVEL_2: number = 2;
-
-/**
- * Heading level for an H3 element.
- */
-const HEADING_LEVEL_3: number = 3;
-
-/**
- * Heading level for an H4 element.
- */
-const HEADING_LEVEL_4: number = 4;
-
-/**
- * Heading level for an H5 element.
- */
-const HEADING_LEVEL_5: number = 5;
-
-/**
- * Heading level for an H6 element.
- */
-const HEADING_LEVEL_6: number = 6;
-
-/**
- * Document root depth used as the lower bound when walking up the node tree from a selection.
- */
-const ROOT_DEPTH: number = 0;
 
 /**
  * Represents the markdown editor view: the shared {@link MarkdownEditor} pane bound to the owning
@@ -451,7 +402,7 @@ export class MarkdownView implements OnInit, OnDestroy {
     if (!this.isActive()) {
       return;
     }
-    const blockType: MarkdownBlockType = this.resolveActiveBlockType(selection);
+    const blockType: MarkdownBlockType = blockTypeAt(selection);
     this.commands.setActiveBlockType(blockType);
     this.publishHistoryState();
   }
@@ -464,7 +415,13 @@ export class MarkdownView implements OnInit, OnDestroy {
       clipboard: this.clipboard,
       outline: this.outline,
       paneOf: (): MarkdownEditor | undefined => this.pane(),
-      setBlockType: (blockType: MarkdownBlockType): void => this.applyBlockType(blockType),
+      setBlockType: (blockType: MarkdownBlockType): void => {
+        const pane: MarkdownEditor | undefined = this.pane();
+        if (pane !== undefined) {
+          this.log.debug('markdown.view', 'Applying block type', { blockType });
+          applyBlockType(pane, blockType);
+        }
+      },
     });
 
     this.commands.register(this.tabId(), this.commandHandler);
@@ -493,62 +450,6 @@ export class MarkdownView implements OnInit, OnDestroy {
   }
 
   /**
-   * Applies a block type to the current block by dispatching the matching Crepe command.
-   * @param blockType The block type to apply.
-   */
-  private applyBlockType(blockType: MarkdownBlockType): void {
-    const pane: MarkdownEditor | undefined = this.pane();
-    if (pane === undefined) {
-      return;
-    }
-    this.log.debug('markdown.view', 'Applying block type', { blockType });
-    switch (blockType) {
-      case 'paragraph':
-        pane.run(callCommand(turnIntoTextCommand.key));
-        break;
-      case 'blockquote':
-        pane.run(callCommand(wrapInBlockquoteCommand.key));
-        break;
-      case 'code-block':
-        pane.run(callCommand(createCodeBlockCommand.key));
-        break;
-      case 'heading-1':
-        pane.run(callCommand(wrapInHeadingCommand.key, HEADING_LEVEL_1));
-        break;
-      case 'heading-2':
-        pane.run(callCommand(wrapInHeadingCommand.key, HEADING_LEVEL_2));
-        break;
-      case 'heading-3':
-        pane.run(callCommand(wrapInHeadingCommand.key, HEADING_LEVEL_3));
-        break;
-      case 'heading-4':
-        pane.run(callCommand(wrapInHeadingCommand.key, HEADING_LEVEL_4));
-        break;
-      case 'heading-5':
-        pane.run(callCommand(wrapInHeadingCommand.key, HEADING_LEVEL_5));
-        break;
-      case 'heading-6':
-        pane.run(callCommand(wrapInHeadingCommand.key, HEADING_LEVEL_6));
-        break;
-      case 'alert-note':
-        pane.run(callCommand(wrapInNoteAlertCommand.key));
-        break;
-      case 'alert-tip':
-        pane.run(callCommand(wrapInTipAlertCommand.key));
-        break;
-      case 'alert-important':
-        pane.run(callCommand(wrapInImportantAlertCommand.key));
-        break;
-      case 'alert-warning':
-        pane.run(callCommand(wrapInWarningAlertCommand.key));
-        break;
-      case 'alert-caution':
-        pane.run(callCommand(wrapInCautionAlertCommand.key));
-        break;
-    }
-  }
-
-  /**
    * Reads the current selection and publishes its block type to the command registry, so the ribbon
    * reflects the cursor even when no selection-change event has fired (for example on activation).
    */
@@ -557,7 +458,7 @@ export class MarkdownView implements OnInit, OnDestroy {
     if (view === null || !this.isActive()) {
       return;
     }
-    const blockType: MarkdownBlockType = this.resolveActiveBlockType(view.state.selection);
+    const blockType: MarkdownBlockType = blockTypeAt(view.state.selection);
     this.zone.run((): void => {
       this.commands.setActiveBlockType(blockType);
     });
@@ -590,31 +491,5 @@ export class MarkdownView implements OnInit, OnDestroy {
     this.zone.run((): void => {
       this.commands.setHistoryState(canUndo, canRedo);
     });
-  }
-
-  /**
-   * Determines the block type of the node containing a selection by walking up the document tree.
-   * @param selection The current editor selection.
-   * @returns Returns the block type at the selection.
-   */
-  private resolveActiveBlockType(selection: Selection): MarkdownBlockType {
-    const from: Selection['$from'] = selection.$from;
-    for (let depth: number = from.depth; depth >= ROOT_DEPTH; depth--) {
-      const node: ProseMirrorNode = from.node(depth);
-      const name: string = node.type.name;
-      if (name === 'heading') {
-        return `heading-${node.attrs['level'] as number}` as MarkdownBlockType;
-      }
-      if (name === 'code_block') {
-        return 'code-block';
-      }
-      if (name === 'blockquote') {
-        return 'blockquote';
-      }
-      if (name === 'alert_block') {
-        return `alert-${node.attrs['alertType'] as string}` as MarkdownBlockType;
-      }
-    }
-    return 'paragraph';
   }
 }
