@@ -48,7 +48,6 @@ import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { ExplorerToolbar } from '@shared/angular/components/explorer-toolbar/explorer-toolbar';
-import { PulseDot } from '@shared/angular/components/pulse-dot/pulse-dot';
 import {
   TreeMenuSelection,
   TreeRow,
@@ -371,11 +370,6 @@ const ACTION_CAPABILITY: readonly (readonly [string, VersionControlCapability])[
 ];
 
 /**
- * Identifies the Refresh command on the tool strip's more-actions menu.
- */
-const ACTION_REFRESH: string = 'repo.refresh';
-
-/**
  * Identifies the Open in Agent command on an issue's context menu.
  */
 const ACTION_ISSUE_IN_AGENT: string = 'issue.agent';
@@ -470,7 +464,6 @@ interface SectionDef {
     Modal,
     ModalContent,
     ExplorerToolbar,
-    PulseDot,
     TreeView,
     IssueAgentConfirm,
     VersionControlMissing,
@@ -756,12 +749,6 @@ export class SourceControlSidebar implements OnDestroy {
       ...(this.repository.tags().length === 0
         ? []
         : [this.pushToRemoteItem(ACTION_PUSH_ALL_TAGS, 'Push All Tags')]),
-      {
-        id: ACTION_REFRESH,
-        label: 'Refresh',
-        icon: Icon.REFRESH,
-        disabled: !this.repository.isBound(),
-      },
     ]),
   );
 
@@ -789,9 +776,6 @@ export class SourceControlSidebar implements OnDestroy {
         break;
       case ACTION_FETCH:
         this.fetch();
-        break;
-      case ACTION_REFRESH:
-        this.refresh();
         break;
       default:
         break;
@@ -929,9 +913,9 @@ export class SourceControlSidebar implements OnDestroy {
         return Icon.ERROR_FILL;
       case 'cancelled':
         // Not a failure to act on, so it is muted rather than red — the run simply stopped.
-        return Icon.CLOSE;
+        return Icon.STATUS_STOPPED;
       default:
-        // `running` and `queued` never reach here: the template draws a pulsing dot for both, since
+        // `running` and `queued` never reach here: the template draws a pulsing circle for both, since
         // a queued run is work the user is waiting on just as much as one in progress.
         return Icon.PLAY;
     }

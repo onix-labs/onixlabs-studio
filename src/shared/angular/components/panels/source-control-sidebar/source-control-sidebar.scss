@@ -9,7 +9,8 @@
   block-size: 100%;
   min-block-size: 0;
   background: var(--dock-tab-background-color--active);
-  color: var(--body-foreground-color);
+  // The explorers' tree text colour, so a branch reads like an unmodified file does there.
+  color: var(--dock-tab-foreground-color);
   font-size: 0.8rem;
 }
 // The uncommitted-changes badge on the checked-out branch's row. Unlike the other row actions it is
@@ -135,7 +136,29 @@
     color: var(--error-color);
   }
 
+  // Running or queued: the warning tone, fading in and out as the pulse dot did.
+  &--running {
+    color: var(--warning-color);
+    animation: rail-status-pulse 1.4s ease-in-out infinite;
+  }
+
+  // Stopped part-way: not a failure, so muted rather than red.
+  &--cancelled {
+    color: var(--form-muted-foreground-color);
+  }
+
   &--available {
     color: var(--form-muted-foreground-color);
+  }
+}
+
+@keyframes rail-status-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.1;
   }
 }

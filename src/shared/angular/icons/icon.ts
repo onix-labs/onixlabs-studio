@@ -1023,6 +1023,16 @@ export class Icon {
   public static readonly ERROR_FILL: Icon = new Icon('ph-fill ph-x-circle');
 
   /**
+   * Gets the in-progress status icon: a plain circle, pulsing, for a run or checks still going.
+   */
+  public static readonly STATUS_RUNNING: Icon = new Icon('ph-duotone ph-circle');
+
+  /**
+   * Gets the stopped status icon, for a run that was cancelled rather than finished.
+   */
+  public static readonly STATUS_STOPPED: Icon = new Icon('ph-duotone ph-x-circle');
+
+  /**
    * Gets the warning-severity icon.
    */
   public static readonly WARNING: Icon = new Icon('ph ph-warning');

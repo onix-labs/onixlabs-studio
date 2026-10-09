@@ -2120,12 +2120,11 @@ describe('SourceControlSidebar', () => {
       expand();
 
       const host: HTMLElement = fixture.nativeElement as HTMLElement;
-      const dot: HTMLElement | null = host.querySelector('app-pulse-dot.rail__status');
-      expect(dot).not.toBeNull();
-      expect(dot?.classList.contains('pulse-dot--pulsing')).toBe(true);
-      expect(dot?.classList.contains('pulse-dot--warning')).toBe(true);
-      // No icon badge competes with it.
-      expect(host.querySelector('app-icon.rail__status')).toBeNull();
+      // The duotone circle, pulsing in the warning tone (`rail__status--running`), and only that.
+      const badges: NodeListOf<HTMLElement> = host.querySelectorAll('.rail__status');
+      expect(badges.length).toBe(1);
+      expect(badges[0].classList.contains('rail__status--running')).toBe(true);
+      expect(badges[0].innerHTML).toContain('ph-circle');
     });
 
     it('usesFilledBadgesForASettledOutcome', () => {
@@ -2511,6 +2510,24 @@ describe('SourceControlSidebar', () => {
       expect(forge.commands).toEqual(['cancel:99']);
     });
 
+    it('aStoppedRun_showsTheXCircle_mutedRatherThanRed', () => {
+      // Cancelled is neither an outcome to celebrate nor a failure to act on: the run simply stopped.
+      forge.runSection.set({
+        state: 'ready',
+        items: [workflowRun({ status: 'cancelled' })],
+        message: null,
+        stale: false,
+      });
+
+      component.onRowClick(sectionRow('actions', 'Actions'));
+      fixture.detectChanges();
+
+      const badge: HTMLElement | null = (fixture.nativeElement as HTMLElement).querySelector(
+        '.rail__status--cancelled',
+      );
+      expect(badge?.innerHTML).toContain('ph-duotone ph-x-circle');
+    });
+
     it('aQueuedRunPulses_becauseItIsWorkTheUserIsWaitingOn', () => {
       forge.runSection.set({
         state: 'ready',
@@ -2523,7 +2540,7 @@ describe('SourceControlSidebar', () => {
       fixture.detectChanges();
 
       expect(
-        (fixture.nativeElement as HTMLElement).querySelector('app-pulse-dot.rail__status'),
+        (fixture.nativeElement as HTMLElement).querySelector('.rail__status--running'),
       ).not.toBeNull();
     });
   });
@@ -2654,8 +2671,23 @@ describe('SourceControlSidebar', () => {
         'Stash Changes',
         'Fetch',
         'Push All Tags to origin',
-        'Refresh',
       ]);
+    });
+
+    it('refresh_isOnTheStripItself_notTheMenu', () => {
+      // Matthew, #882: the one repository command pressed often enough to earn a button.
+      const repository: Repository = TestBed.inject(Repository);
+      const refresh: ReturnType<typeof vi.spyOn> = vi
+        .spyOn(repository, 'refresh')
+        .mockResolvedValue(undefined);
+      const button: HTMLButtonElement | null = (fixture.nativeElement as HTMLElement).querySelector(
+        'app-explorer-toolbar button[aria-label="Refresh"]',
+      );
+
+      button?.click();
+
+      expect(button).not.toBeNull();
+      expect(refresh).toHaveBeenCalled();
     });
 
     it('disablesStash_whenThereIsNothingToStash', () => {
@@ -2702,16 +2734,14 @@ describe('SourceControlSidebar', () => {
       expect(forge.loads).toBe(3);
     });
 
-    it('theSectionHeadingsReadLikeTheExplorersRootRows', () => {
-      // Bold body text, not the small uppercase treatment the rail used to give them.
-      const heading: HTMLElement | null = (fixture.nativeElement as HTMLElement).querySelector(
-        '.tree-name.bold',
-      );
+    it('theSectionHeadings_areNotBold_norTheOldSmallUppercaseTreatment', () => {
+      // Nothing in the repository tree is bold (Matthew, #882): headings read as the explorers'
+      // folders do, by their icon and their level.
+      const element: HTMLElement = fixture.nativeElement as HTMLElement;
 
-      expect(heading).not.toBeNull();
-      expect(
-        (fixture.nativeElement as HTMLElement).querySelector('.rail__section-name'),
-      ).toBeNull();
+      expect(element.querySelector('.tree-name')).not.toBeNull();
+      expect(element.querySelector('.tree-name.bold')).toBeNull();
+      expect(element.querySelector('.rail__section-name')).toBeNull();
     });
   });
 

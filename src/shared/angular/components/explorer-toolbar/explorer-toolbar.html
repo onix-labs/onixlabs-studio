@@ -22,6 +22,8 @@
       tooltip="Collapse All"
       (click)="collapseAll.emit()"
     />
+    <!-- A panel's own strip buttons, after the folding every explorer shares and before its menu. -->
+    <ng-content />
     <app-button
       variant="none"
       [icon]="Icon.DOTS_THREE_BOLD"

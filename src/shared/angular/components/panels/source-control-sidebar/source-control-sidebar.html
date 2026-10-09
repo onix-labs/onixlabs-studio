@@ -10,7 +10,16 @@
     (expandAll)="expandAll()"
     (collapseAll)="collapseAll()"
     (moreSelected)="onMoreAction($event)"
-  />
+  >
+    <app-button
+      variant="none"
+      [icon]="Icon.REFRESH"
+      ariaLabel="Refresh"
+      tooltip="Refresh"
+      [disabled]="!repository.isBound()"
+      (click)="refresh()"
+    />
+  </app-explorer-toolbar>
 
   <app-tree-view
     [rows]="rows()"
@@ -27,11 +36,9 @@
         [class.tree-icon--folder]="node.kind === 'section'"
         [icon]="node.icon"
       />
-      <span
-        class="tree-name"
-        [class.bold]="node.kind === 'section'"
-        [class.rail__muted]="node.muted"
-      >
+      <!-- Nothing in the tree is bold: a section reads as a heading by its folder icon and its place
+           at the top level, as an explorer's folders do. -->
+      <span class="tree-name" [class.rail__muted]="node.muted">
         {{ node.label }}
       </span>
 
@@ -73,12 +80,11 @@
 
       @if (node.status; as status) {
         @if (status === 'running' || status === 'queued') {
-          <!-- Checks in flight get a pulsing dot rather than a spinner glyph nothing rotates. Warning
+          <!-- Checks in flight get a pulsing circle rather than a spinner glyph nothing rotates. Warning
                rather than accent: it sits between the green and red outcomes as the third state of one
-               badge, so it belongs to the same semantic scale rather than to the theme's accent. Sized
-               to the circle the filled badges draw at the 1rem `.rail__status` sets, so the three
-               states occupy the same optical space rather than the dot reading as a lesser thing. -->
-          <app-pulse-dot class="rail__status" tone="warning" [pulse]="true" [size]="0.8" />
+               badge, so it belongs to the same semantic scale rather than to the theme's accent. An
+               icon like the settled badges, so every state is the same circle at the same size. -->
+          <app-icon class="rail__status rail__status--running" [icon]="Icon.STATUS_RUNNING" />
         } @else {
           <app-icon class="rail__status rail__status--{{ status }}" [icon]="statusIcon(status)" />
         }
