@@ -3,12 +3,14 @@ import * as nodePath from 'node:path';
 import { ipcMain, IpcMainInvokeEvent } from 'electron';
 import { rgPath } from '@vscode/ripgrep';
 import {
+  ReplaceResponse,
   SearchChannel,
   SearchMatch,
   SearchRequest,
   SearchResponse,
   SearchResultFile,
 } from '@shared/api/search-channels';
+import { isReplaceRequest, replaceInFiles } from './search-replace-files';
 import { WorkspaceContext } from './workspace-context';
 import { logger } from './logger';
 
@@ -96,6 +98,17 @@ export class SearchManager {
       (_event: IpcMainInvokeEvent, root: unknown): Promise<readonly string[]> => {
         logger.trace('SearchManager.register', `IPC ${SearchChannel.ListFiles}`);
         return this.listFiles(root);
+      },
+    );
+    ipcMain.handle(
+      SearchChannel.Replace,
+      (_event: IpcMainInvokeEvent, request: unknown): Promise<ReplaceResponse> => {
+        logger.trace('SearchManager.register', `IPC ${SearchChannel.Replace}`);
+        if (!isReplaceRequest(request)) {
+          logger.warn('SearchManager', 'Rejected malformed replace request');
+          return Promise.resolve({ replaced: 0, files: 0, failed: [] });
+        }
+        return replaceInFiles(request, this.workspace);
       },
     );
     logger.info('SearchManager', 'Registered search IPC handlers');

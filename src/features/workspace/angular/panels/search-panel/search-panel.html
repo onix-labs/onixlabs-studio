@@ -1,0 +1,149 @@
+<!-- The panel's tool strip (#882): two toggles, in the Terminal strip's style, choosing the form. -->
+<app-panel-toolbar class="search-panel__strip" role="tablist" aria-label="Find & Replace">
+  <button
+    type="button"
+    class="panel-toolbar__button search-panel__toggle"
+    role="tab"
+    [class.panel-toolbar__button--active]="mode() === 'find'"
+    [attr.aria-selected]="mode() === 'find'"
+    (click)="show('find')"
+  >
+    <app-icon [icon]="Icon.SEARCH" />
+    <span>Find in Files</span>
+  </button>
+  <button
+    type="button"
+    class="panel-toolbar__button search-panel__toggle"
+    role="tab"
+    [class.panel-toolbar__button--active]="mode() === 'replace'"
+    [attr.aria-selected]="mode() === 'replace'"
+    (click)="show('replace')"
+  >
+    <app-icon [icon]="Icon.REPLACE" />
+    <span>Replace in Files</span>
+  </button>
+  <!-- The results are a tree, so the strip folds it the way the explorers' strips fold theirs. -->
+  <span class="panel-toolbar__spacer"></span>
+  <app-button
+    variant="none"
+    [icon]="Icon.PLUS_SQUARE_DUOTONE"
+    ariaLabel="Expand All"
+    tooltip="Expand All"
+    [disabled]="!hasResults()"
+    (click)="expandAll()"
+  />
+  <app-button
+    variant="none"
+    [icon]="Icon.MINUS_SQUARE_DUOTONE"
+    ariaLabel="Collapse All"
+    tooltip="Collapse All"
+    [disabled]="!hasResults()"
+    (click)="collapseAll()"
+  />
+</app-panel-toolbar>
+
+<!-- The chosen form. Both share the query and the options, so switching keeps what was typed. -->
+<div class="search-panel__form" role="tabpanel">
+  <div class="search-panel__field" #findField>
+    <app-text-field
+      class="search-panel__input"
+      kind="search"
+      placeholder="Find"
+      ariaLabel="Find"
+      [(value)]="draft"
+      (keydown.enter)="find()"
+    />
+  </div>
+
+  @if (mode() === 'replace') {
+    <div class="search-panel__field">
+      <app-text-field
+        class="search-panel__input"
+        placeholder="Replace with"
+        ariaLabel="Replace with"
+        [(value)]="replacement"
+        (keydown.enter)="find()"
+      />
+    </div>
+  }
+
+  <div class="search-panel__options">
+    <!-- The label wraps the checkbox's projected native input, associating them at runtime; the lint
+         rule cannot see through the component boundary to verify this statically. -->
+    <!-- eslint-disable-next-line @angular-eslint/template/label-has-associated-control -->
+    <label class="search-panel__option">
+      <app-checkbox [(checked)]="caseSensitive" (checkedChange)="optionChanged()" />
+      <span>Match Case</span>
+    </label>
+    <!-- eslint-disable-next-line @angular-eslint/template/label-has-associated-control -->
+    <label class="search-panel__option">
+      <app-checkbox [(checked)]="wholeWord" (checkedChange)="optionChanged()" />
+      <span>Match Whole Word</span>
+    </label>
+    <!-- eslint-disable-next-line @angular-eslint/template/label-has-associated-control -->
+    <label class="search-panel__option">
+      <app-checkbox [(checked)]="regexp" (checkedChange)="optionChanged()" />
+      <span>Match Regex</span>
+    </label>
+  </div>
+
+  <div class="search-panel__actions">
+    <span class="search-panel__summary">{{ summary() }}</span>
+    <app-button [variant]="mode() === 'find' ? 'solid' : 'outline'" label="Find" (click)="find()" />
+    @if (mode() === 'replace') {
+      <app-button
+        variant="outline"
+        label="Replace"
+        [disabled]="!canReplace()"
+        tooltip="Replace the selected match, then move to the next"
+        (click)="replaceSelected()"
+      />
+      <app-button
+        variant="solid"
+        label="Replace All"
+        [disabled]="!canReplaceAll()"
+        tooltip="Replace every match in every file listed"
+        (click)="replaceEvery()"
+      />
+    }
+  </div>
+</div>
+
+<!-- Everything below the form is the results: the shared tree, grouped by file, the explorers' rows. In
+     the replace form, each match previews its replacement. -->
+<div class="search-panel__results">
+  <app-tree-view
+    [rows]="resultRows()"
+    [selectedId]="selectedRowId()"
+    [virtual]="true"
+    (rowClick)="onRowClick($event)"
+  >
+    <ng-template let-row>
+      @let result = rowOf(row);
+      @if (result.kind === 'file') {
+        <app-icon class="tree-icon" [icon]="fileIcon(result.file)" />
+        <span class="tree-name" [title]="result.file">{{ result.file }}</span>
+        <span class="tree-count">{{ result.count }}</span>
+      } @else {
+        <span class="search-panel__match-line">{{ result.item.line }}</span>
+        <span
+          class="tree-name search-panel__match-preview"
+          [title]="result.item.before + result.item.text + result.item.after"
+          ><span class="search-panel__match-before">{{ lead(result.item.before) }}</span>
+          @if (previewsReplacement()) {
+            <del class="search-panel__match-removed">{{ result.item.text }}</del
+            ><ins class="search-panel__match-added">{{ replacement() }}</ins>
+          } @else {
+            <span class="search-panel__match-text">{{ result.item.text }}</span>
+          }
+          <span class="search-panel__match-after">{{ result.item.after }}</span></span
+        >
+      }
+    </ng-template>
+  </app-tree-view>
+  @if (matchOverflow() > 0) {
+    <div class="search-panel__overflow">
+      …and {{ matchOverflow() }} more — refine the search to list them.
+    </div>
+  }
+</div>

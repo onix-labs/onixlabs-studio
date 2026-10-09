@@ -28,6 +28,7 @@ import { MutationResult } from '@shared/angular/services/source-control/source-c
 import { Shell } from '@shared/angular/services/shell/shell';
 import { OPEN_IN_FILE_SYSTEM_LABEL } from '@shared/angular/services/shell/shell-labels';
 import { Icon } from '@shared/angular/icons/icon';
+import { fileIconFor } from '@shared/angular/icons/file-icon';
 import { ExplorerToolbar } from '@shared/angular/components/explorer-toolbar/explorer-toolbar';
 import { HighlightedText } from '@shared/angular/components/highlighted-text/highlighted-text';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
@@ -703,37 +704,6 @@ export class TreePanel {
     if (node.type === 'directory') {
       return node.expanded ? Icon.FOLDER_OPEN : Icon.DIRECTORY;
     }
-    const extension: string = this.extensionOf(node.name);
-    switch (extension) {
-      case 'ts':
-        return Icon.FILE_TYPESCRIPT;
-      case 'js':
-      case 'mjs':
-      case 'cjs':
-        return Icon.FILE_JAVASCRIPT;
-      case 'json':
-        return Icon.FILE_JSON;
-      case 'md':
-        return Icon.FILE_MARKDOWN;
-      case 'scss':
-      case 'sass':
-      case 'less':
-      case 'css':
-        return Icon.FILE_STYLESHEET;
-      case 'html':
-        return Icon.FILE_HTML;
-      default:
-        return node.name.startsWith('.') ? Icon.FILE_HIDDEN : Icon.FILE;
-    }
-  }
-
-  /**
-   * Extracts a file's lowercased extension, without the leading dot.
-   * @param name The file name.
-   * @returns Returns the extension, or an empty string when there is none.
-   */
-  private extensionOf(name: string): string {
-    const dot: number = name.lastIndexOf('.');
-    return dot <= 0 ? '' : name.slice(dot + 1).toLowerCase();
+    return fileIconFor(node.name);
   }
 }
