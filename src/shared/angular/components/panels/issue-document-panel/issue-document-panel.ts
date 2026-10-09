@@ -2,11 +2,24 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  DestroyRef,
+  effect,
   inject,
   input,
   InputSignal,
   Signal,
 } from '@angular/core';
+import { CdkMenuTrigger } from '@angular/cdk/menu';
+import { Menu, MenuItem } from '@shared/angular/components/menu/menu';
+import { DockState } from '@shared/angular/services/dock-layout/dock-state';
+import { findStackOfPanel } from '@shared/angular/services/dock-layout/dock-tree';
+import { DocumentStatus } from '@shared/angular/services/document-status/document-status';
+
+/**
+ * Identifies the strip menu's commands.
+ */
+const MENU_OPEN_IN_BROWSER: string = 'issue.openInBrowser';
+const MENU_COPY_LINK: string = 'issue.copyLink';
 import { ForgeIssue, ForgeIssueComment } from '@shared/api/forge-types';
 import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
@@ -32,7 +45,15 @@ import { Shell } from '@shared/angular/services/shell/shell';
  */
 @Component({
   selector: 'app-issue-document-panel',
-  imports: [AppIcon, Button, MarkdownRenderer, PanelToolbar, IssueAgentConfirm],
+  imports: [
+    AppIcon,
+    Button,
+    CdkMenuTrigger,
+    IssueAgentConfirm,
+    MarkdownRenderer,
+    Menu,
+    PanelToolbar,
+  ],
   templateUrl: './issue-document-panel.html',
   styleUrl: './issue-document-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -97,20 +118,93 @@ export class IssueDocumentPanel {
    * The same seam the issue's row in the rail asks through, so the opening message and the warning
    * about discarding a transcript are one behaviour offered from two places.
    */
+  /**
+   * Holds the dock layout, which says whether this issue is the active document in its well.
+   */
+  private readonly dockState: DockState = inject(DockState);
+
+  /**
+   * Holds the well's status strip, which shows what the issue is (#882).
+   */
+  private readonly documentStatus: DocumentStatus = inject(DocumentStatus);
+
+  /**
+   * Gets whether this issue is the active document in its well, so it alone fills the status strip.
+   */
+  private readonly isActive: Signal<boolean> = computed((): boolean => {
+    const id: string = this.panel().id;
+    return findStackOfPanel(this.dockState.layout(), id)?.active === id;
+  });
+
+  /**
+   * Gets the strip menu's items.
+   */
+  protected readonly menuItems: Signal<readonly MenuItem[]> = computed((): readonly MenuItem[] => {
+    const hasUrl: boolean = (this.issue()?.url ?? '').length > 0;
+    return [
+      {
+        id: MENU_OPEN_IN_BROWSER,
+        label: 'Open in Browser',
+        icon: Icon.OPEN_EXTERNAL,
+        disabled: !hasUrl,
+      },
+      { id: MENU_COPY_LINK, label: 'Copy Link', icon: Icon.COPY, disabled: !hasUrl },
+    ];
+  });
+
+  /**
+   * Initializes a new instance of the {@link IssueDocumentPanel} class, publishing what the issue is —
+   * its state, number, conversation and last update — to the well's status strip while it is the
+   * active document (#882).
+   */
+  public constructor() {
+    effect((): void => {
+      const issue: ForgeIssue | null = this.issue();
+      const id: string = this.panel().id;
+      if (!this.isActive() || issue === null) {
+        this.documentStatus.clear(id);
+        return;
+      }
+      const open: boolean = issue.state === 'open';
+      this.documentStatus.set(id, {
+        chip: {
+          text: open ? 'Open' : 'Closed',
+          tone: open ? 'success' : 'accent',
+          title: "The issue's state",
+        },
+        details: [
+          { text: `#${issue.number}`, title: 'Issue number' },
+          {
+            text: `${issue.commentCount} ${issue.commentCount === 1 ? 'comment' : 'comments'}`,
+            title: 'Comments',
+          },
+          { text: `Updated ${this.formatDate(issue.updatedAt)}`, title: 'Last updated' },
+        ],
+      });
+    });
+    inject(DestroyRef).onDestroy((): void => this.documentStatus.clear(this.panel().id));
+  }
+
+  /**
+   * Runs a command chosen from the strip's menu.
+   * @param id The chosen item's identifier.
+   */
+  protected onMenu(id: string): void {
+    const url: string = this.issue()?.url ?? '';
+    if (url.length === 0) {
+      return;
+    }
+    if (id === MENU_OPEN_IN_BROWSER) {
+      void this.shell.openExternal(url);
+    } else if (id === MENU_COPY_LINK) {
+      void navigator.clipboard.writeText(url).catch((): void => undefined);
+    }
+  }
+
   protected openInAgent(): void {
     const issue: ForgeIssue | null = this.issue();
     if (issue !== null) {
       this.issueAgent.open(issue);
-    }
-  }
-
-  /**
-   * Opens the issue on the forge.
-   */
-  protected openExternally(): void {
-    const url: string = this.issue()?.url ?? '';
-    if (url.length > 0) {
-      void this.shell.openExternal(url);
     }
   }
 

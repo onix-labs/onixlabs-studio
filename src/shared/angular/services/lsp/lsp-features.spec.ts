@@ -3,7 +3,9 @@ import { Bridge } from '@shared/api/bridge';
 import { LspChannel, LspSemanticTokensLegend } from '@shared/api/lsp-channels';
 import { Editors } from '@shared/angular/services/editors/editors';
 import { Monaco } from '@shared/angular/services/monaco/monaco';
-import { LspFeatures } from './lsp-features';
+import { FEATURE_LANGUAGES, LspFeatures } from './lsp-features';
+import { readFileSync } from 'node:fs';
+import * as path from 'node:path';
 
 /**
  * A fake Monaco emitter that records how often it fired, so refresh scoping can be asserted.
@@ -24,6 +26,7 @@ class FakeEmitter {
 interface CapturedProviders {
   completion?: { provideCompletionItems(model: unknown, position: unknown): Promise<unknown> };
   hover?: { provideHover(model: unknown, position: unknown): Promise<unknown> };
+  symbols?: { provideDocumentSymbols(model: unknown): Promise<unknown> };
   semantic?: {
     getLegend(): { tokenTypes: string[]; tokenModifiers: string[] };
     provideDocumentSemanticTokens(model: unknown): Promise<{ data: Uint32Array } | undefined>;
@@ -75,6 +78,9 @@ function fakeMonacoNamespace(captured: CapturedProviders): unknown {
       },
       registerDefinitionProvider: (): void => undefined,
       registerReferenceProvider: (): void => undefined,
+      registerDocumentSymbolProvider: (_language: string, provider: unknown): void => {
+        captured.symbols = provider as CapturedProviders['symbols'];
+      },
       registerDocumentSemanticTokensProvider: (language: string, provider: unknown): void => {
         captured.semantic = provider as CapturedProviders['semantic'];
         const lastEmitter: FakeEmitter | undefined = created[created.length - 1];
@@ -126,6 +132,7 @@ describe('LspFeatures', () => {
   beforeEach(() => {
     captured.completion = undefined;
     captured.hover = undefined;
+    captured.symbols = undefined;
     captured.semantic = undefined;
     captured.semanticEmitters = new Map<string, FakeEmitter>();
     requests = [];
@@ -237,6 +244,89 @@ describe('LspFeatures', () => {
       endLineNumber: 1,
       endColumn: 15,
     });
+  });
+
+  it('documentSymbols_asksTheServer_andGivesMonacoTheSameSymbols_kindsFromZero', async () => {
+    // #882: one answer feeds both the editor strip's dropdowns and Monaco's Go to Symbol.
+    const line: (n: number) => unknown = (n: number): unknown => ({
+      start: { line: n, character: 0 },
+      end: { line: n, character: 9 },
+    });
+    responses['textDocument/documentSymbol'] = [
+      {
+        name: 'Greeter',
+        kind: 5,
+        range: line(0),
+        selectionRange: line(0),
+        children: [{ name: 'greet', kind: 6, range: line(0), selectionRange: line(0) }],
+      },
+    ];
+    const features: LspFeatures = await build();
+    const model: unknown = { uri: { toString: (): string => MODEL_URI } };
+
+    const symbols: unknown = await features.documentSymbols(
+      model as Parameters<LspFeatures['documentSymbols']>[0],
+    );
+    const monacoSymbols: { name: string; kind: number; children: { kind: number }[] }[] =
+      (await captured.symbols?.provideDocumentSymbols(model)) as {
+        name: string;
+        kind: number;
+        children: { kind: number }[];
+      }[];
+
+    expect(requests.at(-1)).toEqual({
+      sessionId: '/root::typescript',
+      method: 'textDocument/documentSymbol',
+      params: { textDocument: { uri: 'file:///root/app.ts' } },
+    });
+    expect((symbols as { name: string }[])[0].name).toBe('Greeter');
+    // The protocol's Class (5) and Method (6) are Monaco's 4 and 5.
+    expect(monacoSymbols[0]).toMatchObject({ name: 'Greeter', kind: 4 });
+    expect(monacoSymbols[0].children[0].kind).toBe(5);
+  });
+
+  it('documentSymbols_isNull_forADocumentNoServerServes', async () => {
+    const features: LspFeatures = await build();
+    const model: unknown = { uri: { toString: (): string => 'inmemory://model/unowned' } };
+
+    expect(
+      await features.documentSymbols(model as Parameters<LspFeatures['documentSymbols']>[0]),
+    ).toBeNull();
+  });
+
+  it('wiresEveryLanguageEitherCatalogueHasAServerFor', () => {
+    // #882: Rust, Go and Kotlin had servers but only diagnostics, because this list stopped at seven.
+    // The suite runs from the repository root — as the plugin contract specs assume — and a bundled
+    // coverage run gives `__dirname` no folder to resolve from.
+    const repo: string = process.cwd();
+    const builtIn: string = readFileSync(
+      path.join(repo, 'src/shared/electron/lsp/language-server-catalogue.ts'),
+      'utf8',
+    );
+    const curated: {
+      plugins: { contributes?: { languageServers?: { languages: string[] }[] } }[];
+    } = JSON.parse(
+      readFileSync(
+        path.join(repo, 'src/shared/electron/contributions/plugins/curated-plugins.json'),
+        'utf8',
+      ),
+    ) as { plugins: { contributes?: { languageServers?: { languages: string[] }[] } }[] };
+    const served: Set<string> = new Set<string>();
+    for (const match of builtIn.matchAll(/languages: \[([^\]]*)\]/g)) {
+      for (const language of match[1].matchAll(/'([^']+)'/g)) {
+        served.add(language[1]);
+      }
+    }
+    for (const plugin of curated.plugins) {
+      for (const server of plugin.contributes?.languageServers ?? []) {
+        server.languages.forEach((language: string): Set<string> => served.add(language));
+      }
+    }
+
+    expect(served.size).toBeGreaterThan(10);
+    expect(
+      [...served].filter((language: string): boolean => !FEATURE_LANGUAGES.includes(language)),
+    ).toEqual([]);
   });
 
   it('completion_forUnownedModel_returnsNoRequest', async () => {

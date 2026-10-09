@@ -25,12 +25,70 @@ import {
   EditorCommandHandler,
   EditorCommands,
 } from '@shared/angular/services/editor-commands/editor-commands';
-import { Editors } from '@shared/angular/services/editors/editors';
+import { Editors, RevealRequest } from '@shared/angular/services/editors/editors';
 import { LspClient } from '@shared/angular/services/lsp/lsp-client';
 import { CodeDocumentEditor } from '@features/code/angular/code-document/code-document';
 import { ChangeMarginController } from '@features/code/angular/change-margin/change-margin-controller';
 import { ChangeMargins } from '@features/code/angular/change-margin/change-margins';
 import { Theme } from '@shared/angular/services/theme/theme';
+import { LspFeatures } from '@shared/angular/services/lsp/lsp-features';
+import { CodeSymbol, SymbolPosition } from '@shared/angular/services/lsp/lsp-symbols';
+import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
+import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
+import { Button } from '@shared/angular/components/forms/button/button';
+import { Menu, MenuItem } from '@shared/angular/components/menu/menu';
+import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigger';
+import { CdkMenuTrigger } from '@angular/cdk/menu';
+import { Icon } from '@shared/angular/icons/icon';
+import { Settings } from '@shared/angular/services/settings/settings';
+import { LanguageSupportPrompt } from '@shared/angular/services/plugins/language-support-prompt';
+import { languageDisplayName } from '@shared/angular/services/plugins/language-names';
+import {
+  DocumentFileCommands,
+  injectDocumentFileCommands,
+} from '@shared/angular/services/document-file-commands/document-file-commands';
+import {
+  buildNavigation,
+  GLOBAL_ENTRY_ID,
+  locate,
+  qualifierFor,
+  NavigationLocation,
+  NavigationMember,
+  NavigationTarget,
+  NavigationType,
+} from '@features/code/angular/code-navigation/code-navigation';
+import type * as MonacoApi from 'monaco-editor';
+
+/**
+ * How long the document must be left unchanged before its symbols are read again, in milliseconds:
+ * typing changes them on every keystroke, and the dropdowns need them only once it settles.
+ */
+const SYMBOLS_DEBOUNCE_MS: number = 500;
+
+/**
+ * How long to wait before asking again a server that has not answered yet, in milliseconds. A heavy
+ * server (Roslyn, jdtls) loads its project for seconds after starting and answers nothing until then.
+ */
+const SYMBOLS_RETRY_MS: number = 2000;
+
+/**
+ * How many times to ask a server that has not answered before taking it at its word.
+ */
+const SYMBOLS_RETRIES: number = 15;
+
+/**
+ * Names where the Type and Member dropdowns' entries are: read, being waited for, or not to be had.
+ */
+type NavigationState = 'ready' | 'waiting' | 'unavailable';
+
+/**
+ * Identifies the strip menu's commands.
+ */
+const MENU_GO_TO_SYMBOL: string = 'code.goToSymbol';
+const MENU_GO_TO_LINE: string = 'code.goToLine';
+const MENU_WORD_WRAP: string = 'code.wordWrap';
+const MENU_MINIMAP: string = 'code.minimap';
+const MENU_LINE_NUMBERS: string = 'code.lineNumbers';
 
 /**
  * Represents the lean code surface mounted in a workspace document well: the shared
@@ -44,7 +102,15 @@ import { Theme } from '@shared/angular/services/theme/theme';
  */
 @Component({
   selector: 'app-code-document-panel',
-  imports: [CodeDocumentEditor],
+  imports: [
+    Button,
+    CdkMenuTrigger,
+    CodeDocumentEditor,
+    Dropdown,
+    Menu,
+    PanelToolbar,
+    TooltipTrigger,
+  ],
   templateUrl: './code-document-panel.html',
   styleUrl: './code-document-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -160,6 +226,161 @@ export class CodeDocumentPanel {
   } | null>(null);
 
   /**
+   * Holds the language-server features that read the document's symbols.
+   */
+  private readonly lspFeatures: LspFeatures = inject(LspFeatures);
+
+  /**
+   * Holds the Type dropdown's entries, or null until a language server has answered for the document.
+   * The strip is drawn either way — a code file always has one (#882) — and the dropdowns are disabled
+   * until there is something to list.
+   */
+  protected readonly navigation: WritableSignal<readonly NavigationType[] | null> = signal<
+    readonly NavigationType[] | null
+  >(null);
+
+  /**
+   * Holds where the dropdowns' entries are, which decides what their hint says.
+   */
+  private readonly navigationState: WritableSignal<NavigationState> =
+    signal<NavigationState>('waiting');
+
+  /**
+   * Gets the icon set, exposed for the template.
+   */
+  protected readonly Icon: typeof Icon = Icon;
+
+  /**
+   * Holds the settings service, whose editor-wide Word Wrap the strip's toggle reads and sets.
+   */
+  private readonly settings: Settings = inject(Settings);
+
+  /**
+   * Holds the offer of language support, which names the plugin a language's server comes from.
+   */
+  private readonly languageSupport: LanguageSupportPrompt = inject(LanguageSupportPrompt);
+
+  /**
+   * Holds the file commands the strip's menu ends with, shared with the markdown strip's.
+   */
+  private readonly fileCommands: DocumentFileCommands = injectDocumentFileCommands();
+
+  /**
+   * Gets whether long lines wrap, editor-wide — the same setting the ribbon's Word Wrap sets.
+   */
+  protected readonly wordWrap: Signal<boolean> = computed(
+    (): boolean => this.settings.globalTextEditor().wordWrap,
+  );
+
+  /**
+   * Gets whether the minimap shows, editor-wide — the same setting the ribbon's Minimap sets.
+   */
+  protected readonly minimap: Signal<boolean> = computed(
+    (): boolean => this.settings.globalTextEditor().showMinimap,
+  );
+
+  /**
+   * Gets whether line numbers show, editor-wide — the same setting the ribbon's Line Numbers sets.
+   */
+  protected readonly lineNumbers: Signal<boolean> = computed(
+    (): boolean => this.settings.globalTextEditor().showLineNumbers,
+  );
+
+  /**
+   * Gets why the dropdowns are empty, shown over them while they are disabled; empty once they list
+   * something.
+   */
+  protected readonly navigationHint: Signal<string> = computed((): string => {
+    const state: NavigationState = this.navigationState();
+    if (state === 'ready' && this.typeOptions().length > 0) {
+      return '';
+    }
+    if (state === 'ready') {
+      return 'No types or members in this file';
+    }
+    const language: string = this.document()?.language() ?? '';
+    const plugin: string | null = this.languageSupport.installableFor(language);
+    if (plugin !== null) {
+      return `Install ${plugin} to list this file's types and members`;
+    }
+    return state === 'waiting'
+      ? 'Waiting for the language server'
+      : `No language server for ${languageDisplayName(language)}`;
+  });
+
+  /**
+   * Gets the strip menu's items. The file's own commands are offered only once it has a path.
+   */
+  protected readonly menuItems: Signal<readonly MenuItem[]> = computed((): readonly MenuItem[] => {
+    return [
+      { id: MENU_GO_TO_SYMBOL, label: 'Go to Symbol…', icon: Icon.GO_TO_SYMBOL },
+      { id: MENU_GO_TO_LINE, label: 'Go to Line…', icon: Icon.GO_TO_LINE },
+      { id: 'separator', label: '', separator: true },
+      // The editor's view options, the ribbon's three checkboxes (#882): editor-wide, so they agree.
+      { id: MENU_WORD_WRAP, label: 'Word Wrap', checked: this.wordWrap() },
+      { id: MENU_MINIMAP, label: 'Minimap', checked: this.minimap() },
+      { id: MENU_LINE_NUMBERS, label: 'Line Numbers', checked: this.lineNumbers() },
+      { id: 'separator-view', label: '', separator: true },
+      ...this.fileCommands.items(this.document()?.filePath() ?? null),
+    ];
+  });
+
+  /**
+   * Holds the pending symbol read, or null when none is scheduled.
+   */
+  private symbolsTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * Holds how many times in a row the server has not answered, so a document whose server never will
+   * stops being asked.
+   */
+  private unanswered: number = 0;
+
+  /**
+   * Gets the type and member the cursor is in.
+   */
+  protected readonly location: Signal<NavigationLocation> = computed((): NavigationLocation => {
+    const caret: { line: number; column: number } | null = this.caretSignal();
+    const types: readonly NavigationType[] = this.navigation() ?? [];
+    if (caret === null) {
+      return { typeId: null, memberId: null };
+    }
+    return locate(types, { line: caret.line - 1, character: caret.column - 1 });
+  });
+
+  /**
+   * Gets the Type dropdown's options.
+   */
+  protected readonly typeOptions: Signal<readonly DropdownOption[]> = computed(
+    (): readonly DropdownOption[] =>
+      (this.navigation() ?? []).map((type: NavigationType): DropdownOption => ({
+        value: type.id,
+        label: type.label,
+      })),
+  );
+
+  /**
+   * Gets the Member dropdown's options: the members of the type the cursor is in.
+   */
+  protected readonly memberOptions: Signal<readonly DropdownOption[]> = computed(
+    (): readonly DropdownOption[] =>
+      (this.currentType()?.members ?? []).map((member: NavigationMember): DropdownOption => ({
+        value: member.id,
+        label: member.label,
+      })),
+  );
+
+  /**
+   * Gets the type the cursor is in, or null when it is in none.
+   */
+  private readonly currentType: Signal<NavigationType | null> = computed(
+    (): NavigationType | null =>
+      (this.navigation() ?? []).find(
+        (type: NavigationType): boolean => type.id === this.location().typeId,
+      ) ?? null,
+  );
+
+  /**
    * Holds the document's end-of-line sequence.
    */
   private readonly eolSignal: WritableSignal<TextEditorEol> = signal<TextEditorEol>('LF');
@@ -182,6 +403,7 @@ export class CodeDocumentPanel {
         line: caret.line,
         column: caret.column,
         language: document.language(),
+        diagnostics: true,
         eol: this.eolSignal(),
         encoding: document.hasBom() ? `${encoding} with BOM` : encoding,
       });
@@ -266,7 +488,31 @@ export class CodeDocumentPanel {
       }
     });
 
+    // Honour reveal requests aimed at this document — Find & Replace opening a match, a diff's Open
+    // File — as the code tab does: a well document is an editor like any other (#882).
+    effect((): void => {
+      const request: RevealRequest | null = this.editors.revealRequest();
+      if (request === null || !this.paneReady() || request.documentId !== this.documentId()) {
+        return;
+      }
+      untracked((): void => this.core()?.getPane()?.reveal(request.line, request.column));
+    });
+
+    // Read the document's symbols once the editor exists, and again whenever the text settles after a
+    // change, for the strip's Type and Member dropdowns.
+    effect((): void => {
+      this.document()?.content();
+      if (!this.paneReady()) {
+        return;
+      }
+      untracked((): void => this.scheduleSymbols(SYMBOLS_DEBOUNCE_MS));
+    });
+
     destroyRef.onDestroy((): void => {
+      if (this.symbolsTimer !== null) {
+        clearTimeout(this.symbolsTimer);
+        this.symbolsTimer = null;
+      }
       this.documentStatus.clear(this.documentId());
       this.editorCommands.forget(this.documentId());
       this.commandHandler = null;
@@ -342,6 +588,179 @@ export class CodeDocumentPanel {
         pane.replaceRange(start, length, text),
     };
     this.editorCommands.register(this.documentId(), this.commandHandler);
+  }
+
+  /**
+   * Goes to the type chosen in the Type dropdown — or, for the file's own entry, to the first thing
+   * declared outside any type.
+   * @param id The chosen type's identifier.
+   */
+  protected goToType(id: string): void {
+    const type: NavigationType | undefined = (this.navigation() ?? []).find(
+      (entry: NavigationType): boolean => entry.id === id,
+    );
+    const target: NavigationTarget | undefined =
+      type?.target ?? (id === GLOBAL_ENTRY_ID ? type?.members[0] : undefined);
+    if (target !== undefined) {
+      this.goTo(target.selection.start);
+    }
+  }
+
+  /**
+   * Goes to the member chosen in the Member dropdown.
+   * @param id The chosen member's identifier.
+   */
+  protected goToMember(id: string): void {
+    const member: NavigationMember | undefined = this.currentType()?.members.find(
+      (entry: NavigationMember): boolean => entry.id === id,
+    );
+    if (member !== undefined) {
+      this.goTo(member.selection.start);
+    }
+  }
+
+  /**
+   * Folds every foldable region in the document.
+   */
+  protected foldAll(): void {
+    this.runEditorAction('editor.foldAll');
+  }
+
+  /**
+   * Unfolds every folded region in the document.
+   */
+  protected unfoldAll(): void {
+    this.runEditorAction('editor.unfoldAll');
+  }
+
+  /**
+   * Opens the editor's find, as ⌘F does.
+   */
+  protected find(): void {
+    this.runEditorAction('actions.find');
+  }
+
+  /**
+   * Turns Word Wrap on or off, editor-wide, as the ribbon's Word Wrap does.
+   */
+  private toggleWordWrap(): void {
+    this.settings.updateTextEditorSettings({ wordWrap: !this.wordWrap() });
+  }
+
+  /**
+   * Runs a command chosen from the strip's menu.
+   * @param id The chosen item's identifier.
+   */
+  protected onMenu(id: string): void {
+    if (this.fileCommands.run(id, this.document()?.filePath() ?? null)) {
+      return;
+    }
+    switch (id) {
+      case MENU_GO_TO_SYMBOL:
+        this.runEditorAction('editor.action.quickOutline');
+        break;
+      case MENU_GO_TO_LINE:
+        this.runEditorAction('editor.action.gotoLine');
+        break;
+      case MENU_WORD_WRAP:
+        this.toggleWordWrap();
+        break;
+      case MENU_MINIMAP:
+        this.settings.updateTextEditorSettings({ showMinimap: !this.minimap() });
+        break;
+      case MENU_LINE_NUMBERS:
+        this.settings.updateTextEditorSettings({ showLineNumbers: !this.lineNumbers() });
+        break;
+      default:
+        break;
+    }
+  }
+
+  /**
+   * Gives the editor focus and runs one of Monaco's own actions in it.
+   * @param action The action's identifier.
+   */
+  private runEditorAction(action: string): void {
+    const editor: MonacoApi.editor.IStandaloneCodeEditor | null =
+      this.core()?.getPane()?.getEditor() ?? null;
+    if (editor === null) {
+      return;
+    }
+    editor.focus();
+    void editor.getAction(action)?.run();
+  }
+
+  /**
+   * Puts the cursor at a place in the document, scrolls it into view, and gives the editor focus, so
+   * typing carries on from there.
+   * @param position The place, zero-based.
+   */
+  private goTo(position: SymbolPosition): void {
+    const editor: MonacoApi.editor.IStandaloneCodeEditor | null =
+      this.core()?.getPane()?.getEditor() ?? null;
+    if (editor === null) {
+      return;
+    }
+    const target: MonacoApi.IPosition = {
+      lineNumber: position.line + 1,
+      column: position.character + 1,
+    };
+    editor.setPosition(target);
+    editor.revealPositionInCenterIfOutsideViewport(target);
+    editor.focus();
+  }
+
+  /**
+   * Schedules a read of the document's symbols, replacing any already scheduled.
+   * @param delay How long to wait first, in milliseconds.
+   */
+  private scheduleSymbols(delay: number): void {
+    if (this.symbolsTimer !== null) {
+      clearTimeout(this.symbolsTimer);
+    }
+    this.symbolsTimer = setTimeout((): void => {
+      this.symbolsTimer = null;
+      void this.readSymbols();
+    }, delay);
+  }
+
+  /**
+   * Reads the document's symbols from its language server into the dropdowns. A server that has not
+   * answered is asked again a little later, a bounded number of times, since a heavy one answers
+   * nothing until its project has loaded.
+   */
+  private async readSymbols(): Promise<void> {
+    const model: MonacoApi.editor.ITextModel | null =
+      this.core()?.getPane()?.getEditor()?.getModel() ?? null;
+    if (model === null) {
+      return;
+    }
+    const symbols: readonly CodeSymbol[] | null = await this.lspFeatures.documentSymbols(model);
+    if (symbols === null) {
+      this.unanswered += 1;
+      // A server that is running but has not answered is being waited for; no server at all is
+      // unavailable — still asked again for a while, since its session may be about to start.
+      const serves: boolean = this.lspFeatures.servesDocument(model);
+      this.navigationState.set(
+        serves && this.unanswered <= SYMBOLS_RETRIES ? 'waiting' : 'unavailable',
+      );
+      if (this.unanswered <= SYMBOLS_RETRIES) {
+        this.scheduleSymbols(SYMBOLS_RETRY_MS);
+      } else {
+        this.navigation.set(null);
+      }
+      return;
+    }
+    this.unanswered = 0;
+    this.navigationState.set('ready');
+    const document: CodeDocument | undefined = this.document();
+    this.navigation.set(
+      buildNavigation(
+        symbols,
+        document?.fileName() ?? '',
+        qualifierFor(document?.language() ?? ''),
+      ),
+    );
   }
 
   /**

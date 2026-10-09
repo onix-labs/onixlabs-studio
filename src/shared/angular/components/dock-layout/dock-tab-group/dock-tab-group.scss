@@ -345,7 +345,7 @@
 :host(.dock-tab-group--documents) .dock-tab-group__status-strip {
   border-block-end: 0.0625rem solid var(--dock-seam-color);
   border-inline: 0.0625rem solid var(--dock-seam-color);
-  box-shadow: inset 0 0.0625rem 0 var(--dock-border-color);
+  // No line across its top (#882): the strip continues the document's own surface.
   border-end-start-radius: var(--dock-panel-radius);
   border-end-end-radius: var(--dock-panel-radius);
   corner-shape: var(--app-corner-shape, squircle);

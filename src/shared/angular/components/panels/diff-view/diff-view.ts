@@ -77,6 +77,16 @@ export class DiffView {
   }
 
   /**
+   * Gets where the caret is on the changed side, so the file can be opened at the same place.
+   * @returns Returns the one-based line and column, or null before the editor exists.
+   */
+  public modifiedPosition(): { readonly line: number; readonly column: number } | null {
+    const position: { lineNumber: number; column: number } | null =
+      this.pane()?.getDiffEditor()?.getModifiedEditor().getPosition() ?? null;
+    return position === null ? null : { line: position.lineNumber, column: position.column };
+  }
+
+  /**
    * Gets a summary of the computed comparison, for chrome that reports it.
    * @returns Returns the summary, empty before the pane has computed one.
    */

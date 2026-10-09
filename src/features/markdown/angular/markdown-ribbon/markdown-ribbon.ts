@@ -36,33 +36,11 @@ import {
 import { RibbonStripRow } from '@shared/angular/components/ribbon-strip/ribbon-strip-row/ribbon-strip-row';
 import { CollapseInsert, MarkdownCollapseModal } from './insert-modals/markdown-collapse-modal';
 import { MarkdownEmojiModal } from './insert-modals/markdown-emoji-modal';
+import { BLOCK_TYPE_LABELS } from '@shared/angular/milkdown/markdown-block-type';
 import { FootnoteInsert, MarkdownFootnoteModal } from './insert-modals/markdown-footnote-modal';
 import { ImageInsert, MarkdownImageModal } from './insert-modals/markdown-image-modal';
 import { LinkInsert, MarkdownLinkModal } from './insert-modals/markdown-link-modal';
 import { MarkdownMathModal, MathInsert } from './insert-modals/markdown-math-modal';
-
-/**
- * Maps each selectable block type to the label shown in the ribbon's style field.
- */
-const BLOCK_TYPE_LABELS: ReadonlyMap<MarkdownBlockType, string> = new Map<
-  MarkdownBlockType,
-  string
->([
-  ['paragraph', 'Paragraph'],
-  ['heading-1', 'Heading 1'],
-  ['heading-2', 'Heading 2'],
-  ['heading-3', 'Heading 3'],
-  ['heading-4', 'Heading 4'],
-  ['heading-5', 'Heading 5'],
-  ['heading-6', 'Heading 6'],
-  ['blockquote', 'Blockquote'],
-  ['code-block', 'Code Block'],
-  ['alert-note', 'Note'],
-  ['alert-tip', 'Tip'],
-  ['alert-important', 'Important'],
-  ['alert-warning', 'Warning'],
-  ['alert-caution', 'Caution'],
-]);
 
 /**
  * Maps each style-field label back to its block type.

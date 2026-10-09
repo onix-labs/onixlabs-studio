@@ -1,5 +1,26 @@
+import { ChipTone } from '@shared/angular/components/chip/chip';
 import { computed, inject, Service, signal, Signal, WritableSignal } from '@angular/core';
 import { Log } from '@shared/angular/services/log/log';
+
+/**
+ * Describes a document's status shown as a chip on the well status strip (#882).
+ */
+export interface StatusChip {
+  /**
+   * Gets the chip's text (for example "Modified").
+   */
+  readonly text: string;
+
+  /**
+   * Gets the chip's tone.
+   */
+  readonly tone: ChipTone;
+
+  /**
+   * Gets the chip's tooltip, or undefined for none.
+   */
+  readonly title?: string;
+}
 
 /**
  * Describes one plain fact shown on the well status strip: its text and the tooltip explaining it.
@@ -74,10 +95,24 @@ export interface DocumentStatusInfo {
   readonly details?: readonly StatusDetail[];
 
   /**
-   * Gets the document's language identifier (for example "csharp"), or its format for a document
-   * that is not text (for example "PNG").
+   * Gets the document's status as a chip — a diff's "Modified", an issue's "Open" — shown first among
+   * its details (#882). What a document IS belongs on the status strip; the tool strip is for what can
+   * be done with it.
    */
-  readonly language: string;
+  readonly chip?: StatusChip;
+
+  /**
+   * Gets the document's language identifier (for example "csharp"), its format for a document that
+   * is not text (for example "PNG"), or undefined for one that has neither (an issue).
+   */
+  readonly language?: string;
+
+  /**
+   * Gets whether the document is one a language server checks — source code — so the strip shows
+   * the error and warning counts beside it. Absent for a picture, a prose file or a comparison,
+   * which the counts say nothing about (#882).
+   */
+  readonly diagnostics?: boolean;
 
   /**
    * Gets the document's end-of-line sequence (for example "LF" or "CRLF").

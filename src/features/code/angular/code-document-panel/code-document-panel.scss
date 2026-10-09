@@ -12,6 +12,17 @@
   min-height: 0;
 }
 
+.document-panel__strip {
+  flex: 0 0 auto;
+}
+
+// The two dropdowns share the strip evenly, each giving way to an ellipsis in a narrow well.
+.document-panel__nav {
+  display: block;
+  flex: 1 1 0;
+  min-inline-size: 0;
+}
+
 .document-panel__editor {
   flex: 1 1 auto;
   min-height: 0;

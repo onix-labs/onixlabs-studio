@@ -8,10 +8,6 @@
   color: var(--body-foreground-color);
 }
 
-app-panel-toolbar {
-  border-block-end: 0.0625rem solid var(--dock-border-color);
-}
-
 // Prose, so it is held to a readable measure rather than running the full width of a wide well.
 .issue__scroll {
   flex: 1 1 auto;
@@ -42,30 +38,6 @@ app-panel-toolbar {
   margin: 0.35rem 0 0;
   color: var(--form-muted-foreground-color);
   font-size: 0.8rem;
-}
-
-// Open or closed, on the change-margin palette so it agrees with the greens and reds used elsewhere
-// for the same kind of settled/unsettled distinction.
-.issue__state {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  padding: 0.05rem 0.45rem;
-  border-radius: 999px;
-  font-size: 0.7rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-
-  &--open {
-    color: var(--change-margin-saved);
-    background: color-mix(in srgb, var(--change-margin-saved) 18%, transparent);
-  }
-
-  &--closed {
-    color: var(--accent-surface-foreground-color);
-    background: var(--accent-surface-background-color);
-  }
 }
 
 .issue__facts {

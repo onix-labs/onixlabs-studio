@@ -848,7 +848,8 @@ export class Documents implements UnsavedWorkSource {
     const markdown: boolean = entry.language() === 'markdown';
     this.dockPanels.update(id, {
       icon: markdown ? Icon.MARKDOWN : Icon.CODE,
-      ownsToolStrip: markdown,
+      // Code and markdown both draw their own strip (#882), whichever the document turned into.
+      ownsToolStrip: true,
     });
   }
 

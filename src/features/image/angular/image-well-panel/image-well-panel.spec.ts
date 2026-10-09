@@ -1,4 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
+import { ImageToolstrip } from '../image-toolstrip/image-toolstrip';
 import { Bridge } from '@shared/api/bridge';
 import { WorkspaceChannel } from '@shared/api/workspace-channels';
 import { StackNode } from '@shared/angular/services/dock-layout/dock-node';
@@ -114,10 +116,35 @@ describe('ImageWellPanel', () => {
     expect(element.querySelector('.image-view__stage--dark')).not.toBeNull();
   });
 
+  it('theStrip_endsWithTheMenu_holdingTheWaysToOpenTheImageAndTheFilesCommands', () => {
+    // #882: Open in Tab, Open in Binary Editor and (for a vector) Open Source moved off the strip.
+    const element: HTMLElement = fixture.nativeElement as HTMLElement;
+    const strip: { menuItems(): { label: string }[] } = fixture.debugElement.query(
+      By.directive(ImageToolstrip),
+    ).componentInstance as { menuItems(): { label: string }[] };
+
+    expect(element.querySelector('[aria-label="Open in Tab"]')).toBeNull();
+    expect(element.querySelector('[aria-label="Open in Binary Editor"]')).toBeNull();
+    expect(element.querySelector('[aria-label="More Actions"]')).not.toBeNull();
+    expect(strip.menuItems().map((item: { label: string }): string => item.label)).toEqual([
+      'Open in Tab',
+      'Open in Binary Editor',
+      '',
+      'Copy Path',
+      'Select in File Explorer',
+      'Open in File System',
+    ]);
+  });
+
   it('openInTab_opensTheSameDocumentAsATopLevelTabAndRecordsIt', () => {
-    (fixture.nativeElement as HTMLElement)
-      .querySelector<HTMLElement>('[aria-label="Open in Tab"]')
-      ?.click();
+    // Open in Tab is on the strip's menu (#882): choose it there.
+    const strip: { menuItems(): { label: string }[]; onMenu(id: string): void } =
+      fixture.debugElement.query(By.directive(ImageToolstrip)).componentInstance as {
+        menuItems(): { label: string }[];
+        onMenu(id: string): void;
+      };
+    expect(strip.menuItems()[0].label).toBe('Open in Tab');
+    strip.onMenu('image.openInTab');
 
     const tabs: Tabs = TestBed.inject(Tabs);
     expect(tabs.activeTab()?.type).toBe('image');

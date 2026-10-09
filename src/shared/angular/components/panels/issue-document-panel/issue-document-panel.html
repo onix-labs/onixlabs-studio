@@ -1,12 +1,8 @@
 @if (issue(); as issue) {
+  <!-- The issue's state is what it IS, so it is a chip on the status strip (#882); the strip is what
+       can be done with it: hand it to an agent, or the menu every document strip ends with. -->
   <app-panel-toolbar>
-    <span class="issue__state" [class]="'issue__state--' + issue.state">
-      <app-icon [icon]="issue.state === 'open' ? Icon.INFO : Icon.SUCCESS_FILL" />
-      {{ issue.state }}
-    </span>
     <span class="panel-toolbar__spacer"></span>
-    <!-- The issue row's context menu offers these two, in this order; the document the row opens
-         offers the same two, so what an issue can do does not depend on where it is being read. -->
     <app-button
       variant="none"
       [icon]="Icon.AGENT"
@@ -16,12 +12,14 @@
     />
     <app-button
       variant="none"
-      [icon]="Icon.OPEN_EXTERNAL"
-      ariaLabel="Open in browser"
-      tooltip="Open in browser"
-      (click)="openExternally()"
+      [icon]="Icon.DOTS_THREE_BOLD"
+      ariaLabel="More Actions"
+      tooltip="More Actions"
+      [cdkMenuTriggerFor]="moreMenu.panel() ?? null"
+      [cdkMenuPosition]="moreMenu.position()"
     />
   </app-panel-toolbar>
+  <app-menu #moreMenu [items]="menuItems()" placement="down-end" (selected)="onMenu($event)" />
 
   <app-issue-agent-confirm />
 

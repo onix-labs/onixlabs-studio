@@ -1,0 +1,50 @@
+// The chip's tone sets one colour; the text and icon take it at full strength and the background a
+// subtle wash of it, so every tone reads the same way — as a label, not a button.
+:host {
+  --chip-color: var(--form-muted-foreground-color);
+
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.25rem;
+  max-inline-size: 100%;
+  padding: 0.0625rem 0.4rem;
+  border-radius: calc(0.35rem * var(--border-radius-multiplier));
+  corner-shape: var(--app-corner-shape, squircle);
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+  color: var(--chip-color);
+  background: color-mix(in srgb, var(--chip-color) 16%, transparent);
+}
+
+:host(.chip--accent) {
+  --chip-color: var(--accent-color);
+}
+
+:host(.chip--success) {
+  --chip-color: var(--success-color);
+}
+
+:host(.chip--warning) {
+  --chip-color: var(--warning-color);
+}
+
+:host(.chip--danger) {
+  --chip-color: var(--danger-color);
+}
+
+:host(.chip--info) {
+  --chip-color: var(--info-color);
+}
+
+.chip__icon {
+  flex: 0 0 auto;
+}
+
+.chip__text {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

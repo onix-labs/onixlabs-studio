@@ -1,9 +1,14 @@
-<!-- Workspace diagnostics, which belong beside a file being edited and not beside a comparison: the
-     counts are the same on every tab and say nothing about the two versions on screen. A diff has its
-     own things to report, and they are on the right. -->
-@if (!isComparison()) {
+<!-- Workspace diagnostics, beside source code only (#882): a picture, a prose file or a comparison has
+     nothing a language server checks, and the counts would say nothing about it. Pressing them opens
+     the Error List they count. -->
+@if (showsDiagnostics()) {
   <div class="dock-status-strip__group">
-    <button type="button" class="dock-status-strip__segment" title="Errors and warnings">
+    <button
+      type="button"
+      class="dock-status-strip__segment"
+      title="Errors and warnings — open the Error List"
+      (click)="openErrorList()"
+    >
       <app-icon [icon]="Icon.ERROR" />
       {{ errors() }}
       <app-icon [icon]="Icon.WARNING" />
@@ -12,7 +17,14 @@
   </div>
 }
 @if (status(); as document) {
-  <div class="dock-status-strip__group">
+  <!-- The document's details, held to the trailing edge for every kind of document (#882) — with the
+       counts beside source code or without them beside anything else. -->
+  <div class="dock-status-strip__group dock-status-strip__group--details">
+    @if (document.chip; as chip) {
+      <app-chip class="dock-status-strip__chip" [tone]="chip.tone" [title]="chip.title ?? ''">
+        {{ chip.text }}
+      </app-chip>
+    }
     @if (document.changes !== undefined) {
       <!-- A comparison answers a different question from a document: how much changed, and where in
            it you are. Zero is an answer worth giving, so the segment stays at nothing to see. -->
@@ -43,9 +55,11 @@
     @for (detail of document.details ?? []; track detail.title) {
       <span class="dock-status-strip__segment" [title]="detail.title">{{ detail.text }}</span>
     }
-    <button type="button" class="dock-status-strip__segment" title="Language mode">
-      {{ document.language }}
-    </button>
+    @if (document.language) {
+      <button type="button" class="dock-status-strip__segment" title="Language mode">
+        {{ document.language }}
+      </button>
+    }
     @if (document.eol) {
       <button type="button" class="dock-status-strip__segment" title="Select end of line sequence">
         {{ document.eol }}
