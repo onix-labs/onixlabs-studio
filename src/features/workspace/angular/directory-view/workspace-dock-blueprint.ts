@@ -93,7 +93,14 @@ export const WORKSPACE_DOCK_BLUEPRINT: DockBlueprint = {
       component: OutputPanel,
       ownsToolStrip: true,
     },
-    { id: 'debug', title: 'Debug', icon: Icon.DEBUG, role: 'tool', component: DebugPanel },
+    {
+      id: 'debug',
+      title: 'Debug',
+      icon: Icon.DEBUG,
+      role: 'tool',
+      component: DebugPanel,
+      ownsToolStrip: true,
+    },
     {
       // The Package Management panel: dependencies and their upgrade state. Catalogued for every
       // workspace tab but added to the layout only when the open root has a recognised package

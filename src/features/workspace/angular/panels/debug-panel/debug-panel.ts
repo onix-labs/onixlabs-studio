@@ -14,6 +14,7 @@ import { Icon } from '@shared/angular/icons/icon';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { TreeRow, TreeView } from '@shared/angular/components/tree-view/tree-view';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
 import { DebugState } from '@shared/angular/services/debug/debugger';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { Log } from '@shared/angular/services/log/log';
@@ -47,14 +48,14 @@ type VariableRowData =
 
 /**
  * The body of the Debug dock panel: the call stack, the selected frame's variables (lazily expanded),
- * a watch list, and a transport toolbar that drives the workspace's {@link DebugSession}. It is shown
+ * a watch list, and its own tool strip (#882) of transport controls that drives the workspace's {@link DebugSession}. It is shown
  * (by the directory view) only while a session is running, reads the session's inspection signals, and
  * routes execution-control clicks and a call-stack selection (revealing the frame's source) back to it.
- * The dock chrome renders the panel's title bar; this component owns only the body.
+ * The dock chrome renders the panel's title bar; this component owns the body and the tool strip.
  */
 @Component({
   selector: 'app-debug-panel',
-  imports: [Button, TextField, TreeView],
+  imports: [Button, PanelToolbar, TextField, TreeView],
   templateUrl: './debug-panel.html',
   styleUrl: './debug-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

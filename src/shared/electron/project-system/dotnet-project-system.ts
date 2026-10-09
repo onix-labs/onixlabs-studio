@@ -329,7 +329,8 @@ export class DotnetProjectSystem implements ProjectSystem {
   /**
    * Resolves a run configuration into a netcoredbg launch target: compiles the project in the selected
    * (defaulting to Debug) configuration so an up-to-date assembly with symbols exists, then locates the
-   * produced assembly. The run descriptor's id is the project file path.
+   * produced assembly. The project is found as running it finds it: its target (or id) names a project
+   * of the workspace's model, or is a project file path relative to the root.
    * @param configuration The run configuration being launched under the debugger.
    * @param root The absolute workspace root, which the project must lie within.
    * @returns Returns the launch target, or a reason it could not be resolved.
@@ -338,7 +339,12 @@ export class DotnetProjectSystem implements ProjectSystem {
     configuration: RunConfiguration,
     root: string,
   ): Promise<DebugResolveResult> {
-    const projectPath: string = path.resolve(configuration.id);
+    const model: ProjectModel | null = await this.load(root);
+    const projectPath: string = resolveProjectPath(
+      configuration.target ?? configuration.id,
+      root,
+      model?.projects ?? [],
+    );
     logger.trace('DotnetProjectSystem', `Resolving a debug target for '${projectPath}'.`);
     // Confine the build to the open workspace: the project path arrives from the renderer, so a hostile
     // one must not be able to drive `dotnet build` against an arbitrary file.
@@ -883,6 +889,29 @@ export class DotnetProjectSystem implements ProjectSystem {
   private isSkipped(name: string): boolean {
     return name.startsWith('.') || SKIPPED_DIRECTORIES.has(name);
   }
+}
+
+/**
+ * Resolves a run configuration's .NET target to a project file path, matching it the way running it
+ * does (#882): by project name, or by the tail of a project's path, case-insensitively. A target that
+ * matches no project is a path, read against the workspace root — never the app's own working
+ * directory.
+ * @param target The configured target, or the configuration id standing in for it.
+ * @param root The absolute workspace root.
+ * @param projects The workspace model's projects.
+ * @returns Returns the absolute project file path, which the caller still confines to the root.
+ */
+export function resolveProjectPath(
+  target: string,
+  root: string,
+  projects: readonly ProjectEntry[],
+): string {
+  const lowered: string = target.toLowerCase();
+  const match: ProjectEntry | undefined = projects.find(
+    (project: ProjectEntry): boolean =>
+      project.name.toLowerCase() === lowered || project.path.toLowerCase().endsWith(lowered),
+  );
+  return path.resolve(root, match?.path ?? target);
 }
 
 /**
