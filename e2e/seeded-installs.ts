@@ -35,7 +35,8 @@ export interface SeedablePlugin {
 }
 
 /**
- * Holds the Git plugin. The bundled catalogue offers 0.3.0, which declares an identity.
+ * Holds the Git plugin. The bundled catalogue offers {@link GIT_CATALOGUE_VERSION}, which declares an
+ * identity.
  */
 export const GIT: SeedablePlugin = {
   directory: 'git',
@@ -66,6 +67,25 @@ export const INSTALLED_VERSION: string = '0.2.0';
  * Holds the repository root, where the built plugins live.
  */
 const REPO_ROOT: string = path.resolve(__dirname, '..');
+
+/**
+ * Gets the version a plugin's own manifest names — the one the bundled catalogue offers, since the
+ * catalogue carries a copy of each first-party manifest. Read rather than written down, so a release
+ * that bumps the version does not leave these suites asserting the last one.
+ * @param plugin The plugin.
+ * @returns Returns the version.
+ */
+export function catalogueVersion(plugin: SeedablePlugin): string {
+  const manifest: { version: string } = JSON.parse(
+    fs.readFileSync(path.join(REPO_ROOT, 'plugins', plugin.directory, 'plugin.json'), 'utf8'),
+  ) as { version: string };
+  return manifest.version;
+}
+
+/**
+ * Holds the version of Git the bundled catalogue offers.
+ */
+export const GIT_CATALOGUE_VERSION: string = catalogueVersion(GIT);
 
 /**
  * Gets the directory a plugin's tree installs into for a version, exactly as the provisioner lays it

@@ -1,62 +1,160 @@
-<div class="graph" [style.block-size.px]="canvasHeight()">
-  <svg
-    class="graph__lanes"
-    [attr.width]="gutterWidth()"
-    [attr.height]="canvasHeight()"
-    [style.inline-size.px]="gutterWidth()"
-    aria-hidden="true"
+<!-- The panel's tool strip (#882): the filter form's toggle, the history's scope, and Go to HEAD. -->
+<app-panel-toolbar class="commit-graph__strip" aria-label="History">
+  <button
+    type="button"
+    class="panel-toolbar__button commit-graph__toggle"
+    [class.panel-toolbar__button--active]="filtering()"
+    [attr.aria-pressed]="filtering()"
+    (click)="toggleFilter()"
   >
-    @for (edge of edges(); track $index) {
-      <path
-        class="graph__edge"
-        [attr.d]="edge.d"
-        [attr.stroke]="edge.color"
-        fill="none"
-        stroke-width="2"
-      />
-    }
-    @for (dot of dots(); track dot.id) {
-      <circle
-        class="graph__dot"
-        [attr.cx]="dot.cx"
-        [attr.cy]="dot.cy"
-        [attr.r]="dotRadius"
-        [attr.fill]="dot.color"
-        [attr.stroke]="dot.color"
-        stroke-width="2"
-      />
-    }
-  </svg>
-
-  @for (node of nodes(); track node.id) {
+    <app-icon [icon]="Icon.FILTER" />
+    <span>Filter</span>
+  </button>
+  @if (offersScope()) {
     <button
       type="button"
-      class="graph__row"
-      [class.graph__row--selected]="node.id === repository.selectedNodeId()"
-      [style.top.px]="rowTop(node.row)"
-      [style.block-size.px]="rowHeight"
-      [style.inset-inline-start.px]="gutterWidth()"
-      (click)="select(node)"
+      class="panel-toolbar__button commit-graph__toggle"
+      [class.panel-toolbar__button--active]="repository.historyScope() === 'current'"
+      [attr.aria-pressed]="repository.historyScope() === 'current'"
+      (click)="setScope('current')"
     >
-      @let commit = node.commit;
-      <span class="graph__refs">
-        @for (ref of node.refs; track ref.name) {
-          <span class="graph__ref" [class]="'graph__ref--' + refKind(ref)">
-            @if (ref.kind === 'tag') {
-              <app-icon [icon]="Icon.TAG" />
-            } @else {
-              <app-icon [icon]="Icon.SOURCE_CONTROL" />
-            }
-            {{ ref.name }}
-          </span>
-        }
-      </span>
-      <span class="graph__summary">{{ commit.summary }}</span>
-      <span class="graph__meta">
-        <span class="graph__author">{{ commit.author }}</span>
-        <span class="graph__date">{{ commit.relativeDate }}</span>
-        <span class="graph__hash">{{ commit.shortHash }}</span>
-      </span>
+      <app-icon [icon]="Icon.BRANCH" />
+      <span>Current Branch</span>
+    </button>
+    <button
+      type="button"
+      class="panel-toolbar__button commit-graph__toggle"
+      [class.panel-toolbar__button--active]="repository.historyScope() === 'all'"
+      [attr.aria-pressed]="repository.historyScope() === 'all'"
+      (click)="setScope('all')"
+    >
+      <app-icon [icon]="Icon.ALL_BRANCHES" />
+      <span>All Branches</span>
     </button>
   }
+  <button
+    type="button"
+    class="panel-toolbar__button commit-graph__toggle"
+    [disabled]="nodes().length === 0"
+    (click)="goToHead()"
+  >
+    <app-icon [icon]="Icon.GO_TO_HEAD" />
+    <span>Go to HEAD</span>
+  </button>
+</app-panel-toolbar>
+
+@if (filtering()) {
+  <!-- The filter form: it filters the loaded commits when asked, never on each keystroke. -->
+  <div class="commit-graph__form">
+    <div class="commit-graph__field" #filterField>
+      <app-text-field
+        class="commit-graph__input"
+        kind="search"
+        placeholder="Message, author, hash or branch"
+        ariaLabel="Filter commits"
+        [(value)]="filterDraft"
+        (keydown.enter)="applyFilter()"
+      />
+    </div>
+    <div class="commit-graph__actions">
+      <span class="commit-graph__summary">{{ filterSummary() }}</span>
+      <app-button
+        variant="outline"
+        label="Clear"
+        [disabled]="!filtered()"
+        (click)="clearFilter()"
+      />
+      <app-button variant="solid" label="Filter" (click)="applyFilter()" />
+    </div>
+  </div>
+}
+
+<!-- The rows scroll beneath the strip and the form; the graph is positioned within them. The
+     scrollbar floats over the rows' right edge rather than taking a channel beside them. -->
+<div class="commit-graph__frame" appOverlayScrollbar=".commit-graph__scroller">
+  <div class="commit-graph__scroller" #scroller>
+    <div class="graph" [style.block-size.px]="canvasHeight()">
+      @if (!filtered()) {
+        <svg
+          class="graph__lanes"
+          [attr.width]="gutterWidth()"
+          [attr.height]="canvasHeight()"
+          [style.inline-size.px]="gutterWidth()"
+          aria-hidden="true"
+        >
+          @for (edge of edges(); track $index) {
+            <path
+              class="graph__edge"
+              [attr.d]="edge.d"
+              [attr.stroke]="edge.color"
+              fill="none"
+              stroke-width="2"
+            />
+          }
+          @for (dot of dots(); track dot.id) {
+            <circle
+              class="graph__dot"
+              [attr.cx]="dot.cx"
+              [attr.cy]="dot.cy"
+              [attr.r]="dotRadius"
+              [attr.fill]="dot.color"
+              [attr.stroke]="dot.color"
+              stroke-width="2"
+            />
+          }
+        </svg>
+      }
+
+      @for (shown of rows(); track shown.node.id) {
+        @let node = shown.node;
+        <button
+          type="button"
+          class="graph__row"
+          [class.graph__row--selected]="node.id === repository.selectedNodeId()"
+          [style.top.px]="rowTop(shown.row)"
+          [style.block-size.px]="rowHeight"
+          [style.inset-inline-start.px]="gutterWidth()"
+          (click)="select(node)"
+        >
+          @let commit = node.commit;
+          <!-- Two lines: the labels with who and when, then the message with the hash. -->
+          <span class="graph__line">
+            <span class="graph__refs">
+              @for (ref of node.refs; track ref.name) {
+                <span class="graph__ref" [class]="'graph__ref--' + refKind(ref)">
+                  @if (ref.kind === 'tag') {
+                    <app-icon [icon]="Icon.TAG" />
+                  } @else {
+                    <app-icon [icon]="Icon.SOURCE_CONTROL" />
+                  }
+                  <span class="graph__ref-name">{{ ref.name }}</span>
+                </span>
+              }
+            </span>
+            <span class="graph__meta">
+              <span class="graph__author">{{ commit.author }}</span>
+              <span class="graph__date">{{ commit.relativeDate }}</span>
+            </span>
+          </span>
+          <span class="graph__line">
+            <span class="graph__summary">{{ commit.summary }}</span>
+            <span class="graph__hash">{{ commit.shortHash }}</span>
+          </span>
+        </button>
+      }
+    </div>
+
+    @if (repository.hasMoreHistory()) {
+      <!-- The history is read a page at a time: the list ends where the page did, and says so. -->
+      <div class="commit-graph__more">
+        <span>{{ loadedNote() }}</span>
+        <app-button
+          variant="outline"
+          label="Load More"
+          [disabled]="repository.loadingMoreHistory()"
+          (click)="loadMore()"
+        />
+      </div>
+    }
+  </div>
 </div>

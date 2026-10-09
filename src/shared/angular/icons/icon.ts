@@ -650,6 +650,21 @@ export class Icon {
   public static readonly GIT_COMMIT: Icon = new Icon('ph-duotone ph-git-commit');
 
   /**
+   * Gets the filter (funnel) icon on the History strip's Filter toggle.
+   */
+  public static readonly FILTER: Icon = new Icon('ph-duotone ph-funnel');
+
+  /**
+   * Gets the all-branches (fork) icon on the History strip's All Branches toggle.
+   */
+  public static readonly ALL_BRANCHES: Icon = new Icon('ph-duotone ph-git-fork');
+
+  /**
+   * Gets the go-to-HEAD (crosshair) icon on the History strip.
+   */
+  public static readonly GO_TO_HEAD: Icon = new Icon('ph-duotone ph-crosshair');
+
+  /**
    * Gets the source-control (git-branch) icon shown on the source-control tab.
    */
   public static readonly SOURCE_CONTROL: Icon = new Icon('ph-duotone ph-git-branch');

@@ -160,9 +160,10 @@ export interface SourceControlProvider {
   /**
    * Reads the commit history (newest first) with parents and ref decorations.
    * @param limit The maximum number of commits to read.
+   * @param all Whether to read every branch's history rather than only the checked-out branch's.
    * @returns Returns the commits.
    */
-  getCommits(limit: number): Promise<GitCommit[]>;
+  getCommits(limit: number, all?: boolean): Promise<GitCommit[]>;
 
   /**
    * Reads the branches, remotes, and tags.

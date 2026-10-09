@@ -5,6 +5,7 @@ import { expect, test } from './fixtures';
 import {
   FAKE_HARNESS_ID,
   GIT,
+  GIT_CATALOGUE_VERSION,
   GITHUB,
   INSTALLED_VERSION,
   installDirectory,
@@ -83,13 +84,13 @@ test.describe('a removed or updated plugin stops its old process (#881)', () => 
     }) => {
       const userData: string = await userDataOf(app);
       const old: string = installDirectory(userData, GIT, INSTALLED_VERSION);
-      const offered: string = installDirectory(userData, GIT, '0.3.0');
+      const offered: string = installDirectory(userData, GIT, GIT_CATALOGUE_VERSION);
       await invoke(page, 'source-control:list-plugins');
       await expect.poll((): number => processesUnder(old)).toBeGreaterThan(0);
-      // The catalogue's 0.3.0, already downloaded: the install verifies it is complete and uses it
+      // The catalogue's version, already downloaded: the install verifies it is complete and uses it
       // rather than fetching, which keeps the case offline. Written only now, because a version
       // present at launch would be the one started in the first place.
-      writeInstalledTree(userData, GIT, '0.3.0');
+      writeInstalledTree(userData, GIT, GIT_CATALOGUE_VERSION);
 
       const result: { success: boolean } = await invoke(page, 'plugins:install', GIT.id);
       await invoke(page, 'source-control:list-plugins');

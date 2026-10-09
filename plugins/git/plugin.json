@@ -2,13 +2,13 @@
   "id": "onixlabs.git",
   "name": "Git",
   "description": "Git version control: status, history, diffs, commits, branches, remotes, tags, stashes, merges, rebases and worktree checkouts.",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "apiVersion": "1.14.0",
   "detail": "Drives the git installed on your machine, or one you point it at in Settings. Needs git 2.23 or later.",
   "provision": {
     "kind": "npm",
     "lockfileUrl": "https://raw.githubusercontent.com/onix-labs/onixlabs-studio/main/src/shared/electron/contributions/plugins/lockfiles/onixlabs.git.lock.json",
-    "sha256": "d8f37d18619e5a13e4e3ed0ffd70a7730fece6ea1a0289b9575b52839fc1424a",
+    "sha256": "e60de75a6508cea9093db12edf56780aafa7e5ca131a168a6b8aed1e8c3c93b7",
     "executablePath": "node_modules/@onixlabs/git/main.js"
   },
   "contributes": {
@@ -30,7 +30,8 @@
           "clone",
           "init",
           "parallelCheckouts",
-          "identity"
+          "identity",
+          "allBranchHistory"
         ],
         "executableModes": ["installed", "custom"],
         "command": {

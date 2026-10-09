@@ -175,6 +175,23 @@ describe('GitVersionControl', () => {
     ).toBeNull();
   });
 
+  it('log_all_readsEveryBranch_butNotTheStash', GIT_TEST_TIMEOUT, async () => {
+    // #882: the history can draw branches side by side. The stash's commits are not history.
+    await git(repo, 'checkout', '-b', 'topic');
+    await fs.writeFile(path.join(repo, 'topic.ts'), 'topic\n', 'utf8');
+    await git(repo, 'add', '.');
+    await git(repo, 'commit', '-m', 'on topic');
+    await git(repo, 'checkout', 'main');
+    await fs.writeFile(path.join(repo, 'README.md'), 'stashed\n', 'utf8');
+    await git(repo, 'stash');
+
+    const current: readonly VcsCommit[] = await result('log', { limit: 10 });
+    const all: readonly VcsCommit[] = await result('log', { limit: 10, all: true });
+
+    expect(current.map((commit) => commit.summary)).toEqual(['initial']);
+    expect(all.map((commit) => commit.summary)).toEqual(['on topic', 'initial']);
+  });
+
   it('readFile_refusesAPathOutsideTheRepository', GIT_TEST_TIMEOUT, async () => {
     expect(
       await ask('readFile', { path: '../outside', version: { kind: 'working' } }),

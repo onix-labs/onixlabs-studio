@@ -84,7 +84,13 @@ export type VersionControlCapability =
   /**
    * Reading and setting the user's global committer identity.
    */
-  | 'identity';
+  | 'identity'
+
+  /**
+   * Reading the history of every branch at once, not just the checked-out one, so the history can
+   * draw branches side by side (#882).
+   */
+  | 'allBranchHistory';
 
 /**
  * Lists every optional capability. Closed on purpose, like a decoder's formats: a capability is the join
@@ -102,6 +108,7 @@ export const VERSION_CONTROL_CAPABILITIES: readonly VersionControlCapability[] =
   'init',
   'parallelCheckouts',
   'identity',
+  'allBranchHistory',
 ];
 
 /**
@@ -613,7 +620,14 @@ export interface VersionControlOperations {
   readonly status: { readonly params: Empty; readonly result: VcsStatus };
   readonly operationState: { readonly params: Empty; readonly result: VcsOperationState };
   readonly log: {
-    readonly params: { readonly limit: number };
+    readonly params: {
+      readonly limit: number;
+      /**
+       * Gets whether to read every branch's history, not just the checked-out branch's — when the
+       * plugin lists `allBranchHistory`. A plugin without it reads the checked-out branch's.
+       */
+      readonly all?: boolean;
+    };
     readonly result: readonly VcsCommit[];
   };
   readonly refs: { readonly params: Empty; readonly result: VcsRefs };

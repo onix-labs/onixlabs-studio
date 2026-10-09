@@ -143,10 +143,14 @@ export class VersionControlProvider implements SourceControlProvider {
   /**
    * Reads the commit history.
    * @param limit The maximum number of commits to read.
+   * @param all Whether to read every branch's history; a plugin without `allBranchHistory` ignores it.
    * @returns Returns the commits.
    */
-  public async getCommits(limit: number = DEFAULT_LOG_LIMIT): Promise<GitCommit[]> {
-    return ((await this.read('log', { limit })) ?? []).map(toCommit);
+  public async getCommits(
+    limit: number = DEFAULT_LOG_LIMIT,
+    all: boolean = false,
+  ): Promise<GitCommit[]> {
+    return ((await this.read('log', all ? { limit, all } : { limit })) ?? []).map(toCommit);
   }
 
   /**

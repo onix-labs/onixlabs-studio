@@ -364,8 +364,15 @@ export interface GraphNode {
     readonly toLane: number;
 
     /**
-     * Gets the edge colour (the parent lane's colour).
+     * Gets the edge colour: the colour of the lane the line runs down — the commit's own for its first
+     * parent (a branch runs down the branch's lane until it turns into where it began), the parent's
+     * for any other (a merge runs down the merged branch's lane).
      */
     readonly color: string;
+
+    /**
+     * Gets whether the parent is merged in (any parent but the first) rather than continued from.
+     */
+    readonly merge: boolean;
   }[];
 }

@@ -28,6 +28,7 @@ import {
   GitBranch,
   GitCommit,
   GitFileChange,
+  GitRef,
   GitRemote,
   GitStash,
   GitTag,
@@ -41,9 +42,19 @@ import {
 export const WORKING_NODE_ID: string = 'working';
 
 /**
- * The number of commits the history loads for a repository.
+ * The number of commits the history loads at first, and how many more each Load More adds (#882).
  */
-const LOG_LIMIT: number = 500;
+const LOG_PAGE: number = 500;
+
+/**
+ * The storage key remembering whether the history shows every branch or the checked-out one (#882).
+ */
+const HISTORY_SCOPE_KEY: string = 'repository.historyScope';
+
+/**
+ * Names which branches the history shows: the checked-out branch's, or every branch's.
+ */
+export type HistoryScope = 'current' | 'all';
 
 /**
  * How long, in milliseconds, external on-disk changes are debounced before the repository refreshes,
@@ -140,6 +151,39 @@ export class Repository {
    */
   public readonly capabilities: Signal<ReadonlySet<VersionControlCapability> | null> =
     this.capabilitiesSignal.asReadonly();
+
+  /**
+   * Holds which branches the history shows, remembered across repositories and restarts.
+   */
+  private readonly historyScopeSignal: WritableSignal<HistoryScope> =
+    signal<HistoryScope>(readHistoryScope());
+
+  /**
+   * Gets which branches the history shows (#882).
+   */
+  public readonly historyScope: Signal<HistoryScope> = this.historyScopeSignal.asReadonly();
+
+  /**
+   * Holds how many commits the history asks for: one page, plus one for each Load More.
+   */
+  private readonly historyLimitSignal: WritableSignal<number> = signal<number>(LOG_PAGE);
+
+  /**
+   * Gets whether the history stopped at its limit, so there may be older commits to load (#882).
+   */
+  public readonly hasMoreHistory: Signal<boolean> = computed(
+    (): boolean => this.commitsSignal().length >= this.historyLimitSignal(),
+  );
+
+  /**
+   * Holds whether a Load More is reading.
+   */
+  private readonly loadingMoreSignal: WritableSignal<boolean> = signal<boolean>(false);
+
+  /**
+   * Gets whether the history is loading more commits.
+   */
+  public readonly loadingMoreHistory: Signal<boolean> = this.loadingMoreSignal.asReadonly();
 
   /**
    * Holds the disposer of the bound root's directory watch, or null when no repository is bound.
@@ -483,6 +527,7 @@ export class Repository {
     this.infoSignal.set(info);
     this.selectedNodeSignal.set(WORKING_NODE_ID);
     this.selectedFileSignal.set(null);
+    this.historyLimitSignal.set(LOG_PAGE);
     this.watchDisposer?.();
     this.watchDisposer = this.directoryWatch.watch(info.root, (event: DirectoryChangeEvent): void =>
       this.scheduleExternalRefresh(this.classifyBurst(info.root, event)),
@@ -694,7 +739,7 @@ export class Repository {
         GitOperationState,
       ] = await Promise.all([
         provider.getStatus(),
-        provider.getCommits(LOG_LIMIT),
+        provider.getCommits(this.historyLimitSignal(), this.readsAllBranches()),
         provider.getRefs(),
         provider.getStashes(),
         provider.getOperationState(),
@@ -723,6 +768,76 @@ export class Repository {
         this.loadingSignal.set(false);
       }
     }
+  }
+
+  /**
+   * Shows the history of every branch, or of the checked-out one, and reads it again (#882).
+   * @param scope Which branches to show.
+   */
+  public setHistoryScope(scope: HistoryScope): void {
+    if (scope === this.historyScopeSignal()) {
+      return;
+    }
+    this.historyScopeSignal.set(scope);
+    writeHistoryScope(scope);
+    this.historyLimitSignal.set(LOG_PAGE);
+    void this.reloadHistory();
+  }
+
+  /**
+   * Reads another page of older commits into the history (#882).
+   * @returns Returns a promise that settles once they are read.
+   */
+  public async loadMoreHistory(): Promise<void> {
+    if (!this.hasMoreHistory() || this.loadingMoreSignal()) {
+      return;
+    }
+    this.historyLimitSignal.update((limit: number): number => limit + LOG_PAGE);
+    this.loadingMoreSignal.set(true);
+    try {
+      await this.reloadHistory();
+    } finally {
+      this.loadingMoreSignal.set(false);
+    }
+  }
+
+  /**
+   * Reads the history alone, at the current scope and limit, leaving the rest of the repository as it
+   * is: a change of scope or another page needs no new status or refs.
+   */
+  private async reloadHistory(): Promise<void> {
+    const provider: SourceControlProvider | null = this.provider;
+    if (provider === null) {
+      return;
+    }
+    const commits: readonly GitCommit[] = await provider.getCommits(
+      this.historyLimitSignal(),
+      this.readsAllBranches(),
+    );
+    if (this.provider === provider) {
+      this.commitsSignal.set(commits);
+    }
+  }
+
+  /**
+   * Determines whether the history reads every branch: when asked to, and the plugin can.
+   * @returns Returns true to read every branch.
+   */
+  private readsAllBranches(): boolean {
+    return this.historyScopeSignal() === 'all' && this.supports('allBranchHistory');
+  }
+
+  /**
+   * Finds the commit HEAD points at, among those loaded.
+   * @returns Returns its hash, or null when it is not loaded (or there is no repository).
+   */
+  public headCommit(): string | null {
+    const commits: readonly GitCommit[] = this.commitsSignal();
+    const head: GitCommit | undefined =
+      commits.find((commit: GitCommit): boolean =>
+        commit.refs.some((ref: GitRef): boolean => ref.kind === 'head'),
+      ) ?? commits.find((commit: GitCommit): boolean => commit.hash === this.currentBranch()?.tip);
+    return head?.hash ?? null;
   }
 
   /**
@@ -1767,14 +1882,20 @@ export class Repository {
         color: LANE_COLORS[0],
       };
       const edges: GraphNode['edges'] = commit.parents
-        .map((parentHash: string): GraphNode['edges'][number] | null => {
+        .map((parentHash: string, index: number): GraphNode['edges'][number] | null => {
           const parentRow: number | undefined = rowOf.get(parentHash);
           const parentPlace: { lane: number; color: string } | undefined =
             placement.get(parentHash);
           if (parentRow === undefined || parentPlace === undefined) {
             return null;
           }
-          return { toRow: parentRow, toLane: parentPlace.lane, color: parentPlace.color };
+          const merge: boolean = index > 0;
+          return {
+            toRow: parentRow,
+            toLane: parentPlace.lane,
+            color: merge ? parentPlace.color : place.color,
+            merge,
+          };
         })
         .filter(
           (edge: GraphNode['edges'][number] | null): edge is GraphNode['edges'][number] =>
@@ -1839,5 +1960,29 @@ export class Repository {
     }
 
     return placement;
+  }
+}
+
+/**
+ * Reads the remembered history scope.
+ * @returns Returns the scope, or the checked-out branch when none is remembered.
+ */
+function readHistoryScope(): HistoryScope {
+  try {
+    return globalThis.localStorage?.getItem(HISTORY_SCOPE_KEY) === 'all' ? 'all' : 'current';
+  } catch {
+    return 'current';
+  }
+}
+
+/**
+ * Remembers the history scope.
+ * @param scope The scope.
+ */
+function writeHistoryScope(scope: HistoryScope): void {
+  try {
+    globalThis.localStorage?.setItem(HISTORY_SCOPE_KEY, scope);
+  } catch {
+    // Storage refused (a sandboxed or private context): the choice lasts this session only.
   }
 }
