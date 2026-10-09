@@ -452,3 +452,52 @@ describe('CommitGraph', () => {
     expect(element.querySelector('.commit-graph__more')).toBeNull();
   });
 });
+
+describe('CommitGraph edge order (#882)', () => {
+  it('edges_crossingTheMostLanes_areDrawnFirst_soAFanIntoOneCommitReadsInLaneOrder', async () => {
+    // Three branches began at `base`, so their lines all turn into its row and overlap along it. The
+    // shortest must be drawn last, on top, or the colours along that row come out in commit order.
+    class FanProvider extends FakeProvider {
+      public override getCommits(): Promise<GitCommit[]> {
+        return Promise.resolve([
+          makeCommit('m', ['c', 'b', 'a']),
+          makeCommit('a', ['base']),
+          makeCommit('b', ['base']),
+          makeCommit('c', ['base']),
+          makeCommit('base', []),
+        ]);
+      }
+    }
+    await TestBed.configureTestingModule({
+      imports: [CommitGraph],
+      providers: [
+        Repository,
+        {
+          provide: SourceControlProviders,
+          useValue: { create: (root: string): SourceControlProvider => new FanProvider(root) },
+        },
+      ],
+    }).compileComponents();
+    const repository: Repository = TestBed.inject(Repository);
+    repository.bind({ root: '/repo', name: 'repo' });
+    await repository.refresh();
+    const fixture: ComponentFixture<CommitGraph> = TestBed.createComponent(CommitGraph);
+    fixture.componentRef.setInput('panel', {
+      id: 'graph',
+      title: 'Commits',
+      icon: Icon.SOURCE_CONTROL,
+      role: 'document',
+      component: CommitGraph,
+    });
+    fixture.detectChanges();
+
+    const spans: readonly number[] = (
+      fixture.componentInstance as unknown as { edges: () => readonly { span: number }[] }
+    )
+      .edges()
+      .map((edge: { span: number }): number => edge.span);
+
+    expect(new Set<number>(spans).size).toBeGreaterThan(2);
+    expect(spans).toEqual([...spans].sort((a: number, b: number): number => b - a));
+  });
+});

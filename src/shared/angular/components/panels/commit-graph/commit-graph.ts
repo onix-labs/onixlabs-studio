@@ -101,6 +101,11 @@ interface EdgeViewModel {
    * Gets the edge's colour.
    */
   readonly color: string;
+
+  /**
+   * Gets how many lanes the edge crosses, which decides the order edges are drawn in.
+   */
+  readonly span: number;
 }
 
 /**
@@ -273,18 +278,29 @@ export class CommitGraph {
 
   /**
    * Gets the positioned edges connecting each node to its parents, drawn beneath the dots.
+   *
+   * The edges that cross the most lanes are drawn first. Lines turning into the same commit share its
+   * row, each running across from its own lane, so they lie on top of one another; drawn longest first,
+   * each stretch between two lanes shows the line that turns there, and the colours read off in lane
+   * order rather than in whatever order the commits came.
    */
   protected readonly edges: Signal<readonly EdgeViewModel[]> = computed(
     (): readonly EdgeViewModel[] =>
-      this.nodes().flatMap((node: GraphNode): readonly EdgeViewModel[] =>
-        node.edges.map((edge: GraphNode['edges'][number]): EdgeViewModel => {
-          const x1: number = this.laneX(node.lane);
-          const y1: number = this.rowY(node.row);
-          const x2: number = this.laneX(edge.toLane);
-          const y2: number = this.rowY(edge.toRow);
-          return { d: this.edgePath(x1, y1, x2, y2, edge.merge), color: edge.color };
-        }),
-      ),
+      this.nodes()
+        .flatMap((node: GraphNode): readonly EdgeViewModel[] =>
+          node.edges.map((edge: GraphNode['edges'][number]): EdgeViewModel => {
+            const x1: number = this.laneX(node.lane);
+            const y1: number = this.rowY(node.row);
+            const x2: number = this.laneX(edge.toLane);
+            const y2: number = this.rowY(edge.toRow);
+            return {
+              d: this.edgePath(x1, y1, x2, y2, edge.merge),
+              color: edge.color,
+              span: Math.abs(edge.toLane - node.lane),
+            };
+          }),
+        )
+        .sort((left: EdgeViewModel, right: EdgeViewModel): number => right.span - left.span),
   );
 
   /**
