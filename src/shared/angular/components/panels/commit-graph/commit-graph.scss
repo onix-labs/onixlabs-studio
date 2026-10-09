@@ -67,6 +67,14 @@
   font-size: 0.75rem;
 }
 
+// Holds the scroller, and the overlay scrollbar's thumb over it.
+.commit-graph__frame {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-block-size: 0;
+}
+
 // Scrolls down only. The rows truncate to the panel's width, so there is nothing to the side to
 // scroll to.
 .commit-graph__scroller {
@@ -103,8 +111,9 @@
   position: absolute;
   inset-inline-end: 0;
   display: flex;
-  align-items: center;
-  gap: 0.6rem;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.3rem;
   padding: 0 0.85rem;
   border: 0;
   border-inline-start: 0.0625rem solid var(--dock-border-color);
@@ -134,13 +143,21 @@
   }
 }
 
-// The labels give way before the commit's message and details do: they take at most part of the row,
-// and within it each label shortens its own name, so a commit with many branches on it keeps its
-// message, author, date and hash in view.
+// One of a row's two lines: something that gives way on the left, and details that stay whole on the
+// right.
+.graph__line {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-inline-size: 0;
+}
+
+// The labels share the first line with who and when: they take what that leaves, each shortening its
+// own name to fit, and those that still do not fit end at the edge.
 .graph__refs {
   display: inline-flex;
-  flex: 0 0 auto;
-  max-inline-size: 40%;
+  flex: 1 1 auto;
+  min-inline-size: 0;
   gap: 0.3rem;
   overflow: hidden;
 }
@@ -197,6 +214,7 @@
 
 .graph__summary {
   flex: 1 1 auto;
+  min-inline-size: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -224,6 +242,8 @@
 }
 
 .graph__hash {
+  flex: 0 0 auto;
   font-family: 'JetBrains Mono', monospace;
+  font-size: 0.72rem;
   color: var(--form-muted-foreground-color);
 }

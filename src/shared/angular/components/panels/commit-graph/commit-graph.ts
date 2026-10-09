@@ -13,6 +13,7 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { OverlayScrollbar } from '@shared/angular/components/overlay-scrollbar/overlay-scrollbar';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
@@ -123,7 +124,7 @@ interface EdgeViewModel {
  */
 @Component({
   selector: 'app-commit-graph',
-  imports: [AppIcon, Button, PanelToolbar, TextField],
+  imports: [AppIcon, Button, OverlayScrollbar, PanelToolbar, TextField],
   templateUrl: './commit-graph.html',
   styleUrl: './commit-graph.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
