@@ -67,10 +67,12 @@
   font-size: 0.75rem;
 }
 
+// Scrolls down only. The rows truncate to the panel's width, so there is nothing to the side to
+// scroll to.
 .commit-graph__scroller {
   flex: 1 1 auto;
   min-block-size: 0;
-  overflow: auto;
+  overflow: hidden auto;
 }
 
 // The end of a page of history: what is loaded, and the way to load more.
@@ -88,7 +90,6 @@
 .graph {
   position: relative;
   inline-size: 100%;
-  min-inline-size: max-content;
 }
 
 .graph__lanes {
@@ -110,6 +111,7 @@
   background: transparent;
   color: inherit;
   font: inherit;
+  overflow: hidden;
   text-align: start;
   cursor: default;
   transition: background-color 120ms ease-in-out;
@@ -132,14 +134,33 @@
   }
 }
 
+// The labels give way before the commit's message and details do: they take at most part of the row,
+// and within it each label shortens its own name, so a commit with many branches on it keeps its
+// message, author, date and hash in view.
 .graph__refs {
   display: inline-flex;
   flex: 0 0 auto;
+  max-inline-size: 40%;
   gap: 0.3rem;
+  overflow: hidden;
+}
+
+.graph__ref app-icon {
+  flex: 0 0 auto;
+}
+
+.graph__ref-name {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .graph__ref {
   display: inline-flex;
+  // A label shortens its name to share the room, but no further than its icon and a little of it.
+  flex: 0 1 auto;
+  min-inline-size: 2.75rem;
   align-items: center;
   gap: 0.2rem;
   max-inline-size: 11rem;
