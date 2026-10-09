@@ -1,9 +1,88 @@
 :host {
-  display: block;
+  display: flex;
+  flex-direction: column;
   block-size: 100%;
-  overflow: auto;
+  min-block-size: 0;
   background: var(--dock-tab-background-color--active);
   color: var(--body-foreground-color);
+}
+
+.commit-graph__strip {
+  flex: 0 0 auto;
+}
+
+// The strip's toggles stand at the control height, as Find & Replace's and the Terminal's do.
+.commit-graph__toggle {
+  flex: 0 1 auto;
+  min-inline-size: 0;
+  block-size: var(--control-height);
+  white-space: nowrap;
+}
+
+.commit-graph__toggle app-icon {
+  flex: 0 0 auto;
+  font-size: 0.85rem;
+}
+
+// In a narrow panel the labels give way, ending in an ellipsis; the icons stay whole.
+.commit-graph__toggle span {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+// The filter form, styled as Find & Replace's forms are.
+.commit-graph__form {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0 0.5rem 0.5rem;
+  border-block-end: 1px solid var(--dock-border-color);
+  font-size: 0.8rem;
+}
+
+.commit-graph__field {
+  min-inline-size: 0;
+}
+
+.commit-graph__input {
+  display: block;
+  inline-size: 100%;
+}
+
+.commit-graph__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.commit-graph__summary {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--form-muted-foreground-color);
+  font-size: 0.75rem;
+}
+
+.commit-graph__scroller {
+  flex: 1 1 auto;
+  min-block-size: 0;
+  overflow: auto;
+}
+
+// The end of a page of history: what is loaded, and the way to load more.
+.commit-graph__more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border-block-start: 1px solid var(--dock-border-color);
+  color: var(--dock-tab-foreground-color);
+  font-size: 0.8rem;
 }
 
 .graph {

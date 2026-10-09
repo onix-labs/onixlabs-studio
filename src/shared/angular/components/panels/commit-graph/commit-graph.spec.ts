@@ -330,4 +330,125 @@ describe('CommitGraph', () => {
     expect(repository.selectedNodeId()).toBe('c2');
     expect(rows[0].classList.contains('graph__row--selected')).toBe(true);
   });
+
+  /**
+   * Gets a strip button by its label.
+   * @param label The label.
+   * @returns Returns the button, or undefined.
+   */
+  function stripButton(label: string): HTMLButtonElement | undefined {
+    return Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>(
+        '.commit-graph__strip button',
+      ),
+    ).find(
+      (button: HTMLButtonElement): boolean =>
+        button.textContent.trim() === label || button.getAttribute('aria-label') === label,
+    );
+  }
+
+  /**
+   * Filters the history, as the user does.
+   * @param text The filter text.
+   */
+  function filterBy(text: string): void {
+    stripButton('Filter')?.click();
+    fixture.detectChanges();
+    const component: { filterDraft: { set: (value: string) => void }; applyFilter: () => void } =
+      fixture.componentInstance as unknown as {
+        filterDraft: { set: (value: string) => void };
+        applyFilter: () => void;
+      };
+    component.filterDraft.set(text);
+    component.applyFilter();
+    fixture.detectChanges();
+  }
+
+  it('strip_hasFilterAndGoToHead_andOffersNoScopeToAPluginThatCannotReadEveryBranch', () => {
+    // #882: the strip is the panel's own, not the dock's placeholder set.
+    expect(stripButton('Filter')).toBeDefined();
+    expect(stripButton('Go to HEAD')).toBeDefined();
+    expect(stripButton('All Branches')).toBeUndefined();
+  });
+
+  it('filter_listsTheMatchesAlone_withoutLanes', () => {
+    filterBy('c1');
+    const element: HTMLElement = fixture.nativeElement as HTMLElement;
+
+    expect(element.querySelectorAll('.graph__row').length).toBe(1);
+    expect(element.textContent).toContain('Commit c1');
+    expect(element.querySelector('.graph__lanes')).toBeNull();
+    expect(element.querySelector('.commit-graph__summary')?.textContent).toContain(
+      'Matches 1 of 2 commits',
+    );
+  });
+
+  it('filter_runsOnlyWhenApplied_andHidingTheFormDrawsTheWholeGraphAgain', () => {
+    stripButton('Filter')?.click();
+    fixture.detectChanges();
+    (
+      fixture.componentInstance as unknown as { filterDraft: { set: (v: string) => void } }
+    ).filterDraft.set('c1');
+    fixture.detectChanges();
+    const element: HTMLElement = fixture.nativeElement as HTMLElement;
+
+    expect(element.querySelectorAll('.graph__row').length).toBe(2);
+
+    (fixture.componentInstance as unknown as { applyFilter: () => void }).applyFilter();
+    fixture.detectChanges();
+    expect(element.querySelectorAll('.graph__row').length).toBe(1);
+
+    stripButton('Filter')?.click();
+    fixture.detectChanges();
+
+    expect(element.querySelectorAll('.graph__row').length).toBe(2);
+    expect(element.querySelector('.graph__lanes')).not.toBeNull();
+  });
+
+  it('goToHead_selectsTheCheckedOutCommit', () => {
+    vi.spyOn(repository, 'headCommit').mockReturnValue('c1');
+
+    stripButton('Go to HEAD')?.click();
+
+    expect(repository.selectedNodeId()).toBe('c1');
+  });
+
+  it('goToHead_scrollsBackToHead_evenWhenItIsAlreadySelected', () => {
+    // Selecting what is already selected changes nothing, so the scroll cannot ride on the selection.
+    vi.spyOn(repository, 'headCommit').mockReturnValue('c1');
+    repository.selectNode('c1');
+    fixture.detectChanges();
+    const scroller: HTMLElement = (fixture.nativeElement as HTMLElement).querySelector(
+      '.commit-graph__scroller',
+    )!;
+    Object.defineProperty(scroller, 'clientHeight', { configurable: true, value: 40 });
+    scroller.scrollTop = 0;
+
+    stripButton('Go to HEAD')?.click();
+
+    // c1 is the second row (56px down), outside a 40px viewport scrolled to the top.
+    expect(scroller.scrollTop).toBeGreaterThan(0);
+  });
+
+  it('edges_betweenLanes_runOnlyDownAndAcross_withARoundedTurn', () => {
+    // Metro-map track rather than a slope across every row between the two commits.
+    const edgePath: (x1: number, y1: number, x2: number, y2: number, merge: boolean) => string = (
+      fixture.componentInstance as unknown as {
+        edgePath: (x1: number, y1: number, x2: number, y2: number, merge: boolean) => string;
+      }
+    ).edgePath.bind(fixture.componentInstance);
+
+    // A branch: down its own lane, turning across into the parent at the parent's row.
+    expect(edgePath(45, 28, 27, 308, false)).toBe('M 45 28 L 45 299 A 9 9 0 0 1 36 308 L 27 308');
+    // A merge: across at the merge commit's row, turning down the parent's lane.
+    expect(edgePath(27, 28, 45, 308, true)).toBe('M 27 28 L 36 28 A 9 9 0 0 1 45 37 L 45 308');
+    // Within a lane: straight.
+    expect(edgePath(27, 28, 27, 84, false)).toBe('M 27 28 L 27 84');
+  });
+
+  it('theList_endsWithLoadMore_onlyWhenTheHistoryStoppedAtItsLimit', () => {
+    const element: HTMLElement = fixture.nativeElement as HTMLElement;
+    // Two commits of a 500-commit page: this is the whole history.
+    expect(element.querySelector('.commit-graph__more')).toBeNull();
+  });
 });

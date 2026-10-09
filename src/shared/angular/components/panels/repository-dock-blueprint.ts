@@ -51,6 +51,7 @@ export const REPOSITORY_DOCK_BLUEPRINT: DockBlueprint = {
       title: 'History',
       icon: Icon.GIT_COMMIT,
       role: 'tool',
+      ownsToolStrip: true,
       component: CommitGraph,
     },
     {

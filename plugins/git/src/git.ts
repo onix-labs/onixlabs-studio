@@ -60,7 +60,7 @@ const GIT_MAX_BUFFER: number = 64 * 1024 * 1024;
 /**
  * Holds the largest commit count a log will read, clamping an untrusted limit.
  */
-const MAX_LOG_LIMIT: number = 2000;
+const MAX_LOG_LIMIT: number = 5000;
 
 /**
  * Holds the environment overlay applied to network git invocations so they never block on an
@@ -354,7 +354,14 @@ export class GitVersionControl {
       case 'log':
         return this.read(
           root,
-          ['log', `--max-count=${logLimit(params['limit'])}`, `--format=${LOG_FORMAT}`],
+          [
+            'log',
+            `--max-count=${logLimit(params['limit'])}`,
+            `--format=${LOG_FORMAT}`,
+            // Every branch, remote branch and tag — but not the stash, whose commits are not history.
+            // Date order keeps each commit above its parents however the branches interleave.
+            ...(params['all'] === true ? ['--date-order', '--exclude=refs/stash', '--all'] : []),
+          ],
           parseLog,
         );
       case 'refs':
