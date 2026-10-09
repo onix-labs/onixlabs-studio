@@ -27,6 +27,7 @@ import { WorkspaceSourceControlCommands } from '@features/workspace/angular/work
 import { SourceControlCommands } from '@shared/angular/services/source-control-commands/source-control-commands';
 import { ActiveRun, Builds } from '@shared/angular/services/tasks/builds';
 import { Debugger } from '@shared/angular/services/debug/debugger';
+import { Notifications } from '@shared/angular/services/notifications/notifications';
 import { StudioConfig } from '@shared/angular/services/studio/studio-config';
 import { ConfigureDialog } from '@shared/angular/services/configure-dialog/configure-dialog';
 import { WorkspaceCapabilities } from '@shared/angular/services/workspace/workspace-capabilities';
@@ -295,6 +296,11 @@ export class DirectoryRibbon {
   private readonly debugger: Debugger = inject(Debugger);
 
   /**
+   * Holds the notification centre, which says why a Debug configuration could not start.
+   */
+  private readonly notifications: Notifications = inject(Notifications);
+
+  /**
    * Holds the active workspace's `.studio` configuration, the source of the run dropdown's items.
    */
   private readonly studio: StudioConfig = inject(StudioConfig);
@@ -504,7 +510,7 @@ export class DirectoryRibbon {
    * dropdown row — started it.
    */
   protected readonly anyRunning: Signal<boolean> = computed(
-    (): boolean => this.activeRuns().length > 0,
+    (): boolean => this.activeRuns().length > 0 || this.debugger.running(),
   );
 
   /**
@@ -534,23 +540,6 @@ export class DirectoryRibbon {
             .find((candidate: RunConfiguration): boolean => candidate.id === id);
     },
   );
-
-  /**
-   * Gets whether the Debug button can launch: the active provider declares a debug adapter, a run
-   * configuration is selected, and no debug session is already running. Providers that declare no
-   * adapter (or none at all) leave the button disabled rather than launching a session that would
-   * immediately report it has nowhere to attach.
-   */
-  protected readonly canDebug: Signal<boolean> = computed((): boolean => {
-    const configuration: RunConfiguration | undefined = this.selectedConfiguration();
-    return (
-      this.capabilities()?.debug != null &&
-      configuration !== undefined &&
-      // A compound starts several processes; there is no single program to attach to.
-      !isCompoundConfiguration(configuration) &&
-      !this.debugger.running()
-    );
-  });
 
   /**
    * Cuts the selection in the focused editor.
@@ -629,10 +618,7 @@ export class DirectoryRibbon {
       this.pendingRunConfiguration.set(configuration);
       return;
     }
-    this.log.info('workspace.run', 'Run configuration started', configuration.name);
-    this.builds.runConfiguration(configuration, this.studio.runConfigurations(), {
-      restart: false,
-    });
+    this.start(configuration);
   }
 
   /**
@@ -669,7 +655,12 @@ export class DirectoryRibbon {
         (leaf: RunConfiguration): string => leaf.id,
       ),
     );
-    return this.activeRuns().some((run): boolean => leafIds.has(run.taskId));
+    // One debug session runs at a time, so a Debug configuration is running while the debugger is.
+    const debugging: boolean =
+      configuration.mode === 'debug' &&
+      !isCompoundConfiguration(configuration) &&
+      this.debugger.running();
+    return debugging || this.activeRuns().some((run): boolean => leafIds.has(run.taskId));
   }
 
   /**
@@ -734,17 +725,6 @@ export class DirectoryRibbon {
   }
 
   /**
-   * Launches the selected run configuration under the debugger on the active workspace.
-   */
-  protected onDebug(): void {
-    const configuration: RunConfiguration | undefined = this.selectedConfiguration();
-    if (configuration !== undefined) {
-      this.log.info('workspace.run', 'Debug launch requested', configuration.name);
-      this.debugger.launch(configuration);
-    }
-  }
-
-  /**
    * Opens the Configure dialog to edit the workspace's run configurations.
    */
   protected onConfigure(): void {
@@ -767,10 +747,7 @@ export class DirectoryRibbon {
     if (configuration === undefined) {
       return;
     }
-    this.log.info('workspace.run', 'Run configuration started', configuration.name);
-    this.builds.runConfiguration(configuration, this.studio.runConfigurations(), {
-      restart: false,
-    });
+    this.start(configuration);
   }
 
   /**
@@ -789,9 +766,7 @@ export class DirectoryRibbon {
     if (this.isConfigurationRunning(configuration)) {
       this.stopConfiguration(configuration);
     } else {
-      this.builds.runConfiguration(configuration, this.studio.runConfigurations(), {
-        restart: false,
-      });
+      this.start(configuration);
     }
   }
 
@@ -801,6 +776,9 @@ export class DirectoryRibbon {
    * @param configuration The configuration to stop.
    */
   private stopConfiguration(configuration: RunConfiguration): void {
+    if (configuration.mode === 'debug' && this.debugger.running()) {
+      this.debugger.stop();
+    }
     const leafIds: ReadonlySet<string> = new Set<string>(
       expandRunConfiguration(configuration, this.studio.runConfigurations()).map(
         (leaf: RunConfiguration): string => leaf.id,
@@ -819,6 +797,45 @@ export class DirectoryRibbon {
   protected onStop(): void {
     this.log.info('workspace.run', 'Stop all runs requested', this.activeRuns().length);
     this.builds.cancelAll();
+    if (this.debugger.running()) {
+      this.debugger.stop();
+    }
+  }
+
+  /**
+   * Starts a configuration the way it asks to be started: under the debugger when its mode is Debug,
+   * as an ordinary run otherwise. Every Start path comes here — the button's face, the dropdown, Run.
+   *
+   * The ribbon's Debug button went when the Solution group became a dropdown, and with it the only way
+   * to the debugger: a configuration set to Debug in Configure was saved as one and then run like any
+   * other, so no adapter was ever asked to start. A compound runs as before, its members as runs.
+   * @param configuration The configuration to start.
+   */
+  private start(configuration: RunConfiguration): void {
+    if (configuration.mode === 'debug' && !isCompoundConfiguration(configuration)) {
+      if (this.debugger.running()) {
+        this.log.info('workspace.run', 'Debug launch refused: a session is already running');
+        return;
+      }
+      if (this.capabilities()?.debug == null) {
+        // Said where it is seen: the session itself only writes this to the Debug output.
+        this.notifications.notify({
+          severity: 'warning',
+          title: `Can't debug "${configuration.name}"`,
+          detail:
+            "This workspace's project declares no debugger. Install one from the Plugin Manager, or " +
+            'set the configuration to Run in Configure.',
+        });
+        return;
+      }
+      this.log.info('workspace.run', 'Debug launch requested', configuration.name);
+      this.debugger.launch(configuration);
+      return;
+    }
+    this.log.info('workspace.run', 'Run configuration started', configuration.name);
+    this.builds.runConfiguration(configuration, this.studio.runConfigurations(), {
+      restart: false,
+    });
   }
 
   /**

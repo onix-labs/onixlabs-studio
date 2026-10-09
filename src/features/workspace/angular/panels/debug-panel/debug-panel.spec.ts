@@ -179,6 +179,19 @@ describe('DebugPanel', () => {
     expect(component).toBeTruthy();
   });
 
+  it('drawsItsTransportInTheSharedToolStrip (#882)', () => {
+    fixture.detectChanges();
+
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    const strip: HTMLElement | null = host.querySelector('app-panel-toolbar');
+    const labels: (string | null)[] = Array.from(
+      strip?.querySelectorAll('button') ?? [],
+      (button: Element): string | null => button.getAttribute('aria-label'),
+    );
+    // The fake session starts paused, so the strip offers Continue.
+    expect(labels).toEqual(['Continue', 'Stop', 'Step Over', 'Step Into', 'Step Out']);
+  });
+
   it('callStackRows_mapFramesAndMarkTheSelected', () => {
     session.callStack.set([frame({ id: 10, name: 'Main' }), frame({ id: 11, name: 'Outer' })]);
     session.currentFrame.set(10);

@@ -1,4 +1,6 @@
-<div class="debug-toolbar">
+<!-- The panel's own tool strip (#882, `ownsToolStrip`): the session's transport — run or pause it, stop
+     it — then the steps, which only mean something while it is paused. -->
+<app-panel-toolbar>
   @if (paused()) {
     <app-button
       variant="none"
@@ -17,6 +19,15 @@
       (click)="onPause()"
     />
   }
+  <app-button
+    variant="none"
+    [icon]="Icon.STOP"
+    ariaLabel="Stop"
+    tooltip="Stop"
+    [disabled]="!active()"
+    (click)="onStop()"
+  />
+  <span class="debug-strip__divider" aria-hidden="true"></span>
   <app-button
     variant="none"
     [icon]="Icon.STEP_OVER"
@@ -41,16 +52,7 @@
     [disabled]="!paused()"
     (click)="onStepOut()"
   />
-  <span class="debug-toolbar__spacer"></span>
-  <app-button
-    variant="none"
-    [icon]="Icon.STOP"
-    ariaLabel="Stop"
-    tooltip="Stop"
-    [disabled]="!active()"
-    (click)="onStop()"
-  />
-</div>
+</app-panel-toolbar>
 
 <div class="debug-body">
   <section class="debug-column">

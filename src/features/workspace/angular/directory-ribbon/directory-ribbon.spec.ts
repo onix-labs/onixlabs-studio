@@ -2,6 +2,7 @@ import { ApplicationRef, computed, signal, Signal, WritableSignal } from '@angul
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActiveRun, Builds, BuildTask } from '@shared/angular/services/tasks/builds';
 import { Debugger } from '@shared/angular/services/debug/debugger';
+import { Notifications } from '@shared/angular/services/notifications/notifications';
 import { StudioConfig } from '@shared/angular/services/studio/studio-config';
 import { WorkspaceCapabilities } from '@shared/angular/services/workspace/workspace-capabilities';
 import { ProjectAction, ProjectCapabilities } from '@shared/api/project-system';
@@ -57,8 +58,6 @@ interface RibbonInternals {
   pendingBuildAction(): 'build' | 'rebuild' | 'clean' | null;
   confirmBuildRestart(): void;
   cancelBuildRestart(): void;
-  canDebug(): boolean;
-  onDebug(): void;
   canSave(): boolean;
   hasUnsavedChanges(): boolean;
   saveMenuItems(): readonly RibbonMenuItem[];
@@ -174,8 +173,14 @@ class FakeDebugger {
   public readonly running: WritableSignal<boolean> = signal<boolean>(false);
   public readonly launchCalls: RunConfiguration[] = [];
 
+  public stopCalls: number = 0;
+
   public launch(configuration: RunConfiguration): void {
     this.launchCalls.push(configuration);
+  }
+
+  public stop(): void {
+    this.stopCalls += 1;
   }
 }
 
@@ -483,16 +488,19 @@ describe('DirectoryRibbon', () => {
     expect(builds.siblingCalls[0]).toEqual(configurations);
   });
 
-  it('debugIsDisabledForACompound_whichHasNoSingleProgramToAttachTo', () => {
+  it('aCompoundSetToDebug_runsItsMembersAsRuns_havingNoSingleProgramToAttachTo', () => {
     capabilities.capabilities.set(dotnetWithDebug());
-    studio.runConfigurations.set([configuration('a', 'A')]);
-    expect(internals().canDebug()).toBe(true);
+    const stack: RunConfiguration = {
+      ...configuration('stack', 'Whole stack'),
+      members: ['a'],
+      mode: 'debug',
+    };
+    studio.runConfigurations.set([stack, configuration('a', 'A')]);
 
-    studio.runConfigurations.set([
-      { ...configuration('stack', 'Whole stack'), members: ['a'] },
-      configuration('a', 'A'),
-    ]);
-    expect(internals().canDebug()).toBe(false);
+    internals().onStartStop();
+
+    expect(debuggerSeam.launchCalls).toEqual([]);
+    expect(builds.runConfigurationCalls).toEqual([stack]);
   });
 
   it('start_whileTheConfigurationIsRunning_asksBeforeRestarting', () => {
@@ -725,38 +733,58 @@ describe('DirectoryRibbon', () => {
     expect(internals().runMenuItems()).toHaveLength(1);
   });
 
-  it('debugLaunchesTheSelectedConfigurationThroughTheDebuggerSeam', () => {
-    const config: RunConfiguration = configuration('a', 'A');
-    studio.runConfigurations.set([config]);
-    capabilities.capabilities.set(dotnetWithDebug());
+  describe('a configuration set to Debug (#882)', () => {
+    // The ribbon's Debug button went when the Solution group became a dropdown; since then a Debug
+    // configuration was run like any other and no adapter was ever asked to start.
+    const debugConfig: RunConfiguration = {
+      ...configuration('d', 'Tax Calculator'),
+      mode: 'debug',
+    };
 
-    expect(internals().canDebug()).toBe(true);
-    internals().onDebug();
+    it('start_launchesItUnderTheDebugger_notAsARun', () => {
+      studio.runConfigurations.set([debugConfig]);
+      capabilities.capabilities.set(dotnetWithDebug());
 
-    expect(debuggerSeam.launchCalls).toEqual([config]);
-  });
+      internals().onStartStop();
 
-  it('debugIsDisabledWithoutADeclaredAdapterOrAConfigurationOrWhileRunning', () => {
-    const config: RunConfiguration = configuration('a', 'A');
-    studio.runConfigurations.set([config]);
+      expect(debuggerSeam.launchCalls).toEqual([debugConfig]);
+      expect(builds.runConfigurationCalls).toEqual([]);
+    });
 
-    // A configuration is selected but the provider declares no debug adapter (the .NET default today).
-    capabilities.capabilities.set(dotnetCapabilities());
-    expect(internals().canDebug()).toBe(false);
+    it('start_withNoDeclaredDebugger_saysSo_ratherThanRunningIt', () => {
+      studio.runConfigurations.set([debugConfig]);
+      capabilities.capabilities.set(dotnetCapabilities());
+      const notify: ReturnType<typeof vi.spyOn> = vi.spyOn(TestBed.inject(Notifications), 'notify');
 
-    // With a declared adapter the button enables.
-    capabilities.capabilities.set(dotnetWithDebug());
-    expect(internals().canDebug()).toBe(true);
+      internals().onStartStop();
 
-    // With no run configuration there is nothing to debug, even with an adapter.
-    studio.runConfigurations.set([]);
-    expect(internals().canDebug()).toBe(false);
+      expect(debuggerSeam.launchCalls).toEqual([]);
+      expect(builds.runConfigurationCalls).toEqual([]);
+      expect(notify).toHaveBeenCalled();
+    });
 
-    // Not while a session is already running.
-    studio.runConfigurations.set([config]);
-    expect(internals().canDebug()).toBe(true);
-    debuggerSeam.running.set(true);
-    expect(internals().canDebug()).toBe(false);
+    it('whileItsSessionRuns_theButtonIsStop_andStopEndsTheSession', () => {
+      studio.runConfigurations.set([debugConfig]);
+      capabilities.capabilities.set(dotnetWithDebug());
+      debuggerSeam.running.set(true);
+
+      expect(internals().anyRunning()).toBe(true);
+      internals().onStartStop();
+
+      expect(debuggerSeam.stopCalls).toBe(1);
+      expect(debuggerSeam.launchCalls).toEqual([]);
+    });
+
+    it('aRunConfiguration_stillRunsAsBefore', () => {
+      const run: RunConfiguration = configuration('a', 'App');
+      studio.runConfigurations.set([run]);
+      capabilities.capabilities.set(dotnetWithDebug());
+
+      internals().onStartStop();
+
+      expect(builds.runConfigurationCalls).toEqual([run]);
+      expect(debuggerSeam.launchCalls).toEqual([]);
+    });
   });
 
   it('enablesBuildCleanRebuildForDotnet', () => {
