@@ -3,7 +3,6 @@ import {
   clampEdge,
   clampZoom,
   fitScale,
-  formatFileSize,
   formatZoom,
   ImageRect,
   isUsefulCrop,
@@ -112,13 +111,6 @@ describe('image geometry', () => {
     expect(clampEdge(0)).toBe(1);
     expect(clampEdge(Number.NaN)).toBe(1);
     expect(clampEdge(MAX_EDGE * 2)).toBe(MAX_EDGE);
-  });
-
-  it('formatFileSize_usesBinaryUnits', () => {
-    expect(formatFileSize(812)).toBe('812 B');
-    expect(formatFileSize(12_698)).toBe('12 KB');
-    expect(formatFileSize(1536)).toBe('1.5 KB');
-    expect(formatFileSize(3 * 1024 * 1024)).toBe('3.0 MB');
   });
 
   it('formatZoom_showsAWholePercentage', () => {

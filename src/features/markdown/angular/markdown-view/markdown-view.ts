@@ -10,6 +10,7 @@ import {
   OnInit,
   signal,
   Signal,
+  untracked,
   viewChild,
   WritableSignal,
 } from '@angular/core';
@@ -20,6 +21,7 @@ import {
   createAgentHostRegistrar,
 } from '@shared/angular/services/agent-hosts/agent-host-registration';
 import { AGENT_CONVERSATION_KIND } from '@shared/angular/services/agent-conversations/agent-conversation-context';
+import type { Node as ProseMirrorNode } from '@milkdown/kit/prose/model';
 import type { Selection } from '@milkdown/kit/prose/state';
 import type { EditorView } from '@milkdown/kit/prose/view';
 import { redoDepth, undoDepth } from '@milkdown/kit/prose/history';
@@ -40,7 +42,7 @@ import {
   createViewInjectorRegistrar,
   ViewInjectorRegistrar,
 } from '@shared/angular/services/view-injectors/view-injector-registration';
-import { Documents } from '@shared/angular/services/documents/documents';
+import { CodeDocument, Documents } from '@shared/angular/services/documents/documents';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { Log } from '@shared/angular/services/log/log';
 import { Settings } from '@shared/angular/services/settings/settings';
@@ -325,14 +327,17 @@ export class MarkdownView implements OnInit, OnDestroy {
       }
     });
 
-    // Keep this view's content current for its status strip, re-deriving the word count as the
-    // document is edited (the content signal is tracked here). Activation is not consulted: the strip
-    // mounts this view's status component only while the view is active, and destroys it on tab
-    // switch, so an inactive view's stats are never on screen to go stale.
+    // Keep this view's document current for its status strip, re-deriving the counts as the document
+    // is edited or saved under a new path (the content and path signals are tracked here). Activation
+    // is not consulted: the strip mounts this view's status component only while the view is active,
+    // and destroys it on tab switch, so an inactive view's stats are never on screen to go stale.
     effect((): void => {
       const id: string = this.tabId();
+      const document: CodeDocument | undefined = this.documents.get(id);
+      const content: string = document?.content() ?? '';
+      const path: string | null = document?.filePath() ?? null;
       if (this.paneReady()) {
-        this.markdownStatus.publish(this.documents.get(id)?.content() ?? '');
+        untracked((): void => this.publishStatus(path, content));
       } else {
         this.markdownStatus.clear();
       }
@@ -399,12 +404,39 @@ export class MarkdownView implements OnInit, OnDestroy {
    * @param selection The editor's current selection.
    */
   protected onSelectionChange(selection: Selection): void {
+    // The status strip's counts follow the selection ("12 of 340 words") and the edit it came from.
+    const document: CodeDocument | undefined = this.documents.get(this.tabId());
+    this.publishStatus(document?.filePath() ?? null, document?.content() ?? '', selection);
     if (!this.isActive()) {
       return;
     }
     const blockType: MarkdownBlockType = blockTypeAt(selection);
     this.commands.setActiveBlockType(blockType);
     this.publishHistoryState();
+  }
+
+  /**
+   * Publishes the document to this view's status strip: its path, its text as the editor shows it —
+   * so the counts skip markdown syntax — and the selected text. Falls back to the markdown source
+   * before the editor has a document to read.
+   * @param path The document's path, or null while it is unsaved.
+   * @param content The document's markdown source.
+   * @param selection The editor's selection, when a selection change prompted this; otherwise read
+   * from the editor.
+   */
+  private publishStatus(path: string | null, content: string, selection?: Selection): void {
+    const current: Selection | undefined =
+      selection ?? this.pane()?.getEditorView()?.state.selection;
+    if (current === undefined) {
+      this.markdownStatus.publish({ path, text: content, selectedText: null });
+      return;
+    }
+    const doc: ProseMirrorNode = current.$from.doc;
+    this.markdownStatus.publish({
+      path,
+      text: doc.textBetween(0, doc.content.size, '\n', ' '),
+      selectedText: current.empty ? null : doc.textBetween(current.from, current.to, '\n', ' '),
+    });
   }
 
   /**

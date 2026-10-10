@@ -90,6 +90,24 @@ describe('DirectoryStatusStrip', () => {
     expect(segmentsOf(fixture)).toEqual(['studio', 'detached HEAD', '7']);
   });
 
+  it('showsNoPushOrPullCounts_forABranchWithNoUpstream (#882)', () => {
+    // Never published: nothing to be ahead of or behind, so 0 / 0 would wrongly read as in sync.
+    branch.set({ name: 'feature', current: true, ahead: 0, behind: 0, tip: 'c3' });
+    fixture.detectChanges();
+
+    expect(segmentsOf(fixture)).toEqual(['studio', 'feature', '7']);
+  });
+
+  it('namesTheFolderWithoutAnIcon (#882)', () => {
+    // The strip's kind segment ("Workspace") already wears the folder icon.
+    fixture.detectChanges();
+
+    const host: HTMLElement = fixture.nativeElement as HTMLElement;
+    const first: Element | null = host.querySelector('app-status-strip-segment');
+    expect(first?.textContent?.trim()).toBe('studio');
+    expect(first?.querySelector('app-icon')).toBeNull();
+  });
+
   it('showsNoGitSegments_whenTheFolderIsNotARepository', () => {
     isBound.set(false);
     fixture.detectChanges();

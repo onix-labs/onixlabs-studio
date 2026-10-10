@@ -7,6 +7,7 @@ import {
   inject,
   input,
   InputSignal,
+  OnInit,
   Signal,
   signal,
   WritableSignal,
@@ -17,6 +18,10 @@ import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Table, TableColumn, TableRow, TableRowDef } from '@shared/angular/components/table/table';
 import { Icon } from '@shared/angular/icons/icon';
 import { Log } from '@shared/angular/services/log/log';
+import {
+  createViewInjectorRegistrar,
+  ViewInjectorRegistrar,
+} from '@shared/angular/services/view-injectors/view-injector-registration';
 import { CatalogModel, CatalogResult } from '@shared/api/model-catalog-types';
 import {
   LocalModel,
@@ -75,6 +80,46 @@ const AVAILABLE_COLUMNS: readonly TableColumn[] = [
 const SEARCH_DEBOUNCE_MS: number = 300;
 
 /**
+ * What the Model Manager tab's status strip reports.
+ */
+export interface ModelManagerSummary {
+  /**
+   * Gets the runtime's name.
+   */
+  readonly runtime: string;
+
+  /**
+   * Gets the runtime's version, when its server reports one.
+   */
+  readonly version: string | null;
+
+  /**
+   * Gets whether the runtime is installed, and if so whether its server answers.
+   */
+  readonly state: 'absent' | 'stopped' | 'running';
+
+  /**
+   * Gets how many models are downloading.
+   */
+  readonly downloading: number;
+
+  /**
+   * Gets how many models are installed.
+   */
+  readonly installed: number;
+
+  /**
+   * Gets how many models are loaded in memory.
+   */
+  readonly loaded: number;
+
+  /**
+   * Gets the disk the installed models use, formatted, or null before it is known.
+   */
+  readonly disk: string | null;
+}
+
+/**
  * The AI Model Manager tab: the local model lifecycle in one place.
  *
  * It owns the *runtime and the weights* — whether the runtime is installed, whether its server is up,
@@ -92,7 +137,7 @@ const SEARCH_DEBOUNCE_MS: number = 300;
   styleUrl: './model-manager-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class ModelManagerView {
+export class ModelManagerView implements OnInit {
   /**
    * Gets the icon set, exposed for the template.
    */
@@ -264,6 +309,40 @@ export class ModelManagerView {
   protected readonly isStoppable: Signal<boolean> = computed(
     (): boolean => this.status()?.startedByStudio === true,
   );
+
+  /**
+   * Gets what the tab's status strip reports (#882): the runtime and its state, the downloads in
+   * progress, the installed and loaded models, and the disk they use — the size written as the view
+   * writes it. Read by the strip through the injector this view publishes.
+   */
+  public readonly summary: Signal<ModelManagerSummary> = computed((): ModelManagerSummary => {
+    const status: ModelRuntimeStatus | null = this.status();
+    const usage: ModelDiskUsage | null = this.disk();
+    return {
+      runtime: this.runtimeName(),
+      version: status?.version ?? null,
+      state: this.needsInstall() ? 'absent' : this.isRunning() ? 'running' : 'stopped',
+      downloading: this.pulls().size,
+      installed: this.installed().length,
+      loaded: this.running().length,
+      disk: usage === null ? null : this.formatBytes(usage.bytes),
+    };
+  });
+
+  /**
+   * Publishes this view's injector while it is active, so the status strip mounts the tab's status
+   * (#882) inside it.
+   */
+  private readonly statusHost: ViewInjectorRegistrar = createViewInjectorRegistrar({
+    isActive: this.isActive,
+  });
+
+  /**
+   * Publishes this view's injector to the status strip, now that the tab id is readable.
+   */
+  public ngOnInit(): void {
+    this.statusHost.register(this.tabId());
+  }
 
   /**
    * Gets whether the runtime binary is missing, so the view offers to install it.

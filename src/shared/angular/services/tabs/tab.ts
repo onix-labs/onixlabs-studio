@@ -89,9 +89,15 @@ export interface Tab {
  */
 export interface TabTypeMetadata {
   /**
-   * Gets the human-readable label for the tab type.
+   * Gets the human-readable label for the tab type, which a new tab of the type is titled.
    */
   readonly label: string;
+
+  /**
+   * Gets what kind of tab it is, in words — "Workspace", "Code Editor" — which the window status strip
+   * opens with whatever the tab is titled (#882).
+   */
+  readonly kind: string;
 
   /**
    * Gets the icon for the tab type.
@@ -108,18 +114,22 @@ export interface TabTypeMetadata {
  * Specifies the display metadata (label and icon) for every {@link TabType}.
  */
 export const TAB_TYPE_METADATA: Readonly<Record<TabType, TabTypeMetadata>> = {
-  directory: { label: 'Directory', icon: Icon.DIRECTORY },
-  code: { label: 'Code', icon: Icon.CODE },
-  markdown: { label: 'Markdown', icon: Icon.MARKDOWN },
-  binary: { label: 'Binary', icon: Icon.BINARY },
-  image: { label: 'Image', icon: Icon.IMAGE_FILE },
-  terminal: { label: 'Terminal', icon: Icon.TERMINAL },
-  agent: { label: 'Agent', icon: Icon.AGENT },
-  containers: { label: 'Containers', icon: Icon.CONTAINERS },
-  'api-explorer': { label: 'API Explorer', icon: Icon.API_EXPLORER },
-  'model-manager': { label: 'AI Models', icon: Icon.AI_MODELS },
-  'plugin-manager': { label: 'Plugins', icon: Icon.WELCOME_PLUGINS },
-  'system-monitor': { label: 'System Monitor', icon: Icon.SYSTEM_MONITOR },
-  'mission-control': { label: 'Mission Control', icon: Icon.ROCKET_LAUNCH },
-  settings: { label: 'Settings', icon: Icon.SETTINGS, iconRotation: 30 },
+  directory: { label: 'Directory', kind: 'Workspace', icon: Icon.DIRECTORY },
+  code: { label: 'Code', kind: 'Code Editor', icon: Icon.CODE },
+  markdown: { label: 'Markdown', kind: 'Markdown Editor', icon: Icon.MARKDOWN },
+  binary: { label: 'Binary', kind: 'Binary Editor', icon: Icon.BINARY },
+  image: { label: 'Image', kind: 'Image Editor', icon: Icon.IMAGE_FILE },
+  terminal: { label: 'Terminal', kind: 'Terminal', icon: Icon.TERMINAL },
+  agent: { label: 'Agent', kind: 'Agent', icon: Icon.AGENT },
+  containers: { label: 'Containers', kind: 'Containers', icon: Icon.CONTAINERS },
+  'api-explorer': { label: 'API Explorer', kind: 'API Explorer', icon: Icon.API_EXPLORER },
+  'model-manager': { label: 'AI Models', kind: 'Model Manager', icon: Icon.AI_MODELS },
+  'plugin-manager': { label: 'Plugins', kind: 'Plugin Manager', icon: Icon.WELCOME_PLUGINS },
+  'system-monitor': { label: 'System Monitor', kind: 'System Monitor', icon: Icon.SYSTEM_MONITOR },
+  'mission-control': {
+    label: 'Mission Control',
+    kind: 'Mission Control',
+    icon: Icon.ROCKET_LAUNCH,
+  },
+  settings: { label: 'Settings', kind: 'Settings', icon: Icon.SETTINGS, iconRotation: 30 },
 };

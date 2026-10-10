@@ -33,7 +33,11 @@ export class ImageStatusStrip {
         return [];
       }
       const segments: StatusSegment[] = [
-        { id: 'image-path', text: context.dirty ? `${context.path} ●` : context.path },
+        {
+          id: 'image-path',
+          text: context.dirty ? `${context.path} ●` : context.path,
+          shrink: 'start',
+        },
       ];
       if (context.note !== null) {
         segments.push({ id: 'image-note', text: context.note });

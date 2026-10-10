@@ -1,3 +1,4 @@
+import { AiConnection } from '@shared/api/ai-types';
 import { TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
 
@@ -2131,6 +2132,18 @@ describe('Agent', () => {
 
     expect(lastItem()?.kind).toBe('user');
     expect(lastItem()?.id).toBe('item-5');
+  });
+
+  it('billedPerToken_onlyForAnApiKeyConnection (#882)', () => {
+    // A subscription is a flat fee, so a cost its provider reports is not money spent.
+    const settings: Settings = TestBed.inject(Settings);
+    settings.set('ai.connections', [
+      { id: 'claude', auth: 'local-login' } as unknown as AiConnection,
+    ]);
+    expect(agent.billedPerToken()).toBe(false);
+
+    settings.set('ai.connections', [{ id: 'claude', auth: 'api-key' } as unknown as AiConnection]);
+    expect(agent.billedPerToken()).toBe(true);
   });
 
   it('usage_whenReported_setsContextTokensToInputPlusOutputAndAccumulatesCost', () => {

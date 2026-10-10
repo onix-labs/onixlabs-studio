@@ -1,10 +1,16 @@
 import { Type } from '@angular/core';
 import { describe, expect, it } from 'vitest';
+import { AgentStatusStrip } from '@features/agent/angular/agent-status/agent-status-strip';
 import { ApiExplorerStatus } from '@features/api-explorer/angular/api-explorer-status/api-explorer-status';
 import { BinaryStatusStrip } from '@features/binary/angular/binary-status/binary-status-strip';
 import { CodeStatusStrip } from '@features/code/angular/code-status/code-status-strip';
 import { ImageStatusStrip } from '@features/image/angular/image-status/image-status-strip';
 import { MarkdownStatusStrip } from '@features/markdown/angular/markdown-status/markdown-status-strip';
+import { ContainersStatusStrip } from '@features/containers/angular/containers-status/containers-status-strip';
+import { ModelManagerStatusStrip } from '@features/model-manager/angular/model-manager-status/model-manager-status-strip';
+import { SystemMonitorStatusStrip } from '@features/system-monitor/angular/system-monitor-status/system-monitor-status-strip';
+import { MissionControlStatusStrip } from '@features/mission-control/angular/mission-control-status/mission-control-status-strip';
+import { PluginManagerStatusStrip } from '@features/plugin-manager/angular/plugin-manager-status/plugin-manager-status-strip';
 import { TerminalStatusStrip } from '@features/terminal/angular/terminal-status/terminal-status-strip';
 import { DirectoryStatusStrip } from '@features/workspace/angular/directory-status/directory-status-strip';
 import { StatusStripSegments } from './status-strip-segments/status-strip-segments';
@@ -43,6 +49,12 @@ describe('status strip contract', () => {
     ['image', ImageStatusStrip],
     ['api-explorer', ApiExplorerStatus],
     ['workspace', DirectoryStatusStrip],
+    ['agent', AgentStatusStrip],
+    ['plugin-manager', PluginManagerStatusStrip],
+    ['mission-control', MissionControlStatusStrip],
+    ['containers', ContainersStatusStrip],
+    ['model-manager', ModelManagerStatusStrip],
+    ['system-monitor', SystemMonitorStatusStrip],
   ];
 
   for (const [name, component] of COMPONENTS) {

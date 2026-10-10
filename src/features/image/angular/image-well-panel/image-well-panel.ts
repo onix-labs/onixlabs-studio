@@ -20,7 +20,8 @@ import {
 import { RecentItems } from '@shared/angular/services/recent-items/recent-items';
 import { Tab } from '@shared/angular/services/tabs/tab';
 import { ImageDocument, ImageDocuments } from '../image-document/image-document';
-import { formatFileSize, ImageSize } from '../image-geometry/image-geometry';
+import { formatFileSize } from '@shared/angular/services/formatting/file-size';
+import { ImageSize } from '../image-geometry/image-geometry';
 import { ImageToolstrip } from '../image-toolstrip/image-toolstrip';
 import { ImageView } from '../image-view/image-view';
 

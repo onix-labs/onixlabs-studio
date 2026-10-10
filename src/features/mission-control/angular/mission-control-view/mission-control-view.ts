@@ -10,12 +10,17 @@ import {
   Injector,
   input,
   InputSignal,
+  OnInit,
   Signal,
   Type,
   viewChild,
 } from '@angular/core';
 import { Settings } from '@shared/angular/services/settings/settings';
 import { Log } from '@shared/angular/services/log/log';
+import {
+  createViewInjectorRegistrar,
+  ViewInjectorRegistrar,
+} from '@shared/angular/services/view-injectors/view-injector-registration';
 import { Agent } from '@shared/angular/services/agent/agent';
 import {
   AGENT_HOST,
@@ -48,7 +53,7 @@ import { MissionControlTiles } from './mission-control-tiles';
   changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [MissionControlTiles],
 })
-export class MissionControlView {
+export class MissionControlView implements OnInit {
   /**
    * Holds the app-wide live-hosts registry the agent columns mirror.
    */
@@ -142,6 +147,14 @@ export class MissionControlView {
    * tile registry once it renders and keeping its trailing spacer sized as the agent set, the scroll
    * mode, or the row's size changes (so left-alignment can reach the last columns).
    */
+  /**
+   * Publishes this view's injector while it is active, so the status strip mounts Mission Control's
+   * status (#882) inside it.
+   */
+  private readonly statusHost: ViewInjectorRegistrar = createViewInjectorRegistrar({
+    isActive: this.isActive,
+  });
+
   public constructor() {
     afterRenderEffect((): void => {
       const row: HTMLElement | undefined = this.rowRef()?.nativeElement;
@@ -164,6 +177,13 @@ export class MissionControlView {
     });
 
     inject(DestroyRef).onDestroy((): void => this.teardownRow());
+  }
+
+  /**
+   * Publishes this view's injector to the status strip, now that the tab id is readable.
+   */
+  public ngOnInit(): void {
+    this.statusHost.register(this.tabId());
   }
 
   /**

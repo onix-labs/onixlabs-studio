@@ -7,6 +7,7 @@ import {
   inject,
   input,
   InputSignal,
+  OnInit,
   Signal,
   signal,
   untracked,
@@ -17,6 +18,10 @@ import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropd
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { Table, TableColumn, TableRow, TableRowDef } from '@shared/angular/components/table/table';
 import { Log } from '@shared/angular/services/log/log';
+import {
+  createViewInjectorRegistrar,
+  ViewInjectorRegistrar,
+} from '@shared/angular/services/view-injectors/view-injector-registration';
 import { LogRecord, LogSession, SEVERITIES, Severity } from '@shared/api/log-channels';
 import { MetricsSample, METRICS_HISTORY } from '@shared/api/system-monitor-channels';
 import { MetricTile, TileChannel } from '../metric-tile/metric-tile';
@@ -44,6 +49,51 @@ const AUDIT_COLUMNS: readonly TableColumn[] = [
 ];
 
 /**
+ * What the System Monitor tab's status strip reports.
+ */
+export interface SystemMonitorSummary {
+  /**
+   * Gets the log session being read, in words.
+   */
+  readonly session: string;
+
+  /**
+   * Gets how many records the session holds.
+   */
+  readonly records: number;
+
+  /**
+   * Gets how many of them the severity and text filters show.
+   */
+  readonly shown: number;
+
+  /**
+   * Gets how many of the session's records are errors.
+   */
+  readonly errors: number;
+
+  /**
+   * Gets how many of the session's records are warnings.
+   */
+  readonly warnings: number;
+
+  /**
+   * Gets how many records are selected.
+   */
+  readonly selected: number;
+
+  /**
+   * Gets Studio's own CPU share, formatted, or null before it is read.
+   */
+  readonly appCpu: string | null;
+
+  /**
+   * Gets Studio's own memory, formatted, or null before it is read.
+   */
+  readonly appMemory: string | null;
+}
+
+/**
  * The System Monitor tab. This phase (epic #395 P2 / #397) is the per-session **log audit**: a live,
  * filterable table of every log record — main-process and every renderer window — for the selected app
  * session, sourced from the P1 logging service. The live session streams in over the record push; a
@@ -57,7 +107,7 @@ const AUDIT_COLUMNS: readonly TableColumn[] = [
   styleUrl: './system-monitor-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class SystemMonitorView {
+export class SystemMonitorView implements OnInit {
   /**
    * Gets the severities in display order, exposed for the filter chips.
    */
@@ -404,6 +454,48 @@ export class SystemMonitorView {
       return true;
     });
   });
+
+  /**
+   * Gets what the tab's status strip reports (#882): the log session being read, how many of its
+   * records the filters show, its errors and warnings (counted over the whole session, so a filter
+   * cannot hide that they exist), the selection, and Studio's own CPU and memory as the tiles read
+   * them. Read by the strip through the injector this view publishes.
+   */
+  public readonly summary: Signal<SystemMonitorSummary> = computed((): SystemMonitorSummary => {
+    const records: readonly LogRecord[] = this.records();
+    const viewed: LogSession | undefined = this.sessions().find(
+      (session: LogSession): boolean => session.id === this.selectedSessionValue(),
+    );
+    return {
+      session:
+        this.viewingLive() || viewed === undefined
+          ? 'Current session'
+          : this.formatDate(viewed.startedAt),
+      records: records.length,
+      shown: this.filtered().length,
+      errors: records.filter((record: LogRecord): boolean => record.severity === 'error').length,
+      warnings: records.filter((record: LogRecord): boolean => record.severity === 'warning')
+        .length,
+      selected: this.selectedCount(),
+      appCpu: this.cpuAppValue(),
+      appMemory: this.memoryAppValue(),
+    };
+  });
+
+  /**
+   * Publishes this view's injector while it is active, so the status strip mounts the tab's status
+   * (#882) inside it.
+   */
+  private readonly statusHost: ViewInjectorRegistrar = createViewInjectorRegistrar({
+    isActive: this.isActive,
+  });
+
+  /**
+   * Publishes this view's injector to the status strip, now that the tab id is readable.
+   */
+  public ngOnInit(): void {
+    this.statusHost.register(this.tabId());
+  }
 
   /**
    * Gets the filtered records adapted to the table's row shape, oldest first.

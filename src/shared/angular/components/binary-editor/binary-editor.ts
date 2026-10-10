@@ -696,11 +696,12 @@ export class BinaryEditor {
 
 /**
  * Formats a byte offset as a `HHHH:LLLL` hex address, splitting the value into high and low words so
- * long addresses stay readable.
+ * long addresses stay readable. The Binary Editor's status strip writes its offset the same way, so
+ * the two can be compared at a glance (#882).
  * @param offset The byte offset.
  * @returns Returns the formatted address.
  */
-function formatAddress(offset: number): string {
+export function formatAddress(offset: number): string {
   const hex: string = offset.toString(16).padStart(8, '0').toUpperCase();
   return `${hex.slice(0, -4)}:${hex.slice(-4)}`;
 }

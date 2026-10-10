@@ -70,11 +70,26 @@ describe('StatusStripContainer', () => {
     expect(text()).toContain('Ready');
   });
 
-  it('whenTheActiveFeatureHasNoStatusComponent_namesTheActiveTab', () => {
-    tabs.open('mission-control');
+  it('opensWithWhatKindOfTabIsActive_whateverTheTabIsTitled (#882)', () => {
+    const tab: Tab = tabs.open('directory');
+    tabs.rename(tab.id, 'onixlabs-studio');
     fixture.detectChanges();
 
-    expect(text()).toContain('Mission Control');
+    expect(text()).toContain('Workspace');
+    // A feature with no status of its own shows only its kind: the tab's title is not repeated.
+    expect(text()).not.toContain('onixlabs-studio');
+  });
+
+  it('kindLeads_thenTheFeaturesOwnStatus (#882)', () => {
+    registry.register({ type: 'code', view: CodeStatusStub, status: CodeStatusStub });
+    openViewWithInjector('code');
+    fixture.detectChanges();
+
+    const view: Element = (fixture.nativeElement as HTMLElement).querySelector(
+      '.status-strip__view',
+    )!;
+    expect(view.firstElementChild?.textContent?.trim()).toBe('Code Editor');
+    expect(stub()).not.toBeNull();
   });
 
   it('whenTheActiveFeatureHasAStatusComponent_mountsIt', () => {

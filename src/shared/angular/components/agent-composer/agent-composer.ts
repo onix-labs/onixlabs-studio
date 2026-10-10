@@ -384,7 +384,8 @@ export class AgentComposer {
     if (pending > 0) {
       base = `${base} · includes ≈${pending.toLocaleString()} tokens of attached selection`;
     }
-    const cost: number = this.agent.costUsd();
+    // Spend only for a connection billed by the token: a subscription's reported cost is notional.
+    const cost: number = this.agent.billedPerToken() ? this.agent.costUsd() : 0;
     return cost > 0 ? `${base} · ${formatCost(cost)}` : base;
   });
 

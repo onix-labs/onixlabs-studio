@@ -6,6 +6,7 @@ import {
   computed,
   inject,
   input,
+  OnInit,
 } from '@angular/core';
 import {
   FormatPluginContribution,
@@ -25,6 +26,10 @@ import { canUpdate } from '@shared/angular/components/plugin-action/plugin-actio
 import { PluginBrowse, categoriesOf, rowIconForCategory } from '../plugin-browse/plugin-browse';
 import { languageDisplayName } from '@shared/angular/services/plugins/language-names';
 import { Plugins } from '@shared/angular/services/plugins/plugins';
+import {
+  createViewInjectorRegistrar,
+  ViewInjectorRegistrar,
+} from '@shared/angular/services/view-injectors/view-injector-registration';
 
 /**
  * How each slot is described where a plugin's contributions are listed.
@@ -55,7 +60,7 @@ const SLOT_LABELS: Readonly<Record<PluginSlot, string>> = {
   styleUrl: './plugin-manager-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class PluginManagerView {
+export class PluginManagerView implements OnInit {
   /**
    * Gets the icon set, exposed for the template.
    */
@@ -73,6 +78,21 @@ export class PluginManagerView {
    * Gets whether this tab is the active one.
    */
   public readonly isActive: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Publishes this view's injector while it is active, so the status strip mounts the Plugin Manager's
+   * status (#882) inside it. Without it the strip has no view to mount through and names only the tab.
+   */
+  private readonly statusHost: ViewInjectorRegistrar = createViewInjectorRegistrar({
+    isActive: this.isActive,
+  });
+
+  /**
+   * Publishes this view's injector to the status strip, now that the tab id is readable.
+   */
+  public ngOnInit(): void {
+    this.statusHost.register(this.tabId());
+  }
 
   /**
    * Holds the plugin client the view reads and acts through.

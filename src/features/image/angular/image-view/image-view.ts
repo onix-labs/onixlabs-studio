@@ -25,6 +25,7 @@ import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropd
 import { NumberField } from '@shared/angular/components/forms/number-field/number-field';
 import { Slider } from '@shared/angular/components/forms/slider/slider';
 import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
+import { formatFileSize } from '@shared/angular/services/formatting/file-size';
 import { Icon } from '@shared/angular/icons/icon';
 import { FileOpener } from '@shared/angular/services/file-opener/file-opener';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
@@ -44,7 +45,6 @@ import {
   clampEdge,
   clampZoom,
   fitScale,
-  formatFileSize,
   formatZoom,
   ImageRect,
   ImageSize,

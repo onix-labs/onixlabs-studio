@@ -2,7 +2,30 @@
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
+  // One line, always (#882): a segment never wraps, so the strip keeps its height at any width.
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  white-space: nowrap;
   // Use the font's tabular figures so digits keep a stable width as values change (e.g. the Ln/Col
   // cursor position), stopping segments from jittering. Only digit glyphs are affected.
   font-variant-numeric: tabular-nums;
+}
+
+// The text is what gives way in a segment that may shorten; the icon beside it keeps its size.
+.status-strip-segment__text {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+// A path shortens from its start, so its file name is what stays: the box runs right to left, which
+// puts the ellipsis at the start, while the text inside keeps its own left-to-right order — a path's
+// leading slash stays where it is written.
+.status-strip-segment__text--from-start {
+  direction: rtl;
+}
+
+.status-strip-segment__run {
+  direction: ltr;
+  unicode-bidi: isolate;
 }

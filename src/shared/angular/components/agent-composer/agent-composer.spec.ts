@@ -120,6 +120,7 @@ describe('AgentComposer', () => {
       contextTokens,
       contextWindow,
       costUsd: signal<number>(0),
+      billedPerToken: signal<boolean>(true),
       pendingContextTokens,
       contextPaths,
       send: (

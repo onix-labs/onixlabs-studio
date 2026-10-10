@@ -6,8 +6,10 @@ import { ApiEnvironment, ApiHistoryEntry } from '@shared/api/api-client-types';
 import { ApiWorkspace } from '../api-workspace/api-workspace';
 
 /**
- * Shows the active API Explorer view's two pieces of always-relevant state at the end of the status
- * strip: which environment is resolving variables, and how the last send went.
+ * Shows the active API Explorer view's status (#882): on the left, which API document the tab holds —
+ * its path, marked while unsaved, as the editors show theirs — and at the end what is going on, most
+ * telling first: requests in flight, how the last send went, and which environment is resolving
+ * variables.
  *
  * The environment belongs here rather than only in the tree because it silently changes what every
  * request does — sending a staging request at production is the mistake this segment exists to
@@ -21,7 +23,7 @@ import { ApiWorkspace } from '../api-workspace/api-workspace';
 @Component({
   selector: 'app-api-explorer-status',
   imports: [StatusStripSegments],
-  template: `<app-status-strip-segments [trailing]="trailing()" />`,
+  template: `<app-status-strip-segments [leading]="leading()" [trailing]="trailing()" />`,
   // The host must add no box of its own: the strip lays the segment groups and their flexible
   // spacer out in its own flex row, and a shrink-to-fit host would trap the spacer, bunching the
   // trailing segments and the ambient region up on the left.
@@ -35,30 +37,53 @@ export class ApiExplorerStatus {
   private readonly workspace: ApiWorkspace = inject(ApiWorkspace);
 
   /**
-   * Gets the end-aligned segments: the active environment, and the last send's outcome.
+   * Gets the start-aligned segments: the document's path, or "New Document" before it is saved, marked
+   * while it has unsaved changes.
+   */
+  protected readonly leading: Signal<readonly StatusSegment[]> = computed(
+    (): readonly StatusSegment[] => {
+      const path: string = this.workspace.filePath() ?? 'New Document';
+      return [
+        {
+          id: 'api-explorer-path',
+          text: this.workspace.dirty() ? `${path} ●` : path,
+          shrink: 'start',
+        },
+      ];
+    },
+  );
+
+  /**
+   * Gets the end-aligned segments: the requests in flight (while any are), the last send's outcome,
+   * and the active environment.
    */
   protected readonly trailing: Signal<readonly StatusSegment[]> = computed(
     (): readonly StatusSegment[] => {
       const environment: ApiEnvironment | null = this.workspace.activeEnvironment();
       const last: ApiHistoryEntry | undefined = this.workspace.history()[0];
-      return [
-        {
-          id: 'api-explorer-environment',
-          text: environment?.name ?? 'No environment',
-          icon: Icon.API_ENVIRONMENT,
-          title: 'The environment requests resolve their variables against',
-        },
-        ...(last === undefined
-          ? []
-          : [
-              {
-                id: 'api-explorer-last-send',
-                text: this.describe(last),
-                icon: Icon.API_REQUEST,
-                title: `${last.method} ${last.url}`,
-              },
-            ]),
-      ];
+      const sending: number = this.workspace.inFlight().size;
+      const segments: StatusSegment[] = [];
+      if (sending > 0) {
+        segments.push({
+          id: 'api-explorer-sending',
+          text: sending === 1 ? 'Sending 1 request' : `Sending ${sending} requests`,
+        });
+      }
+      if (last !== undefined) {
+        segments.push({
+          id: 'api-explorer-last-send',
+          text: `${last.method} ${this.describe(last)}`,
+          icon: Icon.API_REQUEST,
+          title: `${last.method} ${last.url}`,
+        });
+      }
+      segments.push({
+        id: 'api-explorer-environment',
+        text: environment?.name ?? 'No environment',
+        icon: Icon.API_ENVIRONMENT,
+        title: 'The environment requests resolve their variables against',
+      });
+      return segments;
     },
   );
 

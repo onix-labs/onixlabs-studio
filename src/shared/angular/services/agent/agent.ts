@@ -11,6 +11,7 @@ import { AgentControls, AgentPhase, agentControls, agentPhase } from './agent-co
 import type {
   AgentContextRef,
   AgentMode,
+  AiConnection,
   AgentSurface,
   AiEditDecision,
   AiEffort,
@@ -28,6 +29,7 @@ import type {
   AiTaskStartedEvent,
   AiTaskUpdatedEvent,
 } from '@shared/api/ai-types';
+import { API_KEY_AUTH } from '@shared/api/ai-types';
 import { AiRuntime } from '../ai-runtime/ai-runtime';
 import { AgentEngine } from '../agent-engine/agent-engine';
 import { Log } from '@shared/angular/services/log/log';
@@ -531,6 +533,13 @@ export class Agent {
   );
 
   /**
+   * Gets the name of the connection this conversation's runs go through, or null before providers load.
+   */
+  public readonly providerLabel: Signal<string | null> = computed(
+    (): string | null => this.providerInfo()?.label ?? null,
+  );
+
+  /**
    * Gets the models offered by this conversation's effective provider, in display order.
    */
   public readonly models: Signal<readonly AiModelInfo[]> = computed(
@@ -1019,6 +1028,20 @@ export class Agent {
    * Gets the conversation's accumulated cost in US dollars, or zero when the provider reports no cost.
    */
   public readonly costUsd: Signal<number> = this.costUsdState.asReadonly();
+
+  /**
+   * Gets whether this conversation's connection is billed by the token — an API key — so its cost is
+   * money spent. A subscription login is a flat fee: a provider may still report what a turn would have
+   * cost at API prices (Claude does), but nothing is charged for it, so a surface showing spend reads
+   * this before {@link costUsd} (#882).
+   */
+  public readonly billedPerToken: Signal<boolean> = computed(
+    (): boolean =>
+      this.settings
+        .aiConnections()
+        .find((connection: AiConnection): boolean => connection.id === this.provider())?.auth ===
+      API_KEY_AUTH,
+  );
 
   /**
    * Gets a value indicating whether the agent is waiting on the user: a permission decision or an

@@ -1,5 +1,6 @@
 import { FeatureDescriptor } from '@shared/angular/services/feature-registry';
 import { ContainersRibbon } from './containers-ribbon/containers-ribbon';
+import { ContainersStatusStrip } from './containers-status/containers-status-strip';
 import { ContainersView } from './containers-view/containers-view';
 
 /**
@@ -13,4 +14,5 @@ export const descriptor: FeatureDescriptor = {
   type: 'containers',
   view: ContainersView,
   ribbon: ContainersRibbon,
+  status: ContainersStatusStrip,
 };
