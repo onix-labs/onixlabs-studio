@@ -56,10 +56,11 @@ export class DirectoryStatusStrip {
       }
       // The workspace segment: the open folder, always shown while the workspace is in view — whether
       // or not it is a git repository. A checkout's directory is a GUID, so a container tab names the
-      // container instead.
+      // container instead. No icon (#882): the strip's kind segment before it already wears the
+      // folder, and a second would read as the same thing twice.
       const workspaceName: string = this.containerName() ?? root.name ?? this.repository.repoName();
       const segments: StatusSegment[] = [
-        { id: 'ws-folder', text: workspaceName, icon: Icon.FOLDER_SIMPLE, title: workspaceName },
+        { id: 'ws-folder', text: workspaceName, title: workspaceName, shrink: 'end' },
       ];
       if (!this.repository.isBound()) {
         return segments;
@@ -72,7 +73,13 @@ export class DirectoryStatusStrip {
       if (this.worktreeSession.isContainer()) {
         const label: string | null = this.worktreeSession.activeLabel();
         if (label !== null && label !== (branch?.name ?? '')) {
-          segments.push({ id: 'ws-worktree', text: label, icon: Icon.WORKTREE, title: label });
+          segments.push({
+            id: 'ws-worktree',
+            text: label,
+            icon: Icon.WORKTREE,
+            title: label,
+            shrink: 'end',
+          });
         }
       }
       const branchName: string = branch?.name ?? 'detached HEAD';
@@ -81,6 +88,7 @@ export class DirectoryStatusStrip {
         text: branchName,
         icon: Icon.BRANCH,
         title: `On branch ${branchName}`,
+        shrink: 'end',
       });
       // What is waiting to be committed, before what is waiting to be pushed: the three counts read
       // left to right in the order work actually travels — written, then committed, then sent. Shown
@@ -93,7 +101,9 @@ export class DirectoryStatusStrip {
         icon: Icon.GIT_COMMIT,
         title: `${changes} uncommitted change(s)`,
       });
-      if (branch !== undefined) {
+      // The commits to push and to pull, only for a branch that tracks one (#882): a branch never
+      // published has nothing to be ahead of or behind, and 0 / 0 would read as "in sync".
+      if (branch?.upstream !== undefined) {
         segments.push(
           {
             id: 'ws-push',

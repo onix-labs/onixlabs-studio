@@ -21,6 +21,9 @@ app-status-strip-container app-icon {
 app-status-strip-container app-status-strip-segment {
   display: inline-flex;
   align-items: center;
+  // A segment keeps its width unless it may shorten (#882).
+  flex: 0 0 auto;
+  min-inline-size: 0;
 
   + app-status-strip-segment::before {
     content: '';
@@ -35,4 +38,35 @@ app-status-strip-container app-status-strip-segment {
     border-inline-start: 0.0625rem solid var(--status-strip-bevel-shadow-color);
     border-inline-end: 0.0625rem solid var(--status-strip-bevel-highlight-color);
   }
+}
+
+// The same groove between the tab's kind ("Workspace", "Code Editor") and the view's own left-hand
+// segments (#882). The kind sits outside the view's segment group, so it is never a segment's sibling
+// and the rule above cannot see it: this one draws after the kind, and only while the view's leading
+// group holds a segment — a view whose segments are all right-aligned, or that has none, leaves its
+// kind unfenced.
+app-status-strip-container
+  .status-strip__kind:has(
+    ~ * .status-strip-segments__group:first-child app-status-strip-segment
+  )::after {
+  content: '';
+  align-self: center;
+  inline-size: 0;
+  block-size: 1.25rem;
+  // The mirror of the rule above: half the strip's 1rem gap out, then half back.
+  margin-inline: 0.5rem -0.5rem;
+  border-inline-start: 0.0625rem solid var(--status-strip-bevel-shadow-color);
+  border-inline-end: 0.0625rem solid var(--status-strip-bevel-highlight-color);
+}
+
+// A segment that may shorten — a path, a name — starts from a small basis and grows back to its full
+// width while the group has room, so a narrow strip shortens it before dropping the segments after it.
+app-status-strip-container app-status-strip-segment.status-strip-segment--shrink {
+  flex: 1 1 4rem;
+  max-inline-size: max-content;
+}
+
+// The kind ("Workspace", "Code Editor") always shows.
+app-status-strip-container .status-strip__kind {
+  flex: 0 0 auto;
 }

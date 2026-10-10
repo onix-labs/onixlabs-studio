@@ -8,6 +8,7 @@ import {
   input,
   InputSignal,
   OnDestroy,
+  OnInit,
   Signal,
   signal,
   untracked,
@@ -20,6 +21,10 @@ import { PanelLayout } from '@shared/angular/components/panel-layout/panel-layou
 import { PanelEdge } from '@shared/angular/components/panel-layout/panel-types';
 import { Terminal } from '@shared/angular/components/terminal/terminal';
 import { Log } from '@shared/angular/services/log/log';
+import {
+  createViewInjectorRegistrar,
+  ViewInjectorRegistrar,
+} from '@shared/angular/services/view-injectors/view-injector-registration';
 import { Icon } from '@shared/angular/icons/icon';
 import { ContainerSummary, ImageSummary } from '@shared/api/container-types';
 import { PluginSummary } from '@shared/api/plugin-channels';
@@ -32,6 +37,31 @@ import {
 import { ContainersStatus } from '../containers-status/containers-status';
 import { ContainersClient } from '../client/containers-client';
 import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigger';
+
+/**
+ * What the Containers tab's status strip reports.
+ */
+export interface ContainersSummary {
+  /**
+   * Gets the engine in effect's name, or null when none is installed.
+   */
+  readonly engine: string | null;
+
+  /**
+   * Gets whether the engine answers: null while first loading.
+   */
+  readonly available: boolean | null;
+
+  /**
+   * Gets how many containers the engine holds, running or not.
+   */
+  readonly containers: number;
+
+  /**
+   * Gets how many images the engine holds.
+   */
+  readonly images: number;
+}
 
 /**
  * The Containers tab: a thin dashboard over the containers backend contribution (#391). It lists
@@ -51,7 +81,7 @@ import { TooltipTrigger } from '@shared/angular/components/tooltip/tooltip-trigg
   providers: [ContainerTerminals],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class ContainersView implements OnDestroy {
+export class ContainersView implements OnInit, OnDestroy {
   /**
    * What the engine is called before the main process has said which one is in effect. Only reachable
    * outside Electron and in the moment before the engine list arrives, but the copy has to read as a
@@ -148,6 +178,25 @@ export class ContainersView implements OnDestroy {
     (): string =>
       this.client.engineInEffect()?.displayName ?? `The ${ContainersView.UNKNOWN_ENGINE}`,
   );
+
+  /**
+   * Gets what the tab's status strip reports (#882): the engine, whether it answers, and how many
+   * containers and images it holds. Read by the strip through the injector this view publishes.
+   */
+  public readonly summary: Signal<ContainersSummary> = computed((): ContainersSummary => ({
+    engine: this.noEngineInstalled() ? null : (this.client.engineInEffect()?.displayName ?? null),
+    available: this.available(),
+    containers: this.containers().length,
+    images: this.images().length,
+  }));
+
+  /**
+   * Publishes this view's injector while it is active, so the status strip mounts the tab's status
+   * (#882) inside it.
+   */
+  private readonly statusHost: ViewInjectorRegistrar = createViewInjectorRegistrar({
+    isActive: this.isActive,
+  });
 
   /**
    * Gets whether no container engine is installed at all, as opposed to one being installed and not
@@ -257,6 +306,13 @@ export class ContainersView implements OnDestroy {
   /**
    * Deregisters the ribbon handler and stops any readiness poll when the tab closes.
    */
+  /**
+   * Publishes this view's injector to the status strip, now that the tab id is readable.
+   */
+  public ngOnInit(): void {
+    this.statusHost.register(this.tabId());
+  }
+
   public ngOnDestroy(): void {
     this.log.info('containers.view', 'Containers view destroyed');
     this.commands.unregister(this.commandHandler);

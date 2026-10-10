@@ -1,5 +1,6 @@
 import { EnvironmentProviders, makeEnvironmentProviders } from '@angular/core';
 import { FeatureDescriptor, provideFeature } from '@shared/angular/services/feature-registry';
+import { MissionControlStatusStrip } from './mission-control-status/mission-control-status-strip';
 import { MissionControlRibbon } from './mission-control-ribbon/mission-control-ribbon';
 import { MissionControlView } from './mission-control-view/mission-control-view';
 
@@ -13,6 +14,7 @@ const missionControlFeature: FeatureDescriptor = {
   type: 'mission-control',
   view: MissionControlView,
   ribbon: MissionControlRibbon,
+  status: MissionControlStatusStrip,
 };
 
 /**

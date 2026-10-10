@@ -20,6 +20,10 @@ import { AGENT_CONVERSATION_KIND } from '@shared/angular/services/agent-conversa
 import { AgentSessions } from '@shared/angular/services/agent-sessions/agent-sessions';
 import { Keybindings } from '@shared/angular/services/keybindings/keybindings';
 import { Log } from '@shared/angular/services/log/log';
+import {
+  createViewInjectorRegistrar,
+  ViewInjectorRegistrar,
+} from '@shared/angular/services/view-injectors/view-injector-registration';
 import { WorkspaceAgentStart, Workspaces } from '@shared/angular/services/workspaces/workspaces';
 import { Icon } from '@shared/angular/icons/icon';
 
@@ -92,6 +96,15 @@ export class AgentView implements OnInit, OnDestroy {
   public readonly isActive: InputSignal<boolean> = input<boolean>(false);
 
   /**
+   * Publishes this view's injector while it is active, so the status strip mounts the tab's status
+   * (#882) inside it and reads this tab's own {@link Agent}. Finalised in {@link ngOnInit} once the tab
+   * id is readable.
+   */
+  private readonly statusHost: ViewInjectorRegistrar = createViewInjectorRegistrar({
+    isActive: this.isActive,
+  });
+
+  /**
    * Initializes a new instance of the {@link AgentView} class, publishing this tab's conversation to
    * the session registry while active (so the ribbon drives it) and registering/releasing the keyboard
    * accelerators as the view's active state changes.
@@ -132,6 +145,9 @@ export class AgentView implements OnInit, OnDestroy {
    */
   public ngOnInit(): void {
     const id: string | undefined = this.tabId();
+    if (id !== undefined) {
+      this.statusHost.register(id);
+    }
     const start: WorkspaceAgentStart | undefined =
       id === undefined ? undefined : this.workspaces.takeAgentStart(id);
     if (start !== undefined) {

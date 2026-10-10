@@ -15,9 +15,16 @@ import { StatusSegment } from '@shared/angular/services/status-bar/status-segmen
       @if (segment().icon; as icon) {
         <app-icon [icon]="icon" />
       }
-      {{ segment().text }}
+      <span
+        class="status-strip-segment__text"
+        [class.status-strip-segment__text--from-start]="segment().shrink === 'start'"
+        ><span class="status-strip-segment__run">{{ segment().text }}</span></span
+      >
     </span>
   `,
+  host: {
+    '[class.status-strip-segment--shrink]': 'segment().shrink !== undefined',
+  },
   styleUrl: './status-strip-segment.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })

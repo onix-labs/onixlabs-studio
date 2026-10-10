@@ -1,5 +1,6 @@
 import { FeatureDescriptor } from '@shared/angular/services/feature-registry';
 import { ModelManagerRibbon } from './model-manager-ribbon/model-manager-ribbon';
+import { ModelManagerStatusStrip } from './model-manager-status/model-manager-status-strip';
 import { ModelManagerView } from './model-manager-view/model-manager-view';
 
 /**
@@ -16,4 +17,5 @@ export const descriptor: FeatureDescriptor = {
   type: 'model-manager',
   view: ModelManagerView,
   ribbon: ModelManagerRibbon,
+  status: ModelManagerStatusStrip,
 };

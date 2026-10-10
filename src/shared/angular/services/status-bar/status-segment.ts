@@ -24,4 +24,12 @@ export interface StatusSegment {
    * (for example a commits-to-push arrow) means.
    */
   readonly title?: string;
+
+  /**
+   * Gets which end of the text gives way when the strip is short of room, if this segment may shorten
+   * at all (#882). A path shortens from its start, keeping the file name; a name or branch from its
+   * end. A segment that may not shorten keeps its width and, when even shortening is not enough, drops
+   * out of the strip whole rather than being cut through.
+   */
+  readonly shrink?: 'start' | 'end';
 }

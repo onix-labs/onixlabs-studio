@@ -2,17 +2,19 @@
   <!-- The view region: the active feature's own status, mounted through that view's injector so it
        reads the view's per-tab services. It is destroyed on tab switch, so it can never go stale.
        Both halves of the condition matter: without the view's injector the component would be built
-       in the shell's, silently binding to root-scoped services instead of the tab's. A feature
-       contributing no status (or one whose view has not registered yet) names the active tab. -->
+       in the shell's, silently binding to root-scoped services instead of the tab's. It opens with
+       what kind of tab is active; a feature contributing no status (or one whose view has not
+       registered yet) shows only that, with an empty segment group keeping the spacer. -->
   <div class="status-strip__view">
+    <app-status-strip-segment class="status-strip__kind" [segment]="kindSegment()" />
     @if (viewStatus(); as status) {
       @if (viewInjector(); as injector) {
         <ng-container *ngComponentOutlet="status; injector: injector" />
       } @else {
-        <app-status-strip-segments [leading]="fallback()" />
+        <app-status-strip-segments [leading]="fallback" />
       }
     } @else {
-      <app-status-strip-segments [leading]="fallback()" />
+      <app-status-strip-segments [leading]="fallback" />
     }
   </div>
 
@@ -20,11 +22,6 @@
   <div class="status-strip__ambient">
     @for (segment of ambient(); track segment.id) {
       <app-status-strip-segment [segment]="segment" />
-    }
-    <!-- The layout the active workspace is showing, named in full — the ribbon's View button has room
-         only for the role ("Default"), not for whatever the layout is actually called. -->
-    @if (layoutSegment(); as layout) {
-      <app-status-strip-segment [segment]="layout" />
     }
     <!-- The drop-up triggers sit together as one cluster of controls, spaced far more tightly than
          the ambient segments beside them: a segment is a run of words that needs room to read as its

@@ -6,8 +6,16 @@
 
 .status-strip-segments__group {
   display: flex;
+  // Short of room (#882), a segment that will not fit wraps onto a second line the group's one-line
+  // height hides, so it drops out whole rather than being cut through — the last first. A segment that
+  // may shorten (`shrink`) first gives way to its own width; see the strip's global styles.
+  flex-wrap: wrap;
+  align-content: flex-start;
   align-items: center;
   gap: 1rem;
+  min-inline-size: 0;
+  block-size: 1.25rem;
+  overflow: hidden;
 
   // An empty group must not add a gap of its own to the strip.
   &:empty {
@@ -15,6 +23,20 @@
   }
 }
 
+// The leading group is the one that gives way: it shrinks before the trailing one starts dropping
+// segments, down to a floor that keeps a shortened path readable. A group shorter than the floor
+// is not seen to grow: the room past its segments is as empty as the spacer that follows it.
+.status-strip-segments__group:first-child {
+  flex: 0 1000 auto;
+  min-inline-size: 10rem;
+}
+
+.status-strip-segments__group:last-child {
+  flex: 0 1 auto;
+  justify-content: flex-end;
+}
+
 .status-strip-segments__spacer {
-  flex: 1 1 auto;
+  flex: 1 1 0;
+  min-inline-size: 0;
 }

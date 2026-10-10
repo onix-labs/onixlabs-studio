@@ -40,6 +40,7 @@ function mockAgent(running: boolean): Partial<Agent> {
     pendingContextTokens: signal<number>(0),
     contextWindow: signal<number>(1_000_000),
     costUsd: signal<number>(1.42),
+    billedPerToken: signal<boolean>(true),
     provider: signal<string>(PROVIDER.id),
     mode: signal<'agent'>('agent'),
     effort: signal(null),

@@ -96,6 +96,13 @@ class FakeLog {
       this.listener = null;
     };
   }
+
+  /**
+   * Drops a trace line: the view's status-strip registration logs one.
+   */
+  public trace(): void {
+    // Intentionally empty.
+  }
 }
 
 /**

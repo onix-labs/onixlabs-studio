@@ -1,5 +1,6 @@
 import { FeatureDescriptor } from '@shared/angular/services/feature-registry';
 import { SystemMonitorRibbon } from './system-monitor-ribbon/system-monitor-ribbon';
+import { SystemMonitorStatusStrip } from './system-monitor-status/system-monitor-status-strip';
 import { SystemMonitorView } from './system-monitor-view/system-monitor-view';
 
 /**
@@ -18,4 +19,5 @@ export const descriptor: FeatureDescriptor = {
   type: 'system-monitor',
   view: SystemMonitorView,
   ribbon: SystemMonitorRibbon,
+  status: SystemMonitorStatusStrip,
 };
