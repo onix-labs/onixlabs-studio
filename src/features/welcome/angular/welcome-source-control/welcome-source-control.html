@@ -212,9 +212,7 @@
             <p class="source__empty-hint">Try a different filter or search.</p>
           </div>
         } @else {
-          <!-- The scrollbar floats over the rows rather than taking a channel beside them, so the list's
-               right edge lines up with the controls above it. -->
-          <div class="source__list-frame" appOverlayScrollbar=".source__list">
+          <div class="source__list-frame">
             <ul class="source__list">
               @for (repository of visible(); track repository.id) {
                 <li>
@@ -249,11 +247,7 @@
       </div>
       @if (accounts().length > 0 && visible().length > 0) {
         @if (selected(); as repository) {
-          <aside
-            class="source__detail"
-            aria-label="Repository details"
-            appOverlayScrollbar=".source__detail-body"
-          >
+          <aside class="source__detail" aria-label="Repository details">
             <!-- The name stays put at the top and the actions at the bottom; only the details between
                  them scroll. -->
             <header class="source__detail-head">

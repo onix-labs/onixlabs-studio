@@ -35,8 +35,7 @@
              settings view's own tree because it is the same tree — a plugin root with a leaf per
              thing installed beneath it — and a user who set something up here finds it in Settings
              under the same shape. -->
-        <!-- The scrollbar floats over the rows, so the current step's fill reaches the rail's edge. -->
-        <nav class="setup__rail" aria-label="Setup progress" appOverlayScrollbar=".tree-list">
+        <nav class="setup__rail" aria-label="Setup progress">
           <app-tree-view [rows]="rows()" [selectedId]="step()?.id ?? null">
             <ng-template let-row>
               @let rung = stepOf(row);

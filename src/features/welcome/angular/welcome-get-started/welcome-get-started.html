@@ -51,9 +51,7 @@
       </div>
 
       @if (visibleItems().length > 0) {
-        <!-- The scrollbar floats over the rows rather than taking a channel beside them, so the list's
-             right edge lines up with the controls above it. -->
-        <div class="welcome__recent-frame" appOverlayScrollbar=".welcome__recent-list">
+        <div class="welcome__recent-frame">
           <ul class="welcome__recent-list">
             @for (item of visibleItems(); track item.path) {
               <li class="welcome__recent-row" [class.welcome__recent-row--pinned]="item.pinned">

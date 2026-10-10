@@ -23,7 +23,6 @@ import { Icon } from '@shared/angular/icons/icon';
 import { OPEN_IN_FILE_SYSTEM_LABEL } from '@shared/angular/services/shell/shell-labels';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
-import { OverlayScrollbar } from '@shared/angular/components/overlay-scrollbar/overlay-scrollbar';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
@@ -79,7 +78,7 @@ interface StartAction {
  */
 @Component({
   selector: 'app-welcome-get-started',
-  imports: [AppIcon, Button, Dropdown, Modal, ModalContent, OverlayScrollbar, TooltipTrigger],
+  imports: [AppIcon, Button, Dropdown, Modal, ModalContent, TooltipTrigger],
   templateUrl: './welcome-get-started.html',
   styleUrl: './welcome-get-started.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

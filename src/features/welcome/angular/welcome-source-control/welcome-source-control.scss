@@ -319,7 +319,7 @@
   color: var(--wl-faint);
 }
 
-// The panel draws the box; its body scrolls inside it, under the overlay scrollbar.
+// The panel draws the box; its body scrolls inside it.
 .source__detail {
   display: flex;
   flex: 0 0 16rem;

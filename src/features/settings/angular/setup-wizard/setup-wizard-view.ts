@@ -10,7 +10,6 @@ import { SetupStepTerminal } from './setup-step-terminal';
 import { SetupStepWhatsNew } from './setup-step-whats-new';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { TreeRow, TreeView } from '@shared/angular/components/tree-view/tree-view';
-import { OverlayScrollbar } from '@shared/angular/components/overlay-scrollbar/overlay-scrollbar';
 import { Modal } from '@shared/angular/components/modal/modal';
 import { ModalContent } from '@shared/angular/components/modal/modal-content';
 import { Icon } from '@shared/angular/icons/icon';
@@ -42,7 +41,6 @@ import {
     Button,
     AppIcon,
     TreeView,
-    OverlayScrollbar,
     SetupStepSettings,
     SetupStepTerminal,
     SetupStepWhatsNew,

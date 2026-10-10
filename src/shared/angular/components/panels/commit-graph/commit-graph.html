@@ -69,9 +69,8 @@
   </div>
 }
 
-<!-- The rows scroll beneath the strip and the form; the graph is positioned within them. The
-     scrollbar floats over the rows' right edge rather than taking a channel beside them. -->
-<div class="commit-graph__frame" appOverlayScrollbar=".commit-graph__scroller">
+<!-- The rows scroll beneath the strip and the form; the graph is positioned within them. -->
+<div class="commit-graph__frame">
   <div class="commit-graph__scroller" #scroller>
     <div class="graph" [style.block-size.px]="canvasHeight()">
       @if (!filtered()) {
