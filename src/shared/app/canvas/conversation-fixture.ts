@@ -131,6 +131,9 @@ export function conversationFixture(): readonly AgentItem[] {
         '| `ai-settings` | none | no |',
         '| `ai-connection-editor` | `16rem` | no |',
         '',
+        // A path with no break in it: it must wrap rather than bleed out of the bubble.
+        'The build writes `~/Development/acme/OnixLabs.DotNetPlayground.TaxCalculator/bin/Debug/net10.0/OnixLabs.DotNetPlayground.TaxCalculator.dll`.',
+        '',
         "Here's the change I'd make:",
         '',
         '```scss',
