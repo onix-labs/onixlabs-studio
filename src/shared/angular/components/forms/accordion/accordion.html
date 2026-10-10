@@ -13,7 +13,7 @@
       @if (icon(); as icon) {
         <app-icon class="accordion__icon" [icon]="icon" [color]="iconColor()" />
       }
-      <span class="accordion__heading">{{ heading() }}</span>
+      <span class="accordion__heading" [class.section-label]="section()">{{ heading() }}</span>
     </button>
     <span class="accordion__actions"><ng-content select="[accordionActions]" /></span>
     <app-icon

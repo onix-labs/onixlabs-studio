@@ -6,28 +6,21 @@
       [disabled]="busy()"
       (action)="onRefresh()"
     />
-    <!-- Mutually exclusive, so they are toggles rather than checks: pressing one releases the others,
-         and the pressed one is always the list you are looking at. -->
-    <app-ribbon-strip-button
-      [icon]="Icon.PLUGINS"
-      label="All Plugins"
-      [toggle]="true"
-      [pressed]="browse.stateFilter() === 'all'"
-      (action)="onState('all')"
-    />
+    <!-- Which group of the list is open: one at a time, so these are toggles rather than checks, and
+         the pressed one follows a group opened from its own header. -->
     <app-ribbon-strip-button
       [icon]="Icon.CHECK"
       label="Installed"
       [toggle]="true"
-      [pressed]="browse.stateFilter() === 'installed'"
-      (action)="onState('installed')"
+      [pressed]="browse.shownGroup() === 'installed'"
+      (action)="onGroup('installed')"
     />
     <app-ribbon-strip-button
       [icon]="Icon.DOWNLOAD"
-      label="Not Installed"
+      label="Available"
       [toggle]="true"
-      [pressed]="browse.stateFilter() === 'not-installed'"
-      (action)="onState('not-installed')"
+      [pressed]="browse.shownGroup() === 'available'"
+      (action)="onGroup('available')"
     />
   </app-ribbon-strip-group>
 

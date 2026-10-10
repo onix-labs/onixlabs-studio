@@ -109,9 +109,8 @@
 }
 
 .plugin-manager__title {
+  // The shared `.section-label` sets the type; only the spacing is ours.
   margin: 0;
-  font-size: 1rem;
-  font-weight: 600;
 }
 
 .plugin-manager__subtitle {
@@ -130,68 +129,60 @@
   font-size: 0.8125rem;
 }
 
-.plugin-manager__list {
-  // The list scrolls, the heading does not: a heading that scrolled away would take the one sentence
-  // saying which category you are looking at with it.
+// The groups, inset from the view's edges. The heading above them does not scroll: a heading that
+// scrolled away would take the one sentence saying which category you are looking at with it.
+.plugin-manager__groups {
+  display: flex;
   flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.75rem;
   min-block-size: 0;
+  padding: 0.25rem 1rem 1rem;
+  overflow: auto;
+}
+
+// A closed group is just its header. Open groups share the height equally, each capped at what its
+// table needs, so a short group shows whole and a long one takes the rest and scrolls inside its box,
+// its column header staying in view.
+.plugin-manager__group {
+  flex: none;
+
+  &--open {
+    flex: 1 1 0;
+    max-block-size: calc-size(max-content, size);
+  }
+}
+
+.plugin-manager__empty {
+  margin: 0;
+  color: var(--form-muted-foreground-color);
+  font-size: 0.8125rem;
 }
 
 // ---------------------------------------------------------------------------------------------
-// A row: one line of columns, with the name and its description stacked inside the first
+// A row: the plugin's icon with its name and description stacked beside it, then one cell per column
 // ---------------------------------------------------------------------------------------------
 
-// Named because the identity column's width is derived from both of them, and a half that silently
-// stopped being a half the next time the gap changed would be a difficult thing to notice.
-$icon-column: 2.5rem;
-$column-gap: 0.875rem;
-// Fixed, so the buttons line up down the list however wide their labels are. "Remove", "Update" and
-// "Install" are all different lengths; sizing to content would stagger them row by row and make the
-// one control in the row something to be found again on each one.
-//
-// 🔥 The width has to be measured, not picked: nothing here sets a base `font-size`, so the row runs at
-// the browser's 16px, and the button spends 16px on inline padding, 2px on its border, and 22px on the
-// icon and its gap before the label gets anything. "Remove" is the longest of the three at ~58px, so
-// anything under 6.5rem cuts it — which is exactly what 4rem did.
-$action-column: 7rem;
-
-// 🔥 The row is a single grid *row*, and that is the whole trick. It was two rows — the columns on the
-// first, the description on the second — and a column occupying only the first row has nothing to be
-// centred against: `align-items: center` centred it within a track the height of one line, while the
-// row itself was two lines tall. The name and description stack inside their own cell instead, so the
-// row has exactly one track, that cell is the tallest thing in it, and every other column centres
-// against the full height.
-.plugin-row {
-  display: grid;
-  // The shared `.list-row` is a flex container, so this is a flex *item*, and a flex item is
-  // shrink-to-fit by default: without these it never filled the row and the fractional tracks below
-  // collapsed to nothing.
-  flex: 1 1 auto;
-  min-inline-size: 0;
-  align-items: center;
-  // 🔥 Every track is a fixed width, a percentage or a fraction, and none is `auto`. Each row is its
-  // own grid, so a content-sized track would resolve against that row's own text and the columns would
-  // land somewhere different on every row.
-  //
-  // The identity column is sized so that the *pair* — icon plus name and description — comes to half
-  // the row: a percentage track resolves against the grid's content box, so the icon's own track and
-  // the gap between them are subtracted here rather than eating into the half. The remaining columns
-  // divide what is left; `minmax(0, …)` lets the fractional ones give way first when the panel is
-  // dragged narrow, leaving the version and state legible longest.
-  grid-template-columns:
-    #{$icon-column} calc(50% - #{$icon-column} - #{$column-gap}) minmax(0, 1fr)
-    minmax(0, 1.2fr) 8rem 9.5rem #{$action-column};
-  gap: $column-gap;
-  // The list itself does not space its rows, so the gap between one plugin and the next is ours.
+// A plugin row is two lines tall (name over description), so its cells get more room than the table's
+// default and every other cell centres against that height. Scoped through the table's class so it
+// outranks the table's own cell padding.
+.plugin-manager__table td.plugin-cell {
   padding-block: 0.5rem;
+  vertical-align: middle;
+}
+
+.plugin-row__plugin {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  min-inline-size: 0;
 }
 
 .plugin-row__icon {
-  justify-self: center;
+  flex: none;
   color: var(--form-muted-foreground-color);
 }
 
-// The one cell that is two lines tall; it sets the row's height and everything else centres on it.
 .plugin-row__identity {
   display: flex;
   min-inline-size: 0;
@@ -207,71 +198,56 @@ $action-column: 7rem;
 }
 
 // The name and the state carry the row; everything else is supporting text, so it is muted rather
-// than competing for the same attention. Muting is what separates them — the columns are read across
-// rows to compare plugins, so they keep the row's own text size and let the colour do the work.
-.plugin-row__category,
-.plugin-row__targets,
-.plugin-row__version {
+// than competing for the same attention. The columns are read across rows to compare plugins, so they
+// keep the row's own text size and let the colour do the work.
+.plugin-row__muted {
+  color: var(--form-muted-foreground-color);
+}
+
+// The description belongs to the name above it rather than to a column being scanned, so it is the
+// only text set smaller than the row.
+.plugin-row__description {
   overflow: hidden;
   color: var(--form-muted-foreground-color);
+  font-size: 0.75rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-// The description is the one thing that is genuinely secondary: it belongs to the name above it rather
-// than to a column being scanned, so it is the only text set smaller than the row.
-.plugin-row__description {
+// A row's languages, one chip each. They share the column equally rather than in proportion to their
+// names: each grows towards its own name's width, so names that fit show whole and, when they do not,
+// they shorten to the same width with an ellipsis.
+.plugin-row__chips {
+  display: flex;
+  gap: 0.25rem;
+  min-inline-size: 0;
   overflow: hidden;
-  color: var(--form-muted-foreground-color);
-  font-size: 0.8125rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+
+  > app-chip {
+    flex: 1 1 0;
+    min-inline-size: 2.5rem;
+    max-inline-size: calc-size(max-content, size);
+  }
 }
 
 .plugin-row__version {
   font-variant-numeric: tabular-nums;
 }
 
-.plugin-row__state {
-  display: flex;
-  align-items: center;
-  gap: 0.3125rem;
-  justify-self: start;
-  color: var(--form-muted-foreground-color);
-  white-space: nowrap;
-
-  // The four states the badge can be in, each stated in the semantic colour that already means it
-  // everywhere else in the application rather than in a colour picked for this view.
-  &--installed {
-    color: var(--success-color);
-  }
-
-  &--update {
-    color: var(--info-color);
-  }
-
-  &--available {
-    color: var(--warning-color);
-  }
-
-  &--unavailable {
-    color: var(--danger-color);
-  }
-
-  // Not a colour: the work is transient, and a colour would imply an outcome it has not reached.
-  &--busy {
-    font-style: italic;
-  }
+// The state is a chip toned by the state (see `stateTone`). Work in flight is italic rather than
+// coloured: it has not reached an outcome yet.
+.plugin-row__state--busy {
+  font-style: italic;
 }
 
-// The action is the row's one interactive element, so it is pinned to the end and given a fixed track
-// of its own: a button that moved with the text beside it would have to be found again on every row.
+// The action is the row's one interactive element, in a fixed column at the end so it lines up down
+// the table: a button that moved with the text beside it would have to be found again on every row.
 .plugin-row__action {
   display: flex;
   align-items: center;
   justify-content: flex-end;
   // Holds the button's height while a progress bar stands in for it, so a row does not shrink and the
-  // list does not shift as installs start and finish.
+  // table does not shift as installs start and finish.
   min-block-size: var(--control-height);
 
   app-plugin-action {

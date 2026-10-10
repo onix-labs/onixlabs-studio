@@ -7,11 +7,7 @@ import { RibbonStripColumn } from '@shared/angular/components/ribbon-strip/ribbo
 import { RibbonStripField } from '@shared/angular/components/ribbon-strip/ribbon-strip-field/ribbon-strip-field';
 import { type RibbonFieldOption } from '@shared/angular/components/ribbon-strip/ribbon-strip-field/ribbon-strip-field';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
-import {
-  PluginBrowse,
-  type PluginSort,
-  type PluginStateFilter,
-} from '../plugin-browse/plugin-browse';
+import { PluginBrowse, type PluginSort, type PluginGroupId } from '../plugin-browse/plugin-browse';
 import { Icon } from '@shared/angular/icons/icon';
 import { contributeFeatureMenu } from '@shared/angular/services/app-menu/contribute-feature-menu';
 import { MenuContribution } from '@shared/angular/services/app-menu/app-menu-model';
@@ -63,11 +59,11 @@ export class PluginManagerRibbon {
   ];
 
   /**
-   * Narrows the list to an install state.
-   * @param state The state to show.
+   * Opens a group of the list, closing the other.
+   * @param group The group to open.
    */
-  protected onState(state: PluginStateFilter): void {
-    this.browse.stateFilter.set(state);
+  protected onGroup(group: PluginGroupId): void {
+    this.browse.openGroup.set(group);
   }
 
   /**

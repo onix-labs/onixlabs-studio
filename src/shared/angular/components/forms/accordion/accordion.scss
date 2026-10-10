@@ -80,3 +80,31 @@
 .accordion__body {
   padding: 0.4rem 0.75rem 0.75rem;
 }
+
+// A filling accordion takes the height its parent gives it: the box, then the body, are flex columns
+// that pass it down, so content which scrolls on its own (a table) can be bounded and keep its header
+// in view. The body is flush, since that content draws its own edges.
+:host(.accordion--fill) {
+  display: flex;
+  flex-direction: column;
+  min-block-size: 0;
+
+  .accordion {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-block-size: 0;
+  }
+
+  .accordion__bar {
+    flex: none;
+  }
+
+  .accordion__body {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-block-size: 0;
+    padding: 0;
+  }
+}

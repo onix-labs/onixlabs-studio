@@ -10,6 +10,7 @@ import { Table, TableColumn, TableGroupDef, TableRow, TableRowDef, TableSort } f
       [columns]="columns()"
       [rows]="rows()"
       [collapsible]="collapsible()"
+      [striped]="striped()"
       emptyText="Nothing here."
       (rowClick)="onRow($event)"
       (sortChange)="onSort($event)"
@@ -35,6 +36,7 @@ class TestHost {
     { id: 'r2', data: { name: 'beta', value: '2' } },
   ]);
   public readonly collapsible: WritableSignal<boolean> = signal<boolean>(false);
+  public readonly striped: WritableSignal<boolean> = signal<boolean>(false);
   public readonly clicked: TableRow[] = [];
   public readonly sorts: (TableSort | null)[] = [];
 
@@ -122,6 +124,36 @@ describe('Table', () => {
     host.querySelector<HTMLElement>('.table-th__button')!.click();
     fixture.detectChanges();
     expect(nameHeader.getAttribute('aria-sort')).toBe('ascending');
+  });
+
+  /**
+   * Gets which rendered data rows are shaded as the alternate stripe.
+   * @returns Returns one flag per data row, in order.
+   */
+  function stripes(): boolean[] {
+    return Array.from(host.querySelectorAll<HTMLElement>('tr.table-row')).map(
+      (row: HTMLElement): boolean => row.classList.contains('table-row--alternate'),
+    );
+  }
+
+  it('shades no rows until the table is striped', () => {
+    expect(stripes()).toEqual([false, false]);
+  });
+
+  it('stripes every second row, starting again under each group', () => {
+    component.rows.set([
+      { id: 'g1', group: true, data: { label: 'One' } },
+      { id: 'a', data: { name: 'a', value: '1' } },
+      { id: 'b', data: { name: 'b', value: '2' } },
+      { id: 'c', data: { name: 'c', value: '3' } },
+      { id: 'g2', group: true, data: { label: 'Two' } },
+      { id: 'd', data: { name: 'd', value: '4' } },
+      { id: 'e', data: { name: 'e', value: '5' } },
+    ]);
+    component.striped.set(true);
+    fixture.detectChanges();
+
+    expect(stripes()).toEqual([false, true, false, false, true]);
   });
 
   it('shows no twisty until the table is collapsible', () => {

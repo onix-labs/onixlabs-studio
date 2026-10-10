@@ -29,9 +29,9 @@ export interface PluginCategory {
 }
 
 /**
- * Which install states the list is narrowed to.
+ * The groups the list is split into: plugins with a version installed, and the rest.
  */
-export type PluginStateFilter = 'all' | 'installed' | 'not-installed';
+export type PluginGroupId = 'installed' | 'available';
 
 /**
  * How the list is ordered.
@@ -101,9 +101,12 @@ export class PluginBrowse {
   public readonly query: WritableSignal<string> = signal<string>('');
 
   /**
-   * Gets which install states are shown.
+   * Gets the group that is open, or null when the user has closed it. Only one is open at a time, and
+   * Installed is open to begin with.
    */
-  public readonly stateFilter: WritableSignal<PluginStateFilter> = signal<PluginStateFilter>('all');
+  public readonly openGroup: WritableSignal<PluginGroupId | null> = signal<PluginGroupId | null>(
+    'installed',
+  );
 
   /**
    * Gets the selected category, or null for every category.
@@ -150,17 +153,45 @@ export class PluginBrowse {
   public readonly visible: Signal<readonly PluginSummary[]> = computed(
     (): readonly PluginSummary[] => {
       const text: string = this.query().trim().toLowerCase();
-      const state: PluginStateFilter = this.stateFilter();
       const category: string | null = this.category();
       const matched: readonly PluginSummary[] = this.all().filter(
         (plugin: PluginSummary): boolean =>
-          matchesState(plugin, state) &&
           (category === null || categoriesOf(plugin).includes(category)) &&
           (text.length === 0 || matchesText(plugin, text)),
       );
       return [...matched].sort(comparerFor(this.sort()));
     },
   );
+
+  /**
+   * Gets the listed plugins that are installed: present on this machine, a sideloaded one included, or
+   * mid-update (still installed while the work runs).
+   */
+  public readonly installedVisible: Signal<readonly PluginSummary[]> = computed(
+    (): readonly PluginSummary[] => this.visible().filter(isInstalled),
+  );
+
+  /**
+   * Gets the listed plugins that are not installed.
+   */
+  public readonly availableVisible: Signal<readonly PluginSummary[]> = computed(
+    (): readonly PluginSummary[] =>
+      this.visible().filter((plugin: PluginSummary): boolean => !isInstalled(plugin)),
+  );
+
+  /**
+   * Gets the group that is actually open: the chosen one, unless it has nothing to show and the other
+   * does, in which case the other opens in its place rather than leaving every box shut. Null when the
+   * user has closed it. The ribbon and the list both read this, so they never disagree.
+   */
+  public readonly shownGroup: Signal<PluginGroupId | null> = computed((): PluginGroupId | null => {
+    const chosen: PluginGroupId | null = this.openGroup();
+    if (chosen === null || this.groupHasRows(chosen)) {
+      return chosen;
+    }
+    const other: PluginGroupId = chosen === 'installed' ? 'available' : 'installed';
+    return this.groupHasRows(other) ? other : chosen;
+  });
 
   /**
    * Gets how many plugins are installed.
@@ -181,8 +212,7 @@ export class PluginBrowse {
    * Gets whether any filter is narrowing the list, which decides how an empty list is explained.
    */
   public readonly narrowed: Signal<boolean> = computed(
-    (): boolean =>
-      this.query().trim().length > 0 || this.stateFilter() !== 'all' || this.category() !== null,
+    (): boolean => this.query().trim().length > 0 || this.category() !== null,
   );
 
   /**
@@ -191,6 +221,25 @@ export class PluginBrowse {
   public clearQuery(): void {
     this.query.set('');
   }
+
+  /**
+   * Gets whether a group has any plugins to list.
+   * @param group The group.
+   * @returns Returns true when it has.
+   */
+  private groupHasRows(group: PluginGroupId): boolean {
+    return (group === 'installed' ? this.installedVisible() : this.availableVisible()).length > 0;
+  }
+}
+
+/**
+ * Gets whether a plugin is installed on this machine: it says so, or it has an installed version (an
+ * update in flight). A sideloaded plugin is installed without a recorded version, so the state decides.
+ * @param plugin The plugin.
+ * @returns Returns true when it is installed.
+ */
+export function isInstalled(plugin: PluginSummary): boolean {
+  return plugin.state === 'installed' || plugin.installedVersion !== null;
 }
 
 /**
@@ -227,24 +276,6 @@ export function categoriesOf(plugin: PluginSummary): readonly string[] {
     ),
   );
   return names.size === 0 ? [UNCATEGORISED] : [...names];
-}
-
-/**
- * Gets whether a plugin passes the install-state filter.
- * @param plugin The plugin.
- * @param filter The filter.
- * @returns Returns true when it passes.
- */
-function matchesState(plugin: PluginSummary, filter: PluginStateFilter): boolean {
-  if (filter === 'all') {
-    return true;
-  }
-  // ⚠️ `busy` counts as installed while an install is in flight and as not-installed while a removal
-  // is: either would make a row vanish from under the button the user just pressed. It shows in both.
-  if (plugin.state === 'busy') {
-    return true;
-  }
-  return filter === 'installed' ? plugin.state === 'installed' : plugin.state !== 'installed';
 }
 
 /**

@@ -20,6 +20,9 @@ import { AppIcon } from '@shared/angular/components/icon/app-icon';
   templateUrl: './accordion.html',
   styleUrl: './accordion.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: {
+    '[class.accordion--fill]': 'fill()',
+  },
 })
 export class Accordion {
   /**
@@ -42,6 +45,19 @@ export class Accordion {
    * the header's muted glyph colour.
    */
   public readonly iconColor: InputSignal<string | undefined> = input<string | undefined>(undefined);
+
+  /**
+   * Gets whether the heading is a section label: the small uppercase label that heads a section
+   * elsewhere in the application (`.section-label`), rather than the row's own text. Defaults to false.
+   */
+  public readonly section: InputSignal<boolean> = input<boolean>(false);
+
+  /**
+   * Gets whether the accordion fills the height it is given, its body flush to its edges, for content
+   * that scrolls on its own (a table whose header stays put). The host is a flex column, so its parent
+   * decides the height. Defaults to false.
+   */
+  public readonly fill: InputSignal<boolean> = input<boolean>(false);
 
   /**
    * Gets or sets a value indicating whether the panel is expanded.

@@ -105,6 +105,26 @@ describe('Accordion', () => {
     expect(bar?.lastElementChild?.classList.contains('accordion__caret')).toBe(true);
   });
 
+  it('section_setsTheHeadingInTheSectionLabelStyle', async () => {
+    const element: HTMLElement = fixture.nativeElement as HTMLElement;
+    expect(element.querySelector('.accordion__heading.section-label')).toBeNull();
+
+    fixture.componentRef.setInput('section', true);
+    await fixture.whenStable();
+
+    expect(element.querySelector('.accordion__heading.section-label')).not.toBeNull();
+  });
+
+  it('fill_marksTheHostToFillTheHeightItIsGiven', async () => {
+    const element: HTMLElement = fixture.nativeElement as HTMLElement;
+    expect(element.classList).not.toContain('accordion--fill');
+
+    fixture.componentRef.setInput('fill', true);
+    await fixture.whenStable();
+
+    expect(element.classList).toContain('accordion--fill');
+  });
+
   it('caret_whenClicked_togglesOpen', () => {
     const element: HTMLElement = fixture.nativeElement as HTMLElement;
     element.querySelector<HTMLElement>('.accordion__caret')?.click();
