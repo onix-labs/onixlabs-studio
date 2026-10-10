@@ -69,9 +69,6 @@ export class IssueOpener {
         icon: Icon.INFO,
         role: 'document',
         component: IssueDocumentPanel,
-        // The panel draws its own strip: the well's stubbed editor tools have nothing to do with an
-        // issue, and its state badge and Open on GitHub have everything to do with one.
-        ownsToolStrip: true,
       });
     }
 

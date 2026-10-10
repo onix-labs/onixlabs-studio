@@ -233,7 +233,7 @@
     outline: none;
   }
 
-  // A disabled row (e.g. an empty menu's "No actions yet" placeholder): muted and inert.
+  // A disabled row: muted and inert.
   &.cdk-menu-item-disabled {
     color: var(--form-muted-foreground-color);
     cursor: default;

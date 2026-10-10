@@ -13,17 +13,10 @@ import { Button } from '@shared/angular/components/forms/button/button';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 
 /**
- * The items offered by the more-actions menu when a caller supplies none, so the button is present —
- * the strip reads the same in every explorer — but says plainly that there is nothing behind it yet.
- */
-const NO_MORE_ACTIONS: readonly MenuItem[] = [
-  { id: 'none', label: 'No actions yet', disabled: true },
-];
-
-/**
  * The shared explorer tool strip rendered at the top of the Solution Explorer, File Explorer and API
  * Explorer panel bodies (those panels opt out of the dock's default strip). It pairs a search box on
- * the left with expand-all, collapse-all, and a more-actions menu on the right. A panel may project
+ * the left with expand-all, collapse-all, and — when the panel has commands for it — a more-actions
+ * menu on the right. A panel may project
  * buttons of its own, which sit between collapse-all and the menu (the Repository panel's Refresh). The toolbar is purely
  * presentational: it emits the search text, the expand/collapse intents, and the chosen menu item,
  * leaving the panel to drive its own model.
@@ -68,11 +61,10 @@ export class ExplorerToolbar {
 
   /**
    * Gets the items offered by the more-actions menu — the panel's own commands, since only the panel
-   * knows what can be added to what it shows. Defaults to an inert placeholder for a panel that has
-   * not wired any.
+   * knows what can be added to what it shows. With none, the strip shows no menu button rather than
+   * one with nothing behind it (#882).
    */
-  public readonly moreItems: InputSignal<readonly MenuItem[]> =
-    input<readonly MenuItem[]>(NO_MORE_ACTIONS);
+  public readonly moreItems: InputSignal<readonly MenuItem[]> = input<readonly MenuItem[]>([]);
 
   /**
    * Emits the id of the chosen more-actions item.

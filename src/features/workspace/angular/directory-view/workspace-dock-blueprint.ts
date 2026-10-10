@@ -54,7 +54,6 @@ export const WORKSPACE_DOCK_BLUEPRINT: DockBlueprint = {
       icon: Icon.FILE_EXPLORER,
       role: 'tool',
       component: TreePanel,
-      ownsToolStrip: true,
     },
     {
       id: 'solution',
@@ -62,7 +61,6 @@ export const WORKSPACE_DOCK_BLUEPRINT: DockBlueprint = {
       icon: Icon.SOLUTION_EXPLORER,
       role: 'tool',
       component: SolutionPanel,
-      ownsToolStrip: true,
     },
     {
       // The id stays 'search', so a saved layout that names the panel still finds it.
@@ -71,8 +69,6 @@ export const WORKSPACE_DOCK_BLUEPRINT: DockBlueprint = {
       icon: Icon.SEARCH,
       role: 'tool',
       component: SearchPanel,
-      // The panel's strip is the search itself — the dock's placeholder set did nothing (#882).
-      ownsToolStrip: true,
     },
     {
       id: 'agent',
@@ -80,7 +76,6 @@ export const WORKSPACE_DOCK_BLUEPRINT: DockBlueprint = {
       icon: Icon.AGENT,
       role: 'tool',
       component: AgentPanel,
-      ownsToolStrip: true,
     },
     {
       // The demoted Output panel: a background home for LSP-server and debug-session logs, out of the
@@ -91,7 +86,6 @@ export const WORKSPACE_DOCK_BLUEPRINT: DockBlueprint = {
       icon: Icon.OUTPUT,
       role: 'tool',
       component: OutputPanel,
-      ownsToolStrip: true,
     },
     {
       id: 'debug',
@@ -99,7 +93,6 @@ export const WORKSPACE_DOCK_BLUEPRINT: DockBlueprint = {
       icon: Icon.DEBUG,
       role: 'tool',
       component: DebugPanel,
-      ownsToolStrip: true,
     },
     {
       // The Package Management panel: dependencies and their upgrade state. Catalogued for every
@@ -111,7 +104,6 @@ export const WORKSPACE_DOCK_BLUEPRINT: DockBlueprint = {
       icon: Icon.PACKAGES,
       role: 'tool',
       component: PackagesPanel,
-      ownsToolStrip: true,
     },
     {
       // The container overview and switcher. Catalogued for every workspace tab but added to the
@@ -128,7 +120,6 @@ export const WORKSPACE_DOCK_BLUEPRINT: DockBlueprint = {
       icon: Icon.PROBLEMS,
       role: 'tool',
       component: ProblemsPanel,
-      ownsToolStrip: true,
     },
     {
       id: 'terminal',
@@ -136,7 +127,6 @@ export const WORKSPACE_DOCK_BLUEPRINT: DockBlueprint = {
       icon: Icon.TERMINAL,
       role: 'tool',
       component: TerminalPanel,
-      ownsToolStrip: true,
     },
   ],
 };

@@ -1924,7 +1924,6 @@ export class DirectoryView implements OnInit, OnDestroy {
         icon: Icon.LIST_ALL,
         role: 'tool',
         component: CommitDetail,
-        ownsToolStrip: true,
       });
       this.commitRegistered = true;
     }

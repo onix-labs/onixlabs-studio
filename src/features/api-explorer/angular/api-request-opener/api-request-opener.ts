@@ -67,9 +67,6 @@ export class ApiRequestOpener {
       icon: Icon.API_REQUEST,
       role: 'document',
       component: ApiRequestPanel,
-      // The request renders its own tool strip — its name and Send — so the well shows none of its
-      // own above it.
-      ownsToolStrip: true,
     });
     this.dockState.tabInto(well.id, id);
     this.dockFocus.focus(well.id);
@@ -91,7 +88,6 @@ export class ApiRequestOpener {
       icon: Icon.API_REQUEST,
       role: 'document',
       component: ApiRequestPanel,
-      ownsToolStrip: true,
     });
   }
 }

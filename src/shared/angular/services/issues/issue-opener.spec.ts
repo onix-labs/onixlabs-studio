@@ -90,8 +90,6 @@ describe('IssueOpener', () => {
     const id: string = issues.idForIssue(12);
     expect(registry.get(id)?.title).toBe('#12');
     expect(registry.get(id)?.role).toBe('document');
-    // Its own strip: the well's stubbed editor tools have nothing to do with an issue.
-    expect(registry.get(id)?.ownsToolStrip).toBe(true);
     expect(well()?.panels).toContain(id);
     expect(well()?.active).toBe(id);
     expect(dockFocus.focusedStackId()).toBe(well()?.id);

@@ -1,6 +1,6 @@
 @if (request(); as request) {
-  <!-- This request's tool strip, in the well's chrome where an editor's would be (the panel declares
-       `ownsToolStrip`, so the dock renders none of its own). It carries the request as a whole
+  <!-- This request's tool strip, at the top of the panel as every panel's is (the dock draws none of
+       its own). It carries the request as a whole
        (#882): its name — which doubles as the tab title — then the method, the address it is sent
        to, and Send. -->
   <app-panel-toolbar role="group" aria-label="Request">
