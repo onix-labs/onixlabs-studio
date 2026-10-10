@@ -155,7 +155,12 @@ export class MonacoDiagnosticsProvider implements DiagnosticsProvider {
             severity: this.severityOf(monaco, marker.severity),
             line: marker.startLineNumber,
             column: marker.startColumn,
-            source: marker.source ?? '',
+            // Monaco's own checkers (TypeScript, JSON, CSS, HTML) seldom set a source, so the marker's
+            // owner names the checker instead: every row says what raised it.
+            source:
+              marker.source !== undefined && marker.source.length > 0
+                ? marker.source
+                : marker.owner,
             documentId: location?.documentId ?? null,
             path: location?.path ?? null,
           };
