@@ -12,6 +12,7 @@ import type { AiEditDecision } from '@shared/api/ai-types';
 import type { AgentItem } from '@shared/angular/services/agent/agent';
 import { AgentCard } from '../agent-card/agent-card';
 import { AgentChoice, AgentChoiceList } from '../agent-choice-list/agent-choice-list';
+import { Chip } from '@shared/angular/components/chip/chip';
 
 /**
  * The choices an edit-decision card offers, in the order they are listed: the plain yes, the yes that
@@ -78,7 +79,7 @@ export function detailSegments(detail: string): readonly DetailSegment[] {
  */
 @Component({
   selector: 'app-agent-edit-decision-card',
-  imports: [AgentCard, AgentChoiceList],
+  imports: [Chip, AgentCard, AgentChoiceList],
   templateUrl: './agent-edit-decision-card.html',
   styleUrl: './agent-edit-decision-card.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

@@ -183,6 +183,10 @@
             <app-icon [icon]="Icon.WELCOME_REPOSITORIES_EMPTY" [size]="4" />
             @if (loading()) {
               <p class="source__empty-title">Reading your repositories…</p>
+              <app-progress-bar
+                class="source__empty-progress"
+                ariaLabel="Reading your repositories"
+              />
             } @else if (canBrowse()) {
               <p class="source__empty-title">No accounts signed in</p>
               <p class="source__empty-hint">
@@ -270,13 +274,13 @@
               @if (repository.fork || repository.archived || repository.starred) {
                 <div class="source__badges">
                   @if (repository.starred) {
-                    <span class="source__badge">Starred</span>
+                    <app-chip>Starred</app-chip>
                   }
                   @if (repository.fork) {
-                    <span class="source__badge">Fork</span>
+                    <app-chip>Fork</app-chip>
                   }
                   @if (repository.archived) {
-                    <span class="source__badge source__badge--warning">Archived</span>
+                    <app-chip tone="warning">Archived</app-chip>
                   }
                 </div>
               }
@@ -288,7 +292,9 @@
               @if (repository.topics?.length) {
                 <ul class="source__topics" aria-label="Topics">
                   @for (topic of repository.topics; track topic) {
-                    <li class="source__topic">{{ topic }}</li>
+                    <li class="source__topic">
+                      <app-chip tone="accent">{{ topic }}</app-chip>
+                    </li>
                   }
                 </ul>
               }

@@ -30,6 +30,7 @@ import {
   SystemMonitorCommandHandler,
   SystemMonitorCommands,
 } from '../system-monitor-commands/system-monitor-commands';
+import { Chip, ChipTone } from '@shared/angular/components/chip/chip';
 
 /**
  * The severities shown by default: the notable ones. Trace and debug are fine-grained diagnostics,
@@ -94,6 +95,17 @@ export interface SystemMonitorSummary {
 }
 
 /**
+ * The chip tone each severity is labelled in: trace quiet, then rising to danger for an error.
+ */
+const SEVERITY_TONES: Readonly<Record<Severity, ChipTone>> = {
+  trace: 'neutral',
+  debug: 'info',
+  info: 'accent',
+  warning: 'warning',
+  error: 'danger',
+};
+
+/**
  * The System Monitor tab. This phase (epic #395 P2 / #397) is the per-session **log audit**: a live,
  * filterable table of every log record — main-process and every renderer window — for the selected app
  * session, sourced from the P1 logging service. The live session streams in over the record push; a
@@ -102,7 +114,7 @@ export interface SystemMonitorSummary {
  */
 @Component({
   selector: 'app-system-monitor-view',
-  imports: [Button, Dropdown, TextField, Table, TableRowDef, MetricTile],
+  imports: [Chip, Button, Dropdown, TextField, Table, TableRowDef, MetricTile],
   templateUrl: './system-monitor-view.html',
   styleUrl: './system-monitor-view.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -802,6 +814,15 @@ export class SystemMonitorView implements OnInit {
    */
   protected severityLabel(severity: Severity): string {
     return severity.toUpperCase();
+  }
+
+  /**
+   * Gets the chip tone a severity is labelled in, rising with how severe it is.
+   * @param severity The severity.
+   * @returns Returns the tone.
+   */
+  protected severityTone(severity: Severity): ChipTone {
+    return SEVERITY_TONES[severity];
   }
 
   /**

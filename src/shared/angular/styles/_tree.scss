@@ -188,27 +188,14 @@ app-tree-view {
   animation: tree-spin 0.8s linear infinite;
 }
 
-// A count carried by a tree row or the header above one: the changes on the checked-out branch, the
-// files in a group. Filled with the accent rather than a muted wash, because a count is the row's
-// answer to "is there anything here" and a whisper is a poor way to give it.
-//
-// Shared rather than restated per panel: the Repository panel and the Commit panel both carry one,
-// and two copies of the same pill are two pills that will eventually disagree.
+// A count carried by a tree row or the header above one: the matches in a file, the files in a group.
+// An `app-chip` (neutral: a count is information, not a call to action), so it reads like every other
+// chip; this places it. Shared rather than restated per panel, so the counts never disagree.
 .tree-count {
-  flex: 0 0 auto;
-  // Wide enough that a single digit still reads as a pill rather than as a circle, so a count of 1
-  // and a count of 10 are the same shape.
+  // Wide enough that a single digit is not narrower than a double one.
   min-inline-size: 1.25rem;
   margin-inline-start: 0.35rem;
-  padding: 0.05rem 0.35rem;
-  border-radius: 999px;
-  background: var(--accent-color);
-  color: var(--form-on-accent-color);
-  font-family: inherit;
-  font-size: 0.65rem;
-  font-weight: 600;
-  line-height: 1.5;
-  text-align: center;
+  justify-content: center;
 }
 
 @keyframes tree-spin {

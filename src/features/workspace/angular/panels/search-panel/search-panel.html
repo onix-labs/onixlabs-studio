@@ -123,7 +123,7 @@
       @if (result.kind === 'file') {
         <app-icon class="tree-icon" [icon]="fileIcon(result.file)" />
         <span class="tree-name" [title]="result.file">{{ result.file }}</span>
-        <span class="tree-count">{{ result.count }}</span>
+        <app-chip class="tree-count">{{ result.count }}</app-chip>
       } @else {
         <span class="search-panel__match-line">{{ result.item.line }}</span>
         <span

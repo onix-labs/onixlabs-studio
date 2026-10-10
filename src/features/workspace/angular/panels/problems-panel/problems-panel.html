@@ -42,7 +42,7 @@
           <span class="problems-message">{{ diagnostic.message }}</span>
           <span class="problems-location">
             @if (diagnostic.source) {
-              <span class="problems-source">{{ diagnostic.source }}</span>
+              <app-chip class="problems-source">{{ diagnostic.source }}</app-chip>
             }
             {{ diagnostic.file }}:{{ diagnostic.line }}:{{ diagnostic.column }}
           </span>

@@ -212,20 +212,6 @@
   color: var(--form-muted-foreground-color);
 }
 
-.model-manager__badge {
-  display: inline-block;
-  padding: 0.05rem 0.4rem;
-  font-size: 0.7rem;
-  border-radius: calc(0.25rem * var(--border-radius-multiplier, 1));
-  background-color: var(--form-control-border-color);
-  color: var(--form-muted-foreground-color);
-
-  &--curated {
-    background-color: var(--accent-surface-background-color);
-    color: var(--body-foreground-color);
-  }
-}
-
 .model-manager__installed {
   font-size: 0.78rem;
   color: var(--form-muted-foreground-color);

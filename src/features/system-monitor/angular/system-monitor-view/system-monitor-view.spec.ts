@@ -185,6 +185,38 @@ describe('SystemMonitorView', () => {
     expect(view.filtered()).toHaveLength(2);
   });
 
+  it('severity_isAChip_tonedByHowSevereItIs', async () => {
+    await create([
+      record({ id: 1, severity: 'trace' }),
+      record({ id: 2, severity: 'debug' }),
+      record({ id: 3, severity: 'info' }),
+      record({ id: 4, severity: 'warning' }),
+      record({ id: 5, severity: 'error' }),
+    ]);
+    // Trace and debug are hidden by default; show every severity so each chip renders.
+    for (const severity of ['trace', 'debug'] as const) {
+      if (!view.isEnabled(severity)) {
+        view.toggleSeverity(severity);
+      }
+    }
+    fixture.detectChanges();
+
+    const tones: Record<string, string> = {};
+    for (const chip of (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>(
+      'app-chip.system-monitor__badge',
+    )) {
+      tones[chip.textContent?.trim() ?? ''] =
+        [...chip.classList].find((name: string): boolean => name.startsWith('chip--')) ?? '';
+    }
+    expect(tones).toEqual({
+      TRACE: 'chip--neutral',
+      DEBUG: 'chip--info',
+      INFO: 'chip--accent',
+      WARNING: 'chip--warning',
+      ERROR: 'chip--danger',
+    });
+  });
+
   it('toggleSeverity_hidesThatSeverity', async () => {
     await create([record({ id: 1, severity: 'info' }), record({ id: 2, severity: 'error' })]);
     view.toggleSeverity('info');

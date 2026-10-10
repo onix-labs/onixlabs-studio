@@ -21,6 +21,7 @@ import {
   GitChangeStatus,
   GitFileChange,
 } from '@shared/angular/services/repository/repository-data';
+import { Chip } from '@shared/angular/components/chip/chip';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
 import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
@@ -92,7 +93,16 @@ type WorkingRowData =
  */
 @Component({
   selector: 'app-commit-detail',
-  imports: [Textarea, Button, AppIcon, Checkbox, PanelToolbar, TreeView, VersionControlMissing],
+  imports: [
+    Chip,
+    Textarea,
+    Button,
+    AppIcon,
+    Checkbox,
+    PanelToolbar,
+    TreeView,
+    VersionControlMissing,
+  ],
   templateUrl: './commit-detail.html',
   styleUrl: './commit-detail.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

@@ -13,13 +13,29 @@ import {
   WritableSignal,
 } from '@angular/core';
 import { Button } from '@shared/angular/components/forms/button/button';
+import { Chip, ChipTone } from '@shared/angular/components/chip/chip';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
 import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
 import { DockPanel } from '@shared/angular/services/dock-layout/dock-panel';
 import { HistoryScope, Repository } from '@shared/angular/services/repository/repository';
-import { GitCommit, GitRef, GraphNode } from '@shared/angular/services/repository/repository-data';
+import {
+  GitCommit,
+  GitRef,
+  GitRefKind,
+  GraphNode,
+} from '@shared/angular/services/repository/repository-data';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Icon } from '@shared/angular/icons/icon';
+
+/**
+ * The chip tone each kind of ref is labelled in.
+ */
+const REF_TONES: Readonly<Record<GitRefKind, ChipTone>> = {
+  head: 'accent',
+  branch: 'success',
+  remote: 'neutral',
+  tag: 'warning',
+};
 
 /**
  * Holds the fixed height, in pixels, of a single graph row.
@@ -123,7 +139,7 @@ interface EdgeViewModel {
  */
 @Component({
   selector: 'app-commit-graph',
-  imports: [AppIcon, Button, PanelToolbar, TextField],
+  imports: [AppIcon, Button, Chip, PanelToolbar, TextField],
   templateUrl: './commit-graph.html',
   styleUrl: './commit-graph.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -422,12 +438,13 @@ export class CommitGraph {
   }
 
   /**
-   * Gets the CSS modifier suffix for a ref badge, keyed to its kind.
-   * @param ref The ref to classify.
-   * @returns Returns the kind used to build the badge class.
+   * Gets the chip tone a ref is labelled in: the checked-out branch in the accent, so it is the one
+   * to look for; local branches green; remotes quiet; tags orange.
+   * @param ref The ref to label.
+   * @returns Returns the tone.
    */
-  protected refKind(ref: GitRef): string {
-    return ref.kind;
+  protected refTone(ref: GitRef): ChipTone {
+    return REF_TONES[ref.kind];
   }
 
   /**

@@ -50,16 +50,10 @@
     white-space: nowrap;
   }
 
+  // The project's outdated count: a warning chip, as the tally and the outdated rows are warning.
   &__badge {
-    flex: 0 0 auto;
-    min-inline-size: 1.1rem;
-    padding: 0 0.35rem;
-    border-radius: 0.7rem;
-    background: var(--package-outdated);
-    color: var(--accent-contrast-color, #fff);
-    font-size: 0.7rem;
-    font-weight: 700;
-    text-align: center;
+    min-inline-size: 1.25rem;
+    justify-content: center;
   }
 }
 

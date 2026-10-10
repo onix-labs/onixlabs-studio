@@ -196,6 +196,21 @@ describe('IssueDocumentPanel', () => {
     expect(host.textContent).toContain('No description was given.');
   });
 
+  it('render_showsEachLabelAsANeutralChip', () => {
+    issues.put('issue:12', makeIssue());
+    fixture.componentRef.setInput('panel', makePanel('issue:12'));
+    fixture.detectChanges();
+
+    const chips: HTMLElement[] = [...host.querySelectorAll<HTMLElement>('app-chip.issue__label')];
+    expect(chips.map((chip: HTMLElement): string => chip.textContent?.trim() ?? '')).toEqual([
+      'bug',
+      'area:git',
+    ]);
+    expect(
+      chips.every((chip: HTMLElement): boolean => chip.classList.contains('chip--neutral')),
+    ).toBe(true);
+  });
+
   it('render_omitsFactsTheIssueDoesNotHave', () => {
     // A heading with nothing after it is a question the reader has to answer for themselves.
     issues.put('issue:12', makeIssue({ labels: [], assignees: [] }));

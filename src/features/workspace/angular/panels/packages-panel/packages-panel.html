@@ -62,7 +62,9 @@
           <app-icon class="packages-group__icon" [icon]="Icon.PROJECT" />
           <span class="packages-group__name">{{ group(row).name }}</span>
           @if (group(row).outdated > 0) {
-            <span class="packages-group__badge">{{ group(row).outdated }}</span>
+            <app-chip class="packages-group__badge" tone="warning">{{
+              group(row).outdated
+            }}</app-chip>
           }
         </span>
       </ng-template>

@@ -28,6 +28,8 @@ import { Icon } from '@shared/angular/icons/icon';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { Button } from '@shared/angular/components/forms/button/button';
 import { Dropdown, DropdownOption } from '@shared/angular/components/forms/dropdown/dropdown';
+import { Chip } from '@shared/angular/components/chip/chip';
+import { ProgressBar } from '@shared/angular/components/progress-bar/progress-bar';
 
 export type { CloneLayout } from '@shared/api/clone-channels';
 
@@ -238,7 +240,7 @@ const FOLDER_NAME: RegExp = /^(?!\.{1,2}$)[\w.-]+$/;
  */
 @Component({
   selector: 'app-welcome-source-control',
-  imports: [AppIcon, Button, Dropdown],
+  imports: [ProgressBar, Chip, AppIcon, Button, Dropdown],
   templateUrl: './welcome-source-control.html',
   styleUrl: './welcome-source-control.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

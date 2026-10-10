@@ -172,6 +172,27 @@ describe('AgentEditDecisionCard', () => {
       ),
     ).toBe('Apply this edit to notes.md? Applied · auto-accepting edits this session');
   });
+  it('marksTheSummarysCounts_asSuccessAndDangerChips', () => {
+    const fixture: ComponentFixture<AgentEditDecisionCard> = render(AgentEditDecisionCard, {
+      id: 'item-1',
+      kind: 'edit-decision',
+      text: '',
+      decisionName: 'notes.md',
+      decisionState: 'pending',
+      decisionDetail: '+3 lines, \u2212120 characters',
+    });
+    const chips: HTMLElement[] = [
+      ...(fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('app-chip'),
+    ];
+
+    expect(
+      chips.map((chip: HTMLElement): string => `${chip.textContent?.trim()} ${chip.className}`),
+    ).toEqual([
+      expect.stringMatching(/^\+3 .*chip--success/),
+      expect.stringMatching(/^\u2212120 .*chip--danger/),
+    ]);
+    expect(text(fixture)).toContain('+3 lines, \u2212120 characters');
+  });
 });
 
 describe('detailSegments', () => {

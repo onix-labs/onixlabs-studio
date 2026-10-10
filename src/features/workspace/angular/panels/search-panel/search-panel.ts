@@ -16,6 +16,7 @@ import {
 import { Button } from '@shared/angular/components/forms/button/button';
 import { Checkbox } from '@shared/angular/components/forms/checkbox/checkbox';
 import { TextField } from '@shared/angular/components/forms/text-field/text-field';
+import { Chip } from '@shared/angular/components/chip/chip';
 import { AppIcon } from '@shared/angular/components/icon/app-icon';
 import { PanelToolbar } from '@shared/angular/components/panel-toolbar/panel-toolbar';
 import { TreeRow, TreeView } from '@shared/angular/components/tree-view/tree-view';
@@ -114,7 +115,7 @@ export type SearchResultRow = SearchFileRow | SearchMatchRow;
  */
 @Component({
   selector: 'app-search-panel',
-  imports: [AppIcon, Button, Checkbox, PanelToolbar, TextField, TreeView],
+  imports: [Chip, AppIcon, Button, Checkbox, PanelToolbar, TextField, TreeView],
   templateUrl: './search-panel.html',
   styleUrl: './search-panel.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

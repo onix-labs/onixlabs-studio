@@ -107,12 +107,10 @@
   opacity: 0.75;
 }
 
+// The tool that raised the diagnostic, as a neutral chip: it names the source, and the row's icon
+// already says how severe it is.
 .problems-source {
   margin-inline-end: 0.375rem;
-  padding-inline: 0.25rem;
-  border-radius: calc(0.25rem * var(--border-radius-multiplier));
-  corner-shape: var(--app-corner-shape, squircle);
-  background: var(--dock-title-background-color--focused);
 }
 
 .problems-empty {

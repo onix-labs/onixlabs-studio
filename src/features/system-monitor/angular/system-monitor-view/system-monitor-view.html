@@ -61,9 +61,9 @@
     >
       <ng-template appTableRow let-row>
         <td>
-          <span class="system-monitor__badge system-monitor__badge--{{ rec(row).severity }}">
+          <app-chip class="system-monitor__badge" [tone]="severityTone(rec(row).severity)">
             {{ severityLabel(rec(row).severity) }}
-          </span>
+          </app-chip>
         </td>
         <td class="system-monitor__where" [title]="origin(rec(row))">{{ rec(row).source }}</td>
         <td class="system-monitor__message" [title]="rec(row).message">{{ rec(row).message }}</td>

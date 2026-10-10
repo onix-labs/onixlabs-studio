@@ -501,3 +501,64 @@ describe('CommitGraph edge order (#882)', () => {
     expect(spans).toEqual([...spans].sort((a: number, b: number): number => b - a));
   });
 });
+
+describe('CommitGraph ref labels', () => {
+  it('refs_areChips_tonedByKind_withATagIconOnlyForTags', async () => {
+    class LabelledProvider extends FakeProvider {
+      public override getCommits(): Promise<GitCommit[]> {
+        return Promise.resolve([
+          {
+            ...makeCommit('c1', []),
+            refs: [
+              { name: 'main', kind: 'head' },
+              { name: 'feature', kind: 'branch' },
+              { name: 'origin/main', kind: 'remote' },
+              { name: 'v1.0.0', kind: 'tag' },
+            ],
+          },
+        ]);
+      }
+    }
+    await TestBed.configureTestingModule({
+      imports: [CommitGraph],
+      providers: [
+        Repository,
+        {
+          provide: SourceControlProviders,
+          useValue: { create: (root: string): SourceControlProvider => new LabelledProvider(root) },
+        },
+      ],
+    }).compileComponents();
+    const repository: Repository = TestBed.inject(Repository);
+    repository.bind({ root: '/repo', name: 'repo' });
+    await repository.refresh();
+    const fixture: ComponentFixture<CommitGraph> = TestBed.createComponent(CommitGraph);
+    fixture.componentRef.setInput('panel', {
+      id: 'graph',
+      title: 'Commits',
+      icon: Icon.SOURCE_CONTROL,
+      role: 'document',
+      component: CommitGraph,
+    });
+    fixture.detectChanges();
+
+    const chips: HTMLElement[] = [
+      ...(fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>(
+        'app-chip.graph__ref',
+      ),
+    ];
+    const tones: string[] = chips.map(
+      (chip: HTMLElement): string =>
+        [...chip.classList].find((name: string): boolean => name.startsWith('chip--')) ?? '',
+    );
+    expect(chips.map((chip: HTMLElement): string => chip.textContent?.trim() ?? '')).toEqual([
+      'main',
+      'feature',
+      'origin/main',
+      'v1.0.0',
+    ]);
+    expect(tones).toEqual(['chip--accent', 'chip--success', 'chip--neutral', 'chip--warning']);
+    expect(chips[3].querySelector('.ph-tag')).not.toBeNull();
+    expect(chips[0].querySelector('.ph-tag')).toBeNull();
+  });
+});

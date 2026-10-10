@@ -8,11 +8,13 @@
     @if (item().decisionDetail) {
       <span class="agent__permission-detail">
         @for (segment of detail(); track $index) {
-          <span
-            [class.agent__detail-added]="segment.sign === 'added'"
-            [class.agent__detail-removed]="segment.sign === 'removed'"
-            >{{ segment.text }}</span
-          >
+          @if (segment.sign === 'added') {
+            <app-chip class="agent__detail-count" tone="success">{{ segment.text }}</app-chip>
+          } @else if (segment.sign === 'removed') {
+            <app-chip class="agent__detail-count" tone="danger">{{ segment.text }}</app-chip>
+          } @else {
+            <span>{{ segment.text }}</span>
+          }
         }
       </span>
     }

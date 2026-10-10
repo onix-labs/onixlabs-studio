@@ -124,9 +124,9 @@ describe('AgentConversationList', () => {
     expect(leaf).not.toBeNull();
     expect(leaf?.textContent).toContain('Northern lights');
     // The recorded agent type and the context label both render as chips.
-    const chips: string[] = Array.from(leaf!.querySelectorAll<HTMLElement>('.history__chip')).map(
-      (chip: HTMLElement): string => chip.textContent?.trim() ?? '',
-    );
+    const chips: string[] = Array.from(
+      leaf!.querySelectorAll<HTMLElement>('.history__chips app-chip'),
+    ).map((chip: HTMLElement): string => chip.textContent?.trim() ?? '');
     expect(chips).toContain('Code');
     expect(chips).toContain('foo.cs');
   });
@@ -136,9 +136,9 @@ describe('AgentConversationList', () => {
     fixture.detectChanges();
 
     // A global conversation with no recorded type falls back to the Agent chip.
-    const chips: string[] = Array.from(host.querySelectorAll<HTMLElement>('.history__chip')).map(
-      (chip: HTMLElement): string => chip.textContent?.trim() ?? '',
-    );
+    const chips: string[] = Array.from(
+      host.querySelectorAll<HTMLElement>('.history__chips app-chip'),
+    ).map((chip: HTMLElement): string => chip.textContent?.trim() ?? '');
     expect(chips).toContain('Agent');
   });
 
